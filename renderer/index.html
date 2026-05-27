@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dungeon Crawler</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d0d0d; color: #ccc; font-family: monospace;
+      display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+    }
+    #hud-top {
+      background: #1a1a1a; border-bottom: 1px solid #333;
+      padding: 4px 12px; display: flex; gap: 24px; align-items: center;
+      font-size: 13px; flex-shrink: 0;
+    }
+    #canvas-wrap { flex: 1; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+    #hud-log {
+      background: #1a1a1a; border-top: 1px solid #333;
+      padding: 4px 12px; font-size: 12px; color: #888;
+      flex-shrink: 0; height: 24px; overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud-top">
+    <span id="hud-level">LVL 1</span>
+    <span>HP <span id="hud-hp-bar">██████</span></span>
+    <span>NOISE <span id="hud-noise-bar">░░░░░░</span></span>
+    <span id="hud-weapon" style="color:#f6ad55">Unarmed</span>
+    <span id="hud-items">—</span>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="game-canvas"></canvas>
+  </div>
+  <div id="hud-log">Descend into the dungeon…</div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

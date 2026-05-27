@@ -1,0 +1,13 @@
+{
+  "name": "dungeon-crawler",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}
