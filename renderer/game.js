@@ -138,6 +138,8 @@ async function processTurn(action) {
   const alertedEntities = state.entities.map(e =>
     e.type === 'guard' ? updateGuardAlert(e, state.noiseMap, state.map, state.player) : e
   )
+  // Monsters never clear inCombat here — they lack awareness to "lose" the player.
+  // Their inCombat resets naturally when the level resets (buildEntities rebuilds from scratch).
   const combatClearedEntities = alertedEntities.map(e =>
     e.type === 'guard' && e.alertState !== ALERT.ALERTED ? { ...e, inCombat: false } : e
   )
