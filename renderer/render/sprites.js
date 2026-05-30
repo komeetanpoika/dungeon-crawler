@@ -10,6 +10,7 @@ const SPRITES = {
   shrine:       'tile_0064',
   column:       'tile_0077',
   // characters
+  dragon:       'creature_dragon',
   player:       'tile_0084',
   guard:        'tile_0085',
   guard_alert:  'tile_0087',

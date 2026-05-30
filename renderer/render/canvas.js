@@ -48,9 +48,10 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
     return
   }
   if (entity.type === 'dragon') {
-    ctx.textBaseline = 'top'
-    ctx.font = `${S * 6}px serif`
-    ctx.fillText('🐉', px - S * 2, py - S * 3)
+    if (sprites.dragon) {
+      const ds = S * 3
+      ctx.drawImage(sprites.dragon, px - S, py - S * 2, ds, ds)
+    }
     return
   }
   if (entity.type === 'weapon') {
