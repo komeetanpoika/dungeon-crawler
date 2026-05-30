@@ -106,6 +106,12 @@ function placeTemplate(map, template, ox, oy, roomId) {
         map[ty][tx].tile = TILE.FLOOR
         map[ty][tx].roomId = roomId
         spawns.push({ kind: 'door', x: tx, y: ty })
+      } else if (ch === 'X') {
+        map[ty][tx].tile = TILE.SNARE
+        map[ty][tx].roomId = roomId
+      } else if (ch === 'C') {
+        map[ty][tx].tile = TILE.COLUMN
+        map[ty][tx].roomId = roomId
       }
     })
   })
