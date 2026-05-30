@@ -2,7 +2,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolvePlayerAction, stepGuard, stepMonster, ACTION_NOISE } from '../renderer/systems/turn.js'
-import { TILE, makePlayer, makeGuard, makeMonster, makeTrap, makePuzzle } from '../renderer/systems/entities.js'
+import { TILE, makePlayer, makeGuard, makeMonster, makeTrap, makePuzzle, makeDragon, DRAGON_STATE } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
 function openMap(w = 20, h = 20) {
@@ -157,5 +157,42 @@ describe('resolvePlayerAction — inCombat', () => {
     const next = resolvePlayerAction(state, { type: 'move', dx: 1, dy: 0 })
     const updated = next.entities.find(e => e.type === 'monster')
     assert.equal(updated.inCombat, true)
+  })
+})
+
+describe('resolvePlayerAction — dragon combat', () => {
+  it('blocks movement into sleeping dragon without a weapon', () => {
+    const dragon = makeDragon(6, 5, 1)
+    const state = makeState({ entities: [dragon] })
+    const next = resolvePlayerAction(state, { type: 'move', dx: 1, dy: 0 })
+    assert.equal(next.player.x, 5)
+    assert.ok(next.log[next.log.length - 1].includes('weapon'))
+  })
+
+  it('damages a sleeping dragon when player has a weapon', () => {
+    const dragon = makeDragon(6, 5, 1)
+    const player = { ...makePlayer(5, 5), weapon: { weaponType: 'dagger', name: 'Dagger', damage: 1 } }
+    const state = makeState({ player, entities: [dragon] })
+    const next = resolvePlayerAction(state, { type: 'move', dx: 1, dy: 0 })
+    const updated = next.entities.find(e => e.type === 'dragon')
+    assert.equal(updated.hp, 11)
+    assert.equal(updated.inCombat, true)
+  })
+
+  it('blocks movement into an awake dragon', () => {
+    const dragon = { ...makeDragon(6, 5, 1), dragonState: DRAGON_STATE.AWAKE }
+    const player = { ...makePlayer(5, 5), weapon: { weaponType: 'axe', name: 'Axe', damage: 4 } }
+    const state = makeState({ player, entities: [dragon] })
+    const next = resolvePlayerAction(state, { type: 'move', dx: 1, dy: 0 })
+    assert.equal(next.player.x, 5)
+    assert.ok(next.log[next.log.length - 1].includes('alert'))
+  })
+
+  it('removes dragon from entities when it reaches 0 HP', () => {
+    const dragon = { ...makeDragon(6, 5, 1), hp: 1 }
+    const player = { ...makePlayer(5, 5), weapon: { weaponType: 'dagger', name: 'Dagger', damage: 1 } }
+    const state = makeState({ player, entities: [dragon] })
+    const next = resolvePlayerAction(state, { type: 'move', dx: 1, dy: 0 })
+    assert.equal(next.entities.filter(e => e.type === 'dragon').length, 0)
   })
 })

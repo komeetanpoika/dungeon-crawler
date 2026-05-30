@@ -24,8 +24,42 @@ export function resolvePlayerAction(state, action) {
       return { ...state, log: [...state.log, 'Blocked.'].slice(-5) }
     }
 
-    const blockerIdx = newEntities.findIndex(e => e.x === nx && e.y === ny && (e.type === 'guard' || e.type === 'monster' || e.type === 'chest' || e.type === 'door'))
+    const blockerIdx = newEntities.findIndex(e =>
+      e.x === nx && e.y === ny &&
+      (e.type === 'guard' || e.type === 'monster' || e.type === 'chest' || e.type === 'door' || e.type === 'dragon')
+    )
     if (blockerIdx !== -1) {
+      if (newEntities[blockerIdx].type === 'dragon') {
+        const dragon = newEntities[blockerIdx]
+        if (dragon.dragonState !== DRAGON_STATE.SLEEPING) {
+          return {
+            ...state,
+            hitEffects: null,
+            log: [...state.log, "The dragon is too alert — you can't get close!"].slice(-5),
+          }
+        }
+        if (!player.weapon) {
+          return { ...state, hitEffects: null, log: [...state.log, 'You need a weapon to fight!'].slice(-5) }
+        }
+        const dmg = player.weapon.damage
+        const updatedDragon = { ...dragon, hp: dragon.hp - dmg, inCombat: true }
+        if (updatedDragon.hp <= 0) {
+          newEntities = newEntities.filter((_, i) => i !== blockerIdx)
+          logs.push('The dragon collapses! The treasure is yours!')
+        } else {
+          newEntities = newEntities.map((e, i) => i === blockerIdx ? updatedDragon : e)
+          logs.push(`You strike the sleeping dragon for ${dmg} damage! (${updatedDragon.hp}/${dragon.maxHp} HP)`)
+        }
+        noiseAmount = ACTION_NOISE.attack
+        return {
+          ...state,
+          player: newPlayer,
+          entities: newEntities,
+          hitEffects: [{ x: nx, y: ny }],
+          pendingNoise: { source: { x: newPlayer.x, y: newPlayer.y }, amount: noiseAmount },
+          log: [...state.log, ...logs].slice(-5),
+        }
+      }
       if (newEntities[blockerIdx].type === 'door') {
         newEntities = newEntities.map((e, i) => i === blockerIdx ? { ...e, opening: true, frame: 0 } : e)
         return {
