@@ -4,6 +4,12 @@ import { loadSprites } from './sprites.js'
 const TILE_SIZE = 32
 
 function drawTile(ctx, tileId, px, py, S, sprites) {
+  if (tileId === TILE.SNARE) {
+    if (sprites.floor) ctx.drawImage(sprites.floor, px, py, S, S)
+    ctx.fillStyle = 'rgba(0, 200, 200, 0.35)'
+    ctx.fillRect(px, py, S, S)
+    return
+  }
   const s = (() => {
     switch (tileId) {
       case TILE.WALL:        return sprites.wall
