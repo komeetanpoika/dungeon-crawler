@@ -8,6 +8,7 @@ export const TILE = {
   SHRINE: 6,
   FLOOR_WOOD: 7,
   COLUMN: 8,
+  SNARE: 9,
 }
 
 export const ALERT = {
@@ -91,7 +92,14 @@ export function makePuzzle(x, y, puzzleType = 'lever') {
 }
 
 export function makeDragon(x, y, roomId) {
-  return { type: 'dragon', x, y, sleepMeter: 0, dragonState: DRAGON_STATE.SLEEPING, roomId, moveTimer: 0 }
+  return {
+    type: 'dragon', x, y,
+    sleepMeter: 0, dragonState: DRAGON_STATE.SLEEPING,
+    roomId, moveTimer: 0,
+    hp: 12, maxHp: 12,
+    snareTimer: 0,
+    inCombat: false,
+  }
 }
 
 export function makeWeapon(x, y, weaponType = 'dagger') {
