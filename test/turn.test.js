@@ -139,3 +139,23 @@ describe('resolvePlayerAction — interact', () => {
     assert.ok(next.log[next.log.length - 1].includes('Nothing'))
   })
 })
+
+describe('resolvePlayerAction — inCombat', () => {
+  it('sets inCombat:true on a guard that survives a player attack', () => {
+    const guard = makeGuard(6, 5) // hp: 4
+    const player = { ...makePlayer(5, 5), weapon: { weaponType: 'dagger', name: 'Dagger', damage: 1 } }
+    const state = makeState({ player, entities: [guard] })
+    const next = resolvePlayerAction(state, { type: 'move', dx: 1, dy: 0 })
+    const updated = next.entities.find(e => e.type === 'guard')
+    assert.equal(updated.inCombat, true)
+  })
+
+  it('sets inCombat:true on a monster that survives a player attack', () => {
+    const monster = makeMonster(6, 5, 'strong') // hp: 3, survives a 1-dmg hit
+    const player = { ...makePlayer(5, 5), weapon: { weaponType: 'dagger', name: 'Dagger', damage: 1 } }
+    const state = makeState({ player, entities: [monster] })
+    const next = resolvePlayerAction(state, { type: 'move', dx: 1, dy: 0 })
+    const updated = next.entities.find(e => e.type === 'monster')
+    assert.equal(updated.inCombat, true)
+  })
+})

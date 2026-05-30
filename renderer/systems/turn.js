@@ -65,7 +65,7 @@ export function resolvePlayerAction(state, action) {
       }
       const blocker = newEntities[blockerIdx]
       const dmg = player.weapon.damage
-      const updatedBlocker = { ...blocker, hp: blocker.hp - dmg }
+      const updatedBlocker = { ...blocker, hp: blocker.hp - dmg, inCombat: true }
       if (updatedBlocker.hp <= 0) {
         newEntities = newEntities.filter((_, i) => i !== blockerIdx)
         logs.push(`You slay the ${blocker.type} with your ${player.weapon.name}!`)
