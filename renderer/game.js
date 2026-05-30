@@ -138,7 +138,10 @@ async function processTurn(action) {
   const alertedEntities = state.entities.map(e =>
     e.type === 'guard' ? updateGuardAlert(e, state.noiseMap, state.map, state.player) : e
   )
-  const steppedEntities = alertedEntities.map(e => {
+  const combatClearedEntities = alertedEntities.map(e =>
+    e.type === 'guard' && e.alertState !== ALERT.ALERTED ? { ...e, inCombat: false } : e
+  )
+  const steppedEntities = combatClearedEntities.map(e => {
     if (e.type === 'guard') {
       if (e.moveTimer > 0) return { ...e, moveTimer: e.moveTimer - 1 }
       return { ...stepGuard(e, state.map, state.player), moveTimer: e.moveCooldown }
@@ -153,8 +156,13 @@ async function processTurn(action) {
     e.alertState === ALERT.ALERTED &&
     Math.abs(e.x - state.player.x) + Math.abs(e.y - state.player.y) === 1
   )
+  let entitiesAfterGuardAttack = steppedEntities
   if (attackers.length > 0) {
     const dmg = attackers.length
+    const attackerSet = new Set(attackers)
+    entitiesAfterGuardAttack = steppedEntities.map(e =>
+      attackerSet.has(e) ? { ...e, inCombat: true } : e
+    )
     state = {
       ...state,
       player: { ...state.player, hp: state.player.hp - dmg },
@@ -162,12 +170,12 @@ async function processTurn(action) {
     }
   }
 
-  const dragon = steppedEntities.find(e => e.type === 'dragon')
+  const dragon = entitiesAfterGuardAttack.find(e => e.type === 'dragon')
   const finalEntities = dragon
-    ? steppedEntities.map(e => e.type === 'dragon'
+    ? entitiesAfterGuardAttack.map(e => e.type === 'dragon'
         ? stepDragon(updateDragonSleep(e, state.noiseMap), state.map, state.player)
         : e)
-    : steppedEntities
+    : entitiesAfterGuardAttack
 
   state = { ...state, entities: finalEntities }
 
