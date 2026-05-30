@@ -56,8 +56,9 @@ export function makeGuard(x, y, patrol = []) {
     facing: 'south', fovAngle: 90, fovRange: 5,
     patrol, patrolIndex: 0,
     alertState: ALERT.UNAWARE,
-    hearingRadius: 4, hp: 4,
+    hearingRadius: 4, hp: 4, maxHp: 4,
     moveCooldown: 2, moveTimer: 0,
+    inCombat: false,
   }
 }
 
@@ -75,8 +76,9 @@ export function makeMonster(x, y, variant = 'weak') {
     wanderRadius: 3,
     alertState: ALERT.UNAWARE,
     hearingRadius: 3,
-    hp: stats.hp,
+    hp: stats.hp, maxHp: stats.hp,
     damage: stats.damage,
+    inCombat: false,
   }
 }
 
