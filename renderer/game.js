@@ -102,6 +102,7 @@ function onKey(e) {
 
 async function processTurn(action) {
   state = resolvePlayerAction(state, action)
+  if (!state.entities.find(e => e.type === 'dragon')) hideDragonMeter()
 
   if (state.won) { await endRun(true); return }
   if (state.descend) { descendLevel(); return }
@@ -181,9 +182,10 @@ async function processTurn(action) {
           ? { ...e, snareTimer: e.snareTimer - 1, dragonState: DRAGON_STATE.SLEEPING }
           : updateDragonSleep(e, state.noiseMap)
         // Move dragon
+        const prevX = d.x, prevY = d.y
         const moved = stepDragon(d, state.map, state.player)
-        // If dragon stepped onto the snare, trigger it
-        if (state.map[moved.y]?.[moved.x]?.tile === TILE.SNARE) {
+        // Only trigger snare if dragon moved onto it (not already standing on it)
+        if ((moved.x !== prevX || moved.y !== prevY) && state.map[moved.y]?.[moved.x]?.tile === TILE.SNARE) {
           return { ...moved, snareTimer: 10, dragonState: DRAGON_STATE.SLEEPING }
         }
         return moved
