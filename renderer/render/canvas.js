@@ -98,6 +98,21 @@ function drawHitEffect(ctx, x, y, camX, camY, S) {
   ctx.stroke()
 }
 
+function drawHealthBars(ctx, entities, map, camX, camY, S) {
+  for (const e of entities) {
+    if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
+    if (!map[e.y]?.[e.x]?.visible) continue
+    const px = Math.round(e.x * S - camX)
+    const py = Math.round(e.y * S - camY)
+    const ratio = Math.max(0, Math.min(1, e.hp / e.maxHp))
+    const color = ratio > 0.6 ? '#22c55e' : ratio > 0.3 ? '#facc15' : '#ef4444'
+    ctx.fillStyle = '#111'
+    ctx.fillRect(px, py - 7, S, 4)
+    ctx.fillStyle = color
+    ctx.fillRect(px, py - 7, Math.round(ratio * S), 4)
+  }
+}
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas
@@ -164,6 +179,7 @@ export class Renderer {
       drawEntity(ctx, e, Math.round(e.x * S - camX), Math.round(e.y * S - camY), S, sprites)
     }
     drawEntity(ctx, player, Math.round(player.x * S - camX), Math.round(player.y * S - camY), S, sprites)
+    drawHealthBars(ctx, entities, map, camX, camY, S)
 
     if (state.hitEffects?.length > 0) {
       for (const { x, y } of state.hitEffects) {
