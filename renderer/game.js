@@ -174,29 +174,44 @@ async function processTurn(action) {
 
   const dragon = entitiesAfterGuardAttack.find(e => e.type === 'dragon')
   const finalEntities = dragon
-    ? entitiesAfterGuardAttack.map(e => e.type === 'dragon'
-        ? stepDragon(updateDragonSleep(e, state.noiseMap), state.map, state.player)
-        : e)
+    ? entitiesAfterGuardAttack.map(e => {
+        if (e.type !== 'dragon') return e
+        // Snare timer: keeps dragon sleeping for N turns, ignoring noise
+        const d = e.snareTimer > 0
+          ? { ...e, snareTimer: e.snareTimer - 1, dragonState: DRAGON_STATE.SLEEPING }
+          : updateDragonSleep(e, state.noiseMap)
+        // Move dragon
+        const moved = stepDragon(d, state.map, state.player)
+        // If dragon stepped onto the snare, trigger it
+        if (state.map[moved.y]?.[moved.x]?.tile === TILE.SNARE) {
+          return { ...moved, snareTimer: 10, dragonState: DRAGON_STATE.SLEEPING }
+        }
+        return moved
+      })
     : entitiesAfterGuardAttack
 
   state = { ...state, entities: finalEntities }
 
   if (dragon) {
     const updatedDragon = finalEntities.find(e => e.type === 'dragon')
-    showDragonMeter(updatedDragon)
-    if (updatedDragon.dragonState !== DRAGON_STATE.SLEEPING) {
-      if (dragon.dragonState === DRAGON_STATE.SLEEPING && updatedDragon.dragonState === DRAGON_STATE.STIRRING) {
-        state = { ...state, log: [...state.log, 'The dragon stirs… move quietly!'].slice(-5) }
-      } else if (dragon.dragonState !== DRAGON_STATE.AWAKE && updatedDragon.dragonState === DRAGON_STATE.AWAKE) {
-        state = { ...state, log: [...state.log, 'The dragon AWAKENS and hunts you!'].slice(-5) }
-      }
-      if (updatedDragon.dragonState === DRAGON_STATE.AWAKE) {
-        const dist = Math.abs(updatedDragon.x - state.player.x) + Math.abs(updatedDragon.y - state.player.y)
-        if (dist <= 1) {
-          state = {
-            ...state,
-            player: { ...state.player, hp: state.player.hp - 3 },
-            log: [...state.log, 'The dragon breathes fire! (-3 HP)'].slice(-5),
+    if (!updatedDragon) {
+      hideDragonMeter()
+    } else {
+      showDragonMeter(updatedDragon)
+      if (updatedDragon.dragonState !== DRAGON_STATE.SLEEPING) {
+        if (dragon.dragonState === DRAGON_STATE.SLEEPING && updatedDragon.dragonState === DRAGON_STATE.STIRRING) {
+          state = { ...state, log: [...state.log, 'The dragon stirs… move quietly!'].slice(-5) }
+        } else if (dragon.dragonState !== DRAGON_STATE.AWAKE && updatedDragon.dragonState === DRAGON_STATE.AWAKE) {
+          state = { ...state, log: [...state.log, 'The dragon AWAKENS and hunts you!'].slice(-5) }
+        }
+        if (updatedDragon.dragonState === DRAGON_STATE.AWAKE) {
+          const dist = Math.abs(updatedDragon.x - state.player.x) + Math.abs(updatedDragon.y - state.player.y)
+          if (dist <= 1) {
+            state = {
+              ...state,
+              player: { ...state.player, hp: state.player.hp - 3 },
+              log: [...state.log, 'The dragon breathes fire! (-3 HP)'].slice(-5),
+            }
           }
         }
       }
