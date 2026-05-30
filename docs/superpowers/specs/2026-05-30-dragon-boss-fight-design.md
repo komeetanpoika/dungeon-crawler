@@ -23,22 +23,36 @@ New tile constant:
 
 **File:** `renderer/data/levels.js`
 
-The `DRAGON_LAIR` template gains a snare tile `X` between the dragon spawn and the treasure:
+The `DRAGON_LAIR` template is replaced with a larger organic cave cluster (~24×22 tiles). The plain rectangle is gone. Structure:
+
+- **Upper section** — three small, irregular cave pockets (left, right, and center), each a different shape. Connected by narrow 1–2 tile passages.
+- **Mid section** — the passages funnel into a single corridor that drops into the main chamber entrance.
+- **Main chamber** — a grand tapered form: wide in the middle, narrowing toward both ends, walls jutting in unevenly. Two `C` (column) tiles flank the snare tile mid-room. Dragon is in the upper half of the chamber, snare below it, treasure in the lower taper.
+
+Rough structural sketch (proportional, not the exact template string — that is finalized in the implementation plan):
 
 ```
-'############',
-'#..........#',
-'#....D.....#',
-'#..........#',
-'#....X.....#',
-'#....T.....#',
-'#..........#',
-'############',
+##[cave A]####[cave B]##
+#######.#####.#########   ← narrow passages
+########.###.##########
+#####[cave C]##########   ← center cave
+##########.############   ← funnel into main
+####..................##
+###...D...............#   ← dragon
+##....C....X....C.....#   ← columns + snare
+###...T...............#   ← treasure
+#####...............###
+########.........######
 ```
+
+Template characters used:
+- `#` wall, `.` floor, `D` dragon, `X` snare, `T` treasure, `C` column
 
 **File:** `renderer/systems/map.js`
 
-The `placeTemplate` parser handles `'X'` → `TILE.SNARE` (floor tile, same pattern as `'T'`, `'S'`, `'W'`).
+The `placeTemplate` parser gains two new handlers:
+- `'X'` → `TILE.SNARE` (floor tile marked as snare)
+- `'C'` → `TILE.COLUMN` (column tile, same visual as existing columns in generated rooms)
 
 **File:** `renderer/render/canvas.js`
 
