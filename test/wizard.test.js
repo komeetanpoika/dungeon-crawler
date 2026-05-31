@@ -28,6 +28,8 @@ describe('makeWizard', () => {
     assert.equal(w.shieldTimer, 0)
     assert.equal(w.inCombat, false)
     assert.ok(typeof w.id === 'string' && w.id.startsWith('wizard_'))
+    assert.ok(w.strafeDir === 1 || w.strafeDir === -1)
+    assert.equal(typeof w.strafeDirTimer, 'number')
   })
 })
 

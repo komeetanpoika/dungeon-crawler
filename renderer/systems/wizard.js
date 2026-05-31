@@ -32,6 +32,8 @@ export function makeWizard(x, y) {
     shieldTimer: 0,
     summonTimer: SUMMON_INTERVAL,
     damageCooldown: 0,
+    strafeDir: 1,
+    strafeDirTimer: 2 + Math.random(),
     id: 'wizard_' + Math.random().toString(36).slice(2),
   }
 }
@@ -44,6 +46,12 @@ export function updateWizard(e, state, delta) {
   e.shieldTimer   = Math.max(0, e.shieldTimer   - delta)
   e.summonTimer   = Math.max(0, e.summonTimer   - delta)
 
+  e.strafeDirTimer = Math.max(0, e.strafeDirTimer - delta)
+  if (e.strafeDirTimer <= 0) {
+    e.strafeDir = -e.strafeDir
+    e.strafeDirTimer = 2 + Math.random()
+  }
+
   // Kiting movement
   const toAngle = Math.atan2(player.py - e.py, player.px - e.px)
   if (dist < FLEE_RANGE) {
@@ -52,8 +60,8 @@ export function updateWizard(e, state, delta) {
     if (canMoveTo(map, e.px + mx, e.py)) e.px += mx
     if (canMoveTo(map, e.px, e.py + my)) e.py += my
   } else {
-    const mx = -Math.sin(toAngle) * STRAFE_SPEED * delta
-    const my =  Math.cos(toAngle) * STRAFE_SPEED * delta
+    const mx = -Math.sin(toAngle) * e.strafeDir * STRAFE_SPEED * delta
+    const my =  Math.cos(toAngle) * e.strafeDir * STRAFE_SPEED * delta
     if (canMoveTo(map, e.px + mx, e.py)) e.px += mx
     if (canMoveTo(map, e.px, e.py + my)) e.py += my
   }
