@@ -18,6 +18,13 @@ const CONTACT_RANGE = 20
 const CONTACT_DAMAGE_COOLDOWN = 0.8
 const PLAYER_HALF = 6
 const ENEMY_HALF = 4
+const SPIDER_SHOOT_RANGE = 130
+const DRAGON_SHOOT_RANGE = 200
+const SPIDER_SHOOT_COOLDOWN = 2.0
+const DRAGON_CHARGE_DUR      = 1.0
+const DRAGON_EXHALE_DUR      = 0.8
+const DRAGON_BREATH_COOLDOWN = 2.5
+const DRAGON_CONE_HALF       = Math.PI * 0.21
 
 const ATTACK_STYLES = {
   dagger:    { style: 'snap',  duration: 0.12, cooldown: 0.30 },
@@ -85,8 +92,14 @@ function buildEntities(spawns, map) {
     const wander = () => ({ wanderTimer: Math.random() * 2, wanderDx: 0, wanderDy: 0, damageCooldown: 0 })
     switch (s.kind) {
       case 'guard':   return [{ ...makeGuard(s.x, s.y),             px: cx, py: cy, facing: 'east', ...wander() }]
-      case 'monster': return [{ ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, facing: 'east', ...wander() }]
-      case 'dragon':  return [{ ...makeDragon(s.x, s.y, s.roomId),  px: cx, py: cy, facing: 'east', ...wander() }]
+      case 'monster': {
+        const m = { ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, facing: 'east', ...wander() }
+        if (s.variant === 'medium') m.shootCooldown = Math.random() * SPIDER_SHOOT_COOLDOWN
+        return [m]
+      }
+      case 'dragon':  return [{ ...makeDragon(s.x, s.y, s.roomId), px: cx, py: cy, facing: 'east',
+  breathState: 'idle', breathTimer: DRAGON_BREATH_COOLDOWN, breathAngle: 0,
+  breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...wander() }]
       case 'trap':    return [makeTrap(s.x, s.y)]
       case 'puzzle':  return [makePuzzle(s.x, s.y)]
       case 'weapon': {
@@ -208,23 +221,33 @@ function update(delta) {
     player.rangedCooldown = RANGED_COOLDOWN
     const dmg = player.weapon?.damage ?? 1
     const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
-    state.projectiles.push({ px: player.px, py: player.py, dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED, damage: dmg })
+    state.projectiles.push({ px: player.px, py: player.py, dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED, damage: dmg, friendly: true })
   }
 
   // Update projectiles
   const liveProjectiles = []
   for (const p of state.projectiles) {
+    const stepDist = Math.hypot(p.dx, p.dy) * delta
     p.px += p.dx * delta
     p.py += p.dy * delta
+    if (p.maxDist !== undefined) { p.distTraveled = (p.distTraveled ?? 0) + stepDist; if (p.distTraveled >= p.maxDist) continue }
     const tile = map[Math.floor(p.py / TILE_SIZE)]?.[Math.floor(p.px / TILE_SIZE)]
     if (!tile || !isWalkable(tile.tile)) continue
     let hit = false
-    state.entities = state.entities.map(e => {
-      if (!isEnemy(e) || hit) return e
-      if (Math.hypot(e.px - p.px, e.py - p.py) < 8) { hit = true; return { ...e, hp: e.hp - p.damage, inCombat: true } }
-      return e
-    })
-    state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
+    if (p.friendly) {
+      state.entities = state.entities.map(e => {
+        if (!isEnemy(e) || hit) return e
+        if (Math.hypot(e.px - p.px, e.py - p.py) < 8) { hit = true; return { ...e, hp: e.hp - p.damage, inCombat: true } }
+        return e
+      })
+      state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
+    } else {
+      if (Math.hypot(player.px - p.px, player.py - p.py) < 10) {
+        player.hp -= p.damage
+        state.log = [...state.log, `Hit for ${p.damage} damage!`].slice(-5)
+        hit = true
+      }
+    }
     if (!hit) liveProjectiles.push(p)
   }
   state.projectiles = liveProjectiles
@@ -236,12 +259,13 @@ function update(delta) {
     e.wanderTimer    = Math.max(0, e.wanderTimer    - delta)
     const dist = Math.hypot(e.px - player.px, e.py - player.py)
     const chasing = dist < CHASE_RANGE && hasLineOfSight(map, e.y, e.x, player.y, player.x)
+    const canMove = e.type !== 'dragon' || e.breathState === 'idle'
     const prevPx = e.px
-    if (chasing && dist > CONTACT_RANGE) {
+    if (canMove && chasing && dist > CONTACT_RANGE) {
       const len = dist || 1
       const speed = e.type === 'dragon' ? 60 : ENEMY_CHASE_SPEED
       moveEntity(e, (player.px - e.px) / len * speed * delta, (player.py - e.py) / len * speed * delta, map, ENEMY_HALF)
-    } else if (dist < CHASE_DROP_RANGE) {
+    } else if (canMove && dist < CHASE_DROP_RANGE) {
       if (e.wanderTimer <= 0) {
         const angle = Math.random() * Math.PI * 2
         e.wanderDx = Math.cos(angle); e.wanderDy = Math.sin(angle)
@@ -251,6 +275,29 @@ function update(delta) {
     }
     const movedX = e.px - prevPx
     if (Math.abs(movedX) > 0.1) e.facing = movedX > 0 ? 'east' : 'west'
+
+    // Ranged attack — spider (medium) only; dragon uses breath
+    const isShooter = e.type === 'monster' && e.variant === 'medium'
+    if (isShooter && e.shootCooldown !== undefined) {
+      e.shootCooldown = Math.max(0, e.shootCooldown - delta)
+      const shootRange = e.type === 'dragon' ? DRAGON_SHOOT_RANGE : SPIDER_SHOOT_RANGE
+      if (e.shootCooldown <= 0 && dist < shootRange && dist > CONTACT_RANGE && hasLineOfSight(map, e.y, e.x, player.y, player.x)) {
+        const cooldown = e.type === 'dragon' ? DRAGON_SHOOT_COOLDOWN : SPIDER_SHOOT_COOLDOWN
+        e.shootCooldown = cooldown
+        const len = dist || 1
+        const speed = e.type === 'dragon' ? 200 : 150
+        const dmg  = e.type === 'dragon' ? 2 : 1
+        const color = e.type === 'dragon' ? '#f97316' : '#a855f7'
+        state.projectiles.push({
+          px: e.px, py: e.py,
+          dx: ((player.px - e.px) / len) * speed,
+          dy: ((player.py - e.py) / len) * speed,
+          damage: dmg, friendly: false,
+          maxDist: shootRange, distTraveled: 0, color,
+        })
+      }
+    }
+
     // Contact damage
     if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
       const contactDmg = e.type === 'dragon' ? 2 : 1
