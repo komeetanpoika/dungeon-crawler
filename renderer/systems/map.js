@@ -214,6 +214,25 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
 
     healConnectivity(map)
 
+    // Level 6: carve a 7×7 cyclops arena near map centre
+    if (cfg.cyclopsArena) {
+      const ax = Math.floor(width / 2) - 3
+      const ay = Math.floor(height / 2) - 3
+      for (let y = ay; y < ay + 7; y++)
+        for (let x = ax; x < ax + 7; x++) {
+          map[y][x].tile = TILE.FLOOR
+          map[y][x].roomId = roomId
+        }
+      const acx = ax + 3, acy = ay + 3
+      entitySpawns.push({ kind: 'cyclops', x: acx, y: acy })
+      const nearestArena = rooms.reduce((best, r) => {
+        const c = center(r), d = Math.abs(c.x - acx) + Math.abs(c.y - acy)
+        return d < best.d ? { d, r } : best
+      }, { d: Infinity, r: rooms[0] })
+      carveCorridor(map, center(nearestArena.r).x, center(nearestArena.r).y, acx, acy)
+      roomId++
+    }
+
     const firstCenter = center(rooms[0])
     const lastCenter = center(rooms[rooms.length - 1])
     map[firstCenter.y][firstCenter.x].tile = TILE.STAIRS_UP
@@ -269,6 +288,15 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     }
     for (let i = 0; i < potionCount && idx < farTiles.length; i++, idx++) {
       entitySpawns.push({ kind: 'potion', ...farTiles[idx] })
+    }
+
+    const wizardCount = cfg.wizardCount ?? 0
+    const crabCount   = cfg.crabCount   ?? 0
+    for (let i = 0; i < wizardCount && idx < farTiles.length; i++, idx++) {
+      entitySpawns.push({ kind: 'wizard', ...farTiles[idx] })
+    }
+    for (let i = 0; i < crabCount && idx < farTiles.length; i++, idx++) {
+      entitySpawns.push({ kind: 'crab', ...farTiles[idx] })
     }
 
     return { map, entitySpawns, playerSpawn, rooms }
