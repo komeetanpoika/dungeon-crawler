@@ -143,8 +143,10 @@ export class Renderer {
   }
 
   updateCamera(player) {
-    this.camX = player.x * this.S + this.S / 2 - this.canvas.width / 2
-    this.camY = player.y * this.S + this.S / 2 - this.canvas.height / 2
+    const px = player.px ?? (player.x * this.S + this.S / 2)
+    const py = player.py ?? (player.y * this.S + this.S / 2)
+    this.camX = px - this.canvas.width / 2
+    this.camY = py - this.canvas.height / 2
   }
 
   render(state) {
@@ -183,9 +185,13 @@ export class Renderer {
       const margin = e.type === 'dragon' ? 5 : 0
       if (e.x + margin < c0 || e.x - margin >= c1 || e.y + margin < r0 || e.y - margin >= r1) continue
       if (!map[e.y]?.[e.x]?.visible) continue
-      drawEntity(ctx, e, Math.round(e.x * S - camX), Math.round(e.y * S - camY), S, sprites)
+      const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
+      const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
+      drawEntity(ctx, e, epx, epy, S, sprites)
     }
-    drawEntity(ctx, player, Math.round(player.x * S - camX), Math.round(player.y * S - camY), S, sprites)
+    const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
+    const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
+    drawEntity(ctx, player, ppx, ppy, S, sprites)
     drawHealthBars(ctx, entities, map, camX, camY, S)
 
     if (state.hitEffects?.length > 0) {

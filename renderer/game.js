@@ -1,234 +1,248 @@
 import { generateLevel } from './systems/map.js'
-import { propagateNoise, decayNoiseMap, mergeNoiseMaps, updateGuardAlert, updateDragonSleep, computePlayerFOV } from './systems/stealth.js'
-import { resolvePlayerAction, stepGuard, stepMonster, stepDragon } from './systems/turn.js'
-import { makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeWeapon, makePotion, makeChest, makeDoor, WEAPON_TYPES, DRAGON_STATE, ALERT, TILE } from './systems/entities.js'
+import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeWeapon, makePotion, makeChest, makeDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
 import { Renderer } from './render/canvas.js'
-import { updateHUD, showDragonMeter, hideDragonMeter } from './render/hud.js'
+import { updateHUD } from './render/hud.js'
 import { FINAL_DEPTH } from './data/levels.js'
 
-const DEBUG = location.search.includes('debug')
+const TILE_SIZE = 32
+const PLAYER_SPEED = 120
+const ENEMY_CHASE_SPEED = 80
+const ENEMY_WANDER_SPEED = 30
+const CHASE_RANGE = 180
+const CHASE_DROP_RANGE = 240
+const MELEE_COOLDOWN = 0.4
+const RANGED_COOLDOWN = 0.6
+const PROJECTILE_SPEED = 280
+const CONTACT_RANGE = 20
+const CONTACT_DAMAGE_COOLDOWN = 0.8
+const PLAYER_HALF = 6
+const ENEMY_HALF = 4
+
+const keys = {}
+window.addEventListener('keydown', e => { keys[e.key] = true })
+window.addEventListener('keyup',   e => { keys[e.key] = false })
 
 let state = null
 let meta = null
 let renderer = null
-let inputLocked = false
+let lastTime = 0
+let rafId = null
 
-async function init() {
-  const canvas = document.getElementById('game-canvas')
-  renderer = new Renderer(canvas)
-  renderer.resize()
-  renderer.debug = DEBUG
-  await renderer.loadSprites()
-
-  const savedMeta = await window.saveAPI.loadMeta()
-  meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
-
-  window.addEventListener('resize', () => { renderer.resize(); render() })
-  window.addEventListener('keydown', onKey)
-
-  startNewRun()
+function canMoveTo(map, px, py, half = PLAYER_HALF) {
+  const corners = [
+    [px - half, py - half],
+    [px + half, py - half],
+    [px - half, py + half],
+    [px + half, py + half],
+  ]
+  return corners.every(([cx, cy]) => {
+    const tile = map[Math.floor(cy / TILE_SIZE)]?.[Math.floor(cx / TILE_SIZE)]
+    return tile && isWalkable(tile.tile)
+  })
 }
 
-function makePatrol(x, y, map) {
-  const candidates = []
-  for (const dist of [3, 4, 5]) {
-    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-      const tx = x + dx * dist, ty = y + dy * dist
-      if (map[ty]?.[tx]?.tile === TILE.FLOOR) candidates.push({ x: tx, y: ty })
-    }
-  }
-  const shuffled = candidates.sort(() => Math.random() - 0.5)
-  return shuffled.slice(0, 2)
+function moveEntity(e, dx, dy, map, half = PLAYER_HALF) {
+  if (dx !== 0 && canMoveTo(map, e.px + dx, e.py, half)) e.px += dx
+  if (dy !== 0 && canMoveTo(map, e.px, e.py + dy, half)) e.py += dy
+  e.x = Math.floor(e.px / TILE_SIZE)
+  e.y = Math.floor(e.py / TILE_SIZE)
+}
+
+function isEnemy(e) {
+  return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
 }
 
 function buildEntities(spawns, map) {
   return spawns.flatMap(s => {
+    const cx = s.x * TILE_SIZE + TILE_SIZE / 2
+    const cy = s.y * TILE_SIZE + TILE_SIZE / 2
+    const wander = () => ({ wanderTimer: Math.random() * 2, wanderDx: 0, wanderDy: 0, damageCooldown: 0 })
     switch (s.kind) {
-      case 'guard':   return [makeGuard(s.x, s.y, makePatrol(s.x, s.y, map))]
-      case 'monster': return [makeMonster(s.x, s.y, s.variant)]
+      case 'guard':   return [{ ...makeGuard(s.x, s.y),             px: cx, py: cy, ...wander() }]
+      case 'monster': return [{ ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, ...wander() }]
+      case 'dragon':  return [{ ...makeDragon(s.x, s.y, s.roomId),  px: cx, py: cy, ...wander() }]
       case 'trap':    return [makeTrap(s.x, s.y)]
-      case 'dragon':  return [makeDragon(s.x, s.y, s.roomId)]
       case 'puzzle':  return [makePuzzle(s.x, s.y)]
       case 'weapon': {
         const wt = s.weaponType ?? 'dagger'
         const def = WEAPON_TYPES[wt] ?? WEAPON_TYPES.dagger
         return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage })]
       }
-      case 'potion':  return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
-      case 'door':    return [makeDoor(s.x, s.y)]
-      default:        return []
+      case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
+      case 'door':   return [makeDoor(s.x, s.y)]
+      default:       return []
     }
   })
 }
 
 function startNewRun() {
-  try {
-    hideDragonMeter()
-    const { map, entitySpawns, playerSpawn } = generateLevel(1)
-    const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
-    player.inventory.push(...getStartingItems(meta))
-    state = {
-      level: 1,
-      map,
-      player,
-      entities: buildEntities(entitySpawns, map),
-      log: ['You descend into the dungeon…'],
-      noiseMap: {},
-      run: { deepestLevel: 1, won: false },
-    }
-    render()
-  } catch (err) {
-    inputLocked = false
-    console.error('startNewRun failed:', err)
+  if (rafId) cancelAnimationFrame(rafId)
+  const { map, entitySpawns, playerSpawn } = generateLevel(9)
+  const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
+  player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
+  player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
+  player.facing = 'south'
+  player.meleeCooldown = 0
+  player.rangedCooldown = 0
+  player.weapon = { weaponType: 'axe', name: 'Axe', damage: 4 }
+  player.hp = 30
+  player.maxHp = 30
+  player.inventory.push(...getStartingItems(meta))
+  state = {
+    level: 9,
+    map,
+    player,
+    entities: buildEntities(entitySpawns, map),
+    projectiles: [],
+    log: ['You enter the dungeon…'],
+    hitEffects: [],
+    run: { deepestLevel: 9, won: false },
+    gameOver: false,
   }
+  lastTime = performance.now()
+  rafId = requestAnimationFrame(gameLoop)
 }
 
-function onKey(e) {
-  if (inputLocked) return
-  const dirMap = {
-    ArrowUp: {dx:0,dy:-1}, w: {dx:0,dy:-1},
-    ArrowDown: {dx:0,dy:1}, s: {dx:0,dy:1},
-    ArrowLeft: {dx:-1,dy:0}, a: {dx:-1,dy:0},
-    ArrowRight: {dx:1,dy:0}, d: {dx:1,dy:0},
-  }
-  const dir = dirMap[e.key]
-  if (dir) { processTurn({ type: 'move', ...dir }).catch(console.error); return }
-  if (e.key === 'Enter') { processTurn({ type: 'descend' }).catch(console.error); return }
-  if (e.key === 'x' || e.key === 'X') { processTurn({ type: 'steal' }).catch(console.error); return }
-  if (e.key === '.') { processTurn({ type: 'wait' }).catch(console.error); return }
-  if (e.key === 'e' || e.key === 'E') { processTurn({ type: 'interact' }).catch(console.error); return }
-}
-
-async function processTurn(action) {
-  state = resolvePlayerAction(state, action)
-  if (!state.entities.find(e => e.type === 'dragon')) hideDragonMeter()
-
-  if (state.won) { await endRun(true); return }
-  if (state.descend) { descendLevel(); return }
-
-  if (state.hitEffects?.length > 0) {
-    render()
-    await new Promise(r => setTimeout(r, 160))
-    state = { ...state, hitEffects: null }
-  }
-
-  if (state.openingDoor) {
-    for (let frame = 0; frame < 4; frame++) {
-      state = { ...state, entities: state.entities.map(e => e.type === 'door' && e.opening ? { ...e, frame } : e) }
-      render()
-      await new Promise(r => setTimeout(r, 100))
-    }
-    state = { ...state, entities: state.entities.filter(e => !(e.type === 'door' && e.opening)), openingDoor: false }
-  }
-
-  if (state.openingChest) {
-    for (let frame = 0; frame < 5; frame++) {
-      state = { ...state, entities: state.entities.map(e => e.type === 'chest' && e.opening ? { ...e, frame } : e) }
-      render()
-      await new Promise(r => setTimeout(r, 80))
-    }
-    state = { ...state, entities: state.entities.filter(e => !(e.type === 'chest' && e.opening)), openingChest: false }
-  }
-
-  if (state.pendingNoise?.amount > 0) {
-    const incoming = propagateNoise(state.map, state.pendingNoise.source, state.pendingNoise.amount)
-    state = { ...state, noiseMap: mergeNoiseMaps(state.noiseMap, incoming), pendingNoise: null }
-  }
-
-  const alertedEntities = state.entities.map(e =>
-    e.type === 'guard' ? updateGuardAlert(e, state.noiseMap, state.map, state.player) : e
-  )
-  // Monsters never clear inCombat here — they lack awareness to "lose" the player.
-  // Their inCombat resets naturally when the level resets (buildEntities rebuilds from scratch).
-  const combatClearedEntities = alertedEntities.map(e =>
-    e.type === 'guard' && e.alertState !== ALERT.ALERTED ? { ...e, inCombat: false } : e
-  )
-  const steppedEntities = combatClearedEntities.map(e => {
-    if (e.type === 'guard') {
-      if (e.moveTimer > 0) return { ...e, moveTimer: e.moveTimer - 1 }
-      return { ...stepGuard(e, state.map, state.player), moveTimer: e.moveCooldown }
-    }
-    if (e.type === 'monster') return stepMonster(e, state.map)
-    return e
-  })
-
-  // Alerted guards adjacent to the player deal 1 damage each
-  const attackers = steppedEntities.filter(e =>
-    e.type === 'guard' &&
-    e.alertState === ALERT.ALERTED &&
-    Math.abs(e.x - state.player.x) + Math.abs(e.y - state.player.y) === 1
-  )
-  let entitiesAfterGuardAttack = steppedEntities
-  if (attackers.length > 0) {
-    const dmg = attackers.length
-    const attackerSet = new Set(attackers)
-    entitiesAfterGuardAttack = steppedEntities.map(e =>
-      attackerSet.has(e) ? { ...e, inCombat: true } : e
-    )
-    state = {
-      ...state,
-      player: { ...state.player, hp: state.player.hp - dmg },
-      log: [...state.log, `A guard strikes you! (${dmg} damage)`].slice(-5),
-    }
-  }
-
-  const dragon = entitiesAfterGuardAttack.find(e => e.type === 'dragon')
-  const finalEntities = dragon
-    ? entitiesAfterGuardAttack.map(e => {
-        if (e.type !== 'dragon') return e
-        // Snare timer: keeps dragon sleeping for N turns, ignoring noise
-        const d = e.snareTimer > 0
-          ? { ...e, snareTimer: e.snareTimer - 1, dragonState: DRAGON_STATE.SLEEPING }
-          : updateDragonSleep(e, state.noiseMap)
-        // Move dragon
-        const prevX = d.x, prevY = d.y
-        const moved = stepDragon(d, state.map, state.player)
-        // Only trigger snare if dragon moved onto it (not already standing on it)
-        if ((moved.x !== prevX || moved.y !== prevY) && state.map[moved.y]?.[moved.x]?.tile === TILE.SNARE) {
-          return { ...moved, snareTimer: 10, dragonState: DRAGON_STATE.SLEEPING }
-        }
-        return moved
-      })
-    : entitiesAfterGuardAttack
-
-  state = { ...state, entities: finalEntities }
-
-  if (dragon) {
-    const updatedDragon = finalEntities.find(e => e.type === 'dragon')
-    if (!updatedDragon) {
-      hideDragonMeter()
-    } else {
-      showDragonMeter(updatedDragon)
-      if (updatedDragon.dragonState !== DRAGON_STATE.SLEEPING) {
-        if (dragon.dragonState === DRAGON_STATE.SLEEPING && updatedDragon.dragonState === DRAGON_STATE.STIRRING) {
-          state = { ...state, log: [...state.log, 'The dragon stirs… move quietly!'].slice(-5) }
-        } else if (dragon.dragonState !== DRAGON_STATE.AWAKE && updatedDragon.dragonState === DRAGON_STATE.AWAKE) {
-          state = { ...state, log: [...state.log, 'The dragon AWAKENS and hunts you!'].slice(-5) }
-        }
-        if (updatedDragon.dragonState === DRAGON_STATE.AWAKE) {
-          const dist = Math.abs(updatedDragon.x - state.player.x) + Math.abs(updatedDragon.y - state.player.y)
-          if (dist <= 1) {
-            state = {
-              ...state,
-              player: { ...state.player, hp: state.player.hp - 3 },
-              log: [...state.log, 'The dragon breathes fire! (-3 HP)'].slice(-5),
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if (state.player.hp <= 0) {
-    state.log = [...state.log, 'You have fallen…'].slice(-5)
-    render()
-    await endRun(false)
-    return
-  }
-
-  state = { ...state, noiseMap: decayNoiseMap(state.noiseMap) }
+function gameLoop(timestamp) {
+  const delta = Math.min(timestamp - lastTime, 100) / 1000
+  lastTime = timestamp
+  if (!state.gameOver) update(delta)
   render()
+  rafId = requestAnimationFrame(gameLoop)
+}
+
+function update(delta) {
+  const { player, map } = state
+
+  // Player movement
+  let vx = 0, vy = 0
+  if (keys['ArrowLeft']  || keys['a']) { vx -= 1; player.facing = 'west'  }
+  if (keys['ArrowRight'] || keys['d']) { vx += 1; player.facing = 'east'  }
+  if (keys['ArrowUp']    || keys['w']) { vy -= 1; player.facing = 'north' }
+  if (keys['ArrowDown']  || keys['s']) { vy += 1; player.facing = 'south' }
+  if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
+  moveEntity(player, vx * PLAYER_SPEED * delta, vy * PLAYER_SPEED * delta, map, PLAYER_HALF)
+
+  // Chest interaction (walk onto chest tile)
+  const chestIdx = state.entities.findIndex(e =>
+    e.type === 'chest' && !e.opening && e.x === player.x && e.y === player.y)
+  if (chestIdx !== -1) {
+    const chest = state.entities[chestIdx]
+    if (chest.contents.type === 'weapon') {
+      const { weaponType, name, damage } = chest.contents
+      player.weapon = { weaponType, name, damage }
+      state.log = [...state.log, `Found ${name}!`].slice(-5)
+    } else if (chest.contents.type === 'potion') {
+      const healed = Math.min(player.maxHp - player.hp, chest.contents.amount)
+      player.hp += healed
+      state.log = [...state.log, healed > 0 ? `Healed ${healed} HP!` : 'Already full.'].slice(-5)
+    }
+    state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 4 } : e)
+  }
+
+  // Stairs
+  if (keys['Enter'] && map[player.y]?.[player.x]?.tile === TILE.STAIRS_DOWN) {
+    descendLevel(); return
+  }
+
+  // Steal treasure
+  if ((keys['x'] || keys['X']) && map[player.y]?.[player.x]?.tile === TILE.TREASURE) {
+    endRun(true); return
+  }
+
+  // Combat cooldowns
+  player.meleeCooldown  = Math.max(0, player.meleeCooldown  - delta)
+  player.rangedCooldown = Math.max(0, player.rangedCooldown - delta)
+
+  // Melee (Space)
+  if (keys[' '] && player.meleeCooldown === 0) {
+    player.meleeCooldown = MELEE_COOLDOWN
+    const dmg = player.weapon?.damage ?? 1
+    const SW = 48, SH = 24
+    let hx, hy, hw, hh
+    switch (player.facing) {
+      case 'east':  hx = player.px;        hy = player.py - SH/2; hw = SW; hh = SH; break
+      case 'west':  hx = player.px - SW;   hy = player.py - SH/2; hw = SW; hh = SH; break
+      case 'south': hx = player.px - SH/2; hy = player.py;        hw = SH; hh = SW; break
+      case 'north': hx = player.px - SH/2; hy = player.py - SW;   hw = SH; hh = SW; break
+    }
+    state.entities = state.entities
+      .map(e => isEnemy(e) && e.px >= hx && e.px <= hx+hw && e.py >= hy && e.py <= hy+hh
+        ? { ...e, hp: e.hp - dmg, inCombat: true } : e)
+      .filter(e => !isEnemy(e) || e.hp > 0)
+    state.hitEffects = [{ x: player.x, y: player.y }]
+  }
+
+  // Ranged (Shift)
+  if ((keys['Shift'] || keys['ShiftLeft'] || keys['ShiftRight']) && player.rangedCooldown === 0) {
+    player.rangedCooldown = RANGED_COOLDOWN
+    const dmg = player.weapon?.damage ?? 1
+    const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
+    state.projectiles.push({ px: player.px, py: player.py, dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED, damage: dmg })
+  }
+
+  // Update projectiles
+  const liveProjectiles = []
+  for (const p of state.projectiles) {
+    p.px += p.dx * delta
+    p.py += p.dy * delta
+    const tile = map[Math.floor(p.py / TILE_SIZE)]?.[Math.floor(p.px / TILE_SIZE)]
+    if (!tile || !isWalkable(tile.tile)) continue
+    let hit = false
+    state.entities = state.entities.map(e => {
+      if (!isEnemy(e) || hit) return e
+      if (Math.hypot(e.px - p.px, e.py - p.py) < 8) { hit = true; return { ...e, hp: e.hp - p.damage, inCombat: true } }
+      return e
+    })
+    state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
+    if (!hit) liveProjectiles.push(p)
+  }
+  state.projectiles = liveProjectiles
+
+  // Enemy AI
+  for (const e of state.entities) {
+    if (!isEnemy(e)) continue
+    e.damageCooldown = Math.max(0, e.damageCooldown - delta)
+    e.wanderTimer    = Math.max(0, e.wanderTimer    - delta)
+    const dist = Math.hypot(e.px - player.px, e.py - player.py)
+    const chasing = dist < CHASE_RANGE && hasLineOfSight(map, e.y, e.x, player.y, player.x)
+    if (chasing) {
+      const len = dist || 1
+      const speed = e.type === 'dragon' ? 60 : ENEMY_CHASE_SPEED
+      moveEntity(e, (player.px - e.px) / len * speed * delta, (player.py - e.py) / len * speed * delta, map, ENEMY_HALF)
+    } else if (dist < CHASE_DROP_RANGE) {
+      if (e.wanderTimer <= 0) {
+        const angle = Math.random() * Math.PI * 2
+        e.wanderDx = Math.cos(angle); e.wanderDy = Math.sin(angle)
+        e.wanderTimer = 1 + Math.random()
+      }
+      moveEntity(e, e.wanderDx * ENEMY_WANDER_SPEED * delta, e.wanderDy * ENEMY_WANDER_SPEED * delta, map, ENEMY_HALF)
+    }
+    // Contact damage
+    if (dist < CONTACT_RANGE && e.damageCooldown === 0) {
+      const contactDmg = e.type === 'dragon' ? 2 : 1
+      player.hp -= contactDmg
+      e.damageCooldown = CONTACT_DAMAGE_COOLDOWN
+      state.log = [...state.log, `Hit for ${contactDmg} damage!`].slice(-5)
+    }
+  }
+
+  // Player death
+  if (player.hp <= 0) {
+    state.gameOver = true
+    state.log = [...state.log, '💀 You have fallen… (R to restart)'].slice(-5)
+    window.addEventListener('keydown', function restart(ev) {
+      if (ev.key === 'r' || ev.key === 'R') { window.removeEventListener('keydown', restart); startNewRun() }
+    })
+  }
+}
+
+function render() {
+  computePlayerFOV(state.map, state.player)
+  renderer.updateCamera(state.player)
+  renderer.render(state)
+  updateHUD(state)
 }
 
 function descendLevel() {
@@ -239,42 +253,42 @@ function descendLevel() {
     level: next,
     map,
     entities: buildEntities(entitySpawns, map),
-    player: { ...state.player, x: playerSpawn.x, y: playerSpawn.y },
-    noiseMap: {},
-    descend: false,
-    log: [`Level ${next}. The air grows colder…`],
+    projectiles: [],
+    player: {
+      ...state.player,
+      x: playerSpawn.x, y: playerSpawn.y,
+      px: playerSpawn.x * TILE_SIZE + TILE_SIZE / 2,
+      py: playerSpawn.y * TILE_SIZE + TILE_SIZE / 2,
+    },
+    log: [`Level ${next}. Deeper…`],
+    hitEffects: [],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
   }
-  if (!state.entities.find(e => e.type === 'dragon')) hideDragonMeter()
-  render()
 }
 
 async function endRun(won) {
-  inputLocked = true
+  if (rafId) cancelAnimationFrame(rafId)
+  state.run.won = won
   meta = applyRunResult(meta, { deepestLevel: state.run.deepestLevel, won })
   await window.saveAPI.saveMeta(meta)
   await window.saveAPI.deleteRun()
-
-  const msg = won
-    ? '🏆 Treasure stolen! Press R to play again.'
-    : '💀 Run over. Press R to try again.'
+  const msg = won ? '🏆 Treasure stolen! Press R to play again.' : '💀 Run over. Press R.'
   state.log = [...state.log, msg].slice(-5)
   render()
-
-  const restart = e => {
-    if (e.key !== 'r' && e.key !== 'R') return
-    window.removeEventListener('keydown', restart)
-    inputLocked = false
-    startNewRun()
-  }
-  window.addEventListener('keydown', restart)
+  window.addEventListener('keydown', function restart(ev) {
+    if (ev.key === 'r' || ev.key === 'R') { window.removeEventListener('keydown', restart); startNewRun() }
+  })
 }
 
-function render() {
-  computePlayerFOV(state.map, state.player)
-  renderer.updateCamera(state.player)
-  renderer.render(state)
-  updateHUD(state)
+async function init() {
+  const canvas = document.getElementById('game-canvas')
+  renderer = new Renderer(canvas)
+  renderer.resize()
+  await renderer.loadSprites()
+  const savedMeta = await window.saveAPI.loadMeta()
+  meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
+  window.addEventListener('resize', () => renderer.resize())
+  startNewRun()
 }
 
 init()
