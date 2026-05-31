@@ -276,6 +276,82 @@ function update(delta) {
     const movedX = e.px - prevPx
     if (Math.abs(movedX) > 0.1) e.facing = movedX > 0 ? 'east' : 'west'
 
+    // Dragon fire breath state machine
+    if (e.type === 'dragon') {
+      e.breathTimer = Math.max(0, e.breathTimer - delta)
+
+      if (e.breathState === 'idle') {
+        if (e.breathTimer <= 0 && dist < DRAGON_SHOOT_RANGE &&
+            hasLineOfSight(map, e.y, e.x, player.y, player.x)) {
+          e.breathState = 'charge'
+          e.breathTimer = DRAGON_CHARGE_DUR
+          e.breathProgress = 0
+        }
+
+      } else if (e.breathState === 'charge') {
+        e.breathProgress = 1 - e.breathTimer / DRAGON_CHARGE_DUR
+        if (e.breathTimer <= 0) {
+          e.breathState = 'exhale'
+          e.breathTimer = DRAGON_EXHALE_DUR
+          e.breathProgress = 0
+          e.breathAngle = Math.atan2(player.py - e.py, player.px - e.px)
+          e.breathParticles = []
+          e.breathDamageAcc = 0
+        }
+
+      } else if (e.breathState === 'exhale') {
+        e.breathProgress = 1 - e.breathTimer / DRAGON_EXHALE_DUR
+
+        // Damage: 3 HP/sec while player is inside cone
+        const dx = player.px - e.px, dy = player.py - e.py
+        const playerDist = Math.hypot(dx, dy)
+        if (playerDist < DRAGON_SHOOT_RANGE && playerDist > 0) {
+          let angleDiff = Math.atan2(dy, dx) - e.breathAngle
+          while (angleDiff >  Math.PI) angleDiff -= 2 * Math.PI
+          while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI
+          if (Math.abs(angleDiff) < DRAGON_CONE_HALF) {
+            e.breathDamageAcc += 3 * delta
+            while (e.breathDamageAcc >= 1) {
+              player.hp -= 1
+              e.breathDamageAcc -= 1
+              state.log = [...state.log, 'Dragon fire! (-1 HP)'].slice(-5)
+            }
+          }
+        }
+
+        // Spawn 5 particles per frame
+        for (let i = 0; i < 5; i++) {
+          const a = e.breathAngle + (Math.random() - 0.5) * DRAGON_CONE_HALF * 2
+          const spd = 1.5 + Math.random() * 2
+          const d = 8 + Math.random() * 50
+          e.breathParticles.push({
+            x: e.px + Math.cos(a) * d, y: e.py + Math.sin(a) * d,
+            vx: Math.cos(a + (Math.random() - 0.5) * 0.6) * spd,
+            vy: Math.sin(a + (Math.random() - 0.5) * 0.6) * spd,
+            heat: 5 + Math.random() * 3, life: 1,
+            decay: 0.04 + Math.random() * 0.06,
+          })
+        }
+
+        // Advance and cull particles
+        e.breathParticles = e.breathParticles
+          .map(p => ({ ...p,
+            x: p.x + p.vx, y: p.y + p.vy,
+            vx: p.vx + (Math.random() - 0.5) * 0.2,
+            vy: p.vy + (Math.random() - 0.5) * 0.2,
+            life: p.life - p.decay,
+            heat: Math.max(1, p.heat - 0.06),
+          }))
+          .filter(p => p.life > 0)
+
+        if (e.breathTimer <= 0) {
+          e.breathState = 'idle'
+          e.breathTimer = DRAGON_BREATH_COOLDOWN
+          e.breathParticles = []
+        }
+      }
+    }
+
     // Ranged attack — spider (medium) only; dragon uses breath
     const isShooter = e.type === 'monster' && e.variant === 'medium'
     if (isShooter && e.shootCooldown !== undefined) {
