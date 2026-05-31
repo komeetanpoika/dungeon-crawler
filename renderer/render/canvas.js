@@ -194,6 +194,86 @@ function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   }
 }
 
+const FIRE_PAL = [
+  null, '#3d0000', '#7a0800', '#c22000', '#e85000',
+  '#f97316', '#fbbf24', '#fde68a', '#ffffff',
+]
+const BREATH_CELL = 4
+const BREATH_CONE_MAX = 200
+const BREATH_CONE_HALF = Math.PI * 0.21
+
+function drawDragonBreath(ctx, dragon, camX, camY) {
+  if (!dragon || dragon.breathState === 'idle') return
+  const cx = dragon.px - camX
+  const cy = dragon.py - camY
+
+  if (dragon.breathState === 'charge') {
+    const t = dragon.breathProgress ?? 0
+    const flicker = Math.sin(Date.now() * 0.012) * 0.5 + 0.5
+    const rings = Math.round(t * 5) + 1
+    ctx.save()
+    ctx.lineWidth = BREATH_CELL
+    for (let r = 1; r <= rings; r++) {
+      const heat = Math.min(8, Math.max(1, Math.round((7 - r) * flicker + 1)))
+      ctx.globalAlpha = flicker * (1 - r * 0.16)
+      ctx.strokeStyle = FIRE_PAL[heat]
+      const hw = r * BREATH_CELL * 2
+      ctx.strokeRect(cx - hw, cy - hw, hw * 2, hw * 2)
+    }
+    ctx.globalAlpha = 1
+    ctx.restore()
+  }
+
+  if (dragon.breathState === 'exhale') {
+    const t = dragon.breathProgress ?? 0
+    const coneLen = BREATH_CONE_MAX * Math.min(1, t * 2.5)
+    const gridCols = Math.ceil(coneLen / BREATH_CELL)
+
+    ctx.save()
+    ctx.translate(cx, cy)
+    ctx.rotate(dragon.breathAngle)
+
+    for (let gx = 0; gx < gridCols; gx++) {
+      const worldX = gx * BREATH_CELL
+      const halfW = Math.tan(BREATH_CONE_HALF) * worldX
+      const halfCells = Math.ceil(halfW / BREATH_CELL) + 1
+      const progress = gx / Math.max(1, gridCols)
+
+      for (let gy = -halfCells; gy <= halfCells; gy++) {
+        const worldY = gy * BREATH_CELL
+        const edgeDist = halfW > 0 ? Math.abs(worldY) / halfW : 0
+        if (edgeDist > 1) continue
+        if (progress > 0.3 && Math.random() < 0.15) continue
+
+        const edgeFall = 1 - edgeDist * edgeDist
+        const tipFall  = 1 - progress * 0.4
+        const flicker  = 0.85 + Math.sin(gx * 0.8 + gy * 1.2) * 0.15
+        const heat = Math.min(8, Math.max(1, Math.round(edgeFall * tipFall * flicker * 7 + 1)))
+
+        ctx.globalAlpha = Math.min(1, edgeFall * 1.4)
+        ctx.fillStyle = FIRE_PAL[heat]
+        ctx.fillRect(gx * BREATH_CELL, gy * BREATH_CELL, BREATH_CELL, BREATH_CELL)
+      }
+    }
+    ctx.globalAlpha = 1
+    ctx.restore()
+
+    // Particles
+    if (dragon.breathParticles) {
+      for (const p of dragon.breathParticles) {
+        if (p.life <= 0) continue
+        const px = Math.round((p.x - camX) / BREATH_CELL) * BREATH_CELL
+        const py = Math.round((p.y - camY) / BREATH_CELL) * BREATH_CELL
+        const heat = Math.min(8, Math.max(1, Math.round(p.heat)))
+        ctx.globalAlpha = p.life * 0.9
+        ctx.fillStyle = FIRE_PAL[heat]
+        ctx.fillRect(px, py, BREATH_CELL, BREATH_CELL)
+      }
+      ctx.globalAlpha = 1
+    }
+  }
+}
+
 function drawHealthBars(ctx, entities, map, camX, camY, S) {
   for (const e of entities) {
     if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
@@ -282,13 +362,15 @@ export class Renderer {
     const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
     drawEntity(ctx, player, ppx, ppy, S, sprites)
     drawMeleeSwing(ctx, player, sprites, camX, camY, S)
+    const dragon = entities.find(e => e.type === 'dragon')
+    if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     drawHealthBars(ctx, entities, map, camX, camY, S)
 
     // Draw projectiles
     for (const p of state.projectiles ?? []) {
       const bpx = Math.round(p.px - camX)
       const bpy = Math.round(p.py - camY)
-      ctx.fillStyle = '#facc15'
+      ctx.fillStyle = p.color ?? '#facc15'
       ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
     }
 
