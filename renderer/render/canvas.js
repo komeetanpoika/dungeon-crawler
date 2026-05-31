@@ -78,6 +78,33 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
     drawPotion(ctx, px, py, S, sprites.potion)
     return
   }
+  if (entity.type === 'cyclops') {
+    const S2 = S * 2
+    const shakeX = entity.state === 'charge_windup' ? Math.sin(Date.now() * 0.03) * 3 : 0
+    const savedAlpha = ctx.globalAlpha
+    if (entity.state === 'stunned') ctx.globalAlpha = 0.6
+    if (sprites.cyclops) ctx.drawImage(sprites.cyclops, px - Math.round(S / 2) + shakeX, py - Math.round(S / 2), S2, S2)
+    ctx.globalAlpha = savedAlpha
+    return
+  }
+  if (entity.type === 'wizard') {
+    if (sprites.wizard) ctx.drawImage(sprites.wizard, px, py, S, S)
+    if (entity.shieldTimer > 0) {
+      ctx.save()
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 2
+      ctx.globalAlpha = 0.8
+      ctx.beginPath()
+      ctx.arc(px + S / 2, py + S / 2, S * 0.8, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
+    }
+    return
+  }
+  if (entity.type === 'crab') {
+    if (sprites.crab) ctx.drawImage(sprites.crab, px, py, S, S)
+    return
+  }
   if (entity.type === 'player') {
     const flip = entity.facing === 'west'
     if (sprites.player) drawImg(ctx, sprites.player, px, py, S, S, flip)
@@ -289,6 +316,36 @@ function drawHealthBars(ctx, entities, map, camX, camY, S) {
   }
 }
 
+function drawCyclopsEffects(ctx, cyclops, camX, camY) {
+  if (!cyclops) return
+  const cx = Math.round(cyclops.px - camX)
+  const cy = Math.round(cyclops.py - camY)
+
+  if (cyclops.state === 'slam_windup') {
+    ctx.save()
+    ctx.strokeStyle = '#f97316'
+    ctx.lineWidth = 3
+    ctx.globalAlpha = 0.7
+    ctx.beginPath()
+    ctx.arc(cx, cy, 20, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  if (cyclops.slamRing) {
+    const { radius, maxRadius } = cyclops.slamRing
+    const alpha = maxRadius > 0 ? 1 - radius / maxRadius : 0
+    ctx.save()
+    ctx.strokeStyle = '#f97316'
+    ctx.lineWidth = 4
+    ctx.globalAlpha = Math.max(0, alpha)
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
+  }
+}
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas
@@ -351,7 +408,7 @@ export class Renderer {
     }
 
     for (const e of entities) {
-      const margin = e.type === 'dragon' ? 5 : 0
+      const margin = e.type === 'dragon' ? 5 : e.type === 'cyclops' ? 2 : 0
       if (e.x + margin < c0 || e.x - margin >= c1 || e.y + margin < r0 || e.y - margin >= r1) continue
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
@@ -361,9 +418,18 @@ export class Renderer {
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
     drawEntity(ctx, player, ppx, ppy, S, sprites)
+    if (player.grabbed) {
+      ctx.save()
+      ctx.globalAlpha = 0.45
+      ctx.fillStyle = '#ef4444'
+      ctx.fillRect(ppx, ppy, S, S)
+      ctx.restore()
+    }
     drawMeleeSwing(ctx, player, sprites, camX, camY, S)
     const dragon = entities.find(e => e.type === 'dragon')
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
+    const cyclops = entities.find(e => e.type === 'cyclops')
+    if (cyclops) drawCyclopsEffects(ctx, cyclops, camX, camY)
     drawHealthBars(ctx, entities, map, camX, camY, S)
 
     // Draw projectiles
