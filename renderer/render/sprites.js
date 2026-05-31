@@ -18,6 +18,9 @@ const SPRITES = {
   monster_medium: 'tile_0121',
   monster_strong: 'tile_0122',
   monster_boss:   'tile_0123',
+  cyclops:      'tile_0109',
+  wizard:       'tile_0111',
+  crab:         'tile_0110',
   trap:         'tile_0073',
   puzzle:       'tile_0072',
   // items
