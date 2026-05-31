@@ -1,4 +1,4 @@
-import { TILE, ALERT } from '../systems/entities.js'
+import { TILE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 
 const TILE_SIZE = 32
@@ -81,7 +81,7 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   const s = (() => {
     switch (entity.type) {
-      case 'guard':   return entity.alertState === ALERT.ALERTED ? sprites.guard_alert : sprites.guard
+      case 'guard':   return sprites.guard
       case 'monster': return sprites[`monster_${entity.variant ?? 'weak'}`]
       case 'trap':    return entity.triggered ? null : sprites.trap
       case 'puzzle':  return entity.solved ? null : sprites.puzzle
