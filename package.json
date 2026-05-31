@@ -8,6 +8,7 @@
     "test": "node --test test/"
   },
   "devDependencies": {
-    "electron": "^30.0.0"
+    "electron": "^30.0.0",
+    "playwright-core": "^1.60.0"
   }
 }
