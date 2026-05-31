@@ -232,11 +232,11 @@ function update(delta) {
   // Player death
   if (player.hp <= 0) {
     state.gameOver = true
-    state.log = [...state.log, '💀 You have fallen… (R to restart)'].slice(-5)
-    window.addEventListener('keydown', function restart(ev) {
-      if (ev.key === 'r' || ev.key === 'R') { window.removeEventListener('keydown', restart); startNewRun() }
-    })
+    endRun(false)
   }
+
+  // Clear hit flash — it fires once per swing
+  if (state.hitEffects?.length > 0) state.hitEffects = []
 }
 
 function render() {

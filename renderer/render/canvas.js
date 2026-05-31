@@ -196,10 +196,10 @@ export class Renderer {
 
     // Draw projectiles
     for (const p of state.projectiles ?? []) {
-      const ppx = Math.round(p.px - camX)
-      const ppy = Math.round(p.py - camY)
+      const bpx = Math.round(p.px - camX)
+      const bpy = Math.round(p.py - camY)
       ctx.fillStyle = '#facc15'
-      ctx.fillRect(ppx - 2, ppy - 2, 4, 4)
+      ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
     }
 
     if (state.hitEffects?.length > 0) {
