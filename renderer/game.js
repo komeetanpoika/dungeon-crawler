@@ -1,5 +1,8 @@
 import { generateLevel } from './systems/map.js'
 import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
+import { makeCyclops, updateCyclops } from './systems/cyclops.js'
+import { makeWizard, updateWizard } from './systems/wizard.js'
+import { makeCrab, updateCrab, deflects } from './systems/crab.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
@@ -83,6 +86,7 @@ function moveEntity(e, dx, dy, map, half = PLAYER_HALF) {
 
 function isEnemy(e) {
   return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
+      || e.type === 'cyclops' || e.type === 'wizard' || e.type === 'crab'
 }
 
 function buildEntities(spawns, map) {
@@ -108,8 +112,11 @@ function buildEntities(spawns, map) {
         return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage })]
       }
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
-      case 'door':   return [makeDoor(s.x, s.y)]
-      default:       return []
+      case 'door':    return [makeDoor(s.x, s.y)]
+      case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy }]
+      case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy }]
+      case 'crab':    return [{ ...makeCrab(s.x, s.y),    px: cx, py: cy }]
+      default:        return []
     }
   })
 }
@@ -157,14 +164,16 @@ function gameLoop(timestamp) {
 function update(delta) {
   const { player, map } = state
 
-  // Player movement
+  // Player movement — skip if grabbed by a crab this frame
+  const wasGrabbed = player.grabbed ?? false
+  player.grabbed = false
   let vx = 0, vy = 0
   if (keys['ArrowLeft']  || keys['a']) { vx -= 1; player.facing = 'west'  }
   if (keys['ArrowRight'] || keys['d']) { vx += 1; player.facing = 'east'  }
   if (keys['ArrowUp']    || keys['w']) { vy -= 1; player.facing = 'north' }
   if (keys['ArrowDown']  || keys['s']) { vy += 1; player.facing = 'south' }
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
-  moveEntity(player, vx * PLAYER_SPEED * delta, vy * PLAYER_SPEED * delta, map, PLAYER_HALF)
+  if (!wasGrabbed) moveEntity(player, vx * PLAYER_SPEED * delta, vy * PLAYER_SPEED * delta, map, PLAYER_HALF)
 
   // Chest interaction (walk onto chest tile)
   const chestIdx = state.entities.findIndex(e =>
@@ -210,8 +219,12 @@ function update(delta) {
     const dmg = player.weapon?.damage ?? 1
     const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
     state.entities = state.entities
-      .map(e => isEnemy(e) && meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)
-        ? { ...e, hp: e.hp - dmg, inCombat: true } : e)
+      .map(e => {
+        if (!isEnemy(e)) return e
+        if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) return e
+        if (e.type === 'wizard' && e.shieldTimer > 0) return e
+        return { ...e, hp: e.hp - dmg, inCombat: true }
+      })
       .filter(e => !isEnemy(e) || e.hp > 0)
     state.hitEffects = [{ x: player.x, y: player.y }]
   }
@@ -237,7 +250,12 @@ function update(delta) {
     if (p.friendly) {
       state.entities = state.entities.map(e => {
         if (!isEnemy(e) || hit) return e
-        if (Math.hypot(e.px - p.px, e.py - p.py) < 8) { hit = true; return { ...e, hp: e.hp - p.damage, inCombat: true } }
+        if (Math.hypot(e.px - p.px, e.py - p.py) < 8) {
+          if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
+          if (e.type === 'crab' && deflects(e, p))      { hit = true; return e }
+          hit = true
+          return { ...e, hp: e.hp - p.damage, inCombat: true }
+        }
         return e
       })
       state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
@@ -252,9 +270,14 @@ function update(delta) {
   }
   state.projectiles = liveProjectiles
 
-  // Enemy AI
-  for (const e of state.entities) {
+  // Enemy AI — iterate a snapshot so wizard summons don't re-enter this frame
+  for (const e of [...state.entities]) {
     if (!isEnemy(e)) continue
+
+    if (e.type === 'cyclops') { updateCyclops(e, state, delta); continue }
+    if (e.type === 'wizard')  { updateWizard(e, state, delta);  continue }
+    if (e.type === 'crab')    { updateCrab(e, state, delta);    continue }
+
     e.damageCooldown = Math.max(0, e.damageCooldown - delta)
     e.wanderTimer    = Math.max(0, e.wanderTimer    - delta)
     const dist = Math.hypot(e.px - player.px, e.py - player.py)
