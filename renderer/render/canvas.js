@@ -42,6 +42,15 @@ function drawPotion(ctx, px, py, S, sprite) {
   if (sprite) ctx.drawImage(sprite, px, py, S, S)
 }
 
+function drawImg(ctx, sprite, px, py, w, h, flip = false) {
+  if (!flip) { ctx.drawImage(sprite, px, py, w, h); return }
+  ctx.save()
+  ctx.translate(px + w, py)
+  ctx.scale(-1, 1)
+  ctx.drawImage(sprite, 0, 0, w, h)
+  ctx.restore()
+}
+
 function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'door') {
     const s = sprites[`door_${entity.frame}`]
@@ -56,7 +65,8 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'dragon') {
     if (sprites.dragon) {
       const ds = S * 3
-      ctx.drawImage(sprites.dragon, px - S, py - S * 2, ds, ds)
+      const flip = entity.facing === 'west'
+      drawImg(ctx, sprites.dragon, px - S, py - S * 2, ds, ds, flip)
     }
     return
   }
@@ -69,16 +79,19 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
     return
   }
   if (entity.type === 'player') {
-    if (sprites.player) ctx.drawImage(sprites.player, px, py, S, S)
+    const flip = entity.facing === 'west'
+    if (sprites.player) drawImg(ctx, sprites.player, px, py, S, S, flip)
     if (entity.weapon) {
       const ws = sprites[`weapon_${entity.weapon.weaponType}`]
       if (ws) {
         const hw = Math.round(S * 0.5)
-        ctx.drawImage(ws, px + S - hw, py + S - hw, hw, hw)
+        const wx = flip ? px : px + S - hw
+        ctx.drawImage(ws, wx, py + S - hw, hw, hw)
       }
     }
     return
   }
+  const flip = entity.facing === 'west'
   const s = (() => {
     switch (entity.type) {
       case 'guard':   return sprites.guard
@@ -88,7 +101,7 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
       default: return null
     }
   })()
-  if (s) ctx.drawImage(s, px, py, S, S)
+  if (s) drawImg(ctx, s, px, py, S, S, flip)
 }
 
 function drawHitEffect(ctx, x, y, camX, camY, S) {
@@ -103,6 +116,82 @@ function drawHitEffect(ctx, x, y, camX, camY, S) {
   ctx.moveTo(px + 5, py + 5); ctx.lineTo(px + S - 5, py + S - 5)
   ctx.moveTo(px + S - 5, py + 5); ctx.lineTo(px + 5, py + S - 5)
   ctx.stroke()
+}
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3) }
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2 }
+
+function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
+  if (!(player.attackTimer > 0) || !(player.attackDuration > 0)) return
+  const t = 1 - player.attackTimer / player.attackDuration
+  const alpha = t < 0.8 ? 1 : 1 - (t - 0.8) / 0.2
+  const base = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.attackFacing] ?? 0
+  const pcx = player.px - camX
+  const pcy = player.py - camY
+  const ws = sprites[`weapon_${player.weapon?.weaponType}`]
+
+  function trail(a0, a1, radius, r, g, b, width) {
+    const lo = Math.min(a0, a1), hi = Math.max(a0, a1)
+    if (hi - lo < 0.01) return
+    ctx.save()
+    ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.4})`
+    ctx.lineWidth = width; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.arc(pcx, pcy, radius, lo, hi); ctx.stroke()
+    ctx.restore()
+  }
+
+  function weapon(angle, scale = 1) {
+    ctx.save()
+    ctx.translate(pcx, pcy)
+    ctx.rotate(angle)
+    ctx.rotate(-Math.PI / 2)   // orient so blade points outward along the arm
+    ctx.scale(scale, scale)
+    ctx.globalAlpha = alpha
+    if (ws) {
+      ctx.drawImage(ws, -S/2, -S * 0.9, S, S)
+    } else {
+      ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 4; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -S * 0.9); ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+    ctx.restore()
+  }
+
+  const style = player.attackStyle
+
+  if (style === 'snap') {
+    // Dagger: fast 90° snap with slight overshoot
+    const raw = t < 0.65
+      ? easeOutCubic(t / 0.65)
+      : 1 + Math.sin((t - 0.65) / 0.35 * Math.PI) * 0.22
+    const angle = base + (raw - 0.5) * (Math.PI / 2)
+    trail(base - Math.PI/4, angle, S * 0.8, 255, 230, 80, 7)
+    weapon(angle, 0.85)
+
+  } else if (style === 'arc') {
+    // Sword: 140° side-to-side sweep
+    const sweep = (easeOutCubic(t) * 2 - 1) * (Math.PI * 70/180)
+    const angle = base + sweep
+    trail(base - Math.PI*70/180, angle, S * 1.3, 180, 180, 255, 11)
+    weapon(angle)
+
+  } else if (style === 'slash') {
+    // Longsword: overhead slam from –162° to +18°
+    const startA = base - Math.PI * 0.9
+    const endA   = base + Math.PI * 0.1
+    const angle  = startA + easeOutCubic(t) * (endA - startA)
+    trail(startA, angle, S * 1.55, 150, 220, 255, 14)
+    weapon(angle, 1.25)
+
+  } else if (style === 'spin') {
+    // Axe: full 360° spin with fading trail
+    const angle = base + easeInOutCubic(t) * Math.PI * 2
+    for (let i = 2; i >= 0; i--) {
+      const ta = Math.max(0, t - i * 0.07)
+      trail(base, base + easeInOutCubic(ta) * Math.PI * 2, S + i * 5, 255, 140, 50, 13 - i * 3)
+    }
+    weapon(angle, 1.15)
+  }
 }
 
 function drawHealthBars(ctx, entities, map, camX, camY, S) {
@@ -192,6 +281,7 @@ export class Renderer {
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
     drawEntity(ctx, player, ppx, ppy, S, sprites)
+    drawMeleeSwing(ctx, player, sprites, camX, camY, S)
     drawHealthBars(ctx, entities, map, camX, camY, S)
 
     // Draw projectiles

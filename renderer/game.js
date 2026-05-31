@@ -19,6 +19,31 @@ const CONTACT_DAMAGE_COOLDOWN = 0.8
 const PLAYER_HALF = 6
 const ENEMY_HALF = 4
 
+const ATTACK_STYLES = {
+  dagger:    { style: 'snap',  duration: 0.12, cooldown: 0.30 },
+  sword:     { style: 'arc',   duration: 0.20, cooldown: 0.40 },
+  longsword: { style: 'slash', duration: 0.22, cooldown: 0.50 },
+  axe:       { style: 'spin',  duration: 0.35, cooldown: 0.60 },
+}
+
+function getAttack(weaponType) {
+  return ATTACK_STYLES[weaponType] ?? { style: 'arc', duration: 0.20, cooldown: 0.40 }
+}
+
+function meleeHit(style, facingAngle, dx, dy) {
+  const c = Math.cos(-facingAngle), s = Math.sin(-facingAngle)
+  const rx = dx * c - dy * s   // forward component
+  const ry = dx * s + dy * c   // side component
+  const dist = Math.hypot(dx, dy)
+  switch (style) {
+    case 'snap':  return rx > 0 && rx < 28 && Math.abs(ry) < 10          // narrow stab
+    case 'arc':   return dist < 52 && Math.abs(Math.atan2(ry, rx)) < Math.PI * 70/180  // 140° sweep
+    case 'slash': return rx > -4 && rx < 60 && Math.abs(ry) < 14         // long thrust
+    case 'spin':  return dist < 38                                          // full circle
+    default:      return rx > 0 && rx < 40 && Math.abs(ry) < 20
+  }
+}
+
 const keys = {}
 window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
@@ -59,9 +84,9 @@ function buildEntities(spawns, map) {
     const cy = s.y * TILE_SIZE + TILE_SIZE / 2
     const wander = () => ({ wanderTimer: Math.random() * 2, wanderDx: 0, wanderDy: 0, damageCooldown: 0 })
     switch (s.kind) {
-      case 'guard':   return [{ ...makeGuard(s.x, s.y),             px: cx, py: cy, ...wander() }]
-      case 'monster': return [{ ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, ...wander() }]
-      case 'dragon':  return [{ ...makeDragon(s.x, s.y, s.roomId),  px: cx, py: cy, ...wander() }]
+      case 'guard':   return [{ ...makeGuard(s.x, s.y),             px: cx, py: cy, facing: 'east', ...wander() }]
+      case 'monster': return [{ ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, facing: 'east', ...wander() }]
+      case 'dragon':  return [{ ...makeDragon(s.x, s.y, s.roomId),  px: cx, py: cy, facing: 'east', ...wander() }]
       case 'trap':    return [makeTrap(s.x, s.y)]
       case 'puzzle':  return [makePuzzle(s.x, s.y)]
       case 'weapon': {
@@ -85,6 +110,10 @@ function startNewRun() {
   player.facing = 'south'
   player.meleeCooldown = 0
   player.rangedCooldown = 0
+  player.attackTimer = 0
+  player.attackDuration = 0.20
+  player.attackStyle = 'arc'
+  player.attackFacing = 'south'
   player.weapon = { weaponType: 'axe', name: 'Axe', damage: 4 }
   player.hp = 30
   player.maxHp = 30
@@ -155,21 +184,20 @@ function update(delta) {
   // Combat cooldowns
   player.meleeCooldown  = Math.max(0, player.meleeCooldown  - delta)
   player.rangedCooldown = Math.max(0, player.rangedCooldown - delta)
+  player.attackTimer    = Math.max(0, player.attackTimer    - delta)
 
   // Melee (Space)
   if (keys[' '] && player.meleeCooldown <= 0) {
-    player.meleeCooldown = MELEE_COOLDOWN
+    const atk = getAttack(player.weapon?.weaponType)
+    player.meleeCooldown = atk.cooldown
+    player.attackTimer = atk.duration
+    player.attackDuration = atk.duration
+    player.attackStyle = atk.style
+    player.attackFacing = player.facing
     const dmg = player.weapon?.damage ?? 1
-    const SW = 48, SH = 24
-    let hx, hy, hw, hh
-    switch (player.facing) {
-      case 'east':  hx = player.px;        hy = player.py - SH/2; hw = SW; hh = SH; break
-      case 'west':  hx = player.px - SW;   hy = player.py - SH/2; hw = SW; hh = SH; break
-      case 'south': hx = player.px - SH/2; hy = player.py;        hw = SH; hh = SW; break
-      case 'north': hx = player.px - SH/2; hy = player.py - SW;   hw = SH; hh = SW; break
-    }
+    const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
     state.entities = state.entities
-      .map(e => isEnemy(e) && e.px >= hx && e.px <= hx+hw && e.py >= hy && e.py <= hy+hh
+      .map(e => isEnemy(e) && meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)
         ? { ...e, hp: e.hp - dmg, inCombat: true } : e)
       .filter(e => !isEnemy(e) || e.hp > 0)
     state.hitEffects = [{ x: player.x, y: player.y }]
@@ -208,7 +236,8 @@ function update(delta) {
     e.wanderTimer    = Math.max(0, e.wanderTimer    - delta)
     const dist = Math.hypot(e.px - player.px, e.py - player.py)
     const chasing = dist < CHASE_RANGE && hasLineOfSight(map, e.y, e.x, player.y, player.x)
-    if (chasing) {
+    const prevPx = e.px
+    if (chasing && dist > CONTACT_RANGE) {
       const len = dist || 1
       const speed = e.type === 'dragon' ? 60 : ENEMY_CHASE_SPEED
       moveEntity(e, (player.px - e.px) / len * speed * delta, (player.py - e.py) / len * speed * delta, map, ENEMY_HALF)
@@ -220,6 +249,8 @@ function update(delta) {
       }
       moveEntity(e, e.wanderDx * ENEMY_WANDER_SPEED * delta, e.wanderDy * ENEMY_WANDER_SPEED * delta, map, ENEMY_HALF)
     }
+    const movedX = e.px - prevPx
+    if (Math.abs(movedX) > 0.1) e.facing = movedX > 0 ? 'east' : 'west'
     // Contact damage
     if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
       const contactDmg = e.type === 'dragon' ? 2 : 1
