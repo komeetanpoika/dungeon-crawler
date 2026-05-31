@@ -1,5 +1,5 @@
 import { generateLevel } from './systems/map.js'
-import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeWeapon, makePotion, makeChest, makeDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
+import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
@@ -143,12 +143,13 @@ function update(delta) {
 
   // Stairs
   if (keys['Enter'] && map[player.y]?.[player.x]?.tile === TILE.STAIRS_DOWN) {
+    keys['Enter'] = false
     descendLevel(); return
   }
 
   // Steal treasure
   if ((keys['x'] || keys['X']) && map[player.y]?.[player.x]?.tile === TILE.TREASURE) {
-    endRun(true); return
+    state.gameOver = true; endRun(true); return
   }
 
   // Combat cooldowns
@@ -156,7 +157,7 @@ function update(delta) {
   player.rangedCooldown = Math.max(0, player.rangedCooldown - delta)
 
   // Melee (Space)
-  if (keys[' '] && player.meleeCooldown === 0) {
+  if (keys[' '] && player.meleeCooldown <= 0) {
     player.meleeCooldown = MELEE_COOLDOWN
     const dmg = player.weapon?.damage ?? 1
     const SW = 48, SH = 24
@@ -175,7 +176,7 @@ function update(delta) {
   }
 
   // Ranged (Shift)
-  if ((keys['Shift'] || keys['ShiftLeft'] || keys['ShiftRight']) && player.rangedCooldown === 0) {
+  if ((keys['Shift'] || keys['ShiftLeft'] || keys['ShiftRight']) && player.rangedCooldown <= 0) {
     player.rangedCooldown = RANGED_COOLDOWN
     const dmg = player.weapon?.damage ?? 1
     const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
@@ -220,7 +221,7 @@ function update(delta) {
       moveEntity(e, e.wanderDx * ENEMY_WANDER_SPEED * delta, e.wanderDy * ENEMY_WANDER_SPEED * delta, map, ENEMY_HALF)
     }
     // Contact damage
-    if (dist < CONTACT_RANGE && e.damageCooldown === 0) {
+    if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
       const contactDmg = e.type === 'dragon' ? 2 : 1
       player.hp -= contactDmg
       e.damageCooldown = CONTACT_DAMAGE_COOLDOWN
@@ -246,6 +247,7 @@ function render() {
 }
 
 function descendLevel() {
+  if (state.level >= FINAL_DEPTH) return  // already on final level
   const next = state.level + 1
   const { map, entitySpawns, playerSpawn } = generateLevel(next)
   state = {

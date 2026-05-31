@@ -109,8 +109,8 @@ function drawHealthBars(ctx, entities, map, camX, camY, S) {
   for (const e of entities) {
     if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
     if (!map[e.y]?.[e.x]?.visible) continue
-    const px = Math.round(e.x * S - camX)
-    const py = Math.round(e.y * S - camY)
+    const px = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
+    const py = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
     const ratio = Math.max(0, Math.min(1, e.hp / e.maxHp))
     const color = ratio > 0.6 ? '#22c55e' : ratio > 0.3 ? '#facc15' : '#ef4444'
     ctx.fillStyle = '#111'
