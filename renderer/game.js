@@ -280,20 +280,18 @@ function update(delta) {
     const isShooter = e.type === 'monster' && e.variant === 'medium'
     if (isShooter && e.shootCooldown !== undefined) {
       e.shootCooldown = Math.max(0, e.shootCooldown - delta)
-      const shootRange = e.type === 'dragon' ? DRAGON_SHOOT_RANGE : SPIDER_SHOOT_RANGE
-      if (e.shootCooldown <= 0 && dist < shootRange && dist > CONTACT_RANGE && hasLineOfSight(map, e.y, e.x, player.y, player.x)) {
-        const cooldown = e.type === 'dragon' ? DRAGON_SHOOT_COOLDOWN : SPIDER_SHOOT_COOLDOWN
-        e.shootCooldown = cooldown
+      if (e.shootCooldown <= 0 && dist < SPIDER_SHOOT_RANGE && dist > CONTACT_RANGE && hasLineOfSight(map, e.y, e.x, player.y, player.x)) {
+        e.shootCooldown = SPIDER_SHOOT_COOLDOWN
         const len = dist || 1
-        const speed = e.type === 'dragon' ? 200 : 150
-        const dmg  = e.type === 'dragon' ? 2 : 1
-        const color = e.type === 'dragon' ? '#f97316' : '#a855f7'
+        const speed = 150
+        const dmg = 1
+        const color = '#a855f7'
         state.projectiles.push({
           px: e.px, py: e.py,
           dx: ((player.px - e.px) / len) * speed,
           dy: ((player.py - e.py) / len) * speed,
           damage: dmg, friendly: false,
-          maxDist: shootRange, distTraveled: 0, color,
+          maxDist: SPIDER_SHOOT_RANGE, distTraveled: 0, color,
         })
       }
     }
