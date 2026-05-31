@@ -194,6 +194,14 @@ export class Renderer {
     drawEntity(ctx, player, ppx, ppy, S, sprites)
     drawHealthBars(ctx, entities, map, camX, camY, S)
 
+    // Draw projectiles
+    for (const p of state.projectiles ?? []) {
+      const ppx = Math.round(p.px - camX)
+      const ppy = Math.round(p.py - camY)
+      ctx.fillStyle = '#facc15'
+      ctx.fillRect(ppx - 2, ppy - 2, 4, 4)
+    }
+
     if (state.hitEffects?.length > 0) {
       for (const { x, y } of state.hitEffects) {
         if (x < c0 || x >= c1 || y < r0 || y >= r1) continue
