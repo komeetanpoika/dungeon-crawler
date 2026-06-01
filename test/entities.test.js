@@ -1,7 +1,7 @@
 // test/entities.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight } from '../renderer/systems/entities.js'
+import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
 function openMap(w = 20, h = 20) {
@@ -18,6 +18,15 @@ describe('TILE', () => {
     assert.notEqual(TILE.SNARE, TILE.WALL)
     assert.notEqual(TILE.SNARE, TILE.FLOOR)
     assert.notEqual(TILE.SNARE, TILE.COLUMN)
+  })
+
+  it('has SAND distinct from WALL, FLOOR, COLUMN, SNARE and is walkable', () => {
+    assert.equal(typeof TILE.SAND, 'number')
+    assert.notEqual(TILE.SAND, TILE.WALL)
+    assert.notEqual(TILE.SAND, TILE.FLOOR)
+    assert.notEqual(TILE.SAND, TILE.COLUMN)
+    assert.notEqual(TILE.SAND, TILE.SNARE)
+    assert.equal(isWalkable(TILE.SAND), true)
   })
 })
 
