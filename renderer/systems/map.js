@@ -227,15 +227,43 @@ export function isFullyConnected(map) {
   return visited.size === floors.length
 }
 
-function buildRooms(leaves, idStart) {
+function buildRooms(leaves, idStart, depth = 1) {
   let id = idStart
   return leaves.map(leaf => {
     const m = 2
-    return { x: leaf.x + m, y: leaf.y + m, w: Math.max(6, leaf.w - m * 2), h: Math.max(6, leaf.h - m * 2), id: id++ }
+    return {
+      x: leaf.x + m, y: leaf.y + m,
+      w: Math.max(6, leaf.w - m * 2),
+      h: Math.max(6, leaf.h - m * 2),
+      id: id++,
+      shape: chooseShape(leaf, depth),
+    }
   })
 }
 
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5) }
+
+function chooseShape(leaf, depth) {
+  const { w, h } = leaf
+  const wts = depth <= 3 ? { rect: 65, lshape: 25, cross:  8, sunken:  2 }
+            : depth <= 6 ? { rect: 50, lshape: 25, cross: 15, sunken: 10 }
+            :              { rect: 35, lshape: 25, cross: 22, sunken: 18 }
+  const can = {
+    lshape: (w >= 10 && h >= 8) || (w >= 8 && h >= 10),
+    cross:  w >= 9 && h >= 9,
+    sunken: w >= 9 && h >= 9,
+  }
+  const pool = [
+    { shape: 'rect',   w: wts.rect },
+    ...(can.lshape ? [{ shape: 'lshape',  w: wts.lshape  }] : []),
+    ...(can.cross  ? [{ shape: 'cross',   w: wts.cross   }] : []),
+    ...(can.sunken ? [{ shape: 'sunken',  w: wts.sunken  }] : []),
+  ]
+  const total = pool.reduce((s, e) => s + e.w, 0)
+  let r = Math.random() * total
+  for (const e of pool) { r -= e.w; if (r <= 0) return e.shape }
+  return 'rect'
+}
 
 function healConnectivity(map) {
   for (let pass = 0; pass < 10; pass++) {
@@ -279,10 +307,10 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     let roomId = 0
 
     const leaves = bspSplit({ x: 0, y: 0, w: width, h: height })
-    const rooms = buildRooms(leaves, roomId)
+    const rooms = buildRooms(leaves, roomId, depth)
     roomId += rooms.length
-    rooms.forEach(r => carveRoom(map, r))
-    rooms.forEach(r => { if (Math.random() < 0.5) placeColumns(map, r) })
+    rooms.forEach(r => carveRoomShaped(map, r))
+    rooms.forEach(r => { if (r.shape === 'rect' && Math.random() < 0.5) placeColumns(map, r) })
 
     connectRoomsMST(map, rooms)
 
@@ -300,6 +328,15 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     }
 
     healConnectivity(map)
+
+    // Ensure every room center remains walkable after template / arena placement
+    rooms.forEach(r => {
+      const c = r.center ?? { x: Math.floor(r.x + r.w / 2), y: Math.floor(r.y + r.h / 2) }
+      if (map[c.y]?.[c.x] && !isWalkable(map[c.y][c.x].tile)) {
+        map[c.y][c.x].tile = TILE.FLOOR
+        map[c.y][c.x].roomId = r.id
+      }
+    })
 
     // Level 6: carve a 7×7 cyclops arena near map centre
     if (cfg.cyclopsArena) {

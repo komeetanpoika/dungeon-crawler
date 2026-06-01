@@ -57,6 +57,17 @@ describe('generateLevel', () => {
     const { entitySpawns } = generateLevel(1)
     assert.ok(Array.isArray(entitySpawns))
   })
+
+  it('produces rooms with valid walkable centers across all depths', () => {
+    for (let depth = 1; depth <= 9; depth++) {
+      const { map, rooms } = generateLevel(depth)
+      for (const room of rooms) {
+        const c = room.center ?? { x: Math.floor(room.x + room.w/2), y: Math.floor(room.y + room.h/2) }
+        assert.equal(isWalkable(map[c.y][c.x].tile), true,
+          `depth ${depth} room id=${room.id} shape=${room.shape} center not walkable`)
+      }
+    }
+  })
 })
 
 function wallMap(w = 20, h = 20) {
