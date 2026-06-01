@@ -81,6 +81,17 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'prop') {
     const s = sprites[entity.propType]
+    if (entity.isFountainBasin) {
+      // Draw only top 11/16 rows — floor tile beneath shows through bottom 5 rows
+      if (s) ctx.drawImage(s, 0, 0, 16, 11, px, py, S, Math.round(S * 11 / 16))
+      if (entity.flowing) drawBasinRipple(ctx, px, py, S, entity.fountainTime ?? 0)
+      return
+    }
+    if (entity.isFountainWall) {
+      if (s) ctx.drawImage(s, px, py, S, S)
+      if (entity.flowing) drawGargoyleStream(ctx, px, py, S, entity.fountainTime ?? 0)
+      return
+    }
     if (s) ctx.drawImage(s, px, py, S, S)
     return
   }
@@ -234,6 +245,63 @@ const FIRE_PAL = [
 const BREATH_CELL = 4
 const BREATH_CONE_MAX = 200
 const BREATH_CONE_HALF = Math.PI * 0.21
+
+// ── Fountain animation ─────────────────────────────────────────────────────
+// Pixels that differ between empty/full basin sprite (16×16 sprite space)
+const BASIN_WATER_PX = [
+  [7,0],[8,0],[7,1],[8,1],
+  [4,2],[5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[11,2],
+  [4,3],[5,3],[6,3],[7,3],[8,3],[9,3],[10,3],[11,3],
+  [4,4],[5,4],[6,4],[7,4],[8,4],[9,4],[10,4],[11,4],
+  [4,5],[5,5],[6,5],[7,5],[8,5],[9,5],[10,5],[11,5],
+  [4,6],[5,6],[6,6],[7,6],[8,6],[9,6],[10,6],[11,6],
+]
+// Pixels that differ between dry/flow gargoyle sprite (16×16 sprite space)
+const GARG_STREAM_PX = [
+  [7,10],[8,10],[7,11],[8,11],[7,12],[8,12],
+  [7,13],[8,13],[7,14],[8,14],[7,15],[8,15],
+]
+// Water palette extracted from basin sprites
+const W_DARK  = [37, 149, 106]
+const W_MID   = [67, 225, 179]
+const W_LIGHT = [105, 255, 212]
+
+function waterLerp(a, b, t) {
+  return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]
+}
+function waterColor(s) {
+  if (s < 0.33) return waterLerp(W_DARK,  W_MID,   s / 0.33)
+  if (s < 0.66) return waterLerp(W_MID,   W_LIGHT, (s - 0.33) / 0.33)
+  return               waterLerp(W_LIGHT, W_DARK,  (s - 0.66) / 0.34)
+}
+
+// Ripple expanding from top-center of basin (where stream enters water)
+function drawBasinRipple(ctx, px, py, S, t) {
+  const SC = S / 16
+  for (const [spx, spy] of BASIN_WATER_PX) {
+    const dx = spx + 0.5 - 7.5, dy = spy + 0.5 - 0.0
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    const phase = t * 2.5 - dist * 1.8
+    const s = (Math.sin(phase) + 1) / 2
+    const amp = Math.max(0, 1 - dist / 9)
+    const blend = s * amp + 0.5 * (1 - amp)
+    const [r, g, b] = waterColor(blend)
+    ctx.fillStyle = `rgb(${r},${g},${b})`
+    ctx.fillRect(Math.round(px + spx * SC), Math.round(py + spy * SC), Math.ceil(SC), Math.ceil(SC))
+  }
+}
+
+// Stream cycling downward from gargoyle mouth
+function drawGargoyleStream(ctx, px, py, S, t) {
+  const SC = S / 16
+  for (const [spx, spy] of GARG_STREAM_PX) {
+    const phase = t * 4 - spy * 0.7
+    const s = (Math.sin(phase) + 1) / 2
+    const [r, g, b] = waterColor(s)
+    ctx.fillStyle = `rgb(${r},${g},${b})`
+    ctx.fillRect(Math.round(px + spx * SC), Math.round(py + spy * SC), Math.ceil(SC), Math.ceil(SC))
+  }
+}
 
 function drawDragonBreath(ctx, dragon, camX, camY) {
   if (!dragon || dragon.breathState === 'idle') return
