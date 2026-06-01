@@ -1,5 +1,5 @@
 import { TILE, isWalkable } from './entities.js'
-import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH } from '../data/levels.js'
+import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES } from '../data/levels.js'
 
 const MAP_W = 80
 const MAP_H = 50
@@ -431,10 +431,19 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
 
     if (!isFullyConnected(map)) continue
 
+    // Apply sand floor for depths 4–6
+    const theme = DEPTH_THEMES.find(t => t.depths.includes(depth))
+    if (theme?.floorTile === 'sand') {
+      for (let row = 0; row < height; row++)
+        for (let col = 0; col < width; col++)
+          if (map[row][col].tile === TILE.FLOOR) map[row][col].tile = TILE.SAND
+    }
+
     const floorTiles = []
     for (let y = 0; y < height; y++)
       for (let x = 0; x < width; x++)
-        if (map[y][x].tile === TILE.FLOOR) floorTiles.push({ x, y })
+        if (map[y][x].tile === TILE.FLOOR || map[y][x].tile === TILE.SAND)
+          floorTiles.push({ x, y })
 
     const playerSpawn = alcoveSpawn ?? spawnC
     const occupiedKeys = new Set(entitySpawns.map(s => `${s.x},${s.y}`))
@@ -487,6 +496,24 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     }
     for (let i = 0; i < crabCount && idx < farTiles.length; i++, idx++) {
       entitySpawns.push({ kind: 'crab', ...farTiles[idx] })
+    }
+
+    // Scatter props based on depth theme
+    const roomProps = theme?.props?.room ?? []
+    if (roomProps.length > 0) {
+      for (const room of rooms) {
+        const count = Math.floor(Math.random() * 3)  // 0–2 props per room
+        const candidates = shuffle(floorTiles.filter(t =>
+          t.x > room.x && t.x < room.x + room.w - 1 &&
+          t.y > room.y && t.y < room.y + room.h - 1 &&
+          !occupiedKeys.has(`${t.x},${t.y}`)
+        ))
+        for (let i = 0; i < count && i < candidates.length; i++) {
+          const propType = roomProps[Math.floor(Math.random() * roomProps.length)]
+          entitySpawns.push({ kind: 'prop', propType, x: candidates[i].x, y: candidates[i].y })
+          occupiedKeys.add(`${candidates[i].x},${candidates[i].y}`)
+        }
+      }
     }
 
     return { map, entitySpawns, playerSpawn, rooms }

@@ -6,7 +6,7 @@ import { makeCrab, updateCrab, deflects } from './systems/crab.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
-import { FINAL_DEPTH } from './data/levels.js'
+import { FINAL_DEPTH, DEPTH_THEMES } from './data/levels.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -116,6 +116,7 @@ function buildEntities(spawns, map) {
       case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy }]
       case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy }]
       case 'crab':    return [{ ...makeCrab(s.x, s.y),    px: cx, py: cy }]
+      case 'prop':    return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
       default:        return []
     }
   })
@@ -123,7 +124,7 @@ function buildEntities(spawns, map) {
 
 function startNewRun() {
   if (rafId) cancelAnimationFrame(rafId)
-  const { map, entitySpawns, playerSpawn } = generateLevel(2)
+  const { map, entitySpawns, playerSpawn } = generateLevel(1)
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -135,10 +136,12 @@ function startNewRun() {
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
   player.inventory.push(...getStartingItems(meta))
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
   state = {
-    level: 2,
+    level: 1,
     map,
     player,
+    theme,
     entities: buildEntities(entitySpawns, map),
     projectiles: [],
     log: ['You enter the dungeon…'],
@@ -422,10 +425,12 @@ function descendLevel() {
   if (state.level >= FINAL_DEPTH) return  // already on final level
   const next = state.level + 1
   const { map, entitySpawns, playerSpawn } = generateLevel(next)
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(next)) ?? DEPTH_THEMES[0]
   state = {
     ...state,
     level: next,
     map,
+    theme,
     entities: buildEntities(entitySpawns, map),
     projectiles: [],
     player: {
