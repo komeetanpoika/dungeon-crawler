@@ -130,10 +130,22 @@ function placeColumns(map, room) {
   }
 }
 
-export function carveCorridor(map, x1, y1, x2, y2) {
+export function carveCorridor(map, x1, y1, x2, y2, width = 1) {
+  const offsets = width === 1 ? [0] : width === 2 ? [0, 1] : [-1, 0, 1]
   let x = x1, y = y1
-  while (x !== x2) { map[y][x].tile = TILE.FLOOR; x += x < x2 ? 1 : -1 }
-  while (y !== y2) { map[y][x].tile = TILE.FLOOR; y += y < y2 ? 1 : -1 }
+  while (x !== x2) {
+    for (const o of offsets) if (map[y + o]?.[x]) map[y + o][x].tile = TILE.FLOOR
+    x += x < x2 ? 1 : -1
+  }
+  while (y !== y2) {
+    for (const o of offsets) if (map[y]?.[x + o]) map[y][x + o].tile = TILE.FLOOR
+    y += y < y2 ? 1 : -1
+  }
+}
+
+function randCorridorWidth() {
+  const r = Math.random()
+  return r < 0.60 ? 1 : r < 0.85 ? 2 : 3
 }
 
 function center(room) {
@@ -155,7 +167,7 @@ function connectRoomsMST(map, rooms) {
       }
     }
     if (bestTo === -1) break
-    carveCorridor(map, centers[bestFrom].x, centers[bestFrom].y, centers[bestTo].x, centers[bestTo].y)
+    carveCorridor(map, centers[bestFrom].x, centers[bestFrom].y, centers[bestTo].x, centers[bestTo].y, randCorridorWidth())
     connected.add(bestTo)
   }
 }

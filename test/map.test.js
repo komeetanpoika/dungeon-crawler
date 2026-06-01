@@ -121,3 +121,21 @@ describe('carveRoomShaped — rect', () => {
     assert.equal(isWalkable(map[cy][cx].tile), true)
   })
 })
+
+describe('carveCorridor width', () => {
+  it('width=1 carves exactly a 1-tile-wide path', () => {
+    const map = createMap(10, 10)
+    carveCorridor(map, 1, 5, 8, 5, 1)
+    assert.equal(map[5][4].tile, TILE.FLOOR)
+    assert.equal(map[4][4].tile, TILE.WALL)
+    assert.equal(map[6][4].tile, TILE.WALL)
+  })
+
+  it('width=3 carves a 3-tile-wide path', () => {
+    const map = createMap(10, 10)
+    carveCorridor(map, 1, 5, 8, 5, 3)
+    assert.equal(map[4][4].tile, TILE.FLOOR)
+    assert.equal(map[5][4].tile, TILE.FLOOR)
+    assert.equal(map[6][4].tile, TILE.FLOOR)
+  })
+})
