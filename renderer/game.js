@@ -116,8 +116,12 @@ function buildEntities(spawns, map) {
       case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy }]
       case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy }]
       case 'crab':    return [{ ...makeCrab(s.x, s.y),    px: cx, py: cy }]
-      case 'prop':    return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
-      default:        return []
+      case 'prop':           return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
+      case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
+        isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
+      case 'fountain_basin': return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
+        isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
+      default:               return []
     }
   })
 }
@@ -201,6 +205,27 @@ function update(delta) {
   // Steal treasure
   if ((keys['x'] || keys['X']) && map[player.y]?.[player.x]?.tile === TILE.TREASURE) {
     state.gameOver = true; endRun(true); return
+  }
+
+  // Fountain toggle (F key — player must stand on basin tile)
+  if (keys['f'] || keys['F']) {
+    keys['f'] = false; keys['F'] = false
+    const basin = state.entities.find(e =>
+      e.type === 'prop' && e.isFountainBasin && e.x === player.x && e.y === player.y
+    )
+    if (basin) {
+      basin.flowing = !basin.flowing
+      basin.propType = basin.flowing ? 'prop_fountain_full' : 'prop_fountain_empty'
+      if (!basin.flowing) basin.fountainTime = 0
+      const wall = state.entities.find(e =>
+        e.type === 'prop' && e.isFountainWall && e.x === basin.pairX && e.y === basin.pairY
+      )
+      if (wall) {
+        wall.flowing = basin.flowing
+        wall.propType = wall.flowing ? 'prop_gargoyle_flow' : 'prop_gargoyle_dry'
+        if (!wall.flowing) wall.fountainTime = 0
+      }
+    }
   }
 
   // Combat cooldowns
@@ -401,6 +426,13 @@ function update(delta) {
       player.hp -= contactDmg
       e.damageCooldown = CONTACT_DAMAGE_COOLDOWN
       state.log = [...state.log, `Hit for ${contactDmg} damage!`].slice(-5)
+    }
+  }
+
+  // Advance fountain animation timers
+  for (const e of state.entities) {
+    if (e.type === 'prop' && e.flowing) {
+      e.fountainTime = (e.fountainTime ?? 0) + delta
     }
   }
 
