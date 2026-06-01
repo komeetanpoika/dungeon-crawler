@@ -107,6 +107,29 @@ function carveRoomSunken(map, room) {
   return { x: x + Math.floor(w / 2), y: y + 1 }
 }
 
+function carveAlcove(map, spawnRoom) {
+  const sc = center(spawnRoom)
+  const ay = spawnRoom.y - 3
+  if (ay < 1) return null  // spawn room too close to map top
+
+  const ax = Math.max(1, sc.x - 2)
+  const axEnd = Math.min(map[0].length - 2, ax + 5)
+
+  // Carve 5×3 floor area above spawn room
+  for (let row = ay; row < ay + 3; row++)
+    for (let col = ax; col < axEnd; col++)
+      if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = spawnRoom.id }
+
+  // Stairs up on top row of alcove (back wall)
+  if (map[ay]?.[sc.x]) map[ay][sc.x].tile = TILE.STAIRS_UP
+
+  // Open spawn room's top wall to connect alcove
+  if (map[spawnRoom.y]?.[sc.x]) map[spawnRoom.y][sc.x].tile = TILE.FLOOR
+
+  // Player spawns in middle of alcove
+  return { x: sc.x, y: ay + 1 }
+}
+
 export function carveRoomShaped(map, room) {
   switch (room.shape) {
     case 'lshape': room.center = carveRoomL(map, room);      break
@@ -401,7 +424,10 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     }
 
     if (depth < FINAL_DEPTH) map[center(stairsRoom).y][center(stairsRoom).x].tile = TILE.STAIRS_DOWN
-    map[spawnC.y][spawnC.x].tile = TILE.STAIRS_UP  // temporary — Task 6 replaces with alcove
+
+    // Entrance alcove above spawn room — sets stairs-up and returns player spawn position
+    const alcoveSpawn = carveAlcove(map, spawnRoom)
+    if (!alcoveSpawn) map[spawnC.y][spawnC.x].tile = TILE.STAIRS_UP  // fallback if alcove OOB
 
     if (!isFullyConnected(map)) continue
 
@@ -410,8 +436,8 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
       for (let x = 0; x < width; x++)
         if (map[y][x].tile === TILE.FLOOR) floorTiles.push({ x, y })
 
+    const playerSpawn = alcoveSpawn ?? spawnC
     const occupiedKeys = new Set(entitySpawns.map(s => `${s.x},${s.y}`))
-    let playerSpawn = spawnC
     occupiedKeys.add(`${playerSpawn.x},${playerSpawn.y}`)
 
     const farTiles = shuffle(floorTiles.filter(t =>

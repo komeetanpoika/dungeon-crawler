@@ -86,6 +86,19 @@ describe('generateLevel', () => {
     assert.ok(sx !== -1, 'no stairs-down found')
     assert.ok(sx !== playerSpawn.x || sy !== playerSpawn.y, 'stairs-down at playerSpawn')
   })
+
+  it('playerSpawn is a walkable tile and has STAIRS_UP within 3 tiles', () => {
+    for (let depth = 1; depth <= 3; depth++) {
+      const { map, playerSpawn } = generateLevel(depth)
+      assert.equal(isWalkable(map[playerSpawn.y][playerSpawn.x].tile), true,
+        `depth ${depth}: playerSpawn tile not walkable`)
+      let found = false
+      for (let dy = -3; dy <= 3 && !found; dy++)
+        for (let dx = -3; dx <= 3 && !found; dx++)
+          if (map[playerSpawn.y + dy]?.[playerSpawn.x + dx]?.tile === TILE.STAIRS_UP) found = true
+      assert.ok(found, `depth ${depth}: no STAIRS_UP within 3 tiles of playerSpawn`)
+    }
+  })
 })
 
 function wallMap(w = 20, h = 20) {
