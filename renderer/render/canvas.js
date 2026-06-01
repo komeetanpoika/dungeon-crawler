@@ -81,8 +81,12 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'floating_item') {
     const c = entity.contents
-    if (c.type === 'weapon') drawWeapon(ctx, c.weaponType, px, py, S, sprites)
-    else if (c.type === 'potion') drawPotion(ctx, px, py, S, sprites.potion)
+    if (c.type === 'weapon') {
+      const s = sprites[`weapon_${c.weaponType}`]
+      if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
+    } else if (c.type === 'potion') {
+      drawPotion(ctx, px, py, S, sprites.potion)
+    }
     return
   }
   if (entity.type === 'prop') {

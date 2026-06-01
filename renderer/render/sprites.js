@@ -1,4 +1,4 @@
-const SPRITES = {
+export const SPRITES = {
   // tiles
   floor:        'tile_0000',
   floor_wood:   'tile_0075',
