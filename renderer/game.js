@@ -123,7 +123,7 @@ function buildEntities(spawns, map) {
 
 function startNewRun() {
   if (rafId) cancelAnimationFrame(rafId)
-  const { map, entitySpawns, playerSpawn } = generateLevel(9)
+  const { map, entitySpawns, playerSpawn } = generateLevel(1)
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -134,12 +134,9 @@ function startNewRun() {
   player.attackDuration = 0.20
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
-  player.weapon = { weaponType: 'axe', name: 'Axe', damage: 4 }
-  player.hp = 30
-  player.maxHp = 30
   player.inventory.push(...getStartingItems(meta))
   state = {
-    level: 9,
+    level: 1,
     map,
     player,
     entities: buildEntities(entitySpawns, map),
