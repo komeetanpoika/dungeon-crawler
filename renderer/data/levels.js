@@ -94,4 +94,39 @@ export const LEVEL_CONFIG = [
   { depth: 9, guardCount: 10, monsterDensity: 0.015, trapDensity: 0.11, puzzleDensity: 0.04, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'DRAGON_LAIR', weapons: ['longsword', 'axe'] },
 ]
 
+export const DEPTH_THEMES = [
+  {
+    depths: [1, 2, 3],
+    floorTile: 'floor',
+    bgColor:  '#12121e',
+    tint:     null,
+    fogAlpha: 0.65,
+    props: {
+      room: ['prop_table', 'prop_chair', 'prop_anvil', 'prop_barrel',
+             'prop_pipe_flow', 'prop_gargoyle_flow', 'prop_fountain_full'],
+    },
+  },
+  {
+    depths: [4, 5, 6],
+    floorTile: 'sand',
+    bgColor:  '#1a1206',
+    tint:     'rgba(40,20,0,0.2)',
+    fogAlpha: 0.65,
+    props: {
+      room: ['prop_pipe_dry', 'prop_gargoyle_dry', 'prop_fountain_empty',
+             'prop_gravestone', 'prop_anvil'],
+    },
+  },
+  {
+    depths: [7, 8, 9],
+    floorTile: 'floor',
+    bgColor:  '#07070f',
+    tint:     'rgba(0,0,20,0.35)',
+    fogAlpha: 0.80,
+    props: {
+      room: ['prop_gravestone', 'prop_grave'],
+    },
+  },
+]
+
 export const FINAL_DEPTH = 9

@@ -21,6 +21,21 @@ const SPRITES = {
   cyclops:      'tile_0109',
   wizard:       'tile_0111',
   crab:         'tile_0110',
+  // floor variants
+  sand:                'tile_0048',
+  // props — civilisation gradient
+  prop_table:          'tile_0072',
+  prop_chair:          'tile_0073',
+  prop_anvil:          'tile_0074',
+  prop_barrel:         'tile_0082',
+  prop_pipe_dry:       'tile_0007',
+  prop_pipe_flow:      'tile_0008',
+  prop_gargoyle_dry:   'tile_0019',
+  prop_gargoyle_flow:  'tile_0020',
+  prop_fountain_empty: 'tile_0031',
+  prop_fountain_full:  'tile_0032',
+  prop_gravestone:     'tile_0065',
+  prop_grave:          'tile_0066',
   trap:         'tile_0073',
   puzzle:       'tile_0072',
   // items
