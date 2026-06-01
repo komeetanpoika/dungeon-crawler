@@ -38,6 +38,11 @@ export const SPRITES = {
   prop_grave:          'tile_0066',
   prop_drain_empty:    'tile_0043',
   prop_drain_liquid:   'tile_0044',
+  // staircase passages
+  stair:       'tile_0039',
+  stair_left:  'tile_0036',
+  stair_mid:   'tile_0037',
+  stair_right: 'tile_0038',
   trap:         'tile_0073',
   puzzle:       'tile_0072',
   // items

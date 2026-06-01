@@ -10,6 +10,7 @@ export const TILE = {
   COLUMN: 8,
   SNARE: 9,
   SAND: 10,
+  STAIR: 11,
 }
 
 export const DRAGON_STATE = { SLEEPING: 'sleeping', STIRRING: 'stirring', AWAKE: 'awake' }
