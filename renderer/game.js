@@ -123,7 +123,7 @@ function buildEntities(spawns, map) {
 
 function startNewRun() {
   if (rafId) cancelAnimationFrame(rafId)
-  const { map, entitySpawns, playerSpawn } = generateLevel(1)
+  const { map, entitySpawns, playerSpawn } = generateLevel(2)
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -136,7 +136,7 @@ function startNewRun() {
   player.attackFacing = 'south'
   player.inventory.push(...getStartingItems(meta))
   state = {
-    level: 1,
+    level: 2,
     map,
     player,
     entities: buildEntities(entitySpawns, map),
