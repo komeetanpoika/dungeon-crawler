@@ -141,11 +141,15 @@ function carveExitPassage(map, stairsRoom, width) {
   const PASSAGE_LEN = 8
   const half = Math.floor((width - 1) / 2)
 
-  // Passage starts at the south wall of the stairs room
+  // Passage starts at the south wall of the stairs room; STAIR tiles go below it
   const entryRow = stairsRoom.y + stairsRoom.h - 1
-  const bottomRow = Math.min(map.length - 2, entryRow + PASSAGE_LEN - 1)
+  const bottomRow = Math.min(map.length - 2, entryRow + PASSAGE_LEN)
 
-  for (let row = entryRow; row <= bottomRow; row++) {
+  // STAIRS_DOWN at south wall (entry tile)
+  if (map[entryRow]?.[sc.x]) map[entryRow][sc.x].tile = TILE.STAIRS_DOWN
+
+  // STAIR tiles below entry row
+  for (let row = entryRow + 1; row <= bottomRow; row++) {
     for (let i = 0; i < width; i++) {
       const col = sc.x - half + i
       if (!map[row]?.[col]) continue
@@ -154,9 +158,6 @@ function carveExitPassage(map, stairsRoom, width) {
       map[row][col].stairWidth = width
     }
   }
-
-  // STAIRS_DOWN at the center column of the entry row (overwrites STAIR set above)
-  if (map[entryRow]?.[sc.x]) map[entryRow][sc.x].tile = TILE.STAIRS_DOWN
 }
 
 export function carveRoomShaped(map, room) {
@@ -389,13 +390,16 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     const spawnC = center(spawnRoom)
 
     // Stairs-down room: farthest from spawn
+    // Stairs-down room: farthest from spawn, with enough space below for exit passage
     const nonSpawn = rooms.filter(r => r !== spawnRoom)
-    const stairsRoom = nonSpawn.reduce((best, r) => {
+    const passageClearance = nonSpawn.filter(r => r.y + r.h < height - 9)
+    const stairsPool = passageClearance.length > 0 ? passageClearance : nonSpawn
+    const stairsRoom = stairsPool.reduce((best, r) => {
       const c = center(r), bc = center(best)
       const d  = Math.abs(c.x  - spawnC.x) + Math.abs(c.y  - spawnC.y)
       const bd = Math.abs(bc.x - spawnC.x) + Math.abs(bc.y - spawnC.y)
       return d > bd ? r : best
-    }, nonSpawn[0] ?? rooms[0])
+    }, stairsPool[0] ?? rooms[0])
 
     // Landmark room: random, not spawn, not stairs
     const landmarkCandidates = rooms.filter(r => r !== spawnRoom && r !== stairsRoom)
