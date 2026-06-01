@@ -349,11 +349,14 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
 
     connectRoomsMST(map, rooms)
 
-    // Spawn room: BSP room whose center is closest to map top-left (0,0)
-    const spawnRoom = rooms.reduce((best, r) => {
+    // Spawn room: closest to top-left among rooms with enough vertical space for alcove above.
+    // Requires room.y >= 4 so carveAlcove (which needs y - 3 >= 1) doesn't go out of bounds.
+    const alcoveReady = rooms.filter(r => r.y >= 4)
+    const spawnPool = alcoveReady.length > 0 ? alcoveReady : rooms
+    const spawnRoom = spawnPool.reduce((best, r) => {
       const c = center(r), bc = center(best)
       return (c.x + c.y) < (bc.x + bc.y) ? r : best
-    }, rooms[0])
+    }, spawnPool[0])
     const spawnC = center(spawnRoom)
 
     // Stairs-down room: farthest from spawn
