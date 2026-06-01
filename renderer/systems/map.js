@@ -455,11 +455,14 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
       roomId++
     }
 
-    if (depth < FINAL_DEPTH) map[center(stairsRoom).y][center(stairsRoom).x].tile = TILE.STAIRS_DOWN
+    const staircaseWidth = cfg.staircaseWidth ?? 1
 
-    // Entrance passage above spawn room — sets stairs-up and returns player spawn position
-    const alcoveSpawn = carveEntrancePassage(map, spawnRoom, 3)
-    if (!alcoveSpawn) map[spawnC.y][spawnC.x].tile = TILE.STAIRS_UP  // fallback if passage OOB
+    // Exit passage going down from south wall of stairs room
+    if (depth < FINAL_DEPTH) carveExitPassage(map, stairsRoom, staircaseWidth)
+
+    // Entrance passage going up from spawn room — returns player spawn position
+    const entranceSpawn = carveEntrancePassage(map, spawnRoom, staircaseWidth)
+    if (!entranceSpawn) map[spawnC.y][spawnC.x].tile = TILE.STAIRS_UP  // fallback if OOB
 
     if (!isFullyConnected(map)) continue
 
@@ -477,7 +480,7 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
         if (map[y][x].tile === TILE.FLOOR || map[y][x].tile === TILE.SAND)
           floorTiles.push({ x, y })
 
-    const playerSpawn = alcoveSpawn ?? spawnC
+    const playerSpawn = entranceSpawn ?? spawnC
     const occupiedKeys = new Set(entitySpawns.map(s => `${s.x},${s.y}`))
     occupiedKeys.add(`${playerSpawn.x},${playerSpawn.y}`)
 
