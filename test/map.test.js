@@ -101,6 +101,35 @@ describe('generateLevel', () => {
   })
 })
 
+describe('paired fountain placement', () => {
+  it('places fountain_wall directly above fountain_basin', () => {
+    let pairsFound = 0
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const { entitySpawns } = generateLevel(1)
+      const walls  = entitySpawns.filter(s => s.kind === 'fountain_wall')
+      const basins = entitySpawns.filter(s => s.kind === 'fountain_basin')
+      assert.equal(walls.length, basins.length, 'wall and basin counts must match')
+      for (const w of walls) {
+        const b = basins.find(b => b.x === w.pairX && b.y === w.pairY)
+        assert.ok(b, `fountain_wall at (${w.x},${w.y}) has no matching basin`)
+        assert.equal(b.y, w.y + 1, 'basin must be exactly 1 tile below wall')
+        assert.equal(b.pairX, w.x, 'basin.pairX must point back to wall x')
+        assert.equal(b.pairY, w.y, 'basin.pairY must point back to wall y')
+        pairsFound++
+      }
+    }
+    assert.ok(pairsFound > 0, 'expected at least one fountain pair across 20 generateLevel(1) calls')
+  })
+
+  it('does not place fountain pairs on sand-floor depths', () => {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const { entitySpawns } = generateLevel(4)
+      const walls = entitySpawns.filter(s => s.kind === 'fountain_wall')
+      assert.equal(walls.length, 0, `depth 4 must have no fountain_wall, found ${walls.length}`)
+    }
+  })
+})
+
 function wallMap(w = 20, h = 20) {
   return createMap(w, h)  // all WALL
 }

@@ -516,6 +516,39 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
       }
     }
 
+    // Place paired gargoyle+basin fountains on stone-floor levels only
+    if (theme?.floorTile !== 'sand') {
+      for (const room of rooms) {
+        if (Math.random() > 0.6) continue  // 60% chance per room
+
+        // Inner top wall: room.y is the top wall row; floor is at room.y + 1
+        const candidates = []
+        for (let x = room.x + 2; x < room.x + room.w - 2; x++) {
+          const wy = room.y, fy = room.y + 1
+          if (
+            map[wy]?.[x]?.tile === TILE.WALL &&
+            isWalkable(map[fy]?.[x]?.tile) &&
+            !occupiedKeys.has(`${x},${wy}`) &&
+            !occupiedKeys.has(`${x},${fy}`)
+          ) candidates.push({ wx: x, wy, fx: x, fy })
+        }
+
+        if (candidates.length === 0) continue
+        const pick = candidates[Math.floor(Math.random() * candidates.length)]
+
+        entitySpawns.push({
+          kind: 'fountain_wall', propType: 'prop_gargoyle_dry',
+          x: pick.wx, y: pick.wy, pairX: pick.fx, pairY: pick.fy,
+        })
+        entitySpawns.push({
+          kind: 'fountain_basin', propType: 'prop_fountain_empty',
+          x: pick.fx, y: pick.fy, pairX: pick.wx, pairY: pick.wy,
+        })
+        occupiedKeys.add(`${pick.wx},${pick.wy}`)
+        occupiedKeys.add(`${pick.fx},${pick.fy}`)
+      }
+    }
+
     return { map, entitySpawns, playerSpawn, rooms }
   }
 
