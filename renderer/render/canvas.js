@@ -79,6 +79,12 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
     drawPotion(ctx, px, py, S, sprites.potion)
     return
   }
+  if (entity.type === 'floating_item') {
+    const c = entity.contents
+    if (c.type === 'weapon') drawWeapon(ctx, c.weaponType, px, py, S, sprites)
+    else if (c.type === 'potion') drawPotion(ctx, px, py, S, sprites.potion)
+    return
+  }
   if (entity.type === 'prop') {
     const s = sprites[entity.propType]
     if (entity.isFountainBasin) {

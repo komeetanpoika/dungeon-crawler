@@ -184,16 +184,50 @@ function update(delta) {
     e.type === 'chest' && !e.opening && e.x === player.x && e.y === player.y)
   if (chestIdx !== -1) {
     const chest = state.entities[chestIdx]
-    if (chest.contents.type === 'weapon') {
-      const { weaponType, name, damage } = chest.contents
-      player.weapon = { weaponType, name, damage }
-      state.log = [...state.log, `Found ${name}!`].slice(-5)
-    } else if (chest.contents.type === 'potion') {
-      const healed = Math.min(player.maxHp - player.hp, chest.contents.amount)
+    // Open chest — item jumps to adjacent floor tile
+    const adj = [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: chest.x+dx, y: chest.y+dy }))
+      .find(t => isWalkable(map[t.y]?.[t.x]?.tile) && !state.entities.some(e => e.x===t.x && e.y===t.y))
+    if (adj) {
+      state.entities.push({
+        type: 'floating_item',
+        contents: chest.contents,
+        x: adj.x, y: adj.y,
+        startPx: chest.x * TILE_SIZE + TILE_SIZE / 2,
+        startPy: chest.y * TILE_SIZE + TILE_SIZE / 2,
+        targetPx: adj.x * TILE_SIZE + TILE_SIZE / 2,
+        targetPy: adj.y * TILE_SIZE + TILE_SIZE / 2,
+        px: chest.x * TILE_SIZE + TILE_SIZE / 2,
+        py: chest.y * TILE_SIZE + TILE_SIZE / 2,
+        progress: 0, duration: 0.35,
+      })
+    } else {
+      // No free adjacent tile — give directly
+      if (chest.contents.type === 'weapon') {
+        player.weapon = { ...chest.contents }
+        state.log = [...state.log, `Found ${chest.contents.name}!`].slice(-5)
+      } else if (chest.contents.type === 'potion') {
+        const healed = Math.min(player.maxHp - player.hp, chest.contents.amount)
+        player.hp += healed
+        state.log = [...state.log, healed > 0 ? `Healed ${healed} HP!` : 'Already full.'].slice(-5)
+      }
+    }
+    state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
+  }
+
+  // Floating item pickup (step onto landing tile once arc completes)
+  const floatIdx = state.entities.findIndex(e =>
+    e.type === 'floating_item' && e.progress >= 1 && e.x === player.x && e.y === player.y)
+  if (floatIdx !== -1) {
+    const item = state.entities[floatIdx]
+    if (item.contents.type === 'weapon') {
+      player.weapon = { ...item.contents }
+      state.log = [...state.log, `Picked up ${item.contents.name}!`].slice(-5)
+    } else if (item.contents.type === 'potion') {
+      const healed = Math.min(player.maxHp - player.hp, item.contents.amount)
       player.hp += healed
       state.log = [...state.log, healed > 0 ? `Healed ${healed} HP!` : 'Already full.'].slice(-5)
     }
-    state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 4 } : e)
+    state.entities = state.entities.filter((_, i) => i !== floatIdx)
   }
 
   // Stairs
@@ -434,6 +468,16 @@ function update(delta) {
     if (e.type === 'prop' && e.flowing) {
       e.fountainTime = (e.fountainTime ?? 0) + delta
     }
+  }
+
+  // Advance floating item arcs
+  for (const e of state.entities) {
+    if (e.type !== 'floating_item') continue
+    e.progress = Math.min(1, e.progress + delta / e.duration)
+    const t = e.progress
+    const arcH = TILE_SIZE * 1.5
+    e.px = e.startPx + (e.targetPx - e.startPx) * t
+    e.py = e.startPy + (e.targetPy - e.startPy) * t - arcH * 4 * t * (1 - t)
   }
 
   // Player death

@@ -51,12 +51,10 @@ const SPRITES = {
   door_1: 'tile_0021',
   door_2: 'tile_0033',
   door_3: 'tile_0045',
-  // chest animation frames (0 = closed … 4 = open)
+  // chest animation frames (0 = closed, 1 = half-open, 2 = fully open)
   chest_0: 'tile_0089',
   chest_1: 'tile_0090',
   chest_2: 'tile_0091',
-  chest_3: 'tile_0092',
-  chest_4: 'tile_0093',
 }
 
 export async function loadSprites() {
