@@ -8,7 +8,7 @@ export const SPRITES = {
   stairs_up:    'tile_0057',
   treasure:     'tile_0063',
   shrine:       'tile_0064',
-  column:       'tile_0077',
+  column:       'tile_0075',  // crate — no pillar exists in tileset
   // characters
   dragon:       'creature_dragon',
   player:       'tile_0084',
