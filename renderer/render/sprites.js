@@ -36,6 +36,8 @@ const SPRITES = {
   prop_fountain_full:  'tile_0032',
   prop_gravestone:     'tile_0065',
   prop_grave:          'tile_0066',
+  prop_drain_empty:    'tile_0043',
+  prop_drain_liquid:   'tile_0044',
   trap:         'tile_0073',
   puzzle:       'tile_0072',
   // items

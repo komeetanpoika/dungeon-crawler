@@ -102,8 +102,7 @@ export const DEPTH_THEMES = [
     tint:     null,
     fogAlpha: 0.65,
     props: {
-      room: ['prop_table', 'prop_chair', 'prop_anvil', 'prop_barrel',
-             'prop_pipe_flow', 'prop_gargoyle_flow', 'prop_fountain_full'],
+      room: ['prop_table', 'prop_chair', 'prop_anvil', 'prop_barrel'],
     },
   },
   {
@@ -113,8 +112,7 @@ export const DEPTH_THEMES = [
     tint:     'rgba(40,20,0,0.2)',
     fogAlpha: 0.65,
     props: {
-      room: ['prop_pipe_dry', 'prop_gargoyle_dry', 'prop_fountain_empty',
-             'prop_gravestone', 'prop_anvil'],
+      room: ['prop_gravestone', 'prop_anvil'],
     },
   },
   {
