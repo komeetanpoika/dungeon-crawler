@@ -326,7 +326,38 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
 
     connectRoomsMST(map, rooms)
 
-    if (cfg.landmark && TEMPLATES[cfg.landmark]) {
+    // Spawn room: BSP room whose center is closest to map top-left (0,0)
+    const spawnRoom = rooms.reduce((best, r) => {
+      const c = center(r), bc = center(best)
+      return (c.x + c.y) < (bc.x + bc.y) ? r : best
+    }, rooms[0])
+    const spawnC = center(spawnRoom)
+
+    // Stairs-down room: farthest from spawn
+    const nonSpawn = rooms.filter(r => r !== spawnRoom)
+    const stairsRoom = nonSpawn.reduce((best, r) => {
+      const c = center(r), bc = center(best)
+      const d  = Math.abs(c.x  - spawnC.x) + Math.abs(c.y  - spawnC.y)
+      const bd = Math.abs(bc.x - spawnC.x) + Math.abs(bc.y - spawnC.y)
+      return d > bd ? r : best
+    }, nonSpawn[0] ?? rooms[0])
+
+    // Landmark room: random, not spawn, not stairs
+    const landmarkCandidates = rooms.filter(r => r !== spawnRoom && r !== stairsRoom)
+    const landmarkRoom = landmarkCandidates.length > 0
+      ? landmarkCandidates[Math.floor(Math.random() * landmarkCandidates.length)]
+      : null
+
+    if (cfg.landmark && TEMPLATES[cfg.landmark] && landmarkRoom) {
+      const tmpl = TEMPLATES[cfg.landmark]
+      const lc = center(landmarkRoom)
+      const ox = Math.max(0, Math.min(width  - tmpl.width,  lc.x - Math.floor(tmpl.width  / 2)))
+      const oy = Math.max(0, Math.min(height - tmpl.height, lc.y - Math.floor(tmpl.height / 2)))
+      entitySpawns.push(...placeTemplate(map, tmpl, ox, oy, roomId++))
+      const tlc = { x: ox + Math.floor(tmpl.width / 2), y: oy + Math.floor(tmpl.height / 2) }
+      carveCorridor(map, lc.x, lc.y, tlc.x, tlc.y)
+    } else if (cfg.landmark && TEMPLATES[cfg.landmark]) {
+      // Fallback: bottom-right corner
       const tmpl = TEMPLATES[cfg.landmark]
       const ox = width - tmpl.width - 2
       const oy = height - tmpl.height - 2
@@ -369,10 +400,8 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
       roomId++
     }
 
-    const firstCenter = center(rooms[0])
-    const lastCenter = center(rooms[rooms.length - 1])
-    map[firstCenter.y][firstCenter.x].tile = TILE.STAIRS_UP
-    if (depth < FINAL_DEPTH) map[lastCenter.y][lastCenter.x].tile = TILE.STAIRS_DOWN
+    if (depth < FINAL_DEPTH) map[center(stairsRoom).y][center(stairsRoom).x].tile = TILE.STAIRS_DOWN
+    map[spawnC.y][spawnC.x].tile = TILE.STAIRS_UP  // temporary — Task 6 replaces with alcove
 
     if (!isFullyConnected(map)) continue
 
@@ -382,12 +411,11 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
         if (map[y][x].tile === TILE.FLOOR) floorTiles.push({ x, y })
 
     const occupiedKeys = new Set(entitySpawns.map(s => `${s.x},${s.y}`))
-    let playerSpawn = { x: firstCenter.x, y: firstCenter.y + 1 }
-    if (!isWalkable(map[playerSpawn.y]?.[playerSpawn.x]?.tile)) playerSpawn = firstCenter
+    let playerSpawn = spawnC
     occupiedKeys.add(`${playerSpawn.x},${playerSpawn.y}`)
 
     const farTiles = shuffle(floorTiles.filter(t =>
-      Math.abs(t.x - firstCenter.x) + Math.abs(t.y - firstCenter.y) > 6 &&
+      Math.abs(t.x - spawnC.x) + Math.abs(t.y - spawnC.y) > 6 &&
       !occupiedKeys.has(`${t.x},${t.y}`)
     ))
 
