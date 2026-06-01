@@ -1,8 +1,8 @@
 // test/map.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateLevel, isFullyConnected, createMap } from '../renderer/systems/map.js'
-import { TILE } from '../renderer/systems/entities.js'
+import { generateLevel, isFullyConnected, createMap, carveRoomShaped, carveCorridor } from '../renderer/systems/map.js'
+import { TILE, isWalkable } from '../renderer/systems/entities.js'
 
 describe('isFullyConnected', () => {
   it('returns true for a single-room map', () => {
@@ -56,5 +56,57 @@ describe('generateLevel', () => {
   it('returns entitySpawns as an array', () => {
     const { entitySpawns } = generateLevel(1)
     assert.ok(Array.isArray(entitySpawns))
+  })
+})
+
+function wallMap(w = 20, h = 20) {
+  return createMap(w, h)  // all WALL
+}
+
+describe('carveRoomShaped — lshape', () => {
+  it('carves floor tiles and returns a walkable center', () => {
+    const map = wallMap()
+    const room = { x: 1, y: 1, w: 12, h: 10, id: 0, shape: 'lshape' }
+    carveRoomShaped(map, room)
+    assert.ok(room.center, 'room.center should be set')
+    assert.equal(isWalkable(map[room.center.y][room.center.x].tile), true)
+  })
+})
+
+describe('carveRoomShaped — cross', () => {
+  it('carves floor tiles and returns center at geometric middle', () => {
+    const map = wallMap()
+    const room = { x: 1, y: 1, w: 11, h: 11, id: 0, shape: 'cross' }
+    carveRoomShaped(map, room)
+    assert.ok(room.center)
+    const cx = 1 + Math.floor(11 / 2), cy = 1 + Math.floor(11 / 2)
+    assert.equal(room.center.x, cx)
+    assert.equal(room.center.y, cy)
+    assert.equal(isWalkable(map[cy][cx].tile), true)
+  })
+})
+
+describe('carveRoomShaped — sunken', () => {
+  it('carves an outer floor ring and leaves inner area as walls', () => {
+    const map = wallMap()
+    const room = { x: 1, y: 1, w: 11, h: 9, id: 0, shape: 'sunken' }
+    carveRoomShaped(map, room)
+    assert.ok(room.center)
+    assert.equal(isWalkable(map[room.center.y][room.center.x].tile), true)
+    // inner tile should be WALL
+    const innerX = 1 + Math.floor(11 / 2)
+    const innerY = 1 + Math.floor(9 / 2)
+    assert.equal(map[innerY][innerX].tile, TILE.WALL)
+  })
+})
+
+describe('carveRoomShaped — rect', () => {
+  it('carves a rectangle and leaves center unset (uses geometric center)', () => {
+    const map = wallMap()
+    const room = { x: 1, y: 1, w: 8, h: 8, id: 0, shape: 'rect' }
+    carveRoomShaped(map, room)
+    assert.equal(room.center, undefined)
+    const cx = 1 + Math.floor(8 / 2), cy = 1 + Math.floor(8 / 2)
+    assert.equal(isWalkable(map[cy][cx].tile), true)
   })
 })

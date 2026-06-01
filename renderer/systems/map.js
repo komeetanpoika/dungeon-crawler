@@ -30,6 +30,92 @@ function carveRoom(map, room) {
     }
 }
 
+function carveRoomL(map, room) {
+  const { x, y, w, h, id } = room
+  const hw = Math.floor(w / 2)
+  const hh = Math.floor(h / 2)
+  const orient = Math.floor(Math.random() * 4)
+  let cx, cy
+
+  if (orient === 0) {
+    // top-full + bottom-left
+    for (let row = y+1; row < y+hh; row++)
+      for (let col = x+1; col < x+w-1; col++)
+        if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+    for (let row = y+hh; row < y+h-1; row++)
+      for (let col = x+1; col < x+hw; col++)
+        if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+    cx = x + Math.floor(w / 2); cy = y + Math.floor(hh / 2)
+  } else if (orient === 1) {
+    // top-full + bottom-right
+    for (let row = y+1; row < y+hh; row++)
+      for (let col = x+1; col < x+w-1; col++)
+        if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+    for (let row = y+hh; row < y+h-1; row++)
+      for (let col = x+hw; col < x+w-1; col++)
+        if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+    cx = x + Math.floor(w / 2); cy = y + Math.floor(hh / 2)
+  } else if (orient === 2) {
+    // bottom-full + top-left
+    for (let row = y+hh; row < y+h-1; row++)
+      for (let col = x+1; col < x+w-1; col++)
+        if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+    for (let row = y+1; row < y+hh; row++)
+      for (let col = x+1; col < x+hw; col++)
+        if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+    cx = x + Math.floor(w / 2); cy = y + hh + Math.floor((h - hh) / 2)
+  } else {
+    // bottom-full + top-right
+    for (let row = y+hh; row < y+h-1; row++)
+      for (let col = x+1; col < x+w-1; col++)
+        if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+    for (let row = y+1; row < y+hh; row++)
+      for (let col = x+hw; col < x+w-1; col++)
+        if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+    cx = x + Math.floor(w / 2); cy = y + hh + Math.floor((h - hh) / 2)
+  }
+  return { x: cx, y: cy }
+}
+
+function carveRoomCross(map, room) {
+  const { x, y, w, h, id } = room
+  const cx = x + Math.floor(w / 2)
+  const cy = y + Math.floor(h / 2)
+  const hw = Math.max(1, Math.floor(w / 4))
+  const hh = Math.max(1, Math.floor(h / 4))
+  // Horizontal bar
+  for (let row = cy - hh; row <= cy + hh; row++)
+    for (let col = x+1; col < x+w-1; col++)
+      if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+  // Vertical bar
+  for (let row = y+1; row < y+h-1; row++)
+    for (let col = cx - hw; col <= cx + hw; col++)
+      if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = id }
+  return { x: cx, y: cy }
+}
+
+function carveRoomSunken(map, room) {
+  const { x, y, w, h, id } = room
+  for (let row = y+1; row < y+h-1; row++) {
+    for (let col = x+1; col < x+w-1; col++) {
+      if (!map[row]?.[col]) continue
+      const isRing = row === y+1 || row === y+h-2 || col === x+1 || col === x+w-2
+      map[row][col].tile = isRing ? TILE.FLOOR : TILE.WALL
+      map[row][col].roomId = id
+    }
+  }
+  return { x: x + Math.floor(w / 2), y: y + 1 }
+}
+
+export function carveRoomShaped(map, room) {
+  switch (room.shape) {
+    case 'lshape': room.center = carveRoomL(map, room);      break
+    case 'cross':  room.center = carveRoomCross(map, room);  break
+    case 'sunken': room.center = carveRoomSunken(map, room); break
+    default:       carveRoom(map, room);                      break
+  }
+}
+
 function placeColumns(map, room) {
   if (room.w < 9 || room.h < 8) return
   const positions = [
@@ -44,13 +130,14 @@ function placeColumns(map, room) {
   }
 }
 
-function carveCorridor(map, x1, y1, x2, y2) {
+export function carveCorridor(map, x1, y1, x2, y2) {
   let x = x1, y = y1
   while (x !== x2) { map[y][x].tile = TILE.FLOOR; x += x < x2 ? 1 : -1 }
   while (y !== y2) { map[y][x].tile = TILE.FLOOR; y += y < y2 ? 1 : -1 }
 }
 
 function center(room) {
+  if (room.center) return room.center
   return { x: Math.floor(room.x + room.w / 2), y: Math.floor(room.y + room.h / 2) }
 }
 
