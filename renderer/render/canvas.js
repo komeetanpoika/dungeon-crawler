@@ -21,6 +21,7 @@ function drawTile(ctx, tileId, px, py, S, sprites) {
       case TILE.STAIRS_UP:   return sprites.stairs_up
       case TILE.TREASURE:    return sprites.treasure
       case TILE.SHRINE:      return sprites.shrine
+      case TILE.SAND:        return sprites.sand
       default: return null
     }
   })()
@@ -76,6 +77,11 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'potion') {
     drawPotion(ctx, px, py, S, sprites.potion)
+    return
+  }
+  if (entity.type === 'prop') {
+    const s = sprites[entity.propType]
+    if (s) ctx.drawImage(s, px, py, S, S)
     return
   }
   if (entity.type === 'cyclops') {
@@ -385,7 +391,8 @@ export class Renderer {
     const W = this.canvas.width, H = this.canvas.height
     if (W === 0 || H === 0) return
 
-    ctx.fillStyle = '#000'
+    const theme = state.theme ?? { bgColor: '#000', tint: null, fogAlpha: 0.65 }
+    ctx.fillStyle = theme.bgColor
     ctx.fillRect(0, 0, W, H)
 
     const c0 = Math.max(0, Math.floor(camX / S))
@@ -401,10 +408,16 @@ export class Renderer {
         if (!t.explored) continue
         drawTile(ctx, t.tile, px, py, S, sprites)
         if (!t.visible) {
-          ctx.fillStyle = 'rgba(0,0,0,0.65)'
+          ctx.fillStyle = `rgba(0,0,0,${theme.fogAlpha})`
           ctx.fillRect(px, py, S, S)
         }
       }
+    }
+
+    // Depth tint overlay (after tiles, before entities)
+    if (theme.tint) {
+      ctx.fillStyle = theme.tint
+      ctx.fillRect(0, 0, W, H)
     }
 
     for (const e of entities) {
