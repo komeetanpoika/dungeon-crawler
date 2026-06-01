@@ -87,16 +87,38 @@ describe('generateLevel', () => {
     assert.ok(sx !== playerSpawn.x || sy !== playerSpawn.y, 'stairs-down at playerSpawn')
   })
 
-  it('playerSpawn is a walkable tile and has STAIRS_UP within 3 tiles', () => {
-    for (let depth = 1; depth <= 3; depth++) {
+  it('playerSpawn is on TILE.STAIR (inside entrance passage)', () => {
+    for (let depth = 1; depth <= 9; depth++) {
       const { map, playerSpawn } = generateLevel(depth)
       assert.equal(isWalkable(map[playerSpawn.y][playerSpawn.x].tile), true,
-        `depth ${depth}: playerSpawn tile not walkable`)
+        `depth ${depth}: playerSpawn not walkable`)
+      assert.equal(map[playerSpawn.y][playerSpawn.x].tile, TILE.STAIR,
+        `depth ${depth}: playerSpawn should be TILE.STAIR, got ${map[playerSpawn.y][playerSpawn.x].tile}`)
+    }
+  })
+
+  it('STAIRS_UP is directly above playerSpawn within 8 tiles', () => {
+    for (let depth = 1; depth <= 9; depth++) {
+      const { map, playerSpawn } = generateLevel(depth)
       let found = false
-      for (let dy = -3; dy <= 3 && !found; dy++)
-        for (let dx = -3; dx <= 3 && !found; dx++)
-          if (map[playerSpawn.y + dy]?.[playerSpawn.x + dx]?.tile === TILE.STAIRS_UP) found = true
-      assert.ok(found, `depth ${depth}: no STAIRS_UP within 3 tiles of playerSpawn`)
+      for (let dy = 1; dy <= 8 && !found; dy++)
+        if (map[playerSpawn.y - dy]?.[playerSpawn.x]?.tile === TILE.STAIRS_UP) found = true
+      assert.ok(found, `depth ${depth}: no STAIRS_UP directly above playerSpawn within 8 tiles`)
+    }
+  })
+
+  it('TILE.STAIR tiles exist below STAIRS_DOWN (exit passage)', () => {
+    for (let depth = 1; depth < 9; depth++) {
+      const { map } = generateLevel(depth)
+      let sx = -1, sy = -1
+      for (let y = 0; y < map.length && sx === -1; y++)
+        for (let x = 0; x < map[y].length && sx === -1; x++)
+          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
+      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
+      let hasStairBelow = false
+      for (let dy = 1; dy <= 8 && !hasStairBelow; dy++)
+        if (map[sy + dy]?.[sx]?.tile === TILE.STAIR) hasStairBelow = true
+      assert.ok(hasStairBelow, `depth ${depth}: no TILE.STAIR below STAIRS_DOWN`)
     }
   })
 })

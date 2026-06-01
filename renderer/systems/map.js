@@ -107,27 +107,56 @@ function carveRoomSunken(map, room) {
   return { x: x + Math.floor(w / 2), y: y + 1 }
 }
 
-function carveAlcove(map, spawnRoom) {
+function carveEntrancePassage(map, spawnRoom, width) {
   const sc = center(spawnRoom)
-  const ay = spawnRoom.y - 3
-  if (ay < 1) return null  // spawn room too close to map top
+  const PASSAGE_LEN = 8
+  const half = Math.floor((width - 1) / 2)
 
-  const ax = Math.max(1, sc.x - 2)
-  const axEnd = Math.min(map[0].length - 2, ax + 5)
+  const topRow = Math.max(1, spawnRoom.y - PASSAGE_LEN)
+  if (topRow >= spawnRoom.y) return null  // no space above room
 
-  // Carve 5×3 floor area above spawn room
-  for (let row = ay; row < ay + 3; row++)
-    for (let col = ax; col < axEnd; col++)
-      if (map[row]?.[col]) { map[row][col].tile = TILE.FLOOR; map[row][col].roomId = spawnRoom.id }
+  for (let row = topRow; row < spawnRoom.y; row++) {
+    for (let i = 0; i < width; i++) {
+      const col = sc.x - half + i
+      if (!map[row]?.[col]) continue
+      map[row][col].tile = TILE.STAIR
+      map[row][col].roomId = spawnRoom.id
+      map[row][col].stairCol = i
+      map[row][col].stairWidth = width
+    }
+  }
 
-  // Stairs up on top row of alcove (back wall)
-  if (map[ay]?.[sc.x]) map[ay][sc.x].tile = TILE.STAIRS_UP
+  // STAIRS_UP at the very top tile of the center column
+  if (map[topRow]?.[sc.x]) map[topRow][sc.x].tile = TILE.STAIRS_UP
 
-  // Open spawn room's top wall to connect alcove
+  // Open spawn room's top wall at center so player can walk into the passage
   if (map[spawnRoom.y]?.[sc.x]) map[spawnRoom.y][sc.x].tile = TILE.FLOOR
 
-  // Player spawns in middle of alcove
-  return { x: sc.x, y: ay + 1 }
+  // Player spawns at the bottom tile of the passage (one tile above spawn room's top wall)
+  return { x: sc.x, y: spawnRoom.y - 1 }
+}
+
+function carveExitPassage(map, stairsRoom, width) {
+  const sc = center(stairsRoom)
+  const PASSAGE_LEN = 8
+  const half = Math.floor((width - 1) / 2)
+
+  // Passage starts at the south wall of the stairs room
+  const entryRow = stairsRoom.y + stairsRoom.h - 1
+  const bottomRow = Math.min(map.length - 2, entryRow + PASSAGE_LEN - 1)
+
+  for (let row = entryRow; row <= bottomRow; row++) {
+    for (let i = 0; i < width; i++) {
+      const col = sc.x - half + i
+      if (!map[row]?.[col]) continue
+      map[row][col].tile = TILE.STAIR
+      map[row][col].stairCol = i
+      map[row][col].stairWidth = width
+    }
+  }
+
+  // STAIRS_DOWN at the center column of the entry row (overwrites STAIR set above)
+  if (map[entryRow]?.[sc.x]) map[entryRow][sc.x].tile = TILE.STAIRS_DOWN
 }
 
 export function carveRoomShaped(map, room) {
@@ -428,9 +457,9 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
 
     if (depth < FINAL_DEPTH) map[center(stairsRoom).y][center(stairsRoom).x].tile = TILE.STAIRS_DOWN
 
-    // Entrance alcove above spawn room — sets stairs-up and returns player spawn position
-    const alcoveSpawn = carveAlcove(map, spawnRoom)
-    if (!alcoveSpawn) map[spawnC.y][spawnC.x].tile = TILE.STAIRS_UP  // fallback if alcove OOB
+    // Entrance passage above spawn room — sets stairs-up and returns player spawn position
+    const alcoveSpawn = carveEntrancePassage(map, spawnRoom, 3)
+    if (!alcoveSpawn) map[spawnC.y][spawnC.x].tile = TILE.STAIRS_UP  // fallback if passage OOB
 
     if (!isFullyConnected(map)) continue
 
