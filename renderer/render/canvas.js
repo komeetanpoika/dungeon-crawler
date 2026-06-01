@@ -3,7 +3,19 @@ import { loadSprites } from './sprites.js'
 
 const TILE_SIZE = 32
 
-function drawTile(ctx, tileId, px, py, S, sprites) {
+function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
+  if (tileId === TILE.STAIR) {
+    const w   = tileObj?.stairWidth ?? 1
+    const col = tileObj?.stairCol   ?? 0
+    let s
+    if (w === 3) {
+      s = col === 0 ? sprites.stair_left : col === 1 ? sprites.stair_mid : sprites.stair_right
+    }
+    s = s ?? sprites.stair
+    if (s) ctx.drawImage(s, px, py, S, S)
+    else { ctx.fillStyle = '#111'; ctx.fillRect(px, py, S, S) }
+    return
+  }
   if (tileId === TILE.SNARE) {
     if (sprites.floor) ctx.drawImage(sprites.floor, px, py, S, S)
     ctx.fillStyle = 'rgba(0, 200, 200, 0.35)'
@@ -484,7 +496,7 @@ export class Renderer {
         const py = Math.round(row * S - camY)
         const t = map[row][col]
         if (!t.explored) continue
-        drawTile(ctx, t.tile, px, py, S, sprites)
+        drawTile(ctx, t.tile, px, py, S, sprites, t)
         if (!t.visible) {
           ctx.fillStyle = `rgba(0,0,0,${theme.fogAlpha})`
           ctx.fillRect(px, py, S, S)

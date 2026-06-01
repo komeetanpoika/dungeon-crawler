@@ -83,6 +83,13 @@ describe('fountain and pipe props', () => {
   it('prop_drain_liquid   = tile_0044', () => assert.equal(SPRITES.prop_drain_liquid,   'tile_0044'))
 })
 
+describe('staircase passage sprites', () => {
+  it('stair       = tile_0039 (single-tile stair)', () => assert.equal(SPRITES.stair,       'tile_0039'))
+  it('stair_left  = tile_0036 (wide stair left)',   () => assert.equal(SPRITES.stair_left,  'tile_0036'))
+  it('stair_mid   = tile_0037 (wide stair middle)', () => assert.equal(SPRITES.stair_mid,   'tile_0037'))
+  it('stair_right = tile_0038 (wide stair right)',  () => assert.equal(SPRITES.stair_right, 'tile_0038'))
+})
+
 describe('room decoration props', () => {
   it('prop_table      = tile_0072', () => assert.equal(SPRITES.prop_table,      'tile_0072'))
   it('prop_chair      = tile_0073', () => assert.equal(SPRITES.prop_chair,      'tile_0073'))
