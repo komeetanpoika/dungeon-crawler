@@ -126,23 +126,30 @@ function carveEntrancePassage(map, rooms) {
   return { x: col, y: 1 }
 }
 
-function carveExitPassage(map, stairsRoom, width) {
-  const sc = center(stairsRoom)
-  const WALKABLE_LEN = 4   // walkable STAIR tiles before STAIRS_DOWN
-  const VOID_LEN    = 3    // non-walkable void STAIR tiles after STAIRS_DOWN
-  const half = Math.floor((width - 1) / 2)
+function carveExitPassage(map, width, rooms) {
+  const WALKABLE_LEN = 4
+  const half       = Math.floor((width - 1) / 2)
+  const centerCol  = map[0].length - 3          // 77 for MAP_W=80
+  const startRow   = map.length - 9             // 41 for MAP_H=50
+  const endRow     = map.length - 2             // 48 for MAP_H=50
 
-  const entryRow  = stairsRoom.y + stairsRoom.h - 1
-  const totalRows = WALKABLE_LEN + 1 + VOID_LEN  // 8
-  const bottomRow = Math.min(map.length - 2, entryRow + totalRows)
+  // Connect passage to nearest room via a corridor to the tile just above the passage
+  // (carved first so passage tiles overwrite any floor the corridor lays down)
+  const connRow = startRow - 1                  // row 40
+  const nearest = rooms.reduce((best, r) => {
+    const c = center(r), d = Math.abs(c.x - centerCol) + Math.abs(c.y - connRow)
+    return d < best.d ? { d, r } : best
+  }, { d: Infinity, r: rooms[0] })
+  carveCorridor(map, center(nearest.r).x, center(nearest.r).y, centerCol, connRow)
 
-  for (let row = entryRow + 1; row <= bottomRow; row++) {
-    const depth = row - entryRow - 1  // 0-indexed: 0 at entryRow+1, 7 at entryRow+8
-    const isVoid       = depth >= WALKABLE_LEN + 1                // depths 5–7
-    const isStairsDown = depth === WALKABLE_LEN                   // depth 4
+  // Carve passage tiles after the corridor so they are never overwritten
+  for (let row = startRow; row <= endRow; row++) {
+    const depth       = row - startRow          // 0 at row 41, 7 at row 48
+    const isStairsDown = depth === WALKABLE_LEN // depth 4 → row 45
+    const isVoid       = depth >  WALKABLE_LEN  // depths 5–7
 
     for (let i = 0; i < width; i++) {
-      const col = sc.x - half + i
+      const col = centerCol - half + i
       if (!map[row]?.[col]) continue
 
       if (isStairsDown && i === Math.floor((width - 1) / 2)) {
@@ -396,19 +403,8 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     }, rooms[0])
     const spawnC = center(spawnRoom)
 
-    // Stairs-down room: farthest from spawn, with enough space below for 8-tile exit passage
-    const nonSpawn = rooms.filter(r => r !== spawnRoom)
-    const passageClearance = nonSpawn.filter(r => r.y + r.h < height - 9)
-    const stairsPool = passageClearance.length > 0 ? passageClearance : nonSpawn
-    const stairsRoom = stairsPool.reduce((best, r) => {
-      const c = center(r), bc = center(best)
-      const d  = Math.abs(c.x  - spawnC.x) + Math.abs(c.y  - spawnC.y)
-      const bd = Math.abs(bc.x - spawnC.x) + Math.abs(bc.y - spawnC.y)
-      return d > bd ? r : best
-    }, stairsPool[0] ?? rooms[0])
-
-    // Landmark room: random, not spawn, not stairs
-    const landmarkCandidates = rooms.filter(r => r !== spawnRoom && r !== stairsRoom)
+    // Landmark room: random, not spawn
+    const landmarkCandidates = rooms.filter(r => r !== spawnRoom)
     const landmarkRoom = landmarkCandidates.length > 0
       ? landmarkCandidates[Math.floor(Math.random() * landmarkCandidates.length)]
       : null
@@ -466,7 +462,7 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     }
 
     // Exit passage going down from south wall of stairs room
-    if (depth < FINAL_DEPTH) carveExitPassage(map, stairsRoom, staircaseWidth)
+    if (depth < FINAL_DEPTH) carveExitPassage(map, staircaseWidth, rooms)
 
     // Entrance passage going up from spawn room — returns player spawn position
     const entranceSpawn = carveEntrancePassage(map, rooms)

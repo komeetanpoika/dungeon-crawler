@@ -163,6 +163,19 @@ describe('generateLevel', () => {
     }
   })
 
+  it('STAIRS_DOWN is always at col 77 (MAP_W-3), row 45 (MAP_H-5)', () => {
+    for (let depth = 1; depth < 9; depth++) {
+      const { map } = generateLevel(depth)
+      let sx = -1, sy = -1
+      for (let y = 0; y < map.length && sx === -1; y++)
+        for (let x = 0; x < map[y].length && sx === -1; x++)
+          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
+      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
+      assert.equal(sx, 77, `depth ${depth}: STAIRS_DOWN should be at col 77, got ${sx}`)
+      assert.equal(sy, 45, `depth ${depth}: STAIRS_DOWN should be at row 45, got ${sy}`)
+    }
+  })
+
 })
 
 describe('paired fountain placement', () => {
