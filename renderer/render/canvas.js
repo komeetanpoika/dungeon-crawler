@@ -504,9 +504,10 @@ export class Renderer {
         const px = Math.round(col * S - camX)
         const py = Math.round(row * S - camY)
         const t = map[row][col]
-        if (!t.explored) continue
+        const isStair = t.tile === TILE.STAIR || t.tile === TILE.STAIRS_UP || t.tile === TILE.STAIRS_DOWN
+        if (!t.explored && !isStair) continue
         drawTile(ctx, t.tile, px, py, S, sprites, t)
-        if (!t.visible) {
+        if (!t.visible && !isStair) {
           ctx.fillStyle = `rgba(0,0,0,${theme.fogAlpha})`
           ctx.fillRect(px, py, S, S)
         }
