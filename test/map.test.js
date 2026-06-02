@@ -204,6 +204,18 @@ describe('carveRoomShaped — rect', () => {
   })
 })
 
+describe('isWalkable — void zone', () => {
+  it('returns false for a STAIR tile with voidZone:true', () => {
+    assert.equal(isWalkable(TILE.STAIR, { voidZone: true }), false)
+  })
+  it('returns true for a STAIR tile without a tile object', () => {
+    assert.equal(isWalkable(TILE.STAIR), true)
+  })
+  it('returns true for a STAIR tile with voidZone:false', () => {
+    assert.equal(isWalkable(TILE.STAIR, { voidZone: false }), true)
+  })
+})
+
 describe('carveCorridor width', () => {
   it('width=1 carves exactly a 1-tile-wide path', () => {
     const map = createMap(10, 10)

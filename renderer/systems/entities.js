@@ -22,7 +22,8 @@ export const WEAPON_TYPES = {
   axe:       { name: 'Axe',       damage: 4 },
 }
 
-export function isWalkable(tileId) {
+export function isWalkable(tileId, tileObj = null) {
+  if (tileObj?.voidZone) return false
   return tileId !== TILE.WALL && tileId !== TILE.COLUMN
 }
 
@@ -34,7 +35,7 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
     const y = Math.round(y1 + (dy * i) / steps)
     const x = Math.round(x1 + (dx * i) / steps)
     if (y === y2 && x === x2) break
-    if (!map[y]?.[x] || !isWalkable(map[y][x].tile)) return false
+    if (!map[y]?.[x] || !isWalkable(map[y][x].tile, map[y][x])) return false
   }
   return true
 }

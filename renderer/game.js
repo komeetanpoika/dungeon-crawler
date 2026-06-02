@@ -73,7 +73,7 @@ function canMoveTo(map, px, py, half = PLAYER_HALF) {
   ]
   return corners.every(([cx, cy]) => {
     const tile = map[Math.floor(cy / TILE_SIZE)]?.[Math.floor(cx / TILE_SIZE)]
-    return tile && isWalkable(tile.tile)
+    return tile && isWalkable(tile.tile, tile)
   })
 }
 
@@ -304,7 +304,7 @@ function update(delta) {
     p.py += p.dy * delta
     if (p.maxDist !== undefined) { p.distTraveled = (p.distTraveled ?? 0) + stepDist; if (p.distTraveled >= p.maxDist) continue }
     const tile = map[Math.floor(p.py / TILE_SIZE)]?.[Math.floor(p.px / TILE_SIZE)]
-    if (!tile || !isWalkable(tile.tile)) continue
+    if (!tile || !isWalkable(tile.tile, tile)) continue
     let hit = false
     if (p.friendly) {
       state.entities = state.entities.map(e => {
