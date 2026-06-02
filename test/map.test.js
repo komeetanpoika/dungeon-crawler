@@ -87,6 +87,14 @@ describe('generateLevel', () => {
     assert.ok(sx !== playerSpawn.x || sy !== playerSpawn.y, 'stairs-down at playerSpawn')
   })
 
+  it('playerSpawn is always at col 2, row 1', () => {
+    for (let depth = 1; depth <= 9; depth++) {
+      const { playerSpawn } = generateLevel(depth)
+      assert.equal(playerSpawn.x, 2,  `depth ${depth}: playerSpawn.x should be 2`)
+      assert.equal(playerSpawn.y, 1,  `depth ${depth}: playerSpawn.y should be 1`)
+    }
+  })
+
   it('playerSpawn is on TILE.STAIRS_UP (top of entrance passage)', () => {
     for (let depth = 1; depth <= 9; depth++) {
       const { map, playerSpawn } = generateLevel(depth)

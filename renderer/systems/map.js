@@ -107,33 +107,23 @@ function carveRoomSunken(map, room) {
   return { x: x + Math.floor(w / 2), y: y + 1 }
 }
 
-function carveEntrancePassage(map, spawnRoom, width) {
-  const sc = center(spawnRoom)
-  const PASSAGE_LEN = 8
-  const half = Math.floor((width - 1) / 2)
-
-  const topRow = Math.max(1, spawnRoom.y - PASSAGE_LEN)
-  if (topRow >= spawnRoom.y) return null  // no space above room
-
-  for (let row = topRow; row < spawnRoom.y; row++) {
-    for (let i = 0; i < width; i++) {
-      const col = sc.x - half + i
-      if (!map[row]?.[col]) continue
-      map[row][col].tile = TILE.STAIR
-      map[row][col].roomId = spawnRoom.id
-      map[row][col].stairCol = i
-      map[row][col].stairWidth = width
-    }
+function carveEntrancePassage(map, rooms) {
+  const col = 2
+  for (let row = 1; row <= 8; row++) {
+    if (!map[row]?.[col]) continue
+    map[row][col].tile      = TILE.STAIR
+    map[row][col].stairCol  = 0
+    map[row][col].stairWidth = 1
   }
+  if (map[1]?.[col]) map[1][col].tile = TILE.STAIRS_UP
 
-  // STAIRS_UP at the very top tile of the center column
-  if (map[topRow]?.[sc.x]) map[topRow][sc.x].tile = TILE.STAIRS_UP
+  const nearest = rooms.reduce((best, r) => {
+    const c = center(r), d = Math.abs(c.x - col) + Math.abs(c.y - 9)
+    return d < best.d ? { d, r } : best
+  }, { d: Infinity, r: rooms[0] })
+  carveCorridor(map, center(nearest.r).x, center(nearest.r).y, col, 9)
 
-  // Open spawn room's top wall at center so player can walk into the passage
-  if (map[spawnRoom.y]?.[sc.x]) map[spawnRoom.y][sc.x].tile = TILE.FLOOR
-
-  // Player spawns at the STAIRS_UP tile at the top of the entrance passage
-  return { x: sc.x, y: topRow }
+  return { x: col, y: 1 }
 }
 
 function carveExitPassage(map, stairsRoom, width) {
@@ -481,8 +471,7 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     if (depth < FINAL_DEPTH) carveExitPassage(map, stairsRoom, staircaseWidth)
 
     // Entrance passage going up from spawn room — returns player spawn position
-    const entranceSpawn = carveEntrancePassage(map, spawnRoom, staircaseWidth)
-    if (!entranceSpawn) map[spawnC.y][spawnC.x].tile = TILE.STAIRS_UP  // fallback if OOB
+    const entranceSpawn = carveEntrancePassage(map, rooms)
 
     if (!isFullyConnected(map)) continue
 
