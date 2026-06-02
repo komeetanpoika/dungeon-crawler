@@ -10,7 +10,6 @@ export function createMap(width = MAP_W, height = MAP_H) {
   )
 }
 
-
 function bspSplit(rect, minSize = 8) {
   const { x, y, w, h } = rect
   if (w < minSize * 2 && h < minSize * 2) return [rect]
@@ -177,7 +176,6 @@ function carveExitPassage(map, stairsRoom, width) {
       }
     }
   }
-
 }
 
 export function carveRoomShaped(map, room) {

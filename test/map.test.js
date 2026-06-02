@@ -90,9 +90,10 @@ describe('generateLevel', () => {
   it('playerSpawn is on TILE.STAIRS_UP (top of entrance passage)', () => {
     for (let depth = 1; depth <= 9; depth++) {
       const { map, playerSpawn } = generateLevel(depth)
-      assert.equal(isWalkable(map[playerSpawn.y][playerSpawn.x].tile), true,
+      const spawnTile = map[playerSpawn.y][playerSpawn.x]
+      assert.equal(isWalkable(spawnTile.tile, spawnTile), true,
         `depth ${depth}: playerSpawn not walkable`)
-      assert.equal(map[playerSpawn.y][playerSpawn.x].tile, TILE.STAIRS_UP,
+      assert.equal(spawnTile.tile, TILE.STAIRS_UP,
         `depth ${depth}: playerSpawn should be TILE.STAIRS_UP`)
     }
   })
