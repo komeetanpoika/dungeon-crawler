@@ -231,8 +231,7 @@ function update(delta) {
   }
 
   // Stairs
-  if (keys['Enter'] && map[player.y]?.[player.x]?.tile === TILE.STAIRS_DOWN) {
-    keys['Enter'] = false
+  if (map[player.y]?.[player.x]?.tile === TILE.STAIRS_DOWN) {
     descendLevel(); return
   }
 
