@@ -122,6 +122,8 @@ function carveEntrancePassage(map, rooms) {
     return d < best.d ? { d, r } : best
   }, { d: Infinity, r: rooms[0] })
   carveCorridor(map, center(nearest.r).x, center(nearest.r).y, col, 9)
+  // Guarantee the connection tile at the passage foot is floor (carveCorridor stops before y2)
+  if (map[9]?.[col]) map[9][col].tile = TILE.FLOOR
 
   return { x: col, y: 1 }
 }
@@ -596,6 +598,8 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
 }
 
 function generateFallback(depth, width, height) {
+  const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
+  const staircaseWidth = cfg.staircaseWidth ?? 1
   const map = createMap(width, height)
   const rooms = [
     { x: 2,  y: 2,  w: 14, h: 10, id: 0 },
@@ -605,11 +609,11 @@ function generateFallback(depth, width, height) {
   rooms.forEach(r => carveRoom(map, r))
   carveCorridor(map, 9, 7, 38, 17)
   carveCorridor(map, 38, 17, 66, 38)
-  map[7][9].tile = TILE.STAIRS_UP
   if (depth < FINAL_DEPTH) {
-    map[38][66].tile = TILE.STAIRS_DOWN
+    carveExitPassage(map, staircaseWidth, rooms)
   } else {
     map[38][66].tile = TILE.TREASURE
   }
-  return { map, entitySpawns: [], playerSpawn: { x: 9, y: 8 }, rooms }
+  const playerSpawn = carveEntrancePassage(map, rooms)
+  return { map, entitySpawns: [], playerSpawn, rooms }
 }
