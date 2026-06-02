@@ -132,16 +132,13 @@ describe('generateLevel', () => {
         for (let x = 0; x < map[y].length && sx === -1; x++)
           if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
       assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
-      let voidCount = 0
       for (let dy = 1; dy <= 4; dy++) {
         const t = map[sy + dy]?.[sx]
-        if (!t) break
+        assert.ok(t, `depth ${depth}: void tile sy+${dy} is out of bounds`)
         assert.equal(t.tile, TILE.STAIR, `depth ${depth}: row sy+${dy} should be TILE.STAIR`)
         assert.equal(t.voidZone, true, `depth ${depth}: row sy+${dy} should be voidZone`)
         assert.equal(isWalkable(t.tile, t), false, `depth ${depth}: row sy+${dy} should not be walkable`)
-        voidCount++
       }
-      assert.ok(voidCount >= 1, `depth ${depth}: expected at least 1 void tile below STAIRS_DOWN`)
     }
   })
 

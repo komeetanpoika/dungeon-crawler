@@ -161,12 +161,7 @@ function carveExitPassage(map, stairsRoom, width) {
         map[row][col].stairDepth = depth
         map[row][col].stairCol   = i
         map[row][col].stairWidth = width
-      } else if (isStairsDown) {
-        // Non-centre columns on the STAIRS_DOWN row are regular walkable STAIR
-        map[row][col].tile       = TILE.STAIR
-        map[row][col].stairDepth = depth
-        map[row][col].stairCol   = i
-        map[row][col].stairWidth = width
+        map[row][col].voidZone   = false
       } else if (isVoid) {
         map[row][col].tile       = TILE.STAIR
         map[row][col].stairDepth = depth
@@ -178,6 +173,7 @@ function carveExitPassage(map, stairsRoom, width) {
         map[row][col].stairDepth = depth
         map[row][col].stairCol   = i
         map[row][col].stairWidth = width
+        map[row][col].voidZone   = false
       }
     }
   }
@@ -412,7 +408,6 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     }, spawnPool[0])
     const spawnC = center(spawnRoom)
 
-    // Stairs-down room: farthest from spawn
     // Stairs-down room: farthest from spawn, with enough space below for exit passage
     const nonSpawn = rooms.filter(r => r !== spawnRoom)
     const passageClearance = nonSpawn.filter(r => r.y + r.h < height - 14)
