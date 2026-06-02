@@ -128,14 +128,16 @@ function carveEntrancePassage(map, rooms) {
 
 function carveExitPassage(map, width, rooms) {
   const WALKABLE_LEN = 4
+  const VOID_LEN    = 3
   const half       = Math.floor((width - 1) / 2)
   const centerCol  = map[0].length - 3          // 77 for MAP_W=80
   const startRow   = map.length - 9             // 41 for MAP_H=50
   const endRow     = map.length - 2             // 48 for MAP_H=50
 
-  // Connect passage to nearest room via a corridor to the tile just above the passage
-  // (carved first so passage tiles overwrite any floor the corridor lays down)
-  const connRow = startRow - 1                  // row 40
+  // Connect passage to nearest room. Target is startRow so the vertical leg writes
+  // floor at startRow-1 (row 40) — carveCorridor stops before y2, so row 40 gets carved
+  // but row 41+ is left for the passage tiles below to fill.
+  const connRow = startRow                      // row 41 — corridor writes up to row 40
   const nearest = rooms.reduce((best, r) => {
     const c = center(r), d = Math.abs(c.x - centerCol) + Math.abs(c.y - connRow)
     return d < best.d ? { d, r } : best
