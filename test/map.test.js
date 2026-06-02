@@ -107,7 +107,7 @@ describe('generateLevel', () => {
     }
   })
 
-  it('TILE.STAIR tiles exist below STAIRS_DOWN (exit passage)', () => {
+  it('STAIRS_DOWN has 7 walkable STAIR tiles above it in the exit passage', () => {
     for (let depth = 1; depth < 9; depth++) {
       const { map } = generateLevel(depth)
       let sx = -1, sy = -1
@@ -115,10 +115,45 @@ describe('generateLevel', () => {
         for (let x = 0; x < map[y].length && sx === -1; x++)
           if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
       assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
-      let hasStairBelow = false
-      for (let dy = 1; dy <= 8 && !hasStairBelow; dy++)
-        if (map[sy + dy]?.[sx]?.tile === TILE.STAIR) hasStairBelow = true
-      assert.ok(hasStairBelow, `depth ${depth}: no TILE.STAIR below STAIRS_DOWN`)
+      for (let dy = 1; dy <= 7; dy++) {
+        const t = map[sy - dy]?.[sx]
+        assert.ok(t, `depth ${depth}: row sy-${dy} out of bounds`)
+        assert.equal(t.tile, TILE.STAIR, `depth ${depth}: row sy-${dy} should be TILE.STAIR`)
+        assert.ok(!t.voidZone, `depth ${depth}: row sy-${dy} should not be voidZone`)
+      }
+    }
+  })
+
+  it('STAIRS_DOWN has 4 non-walkable void STAIR tiles below it', () => {
+    for (let depth = 1; depth < 9; depth++) {
+      const { map } = generateLevel(depth)
+      let sx = -1, sy = -1
+      for (let y = 0; y < map.length && sx === -1; y++)
+        for (let x = 0; x < map[y].length && sx === -1; x++)
+          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
+      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
+      let voidCount = 0
+      for (let dy = 1; dy <= 4; dy++) {
+        const t = map[sy + dy]?.[sx]
+        if (!t) break
+        assert.equal(t.tile, TILE.STAIR, `depth ${depth}: row sy+${dy} should be TILE.STAIR`)
+        assert.equal(t.voidZone, true, `depth ${depth}: row sy+${dy} should be voidZone`)
+        assert.equal(isWalkable(t.tile, t), false, `depth ${depth}: row sy+${dy} should not be walkable`)
+        voidCount++
+      }
+      assert.ok(voidCount >= 1, `depth ${depth}: expected at least 1 void tile below STAIRS_DOWN`)
+    }
+  })
+
+  it('STAIRS_DOWN has stairDepth 7', () => {
+    for (let depth = 1; depth < 9; depth++) {
+      const { map } = generateLevel(depth)
+      let sx = -1, sy = -1
+      for (let y = 0; y < map.length && sx === -1; y++)
+        for (let x = 0; x < map[y].length && sx === -1; x++)
+          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
+      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
+      assert.equal(map[sy][sx].stairDepth, 7, `depth ${depth}: STAIRS_DOWN should have stairDepth 7`)
     }
   })
 })

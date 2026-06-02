@@ -138,24 +138,47 @@ function carveEntrancePassage(map, spawnRoom, width) {
 
 function carveExitPassage(map, stairsRoom, width) {
   const sc = center(stairsRoom)
-  const PASSAGE_LEN = 8
+  const WALKABLE_LEN = 7   // walkable STAIR tiles before STAIRS_DOWN
+  const VOID_LEN    = 4    // non-walkable void STAIR tiles after STAIRS_DOWN
   const half = Math.floor((width - 1) / 2)
 
-  // Passage starts at the south wall of the stairs room; STAIR tiles go below it
-  const entryRow = stairsRoom.y + stairsRoom.h - 1
-  const bottomRow = Math.min(map.length - 2, entryRow + PASSAGE_LEN)
+  const entryRow  = stairsRoom.y + stairsRoom.h - 1
+  const totalRows = WALKABLE_LEN + 1 + VOID_LEN  // 12
+  const bottomRow = Math.min(map.length - 2, entryRow + totalRows)
 
-  // STAIRS_DOWN at south wall (entry tile)
-  if (map[entryRow]?.[sc.x]) map[entryRow][sc.x].tile = TILE.STAIRS_DOWN
-
-  // STAIR tiles below entry row
   for (let row = entryRow + 1; row <= bottomRow; row++) {
+    const depth = row - entryRow - 1  // 0-indexed: 0 at entryRow+1, 11 at entryRow+12
+    const isVoid       = depth >= WALKABLE_LEN + 1                // depths 8–11
+    const isStairsDown = depth === WALKABLE_LEN                   // depth 7
+
     for (let i = 0; i < width; i++) {
       const col = sc.x - half + i
       if (!map[row]?.[col]) continue
-      map[row][col].tile = TILE.STAIR
-      map[row][col].stairCol = i
-      map[row][col].stairWidth = width
+
+      if (isStairsDown && i === Math.floor((width - 1) / 2)) {
+        // Centre column of the trigger row becomes STAIRS_DOWN
+        map[row][col].tile       = TILE.STAIRS_DOWN
+        map[row][col].stairDepth = depth
+        map[row][col].stairCol   = i
+        map[row][col].stairWidth = width
+      } else if (isStairsDown) {
+        // Non-centre columns on the STAIRS_DOWN row are regular walkable STAIR
+        map[row][col].tile       = TILE.STAIR
+        map[row][col].stairDepth = depth
+        map[row][col].stairCol   = i
+        map[row][col].stairWidth = width
+      } else if (isVoid) {
+        map[row][col].tile       = TILE.STAIR
+        map[row][col].stairDepth = depth
+        map[row][col].stairCol   = i
+        map[row][col].stairWidth = width
+        map[row][col].voidZone   = true
+      } else {
+        map[row][col].tile       = TILE.STAIR
+        map[row][col].stairDepth = depth
+        map[row][col].stairCol   = i
+        map[row][col].stairWidth = width
+      }
     }
   }
 }
@@ -392,7 +415,7 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     // Stairs-down room: farthest from spawn
     // Stairs-down room: farthest from spawn, with enough space below for exit passage
     const nonSpawn = rooms.filter(r => r !== spawnRoom)
-    const passageClearance = nonSpawn.filter(r => r.y + r.h < height - 9)
+    const passageClearance = nonSpawn.filter(r => r.y + r.h < height - 14)
     const stairsPool = passageClearance.length > 0 ? passageClearance : nonSpawn
     const stairsRoom = stairsPool.reduce((best, r) => {
       const c = center(r), bc = center(best)
