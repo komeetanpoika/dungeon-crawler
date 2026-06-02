@@ -10,6 +10,7 @@ export function createMap(width = MAP_W, height = MAP_H) {
   )
 }
 
+
 function bspSplit(rect, minSize = 8) {
   const { x, y, w, h } = rect
   if (w < minSize * 2 && h < minSize * 2) return [rect]
@@ -138,25 +139,24 @@ function carveEntrancePassage(map, spawnRoom, width) {
 
 function carveExitPassage(map, stairsRoom, width) {
   const sc = center(stairsRoom)
-  const WALKABLE_LEN = 7   // walkable STAIR tiles before STAIRS_DOWN
-  const VOID_LEN    = 4    // non-walkable void STAIR tiles after STAIRS_DOWN
+  const WALKABLE_LEN = 4   // walkable STAIR tiles before STAIRS_DOWN
+  const VOID_LEN    = 3    // non-walkable void STAIR tiles after STAIRS_DOWN
   const half = Math.floor((width - 1) / 2)
 
   const entryRow  = stairsRoom.y + stairsRoom.h - 1
-  const totalRows = WALKABLE_LEN + 1 + VOID_LEN  // 12
+  const totalRows = WALKABLE_LEN + 1 + VOID_LEN  // 8
   const bottomRow = Math.min(map.length - 2, entryRow + totalRows)
 
   for (let row = entryRow + 1; row <= bottomRow; row++) {
-    const depth = row - entryRow - 1  // 0-indexed: 0 at entryRow+1, 11 at entryRow+12
-    const isVoid       = depth >= WALKABLE_LEN + 1                // depths 8–11
-    const isStairsDown = depth === WALKABLE_LEN                   // depth 7
+    const depth = row - entryRow - 1  // 0-indexed: 0 at entryRow+1, 7 at entryRow+8
+    const isVoid       = depth >= WALKABLE_LEN + 1                // depths 5–7
+    const isStairsDown = depth === WALKABLE_LEN                   // depth 4
 
     for (let i = 0; i < width; i++) {
       const col = sc.x - half + i
       if (!map[row]?.[col]) continue
 
       if (isStairsDown && i === Math.floor((width - 1) / 2)) {
-        // Centre column of the trigger row becomes STAIRS_DOWN
         map[row][col].tile       = TILE.STAIRS_DOWN
         map[row][col].stairDepth = depth
         map[row][col].stairCol   = i
@@ -177,6 +177,7 @@ function carveExitPassage(map, stairsRoom, width) {
       }
     }
   }
+
 }
 
 export function carveRoomShaped(map, room) {
@@ -398,8 +399,9 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
 
     connectRoomsMST(map, rooms)
 
-    // Spawn room: closest to top-left among rooms with enough vertical space for alcove above.
-    // Requires room.y >= 4 so carveAlcove (which needs y - 3 >= 1) doesn't go out of bounds.
+    const staircaseWidth = cfg.staircaseWidth ?? 1
+
+    // Spawn room: closest to top-left with enough vertical space for entrance passage
     const alcoveReady = rooms.filter(r => r.y >= 4)
     const spawnPool = alcoveReady.length > 0 ? alcoveReady : rooms
     const spawnRoom = spawnPool.reduce((best, r) => {
@@ -408,9 +410,9 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
     }, spawnPool[0])
     const spawnC = center(spawnRoom)
 
-    // Stairs-down room: farthest from spawn, with enough space below for exit passage
+    // Stairs-down room: farthest from spawn, with enough space below for 8-tile exit passage
     const nonSpawn = rooms.filter(r => r !== spawnRoom)
-    const passageClearance = nonSpawn.filter(r => r.y + r.h < height - 14)
+    const passageClearance = nonSpawn.filter(r => r.y + r.h < height - 9)
     const stairsPool = passageClearance.length > 0 ? passageClearance : nonSpawn
     const stairsRoom = stairsPool.reduce((best, r) => {
       const c = center(r), bc = center(best)
@@ -476,8 +478,6 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
       carveCorridor(map, center(nearestArena.r).x, center(nearestArena.r).y, acx, acy)
       roomId++
     }
-
-    const staircaseWidth = cfg.staircaseWidth ?? 1
 
     // Exit passage going down from south wall of stairs room
     if (depth < FINAL_DEPTH) carveExitPassage(map, stairsRoom, staircaseWidth)

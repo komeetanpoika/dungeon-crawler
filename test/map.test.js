@@ -107,24 +107,7 @@ describe('generateLevel', () => {
     }
   })
 
-  it('STAIRS_DOWN has 7 walkable STAIR tiles above it in the exit passage', () => {
-    for (let depth = 1; depth < 9; depth++) {
-      const { map } = generateLevel(depth)
-      let sx = -1, sy = -1
-      for (let y = 0; y < map.length && sx === -1; y++)
-        for (let x = 0; x < map[y].length && sx === -1; x++)
-          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
-      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
-      for (let dy = 1; dy <= 7; dy++) {
-        const t = map[sy - dy]?.[sx]
-        assert.ok(t, `depth ${depth}: row sy-${dy} out of bounds`)
-        assert.equal(t.tile, TILE.STAIR, `depth ${depth}: row sy-${dy} should be TILE.STAIR`)
-        assert.ok(!t.voidZone, `depth ${depth}: row sy-${dy} should not be voidZone`)
-      }
-    }
-  })
-
-  it('STAIRS_DOWN has 4 non-walkable void STAIR tiles below it', () => {
+  it('STAIRS_DOWN has 4 walkable STAIR tiles above it in the exit passage', () => {
     for (let depth = 1; depth < 9; depth++) {
       const { map } = generateLevel(depth)
       let sx = -1, sy = -1
@@ -133,6 +116,23 @@ describe('generateLevel', () => {
           if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
       assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
       for (let dy = 1; dy <= 4; dy++) {
+        const t = map[sy - dy]?.[sx]
+        assert.ok(t, `depth ${depth}: row sy-${dy} out of bounds`)
+        assert.equal(t.tile, TILE.STAIR, `depth ${depth}: row sy-${dy} should be TILE.STAIR`)
+        assert.ok(!t.voidZone, `depth ${depth}: row sy-${dy} should not be voidZone`)
+      }
+    }
+  })
+
+  it('STAIRS_DOWN has 3 non-walkable void STAIR tiles below it', () => {
+    for (let depth = 1; depth < 9; depth++) {
+      const { map } = generateLevel(depth)
+      let sx = -1, sy = -1
+      for (let y = 0; y < map.length && sx === -1; y++)
+        for (let x = 0; x < map[y].length && sx === -1; x++)
+          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
+      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
+      for (let dy = 1; dy <= 3; dy++) {
         const t = map[sy + dy]?.[sx]
         assert.ok(t, `depth ${depth}: void tile sy+${dy} is out of bounds`)
         assert.equal(t.tile, TILE.STAIR, `depth ${depth}: row sy+${dy} should be TILE.STAIR`)
@@ -142,7 +142,7 @@ describe('generateLevel', () => {
     }
   })
 
-  it('STAIRS_DOWN has stairDepth 7', () => {
+  it('STAIRS_DOWN has stairDepth 4', () => {
     for (let depth = 1; depth < 9; depth++) {
       const { map } = generateLevel(depth)
       let sx = -1, sy = -1
@@ -150,9 +150,10 @@ describe('generateLevel', () => {
         for (let x = 0; x < map[y].length && sx === -1; x++)
           if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
       assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
-      assert.equal(map[sy][sx].stairDepth, 7, `depth ${depth}: STAIRS_DOWN should have stairDepth 7`)
+      assert.equal(map[sy][sx].stairDepth, 4, `depth ${depth}: STAIRS_DOWN should have stairDepth 4`)
     }
   })
+
 })
 
 describe('paired fountain placement', () => {
