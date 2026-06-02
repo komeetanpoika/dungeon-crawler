@@ -24,7 +24,7 @@ function canMoveTo(map, px, py) {
     [px + CYCLOPS_HALF, py + CYCLOPS_HALF],
   ].every(([cx, cy]) => {
     const tile = map[Math.floor(cy / S)]?.[Math.floor(cx / S)]
-    return tile && isWalkable(tile.tile)
+    return tile && isWalkable(tile.tile, tile)
   })
 }
 

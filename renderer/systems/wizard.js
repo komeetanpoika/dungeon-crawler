@@ -20,7 +20,7 @@ function canMoveTo(map, px, py) {
     [px + ENEMY_HALF, py + ENEMY_HALF],
   ].every(([cx, cy]) => {
     const tile = map[Math.floor(cy / S)]?.[Math.floor(cx / S)]
-    return tile && isWalkable(tile.tile)
+    return tile && isWalkable(tile.tile, tile)
   })
 }
 

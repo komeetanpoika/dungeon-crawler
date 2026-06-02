@@ -186,7 +186,7 @@ function update(delta) {
     const chest = state.entities[chestIdx]
     // Open chest — item jumps to adjacent floor tile
     const adj = [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: chest.x+dx, y: chest.y+dy }))
-      .find(t => isWalkable(map[t.y]?.[t.x]?.tile) && !state.entities.some(e => e.x===t.x && e.y===t.y))
+      .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x===t.x && e.y===t.y))
     if (adj) {
       state.entities.push({
         type: 'floating_item',
