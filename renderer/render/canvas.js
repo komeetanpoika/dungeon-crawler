@@ -14,6 +14,11 @@ function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
     s = s ?? sprites.stair
     if (s) ctx.drawImage(s, px, py, S, S)
     else { ctx.fillStyle = '#111'; ctx.fillRect(px, py, S, S) }
+    const depth = tileObj?.stairDepth
+    if (depth != null && depth > 0) {
+      ctx.fillStyle = `rgba(0,0,0,${Math.min(depth / 7, 1) * 0.85})`
+      ctx.fillRect(px, py, S, S)
+    }
     return
   }
   if (tileId === TILE.SNARE) {
@@ -39,6 +44,10 @@ function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
   })()
   if (s) ctx.drawImage(s, px, py, S, S)
   else { ctx.fillStyle = '#111'; ctx.fillRect(px, py, S, S) }
+  if (tileId === TILE.STAIRS_DOWN && tileObj?.stairDepth != null) {
+    ctx.fillStyle = `rgba(0,0,0,${Math.min(tileObj.stairDepth / 7, 1) * 0.85})`
+    ctx.fillRect(px, py, S, S)
+  }
 }
 
 function drawWeapon(ctx, weaponType, px, py, S, sprites) {
