@@ -389,13 +389,11 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
 
     const staircaseWidth = cfg.staircaseWidth ?? 1
 
-    // Spawn room: closest to top-left with enough vertical space for entrance passage
-    const alcoveReady = rooms.filter(r => r.y >= 4)
-    const spawnPool = alcoveReady.length > 0 ? alcoveReady : rooms
-    const spawnRoom = spawnPool.reduce((best, r) => {
+    // Spawn room: closest to top-left, used as distance origin for entity/farTile placement
+    const spawnRoom = rooms.reduce((best, r) => {
       const c = center(r), bc = center(best)
       return (c.x + c.y) < (bc.x + bc.y) ? r : best
-    }, spawnPool[0])
+    }, rooms[0])
     const spawnC = center(spawnRoom)
 
     // Stairs-down room: farthest from spawn, with enough space below for 8-tile exit passage
