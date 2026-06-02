@@ -87,23 +87,21 @@ describe('generateLevel', () => {
     assert.ok(sx !== playerSpawn.x || sy !== playerSpawn.y, 'stairs-down at playerSpawn')
   })
 
-  it('playerSpawn is on TILE.STAIR (inside entrance passage)', () => {
+  it('playerSpawn is on TILE.STAIRS_UP (top of entrance passage)', () => {
     for (let depth = 1; depth <= 9; depth++) {
       const { map, playerSpawn } = generateLevel(depth)
-      assert.equal(isWalkable(map[playerSpawn.y][playerSpawn.x].tile), true,
-        `depth ${depth}: playerSpawn not walkable`)
-      assert.equal(map[playerSpawn.y][playerSpawn.x].tile, TILE.STAIR,
-        `depth ${depth}: playerSpawn should be TILE.STAIR, got ${map[playerSpawn.y][playerSpawn.x].tile}`)
+      assert.equal(map[playerSpawn.y][playerSpawn.x].tile, TILE.STAIRS_UP,
+        `depth ${depth}: playerSpawn should be TILE.STAIRS_UP`)
     }
   })
 
-  it('STAIRS_UP is directly above playerSpawn within 8 tiles', () => {
+  it('entrance passage STAIR tiles lead south from playerSpawn into dungeon', () => {
     for (let depth = 1; depth <= 9; depth++) {
       const { map, playerSpawn } = generateLevel(depth)
-      let found = false
-      for (let dy = 1; dy <= 8 && !found; dy++)
-        if (map[playerSpawn.y - dy]?.[playerSpawn.x]?.tile === TILE.STAIRS_UP) found = true
-      assert.ok(found, `depth ${depth}: no STAIRS_UP directly above playerSpawn within 8 tiles`)
+      let foundStair = false
+      for (let dy = 1; dy <= 8 && !foundStair; dy++)
+        if (map[playerSpawn.y + dy]?.[playerSpawn.x]?.tile === TILE.STAIR) foundStair = true
+      assert.ok(foundStair, `depth ${depth}: no STAIR tile south of playerSpawn (STAIRS_UP)`)
     }
   })
 

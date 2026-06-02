@@ -133,8 +133,8 @@ function carveEntrancePassage(map, spawnRoom, width) {
   // Open spawn room's top wall at center so player can walk into the passage
   if (map[spawnRoom.y]?.[sc.x]) map[spawnRoom.y][sc.x].tile = TILE.FLOOR
 
-  // Player spawns at the bottom tile of the passage (one tile above spawn room's top wall)
-  return { x: sc.x, y: spawnRoom.y - 1 }
+  // Player spawns at the STAIRS_UP tile at the top of the entrance passage
+  return { x: sc.x, y: topRow }
 }
 
 function carveExitPassage(map, stairsRoom, width) {
