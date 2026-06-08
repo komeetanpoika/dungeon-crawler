@@ -41,16 +41,16 @@ describe('generateLevel', () => {
     assert.equal(hasStairs, true)
   })
 
-  it('does not place STAIRS_DOWN on level 9', () => {
-    const { map } = generateLevel(9)
+  it('does not place STAIRS_DOWN on level 10', () => {
+    const { map } = generateLevel(10)
     const hasStairs = map.some(row => row.some(t => t.tile === TILE.STAIRS_DOWN))
     assert.equal(hasStairs, false)
   })
 
-  it('places a TREASURE tile on level 9', () => {
+  it('does not place a TREASURE tile on level 9', () => {
     const { map } = generateLevel(9)
     const hasTreasure = map.some(row => row.some(t => t.tile === TILE.TREASURE))
-    assert.equal(hasTreasure, true)
+    assert.equal(hasTreasure, false)
   })
 
   it('returns entitySpawns as an array', () => {
@@ -286,5 +286,23 @@ describe('carveCorridor width', () => {
     assert.equal(map[4][4].tile, TILE.FLOOR)
     assert.equal(map[5][4].tile, TILE.FLOOR)
     assert.equal(map[6][4].tile, TILE.FLOOR)
+  })
+})
+
+import { FINAL_DEPTH } from '../renderer/data/levels.js'
+import { TILE as MTILE } from '../renderer/systems/entities.js'
+
+describe('depth 10 boss arena', () => {
+  it('FINAL_DEPTH is 10', () => { assert.equal(FINAL_DEPTH, 10) })
+
+  it('spawns a dragon_boss and a treasure tile on depth 10', () => {
+    let foundBoss = false, foundTreasure = false
+    for (let attempt = 0; attempt < 5 && !(foundBoss && foundTreasure); attempt++) {
+      const { map, entitySpawns } = generateLevel(10)
+      if (entitySpawns.some(s => s.kind === 'dragon_boss')) foundBoss = true
+      if (map.some(row => row.some(t => t.tile === MTILE.TREASURE))) foundTreasure = true
+    }
+    assert.ok(foundBoss, 'depth 10 should spawn a dragon_boss')
+    assert.ok(foundTreasure, 'depth 10 should place a treasure tile')
   })
 })

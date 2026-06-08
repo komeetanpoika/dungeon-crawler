@@ -246,6 +246,7 @@ function connectRoomsMST(map, rooms) {
 
 function placeTemplate(map, template, ox, oy, roomId) {
   const spawns = []
+  let bossPlaced = false
   template.tiles.forEach((row, dy) => {
     ;[...row].forEach((ch, dx) => {
       const tx = ox + dx, ty = oy + dy
@@ -280,6 +281,10 @@ function placeTemplate(map, template, ox, oy, roomId) {
       } else if (ch === 'X') {
         map[ty][tx].tile = TILE.SNARE
         map[ty][tx].roomId = roomId
+      } else if (ch === 'B') {
+        map[ty][tx].tile = TILE.FLOOR
+        map[ty][tx].roomId = roomId
+        if (!bossPlaced) { spawns.push({ kind: 'dragon_boss', x: tx, y: ty }); bossPlaced = true }
       } else if (ch === 'C') {
         map[ty][tx].tile = TILE.COLUMN
         map[ty][tx].roomId = roomId
