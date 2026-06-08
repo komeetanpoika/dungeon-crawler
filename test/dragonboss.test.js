@@ -61,7 +61,7 @@ describe('updateDragonBoss facing', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
     const player = mkPlayer(10*T, 16*T)           // due south => target angle +PI/2
     const state = mkState(e, player)
-    for (let i = 0; i < 60; i++) updateDragonBoss(e, state, 1/60)
+    for (let i = 0; i < 120; i++) updateDragonBoss(e, state, 1/60)  // 2s — enough to fully turn at 1.2 rad/s
     assert.ok(Math.abs(e.facing - Math.PI/2) < 0.2, `facing should approach +PI/2, got ${e.facing}`)
   })
 })
