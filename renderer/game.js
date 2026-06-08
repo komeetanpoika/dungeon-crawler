@@ -3,6 +3,7 @@ import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, m
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab, deflects } from './systems/crab.js'
+import { makeDragonBoss, updateDragonBoss } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
@@ -29,6 +30,8 @@ const DRAGON_CHARGE_DUR      = 1.0
 const DRAGON_EXHALE_DUR      = 0.8
 const DRAGON_BREATH_COOLDOWN = 2.5
 const DRAGON_CONE_HALF       = Math.PI * 0.21
+const BOSS_MELEE_RANGE       = 2.2 * TILE_SIZE   // dragon boss has a large body; melee connects within this radius
+const BOSS_PROJECTILE_R      = 1.6 * TILE_SIZE   // friendly projectiles hit the boss within this radius
 
 const ATTACK_STYLES = {
   dagger:    { style: 'snap',  duration: 0.12, cooldown: 0.30 },
@@ -88,6 +91,7 @@ function moveEntity(e, dx, dy, map, half = PLAYER_HALF) {
 function isEnemy(e) {
   return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
       || e.type === 'cyclops' || e.type === 'wizard' || e.type === 'crab'
+      || e.type === 'dragon_boss'
 }
 
 function buildEntities(spawns, map) {
@@ -117,6 +121,7 @@ function buildEntities(spawns, map) {
       case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy }]
       case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy }]
       case 'crab':    return [{ ...makeCrab(s.x, s.y),    px: cx, py: cy }]
+      case 'dragon_boss': return [{ ...makeDragonBoss(s.x, s.y), px: cx, py: cy }]
       case 'prop':           return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
       case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
@@ -151,7 +156,7 @@ function startNewRun() {
     projectiles: [],
     log: ['You enter the dungeon…'],
     hitEffects: [],
-    run: { deepestLevel: 9, won: false },
+    run: { deepestLevel: 1, won: false },
     gameOver: false,
   }
   lastTime = performance.now()
@@ -280,7 +285,11 @@ function update(delta) {
     state.entities = state.entities
       .map(e => {
         if (!isEnemy(e)) return e
-        if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) return e
+        if (e.type === 'dragon_boss') {
+          if (Math.hypot(e.px - player.px, e.py - player.py) > BOSS_MELEE_RANGE) return e
+        } else if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) {
+          return e
+        }
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         return { ...e, hp: e.hp - dmg, inCombat: true }
       })
@@ -309,7 +318,8 @@ function update(delta) {
     if (p.friendly) {
       state.entities = state.entities.map(e => {
         if (!isEnemy(e) || hit) return e
-        if (Math.hypot(e.px - p.px, e.py - p.py) < 8) {
+        const hitR = e.type === 'dragon_boss' ? BOSS_PROJECTILE_R : 8
+        if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           if (e.type === 'crab' && deflects(e, p))      { hit = true; return e }
           hit = true
@@ -333,9 +343,10 @@ function update(delta) {
   for (const e of [...state.entities]) {
     if (!isEnemy(e)) continue
 
-    if (e.type === 'cyclops') { updateCyclops(e, state, delta); continue }
-    if (e.type === 'wizard')  { updateWizard(e, state, delta);  continue }
-    if (e.type === 'crab')    { updateCrab(e, state, delta);    continue }
+    if (e.type === 'cyclops')    { updateCyclops(e, state, delta);    continue }
+    if (e.type === 'wizard')     { updateWizard(e, state, delta);     continue }
+    if (e.type === 'crab')       { updateCrab(e, state, delta);       continue }
+    if (e.type === 'dragon_boss') { updateDragonBoss(e, state, delta); continue }
 
     e.damageCooldown = Math.max(0, e.damageCooldown - delta)
     e.wanderTimer    = Math.max(0, e.wanderTimer    - delta)

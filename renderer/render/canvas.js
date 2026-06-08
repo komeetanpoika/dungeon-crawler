@@ -1,6 +1,7 @@
 import { TILE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
+import { drawDragonBoss } from './dragonboss.js'
 
 const TILE_SIZE = 32
 
@@ -541,12 +542,13 @@ export class Renderer {
     }
 
     for (const e of entities) {
-      const margin = e.type === 'dragon' ? 5 : e.type === 'cyclops' ? 2 : 0
+      const margin = e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0
       if (e.x + margin < c0 || e.x - margin >= c1 || e.y + margin < r0 || e.y - margin >= r1) continue
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
-      drawEntity(ctx, e, epx, epy, S, sprites)
+      if (e.type === 'dragon_boss') drawDragonBoss(ctx, e, camX, camY, S)
+      else drawEntity(ctx, e, epx, epy, S, sprites)
     }
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)

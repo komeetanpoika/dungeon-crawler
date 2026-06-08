@@ -16,7 +16,7 @@ export const TEMPLATES = {
       '###...................##',
       '##.....D...............#',
       '##...C...X...C.........#',
-      '##.....T...............#',
+      '##.....................#',
       '###...................##',
       '####................####',
       '#########......#########',
@@ -80,6 +80,27 @@ export const TEMPLATES = {
     ],
     width: 9, height: 7,
   },
+  GREAT_LAIR: {
+    tiles: [
+      '##########################',
+      '##......................##',
+      '#........................#',
+      '#..........TT............#',
+      '#..........BB............#',
+      '#..........BB............#',
+      '#........................#',
+      '#........................#',
+      '#........................#',
+      '#........................#',
+      '#........................#',
+      '#........................#',
+      '#........................#',
+      '#........................#',
+      '##......................##',
+      '##########################',
+    ],
+    width: 26, height: 16,
+  },
 }
 
 export const LEVEL_CONFIG = [
@@ -92,6 +113,7 @@ export const LEVEL_CONFIG = [
   { depth: 7, staircaseWidth: 1, guardCount:  8, monsterDensity: 0.010, trapDensity: 0.09, puzzleDensity: 0.03, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'SHRINE',     weapons: ['sword', 'longsword', 'axe'] },
   { depth: 8, staircaseWidth: 1, guardCount:  9, monsterDensity: 0.012, trapDensity: 0.10, puzzleDensity: 0.03, weaponDensity: 0.01, potionDensity: 0.005, landmark: null,         weapons: ['longsword', 'axe'] },
   { depth: 9, staircaseWidth: 3, guardCount: 10, monsterDensity: 0.015, trapDensity: 0.11, puzzleDensity: 0.04, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'DRAGON_LAIR', weapons: ['longsword', 'axe'] },
+  { depth: 10, staircaseWidth: 1, guardCount:  3, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.01, weaponDensity: 0.01, potionDensity: 0.01, landmark: 'GREAT_LAIR', weapons: ['longsword', 'axe'] },
 ]
 
 export const DEPTH_THEMES = [
@@ -125,6 +147,16 @@ export const DEPTH_THEMES = [
       room: ['prop_gravestone', 'prop_grave'],
     },
   },
+  {
+    depths: [10],
+    floorTile: 'floor',
+    bgColor:  '#0a0406',
+    tint:     'rgba(60,10,0,0.35)',
+    fogAlpha: 0.80,
+    props: {
+      room: ['prop_gravestone', 'prop_grave'],
+    },
+  },
 ]
 
-export const FINAL_DEPTH = 9
+export const FINAL_DEPTH = 10
