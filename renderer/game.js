@@ -241,6 +241,9 @@ function update(delta) {
     descendLevel(); return
   }
 
+  // DEBUG (temporary — remove before merge): press 0 to warp to the boss level
+  if (keys['0']) { keys['0'] = false; warpToDepth(FINAL_DEPTH); return }
+
   // Steal treasure
   if ((keys['x'] || keys['X']) && map[player.y]?.[player.x]?.tile === TILE.TREASURE) {
     state.gameOver = true; endRun(true); return
@@ -512,6 +515,29 @@ function render() {
   renderer.updateCamera(state.player)
   renderer.render(state)
   updateHUD(state)
+}
+
+// DEBUG (temporary — remove before merge): jump straight to a given depth
+function warpToDepth(n) {
+  const { map, entitySpawns, playerSpawn } = generateLevel(n)
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(n)) ?? DEPTH_THEMES[0]
+  state = {
+    ...state,
+    level: n,
+    map,
+    theme,
+    entities: buildEntities(entitySpawns, map),
+    projectiles: [],
+    player: {
+      ...state.player,
+      x: playerSpawn.x, y: playerSpawn.y,
+      px: playerSpawn.x * TILE_SIZE + TILE_SIZE / 2,
+      py: playerSpawn.y * TILE_SIZE + TILE_SIZE / 2,
+    },
+    log: [`DEBUG: warped to depth ${n}`],
+    hitEffects: [],
+    run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, n) },
+  }
 }
 
 function descendLevel() {
