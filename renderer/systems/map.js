@@ -284,7 +284,7 @@ function placeTemplate(map, template, ox, oy, roomId) {
       } else if (ch === 'B') {
         map[ty][tx].tile = TILE.FLOOR
         map[ty][tx].roomId = roomId
-        if (!bossPlaced) { spawns.push({ kind: 'dragon_boss', x: tx, y: ty }); bossPlaced = true }
+        if (!bossPlaced) { spawns.push({ kind: 'dragon_boss', x: tx, y: ty, roomId }); bossPlaced = true }
       } else if (ch === 'C') {
         map[ty][tx].tile = TILE.COLUMN
         map[ty][tx].roomId = roomId
