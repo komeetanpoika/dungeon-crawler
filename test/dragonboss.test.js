@@ -112,7 +112,7 @@ describe('updateDragonBoss attacks', () => {
     e.state = 'sweep'; e.stateTimer = 1.5; e.headAim = 0
     const player = mkPlayer(10*T + 3*T, 10*T)     // straight ahead, within cone length
     const state = mkState(e, player); const hp0 = player.hp
-    for (let i = 0; i < 30; i++) updateDragonBoss(e, state, 1/60)
+    for (let i = 0; i < 90; i++) updateDragonBoss(e, state, 1/60)
     assert.ok(player.hp < hp0, 'player in cone should take breath damage')
   })
 

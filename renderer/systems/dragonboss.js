@@ -136,8 +136,11 @@ function tileWalkable(map, px, py) {
 function coneDamage(e, state, aim, delta) {
   const { player } = state
   if (pointInCone(player.px, player.py, e.px, e.py, aim, CONE_HALF, CONE_LEN)) {
-    player.hp -= CONE_DPS * delta
-    state.log = [...state.log, 'Dragon fire!'].slice(-5)
+    e.dmgAcc += CONE_DPS * delta
+    while (e.dmgAcc >= 1) {
+      player.hp -= 1; e.dmgAcc -= 1
+      state.log = [...state.log, 'Dragon fire! (-1 HP)'].slice(-5)
+    }
   }
 }
 
