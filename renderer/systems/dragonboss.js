@@ -56,9 +56,12 @@ export function updateDragonBoss(e, state, delta) {
   const dist = Math.hypot(player.px - e.px, player.py - e.py)
   if (dist < 12 * TILE) e.inCombat = true
 
-  // turn to face the player
-  const target = Math.atan2(player.py - e.py, player.px - e.px)
-  e.facing = easeAngle(e.facing, target, TURN_RATE * delta)
+  // turn to face the player — but ONLY while not committed to an attack. Locking facing
+  // during windups/attacks gives the player a window to run around to the flank/back.
+  if (e.state === 'idle' || e.state === 'reposition') {
+    const target = Math.atan2(player.py - e.py, player.px - e.px)
+    e.facing = easeAngle(e.facing, target, TURN_RATE * delta)
+  }
 
   // contact damage
   if (dist < BOSS_CONTACT && e.damageCooldown <= 0) {

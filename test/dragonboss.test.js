@@ -59,6 +59,7 @@ describe('makeDragonBoss', () => {
 describe('updateDragonBoss facing', () => {
   it('eases facing toward the player over time', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
+    e.attackCooldown = 999; e.repositionTimer = 999   // stay idle so it keeps tracking (facing is locked during attacks)
     const player = mkPlayer(10*T, 16*T)           // due south => target angle +PI/2
     const state = mkState(e, player)
     for (let i = 0; i < 120; i++) updateDragonBoss(e, state, 1/60)  // 2s — enough to fully turn at 1.2 rad/s
