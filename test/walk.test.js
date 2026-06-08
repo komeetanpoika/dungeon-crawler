@@ -44,6 +44,14 @@ describe('walkTilt', () => {
     assert.equal(walkTilt(e), 0)
   })
 
+  it('tilt returns to exactly 0 after walking then settling', () => {
+    const e = { px: 0, py: 0 }
+    tickWalk(e, 0.016)
+    for (let i = 0; i < 30; i++) { e.px += 3; tickWalk(e, 0.016) }  // build amp + non-zero phase
+    for (let i = 0; i < 60; i++) { tickWalk(e, 0.016) }              // settle
+    assert.ok(Object.is(walkTilt(e), 0) || Object.is(walkTilt(e), -0), 'tilt should be exactly 0 (including -0)')
+  })
+
   it('is non-zero at some point mid-stride while moving', () => {
     const e = { px: 0, py: 0 }
     tickWalk(e, 0.016)
