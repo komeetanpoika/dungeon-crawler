@@ -181,7 +181,7 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
       if (ws) {
         const hw = Math.round(S * 0.5)
         // In this flipped local space, "behind on the right" is +x for both facings.
-        ctx.drawImage(ws, S / 2 - hw, S - hw, hw, hw)
+        ctx.drawImage(ws, S / 2 - hw, -hw, hw, hw)
       }
     }
     ctx.restore()
