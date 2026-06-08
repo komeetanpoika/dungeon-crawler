@@ -30,6 +30,8 @@ const DRAGON_CHARGE_DUR      = 1.0
 const DRAGON_EXHALE_DUR      = 0.8
 const DRAGON_BREATH_COOLDOWN = 2.5
 const DRAGON_CONE_HALF       = Math.PI * 0.21
+const BOSS_MELEE_RANGE       = 2.2 * TILE_SIZE   // dragon boss has a large body; melee connects within this radius
+const BOSS_PROJECTILE_R      = 1.6 * TILE_SIZE   // friendly projectiles hit the boss within this radius
 
 const ATTACK_STYLES = {
   dagger:    { style: 'snap',  duration: 0.12, cooldown: 0.30 },
@@ -284,7 +286,7 @@ function update(delta) {
       .map(e => {
         if (!isEnemy(e)) return e
         if (e.type === 'dragon_boss') {
-          if (Math.hypot(e.px - player.px, e.py - player.py) > 2.2 * TILE_SIZE) return e
+          if (Math.hypot(e.px - player.px, e.py - player.py) > BOSS_MELEE_RANGE) return e
         } else if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) {
           return e
         }
@@ -316,7 +318,7 @@ function update(delta) {
     if (p.friendly) {
       state.entities = state.entities.map(e => {
         if (!isEnemy(e) || hit) return e
-        const hitR = e.type === 'dragon_boss' ? 1.6 * TILE_SIZE : 8
+        const hitR = e.type === 'dragon_boss' ? BOSS_PROJECTILE_R : 8
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           if (e.type === 'crab' && deflects(e, p))      { hit = true; return e }
