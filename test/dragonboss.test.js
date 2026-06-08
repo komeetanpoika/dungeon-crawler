@@ -78,3 +78,52 @@ describe('updateDragonBoss contact damage', () => {
     assert.equal(player.hp, after, 'no second hit while damageCooldown active')
   })
 })
+
+describe('updateDragonBoss attacks', () => {
+  function ready(e) { e.attackCooldown = 0; e.repositionTimer = 999 }  // force an attack, no reposition
+
+  it('picks a tail attack when the player is in close range', () => {
+    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; ready(e)
+    const player = mkPlayer(10*T + 2*T, 10*T)     // ~2 tiles away => within tail reach
+    const state = mkState(e, player)
+    updateDragonBoss(e, state, 1/60)
+    assert.ok(e.state === 'tail_windup' || e.state === 'tail', `expected tail*, got ${e.state}`)
+  })
+
+  it('picks a ranged breath (cone or sweep) at distance', () => {
+    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; ready(e)
+    const player = mkPlayer(10*T + 6*T, 10*T)     // far => ranged
+    const state = mkState(e, player)
+    updateDragonBoss(e, state, 1/60)
+    assert.ok(['cone','sweep_windup','sweep'].includes(e.state), `expected ranged, got ${e.state}`)
+  })
+
+  it('does not start a new attack while attackCooldown is active', () => {
+    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T
+    e.attackCooldown = 1; e.repositionTimer = 999
+    const player = mkPlayer(10*T + 6*T, 10*T)
+    const state = mkState(e, player)
+    updateDragonBoss(e, state, 1/60)
+    assert.equal(e.state, 'idle')
+  })
+
+  it('sweeping breath damages a player inside the swept cone', () => {
+    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
+    e.state = 'sweep'; e.stateTimer = 1.5; e.headAim = 0
+    const player = mkPlayer(10*T + 3*T, 10*T)     // straight ahead, within cone length
+    const state = mkState(e, player); const hp0 = player.hp
+    for (let i = 0; i < 30; i++) updateDragonBoss(e, state, 1/60)
+    assert.ok(player.hp < hp0, 'player in cone should take breath damage')
+  })
+
+  it('tail sweep applies burst damage and knocks the player back', () => {
+    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
+    e.state = 'tail'; e.stateTimer = 0.45; e.dmgAcc = 0
+    const player = mkPlayer(10*T + 2*T, 10*T)
+    const state = mkState(e, player)
+    const px0 = player.px, hp0 = player.hp
+    for (let i = 0; i < 30; i++) updateDragonBoss(e, state, 1/60)
+    assert.ok(player.hp < hp0, 'tail sweep should deal damage')
+    assert.ok(player.px > px0, 'player should be knocked outward (away from dragon at -x side)')
+  })
+})

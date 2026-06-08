@@ -6,6 +6,14 @@ const TURN_RATE   = 2.5            // rad/s the body rotates to track the player
 const BOSS_CONTACT = 1.4 * TILE    // contact radius around the body centre (~1.4 tiles)
 const CONTACT_DMG = 2
 const CONTACT_CD  = 0.8
+const CONE_HALF   = 0.34
+const CONE_LEN    = 6 * TILE
+const CONE_DPS    = 3
+const SWEEP_ARC   = 0.7            // headAim sweeps from -SWEEP_ARC to +SWEEP_ARC
+const TAIL_REACH  = 3.2 * TILE
+const TAIL_DMG    = 4
+const KNOCKBACK   = 26
+const REPOSITION_EVERY = 10
 
 // Is (px,py) inside the cone with apex (ox,oy), centre direction `aim`,
 // half-angle `half` (rad) and length `len`? Pure — unit tested.
@@ -58,8 +66,95 @@ export function updateDragonBoss(e, state, delta) {
     state.log = [...state.log, `Hit for ${CONTACT_DMG} damage!`].slice(-5)
   }
 
-  // (attack state machine added in Task 2 — for now just settle to idle)
-  e.neckRear  = approach(e.neckRear, 0, 3 * delta)
-  e.tailSwing = approach(e.tailSwing, 0, 4 * delta)
-  e.headAim   = approach(e.headAim, 0, 3 * delta)
+  e.stateTimer     = Math.max(0, e.stateTimer - delta)
+  e.attackCooldown = Math.max(0, e.attackCooldown - delta)
+  e.repositionTimer -= delta
+
+  switch (e.state) {
+    case 'idle':
+      e.neckRear  = approach(e.neckRear, 0, 3 * delta)
+      e.tailSwing = approach(e.tailSwing, 0, 4 * delta)
+      e.headAim   = approach(e.headAim, 0, 3 * delta)
+      if (e.repositionTimer <= 0) { startReposition(e, state); break }
+      if (e.attackCooldown <= 0) {
+        if (dist <= TAIL_REACH)        { e.state = 'tail_windup';  e.stateTimer = 0.4 }
+        else if (Math.random() < 0.6)  { e.state = 'sweep_windup'; e.stateTimer = 0.6 }
+        else                           { e.state = 'cone';         e.stateTimer = 0.7 }
+      }
+      break
+
+    case 'cone':
+      coneDamage(e, state, e.facing, delta)
+      if (e.stateTimer <= 0) endAttack(e)
+      break
+
+    case 'sweep_windup':
+      e.neckRear = approach(e.neckRear, 1, 2 * delta)
+      if (e.stateTimer <= 0) { e.state = 'sweep'; e.stateTimer = 1.5; e.headAim = -SWEEP_ARC }
+      break
+
+    case 'sweep': {
+      const k = 1 - e.stateTimer / 1.5
+      e.headAim = -SWEEP_ARC + 2 * SWEEP_ARC * k
+      coneDamage(e, state, e.facing + e.headAim, delta)
+      if (e.stateTimer <= 0) { e.neckRear = 0; endAttack(e) }
+      break
+    }
+
+    case 'tail_windup':
+      e.tailSwing = approach(e.tailSwing, -0.6, 4 * delta)
+      if (e.stateTimer <= 0) { e.state = 'tail'; e.stateTimer = 0.45; e.dmgAcc = 0 }
+      break
+
+    case 'tail': {
+      const k = 1 - e.stateTimer / 0.45
+      e.tailSwing = -0.6 + 1.6 * k
+      if (k > 0.3 && k < 0.8 && e.dmgAcc === 0 && dist <= TAIL_REACH) {
+        player.hp -= TAIL_DMG; e.dmgAcc = 1
+        knockback(e, player, state.map)
+        state.log = [...state.log, `Tail sweep! (-${TAIL_DMG})`].slice(-5)
+      }
+      if (e.stateTimer <= 0) { e.tailSwing = 0; endAttack(e) }
+      break
+    }
+
+    case 'reposition': {
+      const ax = e.anchorX * TILE + TILE / 2, ay = e.anchorY * TILE + TILE / 2
+      const dx = ax - e.px, dy = ay - e.py, dd = Math.hypot(dx, dy)
+      if (dd > 2) { const sp = 60 * delta; e.px += (dx / dd) * Math.min(sp, dd); e.py += (dy / dd) * Math.min(sp, dd); e.x = Math.floor(e.px / TILE); e.y = Math.floor(e.py / TILE) }
+      if (e.stateTimer <= 0 || dd <= 2) { e.state = 'idle'; e.repositionTimer = REPOSITION_EVERY; e.attackCooldown = 1.0 }
+      break
+    }
+  }
 }
+
+function tileWalkable(map, px, py) {
+  const t = map[Math.floor(py / TILE)]?.[Math.floor(px / TILE)]
+  return !!(t && isWalkable(t.tile, t))
+}
+
+function coneDamage(e, state, aim, delta) {
+  const { player } = state
+  if (pointInCone(player.px, player.py, e.px, e.py, aim, CONE_HALF, CONE_LEN)) {
+    player.hp -= CONE_DPS * delta
+    state.log = [...state.log, 'Dragon fire!'].slice(-5)
+  }
+}
+
+function knockback(e, player, map) {
+  const dx = player.px - e.px, dy = player.py - e.py, d = Math.hypot(dx, dy) || 1
+  const nx = player.px + (dx / d) * KNOCKBACK, ny = player.py + (dy / d) * KNOCKBACK
+  if (tileWalkable(map, nx, player.py)) { player.px = nx; player.x = Math.floor(nx / TILE) }
+  if (tileWalkable(map, player.px, ny)) { player.py = ny; player.y = Math.floor(ny / TILE) }
+}
+
+function startReposition(e, state) {
+  const { map } = state
+  for (const [dx, dy] of [[3,0],[-3,0],[0,3],[0,-3],[2,2],[-2,-2]]) {
+    const tx = e.x + dx, ty = e.y + dy
+    if (map[ty]?.[tx] && isWalkable(map[ty][tx].tile, map[ty][tx])) { e.anchorX = tx; e.anchorY = ty; break }
+  }
+  e.state = 'reposition'; e.stateTimer = 1.2
+}
+
+function endAttack(e) { e.state = 'idle'; e.attackCooldown = 1.2 + Math.random() * 0.6; e.stateTimer = 0 }
