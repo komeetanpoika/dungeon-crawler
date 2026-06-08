@@ -82,9 +82,9 @@ describe('updateDragonBoss contact damage', () => {
 describe('updateDragonBoss attacks', () => {
   function ready(e) { e.attackCooldown = 0; e.repositionTimer = 999 }  // force an attack, no reposition
 
-  it('picks a tail attack when the player is in close range', () => {
-    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; ready(e)
-    const player = mkPlayer(10*T + 2*T, 10*T)     // ~2 tiles away => within tail reach
+  it('picks a tail attack when the player has flanked into the rear arc', () => {
+    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0; ready(e)
+    const player = mkPlayer(10*T - 2*T, 10*T)     // ~2 tiles BEHIND (boss faces east) => in the tail's rear arc
     const state = mkState(e, player)
     updateDragonBoss(e, state, 1/60)
     assert.ok(e.state === 'tail_windup' || e.state === 'tail', `expected tail*, got ${e.state}`)
@@ -119,18 +119,18 @@ describe('updateDragonBoss attacks', () => {
   it('tail sweep applies burst damage and knocks the player back', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
     e.state = 'tail'; e.stateTimer = 0.45; e.dmgAcc = 0
-    const player = mkPlayer(10*T + 2*T, 10*T)
+    const player = mkPlayer(10*T - 2*T, 10*T)     // BEHIND the east-facing boss => inside the tail arc
     const state = mkState(e, player)
     const px0 = player.px, hp0 = player.hp
     for (let i = 0; i < 30; i++) updateDragonBoss(e, state, 1/60)
     assert.ok(player.hp < hp0, 'tail sweep should deal damage')
-    assert.ok(player.px > px0, 'player should be knocked outward (away from dragon at -x side)')
+    assert.ok(player.px < px0, 'player should be knocked outward (further west, away from the dragon)')
   })
 
   it('resets the damage accumulator after an attack ends (no carryover free hit)', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
     e.state = 'tail'; e.stateTimer = 0.45; e.dmgAcc = 0
-    const player = mkPlayer(10*T + 2*T, 10*T)
+    const player = mkPlayer(10*T - 2*T, 10*T)     // BEHIND => in the tail arc so the hit actually fires
     const state = mkState(e, player)
     for (let i = 0; i < 40; i++) updateDragonBoss(e, state, 1/60)  // tail hits then endAttack
     assert.equal(e.dmgAcc, 0, 'dmgAcc must reset so the next breath has no free instant tick')

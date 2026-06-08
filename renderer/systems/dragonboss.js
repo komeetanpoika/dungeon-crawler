@@ -11,6 +11,7 @@ const CONE_LEN    = 6 * TILE
 const CONE_DPS    = 3
 const SWEEP_ARC   = 0.7            // headAim sweeps from -SWEEP_ARC to +SWEEP_ARC
 const TAIL_REACH  = 3.2 * TILE
+const TAIL_HALF   = 1.4            // half-angle of the rear arc the tail sweeps through (~80°)
 const TAIL_DMG    = 4
 const KNOCKBACK   = 26
 const REPOSITION_EVERY = 10
@@ -77,7 +78,9 @@ export function updateDragonBoss(e, state, delta) {
       e.headAim   = approach(e.headAim, 0, 3 * delta)
       if (e.repositionTimer <= 0) { startReposition(e, state); break }
       if (e.attackCooldown <= 0) {
-        if (dist <= TAIL_REACH)        { e.state = 'tail_windup';  e.stateTimer = 0.4 }
+        // tail only when the player has flanked into the rear arc (where the tail sweeps);
+        // breath handles the front, which is where the facing boss usually keeps the player
+        if (inTailArc(e, player))      { e.state = 'tail_windup';  e.stateTimer = 0.4 }
         else if (Math.random() < 0.6)  { e.state = 'sweep_windup'; e.stateTimer = 0.6 }
         else                           { e.state = 'cone';         e.stateTimer = 0.7 }
       }
@@ -109,7 +112,7 @@ export function updateDragonBoss(e, state, delta) {
     case 'tail': {
       const k = 1 - e.stateTimer / 0.45
       e.tailSwing = -0.6 + 1.6 * k
-      if (k > 0.3 && k < 0.8 && e.dmgAcc === 0 && dist <= TAIL_REACH) {
+      if (k > 0.3 && k < 0.8 && e.dmgAcc === 0 && inTailArc(e, player)) {
         player.hp -= TAIL_DMG; e.dmgAcc = 1
         knockback(e, player, state.map)
         state.log = [...state.log, `Tail sweep! (-${TAIL_DMG})`].slice(-5)
@@ -134,6 +137,11 @@ export function updateDragonBoss(e, state, delta) {
       break
     }
   }
+}
+
+// The player is within the tail's swing — a wide arc behind the boss (opposite its facing).
+function inTailArc(e, player) {
+  return pointInCone(player.px, player.py, e.px, e.py, e.facing + Math.PI, TAIL_HALF, TAIL_REACH)
 }
 
 function tileWalkable(map, px, py) {
