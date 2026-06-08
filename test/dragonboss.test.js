@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeDragonBoss, updateDragonBoss, pointInCone, BOSS_HP } from '../renderer/systems/dragonboss.js'
+import { makeDragonBoss, updateDragonBoss, pointInCone, easeAngle, BOSS_HP } from '../renderer/systems/dragonboss.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 
@@ -25,6 +25,23 @@ describe('pointInCone', () => {
   })
   it('respects a rotated aim', () => {
     assert.equal(pointInCone(0, 100, 0, 0, Math.PI/2, 0.4, 200), true) // aim points +y
+  })
+  it('false at the apex point itself (d === 0)', () => {
+    assert.equal(pointInCone(0, 0, 0, 0, 0, 0.1, 100), false)
+  })
+})
+
+describe('easeAngle', () => {
+  it('snaps to target when within maxStep', () => {
+    assert.equal(easeAngle(0, 0.05, 0.1), 0.05)
+  })
+  it('steps by at most maxStep toward the target', () => {
+    assert.equal(easeAngle(0, 1, 0.1), 0.1)
+  })
+  it('takes the shortest arc across the +/-PI wrap', () => {
+    // target just past -PI from a near-+PI current; shortest move is positive (wrap)
+    const r = easeAngle(3.0, -3.0, 0.1)
+    assert.ok(r > 3.0, `expected to wrap upward past PI, got ${r}`)
   })
 })
 

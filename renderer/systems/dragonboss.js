@@ -3,7 +3,7 @@ import { isWalkable } from './entities.js'
 const TILE = 32
 export const BOSS_HP = 28
 const TURN_RATE   = 2.5            // rad/s the body rotates to track the player
-const BOSS_CONTACT = 1.4 * TILE    // contact radius (body spans ~3×4 tiles)
+const BOSS_CONTACT = 1.4 * TILE    // contact radius around the body centre (~1.4 tiles)
 const CONTACT_DMG = 2
 const CONTACT_CD  = 0.8
 
