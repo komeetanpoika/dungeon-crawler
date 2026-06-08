@@ -6,6 +6,7 @@ import { makeCrab, updateCrab, deflects } from './systems/crab.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
+import { tickWalk } from './systems/walk.js'
 import { FINAL_DEPTH, DEPTH_THEMES } from './data/levels.js'
 
 const TILE_SIZE = 32
@@ -478,6 +479,11 @@ function update(delta) {
     e.px = e.startPx + (e.targetPx - e.startPx) * t
     e.py = e.startPy + (e.targetPy - e.startPy) * t - arcH * 4 * t * (1 - t)
   }
+
+  // Walk animation — player + humanoid enemies (guards, wizard)
+  tickWalk(player, delta)
+  for (const e of state.entities)
+    if (e.type === 'guard' || e.type === 'wizard') tickWalk(e, delta)
 
   // Player death
   if (player.hp <= 0) {
