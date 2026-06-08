@@ -1,5 +1,6 @@
 import { TILE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
+import { walkTilt } from '../systems/walk.js'
 
 const TILE_SIZE = 32
 
@@ -73,6 +74,15 @@ function drawImg(ctx, sprite, px, py, w, h, flip = false) {
   ctx.restore()
 }
 
+function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg) {
+  ctx.save()
+  ctx.translate(px + S / 2, py + S)        // pivot at the feet (center-bottom)
+  ctx.rotate(tiltDeg * Math.PI / 180)
+  ctx.scale(flip ? -1 : 1, 1)
+  ctx.drawImage(sprite, -S / 2, -S, S, S)
+  ctx.restore()
+}
+
 function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'door') {
     const s = sprites[`door_${entity.frame}`]
@@ -136,7 +146,7 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
     return
   }
   if (entity.type === 'wizard') {
-    if (sprites.wizard) ctx.drawImage(sprites.wizard, px, py, S, S)
+    if (sprites.wizard) drawWalker(ctx, sprites.wizard, px, py, S, false, walkTilt(entity))
     if (entity.shieldTimer > 0) {
       ctx.save()
       ctx.strokeStyle = '#ffffff'
@@ -149,27 +159,37 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
     }
     return
   }
+  if (entity.type === 'guard') {
+    const flip = entity.facing === 'west'
+    if (sprites.guard) drawWalker(ctx, sprites.guard, px, py, S, flip, walkTilt(entity))
+    return
+  }
   if (entity.type === 'crab') {
     if (sprites.crab) ctx.drawImage(sprites.crab, px, py, S, S)
     return
   }
   if (entity.type === 'player') {
     const flip = entity.facing === 'west'
-    if (sprites.player) drawImg(ctx, sprites.player, px, py, S, S, flip)
+    const tilt = walkTilt(entity)
+    ctx.save()
+    ctx.translate(px + S / 2, py + S)        // pivot at the feet
+    ctx.rotate(tilt * Math.PI / 180)
+    ctx.scale(flip ? -1 : 1, 1)              // flip handled here, so draw un-flipped below
+    if (sprites.player) ctx.drawImage(sprites.player, -S / 2, -S, S, S)
     if (entity.weapon) {
       const ws = sprites[`weapon_${entity.weapon.weaponType}`]
       if (ws) {
         const hw = Math.round(S * 0.5)
-        const wx = flip ? px : px + S - hw
-        ctx.drawImage(ws, wx, py + S - hw, hw, hw)
+        // In this flipped local space, "behind on the right" is +x for both facings.
+        ctx.drawImage(ws, S / 2 - hw, S - hw, hw, hw)
       }
     }
+    ctx.restore()
     return
   }
   const flip = entity.facing === 'west'
   const s = (() => {
     switch (entity.type) {
-      case 'guard':   return sprites.guard
       case 'monster': return sprites[`monster_${entity.variant ?? 'weak'}`]
       case 'trap':    return entity.triggered ? null : sprites.trap
       case 'puzzle':  return entity.solved ? null : sprites.puzzle
