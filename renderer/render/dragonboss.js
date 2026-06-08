@@ -68,6 +68,7 @@ function scaleBody(ctx, bw, bh, S) {
 }
 function chain(ctx, x, y, startAng, segs, segLen, wFn, color, bendFn) {
   let px = x, py = y, ang = startAng
+  ctx.save()
   for (let i = 0; i < segs; i++) {
     ang += bendFn(i)
     const nx = px + Math.cos(ang)*segLen, ny = py + Math.sin(ang)*segLen
@@ -75,6 +76,7 @@ function chain(ctx, x, y, startAng, segs, segLen, wFn, color, bendFn) {
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(nx, ny); ctx.stroke()
     px = nx; py = ny
   }
+  ctx.restore()
   return { x: px, y: py, ang }
 }
 function wing(ctx, sx, sy, s, t, S) {
@@ -94,7 +96,7 @@ function wing(ctx, sx, sy, s, t, S) {
 function leg(ctx, bx, by, s, reach, t, S) {
   const sw = Math.sin(t*2.0)*0.06*s
   ctx.save(); ctx.translate(bx, by); ctx.rotate(sw)
-  ctx.fillStyle = '#7a241b'; ctx.beginPath(); ctx.ellipse(s*reach, 0, S*0.9, S*0.55, s*0.5, 0, 7); ctx.fill()
+  ctx.fillStyle = '#7a241b'; ctx.beginPath(); ctx.ellipse(s*reach, 0, S*0.9, S*0.55, s*0.5, 0, Math.PI * 2); ctx.fill()
   ctx.strokeStyle = '#e8c08a'; ctx.lineWidth = 2; ctx.lineCap = 'round'
   for (let c = -1; c <= 1; c++) { ctx.beginPath(); ctx.moveTo(s*reach*1.3, c*5); ctx.lineTo(s*reach*1.7, c*7); ctx.stroke() }
   ctx.restore()
@@ -110,7 +112,7 @@ function flameCone(ctx, x, y, ang, S) {
 }
 
 export function drawDragonBoss(ctx, e, camX, camY, S) {
-  const ox = Math.round(e.px - camX), oy = Math.round(e.py - camY)
+  const ox = Math.round((e.px ?? (e.x * S + S / 2)) - camX), oy = Math.round((e.py ?? (e.y * S + S / 2)) - camY)
   const t = e.breathTime ?? 0
   const breath = 0.5 + 0.5*Math.sin(t*1.4)
   const bw = 3*S*(1 + breath*0.02), bh = 4*S*(1 + breath*0.02)
@@ -149,11 +151,11 @@ export function drawDragonBoss(ctx, e, camX, camY, S) {
   if (e.state === 'cone' || e.state === 'sweep') flameCone(ctx, tip.x, tip.y, tip.ang, S)
 
   ctx.save(); ctx.translate(tip.x, tip.y); ctx.rotate(tip.ang + Math.PI/2)
-  ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.ellipse(0, -S*0.2, S*0.8, S*0.7, 0, 0, 7); ctx.fill()
+  ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.ellipse(0, -S*0.2, S*0.8, S*0.7, 0, 0, Math.PI * 2); ctx.fill()
   ctx.strokeStyle = '#ff8a5a'; ctx.lineWidth = 2; ctx.stroke()
   ctx.strokeStyle = '#e8c08a'; ctx.lineWidth = 3
   for (const s of [-1,1]) { ctx.beginPath(); ctx.moveTo(s*S*0.5, -S*0.6); ctx.lineTo(s*S*0.9, -S*1.2); ctx.stroke() }
-  ctx.fillStyle = '#ffd23a'; for (const s of [-1,1]) { ctx.beginPath(); ctx.arc(s*S*0.35, -S*0.2, 3, 0, 7); ctx.fill() }
+  ctx.fillStyle = '#ffd23a'; for (const s of [-1,1]) { ctx.beginPath(); ctx.arc(s*S*0.35, -S*0.2, 3, 0, Math.PI * 2); ctx.fill() }
   ctx.restore()
 
   ctx.restore()

@@ -542,7 +542,7 @@ export class Renderer {
     }
 
     for (const e of entities) {
-      const margin = e.type === 'dragon' ? 5 : e.type === 'cyclops' ? 2 : 0
+      const margin = e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0
       if (e.x + margin < c0 || e.x - margin >= c1 || e.y + margin < r0 || e.y - margin >= r1) continue
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
