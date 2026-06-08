@@ -3,7 +3,7 @@
 // stopped character settles upright instead of freezing mid-tilt.
 
 export const STRIDE_PX = 30      // px of travel per full left-right sway cycle
-export const MAX_TILT  = 7        // degrees of peak rotation
+export const MAX_TILT  = 6.3      // degrees of peak rotation
 const AMP_ATTACK = 12, AMP_DECAY = 10   // sway ramp-in / ease-out rate (per second)
 
 function approach(cur, target, step) {
