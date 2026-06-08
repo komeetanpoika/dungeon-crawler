@@ -68,7 +68,7 @@ export function updateDragonBoss(e, state, delta) {
 
   e.stateTimer     = Math.max(0, e.stateTimer - delta)
   e.attackCooldown = Math.max(0, e.attackCooldown - delta)
-  e.repositionTimer -= delta
+  e.repositionTimer = Math.max(0, e.repositionTimer - delta)
 
   switch (e.state) {
     case 'idle':
@@ -121,8 +121,16 @@ export function updateDragonBoss(e, state, delta) {
     case 'reposition': {
       const ax = e.anchorX * TILE + TILE / 2, ay = e.anchorY * TILE + TILE / 2
       const dx = ax - e.px, dy = ay - e.py, dd = Math.hypot(dx, dy)
-      if (dd > 2) { const sp = 60 * delta; e.px += (dx / dd) * Math.min(sp, dd); e.py += (dy / dd) * Math.min(sp, dd); e.x = Math.floor(e.px / TILE); e.y = Math.floor(e.py / TILE) }
-      if (e.stateTimer <= 0 || dd <= 2) { e.state = 'idle'; e.repositionTimer = REPOSITION_EVERY; e.attackCooldown = 1.0 }
+      if (dd > 2) {
+        const sp = Math.min(60 * delta, dd)
+        e.px += (dx / dd) * sp
+        e.py += (dy / dd) * sp
+        e.x = Math.floor(e.px / TILE)
+        e.y = Math.floor(e.py / TILE)
+      }
+      if (e.stateTimer <= 0 || dd <= 2) {
+        e.state = 'idle'; e.repositionTimer = REPOSITION_EVERY; e.attackCooldown = 1.0
+      }
       break
     }
   }
@@ -160,4 +168,4 @@ function startReposition(e, state) {
   e.state = 'reposition'; e.stateTimer = 1.2
 }
 
-function endAttack(e) { e.state = 'idle'; e.attackCooldown = 1.2 + Math.random() * 0.6; e.stateTimer = 0 }
+function endAttack(e) { e.state = 'idle'; e.attackCooldown = 1.2 + Math.random() * 0.6; e.stateTimer = 0; e.dmgAcc = 0 }

@@ -95,7 +95,7 @@ describe('updateDragonBoss attacks', () => {
     const player = mkPlayer(10*T + 6*T, 10*T)     // far => ranged
     const state = mkState(e, player)
     updateDragonBoss(e, state, 1/60)
-    assert.ok(['cone','sweep_windup','sweep'].includes(e.state), `expected ranged, got ${e.state}`)
+    assert.ok(['cone','sweep_windup'].includes(e.state), `expected ranged, got ${e.state}`)
   })
 
   it('does not start a new attack while attackCooldown is active', () => {
@@ -125,5 +125,25 @@ describe('updateDragonBoss attacks', () => {
     for (let i = 0; i < 30; i++) updateDragonBoss(e, state, 1/60)
     assert.ok(player.hp < hp0, 'tail sweep should deal damage')
     assert.ok(player.px > px0, 'player should be knocked outward (away from dragon at -x side)')
+  })
+
+  it('resets the damage accumulator after an attack ends (no carryover free hit)', () => {
+    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
+    e.state = 'tail'; e.stateTimer = 0.45; e.dmgAcc = 0
+    const player = mkPlayer(10*T + 2*T, 10*T)
+    const state = mkState(e, player)
+    for (let i = 0; i < 40; i++) updateDragonBoss(e, state, 1/60)  // tail hits then endAttack
+    assert.equal(e.dmgAcc, 0, 'dmgAcc must reset so the next breath has no free instant tick')
+  })
+
+  it('reposition crawls toward the anchor then returns to idle', () => {
+    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T
+    e.state = 'reposition'; e.stateTimer = 1.2; e.anchorX = 13; e.anchorY = 10
+    const player = mkPlayer(10*T, 30*T)            // far away, no interference
+    const state = mkState(e, player)
+    const px0 = e.px
+    for (let i = 0; i < 80; i++) updateDragonBoss(e, state, 1/60)
+    assert.ok(e.px > px0, 'boss should crawl toward the +x anchor')
+    assert.equal(e.state, 'idle', 'boss returns to idle after repositioning')
   })
 })
