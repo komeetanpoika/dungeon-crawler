@@ -480,10 +480,11 @@ function update(delta) {
     e.py = e.startPy + (e.targetPy - e.startPy) * t - arcH * 4 * t * (1 - t)
   }
 
-  // Walk animation — player + humanoid enemies (guards, wizard)
+  // Walk animation — player + humanoid enemies (guard, wizard)
   tickWalk(player, delta)
-  for (const e of state.entities)
+  for (const e of state.entities) {
     if (e.type === 'guard' || e.type === 'wizard') tickWalk(e, delta)
+  }
 
   // Player death
   if (player.hp <= 0) {
