@@ -14,7 +14,7 @@ export async function buildLibrary(names, { onPick }) {
   filter.addEventListener('input', () => {
     const q = filter.value.toLowerCase()
     for (const { name, img } of items)
-      img.style.display = name.includes(q) ? '' : 'none'
+      img.style.display = name.toLowerCase().includes(q) ? '' : 'none'
   })
   return {
     add(name, dataURL) {
