@@ -3,6 +3,7 @@ import { dataURLToImageData, extractPalette } from './palette.js'
 import { buildLibrary } from './library.js'
 import { sanitizeTileName } from './lib.js'
 import { dataURLToImageData as decodePNG } from './palette.js'
+import { initRulesUI } from './rules-ui.js'
 
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
@@ -187,4 +188,11 @@ document.getElementById('save-tile').addEventListener('click', async () => {
   } catch (err) {
     alert(`Save failed: ${err.message}`)
   }
+})
+
+initRulesUI(state)
+
+saveRulesBtn.addEventListener('click', async () => {
+  await window.editorAPI.saveRulesets(state.rulesets)
+  alert('Rules saved to renderer/data/rulesets.json')
 })
