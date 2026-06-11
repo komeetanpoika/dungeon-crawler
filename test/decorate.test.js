@@ -119,6 +119,9 @@ describe('pickWeighted', () => {
 })
 
 describe('decorateMap', () => {
+  // Like RS but without wall.top's directional rule: the scan decides cells
+  // before their south neighbor exists, so RS's "wall.base must be south of
+  // wall.top" makes top placements dead-end and the skin assertions fragile.
   const RS_DECORATE = {
     tiles: {
       moss1: { tags: ['floor.moss'],  weight: 1 },
@@ -195,6 +198,23 @@ describe('decorateMap', () => {
     const map = makeCells(['..'])
     assert.equal(decorateMap(map, undefined), 0)
     assert.equal(map[0][0].skin, null)
+  })
+
+  it('directional constraint: top never appears without wall.base below it', () => {
+    const rs = {
+      tiles: { wallA: { tags: ['wall.base'], weight: 1 }, top: { tags: ['wall.top'], weight: 1 } },
+      tags: {
+        'wall.base': { role: 'wall', allow: ['*'] },
+        'wall.top':  { role: 'wall', allow: ['*'], directional: { s: ['wall.base'] } },
+      },
+    }
+    const map = makeCells(['####', '####'])
+    decorateMap(map, rs, mulberry32(1))
+    for (let x = 0; x < 4; x++) {
+      if (map[0][x].skin === 'top') {
+        assert.equal(map[1][x].skin, 'wallA', `top at row=0,col=${x} must have wallA below`)
+      }
+    }
   })
 })
 
