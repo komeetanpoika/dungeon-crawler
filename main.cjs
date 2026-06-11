@@ -64,6 +64,7 @@ ipcMain.handle('editor-save-tile', (_e, name, dataURL) => {
   // Kenney originals are never writable: custom_ prefix is enforced here,
   // not just in the UI.
   if (!/^custom_[a-z0-9_]+$/.test(name)) throw new Error(`Invalid tile name: ${name}`)
+  if (!String(dataURL).startsWith('data:image/png;base64,')) throw new Error('Expected PNG data URL')
   const b64 = String(dataURL).replace(/^data:image\/png;base64,/, '')
   fs.writeFileSync(path.join(TILES_DIR, `${name}.png`), Buffer.from(b64, 'base64'))
 })
