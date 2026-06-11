@@ -18,6 +18,8 @@ export async function buildLibrary(names, { onPick }) {
   })
   return {
     add(name, dataURL) {
+      const existing = items.find(it => it.name === name)
+      if (existing) { existing.img.src = dataURL; return }
       const img = document.createElement('img')
       img.src = dataURL
       img.title = name

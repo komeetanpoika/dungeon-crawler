@@ -161,25 +161,30 @@ document.getElementById('save-tile').addEventListener('click', async () => {
   if (!name) { alert('Enter a tile name first.'); return }
   if (await window.editorAPI.tileExists(name) &&
       !confirm(`${name}.png already exists. Overwrite it?`)) return
-  const dataURL = pixelEditor.toCanvas().toDataURL('image/png')
-  await window.editorAPI.saveTile(name, dataURL)
-  tileImageData.set(name, await decodePNG(dataURL))
-  if (library) library.add(name, dataURL)
+  try {
+    const dataURL = pixelEditor.toCanvas().toDataURL('image/png')
+    await window.editorAPI.saveTile(name, dataURL)
+    tileImageData.set(name, await decodePNG(dataURL))
+    if (library) library.add(name, dataURL)
 
-  // Register the tile (with its tags) in the active ruleset.
-  const tags = document.getElementById('tile-tags').value
-    .split(',').map(s => s.trim()).filter(Boolean)
-  const rs = state.rulesets[state.active]
-  if (rs && tags.length) {
-    rs.tiles[name] = { tags, weight: rs.tiles[name]?.weight ?? 1 }
-    for (const tag of tags) {
-      if (!rs.tags[tag]) {
-        const role = tag.startsWith('wall') ? 'wall' : 'floor'
-        rs.tags[tag] = { role, allow: ['*'], forbid: [], directional: {} }
+    const tags = document.getElementById('tile-tags').value
+      .split(',').map(s => s.trim()).filter(Boolean)
+    const rs = state.rulesets[state.active]
+    if (rs && tags.length) {
+      rs.tiles[name] = { tags, weight: rs.tiles[name]?.weight ?? 1 }
+      for (const tag of tags) {
+        if (!rs.tags[tag]) {
+          const role = tag.startsWith('wall') ? 'wall' : 'floor'
+          rs.tags[tag] = { role, allow: ['*'], forbid: [], directional: {} }
+        }
       }
+      await window.editorAPI.saveRulesets(state.rulesets)
+      document.dispatchEvent(new Event('ruleset-changed'))
+      alert(`Saved ${name}.png and registered in '${state.active}'`)
+    } else {
+      alert(`Saved ${name}.png (no tags or no active ruleset — not registered in a ruleset)`)
     }
-    await window.editorAPI.saveRulesets(state.rulesets)
-    document.dispatchEvent(new Event('ruleset-changed'))
+  } catch (err) {
+    alert(`Save failed: ${err.message}`)
   }
-  alert(`Saved ${name}.png${rs && tags.length ? ` and registered in '${state.active}'` : ''}`)
 })
