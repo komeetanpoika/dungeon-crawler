@@ -1,6 +1,8 @@
 // Rules tab: edit tags (role, allow, forbid, directional) and per-tile weights
 // of the active ruleset. Mutates the shared state object; emits 'rules-edited'
 // on every change so the sample preview can re-render.
+import { textPrompt } from './text-prompt.js'
+
 export function initRulesUI(state) {
   const tagRows = document.getElementById('tag-rows')
   const rulePanel = document.getElementById('rule-panel')
@@ -45,8 +47,8 @@ export function initRulesUI(state) {
     const add = document.createElement('span')
     add.className = 'add-chip'
     add.textContent = '+ add'
-    add.addEventListener('click', () => {
-      const t = (prompt('Tag name ("*" = any):') ?? '').trim()
+    add.addEventListener('click', async () => {
+      const t = ((await textPrompt('Tag name ("*" = any):')) ?? '').trim()
       if (t) { list.push(t); render(); edited() }
     })
     wrap.appendChild(add)
@@ -134,10 +136,10 @@ export function initRulesUI(state) {
     rulePanel.appendChild(del)
   }
 
-  document.getElementById('add-tag').addEventListener('click', () => {
+  document.getElementById('add-tag').addEventListener('click', async () => {
     const rs = activeRs()
     if (!rs) { alert('Create a ruleset first (+ new in the header).'); return }
-    const tag = (prompt('New tag (e.g. floor.moss):') ?? '').trim()
+    const tag = ((await textPrompt('New tag (e.g. floor.moss):')) ?? '').trim()
     if (!tag) return
     rs.tags[tag] ??= {
       role: tag.startsWith('wall') ? 'wall' : 'floor',

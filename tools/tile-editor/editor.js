@@ -5,6 +5,7 @@ import { sanitizeTileName } from './lib.js'
 import { dataURLToImageData as decodePNG } from './palette.js'
 import { initRulesUI } from './rules-ui.js'
 import { renderSample } from './sample-preview.js'
+import { textPrompt } from './text-prompt.js'
 
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
@@ -141,8 +142,8 @@ rulesetSelect.addEventListener('change', () => {
   document.dispatchEvent(new Event('ruleset-changed'))
 })
 
-document.getElementById('new-ruleset').addEventListener('click', () => {
-  const name = (prompt('Ruleset name (e.g. catacombs):') ?? '').trim().toLowerCase()
+document.getElementById('new-ruleset').addEventListener('click', async () => {
+  const name = ((await textPrompt('Ruleset name (e.g. catacombs):')) ?? '').trim().toLowerCase()
   if (!name) return
   if (!state.rulesets[name]) state.rulesets[name] = { tiles: {}, tags: {} }
   state.active = name
