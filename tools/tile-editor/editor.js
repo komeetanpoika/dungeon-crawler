@@ -4,6 +4,7 @@ import { buildLibrary } from './library.js'
 import { sanitizeTileName } from './lib.js'
 import { dataURLToImageData as decodePNG } from './palette.js'
 import { initRulesUI } from './rules-ui.js'
+import { renderSample } from './sample-preview.js'
 
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
@@ -200,3 +201,26 @@ saveRulesBtn.addEventListener('click', async () => {
     alert(`Save failed: ${err.message}`)
   }
 })
+
+// name → Image for the sample preview
+const tileImages = new Map()
+async function imageFor(name) {
+  if (!tileImages.has(name)) {
+    const img = new Image()
+    img.src = await window.editorAPI.readTile(name)
+    await new Promise(res => { img.onload = res; img.onerror = res })
+    tileImages.set(name, img)
+  }
+  return tileImages.get(name)
+}
+
+const sampleCanvas = document.getElementById('sample-canvas')
+async function refreshSample() {
+  const rs = state.rulesets[state.active]
+  if (rs) await Promise.all(Object.keys(rs.tiles).map(imageFor))
+  renderSample(sampleCanvas, rs, tileImages)
+}
+
+document.addEventListener('rules-edited', refreshSample)
+document.addEventListener('ruleset-changed', refreshSample)
+document.getElementById('reroll').addEventListener('click', refreshSample)
