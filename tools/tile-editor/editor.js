@@ -1,5 +1,6 @@
 import { PixelEditor } from './pixel-editor.js'
 import { dataURLToImageData, extractPalette } from './palette.js'
+import { buildLibrary } from './library.js'
 
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
@@ -104,3 +105,15 @@ async function initTiles() {
 
 const tilesReady = initTiles()
 tilesReady.catch(err => console.error('[tile-editor] palette load failed:', err))
+
+let library
+tilesReady.then(async names => {
+  library = await buildLibrary(names, {
+    onPick: (name) => {
+      const data = tileImageData.get(name)
+      if (data) pixelEditor.loadImageData(data)
+      // Force a conscious new name — originals are never overwritten.
+      document.getElementById('tile-name').value = ''
+    },
+  })
+})
