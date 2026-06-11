@@ -167,6 +167,7 @@ document.getElementById('save-tile').addEventListener('click', async () => {
     const dataURL = pixelEditor.toCanvas().toDataURL('image/png')
     await window.editorAPI.saveTile(name, dataURL)
     tileImageData.set(name, await decodePNG(dataURL))
+    tileImages.delete(name)
     if (library) library.add(name, dataURL)
 
     const tags = document.getElementById('tile-tags').value
