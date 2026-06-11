@@ -116,7 +116,7 @@ export function initRulesUI(state) {
       inp.min = '0.1'
       inp.step = '0.1'
       inp.value = def.weight ?? 1
-      inp.addEventListener('change', () => { def.weight = Number(inp.value) || 1; edited() })
+      inp.addEventListener('change', () => { def.weight = Math.max(0.1, Number(inp.value) || 1); edited() })
       row.appendChild(inp)
       wWrap.appendChild(row)
     }
@@ -126,7 +126,7 @@ export function initRulesUI(state) {
     del.textContent = '🗑 delete tag'
     del.style.marginTop = '10px'
     del.addEventListener('click', () => {
-      if (!confirm(`Delete tag ${selectedTag}? Tiles keep the tag string but it loses all rules.`)) return
+      if (!confirm(`Delete tag ${selectedTag}? Tiles having only this tag will drop out of decoration entirely.`)) return
       delete rs.tags[selectedTag]
       selectedTag = null
       render(); edited()

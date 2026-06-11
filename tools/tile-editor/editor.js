@@ -193,6 +193,10 @@ document.getElementById('save-tile').addEventListener('click', async () => {
 initRulesUI(state)
 
 saveRulesBtn.addEventListener('click', async () => {
-  await window.editorAPI.saveRulesets(state.rulesets)
-  alert('Rules saved to renderer/data/rulesets.json')
+  try {
+    await window.editorAPI.saveRulesets(state.rulesets)
+    alert('Rules saved to renderer/data/rulesets.json')
+  } catch (err) {
+    alert(`Save failed: ${err.message}`)
+  }
 })
