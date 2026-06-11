@@ -1,6 +1,8 @@
 import { PixelEditor } from './pixel-editor.js'
 import { dataURLToImageData, extractPalette } from './palette.js'
 import { buildLibrary } from './library.js'
+import { sanitizeTileName } from './lib.js'
+import { dataURLToImageData as decodePNG } from './palette.js'
 
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
@@ -116,4 +118,68 @@ tilesReady.then(async names => {
       document.getElementById('tile-name').value = ''
     },
   })
+})
+
+const state = { rulesets: {}, active: null }
+const rulesetSelect = document.getElementById('ruleset-select')
+
+function renderRulesetSelect() {
+  rulesetSelect.innerHTML = ''
+  for (const name of Object.keys(state.rulesets)) {
+    const opt = document.createElement('option')
+    opt.value = name
+    opt.textContent = name
+    opt.selected = name === state.active
+    rulesetSelect.appendChild(opt)
+  }
+}
+
+rulesetSelect.addEventListener('change', () => {
+  state.active = rulesetSelect.value
+  document.dispatchEvent(new Event('ruleset-changed'))
+})
+
+document.getElementById('new-ruleset').addEventListener('click', () => {
+  const name = (prompt('Ruleset name (e.g. catacombs):') ?? '').trim().toLowerCase()
+  if (!name) return
+  if (!state.rulesets[name]) state.rulesets[name] = { tiles: {}, tags: {} }
+  state.active = name
+  renderRulesetSelect()
+  document.dispatchEvent(new Event('ruleset-changed'))
+})
+
+async function initRulesets() {
+  state.rulesets = (await window.editorAPI.loadRulesets()) ?? {}
+  state.active = Object.keys(state.rulesets)[0] ?? null
+  renderRulesetSelect()
+  document.dispatchEvent(new Event('ruleset-changed'))
+}
+initRulesets()
+
+document.getElementById('save-tile').addEventListener('click', async () => {
+  const name = sanitizeTileName(document.getElementById('tile-name').value)
+  if (!name) { alert('Enter a tile name first.'); return }
+  if (await window.editorAPI.tileExists(name) &&
+      !confirm(`${name}.png already exists. Overwrite it?`)) return
+  const dataURL = pixelEditor.toCanvas().toDataURL('image/png')
+  await window.editorAPI.saveTile(name, dataURL)
+  tileImageData.set(name, await decodePNG(dataURL))
+  if (library) library.add(name, dataURL)
+
+  // Register the tile (with its tags) in the active ruleset.
+  const tags = document.getElementById('tile-tags').value
+    .split(',').map(s => s.trim()).filter(Boolean)
+  const rs = state.rulesets[state.active]
+  if (rs && tags.length) {
+    rs.tiles[name] = { tags, weight: rs.tiles[name]?.weight ?? 1 }
+    for (const tag of tags) {
+      if (!rs.tags[tag]) {
+        const role = tag.startsWith('wall') ? 'wall' : 'floor'
+        rs.tags[tag] = { role, allow: ['*'], forbid: [], directional: {} }
+      }
+    }
+    await window.editorAPI.saveRulesets(state.rulesets)
+    document.dispatchEvent(new Event('ruleset-changed'))
+  }
+  alert(`Saved ${name}.png${rs && tags.length ? ` and registered in '${state.active}'` : ''}`)
 })
