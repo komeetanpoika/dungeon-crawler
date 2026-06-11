@@ -1,3 +1,6 @@
+import { PixelEditor } from './pixel-editor.js'
+import { dataURLToImageData, extractPalette } from './palette.js'
+
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
 const tabDraw = document.getElementById('tab-draw')
@@ -17,8 +20,6 @@ function showTab(tab) {
 tabDraw.addEventListener('click', () => showTab('draw'))
 tabRules.addEventListener('click', () => showTab('rules'))
 showTab('draw')
-
-import { PixelEditor } from './pixel-editor.js'
 
 const preview1x = document.getElementById('preview-1x')
 const preview3x = document.getElementById('preview-3x')
@@ -69,8 +70,6 @@ document.getElementById('custom-color').addEventListener('input', e =>
 
 renderPreviews()
 
-import { dataURLToImageData, extractPalette } from './palette.js'
-
 // Cache of name → ImageData for every tile on disk; reused by the library
 // strip and load-as-base in later tasks.
 const tileImageData = new Map()
@@ -104,3 +103,4 @@ async function initTiles() {
 }
 
 const tilesReady = initTiles()
+tilesReady.catch(err => console.error('[tile-editor] palette load failed:', err))
