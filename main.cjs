@@ -2,6 +2,10 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
+// WSL2/WSLg: the hardware GPU process fails to initialize and can hang the
+// app before any window appears — always use software rendering.
+app.disableHardwareAcceleration()
+
 const SAVE_DIR = path.join(app.getPath('userData'), 'dungeon-crawler')
 const RUN_FILE = path.join(SAVE_DIR, 'run.json')
 const META_FILE = path.join(SAVE_DIR, 'meta.json')
