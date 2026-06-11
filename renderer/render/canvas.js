@@ -29,6 +29,11 @@ function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
     ctx.fillRect(px, py, S, S)
     return
   }
+  // Decoration-pass skin (only ever set on floor/wall cells)
+  if (tileObj?.skin && sprites[tileObj.skin]) {
+    ctx.drawImage(sprites[tileObj.skin], px, py, S, S)
+    return
+  }
   const s = (() => {
     switch (tileId) {
       case TILE.WALL:        return sprites.wall
@@ -484,8 +489,8 @@ export class Renderer {
     this.sprites = {}
   }
 
-  async loadSprites() {
-    this.sprites = await loadSprites()
+  async loadSprites(extraNames = []) {
+    this.sprites = await loadSprites(extraNames)
   }
 
   resize() {
