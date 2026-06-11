@@ -2,7 +2,6 @@ import { PixelEditor } from './pixel-editor.js'
 import { dataURLToImageData, extractPalette } from './palette.js'
 import { buildLibrary } from './library.js'
 import { sanitizeTileName } from './lib.js'
-import { dataURLToImageData as decodePNG } from './palette.js'
 import { initRulesUI } from './rules-ui.js'
 import { renderSample } from './sample-preview.js'
 import { textPrompt } from './text-prompt.js'
@@ -79,6 +78,9 @@ renderPreviews()
 // Cache of name → ImageData for every tile on disk; reused by the library
 // strip and load-as-base in later tasks.
 const tileImageData = new Map()
+
+// name → Image for the sample preview
+const tileImages = new Map()
 
 async function loadAllTiles() {
   const names = await window.editorAPI.listTiles()
@@ -167,7 +169,7 @@ document.getElementById('save-tile').addEventListener('click', async () => {
   try {
     const dataURL = pixelEditor.toCanvas().toDataURL('image/png')
     await window.editorAPI.saveTile(name, dataURL)
-    tileImageData.set(name, await decodePNG(dataURL))
+    tileImageData.set(name, await dataURLToImageData(dataURL))
     tileImages.delete(name)
     if (library) library.add(name, dataURL)
 
@@ -204,8 +206,6 @@ saveRulesBtn.addEventListener('click', async () => {
   }
 })
 
-// name → Image for the sample preview
-const tileImages = new Map()
 async function imageFor(name) {
   if (!tileImages.has(name)) {
     const img = new Image()
