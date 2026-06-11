@@ -120,6 +120,7 @@ export const DEPTH_THEMES = [
   {
     depths: [1, 2, 3],
     floorTile: 'floor',
+    ruleset: 'catacombs',
     bgColor:  '#12121e',
     tint:     null,
     fogAlpha: 0.65,
