@@ -1,0 +1,28 @@
+{
+  "catacombs": {
+    "tiles": {
+      "custom_moss_floor_1": {
+        "tags": [
+          "floor.moss"
+        ],
+        "weight": 1
+      },
+      "custom_moss_floor_2": {
+        "tags": [
+          "floor.moss"
+        ],
+        "weight": 1
+      }
+    },
+    "tags": {
+      "floor.moss": {
+        "role": "floor",
+        "allow": [
+          "*"
+        ],
+        "forbid": [],
+        "directional": {}
+      }
+    }
+  }
+}

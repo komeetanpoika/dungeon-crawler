@@ -62,10 +62,14 @@ export const SPRITES = {
   chest_2: 'tile_0091',
 }
 
-export async function loadSprites() {
+export async function loadSprites(extraNames = []) {
+  // Ruleset-referenced tiles are loaded under their own file name so
+  // cell.skin (a file name) resolves directly in the sprites map.
+  const entries = { ...SPRITES }
+  for (const name of extraNames) if (!(name in entries)) entries[name] = name
   const loaded = {}
   await Promise.all(
-    Object.entries(SPRITES).map(([key, name]) => new Promise(resolve => {
+    Object.entries(entries).map(([key, name]) => new Promise(resolve => {
       const img = new Image()
       img.onload = () => { loaded[key] = img; resolve() }
       img.onerror = () => { console.warn(`Missing sprite: ${name}`); resolve() }

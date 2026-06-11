@@ -5,6 +5,7 @@ import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab, deflects } from './systems/crab.js'
 import { makeDragonBoss, updateDragonBoss } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
+import { decorateMap, pruneMissingTiles } from './systems/decorate.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
@@ -67,6 +68,14 @@ let meta = null
 let renderer = null
 let lastTime = 0
 let rafId = null
+let rulesets = {}
+
+function rulesetTileNames(rs) {
+  const names = new Set()
+  for (const set of Object.values(rs))
+    for (const name of Object.keys(set.tiles ?? {})) names.add(name)
+  return [...names]
+}
 
 function canMoveTo(map, px, py, half = PLAYER_HALF) {
   const corners = [
@@ -147,6 +156,7 @@ function startNewRun() {
   player.attackFacing = 'south'
   player.inventory.push(...getStartingItems(meta))
   const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
+  decorateMap(map, rulesets[theme.ruleset])
   state = {
     level: 1,
     map,
@@ -519,6 +529,7 @@ function descendLevel() {
   const next = state.level + 1
   const { map, entitySpawns, playerSpawn } = generateLevel(next)
   const theme = DEPTH_THEMES.find(t => t.depths.includes(next)) ?? DEPTH_THEMES[0]
+  decorateMap(map, rulesets[theme.ruleset])
   state = {
     ...state,
     level: next,
@@ -556,7 +567,9 @@ async function init() {
   const canvas = document.getElementById('game-canvas')
   renderer = new Renderer(canvas)
   renderer.resize()
-  await renderer.loadSprites()
+  rulesets = (await window.saveAPI.loadRulesets()) ?? {}
+  await renderer.loadSprites(rulesetTileNames(rulesets))
+  pruneMissingTiles(rulesets, renderer.sprites)
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
   window.addEventListener('resize', () => renderer.resize())
