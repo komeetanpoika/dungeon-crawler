@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap } from '../renderer/systems/decorate.js'
+import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles } from '../renderer/systems/decorate.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Deterministic RNG for reproducible decoration tests
@@ -199,6 +199,28 @@ describe('decorateMap', () => {
     assert.equal(decorateMap(map, undefined), 0)
     assert.equal(map[0][0].skin, null)
   })
+
+describe('pruneMissingTiles', () => {
+  it('removes ruleset tiles whose sprite did not load and warns', () => {
+    const rulesets = {
+      cat: {
+        tiles: { good: { tags: ['floor.a'] }, ghost: { tags: ['floor.a'] } },
+        tags:  { 'floor.a': { role: 'floor', allow: ['*'] } },
+      },
+    }
+    pruneMissingTiles(rulesets, { good: {} })
+    assert.deepEqual(Object.keys(rulesets.cat.tiles), ['good'])
+  })
+  it('keeps everything when all sprites loaded', () => {
+    const rulesets = { cat: { tiles: { a: { tags: [] } }, tags: {} } }
+    pruneMissingTiles(rulesets, { a: {} })
+    assert.deepEqual(Object.keys(rulesets.cat.tiles), ['a'])
+  })
+  it('tolerates empty/missing structures', () => {
+    pruneMissingTiles({}, {})
+    pruneMissingTiles({ x: {} }, {})
+  })
+})
 
   it('directional constraint: top never appears without wall.base below it', () => {
     const rs = {

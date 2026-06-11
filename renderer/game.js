@@ -5,7 +5,7 @@ import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab, deflects } from './systems/crab.js'
 import { makeDragonBoss, updateDragonBoss } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
-import { decorateMap } from './systems/decorate.js'
+import { decorateMap, pruneMissingTiles } from './systems/decorate.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
@@ -569,6 +569,7 @@ async function init() {
   renderer.resize()
   rulesets = (await window.saveAPI.loadRulesets()) ?? {}
   await renderer.loadSprites(rulesetTileNames(rulesets))
+  pruneMissingTiles(rulesets, renderer.sprites)
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
   window.addEventListener('resize', () => renderer.resize())

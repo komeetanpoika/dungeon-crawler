@@ -55,6 +55,19 @@ export function pickWeighted(ruleset, names, rng) {
   return names[names.length - 1]
 }
 
+// Drop ruleset tiles whose sprite failed to load so decorateMap never
+// assigns a skin that cannot be drawn. loadedSprites is keyed by file name.
+export function pruneMissingTiles(rulesets, loadedSprites) {
+  for (const [setName, set] of Object.entries(rulesets)) {
+    for (const name of Object.keys(set.tiles ?? {})) {
+      if (!(name in loadedSprites)) {
+        console.warn(`decorate: dropping '${name}' from ruleset '${setName}' — sprite missing`)
+        delete set.tiles[name]
+      }
+    }
+  }
+}
+
 // Assigns cell.skin for every floor/wall cell, scanning top-left to
 // bottom-right. Only the already-decided N and W neighbors constrain a cell;
 // pairAllowed's mutual check guarantees no forbidden pairing survives.
