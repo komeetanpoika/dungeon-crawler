@@ -5,6 +5,7 @@ const fs = require('fs')
 const SAVE_DIR = path.join(app.getPath('userData'), 'dungeon-crawler')
 const RUN_FILE = path.join(SAVE_DIR, 'run.json')
 const META_FILE = path.join(SAVE_DIR, 'meta.json')
+const RULESETS_FILE = path.join(__dirname, 'renderer', 'data', 'rulesets.json')
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -31,3 +32,8 @@ ipcMain.handle('load-meta', () => {
   try { return JSON.parse(fs.readFileSync(META_FILE, 'utf8')) } catch { return null }
 })
 ipcMain.handle('delete-run', () => { try { fs.unlinkSync(RUN_FILE) } catch {} })
+ipcMain.handle('load-rulesets', () => {
+  try { return JSON.parse(fs.readFileSync(RULESETS_FILE, 'utf8')) } catch { return {} }
+})
+ipcMain.handle('save-rulesets', (_e, data) =>
+  fs.writeFileSync(RULESETS_FILE, JSON.stringify(data, null, 2)))
