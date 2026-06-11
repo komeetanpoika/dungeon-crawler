@@ -31,6 +31,8 @@ describe('roleOf', () => {
     assert.equal(roleOf(TILE.DOOR), null)
     assert.equal(roleOf(TILE.STAIR), null)
     assert.equal(roleOf(TILE.TREASURE), null)
+    assert.equal(roleOf(TILE.STAIRS_DOWN), null)
+    assert.equal(roleOf(TILE.STAIRS_UP), null)
   })
 })
 

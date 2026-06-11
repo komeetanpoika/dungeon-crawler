@@ -11,7 +11,7 @@ export function roleOf(tileId) {
 }
 
 export function tagsOf(ruleset, tileName) {
-  return ruleset.tiles[tileName]?.tags ?? []
+  return ruleset?.tiles?.[tileName]?.tags ?? []
 }
 
 // One-directional check: may a tile with `fromTags` sit with a `toTags` tile
