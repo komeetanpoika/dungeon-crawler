@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tile Editor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #16161e; color: #ccc; font: 13px/1.4 monospace; height: 100vh;
+         display: flex; flex-direction: column; padding: 10px; gap: 8px; }
+  header { display: flex; gap: 8px; align-items: center; background: #0d0d14;
+           padding: 6px 10px; border-radius: 4px; }
+  button, select, input { font: inherit; color: #ccc; background: #1a1a24;
+           border: 1px solid #333; border-radius: 3px; padding: 3px 10px; cursor: pointer; }
+  button.active { background: #3a3a55; color: #fff; }
+  button.save { background: #226633; color: #fff; margin-left: auto; }
+  button.on { background: #254438; color: #7fd; }
+  main { flex: 1; display: flex; gap: 10px; min-height: 0; }
+  .panel { background: #0d0d14; border-radius: 4px; padding: 8px; }
+  .label { color: #888; font-size: 11px; text-transform: uppercase; margin: 6px 0 3px; }
+  #toolbar { width: 96px; display: flex; flex-direction: column; gap: 6px; }
+  #toolbar button { width: 100%; }
+  #stage { flex: 1; display: flex; align-items: center; justify-content: center; }
+  #pixel-canvas { image-rendering: pixelated; border: 1px solid #444;
+                  background:
+                    repeating-conic-gradient(#1c1c26 0 25%, #14141c 0 50%) 0 0 / 16px 16px; }
+  #sidebar { width: 200px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+  #sidebar canvas { image-rendering: pixelated; border: 1px solid #444; display: block; }
+  #palette { display: grid; grid-template-columns: repeat(8, 20px); gap: 2px; }
+  #palette .swatch { width: 20px; height: 20px; border: 1px solid #333; cursor: pointer; }
+  #palette .swatch.active { border: 1px solid #fff; }
+  #library-bar { height: 96px; display: flex; flex-direction: column; gap: 4px; }
+  #library { display: flex; gap: 4px; overflow-x: auto; flex: 1; align-items: center; }
+  #library img { width: 48px; height: 48px; image-rendering: pixelated;
+                 border: 1px solid #333; cursor: pointer; flex: 0 0 auto; }
+  #library img:hover { border-color: #7fd; }
+  #rules-view { flex: 1; display: none; gap: 10px; }
+  #tag-list { width: 200px; overflow-y: auto; }
+  #tag-list .tag-row { padding: 4px 6px; border-radius: 3px; cursor: pointer; }
+  #tag-list .tag-row.active { background: #3a3a55; color: #fff; }
+  #rule-panel { flex: 1; overflow-y: auto; }
+  #sample-panel { width: 260px; }
+  .chip { display: inline-block; background: #254438; padding: 1px 7px; border-radius: 3px;
+          margin: 2px; cursor: pointer; }
+  .chip.forbid { background: #552222; }
+  .chip:hover { text-decoration: line-through; }
+  .add-chip { color: #666; cursor: pointer; margin: 2px; display: inline-block; }
+  table td { padding: 3px 6px; vertical-align: top; }
+  input.small { width: 60px; }
+  input.dir { width: 130px; }
+</style>
+</head>
+<body>
+  <header>
+    <button id="tab-draw" class="active">▣ Draw</button>
+    <button id="tab-rules">▦ Rules</button>
+    <span class="label" style="margin: 0 0 0 12px">ruleset</span>
+    <select id="ruleset-select"></select>
+    <button id="new-ruleset">+ new</button>
+    <button id="save-tile" class="save">💾 Save tile</button>
+    <button id="save-rules" class="save" style="display:none">💾 Save rules</button>
+  </header>
+
+  <main id="draw-view">
+    <div id="toolbar" class="panel">
+      <button data-tool="pencil" class="active">✏ pencil</button>
+      <button data-tool="eraser">▭ eraser</button>
+      <button data-tool="fill">▨ fill</button>
+      <button data-tool="picker">⊙ picker</button>
+      <hr style="border-color:#333;width:100%">
+      <button id="undo">↶ undo</button>
+      <button id="redo">↷ redo</button>
+      <hr style="border-color:#333;width:100%">
+      <button id="wrap-toggle" class="on">⟳ wrap ON</button>
+    </div>
+    <div id="stage" class="panel">
+      <canvas id="pixel-canvas" width="512" height="512"></canvas>
+    </div>
+    <div id="sidebar" class="panel">
+      <div class="label">Preview 1:1</div>
+      <canvas id="preview-1x" width="16" height="16"></canvas>
+      <div class="label">Tiled 3×3 (seamless check)</div>
+      <canvas id="preview-3x" width="96" height="96"></canvas>
+      <div class="label">Palette</div>
+      <div id="palette"></div>
+      <div class="label">Custom color</div>
+      <input type="color" id="custom-color" value="#5a5a72">
+      <div class="label">Tile name (saved as custom_&lt;name&gt;)</div>
+      <input id="tile-name" placeholder="moss_floor_1" style="width:100%">
+      <div class="label">Tags (comma-separated)</div>
+      <input id="tile-tags" placeholder="floor.moss" style="width:100%">
+    </div>
+  </main>
+
+  <main id="rules-view">
+    <div id="tag-list" class="panel">
+      <div class="label">Tags in ruleset</div>
+      <div id="tag-rows"></div>
+      <div class="add-chip" id="add-tag">+ new tag</div>
+    </div>
+    <div id="rule-panel" class="panel"></div>
+    <div id="sample-panel" class="panel">
+      <div class="label">Live sample</div>
+      <canvas id="sample-canvas" width="240" height="160"></canvas>
+      <button id="reroll" style="margin-top:6px">⟳ re-roll</button>
+    </div>
+  </main>
+
+  <div id="library-bar" class="panel">
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="label" style="margin:0">Library (click = load as base)</span>
+      <input id="library-filter" placeholder="filter…" style="width:140px">
+    </div>
+    <div id="library"></div>
+  </div>
+
+  <script type="module" src="./editor.js"></script>
+</body>
+</html>

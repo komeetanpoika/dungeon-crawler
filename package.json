@@ -5,6 +5,7 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
+    "editor": "electron . --editor",
     "test": "node --test test/"
   },
   "devDependencies": {
