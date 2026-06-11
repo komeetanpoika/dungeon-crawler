@@ -68,3 +68,39 @@ document.getElementById('custom-color').addEventListener('input', e =>
   setActiveColor(e.target.value))
 
 renderPreviews()
+
+import { dataURLToImageData, extractPalette } from './palette.js'
+
+// Cache of name → ImageData for every tile on disk; reused by the library
+// strip and load-as-base in later tasks.
+const tileImageData = new Map()
+
+async function loadAllTiles() {
+  const names = await window.editorAPI.listTiles()
+  await Promise.all(names.map(async name => {
+    const dataURL = await window.editorAPI.readTile(name)
+    tileImageData.set(name, await dataURLToImageData(dataURL))
+  }))
+  return names
+}
+
+function renderPalette(colors) {
+  const el = document.getElementById('palette')
+  el.innerHTML = ''
+  for (const color of colors) {
+    const sw = document.createElement('div')
+    sw.className = 'swatch'
+    sw.dataset.color = color
+    sw.style.background = color
+    sw.addEventListener('click', () => setActiveColor(color))
+    el.appendChild(sw)
+  }
+}
+
+async function initTiles() {
+  const names = await loadAllTiles()
+  renderPalette(extractPalette([...tileImageData.values()]))
+  return names
+}
+
+const tilesReady = initTiles()
