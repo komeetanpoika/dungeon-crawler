@@ -38,3 +38,55 @@ export function pairAllowed(ruleset, aName, bName, dirAtoB) {
   return allowedOneWay(ruleset, aTags, bTags, dirAtoB)
       && allowedOneWay(ruleset, bTags, aTags, OPPOSITE[dirAtoB])
 }
+
+export function candidatesForRole(ruleset, role) {
+  return Object.entries(ruleset.tiles)
+    .filter(([, def]) => (def.tags ?? []).some(t => ruleset.tags[t]?.role === role))
+    .map(([name]) => name)
+}
+
+export function pickWeighted(ruleset, names, rng) {
+  const total = names.reduce((s, n) => s + (ruleset.tiles[n].weight ?? 1), 0)
+  let r = rng() * total
+  for (const n of names) {
+    r -= ruleset.tiles[n].weight ?? 1
+    if (r <= 0) return n
+  }
+  return names[names.length - 1]
+}
+
+// Assigns cell.skin for every floor/wall cell, scanning top-left to
+// bottom-right. Only the already-decided N and W neighbors constrain a cell;
+// pairAllowed's mutual check guarantees no forbidden pairing survives.
+// Returns the number of dead-end fallbacks (cells a covered role failed on).
+export function decorateMap(map, ruleset, rng = Math.random) {
+  if (!ruleset) return 0
+  let fallbacks = 0
+  const byRole = {
+    floor: candidatesForRole(ruleset, 'floor'),
+    wall:  candidatesForRole(ruleset, 'wall'),
+  }
+  for (let row = 0; row < map.length; row++) {
+    for (let col = 0; col < map[row].length; col++) {
+      const cell = map[row][col]
+      const role = roleOf(cell.tile)
+      if (!role) continue
+      const neighbors = [
+        { dir: 'n', skin: map[row - 1]?.[col]?.skin },
+        { dir: 'w', skin: map[row]?.[col - 1]?.skin },
+      ].filter(nb => nb.skin)
+      const survivors = byRole[role].filter(name =>
+        neighbors.every(nb => pairAllowed(ruleset, name, nb.skin, nb.dir)))
+      if (survivors.length === 0) {
+        cell.skin = null
+        if (byRole[role].length > 0) {
+          fallbacks++
+          console.warn(`decorate: no valid tile at (${col},${row}) — using theme default`)
+        }
+        continue
+      }
+      cell.skin = pickWeighted(ruleset, survivors, rng)
+    }
+  }
+  return fallbacks
+}
