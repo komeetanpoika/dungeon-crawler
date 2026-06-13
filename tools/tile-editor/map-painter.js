@@ -5,6 +5,24 @@
 //   imageFor   - async (name) => HTMLImageElement (cached)
 //   tilesReady - Promise<string[]> of all library tile names
 
+import { deriveRules } from './derive-rules.js'
+import { renderSample } from './sample-preview.js'
+
+// Merge a derived fragment into a ruleset: overwrite tile weights/tags and each
+// painted tag's role + adjacency, but preserve any hand-authored allow/forbid/
+// directional on tags that already exist. Unpainted tags are left untouched.
+function mergeFragment(ruleset, frag) {
+  ruleset.tiles = ruleset.tiles ?? {}
+  ruleset.tags = ruleset.tags ?? {}
+  for (const [name, def] of Object.entries(frag.tiles)) ruleset.tiles[name] = def
+  for (const [tag, def] of Object.entries(frag.tags)) {
+    const existing = ruleset.tags[tag]
+    ruleset.tags[tag] = existing
+      ? { ...existing, role: def.role, adjacency: def.adjacency }
+      : def
+  }
+}
+
 const CELL = 26  // px per cell on the paint canvas
 
 export function initMapPainter({ state, imageFor, tilesReady }) {
@@ -49,6 +67,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     active = name
     markActive(name)
     if (name) ensureImage(name)
+    renderTagging()
   }
 
   async function buildPalette(names) {
@@ -89,6 +108,96 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       Array.from({ length: w }, (_, x) => grid.cells[y]?.[x] ?? null))
     sizeCanvas(); render()
   })
+
+  const taggingEl = document.getElementById('paint-tagging')
+  const reportEl = document.getElementById('derive-report')
+  const previewCanvas = document.getElementById('paint-preview')
+
+  // Ensure there's an active ruleset to write into.
+  function ensureRuleset() {
+    if (!state.active) {
+      state.active = 'derived'
+      document.dispatchEvent(new Event('ruleset-changed'))
+    }
+    state.rulesets[state.active] = state.rulesets[state.active] ?? { tiles: {}, tags: {} }
+    return state.rulesets[state.active]
+  }
+
+  // Inline role+tag assignment for the active brush tile.
+  function renderTagging() {
+    taggingEl.innerHTML = ''
+    if (!active) { taggingEl.textContent = 'Pick a tile to tag…'; return }
+    const rs = state.rulesets[state.active]
+    const curTag = rs?.tiles?.[active]?.tags?.[0] ?? ''
+    const lbl = document.createElement('div')
+    lbl.className = 'label'
+    lbl.textContent = `Tag ${active}` + (curTag ? ` (now: ${curTag})` : ' (untagged)')
+    const roleSel = document.createElement('select')
+    for (const r of ['floor', 'wall']) {
+      const o = document.createElement('option'); o.value = o.textContent = r; roleSel.appendChild(o)
+    }
+    if (curTag && rs?.tags?.[curTag]?.role) roleSel.value = rs.tags[curTag].role
+    const tagInput = document.createElement('input')
+    tagInput.placeholder = 'floor.moss'; tagInput.value = curTag; tagInput.style.width = '100%'
+    const apply = document.createElement('button')
+    apply.textContent = 'apply tag'
+    apply.addEventListener('click', () => {
+      const tag = tagInput.value.trim()
+      if (!tag) return
+      const r = ensureRuleset()
+      r.tiles[active] = { tags: [tag], weight: r.tiles[active]?.weight ?? 1 }
+      if (!r.tags[tag]) {
+        r.tags[tag] = { role: roleSel.value, allow: ['*'], forbid: [], directional: {}, adjacency: { n: {}, e: {}, s: {}, w: {} } }
+      } else {
+        r.tags[tag].role = roleSel.value
+      }
+      renderTagging()
+    })
+    taggingEl.append(lbl, roleSel, tagInput, apply)
+  }
+
+  // Build tileMeta for derivation from the active ruleset's tagged tiles.
+  function tileMetaFromRuleset(rs) {
+    const meta = new Map()
+    for (const [name, def] of Object.entries(rs.tiles ?? {})) {
+      const tag0 = def.tags?.[0]
+      const role = tag0 && rs.tags?.[tag0]?.role
+      if (def.tags?.length && role) meta.set(name, { role, tags: def.tags })
+    }
+    return meta
+  }
+
+  async function refreshPreview() {
+    const rs = state.rulesets[state.active]
+    if (!rs) return
+    await Promise.all(Object.keys(rs.tiles ?? {}).map(ensureImage))
+    renderSample(previewCanvas, rs, images)
+  }
+
+  document.getElementById('derive-btn').addEventListener('click', async () => {
+    const rs = state.rulesets[state.active]
+    if (!rs) { reportEl.textContent = 'Select or create a ruleset first (top bar).'; return }
+    const frag = deriveRules(grid.cells, tileMetaFromRuleset(rs))
+    if (Object.keys(frag.tiles).length === 0) {
+      reportEl.textContent = 'Nothing derived — paint some tagged tiles first.' +
+        (frag.skipped ? ` (${frag.skipped} untagged cells skipped)` : '')
+      return
+    }
+    mergeFragment(rs, frag)
+    try {
+      await window.editorAPI.saveRulesets(state.rulesets)
+      document.dispatchEvent(new Event('ruleset-changed'))
+      const adj = Object.values(frag.tags).reduce((s, t) =>
+        s + ['n', 'e', 's', 'w'].reduce((a, d) => a + Object.keys(t.adjacency[d]).length, 0), 0)
+      reportEl.textContent =
+        `Derived ${Object.keys(frag.tiles).length} tiles, ${Object.keys(frag.tags).length} tags, ${adj} adjacencies` +
+        (frag.skipped ? ` — ${frag.skipped} untagged cells skipped` : '')
+      refreshPreview()
+    } catch (err) {
+      reportEl.textContent = `Save failed: ${err.message}`
+    }
+  })
+  document.getElementById('paint-reroll').addEventListener('click', refreshPreview)
 
   tilesReady.then(buildPalette).catch(err => console.error('[map-painter] palette load failed:', err))
   sizeCanvas()
