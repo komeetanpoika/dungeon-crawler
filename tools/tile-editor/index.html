@@ -47,13 +47,11 @@
   table td { padding: 3px 6px; vertical-align: top; }
   input.small { width: 60px; }
   input.dir { width: 130px; }
-  #build-palette .legend { display:flex; align-items:center; gap:6px; padding:4px 6px;
-                           border:1px solid #333; border-radius:3px; cursor:pointer; margin-bottom:3px; }
-  #build-palette .legend.active { border-color:#fff; background:#2a2a3a; }
-  #build-palette .sw { width:16px; height:16px; border:1px solid #555; flex:0 0 auto; }
-  #template-list .trow { padding:3px 6px; border-radius:3px; cursor:pointer; }
-  #template-list .trow:hover { background:#2a2a3a; }
-  #template-list .trow.builtin { color:#888; }
+  #paint-palette img { width:40px; height:40px; image-rendering:pixelated; border:1px solid #333;
+                       cursor:pointer; margin:2px; }
+  #paint-palette img.active { border-color:#7fd; }
+  #paint-palette .erase { display:block; width:100%; margin-bottom:4px; }
+  #paint-canvas { image-rendering:pixelated; border:1px solid #444; }
 </style>
 </head>
 <body>
@@ -66,7 +64,6 @@
     <button id="new-ruleset">+ new</button>
     <button id="save-tile" class="save">💾 Save tile</button>
     <button id="save-rules" class="save" style="display:none">💾 Save rules</button>
-    <button id="save-template" class="save" style="display:none">💾 Save template</button>
   </header>
 
   <main id="draw-view">
@@ -115,22 +112,24 @@
   </main>
 
   <main id="build-view" style="display:none">
-    <div id="build-palette" class="panel" style="width:150px; overflow-y:auto"></div>
-    <div id="build-stage" class="panel" style="flex:1; display:flex; align-items:center; justify-content:center; overflow:auto">
-      <canvas id="template-canvas"></canvas>
+    <div id="paint-palette" class="panel" style="width:170px; overflow-y:auto"></div>
+    <div id="paint-stage" class="panel" style="flex:1; display:flex; align-items:center; justify-content:center; overflow:auto">
+      <canvas id="paint-canvas"></canvas>
     </div>
-    <div id="build-sidebar" class="panel" style="width:220px; display:flex; flex-direction:column; gap:4px; overflow-y:auto">
-      <div class="label">Template name (UPPER_SNAKE)</div>
-      <input id="template-name" placeholder="MOSS_CRYPT" style="width:100%">
+    <div id="paint-sidebar" class="panel" style="width:240px; display:flex; flex-direction:column; gap:6px; overflow-y:auto">
       <div class="label">Size (width × height)</div>
       <div style="display:flex; gap:4px; align-items:center">
-        <input id="template-w" class="small" type="number" min="1" max="60" value="9">
+        <input id="paint-w" class="small" type="number" min="2" max="60" value="16">
         <span>×</span>
-        <input id="template-h" class="small" type="number" min="1" max="40" value="7">
-        <button id="template-resize">resize</button>
+        <input id="paint-h" class="small" type="number" min="2" max="40" value="12">
+        <button id="paint-resize">resize</button>
       </div>
-      <div class="label">Templates</div>
-      <div id="template-list" style="display:flex; flex-direction:column; gap:2px"></div>
+      <div id="paint-tagging" class="label">Pick a tile to tag…</div>
+      <button id="derive-btn" class="save" style="background:#2a4a66">⚙ Derive rules → active ruleset</button>
+      <div id="derive-report" style="font-size:11px; color:#9a9"></div>
+      <div class="label">Preview outcome</div>
+      <canvas id="paint-preview" width="240" height="160"></canvas>
+      <button id="paint-reroll">⟳ re-roll</button>
     </div>
   </main>
 

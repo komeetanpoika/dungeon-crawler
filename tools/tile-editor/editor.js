@@ -5,7 +5,7 @@ import { sanitizeTileName } from './lib.js'
 import { initRulesUI } from './rules-ui.js'
 import { renderSample } from './sample-preview.js'
 import { textPrompt } from './text-prompt.js'
-import { initTemplateBuilder } from './template-builder.js'
+import { initMapPainter } from './map-painter.js'
 
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
@@ -15,7 +15,6 @@ const saveTileBtn = document.getElementById('save-tile')
 const saveRulesBtn = document.getElementById('save-rules')
 const buildView = document.getElementById('build-view')
 const tabBuild = document.getElementById('tab-build')
-const saveTemplateBtn = document.getElementById('save-template')
 
 function showTab(tab) {
   drawView.style.display  = tab === 'draw'  ? 'flex' : 'none'
@@ -26,7 +25,6 @@ function showTab(tab) {
   tabBuild.classList.toggle('active', tab === 'build')
   saveTileBtn.style.display     = tab === 'draw'  ? '' : 'none'
   saveRulesBtn.style.display    = tab === 'rules' ? '' : 'none'
-  saveTemplateBtn.style.display = tab === 'build' ? '' : 'none'
   // The shared bottom library strip belongs to the Draw tab only.
   document.getElementById('library-bar').style.display = tab === 'build' ? 'none' : ''
 }
@@ -236,5 +234,4 @@ document.addEventListener('rules-edited', refreshSample)
 document.addEventListener('ruleset-changed', refreshSample)
 document.getElementById('reroll').addEventListener('click', refreshSample)
 
-initTemplateBuilder()
-saveTemplateBtn.addEventListener('click', () => initTemplateBuilder.save?.())
+initMapPainter({ state, imageFor, tilesReady })
