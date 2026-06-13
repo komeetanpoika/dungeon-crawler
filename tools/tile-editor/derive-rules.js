@@ -1,7 +1,12 @@
-// Pure: a painted grid + tile metadata → a ruleset fragment. No DOM.
-// grid[row][col] is a tile name or null (empty).
-// tileMeta: Map<tileName, { role: 'floor'|'wall', tags: string[] }>.
-// Returns { tiles, tags, skipped } where skipped counts placed-but-untagged cells.
+// Pure: base + overlay painted grids + tile metadata → a ruleset fragment. No DOM.
+// Each grid is grid[row][col] = tile name or null (empty); both share dimensions.
+// tileMeta: Map<tileName, { role: 'floor'|'wall'|'overlay', tags: string[] }>.
+// Returns { tiles, tags, skipped }:
+//   tiles[name] = { tags, weight }
+//   tags[tag]   = { role, allow:['*'], forbid:[], directional:{}, adjacency:{n,e,s,w} }
+//                 base (floor/wall) tags additionally gain `overlays` (base-conditional
+//                 distribution over overlay tags + '' = no overlay) during conditioning.
+//   skipped     = count of placed-but-untagged cells across both layers.
 
 const DIRS = [
   { dx: 0, dy: -1, d: 'n' },
@@ -16,12 +21,9 @@ function metaOf(tileMeta, name) {
   return m && Array.isArray(m.tags) && m.tags.length ? m : null
 }
 
-export function deriveRules(grid, tileMeta) {
-  const tiles = {}
-  const tags = {}
+// Weights + tag registration + same-layer directional adjacency. Mutates tiles/tags.
+function accumulateLayer(grid, tileMeta, tiles, tags) {
   let skipped = 0
-
-  // Per-tile weights + tag registration.
   for (const row of grid) {
     for (const name of row) {
       if (name == null) continue
@@ -36,8 +38,6 @@ export function deriveRules(grid, tileMeta) {
       }
     }
   }
-
-  // Per-tag directional adjacency counts.
   for (let y = 0; y < grid.length; y++) {
     for (let x = 0; x < grid[y].length; x++) {
       const meta = metaOf(tileMeta, grid[y][x])
@@ -50,6 +50,30 @@ export function deriveRules(grid, tileMeta) {
             tags[t].adjacency[d][u] = (tags[t].adjacency[d][u] ?? 0) + 1
           }
         }
+      }
+    }
+  }
+  return skipped
+}
+
+export function deriveRules(baseGrid, overlayGrid, tileMeta) {
+  const tiles = {}
+  const tags = {}
+  let skipped = 0
+
+  skipped += accumulateLayer(baseGrid, tileMeta, tiles, tags)
+  skipped += accumulateLayer(overlayGrid, tileMeta, tiles, tags)
+
+  // Base-conditional overlay distribution (incl. '' = no overlay) on base tags.
+  for (let y = 0; y < baseGrid.length; y++) {
+    for (let x = 0; x < baseGrid[y].length; x++) {
+      const baseMeta = metaOf(tileMeta, baseGrid[y][x])
+      if (!baseMeta) continue
+      const ovMeta = metaOf(tileMeta, overlayGrid[y]?.[x])
+      for (const B of baseMeta.tags) {
+        const dist = (tags[B].overlays ??= {})
+        if (ovMeta) for (const O of ovMeta.tags) dist[O] = (dist[O] ?? 0) + 1
+        else dist[''] = (dist[''] ?? 0) + 1
       }
     }
   }
