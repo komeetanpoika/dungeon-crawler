@@ -61,8 +61,9 @@ export const ADJACENCY_ALPHA = 0.5
 // Multiplicative adjacency score for placing `tileName` given decided neighbors.
 // neighbors: [{ dir, skin }] where skin is the neighbor's tile name. Each tag of
 // `tileName` contributes its observed count toward the neighbor's tags in `dir`;
-// a tag with no adjacency data contributes a flat ALPHA, so this returns 1
-// (neutral) when no adjacency info exists and reduces selection to weight-only.
+// a tag with no adjacency data contributes a flat ALPHA, so the score is
+// constant across candidates and cancels — reducing selection to weight-only —
+// when no adjacency info exists. Returns 1 (neutral) when there are no neighbors.
 export function adjacencyScore(ruleset, tileName, neighbors) {
   const tags = tagsOf(ruleset, tileName)
   let score = 1

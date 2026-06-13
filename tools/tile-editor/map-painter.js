@@ -1,5 +1,5 @@
-// Build tab: paint a room with real tile sprites, then derive adjacency rules
-// from it (derive/tagging/preview added in a later step). Deps come from
+// Build tab: paint a room with real tile sprites, tag them, then derive
+// adjacency rules from the painting into the active ruleset. Deps come from
 // editor.js: { state, imageFor, tilesReady }.
 //   state      - { rulesets, active } shared ruleset state
 //   imageFor   - async (name) => HTMLImageElement (cached)
@@ -54,10 +54,13 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       ctx.strokeRect(x * CELL + 0.5, y * CELL + 0.5, CELL, CELL)
     }))
   }
+  function gridUses(name) {
+    return grid.cells.some(row => row.includes(name))
+  }
   async function ensureImage(name) {
     if (!name || images.has(name)) return
     images.set(name, await imageFor(name))
-    render()
+    if (gridUses(name)) render()   // skip the paint redraw for preview-only loads
   }
 
   function markActive(name) {
