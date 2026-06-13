@@ -99,8 +99,10 @@ export function initTemplateBuilder() {
 
   function loadIntoEditor(tmpl, name) {
     state.grid = gridFromTemplate(tmpl)
-    wInput.value = tmpl.width
-    hInput.value = tmpl.height
+    // Derive size inputs from the actual grid, so a hand-edited templates.json
+    // whose width/height disagree with its rows still shows correct numbers.
+    wInput.value = state.grid[0].length
+    hInput.value = state.grid.length
     nameInput.value = name && !BUILTIN_TEMPLATES[name] ? name : ''  // force a new name for built-ins
     sizeCanvas(); render()
   }
