@@ -135,6 +135,8 @@ function decorateOverlays(map, ruleset, rng) {
         if (ruleset.tags[bt]?.overlays) { dist = ruleset.tags[bt].overlays; break }
       }
       if (!dist) continue
+      // `skin` is adjacencyScore's generic "neighbor tile name" field; here it
+      // carries the decided N/W overlay tile, not a base skin.
       const neighbors = [
         { dir: 'n', skin: map[row - 1]?.[col]?.overlay },
         { dir: 'w', skin: map[row]?.[col - 1]?.overlay },

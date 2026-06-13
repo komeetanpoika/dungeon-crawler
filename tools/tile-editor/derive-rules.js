@@ -69,10 +69,14 @@ export function deriveRules(baseGrid, overlayGrid, tileMeta) {
     for (let x = 0; x < baseGrid[y].length; x++) {
       const baseMeta = metaOf(tileMeta, baseGrid[y][x])
       if (!baseMeta) continue
+      // Only true overlay-role tiles count toward the distribution; anything
+      // else on the overlay grid (a mis-painted base tile) reads as "no overlay",
+      // matching what the decoration pass can actually place.
       const ovMeta = metaOf(tileMeta, overlayGrid[y]?.[x])
+      const ov = ovMeta?.role === 'overlay' ? ovMeta : null
       for (const B of baseMeta.tags) {
         const dist = (tags[B].overlays ??= {})
-        if (ovMeta) for (const O of ovMeta.tags) dist[O] = (dist[O] ?? 0) + 1
+        if (ov) for (const O of ov.tags) dist[O] = (dist[O] ?? 0) + 1
         else dist[''] = (dist[''] ?? 0) + 1
       }
     }
