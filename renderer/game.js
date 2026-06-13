@@ -5,7 +5,7 @@ import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab, deflects } from './systems/crab.js'
 import { makeDragonBoss, updateDragonBoss } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
-import { decorateMap, pruneMissingTiles } from './systems/decorate.js'
+import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/decorate.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
@@ -143,7 +143,9 @@ function buildEntities(spawns, map) {
 
 function startNewRun() {
   if (rafId) cancelAnimationFrame(rafId)
-  const { map, entitySpawns, playerSpawn } = generateLevel(1)
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
+  const { map, entitySpawns, playerSpawn } =
+    generateLevel(1, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]) })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -155,7 +157,6 @@ function startNewRun() {
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
   player.inventory.push(...getStartingItems(meta))
-  const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
   decorateMap(map, rulesets[theme.ruleset])
   state = {
     level: 1,
@@ -527,8 +528,9 @@ function render() {
 function descendLevel() {
   if (state.level >= FINAL_DEPTH) return  // already on final level
   const next = state.level + 1
-  const { map, entitySpawns, playerSpawn } = generateLevel(next)
   const theme = DEPTH_THEMES.find(t => t.depths.includes(next)) ?? DEPTH_THEMES[0]
+  const { map, entitySpawns, playerSpawn } =
+    generateLevel(next, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]) })
   decorateMap(map, rulesets[theme.ruleset])
   state = {
     ...state,

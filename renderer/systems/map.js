@@ -366,7 +366,7 @@ function healConnectivity(map) {
   }
 }
 
-export function generateLevel(depth, width = MAP_W, height = MAP_H) {
+export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false } = {}) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -524,8 +524,8 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H) {
       entitySpawns.push({ kind: 'crab', ...farTiles[idx] })
     }
 
-    // Scatter props based on depth theme
-    const roomProps = theme?.props?.room ?? []
+    // Scatter props based on depth theme (skipped when a ruleset places overlays)
+    const roomProps = skipProps ? [] : (theme?.props?.room ?? [])
     if (roomProps.length > 0) {
       for (const room of rooms) {
         const count = Math.floor(Math.random() * 3)  // 0–2 props per room

@@ -363,6 +363,20 @@ describe('placeTemplate', () => {
   })
 })
 
+describe('generateLevel skipProps', () => {
+  it('omits random prop spawns when skipProps is set', () => {
+    for (let i = 0; i < 10; i++) {
+      const { entitySpawns } = generateLevel(1, 80, 50, { skipProps: true })
+      assert.equal(entitySpawns.filter(s => s.kind === 'prop').length, 0)
+    }
+  })
+
+  it('still produces a connected map with skipProps', () => {
+    const { map } = generateLevel(1, 80, 50, { skipProps: true })
+    assert.equal(isFullyConnected(map), true)
+  })
+})
+
 import { FINAL_DEPTH } from '../renderer/data/levels.js'
 import { TILE as MTILE } from '../renderer/systems/entities.js'
 
