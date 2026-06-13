@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles, adjacencyScore, pickByAdjacency, ADJACENCY_ALPHA } from '../renderer/systems/decorate.js'
+import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles, adjacencyScore, pickByAdjacency, ADJACENCY_ALPHA, rulesetHasOverlays } from '../renderer/systems/decorate.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Deterministic RNG for reproducible decoration tests
@@ -290,6 +290,56 @@ describe('adjacency-aware selection', () => {
     decorateMap(map, rs, mulberry32(1))
     assert.equal(map[0][0].skin, 'wallA')
     assert.equal(map[0][1].skin, 'moss')   // 999.5 vs 0.5 → moss for any seed
+  })
+})
+
+describe('rulesetHasOverlays', () => {
+  it('true when a base tag has a non-empty overlay option', () => {
+    assert.equal(rulesetHasOverlays({ tags: { b: { overlays: { '': 1, 'overlay.x': 2 } } } }), true)
+  })
+  it('false when only the empty key exists', () => {
+    assert.equal(rulesetHasOverlays({ tags: { b: { overlays: { '': 5 } } } }), false)
+  })
+  it('false with no overlay data / no ruleset', () => {
+    assert.equal(rulesetHasOverlays({ tags: { b: { role: 'floor' } } }), false)
+    assert.equal(rulesetHasOverlays({}), false)
+    assert.equal(rulesetHasOverlays(undefined), false)
+  })
+})
+
+describe('overlay decoration pass', () => {
+  const RS = {
+    tiles: {
+      fl: { tags: ['floor.plain'],   weight: 1 },
+      br: { tags: ['overlay.barrel'], weight: 1 },
+    },
+    tags: {
+      'floor.plain':   { role: 'floor',   allow: ['*'], overlays: { '': 0, 'overlay.barrel': 5 } },
+      'overlay.barrel': { role: 'overlay', allow: ['*'], adjacency: { n: {}, e: {}, s: {}, w: {} } },
+    },
+  }
+
+  it('places an overlay when the base demands it (empty weight 0)', () => {
+    const map = makeCells(['.'])
+    decorateMap(map, RS, mulberry32(1))
+    assert.equal(map[0][0].skin, 'fl')
+    assert.equal(map[0][0].overlay, 'br')
+  })
+
+  it('places no overlay when the empty key dominates', () => {
+    const rs = structuredClone(RS)
+    rs.tags['floor.plain'].overlays = { '': 999, 'overlay.barrel': 0 }
+    const map = makeCells(['.'])
+    decorateMap(map, rs, mulberry32(1))
+    assert.equal(map[0][0].overlay, null)
+  })
+
+  it('leaves overlay undefined when the ruleset has no overlay data', () => {
+    const rs = { tiles: { fl: { tags: ['floor.plain'], weight: 1 } }, tags: { 'floor.plain': { role: 'floor', allow: ['*'] } } }
+    const map = makeCells(['.'])
+    decorateMap(map, rs, mulberry32(1))
+    assert.equal(map[0][0].overlay, undefined)
+    assert.equal(map[0][0].skin, 'fl')   // base pass unaffected
   })
 })
 

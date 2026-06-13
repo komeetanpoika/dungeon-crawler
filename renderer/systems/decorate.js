@@ -107,6 +107,56 @@ export function pruneMissingTiles(rulesets, loadedSprites) {
   }
 }
 
+// True when some base tag offers at least one real overlay (beyond '' = none).
+export function rulesetHasOverlays(ruleset) {
+  if (!ruleset?.tags) return false
+  return Object.values(ruleset.tags).some(t =>
+    t.overlays && Object.keys(t.overlays).some(k => k !== ''))
+}
+
+// Second decoration pass: assigns cell.overlay for floor/wall cells whose base
+// skin's tag carries an `overlays` distribution. A synthetic "none" candidate
+// (weighted by the '' empty count) competes with overlay tiles weighted by
+// base-conditional frequency × tile weight × overlay-neighbor adjacency.
+function decorateOverlays(map, ruleset, rng) {
+  const overlayTilesByTag = {}
+  for (const [name, def] of Object.entries(ruleset.tiles ?? {})) {
+    for (const t of def.tags ?? []) {
+      if (ruleset.tags[t]?.role === 'overlay') (overlayTilesByTag[t] ??= []).push(name)
+    }
+  }
+  for (let row = 0; row < map.length; row++) {
+    for (let col = 0; col < map[row].length; col++) {
+      const cell = map[row][col]
+      cell.overlay = null
+      if (!cell.skin) continue
+      let dist = null
+      for (const bt of tagsOf(ruleset, cell.skin)) {
+        if (ruleset.tags[bt]?.overlays) { dist = ruleset.tags[bt].overlays; break }
+      }
+      if (!dist) continue
+      const neighbors = [
+        { dir: 'n', skin: map[row - 1]?.[col]?.overlay },
+        { dir: 'w', skin: map[row]?.[col - 1]?.overlay },
+      ].filter(nb => nb.skin)
+      const cands = []   // { name|null, weight }
+      const noneW = dist[''] ?? 0
+      if (noneW > 0) cands.push({ name: null, weight: noneW })
+      for (const [tag, c] of Object.entries(dist)) {
+        if (tag === '' || !(c > 0)) continue
+        for (const name of overlayTilesByTag[tag] ?? []) {
+          const w = (ruleset.tiles[name].weight ?? 1) * c * adjacencyScore(ruleset, name, neighbors)
+          cands.push({ name, weight: w })
+        }
+      }
+      const total = cands.reduce((s, c) => s + c.weight, 0)
+      if (total <= 0) continue
+      let r = rng() * total
+      for (const c of cands) { r -= c.weight; if (r <= 0) { cell.overlay = c.name; break } }
+    }
+  }
+}
+
 // Assigns cell.skin for every floor/wall cell, scanning top-left to
 // bottom-right. Only the already-decided N and W neighbors constrain a cell;
 // pairAllowed's mutual check guarantees no forbidden pairing survives.
@@ -140,5 +190,6 @@ export function decorateMap(map, ruleset, rng = Math.random) {
       cell.skin = pickByAdjacency(ruleset, survivors, neighbors, rng)
     }
   }
+  if (rulesetHasOverlays(ruleset)) decorateOverlays(map, ruleset, rng)
   return fallbacks
 }
