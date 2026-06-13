@@ -1,6 +1,6 @@
-// Build tab: paint a room with real tile sprites, tag them, then derive
-// adjacency rules from the painting into the active ruleset. Deps come from
-// editor.js: { state, imageFor, tilesReady }.
+// Build tab: paint a room with real tile sprites on two layers (base + overlay),
+// tag them, then derive base-skin rules AND overlay placement rules from the
+// painting into the active ruleset. Deps come from editor.js:
 //   state      - { rulesets, active } shared ruleset state
 //   imageFor   - async (name) => HTMLImageElement (cached)
 //   tilesReady - Promise<string[]> of all library tile names
@@ -9,17 +9,19 @@ import { deriveRules } from './derive-rules.js'
 import { renderSample } from './sample-preview.js'
 
 // Merge a derived fragment into a ruleset: overwrite tile weights/tags and each
-// painted tag's role + adjacency, but preserve any hand-authored allow/forbid/
-// directional on tags that already exist. Unpainted tags are left untouched.
+// painted tag's role + adjacency (+ overlays on base tags), but preserve any
+// hand-authored allow/forbid/directional on tags that already exist. Unpainted
+// tags are left untouched.
 function mergeFragment(ruleset, frag) {
   ruleset.tiles = ruleset.tiles ?? {}
   ruleset.tags = ruleset.tags ?? {}
   for (const [name, def] of Object.entries(frag.tiles)) ruleset.tiles[name] = def
   for (const [tag, def] of Object.entries(frag.tags)) {
     const existing = ruleset.tags[tag]
-    ruleset.tags[tag] = existing
-      ? { ...existing, role: def.role, adjacency: def.adjacency }
-      : def
+    if (!existing) { ruleset.tags[tag] = def; continue }
+    const merged = { ...existing, role: def.role, adjacency: def.adjacency }
+    if (def.overlays) merged.overlays = def.overlays
+    ruleset.tags[tag] = merged
   }
 }
 
@@ -33,34 +35,42 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   const hInput = document.getElementById('paint-h')
 
   const blank = (w, h) => Array.from({ length: h }, () => Array.from({ length: w }, () => null))
-  const grid = { cells: blank(Number(wInput.value), Number(hInput.value)) }
+  const grid = {
+    base: blank(Number(wInput.value), Number(hInput.value)),
+    overlay: blank(Number(wInput.value), Number(hInput.value)),
+  }
   let active = null          // active brush tile name; null = eraser
+  let layer = 'base'         // 'base' | 'overlay' — which grid the brush writes
   let painting = false
   const images = new Map()   // name -> Image
 
   function sizeCanvas() {
-    canvas.width = grid.cells[0].length * CELL
-    canvas.height = grid.cells.length * CELL
+    canvas.width = grid.base[0].length * CELL
+    canvas.height = grid.base.length * CELL
   }
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.imageSmoothingEnabled = false
-    grid.cells.forEach((row, y) => row.forEach((name, x) => {
-      ctx.fillStyle = '#15151d'
-      ctx.fillRect(x * CELL, y * CELL, CELL, CELL)
-      const img = name && images.get(name)
-      if (img) ctx.drawImage(img, x * CELL, y * CELL, CELL, CELL)
-      ctx.strokeStyle = '#0006'
-      ctx.strokeRect(x * CELL + 0.5, y * CELL + 0.5, CELL, CELL)
-    }))
+    for (let y = 0; y < grid.base.length; y++) {
+      for (let x = 0; x < grid.base[y].length; x++) {
+        ctx.fillStyle = '#15151d'
+        ctx.fillRect(x * CELL, y * CELL, CELL, CELL)
+        const b = grid.base[y][x], bi = b && images.get(b)
+        if (bi) ctx.drawImage(bi, x * CELL, y * CELL, CELL, CELL)
+        const o = grid.overlay[y][x], oi = o && images.get(o)
+        if (oi) ctx.drawImage(oi, x * CELL, y * CELL, CELL, CELL)
+        ctx.strokeStyle = layer === 'overlay' ? '#7fd6' : '#0006'
+        ctx.strokeRect(x * CELL + 0.5, y * CELL + 0.5, CELL, CELL)
+      }
+    }
   }
   function gridUses(name) {
-    return grid.cells.some(row => row.includes(name))
+    return grid.base.some(r => r.includes(name)) || grid.overlay.some(r => r.includes(name))
   }
   async function ensureImage(name) {
     if (!name || images.has(name)) return
     images.set(name, await imageFor(name))
-    if (gridUses(name)) render()   // skip the paint redraw for preview-only loads
+    if (gridUses(name)) render()
   }
 
   function markActive(name) {
@@ -90,14 +100,23 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     }
   }
 
+  function setLayer(which) {
+    layer = which
+    document.getElementById('layer-base').classList.toggle('on', which === 'base')
+    document.getElementById('layer-overlay').classList.toggle('on', which === 'overlay')
+    render()
+  }
+  document.getElementById('layer-base').addEventListener('click', () => setLayer('base'))
+  document.getElementById('layer-overlay').addEventListener('click', () => setLayer('overlay'))
+
   function cellAt(ev) {
     const r = canvas.getBoundingClientRect()
     return { x: Math.floor((ev.clientX - r.left) / CELL), y: Math.floor((ev.clientY - r.top) / CELL) }
   }
   function paint(ev) {
     const { x, y } = cellAt(ev)
-    if (grid.cells[y]?.[x] === undefined) return
-    grid.cells[y][x] = active   // active === null erases
+    if (grid[layer][y]?.[x] === undefined) return
+    grid[layer][y][x] = active   // active === null erases the active layer's slot
     render()
   }
   canvas.addEventListener('mousedown', e => { painting = true; paint(e) })
@@ -107,8 +126,10 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   document.getElementById('paint-resize').addEventListener('click', () => {
     const w = Math.max(2, Math.min(60, Number(wInput.value) | 0))
     const h = Math.max(2, Math.min(40, Number(hInput.value) | 0))
-    grid.cells = Array.from({ length: h }, (_, y) =>
-      Array.from({ length: w }, (_, x) => grid.cells[y]?.[x] ?? null))
+    const resize = (g) => Array.from({ length: h }, (_, y) =>
+      Array.from({ length: w }, (_, x) => g[y]?.[x] ?? null))
+    grid.base = resize(grid.base)
+    grid.overlay = resize(grid.overlay)
     sizeCanvas(); render()
   })
 
@@ -116,7 +137,6 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   const reportEl = document.getElementById('derive-report')
   const previewCanvas = document.getElementById('paint-preview')
 
-  // Ensure there's an active ruleset to write into.
   function ensureRuleset() {
     if (!state.active) {
       state.active = 'derived'
@@ -126,7 +146,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     return state.rulesets[state.active]
   }
 
-  // Inline role+tag assignment for the active brush tile.
+  // Inline role+tag assignment for the active brush tile (role includes overlay).
   function renderTagging() {
     taggingEl.innerHTML = ''
     if (!active) { taggingEl.textContent = 'Pick a tile to tag…'; return }
@@ -136,12 +156,12 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     lbl.className = 'label'
     lbl.textContent = `Tag ${active}` + (curTag ? ` (now: ${curTag})` : ' (untagged)')
     const roleSel = document.createElement('select')
-    for (const r of ['floor', 'wall']) {
+    for (const r of ['floor', 'wall', 'overlay']) {
       const o = document.createElement('option'); o.value = o.textContent = r; roleSel.appendChild(o)
     }
     if (curTag && rs?.tags?.[curTag]?.role) roleSel.value = rs.tags[curTag].role
     const tagInput = document.createElement('input')
-    tagInput.placeholder = 'floor.moss'; tagInput.value = curTag; tagInput.style.width = '100%'
+    tagInput.placeholder = 'overlay.barrel'; tagInput.value = curTag; tagInput.style.width = '100%'
     const apply = document.createElement('button')
     apply.textContent = 'apply tag'
     apply.addEventListener('click', () => {
@@ -159,7 +179,6 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     taggingEl.append(lbl, roleSel, tagInput, apply)
   }
 
-  // Build tileMeta for derivation from the active ruleset's tagged tiles.
   function tileMetaFromRuleset(rs) {
     const meta = new Map()
     for (const [name, def] of Object.entries(rs.tiles ?? {})) {
@@ -180,7 +199,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   document.getElementById('derive-btn').addEventListener('click', async () => {
     const rs = state.rulesets[state.active]
     if (!rs) { reportEl.textContent = 'Select or create a ruleset first (top bar).'; return }
-    const frag = deriveRules(grid.cells, tileMetaFromRuleset(rs))
+    const frag = deriveRules(grid.base, grid.overlay, tileMetaFromRuleset(rs))
     if (Object.keys(frag.tiles).length === 0) {
       reportEl.textContent = 'Nothing derived — paint some tagged tiles first.' +
         (frag.skipped ? ` (${frag.skipped} untagged cells skipped)` : '')

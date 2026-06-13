@@ -23,12 +23,14 @@ export function renderSample(canvas, ruleset, tileImages) {
 
   const s = canvas.width / COLS
   for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-    const { tile, skin } = map[y][x]
+    const { tile, skin, overlay } = map[y][x]
     const img = skin && tileImages.get(skin)
     if (img) ctx.drawImage(img, x * s, y * s, s, s)
     else {
       ctx.fillStyle = tile === TILE.WALL ? '#33333d' : '#15151d'
       ctx.fillRect(x * s, y * s, s, s)
     }
+    const ovImg = overlay && tileImages.get(overlay)
+    if (ovImg) ctx.drawImage(ovImg, x * s, y * s, s, s)
   }
 }
