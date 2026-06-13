@@ -10,7 +10,6 @@ const SAVE_DIR = path.join(app.getPath('userData'), 'dungeon-crawler')
 const RUN_FILE = path.join(SAVE_DIR, 'run.json')
 const META_FILE = path.join(SAVE_DIR, 'meta.json')
 const RULESETS_FILE = path.join(__dirname, 'renderer', 'data', 'rulesets.json')
-const TEMPLATES_FILE = path.join(__dirname, 'renderer', 'data', 'templates.json')
 const TILES_DIR = path.join(__dirname, 'renderer', 'assets', 'tiles')
 
 function createWindow() {
@@ -56,16 +55,6 @@ ipcMain.handle('load-rulesets', () => {
 })
 ipcMain.handle('save-rulesets', (_e, data) =>
   fs.writeFileSync(RULESETS_FILE, JSON.stringify(data, null, 2)))
-
-ipcMain.handle('load-templates', () => {
-  try { return JSON.parse(fs.readFileSync(TEMPLATES_FILE, 'utf8')) } catch { return {} }
-})
-ipcMain.handle('save-templates', (_e, data) => {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    throw new Error('Expected a templates object')
-  }
-  fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(data, null, 2))
-})
 
 ipcMain.handle('editor-list-tiles', () =>
   fs.readdirSync(TILES_DIR).filter(f => f.endsWith('.png')).map(f => f.slice(0, -4)).sort())

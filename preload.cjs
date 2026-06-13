@@ -5,5 +5,4 @@ contextBridge.exposeInMainWorld('saveAPI', {
   loadMeta: () => ipcRenderer.invoke('load-meta'),
   deleteRun: () => ipcRenderer.invoke('delete-run'),
   loadRulesets: () => ipcRenderer.invoke('load-rulesets'),
-  loadTemplates: () => ipcRenderer.invoke('load-templates'),
 })

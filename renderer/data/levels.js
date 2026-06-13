@@ -127,24 +127,6 @@ export const TEMPLATES = {
   },
 }
 
-// Names defined in code; editor-authored templates may never shadow these.
-const BUILTIN_TEMPLATE_NAMES = new Set(Object.keys(TEMPLATES))
-
-// Fold editor-authored templates (from renderer/data/templates.json) into the
-// exported TEMPLATES map. Built-in names win; malformed entries are skipped.
-// Returns the list of names actually registered.
-export function registerCustomTemplates(custom) {
-  const added = []
-  if (!custom || typeof custom !== 'object') return added
-  for (const [name, tmpl] of Object.entries(custom)) {
-    if (BUILTIN_TEMPLATE_NAMES.has(name)) continue
-    if (!tmpl || !Array.isArray(tmpl.tiles) || !tmpl.width || !tmpl.height) continue
-    TEMPLATES[name] = { tiles: tmpl.tiles, width: tmpl.width, height: tmpl.height }
-    added.push(name)
-  }
-  return added
-}
-
 export const LEVEL_CONFIG = [
   { depth: 1, staircaseWidth: 1, guardCount:  2, monsterDensity: 0,     trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'ARMORY',     weapons: ['dagger'] },
   { depth: 2, staircaseWidth: 1, guardCount:  3, monsterDensity: 0,     trapDensity: 0.04, puzzleDensity: 0.01, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'GATEHOUSE',  weapons: ['dagger'],               crabCount: 1 },
