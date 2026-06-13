@@ -237,3 +237,4 @@ document.addEventListener('ruleset-changed', refreshSample)
 document.getElementById('reroll').addEventListener('click', refreshSample)
 
 initTemplateBuilder()
+saveTemplateBtn.addEventListener('click', () => initTemplateBuilder.save?.())

@@ -1,5 +1,6 @@
-import { TEMPLATE_LEGEND } from '../../renderer/data/levels.js'
-import { createBlankGrid, resizeGrid } from './template-grid.js'
+import { TEMPLATE_LEGEND, TEMPLATES as BUILTIN_TEMPLATES } from '../../renderer/data/levels.js'
+import { createBlankGrid, resizeGrid, gridToTemplate, gridFromTemplate, sanitizeTemplateName } from './template-grid.js'
+import { textPrompt } from './text-prompt.js'
 
 const CELL = 22  // px per cell on the canvas
 
@@ -86,4 +87,61 @@ export function initTemplateBuilder() {
   renderPalette()
   sizeCanvas()
   render()
+
+  const listEl = document.getElementById('template-list')
+  const nameInput = document.getElementById('template-name')
+  let custom = {}   // name -> template, from templates.json
+
+  async function loadTemplates() {
+    custom = (await window.editorAPI.loadTemplates()) ?? {}
+    renderList()
+  }
+
+  function loadIntoEditor(tmpl, name) {
+    state.grid = gridFromTemplate(tmpl)
+    wInput.value = tmpl.width
+    hInput.value = tmpl.height
+    nameInput.value = name && !BUILTIN_TEMPLATES[name] ? name : ''  // force a new name for built-ins
+    sizeCanvas(); render()
+  }
+
+  function renderList() {
+    listEl.innerHTML = ''
+    const builtin = Object.keys(BUILTIN_TEMPLATES).filter(n => !custom[n])
+    const entries = [
+      ...builtin.map(n => ({ name: n, tmpl: BUILTIN_TEMPLATES[n], builtin: true })),
+      ...Object.keys(custom).map(n => ({ name: n, tmpl: custom[n], builtin: false })),
+    ]
+    for (const { name, tmpl, builtin } of entries) {
+      const row = document.createElement('div')
+      row.className = 'trow' + (builtin ? ' builtin' : '')
+      row.textContent = builtin ? `${name} (built-in)` : name
+      row.addEventListener('click', () => loadIntoEditor(tmpl, name))
+      listEl.appendChild(row)
+    }
+  }
+
+  initTemplateBuilder.save = async function save() {
+    const name = sanitizeTemplateName(nameInput.value)
+    if (!name) { alert('Enter a template name first.'); return }
+    if (BUILTIN_TEMPLATES[name]) {
+      alert(`'${name}' is a built-in template name and cannot be overwritten. Choose another name.`)
+      return
+    }
+    if (custom[name]) {
+      const ok = await textPrompt(`'${name}' already exists. Type the name again to overwrite, or Cancel.`)
+      if (ok !== name) return
+    }
+    custom[name] = gridToTemplate(state.grid)
+    try {
+      await window.editorAPI.saveTemplates(custom)
+      renderList()
+      alert(`Saved template '${name}' to renderer/data/templates.json`)
+    } catch (err) {
+      delete custom[name]
+      alert(`Save failed: ${err.message}`)
+    }
+  }
+
+  loadTemplates()
 }
