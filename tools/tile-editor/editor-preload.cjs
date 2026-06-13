@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld('editorAPI', {
   saveTile:     (name, dataURL) => ipcRenderer.invoke('editor-save-tile', name, dataURL),
   loadRulesets: () => ipcRenderer.invoke('load-rulesets'),
   saveRulesets: (data) => ipcRenderer.invoke('save-rulesets', data),
+  loadTemplates: () => ipcRenderer.invoke('load-templates'),
+  saveTemplates: (data) => ipcRenderer.invoke('save-templates', data),
 })

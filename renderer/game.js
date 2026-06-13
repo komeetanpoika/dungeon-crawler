@@ -9,7 +9,7 @@ import { decorateMap, pruneMissingTiles } from './systems/decorate.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
-import { FINAL_DEPTH, DEPTH_THEMES } from './data/levels.js'
+import { FINAL_DEPTH, DEPTH_THEMES, registerCustomTemplates } from './data/levels.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -568,6 +568,7 @@ async function init() {
   renderer = new Renderer(canvas)
   renderer.resize()
   rulesets = (await window.saveAPI.loadRulesets()) ?? {}
+  registerCustomTemplates((await window.saveAPI.loadTemplates()) ?? {})
   await renderer.loadSprites(rulesetTileNames(rulesets))
   pruneMissingTiles(rulesets, renderer.sprites)
   const savedMeta = await window.saveAPI.loadMeta()
