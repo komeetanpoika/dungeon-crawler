@@ -172,7 +172,7 @@ export const TEMPLATE_LEGEND = {
   'T': { label: 'Treasure', kind: 'tile',  tile: TILE.TREASURE, color: '#b89030', icon: '◆' },
   'S': { label: 'Shrine',   kind: 'tile',  tile: TILE.SHRINE,   color: '#3a6a8a', icon: '⛨' },
   'X': { label: 'Snare',    kind: 'tile',  tile: TILE.SNARE,    color: '#7a3a3a', icon: '※' },
-  'L': { label: 'Door',     kind: 'spawn', spawn: 'door',        roomScoped: true,  color: '#8a6a3a', icon: '⌷' },
+  'L': { label: 'Door',     kind: 'spawn', spawn: 'door',        roomScoped: false, color: '#8a6a3a', icon: '⌷' },
   'W': { label: 'Weapon',   kind: 'spawn', spawn: 'weapon',      roomScoped: false, color: '#3a8a6a', icon: '⚔' },
   'P': { label: 'Potion',   kind: 'spawn', spawn: 'potion',      roomScoped: false, color: '#8a3a8a', icon: '⚗' },
   'D': { label: 'Dragon',   kind: 'spawn', spawn: 'dragon',      roomScoped: true,  color: '#a33333', icon: '🐉' },
