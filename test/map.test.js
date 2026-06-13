@@ -1,7 +1,7 @@
 // test/map.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateLevel, isFullyConnected, createMap, carveRoomShaped, carveCorridor } from '../renderer/systems/map.js'
+import { generateLevel, isFullyConnected, createMap, carveRoomShaped, carveCorridor, placeTemplate } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 
 describe('isFullyConnected', () => {
@@ -286,6 +286,66 @@ describe('carveCorridor width', () => {
     assert.equal(map[4][4].tile, TILE.FLOOR)
     assert.equal(map[5][4].tile, TILE.FLOOR)
     assert.equal(map[6][4].tile, TILE.FLOOR)
+  })
+})
+
+describe('placeTemplate', () => {
+  // One template exercising all 11 symbols. Scan order is row-major.
+  const ALL = {
+    tiles: ['#.C', 'TSX', 'WPL', 'DB.'],
+    width: 3, height: 4,
+  }
+
+  it('maps every tile symbol to the right tile id and roomId', () => {
+    const map = createMap(3, 4)
+    placeTemplate(map, ALL, 0, 0, 7)
+    assert.equal(map[0][0].tile, TILE.WALL)
+    assert.equal(map[0][0].roomId, null)            // walls keep no roomId
+    assert.equal(map[0][1].tile, TILE.FLOOR);    assert.equal(map[0][1].roomId, 7)
+    assert.equal(map[0][2].tile, TILE.COLUMN);   assert.equal(map[0][2].roomId, 7)
+    assert.equal(map[1][0].tile, TILE.TREASURE); assert.equal(map[1][0].roomId, 7)
+    assert.equal(map[1][1].tile, TILE.SHRINE);   assert.equal(map[1][1].roomId, 7)
+    assert.equal(map[1][2].tile, TILE.SNARE);    assert.equal(map[1][2].roomId, 7)
+    // spawn cells stand on floor
+    assert.equal(map[2][0].tile, TILE.FLOOR)     // weapon
+    assert.equal(map[3][0].tile, TILE.FLOOR)     // dragon
+    assert.equal(map[3][1].tile, TILE.FLOOR)     // boss
+  })
+
+  it('produces spawns in scan order with the right shapes', () => {
+    const map = createMap(3, 4)
+    const spawns = placeTemplate(map, ALL, 0, 0, 7)
+    assert.deepEqual(spawns, [
+      { kind: 'weapon', x: 0, y: 2 },             // weapon/potion carry no roomId
+      { kind: 'potion', x: 1, y: 2 },
+      { kind: 'door',   x: 2, y: 2 },             // door also carries no roomId
+      { kind: 'dragon', x: 0, y: 3, roomId: 7 },
+      { kind: 'dragon_boss', x: 1, y: 3, roomId: 7 },
+    ])
+  })
+
+  it('places only the first dragon_boss', () => {
+    const map = createMap(2, 1)
+    const spawns = placeTemplate(map, { tiles: ['BB'], width: 2, height: 1 }, 0, 0, 3)
+    const bosses = spawns.filter(s => s.kind === 'dragon_boss')
+    assert.equal(bosses.length, 1)
+    assert.equal(map[0][0].tile, TILE.FLOOR)      // both cells still become floor
+    assert.equal(map[0][1].tile, TILE.FLOOR)
+  })
+
+  it('honors the ox/oy offset and ignores out-of-bounds cells', () => {
+    const map = createMap(4, 4)
+    placeTemplate(map, { tiles: ['##', '##'], width: 2, height: 2 }, 2, 2, 1)
+    assert.equal(map[2][2].tile, TILE.WALL)
+    assert.equal(map[3][3].tile, TILE.WALL)
+    assert.equal(map[0][0].tile, TILE.WALL)       // createMap default, untouched
+  })
+
+  it('ignores unknown characters', () => {
+    const map = createMap(2, 1)
+    const spawns = placeTemplate(map, { tiles: ['?z'], width: 2, height: 1 }, 0, 0, 1)
+    assert.deepEqual(spawns, [])
+    assert.equal(map[0][0].tile, TILE.WALL)       // unchanged default
   })
 })
 

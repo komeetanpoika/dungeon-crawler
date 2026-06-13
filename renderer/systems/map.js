@@ -244,7 +244,7 @@ function connectRoomsMST(map, rooms) {
   }
 }
 
-function placeTemplate(map, template, ox, oy, roomId) {
+export function placeTemplate(map, template, ox, oy, roomId) {
   const spawns = []
   let bossPlaced = false
   template.tiles.forEach((row, dy) => {
