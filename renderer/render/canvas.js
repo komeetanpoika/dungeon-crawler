@@ -5,7 +5,13 @@ import { drawDragonBoss } from './dragonboss.js'
 
 const TILE_SIZE = 32
 
-function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
+function drawOverlay(ctx, tileObj, px, py, S, sprites) {
+  if (tileObj?.overlay && sprites[tileObj.overlay]) {
+    ctx.drawImage(sprites[tileObj.overlay], px, py, S, S)
+  }
+}
+
+export function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
   if (tileId === TILE.STAIR) {
     const w   = tileObj?.stairWidth ?? 1
     const col = tileObj?.stairCol   ?? 0
@@ -32,6 +38,7 @@ function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
   // Decoration-pass skin (only ever set on floor/wall cells)
   if (tileObj?.skin && sprites[tileObj.skin]) {
     ctx.drawImage(sprites[tileObj.skin], px, py, S, S)
+    drawOverlay(ctx, tileObj, px, py, S, sprites)
     return
   }
   const s = (() => {
@@ -55,6 +62,7 @@ function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
     ctx.fillStyle = `rgba(0,0,0,${Math.min(tileObj.stairDepth / 7, 1) * 0.85})`
     ctx.fillRect(px, py, S, S)
   }
+  drawOverlay(ctx, tileObj, px, py, S, sprites)
 }
 
 function drawWeapon(ctx, weaponType, px, py, S, sprites) {
