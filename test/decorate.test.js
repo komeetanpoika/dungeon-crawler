@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles } from '../renderer/systems/decorate.js'
+import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles, adjacencyScore, pickByAdjacency, ADJACENCY_ALPHA } from '../renderer/systems/decorate.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Deterministic RNG for reproducible decoration tests
@@ -237,6 +237,59 @@ describe('pruneMissingTiles', () => {
         assert.equal(map[1][x].skin, 'wallA', `top at row=0,col=${x} must have wallA below`)
       }
     }
+  })
+})
+
+describe('adjacency-aware selection', () => {
+  const RS = {
+    tiles: {
+      moss:  { tags: ['floor.moss'],  weight: 1 },
+      plain: { tags: ['floor.plain'], weight: 1 },
+      wallA: { tags: ['wall.base'],   weight: 1 },
+    },
+    tags: {
+      'floor.moss':  { role: 'floor', allow: ['*'], adjacency: { n:{}, e:{}, s:{}, w:{ 'wall.base': 4 } } },
+      'floor.plain': { role: 'floor', allow: ['*'] },
+      'wall.base':   { role: 'wall',  allow: ['*'] },
+    },
+  }
+
+  it('ADJACENCY_ALPHA is the documented smoothing default', () => {
+    assert.equal(ADJACENCY_ALPHA, 0.5)
+  })
+
+  it('adjacencyScore adds observed counts + ALPHA per neighbor', () => {
+    assert.equal(adjacencyScore(RS, 'moss',  [{ dir: 'w', skin: 'wallA' }]), 4.5)
+    assert.equal(adjacencyScore(RS, 'plain', [{ dir: 'w', skin: 'wallA' }]), 0.5)
+  })
+
+  it('adjacencyScore is neutral (1) with no neighbors', () => {
+    assert.equal(adjacencyScore(RS, 'moss', []), 1)
+  })
+
+  it('pickByAdjacency biases toward observed neighbors', () => {
+    const nb = [{ dir: 'w', skin: 'wallA' }]   // weights: moss 4.5, plain 0.5, total 5
+    assert.equal(pickByAdjacency(RS, ['moss', 'plain'], nb, () => 0),    'moss')
+    assert.equal(pickByAdjacency(RS, ['moss', 'plain'], nb, () => 0.95), 'plain')
+  })
+
+  it('pickByAdjacency with no neighbors reduces to weighted-by-weight', () => {
+    assert.equal(pickByAdjacency(RS, ['moss', 'plain'], [], () => 0), 'moss')
+  })
+
+  it('decorateMap honors adjacency preference', () => {
+    const rs = {
+      tiles: { moss: { tags: ['floor.moss'], weight: 1 }, plain: { tags: ['floor.plain'], weight: 1 }, wallA: { tags: ['wall.base'], weight: 1 } },
+      tags: {
+        'floor.moss':  { role: 'floor', allow: ['*'], adjacency: { n:{}, e:{}, s:{}, w:{ 'wall.base': 999 } } },
+        'floor.plain': { role: 'floor', allow: ['*'] },
+        'wall.base':   { role: 'wall',  allow: ['*'] },
+      },
+    }
+    const map = makeCells(['#.'])   // (0,0) wall, (0,1) floor with wall to its west
+    decorateMap(map, rs, mulberry32(1))
+    assert.equal(map[0][0].skin, 'wallA')
+    assert.equal(map[0][1].skin, 'moss')   // 999.5 vs 0.5 → moss for any seed
   })
 })
 

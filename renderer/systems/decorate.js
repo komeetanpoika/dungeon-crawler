@@ -55,6 +55,44 @@ export function pickWeighted(ruleset, names, rng) {
   return names[names.length - 1]
 }
 
+// Smoothing so unseen adjacencies stay possible but unlikely (the "loose" model).
+export const ADJACENCY_ALPHA = 0.5
+
+// Multiplicative adjacency score for placing `tileName` given decided neighbors.
+// neighbors: [{ dir, skin }] where skin is the neighbor's tile name. Each tag of
+// `tileName` contributes its observed count toward the neighbor's tags in `dir`;
+// a tag with no adjacency data contributes a flat ALPHA, so this returns 1
+// (neutral) when no adjacency info exists and reduces selection to weight-only.
+export function adjacencyScore(ruleset, tileName, neighbors) {
+  const tags = tagsOf(ruleset, tileName)
+  let score = 1
+  for (const nb of neighbors) {
+    const nbTags = tagsOf(ruleset, nb.skin)
+    let count = 0
+    for (const t of tags) {
+      const dirMap = ruleset.tags[t]?.adjacency?.[nb.dir]
+      if (!dirMap) continue
+      for (const u of nbTags) count += dirMap[u] ?? 0
+    }
+    score *= count + ADJACENCY_ALPHA
+  }
+  return score
+}
+
+// Weighted pick combining each tile's base weight with its adjacency score.
+export function pickByAdjacency(ruleset, names, neighbors, rng) {
+  const weights = names.map(n =>
+    (ruleset.tiles[n].weight ?? 1) * adjacencyScore(ruleset, n, neighbors))
+  const total = weights.reduce((s, w) => s + w, 0)
+  if (total <= 0) return names[names.length - 1]
+  let r = rng() * total
+  for (let i = 0; i < names.length; i++) {
+    r -= weights[i]
+    if (r <= 0) return names[i]
+  }
+  return names[names.length - 1]
+}
+
 // Drop ruleset tiles whose sprite failed to load so decorateMap never
 // assigns a skin that cannot be drawn. loadedSprites is keyed by file name.
 export function pruneMissingTiles(rulesets, loadedSprites) {
@@ -98,7 +136,7 @@ export function decorateMap(map, ruleset, rng = Math.random) {
         }
         continue
       }
-      cell.skin = pickWeighted(ruleset, survivors, rng)
+      cell.skin = pickByAdjacency(ruleset, survivors, neighbors, rng)
     }
   }
   return fallbacks
