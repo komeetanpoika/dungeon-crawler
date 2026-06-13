@@ -47,17 +47,26 @@
   table td { padding: 3px 6px; vertical-align: top; }
   input.small { width: 60px; }
   input.dir { width: 130px; }
+  #build-palette .legend { display:flex; align-items:center; gap:6px; padding:4px 6px;
+                           border:1px solid #333; border-radius:3px; cursor:pointer; margin-bottom:3px; }
+  #build-palette .legend.active { border-color:#fff; background:#2a2a3a; }
+  #build-palette .sw { width:16px; height:16px; border:1px solid #555; flex:0 0 auto; }
+  #template-list .trow { padding:3px 6px; border-radius:3px; cursor:pointer; }
+  #template-list .trow:hover { background:#2a2a3a; }
+  #template-list .trow.builtin { color:#888; }
 </style>
 </head>
 <body>
   <header>
     <button id="tab-draw" class="active">▣ Draw</button>
     <button id="tab-rules">▦ Rules</button>
+    <button id="tab-build">▤ Build</button>
     <span class="label" style="margin: 0 0 0 12px">ruleset</span>
     <select id="ruleset-select"></select>
     <button id="new-ruleset">+ new</button>
     <button id="save-tile" class="save">💾 Save tile</button>
     <button id="save-rules" class="save" style="display:none">💾 Save rules</button>
+    <button id="save-template" class="save" style="display:none">💾 Save template</button>
   </header>
 
   <main id="draw-view">
@@ -102,6 +111,26 @@
       <div class="label">Live sample</div>
       <canvas id="sample-canvas" width="240" height="160"></canvas>
       <button id="reroll" style="margin-top:6px">⟳ re-roll</button>
+    </div>
+  </main>
+
+  <main id="build-view" style="display:none">
+    <div id="build-palette" class="panel" style="width:150px; overflow-y:auto"></div>
+    <div id="build-stage" class="panel" style="flex:1; display:flex; align-items:center; justify-content:center; overflow:auto">
+      <canvas id="template-canvas"></canvas>
+    </div>
+    <div id="build-sidebar" class="panel" style="width:220px; display:flex; flex-direction:column; gap:4px; overflow-y:auto">
+      <div class="label">Template name (UPPER_SNAKE)</div>
+      <input id="template-name" placeholder="MOSS_CRYPT" style="width:100%">
+      <div class="label">Size (width × height)</div>
+      <div style="display:flex; gap:4px; align-items:center">
+        <input id="template-w" class="small" type="number" min="1" max="60" value="9">
+        <span>×</span>
+        <input id="template-h" class="small" type="number" min="1" max="40" value="7">
+        <button id="template-resize">resize</button>
+      </div>
+      <div class="label">Templates</div>
+      <div id="template-list" style="display:flex; flex-direction:column; gap:2px"></div>
     </div>
   </main>
 

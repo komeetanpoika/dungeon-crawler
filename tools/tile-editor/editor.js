@@ -5,6 +5,7 @@ import { sanitizeTileName } from './lib.js'
 import { initRulesUI } from './rules-ui.js'
 import { renderSample } from './sample-preview.js'
 import { textPrompt } from './text-prompt.js'
+import { initTemplateBuilder } from './template-builder.js'
 
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
@@ -12,18 +13,26 @@ const tabDraw = document.getElementById('tab-draw')
 const tabRules = document.getElementById('tab-rules')
 const saveTileBtn = document.getElementById('save-tile')
 const saveRulesBtn = document.getElementById('save-rules')
+const buildView = document.getElementById('build-view')
+const tabBuild = document.getElementById('tab-build')
+const saveTemplateBtn = document.getElementById('save-template')
 
 function showTab(tab) {
-  const draw = tab === 'draw'
-  drawView.style.display = draw ? 'flex' : 'none'
-  rulesView.style.display = draw ? 'none' : 'flex'
-  tabDraw.classList.toggle('active', draw)
-  tabRules.classList.toggle('active', !draw)
-  saveTileBtn.style.display = draw ? '' : 'none'
-  saveRulesBtn.style.display = draw ? 'none' : ''
+  drawView.style.display  = tab === 'draw'  ? 'flex' : 'none'
+  rulesView.style.display = tab === 'rules' ? 'flex' : 'none'
+  buildView.style.display = tab === 'build' ? 'flex' : 'none'
+  tabDraw.classList.toggle('active',  tab === 'draw')
+  tabRules.classList.toggle('active', tab === 'rules')
+  tabBuild.classList.toggle('active', tab === 'build')
+  saveTileBtn.style.display     = tab === 'draw'  ? '' : 'none'
+  saveRulesBtn.style.display    = tab === 'rules' ? '' : 'none'
+  saveTemplateBtn.style.display = tab === 'build' ? '' : 'none'
+  // The shared bottom library strip belongs to the Draw tab only.
+  document.getElementById('library-bar').style.display = tab === 'build' ? 'none' : ''
 }
 tabDraw.addEventListener('click', () => showTab('draw'))
 tabRules.addEventListener('click', () => showTab('rules'))
+tabBuild.addEventListener('click', () => showTab('build'))
 showTab('draw')
 
 const preview1x = document.getElementById('preview-1x')
@@ -226,3 +235,5 @@ async function refreshSample() {
 document.addEventListener('rules-edited', refreshSample)
 document.addEventListener('ruleset-changed', refreshSample)
 document.getElementById('reroll').addEventListener('click', refreshSample)
+
+initTemplateBuilder()
