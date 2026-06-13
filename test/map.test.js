@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateLevel, isFullyConnected, createMap, carveRoomShaped, carveCorridor, placeTemplate } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
+import { TEMPLATE_LEGEND } from '../renderer/data/levels.js'
 
 describe('isFullyConnected', () => {
   it('returns true for a single-room map', () => {
@@ -346,6 +347,19 @@ describe('placeTemplate', () => {
     const spawns = placeTemplate(map, { tiles: ['?z'], width: 2, height: 1 }, 0, 0, 1)
     assert.deepEqual(spawns, [])
     assert.equal(map[0][0].tile, TILE.WALL)       // unchanged default
+  })
+
+  it('legend covers all 11 template symbols with valid entries', () => {
+    assert.deepEqual(
+      Object.keys(TEMPLATE_LEGEND).sort(),
+      ['#', '.', 'B', 'C', 'D', 'L', 'P', 'S', 'T', 'W', 'X'],
+    )
+    for (const [ch, e] of Object.entries(TEMPLATE_LEGEND)) {
+      assert.ok(e.label, `${ch} has a label`)
+      assert.ok(e.kind === 'tile' || e.kind === 'spawn', `${ch} has a valid kind`)
+      if (e.kind === 'tile') assert.equal(typeof e.tile, 'number', `${ch} has a tile id`)
+      else assert.equal(typeof e.spawn, 'string', `${ch} has a spawn kind`)
+    }
   })
 })
 

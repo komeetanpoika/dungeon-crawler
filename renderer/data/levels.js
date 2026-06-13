@@ -1,3 +1,27 @@
+import { TILE } from '../systems/entities.js'
+
+// Single source of truth for template character → meaning. Consumed by
+// placeTemplate (game) and the editor's Build-tab palette. Adding a new symbol
+// here is all that's needed for both sides to pick it up.
+//   kind 'tile'  → sets map cell tile (walls get no roomId; everything else does)
+//   kind 'spawn' → cell becomes FLOOR + roomId; pushes a spawn.
+//     roomScoped: include roomId on the spawn (monsters yes; items/doors no)
+//     single:     place at most one (the dragon boss)
+// color/icon drive the editor palette + canvas; the game ignores them.
+export const TEMPLATE_LEGEND = {
+  '#': { label: 'Wall',     kind: 'tile',  tile: TILE.WALL,     color: '#3a3a44' },
+  '.': { label: 'Floor',    kind: 'tile',  tile: TILE.FLOOR,    color: '#23232f' },
+  'C': { label: 'Column',   kind: 'tile',  tile: TILE.COLUMN,   color: '#5a5a6a' },
+  'T': { label: 'Treasure', kind: 'tile',  tile: TILE.TREASURE, color: '#b89030', icon: '◆' },
+  'S': { label: 'Shrine',   kind: 'tile',  tile: TILE.SHRINE,   color: '#3a6a8a', icon: '⛨' },
+  'X': { label: 'Snare',    kind: 'tile',  tile: TILE.SNARE,    color: '#7a3a3a', icon: '※' },
+  'L': { label: 'Door',     kind: 'spawn', spawn: 'door',        roomScoped: false, color: '#8a6a3a', icon: '⌷' },
+  'W': { label: 'Weapon',   kind: 'spawn', spawn: 'weapon',      roomScoped: false, color: '#3a8a6a', icon: '⚔' },
+  'P': { label: 'Potion',   kind: 'spawn', spawn: 'potion',      roomScoped: false, color: '#8a3a8a', icon: '⚗' },
+  'D': { label: 'Dragon',   kind: 'spawn', spawn: 'dragon',      roomScoped: true,  color: '#a33333', icon: '🐉' },
+  'B': { label: 'Boss',     kind: 'spawn', spawn: 'dragon_boss', roomScoped: true, single: true, color: '#cc2222', icon: '🐲' },
+}
+
 export const TEMPLATES = {
   DRAGON_LAIR: {
     tiles: [

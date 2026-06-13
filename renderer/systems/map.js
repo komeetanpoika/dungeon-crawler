@@ -1,5 +1,5 @@
 import { TILE, isWalkable } from './entities.js'
-import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES } from '../data/levels.js'
+import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
 
 const MAP_W = 80
 const MAP_H = 50
@@ -251,44 +251,23 @@ export function placeTemplate(map, template, ox, oy, roomId) {
     ;[...row].forEach((ch, dx) => {
       const tx = ox + dx, ty = oy + dy
       if (!map[ty]?.[tx]) return
-      if (ch === '#') {
-        map[ty][tx].tile = TILE.WALL
-      } else if (ch === '.') {
-        map[ty][tx].tile = TILE.FLOOR
-        map[ty][tx].roomId = roomId
-      } else if (ch === 'D') {
-        map[ty][tx].tile = TILE.FLOOR
-        map[ty][tx].roomId = roomId
-        spawns.push({ kind: 'dragon', x: tx, y: ty, roomId })
-      } else if (ch === 'T') {
-        map[ty][tx].tile = TILE.TREASURE
-        map[ty][tx].roomId = roomId
-      } else if (ch === 'S') {
-        map[ty][tx].tile = TILE.SHRINE
-        map[ty][tx].roomId = roomId
-      } else if (ch === 'W') {
-        map[ty][tx].tile = TILE.FLOOR
-        map[ty][tx].roomId = roomId
-        spawns.push({ kind: 'weapon', x: tx, y: ty })
-      } else if (ch === 'P') {
-        map[ty][tx].tile = TILE.FLOOR
-        map[ty][tx].roomId = roomId
-        spawns.push({ kind: 'potion', x: tx, y: ty })
-      } else if (ch === 'L') {
-        map[ty][tx].tile = TILE.FLOOR
-        map[ty][tx].roomId = roomId
-        spawns.push({ kind: 'door', x: tx, y: ty })
-      } else if (ch === 'X') {
-        map[ty][tx].tile = TILE.SNARE
-        map[ty][tx].roomId = roomId
-      } else if (ch === 'B') {
-        map[ty][tx].tile = TILE.FLOOR
-        map[ty][tx].roomId = roomId
-        if (!bossPlaced) { spawns.push({ kind: 'dragon_boss', x: tx, y: ty, roomId }); bossPlaced = true }
-      } else if (ch === 'C') {
-        map[ty][tx].tile = TILE.COLUMN
-        map[ty][tx].roomId = roomId
+      const entry = TEMPLATE_LEGEND[ch]
+      if (!entry) return
+      if (entry.kind === 'tile') {
+        map[ty][tx].tile = entry.tile
+        if (entry.tile !== TILE.WALL) map[ty][tx].roomId = roomId
+        return
       }
+      // spawn: stands on floor
+      map[ty][tx].tile = TILE.FLOOR
+      map[ty][tx].roomId = roomId
+      if (entry.single) {
+        if (bossPlaced) return
+        bossPlaced = true
+      }
+      const spawn = { kind: entry.spawn, x: tx, y: ty }
+      if (entry.roomScoped) spawn.roomId = roomId
+      spawns.push(spawn)
     })
   })
   return spawns
