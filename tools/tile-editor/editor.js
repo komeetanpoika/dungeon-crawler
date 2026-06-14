@@ -179,10 +179,13 @@ document.getElementById('save-tile').addEventListener('click', async () => {
     tileImageData.set(name, await dataURLToImageData(dataURL))
     tileImages.delete(name)
     if (library) library.add(name, dataURL)
+    // Surface the new tile everywhere it can be used (Draw library above + Build palette).
+    document.dispatchEvent(new CustomEvent('tile-saved', { detail: { name } }))
 
     const tags = document.getElementById('tile-tags').value
       .split(',').map(s => s.trim()).filter(Boolean)
     const rs = state.rulesets[state.active]
+    const where = `Saved to renderer/assets/tiles/${name}.png — now in the library and Build palette`
     if (rs && tags.length) {
       rs.tiles[name] = { tags, weight: rs.tiles[name]?.weight ?? 1 }
       for (const tag of tags) {
@@ -193,9 +196,9 @@ document.getElementById('save-tile').addEventListener('click', async () => {
       }
       await window.editorAPI.saveRulesets(state.rulesets)
       document.dispatchEvent(new Event('ruleset-changed'))
-      alert(`Saved ${name}.png and registered in '${state.active}'`)
+      alert(`${where}, and registered in ruleset '${state.active}'.`)
     } else {
-      alert(`Saved ${name}.png (no tags or no active ruleset — not registered in a ruleset)`)
+      alert(`${where}. (No tags or no active ruleset, so it wasn't registered in a ruleset.)`)
     }
   } catch (err) {
     alert(`Save failed: ${err.message}`)

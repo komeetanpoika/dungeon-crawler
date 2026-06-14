@@ -83,6 +83,17 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     renderTagging()
   }
 
+  // Append one tile thumbnail to the palette (skip if already present), so a
+  // tile saved in the Draw tab shows up here without restarting the editor.
+  async function addPaletteTile(name) {
+    if (paletteEl.querySelector(`img[data-name="${CSS.escape(name)}"]`)) return
+    const img = document.createElement('img')
+    img.src = await window.editorAPI.readTile(name)
+    img.title = name
+    img.dataset.name = name
+    img.addEventListener('click', () => setActive(name))
+    paletteEl.appendChild(img)
+  }
   async function buildPalette(names) {
     paletteEl.innerHTML = ''
     const erase = document.createElement('button')
@@ -90,15 +101,10 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     erase.textContent = '✖ erase'
     erase.addEventListener('click', () => setActive(null))
     paletteEl.appendChild(erase)
-    for (const name of names) {
-      const img = document.createElement('img')
-      img.src = await window.editorAPI.readTile(name)
-      img.title = name
-      img.dataset.name = name
-      img.addEventListener('click', () => setActive(name))
-      paletteEl.appendChild(img)
-    }
+    for (const name of names) await addPaletteTile(name)
   }
+  // A tile saved elsewhere in the editor (Draw tab) becomes paintable here.
+  document.addEventListener('tile-saved', e => { addPaletteTile(e.detail.name) })
 
   function setLayer(which) {
     layer = which
