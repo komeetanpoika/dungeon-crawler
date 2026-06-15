@@ -381,7 +381,13 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   })
   document.getElementById('paint-reroll').addEventListener('click', refreshPreview)
 
+  // Ignore ruleset-changed until the store has loaded from disk: initRulesets()
+  // is async, so its initial dispatch can arrive before loadPainterMaps()
+  // resolves. Acting early would seed a blank "main" against an empty store and
+  // save it over the real file. The load IIFE below performs the first load.
+  let storeLoaded = false
   document.addEventListener('ruleset-changed', () => {
+    if (!storeLoaded) return
     persistNow()                 // flush the outgoing ruleset's map first
     loadActiveMapFor(state.active)
   })
@@ -397,6 +403,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       console.error('[map-painter] painter-maps load failed:', err)
       store = {}
     }
+    storeLoaded = true
     loadActiveMapFor(state.active)
   })()
 }
