@@ -12,6 +12,7 @@ import {
   listMaps, getActive, getMap,
 } from './painter-maps.js'
 import { textPrompt } from './text-prompt.js'
+import { toast } from './toast.js'
 
 // Merge a derived fragment into a ruleset: overwrite tile weights/tags and each
 // painted tag's role + adjacency (+ overlays on base tags), but preserve any
@@ -45,6 +46,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     overlay: blank(Number(wInput.value), Number(hInput.value)),
   }
   let active = null          // active brush tile name; null = eraser
+  let eraseBtn = null        // the ✖ erase palette button (for active styling)
   let layer = 'base'         // 'base' | 'overlay' — which grid the brush writes
   let painting = false
   const images = new Map()   // name -> Image
@@ -122,6 +124,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
 
   function markActive(name) {
     paletteEl.querySelectorAll('img').forEach(i => i.classList.toggle('active', i.dataset.name === name))
+    if (eraseBtn) eraseBtn.classList.toggle('active', name == null)
   }
   function setActive(name) {
     active = name
@@ -143,12 +146,13 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   }
   async function buildPalette(names) {
     paletteEl.innerHTML = ''
-    const erase = document.createElement('button')
-    erase.className = 'erase'
-    erase.textContent = '✖ erase'
-    erase.addEventListener('click', () => setActive(null))
-    paletteEl.appendChild(erase)
+    eraseBtn = document.createElement('button')
+    eraseBtn.className = 'erase'
+    eraseBtn.textContent = '✖ erase'
+    eraseBtn.addEventListener('click', () => setActive(null))
+    paletteEl.appendChild(eraseBtn)
     for (const name of names) await addPaletteTile(name)
+    markActive(active)   // reflect the current brush (null = erase) after a rebuild
   }
   // A tile saved elsewhere in the editor (Draw tab) becomes paintable here.
   document.addEventListener('tile-saved', e => { addPaletteTile(e.detail.name) })
@@ -395,7 +399,10 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     loadActiveMapFor(state.active)
   })
 
-  tilesReady.then(buildPalette).catch(err => console.error('[map-painter] palette load failed:', err))
+  tilesReady.then(buildPalette).catch(err => {
+    console.error('[map-painter] palette load failed:', err)
+    toast('Could not load Build palette: ' + (err?.message ?? err), 'error')
+  })
   sizeCanvas()
   render()
   renderPicker()                 // disabled placeholder until the store loads
@@ -404,6 +411,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       store = (await window.editorAPI.loadPainterMaps()) ?? {}
     } catch (err) {
       console.error('[map-painter] painter-maps load failed:', err)
+      toast('Could not load saved maps: ' + (err?.message ?? err), 'error')
       store = {}
     }
     storeLoaded = true
