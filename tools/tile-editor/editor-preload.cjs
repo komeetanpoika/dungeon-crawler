@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld('editorAPI', {
   saveTile:     (name, dataURL) => ipcRenderer.invoke('editor-save-tile', name, dataURL),
   loadRulesets: () => ipcRenderer.invoke('load-rulesets'),
   saveRulesets: (data) => ipcRenderer.invoke('save-rulesets', data),
+  loadPainterMaps: () => ipcRenderer.invoke('load-painter-maps'),
+  savePainterMaps: (data) => ipcRenderer.invoke('save-painter-maps', data),
 })
