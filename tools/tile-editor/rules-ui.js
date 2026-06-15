@@ -2,6 +2,7 @@
 // of the active ruleset. Mutates the shared state object; emits 'rules-edited'
 // on every change so the sample preview can re-render.
 import { textPrompt } from './text-prompt.js'
+import { toast } from './toast.js'
 
 export function initRulesUI(state) {
   const tagRows = document.getElementById('tag-rows')
@@ -138,7 +139,7 @@ export function initRulesUI(state) {
 
   document.getElementById('add-tag').addEventListener('click', async () => {
     const rs = activeRs()
-    if (!rs) { alert('Create a ruleset first (+ new in the header).'); return }
+    if (!rs) { toast('Create a ruleset first (+ new in the header).', 'error'); return }
     const tag = ((await textPrompt('New tag (e.g. floor.moss):')) ?? '').trim()
     if (!tag) return
     rs.tags[tag] ??= {
