@@ -14,6 +14,7 @@
   button.active { background: #3a3a55; color: #fff; }
   button.save { background: #226633; color: #fff; margin-left: auto; }
   button.on { background: #254438; color: #7fd; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
   main { flex: 1; display: flex; gap: 10px; min-height: 0; }
   .panel { background: #0d0d14; border-radius: 4px; padding: 8px; }
   .label { color: #888; font-size: 11px; text-transform: uppercase; margin: 6px 0 3px; }
@@ -92,6 +93,7 @@
       <input type="color" id="custom-color" value="#5a5a72">
       <div class="label">Tile name (saved as custom_&lt;name&gt;)</div>
       <input id="tile-name" placeholder="moss_floor_1" style="width:100%">
+      <div id="tile-name-hint" style="font-size:11px; min-height:14px; color:#888"></div>
       <div class="label">Tags (comma-separated)</div>
       <input id="tile-tags" placeholder="floor.moss" style="width:100%">
     </div>

@@ -1,11 +1,12 @@
 import { PixelEditor } from './pixel-editor.js'
 import { dataURLToImageData, extractPalette } from './palette.js'
 import { buildLibrary } from './library.js'
-import { sanitizeTileName } from './lib.js'
+import { sanitizeTileName, tileNameHint } from './lib.js'
 import { initRulesUI } from './rules-ui.js'
 import { renderSample } from './sample-preview.js'
 import { textPrompt } from './text-prompt.js'
 import { initMapPainter } from './map-painter.js'
+import { toast } from './toast.js'
 
 const drawView = document.getElementById('draw-view')
 const rulesView = document.getElementById('rules-view')
@@ -82,6 +83,18 @@ document.getElementById('custom-color').addEventListener('input', e =>
 
 renderPreviews()
 
+// Live validity hint for the tile name; Save tile stays disabled until usable.
+const tileNameInput = document.getElementById('tile-name')
+const tileNameHintEl = document.getElementById('tile-name-hint')
+function updateTileNameHint() {
+  const { valid, text } = tileNameHint(tileNameInput.value)
+  tileNameHintEl.textContent = text
+  tileNameHintEl.style.color = valid ? '#7a7' : '#c66'
+  saveTileBtn.disabled = !valid
+}
+tileNameInput.addEventListener('input', updateTileNameHint)
+updateTileNameHint()
+
 // Cache of name → ImageData for every tile on disk; reused by the library
 // strip and load-as-base in later tasks.
 const tileImageData = new Map()
@@ -118,7 +131,10 @@ async function initTiles() {
 }
 
 const tilesReady = initTiles()
-tilesReady.catch(err => console.error('[tile-editor] palette load failed:', err))
+tilesReady.catch(err => {
+  console.error('[tile-editor] palette load failed:', err)
+  toast('Could not load tiles: ' + err.message, 'error')
+})
 
 let library
 tilesReady.then(async names => {
@@ -127,7 +143,8 @@ tilesReady.then(async names => {
       const data = tileImageData.get(name)
       if (data) pixelEditor.loadImageData(data)
       // Force a conscious new name — originals are never overwritten.
-      document.getElementById('tile-name').value = ''
+      tileNameInput.value = ''
+      updateTileNameHint()
     },
   })
 })
@@ -161,7 +178,13 @@ document.getElementById('new-ruleset').addEventListener('click', async () => {
 })
 
 async function initRulesets() {
-  state.rulesets = (await window.editorAPI.loadRulesets()) ?? {}
+  try {
+    state.rulesets = (await window.editorAPI.loadRulesets()) ?? {}
+  } catch (err) {
+    console.error('[tile-editor] ruleset load failed:', err)
+    toast('Could not load rulesets: ' + err.message, 'error')
+    state.rulesets = {}
+  }
   state.active = Object.keys(state.rulesets)[0] ?? null
   renderRulesetSelect()
   document.dispatchEvent(new Event('ruleset-changed'))
@@ -169,8 +192,8 @@ async function initRulesets() {
 initRulesets()
 
 document.getElementById('save-tile').addEventListener('click', async () => {
-  const name = sanitizeTileName(document.getElementById('tile-name').value)
-  if (!name) { alert('Enter a tile name first.'); return }
+  const name = sanitizeTileName(tileNameInput.value)
+  if (!name) return   // Save is disabled while the name is invalid
   if (await window.editorAPI.tileExists(name) &&
       !confirm(`${name}.png already exists. Overwrite it?`)) return
   try {
@@ -196,12 +219,12 @@ document.getElementById('save-tile').addEventListener('click', async () => {
       }
       await window.editorAPI.saveRulesets(state.rulesets)
       document.dispatchEvent(new Event('ruleset-changed'))
-      alert(`${where}, and registered in ruleset '${state.active}'.`)
+      toast(`${where}, and registered in ruleset '${state.active}'.`, 'ok')
     } else {
-      alert(`${where}. (No tags or no active ruleset, so it wasn't registered in a ruleset.)`)
+      toast(`${where}. (No tags / no active ruleset — not registered in a ruleset.)`, 'ok')
     }
   } catch (err) {
-    alert(`Save failed: ${err.message}`)
+    toast(`Save failed: ${err.message}`, 'error')
   }
 })
 
@@ -210,9 +233,9 @@ initRulesUI(state)
 saveRulesBtn.addEventListener('click', async () => {
   try {
     await window.editorAPI.saveRulesets(state.rulesets)
-    alert('Rules saved to renderer/data/rulesets.json')
+    toast('Rules saved to renderer/data/rulesets.json', 'ok')
   } catch (err) {
-    alert(`Save failed: ${err.message}`)
+    toast(`Save failed: ${err.message}`, 'error')
   }
 })
 
