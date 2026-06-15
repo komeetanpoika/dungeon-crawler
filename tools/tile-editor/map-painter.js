@@ -7,6 +7,11 @@
 
 import { deriveRules } from './derive-rules.js'
 import { renderSample } from './sample-preview.js'
+import {
+  serializeGrid, applyMap, renameMap, deleteMap,
+  listMaps, getActive, getMap,
+} from './painter-maps.js'
+import { textPrompt } from './text-prompt.js'
 
 // Merge a derived fragment into a ruleset: overwrite tile weights/tags and each
 // painted tag's role + adjacency (+ overlays on base tags), but preserve any
@@ -43,6 +48,44 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   let layer = 'base'         // 'base' | 'overlay' — which grid the brush writes
   let painting = false
   const images = new Map()   // name -> Image
+
+  // --- Painted-map persistence (issue #2) ---
+  const pickerEl = document.getElementById('paint-map-picker')
+  let store = {}             // { ruleset: { active, maps } } loaded from disk
+  let loadedRuleset = null   // the ruleset whose map is currently in the grid
+  let activeMap = null       // the map name currently in the grid
+  let statusEl = null        // status text inside the picker
+  let saveTimer = null
+
+  const sanitizeMapName = (raw) =>
+    (raw ?? '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '')
+
+  const setStatus = (t) => { if (statusEl) statusEl.textContent = t }
+
+  function currentSerialized() { return serializeGrid(grid.base, grid.overlay) }
+
+  function loadGrid(map) {
+    grid.base = map.base.map(r => r.slice())
+    grid.overlay = map.overlay.map(r => r.slice())
+    wInput.value = map.w
+    hInput.value = map.h
+    sizeCanvas(); render()
+  }
+
+  function persistNow() {
+    clearTimeout(saveTimer)
+    if (!loadedRuleset || !activeMap) return
+    applyMap(store, loadedRuleset, activeMap, currentSerialized())
+    setStatus('saving…')
+    window.editorAPI.savePainterMaps(store)
+      .then(() => setStatus('saved ✓'))
+      .catch(() => setStatus('save failed'))
+  }
+  function persistDebounced() {
+    if (!loadedRuleset || !activeMap) return
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(persistNow, 400)
+  }
 
   function sizeCanvas() {
     canvas.width = grid.base[0].length * CELL
@@ -115,6 +158,109 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   document.getElementById('layer-base').addEventListener('click', () => setLayer('base'))
   document.getElementById('layer-overlay').addEventListener('click', () => setLayer('overlay'))
 
+  function mkBtn(label, onClick) {
+    const b = document.createElement('button')
+    b.textContent = label
+    b.disabled = !loadedRuleset
+    b.addEventListener('click', onClick)
+    return b
+  }
+
+  function renderPicker() {
+    pickerEl.innerHTML = ''
+    const sel = document.createElement('select')
+    sel.style.flex = '1'
+    for (const n of (loadedRuleset ? listMaps(store, loadedRuleset) : [])) {
+      const o = document.createElement('option')
+      o.value = o.textContent = n
+      o.selected = n === activeMap
+      sel.appendChild(o)
+    }
+    sel.disabled = !loadedRuleset
+    sel.addEventListener('change', () => switchMap(sel.value))
+
+    statusEl = document.createElement('span')
+    statusEl.style.cssText = 'color:#7a7; font-size:11px; width:100%'
+
+    pickerEl.append(sel, mkBtn('+ new', onNew), mkBtn('✎', onRename), mkBtn('🗑', onDelete), statusEl)
+  }
+
+  function switchMap(name) {
+    persistNow()
+    activeMap = name
+    const map = getMap(store, loadedRuleset, name)
+    if (map) loadGrid(map)
+    store[loadedRuleset].active = name
+    window.editorAPI.savePainterMaps(store)
+    renderPicker()
+  }
+
+  async function onNew() {
+    if (!loadedRuleset) return
+    const name = sanitizeMapName(await textPrompt('New map name (e.g. corner-variant):'))
+    if (!name) return
+    if (listMaps(store, loadedRuleset).includes(name)) { setStatus(`"${name}" already exists`); return }
+    persistNow()
+    const w = (Number(wInput.value) | 0) || 16
+    const h = (Number(hInput.value) | 0) || 12
+    grid.base = blank(w, h)
+    grid.overlay = blank(w, h)
+    activeMap = name
+    sizeCanvas(); render()
+    persistNow()
+    renderPicker()
+  }
+
+  async function onRename() {
+    if (!loadedRuleset || !activeMap) return
+    const name = sanitizeMapName(await textPrompt(`Rename "${activeMap}" to:`))
+    if (!name || name === activeMap) return
+    if (listMaps(store, loadedRuleset).includes(name)) { setStatus(`"${name}" already exists`); return }
+    renameMap(store, loadedRuleset, activeMap, name)
+    activeMap = name
+    window.editorAPI.savePainterMaps(store)
+    setStatus('renamed')
+    renderPicker()
+  }
+
+  function onDelete() {
+    if (!loadedRuleset || !activeMap) return
+    if (!confirm(`Delete map "${activeMap}"?`)) return
+    deleteMap(store, loadedRuleset, activeMap)
+    activeMap = getActive(store, loadedRuleset)
+    const map = activeMap && getMap(store, loadedRuleset, activeMap)
+    if (map) loadGrid(map)
+    else {
+      // Deleted the last map — start a fresh blank "main".
+      activeMap = 'main'
+      grid.base = blank(16, 12); grid.overlay = blank(16, 12)
+      sizeCanvas(); render()
+      applyMap(store, loadedRuleset, 'main', currentSerialized())
+    }
+    window.editorAPI.savePainterMaps(store)
+    setStatus('deleted')
+    renderPicker()
+  }
+
+  function loadActiveMapFor(ruleset) {
+    loadedRuleset = ruleset
+    if (!ruleset) { activeMap = null; renderPicker(); return }
+    let name = getActive(store, ruleset)
+    if (!name) {
+      // Seed "main" from the current grid (preserves any in-memory painting).
+      name = 'main'
+      applyMap(store, ruleset, name, currentSerialized())
+      window.editorAPI.savePainterMaps(store)
+    }
+    activeMap = name
+    // Heal a stale active pointer in-memory (getActive is a pure getter and may
+    // have fallen back to the first map); the corrected value persists on next save.
+    if (store[ruleset]) store[ruleset].active = name
+    const map = getMap(store, ruleset, name)
+    if (map) loadGrid(map)
+    renderPicker()
+  }
+
   function cellAt(ev) {
     const r = canvas.getBoundingClientRect()
     return { x: Math.floor((ev.clientX - r.left) / CELL), y: Math.floor((ev.clientY - r.top) / CELL) }
@@ -124,6 +270,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     if (grid[layer][y]?.[x] === undefined) return
     grid[layer][y][x] = active   // active === null erases the active layer's slot
     render()
+    persistDebounced()
   }
   canvas.addEventListener('mousedown', e => { painting = true; paint(e) })
   canvas.addEventListener('mousemove', e => { if (painting) paint(e) })
@@ -137,6 +284,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     grid.base = resize(grid.base)
     grid.overlay = resize(grid.overlay)
     sizeCanvas(); render()
+    persistDebounced()
   })
 
   const taggingEl = document.getElementById('paint-tagging')
@@ -203,6 +351,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   }
 
   document.getElementById('derive-btn').addEventListener('click', async () => {
+    persistNow()
     const rs = state.rulesets[state.active]
     if (!rs) { reportEl.textContent = 'Select or create a ruleset first (top bar).'; return }
     const frag = deriveRules(grid.base, grid.overlay, tileMetaFromRuleset(rs))
@@ -227,7 +376,22 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   })
   document.getElementById('paint-reroll').addEventListener('click', refreshPreview)
 
+  document.addEventListener('ruleset-changed', () => {
+    persistNow()                 // flush the outgoing ruleset's map first
+    loadActiveMapFor(state.active)
+  })
+
   tilesReady.then(buildPalette).catch(err => console.error('[map-painter] palette load failed:', err))
   sizeCanvas()
   render()
+  renderPicker()                 // disabled placeholder until the store loads
+  ;(async () => {
+    try {
+      store = (await window.editorAPI.loadPainterMaps()) ?? {}
+    } catch (err) {
+      console.error('[map-painter] painter-maps load failed:', err)
+      store = {}
+    }
+    loadActiveMapFor(state.active)
+  })()
 }
