@@ -54,8 +54,9 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   let store = {}             // { ruleset: { active, maps } } loaded from disk
   let loadedRuleset = null   // the ruleset whose map is currently in the grid
   let activeMap = null       // the map name currently in the grid
-  let statusEl = null        // status text inside the picker
+  let statusEl = null        // status text inside the picker (created once, reused)
   let saveTimer = null
+  const DEFAULT_W = 16, DEFAULT_H = 12   // blank-map size when none is implied
 
   const sanitizeMapName = (raw) =>
     (raw ?? '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '')
@@ -179,8 +180,12 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     sel.disabled = !loadedRuleset
     sel.addEventListener('change', () => switchMap(sel.value))
 
-    statusEl = document.createElement('span')
-    statusEl.style.cssText = 'color:#7a7; font-size:11px; width:100%'
+    // Reuse one status node so an in-flight 'saving…' → 'saved ✓' message set
+    // from an async save survives the re-render that follows a picker action.
+    if (!statusEl) {
+      statusEl = document.createElement('span')
+      statusEl.style.cssText = 'color:#7a7; font-size:11px; width:100%'
+    }
 
     pickerEl.append(sel, mkBtn('+ new', onNew), mkBtn('✎', onRename), mkBtn('🗑', onDelete), statusEl)
   }
@@ -200,14 +205,14 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     const name = sanitizeMapName(await textPrompt('New map name (e.g. corner-variant):'))
     if (!name) return
     if (listMaps(store, loadedRuleset).includes(name)) { setStatus(`"${name}" already exists`); return }
-    persistNow()
-    const w = (Number(wInput.value) | 0) || 16
-    const h = (Number(hInput.value) | 0) || 12
+    persistNow()                 // flush the outgoing map
+    const w = (Number(wInput.value) | 0) || DEFAULT_W
+    const h = (Number(hInput.value) | 0) || DEFAULT_H
     grid.base = blank(w, h)
     grid.overlay = blank(w, h)
     activeMap = name
     sizeCanvas(); render()
-    persistNow()
+    persistNow()                 // seed the new (empty) map
     renderPicker()
   }
 
@@ -233,7 +238,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     else {
       // Deleted the last map — start a fresh blank "main".
       activeMap = 'main'
-      grid.base = blank(16, 12); grid.overlay = blank(16, 12)
+      grid.base = blank(DEFAULT_W, DEFAULT_H); grid.overlay = blank(DEFAULT_W, DEFAULT_H)
       sizeCanvas(); render()
       applyMap(store, loadedRuleset, 'main', currentSerialized())
     }
