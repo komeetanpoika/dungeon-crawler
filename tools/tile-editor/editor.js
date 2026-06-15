@@ -133,7 +133,7 @@ async function initTiles() {
 const tilesReady = initTiles()
 tilesReady.catch(err => {
   console.error('[tile-editor] palette load failed:', err)
-  toast('Could not load tiles: ' + err.message, 'error')
+  toast('Could not load tiles: ' + (err?.message ?? err), 'error')
 })
 
 let library
@@ -182,7 +182,7 @@ async function initRulesets() {
     state.rulesets = (await window.editorAPI.loadRulesets()) ?? {}
   } catch (err) {
     console.error('[tile-editor] ruleset load failed:', err)
-    toast('Could not load rulesets: ' + err.message, 'error')
+    toast('Could not load rulesets: ' + (err?.message ?? err), 'error')
     state.rulesets = {}
   }
   state.active = Object.keys(state.rulesets)[0] ?? null
@@ -224,7 +224,7 @@ document.getElementById('save-tile').addEventListener('click', async () => {
       toast(`${where}. (No tags / no active ruleset — not registered in a ruleset.)`, 'ok')
     }
   } catch (err) {
-    toast(`Save failed: ${err.message}`, 'error')
+    toast(`Save failed: ${err?.message ?? err}`, 'error')
   }
 })
 
@@ -235,7 +235,7 @@ saveRulesBtn.addEventListener('click', async () => {
     await window.editorAPI.saveRulesets(state.rulesets)
     toast('Rules saved to renderer/data/rulesets.json', 'ok')
   } catch (err) {
-    toast(`Save failed: ${err.message}`, 'error')
+    toast(`Save failed: ${err?.message ?? err}`, 'error')
   }
 })
 
