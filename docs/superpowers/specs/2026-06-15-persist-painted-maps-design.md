@@ -123,9 +123,12 @@ A small status element beside the picker:
 ## Edge cases
 
 - **No active ruleset:** the picker is disabled and autosave is a no-op (a map
-  cannot be keyed without a ruleset). Painting still works in memory. On
-  **Derive**, the existing `ensureRuleset()` creates a ruleset, after which the
-  current grid is persisted as that ruleset's `"main"` map.
+  cannot be keyed without a ruleset). Painting still works in memory. As soon as
+  a ruleset comes into existence — by tagging a tile (the inline tagging UI calls
+  `ensureRuleset()`) or via header **+ new** — the `ruleset-changed` handler
+  seeds that ruleset's `"main"` map from the **current grid**, preserving any
+  in-memory painting. (Derive itself still requires an existing ruleset and
+  reports "Select or create a ruleset first" otherwise — unchanged.)
 - **Duplicate map name on *new*:** rejected with an inline message; no overwrite.
 - **Resize:** persisted like any paint edit (new dimensions stored with the map).
 - **Corrupt/missing store file:** `load-painter-maps` returns `{}`; the editor
