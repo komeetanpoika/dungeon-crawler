@@ -15,6 +15,14 @@ export function sanitizeTileName(raw) {
   return `custom_${cleaned.replace(/^custom_/, '')}`
 }
 
+// Live hint for the tile-name input: what it will save as, or why it can't.
+export function tileNameHint(raw) {
+  const name = sanitizeTileName(raw)
+  return name
+    ? { valid: true, text: `saves as: ${name}.png` }
+    : { valid: false, text: '⚠ enter a tile name' }
+}
+
 // grid: Array(SIZE*SIZE) of '#rrggbbaa' strings (null = transparent).
 // Returns a new grid; with wrap, neighbor lookup goes around the edges so
 // fills behave seamlessly like the final tiled texture.
