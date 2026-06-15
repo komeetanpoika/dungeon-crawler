@@ -73,14 +73,17 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     sizeCanvas(); render()
   }
 
-  function persistNow() {
+  // Single funnel for disk writes: always cancels any pending debounced save so a
+  // mutation can't be clobbered by a stale timer firing against post-change state.
+  function saveStore() {
     clearTimeout(saveTimer)
-    if (!loadedRuleset || !activeMap) return
+    return window.editorAPI.savePainterMaps(store)
+  }
+  function persistNow() {
+    if (!loadedRuleset || !activeMap) { clearTimeout(saveTimer); return }
     applyMap(store, loadedRuleset, activeMap, currentSerialized())
     setStatus('saving…')
-    window.editorAPI.savePainterMaps(store)
-      .then(() => setStatus('saved ✓'))
-      .catch(() => setStatus('save failed'))
+    saveStore().then(() => setStatus('saved ✓')).catch(() => setStatus('save failed'))
   }
   function persistDebounced() {
     if (!loadedRuleset || !activeMap) return
@@ -196,7 +199,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     const map = getMap(store, loadedRuleset, name)
     if (map) loadGrid(map)
     store[loadedRuleset].active = name
-    window.editorAPI.savePainterMaps(store)
+    saveStore()
     renderPicker()
   }
 
@@ -223,7 +226,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     if (listMaps(store, loadedRuleset).includes(name)) { setStatus(`"${name}" already exists`); return }
     renameMap(store, loadedRuleset, activeMap, name)
     activeMap = name
-    window.editorAPI.savePainterMaps(store)
+    saveStore()
     setStatus('renamed')
     renderPicker()
   }
@@ -242,7 +245,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       sizeCanvas(); render()
       applyMap(store, loadedRuleset, 'main', currentSerialized())
     }
-    window.editorAPI.savePainterMaps(store)
+    saveStore()
     setStatus('deleted')
     renderPicker()
   }
@@ -255,7 +258,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       // Seed "main" from the current grid (preserves any in-memory painting).
       name = 'main'
       applyMap(store, ruleset, name, currentSerialized())
-      window.editorAPI.savePainterMaps(store)
+      saveStore()
     }
     activeMap = name
     // Heal a stale active pointer in-memory (getActive is a pure getter and may

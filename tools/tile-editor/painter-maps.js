@@ -2,6 +2,8 @@
 // Store shape: { [ruleset]: { active: string|null, maps: { [name]: SerializedMap } } }
 // SerializedMap: { w, h, base, overlay }; grids are grid[row][col] = tileName | null.
 
+// `base` and `overlay` must stay congruent in size (callers resize them as a
+// pair); the stored w/h are taken from `base`.
 export function serializeGrid(base, overlay) {
   const copy = (g) => g.map(row => row.slice())
   return { w: base[0]?.length ?? 0, h: base.length, base: copy(base), overlay: copy(overlay) }
