@@ -273,6 +273,34 @@ export function placeTemplate(map, template, ox, oy, roomId) {
   return spawns
 }
 
+// Stamp a painted structure prefab onto the map with its EXACT skins. Cells are
+// marked `locked` so the decoration pass leaves them untouched. Collision maps to a
+// logical tile (wall blocks, walkable = floor); interactions force the cell walkable
+// and emit a spawn. Returns the spawn list (door/chest), like placeTemplate.
+export function placeStructure(map, structure, ox, oy, roomId) {
+  const spawns = []
+  for (const cell of structure.cells) {
+    const tx = ox + cell.x, ty = oy + cell.y
+    const m = map[ty]?.[tx]
+    if (!m) continue
+    m.skin = cell.skin
+    m.overlay = cell.overlay ?? null
+    m.locked = true
+    if (cell.collision === 'wall') {
+      m.tile = TILE.WALL
+    } else {
+      m.tile = TILE.FLOOR
+      m.roomId = roomId
+    }
+    if (cell.interaction) {
+      m.tile = TILE.FLOOR        // anything you interact with stands on floor
+      m.roomId = roomId
+      spawns.push({ kind: cell.interaction.type, x: tx, y: ty })
+    }
+  }
+  return spawns
+}
+
 export function isFullyConnected(map) {
   const floors = []
   for (let y = 0; y < map.length; y++)
