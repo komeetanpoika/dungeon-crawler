@@ -1,12 +1,21 @@
 // Pure store helpers for Build-tab painted maps. No DOM.
 // Store shape: { [ruleset]: { active: string|null, maps: { [name]: SerializedMap } } }
-// SerializedMap: { w, h, base, overlay }; grids are grid[row][col] = tileName | null.
+// SerializedMap: { w, h, base, overlay, props }; grids are grid[row][col] = tileName | null.
 
-// `base` and `overlay` must stay congruent in size (callers resize them as a
-// pair); the stored w/h are taken from `base`.
-export function serializeGrid(base, overlay) {
+// `base`, `overlay`, and `props` must stay congruent in size (callers resize them
+// together); the stored w/h are taken from `base`. `props` cells are small objects,
+// so they are deep-copied; omitting `props` yields an all-null grid.
+export function serializeGrid(base, overlay, props) {
   const copy = (g) => g.map(row => row.slice())
-  return { w: base[0]?.length ?? 0, h: base.length, base: copy(base), overlay: copy(overlay) }
+  const blankProps = base.map(row => row.map(() => null))
+  const copyProps = (g) => g.map(row => row.map(c => (c ? { ...c } : null)))
+  return {
+    w: base[0]?.length ?? 0,
+    h: base.length,
+    base: copy(base),
+    overlay: copy(overlay),
+    props: props ? copyProps(props) : blankProps,
+  }
 }
 
 function bucket(store, ruleset) {
