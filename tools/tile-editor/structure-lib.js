@@ -3,9 +3,11 @@
 // A properties cell is `null` or { collision?: 'wall'|'walkable',
 //   interaction?: { type: 'door'|'chest' }, structure?: true }.
 
-// Toggle/replace one property on a properties cell, returning a new cell (or null
+// Toggle/replace one property on a properties cell, returning a NEW cell (or null
 // when the cell ends up empty). Collision replaces; painting the same collision or
-// interaction type, or toggling structure, clears it.
+// interaction type, or toggling structure, clears it. The returned cell is fresh and
+// should be treated as immutable by callers — do not mutate its nested `interaction`
+// object in place.
 export function setProperty(cell, property, payload) {
   const c = cell ? { ...cell } : {}
   if (property === 'collision') {
@@ -18,7 +20,7 @@ export function setProperty(cell, property, payload) {
     if (c.structure) delete c.structure
     else c.structure = true
   }
-  return (c.collision || c.interaction || c.structure) ? c : null
+  return Object.keys(c).length > 0 ? c : null
 }
 
 // base/overlay: grid[row][col] = tile name | null. props: grid[row][col] = cell|null.
@@ -44,6 +46,8 @@ export function exportStructure(base, overlay, props, tileMeta) {
       y: y - minY,
       skin: base[y][x],
       overlay: overlay[y]?.[x] ?? null,
+      // Explicit collision wins; otherwise derive from the tile's role. Unknown or
+      // untagged tiles (no role) intentionally default to walkable.
       collision: p.collision ?? (role === 'wall' ? 'wall' : 'walkable'),
       interaction: p.interaction ?? null,
     }

@@ -71,4 +71,11 @@ describe('exportStructure', () => {
     const p = [[{ structure: true }, null], [null, null]]
     assert.equal(exportStructure([[null, 'w1'], ['f1', 'w1']], overlay, p, meta), null)
   })
+  it('excludes base-less structure cells but keeps valid marked siblings', () => {
+    const b = [[null, 'w1'], ['f1', 'w1']]   // (0,0) has no base tile
+    const p = [[{ structure: true }, { structure: true }], [null, null]]
+    const s = exportStructure(b, overlay, p, meta)
+    assert.equal(s.cells.length, 1)
+    assert.equal(s.cells[0].skin, 'w1')
+  })
 })
