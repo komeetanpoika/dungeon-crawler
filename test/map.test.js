@@ -394,3 +394,21 @@ describe('depth 10 boss arena', () => {
     assert.ok(foundTreasure, 'depth 10 should place a treasure tile')
   })
 })
+
+describe('generateLevel — structure landmarks', () => {
+  const structures = {
+    test_keep: {
+      w: 2, h: 1, targetDepth: 1,
+      cells: [
+        { x: 0, y: 0, skin: 'keep_wall', overlay: null, collision: 'wall', interaction: null },
+        { x: 1, y: 0, skin: 'keep_gate', overlay: null, collision: 'walkable', interaction: { type: 'door' } },
+      ],
+    },
+  }
+  it('places a targetDepth structure with its exact locked skins', () => {
+    const { map } = generateLevel(1, undefined, undefined, { structures })
+    let found = false
+    for (const row of map) for (const c of row) if (c.locked && c.skin === 'keep_wall') found = true
+    assert.equal(found, true)
+  })
+})

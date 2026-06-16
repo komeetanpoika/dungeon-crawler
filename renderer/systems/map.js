@@ -394,7 +394,7 @@ function healConnectivity(map) {
   }
 }
 
-export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false } = {}) {
+export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {} } = {}) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -425,21 +425,33 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       ? landmarkCandidates[Math.floor(Math.random() * landmarkCandidates.length)]
       : null
 
-    if (cfg.landmark && TEMPLATES[cfg.landmark] && landmarkRoom) {
-      const tmpl = TEMPLATES[cfg.landmark]
+    // Resolve the landmark: a structure whose targetDepth matches this depth wins;
+    // otherwise the depth's configured landmark name. Structures take precedence
+    // over a same-named TEMPLATE.
+    const landmarkName =
+      Object.keys(structures).find(n => structures[n].targetDepth === depth) ?? cfg.landmark
+    let landmark = null
+    if (landmarkName && structures[landmarkName]) {
+      const s = structures[landmarkName]
+      landmark = { w: s.w, h: s.h, place: (ox, oy, rid) => placeStructure(map, s, ox, oy, rid) }
+    } else if (landmarkName && TEMPLATES[landmarkName]) {
+      const t = TEMPLATES[landmarkName]
+      landmark = { w: t.width, h: t.height, place: (ox, oy, rid) => placeTemplate(map, t, ox, oy, rid) }
+    }
+
+    if (landmark && landmarkRoom) {
       const lc = center(landmarkRoom)
-      const ox = Math.max(0, Math.min(width  - tmpl.width,  lc.x - Math.floor(tmpl.width  / 2)))
-      const oy = Math.max(0, Math.min(height - tmpl.height, lc.y - Math.floor(tmpl.height / 2)))
-      entitySpawns.push(...placeTemplate(map, tmpl, ox, oy, roomId++))
-      const tlc = { x: ox + Math.floor(tmpl.width / 2), y: oy + Math.floor(tmpl.height / 2) }
+      const ox = Math.max(0, Math.min(width  - landmark.w, lc.x - Math.floor(landmark.w / 2)))
+      const oy = Math.max(0, Math.min(height - landmark.h, lc.y - Math.floor(landmark.h / 2)))
+      entitySpawns.push(...landmark.place(ox, oy, roomId++))
+      const tlc = { x: ox + Math.floor(landmark.w / 2), y: oy + Math.floor(landmark.h / 2) }
       carveCorridor(map, lc.x, lc.y, tlc.x, tlc.y)
-    } else if (cfg.landmark && TEMPLATES[cfg.landmark]) {
+    } else if (landmark) {
       // Fallback: bottom-right corner
-      const tmpl = TEMPLATES[cfg.landmark]
-      const ox = width - tmpl.width - 2
-      const oy = height - tmpl.height - 2
-      entitySpawns.push(...placeTemplate(map, tmpl, ox, oy, roomId++))
-      const lc = { x: ox + Math.floor(tmpl.width / 2), y: oy + Math.floor(tmpl.height / 2) }
+      const ox = width - landmark.w - 2
+      const oy = height - landmark.h - 2
+      entitySpawns.push(...landmark.place(ox, oy, roomId++))
+      const lc = { x: ox + Math.floor(landmark.w / 2), y: oy + Math.floor(landmark.h / 2) }
       const nearest = rooms.reduce((best, r) => {
         const c = center(r), d = Math.abs(c.x - lc.x) + Math.abs(c.y - lc.y)
         return d < best.d ? { d, r } : best
