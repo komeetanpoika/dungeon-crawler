@@ -260,6 +260,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     const h = (Number(hInput.value) | 0) || DEFAULT_H
     grid.base = blank(w, h)
     grid.overlay = blank(w, h)
+    grid.props = blank(w, h)
     activeMap = name
     sizeCanvas(); render()
     persistNow()                 // seed the new (empty) map
@@ -288,7 +289,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     else {
       // Deleted the last map — start a fresh blank "main".
       activeMap = 'main'
-      grid.base = blank(DEFAULT_W, DEFAULT_H); grid.overlay = blank(DEFAULT_W, DEFAULT_H)
+      grid.base = blank(DEFAULT_W, DEFAULT_H); grid.overlay = blank(DEFAULT_W, DEFAULT_H); grid.props = blank(DEFAULT_W, DEFAULT_H)
       sizeCanvas(); render()
       applyMap(store, loadedRuleset, 'main', currentSerialized())
     }
