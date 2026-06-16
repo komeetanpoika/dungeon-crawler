@@ -343,3 +343,21 @@ describe('overlay decoration pass', () => {
   })
 })
 
+describe('decorateMap — locked cells', () => {
+  const ruleset = {
+    tiles: { floor_a: { tags: ['floor'], weight: 1 }, deco: { tags: ['overlay.x'], weight: 1 } },
+    tags: {
+      floor: { role: 'floor', allow: ['*'], forbid: [], directional: {},
+               adjacency: { n: {}, e: {}, s: {}, w: {} }, overlays: { 'overlay.x': 1, '': 1 } },
+      'overlay.x': { role: 'overlay', allow: ['*'], forbid: [], directional: {},
+                     adjacency: { n: {}, e: {}, s: {}, w: {} } },
+    },
+  }
+  it('never overwrites the skin or overlay of a locked cell', () => {
+    const map = [[{ tile: TILE.FLOOR, skin: 'castle_floor', overlay: 'banner', locked: true }]]
+    decorateMap(map, ruleset)
+    assert.equal(map[0][0].skin, 'castle_floor')
+    assert.equal(map[0][0].overlay, 'banner')
+  })
+})
+

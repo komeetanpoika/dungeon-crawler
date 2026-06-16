@@ -128,6 +128,7 @@ function decorateOverlays(map, ruleset, rng) {
   for (let row = 0; row < map.length; row++) {
     for (let col = 0; col < map[row].length; col++) {
       const cell = map[row][col]
+      if (cell.locked) continue
       cell.overlay = null
       if (!cell.skin) continue
       let dist = null
@@ -173,6 +174,7 @@ export function decorateMap(map, ruleset, rng = Math.random) {
   for (let row = 0; row < map.length; row++) {
     for (let col = 0; col < map[row].length; col++) {
       const cell = map[row][col]
+      if (cell.locked) continue
       const role = roleOf(cell.tile)
       if (!role) continue
       const neighbors = [
