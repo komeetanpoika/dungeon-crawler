@@ -427,9 +427,12 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
 
     // Resolve the landmark: a structure whose targetDepth matches this depth wins;
     // otherwise the depth's configured landmark name. Structures take precedence
-    // over a same-named TEMPLATE.
-    const landmarkName =
-      Object.keys(structures).find(n => structures[n].targetDepth === depth) ?? cfg.landmark
+    // over a same-named TEMPLATE. When several structures target the same depth,
+    // pick one at random per level so none silently shadows the others.
+    const depthMatches = Object.keys(structures).filter(n => structures[n].targetDepth === depth)
+    const landmarkName = depthMatches.length
+      ? depthMatches[Math.floor(Math.random() * depthMatches.length)]
+      : cfg.landmark
     let landmark = null
     if (landmarkName && structures[landmarkName]) {
       const s = structures[landmarkName]

@@ -411,4 +411,22 @@ describe('generateLevel — structure landmarks', () => {
     for (const row of map) for (const c of row) if (c.locked && c.skin === 'keep_wall') found = true
     assert.equal(found, true)
   })
+
+  it('does not let one structure permanently shadow another at the same depth', () => {
+    // Two single-cell structures both target depth 3. First-key-wins resolution
+    // would only ever place `alpha`; random resolution lets both appear.
+    const two = {
+      alpha: { w: 1, h: 1, targetDepth: 3,
+        cells: [{ x: 0, y: 0, skin: 'alpha_skin', overlay: null, collision: 'walkable', interaction: null }] },
+      beta:  { w: 1, h: 1, targetDepth: 3,
+        cells: [{ x: 0, y: 0, skin: 'beta_skin',  overlay: null, collision: 'walkable', interaction: null }] },
+    }
+    const seen = new Set()
+    for (let i = 0; i < 40; i++) {
+      const { map } = generateLevel(3, undefined, undefined, { structures: two })
+      for (const row of map) for (const c of row) if (c.locked) seen.add(c.skin)
+    }
+    assert.ok(seen.has('alpha_skin'), 'alpha never placed')
+    assert.ok(seen.has('beta_skin'), 'beta never placed (shadowed by alpha)')
+  })
 })
