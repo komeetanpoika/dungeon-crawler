@@ -158,9 +158,9 @@ function buildEntities(spawns, map) {
 
 function startNewRun() {
   if (rafId) cancelAnimationFrame(rafId)
-  const theme = DEPTH_THEMES.find(t => t.depths.includes(10)) ?? DEPTH_THEMES[0]
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
   const { map, entitySpawns, playerSpawn } =
-    generateLevel(10, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
+    generateLevel(1, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -174,7 +174,7 @@ function startNewRun() {
   player.inventory.push(...getStartingItems(meta))
   decorateMap(map, rulesets[theme.ruleset])
   state = {
-    level: 10,
+    level: 1,
     map,
     player,
     theme,
@@ -182,7 +182,7 @@ function startNewRun() {
     projectiles: [],
     log: ['You enter the dungeon…'],
     hitEffects: [],
-    run: { deepestLevel: 10, won: false },
+    run: { deepestLevel: 1, won: false },
     gameOver: false,
   }
   lastTime = performance.now()
