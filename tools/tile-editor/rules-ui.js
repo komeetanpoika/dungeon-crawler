@@ -2,6 +2,7 @@
 // of the active ruleset. Mutates the shared state object; emits 'rules-edited'
 // on every change so the sample preview can re-render.
 import { textPrompt } from './text-prompt.js'
+import { renderLearned } from './adjacency-view.js'
 import { toast } from './toast.js'
 
 export function initRulesUI(state) {
@@ -77,7 +78,7 @@ export function initRulesUI(state) {
     const roleWrap = document.createElement('div')
     roleWrap.innerHTML = '<span class="label">role </span>'
     const roleSel = document.createElement('select')
-    for (const r of ['floor', 'wall']) {
+    for (const r of ['floor', 'wall', 'overlay']) {
       const o = document.createElement('option')
       o.value = r; o.textContent = r; o.selected = rule.role === r
       roleSel.appendChild(o)
@@ -124,6 +125,11 @@ export function initRulesUI(state) {
       wWrap.appendChild(row)
     }
     rulePanel.appendChild(wWrap)
+
+    const learned = document.createElement('div')
+    learned.style.marginTop = '10px'
+    renderLearned(learned, rule)
+    rulePanel.appendChild(learned)
 
     const del = document.createElement('button')
     del.textContent = '🗑 delete tag'
