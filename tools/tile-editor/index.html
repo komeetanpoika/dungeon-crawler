@@ -48,6 +48,14 @@
   table td { padding: 3px 6px; vertical-align: top; }
   input.small { width: 60px; }
   input.dir { width: 130px; }
+  .adj-dir { display: flex; gap: 6px; margin: 3px 0; }
+  .adj-dirlabel { flex: 0 0 16px; color: #888; }
+  .adj-rows { flex: 1; min-width: 0; }
+  .adj-row { display: flex; align-items: center; gap: 6px; margin: 1px 0; }
+  .adj-name { flex: 0 0 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .adj-bar { height: 9px; background: #3a6; border-radius: 2px; min-width: 1px; }
+  .adj-count { flex: 0 0 auto; color: #9a9; }
+  .adj-empty { color: #888; font-style: italic; margin: 3px 0; }
   #paint-palette img { width:40px; height:40px; image-rendering:pixelated; border:1px solid #333;
                        cursor:pointer; margin:2px; }
   #paint-palette img.active { border-color:#7fd; }
