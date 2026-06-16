@@ -11,6 +11,7 @@ const RUN_FILE = path.join(SAVE_DIR, 'run.json')
 const META_FILE = path.join(SAVE_DIR, 'meta.json')
 const RULESETS_FILE = path.join(__dirname, 'renderer', 'data', 'rulesets.json')
 const PAINTER_MAPS_FILE = path.join(__dirname, 'renderer', 'data', 'painter-maps.json')
+const STRUCTURES_FILE = path.join(__dirname, 'renderer', 'data', 'structures.json')
 const TILES_DIR = path.join(__dirname, 'renderer', 'assets', 'tiles')
 
 function createWindow() {
@@ -62,6 +63,12 @@ ipcMain.handle('load-painter-maps', () => {
 })
 ipcMain.handle('save-painter-maps', (_e, data) =>
   fs.writeFileSync(PAINTER_MAPS_FILE, JSON.stringify(data, null, 2)))
+
+ipcMain.handle('load-structures', () => {
+  try { return JSON.parse(fs.readFileSync(STRUCTURES_FILE, 'utf8')) } catch { return {} }
+})
+ipcMain.handle('save-structures', (_e, data) =>
+  fs.writeFileSync(STRUCTURES_FILE, JSON.stringify(data, null, 2)))
 
 ipcMain.handle('editor-list-tiles', () =>
   fs.readdirSync(TILES_DIR).filter(f => f.endsWith('.png')).map(f => f.slice(0, -4)).sort())

@@ -9,4 +9,6 @@ contextBridge.exposeInMainWorld('editorAPI', {
   saveRulesets: (data) => ipcRenderer.invoke('save-rulesets', data),
   loadPainterMaps: () => ipcRenderer.invoke('load-painter-maps'),
   savePainterMaps: (data) => ipcRenderer.invoke('save-painter-maps', data),
+  loadStructures: () => ipcRenderer.invoke('load-structures'),
+  saveStructures: (data) => ipcRenderer.invoke('save-structures', data),
 })
