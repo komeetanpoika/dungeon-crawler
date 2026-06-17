@@ -273,6 +273,34 @@ export function placeTemplate(map, template, ox, oy, roomId) {
   return spawns
 }
 
+// Stamp a painted structure prefab onto the map with its EXACT skins. Cells are
+// marked `locked` so the decoration pass leaves them untouched. Collision maps to a
+// logical tile (wall blocks, walkable = floor); interactions force the cell walkable
+// and emit a spawn. Returns the spawn list (door/chest), like placeTemplate.
+export function placeStructure(map, structure, ox, oy, roomId) {
+  const spawns = []
+  for (const cell of structure.cells) {
+    const tx = ox + cell.x, ty = oy + cell.y
+    const m = map[ty]?.[tx]
+    if (!m) continue
+    m.skin = cell.skin
+    m.overlay = cell.overlay ?? null
+    m.locked = true
+    if (cell.collision === 'wall') {
+      m.tile = TILE.WALL
+    } else {
+      m.tile = TILE.FLOOR
+      m.roomId = roomId
+    }
+    if (cell.interaction) {
+      m.tile = TILE.FLOOR        // anything you interact with stands on floor
+      m.roomId = roomId
+      spawns.push({ kind: cell.interaction.type, x: tx, y: ty })
+    }
+  }
+  return spawns
+}
+
 export function isFullyConnected(map) {
   const floors = []
   for (let y = 0; y < map.length; y++)
@@ -366,7 +394,7 @@ function healConnectivity(map) {
   }
 }
 
-export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false } = {}) {
+export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {} } = {}) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -397,21 +425,36 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       ? landmarkCandidates[Math.floor(Math.random() * landmarkCandidates.length)]
       : null
 
-    if (cfg.landmark && TEMPLATES[cfg.landmark] && landmarkRoom) {
-      const tmpl = TEMPLATES[cfg.landmark]
+    // Resolve the landmark: a structure whose targetDepth matches this depth wins;
+    // otherwise the depth's configured landmark name. Structures take precedence
+    // over a same-named TEMPLATE. When several structures target the same depth,
+    // pick one at random per level so none silently shadows the others.
+    const depthMatches = Object.keys(structures).filter(n => structures[n].targetDepth === depth)
+    const landmarkName = depthMatches.length
+      ? depthMatches[Math.floor(Math.random() * depthMatches.length)]
+      : cfg.landmark
+    let landmark = null
+    if (landmarkName && structures[landmarkName]) {
+      const s = structures[landmarkName]
+      landmark = { w: s.w, h: s.h, place: (ox, oy, rid) => placeStructure(map, s, ox, oy, rid) }
+    } else if (landmarkName && TEMPLATES[landmarkName]) {
+      const t = TEMPLATES[landmarkName]
+      landmark = { w: t.width, h: t.height, place: (ox, oy, rid) => placeTemplate(map, t, ox, oy, rid) }
+    }
+
+    if (landmark && landmarkRoom) {
       const lc = center(landmarkRoom)
-      const ox = Math.max(0, Math.min(width  - tmpl.width,  lc.x - Math.floor(tmpl.width  / 2)))
-      const oy = Math.max(0, Math.min(height - tmpl.height, lc.y - Math.floor(tmpl.height / 2)))
-      entitySpawns.push(...placeTemplate(map, tmpl, ox, oy, roomId++))
-      const tlc = { x: ox + Math.floor(tmpl.width / 2), y: oy + Math.floor(tmpl.height / 2) }
+      const ox = Math.max(0, Math.min(width  - landmark.w, lc.x - Math.floor(landmark.w / 2)))
+      const oy = Math.max(0, Math.min(height - landmark.h, lc.y - Math.floor(landmark.h / 2)))
+      entitySpawns.push(...landmark.place(ox, oy, roomId++))
+      const tlc = { x: ox + Math.floor(landmark.w / 2), y: oy + Math.floor(landmark.h / 2) }
       carveCorridor(map, lc.x, lc.y, tlc.x, tlc.y)
-    } else if (cfg.landmark && TEMPLATES[cfg.landmark]) {
+    } else if (landmark) {
       // Fallback: bottom-right corner
-      const tmpl = TEMPLATES[cfg.landmark]
-      const ox = width - tmpl.width - 2
-      const oy = height - tmpl.height - 2
-      entitySpawns.push(...placeTemplate(map, tmpl, ox, oy, roomId++))
-      const lc = { x: ox + Math.floor(tmpl.width / 2), y: oy + Math.floor(tmpl.height / 2) }
+      const ox = width - landmark.w - 2
+      const oy = height - landmark.h - 2
+      entitySpawns.push(...landmark.place(ox, oy, roomId++))
+      const lc = { x: ox + Math.floor(landmark.w / 2), y: oy + Math.floor(landmark.h / 2) }
       const nearest = rooms.reduce((best, r) => {
         const c = center(r), d = Math.abs(c.x - lc.x) + Math.abs(c.y - lc.y)
         return d < best.d ? { d, r } : best

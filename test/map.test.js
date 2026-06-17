@@ -394,3 +394,39 @@ describe('depth 10 boss arena', () => {
     assert.ok(foundTreasure, 'depth 10 should place a treasure tile')
   })
 })
+
+describe('generateLevel — structure landmarks', () => {
+  const structures = {
+    test_keep: {
+      w: 2, h: 1, targetDepth: 1,
+      cells: [
+        { x: 0, y: 0, skin: 'keep_wall', overlay: null, collision: 'wall', interaction: null },
+        { x: 1, y: 0, skin: 'keep_gate', overlay: null, collision: 'walkable', interaction: { type: 'door' } },
+      ],
+    },
+  }
+  it('places a targetDepth structure with its exact locked skins', () => {
+    const { map } = generateLevel(1, undefined, undefined, { structures })
+    let found = false
+    for (const row of map) for (const c of row) if (c.locked && c.skin === 'keep_wall') found = true
+    assert.equal(found, true)
+  })
+
+  it('does not let one structure permanently shadow another at the same depth', () => {
+    // Two single-cell structures both target depth 3. First-key-wins resolution
+    // would only ever place `alpha`; random resolution lets both appear.
+    const two = {
+      alpha: { w: 1, h: 1, targetDepth: 3,
+        cells: [{ x: 0, y: 0, skin: 'alpha_skin', overlay: null, collision: 'walkable', interaction: null }] },
+      beta:  { w: 1, h: 1, targetDepth: 3,
+        cells: [{ x: 0, y: 0, skin: 'beta_skin',  overlay: null, collision: 'walkable', interaction: null }] },
+    }
+    const seen = new Set()
+    for (let i = 0; i < 40; i++) {
+      const { map } = generateLevel(3, undefined, undefined, { structures: two })
+      for (const row of map) for (const c of row) if (c.locked) seen.add(c.skin)
+    }
+    assert.ok(seen.has('alpha_skin'), 'alpha never placed')
+    assert.ok(seen.has('beta_skin'), 'beta never placed (shadowed by alpha)')
+  })
+})

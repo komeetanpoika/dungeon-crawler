@@ -13,6 +13,7 @@ import {
 } from './painter-maps.js'
 import { textPrompt } from './text-prompt.js'
 import { toast } from './toast.js'
+import { setProperty, exportStructure } from './structure-lib.js'
 
 // Merge a derived fragment into a ruleset: overwrite tile weights/tags and each
 // painted tag's role + adjacency (+ overlays on base tags), but preserve any
@@ -44,10 +45,14 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   const grid = {
     base: blank(Number(wInput.value), Number(hInput.value)),
     overlay: blank(Number(wInput.value), Number(hInput.value)),
+    props: blank(Number(wInput.value), Number(hInput.value)),
   }
   let active = null          // active brush tile name; null = eraser
   let eraseBtn = null        // the ✖ erase palette button (for active styling)
-  let layer = 'base'         // 'base' | 'overlay' — which grid the brush writes
+  let layer = 'base'         // 'base' | 'overlay' | 'properties' — which grid the brush writes
+  let propMode = 'collision'        // collision | interaction | structure
+  let collisionVal = 'walkable'
+  let interactionVal = 'door'
   let painting = false
   const images = new Map()   // name -> Image
 
@@ -65,11 +70,12 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
 
   const setStatus = (t) => { if (statusEl) statusEl.textContent = t }
 
-  function currentSerialized() { return serializeGrid(grid.base, grid.overlay) }
+  function currentSerialized() { return serializeGrid(grid.base, grid.overlay, grid.props) }
 
   function loadGrid(map) {
     grid.base = map.base.map(r => r.slice())
     grid.overlay = map.overlay.map(r => r.slice())
+    grid.props = map.props ? map.props.map(r => r.map(c => (c ? { ...c } : null))) : blank(map.w, map.h)
     wInput.value = map.w
     hInput.value = map.h
     sizeCanvas(); render()
@@ -108,6 +114,19 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
         if (bi) ctx.drawImage(bi, x * CELL, y * CELL, CELL, CELL)
         const o = grid.overlay[y][x], oi = o && images.get(o)
         if (oi) ctx.drawImage(oi, x * CELL, y * CELL, CELL, CELL)
+        if (layer === 'properties') {
+          const p = grid.props[y][x]
+          if (p?.collision === 'wall')      { ctx.fillStyle = '#c0303060'; ctx.fillRect(x * CELL, y * CELL, CELL, CELL) }
+          else if (p?.collision === 'walkable') { ctx.fillStyle = '#30a05060'; ctx.fillRect(x * CELL, y * CELL, CELL, CELL) }
+          if (p?.interaction) {
+            ctx.fillStyle = '#fff'
+            ctx.font = `${CELL - 8}px monospace`
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+            ctx.fillText(p.interaction.type === 'door' ? '⌷' : '◆', x * CELL + CELL / 2, y * CELL + CELL / 2)
+          }
+          if (p?.structure) { ctx.strokeStyle = '#5cf'; ctx.lineWidth = 2
+            ctx.strokeRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2); ctx.lineWidth = 1 }
+        }
         ctx.strokeStyle = layer === 'overlay' ? '#7fd6' : '#0006'
         ctx.strokeRect(x * CELL + 0.5, y * CELL + 0.5, CELL, CELL)
       }
@@ -161,10 +180,34 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     layer = which
     document.getElementById('layer-base').classList.toggle('on', which === 'base')
     document.getElementById('layer-overlay').classList.toggle('on', which === 'overlay')
+    document.getElementById('layer-properties').classList.toggle('on', which === 'properties')
+    document.getElementById('prop-controls').style.display = which === 'properties' ? 'block' : 'none'
     render()
   }
   document.getElementById('layer-base').addEventListener('click', () => setLayer('base'))
   document.getElementById('layer-overlay').addEventListener('click', () => setLayer('overlay'))
+  document.getElementById('layer-properties').addEventListener('click', () => setLayer('properties'))
+
+  document.querySelectorAll('#prop-mode [data-prop]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      propMode = btn.dataset.prop
+      document.querySelectorAll('#prop-mode [data-prop]').forEach(b => b.classList.toggle('on', b === btn))
+      const isColl = propMode === 'collision', isInt = propMode === 'interaction'
+      document.getElementById('prop-collision').style.display = isColl ? 'block' : 'none'
+      document.getElementById('prop-collision-vals').style.display = isColl ? 'flex' : 'none'
+      document.getElementById('prop-interaction').style.display = isInt ? 'block' : 'none'
+      document.getElementById('prop-interaction-vals').style.display = isInt ? 'flex' : 'none'
+    }))
+  document.querySelectorAll('#prop-collision-vals [data-collision]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      collisionVal = btn.dataset.collision
+      document.querySelectorAll('#prop-collision-vals [data-collision]').forEach(b => b.classList.toggle('on', b === btn))
+    }))
+  document.querySelectorAll('#prop-interaction-vals [data-interaction]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      interactionVal = btn.dataset.interaction
+      document.querySelectorAll('#prop-interaction-vals [data-interaction]').forEach(b => b.classList.toggle('on', b === btn))
+    }))
 
   function mkBtn(label, onClick) {
     const b = document.createElement('button')
@@ -217,6 +260,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     const h = (Number(hInput.value) | 0) || DEFAULT_H
     grid.base = blank(w, h)
     grid.overlay = blank(w, h)
+    grid.props = blank(w, h)
     activeMap = name
     sizeCanvas(); render()
     persistNow()                 // seed the new (empty) map
@@ -245,7 +289,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     else {
       // Deleted the last map — start a fresh blank "main".
       activeMap = 'main'
-      grid.base = blank(DEFAULT_W, DEFAULT_H); grid.overlay = blank(DEFAULT_W, DEFAULT_H)
+      grid.base = blank(DEFAULT_W, DEFAULT_H); grid.overlay = blank(DEFAULT_W, DEFAULT_H); grid.props = blank(DEFAULT_W, DEFAULT_H)
       sizeCanvas(); render()
       applyMap(store, loadedRuleset, 'main', currentSerialized())
     }
@@ -279,8 +323,14 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   }
   function paint(ev) {
     const { x, y } = cellAt(ev)
-    if (grid[layer][y]?.[x] === undefined) return
-    grid[layer][y][x] = active   // active === null erases the active layer's slot
+    if (grid.base[y]?.[x] === undefined) return
+    if (layer === 'properties') {
+      const payload = propMode === 'collision' ? collisionVal
+        : propMode === 'interaction' ? interactionVal : undefined
+      grid.props[y][x] = setProperty(grid.props[y][x], propMode, payload)
+    } else {
+      grid[layer][y][x] = active     // active === null erases the active layer's slot
+    }
     render()
     persistDebounced()
   }
@@ -295,6 +345,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       Array.from({ length: w }, (_, x) => g[y]?.[x] ?? null))
     grid.base = resize(grid.base)
     grid.overlay = resize(grid.overlay)
+    grid.props = resize(grid.props)
     sizeCanvas(); render()
     persistDebounced()
   })
@@ -387,6 +438,26 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     }
   })
   document.getElementById('paint-reroll').addEventListener('click', refreshPreview)
+
+  document.getElementById('export-structure').addEventListener('click', async () => {
+    const reportEl = document.getElementById('export-report')
+    const name = sanitizeMapName(document.getElementById('structure-name').value)
+    if (!name) { reportEl.textContent = 'Enter a structure name first.'; return }
+    const rs = state.rulesets[state.active]
+    const structure = exportStructure(grid.base, grid.overlay, grid.props, tileMetaFromRuleset(rs ?? { tiles: {}, tags: {} }))
+    if (!structure) { reportEl.textContent = 'Mark some cells as "structure" (and paint a base tile there) first.'; return }
+    const depth = Number(document.getElementById('structure-depth').value) | 0
+    if (depth >= 1 && depth <= 10) structure.targetDepth = depth
+    try {
+      const store = (await window.editorAPI.loadStructures()) ?? {}
+      store[name] = structure
+      await window.editorAPI.saveStructures(store)
+      reportEl.textContent = `Saved "${name}" — ${structure.cells.length} cells, ${structure.w}×${structure.h}` +
+        (structure.targetDepth ? ` → depth ${structure.targetDepth}` : '')
+    } catch (err) {
+      reportEl.textContent = `Save failed: ${err?.message ?? err}`
+    }
+  })
 
   // Ignore ruleset-changed until the store has loaded from disk: initRulesets()
   // is async, so its initial dispatch can arrive before loadPainterMaps()

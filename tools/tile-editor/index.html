@@ -140,6 +140,32 @@
       <div id="paint-layers" style="display:flex; gap:4px">
         <button id="layer-base" class="on" style="flex:1">base</button>
         <button id="layer-overlay" style="flex:1">overlay</button>
+        <button id="layer-properties" style="flex:1">properties</button>
+      </div>
+      <div id="prop-controls" style="display:none">
+        <div class="label">Property</div>
+        <div id="prop-mode" style="display:flex; gap:4px; flex-wrap:wrap">
+          <button data-prop="collision" class="on">collision</button>
+          <button data-prop="interaction">interaction</button>
+          <button data-prop="structure">structure</button>
+        </div>
+        <div id="prop-collision" class="label">Collision</div>
+        <div id="prop-collision-vals" style="display:flex; gap:4px">
+          <button data-collision="walkable" class="on">walkable</button>
+          <button data-collision="wall">wall</button>
+        </div>
+        <div id="prop-interaction" class="label" style="display:none">Interaction</div>
+        <div id="prop-interaction-vals" style="display:none; gap:4px">
+          <button data-interaction="door" class="on">door</button>
+          <button data-interaction="chest">chest</button>
+        </div>
+        <button id="export-structure" class="save" style="background:#664a22; margin-top:6px">⛫ Export structure</button>
+        <input id="structure-name" placeholder="castle" style="width:100%; margin-top:4px">
+        <div style="display:flex; gap:4px; align-items:center; margin-top:4px">
+          <span class="label" style="margin:0">target depth</span>
+          <input id="structure-depth" class="small" type="number" min="1" max="10">
+        </div>
+        <div id="export-report" style="font-size:11px; color:#9a9"></div>
       </div>
       <div id="paint-tagging" class="label">Pick a tile to tag…</div>
       <button id="derive-btn" class="save" style="background:#2a4a66">⚙ Derive rules → active ruleset</button>

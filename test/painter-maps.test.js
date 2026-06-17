@@ -101,3 +101,19 @@ describe('listMaps / getActive / getMap', () => {
     assert.equal(getActive(store, 'c'), 'real')
   })
 })
+
+describe('serializeGrid — properties layer', () => {
+  it('includes a deep-copied props grid', () => {
+    const base = [['f', 'f']]
+    const overlay = [[null, null]]
+    const props = [[{ structure: true }, null]]
+    const s = serializeGrid(base, overlay, props)
+    assert.deepEqual(s.props, [[{ structure: true }, null]])
+    props[0][0].structure = false                 // mutate source
+    assert.equal(s.props[0][0].structure, true)   // serialized copy is unaffected
+  })
+  it('defaults props to a blank grid when omitted', () => {
+    const s = serializeGrid([['f', 'f']], [[null, null]])
+    assert.deepEqual(s.props, [[null, null]])
+  })
+})

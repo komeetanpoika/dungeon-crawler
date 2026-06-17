@@ -69,6 +69,20 @@ let renderer = null
 let lastTime = 0
 let rafId = null
 let rulesets = {}
+let structures = {}
+
+// Every distinct skin/overlay used by any structure, so the renderer can draw them
+// even when the active ruleset doesn't reference those tiles.
+function structureTileNames(structs) {
+  const names = new Set()
+  for (const s of Object.values(structs)) {
+    for (const c of s.cells ?? []) {
+      if (c.skin) names.add(c.skin)
+      if (c.overlay) names.add(c.overlay)
+    }
+  }
+  return [...names]
+}
 
 function rulesetTileNames(rs) {
   const names = new Set()
@@ -127,6 +141,7 @@ function buildEntities(spawns, map) {
       }
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
+      case 'chest':   return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy }]
       case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy }]
       case 'crab':    return [{ ...makeCrab(s.x, s.y),    px: cx, py: cy }]
@@ -145,7 +160,7 @@ function startNewRun() {
   if (rafId) cancelAnimationFrame(rafId)
   const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
   const { map, entitySpawns, playerSpawn } =
-    generateLevel(1, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]) })
+    generateLevel(1, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -530,7 +545,7 @@ function descendLevel() {
   const next = state.level + 1
   const theme = DEPTH_THEMES.find(t => t.depths.includes(next)) ?? DEPTH_THEMES[0]
   const { map, entitySpawns, playerSpawn } =
-    generateLevel(next, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]) })
+    generateLevel(next, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   decorateMap(map, rulesets[theme.ruleset])
   state = {
     ...state,
@@ -570,7 +585,8 @@ async function init() {
   renderer = new Renderer(canvas)
   renderer.resize()
   rulesets = (await window.saveAPI.loadRulesets()) ?? {}
-  await renderer.loadSprites(rulesetTileNames(rulesets))
+  structures = (await window.saveAPI.loadStructures()) ?? {}
+  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures)])
   pruneMissingTiles(rulesets, renderer.sprites)
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
