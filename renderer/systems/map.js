@@ -654,7 +654,6 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
 }
 
 export function generateFallback(depth, width, height) {
-  const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const map = createMap(width, height)
   // One large interior-filling room — guaranteed connected and within bounds at
   // any map size, so the fallback never crashes on the smaller L1/L2 grids.
