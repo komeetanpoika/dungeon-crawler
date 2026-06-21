@@ -11,6 +11,8 @@ import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
 import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG } from './data/levels.js'
 import { countBosses, spawnBossDrop } from './systems/progression.js'
+import { PHASE, canTransition } from './systems/phase.js'
+import * as menu from './ui/menu.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -63,6 +65,12 @@ function meleeHit(style, facingAngle, dx, dy) {
 const keys = {}
 window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (phase === PHASE.PLAYING) pauseGame()
+    else if (phase === PHASE.PAUSED) resumeGame()
+  }
+})
 
 let state = null
 let meta = null
@@ -71,6 +79,7 @@ let lastTime = 0
 let rafId = null
 let rulesets = {}
 let structures = {}
+let phase = PHASE.TITLE
 
 // Every distinct skin/overlay used by any structure, so the renderer can draw them
 // even when the active ruleset doesn't reference those tiles.
@@ -159,7 +168,6 @@ function buildEntities(spawns, map) {
 }
 
 function startNewRun() {
-  if (rafId) cancelAnimationFrame(rafId)
   const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === 1) ?? LEVEL_CONFIG[0]
   const { map, entitySpawns, playerSpawn } =
@@ -192,15 +200,42 @@ function startNewRun() {
     lastBossTile: null,
     lockedMsgCooldown: 0,
   }
-  lastTime = performance.now()
-  rafId = requestAnimationFrame(gameLoop)
+}
+
+function setPhase(to) {
+  if (canTransition(phase, to)) phase = to
+}
+
+function goTitle() {
+  phase = PHASE.TITLE
+  menu.showTitle(meta, {
+    onPlay: beginRun,
+    onOpenEditor: () => window.saveAPI.openEditor(),
+    onQuit: () => window.saveAPI.quitApp(),
+  })
+}
+
+function beginRun() {
+  setPhase(PHASE.PLAYING)
+  menu.hide()
+  startNewRun()
+}
+
+function resumeGame() {
+  setPhase(PHASE.PLAYING)
+  menu.hide()
+}
+
+function pauseGame() {
+  setPhase(PHASE.PAUSED)
+  menu.showPause({ onResume: resumeGame, onRestart: beginRun, onQuitToTitle: goTitle })
 }
 
 function gameLoop(timestamp) {
   const delta = Math.min(timestamp - lastTime, 100) / 1000
   lastTime = timestamp
-  if (!state.gameOver) update(delta)
-  render()
+  if (phase === PHASE.PLAYING) update(delta)
+  if (state) render()
   rafId = requestAnimationFrame(gameLoop)
 }
 
@@ -608,17 +643,15 @@ function descendLevel() {
 }
 
 async function endRun(won) {
-  if (rafId) cancelAnimationFrame(rafId)
   state.run.won = won
   meta = applyRunResult(meta, { deepestLevel: state.run.deepestLevel, won })
   await window.saveAPI.saveMeta(meta)
   await window.saveAPI.deleteRun()
-  const msg = won ? '🏆 Treasure stolen! Press R to play again.' : '💀 Run over. Press R.'
-  state.log = [...state.log, msg].slice(-5)
-  render()
-  window.addEventListener('keydown', function restart(ev) {
-    if (ev.key === 'r' || ev.key === 'R') { window.removeEventListener('keydown', restart); startNewRun() }
-  })
+  setPhase(PHASE.GAMEOVER)
+  menu.showGameOver(
+    { won, deepestLevel: state.run.deepestLevel },
+    { onPlayAgain: beginRun, onQuitToTitle: goTitle },
+  )
 }
 
 async function init() {
@@ -632,7 +665,9 @@ async function init() {
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
   window.addEventListener('resize', () => renderer.resize())
-  startNewRun()
+  goTitle()
+  lastTime = performance.now()
+  rafId = requestAnimationFrame(gameLoop)
 }
 
 init()
