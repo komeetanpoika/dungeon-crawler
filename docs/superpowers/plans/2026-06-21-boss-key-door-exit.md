@@ -16,7 +16,7 @@
 - `FINAL_DEPTH = 5`. Per-level gating state resets in both `startNewRun` and `descendLevel`.
 - The exit door is a **door entity** on a normal floor tile (not a blocking tile); it is the transition point, not a barrier.
 - `renderer/game.js` is the DOM/game-loop shell — the `node --test` harness does NOT import it. Its tasks are verified by `node --check renderer/game.js` + a green suite + a runtime Electron boot, not unit tests. Do not add a game.js test harness.
-- Key sprite placeholder: `tile_0119` (verify it reads as a key in-game; swap if a better tile exists).
+- Key visual: render the 🔑 emoji via canvas `fillText`, sized to the tile (no sprite asset, no external fetch). Treasure: gold-tinted weapon sprite.
 
 ---
 
@@ -317,26 +317,25 @@ git commit -m "feat(map): pre-place locked exit door on non-final levels"
 ### Task 4: Render key and treasure entities
 
 **Files:**
-- Modify: `renderer/render/sprites.js` (add `key` sprite, sprites.js:48-53 items block)
 - Modify: `renderer/render/canvas.js` (`drawEntity`, after the door block at canvas.js:101-105)
 
 **Interfaces:**
 - Consumes: entity shapes `{ type:'key' }`, `{ type:'treasure', weaponType }` (Task 1); the existing exit-door renders via the current `type:'door'` branch using `door_${frame}` (frame 0 = closed/locked).
-- Produces: visible key and gold-tinted treasure sprites.
+- Produces: a 🔑-emoji key and a gold-tinted treasure, drawn at tile size.
 
-This task has no unit tests (rendering). Verify with `node --check` and a runtime boot in Task 5's verification; here, just confirm the files parse.
+This task has no unit tests (rendering). Verify with `node --check` here, and visually in Task 5's runtime boot. The key is the 🔑 emoji drawn via `fillText` (placeholder — no sprite asset); the treasure is the chosen weapon sprite with a gold tint.
 
-- [ ] **Step 1: Add the key sprite** in `renderer/render/sprites.js`, in the `// items` section (after sprites.js:53 `potion: 'tile_0116',`):
-
-```javascript
-  key:              'tile_0119',
-```
-
-- [ ] **Step 2: Add key + treasure rendering** in `renderer/render/canvas.js`, in `drawEntity`, immediately after the door block (canvas.js:101-105, the block ending `return\n  }` for `entity.type === 'door'`):
+- [ ] **Step 1: Add key + treasure rendering** in `renderer/render/canvas.js`, in `drawEntity`, immediately after the door block (canvas.js:101-105, the block ending `return\n  }` for `entity.type === 'door'`):
 
 ```javascript
   if (entity.type === 'key') {
-    if (sprites.key) ctx.drawImage(sprites.key, px, py, S, S)
+    // Placeholder: the 🔑 emoji centered in the tile (no sprite asset).
+    ctx.save()
+    ctx.font = `${Math.round(S * 0.9)}px serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('🔑', px + S / 2, py + S / 2)
+    ctx.restore()
     return
   }
   if (entity.type === 'treasure') {
@@ -351,16 +350,16 @@ This task has no unit tests (rendering). Verify with `node --check` and a runtim
   }
 ```
 
-- [ ] **Step 3: Verify the files parse**
+- [ ] **Step 2: Verify the file parses**
 
-Run: `node --check renderer/render/canvas.js && node --check renderer/render/sprites.js && echo OK`
+Run: `node --check renderer/render/canvas.js && echo OK`
 Expected: `OK`
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add renderer/render/sprites.js renderer/render/canvas.js
-git commit -m "feat(render): key sprite and gold-tinted treasure"
+git add renderer/render/canvas.js
+git commit -m "feat(render): emoji key and gold-tinted treasure"
 ```
 
 ---
@@ -553,7 +552,7 @@ git commit -m "feat(game): boss-key opens pre-placed exit door; final treasure w
 - Treasure walk-onto wins → Task 5 step 3. ✓
 - Remove old `STAIRS_DOWN`-on-death + `victoryTile` → Task 5 steps 3, 4, 5, 6 (and Task 3 fallback no longer carves stairs). ✓
 - Per-level state reset (`hasKey`, `dropSpawned`, `lastBossTile`, `lockedMsgCooldown`) in both `startNewRun` and `descendLevel` → Task 5 steps 5, 6. ✓
-- Key sprite + gold treasure render → Task 4. ✓
+- Key (🔑 emoji) + gold treasure render → Task 4. ✓
 - Door entity reuses door frames, not a blocking tile → Task 1 (`makeExitDoor`) + Task 4 (existing door render). ✓
 - Testing per project boundary (systems/data unit-tested; game.js via check + suite + runtime) → Tasks 1–3 tests; Task 5 step 7–8. ✓
 
