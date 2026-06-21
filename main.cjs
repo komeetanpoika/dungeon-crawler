@@ -52,6 +52,8 @@ ipcMain.handle('load-meta', () => {
   try { return JSON.parse(fs.readFileSync(META_FILE, 'utf8')) } catch { return null }
 })
 ipcMain.handle('delete-run', () => { try { fs.unlinkSync(RUN_FILE) } catch {} })
+ipcMain.handle('open-editor', () => createEditorWindow())
+ipcMain.handle('quit-app', () => app.quit())
 ipcMain.handle('load-rulesets', () => {
   try { return JSON.parse(fs.readFileSync(RULESETS_FILE, 'utf8')) } catch { return {} }
 })
