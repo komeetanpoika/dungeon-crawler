@@ -103,6 +103,26 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
     if (s) ctx.drawImage(s, px, py, S, S)
     return
   }
+  if (entity.type === 'key') {
+    // Placeholder: the 🔑 emoji centered in the tile (no sprite asset).
+    ctx.save()
+    ctx.font = `${Math.round(S * 0.9)}px serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('🔑', px + S / 2, py + S / 2)
+    ctx.restore()
+    return
+  }
+  if (entity.type === 'treasure') {
+    const s = sprites[`weapon_${entity.weaponType}`] ?? sprites.treasure
+    if (s) {
+      const prevFilter = ctx.filter
+      ctx.filter = 'sepia(1) saturate(3) brightness(1.15)'  // gold tint — placeholder treasure
+      ctx.drawImage(s, px, py, S, S)
+      ctx.filter = prevFilter
+    }
+    return
+  }
   if (entity.type === 'chest') {
     const s = sprites[`chest_${entity.frame}`]
     if (s) ctx.drawImage(s, px, py, S, S)
