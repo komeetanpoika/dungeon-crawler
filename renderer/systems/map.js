@@ -484,7 +484,7 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
           map[y][x].roomId = roomId
         }
       const acx = ax + 3, acy = ay + 3
-      entitySpawns.push({ kind: 'cyclops', x: acx, y: acy })
+      entitySpawns.push({ kind: 'cyclops', x: acx, y: acy, isBoss: true })
       const nearestArena = rooms.reduce((best, r) => {
         const c = center(r), d = Math.abs(c.x - acx) + Math.abs(c.y - acy)
         return d < best.d ? { d, r } : best
@@ -492,9 +492,6 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       carveCorridor(map, center(nearestArena.r).x, center(nearestArena.r).y, acx, acy)
       roomId++
     }
-
-    // Exit passage going down from south wall of stairs room
-    if (depth < FINAL_DEPTH) carveExitPassage(map, staircaseWidth, rooms)
 
     // Entrance passage going up from spawn room — returns player spawn position
     const entranceSpawn = carveEntrancePassage(map, rooms)

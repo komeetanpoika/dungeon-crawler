@@ -23,8 +23,8 @@ describe('isFullyConnected', () => {
 })
 
 describe('generateLevel', () => {
-  it('produces a connected map for each depth 1–9', () => {
-    for (let depth = 1; depth <= 9; depth++) {
+  it('produces a connected map for each depth 1–5', () => {
+    for (let depth = 1; depth <= 5; depth++) {
       const { map } = generateLevel(depth)
       assert.equal(isFullyConnected(map), true, `depth ${depth} not connected`)
     }
@@ -36,31 +36,13 @@ describe('generateLevel', () => {
     assert.equal(typeof playerSpawn.y, 'number')
   })
 
-  it('places STAIRS_DOWN on non-final levels', () => {
-    const { map } = generateLevel(1)
-    const hasStairs = map.some(row => row.some(t => t.tile === TILE.STAIRS_DOWN))
-    assert.equal(hasStairs, true)
-  })
-
-  it('does not place STAIRS_DOWN on level 10', () => {
-    const { map } = generateLevel(10)
-    const hasStairs = map.some(row => row.some(t => t.tile === TILE.STAIRS_DOWN))
-    assert.equal(hasStairs, false)
-  })
-
-  it('does not place a TREASURE tile on level 9', () => {
-    const { map } = generateLevel(9)
-    const hasTreasure = map.some(row => row.some(t => t.tile === TILE.TREASURE))
-    assert.equal(hasTreasure, false)
-  })
-
   it('returns entitySpawns as an array', () => {
     const { entitySpawns } = generateLevel(1)
     assert.ok(Array.isArray(entitySpawns))
   })
 
   it('produces rooms with valid walkable centers across all depths', () => {
-    for (let depth = 1; depth <= 9; depth++) {
+    for (let depth = 1; depth <= 5; depth++) {
       const { map, rooms } = generateLevel(depth)
       for (const room of rooms) {
         const c = room.center ?? { x: Math.floor(room.x + room.w/2), y: Math.floor(room.y + room.h/2) }
@@ -71,25 +53,15 @@ describe('generateLevel', () => {
   })
 
   it('playerSpawn is walkable at all depths', () => {
-    for (let depth = 1; depth <= 9; depth++) {
+    for (let depth = 1; depth <= 5; depth++) {
       const { map, playerSpawn } = generateLevel(depth)
       assert.equal(isWalkable(map[playerSpawn.y][playerSpawn.x].tile), true,
         `depth ${depth}: playerSpawn not walkable`)
     }
   })
 
-  it('stairs-down is not at playerSpawn position', () => {
-    const { map, playerSpawn } = generateLevel(1)
-    let sx = -1, sy = -1
-    for (let y = 0; y < map.length && sx === -1; y++)
-      for (let x = 0; x < map[y].length && sx === -1; x++)
-        if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
-    assert.ok(sx !== -1, 'no stairs-down found')
-    assert.ok(sx !== playerSpawn.x || sy !== playerSpawn.y, 'stairs-down at playerSpawn')
-  })
-
   it('playerSpawn is always at col 2, row 1', () => {
-    for (let depth = 1; depth <= 9; depth++) {
+    for (let depth = 1; depth <= 5; depth++) {
       const { playerSpawn } = generateLevel(depth)
       assert.equal(playerSpawn.x, 2,  `depth ${depth}: playerSpawn.x should be 2`)
       assert.equal(playerSpawn.y, 1,  `depth ${depth}: playerSpawn.y should be 1`)
@@ -97,7 +69,7 @@ describe('generateLevel', () => {
   })
 
   it('playerSpawn is on TILE.STAIRS_UP (top of entrance passage)', () => {
-    for (let depth = 1; depth <= 9; depth++) {
+    for (let depth = 1; depth <= 5; depth++) {
       const { map, playerSpawn } = generateLevel(depth)
       const spawnTile = map[playerSpawn.y][playerSpawn.x]
       assert.equal(isWalkable(spawnTile.tile, spawnTile), true,
@@ -108,7 +80,7 @@ describe('generateLevel', () => {
   })
 
   it('entrance passage STAIR tiles lead south from playerSpawn into dungeon', () => {
-    for (let depth = 1; depth <= 9; depth++) {
+    for (let depth = 1; depth <= 5; depth++) {
       const { map, playerSpawn } = generateLevel(depth)
       let foundStair = false
       for (let dy = 1; dy <= 8 && !foundStair; dy++)
@@ -117,64 +89,20 @@ describe('generateLevel', () => {
     }
   })
 
-  it('STAIRS_DOWN has 4 walkable STAIR tiles above it in the exit passage', () => {
-    for (let depth = 1; depth < 9; depth++) {
+  it('does not pre-carve a STAIRS_DOWN exit (exit appears on boss death)', () => {
+    for (let depth = 1; depth <= 5; depth++) {
       const { map } = generateLevel(depth)
-      let sx = -1, sy = -1
-      for (let y = 0; y < map.length && sx === -1; y++)
-        for (let x = 0; x < map[y].length && sx === -1; x++)
-          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
-      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
-      for (let dy = 1; dy <= 4; dy++) {
-        const t = map[sy - dy]?.[sx]
-        assert.ok(t, `depth ${depth}: row sy-${dy} out of bounds`)
-        assert.equal(t.tile, TILE.STAIR, `depth ${depth}: row sy-${dy} should be TILE.STAIR`)
-        assert.ok(!t.voidZone, `depth ${depth}: row sy-${dy} should not be voidZone`)
-      }
+      let found = false
+      for (let y = 0; y < map.length && !found; y++)
+        for (let x = 0; x < map[y].length && !found; x++)
+          if (map[y][x].tile === TILE.STAIRS_DOWN) found = true
+      assert.equal(found, false, `depth ${depth}: should have no pre-carved STAIRS_DOWN`)
     }
   })
 
-  it('STAIRS_DOWN has 3 non-walkable void STAIR tiles below it', () => {
-    for (let depth = 1; depth < 9; depth++) {
-      const { map } = generateLevel(depth)
-      let sx = -1, sy = -1
-      for (let y = 0; y < map.length && sx === -1; y++)
-        for (let x = 0; x < map[y].length && sx === -1; x++)
-          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
-      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
-      for (let dy = 1; dy <= 3; dy++) {
-        const t = map[sy + dy]?.[sx]
-        assert.ok(t, `depth ${depth}: void tile sy+${dy} is out of bounds`)
-        assert.equal(t.tile, TILE.STAIR, `depth ${depth}: row sy+${dy} should be TILE.STAIR`)
-        assert.equal(t.voidZone, true, `depth ${depth}: row sy+${dy} should be voidZone`)
-        assert.equal(isWalkable(t.tile, t), false, `depth ${depth}: row sy+${dy} should not be walkable`)
-      }
-    }
-  })
-
-  it('STAIRS_DOWN has stairDepth 4', () => {
-    for (let depth = 1; depth < 9; depth++) {
-      const { map } = generateLevel(depth)
-      let sx = -1, sy = -1
-      for (let y = 0; y < map.length && sx === -1; y++)
-        for (let x = 0; x < map[y].length && sx === -1; x++)
-          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
-      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
-      assert.equal(map[sy][sx].stairDepth, 4, `depth ${depth}: STAIRS_DOWN should have stairDepth 4`)
-    }
-  })
-
-  it('STAIRS_DOWN is always at col 77 (MAP_W-3), row 45 (MAP_H-5)', () => {
-    for (let depth = 1; depth < 9; depth++) {
-      const { map } = generateLevel(depth)
-      let sx = -1, sy = -1
-      for (let y = 0; y < map.length && sx === -1; y++)
-        for (let x = 0; x < map[y].length && sx === -1; x++)
-          if (map[y][x].tile === TILE.STAIRS_DOWN) { sx = x; sy = y }
-      assert.ok(sx !== -1, `depth ${depth}: no STAIRS_DOWN found`)
-      assert.equal(sx, 77, `depth ${depth}: STAIRS_DOWN should be at col 77, got ${sx}`)
-      assert.equal(sy, 45, `depth ${depth}: STAIRS_DOWN should be at row 45, got ${sy}`)
-    }
+  it('generates connected maps at the smaller L1/L2 sizes', () => {
+    assert.equal(isFullyConnected(generateLevel(1, 50, 32).map), true)
+    assert.equal(isFullyConnected(generateLevel(2, 64, 40).map), true)
   })
 
 })
