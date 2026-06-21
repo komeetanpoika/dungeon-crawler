@@ -105,6 +105,22 @@ describe('generateLevel', () => {
     assert.equal(isFullyConnected(generateLevel(2, 64, 40).map), true)
   })
 
+  it('boss lair is never shadowed by a depth-targeted structure', () => {
+    // Regression: a structure targeting a boss level must not replace the boss
+    // lair, or the level has no boss and softlocks (no exit ever spawns).
+    const structures = {
+      intruder: {
+        w: 3, h: 3, targetDepth: 1,
+        cells: [{ x: 1, y: 1, skin: 't', overlay: null, collision: 'floor', interaction: null }],
+      },
+    }
+    for (let i = 0; i < 30; i++) {
+      const { entitySpawns } = generateLevel(1, 50, 32, { structures })
+      assert.ok(entitySpawns.some(s => s.kind === 'crab' && s.isBoss),
+        `run ${i}: level 1 must still spawn the crab boss despite a depth-1 structure`)
+    }
+  })
+
   it('fallback final level spawns a boss so it stays winnable', () => {
     const { entitySpawns } = generateFallback(5, 80, 50)
     const boss = entitySpawns.find(s => s.isBoss)
@@ -387,9 +403,12 @@ describe('boss template spawns', () => {
 })
 
 describe('generateLevel — structure landmarks', () => {
+  // Depth 3 is the only level whose boss (the cyclops arena) does not come from a
+  // landmark template, so it is the level where a depth-targeted structure can
+  // claim the landmark slot. Boss-lair levels (1, 2, 4, 5) keep their boss lair.
   const structures = {
     test_keep: {
-      w: 2, h: 1, targetDepth: 1,
+      w: 2, h: 1, targetDepth: 3,
       cells: [
         { x: 0, y: 0, skin: 'keep_wall', overlay: null, collision: 'wall', interaction: null },
         { x: 1, y: 0, skin: 'keep_gate', overlay: null, collision: 'walkable', interaction: { type: 'door' } },
@@ -397,7 +416,7 @@ describe('generateLevel — structure landmarks', () => {
     },
   }
   it('places a targetDepth structure with its exact locked skins', () => {
-    const { map } = generateLevel(1, undefined, undefined, { structures })
+    const { map } = generateLevel(3, undefined, undefined, { structures })
     let found = false
     for (const row of map) for (const c of row) if (c.locked && c.skin === 'keep_wall') found = true
     assert.equal(found, true)

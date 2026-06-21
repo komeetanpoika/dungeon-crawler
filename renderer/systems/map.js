@@ -244,6 +244,12 @@ function connectRoomsMST(map, rooms) {
   }
 }
 
+// True if a template contains at least one boss spawn (a legend char flagged
+// isBoss). Used to keep depth-targeted structures from shadowing a boss lair.
+export function templateHasBoss(template) {
+  return template.tiles.some(row => [...row].some(ch => TEMPLATE_LEGEND[ch]?.isBoss))
+}
+
 export function placeTemplate(map, template, ox, oy, roomId) {
   const spawns = []
   let bossPlaced = false
@@ -426,12 +432,16 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       ? landmarkCandidates[Math.floor(Math.random() * landmarkCandidates.length)]
       : null
 
-    // Resolve the landmark: a structure whose targetDepth matches this depth wins;
-    // otherwise the depth's configured landmark name. Structures take precedence
-    // over a same-named TEMPLATE. When several structures target the same depth,
-    // pick one at random per level so none silently shadows the others.
+    // Resolve the landmark. A boss-bearing lair (a configured landmark template
+    // that contains a boss spawn) MUST always be placed — the boss gates the
+    // level, so a depth-targeted decorative structure may not shadow it or the
+    // level softlocks. Otherwise a structure whose targetDepth matches this depth
+    // wins over the configured landmark (structures also take precedence over a
+    // same-named TEMPLATE). When several structures target the same depth, pick
+    // one at random per level so none silently shadows the others.
+    const cfgLandmarkIsBoss = cfg.landmark && TEMPLATES[cfg.landmark] && templateHasBoss(TEMPLATES[cfg.landmark])
     const depthMatches = Object.keys(structures).filter(n => structures[n].targetDepth === depth)
-    const landmarkName = depthMatches.length
+    const landmarkName = (!cfgLandmarkIsBoss && depthMatches.length)
       ? depthMatches[Math.floor(Math.random() * depthMatches.length)]
       : cfg.landmark
     let landmark = null
