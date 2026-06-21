@@ -503,6 +503,27 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       roomId++
     }
 
+    // Exit door: levels before the final one place a single locked exit door in
+    // the room farthest from the player spawn (and away from the boss lair). The
+    // level's boss drops the key that opens it. The final level has no door — its
+    // boss drops a treasure instead.
+    if (depth < FINAL_DEPTH) {
+      let exitRoom = null, exitDist = -1
+      for (const r of rooms) {
+        if (r === spawnRoom || r === landmarkRoom) continue
+        const c = center(r)
+        const d = Math.abs(c.x - spawnC.x) + Math.abs(c.y - spawnC.y)
+        if (d > exitDist) { exitDist = d; exitRoom = r }
+      }
+      const er = exitRoom ?? rooms.find(r => r !== spawnRoom) ?? rooms[0]
+      const ec = center(er)
+      if (map[ec.y]?.[ec.x] && !isWalkable(map[ec.y][ec.x].tile)) {
+        map[ec.y][ec.x].tile = TILE.FLOOR
+        map[ec.y][ec.x].roomId = er.id
+      }
+      entitySpawns.push({ kind: 'exit_door', x: ec.x, y: ec.y })
+    }
+
     // Entrance passage going up from spawn room — returns player spawn position
     const entranceSpawn = carveEntrancePassage(map, rooms)
 
@@ -634,7 +655,6 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
 
 export function generateFallback(depth, width, height) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
-  const staircaseWidth = cfg.staircaseWidth ?? 1
   const map = createMap(width, height)
   // One large interior-filling room — guaranteed connected and within bounds at
   // any map size, so the fallback never crashes on the smaller L1/L2 grids.
@@ -642,9 +662,10 @@ export function generateFallback(depth, width, height) {
   rooms.forEach(r => carveRoom(map, r))
   const entitySpawns = []
   if (depth < FINAL_DEPTH) {
-    carveExitPassage(map, staircaseWidth, rooms)
+    // Locked exit door in the far corner of the single interior room.
+    entitySpawns.push({ kind: 'exit_door', x: width - 3, y: height - 3 })
   } else {
-    // Final level wins by boss death — spawn the boss so a fallback level stays winnable.
+    // Final level wins by collecting the boss's treasure drop — spawn the boss.
     entitySpawns.push({ kind: 'dragon_boss', x: Math.floor(width / 2), y: Math.floor(height / 2), isBoss: true })
   }
   const playerSpawn = carveEntrancePassage(map, rooms)

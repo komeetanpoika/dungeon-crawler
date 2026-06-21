@@ -139,13 +139,47 @@ describe('generateLevel', () => {
     }
   })
 
-  it('fallback non-final level carves a walkable exit', () => {
-    const { map } = generateFallback(2, 64, 40)
+  it('fallback non-final level has an exit_door spawn (no STAIRS_DOWN carved)', () => {
+    const { map, entitySpawns } = generateFallback(2, 64, 40)
     let hasStairsDown = false
     for (let y = 0; y < map.length && !hasStairsDown; y++)
       for (let x = 0; x < map[y].length && !hasStairsDown; x++)
         if (map[y][x].tile === TILE.STAIRS_DOWN) hasStairsDown = true
-    assert.equal(hasStairsDown, true, 'fallback L2 should carve a STAIRS_DOWN exit')
+    assert.equal(hasStairsDown, false, 'fallback L2 should not carve a STAIRS_DOWN exit')
+    assert.equal(entitySpawns.filter(s => s.kind === 'exit_door').length, 1,
+      'fallback L2 should have one exit_door spawn')
+  })
+
+  it('places exactly one exit_door on depths 1-4, none on depth 5', () => {
+    for (let depth = 1; depth <= 4; depth++) {
+      const { entitySpawns, playerSpawn } = generateLevel(depth)
+      const doors = entitySpawns.filter(s => s.kind === 'exit_door')
+      assert.equal(doors.length, 1, `depth ${depth} should have exactly one exit_door`)
+      const d = doors[0]
+      assert.ok(!(d.x === playerSpawn.x && d.y === playerSpawn.y), `depth ${depth}: door on player spawn`)
+    }
+    const final = generateLevel(5)
+    assert.equal(final.entitySpawns.filter(s => s.kind === 'exit_door').length, 0,
+      'depth 5 should have no exit_door')
+  })
+
+  it('exit_door sits on a walkable tile', () => {
+    for (let depth = 1; depth <= 4; depth++) {
+      const { map, entitySpawns } = generateLevel(depth)
+      const d = entitySpawns.find(s => s.kind === 'exit_door')
+      assert.ok(d, `depth ${depth}: no exit_door`)
+      assert.equal(isWalkable(map[d.y][d.x].tile, map[d.y][d.x]), true,
+        `depth ${depth}: exit_door tile not walkable`)
+    }
+  })
+
+  it('fallback places an exit_door on non-final levels', () => {
+    const f2 = generateFallback(2, 64, 40)
+    assert.equal(f2.entitySpawns.filter(s => s.kind === 'exit_door').length, 1,
+      'fallback L2 should have one exit_door')
+    const f5 = generateFallback(5, 80, 50)
+    assert.equal(f5.entitySpawns.filter(s => s.kind === 'exit_door').length, 0,
+      'fallback L5 should have no exit_door')
   })
 
   it('fallback final level has a walkable boss tile', () => {
