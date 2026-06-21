@@ -129,9 +129,9 @@ describe('paired fountain placement', () => {
 
   it('does not place fountain pairs on sand-floor depths', () => {
     for (let attempt = 0; attempt < 10; attempt++) {
-      const { entitySpawns } = generateLevel(4)
+      const { entitySpawns } = generateLevel(3)
       const walls = entitySpawns.filter(s => s.kind === 'fountain_wall')
-      assert.equal(walls.length, 0, `depth 4 must have no fountain_wall, found ${walls.length}`)
+      assert.equal(walls.length, 0, `depth 3 (sand floor) must have no fountain_wall, found ${walls.length}`)
     }
   })
 })
