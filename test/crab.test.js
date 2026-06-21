@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeCrab, updateCrab, deflects } from '../renderer/systems/crab.js'
+import { makeCrab, updateCrab } from '../renderer/systems/crab.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 
@@ -22,38 +22,12 @@ describe('makeCrab', () => {
   it('has correct initial fields', () => {
     const c = makeCrab(5, 5)
     assert.equal(c.type, 'crab')
-    assert.equal(c.hp, 20)
-    assert.equal(c.maxHp, 20)
+    assert.equal(c.hp, 6)
+    assert.equal(c.maxHp, 6)
     assert.equal(c.grabState, null)
     assert.equal(c.grabCooldown, 0)
     assert.equal(typeof c.facing, 'number')
     assert.ok(c.strafeDir === 1 || c.strafeDir === -1)
-  })
-})
-
-describe('deflects', () => {
-  it('deflects a projectile coming from the front (within 60°)', () => {
-    const c = makeCrab(5, 5)
-    c.facing = 0  // facing east (toward player at east)
-    // Player shoots westward (dx < 0) — hitting crab from the east side (front)
-    const p = { dx: -200, dy: 0 }
-    assert.equal(deflects(c, p), true)
-  })
-
-  it('does not deflect a projectile from the side', () => {
-    const c = makeCrab(5, 5)
-    c.facing = 0  // facing east
-    // Projectile going northward — hits crab from south (side)
-    const p = { dx: 0, dy: -200 }
-    assert.equal(deflects(c, p), false)
-  })
-
-  it('does not deflect a projectile from behind', () => {
-    const c = makeCrab(5, 5)
-    c.facing = 0  // facing east
-    // Projectile going eastward — hits crab from west (behind)
-    const p = { dx: 200, dy: 0 }
-    assert.equal(deflects(c, p), false)
   })
 })
 

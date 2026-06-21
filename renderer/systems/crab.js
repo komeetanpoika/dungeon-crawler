@@ -10,7 +10,6 @@ const GRAB_RANGE       = 25
 const GRAB_DURATION    = 2.0
 const GRAB_DMG_INTERVAL = 0.3
 const GRAB_COOLDOWN    = 5.0
-const FRONT_CONE       = Math.PI / 3  // 60°
 
 function canMoveTo(map, px, py) {
   return [
@@ -24,24 +23,10 @@ function canMoveTo(map, px, py) {
   })
 }
 
-function normalizeAngle(a) {
-  while (a >  Math.PI) a -= 2 * Math.PI
-  while (a < -Math.PI) a += 2 * Math.PI
-  return a
-}
-
-// Returns true if a friendly projectile hits the crab's armored front.
-export function deflects(crab, projectile) {
-  // The incoming direction as seen FROM the crab: opposite of the projectile's travel
-  const incomingAngle = Math.atan2(-projectile.dy, -projectile.dx)
-  const diff = normalizeAngle(incomingAngle - crab.facing)
-  return Math.abs(diff) < FRONT_CONE
-}
-
 export function makeCrab(x, y) {
   return {
     type: 'crab', x, y,
-    hp: 20, maxHp: 20, inCombat: false,
+    hp: 6, maxHp: 6, inCombat: false,
     facing: 0,
     strafeDir: Math.random() < 0.5 ? 1 : -1,
     strafeDirTimer: 2 + Math.random(),

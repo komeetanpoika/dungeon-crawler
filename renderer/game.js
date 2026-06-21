@@ -2,7 +2,7 @@ import { generateLevel } from './systems/map.js'
 import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
-import { makeCrab, updateCrab, deflects } from './systems/crab.js'
+import { makeCrab, updateCrab } from './systems/crab.js'
 import { makeDragonBoss, updateDragonBoss } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
 import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/decorate.js'
@@ -352,7 +352,6 @@ function update(delta) {
         const hitR = e.type === 'dragon_boss' ? BOSS_PROJECTILE_R : 8
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
-          if (e.type === 'crab' && deflects(e, p))      { hit = true; return e }
           hit = true
           return { ...e, hp: e.hp - p.damage, inCombat: true }
         }
