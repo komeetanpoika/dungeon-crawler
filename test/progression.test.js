@@ -1,8 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { countBosses, spawnLevelExit } from '../renderer/systems/progression.js'
-import { createMap } from '../renderer/systems/map.js'
-import { TILE } from '../renderer/systems/entities.js'
+import { countBosses, spawnBossDrop } from '../renderer/systems/progression.js'
 
 describe('countBosses', () => {
   it('counts only entities flagged isBoss', () => {
@@ -12,29 +10,24 @@ describe('countBosses', () => {
   })
 })
 
-describe('spawnLevelExit', () => {
-  it('non-final: writes STAIRS_DOWN and returns null', () => {
-    const map = createMap(10, 10)
-    map[5][5].tile = TILE.FLOOR
-    const result = spawnLevelExit(map, { x: 5, y: 5 }, false)
-    assert.equal(result, null)
-    assert.equal(map[5][5].tile, TILE.STAIRS_DOWN)
-    assert.equal(map[5][5].stairWidth, 1)
-    assert.equal(map[5][5].stairCol, 0)
+describe('spawnBossDrop', () => {
+  it('non-final: drops a key at the tile', () => {
+    const drop = spawnBossDrop({ x: 5, y: 9 }, false, ['dagger'])
+    assert.deepEqual(drop, { type: 'key', x: 5, y: 9 })
   })
 
-  it('final: writes TREASURE and returns the victory tile', () => {
-    const map = createMap(10, 10)
-    map[4][6].tile = TILE.FLOOR
-    const result = spawnLevelExit(map, { x: 6, y: 4 }, true)
-    assert.deepEqual(result, { x: 6, y: 4 })
-    assert.equal(map[4][6].tile, TILE.TREASURE)
+  it('final: drops a treasure with a weapon from the pool', () => {
+    const pool = ['longsword', 'axe']
+    for (let i = 0; i < 20; i++) {
+      const drop = spawnBossDrop({ x: 2, y: 3 }, true, pool)
+      assert.equal(drop.type, 'treasure')
+      assert.equal(drop.x, 2); assert.equal(drop.y, 3)
+      assert.ok(pool.includes(drop.weaponType), `weaponType ${drop.weaponType} not in pool`)
+    }
   })
 
-  it('out of bounds: returns null and mutates nothing', () => {
-    const map = createMap(10, 10)
-    const before = JSON.stringify(map)
-    assert.equal(spawnLevelExit(map, { x: 99, y: 99 }, false), null)
-    assert.equal(JSON.stringify(map), before, 'map must be unchanged')
+  it('final: weaponPool defaults to dagger', () => {
+    const drop = spawnBossDrop({ x: 0, y: 0 }, true)
+    assert.equal(drop.weaponType, 'dagger')
   })
 })
