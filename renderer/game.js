@@ -9,7 +9,8 @@ import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/de
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
-import { FINAL_DEPTH, DEPTH_THEMES } from './data/levels.js'
+import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG } from './data/levels.js'
+import { countBosses, spawnLevelExit } from './systems/progression.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -131,7 +132,7 @@ function buildEntities(spawns, map) {
       }
       case 'dragon':  return [{ ...makeDragon(s.x, s.y, s.roomId), px: cx, py: cy, facing: 'east',
   breathState: 'idle', breathTimer: DRAGON_BREATH_COOLDOWN, breathAngle: 0,
-  breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...wander() }]
+  breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...wander(), ...(s.isBoss && { isBoss: true }) }]
       case 'trap':    return [makeTrap(s.x, s.y)]
       case 'puzzle':  return [makePuzzle(s.x, s.y)]
       case 'weapon': {
@@ -142,10 +143,10 @@ function buildEntities(spawns, map) {
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
       case 'chest':   return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
-      case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy }]
-      case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy }]
-      case 'crab':    return [{ ...makeCrab(s.x, s.y),    px: cx, py: cy }]
-      case 'dragon_boss': return [{ ...makeDragonBoss(s.x, s.y), px: cx, py: cy }]
+      case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
+      case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
+      case 'crab':    return [{ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
+      case 'dragon_boss': return [{ ...makeDragonBoss(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
       case 'prop':           return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
       case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
@@ -159,8 +160,9 @@ function buildEntities(spawns, map) {
 function startNewRun() {
   if (rafId) cancelAnimationFrame(rafId)
   const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
+  const cfg = LEVEL_CONFIG.find(c => c.depth === 1)
   const { map, entitySpawns, playerSpawn } =
-    generateLevel(1, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
+    generateLevel(1, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -184,6 +186,9 @@ function startNewRun() {
     hitEffects: [],
     run: { deepestLevel: 1, won: false },
     gameOver: false,
+    exitSpawned: false,
+    lastBossTile: null,
+    victoryTile: null,
   }
   lastTime = performance.now()
   rafId = requestAnimationFrame(gameLoop)
@@ -267,8 +272,8 @@ function update(delta) {
     descendLevel(); return
   }
 
-  // Steal treasure
-  if ((keys['x'] || keys['X']) && map[player.y]?.[player.x]?.tile === TILE.TREASURE) {
+  // Victory: walk onto the treasure the final boss dropped
+  if (state.victoryTile && player.x === state.victoryTile.x && player.y === state.victoryTile.y) {
     state.gameOver = true; endRun(true); return
   }
 
@@ -529,6 +534,18 @@ function update(delta) {
     endRun(false)
   }
 
+  // Boss gating: remember the living boss's tile; when it dies, materialize the exit
+  if (countBosses(state.entities) > 0) {
+    const boss = state.entities.find(e => e.isBoss)
+    state.lastBossTile = { x: boss.x, y: boss.y }
+  } else if (state.lastBossTile && !state.exitSpawned) {
+    const isFinal = state.level >= FINAL_DEPTH
+    const victoryTile = spawnLevelExit(state.map, state.lastBossTile, isFinal)
+    if (victoryTile) state.victoryTile = victoryTile
+    state.exitSpawned = true
+    state.log = [...state.log, isFinal ? 'The dragon falls — treasure glimmers!' : 'The way down opens.'].slice(-5)
+  }
+
   // Clear hit flash — it fires once per swing
   if (state.hitEffects?.length > 0) state.hitEffects = []
 }
@@ -544,8 +561,9 @@ function descendLevel() {
   if (state.level >= FINAL_DEPTH) return  // already on final level
   const next = state.level + 1
   const theme = DEPTH_THEMES.find(t => t.depths.includes(next)) ?? DEPTH_THEMES[0]
+  const cfg = LEVEL_CONFIG.find(c => c.depth === next) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const { map, entitySpawns, playerSpawn } =
-    generateLevel(next, undefined, undefined, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
+    generateLevel(next, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   decorateMap(map, rulesets[theme.ruleset])
   state = {
     ...state,
@@ -562,6 +580,9 @@ function descendLevel() {
     },
     log: [`Level ${next}. Deeper…`],
     hitEffects: [],
+    exitSpawned: false,
+    lastBossTile: null,
+    victoryTile: null,
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
   }
 }
