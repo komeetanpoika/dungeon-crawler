@@ -267,6 +267,7 @@ export function placeTemplate(map, template, ox, oy, roomId) {
       }
       const spawn = { kind: entry.spawn, x: tx, y: ty }
       if (entry.roomScoped) spawn.roomId = roomId
+      if (entry.isBoss) spawn.isBoss = true
       spawns.push(spawn)
     })
   })

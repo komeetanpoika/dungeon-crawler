@@ -320,8 +320,8 @@ describe('placeTemplate', () => {
       { kind: 'weapon', x: 0, y: 2 },             // weapon/potion carry no roomId
       { kind: 'potion', x: 1, y: 2 },
       { kind: 'door',   x: 2, y: 2 },             // door also carries no roomId
-      { kind: 'dragon', x: 0, y: 3, roomId: 7 },
-      { kind: 'dragon_boss', x: 1, y: 3, roomId: 7 },
+      { kind: 'dragon', x: 0, y: 3, roomId: 7, isBoss: true },
+      { kind: 'dragon_boss', x: 1, y: 3, roomId: 7, isBoss: true },
     ])
   })
 
@@ -349,10 +349,10 @@ describe('placeTemplate', () => {
     assert.equal(map[0][0].tile, TILE.WALL)       // unchanged default
   })
 
-  it('legend covers all 11 template symbols with valid entries', () => {
+  it('legend covers all template symbols with valid entries', () => {
     assert.deepEqual(
       Object.keys(TEMPLATE_LEGEND).sort(),
-      ['#', '.', 'B', 'C', 'D', 'L', 'P', 'S', 'T', 'W', 'X'],
+      ['#', '.', 'B', 'C', 'D', 'L', 'P', 'R', 'S', 'T', 'W', 'X', 'Z'],
     )
     for (const [ch, e] of Object.entries(TEMPLATE_LEGEND)) {
       assert.ok(e.label, `${ch} has a label`)
@@ -392,6 +392,35 @@ describe('depth 10 boss arena', () => {
     }
     assert.ok(foundBoss, 'depth 10 should spawn a dragon_boss')
     assert.ok(foundTreasure, 'depth 10 should place a treasure tile')
+  })
+})
+
+describe('boss template spawns', () => {
+  it('legend marks crab/wizard/dragon/boss as isBoss', () => {
+    assert.equal(TEMPLATE_LEGEND['R'].spawn, 'crab')
+    assert.equal(TEMPLATE_LEGEND['R'].isBoss, true)
+    assert.equal(TEMPLATE_LEGEND['Z'].spawn, 'wizard')
+    assert.equal(TEMPLATE_LEGEND['Z'].isBoss, true)
+    assert.equal(TEMPLATE_LEGEND['D'].isBoss, true)
+    assert.equal(TEMPLATE_LEGEND['B'].isBoss, true)
+  })
+
+  it('placeTemplate tags the boss spawn with isBoss', () => {
+    const map = createMap(20, 20)
+    const tpl = { tiles: ['#####', '#.R.#', '#####'], width: 5, height: 3 }
+    const spawns = placeTemplate(map, tpl, 0, 0, 7)
+    const crab = spawns.find(s => s.kind === 'crab')
+    assert.ok(crab, 'expected a crab spawn')
+    assert.equal(crab.isBoss, true)
+  })
+
+  it('non-boss spawns are not tagged isBoss', () => {
+    const map = createMap(20, 20)
+    const tpl = { tiles: ['#####', '#.W.#', '#####'], width: 5, height: 3 }
+    const spawns = placeTemplate(map, tpl, 0, 0, 7)
+    const weapon = spawns.find(s => s.kind === 'weapon')
+    assert.ok(weapon, 'expected a weapon spawn')
+    assert.equal(weapon.isBoss, undefined)
   })
 })
 

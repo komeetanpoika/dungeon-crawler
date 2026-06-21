@@ -18,8 +18,10 @@ export const TEMPLATE_LEGEND = {
   'L': { label: 'Door',     kind: 'spawn', spawn: 'door',        roomScoped: false, color: '#8a6a3a', icon: '⌷' },
   'W': { label: 'Weapon',   kind: 'spawn', spawn: 'weapon',      roomScoped: false, color: '#3a8a6a', icon: '⚔' },
   'P': { label: 'Potion',   kind: 'spawn', spawn: 'potion',      roomScoped: false, color: '#8a3a8a', icon: '⚗' },
-  'D': { label: 'Dragon',   kind: 'spawn', spawn: 'dragon',      roomScoped: true,  color: '#a33333', icon: '🐉' },
-  'B': { label: 'Boss',     kind: 'spawn', spawn: 'dragon_boss', roomScoped: true, single: true, color: '#cc2222', icon: '🐲' },
+  'D': { label: 'Dragon',   kind: 'spawn', spawn: 'dragon',      roomScoped: true,  isBoss: true, color: '#a33333', icon: '🐉' },
+  'B': { label: 'Boss',     kind: 'spawn', spawn: 'dragon_boss', roomScoped: true, single: true, isBoss: true, color: '#cc2222', icon: '🐲' },
+  'R': { label: 'Crab',     kind: 'spawn', spawn: 'crab',        roomScoped: false, isBoss: true, color: '#c87a3a', icon: '🦀' },
+  'Z': { label: 'Wizard',   kind: 'spawn', spawn: 'wizard',      roomScoped: false, isBoss: true, color: '#6a3a8a', icon: '🧙' },
 }
 
 export const TEMPLATES = {
@@ -124,6 +126,30 @@ export const TEMPLATES = {
       '##########################',
     ],
     width: 26, height: 16,
+  },
+  CRAB_LAIR: {
+    tiles: [
+      '###########',
+      '#.........#',
+      '#.........#',
+      '#....R....#',
+      '#.........#',
+      '#.........#',
+      '###########',
+    ],
+    width: 11, height: 7,
+  },
+  WIZARD_SANCTUM: {
+    tiles: [
+      '#############',
+      '#...........#',
+      '#.C.......C.#',
+      '#.....Z.....#',
+      '#.C.......C.#',
+      '#...........#',
+      '#############',
+    ],
+    width: 13, height: 7,
   },
 }
 
