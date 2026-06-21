@@ -113,3 +113,18 @@ export function makeChest(x, y, contents) {
 export function makeDoor(x, y) {
   return { type: 'door', x, y, opening: false, frame: 0 }
 }
+
+export function makeKey(x, y) {
+  return { type: 'key', x, y }
+}
+
+// The level exit. A door entity (reuses the door_0..3 frames) flagged as the
+// locked exit; it opens only when the player holds this level's key.
+export function makeExitDoor(x, y) {
+  return { type: 'door', x, y, opening: false, frame: 0, locked: true, isExit: true }
+}
+
+// Final-boss reward (placeholder: a gold-tinted weapon). Collecting it wins.
+export function makeTreasure(x, y, weaponType) {
+  return { type: 'treasure', x, y, weaponType }
+}

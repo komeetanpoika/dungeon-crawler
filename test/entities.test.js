@@ -1,7 +1,7 @@
 // test/entities.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable } from '../renderer/systems/entities.js'
+import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
 function openMap(w = 20, h = 20) {
@@ -74,5 +74,28 @@ describe('hasLineOfSight', () => {
     const map = openMap()
     for (let y = 0; y < 20; y++) map[y][7].tile = TILE.WALL
     assert.equal(hasLineOfSight(map, 5, 5, 5, 10), false)
+  })
+})
+
+describe('boss-drop and exit-door factories', () => {
+  it('makeKey produces a key entity', () => {
+    assert.deepEqual(makeKey(3, 4), { type: 'key', x: 3, y: 4 })
+  })
+
+  it('makeExitDoor produces a locked exit door using door frames', () => {
+    const d = makeExitDoor(5, 6)
+    assert.equal(d.type, 'door')
+    assert.equal(d.x, 5); assert.equal(d.y, 6)
+    assert.equal(d.locked, true)
+    assert.equal(d.isExit, true)
+    assert.equal(d.frame, 0)
+    assert.equal(d.opening, false)
+  })
+
+  it('makeTreasure carries its weapon type', () => {
+    const t = makeTreasure(7, 8, 'axe')
+    assert.equal(t.type, 'treasure')
+    assert.equal(t.x, 7); assert.equal(t.y, 8)
+    assert.equal(t.weaponType, 'axe')
   })
 })
