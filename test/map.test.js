@@ -381,7 +381,7 @@ import { FINAL_DEPTH } from '../renderer/data/levels.js'
 import { TILE as MTILE } from '../renderer/systems/entities.js'
 
 describe('depth 10 boss arena', () => {
-  it('FINAL_DEPTH is 10', () => { assert.equal(FINAL_DEPTH, 10) })
+  it('FINAL_DEPTH is 5', () => { assert.equal(FINAL_DEPTH, 5) })
 
   it('spawns a dragon_boss and a treasure tile on depth 10', () => {
     let foundBoss = false, foundTreasure = false

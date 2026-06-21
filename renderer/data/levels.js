@@ -128,60 +128,47 @@ export const TEMPLATES = {
 }
 
 export const LEVEL_CONFIG = [
-  { depth: 1, staircaseWidth: 1, guardCount:  2, monsterDensity: 0,     trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'ARMORY',     weapons: ['dagger'] },
-  { depth: 2, staircaseWidth: 1, guardCount:  3, monsterDensity: 0,     trapDensity: 0.04, puzzleDensity: 0.01, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'GATEHOUSE',  weapons: ['dagger'],               crabCount: 1 },
-  { depth: 3, staircaseWidth: 1, guardCount:  4, monsterDensity: 0,     trapDensity: 0.05, puzzleDensity: 0.02, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'SHRINE',     weapons: ['dagger'],               wizardCount: 1, crabCount: 1 },
-  { depth: 4, staircaseWidth: 1, guardCount:  5, monsterDensity: 0,     trapDensity: 0.06, puzzleDensity: 0.02, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'INFIRMARY',  weapons: ['dagger', 'sword'],      wizardCount: 1, crabCount: 2 },
-  { depth: 5, staircaseWidth: 1, guardCount:  6, monsterDensity: 0.005, trapDensity: 0.07, puzzleDensity: 0.02, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'VAULT',      weapons: ['dagger', 'sword'],      wizardCount: 2 },
-  { depth: 6, staircaseWidth: 2, guardCount:  7, monsterDensity: 0.007, trapDensity: 0.08, puzzleDensity: 0.03, weaponDensity: 0.01, potionDensity: 0.005, landmark: null,         weapons: ['sword', 'longsword'],   cyclopsArena: true },
-  { depth: 7, staircaseWidth: 1, guardCount:  8, monsterDensity: 0.010, trapDensity: 0.09, puzzleDensity: 0.03, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'SHRINE',     weapons: ['sword', 'longsword', 'axe'] },
-  { depth: 8, staircaseWidth: 1, guardCount:  9, monsterDensity: 0.012, trapDensity: 0.10, puzzleDensity: 0.03, weaponDensity: 0.01, potionDensity: 0.005, landmark: null,         weapons: ['longsword', 'axe'] },
-  { depth: 9, staircaseWidth: 3, guardCount: 10, monsterDensity: 0.015, trapDensity: 0.11, puzzleDensity: 0.04, weaponDensity: 0.01, potionDensity: 0.005, landmark: 'DRAGON_LAIR', weapons: ['longsword', 'axe'] },
-  { depth: 10, staircaseWidth: 1, guardCount:  3, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.01, weaponDensity: 0.01, potionDensity: 0.01, landmark: 'GREAT_LAIR', weapons: ['longsword', 'axe'] },
+  { depth: 1, mapW: 50, mapH: 32, staircaseWidth: 1, guardCount: 2, monsterDensity: 0,     trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'CRAB_LAIR',      weapons: ['dagger'] },
+  { depth: 2, mapW: 64, mapH: 40, staircaseWidth: 1, guardCount: 3, monsterDensity: 0,     trapDensity: 0.04, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'WIZARD_SANCTUM',  weapons: ['dagger', 'sword'] },
+  { depth: 3, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 5, monsterDensity: 0.006, trapDensity: 0.06, puzzleDensity: 0.03, weaponDensity: 0.012, potionDensity: 0.008, landmark: null,             weapons: ['sword', 'longsword'], cyclopsArena: true },
+  { depth: 4, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 7, monsterDensity: 0.010, trapDensity: 0.08, puzzleDensity: 0.03, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'DRAGON_LAIR',    weapons: ['longsword', 'axe'] },
+  { depth: 5, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 4, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.012, landmark: 'GREAT_LAIR',     weapons: ['longsword', 'axe'] },
 ]
 
 export const DEPTH_THEMES = [
   {
-    depths: [1, 2, 3],
+    depths: [1, 2],
     floorTile: 'floor',
     ruleset: 'catacombs',
     bgColor:  '#12121e',
     tint:     null,
     fogAlpha: 0.65,
-    props: {
-      room: ['prop_table', 'prop_chair', 'prop_anvil', 'prop_barrel'],
-    },
+    props: { room: ['prop_table', 'prop_chair', 'prop_anvil', 'prop_barrel'] },
   },
   {
-    depths: [4, 5, 6],
+    depths: [3],
     floorTile: 'sand',
     bgColor:  '#1a1206',
     tint:     'rgba(40,20,0,0.2)',
     fogAlpha: 0.65,
-    props: {
-      room: ['prop_gravestone', 'prop_anvil'],
-    },
+    props: { room: ['prop_gravestone', 'prop_anvil'] },
   },
   {
-    depths: [7, 8, 9],
+    depths: [4],
     floorTile: 'floor',
     bgColor:  '#07070f',
     tint:     'rgba(0,0,20,0.35)',
     fogAlpha: 0.80,
-    props: {
-      room: ['prop_gravestone', 'prop_grave'],
-    },
+    props: { room: ['prop_gravestone', 'prop_grave'] },
   },
   {
-    depths: [10],
+    depths: [5],
     floorTile: 'floor',
     bgColor:  '#0a0406',
     tint:     'rgba(60,10,0,0.35)',
     fogAlpha: 0.80,
-    props: {
-      room: ['prop_gravestone', 'prop_grave'],
-    },
+    props: { room: ['prop_gravestone', 'prop_grave'] },
   },
 ]
 
-export const FINAL_DEPTH = 10
+export const FINAL_DEPTH = 5
