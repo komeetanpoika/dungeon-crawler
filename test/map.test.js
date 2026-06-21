@@ -112,13 +112,31 @@ describe('generateLevel', () => {
     assert.equal(boss.kind, 'dragon_boss')
   })
 
+  it('fallback is connected and within bounds at every level size', () => {
+    // Regression: the old fallback hardcoded 80×50 rooms and crashed on the
+    // smaller L1/L2 grids. It must work at each level's real dimensions.
+    for (const [depth, w, h] of [[1, 50, 32], [2, 64, 40], [5, 80, 50]]) {
+      const { map, playerSpawn } = generateFallback(depth, w, h)
+      assert.equal(isFullyConnected(map), true, `fallback depth ${depth} not connected`)
+      assert.equal(isWalkable(map[playerSpawn.y][playerSpawn.x].tile, map[playerSpawn.y][playerSpawn.x]), true,
+        `fallback depth ${depth}: playerSpawn not walkable`)
+    }
+  })
+
   it('fallback non-final level carves a walkable exit', () => {
-    const { map } = generateFallback(2, 80, 50)
+    const { map } = generateFallback(2, 64, 40)
     let hasStairsDown = false
     for (let y = 0; y < map.length && !hasStairsDown; y++)
       for (let x = 0; x < map[y].length && !hasStairsDown; x++)
         if (map[y][x].tile === TILE.STAIRS_DOWN) hasStairsDown = true
     assert.equal(hasStairsDown, true, 'fallback L2 should carve a STAIRS_DOWN exit')
+  })
+
+  it('fallback final level has a walkable boss tile', () => {
+    const { map, entitySpawns } = generateFallback(5, 80, 50)
+    const boss = entitySpawns.find(s => s.isBoss)
+    assert.equal(isWalkable(map[boss.y][boss.x].tile, map[boss.y][boss.x]), true,
+      'fallback boss must stand on a walkable tile')
   })
 
 })

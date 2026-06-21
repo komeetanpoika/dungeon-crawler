@@ -626,19 +626,16 @@ export function generateFallback(depth, width, height) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const staircaseWidth = cfg.staircaseWidth ?? 1
   const map = createMap(width, height)
-  const rooms = [
-    { x: 2,  y: 2,  w: 14, h: 10, id: 0 },
-    { x: 28, y: 10, w: 20, h: 15, id: 1 },
-    { x: 58, y: 32, w: 16, h: 12, id: 2 },
-  ]
+  // One large interior-filling room — guaranteed connected and within bounds at
+  // any map size, so the fallback never crashes on the smaller L1/L2 grids.
+  const rooms = [{ x: 1, y: 1, w: width - 2, h: height - 2, id: 0 }]
   rooms.forEach(r => carveRoom(map, r))
-  carveCorridor(map, 9, 7, 38, 17)
-  carveCorridor(map, 38, 17, 66, 38)
   const entitySpawns = []
   if (depth < FINAL_DEPTH) {
     carveExitPassage(map, staircaseWidth, rooms)
   } else {
-    entitySpawns.push({ kind: 'dragon_boss', x: 66, y: 38, isBoss: true })
+    // Final level wins by boss death — spawn the boss so a fallback level stays winnable.
+    entitySpawns.push({ kind: 'dragon_boss', x: Math.floor(width / 2), y: Math.floor(height / 2), isBoss: true })
   }
   const playerSpawn = carveEntrancePassage(map, rooms)
   return { map, entitySpawns, playerSpawn, rooms }
