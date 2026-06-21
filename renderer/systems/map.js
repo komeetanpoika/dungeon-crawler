@@ -474,7 +474,7 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       }
     })
 
-    // Level 6: carve a 7×7 cyclops arena near map centre
+    // Level 3: carve a 7×7 cyclops arena near map centre
     if (cfg.cyclopsArena) {
       const ax = Math.floor(width / 2) - 3
       const ay = Math.floor(height / 2) - 3
@@ -498,7 +498,7 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
 
     if (!isFullyConnected(map)) continue
 
-    // Apply sand floor for depths 4–6
+    // Apply sand floor on the sand-themed depth
     const theme = DEPTH_THEMES.find(t => t.depths.includes(depth))
     if (theme?.floorTile === 'sand') {
       for (let row = 0; row < height; row++)
@@ -622,7 +622,7 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
   return generateFallback(depth, width, height)
 }
 
-function generateFallback(depth, width, height) {
+export function generateFallback(depth, width, height) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const staircaseWidth = cfg.staircaseWidth ?? 1
   const map = createMap(width, height)
@@ -634,11 +634,12 @@ function generateFallback(depth, width, height) {
   rooms.forEach(r => carveRoom(map, r))
   carveCorridor(map, 9, 7, 38, 17)
   carveCorridor(map, 38, 17, 66, 38)
+  const entitySpawns = []
   if (depth < FINAL_DEPTH) {
     carveExitPassage(map, staircaseWidth, rooms)
   } else {
-    map[38][66].tile = TILE.TREASURE
+    entitySpawns.push({ kind: 'dragon_boss', x: 66, y: 38, isBoss: true })
   }
   const playerSpawn = carveEntrancePassage(map, rooms)
-  return { map, entitySpawns: [], playerSpawn, rooms }
+  return { map, entitySpawns, playerSpawn, rooms }
 }

@@ -160,7 +160,7 @@ function buildEntities(spawns, map) {
 function startNewRun() {
   if (rafId) cancelAnimationFrame(rafId)
   const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
-  const cfg = LEVEL_CONFIG.find(c => c.depth === 1)
+  const cfg = LEVEL_CONFIG.find(c => c.depth === 1) ?? LEVEL_CONFIG[0]
   const { map, entitySpawns, playerSpawn } =
     generateLevel(1, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
@@ -535,6 +535,7 @@ function update(delta) {
   }
 
   // Boss gating: remember the living boss's tile; when it dies, materialize the exit
+  if (state.gameOver) return
   if (countBosses(state.entities) > 0) {
     const boss = state.entities.find(e => e.isBoss)
     state.lastBossTile = { x: boss.x, y: boss.y }

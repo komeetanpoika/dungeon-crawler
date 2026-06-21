@@ -1,7 +1,7 @@
 // test/map.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateLevel, isFullyConnected, createMap, carveRoomShaped, carveCorridor, placeTemplate } from '../renderer/systems/map.js'
+import { generateLevel, generateFallback, isFullyConnected, createMap, carveRoomShaped, carveCorridor, placeTemplate } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 import { TEMPLATE_LEGEND } from '../renderer/data/levels.js'
 
@@ -103,6 +103,22 @@ describe('generateLevel', () => {
   it('generates connected maps at the smaller L1/L2 sizes', () => {
     assert.equal(isFullyConnected(generateLevel(1, 50, 32).map), true)
     assert.equal(isFullyConnected(generateLevel(2, 64, 40).map), true)
+  })
+
+  it('fallback final level spawns a boss so it stays winnable', () => {
+    const { entitySpawns } = generateFallback(5, 80, 50)
+    const boss = entitySpawns.find(s => s.isBoss)
+    assert.ok(boss, 'fallback L5 must spawn a boss')
+    assert.equal(boss.kind, 'dragon_boss')
+  })
+
+  it('fallback non-final level carves a walkable exit', () => {
+    const { map } = generateFallback(2, 80, 50)
+    let hasStairsDown = false
+    for (let y = 0; y < map.length && !hasStairsDown; y++)
+      for (let x = 0; x < map[y].length && !hasStairsDown; x++)
+        if (map[y][x].tile === TILE.STAIRS_DOWN) hasStairsDown = true
+    assert.equal(hasStairsDown, true, 'fallback L2 should carve a STAIRS_DOWN exit')
   })
 
 })
@@ -308,18 +324,18 @@ describe('generateLevel skipProps', () => {
 import { FINAL_DEPTH } from '../renderer/data/levels.js'
 import { TILE as MTILE } from '../renderer/systems/entities.js'
 
-describe('depth 10 boss arena', () => {
+describe('depth 5 boss arena', () => {
   it('FINAL_DEPTH is 5', () => { assert.equal(FINAL_DEPTH, 5) })
 
-  it('spawns a dragon_boss and a treasure tile on depth 10', () => {
+  it('spawns a dragon_boss and a treasure tile on depth 5', () => {
     let foundBoss = false, foundTreasure = false
     for (let attempt = 0; attempt < 5 && !(foundBoss && foundTreasure); attempt++) {
-      const { map, entitySpawns } = generateLevel(10)
+      const { map, entitySpawns } = generateLevel(5)
       if (entitySpawns.some(s => s.kind === 'dragon_boss')) foundBoss = true
       if (map.some(row => row.some(t => t.tile === MTILE.TREASURE))) foundTreasure = true
     }
-    assert.ok(foundBoss, 'depth 10 should spawn a dragon_boss')
-    assert.ok(foundTreasure, 'depth 10 should place a treasure tile')
+    assert.ok(foundBoss, 'depth 5 should spawn a dragon_boss')
+    assert.ok(foundTreasure, 'depth 5 should place a treasure tile')
   })
 })
 

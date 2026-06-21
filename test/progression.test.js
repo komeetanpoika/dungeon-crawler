@@ -33,6 +33,8 @@ describe('spawnLevelExit', () => {
 
   it('out of bounds: returns null and mutates nothing', () => {
     const map = createMap(10, 10)
+    const before = JSON.stringify(map)
     assert.equal(spawnLevelExit(map, { x: 99, y: 99 }, false), null)
+    assert.equal(JSON.stringify(map), before, 'map must be unchanged')
   })
 })
