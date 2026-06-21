@@ -1,5 +1,5 @@
 import { generateLevel } from './systems/map.js'
-import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
+import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -10,7 +10,7 @@ import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
 import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG } from './data/levels.js'
-import { countBosses, spawnLevelExit } from './systems/progression.js'
+import { countBosses, spawnBossDrop } from './systems/progression.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -142,6 +142,7 @@ function buildEntities(spawns, map) {
       }
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
+      case 'exit_door': return [makeExitDoor(s.x, s.y)]
       case 'chest':   return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
       case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
@@ -186,9 +187,10 @@ function startNewRun() {
     hitEffects: [],
     run: { deepestLevel: 1, won: false },
     gameOver: false,
-    exitSpawned: false,
+    hasKey: false,
+    dropSpawned: false,
     lastBossTile: null,
-    victoryTile: null,
+    lockedMsgCooldown: 0,
   }
   lastTime = performance.now()
   rafId = requestAnimationFrame(gameLoop)
@@ -267,15 +269,32 @@ function update(delta) {
     state.entities = state.entities.filter((_, i) => i !== floatIdx)
   }
 
-  // Stairs
-  if (map[player.y]?.[player.x]?.tile === TILE.STAIRS_DOWN) {
-    descendLevel(); return
+  // Key pickup — walk onto the key the boss dropped
+  const keyIdx = state.entities.findIndex(e => e.type === 'key' && e.x === player.x && e.y === player.y)
+  if (keyIdx !== -1) {
+    state.entities = state.entities.filter((_, i) => i !== keyIdx)
+    state.hasKey = true
+    state.log = [...state.log, 'You picked up the key!'].slice(-5)
+  }
+
+  // Exit door — open and descend with the key, otherwise it stays locked
+  const exitDoor = state.entities.find(e => e.type === 'door' && e.isExit && e.x === player.x && e.y === player.y)
+  if (exitDoor) {
+    if (state.hasKey) {
+      exitDoor.opening = true; exitDoor.frame = 3
+      state.hasKey = false
+      descendLevel(); return
+    }
+    state.lockedMsgCooldown = Math.max(0, (state.lockedMsgCooldown ?? 0) - delta)
+    if (state.lockedMsgCooldown <= 0) {
+      state.log = [...state.log, 'The door is locked — defeat the boss for its key.'].slice(-5)
+      state.lockedMsgCooldown = 2
+    }
   }
 
   // Victory: walk onto the treasure the final boss dropped
-  if (state.victoryTile && player.x === state.victoryTile.x && player.y === state.victoryTile.y) {
-    state.gameOver = true; endRun(true); return
-  }
+  const treasureIdx = state.entities.findIndex(e => e.type === 'treasure' && e.x === player.x && e.y === player.y)
+  if (treasureIdx !== -1) { state.gameOver = true; endRun(true); return }
 
   // Fountain toggle (F key — player must stand on basin tile)
   if (keys['f'] || keys['F']) {
@@ -538,12 +557,12 @@ function update(delta) {
   if (countBosses(state.entities) > 0) {
     const boss = state.entities.find(e => e.isBoss)
     state.lastBossTile = { x: boss.x, y: boss.y }
-  } else if (state.lastBossTile && !state.exitSpawned) {
+  } else if (state.lastBossTile && !state.dropSpawned) {
     const isFinal = state.level >= FINAL_DEPTH
-    const victoryTile = spawnLevelExit(state.map, state.lastBossTile, isFinal)
-    if (victoryTile) state.victoryTile = victoryTile
-    state.exitSpawned = true
-    state.log = [...state.log, isFinal ? 'The dragon falls — treasure glimmers!' : 'The way down opens.'].slice(-5)
+    const cfg = LEVEL_CONFIG.find(c => c.depth === state.level) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
+    state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
+    state.dropSpawned = true
+    state.log = [...state.log, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!'].slice(-5)
   }
 
   // Clear hit flash — it fires once per swing
@@ -580,9 +599,10 @@ function descendLevel() {
     },
     log: [`Level ${next}. Deeper…`],
     hitEffects: [],
-    exitSpawned: false,
+    hasKey: false,
+    dropSpawned: false,
     lastBossTile: null,
-    victoryTile: null,
+    lockedMsgCooldown: 0,
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
   }
 }
