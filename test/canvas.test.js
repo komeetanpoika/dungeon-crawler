@@ -44,9 +44,9 @@ describe('isFlickerVisible', () => {
     assert.equal(isFlickerVisible(-1), true)
   })
 
-  it('alternates on the interval boundary', () => {
-    assert.equal(isFlickerVisible(0.04), true)   // bucket 0
-    assert.equal(isFlickerVisible(0.10), false)  // bucket 1
-    assert.equal(isFlickerVisible(0.20), true)   // bucket 2
+  it('alternates on the interval boundary (default interval 0.06)', () => {
+    assert.equal(isFlickerVisible(0.03), true)   // bucket 0
+    assert.equal(isFlickerVisible(0.09), false)  // bucket 1
+    assert.equal(isFlickerVisible(0.15), true)   // bucket 2
   })
 })

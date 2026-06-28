@@ -7,9 +7,9 @@ const FREE = () => true
 describe('startKnockback', () => {
   it('sets velocity along the normalized direction, scaled to distance', () => {
     const e = { px: 100, py: 100 }
-    startKnockback(e, 2, 0, 10)          // DRAG=25 -> v0 = 10*25 = 250
+    startKnockback(e, 2, 0, 10)          // DRAG=40 -> v0 = 10*40 = 400
     assert.ok(e.knockback)
-    assert.equal(Math.round(e.knockback.vx), 250)
+    assert.equal(Math.round(e.knockback.vx), 400)
     assert.equal(Math.round(e.knockback.vy), 0)
   })
 

@@ -98,7 +98,7 @@ function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg) {
 }
 
 // Whether to draw the player this frame. Flickers while invulnerable (i-frames).
-export function isFlickerVisible(invulnTimer, interval = 0.08) {
+export function isFlickerVisible(invulnTimer, interval = 0.06) {
   if (!(invulnTimer > 0)) return true
   return Math.floor(invulnTimer / interval) % 2 === 0
 }

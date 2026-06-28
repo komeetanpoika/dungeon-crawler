@@ -2,7 +2,7 @@
 // collision is injected via a canMove(px, py) predicate so it is unit-testable.
 
 const TILE = 32
-const DRAG = 25        // 1/s; total slide distance ≈ v0 / DRAG. ~0.12s to settle.
+const DRAG = 40        // 1/s; total slide distance ≈ v0 / DRAG. ~0.075s to settle (snappy).
 const STOP_SPEED = 5   // px/s; below this the slide is finished.
 
 // Give `entity` a knockback velocity in unit direction (dirX, dirY), calibrated
