@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in.
@@ -34,5 +34,19 @@ describe('drawTile overlay', () => {
     const ctx = recordingCtx()
     drawTile(ctx, TILE.FLOOR, 0, 0, 32, SPR, { skin: 'fl' })
     assert.deepEqual(ctx.calls, ['SKIN_FL'])
+  })
+})
+
+describe('isFlickerVisible', () => {
+  it('is always visible when not invulnerable', () => {
+    assert.equal(isFlickerVisible(0), true)
+    assert.equal(isFlickerVisible(undefined), true)
+    assert.equal(isFlickerVisible(-1), true)
+  })
+
+  it('alternates on the interval boundary', () => {
+    assert.equal(isFlickerVisible(0.04), true)   // bucket 0
+    assert.equal(isFlickerVisible(0.10), false)  // bucket 1
+    assert.equal(isFlickerVisible(0.20), true)   // bucket 2
   })
 })
