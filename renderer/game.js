@@ -13,6 +13,7 @@ import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG } from './data/levels.js'
 import { countBosses, spawnBossDrop } from './systems/progression.js'
 import { PHASE, canTransition } from './systems/phase.js'
 import * as menu from './ui/menu.js'
+import { damagePlayer } from './systems/player-damage.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -357,6 +358,7 @@ function update(delta) {
   player.meleeCooldown  = Math.max(0, player.meleeCooldown  - delta)
   player.rangedCooldown = Math.max(0, player.rangedCooldown - delta)
   player.attackTimer    = Math.max(0, player.attackTimer    - delta)
+  player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
 
   // Melee (Space)
   if (keys[' '] && player.meleeCooldown <= 0) {
@@ -415,8 +417,7 @@ function update(delta) {
       state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
     } else {
       if (Math.hypot(player.px - p.px, player.py - p.py) < 10) {
-        player.hp -= p.damage
-        state.log = [...state.log, `Hit for ${p.damage} damage!`].slice(-5)
+        damagePlayer(state, p.damage, 'hit', `Hit for ${p.damage} damage!`)
         hit = true
       }
     }
@@ -490,9 +491,8 @@ function update(delta) {
           if (Math.abs(angleDiff) < DRAGON_CONE_HALF) {
             e.breathDamageAcc += 3 * delta
             while (e.breathDamageAcc >= 1) {
-              player.hp -= 1
+              damagePlayer(state, 1, 'dot', 'Dragon fire! (-1 HP)')
               e.breathDamageAcc -= 1
-              state.log = [...state.log, 'Dragon fire! (-1 HP)'].slice(-5)
             }
           }
         }
@@ -553,9 +553,9 @@ function update(delta) {
     // Contact damage
     if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
       const contactDmg = e.type === 'dragon' ? 2 : 1
-      player.hp -= contactDmg
-      e.damageCooldown = CONTACT_DAMAGE_COOLDOWN
-      state.log = [...state.log, `Hit for ${contactDmg} damage!`].slice(-5)
+      if (damagePlayer(state, contactDmg, 'hit', `Hit for ${contactDmg} damage!`)) {
+        e.damageCooldown = CONTACT_DAMAGE_COOLDOWN
+      }
     }
   }
 

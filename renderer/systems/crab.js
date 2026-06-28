@@ -1,4 +1,5 @@
 import { isWalkable } from './entities.js'
+import { damagePlayer } from './player-damage.js'
 
 const S = 32
 const CRAB_SPEED       = 65
@@ -62,10 +63,9 @@ export function updateCrab(e, state, delta) {
     state.player.grabbed = true
 
     if (e.grabDamageTimer <= 0) {
-      player.hp -= 1
+      damagePlayer(state, 1, 'dot', 'Crab pincer! (-1 HP)')
       e.grabDamageTimer = GRAB_DMG_INTERVAL
       e.inCombat = true
-      state.log = [...state.log, 'Crab pincer! (-1 HP)'].slice(-5)
     }
 
     if (e.grabTimer <= 0) {
@@ -99,9 +99,9 @@ export function updateCrab(e, state, delta) {
 
   // Contact damage
   if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
-    player.hp -= CONTACT_DAMAGE
-    e.damageCooldown = CONTACT_COOLDOWN
-    e.inCombat = true
-    state.log = [...state.log, 'Crab pinches! (-1 HP)'].slice(-5)
+    if (damagePlayer(state, CONTACT_DAMAGE, 'hit', 'Crab pinches! (-1 HP)')) {
+      e.damageCooldown = CONTACT_COOLDOWN
+      e.inCombat = true
+    }
   }
 }

@@ -92,3 +92,32 @@ describe('updateCyclops — state transitions', () => {
     assert.ok(state.player.hp < 10)
   })
 })
+
+describe('updateCyclops — charge hit', () => {
+  it('damages and knocks back the player, then stuns; respects i-frames', () => {
+    const S = 32
+    const c = makeCyclops(5, 5)
+    c.state = 'charging'
+    c.stateTimer = 1
+    c.chargeAngle = 0                       // charging east, toward the player
+    c.px = 5 * S + 16; c.py = 5 * S + 16
+    const player = { x: 5, y: 5, px: c.px + 10, py: c.py, hp: 20, grabbed: false }
+    const state = { player, map: [], log: [] }
+
+    updateCyclops(c, state, 0.016)
+
+    assert.equal(player.hp, 15)             // -5
+    assert.ok(player.knockback, 'player gets a knockback slide')
+    assert.ok(player.knockback.vx > 0, 'knocked away from the cyclops (eastward)')
+    assert.equal(c.state, 'stunned')
+
+    // Second charge while invulnerable does no further damage.
+    const c2 = makeCyclops(5, 5)
+    c2.state = 'charging'; c2.stateTimer = 1; c2.chargeAngle = 0
+    c2.px = player.px - 10; c2.py = player.py
+    player.invulnTimer = 0.8
+    const hpBefore = player.hp
+    updateCyclops(c2, state, 0.016)
+    assert.equal(player.hp, hpBefore, 'no damage during i-frames')
+  })
+})
