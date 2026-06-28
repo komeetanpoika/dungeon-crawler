@@ -212,6 +212,7 @@ function goTitle() {
     onPlay: beginRun,
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
+    onCheat: (depth) => beginRun(depth),
   })
 }
 

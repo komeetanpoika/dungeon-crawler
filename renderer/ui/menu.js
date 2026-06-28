@@ -1,3 +1,5 @@
+import { parseLevelCheat } from '../systems/cheats.js'
+
 // Overlay menu screens (title / pause / game over). DOM-only; receives callbacks.
 // Keep all document access inside functions so the pure helper stays importable
 // under node --test.
@@ -5,6 +7,7 @@
 let keyHandler = null
 let currentButtons = []
 let selectedIndex = 0
+let cheatBuffer = ''
 
 function overlayEl() { return document.getElementById('menu-overlay') }
 
@@ -21,7 +24,7 @@ function highlight() {
   currentButtons.forEach((b, i) => b.classList.toggle('selected', i === selectedIndex))
 }
 
-function renderScreen({ title, subtitle, buttons }) {
+function renderScreen({ title, subtitle, buttons, onCheat }) {
   const el = overlayEl()
   el.innerHTML = ''
 
@@ -52,6 +55,7 @@ function renderScreen({ title, subtitle, buttons }) {
   el.appendChild(panel)
   el.style.display = 'flex'
   selectedIndex = 0
+  cheatBuffer = ''
   highlight()
 
   clearKeyHandler()
@@ -62,12 +66,16 @@ function renderScreen({ title, subtitle, buttons }) {
       selectedIndex = (selectedIndex - 1 + buttons.length) % buttons.length; highlight(); e.preventDefault()
     } else if (e.key === 'Enter') {
       buttons[selectedIndex].onSelect(); e.preventDefault()
+    } else if (onCheat && e.key.length === 1) {
+      cheatBuffer = (cheatBuffer + e.key).toLowerCase().slice(-12)
+      const depth = parseLevelCheat(cheatBuffer)
+      if (depth) { cheatBuffer = ''; onCheat(depth) }
     }
   }
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onPlay, onOpenEditor, onQuit }) {
+export function showTitle(meta, { onPlay, onOpenEditor, onQuit, onCheat }) {
   renderScreen({
     title: 'DUNGEON CRAWLER',
     subtitle: formatMetaSummary(meta),
@@ -76,6 +84,7 @@ export function showTitle(meta, { onPlay, onOpenEditor, onQuit }) {
       { label: 'Open Editor', onSelect: onOpenEditor },
       { label: 'Quit', onSelect: onQuit },
     ],
+    onCheat,
   })
 }
 
