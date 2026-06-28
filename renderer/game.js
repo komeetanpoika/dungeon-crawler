@@ -167,11 +167,11 @@ function buildEntities(spawns, map) {
   })
 }
 
-function startNewRun() {
-  const theme = DEPTH_THEMES.find(t => t.depths.includes(1)) ?? DEPTH_THEMES[0]
-  const cfg = LEVEL_CONFIG.find(c => c.depth === 1) ?? LEVEL_CONFIG[0]
+function startNewRun(depth = 1) {
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
+  const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
   const { map, entitySpawns, playerSpawn } =
-    generateLevel(1, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
+    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -185,7 +185,7 @@ function startNewRun() {
   player.inventory.push(...getStartingItems(meta))
   decorateMap(map, rulesets[theme.ruleset])
   state = {
-    level: 1,
+    level: depth,
     map,
     player,
     theme,
@@ -193,7 +193,7 @@ function startNewRun() {
     projectiles: [],
     log: ['You enter the dungeon…'],
     hitEffects: [],
-    run: { deepestLevel: 1, won: false },
+    run: { deepestLevel: depth, won: false },
     gameOver: false,
     hasKey: false,
     dropSpawned: false,
@@ -215,10 +215,10 @@ function goTitle() {
   })
 }
 
-function beginRun() {
+function beginRun(depth = 1) {
   setPhase(PHASE.PLAYING)
   menu.hide()
-  startNewRun()
+  startNewRun(depth)
 }
 
 function resumeGame() {
