@@ -1,4 +1,6 @@
 import { isWalkable } from './entities.js'
+import { damagePlayer } from './player-damage.js'
+import { startKnockback } from './knockback.js'
 
 const TILE = 32
 export const BOSS_HP = 28
@@ -65,9 +67,9 @@ export function updateDragonBoss(e, state, delta) {
 
   // contact damage
   if (dist < BOSS_CONTACT && e.damageCooldown <= 0) {
-    player.hp -= CONTACT_DMG
-    e.damageCooldown = CONTACT_CD
-    state.log = [...state.log, `Hit for ${CONTACT_DMG} damage!`].slice(-5)
+    if (damagePlayer(state, CONTACT_DMG, 'hit', `Hit for ${CONTACT_DMG} damage!`)) {
+      e.damageCooldown = CONTACT_CD
+    }
   }
 
   e.stateTimer     = Math.max(0, e.stateTimer - delta)
@@ -116,9 +118,10 @@ export function updateDragonBoss(e, state, delta) {
       const k = 1 - e.stateTimer / 0.45
       e.tailSwing = -0.6 + 1.6 * k
       if (k > 0.3 && k < 0.8 && e.dmgAcc === 0 && inTailArc(e, player)) {
-        player.hp -= TAIL_DMG; e.dmgAcc = 1
-        knockback(e, player, state.map)
-        state.log = [...state.log, `Tail sweep! (-${TAIL_DMG})`].slice(-5)
+        e.dmgAcc = 1
+        if (damagePlayer(state, TAIL_DMG, 'hit', `Tail sweep! (-${TAIL_DMG})`)) {
+          startKnockback(player, player.px - e.px, player.py - e.py, KNOCKBACK)
+        }
       }
       if (e.stateTimer <= 0) { e.tailSwing = 0; endAttack(e) }
       break
@@ -147,27 +150,15 @@ function inTailArc(e, player) {
   return pointInCone(player.px, player.py, e.px, e.py, e.facing + Math.PI, TAIL_HALF, TAIL_REACH)
 }
 
-function tileWalkable(map, px, py) {
-  const t = map[Math.floor(py / TILE)]?.[Math.floor(px / TILE)]
-  return !!(t && isWalkable(t.tile, t))
-}
-
 function coneDamage(e, state, aim, delta) {
   const { player } = state
   if (pointInCone(player.px, player.py, e.px, e.py, aim, CONE_HALF, CONE_LEN)) {
     e.dmgAcc += CONE_DPS * delta
     while (e.dmgAcc >= 1) {
-      player.hp -= 1; e.dmgAcc -= 1
-      state.log = [...state.log, 'Dragon fire! (-1 HP)'].slice(-5)
+      damagePlayer(state, 1, 'dot', 'Dragon fire! (-1 HP)')
+      e.dmgAcc -= 1
     }
   }
-}
-
-function knockback(e, player, map) {
-  const dx = player.px - e.px, dy = player.py - e.py, d = Math.hypot(dx, dy) || 1
-  const nx = player.px + (dx / d) * KNOCKBACK, ny = player.py + (dy / d) * KNOCKBACK
-  if (tileWalkable(map, nx, player.py)) { player.px = nx; player.x = Math.floor(nx / TILE) }
-  if (tileWalkable(map, player.px, ny)) { player.py = ny; player.y = Math.floor(ny / TILE) }
 }
 
 function startReposition(e, state) {

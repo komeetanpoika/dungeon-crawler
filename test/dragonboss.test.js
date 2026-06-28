@@ -122,10 +122,11 @@ describe('updateDragonBoss attacks', () => {
     e.state = 'tail'; e.stateTimer = 0.45; e.dmgAcc = 0
     const player = mkPlayer(10*T - 2*T, 10*T)     // BEHIND the east-facing boss => inside the tail arc
     const state = mkState(e, player)
-    const px0 = player.px, hp0 = player.hp
+    const hp0 = player.hp
     for (let i = 0; i < 30; i++) updateDragonBoss(e, state, 1/60)
     assert.ok(player.hp < hp0, 'tail sweep should deal damage')
-    assert.ok(player.px < px0, 'player should be knocked outward (further west, away from the dragon)')
+    assert.ok(player.knockback, 'player should have a knockback slide queued')
+    assert.ok(player.knockback.vx < 0, 'player should be knocked outward (further west, away from the dragon)')
   })
 
   it('resets the damage accumulator after an attack ends (no carryover free hit)', () => {

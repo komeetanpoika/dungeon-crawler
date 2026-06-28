@@ -1,4 +1,6 @@
 import { hasLineOfSight, isWalkable } from './entities.js'
+import { damagePlayer } from './player-damage.js'
+import { startKnockback } from './knockback.js'
 
 const S = 32
 const CYCLOPS_SPEED        = 40
@@ -74,10 +76,10 @@ export function updateCyclops(e, state, delta) {
 
     // Contact damage
     if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
-      player.hp -= CONTACT_DAMAGE
-      e.damageCooldown = CONTACT_COOLDOWN
-      e.inCombat = true
-      state.log = [...state.log, `Cyclops hits! (-${CONTACT_DAMAGE} HP)`].slice(-5)
+      if (damagePlayer(state, CONTACT_DAMAGE, 'hit', `Cyclops hits! (-${CONTACT_DAMAGE} HP)`)) {
+        e.damageCooldown = CONTACT_COOLDOWN
+        e.inCombat = true
+      }
     }
 
   } else if (e.state === 'charge_windup') {
@@ -91,7 +93,14 @@ export function updateCyclops(e, state, delta) {
     const cdx = Math.cos(e.chargeAngle) * CYCLOPS_CHARGE_SPEED * delta
     const cdy = Math.sin(e.chargeAngle) * CYCLOPS_CHARGE_SPEED * delta
 
-    if (!canMoveTo(map, e.px + cdx, e.py + cdy)) {
+    if (Math.hypot(e.px - player.px, e.py - player.py) < 50) {
+      if (damagePlayer(state, 5, 'hit', 'Cyclops charges! (-5 HP)')) {
+        startKnockback(player, player.px - e.px, player.py - e.py, KNOCKBACK_DIST)
+        e.inCombat = true
+      }
+      e.state = 'stunned'
+      e.stateTimer = 0.5
+    } else if (!canMoveTo(map, e.px + cdx, e.py + cdy)) {
       e.state = 'stunned'
       e.stateTimer = 2.5
     } else {
@@ -99,17 +108,6 @@ export function updateCyclops(e, state, delta) {
       if (canMoveTo(map, e.px, e.py + cdy)) e.py += cdy
       e.x = Math.floor(e.px / S)
       e.y = Math.floor(e.py / S)
-
-      if (Math.hypot(e.px - player.px, e.py - player.py) < 50) {
-        player.hp -= 5
-        const a = Math.atan2(player.py - e.py, player.px - e.px)
-        player.px += Math.cos(a) * KNOCKBACK_DIST
-        player.py += Math.sin(a) * KNOCKBACK_DIST
-        e.inCombat = true
-        state.log = [...state.log, 'Cyclops charges! (-5 HP)'].slice(-5)
-        e.state = 'stunned'
-        e.stateTimer = 0.5
-      }
     }
 
     if (e.state === 'charging' && e.stateTimer <= 0) {
@@ -130,9 +128,9 @@ export function updateCyclops(e, state, delta) {
       e.stateTimer = SLAM_RING_DURATION
       e.slamRing = { radius: 0, maxRadius: SLAM_RADIUS }
       if (dist < SLAM_RADIUS) {
-        player.hp -= SLAM_DAMAGE
-        e.inCombat = true
-        state.log = [...state.log, `Ground slam! (-${SLAM_DAMAGE} HP)`].slice(-5)
+        if (damagePlayer(state, SLAM_DAMAGE, 'hit', `Ground slam! (-${SLAM_DAMAGE} HP)`)) {
+          e.inCombat = true
+        }
       }
     }
 

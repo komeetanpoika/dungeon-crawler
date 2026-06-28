@@ -97,6 +97,12 @@ function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg) {
   ctx.restore()
 }
 
+// Whether to draw the player this frame. Flickers while invulnerable (i-frames).
+export function isFlickerVisible(invulnTimer, interval = 0.06) {
+  if (!(invulnTimer > 0)) return true
+  return Math.floor(invulnTimer / interval) % 2 === 0
+}
+
 function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'door') {
     const s = sprites[`door_${entity.frame}`]
@@ -585,7 +591,7 @@ export class Renderer {
     }
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
-    drawEntity(ctx, player, ppx, ppy, S, sprites)
+    if (isFlickerVisible(player.invulnTimer)) drawEntity(ctx, player, ppx, ppy, S, sprites)
     if (player.grabbed) {
       ctx.save()
       ctx.globalAlpha = 0.45
