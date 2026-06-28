@@ -14,6 +14,7 @@ import { countBosses, spawnBossDrop } from './systems/progression.js'
 import { PHASE, canTransition } from './systems/phase.js'
 import * as menu from './ui/menu.js'
 import { damagePlayer } from './systems/player-damage.js'
+import { startKnockback, stepKnockback } from './systems/knockback.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -39,14 +40,14 @@ const BOSS_MELEE_RANGE       = 2.2 * TILE_SIZE   // dragon boss has a large body
 const BOSS_PROJECTILE_R      = 1.6 * TILE_SIZE   // friendly projectiles hit the boss within this radius
 
 const ATTACK_STYLES = {
-  dagger:    { style: 'snap',  duration: 0.12, cooldown: 0.30 },
-  sword:     { style: 'arc',   duration: 0.20, cooldown: 0.40 },
-  longsword: { style: 'slash', duration: 0.22, cooldown: 0.50 },
-  axe:       { style: 'spin',  duration: 0.35, cooldown: 0.60 },
+  dagger:    { style: 'snap',  duration: 0.12, cooldown: 0.30, knockback: 10 },
+  sword:     { style: 'arc',   duration: 0.20, cooldown: 0.40, knockback: 18 },
+  longsword: { style: 'slash', duration: 0.22, cooldown: 0.50, knockback: 24 },
+  axe:       { style: 'spin',  duration: 0.35, cooldown: 0.60, knockback: 34 },
 }
 
 function getAttack(weaponType) {
-  return ATTACK_STYLES[weaponType] ?? { style: 'arc', duration: 0.20, cooldown: 0.40 }
+  return ATTACK_STYLES[weaponType] ?? { style: 'arc', duration: 0.20, cooldown: 0.40, knockback: 18 }
 }
 
 function meleeHit(style, facingAngle, dx, dy) {
@@ -379,7 +380,11 @@ function update(delta) {
           return e
         }
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
-        return { ...e, hp: e.hp - dmg, inCombat: true }
+        const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
+        if (e.type !== 'dragon_boss') {
+          startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback)
+        }
+        return hitEnemy
       })
       .filter(e => !isEnemy(e) || e.hp > 0)
     state.hitEffects = [{ x: player.x, y: player.y }]
@@ -600,6 +605,12 @@ function update(delta) {
     state.dropSpawned = true
     state.log = [...state.log, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!'].slice(-5)
   }
+
+  // Resolve knockback slides after AI has moved everything this frame.
+  for (const e of state.entities) {
+    stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
+  }
+  stepKnockback(player, delta, (px, py) => canMoveTo(map, px, py, PLAYER_HALF))
 
   // Clear hit flash — it fires once per swing
   if (state.hitEffects?.length > 0) state.hitEffects = []
