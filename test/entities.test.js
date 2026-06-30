@@ -1,7 +1,7 @@
 // test/entities.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure } from '../renderer/systems/entities.js'
+import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure, computePlayerFOV, maybeComputeFOV } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
 function openMap(w = 20, h = 20) {
@@ -74,6 +74,59 @@ describe('hasLineOfSight', () => {
     const map = openMap()
     for (let y = 0; y < 20; y++) map[y][7].tile = TILE.WALL
     assert.equal(hasLineOfSight(map, 5, 5, 5, 10), false)
+  })
+})
+
+describe('maybeComputeFOV (cached FOV)', () => {
+  it('computes FOV on the first call', () => {
+    const map = openMap()
+    const player = { x: 5, y: 5 }
+    const recomputed = maybeComputeFOV(map, player)
+    assert.equal(recomputed, true)
+    assert.equal(map[5][5].visible, true)
+  })
+
+  it('skips recompute when the player tile and map are unchanged', () => {
+    const map = openMap()
+    const player = { x: 5, y: 5 }
+    maybeComputeFOV(map, player)
+    // Dirty a visible tile; a real recompute would restore it to visible.
+    map[5][5].visible = false
+    const recomputed = maybeComputeFOV(map, player)
+    assert.equal(recomputed, false)
+    assert.equal(map[5][5].visible, false) // untouched — proves the recompute was skipped
+  })
+
+  it('recomputes when the player moves to a new tile', () => {
+    const map = openMap()
+    const player = { x: 5, y: 5 }
+    maybeComputeFOV(map, player)
+    map[5][5].visible = false
+    player.x = 6
+    const recomputed = maybeComputeFOV(map, player)
+    assert.equal(recomputed, true)
+    assert.equal(map[5][5].visible, true) // restored by the recompute
+  })
+
+  it('recomputes when the map reference changes (e.g. descending a level)', () => {
+    const map1 = openMap()
+    const player = { x: 5, y: 5 }
+    maybeComputeFOV(map1, player)
+    const map2 = openMap()
+    const recomputed = maybeComputeFOV(map2, player)
+    assert.equal(recomputed, true)
+    assert.equal(map2[5][5].visible, true)
+  })
+
+  it('produces the same visibility as a direct computePlayerFOV call', () => {
+    const cached = openMap()
+    const direct = openMap()
+    const player = { x: 8, y: 8 }
+    maybeComputeFOV(cached, player)
+    computePlayerFOV(direct, { x: 8, y: 8 })
+    for (let y = 0; y < cached.length; y++)
+      for (let x = 0; x < cached[0].length; x++)
+        assert.equal(cached[y][x].visible, direct[y][x].visible, `mismatch at ${x},${y}`)
   })
 })
 

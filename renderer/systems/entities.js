@@ -57,6 +57,21 @@ export function computePlayerFOV(map, player, radius = 8) {
   }
 }
 
+// FOV only changes when the player's *tile* (player.x/y) or the map changes —
+// not on every sub-tile pixel of movement. Cache the last inputs on the player
+// and skip the full-map clear + raycast when nothing relevant has moved.
+// Returns true if it recomputed, false if it reused the cached visibility.
+export function maybeComputeFOV(map, player, radius = 8) {
+  if (player._fovMap === map && player._fovX === player.x && player._fovY === player.y) {
+    return false
+  }
+  computePlayerFOV(map, player, radius)
+  player._fovMap = map
+  player._fovX = player.x
+  player._fovY = player.y
+  return true
+}
+
 export function makePlayer(x, y, bonuses = []) {
   const quietSteps = bonuses.filter(b => b === 'quiet_step').length
   const extraSlots = bonuses.filter(b => b === 'extra_slot').length

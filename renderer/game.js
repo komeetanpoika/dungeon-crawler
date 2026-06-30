@@ -1,5 +1,5 @@
 import { generateLevel } from './systems/map.js'
-import { computePlayerFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -237,8 +237,13 @@ function pauseGame() {
 function gameLoop(timestamp) {
   const delta = Math.min(timestamp - lastTime, 100) / 1000
   lastTime = timestamp
-  if (phase === PHASE.PLAYING) update(delta)
-  if (state) render()
+  // Only the PLAYING phase animates. While paused / on the title / game-over
+  // screens the near-opaque menu overlay covers a frozen frame, so re-rendering
+  // it 60×/sec is pure wasted CPU (worse here: rendering is software, GPU off).
+  if (phase === PHASE.PLAYING) {
+    update(delta)
+    if (state) render()
+  }
   rafId = requestAnimationFrame(gameLoop)
 }
 
@@ -617,7 +622,7 @@ function update(delta) {
 }
 
 function render() {
-  computePlayerFOV(state.map, state.player)
+  maybeComputeFOV(state.map, state.player)
   renderer.updateCamera(state.player)
   renderer.render(state)
   updateHUD(state)
@@ -676,7 +681,9 @@ async function init() {
   pruneMissingTiles(rulesets, renderer.sprites)
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
-  window.addEventListener('resize', () => renderer.resize())
+  // Resizing reallocates the canvas backing store (blank); repaint the current
+  // frame even when not in PLAYING, since the loop no longer renders every frame.
+  window.addEventListener('resize', () => { renderer.resize(); if (state) render() })
   goTitle()
   lastTime = performance.now()
   rafId = requestAnimationFrame(gameLoop)
