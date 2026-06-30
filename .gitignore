@@ -1,4 +1,5 @@
 node_modules/
 .superpowers/
 dist/
-.claude/worktrees/
+.claude/
+debug*.mjs
