@@ -7,5 +7,5 @@ export function parseLevelCheat(buffer) {
   const m = /level(\d+)$/.exec(String(buffer).toLowerCase())
   if (!m) return null
   const depth = Number(m[1])
-  return depth >= 1 && depth <= FINAL_DEPTH ? depth : null
+  return depth >= 0 && depth <= FINAL_DEPTH ? depth : null
 }

@@ -9,8 +9,11 @@ describe('parseLevelCheat', () => {
     }
   })
 
+  it('accepts level0 as the boss test arena', () => {
+    assert.equal(parseLevelCheat('level0'), 0)
+  })
+
   it('ignores out-of-range depths', () => {
-    assert.equal(parseLevelCheat('level0'), null)
     assert.equal(parseLevelCheat('level6'), null)
     assert.equal(parseLevelCheat('level9'), null)
     assert.equal(parseLevelCheat('level10'), null)
