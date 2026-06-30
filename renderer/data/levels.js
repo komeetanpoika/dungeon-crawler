@@ -154,6 +154,7 @@ export const TEMPLATES = {
 }
 
 export const LEVEL_CONFIG = [
+  { depth: 0, mapW: 26, mapH: 18, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] },
   { depth: 1, mapW: 50, mapH: 32, staircaseWidth: 1, guardCount: 2, monsterDensity: 0,     trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'CRAB_LAIR',      weapons: ['dagger'] },
   { depth: 2, mapW: 64, mapH: 40, staircaseWidth: 1, guardCount: 3, monsterDensity: 0,     trapDensity: 0.04, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'WIZARD_SANCTUM',  weapons: ['dagger', 'sword'] },
   { depth: 3, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 5, monsterDensity: 0.006, trapDensity: 0.06, puzzleDensity: 0.03, weaponDensity: 0.012, potionDensity: 0.008, landmark: null,             weapons: ['sword', 'longsword'], cyclopsArena: true },
@@ -188,7 +189,7 @@ export const DEPTH_THEMES = [
     props: { room: ['prop_gravestone', 'prop_grave'] },
   },
   {
-    depths: [5],
+    depths: [0, 5],
     floorTile: 'floor',
     bgColor:  '#0a0406',
     tint:     'rgba(60,10,0,0.35)',
