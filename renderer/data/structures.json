@@ -631,5 +631,301 @@
       }
     ],
     "targetDepth": 1
+  },
+  "castle2": {
+    "w": 10,
+    "h": 4,
+    "cells": [
+      {
+        "x": 0,
+        "y": 0,
+        "skin": "tile_0004",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "skin": "tile_0026",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "skin": "tile_0026",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 0,
+        "skin": "tile_0026",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 0,
+        "skin": "tile_0026",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 0,
+        "skin": "tile_0005",
+        "overlay": "tile_0026",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 0,
+        "skin": "tile_0048",
+        "overlay": "tile_0026",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 0,
+        "skin": "tile_0048",
+        "overlay": "tile_0026",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 0,
+        "skin": "tile_0048",
+        "overlay": "tile_0026",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 9,
+        "y": 0,
+        "skin": "tile_0048",
+        "overlay": "tile_0005",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "skin": "tile_0015",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "skin": "tile_0000",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "skin": "tile_0000",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "skin": "tile_0000",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "skin": "tile_0012",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 1,
+        "skin": "tile_0013",
+        "overlay": "tile_0001",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 1,
+        "skin": "tile_0048",
+        "overlay": "tile_0002",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 1,
+        "skin": "tile_0048",
+        "overlay": "tile_0002",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 1,
+        "skin": "tile_0048",
+        "overlay": "tile_0002",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 9,
+        "y": 1,
+        "skin": "tile_0048",
+        "overlay": "tile_0017",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 2,
+        "skin": "tile_0016",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "skin": "tile_0006",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": {
+          "type": "chest"
+        }
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "skin": "tile_0002",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "skin": "tile_0002",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "skin": "tile_0006",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "skin": "tile_0017",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 2,
+        "skin": "tile_0048",
+        "overlay": "tile_0028",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 2,
+        "skin": "tile_0048",
+        "overlay": "tile_0014",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 2,
+        "skin": "tile_0048",
+        "overlay": "tile_0019",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 9,
+        "y": 2,
+        "skin": "tile_0048",
+        "overlay": "tile_0059",
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 3,
+        "skin": "tile_0057",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "skin": "tile_0018",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "skin": "tile_0045",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "skin": "tile_0028",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "skin": "tile_0018",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "skin": "tile_0059",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      }
+    ]
   }
 }
