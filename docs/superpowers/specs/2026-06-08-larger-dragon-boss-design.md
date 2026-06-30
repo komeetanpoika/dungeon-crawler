@@ -25,17 +25,19 @@ attacks; new art assets (the boss is drawn procedurally on the canvas).
 - `FINAL_DEPTH`: **9 → 10** (`renderer/data/levels.js`).
 - **Depth 9 unchanged** except it is no longer the finale: it keeps the current dragon, but
   the treasure/win is removed there (it now lives on depth 10). The depth-9 `DRAGON_LAIR`
-  template currently contains an `X` (treasure) in its center row — that `X` is replaced
+  template currently contains a `T` (treasure tile) in its center row — that `T` is replaced
   with floor (`.`) directly in the template string (no runtime special-casing); the
-  treasure moves to the new depth-10 `GREAT_LAIR` template.
+  treasure moves to the new depth-10 `GREAT_LAIR` template. (Note: the `X` in `DRAGON_LAIR`
+  is a snare tile, not treasure — leave it.)
 - **New arena template `GREAT_LAIR`** in `levels.js` `TEMPLATES`: a large, mostly-open
   chamber ~26×22 (open floor with a thick wall border, gently rounded corners), sized for
-  the 3×4 dragon plus room to circle it. Markers in the template:
+  the 3×4 dragon plus room to circle it. Markers in the template (matching `placeTemplate`'s
+  existing alphabet — `T` = treasure tile, `D` = old dragon, `#`/`.` = wall/floor; `B` is
+  new):
   - `B` — the dragon boss anchor (back-center of the chamber).
-  - `X` — the treasure, placed **behind** the boss (between boss and back wall), so the
+  - `T` — the treasure, placed **behind** the boss (between boss and back wall), so the
     fight gates the win.
-  - A couple of `.`-flanked entry funnels on the near side; no internal pillars (keeps the
-    sweeping breath and tail sweep readable).
+  - Open floor with no internal pillars (keeps the sweeping breath and tail sweep readable).
 - **New depth-10 theme** appended to `DEPTH_THEMES`: climactic molten/obsidian look —
   `bgColor: '#0a0406'`, `tint: 'rgba(60,10,0,0.35)'`, `fogAlpha: 0.8`, `floorTile: 'floor'`,
   reusing existing deep-floor props sparsely.
@@ -216,7 +218,7 @@ locked look. Depth-9 dragon confirmed unchanged.
 - **New:** `renderer/systems/dragonboss.js`, `renderer/render/dragonboss.js`,
   `test/dragonboss.test.js`.
 - **Modified:** `renderer/data/levels.js` (FINAL_DEPTH, `GREAT_LAIR` template, depth-10
-  theme + config, remove `X` from `DRAGON_LAIR` template), `renderer/systems/map.js` (`B`
+  theme + config, remove `T` from `DRAGON_LAIR` template), `renderer/systems/map.js` (`B`
   marker → boss spawn), `renderer/render/canvas.js` (`dragon_boss` draw branch; generalize
   breath-cone params), `renderer/game.js` (imports, `buildEntities`, `isEnemy`, AI dispatch,
   boss hit radius, `FINAL_DEPTH` literals).
