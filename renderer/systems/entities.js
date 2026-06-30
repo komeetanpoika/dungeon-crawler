@@ -41,20 +41,35 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
 }
 
 export function computePlayerFOV(map, player, radius = 8) {
-  for (const row of map) for (const tile of row) tile.visible = false
+  // Reset visibility before recomputing. Clearing the *whole* map is O(W×H),
+  // which is fine for a dungeon room but dominates on large / open-world maps.
+  // So on a repeat call for the SAME map we clear only the tiles we lit last
+  // time (O(lit)); on a new map we do one full clear, since its tiles may carry
+  // stale `visible` flags from a prior visit (the explored-but-not-in-sight
+  // memory). Either way the lit set is rebuilt from scratch below.
+  if (player._fovLitMap === map && player._fovLit) {
+    for (const t of player._fovLit) t.visible = false
+  } else {
+    for (const row of map) for (const tile of row) tile.visible = false
+  }
+  const lit = []
   const { x: px, y: py } = player
   const r2 = radius * radius
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
       if (dx * dx + dy * dy > r2) continue
       const tx = px + dx, ty = py + dy
-      if (!map[ty]?.[tx]) continue
+      const t = map[ty]?.[tx]
+      if (!t) continue
       if (hasLineOfSight(map, py, px, ty, tx)) {
-        map[ty][tx].visible = true
-        map[ty][tx].explored = true
+        t.visible = true
+        t.explored = true
+        lit.push(t)
       }
     }
   }
+  player._fovLitMap = map
+  player._fovLit = lit
 }
 
 // FOV only changes when the player's *tile* (player.x/y) or the map changes —

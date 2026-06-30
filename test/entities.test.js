@@ -130,6 +130,58 @@ describe('maybeComputeFOV (cached FOV)', () => {
   })
 })
 
+describe('computePlayerFOV (radius-bounded clear)', () => {
+  it('does not touch far-off tiles when recomputing on the same map', () => {
+    // The clear must cost O(radius²), not O(map area): a recompute on the same
+    // map should never write `visible` on tiles it never lit. This is the whole
+    // point for large/open-world maps. Fails against a full-map clear.
+    const map = openMap(40, 40)
+    const player = { x: 20, y: 20 }
+    computePlayerFOV(map, player) // first compute (may full-clear once)
+
+    let writes = 0
+    const far = map[0][0]
+    let v = far.visible
+    Object.defineProperty(far, 'visible', {
+      configurable: true,
+      get: () => v,
+      set: (nv) => { writes++; v = nv },
+    })
+
+    player.x = 21
+    computePlayerFOV(map, player) // recompute on the same map
+    assert.equal(writes, 0, 'far-off tile must not be cleared by a bounded recompute')
+  })
+
+  it('clears tiles that fall out of range when the player moves away', () => {
+    // A tile visible from the old position but out of radius from the new one
+    // must go dark. A naive "clear only a box around the new center" would leave
+    // it stale; clearing the previously-lit set gets it right.
+    const map = openMap(40, 40)
+    const player = { x: 20, y: 20 }
+    computePlayerFOV(map, player, 8)
+    assert.equal(map[20][12].visible, true) // distance 8, in view
+
+    player.x = 28 // moved +8; (20,12) is now distance 16 — out of range
+    computePlayerFOV(map, player, 8)
+    assert.equal(map[20][12].visible, false, 'tile out of range must be cleared')
+    assert.equal(map[20][28].visible, true, 'tile at new center must be lit')
+  })
+
+  it('clears stale visibility carried by a freshly-entered map', () => {
+    // Revisiting a level: its tiles may still carry `visible=true` from a prior
+    // visit. Entering a new map must full-clear so old sight does not leak in.
+    const map1 = openMap(40, 40)
+    const player = { x: 20, y: 20 }
+    computePlayerFOV(map1, player)
+
+    const map2 = openMap(40, 40)
+    map2[2][2].visible = true // stale flag from a "previous visit", far from player
+    maybeComputeFOV(map2, player)
+    assert.equal(map2[2][2].visible, false, 'stale visibility on a new map must be cleared')
+  })
+})
+
 describe('boss-drop and exit-door factories', () => {
   it('makeKey produces a key entity', () => {
     assert.deepEqual(makeKey(3, 4), { type: 'key', x: 3, y: 4 })
