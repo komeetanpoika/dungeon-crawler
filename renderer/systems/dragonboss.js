@@ -60,6 +60,7 @@ export function updateDragonBoss(e, state, delta) {
   const { player } = state
   e.breathTime += delta
   e.damageCooldown = Math.max(0, e.damageCooldown - delta)
+  e.footfall = false   // one-frame footfall pulse; set true only on a completed stomp step
   const dist = Math.hypot(player.px - e.px, player.py - e.py)
   if (dist < 12 * TILE) e.inCombat = true
 
@@ -81,13 +82,14 @@ export function updateDragonBoss(e, state, delta) {
 
   e.stateTimer     = Math.max(0, e.stateTimer - delta)
   e.attackCooldown = Math.max(0, e.attackCooldown - delta)
+  e.stepTimer      = Math.max(0, e.stepTimer - delta)
 
   switch (e.state) {
     case 'idle':
       e.neckRear  = approach(e.neckRear, 0, 3 * delta)
       e.tailSwing = approach(e.tailSwing, 0, 4 * delta)
       e.headAim   = approach(e.headAim, 0, 3 * delta)
-      if (dist > 1.6 * TILE && dist < STOMP_RANGE && e.attackCooldown > 0.2) { startStomp(e, state); break }
+      if (e.stepTimer <= 0 && dist > 1.6 * TILE && dist < STOMP_RANGE && e.attackCooldown > 0.2) { startStomp(e, state); break }
       if (e.attackCooldown <= 0) {
         // tail only when the player has flanked into the rear arc (where the tail sweeps);
         // breath handles the front, which is where the facing boss usually keeps the player
@@ -134,7 +136,6 @@ export function updateDragonBoss(e, state, delta) {
     }
 
     case 'stomp': {
-      e.footfall = false
       if (!e.stepTo) { e.state = 'idle'; break }
       e.stepK = Math.min(1, e.stepK + delta / STEP_DUR)
       // ease across the tile (smoothstep) — logical destination is a tile centre

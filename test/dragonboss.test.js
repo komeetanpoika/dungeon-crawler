@@ -59,7 +59,7 @@ describe('makeDragonBoss', () => {
 describe('updateDragonBoss facing', () => {
   it('eases facing toward the player over time', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
-    e.attackCooldown = 999; e.repositionTimer = 999   // prevent attacks; stomp is now the boss's pursuit behaviour
+    e.attackCooldown = 999   // prevent attacks; stomp is now the boss's pursuit behaviour
     const player = mkPlayer(10*T, 16*T)           // due south — boss pursues and tracks
     const state = mkState(e, player)
     for (let i = 0; i < 120; i++) updateDragonBoss(e, state, 1/60)  // 2s
@@ -84,7 +84,7 @@ describe('updateDragonBoss contact damage', () => {
 })
 
 describe('updateDragonBoss attacks', () => {
-  function ready(e) { e.attackCooldown = 0; e.repositionTimer = 999 }  // force an attack, no reposition
+  function ready(e) { e.attackCooldown = 0 }
 
   it('picks a tail attack when the player has flanked into the rear arc', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0; ready(e)
@@ -104,7 +104,7 @@ describe('updateDragonBoss attacks', () => {
 
   it('does not start a new attack while attackCooldown is active', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T
-    e.attackCooldown = 1; e.repositionTimer = 999
+    e.attackCooldown = 1
     const player = mkPlayer(10*T + 6*T, 10*T)
     const state = mkState(e, player)
     updateDragonBoss(e, state, 1/60)
