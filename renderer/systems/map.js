@@ -1,4 +1,4 @@
-import { TILE, isWalkable } from './entities.js'
+import { TILE, isWalkable, WEAPON_TYPES } from './entities.js'
 import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
 
 const MAP_W = 80
@@ -401,7 +401,48 @@ function healConnectivity(map) {
   }
 }
 
+// Build the level-0 debug arena: a single walled room with the dragon boss
+// centered and 20 weapon/potion chests ringed around the interior perimeter.
+// Pure (map + spawn data only); returns the same shape as generateLevel so the
+// startNewRun → buildEntities wiring is unchanged. Deterministic: no randomness.
+export function buildBossTestArena(width, height) {
+  const map = createMap(width, height) // all TILE.WALL
+  for (let y = 1; y < height - 1; y++)
+    for (let x = 1; x < width - 1; x++)
+      map[y][x].tile = TILE.FLOOR
+
+  const cx = Math.floor(width / 2)
+  const cy = Math.floor(height / 2)
+  const playerSpawn = { x: cx, y: height - 2 } // bottom-center interior
+
+  const entitySpawns = [{ kind: 'dragon_boss', x: cx, y: cy, isBoss: true }]
+
+  // Ordered ring of interior-perimeter floor cells (clockwise from top-left),
+  // minus the player-spawn cell so a chest never lands on the player.
+  const ring = []
+  for (let x = 1; x <= width - 2; x++)   ring.push({ x, y: 1 })           // top
+  for (let y = 2; y <= height - 2; y++)  ring.push({ x: width - 2, y })   // right
+  for (let x = width - 3; x >= 1; x--)   ring.push({ x, y: height - 2 })  // bottom
+  for (let y = height - 3; y >= 2; y--)  ring.push({ x: 1, y })           // left
+  const cells = ring.filter(c => !(c.x === playerSpawn.x && c.y === playerSpawn.y))
+
+  // 20 evenly-spaced chests; alternate weapon/potion, cycling weapon types.
+  const weaponKeys = Object.keys(WEAPON_TYPES)
+  const CHEST_COUNT = 20
+  for (let i = 0; i < CHEST_COUNT; i++) {
+    const cell = cells[Math.round(i * cells.length / CHEST_COUNT) % cells.length]
+    if (i % 2 === 0) {
+      entitySpawns.push({ kind: 'weapon', x: cell.x, y: cell.y, weaponType: weaponKeys[(i / 2) % weaponKeys.length] })
+    } else {
+      entitySpawns.push({ kind: 'potion', x: cell.x, y: cell.y })
+    }
+  }
+
+  return { map, entitySpawns, playerSpawn, rooms: [] }
+}
+
 export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {} } = {}) {
+  if (depth === 0) return buildBossTestArena(width, height)
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {

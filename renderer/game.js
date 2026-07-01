@@ -15,6 +15,7 @@ import { PHASE, canTransition } from './systems/phase.js'
 import * as menu from './ui/menu.js'
 import { damagePlayer } from './systems/player-damage.js'
 import { startKnockback, stepKnockback } from './systems/knockback.js'
+import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -36,8 +37,6 @@ const DRAGON_CHARGE_DUR      = 1.0
 const DRAGON_EXHALE_DUR      = 0.8
 const DRAGON_BREATH_COOLDOWN = 2.5
 const DRAGON_CONE_HALF       = Math.PI * 0.21
-const BOSS_MELEE_RANGE       = 2.2 * TILE_SIZE   // dragon boss has a large body; melee connects within this radius
-const BOSS_PROJECTILE_R      = 1.6 * TILE_SIZE   // friendly projectiles hit the boss within this radius
 
 const ATTACK_STYLES = {
   dagger:    { style: 'snap',  duration: 0.12, cooldown: 0.30, knockback: 10 },
@@ -116,9 +115,10 @@ function canMoveTo(map, px, py, half = PLAYER_HALF) {
   })
 }
 
-function moveEntity(e, dx, dy, map, half = PLAYER_HALF) {
-  if (dx !== 0 && canMoveTo(map, e.px + dx, e.py, half)) e.px += dx
-  if (dy !== 0 && canMoveTo(map, e.px, e.py + dy, half)) e.py += dy
+function moveEntity(e, dx, dy, map, half = PLAYER_HALF, boss = null) {
+  const free = (px, py) => canMoveTo(map, px, py, half) && !(boss && coreBlocks(px, py, half, boss))
+  if (dx !== 0 && free(e.px + dx, e.py)) e.px += dx
+  if (dy !== 0 && free(e.px, e.py + dy)) e.py += dy
   e.x = Math.floor(e.px / TILE_SIZE)
   e.y = Math.floor(e.py / TILE_SIZE)
 }
@@ -195,6 +195,7 @@ function startNewRun(depth = 1) {
     projectiles: [],
     log: ['You enter the dungeon…'],
     hitEffects: [],
+    shake: 0,
     run: { deepestLevel: depth, won: false },
     gameOver: false,
     hasKey: false,
@@ -249,6 +250,7 @@ function gameLoop(timestamp) {
 
 function update(delta) {
   const { player, map } = state
+  state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
 
   // Player movement — skip if grabbed by a crab this frame
   const wasGrabbed = player.grabbed ?? false
@@ -259,7 +261,8 @@ function update(delta) {
   if (keys['ArrowUp']    || keys['w']) { vy -= 1; player.facing = 'north' }
   if (keys['ArrowDown']  || keys['s']) { vy += 1; player.facing = 'south' }
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
-  if (!wasGrabbed) moveEntity(player, vx * PLAYER_SPEED * delta, vy * PLAYER_SPEED * delta, map, PLAYER_HALF)
+  const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
+  if (!wasGrabbed) moveEntity(player, vx * PLAYER_SPEED * delta, vy * PLAYER_SPEED * delta, map, PLAYER_HALF, boss)
 
   // Chest interaction (walk onto chest tile)
   const chestIdx = state.entities.findIndex(e =>
@@ -380,15 +383,15 @@ function update(delta) {
       .map(e => {
         if (!isEnemy(e)) return e
         if (e.type === 'dragon_boss') {
-          if (Math.hypot(e.px - player.px, e.py - player.py) > BOSS_MELEE_RANGE) return e
-        } else if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) {
-          return e
+          const swingHit = (cx, cy) => meleeHit(atk.style, fa, cx - player.px, cy - player.py)
+          const bossDmg = meleeDamageToDragon(player, e, swingHit)
+          if (bossDmg <= 0) return e
+          return { ...e, hp: e.hp - bossDmg, inCombat: true }
         }
+        if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
-        if (e.type !== 'dragon_boss') {
-          startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback)
-        }
+        startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback)
         return hitEnemy
       })
       .filter(e => !isEnemy(e) || e.hp > 0)
@@ -416,7 +419,8 @@ function update(delta) {
     if (p.friendly) {
       state.entities = state.entities.map(e => {
         if (!isEnemy(e) || hit) return e
-        const hitR = e.type === 'dragon_boss' ? BOSS_PROJECTILE_R : 8
+        if (e.type === 'dragon_boss') return e          // immune to ranged; projectile passes over
+        const hitR = 8
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
@@ -569,6 +573,10 @@ function update(delta) {
     }
   }
 
+  // Footfall screenshake — dragon boss stomps
+  const stomper = state.entities.find(e => e.type === 'dragon_boss' && e.footfall)
+  if (stomper) state.shake = 6
+
   // Advance fountain animation timers
   for (const e of state.entities) {
     if (e.type === 'prop' && e.flowing) {
@@ -623,7 +631,7 @@ function update(delta) {
 
 function render() {
   maybeComputeFOV(state.map, state.player)
-  renderer.updateCamera(state.player)
+  renderer.updateCamera(state.player, state.shake ?? 0)
   renderer.render(state)
   updateHUD(state)
 }
@@ -651,6 +659,7 @@ function descendLevel() {
     },
     log: [`Level ${next}. Deeper…`],
     hitEffects: [],
+    shake: 0,
     hasKey: false,
     dropSpawned: false,
     lastBossTile: null,

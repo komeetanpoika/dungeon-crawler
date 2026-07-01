@@ -69,7 +69,7 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
     } else if (onCheat && e.key.length === 1) {
       cheatBuffer = (cheatBuffer + e.key).toLowerCase().slice(-12)
       const depth = parseLevelCheat(cheatBuffer)
-      if (depth) { cheatBuffer = ''; onCheat(depth) }
+      if (depth !== null) { cheatBuffer = ''; onCheat(depth) } // depth 0 (boss arena) is valid but falsy
     }
   }
   window.addEventListener('keydown', keyHandler)

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in.
@@ -48,5 +48,17 @@ describe('isFlickerVisible', () => {
     assert.equal(isFlickerVisible(0.03), true)   // bucket 0
     assert.equal(isFlickerVisible(0.09), false)  // bucket 1
     assert.equal(isFlickerVisible(0.15), true)   // bucket 2
+  })
+})
+
+describe('shakeOffset', () => {
+  it('is zero at rest', () => {
+    const { x, y } = shakeOffset(0)
+    assert.equal(x, 0); assert.equal(y, 0)
+  })
+  it('grows with magnitude and stays within ±shake', () => {
+    const { x, y } = shakeOffset(6)
+    assert.ok(Math.abs(x) <= 6 && Math.abs(y) <= 6)
+    assert.ok(Math.abs(x) + Math.abs(y) > 0)
   })
 })

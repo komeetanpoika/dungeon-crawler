@@ -1,11 +1,11 @@
 import { isWalkable } from './entities.js'
 import { damagePlayer } from './player-damage.js'
 import { startKnockback } from './knockback.js'
+import { dragonCapsules, pointInCapsule } from './capsules.js'
 
 const TILE = 32
-export const BOSS_HP = 28
+export const BOSS_HP = 18   // tuned for flat-1 melee: ~12 neck hits (1.5x) to kill
 const TURN_RATE   = 0.8            // rad/s the body rotates to track the player (~3.9s for a 180° turn)
-const BOSS_CONTACT = 1.4 * TILE    // contact radius around the body centre (~1.4 tiles)
 const CONTACT_DMG = 2
 const CONTACT_CD  = 0.8
 const CONE_HALF   = 0.34
@@ -16,7 +16,11 @@ const TAIL_REACH  = 3.2 * TILE
 const TAIL_HALF   = 1.4            // half-angle of the rear arc the tail sweeps through (~80°)
 const TAIL_DMG    = 4
 const KNOCKBACK   = 26
-const REPOSITION_EVERY = 10
+const STEP_INTERVAL = 0.8          // seconds between stomp steps
+const STEP_DUR      = 0.35         // seconds the body eases across one tile
+const STOMP_RANGE   = 14 * TILE    // start pursuing within this distance
+const CRUSH_DMG     = 3
+const CRUSH_KNOCK   = 30
 
 // Is (px,py) inside the cone with apex (ox,oy), centre direction `aim`,
 // half-angle `half` (rad) and length `len`? Pure — unit tested.
@@ -38,7 +42,8 @@ export function makeDragonBoss(x, y) {
     neckRear: 0, headAim: 0, tailSwing: 0, breathTime: 0,
     // ai/attack state:
     state: 'idle', stateTimer: 0, attackCooldown: 1.2,
-    repositionTimer: 10, damageCooldown: 0, dmgAcc: 0,
+    damageCooldown: 0, dmgAcc: 0,
+    stepTimer: 0, stepFrom: null, stepTo: null, stepK: 0, footfall: false,
   }
 }
 
@@ -55,18 +60,21 @@ export function updateDragonBoss(e, state, delta) {
   const { player } = state
   e.breathTime += delta
   e.damageCooldown = Math.max(0, e.damageCooldown - delta)
+  e.footfall = false   // one-frame footfall pulse; set true only on a completed stomp step
   const dist = Math.hypot(player.px - e.px, player.py - e.py)
   if (dist < 12 * TILE) e.inCombat = true
 
   // turn to face the player — but ONLY while not committed to an attack. Locking facing
   // during windups/attacks gives the player a window to run around to the flank/back.
-  if (e.state === 'idle' || e.state === 'reposition') {
+  if (e.state === 'idle' || e.state === 'stomp') {
     const target = Math.atan2(player.py - e.py, player.px - e.px)
     e.facing = easeAngle(e.facing, target, TURN_RATE * delta)
   }
 
-  // contact damage
-  if (dist < BOSS_CONTACT && e.damageCooldown <= 0) {
+  // contact damage — overlapping ANY body capsule hurts, matching the visible body.
+  // passive body contact only while NOT mid-attack — during an attack the attack itself
+  // is the damage source, and sharing the i-frame window would eat its knockback.
+  if (e.state === 'idle' && e.damageCooldown <= 0 && playerTouchesBody(e, player)) {
     if (damagePlayer(state, CONTACT_DMG, 'hit', `Hit for ${CONTACT_DMG} damage!`)) {
       e.damageCooldown = CONTACT_CD
     }
@@ -74,14 +82,14 @@ export function updateDragonBoss(e, state, delta) {
 
   e.stateTimer     = Math.max(0, e.stateTimer - delta)
   e.attackCooldown = Math.max(0, e.attackCooldown - delta)
-  e.repositionTimer = Math.max(0, e.repositionTimer - delta)
+  e.stepTimer      = Math.max(0, e.stepTimer - delta)
 
   switch (e.state) {
     case 'idle':
       e.neckRear  = approach(e.neckRear, 0, 3 * delta)
       e.tailSwing = approach(e.tailSwing, 0, 4 * delta)
       e.headAim   = approach(e.headAim, 0, 3 * delta)
-      if (e.repositionTimer <= 0) { startReposition(e, state); break }
+      if (e.stepTimer <= 0 && dist > 1.6 * TILE && dist < STOMP_RANGE && e.attackCooldown > 0.2) { startStomp(e, state); break }
       if (e.attackCooldown <= 0) {
         // tail only when the player has flanked into the rear arc (where the tail sweeps);
         // breath handles the front, which is where the facing boss usually keeps the player
@@ -127,22 +135,45 @@ export function updateDragonBoss(e, state, delta) {
       break
     }
 
-    case 'reposition': {
-      const ax = e.anchorX * TILE + TILE / 2, ay = e.anchorY * TILE + TILE / 2
-      const dx = ax - e.px, dy = ay - e.py, dd = Math.hypot(dx, dy)
-      if (dd > 2) {
-        const sp = Math.min(60 * delta, dd)
-        e.px += (dx / dd) * sp
-        e.py += (dy / dd) * sp
-        e.x = Math.floor(e.px / TILE)
-        e.y = Math.floor(e.py / TILE)
+    case 'stomp': {
+      if (!e.stepTo) { e.state = 'idle'; break }
+      e.stepK = Math.min(1, e.stepK + delta / STEP_DUR)
+      // ease across the tile (smoothstep) — logical destination is a tile centre
+      const t = e.stepK * e.stepK * (3 - 2 * e.stepK)
+      e.px = e.stepFrom.x + (e.stepTo.x - e.stepFrom.x) * t
+      e.py = e.stepFrom.y + (e.stepTo.y - e.stepFrom.y) * t
+      e.x = Math.floor(e.px / TILE); e.y = Math.floor(e.py / TILE)
+      // crush: if the core now overlaps the player, shove + damage (once per step)
+      if (!e.crushDone && coreHitsPlayer(e, player)) {
+        e.crushDone = true
+        if (damagePlayer(state, CRUSH_DMG, 'hit', `Crushed! (-${CRUSH_DMG})`)) {
+          startKnockback(player, player.px - e.px, player.py - e.py, CRUSH_KNOCK)
+        }
       }
-      if (e.stateTimer <= 0 || dd <= 2) {
-        e.state = 'idle'; e.repositionTimer = REPOSITION_EVERY; e.attackCooldown = 1.0
+      if (e.stepK >= 1) {
+        e.footfall = true                 // one-frame signal for screenshake/dust
+        e.px = e.stepTo.x; e.py = e.stepTo.y
+        e.stepTo = null; e.crushDone = false
+        e.stepTimer = STEP_INTERVAL
+        e.state = 'idle'; e.attackCooldown = Math.max(e.attackCooldown, 0.4)
       }
       break
     }
   }
+}
+
+function playerTouchesBody(e, player) {
+  return dragonCapsules(e).some(c =>
+    pointInCapsule(player.px, player.py, c.ax, c.ay, c.bx, c.by, c.radius))
+}
+
+// World position of the dragon's mouth (the neck capsule's forward tip).
+function mouth(e) {
+  const neck = dragonCapsules(e).find(c => c.part === 'neck')
+  // the tip is the endpoint further from the body centre
+  const da = Math.hypot(neck.ax - e.px, neck.ay - e.py)
+  const db = Math.hypot(neck.bx - e.px, neck.by - e.py)
+  return da > db ? { x: neck.ax, y: neck.ay } : { x: neck.bx, y: neck.by }
 }
 
 // The player is within the tail's swing — a wide arc behind the boss (opposite its facing).
@@ -152,7 +183,8 @@ function inTailArc(e, player) {
 
 function coneDamage(e, state, aim, delta) {
   const { player } = state
-  if (pointInCone(player.px, player.py, e.px, e.py, aim, CONE_HALF, CONE_LEN)) {
+  const m = mouth(e)
+  if (pointInCone(player.px, player.py, m.x, m.y, aim, CONE_HALF, CONE_LEN)) {
     e.dmgAcc += CONE_DPS * delta
     while (e.dmgAcc >= 1) {
       damagePlayer(state, 1, 'dot', 'Dragon fire! (-1 HP)')
@@ -161,13 +193,30 @@ function coneDamage(e, state, aim, delta) {
   }
 }
 
-function startReposition(e, state) {
-  const { map } = state
-  for (const [dx, dy] of [[3,0],[-3,0],[0,3],[0,-3],[2,2],[-2,-2]]) {
-    const tx = e.x + dx, ty = e.y + dy
-    if (map[ty]?.[tx] && isWalkable(map[ty][tx].tile, map[ty][tx])) { e.anchorX = tx; e.anchorY = ty; break }
+// Begin a single grid-step toward the player along the best walkable cardinal/diagonal.
+function startStomp(e, state) {
+  const { map, player } = state
+  const here = { x: Math.floor(e.px / TILE), y: Math.floor(e.py / TILE) }
+  const sx = Math.sign(player.px - e.px), sy = Math.sign(player.py - e.py)
+  // candidate steps, preferring the direction that most reduces distance
+  const cands = [[sx, sy], [sx, 0], [0, sy]].filter(([dx, dy]) => dx !== 0 || dy !== 0)
+  for (const [dx, dy] of cands) {
+    const tx = here.x + dx, ty = here.y + dy
+    if (map[ty]?.[tx] && isWalkable(map[ty][tx].tile, map[ty][tx])) {
+      e.stepFrom = { x: e.px, y: e.py }
+      e.stepTo = { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 }
+      e.stepK = 0; e.crushDone = false; e.state = 'stomp'
+      return
+    }
   }
-  e.state = 'reposition'; e.stateTimer = 1.2
+  // nowhere to step — stay idle
+  e.state = 'idle'; e.stepTimer = STEP_INTERVAL
+}
+
+// Does the core capsule currently overlap the player?
+function coreHitsPlayer(e, player) {
+  const core = dragonCapsules(e).find(c => c.part === 'core')
+  return pointInCapsule(player.px, player.py, core.ax, core.ay, core.bx, core.by, core.radius)
 }
 
 function endAttack(e) { e.state = 'idle'; e.attackCooldown = 1.2 + Math.random() * 0.6; e.stateTimer = 0; e.dmgAcc = 0 }
