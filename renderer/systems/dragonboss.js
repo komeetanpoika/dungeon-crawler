@@ -1,7 +1,7 @@
 import { isWalkable } from './entities.js'
 import { damagePlayer } from './player-damage.js'
 import { startKnockback } from './knockback.js'
-import { dragonCapsules, pointInCapsule, hitPart, PART_MODIFIER } from './capsules.js'
+import { dragonCapsules, pointInCapsule } from './capsules.js'
 
 const TILE = 32
 export const BOSS_HP = 28
@@ -152,6 +152,15 @@ function playerTouchesBody(e, player) {
     pointInCapsule(player.px, player.py, c.ax, c.ay, c.bx, c.by, c.radius))
 }
 
+// World position of the dragon's mouth (the neck capsule's forward tip).
+function mouth(e) {
+  const neck = dragonCapsules(e).find(c => c.part === 'neck')
+  // the tip is the endpoint further from the body centre
+  const da = Math.hypot(neck.ax - e.px, neck.ay - e.py)
+  const db = Math.hypot(neck.bx - e.px, neck.by - e.py)
+  return da > db ? { x: neck.ax, y: neck.ay } : { x: neck.bx, y: neck.by }
+}
+
 // The player is within the tail's swing — a wide arc behind the boss (opposite its facing).
 function inTailArc(e, player) {
   return pointInCone(player.px, player.py, e.px, e.py, e.facing + Math.PI, TAIL_HALF, TAIL_REACH)
@@ -159,7 +168,8 @@ function inTailArc(e, player) {
 
 function coneDamage(e, state, aim, delta) {
   const { player } = state
-  if (pointInCone(player.px, player.py, e.px, e.py, aim, CONE_HALF, CONE_LEN)) {
+  const m = mouth(e)
+  if (pointInCone(player.px, player.py, m.x, m.y, aim, CONE_HALF, CONE_LEN)) {
     e.dmgAcc += CONE_DPS * delta
     while (e.dmgAcc >= 1) {
       damagePlayer(state, 1, 'dot', 'Dragon fire! (-1 HP)')
