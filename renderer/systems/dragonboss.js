@@ -1,11 +1,11 @@
 import { isWalkable } from './entities.js'
 import { damagePlayer } from './player-damage.js'
 import { startKnockback } from './knockback.js'
+import { dragonCapsules, pointInCapsule, hitPart, PART_MODIFIER } from './capsules.js'
 
 const TILE = 32
 export const BOSS_HP = 28
 const TURN_RATE   = 0.8            // rad/s the body rotates to track the player (~3.9s for a 180° turn)
-const BOSS_CONTACT = 1.4 * TILE    // contact radius around the body centre (~1.4 tiles)
 const CONTACT_DMG = 2
 const CONTACT_CD  = 0.8
 const CONE_HALF   = 0.34
@@ -65,8 +65,10 @@ export function updateDragonBoss(e, state, delta) {
     e.facing = easeAngle(e.facing, target, TURN_RATE * delta)
   }
 
-  // contact damage
-  if (dist < BOSS_CONTACT && e.damageCooldown <= 0) {
+  // contact damage — overlapping ANY body capsule hurts, matching the visible body.
+  // passive body contact only while NOT mid-attack — during an attack the attack itself
+  // is the damage source, and sharing the i-frame window would eat its knockback.
+  if ((e.state === 'idle' || e.state === 'reposition') && e.damageCooldown <= 0 && playerTouchesBody(e, player)) {
     if (damagePlayer(state, CONTACT_DMG, 'hit', `Hit for ${CONTACT_DMG} damage!`)) {
       e.damageCooldown = CONTACT_CD
     }
@@ -143,6 +145,11 @@ export function updateDragonBoss(e, state, delta) {
       break
     }
   }
+}
+
+function playerTouchesBody(e, player) {
+  return dragonCapsules(e).some(c =>
+    pointInCapsule(player.px, player.py, c.ax, c.ay, c.bx, c.by, c.radius))
 }
 
 // The player is within the tail's swing — a wide arc behind the boss (opposite its facing).

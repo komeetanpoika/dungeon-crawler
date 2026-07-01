@@ -149,3 +149,28 @@ describe('updateDragonBoss attacks', () => {
     assert.equal(e.state, 'idle', 'boss returns to idle after repositioning')
   })
 })
+
+describe('contact damage uses capsules', () => {
+  it('damages the player standing against the flank, not just dead centre', () => {
+    const boss = makeDragonBoss(10, 10)
+    boss.px = 10 * 32 + 16; boss.py = 10 * 32 + 16; boss.facing = 0
+    boss.damageCooldown = 0
+    // Player ~2 tiles in FRONT of the dragon — inside the neck capsule (which reaches
+    // ~2.5 tiles forward), and outside the old 1.4-tile centre circle (44.8px).
+    const player = mkPlayer(boss.px + 2 * 32, boss.py)
+    const state = mkState(boss, player)
+    const hpBefore = player.hp
+    updateDragonBoss(boss, state, 0.016)
+    assert.ok(player.hp < hpBefore, 'expected contact damage from capsule overlap')
+  })
+  it('does not damage a player standing clear of every capsule', () => {
+    const boss = makeDragonBoss(10, 10)
+    boss.px = 10 * 32 + 16; boss.py = 10 * 32 + 16; boss.facing = 0
+    boss.damageCooldown = 0
+    const player = mkPlayer(boss.px + 10 * 32, boss.py)  // far away
+    const state = mkState(boss, player)
+    const hpBefore = player.hp
+    updateDragonBoss(boss, state, 0.016)
+    assert.equal(player.hp, hpBefore)
+  })
+})
