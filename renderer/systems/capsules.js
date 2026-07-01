@@ -77,3 +77,36 @@ export function hitPart(px, py, e) {
   }
   return best
 }
+
+// Closest point on segment a->b to (px,py).
+function closestOnSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
+  let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  return [ax + dx * t, ay + dy * t]
+}
+
+// Flat-1 melee base × the best part modifier the swing reaches (weapon damage ignored).
+// swingHit(cx, cy) -> boolean: does the player's swing cover world point (cx,cy)?
+export function meleeDamageToDragon(player, e, swingHit) {
+  let bestMod = 0
+  for (const cap of dragonCapsules(e)) {
+    const [cx, cy] = closestOnSeg(player.px, player.py, cap.ax, cap.ay, cap.bx, cap.by)
+    const d = Math.hypot(player.px - cx, player.py - cy)
+    // the capsule surface point facing the player (or the player's own position if inside)
+    const sx = d > cap.radius ? cx + (player.px - cx) / d * cap.radius : player.px
+    const sy = d > cap.radius ? cy + (player.py - cy) / d * cap.radius : player.py
+    if (swingHit(sx, sy)) bestMod = Math.max(bestMod, PART_MODIFIER[cap.part])
+  }
+  return bestMod === 0 ? 0 : 1 * bestMod
+}
+
+// True when a player half-box centred at (px,py) would intrude the solid core capsule.
+export function coreBlocks(px, py, half, e) {
+  const core = dragonCapsules(e).find(c => c.part === 'core')
+  // test the four corners of the player's AABB against the core capsule
+  for (const [cx, cy] of [[px-half,py-half],[px+half,py-half],[px-half,py+half],[px+half,py+half]]) {
+    if (pointInCapsule(cx, cy, core.ax, core.ay, core.bx, core.by, core.radius)) return true
+  }
+  return false
+}
