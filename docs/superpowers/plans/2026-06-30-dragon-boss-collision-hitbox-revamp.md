@@ -162,10 +162,12 @@ function localCapsules(e) {
 
   // neck: from the shoulders (just ahead of centre) to the head tip out front.
   // neckRear pulls the tip back/up slightly during a windup; headAim shifts it sideways.
-  const shoulderY = -BH * 0.18
+  // shoulderY/radius are tuned so the neck's rear cap stays AHEAD of the body centre,
+  // i.e. a dead-centre hit resolves to core, not the neck weak-spot (|shoulderY| > radius).
+  const shoulderY = -BH * 0.28
   const tipY = -BH * 0.62 + neckRear * BH * 0.14
   const tipX = Math.sin(headAim) * BW * 0.5
-  const neck = { part: 'neck', ax: 0, ay: shoulderY, bx: tipX, by: tipY, radius: BW * 0.34 }
+  const neck = { part: 'neck', ax: 0, ay: shoulderY, bx: tipX, by: tipY, radius: BW * 0.28 }
 
   // core: the main mass straddling the centre.
   const core = { part: 'core', ax: 0, ay: -BH * 0.16, bx: 0, by: BH * 0.30, radius: BW * 0.5 }
@@ -300,9 +302,10 @@ describe('contact damage uses capsules', () => {
     const boss = makeDragonBoss(10, 10)
     boss.px = 10 * 32 + 16; boss.py = 10 * 32 + 16; boss.facing = 0
     boss.damageCooldown = 0
-    // Player ~2 tiles to the side of centre — inside the core capsule, well outside
-    // the old 1.4-tile contact circle along this axis given the wide body.
-    const player = mkPlayer(boss.px, boss.py + 2 * 32)
+    // Player ~2 tiles in FRONT — inside the neck capsule (which reaches ~2.5 tiles
+    // forward), and outside the old 1.4-tile centre circle (44.8px). (The core's flank
+    // radius is only ~1.5 tiles, so a side probe would sit outside every capsule.)
+    const player = mkPlayer(boss.px + 2 * 32, boss.py)
     const state = mkState(boss, player)
     const hpBefore = player.hp
     updateDragonBoss(boss, state, 0.016)
@@ -341,13 +344,19 @@ In `renderer/systems/dragonboss.js`, replace lines 68-73 (the `// contact damage
 block guarded by `dist < BOSS_CONTACT`) with:
 
 ```javascript
-  // contact damage — overlapping ANY body capsule hurts, matching the visible body
-  if (e.damageCooldown <= 0 && playerTouchesBody(e, player)) {
+  // contact damage — overlapping ANY body capsule hurts, matching the visible body.
+  // Only while NOT mid-attack: during an attack the attack itself is the damage source,
+  // and sharing the i-frame window would eat that attack's dedicated knockback.
+  if ((e.state === 'idle' || e.state === 'reposition') && e.damageCooldown <= 0 && playerTouchesBody(e, player)) {
     if (damagePlayer(state, CONTACT_DMG, 'hit', `Hit for ${CONTACT_DMG} damage!`)) {
       e.damageCooldown = CONTACT_CD
     }
   }
 ```
+
+> Note: Task 4 replaces the `reposition` state with `stomp` (which has its own crush
+> contact). When Task 4 lands, this gate becomes `e.state === 'idle'` — `stomp` handles
+> its own contact via crush, so passive contact should not also fire during a step.
 
 Then add this helper near the bottom of the file (next to `inTailArc`):
 
@@ -413,6 +422,13 @@ Run: `npm test -- test/dragonboss.test.js`
 Expected: This may already PASS (the old cone from center also reaches +x). That's
 fine — it pins the behavior. If it passes, proceed; the refactor must keep it green.
 
+> Calibration (applied during execution): moving the cone apex to the mouth (~2.48
+> tiles forward) means the existing "sweeping breath" test's 3-tile player sat almost on
+> the apex, where the rotating aim whips past too fast to accumulate a full tick. That
+> test's player moves to `10*T + 5*T` (~2.5 tiles from the mouth, within cone length),
+> assertion unchanged. Also prune the leftover unused import in `dragonboss.js` to
+> `import { dragonCapsules, pointInCapsule } from './capsules.js'`.
+
 - [ ] **Step 3: Add a mouth-origin helper and use it in `coneDamage`**
 
 In `renderer/systems/dragonboss.js`, add a helper (near `playerTouchesBody`):
@@ -459,6 +475,14 @@ git commit -m "feat(dragon-boss): breath cone emits from the mouth, not body cen
 ---
 
 ### Task 4: Grid-stomp locomotion + crush (replaces lerp reposition)
+
+> Corrections applied during execution (see fix commit): (1) `e.footfall = false` must
+> live BEFORE the `switch` (per-frame reset), not inside the stomp case, so footfall
+> pulses for exactly one frame. (2) Add `e.stepTimer = Math.max(0, e.stepTimer - delta)`
+> with the other timer decrements and gate the idle→stomp trigger on `e.stepTimer <= 0` —
+> otherwise `stepTimer` is dead and STEP_INTERVAL pacing never happens (and the boss
+> never breathes at range because `attackCooldown` can't decay). Also: contact gate is
+> `idle` only; facing-ease condition is `idle || stomp`.
 
 Replace the `reposition` state's smooth pixel-lerp with discrete tile-steps toward the
 player, plus crush-on-step-onto-player. Emit a footfall signal the renderer/game can
@@ -666,9 +690,10 @@ part modifier, and projectiles are immune.
   `capsules.js` and test that.
 
 **Interfaces:**
-- Consumes: `hitPart`, `PART_MODIFIER`, `dragonCapsules`, `pointInCapsule` from
-  `./systems/capsules.js`.
-- Produces (new pure helper in `capsules.js`):
+- `game.js` consumes `meleeDamageToDragon`, `coreBlocks` from `./systems/capsules.js`.
+  (Those helpers internally use `dragonCapsules`/`pointInCapsule`/`PART_MODIFIER`, which
+  stay inside `capsules.js` — `game.js` does not import them directly.)
+- Produces (new pure helpers in `capsules.js`):
   - `export function meleeDamageToDragon(player, e, swingHit)` → `number` — flat 1 ×
     the modifier of the best part the swing reaches, or `0` if the swing reaches no
     capsule. `swingHit(cx, cy)` is a predicate testing whether the player's swing covers
@@ -681,27 +706,38 @@ Create `test/boss-hitboxes.test.js`:
 ```javascript
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { meleeDamageToDragon } from '../renderer/systems/capsules.js'
+import { meleeDamageToDragon, coreBlocks } from '../renderer/systems/capsules.js'
 
 const T = 32
 function mkBoss(px, py, facing = 0) { return { px, py, facing, neckRear: 0, headAim: 0, tailSwing: 0 } }
+// Swing proxy: covers world points within `reach` px of the player — a stand-in for the
+// real forward arc, enough to prove which capsule SURFACE the swing lands on.
+const near = (player, reach = 14) => (cx, cy) => Math.hypot(cx - player.px, cy - player.py) < reach
 
+// Geometry reminder (boss at 320,320 facing 0 → whole body lies along y=320):
+//   tail  x∈[217.6, 281.6] r≈21   core x∈[281.6, 340.48] r=48   neck x∈[355.84, 399.36] r≈27
 describe('meleeDamageToDragon', () => {
   it('returns 0 when the swing reaches no capsule', () => {
     const boss = mkBoss(320, 320, 0)
     assert.equal(meleeDamageToDragon({ px: 0, py: 0 }, boss, () => false), 0)
   })
-  it('returns 1.0 for a swing that only reaches the core', () => {
+  it('returns 1.0 for a swing beside the core flank only', () => {
     const boss = mkBoss(320, 320, 0)
-    // swing covers exactly the body centre
-    const hit = (cx, cy) => Math.hypot(cx - 320, cy - 320) < 8
-    assert.equal(meleeDamageToDragon({ px: 320, py: 320 }, boss, hit), 1.0)
+    // ~55px south of the core midpoint: just off the 48px core surface, clear of neck/tail.
+    const player = { px: 311, py: 320 + 55 }
+    assert.equal(meleeDamageToDragon(player, boss, near(player)), 1.0)
   })
-  it('returns 1.5 for a swing that reaches the neck (facing 0 = +x)', () => {
+  it('returns 1.5 for a swing beside the neck (facing 0 = +x)', () => {
     const boss = mkBoss(320, 320, 0)
-    const tipX = 320 + 4 * T
-    const hit = (cx, cy) => Math.hypot(cx - tipX, cy - 320) < 8
-    assert.equal(meleeDamageToDragon({ px: tipX, py: 320 }, boss, hit), 1.5)
+    // ~34px south of the neck midpoint (x≈377): within reach of the ~27px neck surface.
+    const player = { px: 377, py: 320 + 34 }
+    assert.equal(meleeDamageToDragon(player, boss, near(player)), 1.5)
+  })
+  it('weak-spot wins where the swing reaches both neck and core', () => {
+    const boss = mkBoss(320, 320, 0)
+    // Near the neck/core seam (x≈350): both surfaces within reach → neck (1.5) beats core.
+    const player = { px: 350, py: 320 + 30 }
+    assert.equal(meleeDamageToDragon(player, boss, near(player, 24)), 1.5)
   })
 })
 ```
@@ -713,23 +749,32 @@ Expected: FAIL — `meleeDamageToDragon is not a function`.
 
 - [ ] **Step 3: Implement `meleeDamageToDragon` in `capsules.js`**
 
-Add to `renderer/systems/capsules.js`. It samples each capsule (endpoints + midpoint)
-against the player's swing predicate; the best (highest-modifier) part the swing reaches
-sets the damage. This avoids needing the exact swing geometry here.
+Add to `renderer/systems/capsules.js`. For each capsule it tests the point on the
+capsule **surface nearest the player** against the swing predicate — so a swing landing
+anywhere along the body registers on the correct part (robust to narrow swings, unlike
+sparse endpoint sampling). The best (highest-modifier) part the swing reaches sets the
+damage; base damage is a flat 1 regardless of weapon.
 
 ```javascript
-// Flat-1 melee base × the best part modifier the swing reaches. weapon damage ignored.
-// swingHit(cx, cy) -> boolean tests whether the player's swing covers world point (cx,cy).
+// Closest point on segment a->b to (px,py).
+function closestOnSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
+  let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  return [ax + dx * t, ay + dy * t]
+}
+
+// Flat-1 melee base × the best part modifier the swing reaches (weapon damage ignored).
+// swingHit(cx, cy) -> boolean: does the player's swing cover world point (cx,cy)?
 export function meleeDamageToDragon(player, e, swingHit) {
   let bestMod = 0
   for (const cap of dragonCapsules(e)) {
-    const samples = [
-      [cap.ax, cap.ay], [cap.bx, cap.by],
-      [(cap.ax + cap.bx) / 2, (cap.ay + cap.by) / 2],
-    ]
-    if (samples.some(([cx, cy]) => swingHit(cx, cy))) {
-      bestMod = Math.max(bestMod, PART_MODIFIER[cap.part])
-    }
+    const [cx, cy] = closestOnSeg(player.px, player.py, cap.ax, cap.ay, cap.bx, cap.by)
+    const d = Math.hypot(player.px - cx, player.py - cy)
+    // the capsule surface point facing the player (or the player's own position if inside)
+    const sx = d > cap.radius ? cx + (player.px - cx) / d * cap.radius : player.px
+    const sy = d > cap.radius ? cy + (player.py - cy) / d * cap.radius : player.py
+    if (swingHit(sx, sy)) bestMod = Math.max(bestMod, PART_MODIFIER[cap.part])
   }
   return bestMod === 0 ? 0 : 1 * bestMod
 }
@@ -757,11 +802,10 @@ export function coreBlocks(px, py, half, e) {
 }
 ```
 
-Add to `test/boss-hitboxes.test.js`:
+Add to `test/boss-hitboxes.test.js` (`coreBlocks` is already imported at the top of the
+file alongside `meleeDamageToDragon` — do NOT add a second import):
 
 ```javascript
-import { coreBlocks } from '../renderer/systems/capsules.js'
-
 describe('coreBlocks', () => {
   it('blocks a player at the body centre', () => {
     assert.equal(coreBlocks(320, 320, 6, mkBoss(320, 320, 0)), true)
@@ -779,10 +823,12 @@ Expected: PASS.
 
 - [ ] **Step 7: Wire blocking into `game.js` `moveEntity`**
 
-In `renderer/game.js`, add to the imports (after line 16):
+In `renderer/game.js`, add to the imports (after line 16). Import ONLY what `game.js`
+references directly — `meleeDamageToDragon` and `coreBlocks` (the part modifiers live
+inside `meleeDamageToDragon`; `game.js` does not use `hitPart`/`PART_MODIFIER`):
 
 ```javascript
-import { hitPart, PART_MODIFIER, meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
+import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 ```
 
 Change `moveEntity` (lines 119-124) so the **player** is also blocked by the boss core.

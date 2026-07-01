@@ -4,7 +4,7 @@ import { startKnockback } from './knockback.js'
 import { dragonCapsules, pointInCapsule } from './capsules.js'
 
 const TILE = 32
-export const BOSS_HP = 28
+export const BOSS_HP = 18   // tuned for flat-1 melee: ~12 neck hits (1.5x) to kill
 const TURN_RATE   = 0.8            // rad/s the body rotates to track the player (~3.9s for a 180° turn)
 const CONTACT_DMG = 2
 const CONTACT_CD  = 0.8
