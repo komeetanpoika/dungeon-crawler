@@ -59,11 +59,14 @@ describe('makeDragonBoss', () => {
 describe('updateDragonBoss facing', () => {
   it('eases facing toward the player over time', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
-    e.attackCooldown = 999; e.repositionTimer = 999   // stay idle so it keeps tracking (facing is locked during attacks)
-    const player = mkPlayer(10*T, 16*T)           // due south => target angle +PI/2
+    e.attackCooldown = 999; e.repositionTimer = 999   // prevent attacks; stomp is now the boss's pursuit behaviour
+    const player = mkPlayer(10*T, 16*T)           // due south — boss pursues and tracks
     const state = mkState(e, player)
-    for (let i = 0; i < 120; i++) updateDragonBoss(e, state, 1/60)  // 2s — enough to fully turn at 1.2 rad/s
-    assert.ok(Math.abs(e.facing - Math.PI/2) < 0.2, `facing should approach +PI/2, got ${e.facing}`)
+    for (let i = 0; i < 120; i++) updateDragonBoss(e, state, 1/60)  // 2s
+    // Boss may have stomped toward the player; check it is facing wherever the player
+    // now is from the boss's final position (intent: facing converges on the player).
+    const expectedFacing = Math.atan2(player.py - e.py, player.px - e.px)
+    assert.ok(Math.abs(e.facing - expectedFacing) < 0.2, `facing should approach player direction, got ${e.facing} vs expected ${expectedFacing}`)
   })
 })
 
@@ -105,7 +108,8 @@ describe('updateDragonBoss attacks', () => {
     const player = mkPlayer(10*T + 6*T, 10*T)
     const state = mkState(e, player)
     updateDragonBoss(e, state, 1/60)
-    assert.equal(e.state, 'idle')
+    assert.ok(!['cone','sweep_windup','sweep','tail_windup','tail'].includes(e.state),
+      `should not start an attack while on cooldown, got ${e.state}`)
   })
 
   it('sweeping breath damages a player inside the swept cone', () => {
@@ -138,15 +142,48 @@ describe('updateDragonBoss attacks', () => {
     assert.equal(e.dmgAcc, 0, 'dmgAcc must reset so the next breath has no free instant tick')
   })
 
-  it('reposition crawls toward the anchor then returns to idle', () => {
-    const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T
-    e.state = 'reposition'; e.stateTimer = 1.2; e.anchorX = 13; e.anchorY = 10
-    const player = mkPlayer(10*T, 30*T)            // far away, no interference
-    const state = mkState(e, player)
-    const px0 = e.px
-    for (let i = 0; i < 80; i++) updateDragonBoss(e, state, 1/60)
-    assert.ok(e.px > px0, 'boss should crawl toward the +x anchor')
-    assert.equal(e.state, 'idle', 'boss returns to idle after repositioning')
+})
+
+describe('grid-stomp locomotion', () => {
+  it('steps its centre one tile toward the player and lands on a tile centre', () => {
+    const boss = makeDragonBoss(10, 10)
+    boss.px = 10 * 32 + 16; boss.py = 10 * 32 + 16
+    boss.state = 'stomp'; boss.stepTimer = 0; boss.stepFrom = null
+    const player = mkPlayer(20 * 32 + 16, 10 * 32 + 16)  // due east, far
+    const state = mkState(boss, player)
+    const startX = boss.px
+    for (let i = 0; i < 80; i++) updateDragonBoss(boss, state, 0.05)  // ~4s
+    assert.ok(boss.px > startX, 'expected the boss to advance east toward the player')
+    // landed on a tile centre (…*32 + 16)
+    assert.equal(((boss.px - 16) % 32 + 32) % 32, 0, 'expected to land on a tile centre x')
+  })
+  it('raises a one-frame footfall on each completed step', () => {
+    const boss = makeDragonBoss(10, 10)
+    boss.px = 10 * 32 + 16; boss.py = 10 * 32 + 16
+    boss.state = 'stomp'; boss.stepTimer = 0; boss.stepFrom = null
+    const player = mkPlayer(20 * 32 + 16, 10 * 32 + 16)
+    const state = mkState(boss, player)
+    let sawFootfall = false
+    for (let i = 0; i < 80; i++) { updateDragonBoss(boss, state, 0.05); if (boss.footfall) sawFootfall = true }
+    assert.ok(sawFootfall, 'expected at least one footfall during stomping')
+  })
+})
+
+describe('crush on step', () => {
+  it('damages and knocks back a player the core steps onto', () => {
+    const boss = makeDragonBoss(10, 10)
+    boss.px = 10 * 32 + 16; boss.py = 10 * 32 + 16; boss.facing = 0
+    boss.state = 'stomp'; boss.stepTimer = 0
+    // player sitting one tile east — the core will sweep onto them as it steps east
+    const player = mkPlayer(11 * 32 + 16, 10 * 32 + 16)
+    const state = mkState(boss, player)
+    const hpBefore = player.hp
+    boss.stepFrom = { x: boss.px, y: boss.py }
+    boss.stepTo = { x: 11 * 32 + 16, y: 10 * 32 + 16 }
+    boss.stepK = 0; boss.crushDone = false
+    for (let i = 0; i < 12; i++) updateDragonBoss(boss, state, 0.05)
+    assert.ok(player.hp < hpBefore, 'expected crush damage')
+    assert.ok(player.knockback || player.px > 11 * 32, 'expected knockback away from the core')
   })
 })
 
