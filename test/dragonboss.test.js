@@ -115,7 +115,7 @@ describe('updateDragonBoss attacks', () => {
   it('sweeping breath damages a player inside the swept cone', () => {
     const e = makeDragonBoss(10, 10); e.px = 10*T; e.py = 10*T; e.facing = 0
     e.state = 'sweep'; e.stateTimer = 1.5; e.headAim = 0
-    const player = mkPlayer(10*T + 5*T, 10*T)     // straight ahead, a few tiles out (within cone length from the mouth)
+    const player = mkPlayer(10*T + 8*T, 10*T)     // straight ahead, ~8 tiles out (in front of the ~5.2-tile mouth, within cone length)
     const state = mkState(e, player); const hp0 = player.hp
     for (let i = 0; i < 90; i++) updateDragonBoss(e, state, 1/60)
     assert.ok(player.hp < hp0, 'player in cone should take breath damage')
@@ -191,9 +191,9 @@ describe('cone emits from the head tip', () => {
   it('burns a player in front of the mouth', () => {
     const boss = makeDragonBoss(10, 10)
     boss.px = 10 * 32 + 16; boss.py = 10 * 32 + 16; boss.facing = 0  // head toward +x
-    boss.state = 'cone'; boss.stateTimer = 0.7; boss.dmgAcc = 0
-    // Player straight ahead, ~4 tiles out — within the 6-tile cone from the mouth.
-    const player = mkPlayer(boss.px + 4 * 32, boss.py)
+    boss.state = 'cone'; boss.stateTimer = 5; boss.dmgAcc = 0   // hold the breath so we measure the cone, not a stomp
+    // Player straight ahead, ~8 tiles out — in front of the mouth (~5.2 tiles) and within the cone.
+    const player = mkPlayer(boss.px + 8 * 32, boss.py)
     const state = mkState(boss, player)
     const hpBefore = player.hp
     for (let i = 0; i < 30; i++) updateDragonBoss(boss, state, 0.05)  // ~1.5s of fire

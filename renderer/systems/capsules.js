@@ -26,19 +26,20 @@ function localCapsules(e) {
   const headAim = e.headAim ?? 0
   const tailSwing = e.tailSwing ?? 0
 
-  // neck: from the shoulders (just ahead of centre) to the head tip out front.
-  // neckRear pulls the tip back/up slightly during a windup; headAim shifts it sideways.
+  // neck: from the shoulders (just ahead of centre) out to the drawn head/snout tip.
+  // The tip endpoint doubles as the mouth (breath origin), so it tracks the drawn head
+  // (~1.3*BH forward). neckRear pulls it back during a windup; headAim shifts it sideways.
   const shoulderY = -BH * 0.28
-  const tipY = -BH * 0.62 + neckRear * BH * 0.14
+  const tipY = -BH * 1.3 + neckRear * BH * 0.2
   const tipX = Math.sin(headAim) * BW * 0.5
   const neck = { part: 'neck', ax: 0, ay: shoulderY, bx: tipX, by: tipY, radius: BW * 0.28 }
 
   // core: the main mass straddling the centre.
   const core = { part: 'core', ax: 0, ay: -BH * 0.16, bx: 0, by: BH * 0.30, radius: BW * 0.5 }
 
-  // tail: from the tail base back to the tip; tailSwing rotates the tip sideways.
+  // tail: from the tail base back to the drawn tail tip (~1.1*BH back); tailSwing rotates it.
   const baseX = 0, baseY = BH * 0.30
-  const tailLen = BH * 0.5
+  const tailLen = BH * 0.8
   const ang = Math.PI / 2 + tailSwing   // +y is back; swing rotates about base
   const tail = {
     part: 'tail', ax: baseX, ay: baseY,
