@@ -511,6 +511,11 @@ function drawCyclopsEffects(ctx, cyclops, camX, camY) {
   }
 }
 
+export function shakeOffset(shake) {
+  if (!shake || shake <= 0) return { x: 0, y: 0 }
+  return { x: (Math.random() * 2 - 1) * shake, y: (Math.random() * 2 - 1) * shake }
+}
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas
@@ -533,11 +538,12 @@ export class Renderer {
     this.ctx.imageSmoothingEnabled = false
   }
 
-  updateCamera(player) {
+  updateCamera(player, shake = 0) {
     const px = player.px ?? (player.x * this.S + this.S / 2)
     const py = player.py ?? (player.y * this.S + this.S / 2)
-    this.camX = px - this.canvas.width / 2
-    this.camY = py - this.canvas.height / 2
+    const o = shakeOffset(shake)
+    this.camX = px - this.canvas.width / 2 + o.x
+    this.camY = py - this.canvas.height / 2 + o.y
   }
 
   render(state) {

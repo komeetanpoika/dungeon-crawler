@@ -195,6 +195,7 @@ function startNewRun(depth = 1) {
     projectiles: [],
     log: ['You enter the dungeon…'],
     hitEffects: [],
+    shake: 0,
     run: { deepestLevel: depth, won: false },
     gameOver: false,
     hasKey: false,
@@ -249,6 +250,7 @@ function gameLoop(timestamp) {
 
 function update(delta) {
   const { player, map } = state
+  state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
 
   // Player movement — skip if grabbed by a crab this frame
   const wasGrabbed = player.grabbed ?? false
@@ -571,6 +573,10 @@ function update(delta) {
     }
   }
 
+  // Footfall screenshake — dragon boss stomps
+  const stomper = state.entities.find(e => e.type === 'dragon_boss' && e.footfall)
+  if (stomper) state.shake = 6
+
   // Advance fountain animation timers
   for (const e of state.entities) {
     if (e.type === 'prop' && e.flowing) {
@@ -625,7 +631,7 @@ function update(delta) {
 
 function render() {
   maybeComputeFOV(state.map, state.player)
-  renderer.updateCamera(state.player)
+  renderer.updateCamera(state.player, state.shake ?? 0)
   renderer.render(state)
   updateHUD(state)
 }
@@ -653,6 +659,7 @@ function descendLevel() {
     },
     log: [`Level ${next}. Deeper…`],
     hitEffects: [],
+    shake: 0,
     hasKey: false,
     dropSpawned: false,
     lastBossTile: null,
