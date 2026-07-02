@@ -5,6 +5,7 @@
 //   imageFor   - async (name) => HTMLImageElement (cached)
 //   tilesReady - Promise<string[]> of all library tile names
 
+import { createHistory, snapshotLayers } from './history.js'
 import { deriveRules } from './derive-rules.js'
 import { renderSample } from './sample-preview.js'
 import {
@@ -56,6 +57,45 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   let painting = false
   const images = new Map()   // name -> Image
 
+  // --- Undo/redo (one stroke or resize = one step) ---
+  const history = createHistory(50)
+  const undoBtn = document.getElementById('paint-undo')
+  const redoBtn = document.getElementById('paint-redo')
+  function updateHistoryButtons() {
+    undoBtn.disabled = !history.canUndo
+    redoBtn.disabled = !history.canRedo
+  }
+  function resetHistory() { history.clear(); updateHistoryButtons() }
+  function restoreSnapshot(snap) {
+    grid.base = snap.base
+    grid.overlay = snap.overlay
+    grid.props = snap.props
+    wInput.value = grid.base[0].length
+    hInput.value = grid.base.length
+    sizeCanvas(); render()
+    persistDebounced()
+    updateHistoryButtons()
+  }
+  function doUndo() {
+    const snap = history.undo(snapshotLayers(grid))
+    if (snap) restoreSnapshot(snap)
+  }
+  function doRedo() {
+    const snap = history.redo(snapshotLayers(grid))
+    if (snap) restoreSnapshot(snap)
+  }
+  undoBtn.addEventListener('click', doUndo)
+  redoBtn.addEventListener('click', doRedo)
+  window.addEventListener('keydown', (e) => {
+    if (document.getElementById('build-view').style.display === 'none') return
+    const t = e.target
+    if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return
+    if (!(e.ctrlKey || e.metaKey)) return
+    const key = e.key.toLowerCase()
+    if (key === 'z' && !e.shiftKey) { e.preventDefault(); doUndo() }
+    else if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); doRedo() }
+  })
+
   // --- Painted-map persistence (issue #2) ---
   const pickerEl = document.getElementById('paint-map-picker')
   let store = {}             // { ruleset: { active, maps } } loaded from disk
@@ -79,6 +119,11 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     wInput.value = map.w
     hInput.value = map.h
     sizeCanvas(); render()
+    // Fetch every tile image the map references; ensureImage re-renders as
+    // each arrives, so the saved painting appears without user interaction.
+    const used = new Set([...grid.base.flat(), ...grid.overlay.flat()].filter(Boolean))
+    for (const name of used) ensureImage(name)
+    resetHistory()
   }
 
   // Single funnel for disk writes: always cancels any pending debounced save so a
@@ -263,6 +308,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     grid.props = blank(w, h)
     activeMap = name
     sizeCanvas(); render()
+    resetHistory()
     persistNow()                 // seed the new (empty) map
     renderPicker()
   }
@@ -291,6 +337,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       activeMap = 'main'
       grid.base = blank(DEFAULT_W, DEFAULT_H); grid.overlay = blank(DEFAULT_W, DEFAULT_H); grid.props = blank(DEFAULT_W, DEFAULT_H)
       sizeCanvas(); render()
+      resetHistory()
       applyMap(store, loadedRuleset, 'main', currentSerialized())
     }
     saveStore()
@@ -334,11 +381,18 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     render()
     persistDebounced()
   }
-  canvas.addEventListener('mousedown', e => { painting = true; paint(e) })
+  canvas.addEventListener('mousedown', e => {
+    history.push(snapshotLayers(grid))
+    updateHistoryButtons()
+    painting = true
+    paint(e)
+  })
   canvas.addEventListener('mousemove', e => { if (painting) paint(e) })
   window.addEventListener('mouseup', () => { painting = false })
 
   document.getElementById('paint-resize').addEventListener('click', () => {
+    history.push(snapshotLayers(grid))
+    updateHistoryButtons()
     const w = Math.max(2, Math.min(60, Number(wInput.value) | 0))
     const h = Math.max(2, Math.min(40, Number(hInput.value) | 0))
     const resize = (g) => Array.from({ length: h }, (_, y) =>
@@ -463,9 +517,18 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   // is async, so its initial dispatch can arrive before loadPainterMaps()
   // resolves. Acting early would seed a blank "main" against an empty store and
   // save it over the real file. The load IIFE below performs the first load.
+  //
+  // Also ignore it when the ruleset didn't actually switch: the Build tab's own
+  // "Derive rules" button and the Draw tab's "Save tile" both dispatch this event
+  // after saving, but neither changes state.active. Reloading anyway would wipe
+  // the undo/redo history (loadActiveMapFor -> loadGrid -> resetHistory) for no
+  // reason — derive already flushed via persistNow() above, and tile-save doesn't
+  // touch the painter-maps store at all, so a same-ruleset dispatch is a data
+  // no-op here and skipping it just avoids losing history and a pointless redraw.
   let storeLoaded = false
   document.addEventListener('ruleset-changed', () => {
     if (!storeLoaded) return
+    if (state.active === loadedRuleset) return
     persistNow()                 // flush the outgoing ruleset's map first
     loadActiveMapFor(state.active)
   })
