@@ -147,8 +147,15 @@ function decorateOverlays(map, ruleset, rng) {
       if (noneW > 0) cands.push({ name: null, weight: noneW })
       for (const [tag, c] of Object.entries(dist)) {
         if (tag === '' || !(c > 0)) continue
-        for (const name of overlayTilesByTag[tag] ?? []) {
-          const w = (ruleset.tiles[name].weight ?? 1) * c * adjacencyScore(ruleset, name, neighbors)
+        const members = overlayTilesByTag[tag] ?? []
+        // Candidate mass for this tag must sum to the observed count `c`
+        // regardless of how many tiles carry the tag — otherwise a tag with
+        // multiple member tiles fans out into `c` per member and amplifies
+        // overlay density far beyond what the source painting showed.
+        const memberW = members.reduce((s, n) => s + (ruleset.tiles[n].weight ?? 1), 0)
+        if (memberW <= 0) continue
+        for (const name of members) {
+          const w = (ruleset.tiles[name].weight ?? 1) / memberW * c * adjacencyScore(ruleset, name, neighbors)
           cands.push({ name, weight: w })
         }
       }

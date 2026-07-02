@@ -341,6 +341,38 @@ describe('overlay decoration pass', () => {
     assert.equal(map[0][0].overlay, undefined)
     assert.equal(map[0][0].skin, 'fl')   // base pass unaffected
   })
+
+  it('normalizes a multi-member overlay tag so its total mass equals the observed count (no fan-out amplification)', () => {
+    // Tag 'overlay.multi' has two member tiles (weights 3 and 4, summing to 7).
+    // dist = { '': 10, 'overlay.multi': 5 } means the painting saw 'none' 10x
+    // and the tag 5x — so the correctly-normalized none-vs-overlay split is
+    // 10 : 5 (total mass 15), regardless of how many tiles carry the tag.
+    // The buggy pre-fix code instead summed each member's own weight into the
+    // overlay side, inflating total mass to 10 + 5*(3+4) = 45.
+    const rsMulti = {
+      tiles: {
+        fl: { tags: ['floor.plain'], weight: 1 },
+        ma: { tags: ['overlay.multi'], weight: 3 },
+        mb: { tags: ['overlay.multi'], weight: 4 },
+      },
+      tags: {
+        'floor.plain':   { role: 'floor',   allow: ['*'], overlays: { '': 10, 'overlay.multi': 5 } },
+        'overlay.multi': { role: 'overlay', allow: ['*'], adjacency: { n: {}, e: {}, s: {}, w: {} } },
+      },
+    }
+    // rng sequence: first call resolves the (single-candidate) base skin pick;
+    // second call resolves the overlay pick. r=0.3 lands at 0.3*15=4.5, which
+    // is inside the none share [0,10) under correct normalization (total=15) —
+    // but would land inside the overlay share under the old unnormalized total
+    // (0.3*45=13.5, past none's 10 and into member 'ma's inflated weight-15
+    // slice), so this single deterministic draw distinguishes fixed from buggy.
+    const seq = [0, 0.3]
+    let i = 0
+    const rng = () => seq[i++]
+    const map = makeCells(['.'])
+    decorateMap(map, rsMulti, rng)
+    assert.equal(map[0][0].overlay, null)
+  })
 })
 
 describe('decorateMap — locked cells', () => {
