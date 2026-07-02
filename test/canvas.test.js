@@ -66,11 +66,13 @@ describe('shakeOffset', () => {
 // Mock ctx with the full 2D-context surface the swing renderer touches.
 function swingCtx() {
   const images = []
+  let strokes = 0
   return {
     images,
+    get strokes() { return strokes },
     drawImage: (img) => images.push(img),
     save() {}, restore() {}, translate() {}, rotate() {}, scale() {},
-    beginPath() {}, arc() {}, stroke() {}, moveTo() {}, lineTo() {},
+    beginPath() {}, arc() {}, stroke() { strokes++ }, moveTo() {}, lineTo() {},
     fillRect() {},
     set fillStyle(_v) {}, get fillStyle() { return '' },
     set strokeStyle(_v) {}, get strokeStyle() { return '' },
@@ -95,6 +97,7 @@ describe('drawEnemySwing', () => {
     const e = { px: 100, py: 100, attack: { weaponId: 'club', phase: 'windup', timer: 0.2, duration: 0.4, angle: 0 } }
     drawEnemySwing(ctx, e, sprites, 0, 0, 32)
     assert.ok(ctx.images.includes('CLUB'))
+    assert.equal(ctx.strokes, 0, 'telegraph pose has no swing trail')
   })
 
   it('draws procedural marks (no sprite image) for claw and pincer swings', () => {
@@ -103,6 +106,7 @@ describe('drawEnemySwing', () => {
       const e = { px: 100, py: 100, attack: { weaponId, phase: 'swing', timer: 0.1, duration: 0.2, angle: 0 } }
       drawEnemySwing(ctx, e, sprites, 0, 0, 32)
       assert.equal(ctx.images.length, 0, `${weaponId} uses no sprite`)
+      assert.ok(ctx.strokes > 0, `${weaponId} draws procedural marks/trail strokes`)
     }
   })
 
