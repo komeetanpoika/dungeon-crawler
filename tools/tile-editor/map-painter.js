@@ -79,6 +79,10 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     wInput.value = map.w
     hInput.value = map.h
     sizeCanvas(); render()
+    // Fetch every tile image the map references; ensureImage re-renders as
+    // each arrives, so the saved painting appears without user interaction.
+    const used = new Set([...grid.base.flat(), ...grid.overlay.flat()].filter(Boolean))
+    for (const name of used) ensureImage(name)
   }
 
   // Single funnel for disk writes: always cancels any pending debounced save so a
