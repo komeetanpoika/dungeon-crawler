@@ -160,6 +160,8 @@ export const LEVEL_CONFIG = [
   { depth: 3, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 5, monsterDensity: 0.006, trapDensity: 0.06, puzzleDensity: 0.03, weaponDensity: 0.012, potionDensity: 0.008, landmark: null,             weapons: ['sword', 'longsword'], cyclopsArena: true },
   { depth: 4, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 7, monsterDensity: 0.010, trapDensity: 0.08, puzzleDensity: 0.03, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'DRAGON_LAIR',    weapons: ['longsword', 'axe'] },
   { depth: 5, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 4, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.012, landmark: 'GREAT_LAIR',     weapons: ['longsword', 'axe'] },
+  // Depth 6 — cheat-only sandbox for the derived 'castle' ruleset (not part of the 1..5 run).
+  { depth: 6, mapW: 40, mapH: 26, staircaseWidth: 1, guardCount: 2, monsterDensity: 0, trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: null, weapons: ['dagger'] },
 ]
 
 export const DEPTH_THEMES = [
@@ -195,6 +197,15 @@ export const DEPTH_THEMES = [
     tint:     'rgba(60,10,0,0.35)',
     fogAlpha: 0.80,
     props: { room: ['prop_gravestone', 'prop_grave'] },
+  },
+  {
+    depths: [6],
+    floorTile: 'floor',
+    ruleset: 'castle',
+    bgColor:  '#141008',
+    tint:     null,
+    fogAlpha: 0.65,
+    props: { room: [] },   // ruleset has overlays, so scattered props are skipped anyway
   },
 ]
 
