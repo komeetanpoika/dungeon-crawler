@@ -89,14 +89,15 @@ function drawImg(ctx, sprite, px, py, w, h, flip = false) {
   ctx.restore()
 }
 
-// Weapon gripped in the right hand. Walker local space: origin at the feet,
+// Weapon gripped in the hand. Walker local space: origin at the feet,
 // un-flipped (facing east); the grip (bottom-center of the weapon tile) sits
-// in the palm at mid-body, blade tilted slightly outward.
+// in the palm at mid-body, blade tilted slightly outward. Sized between the
+// old carried icon (0.55S) and the swing animation's weapon (1S).
 function drawHeldWeapon(ctx, ws, S) {
-  const hw = Math.round(S * 0.55)
+  const hw = Math.round(S * 0.8)
   ctx.save()
-  ctx.translate(S * 0.30, -S * 0.34)
-  ctx.rotate(0.35)
+  ctx.translate(-S * 0.30, -S * 0.34)
+  ctx.rotate(-0.35)
   ctx.drawImage(ws, -hw / 2, -hw * 0.85, hw, hw)
   ctx.restore()
 }
@@ -197,7 +198,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     if (entity.state === 'stunned') ctx.globalAlpha = 0.6
     if (sprites.cyclops) ctx.drawImage(sprites.cyclops, px - Math.round(S / 2) + shakeX, py - Math.round(S / 2), S2, S2)
     if (sprites.weapon_club && !entity.attack) {
-      const cw = Math.round(S * 0.9)
+      const cw = Math.round(S * 1.1)
       ctx.save()
       ctx.translate(px + S / 2 + shakeX, py + S / 2)   // body center of the 2S sprite
       if (entity.state === 'slam_windup' || entity.state === 'slamming') {
@@ -206,9 +207,9 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
         ctx.rotate(q)
         ctx.drawImage(sprites.weapon_club, -cw / 2, -Math.round(S2 * 0.95), cw, cw)
       } else {
-        // gripped in its right fist, tilted outward
-        ctx.translate(S * 0.75, S * 0.45)
-        ctx.rotate(0.45)
+        // gripped in its fist, tilted outward
+        ctx.translate(-S * 0.75, S * 0.45)
+        ctx.rotate(-0.45)
         ctx.drawImage(sprites.weapon_club, -cw / 2, -Math.round(cw * 0.85), cw, cw)
       }
       ctx.restore()
@@ -248,7 +249,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     ctx.rotate(tilt * Math.PI / 180)
     ctx.scale(flip ? -1 : 1, 1)              // flip handled here, so draw un-flipped below
     if (sprites.player) ctx.drawImage(sprites.player, -S / 2, -S, S, S)
-    if (entity.weapon) {
+    if (entity.weapon && !(entity.attackTimer > 0)) {   // the swing draws it instead
       const ws = sprites[`weapon_${entity.weapon.weaponType}`]
       if (ws) drawHeldWeapon(ctx, ws, S)
     }

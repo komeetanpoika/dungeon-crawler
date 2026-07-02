@@ -151,4 +151,17 @@ describe('drawEntity — held idle weapons', () => {
       assert.deepEqual(ctx.images, ['CYC', 'CLUB'], `club drawn during ${s}`)
     }
   })
+
+  it('player carries their weapon at idle and hides it while swinging', () => {
+    const psprites = { player: 'PLAYER', weapon_sword: 'SWORD' }
+    const idle = { type: 'player', facing: 'east', walkPhase: 0, swayAmp: 0, weapon: { weaponType: 'sword' } }
+
+    const ctx = swingCtx()
+    drawEntity(ctx, idle, 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['PLAYER', 'SWORD'])
+
+    const ctx2 = swingCtx()
+    drawEntity(ctx2, { ...idle, attackTimer: 0.1, attackDuration: 0.2 }, 0, 0, 32, psprites)
+    assert.deepEqual(ctx2.images, ['PLAYER'], 'no carried sword while the swing animates')
+  })
 })
