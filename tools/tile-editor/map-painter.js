@@ -517,9 +517,18 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   // is async, so its initial dispatch can arrive before loadPainterMaps()
   // resolves. Acting early would seed a blank "main" against an empty store and
   // save it over the real file. The load IIFE below performs the first load.
+  //
+  // Also ignore it when the ruleset didn't actually switch: the Build tab's own
+  // "Derive rules" button and the Draw tab's "Save tile" both dispatch this event
+  // after saving, but neither changes state.active. Reloading anyway would wipe
+  // the undo/redo history (loadActiveMapFor -> loadGrid -> resetHistory) for no
+  // reason — derive already flushed via persistNow() above, and tile-save doesn't
+  // touch the painter-maps store at all, so a same-ruleset dispatch is a data
+  // no-op here and skipping it just avoids losing history and a pointless redraw.
   let storeLoaded = false
   document.addEventListener('ruleset-changed', () => {
     if (!storeLoaded) return
+    if (state.active === loadedRuleset) return
     persistNow()                 // flush the outgoing ruleset's map first
     loadActiveMapFor(state.active)
   })
