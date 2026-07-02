@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in.
@@ -60,5 +60,55 @@ describe('shakeOffset', () => {
     const { x, y } = shakeOffset(6)
     assert.ok(Math.abs(x) <= 6 && Math.abs(y) <= 6)
     assert.ok(Math.abs(x) + Math.abs(y) > 0)
+  })
+})
+
+// Mock ctx with the full 2D-context surface the swing renderer touches.
+function swingCtx() {
+  const images = []
+  return {
+    images,
+    drawImage: (img) => images.push(img),
+    save() {}, restore() {}, translate() {}, rotate() {}, scale() {},
+    beginPath() {}, arc() {}, stroke() {}, moveTo() {}, lineTo() {},
+    fillRect() {},
+    set fillStyle(_v) {}, get fillStyle() { return '' },
+    set strokeStyle(_v) {}, get strokeStyle() { return '' },
+    set lineWidth(_v) {}, get lineWidth() { return 0 },
+    set lineCap(_v) {}, get lineCap() { return '' },
+    set globalAlpha(_v) {}, get globalAlpha() { return 1 },
+  }
+}
+
+describe('drawEnemySwing', () => {
+  const sprites = { weapon_sword: 'SWORD', weapon_club: 'CLUB' }
+
+  it('draws the weapon sprite during a sword swing', () => {
+    const ctx = swingCtx()
+    const e = { px: 100, py: 100, attack: { weaponId: 'sword', phase: 'swing', timer: 0.1, duration: 0.25, angle: 0 } }
+    drawEnemySwing(ctx, e, sprites, 0, 0, 32)
+    assert.ok(ctx.images.includes('SWORD'))
+  })
+
+  it('draws the weapon sprite raised during a windup (telegraph)', () => {
+    const ctx = swingCtx()
+    const e = { px: 100, py: 100, attack: { weaponId: 'club', phase: 'windup', timer: 0.2, duration: 0.4, angle: 0 } }
+    drawEnemySwing(ctx, e, sprites, 0, 0, 32)
+    assert.ok(ctx.images.includes('CLUB'))
+  })
+
+  it('draws procedural marks (no sprite image) for claw and pincer swings', () => {
+    for (const weaponId of ['claw', 'pincer', 'dragon_claw']) {
+      const ctx = swingCtx()
+      const e = { px: 100, py: 100, attack: { weaponId, phase: 'swing', timer: 0.1, duration: 0.2, angle: 0 } }
+      drawEnemySwing(ctx, e, sprites, 0, 0, 32)
+      assert.equal(ctx.images.length, 0, `${weaponId} uses no sprite`)
+    }
+  })
+
+  it('draws nothing without an active attack', () => {
+    const ctx = swingCtx()
+    drawEnemySwing(ctx, { px: 100, py: 100 }, sprites, 0, 0, 32)
+    assert.equal(ctx.images.length, 0)
   })
 })

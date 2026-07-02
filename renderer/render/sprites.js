@@ -50,6 +50,7 @@ export const SPRITES = {
   weapon_sword:     'tile_0104',
   weapon_longsword: 'tile_0106',
   weapon_axe:       'tile_0118',
+  weapon_club:      'tile_0107',
   potion:           'tile_0116',
   // door animation frames (0 = closed … 3 = open)
   door_0: 'tile_0009',

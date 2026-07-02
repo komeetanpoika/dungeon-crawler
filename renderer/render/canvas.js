@@ -2,6 +2,7 @@ import { TILE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
+import { WEAPONS } from '../systems/enemy-attack.js'
 
 const TILE_SIZE = 32
 
@@ -256,34 +257,50 @@ function drawHitEffect(ctx, x, y, camX, camY, S) {
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3) }
 function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2 }
 
-function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
-  if (!(player.attackTimer > 0) || !(player.attackDuration > 0)) return
-  const t = 1 - player.attackTimer / player.attackDuration
-  const alpha = t < 0.8 ? 1 : 1 - (t - 0.8) / 0.2
-  const base = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.attackFacing] ?? 0
-  const pcx = player.px - camX
-  const pcy = player.py - camY
-  const ws = sprites[`weapon_${player.weapon?.weaponType}`]
+// Per-style default trail tints — the player's original colors.
+const SWING_TINTS = { snap: [255, 230, 80], arc: [180, 180, 255], slash: [150, 220, 255], spin: [255, 140, 50] }
 
-  function trail(a0, a1, radius, r, g, b, width) {
+// Shared swing core: rotates a weapon sprite (or draws natural-attack marks)
+// around (cx, cy) with a colored arc trail. t ∈ [0,1] is swing progress.
+// opts: { baseAngle, tint: [r,g,b], scale, marks: 'claw'|'pincer'|null }
+function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
+  const alpha = t < 0.8 ? 1 : 1 - (t - 0.8) / 0.2
+  const base = opts.baseAngle ?? 0
+  const [r, g, b] = opts.tint ?? SWING_TINTS[style] ?? [200, 200, 200]
+  const scale = opts.scale ?? 1
+
+  function trail(a0, a1, radius, width) {
     const lo = Math.min(a0, a1), hi = Math.max(a0, a1)
     if (hi - lo < 0.01) return
     ctx.save()
     ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.4})`
     ctx.lineWidth = width; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.arc(pcx, pcy, radius, lo, hi); ctx.stroke()
+    ctx.beginPath(); ctx.arc(cx, cy, radius * scale, lo, hi); ctx.stroke()
     ctx.restore()
   }
 
-  function weapon(angle, scale = 1) {
+  function weapon(angle, wscale = 1) {
     ctx.save()
-    ctx.translate(pcx, pcy)
+    ctx.translate(cx, cy)
     ctx.rotate(angle)
     ctx.rotate(-Math.PI / 2)   // orient so blade points outward along the arm
-    ctx.scale(scale, scale)
+    ctx.scale(wscale * scale, wscale * scale)
     ctx.globalAlpha = alpha
     if (ws) {
       ctx.drawImage(ws, -S/2, -S * 0.9, S, S)
+    } else if (opts.marks === 'claw') {
+      // three claw lines raking outward
+      ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`
+      ctx.lineWidth = 2; ctx.lineCap = 'round'
+      for (const off of [-5, 0, 5]) {
+        ctx.beginPath(); ctx.moveTo(off, -S * 0.25); ctx.lineTo(off * 1.4, -S * 0.75); ctx.stroke()
+      }
+    } else if (opts.marks === 'pincer') {
+      // two arcs closing like a pincer
+      ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`
+      ctx.lineWidth = 3; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.arc(-4, -S * 0.5, S * 0.22, -Math.PI * 0.2, Math.PI * 0.8); ctx.stroke()
+      ctx.beginPath(); ctx.arc( 4, -S * 0.5, S * 0.22, Math.PI * 0.2, -Math.PI * 0.8, true); ctx.stroke()
     } else {
       ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 4; ctx.lineCap = 'round'
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -S * 0.9); ctx.stroke()
@@ -292,30 +309,28 @@ function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
     ctx.restore()
   }
 
-  const style = player.attackStyle
-
   if (style === 'snap') {
-    // Dagger: fast 90° snap with slight overshoot
+    // Dagger/claw: fast 90° snap with slight overshoot
     const raw = t < 0.65
       ? easeOutCubic(t / 0.65)
       : 1 + Math.sin((t - 0.65) / 0.35 * Math.PI) * 0.22
     const angle = base + (raw - 0.5) * (Math.PI / 2)
-    trail(base - Math.PI/4, angle, S * 0.8, 255, 230, 80, 7)
+    trail(base - Math.PI/4, angle, S * 0.8, 7)
     weapon(angle, 0.85)
 
   } else if (style === 'arc') {
     // Sword: 140° side-to-side sweep
     const sweep = (easeOutCubic(t) * 2 - 1) * (Math.PI * 70/180)
     const angle = base + sweep
-    trail(base - Math.PI*70/180, angle, S * 1.3, 180, 180, 255, 11)
+    trail(base - Math.PI*70/180, angle, S * 1.3, 11)
     weapon(angle)
 
   } else if (style === 'slash') {
-    // Longsword: overhead slam from –162° to +18°
+    // Longsword/club: overhead slam from –162° to +18°
     const startA = base - Math.PI * 0.9
     const endA   = base + Math.PI * 0.1
     const angle  = startA + easeOutCubic(t) * (endA - startA)
-    trail(startA, angle, S * 1.55, 150, 220, 255, 14)
+    trail(startA, angle, S * 1.55, 14)
     weapon(angle, 1.25)
 
   } else if (style === 'spin') {
@@ -323,10 +338,69 @@ function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
     const angle = base + easeInOutCubic(t) * Math.PI * 2
     for (let i = 2; i >= 0; i--) {
       const ta = Math.max(0, t - i * 0.07)
-      trail(base, base + easeInOutCubic(ta) * Math.PI * 2, S + i * 5, 255, 140, 50, 13 - i * 3)
+      trail(base, base + easeInOutCubic(ta) * Math.PI * 2, S + i * 5, 13 - i * 3)
     }
     weapon(angle, 1.15)
   }
+}
+
+function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
+  if (!(player.attackTimer > 0) || !(player.attackDuration > 0)) return
+  const t = 1 - player.attackTimer / player.attackDuration
+  const base = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.attackFacing] ?? 0
+  const ws = sprites[`weapon_${player.weapon?.weaponType}`]
+  drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base })
+}
+
+// Per-weapon enemy swing presentation (tint/scale on top of the shared core).
+const ENEMY_SWING = {
+  sword:       { spriteKey: 'weapon_sword', tint: [180, 180, 255], scale: 1 },
+  club:        { spriteKey: 'weapon_club',  tint: [255, 170, 60],  scale: 1.3 },
+  claw:        { marks: 'claw',   tint: [220, 220, 200], scale: 1 },
+  dragon_claw: { marks: 'claw',   tint: [255, 150, 60],  scale: 1.4 },
+  pincer:      { marks: 'pincer', tint: [255, 90, 90],   scale: 1 },
+}
+
+// Where each swing style starts, relative to its base angle — the windup pose
+// holds the weapon there so the telegraph shows where the swing will come from.
+const SWING_START = { snap: -Math.PI / 4, arc: -Math.PI * 70/180, slash: -Math.PI * 0.9, spin: 0 }
+
+function drawWindupPose(ctx, cx, cy, ws, baseAngle, style, k, S, cfg) {
+  const quiver = Math.sin(Date.now() * 0.04) * 0.08 * k
+  const angle = baseAngle + (SWING_START[style] ?? -Math.PI / 2) + quiver
+  const scale = cfg.scale ?? 1
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(angle)
+  ctx.rotate(-Math.PI / 2)
+  ctx.scale(scale, scale)
+  ctx.globalAlpha = 0.55 + 0.45 * k
+  if (ws) {
+    ctx.drawImage(ws, -S/2, -S * 0.9, S, S)
+  } else {
+    // natural-attack tell: a faint ring that tightens as the strike nears
+    const [r, g, b] = cfg.tint ?? [220, 220, 220]
+    ctx.strokeStyle = `rgba(${r},${g},${b},${0.3 + 0.5 * k})`
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.arc(0, -S * 0.5, S * 0.2 + k * 4, 0, Math.PI * 2); ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+  ctx.restore()
+}
+
+export function drawEnemySwing(ctx, e, sprites, camX, camY, S) {
+  const a = e.attack
+  if (!a) return
+  const cfg = ENEMY_SWING[a.weaponId] ?? {}
+  const style = WEAPONS[a.weaponId]?.style ?? 'arc'
+  const cx = e.px - camX, cy = e.py - camY
+  const ws = cfg.spriteKey ? sprites[cfg.spriteKey] : null
+  const k = a.duration > 0 ? 1 - a.timer / a.duration : 1
+  if (a.phase === 'windup') {
+    drawWindupPose(ctx, cx, cy, ws, a.angle, style, k, S, cfg)
+    return
+  }
+  drawSwing(ctx, cx, cy, ws, style, k, S, { baseAngle: a.angle, tint: cfg.tint, scale: cfg.scale, marks: cfg.marks })
 }
 
 const FIRE_PAL = [
@@ -594,6 +668,7 @@ export class Renderer {
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
       if (e.type === 'dragon_boss') drawDragonBoss(ctx, e, camX, camY, S)
       else drawEntity(ctx, e, epx, epy, S, sprites)
+      if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
     }
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
