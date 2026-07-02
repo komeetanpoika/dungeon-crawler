@@ -4,7 +4,7 @@ import { LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES } from '../renderer/data/levels
 
 describe('LEVEL_CONFIG (5-level run)', () => {
   it('has 5 playable levels (depths 1..5) plus the depth-0 debug arena', () => {
-    const playable = LEVEL_CONFIG.filter(c => c.depth >= 1)
+    const playable = LEVEL_CONFIG.filter(c => c.depth >= 1 && c.depth <= FINAL_DEPTH)
     assert.equal(playable.length, 5)
     assert.deepEqual(playable.map(c => c.depth), [1, 2, 3, 4, 5])
     assert.ok(LEVEL_CONFIG.some(c => c.depth === 0), 'depth-0 debug arena present')
@@ -54,5 +54,27 @@ describe('boss test arena (depth 0)', () => {
   it('resolves a theme for depth 0', () => {
     const theme = DEPTH_THEMES.find(t => t.depths.includes(0))
     assert.ok(theme, 'a theme includes depth 0')
+  })
+})
+
+describe('castle test level (depth 6)', () => {
+  it('has a depth-6 config beyond FINAL_DEPTH (cheat-only sandbox)', () => {
+    const cfg = LEVEL_CONFIG.find(c => c.depth === 6)
+    assert.ok(cfg, 'depth-6 config exists')
+    assert.ok(cfg.depth > FINAL_DEPTH, 'stays outside normal progression')
+    assert.deepEqual([cfg.mapW, cfg.mapH], [40, 26])
+    assert.equal(cfg.landmark, null)
+  })
+
+  it('themes depth 6 with the castle ruleset', () => {
+    const theme = DEPTH_THEMES.find(t => t.depths.includes(6))
+    assert.ok(theme, 'a theme includes depth 6')
+    assert.equal(theme.ruleset, 'castle')
+  })
+
+  it('keeps every depth 0..5 on a theme separate from the depth-6 test theme', () => {
+    for (let d = 0; d <= 5; d++)
+      assert.ok(DEPTH_THEMES.some(t => t.depths.includes(d) && !t.depths.includes(6)),
+        `theme for depth ${d} is separate from the test theme`)
   })
 })

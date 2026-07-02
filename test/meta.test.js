@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   getInitialMeta, applyRunResult, getStartingItems, validateMeta, MILESTONES,
 } from '../renderer/systems/meta.js'
+import { FINAL_DEPTH } from '../renderer/data/levels.js'
 
 describe('getInitialMeta', () => {
   it('returns zero-state meta', () => {
@@ -45,7 +46,7 @@ describe('applyRunResult', () => {
 
   it('sets treasureStolen on win', () => {
     const meta = getInitialMeta()
-    const next = applyRunResult(meta, { deepestLevel: 9, won: true })
+    const next = applyRunResult(meta, { deepestLevel: FINAL_DEPTH, won: true })
     assert.equal(next.treasureStolen, true)
   })
 
@@ -53,6 +54,43 @@ describe('applyRunResult', () => {
     const meta = getInitialMeta()
     const next = applyRunResult(meta, { deepestLevel: 1, won: false })
     assert.equal(meta.runsCompleted, 0)
+    assert.equal(next.runsCompleted, 1)
+  })
+
+  it('leaves meta unchanged for a sandbox run deeper than FINAL_DEPTH (deepest)', () => {
+    const meta = { ...getInitialMeta(), deepestReached: 2 }
+    const next = applyRunResult(meta, { deepestLevel: FINAL_DEPTH + 1, won: false })
+    assert.equal(next.deepestReached, 2)
+  })
+
+  it('leaves meta unchanged for a sandbox run deeper than FINAL_DEPTH (milestones)', () => {
+    const meta = getInitialMeta()
+    const next = applyRunResult(meta, { deepestLevel: 6, won: false })
+    assert.deepEqual(next.unlockedBonuses, [])
+  })
+
+  it('leaves meta unchanged for a sandbox run deeper than FINAL_DEPTH (runsCompleted)', () => {
+    const meta = getInitialMeta()
+    const next = applyRunResult(meta, { deepestLevel: 6, won: false })
+    assert.equal(next.runsCompleted, 0)
+  })
+
+  it('leaves meta unchanged for a sandbox run deeper than FINAL_DEPTH (treasureStolen), even on a win', () => {
+    const meta = getInitialMeta()
+    const next = applyRunResult(meta, { deepestLevel: 6, won: true })
+    assert.equal(next.treasureStolen, false)
+  })
+
+  it('returns the exact same meta reference for a sandbox run beyond FINAL_DEPTH', () => {
+    const meta = getInitialMeta()
+    const next = applyRunResult(meta, { deepestLevel: FINAL_DEPTH + 1, won: false })
+    assert.equal(next, meta)
+  })
+
+  it('still applies normal effects exactly at FINAL_DEPTH', () => {
+    const meta = getInitialMeta()
+    const next = applyRunResult(meta, { deepestLevel: FINAL_DEPTH, won: false })
+    assert.equal(next.deepestReached, FINAL_DEPTH)
     assert.equal(next.runsCompleted, 1)
   })
 })

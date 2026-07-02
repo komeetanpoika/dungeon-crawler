@@ -13,8 +13,12 @@ describe('parseLevelCheat', () => {
     assert.equal(parseLevelCheat('level0'), 0)
   })
 
-  it('ignores out-of-range depths', () => {
-    assert.equal(parseLevelCheat('level6'), null)
+  it('accepts level6 (castle ruleset sandbox)', () => {
+    assert.equal(parseLevelCheat('level6'), 6)
+  })
+
+  it('ignores depths with no LEVEL_CONFIG entry', () => {
+    assert.equal(parseLevelCheat('level7'), null)
     assert.equal(parseLevelCheat('level9'), null)
     assert.equal(parseLevelCheat('level10'), null)
   })
