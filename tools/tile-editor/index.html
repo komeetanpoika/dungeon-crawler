@@ -61,6 +61,7 @@
   #paint-palette img.active { border-color:#7fd; }
   #paint-palette .erase { display:block; width:100%; margin-bottom:4px; }
   #paint-canvas { image-rendering:pixelated; border:1px solid #444; }
+  #paint-layers button { padding: 3px 4px; min-width: 0; }
 </style>
 </head>
 <body>
@@ -135,6 +136,10 @@
         <span>×</span>
         <input id="paint-h" class="small" type="number" min="2" max="40" value="12">
         <button id="paint-resize">resize</button>
+      </div>
+      <div id="paint-history" style="display:flex; gap:4px">
+        <button id="paint-undo" style="flex:1" disabled>↶ undo</button>
+        <button id="paint-redo" style="flex:1" disabled>↷ redo</button>
       </div>
       <div class="label">Layer</div>
       <div id="paint-layers" style="display:flex; gap:4px">
