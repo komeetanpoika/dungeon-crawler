@@ -52,13 +52,6 @@ Two halves that together make boss/enemy testing reusable and self-improving:
 }
 ```
 
-**Comments & syntax reference:** the loader strips `//` line comments before
-`JSON.parse`, so the config can document itself inline. A checked-in
-**`arena-config.example.json`** at the repo root is the syntax reference: a
-fully commented template listing every field, all enemy kinds/variants, weapon
-types, and the defaults — players and agents copy it to `arena-config.json`
-and edit. `SKILL.md` points at it.
-
 Every field optional:
 
 - **No file / unreadable / malformed JSON** → default boss arena (identical to
@@ -108,9 +101,7 @@ New project skill directory **`.claude/skills/arena-test/`**, checked into git:
    dodge?"; criteria: "charge windup visibly renders ≥1s before movement").
 3. `node arena-log.mjs open --question "…" --criteria "…"` — the question is
    saved **before** the run, so it survives a crashed test.
-4. Write `arena-config.json` with the enemy set/loadout the question needs
-   (copy `arena-config.example.json` — the commented syntax reference — and
-   edit; `//` comments are allowed).
+4. Write `arena-config.json` with the enemy set/loadout the question needs.
 5. Drive the game with the existing `run-game/driver.mjs`
    (launch → title screen → type `level0` → observe / screenshot).
 6. `node arena-log.mjs close --score <1-5> --notes "…"` — the self-assessment
@@ -174,9 +165,6 @@ testing agent
 
 ## Testing
 
-- **Config loader:** `//` comment-stripping parse helper (pure, unit-tested):
-  comments stripped outside strings, `arena-config.example.json` itself parses
-  cleanly through it.
 - **`buildArena`** (`test/arena.test.js`): default config reproduces the current
   boss arena exactly (1 centered `dragon_boss` + 20 alternating chests +
   bottom-center player); custom enemies spawn at given positions; omitted
