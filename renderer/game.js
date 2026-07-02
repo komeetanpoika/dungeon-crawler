@@ -15,6 +15,7 @@ import { PHASE, canTransition } from './systems/phase.js'
 import * as menu from './ui/menu.js'
 import { damagePlayer } from './systems/player-damage.js'
 import { startKnockback, stepKnockback } from './systems/knockback.js'
+import { tryStartEnemyAttack, stepEnemyAttack } from './systems/enemy-attack.js'
 import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 
 const TILE_SIZE = 32
@@ -27,7 +28,6 @@ const MELEE_COOLDOWN = 0.4
 const RANGED_COOLDOWN = 0.6
 const PROJECTILE_SPEED = 280
 const CONTACT_RANGE = 20
-const CONTACT_DAMAGE_COOLDOWN = 0.8
 const PLAYER_HALF = 6
 const ENEMY_HALF = 4
 const SPIDER_SHOOT_RANGE = 130
@@ -564,13 +564,8 @@ function update(delta) {
       }
     }
 
-    // Contact damage
-    if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
-      const contactDmg = e.type === 'dragon' ? 2 : 1
-      if (damagePlayer(state, contactDmg, 'hit', `Hit for ${contactDmg} damage!`)) {
-        e.damageCooldown = CONTACT_DAMAGE_COOLDOWN
-      }
-    }
+    // Contact melee — weapon framework (damage/range/cooldown from the enemy's weapon)
+    tryStartEnemyAttack(e, state)
   }
 
   // Footfall screenshake — dragon boss stomps
@@ -618,6 +613,9 @@ function update(delta) {
     state.dropSpawned = true
     state.log = [...state.log, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!'].slice(-5)
   }
+
+  // Advance in-flight enemy melee attacks (windup → strike → swing)
+  for (const e of state.entities) stepEnemyAttack(e, state, delta)
 
   // Resolve knockback slides after AI has moved everything this frame.
   for (const e of state.entities) {
