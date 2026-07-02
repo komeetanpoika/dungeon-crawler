@@ -67,3 +67,18 @@ describe('updateCrab — grab', () => {
     assert.equal(c.grabState, null)
   })
 })
+
+describe('updateCrab — contact melee via weapon framework', () => {
+  it('pincer hit damages the player and starts a swing animation', () => {
+    const e = makeCrab(5, 5)
+    e.px = 5 * 32 + 16; e.py = 5 * 32 + 16
+    e.grabCooldown = 99   // keep the grab from triggering first
+    const player = { x: 5, y: 5, px: e.px + 10, py: e.py, hp: 10, grabbed: false }
+    const state = { player, map: openMap(), projectiles: [], entities: [e], log: [] }
+    updateCrab(e, state, 0.016)
+    assert.equal(player.hp, 9, 'pincer deals 1')
+    assert.equal(e.attack.weaponId, 'pincer')
+    assert.equal(e.attack.phase, 'swing')
+    assert.deepEqual(state.log, ['Crab pinches! (-1 HP)'])
+  })
+})

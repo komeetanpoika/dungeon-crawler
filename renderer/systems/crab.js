@@ -1,12 +1,10 @@
 import { isWalkable } from './entities.js'
 import { damagePlayer } from './player-damage.js'
+import { tryStartEnemyAttack } from './enemy-attack.js'
 
 const S = 32
 const CRAB_SPEED       = 65
 const CRAB_HALF        = 4
-const CONTACT_DAMAGE   = 1
-const CONTACT_COOLDOWN = 0.8
-const CONTACT_RANGE    = 20
 const GRAB_RANGE       = 25
 const GRAB_DURATION    = 2.0
 const GRAB_DMG_INTERVAL = 0.3
@@ -97,11 +95,6 @@ export function updateCrab(e, state, delta) {
     return
   }
 
-  // Contact damage
-  if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
-    if (damagePlayer(state, CONTACT_DAMAGE, 'hit', 'Crab pinches! (-1 HP)')) {
-      e.damageCooldown = CONTACT_COOLDOWN
-      e.inCombat = true
-    }
-  }
+  // Contact melee — pincer via the weapon framework
+  tryStartEnemyAttack(e, state, 'Crab pinches! (-1 HP)')
 }

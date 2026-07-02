@@ -121,3 +121,20 @@ describe('updateCyclops — charge hit', () => {
     assert.equal(player.hp, hpBefore, 'no damage during i-frames')
   })
 })
+
+describe('updateCyclops — contact melee via weapon framework', () => {
+  it('club hit damages the player and starts a swing animation', () => {
+    const c = makeCyclops(5, 5)
+    c.px = 5 * S + 16; c.py = 5 * S + 16
+    c.chargeCooldown = 99   // keep it in chase
+    c.slamTimer = 99
+    const player = { x: 6, y: 5, px: c.px + 30, py: c.py, hp: 10, grabbed: false }
+    const state = makeState(c, player)
+    updateCyclops(c, state, 0.016)
+    assert.equal(player.hp, 7, 'club deals 3')
+    assert.equal(c.attack.weaponId, 'club')
+    assert.equal(c.attack.phase, 'swing')
+    assert.equal(c.damageCooldown, 0.8)
+    assert.equal(c.inCombat, true)
+  })
+})

@@ -1,6 +1,7 @@
 import { hasLineOfSight, isWalkable } from './entities.js'
 import { damagePlayer } from './player-damage.js'
 import { startKnockback } from './knockback.js'
+import { tryStartEnemyAttack } from './enemy-attack.js'
 
 const S = 32
 const CYCLOPS_SPEED        = 40
@@ -14,8 +15,6 @@ const SLAM_RING_DURATION   = 0.4
 const SLAM_RADIUS          = 80
 const SLAM_DAMAGE          = 4
 const CONTACT_RANGE        = 40
-const CONTACT_DAMAGE       = 3
-const CONTACT_COOLDOWN     = 0.8
 const KNOCKBACK_DIST       = 60
 
 function canMoveTo(map, px, py) {
@@ -74,13 +73,8 @@ export function updateCyclops(e, state, delta) {
       e.stateTimer = SLAM_WINDUP
     }
 
-    // Contact damage
-    if (dist < CONTACT_RANGE && e.damageCooldown <= 0) {
-      if (damagePlayer(state, CONTACT_DAMAGE, 'hit', `Cyclops hits! (-${CONTACT_DAMAGE} HP)`)) {
-        e.damageCooldown = CONTACT_COOLDOWN
-        e.inCombat = true
-      }
-    }
+    // Contact melee — club via the weapon framework (range 40 matches CONTACT_RANGE)
+    tryStartEnemyAttack(e, state, 'Cyclops hits! (-3 HP)')
 
   } else if (e.state === 'charge_windup') {
     if (e.stateTimer <= 0) {
