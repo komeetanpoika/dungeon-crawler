@@ -72,7 +72,7 @@ describe('castle test level (depth 6)', () => {
     assert.equal(theme.ruleset, 'castle')
   })
 
-  it('does not disturb the depth themes for 0..5', () => {
+  it('keeps every depth 0..5 on a theme separate from the depth-6 test theme', () => {
     for (let d = 0; d <= 5; d++)
       assert.ok(DEPTH_THEMES.some(t => t.depths.includes(d) && !t.depths.includes(6)),
         `theme for depth ${d} is separate from the test theme`)
