@@ -89,16 +89,25 @@ function drawImg(ctx, sprite, px, py, w, h, flip = false) {
   ctx.restore()
 }
 
+// Weapon gripped in the right hand. Walker local space: origin at the feet,
+// un-flipped (facing east); the grip (bottom-center of the weapon tile) sits
+// in the palm at mid-body, blade tilted slightly outward.
+function drawHeldWeapon(ctx, ws, S) {
+  const hw = Math.round(S * 0.55)
+  ctx.save()
+  ctx.translate(S * 0.30, -S * 0.34)
+  ctx.rotate(0.35)
+  ctx.drawImage(ws, -hw / 2, -hw * 0.85, hw, hw)
+  ctx.restore()
+}
+
 function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg, heldWeapon = null) {
   ctx.save()
   ctx.translate(px + S / 2, py + S)        // pivot at the feet (center-bottom)
   ctx.rotate(tiltDeg * Math.PI / 180)
   ctx.scale(flip ? -1 : 1, 1)
   ctx.drawImage(sprite, -S / 2, -S, S, S)
-  if (heldWeapon) {
-    const hw = Math.round(S * 0.5)
-    ctx.drawImage(heldWeapon, S / 2 - hw, -hw, hw, hw)
-  }
+  if (heldWeapon) drawHeldWeapon(ctx, heldWeapon, S)
   ctx.restore()
 }
 
@@ -197,9 +206,10 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
         ctx.rotate(q)
         ctx.drawImage(sprites.weapon_club, -cw / 2, -Math.round(S2 * 0.95), cw, cw)
       } else {
-        // resting at its side
-        ctx.rotate(0.5)
-        ctx.drawImage(sprites.weapon_club, Math.round(S * 0.55), -cw / 2, cw, cw)
+        // gripped in its right fist, tilted outward
+        ctx.translate(S * 0.75, S * 0.45)
+        ctx.rotate(0.45)
+        ctx.drawImage(sprites.weapon_club, -cw / 2, -Math.round(cw * 0.85), cw, cw)
       }
       ctx.restore()
     }
@@ -240,11 +250,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     if (sprites.player) ctx.drawImage(sprites.player, -S / 2, -S, S, S)
     if (entity.weapon) {
       const ws = sprites[`weapon_${entity.weapon.weaponType}`]
-      if (ws) {
-        const hw = Math.round(S * 0.5)
-        // In this flipped local space, "behind on the right" is +x for both facings.
-        ctx.drawImage(ws, S / 2 - hw, -hw, hw, hw)
-      }
+      if (ws) drawHeldWeapon(ctx, ws, S)
     }
     ctx.restore()
     return
