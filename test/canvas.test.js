@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in.
@@ -114,5 +114,41 @@ describe('drawEnemySwing', () => {
     const ctx = swingCtx()
     drawEnemySwing(ctx, { px: 100, py: 100 }, sprites, 0, 0, 32)
     assert.equal(ctx.images.length, 0)
+  })
+})
+
+describe('drawEntity — held idle weapons', () => {
+  const sprites = { guard: 'GUARD', cyclops: 'CYC', weapon_sword: 'SWORD', weapon_club: 'CLUB' }
+
+  it('guard carries a sword at idle', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, { type: 'guard', facing: 'east', walkPhase: 0, swayAmp: 0 }, 0, 0, 32, sprites)
+    assert.deepEqual(ctx.images, ['GUARD', 'SWORD'])
+  })
+
+  it('guard hides the idle sword while swinging', () => {
+    const ctx = swingCtx()
+    const attack = { weaponId: 'sword', phase: 'swing', timer: 0.1, duration: 0.25, angle: 0 }
+    drawEntity(ctx, { type: 'guard', facing: 'east', walkPhase: 0, swayAmp: 0, attack }, 0, 0, 32, sprites)
+    assert.deepEqual(ctx.images, ['GUARD'])
+  })
+
+  it('cyclops carries a club at idle and hides it while swinging', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, { type: 'cyclops', state: 'chase' }, 0, 0, 32, sprites)
+    assert.deepEqual(ctx.images, ['CYC', 'CLUB'])
+
+    const ctx2 = swingCtx()
+    const attack = { weaponId: 'club', phase: 'swing', timer: 0.1, duration: 0.3, angle: 0 }
+    drawEntity(ctx2, { type: 'cyclops', state: 'chase', attack }, 0, 0, 32, sprites)
+    assert.deepEqual(ctx2.images, ['CYC'])
+  })
+
+  it('cyclops raises the club during slam states', () => {
+    for (const s of ['slam_windup', 'slamming']) {
+      const ctx = swingCtx()
+      drawEntity(ctx, { type: 'cyclops', state: s }, 0, 0, 32, sprites)
+      assert.deepEqual(ctx.images, ['CYC', 'CLUB'], `club drawn during ${s}`)
+    }
   })
 })

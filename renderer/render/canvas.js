@@ -89,12 +89,16 @@ function drawImg(ctx, sprite, px, py, w, h, flip = false) {
   ctx.restore()
 }
 
-function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg) {
+function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg, heldWeapon = null) {
   ctx.save()
   ctx.translate(px + S / 2, py + S)        // pivot at the feet (center-bottom)
   ctx.rotate(tiltDeg * Math.PI / 180)
   ctx.scale(flip ? -1 : 1, 1)
   ctx.drawImage(sprite, -S / 2, -S, S, S)
+  if (heldWeapon) {
+    const hw = Math.round(S * 0.5)
+    ctx.drawImage(heldWeapon, S / 2 - hw, -hw, hw, hw)
+  }
   ctx.restore()
 }
 
@@ -104,7 +108,7 @@ export function isFlickerVisible(invulnTimer, interval = 0.06) {
   return Math.floor(invulnTimer / interval) % 2 === 0
 }
 
-function drawEntity(ctx, entity, px, py, S, sprites) {
+export function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'door') {
     const s = sprites[`door_${entity.frame}`]
     if (s) ctx.drawImage(s, px, py, S, S)
@@ -183,6 +187,22 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
     const savedAlpha = ctx.globalAlpha
     if (entity.state === 'stunned') ctx.globalAlpha = 0.6
     if (sprites.cyclops) ctx.drawImage(sprites.cyclops, px - Math.round(S / 2) + shakeX, py - Math.round(S / 2), S2, S2)
+    if (sprites.weapon_club && !entity.attack) {
+      const cw = Math.round(S * 0.9)
+      ctx.save()
+      ctx.translate(px + S / 2 + shakeX, py + S / 2)   // body center of the 2S sprite
+      if (entity.state === 'slam_windup' || entity.state === 'slamming') {
+        // club raised overhead, quivering through the windup
+        const q = entity.state === 'slam_windup' ? Math.sin(Date.now() * 0.04) * 0.06 : 0
+        ctx.rotate(q)
+        ctx.drawImage(sprites.weapon_club, -cw / 2, -Math.round(S2 * 0.95), cw, cw)
+      } else {
+        // resting at its side
+        ctx.rotate(0.5)
+        ctx.drawImage(sprites.weapon_club, Math.round(S * 0.55), -cw / 2, cw, cw)
+      }
+      ctx.restore()
+    }
     ctx.globalAlpha = savedAlpha
     return
   }
@@ -202,7 +222,8 @@ function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'guard') {
     const flip = entity.facing === 'west'
-    if (sprites.guard) drawWalker(ctx, sprites.guard, px, py, S, flip, walkTilt(entity))
+    const held = entity.attack ? null : sprites.weapon_sword   // the swing draws it instead
+    if (sprites.guard) drawWalker(ctx, sprites.guard, px, py, S, flip, walkTilt(entity), held)
     return
   }
   if (entity.type === 'crab') {
