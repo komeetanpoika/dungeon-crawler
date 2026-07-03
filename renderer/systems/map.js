@@ -405,7 +405,9 @@ function healConnectivity(map) {
 // config ({ size, enemies, chests, player } — every field optional). With
 // neither enemies nor chests configured it produces the original debug arena:
 // dragon boss centered, 20 weapon/potion chests ringed around the interior
-// perimeter. Pure and deterministic; `warn` is injected so tests stay quiet.
+// perimeter. All configured spawns (explicit and auto) are collision-checked
+// against the occupied set, player spawn first. Pure and deterministic;
+// `warn` is injected so tests stay quiet.
 export function buildArena(config = {}, warn = console.warn) {
   const clampInt = (v, lo, hi, dflt) =>
     Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : dflt
@@ -479,6 +481,9 @@ export function buildArena(config = {}, warn = console.warn) {
         warn(`arena: enemy ${e.kind} at (${e.x},${e.y}) out of bounds — skipped`); continue
       }
       pos = { x: Math.round(e.x), y: Math.round(e.y) }
+      if (occupied.has(`${pos.x},${pos.y}`)) {
+        warn(`arena: enemy ${e.kind} at (${pos.x},${pos.y}) overlaps another spawn — skipped`); continue
+      }
     } else {
       pos = nextFreeCell()
       if (!pos) { warn(`arena: no free cell left for ${e.kind} — skipped`); continue }
@@ -500,14 +505,26 @@ export function buildArena(config = {}, warn = console.warn) {
       if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !inBounds(Math.round(c.x), Math.round(c.y))) {
         warn(`arena: chest at (${c.x},${c.y}) out of bounds — skipped`); continue
       }
-      entitySpawns.push({ kind: c.kind, x: Math.round(c.x), y: Math.round(c.y),
+      const pos = { x: Math.round(c.x), y: Math.round(c.y) }
+      if (occupied.has(`${pos.x},${pos.y}`)) {
+        warn(`arena: chest at (${pos.x},${pos.y}) overlaps another spawn — skipped`); continue
+      }
+      occupied.add(`${pos.x},${pos.y}`)
+      entitySpawns.push({ kind: c.kind, x: pos.x, y: pos.y,
         ...(c.kind === 'weapon' && { weaponType: c.weaponType ?? 'dagger' }) })
     } else {
       autoChests.push(c)
     }
   }
   autoChests.forEach((c, i) => {
-    const cell = ringCells[Math.round(i * ringCells.length / Math.max(autoChests.length, 1)) % ringCells.length]
+    const start = Math.round(i * ringCells.length / Math.max(autoChests.length, 1)) % ringCells.length
+    let cell = null
+    for (let k = 0; k < ringCells.length; k++) {
+      const cand = ringCells[(start + k) % ringCells.length]
+      if (!occupied.has(`${cand.x},${cand.y}`)) { cell = cand; break }
+    }
+    if (!cell) { warn('arena: no free ring cell for chest — skipped'); return }
+    occupied.add(`${cell.x},${cell.y}`)
     entitySpawns.push({ kind: c.kind, x: cell.x, y: cell.y,
       ...(c.kind === 'weapon' && { weaponType: c.weaponType ?? 'dagger' }) })
   })

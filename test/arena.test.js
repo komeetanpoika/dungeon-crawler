@@ -77,6 +77,30 @@ describe('buildArena — configured content', () => {
     assert.equal(buildArena({ size: { w: 100, h: 100 }, enemies: [] }).map.length, 30)
     assert.equal(buildArena({ size: { w: 100, h: 100 }, enemies: [] }).map[0].length, 40)
   })
+
+  it('skips explicit spawns that overlap the player or another spawn', () => {
+    const warnings = []
+    const { entitySpawns, playerSpawn } = buildArena({ enemies: [
+      { kind: 'guard', x: 13, y: 16 },            // on the default player spawn
+      { kind: 'guard', x: 5, y: 5 },
+      { kind: 'crab', x: 5, y: 5 },               // on the first guard
+    ] }, msg => warnings.push(msg))
+    assert.deepEqual(entitySpawns.map(s => [s.kind, s.x, s.y]), [['guard', 5, 5]])
+    assert.equal(warnings.length, 2)
+    assert.deepEqual(playerSpawn, { x: 13, y: 16 })
+  })
+
+  it('auto chests avoid occupied ring cells and never stack', () => {
+    const warnings = []
+    const { entitySpawns } = buildArena({
+      enemies: [{ kind: 'guard', x: 1, y: 1 }],   // occupies the ring's first cell
+      chests: Array.from({ length: 5 }, () => ({ kind: 'potion' })),
+    }, msg => warnings.push(msg))
+    const cells = entitySpawns.filter(s => s.kind === 'potion').map(s => `${s.x},${s.y}`)
+    assert.equal(new Set(cells).size, 5, 'all five chests on distinct cells')
+    assert.ok(!cells.includes('1,1'), 'none on the guard')
+    assert.equal(warnings.length, 0)
+  })
 })
 
 describe('generateLevel — arena option', () => {
