@@ -16,15 +16,7 @@ mandatory — the journal is how arena testing improves itself across sessions.
    - Question — what you need to find out: "Does the cyclops charge telegraph give the player time to dodge?"
    - Criteria — the observable outcome that means "yes": "charge windup renders visibly for ≥1s before movement starts"
 
-3. Open the journal entry BEFORE running anything (the question must survive a crashed run):
-
-   ```bash
-   node .claude/skills/arena-test/arena-log.mjs open --question "…" --criteria "…"
-   ```
-
-   If it warns about OPEN entries, a past run skipped its assessment — mention that in your final report.
-
-4. Write `arena-config.json` at the repo root (gitignored, strict JSON). Syntax:
+3. Write `arena-config.json` at the repo root (gitignored, strict JSON). Syntax:
 
    ```json
    {
@@ -44,6 +36,14 @@ mandatory — the journal is how arena testing improves itself across sessions.
    - `player`: spawn position plus optional `weaponType` and `hp` overrides.
    - Size clamps to 8×8 … 40×30. Bad entries are skipped with a console warning, never a crash.
    - The file is re-read every time the level0 cheat fires — edit and re-enter the arena, no relaunch needed.
+
+4. Open the journal entry BEFORE running anything (the question must survive a crashed run):
+
+   ```bash
+   node .claude/skills/arena-test/arena-log.mjs open --question "…" --criteria "…"
+   ```
+
+   If it warns about OPEN entries, a past run skipped its assessment — mention that in your final report.
 
 5. Run the game with the driver:
 

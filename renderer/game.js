@@ -189,6 +189,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     const po = arenaCfg.player
     const def = WEAPON_TYPES[po.weaponType]
     if (def) player.weapon = { weaponType: po.weaponType, name: def.name, damage: def.damage }
+    else if (po.weaponType !== undefined) console.warn(`arena: unknown player weaponType "${po.weaponType}" — keeping current weapon`)
     if (Number.isFinite(po.hp) && po.hp >= 1) {
       player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
       player.hp = Math.round(po.hp)
@@ -229,14 +230,14 @@ function goTitle() {
 }
 
 async function beginRun(depth = 1) {
-  setPhase(PHASE.PLAYING)
-  menu.hide()
   let arenaCfg = null
   if (depth === 0 && window.saveAPI?.loadArenaConfig) {
     const res = await window.saveAPI.loadArenaConfig()
     if (res?.error) console.warn(res.error)
     arenaCfg = res?.config ?? null
   }
+  setPhase(PHASE.PLAYING)
+  menu.hide()
   startNewRun(depth, arenaCfg)
 }
 
@@ -264,6 +265,7 @@ function gameLoop(timestamp) {
 }
 
 function update(delta) {
+  if (!state) return
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
 
