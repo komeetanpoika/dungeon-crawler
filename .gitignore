@@ -1,6 +1,7 @@
 node_modules/
 .superpowers/
 dist/
-.claude/
+.claude/*
+!.claude/skills/
 debug*.mjs
 arena-config.json
