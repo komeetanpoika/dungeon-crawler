@@ -401,11 +401,17 @@ function healConnectivity(map) {
   }
 }
 
-// Build the level-0 debug arena: a single walled room with the dragon boss
-// centered and 20 weapon/potion chests ringed around the interior perimeter.
-// Pure (map + spawn data only); returns the same shape as generateLevel so the
-// startNewRun → buildEntities wiring is unchanged. Deterministic: no randomness.
-export function buildBossTestArena(width, height) {
+// Build the level-0 test arena: a single walled room with spawns taken from a
+// config ({ size, enemies, chests, player } — every field optional). With
+// neither enemies nor chests configured it produces the original debug arena:
+// dragon boss centered, 20 weapon/potion chests ringed around the interior
+// perimeter. Pure and deterministic; `warn` is injected so tests stay quiet.
+export function buildArena(config = {}, warn = console.warn) {
+  const clampInt = (v, lo, hi, dflt) =>
+    Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : dflt
+  const width  = clampInt(config.size?.w, 8, 40, 26)
+  const height = clampInt(config.size?.h, 8, 30, 18)
+
   const map = createMap(width, height) // all TILE.WALL
   for (let y = 1; y < height - 1; y++)
     for (let x = 1; x < width - 1; x++)
@@ -413,9 +419,12 @@ export function buildBossTestArena(width, height) {
 
   const cx = Math.floor(width / 2)
   const cy = Math.floor(height / 2)
-  const playerSpawn = { x: cx, y: height - 2 } // bottom-center interior
 
-  const entitySpawns = [{ kind: 'dragon_boss', x: cx, y: cy, isBoss: true }]
+  // Player spawn: configured (clamped to the interior) or bottom-center.
+  const playerSpawn = {
+    x: clampInt(config.player?.x, 1, width - 2, cx),
+    y: clampInt(config.player?.y, 1, height - 2, height - 2),
+  }
 
   // Ordered ring of interior-perimeter floor cells (clockwise from top-left),
   // minus the player-spawn cell so a chest never lands on the player.
@@ -424,25 +433,95 @@ export function buildBossTestArena(width, height) {
   for (let y = 2; y <= height - 2; y++)  ring.push({ x: width - 2, y })   // right
   for (let x = width - 3; x >= 1; x--)   ring.push({ x, y: height - 2 })  // bottom
   for (let y = height - 3; y >= 2; y--)  ring.push({ x: 1, y })           // left
-  const cells = ring.filter(c => !(c.x === playerSpawn.x && c.y === playerSpawn.y))
+  const ringCells = ring.filter(c => !(c.x === playerSpawn.x && c.y === playerSpawn.y))
 
-  // 20 evenly-spaced chests; alternate weapon/potion, cycling weapon types.
-  const weaponKeys = Object.keys(WEAPON_TYPES)
-  const CHEST_COUNT = 20
-  for (let i = 0; i < CHEST_COUNT; i++) {
-    const cell = cells[Math.round(i * cells.length / CHEST_COUNT) % cells.length]
-    if (i % 2 === 0) {
-      entitySpawns.push({ kind: 'weapon', x: cell.x, y: cell.y, weaponType: weaponKeys[(i / 2) % weaponKeys.length] })
+  const entitySpawns = []
+
+  // Default content — exactly the original boss arena — when the config
+  // specifies neither enemies nor chests.
+  if (config.enemies === undefined && config.chests === undefined) {
+    entitySpawns.push({ kind: 'dragon_boss', x: cx, y: cy, isBoss: true })
+    const weaponKeys = Object.keys(WEAPON_TYPES)
+    const CHEST_COUNT = 20
+    for (let i = 0; i < CHEST_COUNT; i++) {
+      const cell = ringCells[Math.round(i * ringCells.length / CHEST_COUNT) % ringCells.length]
+      if (i % 2 === 0) {
+        entitySpawns.push({ kind: 'weapon', x: cell.x, y: cell.y, weaponType: weaponKeys[(i / 2) % weaponKeys.length] })
+      } else {
+        entitySpawns.push({ kind: 'potion', x: cell.x, y: cell.y })
+      }
+    }
+    return { map, entitySpawns, playerSpawn, rooms: [] }
+  }
+
+  const occupied = new Set([`${playerSpawn.x},${playerSpawn.y}`])
+  const inBounds = (x, y) => x >= 1 && x <= width - 2 && y >= 1 && y <= height - 2
+
+  // Deterministic auto-placement: the free interior cell closest to the
+  // center (Chebyshev), row-major tie-break.
+  function nextFreeCell() {
+    let best = null, bestD = Infinity
+    for (let y = 1; y <= height - 2; y++)
+      for (let x = 1; x <= width - 2; x++) {
+        if (occupied.has(`${x},${y}`)) continue
+        const d = Math.max(Math.abs(x - cx), Math.abs(y - cy))
+        if (d < bestD) { bestD = d; best = { x, y } }
+      }
+    return best
+  }
+
+  const ENEMY_KINDS = new Set(['guard', 'monster', 'dragon', 'crab', 'cyclops', 'wizard', 'dragon_boss'])
+  for (const e of (Array.isArray(config.enemies) ? config.enemies : [])) {
+    if (!e || !ENEMY_KINDS.has(e.kind)) { warn(`arena: unknown enemy kind "${e?.kind}" — skipped`); continue }
+    let pos
+    if (e.x !== undefined || e.y !== undefined) {
+      if (!Number.isFinite(e.x) || !Number.isFinite(e.y) || !inBounds(Math.round(e.x), Math.round(e.y))) {
+        warn(`arena: enemy ${e.kind} at (${e.x},${e.y}) out of bounds — skipped`); continue
+      }
+      pos = { x: Math.round(e.x), y: Math.round(e.y) }
     } else {
-      entitySpawns.push({ kind: 'potion', x: cell.x, y: cell.y })
+      pos = nextFreeCell()
+      if (!pos) { warn(`arena: no free cell left for ${e.kind} — skipped`); continue }
+    }
+    occupied.add(`${pos.x},${pos.y}`)
+    entitySpawns.push({
+      kind: e.kind, x: pos.x, y: pos.y,
+      ...(e.variant !== undefined && { variant: e.variant }),
+      ...(e.isBoss && { isBoss: true }),
+    })
+  }
+
+  // Chests: explicit positions honored; the rest spaced evenly on the ring.
+  const chests = Array.isArray(config.chests) ? config.chests : []
+  const autoChests = []
+  for (const c of chests) {
+    if (!c || (c.kind !== 'weapon' && c.kind !== 'potion')) { warn(`arena: unknown chest kind "${c?.kind}" — skipped`); continue }
+    if (c.x !== undefined || c.y !== undefined) {
+      if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !inBounds(Math.round(c.x), Math.round(c.y))) {
+        warn(`arena: chest at (${c.x},${c.y}) out of bounds — skipped`); continue
+      }
+      entitySpawns.push({ kind: c.kind, x: Math.round(c.x), y: Math.round(c.y),
+        ...(c.kind === 'weapon' && { weaponType: c.weaponType ?? 'dagger' }) })
+    } else {
+      autoChests.push(c)
     }
   }
+  autoChests.forEach((c, i) => {
+    const cell = ringCells[Math.round(i * ringCells.length / Math.max(autoChests.length, 1)) % ringCells.length]
+    entitySpawns.push({ kind: c.kind, x: cell.x, y: cell.y,
+      ...(c.kind === 'weapon' && { weaponType: c.weaponType ?? 'dagger' }) })
+  })
 
   return { map, entitySpawns, playerSpawn, rooms: [] }
 }
 
-export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {} } = {}) {
-  if (depth === 0) return buildBossTestArena(width, height)
+// Back-compat wrapper — the original debug-arena entry point.
+export function buildBossTestArena(width, height) {
+  return buildArena({ size: { w: width, h: height } })
+}
+
+export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null } = {}) {
+  if (depth === 0) return buildArena({ size: { w: width, h: height }, ...(arena ?? {}) })
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {
