@@ -3,3 +3,4 @@ node_modules/
 dist/
 .claude/
 debug*.mjs
+arena-config.json

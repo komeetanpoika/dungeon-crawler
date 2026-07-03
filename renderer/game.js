@@ -169,11 +169,11 @@ function buildEntities(spawns, map) {
   })
 }
 
-function startNewRun(depth = 1) {
+function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
   const { map, entitySpawns, playerSpawn } =
-    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
+    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -185,6 +185,15 @@ function startNewRun(depth = 1) {
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
   player.inventory.push(...getStartingItems(meta))
+  if (depth === 0 && arenaCfg?.player) {
+    const po = arenaCfg.player
+    const def = WEAPON_TYPES[po.weaponType]
+    if (def) player.weapon = { weaponType: po.weaponType, name: def.name, damage: def.damage }
+    if (Number.isFinite(po.hp) && po.hp >= 1) {
+      player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
+      player.hp = Math.round(po.hp)
+    }
+  }
   decorateMap(map, rulesets[theme.ruleset])
   state = {
     level: depth,
@@ -219,10 +228,16 @@ function goTitle() {
   })
 }
 
-function beginRun(depth = 1) {
+async function beginRun(depth = 1) {
   setPhase(PHASE.PLAYING)
   menu.hide()
-  startNewRun(depth)
+  let arenaCfg = null
+  if (depth === 0 && window.saveAPI?.loadArenaConfig) {
+    const res = await window.saveAPI.loadArenaConfig()
+    if (res?.error) console.warn(res.error)
+    arenaCfg = res?.config ?? null
+  }
+  startNewRun(depth, arenaCfg)
 }
 
 function resumeGame() {

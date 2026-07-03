@@ -12,6 +12,7 @@ const META_FILE = path.join(SAVE_DIR, 'meta.json')
 const RULESETS_FILE = path.join(__dirname, 'renderer', 'data', 'rulesets.json')
 const PAINTER_MAPS_FILE = path.join(__dirname, 'renderer', 'data', 'painter-maps.json')
 const STRUCTURES_FILE = path.join(__dirname, 'renderer', 'data', 'structures.json')
+const ARENA_CONFIG_FILE = path.join(__dirname, 'arena-config.json')
 const TILES_DIR = path.join(__dirname, 'renderer', 'assets', 'tiles')
 
 function createWindow() {
@@ -71,6 +72,12 @@ ipcMain.handle('load-structures', () => {
 })
 ipcMain.handle('save-structures', (_e, data) =>
   fs.writeFileSync(STRUCTURES_FILE, JSON.stringify(data, null, 2)))
+
+ipcMain.handle('load-arena-config', () => {
+  if (!fs.existsSync(ARENA_CONFIG_FILE)) return { config: null, error: null }
+  try { return { config: JSON.parse(fs.readFileSync(ARENA_CONFIG_FILE, 'utf8')), error: null } }
+  catch (e) { return { config: null, error: `arena-config.json: ${e.message}` } }
+})
 
 ipcMain.handle('editor-list-tiles', () =>
   fs.readdirSync(TILES_DIR).filter(f => f.endsWith('.png')).map(f => f.slice(0, -4)).sort())

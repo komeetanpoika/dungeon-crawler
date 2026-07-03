@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('saveAPI', {
   deleteRun: () => ipcRenderer.invoke('delete-run'),
   loadRulesets: () => ipcRenderer.invoke('load-rulesets'),
   loadStructures: () => ipcRenderer.invoke('load-structures'),
+  loadArenaConfig: () => ipcRenderer.invoke('load-arena-config'),
   openEditor: () => ipcRenderer.invoke('open-editor'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
 })
