@@ -5,7 +5,7 @@ import { dragonCapsules, pointInCapsule } from './capsules.js'
 
 const TILE = 32
 export const BOSS_HP = 18   // tuned for flat-1 melee: ~12 neck hits (1.5x) to kill
-const TURN_RATE   = 0.8            // rad/s the body rotates to track the player (~3.9s for a 180° turn)
+const TURN_RATE   = 0.25           // rad/s the body rotates to track the player (~12.5s for a 180° turn — slow enough that flanking into the tail arc is possible)
 const CONTACT_DMG = 2
 const CONTACT_CD  = 0.8
 const CONE_HALF   = 0.34

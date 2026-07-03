@@ -62,11 +62,15 @@ describe('updateDragonBoss facing', () => {
     e.attackCooldown = 999   // prevent attacks; stomp is now the boss's pursuit behaviour
     const player = mkPlayer(10*T, 16*T)           // due south — boss pursues and tracks
     const state = mkState(e, player)
+    const initialGap = Math.abs(Math.atan2(player.py - e.py, player.px - e.px) - e.facing)
     for (let i = 0; i < 120; i++) updateDragonBoss(e, state, 1/60)  // 2s
-    // Boss may have stomped toward the player; check it is facing wherever the player
-    // now is from the boss's final position (intent: facing converges on the player).
+    // The turn rate is deliberately slow (0.25 rad/s — flanking the rear arc must be
+    // possible), so 2s closes only ~0.5 rad. Assert steady progress toward the player,
+    // not convergence: the gap must have shrunk by roughly TURN_RATE * 2s.
     const expectedFacing = Math.atan2(player.py - e.py, player.px - e.px)
-    assert.ok(Math.abs(e.facing - expectedFacing) < 0.2, `facing should approach player direction, got ${e.facing} vs expected ${expectedFacing}`)
+    const finalGap = Math.abs(expectedFacing - e.facing)
+    assert.ok(finalGap < initialGap, `facing should move toward player direction, gap ${initialGap} -> ${finalGap}`)
+    assert.ok(initialGap - finalGap > 0.4, `expected ~0.5 rad of progress over 2s, got ${initialGap - finalGap}`)
   })
 })
 
