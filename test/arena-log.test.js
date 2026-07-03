@@ -44,6 +44,21 @@ describe('arena-log pure helpers', () => {
     assert.equal(summarizeConfig(null), '(default boss arena)')
     assert.equal(summarizeConfig('not json'), '(default boss arena)')
   })
+
+  it('closeEntry fills the placeholder lines even when the question text contains them', () => {
+    let text = HEADER + formatEntry({
+      id: 1, date: '2026-07-03',
+      question: 'Does the log survive literal **Score:** — in a question?',
+      criteria: 'the real **Notes:** — line below gets filled, not this text',
+      config: '-',
+    })
+    text = closeEntry(text, { score: 5, notes: 'it does' })
+    assert.ok(text.includes('Does the log survive literal **Score:** — in a question?'), 'question text untouched')
+    assert.ok(text.includes('the real **Notes:** — line below gets filled, not this text'), 'criteria text untouched')
+    assert.ok(text.includes('**Score:** 5/5'))
+    assert.ok(text.includes('**Notes:** it does'))
+    assert.equal(parseEntries(text)[0].status, 'CLOSED')
+  })
 })
 
 describe('arena-log CLI', () => {

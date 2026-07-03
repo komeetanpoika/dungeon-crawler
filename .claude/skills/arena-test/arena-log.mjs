@@ -36,8 +36,8 @@ export function closeEntry(text, { score, notes }) {
   const end = next ? next.index : text.length
   let block = text.slice(last.index, end)
   block = block.replace(' — OPEN', ' — CLOSED')
-  block = block.replace('**Score:** —', `**Score:** ${score}/5`)
-  block = block.replace('**Notes:** —', `**Notes:** ${notes}`)
+  block = block.replace(/^\*\*Score:\*\* —$/m, () => `**Score:** ${score}/5`)
+  block = block.replace(/^\*\*Notes:\*\* —$/m, () => `**Notes:** ${notes}`)
   return text.slice(0, last.index) + block + text.slice(end)
 }
 
