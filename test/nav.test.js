@@ -111,4 +111,19 @@ describe('findPath', () => {
     assert.ok(findPath(nav, 3, 5, 13, 5, 1), 'small entity fits through the door')
     assert.equal(findPath(nav, 3, 5, 13, 5, 2), null, 'wide entity cannot')
   })
+
+  it('substitutes an impassable start or target with the nearest passable tile', () => {
+    const map = columnMap()
+    const nav = buildNavGrid(map)
+    // target is the column tile (6,4): impassable, resolves to an adjacent floor tile
+    const path = findPath(nav, 2, 4, 6, 4, 1)
+    assert.ok(path && path.length, 'path found to substituted target')
+    const end = path[path.length - 1]
+    assert.ok(!(end.x === 6 && end.y === 4), 'does not end on the column')
+    assert.equal(Math.max(Math.abs(end.x - 6), Math.abs(end.y - 4)), 1, 'ends adjacent to it')
+    // start inside the border wall (0,0) resolves to a floor tile and still paths
+    const p2 = findPath(nav, 0, 0, 4, 2, 1)
+    assert.ok(p2 && p2.length, 'path found from substituted start')
+    assert.deepEqual(p2[p2.length - 1], { x: 4, y: 2 })
+  })
 })
