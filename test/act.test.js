@@ -143,7 +143,7 @@ describe('act strafe', () => {
     const d1 = Math.hypot(e.px - state.player.px, e.py - state.player.py)
     assert.ok(Math.abs(d1 - d0) < 24, 'roughly constant orbit distance')
     // fully blocked strafe flips direction immediately: 1-wide corridor,
-    // player due east, so strafe dir 1 pushes straight into the south wall
+    // strafe dir 1 pushes due south into the corridor wall; x-component is ~0
     const corridor = createMap(8, 8)
     for (let x = 1; x <= 5; x++) corridor[4][x].tile = TILE.FLOOR
     const wallHugger = enemyAt(1, 4) // closed end: can't move west into wall
@@ -153,6 +153,28 @@ describe('act strafe', () => {
     // high speed hits the wall immediately: fully blocked, triggers flip
     act(wallHugger, s2, 1 / 60, { mode: 'strafe', speed: 960, inward: 0 })
     assert.equal(wallHugger.ai.strafeDir, -1, 'strafeDir flipped at the wall')
+  })
+})
+
+describe('act approach with a wide body (clearance 2)', () => {
+  it('a wide enemy closes on the player in open space but never enters a 1-tile door', () => {
+    // two rooms joined by a 1-tile door at x=8 (as in the nav tests)
+    const map = createMap(16, 11)
+    for (let y = 1; y < 10; y++) for (let x = 1; x < 15; x++) map[y][x].tile = TILE.FLOOR
+    for (let y = 1; y < 10; y++) if (y !== 5) map[y][8].tile = TILE.WALL
+    const wide = { type: 'cyclops', maxHp: 30, hp: 30, x: 3, y: 5, px: 3 * 32 + 16, py: 5 * 32 + 16, ai: {}, aiHalf: 28 }
+    const state = makeState(map, { x: 12, y: 5 }, [wide])
+    for (let i = 0; i < 300; i++) act(wide, state, 1 / 60, { mode: 'approach', speed: 40 })
+    // it cannot fit through the door: it must still be in the left room
+    assert.ok(wide.x < 8, `stayed in the left room (x=${wide.x})`)
+    // in open space the same body closes distance
+    const open = createMap(16, 11)
+    for (let y = 1; y < 10; y++) for (let x = 1; x < 15; x++) open[y][x].tile = TILE.FLOOR
+    const wide2 = { type: 'cyclops', maxHp: 30, hp: 30, x: 3, y: 5, px: 3 * 32 + 16, py: 5 * 32 + 16, ai: {}, aiHalf: 28 }
+    const state2 = makeState(open, { x: 12, y: 5 }, [wide2])
+    const e0 = Math.hypot(wide2.px - state2.player.px, wide2.py - state2.player.py)
+    for (let i = 0; i < 120; i++) act(wide2, state2, 1 / 60, { mode: 'approach', speed: 40 })
+    assert.ok(Math.hypot(wide2.px - state2.player.px, wide2.py - state2.player.py) < e0 - 30, 'closed distance in the open room')
   })
 })
 

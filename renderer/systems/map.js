@@ -456,6 +456,11 @@ export function buildArena(config = {}, warn = console.warn) {
   // Default content — exactly the original boss arena — when the config
   // specifies neither enemies nor chests.
   if (config.enemies === undefined && config.chests === undefined) {
+    if (columnCells.has(`${cx},${cy}`)) {
+      map[cy][cx].tile = TILE.FLOOR
+      columnCells.delete(`${cx},${cy}`)
+      warn(`arena: column at (${cx},${cy}) removed — default boss spawn takes precedence`)
+    }
     entitySpawns.push({ kind: 'dragon_boss', x: cx, y: cy, isBoss: true })
     const weaponKeys = Object.keys(WEAPON_TYPES)
     const CHEST_COUNT = 20

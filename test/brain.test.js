@@ -81,6 +81,30 @@ describe('updateBrain perception', () => {
   })
 })
 
+describe('updateBrain hunt with clearance-2 substituted targets', () => {
+  it('a wide enemy hunting a wall-adjacent lastSeen arrives and gives up instead of freezing', () => {
+    const map = spurMap()
+    const e = { type: 'cyclops', maxHp: 30, hp: 30, x: 3, y: 3, px: 3 * S + S / 2, py: 3 * S + S / 2 }
+    // Player at (11,7): raw distance from (3,3) is hypot(8,4)=8.9 tiles=286px,
+    // inside the cyclops's 320px sightRange — but LOS from (3,3) to (11,7)
+    // passes through (7,5), which sits on the wall spur (x=7, y=1..5), so
+    // hasLineOfSight blocks it and `seen` is false. That keeps updateBrain
+    // from stomping our forced 'hunt' mode back to 'chase' below.
+    const state = makeState(map, { x: 11, y: 7 }, [e])   // player far away, no LOS needed
+    updateBrain(e, state, 1 / 60)                        // init ai (patrol)
+    // force the hunt state the deadlock needs: lastSeen on a wall-adjacent tile (clearance < 2)
+    e.ai.mode = 'hunt'
+    e.ai.lastSeen = { x: 1, y: 1 }                       // corner floor tile, clearance 1
+    // simulate act's followPath outcome: path computed for this target and fully consumed
+    e.ai.path = []
+    e.ai.pathTarget = { x: 1, y: 1 }
+    const intent = updateBrain(e, state, 1 / 60)
+    assert.equal(intent.mode, 'hold')                    // looking around at the trail's end
+    for (let t = 0; t < HUNT_PAUSE + 0.1; t += 1 / 60) updateBrain(e, state, 1 / 60)
+    assert.equal(e.ai.mode, 'patrol')                    // gave up instead of freezing in hunt
+  })
+})
+
 describe('generatePatrol', () => {
   it('picks 2-3 reachable, spread-out points near the spawn', () => {
     const map = spurMap()

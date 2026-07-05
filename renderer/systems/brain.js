@@ -68,6 +68,7 @@ export function updateBrain(e, state, delta) {
   }
 
   // hurt + threat nearby -> run; config decides who routs (taxon sets defaults)
+  // no LOS gate: a badly hurt enemy panics when the threat is merely close (fear radius), even unseen
   if (cfg.fleeHp > 0 && e.maxHp && e.hp / e.maxHp <= cfg.fleeHp && dist < cfg.sightRange * 1.25) {
     return { mode: 'flee', speed: cfg.speed }
   }
@@ -80,7 +81,13 @@ export function updateBrain(e, state, delta) {
 
   if (ai.mode === 'hunt' && ai.lastSeen) {
     const t = ai.lastSeen
-    const arrived = Math.hypot(t.x * S + S / 2 - e.px, t.y * S + S / 2 - e.py) < S
+    // A wide enemy hunting a wall-adjacent lastSeen gets a nearestPassable-
+    // substituted path that ends >= 1 tile short — an exhausted path for this
+    // exact target counts as arrival, or the hunt would never resolve.
+    const pathExhausted = Array.isArray(ai.path) && ai.path.length === 0 &&
+                          ai.pathTarget && ai.pathTarget.x === t.x && ai.pathTarget.y === t.y
+    const arrived = pathExhausted ||
+                    Math.hypot(t.x * S + S / 2 - e.px, t.y * S + S / 2 - e.py) < S
     // act() left path === null for this exact target -> it is unreachable
     const unpathable = ai.path === null && ai.pathTarget &&
                        ai.pathTarget.x === t.x && ai.pathTarget.y === t.y

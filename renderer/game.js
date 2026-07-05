@@ -143,9 +143,9 @@ function buildEntities(spawns, map) {
         if (s.variant === 'medium') m.shootCooldown = Math.random() * SPIDER_SHOOT_COOLDOWN
         return [m]
       }
-      case 'dragon':  return [{ ...makeDragon(s.x, s.y, s.roomId), px: cx, py: cy, facing: 'east',
+      case 'dragon':  return [hpOverride({ ...makeDragon(s.x, s.y, s.roomId), px: cx, py: cy, facing: 'east',
   breathState: 'idle', breathTimer: DRAGON_BREATH_COOLDOWN, breathAngle: 0,
-  breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...aiInit(), ...(s.isBoss && { isBoss: true }) }]
+  breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...aiInit(), ...(s.isBoss && { isBoss: true }) })]
       case 'trap':    return [makeTrap(s.x, s.y)]
       case 'puzzle':  return [makePuzzle(s.x, s.y)]
       case 'weapon': {
@@ -160,7 +160,7 @@ function buildEntities(spawns, map) {
       case 'cyclops': return [hpOverride({ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'wizard':  return [hpOverride({ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'crab':    return [hpOverride({ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
-      case 'dragon_boss': return [{ ...makeDragonBoss(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
+      case 'dragon_boss': return [hpOverride({ ...makeDragonBoss(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'prop':           return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
       case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]

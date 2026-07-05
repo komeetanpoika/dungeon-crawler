@@ -119,11 +119,6 @@ describe('buildArena — columns', () => {
     assert.equal(warns.length, 4) // out-of-bounds column, player-spawn column, null entry, enemy overlap
   })
 
-  it('passes an enemy hp override through to the spawn', () => {
-    const { entitySpawns } = buildArena({ enemies: [{ kind: 'guard', x: 5, y: 5, hp: 1 }] }, () => {})
-    assert.equal(entitySpawns[0].hp, 1)
-  })
-
   it('keeps auto-placed ring chests off column cells', () => {
     const { map, entitySpawns } = buildArena({
       size: { w: 10, h: 8 },
@@ -133,6 +128,27 @@ describe('buildArena — columns', () => {
     for (const s of entitySpawns) {
       assert.notEqual(map[s.y][s.x].tile, TILE.COLUMN, `spawn ${s.kind} at (${s.x},${s.y}) not on a column`)
     }
+  })
+
+  it('default-content arena (no enemies/chests) clears a column at the boss centre and warns', () => {
+    const warns = []
+    const { w: width, h: height } = { w: 26, h: 18 }
+    const cx = Math.floor(width / 2), cy = Math.floor(height / 2)
+    const { map, entitySpawns } = buildArena({
+      size: { w: width, h: height },
+      columns: [{ x: cx, y: cy }],
+    }, w => warns.push(w))
+    assert.equal(map[cy][cx].tile, TILE.FLOOR, 'column at the boss centre replaced with floor')
+    assert.ok(warns.some(w => w.includes('default boss spawn takes precedence')), 'warned about the removal')
+    const boss = entitySpawns.find(s => s.kind === 'dragon_boss')
+    assert.deepEqual([boss.x, boss.y], [cx, cy], 'boss spawn present at the centre')
+  })
+})
+
+describe('buildArena — enemy hp override', () => {
+  it('passes an enemy hp override through to the spawn', () => {
+    const { entitySpawns } = buildArena({ enemies: [{ kind: 'guard', x: 5, y: 5, hp: 1 }] }, () => {})
+    assert.equal(entitySpawns[0].hp, 1)
   })
 })
 

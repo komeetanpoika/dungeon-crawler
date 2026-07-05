@@ -153,6 +153,7 @@ export function act(e, state, delta, intent) {
       return moved
     }
     case 'charge': {
+      // endpoint check is sufficient: the main loop clamps delta to 100ms, so max step = speed*0.1 (30px at cyclops charge speed) < one 32px tile — no tunneling
       const mx = Math.cos(intent.angle) * speed * delta
       const my = Math.sin(intent.angle) * speed * delta
       if (!canMoveTo(map, e.px + mx, e.py + my, e.aiHalf ?? 4)) return false

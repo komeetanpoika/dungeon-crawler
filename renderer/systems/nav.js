@@ -152,7 +152,7 @@ export function findPath(nav, sx, sy, tx, ty, clearance = 1) {
       if (!passable(nav, nx, ny, clearance) || !diagOk(nav, x, y, dx, dy, clearance)) continue
       const ni = ny * w + nx
       const ng = g[i] + (dx && dy ? SQRT2 : 1)
-      if (ng < g[ni] - 1e-9) { g[ni] = ng; came[ni] = i; heap.push(ng + hcost(nx, ny), ni) }
+      if (ng < g[ni] - 1e-9) { g[ni] = ng; came[ni] = i; heap.push(ng + hcost(nx, ny), ni) } // epsilon guards float-accumulation ties so relaxation is strict
     }
   }
   if (came[goal] === -1) return null

@@ -12,6 +12,7 @@ const BASE = {
   crab:        { taxon: 'beast',    speed: 65, wanderSpeed: 25, half: 4,  sightRange: 240, stopRange: 0, combat: 'strafe', inward: 0.3 },
   wizard:      { taxon: 'humanoid', speed: 70, wanderSpeed: 30, half: 4,  sightRange: 300, stopRange: 0, kiteBand: [120, 240], fleeHp: 0 },
   cyclops:     { taxon: 'humanoid', speed: 40, wanderSpeed: 20, half: 28, sightRange: 320, stopRange: 40, fleeHp: 0 },
+  // dragon_boss row is documentation only — updateDragonBoss never consults getAIConfig (its stomp navigation is bespoke)
   dragon_boss: { taxon: 'beast',    speed: 0,  wanderSpeed: 0,  half: 28, sightRange: 448, stopRange: 0 },
 }
 
