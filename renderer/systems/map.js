@@ -428,14 +428,28 @@ export function buildArena(config = {}, warn = console.warn) {
     y: clampInt(config.player?.y, 1, height - 2, height - 2),
   }
 
+  // Interior obstacles: config.columns = [{x, y}, ...] become COLUMN tiles
+  // (LOS + movement blockers for pathfinding tests). Clamped to the interior,
+  // never on the player spawn; bad entries warn and are skipped.
+  const columnCells = new Set()
+  for (const c of (Array.isArray(config.columns) ? config.columns : [])) {
+    if (!c || !Number.isFinite(c.x) || !Number.isFinite(c.y)) { warn(`arena: column at (${c?.x},${c?.y}) invalid — skipped`); continue }
+    const x = Math.round(c.x), y = Math.round(c.y)
+    if (x < 1 || x > width - 2 || y < 1 || y > height - 2) { warn(`arena: column at (${x},${y}) out of bounds — skipped`); continue }
+    if (x === playerSpawn.x && y === playerSpawn.y) { warn(`arena: column at (${x},${y}) overlaps player spawn — skipped`); continue }
+    map[y][x].tile = TILE.COLUMN
+    columnCells.add(`${x},${y}`)
+  }
+
   // Ordered ring of interior-perimeter floor cells (clockwise from top-left),
-  // minus the player-spawn cell so a chest never lands on the player.
+  // minus the player-spawn cell and any column so a chest never lands on either.
   const ring = []
   for (let x = 1; x <= width - 2; x++)   ring.push({ x, y: 1 })           // top
   for (let y = 2; y <= height - 2; y++)  ring.push({ x: width - 2, y })   // right
   for (let x = width - 3; x >= 1; x--)   ring.push({ x, y: height - 2 })  // bottom
   for (let y = height - 3; y >= 2; y--)  ring.push({ x: 1, y })           // left
-  const ringCells = ring.filter(c => !(c.x === playerSpawn.x && c.y === playerSpawn.y))
+  const ringCells = ring.filter(c =>
+    !(c.x === playerSpawn.x && c.y === playerSpawn.y) && !columnCells.has(`${c.x},${c.y}`))
 
   const entitySpawns = []
 
@@ -456,7 +470,7 @@ export function buildArena(config = {}, warn = console.warn) {
     return { map, entitySpawns, playerSpawn, rooms: [] }
   }
 
-  const occupied = new Set([`${playerSpawn.x},${playerSpawn.y}`])
+  const occupied = new Set([`${playerSpawn.x},${playerSpawn.y}`, ...columnCells])
   const inBounds = (x, y) => x >= 1 && x <= width - 2 && y >= 1 && y <= height - 2
 
   // Deterministic auto-placement: the free interior cell closest to the

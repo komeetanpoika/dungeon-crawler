@@ -26,6 +26,7 @@ mandatory — the journal is how arena testing improves itself across sessions.
        { "kind": "monster", "variant": "medium" }
      ],
      "chests": [ { "kind": "weapon", "weaponType": "axe" }, { "kind": "potion" } ],
+     "columns": [ { "x": 10, "y": 8 }, { "x": 10, "y": 9 } ],
      "player": { "x": 13, "y": 16, "weaponType": "sword", "hp": 20 }
    }
    ```
@@ -34,6 +35,7 @@ mandatory — the journal is how arena testing improves itself across sessions.
    - Enemy kinds: `guard`, `monster` (variants `weak`/`medium`/`strong`/`boss`), `dragon`, `crab`, `cyclops`, `wizard`, `dragon_boss`. Omit `x`/`y` to auto-place near the center.
    - Chest kinds: `weapon` (`weaponType`: `dagger`/`sword`/`longsword`/`axe`), `potion`. Omit positions to auto-place on the perimeter.
    - `player`: spawn position plus optional `weaponType` and `hp` overrides.
+   - `columns`: interior COLUMN tiles (block movement AND line of sight) — build walls/obstacles for pathfinding and LOS-break tests; never placed on the player spawn; spawns never land on them.
    - Size clamps to 8×8 … 40×30. Bad entries are skipped with a console warning, never a crash.
    - The file is re-read every time the level0 cheat fires — edit and re-enter the arena, no relaunch needed.
 

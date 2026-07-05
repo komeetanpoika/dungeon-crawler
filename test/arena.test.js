@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildArena, buildBossTestArena, generateLevel } from '../renderer/systems/map.js'
+import { TILE } from '../renderer/systems/entities.js'
 
 describe('buildArena — default content', () => {
   it('reproduces the original boss arena when no enemies/chests are configured', () => {
@@ -100,6 +101,33 @@ describe('buildArena — configured content', () => {
     assert.equal(new Set(cells).size, 5, 'all five chests on distinct cells')
     assert.ok(!cells.includes('1,1'), 'none on the guard')
     assert.equal(warnings.length, 0)
+  })
+})
+
+describe('buildArena — columns', () => {
+  it('places COLUMN tiles, keeps spawns off them, and warn-skips bad entries', () => {
+    const warns = []
+    const { map, entitySpawns } = buildArena({
+      size: { w: 12, h: 10 },
+      columns: [{ x: 5, y: 4 }, { x: 0, y: 4 }, { x: 6, y: 8 }, null],
+      enemies: [{ kind: 'monster', variant: 'weak', x: 5, y: 4 }], // on the column -> skipped
+      player: { x: 6, y: 8 },                                     // column there -> that column skipped
+    }, w => warns.push(w))
+    assert.equal(map[4][5].tile, TILE.COLUMN)
+    assert.notEqual(map[8][6].tile, TILE.COLUMN, 'player spawn cell protected')
+    assert.equal(entitySpawns.length, 0, 'enemy overlapping a column is skipped')
+    assert.equal(warns.length, 4) // out-of-bounds column, player-spawn column, null entry, enemy overlap
+  })
+
+  it('keeps auto-placed ring chests off column cells', () => {
+    const { map, entitySpawns } = buildArena({
+      size: { w: 10, h: 8 },
+      columns: [{ x: 1, y: 1 }, { x: 2, y: 1 }],
+      chests: [{ kind: 'potion' }, { kind: 'potion' }, { kind: 'potion' }],
+    }, () => {})
+    for (const s of entitySpawns) {
+      assert.notEqual(map[s.y][s.x].tile, TILE.COLUMN, `spawn ${s.kind} at (${s.x},${s.y}) not on a column`)
+    }
   })
 })
 
