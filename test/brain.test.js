@@ -2,7 +2,9 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { updateBrain, HUNT_PAUSE } from '../renderer/systems/brain.js'
+import { updateBrain, HUNT_PAUSE, generatePatrol, ensureAI } from '../renderer/systems/brain.js'
+import { buildNavGrid, findPath } from '../renderer/systems/nav.js'
+import { getAIConfig } from '../renderer/data/enemy-ai.js'
 
 const S = 32
 // 14x9: floor interior with a wall spur at x=7, y=1..5 (LOS blocker to hide behind)
@@ -76,5 +78,38 @@ describe('updateBrain perception', () => {
     const crabIntent = updateBrain(crab, state, 1 / 60)
     assert.equal(crabIntent.mode, 'strafe')
     assert.equal(crabIntent.inward, 0.3)
+  })
+})
+
+describe('generatePatrol', () => {
+  it('picks 2-3 reachable, spread-out points near the spawn', () => {
+    const map = spurMap()
+    const nav = buildNavGrid(map)
+    const pts = generatePatrol(nav, map, 3, 3, { half: 4 })
+    assert.ok(pts.length >= 2 && pts.length <= 3, `got ${pts.length} points`)
+    for (const p of pts) {
+      const d = Math.hypot(p.x - 3, p.y - 3)
+      assert.ok(d >= 2 && d <= 8, `point (${p.x},${p.y}) at distance ${d}`)
+      assert.ok(findPath(nav, 3, 3, p.x, p.y, 1) !== null, 'reachable')
+    }
+    for (let i = 0; i < pts.length; i++)
+      for (let j = i + 1; j < pts.length; j++)
+        assert.ok(Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) >= 3, 'spread out')
+  })
+
+  it('prefers feature tiles like a shrine', () => {
+    const map = spurMap()
+    map[6][4].tile = TILE.SHRINE
+    const nav = buildNavGrid(map)
+    const pts = generatePatrol(nav, map, 3, 3, { half: 4 })
+    assert.ok(pts.some(p => p.x === 4 && p.y === 6), 'shrine tile chosen as a patrol point')
+  })
+
+  it('ensureAI wires patrol points into e.ai', () => {
+    const map = spurMap()
+    const e = guardAt(3, 3)
+    const state = makeState(map, { x: 11, y: 7 }, [e])
+    ensureAI(e, state, getAIConfig(e))
+    assert.ok(e.ai.patrolPoints.length >= 2)
   })
 })

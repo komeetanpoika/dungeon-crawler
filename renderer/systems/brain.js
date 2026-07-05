@@ -10,13 +10,43 @@ export const HUNT_PAUSE = 1.5        // s spent looking around where the trail e
 export const UNREACHABLE_GIVEUP = 3  // s steering at an unpathable target before quitting
 const DWELL = 1.2                    // s paused at each patrol point
 
+const PATROL_RADIUS = 8
+const FEATURE_TILES = new Set([TILE.DOOR, TILE.TREASURE, TILE.SHRINE, TILE.STAIRS_DOWN, TILE.STAIRS_UP])
+
+// Up to 3 patrol points near (x,y): feature tiles first, then the farthest
+// open tiles; every point A*-reachable and >= 3 tiles from the others.
+// Deterministic on purpose (stable tests, reproducible behavior).
+export function generatePatrol(nav, map, x, y, cfg = {}) {
+  const clearance = clearanceFor(cfg.half ?? 4)
+  const cands = []
+  for (let dy = -PATROL_RADIUS; dy <= PATROL_RADIUS; dy++) {
+    for (let dx = -PATROL_RADIUS; dx <= PATROL_RADIUS; dx++) {
+      const tx = x + dx, ty = y + dy
+      const t = map[ty]?.[tx]
+      if (!t || !passable(nav, tx, ty, clearance)) continue
+      const d = Math.hypot(dx, dy)
+      if (d < 2 || d > PATROL_RADIUS) continue
+      cands.push({ x: tx, y: ty, feature: FEATURE_TILES.has(t.tile) ? 1 : 0, d })
+    }
+  }
+  cands.sort((a, b) => (b.feature - a.feature) || (b.d - a.d))
+  const points = []
+  for (const c of cands) {
+    if (points.length >= 3) break
+    if (points.some(p => Math.hypot(p.x - c.x, p.y - c.y) < 3)) continue
+    if (!findPath(nav, x, y, c.x, c.y, clearance)) continue
+    points.push({ x: c.x, y: c.y })
+  }
+  return points
+}
+
 export function ensureAI(e, state, cfg) {
   if (e.ai?.patrolPoints) return e.ai
   e.aiHalf = cfg.half
   e.ai = {
     ...(e.ai ?? {}),
     mode: 'patrol', lastSeen: null, huntWait: 0, dwell: 0, giveUp: 0, patrolIdx: 0,
-    patrolPoints: [],   // Task 8 fills this via generatePatrol
+    patrolPoints: generatePatrol(buildNavGrid(state.map), state.map, e.x, e.y, cfg),
     path: undefined, pathTarget: null, repath: 0,
   }
   return e.ai
