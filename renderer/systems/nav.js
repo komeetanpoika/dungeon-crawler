@@ -78,3 +78,85 @@ export function nearestPassable(nav, x, y, clearance = 1, maxR = 6) {
   }
   return null
 }
+
+const SQRT2 = Math.SQRT2
+
+// Small binary min-heap keyed on cost; shared by Dijkstra and A*.
+class MinHeap {
+  constructor() { this.k = []; this.v = [] }
+  get size() { return this.k.length }
+  push(key, val) {
+    const k = this.k, v = this.v
+    let i = k.length; k.push(key); v.push(val)
+    while (i > 0) {
+      const p = (i - 1) >> 1
+      if (k[p] <= k[i]) break
+      ;[k[p], k[i]] = [k[i], k[p]]; ;[v[p], v[i]] = [v[i], v[p]]; i = p
+    }
+  }
+  pop() {
+    const k = this.k, v = this.v
+    const top = v[0], last = k.length - 1
+    k[0] = k[last]; v[0] = v[last]; k.pop(); v.pop()
+    let i = 0
+    for (;;) {
+      const l = 2 * i + 1, r = l + 1
+      let m = i
+      if (l < k.length && k[l] < k[m]) m = l
+      if (r < k.length && k[r] < k[m]) m = r
+      if (m === i) break
+      ;[k[m], k[i]] = [k[i], k[m]]; ;[v[m], v[i]] = [v[i], v[m]]; i = m
+    }
+    return top
+  }
+}
+
+// A diagonal move is legal only when both orthogonal neighbours are passable
+// (no corner cutting — a body would clip the corner tile).
+function diagOk(nav, x, y, dx, dy, clearance) {
+  return !(dx && dy) || (passable(nav, x + dx, y, clearance) && passable(nav, x, y + dy, clearance))
+}
+
+// A* over tiles passable at `clearance`, octile heuristic. Returns waypoints
+// from the first step to the target (start excluded), [] if already there,
+// or null when unreachable.
+export function findPath(nav, sx, sy, tx, ty, clearance = 1) {
+  const { w, h } = nav
+  if (!passable(nav, sx, sy, clearance)) {
+    const alt = nearestPassable(nav, sx, sy, clearance)
+    if (!alt) return null
+    sx = alt.x; sy = alt.y
+  }
+  if (!passable(nav, tx, ty, clearance)) {
+    const alt = nearestPassable(nav, tx, ty, clearance)
+    if (!alt) return null
+    tx = alt.x; ty = alt.y
+  }
+  if (sx === tx && sy === ty) return []
+  const g = new Float64Array(w * h).fill(Infinity)
+  const came = new Int32Array(w * h).fill(-1)
+  const hcost = (x, y) => {
+    const ax = Math.abs(x - tx), ay = Math.abs(y - ty)
+    return Math.max(ax, ay) + (SQRT2 - 1) * Math.min(ax, ay)
+  }
+  const heap = new MinHeap()
+  const start = sy * w + sx, goal = ty * w + tx
+  g[start] = 0
+  heap.push(hcost(sx, sy), start)
+  while (heap.size) {
+    const i = heap.pop()
+    if (i === goal) break
+    const x = i % w, y = (i / w) | 0
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy
+      if (!passable(nav, nx, ny, clearance) || !diagOk(nav, x, y, dx, dy, clearance)) continue
+      const ni = ny * w + nx
+      const ng = g[i] + (dx && dy ? SQRT2 : 1)
+      if (ng < g[ni] - 1e-9) { g[ni] = ng; came[ni] = i; heap.push(ng + hcost(nx, ny), ni) }
+    }
+  }
+  if (came[goal] === -1) return null
+  const path = []
+  for (let i = goal; i !== start; i = came[i]) path.push({ x: i % w, y: (i / w) | 0 })
+  return path.reverse()
+}
