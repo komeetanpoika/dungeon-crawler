@@ -132,6 +132,34 @@ export function act(e, state, delta, intent) {
       }
       return followField(e, state, delta, speed, 'down')
     }
+    case 'flee':
+      return followField(e, state, delta, speed, 'up')   // false = cornered: stand and fight
+    case 'kite': {
+      if (dist < intent.band[0]) return followField(e, state, delta, speed, 'up')
+      if (dist > intent.band[1]) return act(e, state, delta, { ...intent, mode: 'approach', target: undefined })
+      return act(e, state, delta, { mode: 'strafe', speed: speed * 0.7, inward: 0 })
+    }
+    case 'strafe': {
+      if (e.ai.strafeDir === undefined) e.ai.strafeDir = Math.random() < 0.5 ? 1 : -1
+      e.ai.strafeTimer = (e.ai.strafeTimer ?? (2 + Math.random())) - delta
+      if (e.ai.strafeTimer <= 0) { e.ai.strafeDir = -e.ai.strafeDir; e.ai.strafeTimer = 2 + Math.random() }
+      const toAngle = Math.atan2(player.py - e.py, player.px - e.px)
+      const inward = intent.inward ?? 0
+      const perp = toAngle + (Math.PI / 2) * e.ai.strafeDir
+      const dx = Math.cos(toAngle) * inward + Math.cos(perp) * (1 - inward)
+      const dy = Math.sin(toAngle) * inward + Math.sin(perp) * (1 - inward)
+      const moved = moveDir(e, state, delta, dx, dy, speed)
+      if (!moved) { e.ai.strafeDir = -e.ai.strafeDir; e.ai.strafeTimer = 2 + Math.random() }
+      return moved
+    }
+    case 'charge': {
+      const mx = Math.cos(intent.angle) * speed * delta
+      const my = Math.sin(intent.angle) * speed * delta
+      if (!canMoveTo(map, e.px + mx, e.py + my, e.aiHalf ?? 4)) return false
+      e.px += mx; e.py += my
+      e.x = Math.floor(e.px / S); e.y = Math.floor(e.py / S)
+      return true
+    }
   }
   return false
 }

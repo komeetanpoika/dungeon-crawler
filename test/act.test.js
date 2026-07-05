@@ -100,3 +100,74 @@ describe('getPlayerField cache', () => {
     assert.notEqual(getPlayerField(state, 1), f1)
   })
 })
+
+describe('act flee and kite', () => {
+  it('flee moves away from the player; cornered flee returns false', () => {
+    // dead-end corridor: floor at y=4, x=1..5
+    const map = createMap(8, 8)
+    for (let x = 1; x <= 5; x++) map[4][x].tile = TILE.FLOOR
+    const e = enemyAt(3, 4)
+    const state = makeState(map, { x: 5, y: 4 }, [e])
+    const d0 = Math.hypot(e.px - state.player.px, e.py - state.player.py)
+    for (let i = 0; i < 60; i++) act(e, state, 1 / 60, { mode: 'flee', speed: 80 })
+    assert.ok(Math.hypot(e.px - state.player.px, e.py - state.player.py) > d0, 'moved away')
+    // pin it at the closed end: no uphill neighbour left
+    const cornered = enemyAt(1, 4)
+    const state2 = makeState(map, { x: 5, y: 4 }, [cornered])
+    assert.equal(act(cornered, state2, 1 / 60, { mode: 'flee', speed: 80 }), false)
+  })
+
+  it('kite backs off when too close and closes when too far', () => {
+    const map = columnMap()
+    const close = enemyAt(8, 2) // player right next door
+    const state = makeState(map, { x: 9, y: 2 }, [close])
+    for (let i = 0; i < 60; i++) act(close, state, 1 / 60, { mode: 'kite', band: [70, 120], speed: 80 })
+    assert.ok(Math.hypot(close.px - state.player.px, close.py - state.player.py) > 40, 'backed away')
+
+    const far = enemyAt(2, 6)
+    const state2 = makeState(map, { x: 9, y: 2 }, [far])
+    const d0 = Math.hypot(far.px - state2.player.px, far.py - state2.player.py)
+    for (let i = 0; i < 60; i++) act(far, state2, 1 / 60, { mode: 'kite', band: [70, 120], speed: 80 })
+    assert.ok(Math.hypot(far.px - state2.player.px, far.py - state2.player.py) < d0, 'closed in')
+  })
+})
+
+describe('act strafe', () => {
+  it('orbits without net approach when inward is 0, and flips when blocked', () => {
+    const map = columnMap()
+    const e = enemyAt(5, 2)
+    e.ai.strafeDir = 1
+    const state = makeState(map, { x: 5, y: 5 }, [e])
+    const d0 = Math.hypot(e.px - state.player.px, e.py - state.player.py)
+    for (let i = 0; i < 30; i++) act(e, state, 1 / 60, { mode: 'strafe', speed: 60, inward: 0 })
+    const d1 = Math.hypot(e.px - state.player.px, e.py - state.player.py)
+    assert.ok(Math.abs(d1 - d0) < 24, 'roughly constant orbit distance')
+    // fully blocked strafe flips direction immediately: 1-wide corridor,
+    // player due east, so strafe dir 1 pushes straight into the south wall
+    const corridor = createMap(8, 8)
+    for (let x = 1; x <= 5; x++) corridor[4][x].tile = TILE.FLOOR
+    const wallHugger = enemyAt(1, 4) // closed end: can't move west into wall
+    wallHugger.ai.strafeDir = 1
+    wallHugger.ai.strafeTimer = 999 // pin the periodic flip; only blocking may flip
+    const s2 = makeState(corridor, { x: 5, y: 4 }, [wallHugger])
+    // high speed hits the wall immediately: fully blocked, triggers flip
+    act(wallHugger, s2, 1 / 60, { mode: 'strafe', speed: 960, inward: 0 })
+    assert.equal(wallHugger.ai.strafeDir, -1, 'strafeDir flipped at the wall')
+  })
+})
+
+describe('act charge', () => {
+  it('dashes in a straight line and reports a wall hit as false', () => {
+    const map = columnMap()
+    const e = enemyAt(2, 2)
+    const state = makeState(map, { x: 9, y: 7 }, [e])
+    assert.equal(act(e, state, 1 / 60, { mode: 'charge', angle: 0, speed: 300 }), true)
+    assert.ok(e.px > 2 * 32 + 16)
+    // charge due east until the wall stops it
+    let blocked = false
+    for (let i = 0; i < 240 && !blocked; i++) {
+      blocked = !act(e, state, 1 / 60, { mode: 'charge', angle: 0, speed: 300 })
+    }
+    assert.ok(blocked, 'charge reported the wall')
+  })
+})
