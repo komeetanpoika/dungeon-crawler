@@ -160,3 +160,47 @@ export function findPath(nav, sx, sy, tx, ty, clearance = 1) {
   for (let i = goal; i !== start; i = came[i]) path.push({ x: i % w, y: (i / w) | 0 })
   return path.reverse()
 }
+
+// Dijkstra distances from (tx,ty) over tiles passable at `clearance`.
+// Chasers walk downhill on this field; fleeing enemies walk uphill.
+export function buildFlowField(nav, tx, ty, clearance = 1) {
+  const { w, h } = nav
+  const dist = new Float64Array(w * h).fill(Infinity)
+  if (!passable(nav, tx, ty, clearance)) {
+    const alt = nearestPassable(nav, tx, ty, clearance)
+    if (!alt) return { dist, w, h, x: tx, y: ty, clearance }
+    tx = alt.x; ty = alt.y
+  }
+  const heap = new MinHeap()
+  dist[ty * w + tx] = 0
+  heap.push(0, ty * w + tx)
+  while (heap.size) {
+    const i = heap.pop()
+    const x = i % w, y = (i / w) | 0
+    const d = dist[i]
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy
+      if (!passable(nav, nx, ny, clearance) || !diagOk(nav, x, y, dx, dy, clearance)) continue
+      const nd = d + (dx && dy ? SQRT2 : 1)
+      const ni = ny * w + nx
+      if (nd < dist[ni] - 1e-9) { dist[ni] = nd; heap.push(nd, ni) }
+    }
+  }
+  return { dist, w, h, x: tx, y: ty, clearance }
+}
+
+// Best neighbouring tile strictly downhill/uphill on the field, or null when
+// no neighbour improves (down: standing on the target; up: cornered).
+export function fieldStep(field, nav, x, y, clearance = 1, dir = 'down') {
+  if (x < 0 || y < 0 || x >= nav.w || y >= nav.h) return null
+  const cur = field.dist[y * nav.w + x]
+  let best = null, bestD = cur
+  for (const [dx, dy] of DIRS) {
+    const nx = x + dx, ny = y + dy
+    if (!passable(nav, nx, ny, clearance) || !diagOk(nav, x, y, dx, dy, clearance)) continue
+    const d = field.dist[ny * nav.w + nx]
+    if (!isFinite(d)) continue
+    if (dir === 'down' ? d < bestD - 1e-9 : d > bestD + 1e-9) { bestD = d; best = { x: nx, y: ny } }
+  }
+  return best
+}

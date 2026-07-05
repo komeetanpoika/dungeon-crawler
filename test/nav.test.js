@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { buildNavGrid, passable, clearanceFor, nearestPassable, canMoveTo, findPath } from '../renderer/systems/nav.js'
+import { buildNavGrid, passable, clearanceFor, nearestPassable, canMoveTo, findPath, buildFlowField, fieldStep } from '../renderer/systems/nav.js'
 
 // 12x9 map: solid wall border, floor interior, one column at (x=6, y=4)
 function columnMap() {
@@ -125,5 +125,53 @@ describe('findPath', () => {
     const p2 = findPath(nav, 0, 0, 4, 2, 1)
     assert.ok(p2 && p2.length, 'path found from substituted start')
     assert.deepEqual(p2[p2.length - 1], { x: 4, y: 2 })
+  })
+})
+
+describe('buildFlowField', () => {
+  it('distance is 0 at the target and grows outward around obstacles', () => {
+    const map = columnMap()
+    const nav = buildNavGrid(map)
+    const f = buildFlowField(nav, 8, 4, 1)
+    assert.equal(f.dist[4 * 12 + 8], 0)
+    assert.ok(f.dist[4 * 12 + 4] > 3, 'tile behind the column costs more than the crow flies')
+    assert.equal(f.dist[0], Infinity)   // wall tile unreachable
+  })
+
+  it('clearance-2 field treats a 1-tile door as a wall', () => {
+    const map = createMap(16, 11)
+    for (let y = 1; y < 10; y++) for (let x = 1; x < 15; x++) map[y][x].tile = TILE.FLOOR
+    for (let y = 1; y < 10; y++) if (y !== 5) map[y][8].tile = TILE.WALL
+    const nav = buildNavGrid(map)
+    const wide = buildFlowField(nav, 3, 5, 2)
+    assert.equal(wide.dist[5 * 16 + 13], Infinity, 'far room unreachable for wide entities')
+    const small = buildFlowField(nav, 3, 5, 1)
+    assert.ok(isFinite(small.dist[5 * 16 + 13]))
+  })
+})
+
+describe('fieldStep', () => {
+  it('descending steps reach the target even around the column', () => {
+    const map = columnMap()
+    const nav = buildNavGrid(map)
+    const f = buildFlowField(nav, 8, 4, 1)
+    let pos = { x: 4, y: 4 }
+    for (let i = 0; i < 40; i++) {
+      const next = fieldStep(f, nav, pos.x, pos.y, 1, 'down')
+      if (!next) break
+      pos = next
+    }
+    assert.deepEqual(pos, { x: 8, y: 4 })
+  })
+
+  it('ascending increases distance, and returns null when cornered', () => {
+    // dead-end corridor: floor only at y=4, x=1..5; player flood from (5,4)
+    const map = createMap(8, 8)
+    for (let x = 1; x <= 5; x++) map[4][x].tile = TILE.FLOOR
+    const nav = buildNavGrid(map)
+    const f = buildFlowField(nav, 5, 4, 1)
+    const up = fieldStep(f, nav, 3, 4, 1, 'up')
+    assert.deepEqual(up, { x: 2, y: 4 })       // away from the player
+    assert.equal(fieldStep(f, nav, 1, 4, 1, 'up'), null)  // closed end: cornered
   })
 })
