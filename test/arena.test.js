@@ -119,6 +119,11 @@ describe('buildArena — columns', () => {
     assert.equal(warns.length, 4) // out-of-bounds column, player-spawn column, null entry, enemy overlap
   })
 
+  it('passes an enemy hp override through to the spawn', () => {
+    const { entitySpawns } = buildArena({ enemies: [{ kind: 'guard', x: 5, y: 5, hp: 1 }] }, () => {})
+    assert.equal(entitySpawns[0].hp, 1)
+  })
+
   it('keeps auto-placed ring chests off column cells', () => {
     const { map, entitySpawns } = buildArena({
       size: { w: 10, h: 8 },

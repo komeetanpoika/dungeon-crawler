@@ -506,6 +506,7 @@ export function buildArena(config = {}, warn = console.warn) {
     entitySpawns.push({
       kind: e.kind, x: pos.x, y: pos.y,
       ...(e.variant !== undefined && { variant: e.variant }),
+      ...(Number.isFinite(e.hp) && { hp: Math.round(e.hp) }),
       ...(e.isBoss && { isBoss: true }),
     })
   }

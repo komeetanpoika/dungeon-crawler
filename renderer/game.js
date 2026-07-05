@@ -131,11 +131,15 @@ function buildEntities(spawns, map) {
   return spawns.flatMap(s => {
     const cx = s.x * TILE_SIZE + TILE_SIZE / 2
     const cy = s.y * TILE_SIZE + TILE_SIZE / 2
+    // Arena testing hook: spawn an enemy pre-damaged (e.g. to observe low-HP
+    // fleeing) via an `hp` override, clamped to [1, maxHp].
     const aiInit = () => ({ damageCooldown: 0 })
+    const hpOverride = e =>
+      Number.isFinite(s.hp) ? { ...e, hp: Math.max(1, Math.min(e.maxHp, Math.round(s.hp))) } : e
     switch (s.kind) {
-      case 'guard':   return [{ ...makeGuard(s.x, s.y),             px: cx, py: cy, facing: 'east', ...aiInit() }]
+      case 'guard':   return [hpOverride({ ...makeGuard(s.x, s.y),  px: cx, py: cy, facing: 'east', ...aiInit() })]
       case 'monster': {
-        const m = { ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, facing: 'east', ...aiInit() }
+        const m = hpOverride({ ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, facing: 'east', ...aiInit() })
         if (s.variant === 'medium') m.shootCooldown = Math.random() * SPIDER_SHOOT_COOLDOWN
         return [m]
       }
@@ -153,9 +157,9 @@ function buildEntities(spawns, map) {
       case 'door':    return [makeDoor(s.x, s.y)]
       case 'exit_door': return [makeExitDoor(s.x, s.y)]
       case 'chest':   return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
-      case 'cyclops': return [{ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
-      case 'wizard':  return [{ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
-      case 'crab':    return [{ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
+      case 'cyclops': return [hpOverride({ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
+      case 'wizard':  return [hpOverride({ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
+      case 'crab':    return [hpOverride({ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'dragon_boss': return [{ ...makeDragonBoss(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) }]
       case 'prop':           return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
       case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
