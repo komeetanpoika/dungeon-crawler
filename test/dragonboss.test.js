@@ -62,13 +62,17 @@ describe('updateDragonBoss facing', () => {
     e.attackCooldown = 999   // prevent attacks; stomp is now the boss's pursuit behaviour
     const player = mkPlayer(10*T, 16*T)           // due south — boss pursues and tracks
     const state = mkState(e, player)
-    const initialGap = Math.abs(Math.atan2(player.py - e.py, player.px - e.px) - e.facing)
+    const southAngle = Math.atan2(player.py - e.py, player.px - e.px)  // player is due south and never moves
+    const initialGap = Math.abs(southAngle - e.facing)
     for (let i = 0; i < 120; i++) updateDragonBoss(e, state, 1/60)  // 2s
     // The turn rate is deliberately slow (0.25 rad/s — flanking the rear arc must be
     // possible), so 2s closes only ~0.5 rad. Assert steady progress toward the player,
-    // not convergence: the gap must have shrunk by roughly TURN_RATE * 2s.
-    const expectedFacing = Math.atan2(player.py - e.py, player.px - e.px)
-    const finalGap = Math.abs(expectedFacing - e.facing)
+    // not convergence: the gap must have shrunk by roughly TURN_RATE * 2s. Compare
+    // against the fixed south direction rather than recomputing atan2 from the boss's
+    // post-stomp position — pursuit (A* or the old greedy step) can leave the boss a
+    // few px off the exact column via tile-centre snapping, which side depends on the
+    // stepping algorithm and adds quantization noise unrelated to turn-rate correctness.
+    const finalGap = Math.abs(southAngle - e.facing)
     assert.ok(finalGap < initialGap, `facing should move toward player direction, gap ${initialGap} -> ${finalGap}`)
     assert.ok(initialGap - finalGap > 0.4, `expected ~0.5 rad of progress over 2s, got ${initialGap - finalGap}`)
   })

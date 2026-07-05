@@ -2,6 +2,7 @@ import { isWalkable } from './entities.js'
 import { damagePlayer } from './player-damage.js'
 import { startKnockback } from './knockback.js'
 import { dragonCapsules, pointInCapsule } from './capsules.js'
+import { buildNavGrid, findPath } from './nav.js'
 
 const TILE = 32
 export const BOSS_HP = 18   // tuned for flat-1 melee: ~12 neck hits (1.5x) to kill
@@ -193,12 +194,21 @@ function coneDamage(e, state, aim, delta) {
   }
 }
 
-// Begin a single grid-step toward the player along the best walkable cardinal/diagonal.
+// Begin a single grid-step toward the player. A* (clearance 2 — the boss is
+// wide) picks the step so the boss rounds obstacles; the old greedy step
+// remains as a fallback for tight arenas where clearance-2 has no route.
 function startStomp(e, state) {
   const { map, player } = state
   const here = { x: Math.floor(e.px / TILE), y: Math.floor(e.py / TILE) }
+  const path = findPath(buildNavGrid(map), here.x, here.y, player.x, player.y, 2)
+  if (path && path.length) {
+    const step = path[0]
+    e.stepFrom = { x: e.px, y: e.py }
+    e.stepTo = { x: step.x * TILE + TILE / 2, y: step.y * TILE + TILE / 2 }
+    e.stepK = 0; e.crushDone = false; e.state = 'stomp'
+    return
+  }
   const sx = Math.sign(player.px - e.px), sy = Math.sign(player.py - e.py)
-  // candidate steps, preferring the direction that most reduces distance
   const cands = [[sx, sy], [sx, 0], [0, sy]].filter(([dx, dy]) => dx !== 0 || dy !== 0)
   for (const [dx, dy] of cands) {
     const tx = here.x + dx, ty = here.y + dy
@@ -209,7 +219,6 @@ function startStomp(e, state) {
       return
     }
   }
-  // nowhere to step — stay idle
   e.state = 'idle'; e.stepTimer = STEP_INTERVAL
 }
 

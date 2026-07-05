@@ -1,12 +1,12 @@
-import { hasLineOfSight, isWalkable } from './entities.js'
+import { hasLineOfSight } from './entities.js'
 import { damagePlayer } from './player-damage.js'
 import { startKnockback } from './knockback.js'
 import { tryStartEnemyAttack } from './enemy-attack.js'
+import { updateBrain } from './brain.js'
+import { act } from './act.js'
 
 const S = 32
-const CYCLOPS_SPEED        = 40
 const CYCLOPS_CHARGE_SPEED = 300
-const CYCLOPS_HALF         = 28
 const CHARGE_WINDUP        = 1.5
 const CHARGE_DURATION      = 3.0
 const CHARGE_COOLDOWN      = 8
@@ -16,18 +16,6 @@ const SLAM_RADIUS          = 80
 const SLAM_DAMAGE          = 4
 const CONTACT_RANGE        = 40
 const KNOCKBACK_DIST       = 60
-
-function canMoveTo(map, px, py) {
-  return [
-    [px - CYCLOPS_HALF, py - CYCLOPS_HALF],
-    [px + CYCLOPS_HALF, py - CYCLOPS_HALF],
-    [px - CYCLOPS_HALF, py + CYCLOPS_HALF],
-    [px + CYCLOPS_HALF, py + CYCLOPS_HALF],
-  ].every(([cx, cy]) => {
-    const tile = map[Math.floor(cy / S)]?.[Math.floor(cx / S)]
-    return tile && isWalkable(tile.tile, tile)
-  })
-}
 
 export function makeCyclops(x, y) {
   return {
@@ -54,15 +42,7 @@ export function updateCyclops(e, state, delta) {
     e.slamTimer = Math.max(0, e.slamTimer - delta)
 
     // Move toward player
-    if (dist > CONTACT_RANGE) {
-      const len = dist || 1
-      const mx = (player.px - e.px) / len * CYCLOPS_SPEED * delta
-      const my = (player.py - e.py) / len * CYCLOPS_SPEED * delta
-      if (canMoveTo(map, e.px + mx, e.py)) e.px += mx
-      if (canMoveTo(map, e.px, e.py + my)) e.py += my
-      e.x = Math.floor(e.px / S)
-      e.y = Math.floor(e.py / S)
-    }
+    act(e, state, delta, updateBrain(e, state, delta))
 
     // Charge takes priority over slam
     if (e.chargeCooldown <= 0 && dist < 200 && hasLineOfSight(map, e.y, e.x, player.y, player.x)) {
@@ -84,9 +64,6 @@ export function updateCyclops(e, state, delta) {
     }
 
   } else if (e.state === 'charging') {
-    const cdx = Math.cos(e.chargeAngle) * CYCLOPS_CHARGE_SPEED * delta
-    const cdy = Math.sin(e.chargeAngle) * CYCLOPS_CHARGE_SPEED * delta
-
     if (Math.hypot(e.px - player.px, e.py - player.py) < 50) {
       if (damagePlayer(state, 5, 'hit', 'Cyclops charges! (-5 HP)')) {
         startKnockback(player, player.px - e.px, player.py - e.py, KNOCKBACK_DIST)
@@ -94,14 +71,9 @@ export function updateCyclops(e, state, delta) {
       }
       e.state = 'stunned'
       e.stateTimer = 0.5
-    } else if (!canMoveTo(map, e.px + cdx, e.py + cdy)) {
+    } else if (!act(e, state, delta, { mode: 'charge', angle: e.chargeAngle, speed: CYCLOPS_CHARGE_SPEED })) {
       e.state = 'stunned'
       e.stateTimer = 2.5
-    } else {
-      if (canMoveTo(map, e.px + cdx, e.py)) e.px += cdx
-      if (canMoveTo(map, e.px, e.py + cdy)) e.py += cdy
-      e.x = Math.floor(e.px / S)
-      e.y = Math.floor(e.py / S)
     }
 
     if (e.state === 'charging' && e.stateTimer <= 0) {
