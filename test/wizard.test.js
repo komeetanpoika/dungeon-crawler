@@ -28,8 +28,20 @@ describe('makeWizard', () => {
     assert.equal(w.shieldTimer, 0)
     assert.equal(w.inCombat, false)
     assert.ok(typeof w.id === 'string' && w.id.startsWith('wizard_'))
-    assert.ok(w.strafeDir === 1 || w.strafeDir === -1)
-    assert.equal(typeof w.strafeDirTimer, 'number')
+  })
+})
+
+describe('updateWizard — kiting movement', () => {
+  it('retreats from the player when closer than the kite band lower edge (120px)', () => {
+    const w = makeWizard(5, 5)
+    w.px = 5 * S + 16; w.py = 5 * S + 16
+    const player = { x: 6, y: 5, px: 6 * S + 16, py: 5 * S + 16, hp: 10, grabbed: false }
+    const state = makeState(w, player)
+    const startDist = Math.hypot(w.px - player.px, w.py - player.py)
+    for (let i = 0; i < 60; i++) updateWizard(w, state, 1 / 60)
+    const endDist = Math.hypot(w.px - player.px, w.py - player.py)
+    assert.ok(endDist > startDist,
+      `wizard should move away from the player, start=${startDist} end=${endDist}`)
   })
 })
 
