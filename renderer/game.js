@@ -17,13 +17,11 @@ import { damagePlayer } from './systems/player-damage.js'
 import { startKnockback, stepKnockback } from './systems/knockback.js'
 import { tryStartEnemyAttack, stepEnemyAttack } from './systems/enemy-attack.js'
 import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
+import { updateBrain } from './systems/brain.js'
+import { act } from './systems/act.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
-const ENEMY_CHASE_SPEED = 80
-const ENEMY_WANDER_SPEED = 30
-const CHASE_RANGE = 180
-const CHASE_DROP_RANGE = 240
 const MELEE_COOLDOWN = 0.4
 const RANGED_COOLDOWN = 0.6
 const PROJECTILE_SPEED = 280
@@ -133,17 +131,17 @@ function buildEntities(spawns, map) {
   return spawns.flatMap(s => {
     const cx = s.x * TILE_SIZE + TILE_SIZE / 2
     const cy = s.y * TILE_SIZE + TILE_SIZE / 2
-    const wander = () => ({ wanderTimer: Math.random() * 2, wanderDx: 0, wanderDy: 0, damageCooldown: 0 })
+    const aiInit = () => ({ damageCooldown: 0 })
     switch (s.kind) {
-      case 'guard':   return [{ ...makeGuard(s.x, s.y),             px: cx, py: cy, facing: 'east', ...wander() }]
+      case 'guard':   return [{ ...makeGuard(s.x, s.y),             px: cx, py: cy, facing: 'east', ...aiInit() }]
       case 'monster': {
-        const m = { ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, facing: 'east', ...wander() }
+        const m = { ...makeMonster(s.x, s.y, s.variant), px: cx, py: cy, facing: 'east', ...aiInit() }
         if (s.variant === 'medium') m.shootCooldown = Math.random() * SPIDER_SHOOT_COOLDOWN
         return [m]
       }
       case 'dragon':  return [{ ...makeDragon(s.x, s.y, s.roomId), px: cx, py: cy, facing: 'east',
   breathState: 'idle', breathTimer: DRAGON_BREATH_COOLDOWN, breathAngle: 0,
-  breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...wander(), ...(s.isBoss && { isBoss: true }) }]
+  breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...aiInit(), ...(s.isBoss && { isBoss: true }) }]
       case 'trap':    return [makeTrap(s.x, s.y)]
       case 'puzzle':  return [makePuzzle(s.x, s.y)]
       case 'weapon': {
@@ -466,23 +464,10 @@ function update(delta) {
     if (e.type === 'dragon_boss') { updateDragonBoss(e, state, delta); continue }
 
     e.damageCooldown = Math.max(0, e.damageCooldown - delta)
-    e.wanderTimer    = Math.max(0, e.wanderTimer    - delta)
     const dist = Math.hypot(e.px - player.px, e.py - player.py)
-    const chasing = dist < CHASE_RANGE && hasLineOfSight(map, e.y, e.x, player.y, player.x)
     const canMove = e.type !== 'dragon' || e.breathState === 'idle'
     const prevPx = e.px
-    if (canMove && chasing && dist > CONTACT_RANGE) {
-      const len = dist || 1
-      const speed = e.type === 'dragon' ? 60 : ENEMY_CHASE_SPEED
-      moveEntity(e, (player.px - e.px) / len * speed * delta, (player.py - e.py) / len * speed * delta, map, ENEMY_HALF)
-    } else if (canMove && dist < CHASE_DROP_RANGE) {
-      if (e.wanderTimer <= 0) {
-        const angle = Math.random() * Math.PI * 2
-        e.wanderDx = Math.cos(angle); e.wanderDy = Math.sin(angle)
-        e.wanderTimer = 1 + Math.random()
-      }
-      moveEntity(e, e.wanderDx * ENEMY_WANDER_SPEED * delta, e.wanderDy * ENEMY_WANDER_SPEED * delta, map, ENEMY_HALF)
-    }
+    if (canMove) act(e, state, delta, updateBrain(e, state, delta))
     const movedX = e.px - prevPx
     if (Math.abs(movedX) > 0.1) e.facing = movedX > 0 ? 'east' : 'west'
 
