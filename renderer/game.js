@@ -19,6 +19,8 @@ import { tryStartEnemyAttack, stepEnemyAttack } from './systems/enemy-attack.js'
 import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
+import { parseWeaponCheat } from './systems/cheats.js'
+import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -37,10 +39,11 @@ const DRAGON_BREATH_COOLDOWN = 2.5
 const DRAGON_CONE_HALF       = Math.PI * 0.21
 
 const ATTACK_STYLES = {
-  dagger:    { style: 'snap',  duration: 0.12, cooldown: 0.30, knockback: 10 },
-  sword:     { style: 'arc',   duration: 0.20, cooldown: 0.40, knockback: 18 },
-  longsword: { style: 'slash', duration: 0.22, cooldown: 0.50, knockback: 24 },
-  axe:       { style: 'spin',  duration: 0.35, cooldown: 0.60, knockback: 34 },
+  dagger:       { style: 'snap',  duration: 0.12, cooldown: 0.30, knockback: 10 },
+  sword:        { style: 'arc',   duration: 0.20, cooldown: 0.40, knockback: 18 },
+  longsword:    { style: 'slash', duration: 0.22, cooldown: 0.50, knockback: 24 },
+  axe:          { style: 'spin',  duration: 0.35, cooldown: 0.60, knockback: 34 },
+  maunonmiekka: { style: 'arc',   duration: 0.20, cooldown: 0.40, knockback: 60 },
 }
 
 function getAttack(weaponType) {
@@ -68,6 +71,20 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
+  }
+})
+
+// In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
+let gameCheatBuffer = ''
+window.addEventListener('keydown', e => {
+  if (phase !== PHASE.PLAYING || !state || e.key.length !== 1) return
+  gameCheatBuffer = (gameCheatBuffer + e.key).toLowerCase().slice(-12)
+  const wt = parseWeaponCheat(gameCheatBuffer)
+  if (wt) {
+    gameCheatBuffer = ''
+    const def = WEAPON_TYPES[wt]
+    state.player.weapon = { weaponType: wt, name: def.name, damage: def.damage }
+    state.log = [...state.log, `The ${def.name} answers your call! (${def.damage} dmg)`].slice(-5)
   }
 })
 
@@ -205,6 +222,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     theme,
     entities: buildEntities(entitySpawns, map),
     projectiles: [],
+    shockwaves: [],
     log: ['You enter the dungeon…'],
     hitEffects: [],
     shake: 0,
@@ -398,6 +416,8 @@ function update(delta) {
     player.attackFacing = player.facing
     const dmg = player.weapon?.damage ?? 1
     const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
+    const miekka = player.weapon?.weaponType === 'maunonmiekka'
+    const struck = []   // enemies hit this swing (for the Maunonmiekka's shockwave)
     state.entities = state.entities
       .map(e => {
         if (!isEnemy(e)) return e
@@ -405,15 +425,31 @@ function update(delta) {
           const swingHit = (cx, cy) => meleeHit(atk.style, fa, cx - player.px, cy - player.py)
           const bossDmg = meleeDamageToDragon(player, e, swingHit)
           if (bossDmg <= 0) return e
-          return { ...e, hp: e.hp - bossDmg, inCombat: true }
+          const bossHit = { ...e, hp: e.hp - bossDmg, inCombat: true }
+          if (miekka) struck.push(bossHit)
+          return bossHit
         }
         if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
         startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback)
+        if (miekka) struck.push(hitEnemy)
         return hitEnemy
       })
       .filter(e => !isEnemy(e) || e.hp > 0)
+    // Maunonmiekka magic: a crimson shockwave bursts from every struck enemy,
+    // splashing damage + knockback onto its neighbours.
+    if (struck.length) {
+      const exclude = new Set(struck)
+      let pulsed = false
+      for (const s of struck) {
+        const res = applyShockwave(state.entities, s.px, s.py, exclude)
+        state.entities = res.entities
+        state.shockwaves.push({ px: s.px, py: s.py, t: 0, dur: 0.35, maxRadius: SHOCK_RADIUS })
+        pulsed = pulsed || res.hitCount > 0
+      }
+      if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
+    }
     state.hitEffects = [{ x: player.x, y: player.y }]
   }
 
@@ -585,6 +621,13 @@ function update(delta) {
     }
   }
 
+  // Advance Maunonmiekka shockwave rings
+  if (state.shockwaves?.length) {
+    state.shockwaves = state.shockwaves
+      .map(w => ({ ...w, t: w.t + delta }))
+      .filter(w => w.t < w.dur)
+  }
+
   // Advance floating item arcs
   for (const e of state.entities) {
     if (e.type !== 'floating_item') continue
@@ -655,6 +698,7 @@ function descendLevel() {
     theme,
     entities: buildEntities(entitySpawns, map),
     projectiles: [],
+    shockwaves: [],
     player: {
       ...state.player,
       x: playerSpawn.x, y: playerSpawn.y,

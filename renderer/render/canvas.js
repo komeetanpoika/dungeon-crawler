@@ -723,6 +723,19 @@ export class Renderer {
       ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
     }
 
+    // Maunonmiekka shockwaves: expanding crimson rings that fade out
+    for (const w of state.shockwaves ?? []) {
+      const k = Math.min(1, w.t / w.dur)
+      ctx.save()
+      ctx.strokeStyle = '#dc2626'
+      ctx.lineWidth = 3
+      ctx.globalAlpha = Math.max(0, 1 - k)
+      ctx.beginPath()
+      ctx.arc(w.px - camX, w.py - camY, w.maxRadius * k, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
+    }
+
     if (state.hitEffects?.length > 0) {
       for (const { x, y } of state.hitEffects) {
         if (x < c0 || x >= c1 || y < r0 || y >= r1) continue

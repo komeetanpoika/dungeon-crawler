@@ -20,6 +20,9 @@ export const WEAPON_TYPES = {
   sword:     { name: 'Sword',     damage: 2 },
   longsword: { name: 'Longsword', damage: 3 },
   axe:       { name: 'Axe',       damage: 4 },
+  // The most powerful sword in the game (cheat-only for now: type "mauno" in
+  // a run). On-hit crimson shockwave lives in systems/shockwave.js.
+  maunonmiekka: { name: 'Maunonmiekka', damage: 10 },
 }
 
 export function isWalkable(tileId, tileObj = null) {

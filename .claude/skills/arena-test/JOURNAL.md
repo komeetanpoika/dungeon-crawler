@@ -57,3 +57,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** guard
 **Score:** 4/5
 **Notes:** Crab orbited from spawn (due N of player) to NW past the 2-column pair without ever wedging (r5b-t0), then spiraled in (inward 0.3) and grabbed — pincer cycle messages from t4 on, crab correctly stationary while grabbing. Wall-awareness confirmed: its approach arc skirted the columns cleanly. Docked one point: the >90-degree continuous orbit sweep was cut short by the grab (correct signature behavior at 25px range vs a stationary player) and repeated grab cycles killed the player (~3.3 dps) before a post-grab strafe window opened.
+
+## Run 9 — 2026-07-06 — CLOSED
+**Question:** Does the Maunonmiekka work end-to-end in the live game: 'mauno' cheat equips it mid-run, the 24px custom sprite renders held in hand and in the HUD, a Space swing one-shots a weak monster (10 dmg arc), and the crimson shockwave ring + splash damage hit clustered neighbours?
+**Criteria:** HUD shows 'Maunonmiekka (10 dmg)' after typing the cheat; held sprite visibly the new red sword (not a default tile or missing-sprite warning); after one swing into a 3-monster cluster: struck monster dies instantly, 'The Maunonmiekka pulses!' appears in #hud-log, and at least one neighbour dies or is visibly knocked back; a crimson ring is captured in at least one screenshot
+**Config:** crab
+**Score:** 4/5
+**Notes:** All core criteria verified: 'mauno' typed mid-run put 'Maunonmiekka (10 dmg)' in the HUD; zoomed screenshot (mkE-held-zoom) shows the 24px custom red sword gripped in hand with its hooks and side-blade; one arc swing one-shot BOTH weak bats simultaneously and two expanding crimson shockwave rings were captured on camera (mkE-ring1). Docked one point: the splash-damages-a-SURVIVOR case never manifested live (both bats died to the direct 10-dmg arc, so hitCount was 0 and the 'pulses!' log line correctly stayed silent) — that path is covered by unit tests only. Harness cost: three player deaths before learning that tap presses (Space, arrows) can fall between rAF frames and never register — use eval keydown/keyup holds for ALL gameplay inputs.

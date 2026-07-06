@@ -37,3 +37,13 @@ describe('parseLevelCheat', () => {
     assert.equal(parseLevelCheat('LEVEL4'), 4)
   })
 })
+
+describe('parseWeaponCheat', () => {
+  it('matches the mauno suffix regardless of earlier keystrokes', async () => {
+    const { parseWeaponCheat } = await import('../renderer/systems/cheats.js')
+    assert.equal(parseWeaponCheat('xxmauno'), 'maunonmiekka')
+    assert.equal(parseWeaponCheat('MAUNO'), 'maunonmiekka')
+    assert.equal(parseWeaponCheat('maun'), null)
+    assert.equal(parseWeaponCheat('level3'), null)
+  })
+})
