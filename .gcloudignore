@@ -1,0 +1,21 @@
+# Keep the Cloud Build upload to what the web-release container needs:
+# Dockerfile, tools/web-server.mjs, renderer/**.
+.git/
+.gitignore
+node_modules/
+test/
+docs/
+.superpowers/
+.claude/
+tools/tile-editor/
+tools/sword-compare/
+/miekka_croppedcleaned.png
+/miekka_croppedcleaned.png:Zone.Identifier
+/debug2.mjs
+/debug_test.mjs
+/main.cjs
+/preload.cjs
+/arena-config.json
+/.dc-monitor.mjs
+/package.json
+/package-lock.json
