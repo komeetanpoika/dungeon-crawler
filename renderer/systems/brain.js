@@ -10,13 +10,24 @@ export const HUNT_PAUSE = 1.5        // s spent looking around where the trail e
 export const UNREACHABLE_GIVEUP = 3  // s steering at an unpathable target before quitting
 const DWELL = 1.2                    // s paused at each patrol point
 
+// Hysteresis multipliers (x sightRange). Every perception boundary needs a gap
+// between its enter and exit radius, or entities flap between modes right at
+// the ring: a chaser at exactly sightRange alternated chase<->hunt steering
+// every frame, and a routed enemy stuck to the fear-radius edge in a
+// flee-out / hunt-back oscillation.
+export const CHASE_DROP = 4 / 3      // engaged chase persists to here (the old CHASE_RANGE 180 -> CHASE_DROP_RANGE 240 pair)
+const FLEE_ENTER = 1.25              // hurt enemies start fleeing inside this fear radius
+const FLEE_EXIT  = 1.6               // and keep fleeing until they are out to here
+
 const PATROL_RADIUS = 8
 const FEATURE_TILES = new Set([TILE.DOOR, TILE.TREASURE, TILE.SHRINE, TILE.STAIRS_DOWN, TILE.STAIRS_UP])
 
 // Up to 3 patrol points near (x,y): feature tiles first, then the farthest
 // open tiles; every point A*-reachable and >= 3 tiles from the others.
 // Deterministic on purpose (stable tests, reproducible behavior).
-export function generatePatrol(nav, map, x, y, cfg = {}) {
+// `avoid` ({px, py, r} in pixels) excludes candidates near a known threat —
+// used when a routed enemy re-anchors its patrol at its refuge.
+export function generatePatrol(nav, map, x, y, cfg = {}, avoid = null) {
   const clearance = clearanceFor(cfg.half ?? 4)
   const cands = []
   for (let dy = -PATROL_RADIUS; dy <= PATROL_RADIUS; dy++) {
@@ -26,6 +37,7 @@ export function generatePatrol(nav, map, x, y, cfg = {}) {
       if (!t || !passable(nav, tx, ty, clearance)) continue
       const d = Math.hypot(dx, dy)
       if (d < 2 || d > PATROL_RADIUS) continue
+      if (avoid && Math.hypot(tx * S + S / 2 - avoid.px, ty * S + S / 2 - avoid.py) < avoid.r) continue
       cands.push({ x: tx, y: ty, feature: FEATURE_TILES.has(t.tile) ? 1 : 0, d })
     }
   }
@@ -45,7 +57,7 @@ export function ensureAI(e, state, cfg) {
   e.aiHalf = cfg.half
   e.ai = {
     ...(e.ai ?? {}),
-    mode: 'patrol', lastSeen: null, huntWait: 0, dwell: 0, giveUp: 0, patrolIdx: 0,
+    mode: 'patrol', lastSeen: null, huntWait: 0, dwell: 0, giveUp: 0, patrolIdx: 0, fleeing: false,
     patrolPoints: generatePatrol(buildNavGrid(state.map), state.map, e.x, e.y, cfg),
     path: undefined, pathTarget: null, repath: 0,
   }
@@ -57,7 +69,10 @@ export function updateBrain(e, state, delta) {
   const ai = ensureAI(e, state, cfg)
   const { player, map } = state
   const dist = Math.hypot(player.px - e.px, player.py - e.py)
-  const seen = dist <= cfg.sightRange && hasLineOfSight(map, e.y, e.x, player.y, player.x)
+  // acquisition needs the base sight range; an already-engaged chaser keeps
+  // perception out to the wider drop radius (hysteresis, see CHASE_DROP)
+  const perceiveRange = ai.mode === 'chase' ? cfg.sightRange * CHASE_DROP : cfg.sightRange
+  const seen = dist <= perceiveRange && hasLineOfSight(map, e.y, e.x, player.y, player.x)
 
   if (seen) {
     ai.mode = 'chase'
@@ -69,7 +84,21 @@ export function updateBrain(e, state, delta) {
 
   // hurt + threat nearby -> run; config decides who routs (taxon sets defaults)
   // no LOS gate: a badly hurt enemy panics when the threat is merely close (fear radius), even unseen
-  if (cfg.fleeHp > 0 && e.maxHp && e.hp / e.maxHp <= cfg.fleeHp && dist < cfg.sightRange * 1.25) {
+  const hurt = cfg.fleeHp > 0 && e.maxHp && e.hp / e.maxHp <= cfg.fleeHp
+  if (ai.fleeing) {
+    if (hurt && dist < cfg.sightRange * FLEE_EXIT) return { mode: 'flee', speed: cfg.speed }
+    // Safely away: cower here. Re-anchor the patrol around the refuge (skipping
+    // points near the threat) and forget lastSeen — a routed enemy must not
+    // turn around and hunt the thing it just escaped.
+    ai.fleeing = false
+    ai.mode = 'patrol'
+    ai.lastSeen = null
+    ai.path = undefined; ai.pathTarget = null
+    ai.patrolPoints = generatePatrol(buildNavGrid(state.map), state.map, e.x, e.y, cfg,
+      { px: player.px, py: player.py, r: cfg.sightRange * FLEE_ENTER })
+    ai.patrolIdx = 0; ai.dwell = 0
+  } else if (hurt && dist < cfg.sightRange * FLEE_ENTER) {
+    ai.fleeing = true
     return { mode: 'flee', speed: cfg.speed }
   }
 
