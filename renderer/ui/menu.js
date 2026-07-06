@@ -76,13 +76,17 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
 }
 
 export function showTitle(meta, { onPlay, onOpenEditor, onQuit, onCheat }) {
+  // The web release has no tile editor and nothing to quit to.
+  const isWeb = typeof window !== 'undefined' && window.saveAPI?.isWeb
   renderScreen({
     title: 'DUNGEON CRAWLER',
     subtitle: formatMetaSummary(meta),
     buttons: [
       { label: 'Play', onSelect: onPlay },
-      { label: 'Open Editor', onSelect: onOpenEditor },
-      { label: 'Quit', onSelect: onQuit },
+      ...(isWeb ? [] : [
+        { label: 'Open Editor', onSelect: onOpenEditor },
+        { label: 'Quit', onSelect: onQuit },
+      ]),
     ],
     onCheat,
   })
