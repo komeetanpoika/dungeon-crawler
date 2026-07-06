@@ -5,3 +5,4 @@ dist/
 !.claude/skills/
 debug*.mjs
 arena-config.json
+tools/sword-compare/out/

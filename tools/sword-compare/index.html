@@ -1,0 +1,233 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>miekka → pixel art comparison</title>
+<style>
+  body { background: #17130f; color: #e8ddcc; font: 14px/1.45 system-ui, sans-serif; margin: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #a09480; margin-bottom: 16px; }
+  .controls { display: flex; gap: 24px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+  .controls label { display: flex; gap: 8px; align-items: center; }
+  table { border-collapse: collapse; }
+  td, th { padding: 10px 14px; text-align: center; vertical-align: bottom; }
+  th { color: #cdbfa4; font-weight: 600; }
+  td { background: #221c15; border: 1px solid #382e22; border-radius: 6px; }
+  canvas.zoom { image-rendering: pixelated; background:
+    repeating-conic-gradient(#2a231b 0% 25%, #241e17 0% 50%) 0 0 / 16px 16px; }
+  .cell button { margin-top: 6px; background: #4a3b28; color: #e8ddcc; border: 1px solid #6b563a;
+    border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  .cell button:hover { background: #5d4a31; }
+  .cell .saved { color: #8fc98f; font-size: 11px; }
+  .preview { margin-top: 8px; }
+  .srcbox { display: flex; gap: 28px; align-items: flex-end; margin-bottom: 20px; }
+  .srcbox img { image-rendering: auto; background: #fff; border-radius: 4px; }
+  .refs { display: flex; gap: 10px; align-items: flex-end; }
+  .refs figure { margin: 0; text-align: center; }
+  .refs img { image-rendering: pixelated; width: 64px; height: 64px; }
+  figcaption { font-size: 11px; color: #a09480; }
+</style>
+
+<h1>miekka_croppedcleaned → pixel art</h1>
+<div class="sub">Each column is a palette treatment, each row a native sprite size (zoomed 8×; checkerboard = transparent).
+Small strip under each: in-game held scale (~26 px) on a dungeon background. Click <b>save</b> to write the native-res PNG to <code>tools/sword-compare/out/</code>.</div>
+
+<div class="srcbox">
+  <figure style="margin:0"><img id="src" src="/miekka.png" height="200"><figcaption>source drawing</figcaption></figure>
+  <div class="refs">
+    <figure><img src="/ref/dagger.png"><figcaption>dagger 16px</figcaption></figure>
+    <figure><img src="/ref/sword.png"><figcaption>sword 16px</figcaption></figure>
+    <figure><img src="/ref/longsword.png"><figcaption>longsword 16px</figcaption></figure>
+    <figure><img src="/ref/axe.png"><figcaption>axe 16px</figcaption></figure>
+  </div>
+</div>
+
+<div class="controls">
+  <label>alpha threshold <input id="thresh" type="range" min="0.15" max="0.6" step="0.05" value="0.35"> <span id="threshv">0.35</span></label>
+  <label><input id="outline" type="checkbox" checked> edge shading</label>
+</div>
+
+<table id="grid"></table>
+
+<script>
+const SIZES = [16, 24, 32]
+
+// Palette ramps: [dark, mid, light] per material class.
+const TREATMENTS = {
+  faithful: {   // keep the drawing's maroon-and-steel spirit
+    red:  ['#4a1a17', '#8c2f2b', '#b04c3f'],
+    gray: ['#565b63', '#8d949d', '#c2c8cf'],
+    edge: 0.55,
+  },
+  crimson: {    // deep war-relic: steel blade, blood-red furniture
+    red:  ['#3f1010', '#7c1f1c', '#a83a2e'],
+    gray: ['#5f6a76', '#98a4b0', '#d3dbe2'],
+    edge: 0.5,
+  },
+  gold: {       // gilded legend: bright steel, gold guard
+    red:  ['#5c4212', '#a3781f', '#e5b83a'],
+    gray: ['#7d8894', '#b9c4cf', '#eef3f7'],
+    edge: 0.55,
+  },
+  ember: {      // cursed ember: dark iron, molten glow
+    red:  ['#571c05', '#c2481a', '#ff9a3c'],
+    gray: ['#25282e', '#3d4148', '#585d66'],
+    edge: 1.45, // >1 = glow edges instead of darkening
+  },
+}
+
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))
+
+// Downsample the source into a W×H grid of averaged RGBA cells.
+// Near-white and transparent source pixels count as empty.
+function sample(img, W, H, thresh) {
+  const c = document.createElement('canvas')
+  c.width = img.naturalWidth; c.height = img.naturalHeight
+  const g = c.getContext('2d', { willReadFrequently: true })
+  g.drawImage(img, 0, 0)
+  const d = g.getImageData(0, 0, c.width, c.height).data
+  const solid = (i) => d[i + 3] > 40 && !(d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235)
+
+  // bounding box of solid pixels
+  let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    if (solid(4 * (y * c.width + x))) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x
+      if (y < y0) y0 = y; if (y > y1) y1 = y
+    }
+  }
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1
+  const scale = Math.min(W / bw, H / bh)
+  const gw = Math.max(1, Math.round(bw * scale)), gh = Math.max(1, Math.round(bh * scale))
+  const ox = Math.floor((W - gw) / 2), oy = Math.floor((H - gh) / 2)
+
+  const cells = Array.from({ length: W * H }, () => null)
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const sx0 = x0 + Math.floor(gx / gw * bw), sx1 = x0 + Math.ceil((gx + 1) / gw * bw)
+      const sy0 = y0 + Math.floor(gy / gh * bh), sy1 = y0 + Math.ceil((gy + 1) / gh * bh)
+      let r = 0, g2 = 0, b = 0, n = 0, total = 0
+      for (let y = sy0; y < sy1; y++) for (let x = sx0; x < sx1; x++) {
+        total++
+        const i = 4 * (y * c.width + x)
+        if (!solid(i)) continue
+        r += d[i]; g2 += d[i + 1]; b += d[i + 2]; n++
+      }
+      if (n / Math.max(1, total) < thresh) continue
+      cells[(oy + gy) * W + (ox + gx)] = [r / n, g2 / n, b / n]
+    }
+  }
+  return cells
+}
+
+// Classify a cell as red-ish or gray-ish, pick ramp shade by brightness.
+function paint(cells, W, H, treatment, edgeShading) {
+  const t = TREATMENTS[treatment]
+  const at = (x, y) => (x >= 0 && y >= 0 && x < W && y < H) ? cells[y * W + x] : null
+
+  // cleanup: drop fully isolated cells (sampling noise off the drawing's strokes)
+  const neighbors = (x, y) => (at(x - 1, y) ? 1 : 0) + (at(x + 1, y) ? 1 : 0) + (at(x, y - 1) ? 1 : 0) + (at(x, y + 1) ? 1 : 0)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (at(x, y) && neighbors(x, y) === 0) cells[y * W + x] = null
+  }
+
+  const out = document.createElement('canvas')
+  out.width = W; out.height = H
+  const g = out.getContext('2d')
+  const shadeIdx = (lum) => lum < 95 ? 0 : lum < 150 ? 1 : 2
+  const colorOf = ([r, gr, b]) => {
+    const ramp = (r > gr + 14 && r > b + 14) ? t.red : t.gray
+    return ramp[shadeIdx(0.299 * r + 0.587 * gr + 0.114 * b)]
+  }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const cell = at(x, y)
+    if (!cell) continue
+    let col = hex(colorOf(cell))
+    if (edgeShading) {
+      if (t.edge > 1) {
+        // ember-style: every boundary cell glows
+        const boundary = !at(x - 1, y) || !at(x + 1, y) || !at(x, y - 1) || !at(x, y + 1)
+        if (boundary) col = col.map(v => Math.min(255, Math.round(v * t.edge)))
+      } else {
+        // top-left light source: lit edges brighten, thick lower/right edges
+        // darken. Thin 1px features stay lit instead of drowning in outline.
+        const lit = !at(x, y - 1) || !at(x - 1, y)
+        const shadow = (!at(x, y + 1) || !at(x + 1, y)) && neighbors(x, y) >= 3
+        if (lit) col = col.map(v => Math.min(255, Math.round(v * 1.18)))
+        else if (shadow) col = col.map(v => Math.round(v * t.edge))
+      }
+    }
+    g.fillStyle = `rgb(${col.map(Math.round).join(',')})`
+    g.fillRect(x, y, 1, 1)
+  }
+  return out
+}
+
+function zoomed(native, z) {
+  const c = document.createElement('canvas')
+  c.className = 'zoom'
+  c.width = native.width * z; c.height = native.height * z
+  const g = c.getContext('2d')
+  g.imageSmoothingEnabled = false
+  g.drawImage(native, 0, 0, c.width, c.height)
+  return c
+}
+
+// In-game held scale strip: variant + reference sword at ~26px on dungeon brown.
+function preview(native, refImg) {
+  const c = document.createElement('canvas')
+  c.className = 'zoom'
+  c.width = 120; c.height = 40
+  const g = c.getContext('2d')
+  g.fillStyle = '#3a2b1d'; g.fillRect(0, 0, c.width, c.height)
+  g.imageSmoothingEnabled = false
+  const h = 26, w = Math.round(h * native.width / native.height)
+  g.drawImage(native, 18, 7, w, h)
+  g.drawImage(refImg, 74, 7, 26, 26)
+  return c
+}
+
+const img = document.getElementById('src')
+const ref = new Image(); ref.src = '/ref/sword.png'
+
+function render() {
+  const thresh = Number(document.getElementById('thresh').value)
+  document.getElementById('threshv').textContent = thresh.toFixed(2)
+  const edgeShading = document.getElementById('outline').checked
+  const grid = document.getElementById('grid')
+  grid.innerHTML = ''
+  const head = grid.insertRow()
+  head.insertCell().outerHTML = '<th></th>'
+  for (const name of Object.keys(TREATMENTS)) head.insertCell().outerHTML = `<th>${name}</th>`
+  for (const size of SIZES) {
+    const row = grid.insertRow()
+    row.insertCell().outerHTML = `<th>${size}px</th>`
+    const cells = sample(img, size, size, thresh)
+    for (const name of Object.keys(TREATMENTS)) {
+      const native = paint(cells, size, size, name, edgeShading)
+      const td = row.insertCell()
+      td.className = 'cell'
+      const z = Math.max(3, Math.round(128 / size))
+      td.appendChild(zoomed(native, z))
+      const p = document.createElement('div'); p.className = 'preview'
+      p.appendChild(preview(native, ref))
+      td.appendChild(p)
+      const btn = document.createElement('button')
+      btn.textContent = `save ${size} ${name}`
+      btn.onclick = async () => {
+        const r = await fetch('/save', { method: 'POST',
+          body: JSON.stringify({ name: `miekka_${size}_${name}${edgeShading ? '' : '_noedge'}`, dataURL: native.toDataURL() }) })
+        const j = await r.json()
+        btn.insertAdjacentHTML('afterend', `<div class="saved">saved ✓</div>`)
+      }
+      td.appendChild(document.createElement('br'))
+      td.appendChild(btn)
+    }
+  }
+}
+
+document.getElementById('thresh').oninput = render
+document.getElementById('outline').onchange = render
+let loaded = 0
+const go = () => { if (++loaded === 2) render() }
+img.complete ? go() : img.onload = go
+ref.complete ? go() : ref.onload = go
+</script>
