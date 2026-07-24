@@ -31,6 +31,6 @@ describe('updateHUD stance slots', () => {
       attackMode: 'ranged',
     }))
     assert.equal(nodes['hud-weapon'].textContent, 'Sword (2 dmg)')
-    assert.equal(nodes['hud-ranged'].textContent, '▶ Shortbow 8/12')
+    assert.equal(nodes['hud-ranged'].textContent, '▶ Shortbow (2 dmg) 8/12')
   })
 })

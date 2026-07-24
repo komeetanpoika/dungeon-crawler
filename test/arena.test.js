@@ -68,6 +68,15 @@ describe('buildArena — configured content', () => {
     assert.ok(p.x === 1 || p.x === 24 || p.y === 1 || p.y === 16, 'auto chest lands on the ring')
   })
 
+  it('places a configured ranged chest with its weaponType intact', () => {
+    const { entitySpawns } = buildArena({ enemies: [], chests: [
+      { kind: 'ranged', weaponType: 'stormwand', x: 3, y: 3 },
+    ] })
+    const r = entitySpawns.find(s => s.kind === 'ranged')
+    assert.ok(r, 'ranged chest was not skipped')
+    assert.deepEqual([r.x, r.y, r.weaponType], [3, 3, 'stormwand'])
+  })
+
   it('honors and clamps the player spawn', () => {
     assert.deepEqual(buildArena({ player: { x: 5, y: 5 } }).playerSpawn, { x: 5, y: 5 })
     assert.deepEqual(buildArena({ player: { x: -3, y: 99 } }).playerSpawn, { x: 1, y: 16 })

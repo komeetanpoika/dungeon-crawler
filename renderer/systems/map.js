@@ -520,7 +520,7 @@ export function buildArena(config = {}, warn = console.warn) {
   const chests = Array.isArray(config.chests) ? config.chests : []
   const autoChests = []
   for (const c of chests) {
-    if (!c || (c.kind !== 'weapon' && c.kind !== 'potion')) { warn(`arena: unknown chest kind "${c?.kind}" — skipped`); continue }
+    if (!c || (c.kind !== 'weapon' && c.kind !== 'potion' && c.kind !== 'ranged')) { warn(`arena: unknown chest kind "${c?.kind}" — skipped`); continue }
     if (c.x !== undefined || c.y !== undefined) {
       if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !inBounds(Math.round(c.x), Math.round(c.y))) {
         warn(`arena: chest at (${c.x},${c.y}) out of bounds — skipped`); continue
@@ -531,7 +531,7 @@ export function buildArena(config = {}, warn = console.warn) {
       }
       occupied.add(`${pos.x},${pos.y}`)
       entitySpawns.push({ kind: c.kind, x: pos.x, y: pos.y,
-        ...(c.kind === 'weapon' && { weaponType: c.weaponType ?? 'dagger' }) })
+        ...((c.kind === 'weapon' || c.kind === 'ranged') && { weaponType: c.weaponType ?? 'dagger' }) })
     } else {
       autoChests.push(c)
     }
@@ -546,7 +546,7 @@ export function buildArena(config = {}, warn = console.warn) {
     if (!cell) { warn('arena: no free ring cell for chest — skipped'); return }
     occupied.add(`${cell.x},${cell.y}`)
     entitySpawns.push({ kind: c.kind, x: cell.x, y: cell.y,
-      ...(c.kind === 'weapon' && { weaponType: c.weaponType ?? 'dagger' }) })
+      ...((c.kind === 'weapon' || c.kind === 'ranged') && { weaponType: c.weaponType ?? 'dagger' }) })
   })
 
   return { map, entitySpawns, playerSpawn, rooms: [] }

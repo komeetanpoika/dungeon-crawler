@@ -16,7 +16,7 @@ export function updateHUD(state) {
     ? `${player.weapon.name} (${player.weapon.damage} dmg)`
     : 'Unarmed')
   el('hud-ranged').textContent = (rangedMode ? '▶ ' : '') + (player.ranged
-    ? `${player.ranged.name} ${player.ranged.ammo}/${player.ranged.maxAmmo}`
+    ? `${player.ranged.name} (${player.ranged.damage} dmg) ${player.ranged.ammo}/${player.ranged.maxAmmo}`
     : 'No ranged weapon')
   el('hud-items').textContent =
     player.inventory.length > 0 ? player.inventory.map(i => i.emoji).join(' ') : '—'

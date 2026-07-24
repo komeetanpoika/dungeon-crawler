@@ -742,6 +742,7 @@ function descendLevel() {
     dropSpawned: false,
     lastBossTile: null,
     lockedMsgCooldown: 0,
+    fireMsgCooldown: 0,
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
   }
 }
