@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { RANGED_WEAPON_TYPES, makeRangedContents, makePlayer } from '../renderer/systems/entities.js'
+import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from '../renderer/systems/ranged.js'
 
 describe('RANGED_WEAPON_TYPES', () => {
   it('defines the four-weapon roster with full stat blocks', () => {
@@ -41,5 +42,71 @@ describe('makePlayer ranged fields', () => {
     const p = makePlayer(1, 1)
     assert.equal(p.ranged, null)
     assert.equal(p.attackMode, 'melee')
+  })
+})
+
+function armedPlayer(over = {}) {
+  return { ...makePlayer(1, 1), rangedCooldown: 0, ranged: makeRangedContents('shortbow'), ...over }
+}
+
+describe('toggleAttackMode', () => {
+  it('flips melee <-> ranged and returns the new mode', () => {
+    const p = makePlayer(1, 1)
+    assert.equal(toggleAttackMode(p), 'ranged')
+    assert.equal(p.attackMode, 'ranged')
+    assert.equal(toggleAttackMode(p), 'melee')
+  })
+
+  it('toggles even with no ranged weapon or empty ammo', () => {
+    const bare = makePlayer(1, 1)
+    assert.equal(toggleAttackMode(bare), 'ranged')
+    const empty = armedPlayer()
+    empty.ranged.ammo = 0
+    assert.equal(toggleAttackMode(empty), 'ranged')
+    assert.equal(empty.attackMode, 'ranged')  // running dry never snaps back
+  })
+})
+
+describe('tryFire', () => {
+  it('fires: returns projectile stats, spends 1 ammo, starts the weapon cooldown', () => {
+    const p = armedPlayer()
+    const res = tryFire(p)
+    assert.deepEqual(res, { ok: true, damage: 2, color: '#facc15', shape: 'arrow' })
+    assert.equal(p.ranged.ammo, 11)
+    assert.equal(p.rangedCooldown, 0.6)
+  })
+
+  it('wands fire square bolts', () => {
+    const p = armedPlayer({ ranged: makeRangedContents('sparkwand') })
+    assert.equal(tryFire(p).shape, 'bolt')
+  })
+
+  it('refuses without a weapon and spends nothing', () => {
+    const p = armedPlayer({ ranged: null })
+    assert.deepEqual(tryFire(p), { ok: false, reason: 'no_weapon' })
+    assert.equal(p.rangedCooldown, 0)
+  })
+
+  it('refuses at 0 ammo', () => {
+    const p = armedPlayer()
+    p.ranged.ammo = 0
+    assert.deepEqual(tryFire(p), { ok: false, reason: 'no_ammo' })
+  })
+
+  it('refuses during cooldown without spending ammo', () => {
+    const p = armedPlayer({ rangedCooldown: 0.3 })
+    assert.deepEqual(tryFire(p), { ok: false, reason: 'cooldown' })
+    assert.equal(p.ranged.ammo, 12)
+  })
+
+  it('projectile damage comes from the ranged weapon, never the melee weapon', () => {
+    const p = armedPlayer({ weapon: { weaponType: 'maunonmiekka', name: 'Maunonmiekka', damage: 10 } })
+    assert.equal(tryFire(p).damage, 2)
+  })
+
+  it('has HUD messages for weaponless and empty fails, none for cooldown', () => {
+    assert.equal(typeof FIRE_FAIL_MESSAGES.no_weapon, 'string')
+    assert.equal(typeof FIRE_FAIL_MESSAGES.no_ammo, 'string')
+    assert.equal(FIRE_FAIL_MESSAGES.cooldown, undefined)
   })
 })
