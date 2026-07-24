@@ -4,7 +4,7 @@ import { RANGED_WEAPON_TYPES, makeRangedContents, makePlayer } from '../renderer
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from '../renderer/systems/ranged.js'
 
 describe('RANGED_WEAPON_TYPES', () => {
-  it('defines the four-weapon roster with full stat blocks', () => {
+  it('defines the five-weapon roster with full stat blocks', () => {
     assert.deepEqual(Object.keys(RANGED_WEAPON_TYPES), ['shortbow', 'longbow', 'sparkwand', 'stormwand', 'firewand'])
     for (const [wt, def] of Object.entries(RANGED_WEAPON_TYPES)) {
       assert.equal(typeof def.name, 'string', wt)

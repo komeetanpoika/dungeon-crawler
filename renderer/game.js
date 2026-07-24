@@ -524,7 +524,7 @@ function update(delta) {
     if (p.maxDist !== undefined) {
       p.distTraveled = (p.distTraveled ?? 0) + stepDist
       if (p.distTraveled >= p.maxDist) {
-        if (p.explodes) detonateFireball(p.px, p.py)
+        if (p.explodes) detonateFireball(p.lastPx ?? p.px, p.lastPy ?? p.py)
         continue
       }
     }

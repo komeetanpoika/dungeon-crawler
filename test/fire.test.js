@@ -125,4 +125,20 @@ describe('fire zones', () => {
     assert.equal(r.entities.find(e => e.type === 'dragon_boss').hp, 18)
     assert.ok(!r.entities.some(e => e.type === 'monster'), 'tick kill removed')
   })
+
+  it('applies 2 ticks in a single update when delta spans multiple tick intervals', () => {
+    const r = updateFireZones([makeFireZone(TILES)], [at(1, 1)], at(2, 1), 2.5)
+    assert.equal(r.entities.find(e => e.px === 48).hp, 10 - 2, 'entity took 2 ticks in one call')
+    assert.equal(r.playerDamage, 2, 'player accrued 2 ticks in one call')
+    assert.equal(r.zones.length, 1, 'zone still alive at age 2.5')
+    assert.equal(r.zones[0].age, 2.5)
+  })
+
+  it('ticks overlapping zones independently on the shared tile', () => {
+    const zones = [makeFireZone(TILES), makeFireZone(TILES)]
+    const r = updateFireZones(zones, [at(1, 1)], at(2, 1), 1.0)
+    assert.equal(r.entities.find(e => e.px === 48).hp, 10 - 2, 'both zones ticked the shared tile')
+    assert.equal(r.playerDamage, 2, 'both zones ticked the player')
+    assert.equal(r.zones.length, 2, 'both zones still alive')
+  })
 })
