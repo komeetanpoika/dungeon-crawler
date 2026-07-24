@@ -52,6 +52,10 @@ export const SPRITES = {
   weapon_axe:       'tile_0118',
   weapon_club:      'tile_0107',
   weapon_maunonmiekka: 'weapon_maunonmiekka',   // 24px custom art (from the miekka drawing)
+  weapon_shortbow:  'weapon_shortbow',    // custom art — tileset has no bow
+  weapon_longbow:   'weapon_longbow',     // custom art — tileset has no bow
+  weapon_sparkwand: 'tile_0130',
+  weapon_stormwand: 'tile_0129',
   potion:           'tile_0116',
   // door animation frames (0 = closed … 3 = open)
   door_0: 'tile_0009',
