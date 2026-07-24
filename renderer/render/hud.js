@@ -11,9 +11,13 @@ export function updateHUD(state) {
   if (!player) return
   el('hud-level').textContent = `LVL ${level}`
   el('hud-hp-bar').textContent = bar(player.hp, player.maxHp)
-  el('hud-weapon').textContent = player.weapon
+  const rangedMode = player.attackMode === 'ranged'
+  el('hud-weapon').textContent = (rangedMode ? '' : '▶ ') + (player.weapon
     ? `${player.weapon.name} (${player.weapon.damage} dmg)`
-    : 'Unarmed'
+    : 'Unarmed')
+  el('hud-ranged').textContent = (rangedMode ? '▶ ' : '') + (player.ranged
+    ? `${player.ranged.name} ${player.ranged.ammo}/${player.ranged.maxAmmo}`
+    : 'No ranged weapon')
   el('hud-items').textContent =
     player.inventory.length > 0 ? player.inventory.map(i => i.emoji).join(' ') : '—'
   el('hud-log').textContent = log?.at(-1) ?? ''
