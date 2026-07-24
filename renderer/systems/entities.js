@@ -33,6 +33,7 @@ export const RANGED_WEAPON_TYPES = {
   longbow:   { name: 'Longbow',    damage: 3, maxAmmo: 10, cooldown: 0.7,  color: '#facc15', kind: 'bow' },
   sparkwand: { name: 'Spark Wand', damage: 2, maxAmmo: 16, cooldown: 0.45, color: '#22d3ee', kind: 'wand' },
   stormwand: { name: 'Storm Wand', damage: 5, maxAmmo: 6,  cooldown: 0.8,  color: '#a78bfa', kind: 'wand' },
+  firewand:  { name: 'Fireball Wand', damage: 4, maxAmmo: 5,  cooldown: 1.0,  color: '#f97316', kind: 'wand', explodes: true },
 }
 
 export function makeRangedContents(weaponType = 'shortbow') {
@@ -42,6 +43,7 @@ export function makeRangedContents(weaponType = 'shortbow') {
     type: 'ranged', weaponType: wt, name: def.name, damage: def.damage,
     ammo: def.maxAmmo, maxAmmo: def.maxAmmo, cooldown: def.cooldown,
     color: def.color, kind: def.kind,
+    ...(def.explodes ? { explodes: true } : {}),
   }
 }
 

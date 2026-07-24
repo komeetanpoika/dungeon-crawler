@@ -23,6 +23,7 @@ import { parseWeaponCheat } from './systems/cheats.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { rollChestLoot } from './systems/loot.js'
+import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -154,6 +155,21 @@ function isEnemy(e) {
       || e.type === 'dragon_boss'
 }
 
+// Fireball detonation: flood-fill the blast, burst everyone standing in it
+// (player included — full friendly fire), light the tiles, flash a ring.
+function detonateFireball(px, py) {
+  const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE)
+  const tiles = computeBlastTiles(state.map, tx, ty)
+  if (!tiles.length) return
+  const burst = applyBurst(state.entities, state.player, tiles)
+  state.entities = burst.entities
+  if (burst.playerBurned) damagePlayer(state, BURST_DAMAGE, 'hit', `The blast engulfs you! (-${BURST_DAMAGE} HP)`)
+  state.fireZones.push(makeFireZone(tiles))
+  state.shockwaves.push({ px: tx * TILE_SIZE + TILE_SIZE / 2, py: ty * TILE_SIZE + TILE_SIZE / 2,
+    t: 0, dur: 0.35, maxRadius: TILE_SIZE * 2.5, color: '#f97316' })
+  state.log = [...state.log, 'The fireball erupts!'].slice(-5)
+}
+
 function buildEntities(spawns, map, depth) {
   return spawns.flatMap(s => {
     const cx = s.x * TILE_SIZE + TILE_SIZE / 2
@@ -236,6 +252,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     theme,
     entities: buildEntities(entitySpawns, map, depth),
     projectiles: [],
+    fireZones: [],
     shockwaves: [],
     log: ['You enter the dungeon…'],
     hitEffects: [],
@@ -482,9 +499,16 @@ function update(delta) {
     const shot = tryFire(player)
     if (shot.ok) {
       const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
-      state.projectiles.push({ px: player.px, py: player.py,
+      const proj = { px: player.px, py: player.py,
         dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED,
-        damage: shot.damage, color: shot.color, shape: shot.shape, friendly: true })
+        damage: shot.damage, color: shot.color, shape: shot.shape, friendly: true }
+      if (shot.explodes) {
+        proj.explodes = true
+        proj.maxDist = FIREBALL_RANGE_TILES * TILE_SIZE
+        proj.distTraveled = 0
+        proj.lastPx = player.px; proj.lastPy = player.py   // last walkable spot, for wall detonations
+      }
+      state.projectiles.push(proj)
     } else if (FIRE_FAIL_MESSAGES[shot.reason] && state.fireMsgCooldown <= 0) {
       state.log = [...state.log, FIRE_FAIL_MESSAGES[shot.reason]].slice(-5)
       state.fireMsgCooldown = 1.5
@@ -497,9 +521,19 @@ function update(delta) {
     const stepDist = Math.hypot(p.dx, p.dy) * delta
     p.px += p.dx * delta
     p.py += p.dy * delta
-    if (p.maxDist !== undefined) { p.distTraveled = (p.distTraveled ?? 0) + stepDist; if (p.distTraveled >= p.maxDist) continue }
+    if (p.maxDist !== undefined) {
+      p.distTraveled = (p.distTraveled ?? 0) + stepDist
+      if (p.distTraveled >= p.maxDist) {
+        if (p.explodes) detonateFireball(p.lastPx ?? p.px, p.lastPy ?? p.py)
+        continue
+      }
+    }
     const tile = map[Math.floor(p.py / TILE_SIZE)]?.[Math.floor(p.px / TILE_SIZE)]
-    if (!tile || !isWalkable(tile.tile, tile)) continue
+    if (!tile || !isWalkable(tile.tile, tile)) {
+      if (p.explodes) detonateFireball(p.lastPx ?? p.px, p.lastPy ?? p.py)
+      continue
+    }
+    if (p.explodes) { p.lastPx = p.px; p.lastPy = p.py }
     let hit = false
     if (p.friendly) {
       state.entities = state.entities.map(e => {
@@ -514,6 +548,7 @@ function update(delta) {
         return e
       })
       state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
+      if (hit && p.explodes) detonateFireball(p.px, p.py)
     } else {
       if (Math.hypot(player.px - p.px, player.py - p.py) < 10) {
         damagePlayer(state, p.damage, 'hit', `Hit for ${p.damage} damage!`)
@@ -523,6 +558,14 @@ function update(delta) {
     if (!hit) liveProjectiles.push(p)
   }
   state.projectiles = liveProjectiles
+
+  // Lingering fireball flames — tick everyone standing in them
+  if (state.fireZones?.length) {
+    const fz = updateFireZones(state.fireZones, state.entities, player, delta)
+    state.fireZones = fz.zones
+    state.entities = fz.entities
+    if (fz.playerDamage > 0) damagePlayer(state, fz.playerDamage, 'dot', "You're burning! (-1 HP)")
+  }
 
   // Enemy AI — iterate a snapshot so wizard summons don't re-enter this frame
   for (const e of [...state.entities]) {
@@ -728,6 +771,7 @@ function descendLevel() {
     theme,
     entities: buildEntities(entitySpawns, map, next),
     projectiles: [],
+    fireZones: [],
     shockwaves: [],
     player: {
       ...state.player,

@@ -4,8 +4,8 @@ import { RANGED_WEAPON_TYPES, makeRangedContents, makePlayer } from '../renderer
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from '../renderer/systems/ranged.js'
 
 describe('RANGED_WEAPON_TYPES', () => {
-  it('defines the four-weapon roster with full stat blocks', () => {
-    assert.deepEqual(Object.keys(RANGED_WEAPON_TYPES), ['shortbow', 'longbow', 'sparkwand', 'stormwand'])
+  it('defines the five-weapon roster with full stat blocks', () => {
+    assert.deepEqual(Object.keys(RANGED_WEAPON_TYPES), ['shortbow', 'longbow', 'sparkwand', 'stormwand', 'firewand'])
     for (const [wt, def] of Object.entries(RANGED_WEAPON_TYPES)) {
       assert.equal(typeof def.name, 'string', wt)
       assert.ok(def.damage > 0 && def.maxAmmo > 0 && def.cooldown > 0, wt)
@@ -19,6 +19,7 @@ describe('RANGED_WEAPON_TYPES', () => {
     assert.equal(RANGED_WEAPON_TYPES.longbow.kind, 'bow')
     assert.equal(RANGED_WEAPON_TYPES.sparkwand.kind, 'wand')
     assert.equal(RANGED_WEAPON_TYPES.stormwand.kind, 'wand')
+    assert.equal(RANGED_WEAPON_TYPES.firewand.kind, 'wand')
   })
 })
 
@@ -34,6 +35,15 @@ describe('makeRangedContents', () => {
   it('falls back to shortbow for unknown types', () => {
     assert.equal(makeRangedContents('bazooka').weaponType, 'shortbow')
     assert.equal(makeRangedContents().weaponType, 'shortbow')
+  })
+
+  it('firewand carries the explodes flag; others stay flag-free', () => {
+    const c = makeRangedContents('firewand')
+    assert.equal(c.explodes, true)
+    assert.deepEqual(
+      { name: c.name, damage: c.damage, ammo: c.ammo, cooldown: c.cooldown },
+      { name: 'Fireball Wand', damage: 4, ammo: 5, cooldown: 1.0 })
+    assert.ok(!('explodes' in makeRangedContents('stormwand')))
   })
 })
 
@@ -108,5 +118,10 @@ describe('tryFire', () => {
     assert.equal(typeof FIRE_FAIL_MESSAGES.no_weapon, 'string')
     assert.equal(typeof FIRE_FAIL_MESSAGES.no_ammo, 'string')
     assert.equal(FIRE_FAIL_MESSAGES.cooldown, undefined)
+  })
+
+  it('firewand shots are exploding bolts', () => {
+    const p = armedPlayer({ ranged: makeRangedContents('firewand') })
+    assert.deepEqual(tryFire(p), { ok: true, damage: 4, color: '#f97316', shape: 'bolt', explodes: true })
   })
 })

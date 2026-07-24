@@ -8,3 +8,4 @@ Feature ideas harvested from test runs (`arena-log.mjs suggest`). Format: `- [NE
 - [NEW] 2026-07-05 (run 8): Against a stationary player the crab's grab dominates so thoroughly that orbit behavior is hard to observe live; a config toggle disabling enemy attacks (observation mode) would isolate movement AI cleanly
 - [NEW] 2026-07-06 (run 9): Enemy contact DPS makes multi-enemy melee observation brutal under command-file latency; the observation-mode/invulnerable-player arena flag suggestion from the pathfinding session would have saved 3 deaths here too
 - [NEW] 2026-07-24 (run 10): Move Run 9's eval-keydown-holds lesson into SKILL.md setup steps — Run 10 relearned it from scratch and burned most of its budget doing so.
+- [NEW] 2026-07-24 (run 11): Document the player rangedType config field in the arena-test SKILL.md syntax block (supported in game.js since ranged rework, used by runs 10-11, absent from docs)

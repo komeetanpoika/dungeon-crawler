@@ -19,6 +19,7 @@ export function tryFire(player) {
     damage: player.ranged.damage,
     color: player.ranged.color,
     shape: player.ranged.kind === 'bow' ? 'arrow' : 'bolt',
+    ...(player.ranged.explodes ? { explodes: true } : {}),
   }
 }
 

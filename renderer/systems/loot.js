@@ -3,7 +3,7 @@ import { WEAPON_TYPES, makeRangedContents } from './entities.js'
 // Random chest loot: potion 50% / melee weapon 25% / ranged weapon 25%.
 // Weapon tier scales with depth, mirroring LEVEL_CONFIG's melee progression.
 const MELEE_POOLS  = { shallow: ['dagger', 'sword'],       deep: ['longsword', 'axe'] }
-const RANGED_POOLS = { shallow: ['shortbow', 'sparkwand'], deep: ['longbow', 'stormwand'] }
+const RANGED_POOLS = { shallow: ['shortbow', 'sparkwand'], deep: ['longbow', 'stormwand', 'firewand'] }
 const DEEP_FROM = 3
 
 function pick(pool, rng) {

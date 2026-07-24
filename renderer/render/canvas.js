@@ -730,11 +730,36 @@ export class Renderer {
       }
     }
 
+    // Fireball zones: flickering flames per burning tile. Deterministic
+    // flicker seeded by zone age + tile coords (no wall-clock), fading over
+    // the final 0.7 s of the zone's 3 s life.
+    for (const z of state.fireZones ?? []) {
+      const fade = Math.max(0, Math.min(1, (3.0 - z.age) / 0.7))
+      for (const t of z.tiles) {
+        const fx = Math.round(t.x * S - camX), fy = Math.round(t.y * S - camY)
+        const phase = z.age * 10 + t.x * 7 + t.y * 13
+        const flick = 0.75 + 0.25 * Math.sin(phase)
+        ctx.save()
+        ctx.globalAlpha = 0.35 * fade * flick
+        ctx.fillStyle = '#ef4444'
+        ctx.fillRect(fx + 2, fy + 2, S - 4, S - 4)
+        ctx.globalAlpha = 0.7 * fade * flick
+        ctx.fillStyle = '#f97316'
+        const h = S * 0.5 * (0.7 + 0.3 * Math.sin(phase * 1.7))
+        ctx.fillRect(fx + 6, fy + S - 6 - h, S - 12, h)
+        ctx.globalAlpha = 0.8 * fade
+        ctx.fillStyle = '#fbbf24'
+        const h2 = S * 0.28 * (0.7 + 0.3 * Math.sin(phase * 2.3 + 1))
+        ctx.fillRect(fx + 10, fy + S - 6 - h2, S - 20, h2)
+        ctx.restore()
+      }
+    }
+
     // Maunonmiekka shockwaves: expanding crimson rings that fade out
     for (const w of state.shockwaves ?? []) {
       const k = Math.min(1, w.t / w.dur)
       ctx.save()
-      ctx.strokeStyle = '#dc2626'
+      ctx.strokeStyle = w.color ?? '#dc2626'
       ctx.lineWidth = 3
       ctx.globalAlpha = Math.max(0, 1 - k)
       ctx.beginPath()
