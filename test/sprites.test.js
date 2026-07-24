@@ -98,3 +98,12 @@ describe('room decoration props', () => {
   it('prop_gravestone = tile_0065', () => assert.equal(SPRITES.prop_gravestone, 'tile_0065'))
   it('prop_grave      = tile_0066', () => assert.equal(SPRITES.prop_grave,      'tile_0066'))
 })
+
+describe('ranged weapons', () => {
+  it('weapon_sparkwand = tile_0130 (cyan-tipped wand)',   () => assert.equal(SPRITES.weapon_sparkwand, 'tile_0130'))
+  it('weapon_stormwand = tile_0129 (purple-tipped wand)', () => assert.equal(SPRITES.weapon_stormwand, 'tile_0129'))
+  it('bows use custom art (no bow in the tileset)', () => {
+    assert.equal(SPRITES.weapon_shortbow, 'weapon_shortbow')
+    assert.equal(SPRITES.weapon_longbow, 'weapon_longbow')
+  })
+})

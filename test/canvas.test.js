@@ -164,4 +164,30 @@ describe('drawEntity — held idle weapons', () => {
     drawEntity(ctx2, { ...idle, attackTimer: 0.1, attackDuration: 0.2 }, 0, 0, 32, psprites)
     assert.deepEqual(ctx2.images, ['PLAYER'], 'no carried sword while the swing animates')
   })
+
+  it('player carries the ranged weapon in ranged stance', () => {
+    const psprites = { player: 'PLAYER', weapon_sword: 'SWORD', weapon_shortbow: 'BOW' }
+    const p = { type: 'player', facing: 'east', walkPhase: 0, swayAmp: 0,
+                weapon: { weaponType: 'sword' }, ranged: { weaponType: 'shortbow' }, attackMode: 'ranged' }
+    const ctx = swingCtx()
+    drawEntity(ctx, p, 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['PLAYER', 'BOW'])
+  })
+
+  it('ranged stance with no ranged weapon shows an empty hand', () => {
+    const psprites = { player: 'PLAYER', weapon_sword: 'SWORD' }
+    const p = { type: 'player', facing: 'east', walkPhase: 0, swayAmp: 0,
+                weapon: { weaponType: 'sword' }, ranged: null, attackMode: 'ranged' }
+    const ctx = swingCtx()
+    drawEntity(ctx, p, 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['PLAYER'])
+  })
+
+  it('a floating ranged weapon renders its sprite', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, { type: 'floating_item', progress: 1,
+                      contents: { type: 'ranged', weaponType: 'shortbow' } },
+               0, 0, 32, { weapon_shortbow: 'BOW' })
+    assert.deepEqual(ctx.images, ['BOW'])
+  })
 })

@@ -25,6 +25,26 @@ export const WEAPON_TYPES = {
   maunonmiekka: { name: 'Maunonmiekka', damage: 10 },
 }
 
+// Projectile weapons — looted from chests, never a starting item. `ammo`
+// depletes per shot and is only refilled by picking up a new weapon.
+// `kind` drives projectile rendering (arrows are elongated, wand bolts square).
+export const RANGED_WEAPON_TYPES = {
+  shortbow:  { name: 'Shortbow',   damage: 2, maxAmmo: 12, cooldown: 0.6,  color: '#facc15', kind: 'bow' },
+  longbow:   { name: 'Longbow',    damage: 3, maxAmmo: 10, cooldown: 0.7,  color: '#facc15', kind: 'bow' },
+  sparkwand: { name: 'Spark Wand', damage: 2, maxAmmo: 16, cooldown: 0.45, color: '#22d3ee', kind: 'wand' },
+  stormwand: { name: 'Storm Wand', damage: 5, maxAmmo: 6,  cooldown: 0.8,  color: '#a78bfa', kind: 'wand' },
+}
+
+export function makeRangedContents(weaponType = 'shortbow') {
+  const wt = RANGED_WEAPON_TYPES[weaponType] ? weaponType : 'shortbow'
+  const def = RANGED_WEAPON_TYPES[wt]
+  return {
+    type: 'ranged', weaponType: wt, name: def.name, damage: def.damage,
+    ammo: def.maxAmmo, maxAmmo: def.maxAmmo, cooldown: def.cooldown,
+    color: def.color, kind: def.kind,
+  }
+}
+
 export function isWalkable(tileId, tileObj = null) {
   if (tileObj?.voidZone) return false
   return tileId !== TILE.WALL && tileId !== TILE.COLUMN
@@ -98,7 +118,7 @@ export function makePlayer(x, y, bonuses = []) {
     hp: 10, maxHp: 10,
     inventory: [], maxInventory: 5 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
-    bonuses, weapon: null,
+    bonuses, weapon: null, ranged: null, attackMode: 'melee',
   }
 }
 

@@ -167,7 +167,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'floating_item') {
     const c = entity.contents
-    if (c.type === 'weapon') {
+    if (c.type === 'weapon' || c.type === 'ranged') {
       const s = sprites[`weapon_${c.weaponType}`]
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'potion') {
@@ -249,8 +249,9 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     ctx.rotate(tilt * Math.PI / 180)
     ctx.scale(flip ? -1 : 1, 1)              // flip handled here, so draw un-flipped below
     if (sprites.player) ctx.drawImage(sprites.player, -S / 2, -S, S, S)
-    if (entity.weapon && !(entity.attackTimer > 0)) {   // the swing draws it instead
-      const ws = sprites[`weapon_${entity.weapon.weaponType}`]
+    if (!(entity.attackTimer > 0)) {   // the swing animation draws the melee weapon instead
+      const held = entity.attackMode === 'ranged' ? entity.ranged : entity.weapon
+      const ws = held && sprites[`weapon_${held.weaponType}`]
       if (ws) drawHeldWeapon(ctx, ws, S)
     }
     ctx.restore()
@@ -715,12 +716,18 @@ export class Renderer {
     if (cyclops) drawCyclopsEffects(ctx, cyclops, camX, camY)
     drawHealthBars(ctx, entities, map, camX, camY, S)
 
-    // Draw projectiles
+    // Draw projectiles. Arrows are elongated along their travel axis;
+    // wand bolts and enemy shots stay 4x4 squares.
     for (const p of state.projectiles ?? []) {
       const bpx = Math.round(p.px - camX)
       const bpy = Math.round(p.py - camY)
       ctx.fillStyle = p.color ?? '#facc15'
-      ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
+      if (p.shape === 'arrow') {
+        if (Math.abs(p.dx) >= Math.abs(p.dy)) ctx.fillRect(bpx - 4, bpy - 1, 8, 2)
+        else ctx.fillRect(bpx - 1, bpy - 4, 2, 8)
+      } else {
+        ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
+      }
     }
 
     // Maunonmiekka shockwaves: expanding crimson rings that fade out
