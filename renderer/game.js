@@ -1,5 +1,5 @@
 import { generateLevel } from './systems/map.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, TILE, isWalkable } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, makeRangedContents, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -21,11 +21,12 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
+import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
+import { rollChestLoot } from './systems/loot.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
 const MELEE_COOLDOWN = 0.4
-const RANGED_COOLDOWN = 0.6
 const PROJECTILE_SPEED = 280
 const CONTACT_RANGE = 20
 const PLAYER_HALF = 6
@@ -72,6 +73,15 @@ window.addEventListener('keydown', e => {
     if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
   }
+})
+
+// Shift toggles melee/ranged stance. Edge-triggered: e.repeat filters the
+// held-key auto-repeat so holding Shift doesn't flap the mode.
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Shift' || e.repeat) return
+  if (phase !== PHASE.PLAYING || !state) return
+  const mode = toggleAttackMode(state.player)
+  state.log = [...state.log, mode === 'ranged' ? 'Ranged stance.' : 'Melee stance.'].slice(-5)
 })
 
 // In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
@@ -144,7 +154,7 @@ function isEnemy(e) {
       || e.type === 'dragon_boss'
 }
 
-function buildEntities(spawns, map) {
+function buildEntities(spawns, map, depth) {
   return spawns.flatMap(s => {
     const cx = s.x * TILE_SIZE + TILE_SIZE / 2
     const cy = s.y * TILE_SIZE + TILE_SIZE / 2
@@ -170,10 +180,11 @@ function buildEntities(spawns, map) {
         const def = WEAPON_TYPES[wt] ?? WEAPON_TYPES.dagger
         return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage })]
       }
+      case 'ranged':  return [makeChest(s.x, s.y, makeRangedContents(s.weaponType))]
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
       case 'exit_door': return [makeExitDoor(s.x, s.y)]
-      case 'chest':   return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
+      case 'chest':   return [makeChest(s.x, s.y, rollChestLoot(depth))]
       case 'cyclops': return [hpOverride({ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'wizard':  return [hpOverride({ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'crab':    return [hpOverride({ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
@@ -209,6 +220,9 @@ function startNewRun(depth = 1, arenaCfg = null) {
     const def = WEAPON_TYPES[po.weaponType]
     if (def) player.weapon = { weaponType: po.weaponType, name: def.name, damage: def.damage }
     else if (po.weaponType !== undefined) console.warn(`arena: unknown player weaponType "${po.weaponType}" — keeping current weapon`)
+    const rdef = RANGED_WEAPON_TYPES[po.rangedType]
+    if (rdef) player.ranged = makeRangedContents(po.rangedType)
+    else if (po.rangedType !== undefined) console.warn(`arena: unknown player rangedType "${po.rangedType}" — no ranged weapon`)
     if (Number.isFinite(po.hp) && po.hp >= 1) {
       player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
       player.hp = Math.round(po.hp)
@@ -220,7 +234,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     map,
     player,
     theme,
-    entities: buildEntities(entitySpawns, map),
+    entities: buildEntities(entitySpawns, map, depth),
     projectiles: [],
     shockwaves: [],
     log: ['You enter the dungeon…'],
@@ -232,6 +246,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     dropSpawned: false,
     lastBossTile: null,
     lockedMsgCooldown: 0,
+    fireMsgCooldown: 0,
   }
 }
 
@@ -327,6 +342,9 @@ function update(delta) {
       if (chest.contents.type === 'weapon') {
         player.weapon = { ...chest.contents }
         state.log = [...state.log, `Found ${chest.contents.name}!`].slice(-5)
+      } else if (chest.contents.type === 'ranged') {
+        player.ranged = { ...chest.contents }
+        state.log = [...state.log, `Found ${chest.contents.name}! (${chest.contents.ammo} shots)`].slice(-5)
       } else if (chest.contents.type === 'potion') {
         const healed = Math.min(player.maxHp - player.hp, chest.contents.amount)
         player.hp += healed
@@ -344,6 +362,9 @@ function update(delta) {
     if (item.contents.type === 'weapon') {
       player.weapon = { ...item.contents }
       state.log = [...state.log, `Picked up ${item.contents.name}!`].slice(-5)
+    } else if (item.contents.type === 'ranged') {
+      player.ranged = { ...item.contents }
+      state.log = [...state.log, `Picked up ${item.contents.name}! (${item.contents.ammo} shots)`].slice(-5)
     } else if (item.contents.type === 'potion') {
       const healed = Math.min(player.maxHp - player.hp, item.contents.amount)
       player.hp += healed
@@ -407,7 +428,7 @@ function update(delta) {
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
 
   // Melee (Space)
-  if (keys[' '] && player.meleeCooldown <= 0) {
+  if (keys[' '] && player.attackMode !== 'ranged' && player.meleeCooldown <= 0) {
     const atk = getAttack(player.weapon?.weaponType)
     player.meleeCooldown = atk.cooldown
     player.attackTimer = atk.duration
@@ -453,12 +474,21 @@ function update(delta) {
     state.hitEffects = [{ x: player.x, y: player.y }]
   }
 
-  // Ranged (Shift)
-  if ((keys['Shift'] || keys['ShiftLeft'] || keys['ShiftRight']) && player.rangedCooldown <= 0) {
-    player.rangedCooldown = RANGED_COOLDOWN
-    const dmg = player.weapon?.damage ?? 1
-    const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
-    state.projectiles.push({ px: player.px, py: player.py, dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED, damage: dmg, friendly: true })
+  // Ranged (Space while in ranged stance). tryFire gates on weapon presence,
+  // ammo, and the per-weapon cooldown; failures (except cooldown) get a
+  // throttled HUD message so holding Space doesn't spam the log.
+  state.fireMsgCooldown = Math.max(0, (state.fireMsgCooldown ?? 0) - delta)
+  if (keys[' '] && player.attackMode === 'ranged') {
+    const shot = tryFire(player)
+    if (shot.ok) {
+      const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
+      state.projectiles.push({ px: player.px, py: player.py,
+        dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED,
+        damage: shot.damage, color: shot.color, shape: shot.shape, friendly: true })
+    } else if (FIRE_FAIL_MESSAGES[shot.reason] && state.fireMsgCooldown <= 0) {
+      state.log = [...state.log, FIRE_FAIL_MESSAGES[shot.reason]].slice(-5)
+      state.fireMsgCooldown = 1.5
+    }
   }
 
   // Update projectiles
