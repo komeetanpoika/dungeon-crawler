@@ -71,3 +71,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** monster(weak), monster(weak)
 **Score:** 3/5
 **Notes:** Run interrupted by user mid-verification (controller stopped the agent). Live-verified before stop: (1) boot melee-active + Shortbow 12/12; (2) Shift edge-toggle both ways, held Shift no flap; (3) arrows fire, ammo 12->6 on HUD, elongated yellow bolts on camera (t8-check3), monster damaged; (4) melee swing spends no ammo (6/12 unchanged). NOT live-verified: (5) ranged-chest pickup to Storm Wand 6/6; (6) wand purple bolt + Out of ammo + stance persistence — both covered by unit tests only (game.js pickup wiring reviewed, tryFire/toggle tested).
+
+## Run 11 — 2026-07-24 — CLOSED
+**Question:** Does the fireball wand work end-to-end live: chest pickup, detonation (wall or enemy), gas-like spill around a column, enemy burst/burn damage, player self-burn, ammo drain from 5?
+**Criteria:** 1) 'The fireball erupts!' in HUD log with flames rendered around but not on the column tile; 2) an enemy in the blast takes damage (hp bar drop or death); 3) standing in flames logs "You're burning!" and drops player HP; 4) HUD ammo counts down from 5 per shot
+**Config:** monster(weak), monster(weak)
+**Score:** 5/5
+**Notes:** All criteria met live. 1) 'The fireball erupts!' logged; flames rendered wrapping the column on both sides while the column tile stayed unburnt (gas spill visible in fireball-blast.png/pointblank.png); zone expired on schedule (~3s). 2) Weak bat died to first blast (direct+burst); strong monster visibly stood burning in flames and died during the ammo-drain shots — hit spam ceased. 3) Point-blank shot self-burned the player: 'You're burning! (-1 HP)' caught on 3 consecutive ~0.5s polls (burst -4 engulfs message overwritten same-frame by erupts line; tick arithmetic unit-covered). 4) Ammo drained 5/5→4/5→3/5→0/5 on HUD, 'Out of ammo!' fired at empty. Caveat: exact HP deltas not verifiable (300 hp vs coarse 6-block bar) — damage evidence is log lines + unit tests.
