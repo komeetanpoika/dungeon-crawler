@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { TILE } from '../renderer/systems/entities.js'
-import { computeBlastTiles, BLAST_TILES } from '../renderer/systems/fire.js'
+import { computeBlastTiles, BLAST_TILES, applyBurst, makeFireZone, updateFireZones,
+         BURST_DAMAGE, FIRE_DURATION, FIRE_TICK_INTERVAL } from '../renderer/systems/fire.js'
 
 // Build a map from ASCII rows: '#' wall, '.' floor, 'v' floor with a void zone.
 function grid(rows) {
@@ -55,5 +56,73 @@ describe('computeBlastTiles', () => {
   it('honors a custom count', () => {
     const map = grid(['.....', '.....', '.....'])
     assert.equal(computeBlastTiles(map, 2, 1, 4).length, 4)
+  })
+})
+
+// Entities/player on a 32px grid: tile (tx, ty) → pixel center.
+const at = (tx, ty, extra = {}) => ({ type: 'monster', px: tx * 32 + 16, py: ty * 32 + 16, hp: 10, ...extra })
+const TILES = [{ x: 1, y: 1 }, { x: 2, y: 1 }]
+
+describe('applyBurst', () => {
+  it('deals 4 to everyone on a blast tile, spares everyone off it, removes kills', () => {
+    const inside = at(1, 1)
+    const outside = at(5, 5)
+    const weakling = at(2, 1, { hp: 3 })
+    const { entities, playerBurned, hitCount } =
+      applyBurst([inside, outside, weakling], at(1, 1), TILES)
+    assert.equal(hitCount, 2)
+    assert.equal(entities.find(e => e.px === inside.px).hp, 10 - BURST_DAMAGE)
+    assert.equal(entities.find(e => e.px === outside.px).hp, 10, 'outside untouched')
+    assert.ok(!entities.some(e => e.hp <= 0), 'burst kill removed')
+    assert.equal(playerBurned, true)
+  })
+
+  it('spares the dragon boss and non-enemies, burns shielded wizards, misses a distant player', () => {
+    const boss = at(1, 1, { type: 'dragon_boss', hp: 18 })
+    const chest = at(2, 1, { type: 'chest', hp: undefined })
+    const shielded = at(2, 1, { type: 'wizard', hp: 6, shieldTimer: 2 })
+    const { entities, playerBurned, hitCount } =
+      applyBurst([boss, chest, shielded], at(9, 9), TILES)
+    assert.equal(hitCount, 1, 'only the wizard counts')
+    assert.equal(entities.find(e => e.type === 'dragon_boss').hp, 18)
+    assert.equal(entities.find(e => e.type === 'chest').hp, undefined)
+    assert.equal(entities.find(e => e.type === 'wizard').hp, 6 - BURST_DAMAGE, 'shield is no fire protection')
+    assert.equal(playerBurned, false)
+  })
+})
+
+describe('fire zones', () => {
+  it('makeFireZone starts fresh with a full tick timer', () => {
+    assert.deepEqual(makeFireZone(TILES), { tiles: TILES, age: 0, tickTimer: FIRE_TICK_INTERVAL })
+  })
+
+  it('ticks 1 damage per second — 3 ticks over a full 3 s lifetime, then expires', () => {
+    let zones = [makeFireZone(TILES)]
+    let entities = [at(1, 1), at(5, 5)]
+    const player = at(2, 1)
+    let playerTotal = 0
+    for (let i = 0; i < 6; i++) {           // 6 × 0.5 s = 3.0 s
+      const r = updateFireZones(zones, entities, player, 0.5)
+      zones = r.zones; entities = r.entities; playerTotal += r.playerDamage
+    }
+    assert.equal(entities.find(e => e.px === 48).hp, 10 - 3, 'standing enemy took 3 ticks')
+    assert.equal(entities.find(e => e.px === 176).hp, 10, 'distant enemy untouched')
+    assert.equal(playerTotal, 3, 'player standing in fire took 3 ticks')
+    assert.equal(zones.length, 0, 'zone burned out at 3.0 s')
+  })
+
+  it('does not tick before the first full second', () => {
+    const r = updateFireZones([makeFireZone(TILES)], [at(1, 1)], at(9, 9), 0.9)
+    assert.equal(r.entities[0].hp, 10)
+    assert.equal(r.playerDamage, 0)
+    assert.equal(r.zones.length, 1)
+  })
+
+  it('skips the dragon boss and removes tick kills', () => {
+    const boss = at(1, 1, { type: 'dragon_boss', hp: 18 })
+    const dying = at(2, 1, { hp: 1 })
+    const r = updateFireZones([makeFireZone(TILES)], [boss, dying], at(9, 9), 1.0)
+    assert.equal(r.entities.find(e => e.type === 'dragon_boss').hp, 18)
+    assert.ok(!r.entities.some(e => e.type === 'monster'), 'tick kill removed')
   })
 })
