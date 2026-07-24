@@ -735,13 +735,12 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     for (let i = 0; i < puzzleCount && idx < farTiles.length; i++, idx++) {
       entitySpawns.push({ kind: 'puzzle', ...farTiles[idx] })
     }
-    const weaponPool = cfg.weapons ?? ['dagger']
-    for (let i = 0; i < weaponCount && idx < farTiles.length; i++, idx++) {
-      const weaponType = weaponPool[Math.floor(Math.random() * weaponPool.length)]
-      entitySpawns.push({ kind: 'weapon', weaponType, ...farTiles[idx] })
-    }
-    for (let i = 0; i < potionCount && idx < farTiles.length; i++, idx++) {
-      entitySpawns.push({ kind: 'potion', ...farTiles[idx] })
+    // Procedural chests roll the loot table when opened (systems/loot.js:
+    // potion / melee / ranged, depth-tiered) instead of carrying fixed
+    // contents. The two density knobs still control total chest supply;
+    // cfg.weapons remains the boss-drop pool.
+    for (let i = 0; i < weaponCount + potionCount && idx < farTiles.length; i++, idx++) {
+      entitySpawns.push({ kind: 'chest', ...farTiles[idx] })
     }
 
     const wizardCount = cfg.wizardCount ?? 0

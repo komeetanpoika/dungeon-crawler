@@ -41,6 +41,17 @@ describe('generateLevel', () => {
     assert.ok(Array.isArray(entitySpawns))
   })
 
+  it('procedural item placement emits loot-roll chests, not fixed weapon/potion chests', () => {
+    // Templates/structures may still emit fixed 'weapon'/'potion' chests; the
+    // density-driven procedural items must all be 'chest' (rolled at open time).
+    for (let depth = 1; depth <= 5; depth++) {
+      const { entitySpawns } = generateLevel(depth)
+      const chests = entitySpawns.filter(s => s.kind === 'chest')
+      assert.ok(chests.length > 0, `depth ${depth}: expected procedural loot-roll chests`)
+      for (const c of chests) assert.equal(c.weaponType, undefined, 'loot chests carry no fixed weaponType')
+    }
+  })
+
   it('produces rooms with valid walkable centers across all depths', () => {
     for (let depth = 1; depth <= 5; depth++) {
       const { map, rooms } = generateLevel(depth)
