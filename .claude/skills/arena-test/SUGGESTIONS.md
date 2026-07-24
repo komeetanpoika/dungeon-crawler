@@ -7,3 +7,4 @@ Feature ideas harvested from test runs (`arena-log.mjs suggest`). Format: `- [NE
 - [NEW] 2026-07-05 (run 6): Guard DPS in sustained contact (~2-3 hits/s at 1 dmg) melts even overridden 40hp players in ~15s; if more melee-adjacent observation tests are needed, consider an arena option to scale enemy attack cooldowns
 - [NEW] 2026-07-05 (run 8): Against a stationary player the crab's grab dominates so thoroughly that orbit behavior is hard to observe live; a config toggle disabling enemy attacks (observation mode) would isolate movement AI cleanly
 - [NEW] 2026-07-06 (run 9): Enemy contact DPS makes multi-enemy melee observation brutal under command-file latency; the observation-mode/invulnerable-player arena flag suggestion from the pathfinding session would have saved 3 deaths here too
+- [NEW] 2026-07-24 (run 10): Move Run 9's eval-keydown-holds lesson into SKILL.md setup steps — Run 10 relearned it from scratch and burned most of its budget doing so.
