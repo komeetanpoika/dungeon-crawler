@@ -29,13 +29,15 @@ describe('rollChestLoot depth tiers', () => {
   it('shallow (depth <= 2) draws from the light pools', () => {
     assert.equal(rollChestLoot(2, seq(0.5, 0.99)).weaponType, 'sword')
     assert.equal(rollChestLoot(2, seq(0.99, 0.99)).weaponType, 'sparkwand')
+    assert.notEqual(rollChestLoot(2, seq(0.99, 0.99)).weaponType, 'firewand', 'no fireballs above depth 3')
   })
 
   it('deep (depth >= 3) draws from the heavy pools', () => {
     assert.equal(rollChestLoot(3, seq(0.5, 0.0)).weaponType, 'longsword')
     assert.equal(rollChestLoot(3, seq(0.5, 0.99)).weaponType, 'axe')
     assert.equal(rollChestLoot(5, seq(0.99, 0.0)).weaponType, 'longbow')
-    assert.equal(rollChestLoot(5, seq(0.99, 0.99)).weaponType, 'stormwand')
+    assert.equal(rollChestLoot(5, seq(0.99, 0.5)).weaponType, 'stormwand')
+    assert.equal(rollChestLoot(5, seq(0.99, 0.99)).weaponType, 'firewand')
   })
 
   it('never yields the cheat sword', () => {
