@@ -726,7 +726,7 @@ function descendLevel() {
     level: next,
     map,
     theme,
-    entities: buildEntities(entitySpawns, map),
+    entities: buildEntities(entitySpawns, map, next),
     projectiles: [],
     shockwaves: [],
     player: {
