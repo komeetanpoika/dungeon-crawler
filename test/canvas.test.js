@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, Renderer } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in.
@@ -189,5 +189,54 @@ describe('drawEntity — held idle weapons', () => {
                       contents: { type: 'ranged', weaponType: 'shortbow' } },
                0, 0, 32, { weapon_shortbow: 'BOW' })
     assert.deepEqual(ctx.images, ['BOW'])
+  })
+})
+
+describe('Renderer DPR-aware resize', () => {
+  function fakeCanvas(w, h) {
+    const ctx = {
+      transforms: [],
+      setTransform(...args) { this.transforms.push(args) },
+      imageSmoothingEnabled: true,
+    }
+    return { offsetWidth: w, offsetHeight: h, width: 0, height: 0, getContext: () => ctx, ctx }
+  }
+
+  it('scales the backing store by devicePixelRatio, keeps logical view size', () => {
+    const prev = globalThis.devicePixelRatio
+    globalThis.devicePixelRatio = 2
+    const c = fakeCanvas(400, 300)
+    const r = new Renderer(c)
+    r.resize()
+    assert.equal(c.width, 800)
+    assert.equal(c.height, 600)
+    assert.equal(r.viewW, 400)
+    assert.equal(r.viewH, 300)
+    assert.deepEqual(c.ctx.transforms.at(-1), [2, 0, 0, 2, 0, 0])
+    assert.equal(c.ctx.imageSmoothingEnabled, false)
+    globalThis.devicePixelRatio = prev
+  })
+
+  it('defaults to dpr 1 when devicePixelRatio is undefined', () => {
+    const prev = globalThis.devicePixelRatio
+    delete globalThis.devicePixelRatio
+    const c = fakeCanvas(400, 300)
+    const r = new Renderer(c)
+    r.resize()
+    assert.equal(c.width, 400)
+    assert.equal(r.viewW, 400)
+    globalThis.devicePixelRatio = prev
+  })
+
+  it('centers the camera using logical size, not backing-store size', () => {
+    const prev = globalThis.devicePixelRatio
+    globalThis.devicePixelRatio = 2
+    const c = fakeCanvas(400, 300)
+    const r = new Renderer(c)
+    r.resize()
+    r.updateCamera({ px: 1000, py: 500 }, 0)
+    assert.equal(r.camX, 1000 - 200)  // viewW/2, not canvas.width/2
+    assert.equal(r.camY, 500 - 150)
+    globalThis.devicePixelRatio = prev
   })
 })

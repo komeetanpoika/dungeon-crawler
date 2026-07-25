@@ -625,6 +625,8 @@ export class Renderer {
     this.ctx = canvas.getContext('2d')
     this.ctx.imageSmoothingEnabled = false
     this.S = TILE_SIZE
+    this.viewW = canvas.width
+    this.viewH = canvas.height
     this.camX = 0
     this.camY = 0
     this.debug = false
@@ -636,8 +638,14 @@ export class Renderer {
   }
 
   resize() {
-    this.canvas.width = this.canvas.offsetWidth
-    this.canvas.height = this.canvas.offsetHeight
+    // Backing store at devicePixelRatio for crisp rendering; all camera/view
+    // math stays in logical CSS pixels via viewW/viewH.
+    const dpr = globalThis.devicePixelRatio ?? 1
+    this.viewW = this.canvas.offsetWidth
+    this.viewH = this.canvas.offsetHeight
+    this.canvas.width = Math.round(this.viewW * dpr)
+    this.canvas.height = Math.round(this.viewH * dpr)
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     this.ctx.imageSmoothingEnabled = false
   }
 
@@ -645,8 +653,8 @@ export class Renderer {
     const px = player.px ?? (player.x * this.S + this.S / 2)
     const py = player.py ?? (player.y * this.S + this.S / 2)
     const o = shakeOffset(shake)
-    this.camX = px - this.canvas.width / 2 + o.x
-    this.camY = py - this.canvas.height / 2 + o.y
+    this.camX = px - this.viewW / 2 + o.x
+    this.camY = py - this.viewH / 2 + o.y
   }
 
   render(state) {
@@ -656,7 +664,7 @@ export class Renderer {
 
     if (!map || !map.length || !map[0]) return
     if (!player) return
-    const W = this.canvas.width, H = this.canvas.height
+    const W = this.viewW, H = this.viewH
     if (W === 0 || H === 0) return
 
     const theme = state.theme ?? { bgColor: '#000', tint: null, fogAlpha: 0.65 }
