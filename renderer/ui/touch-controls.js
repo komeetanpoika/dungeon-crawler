@@ -65,6 +65,7 @@ function initTouchControls() {
   zone.addEventListener('pointercancel', endStick)
 
   // --- Buttons: hold = key held; tap = short press+release (same path) ---
+  const buttonResets = []
   const bindHold = (el, key) => {
     let activeId = null
     el.addEventListener('pointerdown', e => {
@@ -82,6 +83,7 @@ function initTouchControls() {
     }
     el.addEventListener('pointerup', end)
     el.addEventListener('pointercancel', end)
+    buttonResets.push(() => { activeId = null; el.classList.remove('active') })
   }
   bindHold(document.getElementById('touch-attack'), ' ')
   bindHold(document.getElementById('touch-stance'), 'Shift')
@@ -98,9 +100,9 @@ function initTouchControls() {
   }).observe(rangedEl, { childList: true, characterData: true, subtree: true })
 
   // --- Never leave keys stuck when the page loses the pointer/focus ---
-  window.addEventListener('blur', () => { stickId = null; base.style.display = 'none'; dirs = []; releaseAll() })
+  window.addEventListener('blur', () => { stickId = null; base.style.display = 'none'; dirs = []; buttonResets.forEach(reset => reset()); releaseAll() })
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { stickId = null; base.style.display = 'none'; dirs = []; releaseAll() }
+    if (document.hidden) { stickId = null; base.style.display = 'none'; dirs = []; buttonResets.forEach(reset => reset()); releaseAll() }
   })
 }
 
