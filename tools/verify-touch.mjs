@@ -101,8 +101,9 @@ try {
     !(await p3.locator('#rotate-overlay').isVisible()))
   await desktop.close()
 } finally {
-  if (browser) await browser.close()
-  server.kill()
+  try { if (browser) await browser.close() } finally {
+    if (server && !server.killed) server.kill('SIGKILL')
+  }
 }
 
 console.log(failures === 0 ? 'All checks passed.' : `${failures} check(s) FAILED`)
