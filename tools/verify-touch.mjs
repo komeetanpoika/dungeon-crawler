@@ -21,8 +21,9 @@ const server = spawn('node', ['tools/web-server.mjs'], {
 })
 await new Promise(r => setTimeout(r, 800))
 
-const browser = await chromium.launch()
+let browser = null
 try {
+  browser = await chromium.launch()
   // --- Mobile landscape: controls visible, joystick + attack emit keys ---
   const mobile = await browser.newContext({
     viewport: { width: 800, height: 360 }, hasTouch: true, isMobile: true,
@@ -100,7 +101,7 @@ try {
     !(await p3.locator('#rotate-overlay').isVisible()))
   await desktop.close()
 } finally {
-  await browser.close()
+  if (browser) await browser.close()
   server.kill()
 }
 
