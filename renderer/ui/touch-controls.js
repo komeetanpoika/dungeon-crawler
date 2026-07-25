@@ -96,7 +96,8 @@ function initTouchControls() {
   const rangedEl = document.getElementById('hud-ranged')
   const stanceBtn = document.getElementById('touch-stance')
   new MutationObserver(() => {
-    stanceBtn.textContent = rangedEl.textContent.startsWith('▶') ? '🏹' : '🗡'
+    const icon = rangedEl.textContent.startsWith('▶') ? '🏹' : '🗡'
+    if (stanceBtn.textContent !== icon) stanceBtn.textContent = icon
   }).observe(rangedEl, { childList: true, characterData: true, subtree: true })
 
   // --- Never leave keys stuck when the page loses the pointer/focus ---
