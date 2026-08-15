@@ -201,7 +201,12 @@ describe('drawDragonBossPixel', () => {
     ctx.imageSmoothingEnabled = false
     drawDragonBossPixel(ctx, pose(), 0, 0, T, { [SHEET_SPRITE]: {} },
                         { width: 0, height: 0, getContext: () => bufCtx })
-    assert.equal(bufCtx.draws, 19, 'expected all 19 parts composited into the buffer')
+    // 19 PLACEMENTS, not 19 parts: the sheet holds 16 frames, and the idle pose
+    // draws the one foot four times, the one wing twice, and no flame at all.
+    // Pinned as a literal on purpose — the test below derives the same number
+    // from dragonPartPlacements(), so between them a change to the rig has to be
+    // deliberate rather than absorbed on both sides at once.
+    assert.equal(bufCtx.draws, 19, 'expected all 19 idle-pose placements composited into the buffer')
     assert.equal(ctx.draws, 1, 'expected one blit of the finished buffer')
     assert.equal(ctx.imageSmoothingEnabled, false)
   })

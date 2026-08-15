@@ -4,7 +4,8 @@
 // It is safe to hand-edit this file (and the sheet PNG) afterwards: the game
 // reads only what is here, so once a part has been redrawn by hand, adjust its
 // frame here and stop re-baking that part. The plain (no --force) bake writes
-// *.generated.* precisely so it can be compared without destroying hand work.
+// tools/out/*.generated.* precisely so it can be compared without destroying
+// hand work.
 //
 // ART_PX is 4: one art pixel is 4 screen px. The rest of the tileset is 16x16
 // art in a 32px tile (i.e. 2) — the dragon is deliberately chunkier, because at

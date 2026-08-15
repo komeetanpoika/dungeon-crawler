@@ -1,11 +1,12 @@
 // Bake the vector dragon boss's parts into one palette-locked pixel sprite sheet.
 //
-//   node tools/bake-dragon-parts.mjs           → writes *.generated.* only (safe)
+//   node tools/bake-dragon-parts.mjs           → writes tools/out/*.generated.* (safe)
 //   node tools/bake-dragon-parts.mjs --force   → overwrites the shipped sheet + frame table
 //
 // The shipped sheet is meant to be hand-refined in a pixel editor afterwards, so
 // the default is deliberately non-destructive: a stray re-run must never clobber
-// hand-drawn art. Only --force writes the real files.
+// hand-drawn art. Only --force writes the real files, and it refuses to write at
+// all if the tightness check below finds a part touching its frame edge.
 //
 // How it works: renderer/render/dragonboss.js is drawn with vector canvas calls
 // and keeps its part functions module-private. Rather than duplicating that art
@@ -44,7 +45,14 @@ const FORCE = process.argv.includes('--force')
 
 const SHEET_PNG = path.join(ROOT, 'renderer/assets/tiles/dragon_boss_parts.png')
 const TABLE_JS = path.join(ROOT, 'renderer/data/dragon-parts.js')
-const outFile = (p, ext) => FORCE ? p : p.replace(new RegExp(`\\${ext}$`), `.generated${ext}`)
+
+// Dry-run output goes to tools/out/, NOT next to the real files. main.cjs builds
+// the tile editor's library by enumerating renderer/assets/tiles/, so a
+// *.generated.png dropped in there becomes a bogus 246x82 "tile" in the editor
+// palette and is served by `npm run web`. Covered by .gitignore's *.generated.*.
+const OUT_DIR = path.join(ROOT, 'tools/out')
+const outFile = (p, ext) => FORCE ? p
+  : path.join(OUT_DIR, path.basename(p).replace(new RegExp(`\\${ext}$`), `.generated${ext}`))
 
 // 1 art pixel = ART_PX screen px. The rest of the tileset is 16x16 art in a 32px
 // tile (i.e. 2); 4 is deliberately chunkier, because the boss is a 3x4-tile
@@ -106,8 +114,9 @@ try {
     // (left/right/up/down), converted to art px with a transparent margin. The
     // scale rows of scaleBody deliberately overflow the body outline, so every
     // reach below is measured from the drawn art, not from the logical shape.
-    // Undersize one and the silhouette gets shorn — the clear-border report at
-    // the end of this file is what catches that, and it exits non-zero.
+    // Undersize one and the silhouette gets shorn — the clear-border check that
+    // runs before any file is written is what catches that, and it both exits
+    // non-zero and (under --force) refuses to overwrite the shipped art.
     function box(l, r, u, d) {
       const ox = Math.ceil(l / ART_PX) + MARGIN
       const oy = Math.ceil(u / ART_PX) + MARGIN
@@ -248,23 +257,61 @@ try {
   server.close()
 }
 
+// ── check tightness BEFORE writing anything ──────────────────────────────────
+// The scales overflow the body outline on purpose, so a too-small canvas shears
+// the silhouette. A margin of 0 on any side means the art is touching the frame
+// edge and is probably cut. This is the only automated check that box()'s reach
+// values still match the art, so it has to run as a GUARD, not a post-mortem:
+// under --force it would otherwise report a shorn silhouette that it had already
+// written over the shipped sheet. No override flag — a plain (no --force) run
+// still writes the sheared output to tools/out/ for inspection, which is what
+// you actually want when diagnosing this, and the real fix is to grow the box().
+console.log(`sheet ${baked.sheetW}x${baked.sheetH} art px`)
+console.log('part         frame      origin    clear border L/R/T/B')
+const tight = []
+for (const name of baked.order) {
+  const f = baked.table[name], m = f.margins
+  if (!m) { tight.push(`${name} (EMPTY)`); continue }
+  const min = Math.min(m.left, m.right, m.top, m.bottom)
+  if (min === 0) tight.push(name)
+  console.log(`  ${name.padEnd(10)} ${`${f.w}x${f.h}`.padEnd(9)} ${`${f.ox},${f.oy}`.padEnd(9)} ` +
+              `${m.left} ${m.right} ${m.top} ${m.bottom}${min === 0 ? '   <-- touching the edge' : ''}`)
+}
+
+// Under --force a tight part means the shipped art would be replaced by a shorn
+// silhouette, so the bake declines the write entirely. Flagged rather than
+// process.exit()ed: stdout is asynchronous when it is a pipe, and exiting here
+// would race the margin report above out of existence — exactly the output you
+// need in order to fix this. Skip the writes and let the process end normally.
+const refuseToWrite = tight.length > 0 && FORCE
+if (refuseToWrite) {
+  console.error(`\nERROR: art touches the frame edge on: ${tight.join(', ')} — grow that part's box().\n` +
+                '       REFUSING to overwrite the shipped sheet and frame table: --force would have\n' +
+                '       replaced them with sheared art. Nothing was written.\n' +
+                '       Re-run without --force to write the clipped output to tools/out/ and inspect it.')
+  process.exitCode = 1
+}
+
 // ── write the sheet + the frame table ────────────────────────────────────────
-const pngPath = outFile(SHEET_PNG, '.png')
-const jsPath = outFile(TABLE_JS, '.js')
-fs.writeFileSync(pngPath, Buffer.from(baked.dataUrl.split(',')[1], 'base64'))
+if (!refuseToWrite) {
+  const pngPath = outFile(SHEET_PNG, '.png')
+  const jsPath = outFile(TABLE_JS, '.js')
+  if (!FORCE) fs.mkdirSync(OUT_DIR, { recursive: true })
+  fs.writeFileSync(pngPath, Buffer.from(baked.dataUrl.split(',')[1], 'base64'))
 
-const rows = baked.order.map(name => {
-  const f = baked.table[name]
-  return `  ${(name + ':').padEnd(11)} { x: ${f.x}, y: ${f.y}, w: ${f.w}, h: ${f.h}, ox: ${f.ox}, oy: ${f.oy} },`
-}).join('\n')
+  const rows = baked.order.map(name => {
+    const f = baked.table[name]
+    return `  ${(name + ':').padEnd(11)} { x: ${f.x}, y: ${f.y}, w: ${f.w}, h: ${f.h}, ox: ${f.ox}, oy: ${f.oy} },`
+  }).join('\n')
 
-fs.writeFileSync(jsPath, `// GENERATED by tools/bake-dragon-parts.mjs — do not expect a re-bake to preserve
+  fs.writeFileSync(jsPath, `// GENERATED by tools/bake-dragon-parts.mjs — do not expect a re-bake to preserve
 // edits made here. Re-bake with:  node tools/bake-dragon-parts.mjs --force
 //
 // It is safe to hand-edit this file (and the sheet PNG) afterwards: the game
 // reads only what is here, so once a part has been redrawn by hand, adjust its
 // frame here and stop re-baking that part. The plain (no --force) bake writes
-// *.generated.* precisely so it can be compared without destroying hand work.
+// tools/out/*.generated.* precisely so it can be compared without destroying
+// hand work.
 //
 // ART_PX is ${ART_PX}: one art pixel is ${ART_PX} screen px. The rest of the tileset is 16x16
 // art in a 32px tile (i.e. 2) — the dragon is deliberately chunkier, because at
@@ -295,36 +342,20 @@ ${baked.order.map(n => `  '${n}',`).join('\n')}
 ]
 `)
 
-// ── report: how much clear border each part actually kept ────────────────────
-// The scales overflow the body outline on purpose, so a too-small canvas shears
-// the silhouette. A margin of 0 on any side means the art is touching the frame
-// edge and is probably cut.
-console.log(`sheet ${baked.sheetW}x${baked.sheetH} art px -> ${path.relative(ROOT, pngPath)}`)
-console.log('part         frame      origin    clear border L/R/T/B')
-let tight = []
-for (const name of baked.order) {
-  const f = baked.table[name], m = f.margins
-  if (!m) { tight.push(`${name} (EMPTY)`); continue }
-  const min = Math.min(m.left, m.right, m.top, m.bottom)
-  if (min === 0) tight.push(name)
-  console.log(`  ${name.padEnd(10)} ${`${f.w}x${f.h}`.padEnd(9)} ${`${f.ox},${f.oy}`.padEnd(9)} ` +
-              `${m.left} ${m.right} ${m.top} ${m.bottom}${min === 0 ? '   <-- touching the edge' : ''}`)
-}
-// Non-zero exit, not just a warning: this report is the only automated check
-// that box()'s reach values still match the art, and it prints above the
-// success line where it is easy to scroll past.
-if (tight.length) {
-  console.log(`\nWARNING: art touches the frame edge on: ${tight.join(', ')} — grow that part's box.`)
-  process.exitCode = 1
-}
-
-// Round-trip the written PNG so the report reflects the file, not just the canvas.
-const png = readPng(pngPath)
-let soft = 0
-for (let i = 3; i < png.pixels.length; i += 4) if (png.pixels[i] !== 0 && png.pixels[i] !== 255) soft++
-console.log(`\nwrote ${path.relative(ROOT, jsPath)} (${baked.order.length} parts); ` +
-            `PNG reads back ${png.width}x${png.height}, ${soft} partial-alpha pixels`)
-if (!FORCE) {
-  console.log('\nNOTE: no --force, so nothing shipped was touched — wrote *.generated.* only.' +
-              (fs.existsSync(SHEET_PNG) ? `\n      ${path.relative(ROOT, SHEET_PNG)} already exists and may contain hand-drawn art.` : ''))
+  // Round-trip the written PNG so the report reflects the file, not just the canvas.
+  const png = readPng(pngPath)
+  let soft = 0
+  for (let i = 3; i < png.pixels.length; i += 4) if (png.pixels[i] !== 0 && png.pixels[i] !== 255) soft++
+  console.log(`\nwrote ${path.relative(ROOT, pngPath)} and ${path.relative(ROOT, jsPath)} ` +
+              `(${baked.order.length} parts); PNG reads back ${png.width}x${png.height}, ` +
+              `${soft} partial-alpha pixels`)
+  if (!FORCE) {
+    console.log('\nNOTE: no --force, so nothing shipped was touched — wrote into tools/out/ only.' +
+                (fs.existsSync(SHEET_PNG) ? `\n      ${path.relative(ROOT, SHEET_PNG)} already exists and may contain hand-drawn art.` : ''))
+  }
+  // A dry run still surfaces the problem, it just does not get to refuse a write.
+  if (tight.length) {
+    console.log(`\nWARNING: art touches the frame edge on: ${tight.join(', ')} — grow that part's box().`)
+    process.exitCode = 1
+  }
 }

@@ -5,7 +5,8 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DRAGON_PALETTE, PALETTE_KEYS, rgbKey } from '../renderer/data/dragon-palette.js'
 import { readPng } from '../tools/png-read.mjs'
-import { SHEET_SPRITE, PARTS, PART_NAMES } from '../renderer/data/dragon-parts.js'
+import { SHEET_SPRITE, PARTS, PART_NAMES, ART_PX } from '../renderer/data/dragon-parts.js'
+import { dragonPartPlacements, BUF } from '../renderer/render/dragonboss-pixel.js'
 import { SPRITES } from '../renderer/render/sprites.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -45,10 +46,11 @@ describe('dragon part sheet', () => {
     assert.ok(existsSync(SHEET_FILE), 'run: node tools/bake-dragon-parts.mjs --force')
   })
 
-  it('declares every part the renderer asks for', () => {
-    for (const name of PART_NAMES) {
-      assert.ok(PARTS[name], `PART_NAMES lists ${name} but PARTS has no frame for it`)
-    }
+  // Both lists come out of one bake, so agreeing proves nothing about the bake.
+  // What it does catch is a HAND edit — the file says it is safe to hand-tune
+  // frames — adding or removing a frame without touching the name list.
+  it('PART_NAMES and PARTS name exactly the same set of parts', () => {
+    assert.deepEqual([...PART_NAMES].sort(), Object.keys(PARTS).sort())
   })
 
   it('every frame fits inside the sheet, with a sane origin', () => {
@@ -101,5 +103,76 @@ describe('dragon part sheet', () => {
         assert.ok(disjoint, `${an} and ${bn} overlap on the sheet`)
       }
     }
+  })
+})
+
+// Clipping is the pixel boss's one SILENT failure mode: a part that reaches past
+// the compositing buffer is simply cropped, on a canvas nobody ever looks at, in
+// whatever pose happens to trigger it. Nothing throws and nothing else fails.
+// The headroom is a few art px, so redrawing the flame cone out to full length
+// (the obvious next art change) is expected to blow through it — this is the
+// test that will say so, instead of the boss quietly losing its breath.
+//
+// The check is cheap because dragonPartPlacements() is pure geometry and the
+// baked sheet is committed: the opaque bounding box of each frame is readable
+// straight off the PNG.
+describe('the rig fits inside the compositing buffer', () => {
+  // Opaque bounding box of one frame, as a rect in the sprite's own art-px
+  // space relative to its (ox, oy) origin — the same space drawImage() places
+  // it in, so the pixel at local (lx, ly) covers [lx - ox, lx + 1 - ox).
+  const opaqueBox = (img, f) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (let ly = 0; ly < f.h; ly++) for (let lx = 0; lx < f.w; lx++) {
+      if (img.pixels[((f.y + ly) * img.width + (f.x + lx)) * 4 + 3] === 0) continue
+      if (lx < x0) x0 = lx; if (lx > x1) x1 = lx
+      if (ly < y0) y0 = ly; if (ly > y1) y1 = ly
+    }
+    return x1 < x0 ? null : { l: x0 - f.ox, r: x1 + 1 - f.ox, t: y0 - f.oy, b: y1 + 1 - f.oy }
+  }
+
+  it('no pose reaches past BUF / 2 from the buffer centre', () => {
+    const img = readPng(SHEET_FILE)
+    const boxes = {}
+    for (const [name, f] of Object.entries(PARTS)) boxes[name] = opaqueBox(img, f)
+
+    // A full sweep: breathTime well past the slowest term's period (the neck's
+    // sin(t * 0.9), ~7.0s), crossed with every state and the documented extremes
+    // of the three externally driven pose inputs.
+    const times = []
+    for (let t = 0; t < 15; t += 0.1) times.push(t)
+    const S = 32
+    let worst = { d: -1 }
+    for (const breathTime of times)
+      for (const state of ['idle', 'cone', 'sweep'])
+        for (const neckRear of [0, 0.5, 1])
+          for (const headAim of [-0.7, 0, 0.7])
+            for (const tailSwing of [-0.6, 0, 1]) {
+              const e = { breathTime, state, neckRear, headAim, tailSwing }
+              for (const p of dragonPartPlacements(e, S)) {
+                const b = boxes[p.part]
+                if (!b) continue
+                const c = Math.cos(p.ang), s = Math.sin(p.ang), m = p.flipX ? -1 : 1
+                for (const [lx, ly] of [[b.l, b.t], [b.r, b.t], [b.l, b.b], [b.r, b.b]]) {
+                  const mx = lx * m
+                  const X = p.x + mx * c - ly * s
+                  const Y = p.y + mx * s + ly * c
+                  // Chebyshev, not Euclidean: the buffer is a square, so each
+                  // axis is clipped at BUF / 2 independently.
+                  const d = Math.max(Math.abs(X), Math.abs(Y))
+                  if (d > worst.d) worst = { d, X, Y, part: p.part, pose: e }
+                }
+              }
+            }
+
+    const budget = BUF / 2
+    // Guards the guard: an empty sheet would make every box null and the sweep
+    // would pass by measuring nothing at all.
+    assert.ok(worst.d > 0, 'the sweep measured no opaque art — is the sheet blank?')
+    assert.ok(worst.d < budget,
+      `${worst.part} reaches ${worst.d.toFixed(1)} art px from the buffer centre ` +
+      `(x ${worst.X.toFixed(1)}, y ${worst.Y.toFixed(1)}), over the BUF / 2 = ${budget} budget ` +
+      `by ${(worst.d - budget).toFixed(1)} — pose ${JSON.stringify(worst.pose)}. ` +
+      `Grow HALF_REACH_PX in renderer/render/dragonboss-pixel.js to at least ` +
+      `${Math.ceil(worst.d * ART_PX) + 2 * ART_PX} screen px, or the part is silently cropped.`)
   })
 })

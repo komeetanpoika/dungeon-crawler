@@ -9,14 +9,27 @@
 // finished buffer is rotated as a unit, which is what keeps the grid coherent.
 import { PARTS, SHEET_SPRITE, ART_PX } from '../data/dragon-parts.js'
 
-// Buffer side in art px: the rig may reach BUF/2 = 80 from the centre before it
-// is silently clipped. Measured, not guessed — every opaque sprite corner over a
-// sweep of the animated poses, in art px from the centre: flame 54.7 x / 75.8 y,
-// wing 60.9 / 47.0, head 35.4 / 56.4, tail tip 37.2 / 61.2. The flame is the
-// binding one, with ~4 px of headroom — and only because its baked gradient
-// faded out at 32 art px against the vector cone's 41.6. Redraw it out to full
-// length and this buffer must grow with it.
-const BUF = 160
+// Buffer side in art px. The rig's reach is fixed in SCREEN px (every position
+// below is a multiple of S), and put() divides by A = ART_PX * S / 32 — so an
+// art-px coordinate scales INVERSELY with ART_PX. Halving ART_PX doubles every
+// coordinate, and a buffer sized for one value would silently clip at another.
+// Hence: budget the reach in screen px and convert, so BUF tracks ART_PX.
+//
+// The budget is measured, not guessed — every opaque sprite corner over a sweep
+// of the animated poses, in art px from the centre at ART_PX = 4: flame 54.7 x /
+// 75.8 y, wing 60.9 / 47.0, head 35.4 / 56.4, tail tip 37.2 / 61.2. The flame is
+// the binding one: 75.8 art px = 303 screen px, so 320 with a little headroom
+// (640 across). That headroom is ~4 art px, and exists only because the baked
+// gradient faded out at 32 art px against the vector cone's 41.6 — redraw the
+// flame out to full length and this budget must grow with it.
+//
+// Halved-then-doubled rather than dividing 640 straight through, so BUF comes
+// out a whole EVEN number (BUF / 2 a whole art pixel) for any ART_PX, not just
+// the divisors of 640. At ART_PX = 4 that is exactly 160.
+// test/dragon-parts.test.js re-measures the rig against BUF / 2 and fails, with
+// the overrun, if the art ever outgrows it.
+const HALF_REACH_PX = 320             // screen px the rig may reach from centre
+export const BUF = 2 * Math.ceil(HALF_REACH_PX / ART_PX)
 
 // Joint positions along a chain, mirroring scaledChain() in dragonboss.js.
 function chainPoints(x, y, startAng, segs, segLen, bendFn) {
@@ -149,5 +162,8 @@ export function drawDragonBossPixel(ctx, e, camX, camY, S, sprites, buffer) {
 }
 
 // ART_PX belongs to renderer/data/dragon-parts.js — re-exporting it here would
-// give callers a second place to import the same constant from. BUF is a
-// private detail of the compositing buffer above and has no reason to leak.
+// give callers a second place to import the same constant from. BUF is exported
+// only so test/dragon-parts.test.js can assert the rig still fits inside it:
+// clipping is this design's one silent failure mode, and the headroom is small
+// enough that an automated guard is worth more than keeping the surface tidy.
+// It is not a knob — nothing outside that test should read it.
