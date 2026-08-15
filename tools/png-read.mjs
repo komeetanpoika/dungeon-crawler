@@ -55,6 +55,7 @@ export function readPng(path) {
   if (interlace !== 0) throw new Error(`${path}: interlaced PNGs not supported`)
   const ch = CHANNELS[colorType]
   if (!ch) throw new Error(`${path}: unsupported colour type ${colorType}`)
+  if (colorType === 3 && !palette) throw new Error(`${path}: indexed PNG missing PLTE chunk`)
 
   const raw = inflateSync(Buffer.concat(idat))
   const stride = width * ch
