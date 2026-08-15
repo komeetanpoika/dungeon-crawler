@@ -22,4 +22,10 @@ describe('DRAGON_PALETTE', () => {
     assert.ok(PALETTE_KEYS.has(rgbKey(255, 210, 58)), 'eye-glow yellow should be in the palette')
     assert.ok(!PALETTE_KEYS.has(rgbKey(1, 2, 3)), 'an unrelated colour should not be')
   })
+
+  it('is frozen: writing to a channel does not change its value', () => {
+    const original = DRAGON_PALETTE[0][0]
+    try { DRAGON_PALETTE[0][0] = 999 } catch { /* strict mode throws on a frozen write; either way, check the value */ }
+    assert.equal(DRAGON_PALETTE[0][0], original)
+  })
 })
