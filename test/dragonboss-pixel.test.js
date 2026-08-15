@@ -4,6 +4,8 @@ import { makeDragonBoss } from '../renderer/systems/dragonboss.js'
 import { dragonCapsules } from '../renderer/systems/capsules.js'
 import { buildArena } from '../renderer/systems/map.js'
 import { TEMPLATE_LEGEND } from '../renderer/data/levels.js'
+import { dragonPartPlacements } from '../renderer/render/dragonboss-pixel.js'
+import { PARTS } from '../renderer/data/dragon-parts.js'
 
 const T = 32
 const quiet = () => {}
@@ -60,5 +62,88 @@ describe('template legend', () => {
     assert.equal(TEMPLATE_LEGEND.Q.spawn, 'dragon_boss_pixel')
     assert.equal(TEMPLATE_LEGEND.Q.single, true)
     assert.equal(TEMPLATE_LEGEND.B.spawn, 'dragon_boss')
+  })
+})
+
+const pose = (over = {}) => ({
+  ...makeDragonBoss(10, 10, { skin: 'pixel' }),
+  px: 10 * T, py: 10 * T, breathTime: 0, state: 'idle', ...over,
+})
+
+describe('dragonPartPlacements', () => {
+  it('names only parts that exist in the sheet', () => {
+    for (const p of dragonPartPlacements(pose(), T)) {
+      assert.ok(PARTS[p.part], `placement references unknown part "${p.part}"`)
+    }
+  })
+
+  it('places four feet, five neck plates, five tail plates and one tail tip', () => {
+    const counts = {}
+    for (const p of dragonPartPlacements(pose(), T)) counts[p.part] = (counts[p.part] ?? 0) + 1
+    assert.equal(counts.foot, 4)
+    assert.equal(counts.tail_tip, 1)
+    assert.equal(counts.body, 1)
+    assert.equal(counts.head, 1)
+    assert.equal(counts.wing, 2)
+    for (let i = 0; i < 5; i++) {
+      assert.equal(counts[`neck${i}`], 1, `neck${i}`)
+      assert.equal(counts[`tail${i}`], 1, `tail${i}`)
+    }
+  })
+
+  it('snaps every position to a whole art pixel', () => {
+    for (const p of dragonPartPlacements(pose({ breathTime: 1.37, tailSwing: 0.4 }), T)) {
+      assert.ok(Number.isInteger(p.x), `${p.part} x=${p.x} is not an integer`)
+      assert.ok(Number.isInteger(p.y), `${p.part} y=${p.y} is not an integer`)
+    }
+  })
+
+  it('draws the flame cone only while breathing', () => {
+    const has = st => dragonPartPlacements(pose({ state: st }), T).some(p => p.part === 'flame')
+    assert.equal(has('idle'), false)
+    assert.equal(has('cone'), true)
+    assert.equal(has('sweep'), true)
+  })
+
+  it('draws parts back-to-front: feet, tail, neck, body, head, wings', () => {
+    const order = dragonPartPlacements(pose(), T).map(p => p.part)
+    const firstOf = pred => order.findIndex(pred)
+    assert.ok(firstOf(p => p === 'foot') < firstOf(p => p === 'tail0'), 'feet before tail')
+    assert.ok(firstOf(p => p === 'tail0') < firstOf(p => p === 'neck0'), 'tail before neck')
+    assert.ok(firstOf(p => p === 'neck0') < firstOf(p => p === 'body'), 'neck before body')
+    assert.ok(firstOf(p => p === 'body') < firstOf(p => p === 'head'), 'body before head')
+    assert.ok(firstOf(p => p === 'head') < firstOf(p => p === 'wing'), 'head before wings')
+  })
+
+  // scaledChain() draws its plates with an ASCENDING loop (dragonboss.js:77), so
+  // plate 0 is the bottom layer and the tip sits on top. Getting this backwards
+  // flips which way the overlapping shingles read, and nothing else here notices.
+  it('layers each chain tip-over-base, matching scaledChain', () => {
+    const order = dragonPartPlacements(pose(), T).map(p => p.part)
+    assert.ok(order.indexOf('neck0') < order.indexOf('neck4'), 'neck0 under neck4')
+    assert.ok(order.indexOf('tail0') < order.indexOf('tail_tip'), 'tail0 under the tail tip')
+    for (let i = 0; i < 4; i++) {
+      assert.ok(order.indexOf(`neck${i}`) < order.indexOf(`neck${i + 1}`), `neck${i} under neck${i + 1}`)
+      assert.ok(order.indexOf(`tail${i}`) < order.indexOf(`tail${i + 1}`), `tail${i} under tail${i + 1}`)
+    }
+    assert.ok(order.indexOf('tail4') < order.indexOf('tail_tip'), 'tail4 under the tail tip')
+  })
+
+  it('mirrors one wing and not the other', () => {
+    const wings = dragonPartPlacements(pose(), T).filter(p => p.part === 'wing')
+    assert.equal(wings.length, 2)
+    assert.notEqual(wings[0].flipX, wings[1].flipX)
+  })
+
+  it('swings the tail when tailSwing changes', () => {
+    const still = dragonPartPlacements(pose({ tailSwing: 0 }), T).find(p => p.part === 'tail_tip')
+    const swung = dragonPartPlacements(pose({ tailSwing: 1 }), T).find(p => p.part === 'tail_tip')
+    assert.notEqual(still.x, swung.x)
+  })
+
+  it('is independent of facing — the buffer is rotated as a whole', () => {
+    const a = dragonPartPlacements(pose({ facing: 0 }), T)
+    const b = dragonPartPlacements(pose({ facing: 2 }), T)
+    assert.deepEqual(a, b)
   })
 })
