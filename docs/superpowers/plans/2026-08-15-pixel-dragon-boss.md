@@ -445,10 +445,19 @@ The bake renders each part from the **existing** vector renderer in a neutral po
 | `tail_tip` | `shieldScale(ctx, max(w5, 3*ART_PX), S*0.8*1.7*2, top, bot)` | none |
 | `head` | `head(ctx, {x:0,y:0,ang:-Math.PI/2}, S)` | `ang = -PI/2` makes its internal `rotate(ang + PI/2)` a no-op |
 | `wing` | `wing(ctx, 0, 0, 1, T_BAKE, S)` | wrap in `ctx.rotate(flapAt(T_BAKE))` to cancel its internal `rotate(-flap)` |
-| `foot` | `foot(ctx, 1, 0, 1, T_BAKE, S)` | wrap in `ctx.translate(-1, 0)`; `bx=1, by=0` makes its `out` angle 0 |
+| `foot` | `foot(ctx, 1, 0, 1, T_BAKE, S)` | wrap in `ctx.rotate(-wig); ctx.translate(-1, 0)` — see below |
 | `flame` | `flameCone(ctx, 0, 0, 0, S)` | none — apex at origin, aimed along +x |
 
-where `flapAt(t) = Math.sin(t * 1.5) * 0.12 + 0.22` and `T_BAKE = 0` (so the wing bakes at its rest flap and the foot at zero wiggle).
+where `flapAt(t) = Math.sin(t * 1.5) * 0.12 + 0.22` and `T_BAKE = 0`.
+
+**The foot does not bake at zero wiggle.** `foot()` applies *two* transforms —
+`translate(bx, by)` **and** `rotate(wig)` where `wig = Math.sin(t*2.0 + bx)*0.05`.
+With `bx = 1, t = 0` that is `sin(1)*0.05 ≈ 0.0421 rad ≈ 2.41°`, not zero.
+Cancelling only the translate leaves a 2.41° shear baked into the sprite, which
+the placement code then applies a second time. Both must be cancelled, and
+`rotate(-wig)` must come **first** so the two translates end up adjacent and
+annihilate — verified by reading the resulting transform matrix, which is then
+a pure translate+scale with zero shear.
 
 **Files:**
 - Create: `tools/bake-dragon-parts.mjs`
@@ -1298,6 +1307,25 @@ git commit -m "docs(arena-test): document the dragon_boss_pixel enemy kind"
 ```
 
 ---
+
+## Findings from the bake (Task 4), carried forward
+
+- **The flame cone sprite is 25% short.** The vector cone is `len = S*5.2`
+  (41.6 art px ≈ 5.2 tiles); the baked sprite reaches 31 art px (≈3.9 tiles)
+  because its gradient fades to `alpha 0.05` and the `< 128` cutoff erases the
+  far third. The *damage* cone is `CONE_LEN = 6 * TILE`, so the player would
+  judge safety from a flame visibly shorter than the hitbox — a legibility
+  regression, not just an aesthetic one. A fade-to-transparent gradient does not
+  translate to a 16-colour pixel sprite at all; the flame wants a hard-edged
+  shape at full length. Fix before the pixel boss replaces the real one.
+- **The foot's claws lose their taper.** `pw = S*0.1` is 0.8 art px, below the
+  alpha cutoff, so the claws reach 8 art px instead of `S*1.55` (12.4). Pure
+  hand-refinement territory; no gameplay consequence.
+- **Reference sizes must be measured, not guessed.** Both frame sizes quoted
+  from the prototype (`body` 34×42, `head` 30×34 with origin 26) clip the art —
+  the body's top scale row sits 25 art px above the origin once `bowPx = S*0.6`
+  and the rotated plate's own half-height are accounted for, and the head's
+  swept-back horns reach 10 art px below it. Size from measured reach.
 
 ## Known follow-ups (deliberately not in this plan)
 
