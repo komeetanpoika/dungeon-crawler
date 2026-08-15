@@ -4,8 +4,8 @@ import { makeDragonBoss } from '../renderer/systems/dragonboss.js'
 import { dragonCapsules } from '../renderer/systems/capsules.js'
 import { buildArena } from '../renderer/systems/map.js'
 import { TEMPLATE_LEGEND } from '../renderer/data/levels.js'
-import { dragonPartPlacements } from '../renderer/render/dragonboss-pixel.js'
-import { PARTS } from '../renderer/data/dragon-parts.js'
+import { dragonPartPlacements, drawDragonBossPixel } from '../renderer/render/dragonboss-pixel.js'
+import { PARTS, SHEET_SPRITE } from '../renderer/data/dragon-parts.js'
 
 const T = 32
 const quiet = () => {}
@@ -145,5 +145,40 @@ describe('dragonPartPlacements', () => {
     const a = dragonPartPlacements(pose({ facing: 0 }), T)
     const b = dragonPartPlacements(pose({ facing: 2 }), T)
     assert.deepEqual(a, b)
+  })
+})
+
+// Enough of a 2D context to run the compositor: it models save/restore of
+// imageSmoothingEnabled, which is the drawing state the boss must not leak.
+const fakeCtx = () => {
+  const stack = []
+  const c = {
+    imageSmoothingEnabled: false, draws: 0,
+    save() { stack.push(c.imageSmoothingEnabled) },
+    restore() { c.imageSmoothingEnabled = stack.pop() },
+    translate() {}, rotate() {}, scale() {}, clearRect() {},
+    drawImage() { c.draws++ },
+  }
+  return c
+}
+
+describe('drawDragonBossPixel', () => {
+  it('leaves the caller canvas image smoothing as it found it', () => {
+    const ctx = fakeCtx(), bufCtx = fakeCtx()
+    // canvas.js turns smoothing off for the whole game (nearest-neighbour
+    // tileset); if the boss turns it back on, every sprite drawn after it in
+    // that frame blurs, and stays blurred until the next resize().
+    ctx.imageSmoothingEnabled = false
+    drawDragonBossPixel(ctx, pose(), 0, 0, T, { [SHEET_SPRITE]: {} },
+                        { width: 0, height: 0, getContext: () => bufCtx })
+    assert.equal(bufCtx.draws, 19, 'expected all 19 parts composited into the buffer')
+    assert.equal(ctx.draws, 1, 'expected one blit of the finished buffer')
+    assert.equal(ctx.imageSmoothingEnabled, false)
+  })
+
+  it('draws nothing when the parts sheet is missing', () => {
+    const ctx = fakeCtx()
+    drawDragonBossPixel(ctx, pose(), 0, 0, T, {}, { getContext: () => fakeCtx() })
+    assert.equal(ctx.draws, 0)
   })
 })

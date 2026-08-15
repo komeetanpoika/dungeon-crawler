@@ -140,7 +140,12 @@ export function drawDragonBossPixel(ctx, e, camX, camY, S, sprites, buffer) {
   ctx.rotate((e.facing ?? 0) + Math.PI / 2)
   ctx.drawImage(buf, -half * A, -half * A, BUF * A, BUF * A)
   ctx.restore()
-  ctx.imageSmoothingEnabled = true      // restore the canvas-wide default
+  // No manual smoothing reset here on purpose. imageSmoothingEnabled is part of
+  // the canvas drawing state, so the restore() above already puts it back; and
+  // this game's canvas-wide default is false (canvas.js sets it in the Renderer
+  // constructor and again in resize(), because the whole tileset is
+  // nearest-neighbour). Forcing it true after the restore would blur every
+  // sprite drawn after the boss, for every frame until the next resize().
 }
 
 export { ART_PX, BUF }
