@@ -6,6 +6,7 @@ import { buildArena } from '../renderer/systems/map.js'
 import { TEMPLATE_LEGEND } from '../renderer/data/levels.js'
 import { dragonPartPlacements, drawDragonBossPixel } from '../renderer/render/dragonboss-pixel.js'
 import { PARTS, SHEET_SPRITE } from '../renderer/data/dragon-parts.js'
+import { drawBossBySkin } from '../renderer/render/canvas.js'
 
 const T = 32
 const quiet = () => {}
@@ -167,6 +168,29 @@ const fakeCtx = () => {
   }
   return c
 }
+
+describe('drawBossBySkin', () => {
+  it('routes a skinless boss to the vector renderer', () => {
+    const seen = []
+    drawBossBySkin({}, { type: 'dragon_boss', px: 0, py: 0 }, 0, 0, T, {},
+      { vector: () => seen.push('vector'), pixel: () => seen.push('pixel') })
+    assert.deepEqual(seen, ['vector'])
+  })
+
+  it('routes a pixel-skinned boss to the pixel renderer', () => {
+    const seen = []
+    drawBossBySkin({}, { type: 'dragon_boss', skin: 'pixel', px: 0, py: 0 }, 0, 0, T, {},
+      { vector: () => seen.push('vector'), pixel: () => seen.push('pixel') })
+    assert.deepEqual(seen, ['pixel'])
+  })
+
+  it('falls back to the vector renderer for an unknown skin', () => {
+    const seen = []
+    drawBossBySkin({}, { type: 'dragon_boss', skin: 'nonsense', px: 0, py: 0 }, 0, 0, T, {},
+      { vector: () => seen.push('vector'), pixel: () => seen.push('pixel') })
+    assert.deepEqual(seen, ['vector'])
+  })
+})
 
 describe('drawDragonBossPixel', () => {
   it('leaves the caller canvas image smoothing as it found it', () => {

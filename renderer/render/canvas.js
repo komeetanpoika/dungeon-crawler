@@ -2,6 +2,8 @@ import { TILE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
+import { drawDragonBossPixel } from './dragonboss-pixel.js'
+import { PIXEL_SKIN } from '../systems/dragonboss.js'
 import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc } from '../systems/melee.js'
 
@@ -642,6 +644,14 @@ export function shakeOffset(shake) {
   return { x: (Math.random() * 2 - 1) * shake, y: (Math.random() * 2 - 1) * shake }
 }
 
+// Boss skins pick a renderer, nothing else: type, AI, hitboxes and damage are
+// shared, so an unknown skin must still draw the real boss rather than nothing.
+export function drawBossBySkin(ctx, e, camX, camY, S, sprites,
+                               impl = { vector: drawDragonBoss, pixel: drawDragonBossPixel }) {
+  if (e.skin === PIXEL_SKIN) impl.pixel(ctx, e, camX, camY, S, sprites)
+  else impl.vector(ctx, e, camX, camY, S)
+}
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas
@@ -726,7 +736,7 @@ export class Renderer {
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
-      if (e.type === 'dragon_boss') drawDragonBoss(ctx, e, camX, camY, S)
+      if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
       else drawEntity(ctx, e, epx, epy, S, sprites)
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
     }
