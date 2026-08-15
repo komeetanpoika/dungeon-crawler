@@ -32,7 +32,7 @@ mandatory — the journal is how arena testing improves itself across sessions.
    ```
 
    - Every field optional; omit the file entirely for the default dragon-boss arena.
-   - Enemy kinds: `guard`, `monster` (variants `weak`/`medium`/`strong`/`boss`), `dragon`, `crab`, `cyclops`, `wizard`, `dragon_boss`. Omit `x`/`y` to auto-place near the center. Optional `hp` spawns the enemy pre-damaged (clamped 1..maxHp) — e.g. `{ "kind": "guard", "hp": 1 }` to observe low-HP fleeing.
+   - Enemy kinds: `guard`, `monster` (variants `weak`/`medium`/`strong`/`boss`), `dragon`, `crab`, `cyclops`, `wizard`, `dragon_boss`, `dragon_boss_pixel` (the pixel-art skin — same type, AI and hitboxes as `dragon_boss`, only the renderer differs). Omit `x`/`y` to auto-place near the center. Optional `hp` spawns the enemy pre-damaged (clamped 1..maxHp) — e.g. `{ "kind": "guard", "hp": 1 }` to observe low-HP fleeing.
    - Chest kinds: `weapon` (`weaponType`: `dagger`/`sword`/`longsword`/`axe`), `potion`. Omit positions to auto-place on the perimeter.
    - `player`: spawn position plus optional `weaponType` and `hp` overrides.
    - `columns`: interior COLUMN tiles (block movement AND line of sight) — build walls/obstacles for pathfinding and LOS-break tests; never placed on the player spawn; spawns never land on them.

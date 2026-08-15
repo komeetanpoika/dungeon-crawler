@@ -85,3 +85,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** guard, guard
 **Score:** 3/5
 **Notes:** Animation half confirmed live: mid-swing screenshots facing south and facing east both show the longsword trail and blade sweeping on the facing side of the player, no console errors, held-weapon pose intact. Kill half not observable: configured guards never appeared adjacent at their explicit x/y (one attacked from off-screen, two others rendered ~4 tiles from where configured), and a scripted player glued by two guards died before landing enough swings. Damage geometry is instead covered exactly by the 49 assertions in test/melee.test.js.
+
+## Run 13 — 2026-08-15 — CLOSED
+**Question:** Does the pixel-skinned dragon boss render correctly in the running game, and does it read as deliberate pixel art beside the vector boss and the tileset?
+**Criteria:** All parts present and connected (no gaps at the neck base, wing roots or tail); pixels uniformly chunky with no anti-aliased edges on the dragon; sprites drawn AFTER the boss (player, tiles, the vector boss) stay sharp, confirming the image-smoothing fix; parts stay attached while it animates.
+**Config:** (default boss arena)
+**Score:** 5/5
+**Notes:** All four criteria met. Pixel boss renders in-game with every part present and connected — plated tail with the fused tip, scaled body, both mirrored wings, neck plates, horned head, four clawed feet; no gaps at neck base or wing roots across three facings. Edges are uniformly stair-stepped with no anti-aliasing anywhere on the dragon. Player sprite, stone-brick wall and HUD text drawn after the boss all stay sharp, confirming the imageSmoothingEnabled fix works in the real render loop. Parts stayed attached across frames while the boss turned and stomped. Observation for the art-scale decision: at ART_PX=4 the dragon is visibly chunkier than the 16x16 tileset it stands on (compare its edges to the brick wall) — deliberate, but pronounced.
