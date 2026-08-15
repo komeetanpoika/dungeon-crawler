@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DRAGON_PALETTE, PALETTE_KEYS, rgbKey } from '../renderer/data/dragon-palette.js'
 import { readPng } from '../tools/png-read.mjs'
-import { ART_PX, SHEET_SPRITE, PARTS, PART_ORDER } from '../renderer/data/dragon-parts.js'
+import { SHEET_SPRITE, PARTS, PART_NAMES } from '../renderer/data/dragon-parts.js'
 import { SPRITES } from '../renderer/render/sprites.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -46,8 +46,8 @@ describe('dragon part sheet', () => {
   })
 
   it('declares every part the renderer asks for', () => {
-    for (const name of PART_ORDER) {
-      assert.ok(PARTS[name], `PART_ORDER lists ${name} but PARTS has no frame for it`)
+    for (const name of PART_NAMES) {
+      assert.ok(PARTS[name], `PART_NAMES lists ${name} but PARTS has no frame for it`)
     }
   })
 
@@ -91,7 +91,15 @@ describe('dragon part sheet', () => {
     assert.equal(soft, 0, `${soft} pixels have partial alpha`)
   })
 
-  it('uses the documented art scale', () => {
-    assert.equal(ART_PX, 4)
+  it('no two frames overlap on the sheet', () => {
+    const frames = Object.entries(PARTS)
+    for (let i = 0; i < frames.length; i++) {
+      for (let j = i + 1; j < frames.length; j++) {
+        const [an, a] = frames[i], [bn, b] = frames[j]
+        const disjoint = a.x + a.w <= b.x || b.x + b.w <= a.x ||
+                         a.y + a.h <= b.y || b.y + b.h <= a.y
+        assert.ok(disjoint, `${an} and ${bn} overlap on the sheet`)
+      }
+    }
   })
 })

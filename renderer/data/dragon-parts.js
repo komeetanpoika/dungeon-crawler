@@ -8,48 +8,58 @@
 //
 // ART_PX is 4: one art pixel is 4 screen px. The rest of the tileset is 16x16
 // art in a 32px tile (i.e. 2) — the dragon is deliberately chunkier, because at
-// tileset resolution its scales read as mush. Change it here and re-bake.
+// tileset resolution its scales read as mush. Its source of truth is
+// tools/bake-dragon-parts.mjs; change it there and re-bake, because a re-bake
+// overwrites whatever is written here.
 //
 // Each frame: x/y/w/h locate it in the sheet; ox/oy is the joint the part
 // rotates about, in sprite-local art px.
+//
+// Two things to know before redrawing anything:
+//  - There is ONE wing and ONE foot here. The renderer mirrors and rotates them
+//    into two wings and four feet, so asymmetric detail drawn into either will
+//    show up mirrored on the other side.
+//  - ox/oy correctness is the one invariant no test can check. Move art within
+//    its frame without updating them and the part is silently misplaced at
+//    runtime — the sheet will still look perfectly fine on its own.
 export const ART_PX = 4
 export const SHEET_SPRITE = 'dragon_parts'
 
 export const PARTS = {
-  foot:       { x: 0, y: 0, w: 26, h: 26, ox: 8, oy: 13 },
-  tail_tip:   { x: 27, y: 0, w: 10, h: 28, ox: 5, oy: 14 },
-  tail4:      { x: 38, y: 0, w: 12, h: 16, ox: 6, oy: 8 },
-  tail3:      { x: 51, y: 0, w: 12, h: 16, ox: 6, oy: 8 },
-  tail2:      { x: 64, y: 0, w: 14, h: 16, ox: 7, oy: 8 },
-  tail1:      { x: 79, y: 0, w: 16, h: 16, ox: 8, oy: 8 },
-  tail0:      { x: 96, y: 0, w: 16, h: 16, ox: 8, oy: 8 },
-  neck4:      { x: 113, y: 0, w: 12, h: 16, ox: 6, oy: 8 },
-  neck3:      { x: 126, y: 0, w: 12, h: 16, ox: 6, oy: 8 },
-  neck2:      { x: 139, y: 0, w: 12, h: 16, ox: 6, oy: 8 },
-  neck1:      { x: 152, y: 0, w: 14, h: 16, ox: 7, oy: 8 },
-  neck0:      { x: 167, y: 0, w: 14, h: 16, ox: 7, oy: 8 },
-  body:       { x: 182, y: 0, w: 40, h: 53, ox: 20, oy: 29 },
-  flame:      { x: 0, y: 54, w: 49, h: 36, ox: 3, oy: 18 },
-  head:       { x: 50, y: 54, w: 30, h: 34, ox: 15, oy: 18 },
-  wing:       { x: 81, y: 54, w: 64, h: 50, ox: 4, oy: 28 },
+  body:       { x: 0, y: 0, w: 40, h: 53, ox: 20, oy: 29 },
+  head:       { x: 41, y: 0, w: 24, h: 32, ox: 12, oy: 17 },
+  wing:       { x: 66, y: 0, w: 64, h: 50, ox: 4, oy: 28 },
+  foot:       { x: 131, y: 0, w: 22, h: 20, ox: 6, oy: 10 },
+  flame:      { x: 154, y: 0, w: 49, h: 36, ox: 3, oy: 18 },
+  neck0:      { x: 204, y: 0, w: 14, h: 16, ox: 7, oy: 8 },
+  neck1:      { x: 219, y: 0, w: 14, h: 16, ox: 7, oy: 8 },
+  neck2:      { x: 234, y: 0, w: 12, h: 16, ox: 6, oy: 8 },
+  neck3:      { x: 0, y: 54, w: 12, h: 16, ox: 6, oy: 8 },
+  neck4:      { x: 13, y: 54, w: 12, h: 16, ox: 6, oy: 8 },
+  tail0:      { x: 26, y: 54, w: 16, h: 16, ox: 8, oy: 8 },
+  tail1:      { x: 43, y: 54, w: 16, h: 16, ox: 8, oy: 8 },
+  tail2:      { x: 60, y: 54, w: 14, h: 16, ox: 7, oy: 8 },
+  tail3:      { x: 75, y: 54, w: 12, h: 16, ox: 6, oy: 8 },
+  tail4:      { x: 88, y: 54, w: 12, h: 16, ox: 6, oy: 8 },
+  tail_tip:   { x: 101, y: 54, w: 10, h: 28, ox: 5, oy: 14 },
 }
 
-// Back-to-front draw order.
-export const PART_ORDER = [
-  'foot',
-  'tail_tip',
-  'tail4',
-  'tail3',
-  'tail2',
-  'tail1',
-  'tail0',
-  'neck4',
-  'neck3',
-  'neck2',
-  'neck1',
-  'neck0',
+// Every part in the sheet. Not a draw order — the renderer builds its own.
+export const PART_NAMES = [
   'body',
-  'flame',
   'head',
   'wing',
+  'foot',
+  'flame',
+  'neck0',
+  'neck1',
+  'neck2',
+  'neck3',
+  'neck4',
+  'tail0',
+  'tail1',
+  'tail2',
+  'tail3',
+  'tail4',
+  'tail_tip',
 ]
