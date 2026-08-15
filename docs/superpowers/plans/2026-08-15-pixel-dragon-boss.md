@@ -1037,9 +1037,12 @@ export function drawDragonBossPixel(ctx, e, camX, camY, S, sprites, buffer) {
   // constructor and in resize()), so forcing it back to `true` here would
   // blur every sprite drawn after the boss.
 }
-
-export { ART_PX, BUF }
 ```
+
+Nothing is re-exported from here. `ART_PX` belongs to
+`renderer/data/dragon-parts.js`; re-exporting it would give callers a second
+place to import the same constant from, and `BUF` is a private detail of the
+compositing buffer.
 
 - [ ] **Step 4: Run test to verify it passes**
 
