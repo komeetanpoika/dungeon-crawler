@@ -35,9 +35,14 @@ export function pointInCone(px, py, ox, oy, aim, half, len) {
   return Math.abs(diff) <= half
 }
 
+export const PIXEL_SKIN = 'pixel'
+
 // `opts.skin` selects a renderer variant only — the type, AI, hitboxes and
 // damage are shared with the default boss, so a skinned copy can never drift
-// out of sync with the real one.
+// out of sync with the real one. Not the same idea as `cell.skin` on map
+// tiles: a tile's `skin` is looked up directly as a sprite-map key
+// (`sprites[tileObj.skin]`), while `e.skin` here is a semantic tag a
+// renderer branches on with a ternary/switch, not a lookup key.
 export function makeDragonBoss(x, y, opts = {}) {
   return {
     type: 'dragon_boss', x, y, hp: BOSS_HP, maxHp: BOSS_HP, inCombat: false,

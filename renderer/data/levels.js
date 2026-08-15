@@ -6,7 +6,9 @@ import { TILE } from '../systems/entities.js'
 //   kind 'tile'  → sets map cell tile (walls get no roomId; everything else does)
 //   kind 'spawn' → cell becomes FLOOR + roomId; pushes a spawn.
 //     roomScoped: include roomId on the spawn (monsters yes; items/doors no)
-//     single:     place at most one (the dragon boss)
+//     single:     at most one spawn total across ALL `single` entries combined
+//                 (placeTemplate tracks one shared flag, not one per symbol) —
+//                 e.g. a 'B'/'Q' block scans 'B' before 'Q' and drops 'Q'
 // color/icon drive the editor palette + canvas; the game ignores them.
 export const TEMPLATE_LEGEND = {
   '#': { label: 'Wall',     kind: 'tile',  tile: TILE.WALL,     color: '#3a3a44' },

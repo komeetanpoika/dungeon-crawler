@@ -357,6 +357,20 @@ describe('placeTemplate', () => {
     assert.equal(map[0][1].tile, TILE.FLOOR)
   })
 
+  // PINS current behaviour, does not endorse it: `single` is tracked with one
+  // flag shared across ALL `single: true` legend entries, so mixing two
+  // different single symbols in one template keeps only whichever is
+  // scanned first (row-major) and silently drops the other. If a template
+  // ever needs both a regular and a pixel boss placed independently, this
+  // will need to change to per-kind tracking.
+  it('pins current behavior: mixing two different single symbols keeps only the first-scanned one', () => {
+    const map = createMap(2, 1)
+    const spawns = placeTemplate(map, { tiles: ['BQ'], width: 2, height: 1 }, 0, 0, 3)
+    assert.deepEqual(spawns.map(s => s.kind), ['dragon_boss'])
+    assert.equal(map[0][0].tile, TILE.FLOOR)      // both cells still become floor
+    assert.equal(map[0][1].tile, TILE.FLOOR)
+  })
+
   it('honors the ox/oy offset and ignores out-of-bounds cells', () => {
     const map = createMap(4, 4)
     placeTemplate(map, { tiles: ['##', '##'], width: 2, height: 2 }, 2, 2, 1)

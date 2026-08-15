@@ -252,6 +252,13 @@ export function templateHasBoss(template) {
 
 export function placeTemplate(map, template, ox, oy, roomId) {
   const spawns = []
+  // Shared across ALL `single: true` legend entries, not tracked per spawn
+  // kind. This is deliberate for the common case — a multi-cell block of the
+  // same symbol (e.g. a 2x2 'B' block) collapses to one spawn — but it also
+  // means a template mixing two different `single` symbols (e.g. 'B' and
+  // 'Q') keeps only whichever is scanned first (row-major), silently
+  // dropping the other. Fine today since only one boss variant is painted
+  // per lair; revisit if that changes.
   let bossPlaced = false
   template.tiles.forEach((row, dy) => {
     ;[...row].forEach((ch, dx) => {

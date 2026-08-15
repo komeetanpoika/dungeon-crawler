@@ -3,7 +3,7 @@ import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, ma
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
-import { makeDragonBoss, updateDragonBoss } from './systems/dragonboss.js'
+import { makeDragonBoss, updateDragonBoss, PIXEL_SKIN } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
 import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/decorate.js'
 import { Renderer } from './render/canvas.js'
@@ -180,7 +180,7 @@ function buildEntities(spawns, map, depth) {
       case 'wizard':  return [hpOverride({ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'crab':    return [hpOverride({ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'dragon_boss': return [hpOverride({ ...makeDragonBoss(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
-      case 'dragon_boss_pixel': return [hpOverride({ ...makeDragonBoss(s.x, s.y, { skin: 'pixel' }), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
+      case 'dragon_boss_pixel': return [hpOverride({ ...makeDragonBoss(s.x, s.y, { skin: PIXEL_SKIN }), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'prop':           return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
       case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
