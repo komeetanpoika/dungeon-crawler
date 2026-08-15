@@ -1338,9 +1338,20 @@ git commit -m "docs(arena-test): document the dragon_boss_pixel enemy kind"
   regression, not just an aesthetic one. A fade-to-transparent gradient does not
   translate to a 16-colour pixel sprite at all; the flame wants a hard-edged
   shape at full length. Fix before the pixel boss replaces the real one.
+  **Coupled to `BUF`:** measured worst-case reach puts the flame at 75.8 art px
+  against the 80 px half-buffer — about 4 px of headroom, and only because the
+  sprite is short. Redrawing it to full length lands it near 85 and it gets
+  silently clipped, with no test to catch it. Grow `BUF` in the same change.
 - **The foot's claws lose their taper.** `pw = S*0.1` is 0.8 art px, below the
   alpha cutoff, so the claws reach 8 art px instead of `S*1.55` (12.4). Pure
   hand-refinement territory; no gameplay consequence.
+- **Only the body bobs, so it slides against the neck root.** The vector boss
+  breathes by scaling `bw`/`bh` (`1 + breath*0.02`), which moves the chains,
+  feet and wings together. The pixel rig cannot scale without destroying the
+  grid, so the body alone shifts 1 art px — meaning it moves ~1 px relative to
+  the static neck base once per breath cycle. Judge it in the arena (Task 8):
+  if it reads as a seam, dropping the bob entirely is better than a detached
+  body.
 - **Reference sizes must be measured, not guessed.** Both frame sizes quoted
   from the prototype (`body` 34×42, `head` 30×34 with origin 26) clip the art —
   the body's top scale row sits 25 art px above the origin once `bowPx = S*0.6`
