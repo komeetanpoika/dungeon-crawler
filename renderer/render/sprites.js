@@ -11,6 +11,7 @@ export const SPRITES = {
   column:       'tile_0075',  // crate — no pillar exists in tileset
   // characters
   dragon:       'creature_dragon',
+  dragon_parts: 'dragon_boss_parts',
   player:       'tile_0084',
   guard:        'tile_0085',
   guard_alert:  'tile_0087',
