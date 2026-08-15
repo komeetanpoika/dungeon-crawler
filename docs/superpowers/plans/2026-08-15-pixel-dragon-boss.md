@@ -10,7 +10,17 @@
 
 **Design doc:** `docs/superpowers/specs/2026-08-15-pixel-dragon-boss-design.md`
 
-**Art scale note:** `ART_PX` (screen pixels per art pixel, at `S = 32`) is defined once in `renderer/data/dragon-parts.js` and every sprite dimension is derived from it by the bake script. The plan uses `ART_PX = 4`. The rest of the game's tileset is 16×16 source drawn into a 32px tile, i.e. `ART_PX = 2`; switching is a one-line edit plus a re-bake, and no dimension is hard-coded anywhere else.
+**Art scale note:** `ART_PX` is screen pixels per art pixel **at `S = 32`**. Its
+source of truth is `tools/bake-dragon-parts.mjs`; `renderer/data/dragon-parts.js`
+re-exports it as generated output, so editing it there is overwritten by the next
+bake. Every sprite dimension is derived from it. The plan uses `ART_PX = 4`. The
+rest of the game's tileset is 16×16 source drawn into a 32px tile, i.e. the
+equivalent of 2 — switching is a one-line edit in the bake plus a re-bake, and no
+dimension is hard-coded anywhere else.
+
+Because `ART_PX` is pegged to `S = 32`, runtime code must scale it with the
+actual tile size: **`const A = ART_PX * S / 32`**, never a hard-coded `S / 8`
+(which silently assumes `ART_PX === 4`).
 
 ---
 
@@ -475,7 +485,7 @@ import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readPng } from '../tools/png-read.mjs'
-import { ART_PX, SHEET_SPRITE, PARTS, PART_ORDER } from '../renderer/data/dragon-parts.js'
+import { ART_PX, SHEET_SPRITE, PARTS, PART_NAMES } from '../renderer/data/dragon-parts.js'
 import { SPRITES } from '../renderer/render/sprites.js'
 
 const __dirname2 = dirname(fileURLToPath(import.meta.url))
@@ -488,8 +498,8 @@ describe('dragon part sheet', () => {
   })
 
   it('declares every part the renderer asks for', () => {
-    for (const name of PART_ORDER) {
-      assert.ok(PARTS[name], `PART_ORDER lists ${name} but PARTS has no frame for it`)
+    for (const name of PART_NAMES) {
+      assert.ok(PARTS[name], `PART_NAMES lists ${name} but PARTS has no frame for it`)
     }
   })
 
@@ -533,8 +543,18 @@ describe('dragon part sheet', () => {
     assert.equal(soft, 0, `${soft} pixels have partial alpha`)
   })
 
-  it('uses the documented art scale', () => {
-    assert.equal(ART_PX, 4)
+  it('no two frames overlap on the sheet', () => {
+    // The likeliest hand-edit mistake: widening a redrawn part so it eats its
+    // neighbour. Every other test still passes when that happens.
+    const frames = Object.entries(PARTS)
+    for (let i = 0; i < frames.length; i++) {
+      for (let j = i + 1; j < frames.length; j++) {
+        const [an, a] = frames[i], [bn, b] = frames[j]
+        const disjoint = a.x + a.w <= b.x || b.x + b.w <= a.x ||
+                         a.y + a.h <= b.y || b.y + b.h <= a.y
+        assert.ok(disjoint, `${an} and ${bn} overlap on the sheet`)
+      }
+    }
   })
 })
 ```
@@ -748,7 +768,7 @@ export const PARTS = {
 ${rows}
 }
 
-export const PART_ORDER = ${JSON.stringify(order)}
+export const PART_NAMES = ${JSON.stringify(order)}
 `)
 
 console.log(`wrote ${path.relative(ROOT, SHEET_OUT)} and ${path.relative(ROOT, TABLE_OUT)}`)
@@ -908,7 +928,7 @@ function chainPoints(x, y, startAng, segs, segLen, bendFn) {
 }
 
 export function dragonPartPlacements(e, S) {
-  const A = S / 8                       // screen px per art px
+  const A = ART_PX * S / 32             // screen px per art px at this tile size
   const t = e.breathTime ?? 0
   const bw = 3 * S, bh = 4 * S
   const out = []
@@ -985,7 +1005,7 @@ function getBuffer() {
 export function drawDragonBossPixel(ctx, e, camX, camY, S, sprites, buffer) {
   const sheet = sprites?.[SHEET_SPRITE]
   if (!sheet) return                    // sheet missing: draw nothing, never throw
-  const A = S / 8
+  const A = ART_PX * S / 32
   const buf = buffer ?? getBuffer()
   const half = BUF / 2
   const bctx = buf.getContext('2d')
