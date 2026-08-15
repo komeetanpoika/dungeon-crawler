@@ -1356,9 +1356,10 @@ git commit -m "docs(arena-test): document the dragon_boss_pixel enemy kind"
   breathes by scaling `bw`/`bh` (`1 + breath*0.02`), which moves the chains,
   feet and wings together. The pixel rig cannot scale without destroying the
   grid, so the body alone shifts 1 art px — meaning it moves ~1 px relative to
-  the static neck base once per breath cycle. Judge it in the arena (Task 8):
-  if it reads as a seam, dropping the bob entirely is better than a detached
-  body.
+  the static neck base once per breath cycle.
+  **Resolved by observation (arena run 13):** no gaps appeared at the neck base
+  or wing roots across three facings, and parts stayed attached across frames.
+  The bob stays. Nothing to do.
 - **Reference sizes must be measured, not guessed.** Both frame sizes quoted
   from the prototype (`body` 34×42, `head` 30×34 with origin 26) clip the art —
   the body's top scale row sits 25 art px above the origin once `bowPx = S*0.6`
@@ -1368,6 +1369,30 @@ git commit -m "docs(arena-test): document the dragon_boss_pixel enemy kind"
 ## Known follow-ups (deliberately not in this plan)
 
 - **Hand-refining the baked parts.** The sheet ships mechanically baked. Redrawing a part means editing `dragon_boss_parts.png` in a pixel editor (8-bit PNG only — the reader rejects other bit depths) and adjusting that part's frame in `renderer/data/dragon-parts.js` if its size changes. The palette and partial-alpha tests will catch off-palette or soft-edged pixels.
-- **Art scale.** If the ×4 grid reads as too blocky beside the 16×16 tileset, change `ART_PX` in `tools/bake-dragon-parts.mjs` to 2 and re-run with `--force`. Every dimension is derived, so nothing else changes.
+- **Art scale.** If the ×4 grid reads as too blocky beside the 16×16 tileset,
+  change `ART_PX` in `tools/bake-dragon-parts.mjs` to 2 and re-run with
+  `--force`.
+
+  **This entry previously claimed "every dimension is derived, so nothing else
+  changes". That was false and would have destroyed the rendering.** Art-pixel
+  coordinates scale *inversely* with `ART_PX`: `put()` computes `x / A` where
+  `A = ART_PX * S / 32`, and every rig position is a multiple of `S`, so halving
+  `ART_PX` **doubles** every art-pixel coordinate. Worst-case reach would go
+  from a measured 75.8 art px to 151.6 against a half-buffer of 80, silently
+  shearing off the entire outer rig. `BUF` is now derived (`640 / ART_PX`) and a
+  test asserts the rig fits, so this is safe — but do not reintroduce a
+  hard-coded buffer size.
 - **`PART_FRAMES` hook.** The design allows a state to opt into hand-authored frames instead of the rig. That hook is not built here — it is a small addition to `dragonPartPlacements` once there is art that needs it.
+- **The rig geometry is duplicated between the two renderers.** `dragonboss-pixel.js`
+  transcribes the chain integration, tail/neck specs and bends, foot offsets,
+  `flapAt` and `shoulderY` character-for-character from `dragonboss.js`; the bake
+  transcribes a subset again, so `Math.sin(t*1.5)*0.12 + 0.22` now lives in three
+  files. Retuning the vector boss desyncs the pixel one silently — the existing
+  tests check counts, ordering, snapping and gating, all structural, and would
+  pass unchanged if `bh * 0.46` became `0.44`. The fix is a pure extraction:
+  export a `DRAGON_RIG` from `dragonboss.js` (body factors, foot offsets, chain
+  specs, `flapAt`/`wigAt`) and import it in all three consumers. Deliberately
+  **not** done on this branch, because it modifies the shipped vector renderer,
+  which the whole branch has kept byte-identical as a safety property. Worth
+  doing before the pixel boss replaces the real one.
 - **Swapping the depth-5 boss.** One word: give the depth-5 spawn `skin: 'pixel'` in `map.js`.
