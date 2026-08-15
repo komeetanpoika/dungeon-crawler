@@ -16,9 +16,9 @@ describe('buildBossTestArena', () => {
     assert.equal(map[H - 2][W - 2].tile, TILE.FLOOR)
   })
 
-  it('spawns exactly one dragon_boss at the center, flagged isBoss', () => {
+  it('spawns exactly one dragon_boss_pixel at the center, flagged isBoss', () => {
     const { entitySpawns } = buildBossTestArena(W, H)
-    const bosses = entitySpawns.filter(s => s.kind === 'dragon_boss')
+    const bosses = entitySpawns.filter(s => s.kind === 'dragon_boss_pixel')
     assert.equal(bosses.length, 1)
     assert.equal(bosses[0].x, Math.floor(W / 2))
     assert.equal(bosses[0].y, Math.floor(H / 2))
@@ -54,7 +54,7 @@ describe('buildBossTestArena', () => {
 describe('generateLevel routes depth 0 to the boss arena', () => {
   it('returns the arena (1 boss + 20 chests, no exit door)', () => {
     const { entitySpawns } = generateLevel(0, W, H)
-    assert.equal(entitySpawns.filter(s => s.kind === 'dragon_boss').length, 1)
+    assert.equal(entitySpawns.filter(s => s.kind === 'dragon_boss_pixel').length, 1)
     assert.equal(entitySpawns.filter(s => s.kind === 'weapon' || s.kind === 'potion').length, 20)
     assert.equal(entitySpawns.some(s => s.kind === 'exit_door'), false)
   })

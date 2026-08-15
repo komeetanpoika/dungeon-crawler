@@ -11,8 +11,7 @@ tools/tile-editor/
 tools/sword-compare/
 /miekka_croppedcleaned.png
 /miekka_croppedcleaned.png:Zone.Identifier
-/debug2.mjs
-/debug_test.mjs
+/debug*.mjs
 /main.cjs
 /preload.cjs
 /arena-config.json

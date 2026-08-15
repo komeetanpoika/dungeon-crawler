@@ -9,7 +9,7 @@ describe('buildArena — default content', () => {
     const b = buildBossTestArena(26, 18)
     assert.deepEqual(a.entitySpawns, b.entitySpawns)
     assert.deepEqual(a.playerSpawn, { x: 13, y: 16 })
-    assert.equal(a.entitySpawns.filter(s => s.kind === 'dragon_boss').length, 1)
+    assert.equal(a.entitySpawns.filter(s => s.kind === 'dragon_boss_pixel').length, 1)
     assert.equal(a.entitySpawns.length, 21)
   })
 })
@@ -149,7 +149,7 @@ describe('buildArena — columns', () => {
     }, w => warns.push(w))
     assert.equal(map[cy][cx].tile, TILE.FLOOR, 'column at the boss centre replaced with floor')
     assert.ok(warns.some(w => w.includes('default boss spawn takes precedence')), 'warned about the removal')
-    const boss = entitySpawns.find(s => s.kind === 'dragon_boss')
+    const boss = entitySpawns.find(s => s.kind === 'dragon_boss_pixel')
     assert.deepEqual([boss.x, boss.y], [cx, cy], 'boss spawn present at the centre')
   })
 })
@@ -169,7 +169,7 @@ describe('generateLevel — arena option', () => {
 
   it('defaults to the boss arena without a config', () => {
     const { entitySpawns } = generateLevel(0, 26, 18)
-    assert.equal(entitySpawns.filter(s => s.kind === 'dragon_boss').length, 1)
+    assert.equal(entitySpawns.filter(s => s.kind === 'dragon_boss_pixel').length, 1)
     assert.equal(entitySpawns.length, 21)
   })
 })

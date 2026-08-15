@@ -460,15 +460,18 @@ export function buildArena(config = {}, warn = console.warn) {
 
   const entitySpawns = []
 
-  // Default content — exactly the original boss arena — when the config
-  // specifies neither enemies nor chests.
+  // Default content — the boss arena — when the config specifies neither
+  // enemies nor chests. The boss here is the pixel-art skin: level 0 is the
+  // showcase arena, and it is the only boss the web build can reach (the web
+  // shim returns no arena config, so this default is what ships). The depth-5
+  // boss is unaffected — it spawns `dragon_boss` and renders the vector art.
   if (config.enemies === undefined && config.chests === undefined) {
     if (columnCells.has(`${cx},${cy}`)) {
       map[cy][cx].tile = TILE.FLOOR
       columnCells.delete(`${cx},${cy}`)
       warn(`arena: column at (${cx},${cy}) removed — default boss spawn takes precedence`)
     }
-    entitySpawns.push({ kind: 'dragon_boss', x: cx, y: cy, isBoss: true })
+    entitySpawns.push({ kind: 'dragon_boss_pixel', x: cx, y: cy, isBoss: true })
     const weaponKeys = Object.keys(WEAPON_TYPES)
     const CHEST_COUNT = 20
     for (let i = 0; i < CHEST_COUNT; i++) {
