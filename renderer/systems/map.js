@@ -491,7 +491,7 @@ export function buildArena(config = {}, warn = console.warn) {
     return best
   }
 
-  const ENEMY_KINDS = new Set(['guard', 'monster', 'dragon', 'crab', 'cyclops', 'wizard', 'dragon_boss'])
+  const ENEMY_KINDS = new Set(['guard', 'monster', 'dragon', 'crab', 'cyclops', 'wizard', 'dragon_boss', 'dragon_boss_pixel'])
   for (const e of (Array.isArray(config.enemies) ? config.enemies : [])) {
     if (!e || !ENEMY_KINDS.has(e.kind)) { warn(`arena: unknown enemy kind "${e?.kind}" — skipped`); continue }
     let pos

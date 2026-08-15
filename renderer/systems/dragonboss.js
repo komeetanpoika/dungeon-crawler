@@ -35,9 +35,13 @@ export function pointInCone(px, py, ox, oy, aim, half, len) {
   return Math.abs(diff) <= half
 }
 
-export function makeDragonBoss(x, y) {
+// `opts.skin` selects a renderer variant only — the type, AI, hitboxes and
+// damage are shared with the default boss, so a skinned copy can never drift
+// out of sync with the real one.
+export function makeDragonBoss(x, y, opts = {}) {
   return {
     type: 'dragon_boss', x, y, hp: BOSS_HP, maxHp: BOSS_HP, inCombat: false,
+    ...(opts.skin && { skin: opts.skin }),
     anchorX: x, anchorY: y, facing: 0,
     // animation state read by the renderer:
     neckRear: 0, headAim: 0, tailSwing: 0, breathTime: 0,

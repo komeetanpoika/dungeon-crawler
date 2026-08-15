@@ -375,7 +375,7 @@ describe('placeTemplate', () => {
   it('legend covers all template symbols with valid entries', () => {
     assert.deepEqual(
       Object.keys(TEMPLATE_LEGEND).sort(),
-      ['#', '.', 'B', 'C', 'D', 'L', 'P', 'R', 'S', 'T', 'W', 'X', 'Z'],
+      ['#', '.', 'B', 'C', 'D', 'L', 'P', 'Q', 'R', 'S', 'T', 'W', 'X', 'Z'],
     )
     for (const [ch, e] of Object.entries(TEMPLATE_LEGEND)) {
       assert.ok(e.label, `${ch} has a label`)

@@ -180,6 +180,7 @@ function buildEntities(spawns, map, depth) {
       case 'wizard':  return [hpOverride({ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'crab':    return [hpOverride({ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'dragon_boss': return [hpOverride({ ...makeDragonBoss(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
+      case 'dragon_boss_pixel': return [hpOverride({ ...makeDragonBoss(s.x, s.y, { skin: 'pixel' }), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'prop':           return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
       case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]

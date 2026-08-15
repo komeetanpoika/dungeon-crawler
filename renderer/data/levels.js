@@ -20,6 +20,7 @@ export const TEMPLATE_LEGEND = {
   'P': { label: 'Potion',   kind: 'spawn', spawn: 'potion',      roomScoped: false, color: '#8a3a8a', icon: '⚗' },
   'D': { label: 'Dragon',   kind: 'spawn', spawn: 'dragon',      roomScoped: true,  isBoss: true, color: '#a33333', icon: '🐉' },
   'B': { label: 'Boss',     kind: 'spawn', spawn: 'dragon_boss', roomScoped: true, single: true, isBoss: true, color: '#cc2222', icon: '🐲' },
+  'Q': { label: 'Boss (pixel)', kind: 'spawn', spawn: 'dragon_boss_pixel', roomScoped: true, single: true, isBoss: true, color: '#cc7722', icon: '🟧' },
   'R': { label: 'Crab',     kind: 'spawn', spawn: 'crab',        roomScoped: false, isBoss: true, color: '#c87a3a', icon: '🦀' },
   'Z': { label: 'Wizard',   kind: 'spawn', spawn: 'wizard',      roomScoped: false, isBoss: true, color: '#6a3a8a', icon: '🧙' },
 }
