@@ -78,3 +78,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** monster(weak), monster(weak)
 **Score:** 5/5
 **Notes:** All criteria met live. 1) 'The fireball erupts!' logged; flames rendered wrapping the column on both sides while the column tile stayed unburnt (gas spill visible in fireball-blast.png/pointblank.png); zone expired on schedule (~3s). 2) Weak bat died to first blast (direct+burst); strong monster visibly stood burning in flames and died during the ammo-drain shots — hit spam ceased. 3) Point-blank shot self-burned the player: 'You're burning! (-1 HP)' caught on 3 consecutive ~0.5s polls (burst -4 engulfs message overwritten same-frame by erupts line; tick arithmetic unit-covered). 4) Ammo drained 5/5→4/5→3/5→0/5 on HUD, 'Out of ammo!' fired at empty. Caveat: exact HP deltas not verifiable (300 hp vs coarse 6-block bar) — damage evidence is log lines + unit tests.
+
+## Run 12 — 2026-08-14 — CLOSED
+**Question:** After the hitbox retune, does a longsword swing render its arc in front of the player and connect with enemies ahead (including the diagonal neighbour) in the real game?
+**Criteria:** A screenshot mid-swing shows the blade and trail on the facing side of the player; after a few swings facing east both guards ahead are dead, with no console errors.
+**Config:** guard, guard
+**Score:** 3/5
+**Notes:** Animation half confirmed live: mid-swing screenshots facing south and facing east both show the longsword trail and blade sweeping on the facing side of the player, no console errors, held-weapon pose intact. Kill half not observable: configured guards never appeared adjacent at their explicit x/y (one attacked from off-screen, two others rendered ~4 tiles from where configured), and a scripted player glued by two guards died before landing enough swings. Damage geometry is instead covered exactly by the 49 assertions in test/melee.test.js.
