@@ -159,9 +159,21 @@ describe('grid-stomp locomotion', () => {
     boss.state = 'stomp'; boss.stepTimer = 0; boss.stepFrom = null
     const player = mkPlayer(20 * 32 + 16, 10 * 32 + 16)  // due east, far
     const state = mkState(boss, player)
-    const startX = boss.px
-    for (let i = 0; i < 80; i++) updateDragonBoss(boss, state, 0.05)  // ~4s
-    assert.ok(boss.px > startX, 'expected the boss to advance east toward the player')
+    const startX = boss.px, startY = boss.py
+    // Drive until the step COMPLETES, never for a fixed number of frames.
+    // Math.random() in the attack scheduler (sweep-vs-cone, and the 1.2-1.8s
+    // attackCooldown) shifts when steps start, so a fixed frame count samples
+    // the boss mid-step ~2.5% of the time — and mid-step px is eased between
+    // tile centres, so the assertion below fails. footfall is the one-frame
+    // pulse raised on a completed step, at which point px IS the destination.
+    let stepped = false
+    for (let i = 0; i < 400 && !stepped; i++) {
+      updateDragonBoss(boss, state, 0.05)
+      if (boss.footfall) stepped = true
+    }
+    assert.ok(stepped, 'expected the boss to complete a stomp step within 20s')
+    assert.equal(boss.px - startX, 32, 'expected to advance exactly one tile east')
+    assert.equal(boss.py, startY, 'expected no y drift — the player is due east')
     // landed on a tile centre (…*32 + 16)
     assert.equal(((boss.px - 16) % 32 + 32) % 32, 0, 'expected to land on a tile centre x')
   })
