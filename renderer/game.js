@@ -23,6 +23,7 @@ import { parseWeaponCheat } from './systems/cheats.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { rollChestLoot } from './systems/loot.js'
+import { getAttack, meleeHit } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
 const TILE_SIZE = 32
@@ -39,32 +40,6 @@ const DRAGON_CHARGE_DUR      = 1.0
 const DRAGON_EXHALE_DUR      = 0.8
 const DRAGON_BREATH_COOLDOWN = 2.5
 const DRAGON_CONE_HALF       = Math.PI * 0.21
-
-const ATTACK_STYLES = {
-  dagger:       { style: 'snap',  duration: 0.12, cooldown: 0.30, knockback: 10 },
-  sword:        { style: 'arc',   duration: 0.20, cooldown: 0.40, knockback: 18 },
-  longsword:    { style: 'slash', duration: 0.22, cooldown: 0.50, knockback: 24 },
-  axe:          { style: 'spin',  duration: 0.35, cooldown: 0.60, knockback: 34 },
-  maunonmiekka: { style: 'arc',   duration: 0.20, cooldown: 0.40, knockback: 60 },
-}
-
-function getAttack(weaponType) {
-  return ATTACK_STYLES[weaponType] ?? { style: 'arc', duration: 0.20, cooldown: 0.40, knockback: 18 }
-}
-
-function meleeHit(style, facingAngle, dx, dy) {
-  const c = Math.cos(-facingAngle), s = Math.sin(-facingAngle)
-  const rx = dx * c - dy * s   // forward component
-  const ry = dx * s + dy * c   // side component
-  const dist = Math.hypot(dx, dy)
-  switch (style) {
-    case 'snap':  return rx > 0 && rx < 28 && Math.abs(ry) < 10          // narrow stab
-    case 'arc':   return dist < 52 && Math.abs(Math.atan2(ry, rx)) < Math.PI * 70/180  // 140° sweep
-    case 'slash': return rx > -4 && rx < 60 && Math.abs(ry) < 14         // long thrust
-    case 'spin':  return dist < 38                                          // full circle
-    default:      return rx > 0 && rx < 40 && Math.abs(ry) < 20
-  }
-}
 
 const keys = {}
 window.addEventListener('keydown', e => { keys[e.key] = true })

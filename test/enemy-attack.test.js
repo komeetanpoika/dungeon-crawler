@@ -84,19 +84,40 @@ describe('tryStartEnemyAttack — windup 0 (seeded behavior)', () => {
     assert.deepEqual(state.log, ['Crab pinches! (-1 HP)'])
   })
 
-  it('does not start out of range (sword range 20)', () => {
+  it('does not start out of reach — the guard sword bites to 34px', () => {
     const e = makeEnemy('guard', 100, 100)
-    const state = makeState({ px: 125, py: 100, hp: 10 })
+    const state = makeState({ px: 140, py: 100, hp: 10 })
     assert.equal(tryStartEnemyAttack(e, state), false)
     assert.equal(state.player.hp, 10)
     assert.equal(e.attack ?? null, null)
   })
 
-  it('cyclops club reaches 40px', () => {
-    const e = makeEnemy('cyclops', 100, 100)
-    const state = makeState({ px: 135, py: 100, hp: 10 })
+  it('the guard reaches a player who has backed off just over a tile', () => {
+    const e = makeEnemy('guard', 100, 100)
+    const state = makeState({ px: 130, py: 100, hp: 10 })
     assert.equal(tryStartEnemyAttack(e, state), true)
-    assert.equal(state.player.hp, 7)
+    assert.equal(state.player.hp, 9)
+  })
+
+  it('the cyclops club swings further than a human sword, but not forever', () => {
+    const near = makeEnemy('cyclops', 100, 100)
+    const hit = makeState({ px: 148, py: 100, hp: 10 })
+    assert.equal(tryStartEnemyAttack(near, hit), true)
+    assert.equal(hit.player.hp, 7)
+
+    const far = makeEnemy('cyclops', 100, 100)
+    const miss = makeState({ px: 156, py: 100, hp: 10 })
+    assert.equal(tryStartEnemyAttack(far, miss), false)
+    assert.equal(miss.player.hp, 10)
+  })
+
+  it('every enemy weapon reaches at least as far as its wielder stops walking', () => {
+    // The AI walks each chaser to its stopRange and attacks from there; a
+    // weapon that bit shorter than that would leave the enemy whiffing forever.
+    const stopRange = { guard: 20, monster: 20, dragon: 20, cyclops: 40, crab: 0 }
+    for (const [type, weaponId] of Object.entries(ENEMY_MELEE))
+      assert.ok(WEAPONS[weaponId].reach >= (stopRange[type] ?? 0),
+        `${type}'s ${weaponId} (reach ${WEAPONS[weaponId].reach}) cannot reach where the ${type} stands`)
   })
 
   it('does not start while damageCooldown is running', () => {
@@ -135,6 +156,19 @@ describe('windup > 0 (telegraph framework)', () => {
     assert.equal(e.attack.phase, 'swing')
     assert.equal(state.player.hp, 9)
     assert.equal(e.damageCooldown, ATTACK_COOLDOWN)
+  })
+
+  it('whiffs when the player sidesteps out of the swing arc during the windup', () => {
+    // The swing is committed to the angle it started at, so stepping around the
+    // enemy dodges it even from point-blank range.
+    const e = makeEnemy('guard', 100, 100)
+    e.weaponOverrides = { windup: 0.3 }
+    const state = makeState({ px: 110, py: 100, hp: 10 })
+    tryStartEnemyAttack(e, state)
+    state.player.px = 95; state.player.py = 110   // behind the swing, still 11px away
+    stepEnemyAttack(e, state, 0.4)
+    assert.equal(state.player.hp, 10, 'sidestepped — no damage')
+    assert.equal(e.damageCooldown, ATTACK_COOLDOWN, 'attack is still spent')
   })
 
   it('whiffs when the player leaves range during the windup: no damage, cooldown still set', () => {

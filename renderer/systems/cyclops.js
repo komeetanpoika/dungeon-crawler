@@ -14,7 +14,6 @@ const SLAM_WINDUP          = 1.0
 const SLAM_RING_DURATION   = 0.4
 const SLAM_RADIUS          = 80
 const SLAM_DAMAGE          = 4
-const CONTACT_RANGE        = 40
 const KNOCKBACK_DIST       = 60
 
 export function makeCyclops(x, y) {
@@ -53,7 +52,8 @@ export function updateCyclops(e, state, delta) {
       e.stateTimer = SLAM_WINDUP
     }
 
-    // Contact melee — club via the weapon framework (range 40 matches CONTACT_RANGE)
+    // Contact melee — club via the weapon framework (reach/damage/cooldown
+    // live on the club in enemy-attack.js)
     tryStartEnemyAttack(e, state, 'Cyclops hits! (-3 HP)')
 
   } else if (e.state === 'charge_windup') {

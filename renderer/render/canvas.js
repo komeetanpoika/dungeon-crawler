@@ -2,7 +2,8 @@ import { TILE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
-import { WEAPONS } from '../systems/enemy-attack.js'
+import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
+import { getSwingArc } from '../systems/melee.js'
 
 const TILE_SIZE = 32
 
@@ -289,14 +290,51 @@ function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/
 // Per-style default trail tints — the player's original colors.
 const SWING_TINTS = { snap: [255, 230, 80], arc: [180, 180, 255], slash: [150, 220, 255], spin: [255, 140, 50] }
 
+// The drawn swing is derived from the same wedge the hit test uses, as
+// fractions of that wedge's reach: the trail's centreline, its stroke width and
+// the blade tip all stay inside the reach, so nothing ever looks like it should
+// have connected when it didn't.
+const TRAIL_RADIUS = 0.80
+const TRAIL_WIDTH  = 0.24
+const BLADE_TIP    = 0.72
+const SPRITE_LEN   = 0.9    // the weapon tile is drawn 0.9 tiles long, grip to tip
+
+// Where the blade is at swing progress t ∈ [0,1]. Angles are offsets from the
+// facing direction; radius/trailWidth are pixels at a 32px tile. `reachOverride`
+// sizes the swing to a wielder that is not the player — enemy weapons carry
+// their own reach.
+export function swingPose(style, t, reachOverride = null) {
+  const { halfAngle } = getSwingArc(style)
+  const reach = reachOverride ?? getSwingArc(style).reach
+  const pose = {
+    radius: reach * TRAIL_RADIUS,
+    trailWidth: reach * TRAIL_WIDTH,
+    wscale: (reach * BLADE_TIP) / (TILE_SIZE * SPRITE_LEN),
+    from: -halfAngle,
+    angle: 0,
+  }
+  if (style === 'spin') {
+    // Axe: a full whirl, so the sweep is the circle rather than the wedge.
+    pose.from = 0
+    pose.angle = easeInOutCubic(t) * Math.PI * 2
+  } else if (style === 'snap') {
+    // Dagger: flicks out fast, then recoils a touch — a poke, not a sweep.
+    const raw = t < 0.65 ? easeOutCubic(t / 0.65) : 1 - Math.sin((t - 0.65) / 0.35 * Math.PI) * 0.12
+    pose.angle = (raw * 2 - 1) * halfAngle
+  } else {
+    // Sword/longsword: sweep the whole wedge, fast out of the windup.
+    pose.angle = (easeOutCubic(t) * 2 - 1) * halfAngle
+  }
+  return pose
+}
+
 // Shared swing core: rotates a weapon sprite (or draws natural-attack marks)
 // around (cx, cy) with a colored arc trail. t ∈ [0,1] is swing progress.
-// opts: { baseAngle, tint: [r,g,b], scale, marks: 'claw'|'pincer'|null }
+// opts: { baseAngle, tint: [r,g,b], reach, marks: 'claw'|'pincer'|null }
 function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
   const alpha = t < 0.8 ? 1 : 1 - (t - 0.8) / 0.2
   const base = opts.baseAngle ?? 0
   const [r, g, b] = opts.tint ?? SWING_TINTS[style] ?? [200, 200, 200]
-  const scale = opts.scale ?? 1
 
   function trail(a0, a1, radius, width) {
     const lo = Math.min(a0, a1), hi = Math.max(a0, a1)
@@ -304,7 +342,7 @@ function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
     ctx.save()
     ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.4})`
     ctx.lineWidth = width; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.arc(cx, cy, radius * scale, lo, hi); ctx.stroke()
+    ctx.beginPath(); ctx.arc(cx, cy, radius, lo, hi); ctx.stroke()
     ctx.restore()
   }
 
@@ -312,8 +350,10 @@ function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
     ctx.save()
     ctx.translate(cx, cy)
     ctx.rotate(angle)
-    ctx.rotate(-Math.PI / 2)   // orient so blade points outward along the arm
-    ctx.scale(wscale * scale, wscale * scale)
+    // Weapon tiles are drawn tip-up, so a +90° turn points the blade along the
+    // swing angle — outward along the arm, not back over the shoulder.
+    ctx.rotate(Math.PI / 2)
+    ctx.scale(wscale, wscale)
     ctx.globalAlpha = alpha
     if (ws) {
       ctx.drawImage(ws, -S/2, -S * 0.9, S, S)
@@ -338,42 +378,23 @@ function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
     ctx.restore()
   }
 
-  if (style === 'snap') {
-    // Dagger/claw: fast 90° snap with slight overshoot
-    const raw = t < 0.65
-      ? easeOutCubic(t / 0.65)
-      : 1 + Math.sin((t - 0.65) / 0.35 * Math.PI) * 0.22
-    const angle = base + (raw - 0.5) * (Math.PI / 2)
-    trail(base - Math.PI/4, angle, S * 0.8, 7)
-    weapon(angle, 0.85)
+  const pose = swingPose(style, t, opts.reach)
+  const R = pose.radius * S / TILE_SIZE
+  const W = pose.trailWidth * S / TILE_SIZE
 
-  } else if (style === 'arc') {
-    // Sword: 140° side-to-side sweep
-    const sweep = (easeOutCubic(t) * 2 - 1) * (Math.PI * 70/180)
-    const angle = base + sweep
-    trail(base - Math.PI*70/180, angle, S * 1.3, 11)
-    weapon(angle)
-
-  } else if (style === 'slash') {
-    // Longsword/club: overhead slam from –162° to +18°
-    const startA = base - Math.PI * 0.9
-    const endA   = base + Math.PI * 0.1
-    const angle  = startA + easeOutCubic(t) * (endA - startA)
-    trail(startA, angle, S * 1.55, 14)
-    weapon(angle, 1.25)
-
-  } else if (style === 'spin') {
-    // Axe: full 360° spin with fading trail
-    const angle = base + easeInOutCubic(t) * Math.PI * 2
+  if (style === 'spin') {
+    // Axe: full 360° whirl with a fading trail smeared inside the reach
     for (let i = 2; i >= 0; i--) {
       const ta = Math.max(0, t - i * 0.07)
-      trail(base, base + easeInOutCubic(ta) * Math.PI * 2, S + i * 5, 13 - i * 3)
+      trail(base, base + swingPose(style, ta, opts.reach).angle, R - i * 4, W - i * 3)
     }
-    weapon(angle, 1.15)
+  } else {
+    trail(base + pose.from, base + pose.angle, R, W)
   }
+  weapon(base + pose.angle, pose.wscale)
 }
 
-function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
+export function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   if (!(player.attackTimer > 0) || !(player.attackDuration > 0)) return
   const t = 1 - player.attackTimer / player.attackDuration
   const base = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.attackFacing] ?? 0
@@ -381,28 +402,27 @@ function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base })
 }
 
-// Per-weapon enemy swing presentation (tint/scale on top of the shared core).
+// Per-weapon enemy swing presentation: which art to use, in what colour. How
+// big it is drawn is not a choice here — that comes from the weapon's reach.
 const ENEMY_SWING = {
-  sword:       { spriteKey: 'weapon_sword', tint: [180, 180, 255], scale: 1 },
-  club:        { spriteKey: 'weapon_club',  tint: [255, 170, 60],  scale: 1.3 },
-  claw:        { marks: 'claw',   tint: [220, 220, 200], scale: 1 },
-  dragon_claw: { marks: 'claw',   tint: [255, 150, 60],  scale: 1.4 },
-  pincer:      { marks: 'pincer', tint: [255, 90, 90],   scale: 1 },
+  sword:       { spriteKey: 'weapon_sword', tint: [180, 180, 255] },
+  club:        { spriteKey: 'weapon_club',  tint: [255, 170, 60] },
+  claw:        { marks: 'claw',   tint: [220, 220, 200] },
+  dragon_claw: { marks: 'claw',   tint: [255, 150, 60] },
+  pincer:      { marks: 'pincer', tint: [255, 90, 90] },
 }
 
-// Where each swing style starts, relative to its base angle — the windup pose
-// holds the weapon there so the telegraph shows where the swing will come from.
-const SWING_START = { snap: -Math.PI / 4, arc: -Math.PI * 70/180, slash: -Math.PI * 0.9, spin: 0 }
-
-function drawWindupPose(ctx, cx, cy, ws, baseAngle, style, k, S, cfg) {
+function drawWindupPose(ctx, cx, cy, ws, baseAngle, style, k, S, cfg, reach) {
   const quiver = Math.sin(Date.now() * 0.04) * 0.08 * k
-  const angle = baseAngle + (SWING_START[style] ?? -Math.PI / 2) + quiver
-  const scale = cfg.scale ?? 1
+  // Hold the weapon where the swing will start, so the telegraph shows the
+  // side the blow is coming from — at the size it will strike at.
+  const pose = swingPose(style, 0, reach)
+  const angle = baseAngle + pose.from + quiver
   ctx.save()
   ctx.translate(cx, cy)
   ctx.rotate(angle)
-  ctx.rotate(-Math.PI / 2)
-  ctx.scale(scale, scale)
+  ctx.rotate(Math.PI / 2)
+  ctx.scale(pose.wscale, pose.wscale)
   ctx.globalAlpha = 0.55 + 0.45 * k
   if (ws) {
     ctx.drawImage(ws, -S/2, -S * 0.9, S, S)
@@ -421,15 +441,18 @@ export function drawEnemySwing(ctx, e, sprites, camX, camY, S) {
   const a = e.attack
   if (!a) return
   const cfg = ENEMY_SWING[a.weaponId] ?? {}
-  const style = WEAPONS[a.weaponId]?.style ?? 'arc'
+  // The wielder's own weapon, so per-entity weaponOverrides show up on screen.
+  const w = getEnemyWeapon(e) ?? WEAPONS[a.weaponId] ?? {}
+  const style = w.style ?? 'arc'
   const cx = e.px - camX, cy = e.py - camY
   const ws = cfg.spriteKey ? sprites[cfg.spriteKey] : null
   const k = a.duration > 0 ? 1 - a.timer / a.duration : 1
   if (a.phase === 'windup') {
-    drawWindupPose(ctx, cx, cy, ws, a.angle, style, k, S, cfg)
+    drawWindupPose(ctx, cx, cy, ws, a.angle, style, k, S, cfg, w.reach)
     return
   }
-  drawSwing(ctx, cx, cy, ws, style, k, S, { baseAngle: a.angle, tint: cfg.tint, scale: cfg.scale, marks: cfg.marks })
+  drawSwing(ctx, cx, cy, ws, style, k, S,
+    { baseAngle: a.angle, tint: cfg.tint, marks: cfg.marks, reach: w.reach })
 }
 
 const FIRE_PAL = [
