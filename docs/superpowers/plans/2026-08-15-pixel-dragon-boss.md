@@ -1162,6 +1162,7 @@ In `renderer/render/canvas.js`, after line 4 (`import { drawDragonBoss } from '.
 
 ```js
 import { drawDragonBossPixel } from './dragonboss-pixel.js'
+import { PIXEL_SKIN } from '../systems/dragonboss.js'
 ```
 
 - [ ] **Step 4: Add the router**
@@ -1173,10 +1174,15 @@ In `renderer/render/canvas.js`, above the `Renderer` class (anywhere at module s
 // shared, so an unknown skin must still draw the real boss rather than nothing.
 export function drawBossBySkin(ctx, e, camX, camY, S, sprites,
                                impl = { vector: drawDragonBoss, pixel: drawDragonBossPixel }) {
-  if (e.skin === 'pixel') impl.pixel(ctx, e, camX, camY, S, sprites)
+  if (e.skin === PIXEL_SKIN) impl.pixel(ctx, e, camX, camY, S, sprites)
   else impl.vector(ctx, e, camX, camY, S)
 }
 ```
+
+`PIXEL_SKIN` is exported from `renderer/systems/dragonboss.js` (the module that
+sets the field). Import it here rather than repeating the bare string — the
+producer and the consumer live in different files and a typo in either would
+silently fall through to the vector renderer with no warning.
 
 - [ ] **Step 5: Use it at the call site**
 
