@@ -242,7 +242,11 @@ Create `renderer/data/dragon-palette.js`:
 // own colours. Every opaque pixel in assets/tiles/dragon_boss_parts.png must be
 // one of these — asserted by test/dragon-parts.test.js, so hand-drawn
 // replacements stay on-palette automatically.
-export const DRAGON_PALETTE = [
+// Frozen so "locked" is a runtime guarantee rather than a comment promise —
+// the bake serialises this array into a browser context and the conformance
+// test reads it back, so a stray mutation would be invisible until the art
+// broke.
+export const DRAGON_PALETTE = Object.freeze([
   [ 20,   8,   6],   //  0 near-black outline
   [ 42,  13,  10],   //  1 deepest shadow
   [ 58,  18,  13],   //  2 body underlay
@@ -259,22 +263,17 @@ export const DRAGON_PALETTE = [
   [122,  96,  60],   // 13 horn shadow
   [255, 210,  58],   // 14 eye glow
   [255, 122,  42],   // 15 flame
-]
+].map(Object.freeze))
 
 export function rgbKey(r, g, b) { return (r << 16) | (g << 8) | b }
 
 export const PALETTE_KEYS = new Set(DRAGON_PALETTE.map(([r, g, b]) => rgbKey(r, g, b)))
-
-// Nearest palette entry by squared RGB distance. Used by the bake.
-export function nearestPaletteColor(r, g, b) {
-  let best = DRAGON_PALETTE[0], bd = Infinity
-  for (const c of DRAGON_PALETTE) {
-    const d = (r - c[0]) ** 2 + (g - c[1]) ** 2 + (b - c[2]) ** 2
-    if (d < bd) { bd = d; best = c }
-  }
-  return best
-}
 ```
+
+**No nearest-colour helper lives here.** The only quantiser runs inside
+`page.evaluate` in Task 4's bake, and nothing but serialisable data crosses that
+boundary — a Node-side copy of the same loop could not be called from there and
+would silently drift out of sync with the one that actually runs.
 
 - [ ] **Step 4: Run test to verify it passes**
 
