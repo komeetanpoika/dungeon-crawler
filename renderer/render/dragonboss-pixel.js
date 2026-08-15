@@ -148,4 +148,6 @@ export function drawDragonBossPixel(ctx, e, camX, camY, S, sprites, buffer) {
   // sprite drawn after the boss, for every frame until the next resize().
 }
 
-export { ART_PX, BUF }
+// ART_PX belongs to renderer/data/dragon-parts.js — re-exporting it here would
+// give callers a second place to import the same constant from. BUF is a
+// private detail of the compositing buffer above and has no reason to leak.

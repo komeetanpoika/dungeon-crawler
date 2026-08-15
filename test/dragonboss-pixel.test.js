@@ -149,15 +149,21 @@ describe('dragonPartPlacements', () => {
 })
 
 // Enough of a 2D context to run the compositor: it models save/restore of
-// imageSmoothingEnabled, which is the drawing state the boss must not leak.
+// imageSmoothingEnabled, which is the drawing state the boss must not leak,
+// and it keeps an ordered log of every call (name + args) so tests can assert
+// on sequencing (e.g. clearRect before any drawImage) and on arguments (e.g.
+// the sheet image, or a rotate angle) without pretending to be a real canvas.
 const fakeCtx = () => {
   const stack = []
   const c = {
-    imageSmoothingEnabled: false, draws: 0,
-    save() { stack.push(c.imageSmoothingEnabled) },
-    restore() { c.imageSmoothingEnabled = stack.pop() },
-    translate() {}, rotate() {}, scale() {}, clearRect() {},
-    drawImage() { c.draws++ },
+    imageSmoothingEnabled: false, draws: 0, calls: [],
+    save() { stack.push(c.imageSmoothingEnabled); c.calls.push({ name: 'save', args: [] }) },
+    restore() { c.imageSmoothingEnabled = stack.pop(); c.calls.push({ name: 'restore', args: [] }) },
+    translate(...args) { c.calls.push({ name: 'translate', args }) },
+    rotate(...args) { c.calls.push({ name: 'rotate', args }) },
+    scale(...args) { c.calls.push({ name: 'scale', args }) },
+    clearRect(...args) { c.calls.push({ name: 'clearRect', args }) },
+    drawImage(...args) { c.draws++; c.calls.push({ name: 'drawImage', args }) },
   }
   return c
 }
@@ -180,5 +186,47 @@ describe('drawDragonBossPixel', () => {
     const ctx = fakeCtx()
     drawDragonBossPixel(ctx, pose(), 0, 0, T, {}, { getContext: () => fakeCtx() })
     assert.equal(ctx.draws, 0)
+  })
+
+  it('clears the buffer before compositing anything into it', () => {
+    // Without this, the previous frame's dragon ghosts through — and because
+    // parts are drawn with rotation, the ghost is not even aligned.
+    const ctx = fakeCtx(), bufCtx = fakeCtx()
+    drawDragonBossPixel(ctx, pose(), 0, 0, T, { [SHEET_SPRITE]: 'SHEET' },
+                        { width: 0, height: 0, getContext: () => bufCtx })
+    assert.ok(bufCtx.calls.length > 0, 'expected the buffer context to record calls')
+    assert.equal(bufCtx.calls[0].name, 'clearRect',
+      'expected clearRect to be the first thing done to the buffer')
+  })
+
+  it('composites one part per placement, each sourced from the sheet', () => {
+    // A wrong lookup key would silently draw the wrong sub-rectangle, or
+    // nothing — this pins that every placement becomes exactly one drawImage
+    // pulling from the sheet image.
+    const ctx = fakeCtx(), bufCtx = fakeCtx()
+    const sheet = 'SHEET'
+    const e = pose()
+    drawDragonBossPixel(ctx, e, 0, 0, T, { [SHEET_SPRITE]: sheet },
+                        { width: 0, height: 0, getContext: () => bufCtx })
+    const draws = bufCtx.calls.filter(c => c.name === 'drawImage')
+    assert.equal(draws.length, dragonPartPlacements(e, T).length)
+    for (const call of draws) {
+      assert.equal(call.args[0], sheet, 'expected the sheet image as the drawImage source')
+    }
+  })
+
+  it('blits the finished buffer to the caller exactly once, rotated by facing', () => {
+    // The whole design rests on rotating the finished buffer as a unit rather
+    // than rotating each part into the world.
+    const ctx = fakeCtx(), bufCtx = fakeCtx()
+    const buffer = { width: 0, height: 0, getContext: () => bufCtx }
+    const facing = 1.2
+    drawDragonBossPixel(ctx, pose({ facing }), 0, 0, T, { [SHEET_SPRITE]: 'SHEET' }, buffer)
+    const draws = ctx.calls.filter(c => c.name === 'drawImage')
+    assert.equal(draws.length, 1, 'expected exactly one blit to the caller context')
+    assert.equal(draws[0].args[0], buffer, 'expected the injected buffer as the blit source')
+    const rotated = ctx.calls.some(c => c.name === 'rotate' &&
+      Math.abs(c.args[0] - (facing + Math.PI / 2)) < 1e-9)
+    assert.ok(rotated, 'expected a rotate by facing + PI/2')
   })
 })
