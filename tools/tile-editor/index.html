@@ -31,7 +31,9 @@
   /* Indent under a .row's label column, so a hint lines up with its control. */
   .rind { margin-left: 58px; }
   /* A number field in an inline row: the default 10px side padding plus the
-     spinner reservation leaves ~9px of usable width at these sizes. */
+     spinner reservation leaves ~9px of usable width at these sizes. Also
+     applies to the Rules tab's weight field, which trades its spinner for
+     ~25px more room to show the number. */
   .row input[type=number] { padding: 3px 4px; }
   .row input[type=number]::-webkit-inner-spin-button { appearance: none; margin: 0; }
   .cap { color: #777; font-size: 10px; margin-top: 2px; }
@@ -187,11 +189,13 @@
         <button id="layer-properties" style="flex:1">props</button>
       </div>
       <div id="prop-controls" style="display:none">
-        <div class="row" id="prop-mode" style="flex-wrap:wrap">
+        <div class="row" id="prop-mode">
           <span class="rlab">mode</span>
-          <button data-prop="collision" class="on">collision</button>
-          <button data-prop="interaction">interact</button>
-          <button data-prop="structure">structure</button>
+          <div style="flex:1; min-width:0; display:flex; flex-wrap:wrap; gap:4px">
+            <button data-prop="collision" class="on">collision</button>
+            <button data-prop="interaction">interact</button>
+            <button data-prop="structure">structure</button>
+          </div>
         </div>
         <div class="row" id="prop-collision-vals">
           <span class="rlab">value</span>
@@ -207,7 +211,7 @@
           <span class="rlab">export</span>
           <input id="structure-name" placeholder="castle" style="flex:1; min-width:0">
           <input id="structure-depth" class="small" type="number" min="1" max="10"
-                 style="width:44px" title="target depth (1-10)">
+                 style="width:44px" placeholder="d" title="target depth (1-10)">
           <button id="export-structure" style="background:#664a22; color:#fff" title="Export structure">⛫</button>
         </div>
         <div id="export-report" style="font-size:11px; color:#9a9"></div>
@@ -215,11 +219,11 @@
 
       <div class="grp">Rules</div>
       <div id="paint-tagging" class="label">Pick a tile to tag…</div>
-      <button id="derive-btn" class="save" style="background:#2a4a66; margin-left:0">⚙ Derive rules</button>
+      <button id="derive-btn" style="background:#2a4a66; color:#fff">⚙ Derive rules</button>
       <div id="derive-report" style="font-size:11px; color:#9a9"></div>
 
       <div class="grp">Preview</div>
-      <canvas id="paint-preview" width="222" height="140"></canvas>
+      <canvas id="paint-preview" width="216" height="144"></canvas>
       <button id="paint-reroll" style="margin-top:4px">⟳ re-roll</button>
     </div>
   </main>
