@@ -164,7 +164,7 @@ export const LEVEL_CONFIG = [
   { depth: 4, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 7, monsterDensity: 0.010, trapDensity: 0.08, puzzleDensity: 0.03, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'DRAGON_LAIR',    weapons: ['longsword', 'axe'] },
   { depth: 5, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 4, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.012, landmark: 'GREAT_LAIR',     weapons: ['longsword', 'axe'] },
   // Depth 6 — cheat-only sandbox for the derived 'castle' ruleset (not part of the 1..5 run).
-  { depth: 6, mapW: 40, mapH: 26, staircaseWidth: 1, guardCount: 2, monsterDensity: 0, trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: null, weapons: ['dagger'] },
+  { depth: 6, mapW: 180, mapH: 116, staircaseWidth: 1, guardCount: 2, monsterDensity: 0, trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: null, weapons: ['dagger'] },
 ]
 
 export const DEPTH_THEMES = [
@@ -213,3 +213,7 @@ export const DEPTH_THEMES = [
 ]
 
 export const FINAL_DEPTH = 5
+
+// The overworld reuses the depth-6 slot, which already exists as a castle-ruleset
+// sandbox and already has a DEPTH_THEMES entry naming `ruleset: 'castle'`.
+export const OVERWORLD_DEPTH = 6

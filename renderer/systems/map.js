@@ -1,5 +1,6 @@
 import { TILE, isWalkable, WEAPON_TYPES } from './entities.js'
-import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
+import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, OVERWORLD_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
+import { generateOverworld } from './overworld.js'
 
 const MAP_W = 80
 const MAP_H = 50
@@ -375,7 +376,7 @@ function chooseShape(leaf, depth) {
   return 'rect'
 }
 
-function healConnectivity(map) {
+export function healConnectivity(map) {
   for (let pass = 0; pass < 10; pass++) {
     if (isFullyConnected(map)) return
     const floors = []
@@ -569,6 +570,7 @@ export function buildBossTestArena(width, height) {
 
 export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null } = {}) {
   if (depth === 0) return buildArena({ size: { w: width, h: height }, ...(arena ?? {}) })
+  if (depth === OVERWORLD_DEPTH) return generateOverworld(width, height, { structures })
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {
