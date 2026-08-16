@@ -231,12 +231,12 @@ export function brushStatus(ruleset, tileName) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test test/tag-edit.test.js`
-Expected: PASS, 18 tests
+Expected: PASS, 19 tests
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
-Expected: `# fail 0`, total count 655 + 18 = 673
+Expected: `# fail 0`, total count 655 + 19 = 674
 
 - [ ] **Step 6: Commit**
 
@@ -1046,7 +1046,7 @@ Expected: empty output. Any file listed here means the change exceeded the spec 
 - [ ] **Step 2: Run the whole suite one more time**
 
 Run: `npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
-Expected: `# fail 0`, 673 tests (655 pre-existing + 18 from Task 1).
+Expected: `# fail 0`, 674 tests (655 pre-existing + 19 from Task 1).
 
 - [ ] **Step 3: Screenshot all three tabs and check them by eye**
 
