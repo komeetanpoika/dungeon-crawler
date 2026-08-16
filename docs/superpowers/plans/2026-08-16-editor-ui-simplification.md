@@ -748,7 +748,14 @@ is UI-only. Member rows gain thumbnails and a remove control."
 
 - [ ] **Step 1: Rewrite library.js**
 
-Replace the whole of `tools/tile-editor/library.js` with:
+Replace the whole of `tools/tile-editor/library.js` with the following.
+
+**Amended after code review.** Final shape. Two spec requirements had been dropped from
+the task text and are now restored: pick mode must also cancel on a **ruleset change**
+(a pick started in one ruleset could otherwise write into it after switching away, and
+persist on Save), and a **second click on `+ add tile` cancels** rather than silently
+re-arming. `get picking()` exists to support that toggle. `addThumb` also respects an
+active filter, so a tile appended by Save tile can't appear in a filtered view.
 
 ```js
 // Bottom strip: thumbnails of every tile. A click normally loads the tile into
@@ -767,7 +774,8 @@ export async function buildLibrary(names, { onPick }) {
     container.classList.toggle('picking', !!pick)
   }
 
-  // One click funnel so pick mode applies to tiles added after the initial build.
+  // One click funnel so pick mode also applies to tiles added after the initial
+  // build (the Draw tab's Save tile appends to this strip at runtime).
   function fire(name) {
     if (!pick) { onPick(name); return }
     const { handler } = pick
@@ -780,6 +788,9 @@ export async function buildLibrary(names, { onPick }) {
     img.src = src
     img.title = name
     img.dataset.name = name
+    // Respect an active filter — Save tile can append while one is typed in.
+    const q = filter.value.toLowerCase()
+    if (q && !name.toLowerCase().includes(q)) img.style.display = 'none'
     img.addEventListener('click', () => fire(name))
     container.appendChild(img)
     items.push({ name, img })
@@ -801,6 +812,7 @@ export async function buildLibrary(names, { onPick }) {
       addThumb(name, dataURL)
     },
     setPickMode,
+    get picking() { return !!pick },
   }
 }
 ```
@@ -819,8 +831,16 @@ In `tools/tile-editor/editor.js`, replace line 231 (`initRulesUI(state)`) with:
 
 ```js
 initRulesUI(state, {
-  pickTile: (prompt, handler) => library?.setPickMode(handler, prompt),
+  pickTile: (prompt, handler) => {
+    // buildLibrary resolves after ~139 IPC reads; the Rules tab isn't gated on it.
+    if (!library) { toast('Library still loading — try again in a moment.', 'info'); return }
+    if (library.picking) { library.setPickMode(null); return }   // a second click cancels
+    library.setPickMode(handler, prompt)
+  },
 })
+
+// A pick belongs to the ruleset it was started in — never let it land in another.
+document.addEventListener('ruleset-changed', () => library?.setPickMode(null))
 ```
 
 - [ ] **Step 4: Verify in the running editor**
