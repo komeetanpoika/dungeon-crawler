@@ -924,7 +924,13 @@ await win.screenshot({ path: 'debug-build.png' })
 Run: `node debug-editor-ui.mjs`
 Expected: `build group headings: [ 'Map', 'Layer', 'Rules', 'Preview' ]`, then `true`, `true`, `true`, and no page errors.
 
-**Careful:** this script clicks Build-tab buttons. Clicking the *paint canvas* would autosave into `renderer/data/painter-maps.json` — the script above never does. Confirm with `git status --short renderer/data/` after each run; it must be clean.
+**Careful — two autosave triggers, not one.** Clicking the *paint canvas* autosaves into
+`renderer/data/painter-maps.json` after a 400 ms debounce. So does **switching the header
+ruleset dropdown**: `map-painter.js` `loadActiveMapFor()` seeds a `main` map from the
+currently loaded grid and calls `saveStore()` for any ruleset with no painter-map entry yet
+(`castle` has none, so selecting it writes a new key). The scripts in this plan touch
+neither — but confirm with `git status --short renderer/data/` after every run, and
+`git checkout -- renderer/data/` if it is dirty.
 
 - [ ] **Step 4: Run the whole suite**
 
