@@ -29,6 +29,7 @@ function showTab(tab) {
   saveRulesBtn.style.display    = tab === 'rules' ? '' : 'none'
   // The shared bottom library strip belongs to the Draw tab only.
   document.getElementById('library-bar').style.display = tab === 'build' ? 'none' : ''
+  library?.setPickMode(null)   // a mode must never survive leaving the tab that set it
   document.dispatchEvent(new CustomEvent('tab-changed', { detail: { tab } }))
 }
 tabDraw.addEventListener('click', () => showTab('draw'))
@@ -214,7 +215,9 @@ document.getElementById('save-tile').addEventListener('click', async () => {
   }
 })
 
-initRulesUI(state)
+initRulesUI(state, {
+  pickTile: (prompt, handler) => library?.setPickMode(handler, prompt),
+})
 
 saveRulesBtn.addEventListener('click', async () => {
   try {
