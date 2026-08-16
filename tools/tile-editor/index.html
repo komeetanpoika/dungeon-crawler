@@ -18,6 +18,23 @@
   main { flex: 1; display: flex; gap: 10px; min-height: 0; }
   .panel { background: #0d0d14; border-radius: 4px; padding: 8px; }
   .label { color: #888; font-size: 11px; text-transform: uppercase; margin: 6px 0 3px; }
+  /* Group heading: one per SET of controls, replacing the old heading-per-control. */
+  .grp { color: #8a8a98; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+         border-bottom: 1px solid #2a2a36; padding-bottom: 3px; margin: 11px 0 6px;
+         display: flex; justify-content: space-between; align-items: baseline; }
+  .grp:first-child { margin-top: 0; }
+  /* Inline row: label and control share a line. */
+  .row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  .rlab { color: #8a8a98; font-size: 11px; flex: 0 0 52px; text-align: right; }
+  .cap { color: #777; font-size: 10px; margin-top: 2px; }
+  .thumb { width: 22px; height: 22px; image-rendering: pixelated; border: 1px solid #333;
+           border-radius: 2px; flex: 0 0 auto; }
+  .x { color: #966; cursor: pointer; font-size: 11px; }
+  .x:hover { color: #e88; }
+  .assign-banner { color: #7fd; font-size: 11px; margin-bottom: 4px; }
+  #library-mode { color: #7fd; font-size: 11px; }
+  #library.picking img { cursor: crosshair; }
+  #library.picking img:hover { border-color: #7fd; box-shadow: 0 0 0 2px #7fd3; }
   #toolbar { width: 96px; display: flex; flex-direction: column; gap: 6px; }
   #toolbar button { width: 100%; }
   #stage { flex: 1; display: flex; align-items: center; justify-content: center; }
@@ -93,19 +110,29 @@
       <canvas id="pixel-canvas" width="512" height="512"></canvas>
     </div>
     <div id="sidebar" class="panel">
-      <div class="label">Preview 1:1</div>
-      <canvas id="preview-1x" width="16" height="16"></canvas>
-      <div class="label">Tiled 3×3 (seamless check)</div>
-      <canvas id="preview-3x" width="96" height="96"></canvas>
-      <div class="label">Palette</div>
+      <div class="grp">Preview</div>
+      <div style="display:flex; gap:8px; align-items:flex-end">
+        <div>
+          <canvas id="preview-1x" width="16" height="16"></canvas>
+          <div class="cap">1:1</div>
+        </div>
+        <div>
+          <canvas id="preview-3x" width="96" height="96"></canvas>
+          <div class="cap">3×3 seamless</div>
+        </div>
+      </div>
+      <div class="grp">Colour</div>
       <div id="palette"></div>
-      <div class="label">Custom color</div>
-      <input type="color" id="custom-color" value="#5a5a72">
-      <div class="label">Tile name (saved as custom_&lt;name&gt;)</div>
-      <input id="tile-name" placeholder="moss_floor_1" style="width:100%">
-      <div id="tile-name-hint" style="font-size:11px; min-height:14px; color:#888"></div>
-      <div class="label">Tags (comma-separated)</div>
-      <input id="tile-tags" placeholder="floor.moss" style="width:100%">
+      <div class="row">
+        <span class="rlab">custom</span>
+        <input type="color" id="custom-color" value="#5a5a72">
+      </div>
+      <div class="grp">Tile</div>
+      <div class="row">
+        <span class="rlab">name</span>
+        <input id="tile-name" placeholder="moss_floor_1" style="flex:1; min-width:0">
+      </div>
+      <div id="tile-name-hint" style="font-size:11px; min-height:14px; color:#888; margin-left:58px"></div>
     </div>
   </main>
 
@@ -185,6 +212,7 @@
   <div id="library-bar" class="panel">
     <div style="display:flex;gap:8px;align-items:center">
       <span class="label" style="margin:0">Library (click = load as base)</span>
+      <span id="library-mode"></span>
       <input id="library-filter" placeholder="filter…" style="width:140px">
     </div>
     <div id="library"></div>
