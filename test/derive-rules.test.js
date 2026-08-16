@@ -19,8 +19,10 @@ describe('deriveRules — base layer', () => {
   it('counts per-tile weights from occurrences', () => {
     const base = [['m1', 'm1', 'pl']]
     const { tiles } = deriveRules(base, empty(base), META)
-    assert.deepEqual(tiles.m1, { tags: ['floor.moss'], weight: 2 })
-    assert.deepEqual(tiles.pl, { tags: ['floor.plain'], weight: 1 })
+    assert.equal(tiles.m1.weight, 2)
+    assert.deepEqual(tiles.m1.tags, ['floor.moss'])
+    assert.equal(tiles.pl.weight, 1)
+    assert.deepEqual(tiles.pl.tags, ['floor.plain'])
   })
 
   it('accumulates directional adjacency between base tags', () => {
@@ -58,12 +60,58 @@ describe('deriveRules — base layer', () => {
   })
 })
 
+describe('deriveRules — per-tile neighbour tables', () => {
+  it('records the exact neighbouring tile per direction', () => {
+    const base = [['m1', 'pl']]
+    const { tiles } = deriveRules(base, empty(base), META)
+    assert.deepEqual(tiles.m1.neighbors.e, { pl: 1 })
+    assert.deepEqual(tiles.pl.neighbors.w, { m1: 1 })
+    assert.deepEqual(tiles.m1.neighbors.n, {})
+  })
+
+  it('distinguishes two tiles that share a tag', () => {
+    // m1 always sits above wl, m2 always sits below it. The tag table cannot
+    // tell them apart (both are floor.moss); the per-tile table must.
+    const base = [['m1'], ['wl'], ['m2']]
+    const { tiles, tags } = deriveRules(base, empty(base), META)
+    assert.deepEqual(tiles.m1.neighbors.s, { wl: 1 })
+    assert.deepEqual(tiles.m2.neighbors.n, { wl: 1 })
+    assert.deepEqual(tiles.m1.neighbors.n, {})
+    assert.deepEqual(tiles.m2.neighbors.s, {})
+    // ...whereas the tag view lumps both directions together, as before
+    assert.equal(tags['floor.moss'].adjacency.s['wall.base'], 1)
+    assert.equal(tags['floor.moss'].adjacency.n['wall.base'], 1)
+  })
+
+  it('accumulates repeats', () => {
+    const base = [['m1', 'pl'], ['m1', 'pl']]
+    const { tiles } = deriveRules(base, empty(base), META)
+    assert.deepEqual(tiles.m1.neighbors.e, { pl: 2 })
+    assert.deepEqual(tiles.m1.neighbors.s, { m1: 1 })
+  })
+
+  it('records neighbours on the overlay layer too, without crossing layers', () => {
+    const base    = [['pl', 'pl']]
+    const overlay = [['br', 'gr']]
+    const { tiles } = deriveRules(base, overlay, META)
+    assert.deepEqual(tiles.br.neighbors.e, { gr: 1 })
+    assert.deepEqual(tiles.pl.neighbors.e, { pl: 1 })   // base sees base only
+  })
+
+  it('untagged neighbours contribute nothing', () => {
+    const base = [['m1', 'ghost']]
+    const { tiles } = deriveRules(base, empty(base), META)
+    assert.deepEqual(tiles.m1.neighbors.e, {})
+  })
+})
+
 describe('deriveRules — overlay layer', () => {
   it('registers overlay tiles + tags with role overlay and counts weights', () => {
     const base    = [['pl', 'pl']]
     const overlay = [['br', 'br']]
     const { tiles, tags } = deriveRules(base, overlay, META)
-    assert.deepEqual(tiles.br, { tags: ['overlay.barrel'], weight: 2 })
+    assert.deepEqual(tiles.br.tags, ['overlay.barrel'])
+    assert.equal(tiles.br.weight, 2)
     assert.equal(tags['overlay.barrel'].role, 'overlay')
   })
 

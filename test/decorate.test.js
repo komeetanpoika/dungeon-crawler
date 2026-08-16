@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles, adjacencyScore, pickByAdjacency, ADJACENCY_ALPHA, rulesetHasOverlays } from '../renderer/systems/decorate.js'
+import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles, adjacencyCount, adjacencyScore, pickByAdjacency, ADJACENCY_ALPHA, ADJACENCY_EPSILON, rulesetHasOverlays } from '../renderer/systems/decorate.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Deterministic RNG for reproducible decoration tests
@@ -268,9 +268,12 @@ describe('adjacency-aware selection', () => {
   })
 
   it('pickByAdjacency biases toward observed neighbors', () => {
-    const nb = [{ dir: 'w', skin: 'wallA' }]   // weights: moss 4.5, plain 0.5, total 5
+    const nb = [{ dir: 'w', skin: 'wallA' }]
+    // observed mass 4 is shared 98/2 with the unobserved candidate, so even the
+    // top of the rng range still lands on the pairing the painting showed
     assert.equal(pickByAdjacency(RS, ['moss', 'plain'], nb, () => 0),    'moss')
-    assert.equal(pickByAdjacency(RS, ['moss', 'plain'], nb, () => 0.95), 'plain')
+    assert.equal(pickByAdjacency(RS, ['moss', 'plain'], nb, () => 0.95), 'moss')
+    assert.equal(pickByAdjacency(RS, ['moss', 'plain'], nb, () => 0.999), 'plain')
   })
 
   it('pickByAdjacency with no neighbors reduces to weighted-by-weight', () => {
@@ -290,6 +293,138 @@ describe('adjacency-aware selection', () => {
     decorateMap(map, rs, mulberry32(1))
     assert.equal(map[0][0].skin, 'wallA')
     assert.equal(map[0][1].skin, 'moss')   // 999.5 vs 0.5 → moss for any seed
+  })
+})
+
+describe('per-tile adjacency (two sprites sharing one tag)', () => {
+  // 'top' always sits directly above 'bot'; both are tagged wall.stone, so the
+  // tag-level table says only "wall.stone above wall.stone" and cannot tell them
+  // apart. The per-tile tables can.
+  const RS = {
+    tiles: {
+      top: { tags: ['wall.stone'], weight: 4, neighbors: { n: {}, e: {}, s: { bot: 4 }, w: {} } },
+      bot: { tags: ['wall.stone'], weight: 4, neighbors: { n: { top: 4 }, e: {}, s: {}, w: {} } },
+      fl:  { tags: ['floor.a'],    weight: 9, neighbors: { n: {}, e: {}, s: {}, w: {} } },
+    },
+    tags: {
+      'wall.stone': { role: 'wall',  allow: ['*'], adjacency: { n: { 'wall.stone': 4 }, e: {}, s: { 'wall.stone': 4 }, w: {} } },
+      'floor.a':    { role: 'floor', allow: ['*'], adjacency: { n: {}, e: {}, s: {}, w: {} } },
+    },
+  }
+
+  it('reads the per-tile table in preference to the tag table', () => {
+    assert.equal(adjacencyCount(RS, 'bot', { dir: 'n', skin: 'top' }), 4)
+    assert.equal(adjacencyCount(RS, 'top', { dir: 'n', skin: 'top' }), 0)
+    assert.equal(adjacencyCount(RS, 'top', { dir: 'n', skin: 'bot' }), 0)
+  })
+
+  it('an absent entry in a painted tile\'s table is a real zero, not a tag fallback', () => {
+    // the tag table would have answered 4 here; the per-tile table says never
+    assert.equal(adjacencyCount(RS, 'top', { dir: 'n', skin: 'bot' }), 0)
+  })
+
+  it('places the tile the painting showed, not a same-tag sibling', () => {
+    const nb = [{ dir: 'n', skin: 'top' }]
+    // even at the very top of the rng range the observed pairing wins
+    assert.equal(pickByAdjacency(RS, ['top', 'bot'], nb, () => 0.95), 'bot')
+  })
+
+  it('falls back to the tag table, weight-shared, for a tile the painting never covered', () => {
+    // 'extra' has no per-tile table; wall.stone's tag mass is 4+4+2 = 10, so
+    // 'extra' claims 2/10 of the tag-level count of 4
+    const rs = structuredClone(RS)
+    rs.tiles.extra = { tags: ['wall.stone'], weight: 2 }
+    assert.equal(adjacencyCount(rs, 'extra', { dir: 'n', skin: 'top' }), 4 * 2 / 10)
+  })
+})
+
+describe('adjacency noise floor does not grow with the ruleset', () => {
+  // One tile the painting showed in this context, plus N tiles it never did.
+  // The old flat per-candidate ALPHA gave the unobserved group weight
+  // proportional to N, so adding tiles to a ruleset silently destroyed the
+  // adjacency signal. The floor is now a fixed share of the observed mass.
+  function ruleset(extras) {
+    const tiles = {
+      nbr:  { tags: ['wall.n'], weight: 1, neighbors: { n: {}, e: {}, s: {}, w: {} } },
+      good: { tags: ['wall.g'], weight: 1, neighbors: { n: { nbr: 10 }, e: {}, s: {}, w: {} } },
+    }
+    const tags = {
+      'wall.n': { role: 'wall', allow: ['*'] },
+      'wall.g': { role: 'wall', allow: ['*'] },
+    }
+    for (let i = 0; i < extras; i++) {
+      tiles[`bad${i}`] = { tags: [`wall.b${i}`], weight: 10, neighbors: { n: {}, e: {}, s: {}, w: {} } }
+      tags[`wall.b${i}`] = { role: 'wall', allow: ['*'] }
+    }
+    return { tiles, tags }
+  }
+
+  // Fraction of picks that land on a pairing the painting never showed.
+  function noiseRate(extras, draws = 2000) {
+    const rs = ruleset(extras)
+    const names = ['good', ...Array.from({ length: extras }, (_, i) => `bad${i}`)]
+    const nb = [{ dir: 'n', skin: 'nbr' }]
+    let bad = 0
+    for (let i = 0; i < draws; i++) {
+      const r = (i + 0.5) / draws                       // sweep the rng range evenly
+      if (pickByAdjacency(rs, names, nb, () => r) !== 'good') bad++
+    }
+    return bad / draws
+  }
+
+  it('stays within the epsilon budget at 2 candidates', () => {
+    assert.ok(noiseRate(1) <= ADJACENCY_EPSILON + 0.01, `got ${noiseRate(1)}`)
+  })
+
+  it('stays within the epsilon budget at 20 candidates', () => {
+    assert.ok(noiseRate(19) <= ADJACENCY_EPSILON + 0.01, `got ${noiseRate(19)}`)
+  })
+
+  it('does not degrade as candidates are added', () => {
+    assert.ok(noiseRate(19) <= noiseRate(1) + 0.01,
+      `2 candidates: ${noiseRate(1)}, 20 candidates: ${noiseRate(19)}`)
+  })
+
+  it('a frequently painted tile cannot outbid the observed answer on weight alone', () => {
+    // every bad tile carries weight 10 against good's weight 1; only the old
+    // `weight × score` product let them win contexts they never appeared in
+    assert.ok(noiseRate(19) < 0.5)
+  })
+})
+
+describe('pickByAdjacency without learned data', () => {
+  const RS = {
+    tiles: { a: { tags: ['floor.x'], weight: 1 }, b: { tags: ['floor.x'], weight: 3 } },
+    tags:  { 'floor.x': { role: 'floor', allow: ['*'] } },
+  }
+  it('reduces to plain weighted selection when nothing was ever observed', () => {
+    const nb = [{ dir: 'n', skin: 'a' }]
+    assert.equal(pickByAdjacency(RS, ['a', 'b'], nb, () => 0),    'a')
+    assert.equal(pickByAdjacency(RS, ['a', 'b'], nb, () => 0.5),  'b')   // weights 1:3
+  })
+})
+
+describe('decorateMap — end to end on same-tag sprites', () => {
+  it('rebuilds a two-row wall the way it was painted', () => {
+    const rs = {
+      tiles: {
+        cap:  { tags: ['wall.s'],  weight: 6, neighbors: { n: { grass: 6 }, e: { cap: 5 },  s: { base: 6 },  w: { cap: 5 } } },
+        base: { tags: ['wall.s'],  weight: 6, neighbors: { n: { cap: 6 },   e: { base: 5 }, s: { grass: 6 }, w: { base: 5 } } },
+        grass:{ tags: ['floor.s'], weight: 20, neighbors: { n: {}, e: { grass: 10 }, s: { cap: 6 }, w: { grass: 10 } } },
+      },
+      tags: {
+        'wall.s':  { role: 'wall',  allow: ['*'] },
+        'floor.s': { role: 'floor', allow: ['*'] },
+      },
+    }
+    // floor row, then two wall rows: the painting says cap sits under floor and
+    // base sits under cap, every time.
+    const map = makeCells(['......', '######', '######'])
+    decorateMap(map, rs, mulberry32(3))
+    for (let x = 0; x < 6; x++) {
+      assert.equal(map[1][x].skin, 'cap',  `row 1 col ${x}`)
+      assert.equal(map[2][x].skin, 'base', `row 2 col ${x}`)
+    }
   })
 })
 
