@@ -10,7 +10,7 @@
 // fallback at all.
 
 import { TILE } from './entities.js'
-import { createMap } from './map.js'
+import { createMap, carveCorridor } from './map.js'
 
 export const WORLD_W = 180
 export const WORLD_H = 116
@@ -37,27 +37,51 @@ function fillGround(map) {
       map[y][x].tile = TILE.FLOOR
 }
 
+// Sample `want` points at least `minSep` apart and `clearOf` away from every
+// point in `avoid`, relaxing both constraints if the map is too crowded to
+// satisfy them. Filtering a pre-generated scatter instead of sampling against
+// what already exists drops points entirely on most seeds — observed during
+// design, where the ruin pockets vanished on two seeds in three.
+export function sampleSites(rng, want, { w, h, pad = 10, minSep = 20, avoid = [], clearOf = 0 }) {
+  const out = []
+  for (let relax = 0; relax < 5 && out.length < want; relax++) {
+    const sep = Math.max(4, minSep - relax * 6)
+    const clr = Math.max(4, clearOf - relax * 6)
+    for (let t = 0; t < 900 && out.length < want; t++) {
+      const p = { x: pad + Math.floor(rng() * (w - pad * 2)), y: pad + Math.floor(rng() * (h - pad * 2)) }
+      if (out.every(q => dist(p, q) >= sep) && avoid.every(q => dist(p, q) >= clr)) out.push(p)
+    }
+  }
+  return out
+}
+
+// Minimum spanning tree over the settlements. carveCorridor only ever writes
+// FLOOR, so this can add connectivity but never remove it.
+function carveRoads(map, sites) {
+  if (sites.length < 2) return
+  const linked = [0]
+  const rest = sites.map((_, i) => i).slice(1)
+  while (rest.length) {
+    let best = null
+    for (const a of linked) for (const b of rest) {
+      const d = dist(sites[a], sites[b])
+      if (!best || d < best.d) best = { a, b, d }
+    }
+    carveCorridor(map, sites[best.a].x, sites[best.a].y, sites[best.b].x, sites[best.b].y, 2)
+    linked.push(best.b)
+    rest.splice(rest.indexOf(best.b), 1)
+  }
+}
+
 export function generateOverworld(width = WORLD_W, height = WORLD_H, { structures = {}, rng = Math.random } = {}) {
   const map = createMap(width, height)
   fillGround(map)
 
-  // Drawn before the boulder so the counts values stay stable as later tasks
-  // add their own draws. Nothing consumes them until Task 2. Note this does NOT
-  // make whole worlds reproducible across tasks — Task 2 changes the draw
-  // sequence — and production never seeds at all.
   const n = contentCounts(width, height, rng)
+  const sites = sampleSites(rng, n.settlements, { w: width, h: height, pad: 12, minSep: 26 })
+  carveRoads(map, sites)
 
-  // A single seed-dependent boulder, so determinism is actually exercised from
-  // this task rather than trivially true. Tasks 2-4 replace this with real
-  // content; it sits well inside the border and cannot disconnect the plain.
-  // Never on the spawn tile: the centre is the placeholder playerSpawn until
-  // Task 4 picks a real one. Seed 4339 lands here otherwise.
-  let bx, by
-  do {
-    bx = 2 + Math.floor(rng() * (width - 4))
-    by = 2 + Math.floor(rng() * (height - 4))
-  } while (bx === (width >> 1) && by === (height >> 1))
-  map[by][bx].tile = TILE.WALL
-
-  return { map, entitySpawns: [], playerSpawn: { x: width >> 1, y: height >> 1 }, rooms: [] }
+  // w/h stay 0 until Task 3 stamps the compounds and knows their extent.
+  const rooms = sites.map((s, id) => ({ id, x: s.x, y: s.y, w: 0, h: 0 }))
+  return { map, entitySpawns: [], playerSpawn: { x: width >> 1, y: height >> 1 }, rooms }
 }

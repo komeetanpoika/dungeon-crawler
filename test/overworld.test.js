@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateOverworld, WORLD_W, WORLD_H } from '../renderer/systems/overworld.js'
+import { sampleSites, contentCounts, dist } from '../renderer/systems/overworld.js'
 import { isFullyConnected } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 
@@ -66,14 +67,74 @@ describe('generateOverworld — the plain', () => {
   })
 
   it('is deterministic for a seed and different across seeds', () => {
-    const skin = r => r.map.map(row => row.map(c => c.tile).join('')).join('\n')
-    assert.equal(skin(world(7)), skin(world(7)))
-    assert.notEqual(skin(world(7)), skin(world(8)))
+    // Fingerprint the whole result, not just tiles: from Task 2 the seed varies
+    // where the settlements land, and roads carve FLOOR over an already-open
+    // plain, so the tile grid alone carries no seed signal at all.
+    const fingerprint = r => JSON.stringify({
+      tiles: r.map.map(row => row.map(c => c.tile).join('')),
+      rooms: r.rooms,
+      spawn: r.playerSpawn,
+    })
+    assert.equal(fingerprint(world(7)), fingerprint(world(7)))
+    assert.notEqual(fingerprint(world(7)), fingerprint(world(8)))
   })
 
   it('scales down rather than hanging on a small world', () => {
     const r = world(1, 60, 40)
     assert.equal(r.map.length, 40)
     assert.ok(isFullyConnected(r.map))
+  })
+})
+
+describe('sampleSites', () => {
+  it('places the requested count on every seed', () => {
+    for (const s of SEEDS) {
+      const got = sampleSites(mulberry32(s), 5, { w: WORLD_W, h: WORLD_H, pad: 12, minSep: 26 })
+      assert.equal(got.length, 5, `seed ${s} placed ${got.length}`)
+    }
+  })
+
+  it('respects the separation it was given', () => {
+    for (const s of SEEDS) {
+      const got = sampleSites(mulberry32(s), 4, { w: WORLD_W, h: WORLD_H, pad: 12, minSep: 26 })
+      for (let i = 0; i < got.length; i++) for (let j = i + 1; j < got.length; j++)
+        assert.ok(dist(got[i], got[j]) >= 26, `seed ${s}: ${JSON.stringify(got[i])} too close to ${JSON.stringify(got[j])}`)
+    }
+  })
+
+  it('relaxes rather than returning short when the map is too crowded', () => {
+    // 8 points at separation 60 cannot fit a 180x116 map at full clearance.
+    const got = sampleSites(mulberry32(1), 8, { w: WORLD_W, h: WORLD_H, pad: 12, minSep: 60 })
+    assert.equal(got.length, 8)
+  })
+
+  it('keeps clear of an avoid set when it can', () => {
+    const avoid = [{ x: 30, y: 30 }, { x: 140, y: 90 }]
+    for (const s of SEEDS) {
+      const got = sampleSites(mulberry32(s), 2, { w: WORLD_W, h: WORLD_H, pad: 12, minSep: 20, avoid, clearOf: 25 })
+      assert.equal(got.length, 2)
+    }
+  })
+
+  it('stays inside the map bounds', () => {
+    for (const s of SEEDS) {
+      for (const p of sampleSites(mulberry32(s), 5, { w: WORLD_W, h: WORLD_H, pad: 12, minSep: 26 })) {
+        assert.ok(p.x >= 12 && p.x < WORLD_W - 12, `seed ${s}: x=${p.x} out of pad`)
+        assert.ok(p.y >= 12 && p.y < WORLD_H - 12, `seed ${s}: y=${p.y} out of pad`)
+      }
+    }
+  })
+})
+
+describe('generateOverworld — roads', () => {
+  it('records a settlement per site', () => {
+    for (const s of SEEDS) {
+      const { rooms } = world(s)
+      assert.ok(rooms.length >= 4 && rooms.length <= 5, `seed ${s}: ${rooms.length} settlements`)
+    }
+  })
+
+  it('stays fully connected once roads are carved', () => {
+    for (const s of SEEDS) assert.ok(isFullyConnected(world(s).map), `seed ${s} disconnected`)
   })
 })
