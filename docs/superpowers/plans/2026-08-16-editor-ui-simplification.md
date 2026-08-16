@@ -552,7 +552,9 @@ export function initRulesUI(state, { pickTile } = {}) {
 
     // --- identity: tag name, then role + delete on one row ---
     const head = document.createElement('div')
-    head.className = 'grp'
+    // `ident` opts out of .grp's uppercase transform: this heading shows a
+    // case-sensitive ruleset key, and CASTLE.FLOOR is not the tag's name.
+    head.className = 'grp ident'
     head.textContent = selectedTag
     rulePanel.appendChild(head)
 
