@@ -89,10 +89,17 @@ tile *into* a tag:
   into **pick mode**. The strip shows `pick a tile for castle.floor · esc to
   cancel`, the next click assigns that tile, and Esc or a second click on
   `+ add tile` cancels.
-- Assigning writes `ruleset.tiles[name] = { tags: [tag], weight: existing ?? 1 }`,
-  matching the single-tag convention the editor already uses everywhere. Role lives
-  on the tag, never on the tile, so moving a tile between tags changes the role it
-  decorates under with no separate step.
+- Assigning writes `ruleset.tiles[name] = { tags: [tag], weight }`, matching the
+  single-tag convention the editor already uses everywhere. Role lives on the tag,
+  never on the tile, so moving a tile between tags changes the role it decorates
+  under with no separate step.
+- **A tile the ruleset has not seen before is seeded at its new tag's median
+  member weight**, not at 1. Weights are paint frequencies: in the shipped
+  `castle` ruleset `tile_0048` sits at 160 against tag-mates at 3–6, and
+  `decorate.js` scales a tag-level adjacency count by `weight / tagMass`, so a
+  hand-added tile at weight 1 would surface well under 1% of the time. The user
+  would click `+ add tile`, see the sample preview not change, and conclude it
+  did not work. An existing tile always keeps its own weight.
 - Removing the last tag from a tile deletes it from `ruleset.tiles` entirely.
 - A derived `neighbors` table on a reassigned tile is left as-is; it is regenerated
   wholesale by the next ⚙ Derive rules, as it always has been.
@@ -177,15 +184,30 @@ Mutation helpers, no DOM, unit-tested — following the `derive-rules.js` /
 `adjacency-view.js` precedent of pure core plus thin renderer.
 
 ```
-assignTileToTag(ruleset, tileName, tag)   // registers tile, sets tags:[tag], keeps weight
+assignTileToTag(ruleset, tileName, tag, role, weight)  // sets tags:[tag]; keeps an existing
+                                                       // weight, else seeds with `weight`
 removeTileFromTag(ruleset, tileName, tag) // drops the tag; deletes the tile if it has none left
 brushStatus(ruleset, tileName)            // -> { tile, tag: string|null, text, untagged: boolean }
 memberTiles(ruleset, tag)                 // -> [[name, def], ...] (moved out of rules-ui.js)
+medianMemberWeight(ruleset, tag)          // -> the seed weight for a hand-added tile (1 if empty)
+blankTag(role)                            // -> a fresh tag in the same shape deriveRules emits
 ```
 
-`assignTileToTag` creates the tag with a permissive default
-(`role`, `allow: ['*']`, `forbid: []`, `directional: {}`, empty `adjacency`) only
-if it does not already exist, so hand-authored gates on an existing tag survive.
+`assignTileToTag` creates the tag from `blankTag` — permissive `allow: ['*']`,
+empty `forbid` / `directional` / `adjacency` — only if it does not already exist,
+so hand-authored gates on an existing tag survive. The existence check uses
+`Object.hasOwn`: a `??=` would not fire for a user-typed tag name that collides
+with an `Object.prototype` key such as `constructor`, leaving the tile carrying a
+tag with no definition — invisible in the Rules list and dropped by the
+decoration pass.
+
+`blankTag` is exported so every "make me a fresh tag" path in the editor
+(`+ add tile`, `+ new tag`) emits the one shape, instead of each site writing its
+own literal and drifting.
+
+`brushStatus` reports `untagged: false` when there is no brush at all, so the flag
+means "there is a brush and it has no tag" — callers need no separate emptiness
+check before using it.
 
 ### `tools/tile-editor/library.js` (modify)
 
@@ -266,7 +288,10 @@ via the existing `💾 Save rules` button.
 ## Testing
 
 **Unit (`test/tag-edit.test.js`, `node --test`):**
-- `assignTileToTag` registers a new tile at weight 1; preserves an existing
+- `medianMemberWeight` returns the middle weight for an odd member count, the
+  average of the middle pair for an even one, 1 for an empty tag, and treats a
+  missing `weight` as 1.
+- `assignTileToTag` seeds a new tile with the given weight; preserves an existing
   weight; creates a missing tag with permissive defaults; leaves an existing tag's
   `allow`/`forbid`/`directional` untouched; moves a tile that already had a tag.
 - `removeTileFromTag` drops the tag; deletes the tile from `ruleset.tiles` when it

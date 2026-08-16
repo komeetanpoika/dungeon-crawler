@@ -174,10 +174,14 @@ Create `tools/tile-editor/tag-edit.js`:
 // Pure ruleset mutations behind the Rules tab's tag editor. No DOM —
 // unit-tested with node --test.
 //
-// The editor has always been single-tag-per-tile: assigning a tag replaces
-// whatever tag the tile had. The multi-tag shape in the ruleset schema is
-// honoured on read (removeTileFromTag drops one tag at a time) so a
-// hand-edited rulesets.json is never silently flattened.
+// The editor is single-tag-per-tile: assigning a tag REPLACES every tag the
+// tile had. The schema's `tags` array is honoured on read — memberTiles
+// matches any position, removeTileFromTag drops one tag at a time — so a
+// hand-edited rulesets.json survives being viewed and edited tag-by-tag, but
+// a reassignment collapses it to one tag by design.
+//
+// `ruleset` must be an object; the mutators do not tolerate undefined. Every
+// caller already guards on an active ruleset before reaching them.
 
 // Tiles carrying `tag`, in ruleset insertion order: [[name, def], ...].
 export function memberTiles(ruleset, tag) {
@@ -186,26 +190,40 @@ export function memberTiles(ruleset, tag) {
 }
 
 // A tag the editor invents on demand: permissive gate, no learned data yet.
-function blankTag(role) {
+// Exported so every "make me a fresh tag" path in the editor produces the same
+// shape that deriveRules does.
+export function blankTag(role) {
   return {
     role, allow: ['*'], forbid: [], directional: {},
     adjacency: { n: {}, e: {}, s: {}, w: {} },
   }
 }
 
+// Median weight across `tag`'s current members, or 1 for an empty tag. Used to
+// seed a tile added by hand: weights are paint frequencies, so a fresh tile at
+// weight 1 beside tag-mates at 160 would effectively never be picked.
+export function medianMemberWeight(ruleset, tag) {
+  const weights = memberTiles(ruleset, tag).map(([, def]) => def.weight ?? 1).sort((a, b) => a - b)
+  if (weights.length === 0) return 1
+  const mid = Math.floor(weights.length / 2)
+  return weights.length % 2 ? weights[mid] : (weights[mid - 1] + weights[mid]) / 2
+}
+
 // Put `tileName` in `tag`. Keeps an existing weight (and any derived
 // `neighbors` table — the next ⚙ Derive rules regenerates those wholesale);
-// new tiles start at weight 1. `tag` is created only if missing, so a
-// hand-authored allow/forbid/directional on an existing tag survives.
+// `weight` seeds only a tile the ruleset has not seen before. `tag` is created
+// only if missing, so a hand-authored allow/forbid/directional on an existing
+// tag survives — via Object.hasOwn, because a `??=` would not fire for a
+// user-typed tag name colliding with an Object.prototype key.
 // Returns the tag the tile came from, or null if it was untagged or already
 // there — the caller uses this to report a move.
-export function assignTileToTag(ruleset, tileName, tag, role = 'floor') {
+export function assignTileToTag(ruleset, tileName, tag, role = 'floor', weight = 1) {
   ruleset.tiles ??= {}
   ruleset.tags ??= {}
   const existing = ruleset.tiles[tileName]
   const previous = existing?.tags?.[0] ?? null
-  ruleset.tags[tag] ??= blankTag(role)
-  ruleset.tiles[tileName] = { ...existing, tags: [tag], weight: existing?.weight ?? 1 }
+  if (!Object.hasOwn(ruleset.tags, tag)) ruleset.tags[tag] = blankTag(role)
+  ruleset.tiles[tileName] = { ...existing, tags: [tag], weight: existing?.weight ?? weight }
   return previous === tag ? null : previous
 }
 
@@ -228,15 +246,21 @@ export function brushStatus(ruleset, tileName) {
 }
 ```
 
+**Amended after code review.** The block above is the final shape. Eight test cases
+were added on top of the 19 listed in Step 1, covering: a multi-tag tile collapsing
+to the assigned tag; a tag name colliding with an `Object.prototype` key; the seed
+weight applying to a new tile and being ignored for a known one; and
+`medianMemberWeight` for odd, even, empty and missing-weight cases. Total 27.
+
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test test/tag-edit.test.js`
-Expected: PASS, 19 tests
+Expected: PASS, 27 tests
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
-Expected: `# fail 0`, total count 655 + 19 = 674
+Expected: `# fail 0`, total count 655 + 27 = 682
 
 - [ ] **Step 6: Commit**
 
@@ -466,7 +490,7 @@ Replace the whole of `tools/tile-editor/rules-ui.js` with:
 import { textPrompt } from './text-prompt.js'
 import { renderLearned } from './adjacency-view.js'
 import { toast } from './toast.js'
-import { memberTiles, assignTileToTag, removeTileFromTag } from './tag-edit.js'
+import { memberTiles, assignTileToTag, removeTileFromTag, medianMemberWeight, blankTag } from './tag-edit.js'
 
 export function initRulesUI(state, { pickTile } = {}) {
   const tagRows = document.getElementById('tag-rows')
@@ -505,7 +529,7 @@ export function initRulesUI(state, { pickTile } = {}) {
         if (assigning) {
           const tile = assigning
           assigning = null
-          const prev = assignTileToTag(rs, tile, tag, rs.tags[tag].role)
+          const prev = assignTileToTag(rs, tile, tag, rs.tags[tag].role, medianMemberWeight(rs, tag))
           if (prev) toast(`${tile} moved from ${prev} to ${tag}`, 'info')
           edited()
         }
@@ -569,8 +593,11 @@ export function initRulesUI(state, { pickTile } = {}) {
     addBtn.textContent = '+ add tile'
     addBtn.addEventListener('click', () => {
       if (!pickTile) return
+      // Seed a never-seen tile at the tag's median weight: weights are paint
+      // frequencies, so weight 1 beside tag-mates at 160 would never be picked.
+      const seed = medianMemberWeight(rs, selectedTag)
       pickTile(`pick a tile for ${selectedTag}`, (name) => {
-        const prev = assignTileToTag(rs, name, selectedTag, rule.role)
+        const prev = assignTileToTag(rs, name, selectedTag, rule.role, seed)
         if (prev) toast(`${name} moved from ${prev} to ${selectedTag}`, 'info')
         render(); edited()
       })
@@ -614,10 +641,9 @@ export function initRulesUI(state, { pickTile } = {}) {
     if (!rs) { toast('Create a ruleset first (+ new in the header).', 'error'); return }
     const tag = ((await textPrompt('New tag (e.g. floor.moss):')) ?? '').trim()
     if (!tag) return
-    rs.tags[tag] ??= {
-      role: tag.startsWith('wall') ? 'wall' : 'floor',
-      allow: ['*'], forbid: [], directional: {},
-    }
+    // blankTag, not a local literal: one shape for every "fresh tag" path.
+    // Object.hasOwn, not ??=, so a tag named e.g. "constructor" is still created.
+    if (!Object.hasOwn(rs.tags, tag)) rs.tags[tag] = blankTag(tag.startsWith('wall') ? 'wall' : 'floor')
     selectedTag = tag
     render(); edited()
   })
@@ -947,7 +973,9 @@ In `tools/tile-editor/map-painter.js`, delete `ensureRuleset()` (lines 411-418) 
     lab.textContent = 'brush'
     const val = document.createElement('span')
     val.style.cssText = 'flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap'
-    val.style.color = active && st.untagged ? '#d9a441' : '#9a9'
+    // `untagged` already means "there is a brush and it has no tag", so no
+    // separate emptiness check is needed here.
+    val.style.color = st.untagged ? '#d9a441' : '#9a9'
     val.textContent = st.text
     if (active) {
       val.style.cursor = 'pointer'
@@ -1046,7 +1074,7 @@ Expected: empty output. Any file listed here means the change exceeded the spec 
 - [ ] **Step 2: Run the whole suite one more time**
 
 Run: `npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
-Expected: `# fail 0`, 674 tests (655 pre-existing + 19 from Task 1).
+Expected: `# fail 0`, 682 tests (655 pre-existing + 27 from Task 1).
 
 - [ ] **Step 3: Screenshot all three tabs and check them by eye**
 
