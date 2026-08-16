@@ -234,7 +234,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     projectiles: [],
     fireZones: [],
     shockwaves: [],
-    log: ['You enter the dungeon…'],
+    log: [depth === OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…'],
     hitEffects: [],
     shake: 0,
     run: { deepestLevel: depth, won: false },
