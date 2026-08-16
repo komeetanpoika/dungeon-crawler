@@ -75,8 +75,18 @@ describe('generateOverworld — the plain', () => {
     assert.equal(r.map[0].length, WORLD_W)
   })
 
+  it('never buries the player spawn', () => {
+    for (const s of [...SEEDS, 4339]) {
+      const { map, playerSpawn } = world(s)
+      assert.ok(isWalkable(map[playerSpawn.y][playerSpawn.x].tile), `seed ${s}: spawn is not walkable`)
+    }
+  })
+
   it('walls the border so the player cannot leave', () => {
-    const { map } = world(1)
+    // Every seed, not one: from Task 3 punchGaps can select a border cell and
+    // open it, and a single-seed check would make that a coincidence away.
+    for (const seed of SEEDS) {
+    const { map } = world(seed)
     for (let x = 0; x < WORLD_W; x++) {
       assert.equal(map[0][x].tile, TILE.WALL, `top x=${x}`)
       assert.equal(map[WORLD_H - 1][x].tile, TILE.WALL, `bottom x=${x}`)
@@ -84,6 +94,7 @@ describe('generateOverworld — the plain', () => {
     for (let y = 0; y < WORLD_H; y++) {
       assert.equal(map[y][0].tile, TILE.WALL, `left y=${y}`)
       assert.equal(map[y][WORLD_W - 1].tile, TILE.WALL, `right y=${y}`)
+    }
     }
   })
 
@@ -97,7 +108,10 @@ describe('generateOverworld — the plain', () => {
       let walk = 0
       for (const row of map) for (const c of row) if (isWalkable(c.tile)) walk++
       const frac = walk / (WORLD_W * WORLD_H)
-      assert.ok(frac > 0.75, `seed ${s}: only ${(frac * 100).toFixed(0)}% walkable`)
+      // 0.90, not 0.75: measured actuals are 97.2% at Tasks 1-2 and 94.7-95.4%
+      // at Task 3 with the real prefabs, so this bound holds unchanged across
+      // every task while still firing the moment wall exceeds 10% of the world.
+      assert.ok(frac > 0.90, `seed ${s}: only ${(frac * 100).toFixed(0)}% walkable`)
     }
   })
 
@@ -167,14 +181,36 @@ function fillGround(map) {
 export function generateOverworld(width = WORLD_W, height = WORLD_H, { structures = {}, rng = Math.random } = {}) {
   const map = createMap(width, height)
   fillGround(map)
+
+  // Drawn before the boulder so the counts values stay stable as later tasks
+  // add their own draws. Nothing consumes them until Task 2. Note this does NOT
+  // make whole worlds reproducible across tasks — Task 2 changes the draw
+  // sequence — and production never seeds at all.
+  const n = contentCounts(width, height, rng)
+
+  // A single seed-dependent boulder, so the determinism test is meaningful
+  // before Tasks 2-4 add real content. WITHOUT THIS the generator never calls
+  // rng, every seed yields an identical map, and this task's own determinism
+  // test fails. Never on the spawn tile: the centre is the placeholder
+  // playerSpawn until Task 4 picks a real one, and seed 4339 lands there.
+  let bx, by
+  do {
+    bx = 2 + Math.floor(rng() * (width - 4))
+    by = 2 + Math.floor(rng() * (height - 4))
+  } while (bx === (width >> 1) && by === (height >> 1))
+  map[by][bx].tile = TILE.WALL
+
   return { map, entitySpawns: [], playerSpawn: { x: width >> 1, y: height >> 1 }, rooms: [] }
 }
 ```
 
+Tasks 2-4 replace the boulder with real content; it exists only so this task's
+determinism assertion means something.
+
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test test/overworld.test.js`
-Expected: PASS, 7 tests
+Expected: PASS, 8 tests
 
 - [ ] **Step 5: Run the whole suite**
 
@@ -322,7 +358,7 @@ export function generateOverworld(width = WORLD_W, height = WORLD_H, { structure
 - [ ] **Step 4: Verify**
 
 Run: `node --test test/overworld.test.js`
-Expected: PASS, 12 tests
+Expected: PASS, 13 tests
 
 - [ ] **Step 5: Whole suite**
 
@@ -439,14 +475,18 @@ function perimeter(x, y, w, h) {
   return out
 }
 
+// Clamped to the interior: the world's one-tile border must stay solid, and
+// punchGaps would otherwise be free to open a border cell and breach the edge.
+const inInterior = (map, x, y) => x > 0 && y > 0 && x < map[0].length - 1 && y < map.length - 1
+
 function hollowWall(map, x, y, w, h) {
-  for (const [cx, cy] of perimeter(x, y, w, h)) if (map[cy]?.[cx]) map[cy][cx].tile = TILE.WALL
+  for (const [cx, cy] of perimeter(x, y, w, h)) if (inInterior(map, cx, cy)) map[cy][cx].tile = TILE.WALL
 }
 
 // Open `n` distinct perimeter cells back to floor, so the stamp is always
 // enterable from the plain by construction rather than by luck.
 function punchGaps(map, rng, x, y, w, h, n) {
-  const per = perimeter(x, y, w, h).filter(([cx, cy]) => map[cy]?.[cx])
+  const per = perimeter(x, y, w, h).filter(([cx, cy]) => inInterior(map, cx, cy))
   for (let k = 0; k < n && per.length; k++) {
     const [gx, gy] = per.splice(Math.floor(rng() * per.length), 1)[0]
     map[gy][gx].tile = TILE.FLOOR
@@ -510,7 +550,7 @@ export function generateOverworld(width = WORLD_W, height = WORLD_H, { structure
 - [ ] **Step 4: Verify**
 
 Run: `node --test test/overworld.test.js`
-Expected: PASS, 18 tests
+Expected: PASS, 19 tests
 
 If `stays connected with the real prefabs stamped in` fails, a prefab has sealed its own interior. **Do not paper over it with `healConnectivity`** — report it, because it means the painted prefab needs a door and that is content work outside this plan.
 
@@ -716,7 +756,7 @@ function nearestWalkable(map, x, y) {
 - [ ] **Step 4: Verify**
 
 Run: `node --test test/overworld.test.js`
-Expected: PASS, 24 tests
+Expected: PASS, 25 tests
 
 - [ ] **Step 5: Whole suite**
 
