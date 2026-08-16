@@ -250,17 +250,17 @@ export function brushStatus(ruleset, tileName) {
 were added on top of the 19 listed in Step 1, covering: a multi-tag tile collapsing
 to the assigned tag; a tag name colliding with an `Object.prototype` key; the seed
 weight applying to a new tile and being ignored for a known one; and
-`medianMemberWeight` for odd, even, empty and missing-weight cases. Total 27.
+`medianMemberWeight` for odd, even, empty and missing-weight cases. Total 28 (a blankTag shape test was added last).
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test test/tag-edit.test.js`
-Expected: PASS, 27 tests
+Expected: PASS, 28 tests
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
-Expected: `# fail 0`, total count 655 + 27 = 682
+Expected: `# fail 0`, total count 655 + 28 = 683
 
 - [ ] **Step 6: Commit**
 
@@ -1146,7 +1146,7 @@ Expected: empty output. Any file listed here means the change exceeded the spec 
 - [ ] **Step 2: Run the whole suite one more time**
 
 Run: `npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
-Expected: `# fail 0`, 682 tests (655 pre-existing + 27 from Task 1).
+Expected: `# fail 0`, 683 tests (655 pre-existing + 28 from Task 1).
 
 - [ ] **Step 3: Screenshot all three tabs and check them by eye**
 
