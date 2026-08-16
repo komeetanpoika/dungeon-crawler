@@ -160,57 +160,63 @@
     <div id="paint-stage" class="panel" style="flex:1; display:flex; align-items:center; justify-content:center; overflow:auto">
       <canvas id="paint-canvas"></canvas>
     </div>
-    <div id="paint-sidebar" class="panel" style="width:240px; display:flex; flex-direction:column; gap:6px; overflow-y:auto">
-      <div class="label">Map</div>
+    <div id="paint-sidebar" class="panel" style="width:240px; display:flex; flex-direction:column; overflow-y:auto">
+      <div class="grp">Map</div>
       <div id="paint-map-picker" style="display:flex; gap:4px; align-items:center; flex-wrap:wrap"></div>
-      <div class="label">Size (width × height)</div>
-      <div style="display:flex; gap:4px; align-items:center">
-        <input id="paint-w" class="small" type="number" min="2" max="60" value="16">
+      <div class="row">
+        <span class="rlab">size</span>
+        <input id="paint-w" class="small" type="number" min="2" max="60" value="16" style="width:44px">
         <span>×</span>
-        <input id="paint-h" class="small" type="number" min="2" max="40" value="12">
+        <input id="paint-h" class="small" type="number" min="2" max="40" value="12" style="width:44px">
         <button id="paint-resize">resize</button>
       </div>
-      <div id="paint-history" style="display:flex; gap:4px">
+      <div class="row" id="paint-history">
+        <span class="rlab">history</span>
         <button id="paint-undo" style="flex:1" disabled>↶ undo</button>
         <button id="paint-redo" style="flex:1" disabled>↷ redo</button>
       </div>
-      <div class="label">Layer</div>
+
+      <div class="grp">Layer</div>
       <div id="paint-layers" style="display:flex; gap:4px">
         <button id="layer-base" class="on" style="flex:1">base</button>
         <button id="layer-overlay" style="flex:1">overlay</button>
-        <button id="layer-properties" style="flex:1">properties</button>
+        <button id="layer-properties" style="flex:1">props</button>
       </div>
       <div id="prop-controls" style="display:none">
-        <div class="label">Property</div>
-        <div id="prop-mode" style="display:flex; gap:4px; flex-wrap:wrap">
+        <div class="row" id="prop-mode" style="flex-wrap:wrap">
+          <span class="rlab">mode</span>
           <button data-prop="collision" class="on">collision</button>
-          <button data-prop="interaction">interaction</button>
+          <button data-prop="interaction">interact</button>
           <button data-prop="structure">structure</button>
         </div>
-        <div id="prop-collision" class="label">Collision</div>
-        <div id="prop-collision-vals" style="display:flex; gap:4px">
+        <div class="row" id="prop-collision-vals">
+          <span class="rlab">value</span>
           <button data-collision="walkable" class="on">walkable</button>
           <button data-collision="wall">wall</button>
         </div>
-        <div id="prop-interaction" class="label" style="display:none">Interaction</div>
-        <div id="prop-interaction-vals" style="display:none; gap:4px">
+        <div class="row" id="prop-interaction-vals" style="display:none">
+          <span class="rlab">value</span>
           <button data-interaction="door" class="on">door</button>
           <button data-interaction="chest">chest</button>
         </div>
-        <button id="export-structure" class="save" style="background:#664a22; margin-top:6px">⛫ Export structure</button>
-        <input id="structure-name" placeholder="castle" style="width:100%; margin-top:4px">
-        <div style="display:flex; gap:4px; align-items:center; margin-top:4px">
-          <span class="label" style="margin:0">target depth</span>
-          <input id="structure-depth" class="small" type="number" min="1" max="10">
+        <div class="row">
+          <span class="rlab">export</span>
+          <input id="structure-name" placeholder="castle" style="flex:1; min-width:0">
+          <input id="structure-depth" class="small" type="number" min="1" max="10"
+                 style="width:44px" title="target depth (1-10)">
+          <button id="export-structure" style="background:#664a22; color:#fff" title="Export structure">⛫</button>
         </div>
         <div id="export-report" style="font-size:11px; color:#9a9"></div>
       </div>
+
+      <div class="grp">Rules</div>
       <div id="paint-tagging" class="label">Pick a tile to tag…</div>
-      <button id="derive-btn" class="save" style="background:#2a4a66">⚙ Derive rules → active ruleset</button>
+      <button id="derive-btn" class="save" style="background:#2a4a66">⚙ Derive rules</button>
       <div id="derive-report" style="font-size:11px; color:#9a9"></div>
-      <div class="label">Preview outcome</div>
-      <canvas id="paint-preview" width="240" height="160"></canvas>
-      <button id="paint-reroll">⟳ re-roll</button>
+
+      <div class="grp">Preview</div>
+      <canvas id="paint-preview" width="222" height="140"></canvas>
+      <button id="paint-reroll" style="margin-top:4px">⟳ re-roll</button>
     </div>
   </main>
 

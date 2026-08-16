@@ -237,11 +237,9 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     btn.addEventListener('click', () => {
       propMode = btn.dataset.prop
       document.querySelectorAll('#prop-mode [data-prop]').forEach(b => b.classList.toggle('on', b === btn))
-      const isColl = propMode === 'collision', isInt = propMode === 'interaction'
-      document.getElementById('prop-collision').style.display = isColl ? 'block' : 'none'
-      document.getElementById('prop-collision-vals').style.display = isColl ? 'flex' : 'none'
-      document.getElementById('prop-interaction').style.display = isInt ? 'block' : 'none'
-      document.getElementById('prop-interaction-vals').style.display = isInt ? 'flex' : 'none'
+      // The label now lives inside each value row, so only the rows toggle.
+      document.getElementById('prop-collision-vals').style.display = propMode === 'collision' ? 'flex' : 'none'
+      document.getElementById('prop-interaction-vals').style.display = propMode === 'interaction' ? 'flex' : 'none'
     }))
   document.querySelectorAll('#prop-collision-vals [data-collision]').forEach(btn =>
     btn.addEventListener('click', () => {
