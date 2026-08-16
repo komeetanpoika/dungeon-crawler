@@ -17,6 +17,14 @@ export const WORLD_H = 116
 
 export const dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
 
+// Worn cobble trail, generated from tile_0042 by erasing stones. Deliberately
+// NOT registered in any ruleset: candidatesForRole would then include them and
+// the decoration pass would scatter cobbles across the whole world. They are
+// loaded as extra sprite names, the way structure skins are.
+export const ROAD_FULL   = ['road_full_0', 'road_full_1', 'road_full_2', 'road_full_3', 'road_full_4', 'road_full_5']
+export const ROAD_FRAYED = ['road_frayed_0', 'road_frayed_1', 'road_frayed_2', 'road_frayed_3', 'road_frayed_4']
+export const ROAD_TILES  = [...ROAD_FULL, ...ROAD_FRAYED]
+
 // Content targets at full size, scaled by area on smaller worlds so a 60x40
 // test map asks for what it can actually hold instead of sampling forever.
 export function contentCounts(width, height, rng) {
@@ -76,15 +84,40 @@ export function roadEdges(sites) {
   return edges
 }
 
-// Carve the road network. NOTE: on the already-open plain this writes no new
-// floor — carveCorridor only ever sets FLOOR and every interior cell is FLOOR
-// already, so this currently changes zero tiles. The roads become visible when
-// a later change paints them a `skin` and marks them `locked`, the way
-// placeStructure does. The MST itself is real and tested via roadEdges.
+// Paint a worn cobble trail along the road, 5 wide: a 3-tile spine of lightly
+// worn tiles, with frayed margins either side. Skipped cells are left as plain
+// ground, which is what makes it read as a trail rather than paving.
+//
+// Cells are marked `locked` so decorateMap does not overwrite the skin, the
+// same contract placeStructure uses. Never paints over a wall or a locked
+// cell — a compound stamped across the road keeps its own wall and gate.
+function paintTrail(map, rng, x, y) {
+  for (let d = -2; d <= 2; d++) {
+    for (const [cx, cy] of [[x + d, y], [x, y + d]]) {
+      const c = map[cy]?.[cx]
+      if (!c || c.tile !== TILE.FLOOR || c.locked) continue
+      const edge = Math.abs(d) === 2
+      if (rng() < (edge ? 0.55 : 0.10)) continue
+      const pool = edge ? ROAD_FRAYED : ROAD_FULL
+      c.skin = pool[Math.floor(rng() * pool.length)]
+      c.locked = true
+    }
+  }
+}
+
+// Carve the road network and paint a worn cobble trail on top of it. The MST
+// itself is real and tested via roadEdges.
 // O(n^3): 20 inner iterations at 5 sites, ~100ms at 400. Irrelevant at this scale.
-function carveRoads(map, sites) {
+function carveRoads(map, rng, sites) {
   for (const { a, b } of roadEdges(sites)) {
-    carveCorridor(map, sites[a].x, sites[a].y, sites[b].x, sites[b].y, 2)
+    const from = sites[a], to = sites[b]
+    carveCorridor(map, from.x, from.y, to.x, to.y, 2)
+    // Mirror carveCorridor's own stepping — x to target, then y — so the
+    // painted band lands on the carved corridor rather than beside it.
+    let x = from.x, y = from.y
+    while (x !== to.x) { paintTrail(map, rng, x, y); x += x < to.x ? 1 : -1 }
+    while (y !== to.y) { paintTrail(map, rng, x, y); y += y < to.y ? 1 : -1 }
+    paintTrail(map, rng, x, y)
   }
 }
 
@@ -102,8 +135,18 @@ function perimeter(x, y, w, h) {
 // punchGaps would otherwise be free to open a border cell and breach the edge.
 const inInterior = (map, x, y) => x > 0 && y > 0 && x < map[0].length - 1 && y < map.length - 1
 
+// A compound or pocket fragment can land on a cell the road pass already
+// painted and locked (roads are carved and painted before either is
+// stamped — see generateOverworld). The wall wins: clear the stale trail
+// skin/lock so decorateMap is free to assign a proper wall skin, rather than
+// leaving a road texture permanently locked onto an impassable cell.
 function hollowWall(map, x, y, w, h) {
-  for (const [cx, cy] of perimeter(x, y, w, h)) if (inInterior(map, cx, cy)) map[cy][cx].tile = TILE.WALL
+  for (const [cx, cy] of perimeter(x, y, w, h)) if (inInterior(map, cx, cy)) {
+    const c = map[cy][cx]
+    c.tile = TILE.WALL
+    c.skin = null
+    c.locked = false
+  }
 }
 
 // The outward normal of a perimeter cell: which side of the rect it sits on,
@@ -328,7 +371,7 @@ export function generateOverworld(width = WORLD_W, height = WORLD_H, { structure
   const sites = sampleSites(rng, n.settlements, { w: width, h: height, pad: 12, minSep: 26 })
   const pockets = sampleSites(rng, n.pockets, { w: width, h: height, pad: 14, minSep: 24, avoid: sites, clearOf: 22 })
 
-  carveRoads(map, sites)
+  carveRoads(map, rng, sites)
 
   // Compounds are stamped before pockets so footprintClear (see stampPocket)
   // sees every compound wall already on the map — a pocket fragment that would

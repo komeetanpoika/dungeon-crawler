@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { generateOverworld, WORLD_W, WORLD_H, sampleSites, contentCounts, dist, roadEdges } from '../renderer/systems/overworld.js'
+import { generateOverworld, WORLD_W, WORLD_H, sampleSites, contentCounts, dist, roadEdges, ROAD_TILES } from '../renderer/systems/overworld.js'
 import { isFullyConnected } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 
@@ -323,6 +323,59 @@ describe('generateOverworld — structures', () => {
         `seed ${s} disconnected with prefabs`)
       assert.ok(isFullyConnected(generateOverworld(WORLD_W, WORLD_H, { structures: {}, rng: mulberry32(s) }).map),
         `seed ${s} disconnected without prefabs`)
+    }
+  })
+})
+
+describe('generateOverworld — the trail', () => {
+  it('paints road tiles on every seed', () => {
+    for (const s of SEEDS) {
+      const { map } = world(s)
+      let painted = 0
+      for (const row of map) for (const c of row) if (ROAD_TILES.includes(c.skin)) painted++
+      assert.ok(painted > 60, `seed ${s}: only ${painted} trail tiles`)
+    }
+  })
+
+  it('locks every painted cell so decoration cannot overwrite it', () => {
+    for (const s of SEEDS) {
+      const { map } = world(s)
+      for (const row of map) for (const c of row) {
+        if (ROAD_TILES.includes(c.skin)) assert.ok(c.locked, `seed ${s}: unlocked trail cell`)
+      }
+    }
+  })
+
+  it('never paints a trail tile onto a wall', () => {
+    for (const s of SEEDS) {
+      const { map } = world(s)
+      for (const row of map) for (const c of row) {
+        if (ROAD_TILES.includes(c.skin)) assert.notEqual(c.tile, TILE.WALL, `seed ${s}: trail on a wall`)
+      }
+    }
+  })
+
+  it('leaves gaps — the trail is worn, not paved', () => {
+    // If nothing is ever skipped the band is a solid 5-wide stripe. Count the
+    // plain-ground cells directly adjacent to a painted one.
+    for (const s of SEEDS) {
+      const { map } = world(s)
+      let gaps = 0
+      for (let y = 1; y < map.length - 1; y++) for (let x = 1; x < map[0].length - 1; x++) {
+        if (!ROAD_TILES.includes(map[y][x].skin)) continue
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+          const n = map[y+dy]?.[x+dx]
+          if (n && n.tile === TILE.FLOOR && !n.skin) { gaps++; break }
+        }
+      }
+      assert.ok(gaps > 10, `seed ${s}: only ${gaps} trail cells border open ground`)
+    }
+  })
+
+  it('still generates a fully connected world', () => {
+    for (let s = 1; s <= 60; s++) {
+      assert.ok(isFullyConnected(generateOverworld(WORLD_W, WORLD_H, { structures: STRUCTURES, rng: mulberry32(s) }).map),
+        `seed ${s} disconnected`)
     }
   })
 })

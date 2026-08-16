@@ -1,4 +1,5 @@
 import { generateLevel } from './systems/map.js'
+import { ROAD_TILES } from './systems/overworld.js'
 import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, makeRangedContents, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
@@ -790,7 +791,7 @@ async function init() {
   renderer.resize()
   rulesets = (await window.saveAPI.loadRulesets()) ?? {}
   structures = (await window.saveAPI.loadStructures()) ?? {}
-  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures)])
+  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES])
   pruneMissingTiles(rulesets, renderer.sprites)
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
