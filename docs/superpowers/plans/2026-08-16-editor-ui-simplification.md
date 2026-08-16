@@ -478,7 +478,18 @@ Expected: PASS — `renderLearned` is not unit-tested, only `adjacencyViewModel`
 
 - [ ] **Step 3: Rewrite rules-ui.js**
 
-Replace the whole of `tools/tile-editor/rules-ui.js` with:
+Replace the whole of `tools/tile-editor/rules-ui.js` with the following.
+
+**Amended after code review.** This is the final shape, incorporating three fixes to
+the assign-mode contract as originally specified: assign mode now exits on a tab
+switch (via the `tab-changed` event `showTab` dispatches), `+ add tile` cancels assign
+mode so the two are genuinely mutually exclusive, and a single `assign()` helper guards
+the no-op case — previously, clicking a tile's *current* tag while assigning still
+rewrote its def and could silently collapse a hand-edited multi-tag tile. Also folded
+in: a thumbnail data-URL memo (16 IPC round trips per re-render otherwise blanked every
+thumbnail for a frame), a visible failure state for a missing sprite, a two-span tag row
+so the member count right-aligns, `+ new tag` completing an in-flight assignment, and
+delete-tag unlinking its members instead of stranding them in `ruleset.tiles`.
 
 ```js
 // Rules tab: the editor's single tag editor. Per tag it shows the role, its
@@ -501,15 +512,32 @@ export function initRulesUI(state, { pickTile } = {}) {
   function edited() { document.dispatchEvent(new Event('rules-edited')) }
   function activeRs() { return state.rulesets[state.active] }
 
-  // Thumbnail for a member row. The src arrives async; tile_0048 vs tile_0026
-  // says nothing as text, which is the whole reason these are here.
+  // Single assignment path, so the "already there" guard and the move report
+  // cannot drift between the tag list and + add tile. Returns whether it wrote.
+  function assign(rs, tile, tag, seed = medianMemberWeight(rs, tag)) {
+    if (rs.tiles[tile]?.tags?.[0] === tag) return false
+    const prev = assignTileToTag(rs, tile, tag, rs.tags[tag].role, seed)
+    if (prev) toast(`${tile} moved from ${prev} to ${tag}`, 'info')
+    edited()
+    return true
+  }
+
+  // data-URL memo: without it every re-render blanks all thumbnails for a frame
+  // while the IPC round trips resolve.
+  const thumbSrc = new Map()
   function thumb(name) {
     const img = document.createElement('img')
     img.className = 'thumb'
     img.title = name
-    window.editorAPI.readTile(name).then(src => { img.src = src }).catch(() => {})
+    const cached = thumbSrc.get(name)
+    if (cached) { img.src = cached; return img }
+    window.editorAPI.readTile(name)
+      .then(src => { thumbSrc.set(name, src); img.src = src })
+      .catch(() => { img.title = `${name} — sprite missing`; img.style.borderColor = '#c66' })
     return img
   }
+  // A redrawn tile must not keep a stale thumbnail.
+  document.addEventListener('tile-saved', e => thumbSrc.delete(e.detail.name))
 
   function renderTagList() {
     const rs = activeRs()
@@ -524,14 +552,18 @@ export function initRulesUI(state, { pickTile } = {}) {
     for (const tag of Object.keys(rs.tags)) {
       const row = document.createElement('div')
       row.className = 'tag-row' + (tag === selectedTag ? ' active' : '')
-      row.textContent = `${tag}  ${memberTiles(rs, tag).length}`
+      const nameEl = document.createElement('span')
+      nameEl.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap'
+      nameEl.textContent = tag
+      const countEl = document.createElement('span')
+      countEl.style.color = '#889'
+      countEl.textContent = memberTiles(rs, tag).length
+      row.append(nameEl, countEl)
       row.addEventListener('click', () => {
         if (assigning) {
           const tile = assigning
           assigning = null
-          const prev = assignTileToTag(rs, tile, tag, rs.tags[tag].role, medianMemberWeight(rs, tag))
-          if (prev) toast(`${tile} moved from ${prev} to ${tag}`, 'info')
-          edited()
+          assign(rs, tile, tag)
         }
         selectedTag = tag
         render()
@@ -576,8 +608,10 @@ export function initRulesUI(state, { pickTile } = {}) {
     del.className = 'x'
     del.textContent = '🗑 delete'
     del.addEventListener('click', () => {
-      if (!confirm(`Delete tag ${selectedTag}? Tiles having only this tag will drop out of decoration entirely.`)) return
-      delete rs.tags[selectedTag]
+      const tag = selectedTag
+      if (!confirm(`Delete tag ${tag}? Its member tiles leave the ruleset — re-add them to another tag to keep them.`)) return
+      for (const [name] of memberTiles(rs, tag)) removeTileFromTag(rs, name, tag)
+      delete rs.tags[tag]
       selectedTag = null
       render(); edited()
     })
@@ -595,13 +629,12 @@ export function initRulesUI(state, { pickTile } = {}) {
     addBtn.textContent = '+ add tile'
     addBtn.addEventListener('click', () => {
       if (!pickTile) return
-      // Seed a never-seen tile at the tag's median weight: weights are paint
-      // frequencies, so weight 1 beside tag-mates at 160 would never be picked.
-      const seed = medianMemberWeight(rs, selectedTag)
-      pickTile(`pick a tile for ${selectedTag}`, (name) => {
-        const prev = assignTileToTag(rs, name, selectedTag, rule.role, seed)
-        if (prev) toast(`${name} moved from ${prev} to ${selectedTag}`, 'info')
-        render(); edited()
+      assigning = null                       // the two modes are mutually exclusive
+      const tag = selectedTag                // capture: the list stays clickable while picking
+      const seed = medianMemberWeight(rs, tag)
+      pickTile(`pick a tile for ${tag}`, (name) => {
+        assign(rs, name, tag, seed)
+        render()
       })
     })
     memHead.append(memTitle, addBtn)
@@ -647,6 +680,7 @@ export function initRulesUI(state, { pickTile } = {}) {
     // Object.hasOwn, not ??=, so a tag named e.g. "constructor" is still created.
     if (!Object.hasOwn(rs.tags, tag)) rs.tags[tag] = blankTag(tag.startsWith('wall') ? 'wall' : 'floor')
     selectedTag = tag
+    if (assigning) { const tile = assigning; assigning = null; assign(rs, tile, tag) }
     render(); edited()
   })
 
@@ -659,6 +693,11 @@ export function initRulesUI(state, { pickTile } = {}) {
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && assigning) { assigning = null; render() }
+  })
+
+  // A mode must never survive leaving the tab that set it.
+  document.addEventListener('tab-changed', (e) => {
+    if (e.detail.tab !== 'rules' && assigning) { assigning = null; render() }
   })
 
   document.addEventListener('ruleset-changed', () => { selectedTag = null; assigning = null; render() })
@@ -768,7 +807,7 @@ export async function buildLibrary(names, { onPick }) {
 
 - [ ] **Step 2: Cancel pick mode on any tab switch**
 
-In `tools/tile-editor/editor.js`, add this as the last line inside `showTab()` (after the `library-bar` display line):
+In `tools/tile-editor/editor.js`, add this inside `showTab()` after the `library-bar` display line and **before** the `tab-changed` dispatch that Task 3 added:
 
 ```js
   library?.setPickMode(null)   // a mode must never survive leaving the tab that set it
