@@ -47,18 +47,20 @@ export function sampleSites(rng, want, { w, h, pad = 10, minSep = 20, avoid = []
   for (let relax = 0; relax < 5 && out.length < want; relax++) {
     const sep = Math.max(4, minSep - relax * 6)
     const clr = Math.max(4, clearOf - relax * 6)
+    const spanW = Math.max(1, w - pad * 2), spanH = Math.max(1, h - pad * 2)
     for (let t = 0; t < 900 && out.length < want; t++) {
-      const p = { x: pad + Math.floor(rng() * (w - pad * 2)), y: pad + Math.floor(rng() * (h - pad * 2)) }
+      const p = { x: pad + Math.floor(rng() * spanW), y: pad + Math.floor(rng() * spanH) }
       if (out.every(q => dist(p, q) >= sep) && avoid.every(q => dist(p, q) >= clr)) out.push(p)
     }
   }
   return out
 }
 
-// Minimum spanning tree over the settlements. carveCorridor only ever writes
-// FLOOR, so this can add connectivity but never remove it.
-function carveRoads(map, sites) {
-  if (sites.length < 2) return
+// Minimum spanning tree over the sites, as an edge list. Pure and rng-free —
+// ties break by first-encountered — so the graph can be tested without a map.
+export function roadEdges(sites) {
+  if (sites.length < 2) return []
+  const edges = []
   const linked = [0]
   const rest = sites.map((_, i) => i).slice(1)
   while (rest.length) {
@@ -67,9 +69,22 @@ function carveRoads(map, sites) {
       const d = dist(sites[a], sites[b])
       if (!best || d < best.d) best = { a, b, d }
     }
-    carveCorridor(map, sites[best.a].x, sites[best.a].y, sites[best.b].x, sites[best.b].y, 2)
+    edges.push({ a: best.a, b: best.b })
     linked.push(best.b)
     rest.splice(rest.indexOf(best.b), 1)
+  }
+  return edges
+}
+
+// Carve the road network. NOTE: on the already-open plain this writes no new
+// floor — carveCorridor only ever sets FLOOR and every interior cell is FLOOR
+// already, so this currently changes zero tiles. The roads become visible when
+// a later change paints them a `skin` and marks them `locked`, the way
+// placeStructure does. The MST itself is real and tested via roadEdges.
+// O(n^3): 20 inner iterations at 5 sites, ~100ms at 400. Irrelevant at this scale.
+function carveRoads(map, sites) {
+  for (const { a, b } of roadEdges(sites)) {
+    carveCorridor(map, sites[a].x, sites[a].y, sites[b].x, sites[b].y, 2)
   }
 }
 
