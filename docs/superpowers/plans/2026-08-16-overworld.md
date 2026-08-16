@@ -508,16 +508,44 @@ function stampPocket(map, rng, p) {
 
 // A walled compound with a guaranteed two-cell gate, holding a prefab if one
 // was supplied. Returns the compound rect and the prefab's own spawns.
-function stampSettlement(map, rng, site, structures, id) {
+//
+// The gate is placed on the side the road arrives from, not at random. The road
+// is carved to the site centre and the compound wall is then stamped across it,
+// so a randomly-placed gate leaves the road dead-ending into a blank wall — a
+// cosmetic break that only becomes visible once roads are skinned, and a
+// confusing one to trace back to this function. `roadDir` is the unit vector
+// from the site toward its nearest road neighbour; pass null for an isolated
+// site and any side will do.
+function stampSettlement(map, rng, site, structures, id, roadDir = null) {
   const s = structures.castle ?? structures.barracks ?? null
   const iw = s?.w ?? 7, ih = s?.h ?? 6
   const w = iw + 4, h = ih + 4
   const x = Math.max(1, Math.min(map[0].length - w - 1, site.x - (w >> 1)))
   const y = Math.max(1, Math.min(map.length - h - 1, site.y - (h >> 1)))
   hollowWall(map, x, y, w, h)
-  punchGaps(map, rng, x, y, w, h, 2)
+  punchGate(map, rng, x, y, w, h, roadDir)
   const spawns = s ? placeStructure(map, s, x + 2, y + 2, id) : []
   return { room: { id, x, y, w, h }, spawns }
+}
+
+// Open a two-cell gate on the side `roadDir` points toward, so the road meets
+// it. Falls back to a random side when the site has no road neighbour.
+function punchGate(map, rng, x, y, w, h, roadDir) {
+  const side = roadDir
+    ? (Math.abs(roadDir.x) > Math.abs(roadDir.y)
+        ? (roadDir.x > 0 ? 'e' : 'w')
+        : (roadDir.y > 0 ? 's' : 'n'))
+    : ['n', 's', 'e', 'w'][Math.floor(rng() * 4)]
+  const open = (cx, cy) => { if (inInterior(map, cx, cy)) map[cy][cx].tile = TILE.FLOOR }
+  if (side === 'n' || side === 's') {
+    const gx = x + 1 + Math.floor(rng() * Math.max(1, w - 3))
+    const gy = side === 'n' ? y : y + h - 1
+    open(gx, gy); open(gx + 1, gy)
+  } else {
+    const gy = y + 1 + Math.floor(rng() * Math.max(1, h - 3))
+    const gx = side === 'w' ? x : x + w - 1
+    open(gx, gy); open(gx, gy + 1)
+  }
 }
 ```
 
@@ -535,10 +563,19 @@ export function generateOverworld(width = WORLD_W, height = WORLD_H, { structure
   carveRoads(map, sites)
   for (const p of pockets) stampPocket(map, rng, p)
 
+  // Which way the road leaves each site, so its gate faces the road.
+  const neighbour = new Map()
+  for (const { a, b } of roadEdges(sites)) {
+    if (!neighbour.has(a)) neighbour.set(a, b)
+    if (!neighbour.has(b)) neighbour.set(b, a)
+  }
+
   const entitySpawns = []
   const rooms = []
   sites.forEach((site, id) => {
-    const { room, spawns } = stampSettlement(map, rng, site, structures, id)
+    const nb = neighbour.has(id) ? sites[neighbour.get(id)] : null
+    const roadDir = nb ? { x: nb.x - site.x, y: nb.y - site.y } : null
+    const { room, spawns } = stampSettlement(map, rng, site, structures, id, roadDir)
     rooms.push(room)
     entitySpawns.push(...spawns)
   })
