@@ -9,7 +9,7 @@
 // ground or punches a guaranteed gap, so there is no retry loop and no
 // fallback at all.
 
-import { TILE } from './entities.js'
+import { TILE, isWalkable } from './entities.js'
 import { createMap, carveCorridor, placeStructure } from './map.js'
 
 export const WORLD_W = 180
@@ -243,6 +243,83 @@ function punchGate(map, rng, x, y, w, h, roadDir) {
   }
 }
 
+// Absolute counts, not densities. A dungeon density applied here would flood
+// the map: monsterDensity 0.01 across 20,880 cells is over 150 monsters.
+//
+// mid's enemy total (guard + monster) tops out at 4 + 6 = 10; outer's bottoms
+// out at 0 + 10 + 1 = 11. That gap is deliberate and load-bearing: the plan's
+// original ranges (mid avg 13, outer avg 11.5) made outer's enemy count
+// LOWER than mid's on average — a 12-seed sweep of that table failed the
+// "more enemies in the outer ring" invariant on 10/12 seeds. Keeping mid's
+// worst case below outer's best case makes the ordering a guarantee, not a
+// coin flip that happens to land right on the seeds in SEEDS.
+const CONTENTS = {
+  mid:   { guard: [2, 4],  monster: [4, 6],   variant: 'weak',   chest: [3, 5] },
+  outer: { guard: [0, 0],  monster: [10, 14], variant: 'strong', chest: [6, 9], cyclops: [1, 2] },
+}
+const between = (rng, [lo, hi]) => lo + Math.floor(rng() * (hi - lo + 1))
+
+// Walkable tiles bucketed by Manhattan distance from the spawn, so contents
+// can be placed by ring without rescanning the map per kind.
+function ringsFrom(map, spawn) {
+  const max = map[0].length + map.length
+  const out = { inner: [], mid: [], outer: [] }
+  for (let y = 1; y < map.length - 1; y++) for (let x = 1; x < map[0].length - 1; x++) {
+    if (!isWalkable(map[y][x].tile) || map[y][x].locked) continue
+    const f = (Math.abs(x - spawn.x) + Math.abs(y - spawn.y)) / max
+    out[f < 0.25 ? 'inner' : f < 0.60 ? 'mid' : 'outer'].push({ x, y })
+  }
+  return out
+}
+
+function drawFrom(pool, rng, taken, n, make) {
+  const out = []
+  for (let i = 0; i < n && pool.length; i++) {
+    const t = pool.splice(Math.floor(rng() * pool.length), 1)[0]
+    const k = `${t.x},${t.y}`
+    if (taken.has(k)) continue
+    taken.add(k)
+    out.push(make(t))
+  }
+  return out
+}
+
+// The farthest a point at (x, y) could possibly be, as a fraction of
+// ringsFrom's own (width + height) normalisation, from the single farthest
+// interior corner. Purely geometric — no map scan — used only to pick a home
+// settlement that leaves room for an outer ring at all.
+//
+// A settlement sitting exactly at the true map centre caps this below 0.5,
+// since the two opposite-corner distances split evenly around (width + height
+// - 6) / 2 ≈ 0.49. ringsFrom's outer bucket starts at 0.60, so a dead-centre
+// spawn can leave the outer ring permanently empty — measured on a 150-seed
+// sweep of the naive "nearest to centre" rule: 76/150 seeds (51%) had zero
+// cells anywhere on the map reaching the outer fraction, silently starving
+// both the enemy gradient and every dungeon entrance.
+function farCornerFraction(x, y, width, height) {
+  const max = width + height
+  const corners = [[1, 1], [1, height - 2], [width - 2, 1], [width - 2, height - 2]]
+  let best = 0
+  for (const [cx, cy] of corners) {
+    const f = (Math.abs(x - cx) + Math.abs(y - cy)) / max
+    if (f > best) best = f
+  }
+  return best
+}
+
+// Nearest walkable tile to (x, y) by expanding square search — the compound
+// corner we aim for may itself be wall. Also skips locked cells (prefab
+// interiors): a spawn inside a prefab would put the player in a sealed room.
+function nearestWalkable(map, x, y) {
+  for (let r = 0; r < 40; r++) {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const nx = x + dx, ny = y + dy
+      if (map[ny]?.[nx] && isWalkable(map[ny][nx].tile) && !map[ny][nx].locked) return { x: nx, y: ny }
+    }
+  }
+  return { x: 1, y: 1 }
+}
+
 export function generateOverworld(width = WORLD_W, height = WORLD_H, { structures = {}, rng = Math.random } = {}) {
   const map = createMap(width, height)
   fillGround(map)
@@ -281,5 +358,46 @@ export function generateOverworld(width = WORLD_W, height = WORLD_H, { structure
   // stampPocket for why interleaving the two lets one pocket reseal another's gap.
   for (const f of fragments) punchGaps(map, rng, f.x, f.y, f.w, f.h, f.n)
 
-  return { map, entitySpawns, playerSpawn: { x: width >> 1, y: height >> 1 }, rooms }
+  // Spawn at the settlement nearest the centre, so the world extends in every
+  // direction and the danger gradient is radial rather than one-sided —
+  // except a settlement dead-centre leaves no room for an outer ring at all
+  // (see farCornerFraction). Prefer the centre-most settlement that still
+  // guarantees an outer band exists; only fall back to plain nearest-to-centre
+  // when no settlement clears that bar (e.g. a tiny test map).
+  const cx = width >> 1, cy = height >> 1
+  const centreOf = r => ({ x: r.x + (r.w >> 1), y: r.y + (r.h >> 1) })
+  // The anchor point (home.x - 2, home.y - 2) is what nearestWalkable actually
+  // spawns from, not the room's centre — qualify against the same point the
+  // spawn will use, or a compound offset from its own centre can silently
+  // fail the bar the centre passed.
+  const anchorOf = r => ({ x: r.x - 2, y: r.y - 2 })
+  const roomDist = r => dist(centreOf(r), { x: cx, y: cy })
+  const qualifies = r => { const a = anchorOf(r); return farCornerFraction(a.x, a.y, width, height) >= 0.62 }
+  const candidates = rooms.filter(qualifies)
+  const pool = candidates.length ? candidates : rooms
+  const home = pool.reduce((best, r) => roomDist(r) < roomDist(best) ? r : best, pool[0])
+  const playerSpawn = nearestWalkable(map, home ? home.x - 2 : cx, home ? home.y - 2 : cy)
+
+  const taken = new Set(entitySpawns.map(s => `${s.x},${s.y}`))
+  taken.add(`${playerSpawn.x},${playerSpawn.y}`)
+  const rings = ringsFrom(map, playerSpawn)
+
+  // Entrances are drawn from the outer pool FIRST, before any enemy or chest
+  // draw touches it. The outer ring can be thin (measured as few as 15
+  // walkable cells on one seed in a 150-seed sweep) and the outer monster+
+  // chest+cyclops requests alone can ask for up to 25 cells — enough to
+  // exhaust a thin pool outright. Reserving entrances' modest ask (2-3 cells)
+  // first is what makes "every seed gets at least one entrance" a guarantee
+  // instead of a race the enemies usually win.
+  entitySpawns.push(...drawFrom(rings.outer, rng, taken, n.entrances, t => ({ kind: 'dungeon_entrance', ...t })))
+
+  for (const which of ['mid', 'outer']) {
+    const c = CONTENTS[which], pool = rings[which]
+    entitySpawns.push(...drawFrom(pool, rng, taken, between(rng, c.guard), t => ({ kind: 'guard', ...t })))
+    entitySpawns.push(...drawFrom(pool, rng, taken, between(rng, c.monster), t => ({ kind: 'monster', variant: c.variant, ...t })))
+    entitySpawns.push(...drawFrom(pool, rng, taken, between(rng, c.chest), t => ({ kind: 'chest', ...t })))
+    if (c.cyclops) entitySpawns.push(...drawFrom(pool, rng, taken, between(rng, c.cyclops), t => ({ kind: 'cyclops', ...t })))
+  }
+
+  return { map, entitySpawns, playerSpawn, rooms }
 }

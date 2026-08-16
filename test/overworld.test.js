@@ -326,3 +326,100 @@ describe('generateOverworld — structures', () => {
     }
   })
 })
+
+// Every kind buildEntities (renderer/game.js) actually handles, plus the new
+// one Task 6 will add. buildEntities drops unknown kinds SILENTLY — no warning,
+// no log — so a typo here vanishes without a trace at runtime.
+const HANDLED_KINDS = new Set([
+  'guard', 'monster', 'dragon', 'trap', 'puzzle', 'weapon', 'ranged', 'potion',
+  'door', 'exit_door', 'chest', 'cyclops', 'wizard', 'crab', 'dragon_boss',
+  'dragon_boss_pixel', 'prop', 'fountain_wall', 'fountain_basin',
+  'dungeon_entrance',
+])
+const ENEMY_KINDS = new Set(['guard', 'monster', 'cyclops', 'wizard', 'crab'])
+
+describe('generateOverworld — contents', () => {
+  const ringOf = (p, spawn) => {
+    const f = (Math.abs(spawn.x - p.x) + Math.abs(spawn.y - p.y)) / (WORLD_W + WORLD_H)
+    return f < 0.25 ? 'inner' : f < 0.60 ? 'mid' : 'outer'
+  }
+
+  it('emits only kinds buildEntities handles', () => {
+    for (const s of SEEDS) for (const sp of withPrefabs(s).entitySpawns) {
+      assert.ok(HANDLED_KINDS.has(sp.kind), `seed ${s}: unhandled kind "${sp.kind}"`)
+    }
+  })
+
+  it('spawns the player on walkable, unlocked ground', () => {
+    for (const s of SEEDS) {
+      const { map, playerSpawn } = withPrefabs(s)
+      const c = map[playerSpawn.y][playerSpawn.x]
+      assert.ok(isWalkable(c.tile), `seed ${s}: spawn tile not walkable`)
+      assert.ok(!c.locked, `seed ${s}: spawn is inside a prefab`)
+    }
+  })
+
+  it('keeps the inner ring free of enemies', () => {
+    for (const s of SEEDS) {
+      const { entitySpawns, playerSpawn } = withPrefabs(s)
+      for (const sp of entitySpawns) {
+        if (!ENEMY_KINDS.has(sp.kind)) continue
+        assert.notEqual(ringOf(sp, playerSpawn), 'inner', `seed ${s}: ${sp.kind} in the inner ring`)
+      }
+    }
+  })
+
+  it('puts more enemies in the outer ring than the mid ring', () => {
+    for (const s of SEEDS) {
+      const { entitySpawns, playerSpawn } = withPrefabs(s)
+      let mid = 0, outer = 0
+      for (const sp of entitySpawns) {
+        if (!ENEMY_KINDS.has(sp.kind)) continue
+        const r = ringOf(sp, playerSpawn)
+        if (r === 'mid') mid++; else if (r === 'outer') outer++
+      }
+      assert.ok(outer > mid, `seed ${s}: mid ${mid} vs outer ${outer}`)
+    }
+  })
+
+  it('places dungeon entrances on every seed, all in the outer ring', () => {
+    for (const s of SEEDS) {
+      const { entitySpawns, playerSpawn } = withPrefabs(s)
+      const ent = entitySpawns.filter(sp => sp.kind === 'dungeon_entrance')
+      assert.ok(ent.length >= 1, `seed ${s}: no entrances`)
+      for (const e of ent) assert.equal(ringOf(e, playerSpawn), 'outer', `seed ${s}: entrance not in the outer ring`)
+    }
+  })
+
+  it('never stacks two spawns on one tile', () => {
+    for (const s of SEEDS) {
+      const seen = new Set()
+      for (const sp of withPrefabs(s).entitySpawns) {
+        const k = `${sp.x},${sp.y}`
+        assert.ok(!seen.has(k), `seed ${s}: two spawns at ${k}`)
+        seen.add(k)
+      }
+    }
+  })
+
+  it('never spawns anything on a wall, in a prefab, or on the player', () => {
+    for (const s of SEEDS) {
+      const { map, entitySpawns, playerSpawn } = withPrefabs(s)
+      for (const sp of entitySpawns) {
+        const c = map[sp.y]?.[sp.x]
+        assert.ok(c && isWalkable(c.tile), `seed ${s}: ${sp.kind} on a non-walkable tile at ${sp.x},${sp.y}`)
+        // Prefab spawns (door/chest) are legitimately on locked cells; the
+        // gradient-placed ones must not be.
+        if (!['door', 'chest'].includes(sp.kind) || ENEMY_KINDS.has(sp.kind)) {
+          assert.ok(!(sp.x === playerSpawn.x && sp.y === playerSpawn.y), `seed ${s}: ${sp.kind} on the player spawn`)
+        }
+      }
+    }
+  })
+
+  it('scales its contents down on a small world rather than flooding it', () => {
+    const r = generateOverworld(60, 40, { structures: STRUCTURES, rng: mulberry32(1) })
+    const enemies = r.entitySpawns.filter(sp => ENEMY_KINDS.has(sp.kind)).length
+    assert.ok(enemies <= 12, `small world got ${enemies} enemies`)
+  })
+})
