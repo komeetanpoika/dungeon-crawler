@@ -22,10 +22,14 @@
   .grp { color: #8a8a98; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
          border-bottom: 1px solid #2a2a36; padding-bottom: 3px; margin: 11px 0 6px;
          display: flex; justify-content: space-between; align-items: baseline; }
-  .grp:first-child { margin-top: 0; }
+  .panel > .grp:first-child { margin-top: 0; }
+  /* Heading that shows a verbatim identifier (a tag name) — never case-folded. */
+  .grp.ident { text-transform: none; letter-spacing: 0; }
   /* Inline row: label and control share a line. */
   .row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
-  .rlab { color: #8a8a98; font-size: 11px; flex: 0 0 52px; text-align: right; }
+  .rlab { color: #8a8a98; font-size: 11px; flex: 0 0 52px; text-align: right; white-space: nowrap; }
+  /* Indent under a .row's label column, so a hint lines up with its control. */
+  .rind { margin-left: 58px; }
   .cap { color: #777; font-size: 10px; margin-top: 2px; }
   .thumb { width: 22px; height: 22px; image-rendering: pixelated; border: 1px solid #333;
            border-radius: 2px; flex: 0 0 auto; }
@@ -33,6 +37,7 @@
   .x:hover { color: #e88; }
   .assign-banner { color: #7fd; font-size: 11px; margin-bottom: 4px; }
   #library-mode { color: #7fd; font-size: 11px; }
+  #library.picking { outline: 1px dashed #7fd6; outline-offset: 2px; }
   #library.picking img { cursor: crosshair; }
   #library.picking img:hover { border-color: #7fd; box-shadow: 0 0 0 2px #7fd3; }
   #toolbar { width: 96px; display: flex; flex-direction: column; gap: 6px; }
@@ -41,7 +46,7 @@
   #pixel-canvas { image-rendering: pixelated; border: 1px solid #444;
                   background:
                     repeating-conic-gradient(#1c1c26 0 25%, #14141c 0 50%) 0 0 / 16px 16px; }
-  #sidebar { width: 200px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+  #sidebar { width: 200px; display: flex; flex-direction: column; overflow-y: auto; }
   #sidebar canvas { image-rendering: pixelated; border: 1px solid #444; display: block; }
   #palette { display: grid; grid-template-columns: repeat(8, 20px); gap: 2px; }
   #palette .swatch { width: 20px; height: 20px; border: 1px solid #333; cursor: pointer; }
@@ -112,11 +117,11 @@
     <div id="sidebar" class="panel">
       <div class="grp">Preview</div>
       <div style="display:flex; gap:8px; align-items:flex-end">
-        <div>
+        <div style="min-width:52px; text-align:center">
           <canvas id="preview-1x" width="16" height="16"></canvas>
           <div class="cap">1:1</div>
         </div>
-        <div>
+        <div style="text-align:center">
           <canvas id="preview-3x" width="96" height="96"></canvas>
           <div class="cap">3×3 seamless</div>
         </div>
@@ -132,7 +137,7 @@
         <span class="rlab">name</span>
         <input id="tile-name" placeholder="moss_floor_1" style="flex:1; min-width:0">
       </div>
-      <div id="tile-name-hint" style="font-size:11px; min-height:14px; color:#888; margin-left:58px"></div>
+      <div id="tile-name-hint" class="rind" style="font-size:11px; min-height:14px; color:#888"></div>
     </div>
   </main>
 

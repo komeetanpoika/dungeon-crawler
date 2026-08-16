@@ -4,6 +4,7 @@ dist/
 .claude/*
 !.claude/skills/
 debug*.mjs
+debug*.png
 arena-config.json
 tools/sword-compare/out/
 *.generated.*
