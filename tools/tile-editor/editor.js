@@ -35,6 +35,8 @@ function showTab(tab) {
 tabDraw.addEventListener('click', () => showTab('draw'))
 tabRules.addEventListener('click', () => showTab('rules'))
 tabBuild.addEventListener('click', () => showTab('build'))
+// The Build tab hands its brush to the Rules tab to be tagged.
+document.addEventListener('assign-tile', () => showTab('rules'))
 showTab('draw')
 
 const preview1x = document.getElementById('preview-1x')

@@ -15,6 +15,7 @@ import {
 import { textPrompt } from './text-prompt.js'
 import { toast } from './toast.js'
 import { setProperty, exportStructure } from './structure-lib.js'
+import { brushStatus } from './tag-edit.js'
 
 // Merge a derived fragment into a ruleset: overwrite tile weights/tags and each
 // painted tag's role + adjacency (+ overlays on base tags), but preserve any
@@ -194,7 +195,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     active = name
     markActive(name)
     if (name) ensureImage(name)
-    renderTagging()
+    renderBrushStatus()
   }
 
   // Append one tile thumbnail to the palette (skip if already present), so a
@@ -406,46 +407,36 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   const reportEl = document.getElementById('derive-report')
   const previewCanvas = document.getElementById('paint-preview')
 
-  function ensureRuleset() {
-    if (!state.active) {
-      state.active = 'derived'
-      document.dispatchEvent(new Event('ruleset-changed'))
-    }
-    state.rulesets[state.active] = state.rulesets[state.active] ?? { tiles: {}, tags: {} }
-    return state.rulesets[state.active]
-  }
-
-  // Inline role+tag assignment for the active brush tile (role includes overlay).
-  function renderTagging() {
-    taggingEl.innerHTML = ''
-    if (!active) { taggingEl.textContent = 'Pick a tile to tag…'; return }
+  // Read-only read-out of the active brush. Tag editing lives in the Rules tab;
+  // clicking here hands this tile over to it, so retagging mid-paint is one
+  // click out and one click back.
+  function renderBrushStatus() {
     const rs = state.rulesets[state.active]
-    const curTag = rs?.tiles?.[active]?.tags?.[0] ?? ''
-    const lbl = document.createElement('div')
-    lbl.className = 'label'
-    lbl.textContent = `Tag ${active}` + (curTag ? ` (now: ${curTag})` : ' (untagged)')
-    const roleSel = document.createElement('select')
-    for (const r of ['floor', 'wall', 'overlay']) {
-      const o = document.createElement('option'); o.value = o.textContent = r; roleSel.appendChild(o)
+    const st = brushStatus(rs, active)
+    // The markup still carries .label from before this migration: display:block
+    // makes .rlab's flex basis inert, and text-transform:uppercase would render
+    // TILE_0048 · CASTLE.FLOOR — the identifier case-folding .grp.ident exists
+    // to prevent. Claim the element as a .row here.
+    taggingEl.className = 'row'
+    taggingEl.innerHTML = ''
+    const lab = document.createElement('span')
+    lab.className = 'rlab'
+    lab.textContent = 'brush'
+    const val = document.createElement('span')
+    val.style.cssText = 'flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap'
+    // `untagged` already means "there is a brush and it has no tag", so no
+    // separate emptiness check is needed here.
+    val.style.color = st.untagged ? '#d9a441' : '#9a9'
+    val.textContent = st.text
+    if (active) {
+      val.style.cursor = 'pointer'
+      val.title = 'open in Rules'
+      val.addEventListener('click', () => {
+        if (!rs) { toast('Create a ruleset first (+ new in the header).', 'error'); return }
+        document.dispatchEvent(new CustomEvent('assign-tile', { detail: { tile: active, tag: st.tag } }))
+      })
     }
-    if (curTag && rs?.tags?.[curTag]?.role) roleSel.value = rs.tags[curTag].role
-    const tagInput = document.createElement('input')
-    tagInput.placeholder = 'overlay.barrel'; tagInput.value = curTag; tagInput.style.width = '100%'
-    const apply = document.createElement('button')
-    apply.textContent = 'apply tag'
-    apply.addEventListener('click', () => {
-      const tag = tagInput.value.trim()
-      if (!tag) return
-      const r = ensureRuleset()
-      r.tiles[active] = { tags: [tag], weight: r.tiles[active]?.weight ?? 1 }
-      if (!r.tags[tag]) {
-        r.tags[tag] = { role: roleSel.value, allow: ['*'], forbid: [], directional: {}, adjacency: { n: {}, e: {}, s: {}, w: {} } }
-      } else {
-        r.tags[tag].role = roleSel.value
-      }
-      renderTagging()
-    })
-    taggingEl.append(lbl, roleSel, tagInput, apply)
+    taggingEl.append(lab, val)
   }
 
   function tileMetaFromRuleset(rs) {
@@ -530,6 +521,10 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     persistNow()                 // flush the outgoing ruleset's map first
     loadActiveMapFor(state.active)
   })
+
+  document.addEventListener('rules-edited', renderBrushStatus)
+  document.addEventListener('ruleset-changed', renderBrushStatus)
+  renderBrushStatus()
 
   tilesReady.then(buildPalette).catch(err => {
     console.error('[map-painter] palette load failed:', err)
