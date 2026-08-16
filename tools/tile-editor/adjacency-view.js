@@ -56,17 +56,15 @@ function dirBlock(label, rows) {
 }
 
 // Render the read-only learned section for `tagDef` into `container` (cleared).
+// The explainer line that used to sit here existed only to distinguish the
+// learned bias from the hand-authored hard gate above it; with the gate gone
+// from the UI there is nothing left to disambiguate.
 export function renderLearned(container, tagDef) {
   container.innerHTML = ''
 
-  const explain = document.createElement('div')
-  explain.className = 'label'
-  explain.textContent = 'Rules above gate adjacency; learned values below only bias the pick.'
-  container.appendChild(explain)
-
   const head = document.createElement('div')
-  head.className = 'label'
-  head.textContent = 'Learned neighbors (from painting)'
+  head.className = 'grp'
+  head.textContent = 'Learned from painting'
   container.appendChild(head)
 
   const adj = adjacencyViewModel(tagDef)
@@ -83,10 +81,10 @@ export function renderLearned(container, tagDef) {
 
   const ov = overlaysViewModel(tagDef)
   if (ov && ov.length) {
-    const oh = document.createElement('div')
-    oh.className = 'label'
-    oh.textContent = 'Learned overlays'
-    container.appendChild(oh)
-    container.appendChild(dirBlock('', ov))
+    const cap = document.createElement('div')
+    cap.className = 'cap'
+    cap.style.marginTop = '8px'
+    cap.textContent = 'overlays'
+    container.append(cap, dirBlock('', ov))
   }
 }
