@@ -430,7 +430,9 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     val.textContent = st.text
     if (active) {
       val.style.cursor = 'pointer'
-      val.title = 'open in Rules'
+      // The row clips at 240px and the tag is the half that disappears, so the
+      // tooltip has to carry the whole thing, not just the affordance.
+      val.title = `${st.text} — open in Rules`
       val.addEventListener('click', () => {
         if (!rs) { toast('Create a ruleset first (+ new in the header).', 'error'); return }
         document.dispatchEvent(new CustomEvent('assign-tile', { detail: { tile: active, tag: st.tag } }))

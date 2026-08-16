@@ -186,7 +186,13 @@ export function initRulesUI(state, { pickTile } = {}) {
     if (!tag) return
     // blankTag, not a local literal: one shape for every "fresh tag" path.
     // Object.hasOwn, not ??=, so a tag named e.g. "constructor" is still created.
-    if (!Object.hasOwn(rs.tags, tag)) rs.tags[tag] = blankTag(tag.startsWith('wall') ? 'wall' : 'floor')
+    // Infer the role from the naming convention the rulesets already follow.
+    // Getting this wrong matters: role is what sorts base skins from overlays
+    // when a painting is derived, and an `overlay.*` tag defaulting to floor
+    // would quietly decorate the wrong layer. The role select sits in the first
+    // row of the panel that opens next, so a bad guess is one click to correct.
+    const role = tag.startsWith('wall') ? 'wall' : tag.startsWith('overlay') ? 'overlay' : 'floor'
+    if (!Object.hasOwn(rs.tags, tag)) rs.tags[tag] = blankTag(role)
     selectedTag = tag
     if (assigning) { const tile = assigning; assigning = null; assign(rs, tile, tag) }
     render(); edited()
