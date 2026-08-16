@@ -1034,6 +1034,11 @@ In `tools/tile-editor/map-painter.js`, delete `ensureRuleset()` (lines 411-418) 
   function renderBrushStatus() {
     const rs = state.rulesets[state.active]
     const st = brushStatus(rs, active)
+    // The markup still carries .label from before this migration: display:block
+    // makes .rlab's flex basis inert, and text-transform:uppercase would render
+    // TILE_0048 · CASTLE.FLOOR — the identifier case-folding .grp.ident exists
+    // to prevent. Claim the element as a .row here.
+    taggingEl.className = 'row'
     taggingEl.innerHTML = ''
     const lab = document.createElement('span')
     lab.className = 'rlab'
