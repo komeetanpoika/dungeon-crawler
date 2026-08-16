@@ -75,14 +75,16 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onPlay, onOpenEditor, onQuit, onCheat }) {
-  // The web release has no tile editor and nothing to quit to.
+export function showTitle(meta, { onPlay, onExplore, onOpenEditor, onQuit, onCheat }) {
+  // The web release has no tile editor and nothing to quit to. Explore is
+  // gameplay, not a desktop affordance, so it ships everywhere.
   const isWeb = typeof window !== 'undefined' && window.saveAPI?.isWeb
   renderScreen({
     title: 'DUNGEON CRAWLER',
     subtitle: formatMetaSummary(meta),
     buttons: [
       { label: 'Play', onSelect: onPlay },
+      { label: 'Explore', onSelect: onExplore },
       ...(isWeb ? [] : [
         { label: 'Open Editor', onSelect: onOpenEditor },
         { label: 'Quit', onSelect: onQuit },

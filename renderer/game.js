@@ -9,7 +9,7 @@ import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/de
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
-import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG } from './data/levels.js'
+import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG, OVERWORLD_DEPTH } from './data/levels.js'
 import { countBosses, spawnBossDrop } from './systems/progression.js'
 import { PHASE, canTransition } from './systems/phase.js'
 import * as menu from './ui/menu.js'
@@ -182,6 +182,10 @@ function buildEntities(spawns, map, depth) {
       case 'dragon_boss': return [hpOverride({ ...makeDragonBoss(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'dragon_boss_pixel': return [hpOverride({ ...makeDragonBoss(s.x, s.y, { skin: PIXEL_SKIN }), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'prop':           return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y }]
+      // Inert until the transitions spec makes it functional. buildEntities
+      // drops unknown kinds silently, so this case is what keeps the marker
+      // from vanishing without a warning.
+      case 'dungeon_entrance': return [{ type: 'prop', propType: 'prop_grave', x: s.x, y: s.y, isDungeonEntrance: true }]
       case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
       case 'fountain_basin': return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
@@ -251,6 +255,7 @@ function goTitle() {
   phase = PHASE.TITLE
   menu.showTitle(meta, {
     onPlay: beginRun,
+    onExplore: () => beginRun(OVERWORLD_DEPTH),
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
