@@ -54,7 +54,14 @@ describe('generateOverworld — the plain', () => {
       let walk = 0
       for (const row of map) for (const c of row) if (isWalkable(c.tile)) walk++
       const frac = walk / (WORLD_W * WORLD_H)
-      assert.ok(frac > 0.75, `seed ${s}: only ${(frac * 100).toFixed(0)}% walkable`)
+      assert.ok(frac > 0.90, `seed ${s}: only ${(frac * 100).toFixed(0)}% walkable`)
+    }
+  })
+
+  it('never buries the player spawn', () => {
+    for (const s of [...SEEDS, 4339]) {
+      const { map, playerSpawn } = world(s)
+      assert.ok(isWalkable(map[playerSpawn.y][playerSpawn.x].tile), `seed ${s}: spawn is not walkable`)
     }
   })
 

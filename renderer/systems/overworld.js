@@ -41,17 +41,23 @@ export function generateOverworld(width = WORLD_W, height = WORLD_H, { structure
   const map = createMap(width, height)
   fillGround(map)
 
-  // Draw the counts now even though nothing consumes them until Task 2: it
-  // fixes the rng call order early, so adding the later stages does not
-  // reshuffle every existing seed's world.
+  // Drawn before the boulder so the counts values stay stable as later tasks
+  // add their own draws. Nothing consumes them until Task 2. Note this does NOT
+  // make whole worlds reproducible across tasks — Task 2 changes the draw
+  // sequence — and production never seeds at all.
   const n = contentCounts(width, height, rng)
 
   // A single seed-dependent boulder, so determinism is actually exercised from
   // this task rather than trivially true. Tasks 2-4 replace this with real
   // content; it sits well inside the border and cannot disconnect the plain.
-  const bx = 2 + Math.floor(rng() * (width - 4))
-  const by = 2 + Math.floor(rng() * (height - 4))
+  // Never on the spawn tile: the centre is the placeholder playerSpawn until
+  // Task 4 picks a real one. Seed 4339 lands here otherwise.
+  let bx, by
+  do {
+    bx = 2 + Math.floor(rng() * (width - 4))
+    by = 2 + Math.floor(rng() * (height - 4))
+  } while (bx === (width >> 1) && by === (height >> 1))
   map[by][bx].tile = TILE.WALL
 
-  return { map, entitySpawns: [], playerSpawn: { x: width >> 1, y: height >> 1 }, rooms: [], counts: n }
+  return { map, entitySpawns: [], playerSpawn: { x: width >> 1, y: height >> 1 }, rooms: [] }
 }
