@@ -757,10 +757,13 @@ import { TILE, isWalkable } from './entities.js'
 ```js
 // Absolute counts, not densities. A dungeon density applied here would flood
 // the map: monsterDensity 0.01 across 20,880 cells is over 150 monsters.
-const CONTENTS = {
-  mid:   { guard: [4, 6],  monster: [6, 10], variant: 'weak',   chest: [3, 5] },
-  outer: { guard: [0, 0],  monster: [8, 12], variant: 'strong', chest: [6, 9], cyclops: [1, 2] },
-}
+// Ranges must not overlap: mid's WORST case has to sit below outer's BEST, or
+// the gradient is only probabilistic. The original mid [4,6]+[6,10] averaged 13
+// against outer's 11.5 and failed on 10 of 12 seeds — outer was quieter than
+// mid. Read the shipped values from renderer/systems/overworld.js; the shape is:
+//   mid   guard + weak monsters,   worst-case total below
+//   outer strong monsters + cyclops, best-case total above
+const CONTENTS = { /* see overworld.js — ranges chosen so mid_max < outer_min */ }
 const between = (rng, [lo, hi]) => lo + Math.floor(rng() * (hi - lo + 1))
 
 // Walkable tiles bucketed by Manhattan distance from the spawn, so contents
@@ -792,8 +795,15 @@ function drawFrom(pool, rng, taken, n, make) {
 Then replace the tail of `generateOverworld` (everything after the settlement loop) with:
 
 ```js
-  // Spawn at the settlement nearest the centre, so the world extends in every
-  // direction and the danger gradient is radial rather than one-sided.
+  // Spawn at the centre-most settlement that STILL LEAVES AN OUTER RING.
+  //
+  // Naively picking the settlement nearest the map centre caps the furthest
+  // reachable distance fraction near 0.49 — below the 0.60 outer-ring
+  // threshold — so `rings.outer` came back empty on 51% of seeds and dungeon
+  // entrances could never place at all. Qualify candidates by the fraction to
+  // the farthest corner FROM THE ACTUAL SPAWN ANCHOR (not the room centre, which
+  // is two cells away and flips the result on close calls), and fall back to
+  // plain nearest-to-centre only if none qualify.
   const cx = width >> 1, cy = height >> 1
   const home = rooms.reduce((best, r) =>
     dist({ x: r.x + (r.w >> 1), y: r.y + (r.h >> 1) }, { x: cx, y: cy }) <
@@ -812,10 +822,10 @@ Then replace the tail of `generateOverworld` (everything after the settlement lo
     if (c.cyclops) entitySpawns.push(...drawFrom(pool, rng, taken, between(rng, c.cyclops), t => ({ kind: 'cyclops', ...t })))
   }
 
-  // Inert markers: the seam the transitions spec attaches to. NOT
-  // TILE.STAIRS_DOWN — the existing descend logic would send the player to
-  // depth 7, which does not exist.
-  entitySpawns.push(...drawFrom(rings.outer, rng, taken, n.entrances, t => ({ kind: 'dungeon_entrance', ...t })))
+  // NOTE: entrances are drawn FIRST, before the loop above touches rings.outer.
+  // Drawn last they lost the race on a seed whose outer ring held only 15
+  // walkable cells — monsters and chests consumed the pool and the world
+  // shipped with no way down at all.
 
   return { map, entitySpawns, playerSpawn, rooms }
 ```
