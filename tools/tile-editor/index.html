@@ -30,6 +30,10 @@
   .rlab { color: #8a8a98; font-size: 11px; flex: 0 0 52px; text-align: right; white-space: nowrap; }
   /* Indent under a .row's label column, so a hint lines up with its control. */
   .rind { margin-left: 58px; }
+  /* A number field in an inline row: the default 10px side padding plus the
+     spinner reservation leaves ~9px of usable width at these sizes. */
+  .row input[type=number] { padding: 3px 4px; }
+  .row input[type=number]::-webkit-inner-spin-button { appearance: none; margin: 0; }
   .cap { color: #777; font-size: 10px; margin-top: 2px; }
   .thumb { width: 22px; height: 22px; image-rendering: pixelated; border: 1px solid #333;
            border-radius: 2px; flex: 0 0 auto; }
@@ -211,7 +215,7 @@
 
       <div class="grp">Rules</div>
       <div id="paint-tagging" class="label">Pick a tile to tag…</div>
-      <button id="derive-btn" class="save" style="background:#2a4a66">⚙ Derive rules</button>
+      <button id="derive-btn" class="save" style="background:#2a4a66; margin-left:0">⚙ Derive rules</button>
       <div id="derive-report" style="font-size:11px; color:#9a9"></div>
 
       <div class="grp">Preview</div>
