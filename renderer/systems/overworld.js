@@ -10,7 +10,7 @@
 // fallback at all.
 
 import { TILE } from './entities.js'
-import { createMap, carveCorridor } from './map.js'
+import { createMap, carveCorridor, placeStructure } from './map.js'
 
 export const WORLD_W = 180
 export const WORLD_H = 116
@@ -88,15 +88,170 @@ function carveRoads(map, sites) {
   }
 }
 
+// The wall ring of a rect, as [x, y] pairs. A hollow stamp writes exactly
+// these cells, so punching a gap means picking from this list — picking a
+// random cell inside the rect can land in the interior and do nothing.
+function perimeter(x, y, w, h) {
+  const out = []
+  for (let c = x; c < x + w; c++) out.push([c, y], [c, y + h - 1])
+  for (let r = y + 1; r < y + h - 1; r++) out.push([x, r], [x + w - 1, r])
+  return out
+}
+
+// Clamped to the interior: the world's one-tile border must stay solid, and
+// punchGaps would otherwise be free to open a border cell and breach the edge.
+const inInterior = (map, x, y) => x > 0 && y > 0 && x < map[0].length - 1 && y < map.length - 1
+
+function hollowWall(map, x, y, w, h) {
+  for (const [cx, cy] of perimeter(x, y, w, h)) if (inInterior(map, cx, cy)) map[cy][cx].tile = TILE.WALL
+}
+
+// The outward normal of a perimeter cell: which side of the rect it sits on,
+// as the direction stepping OFF the wall ring altogether.
+function outwardNormal(x, y, w, h, cx, cy) {
+  if (cy === y) return [0, -1]
+  if (cy === y + h - 1) return [0, 1]
+  if (cx === x) return [-1, 0]
+  return [1, 0]
+}
+
+// Open `n` distinct perimeter cells back to floor, so the stamp is always
+// enterable from the plain by construction rather than by luck.
+//
+// Two filters, both load-bearing:
+//
+// 1. Corners are excluded. A corner cell's only orthogonal neighbours are two
+// OTHER wall cells (the next cell along each edge) plus two exterior cells —
+// it never touches the fragment's interior at all. Punching a corner pokes a
+// hole that connects to nothing inside, so a fragment whose gaps both landed
+// on corners (observed on seed 1) sealed its own interior even though tiles
+// were "open" by value. Only a mid-edge cell has exactly one interior
+// neighbour and one exterior neighbour, so it's the only kind of cell that
+// can actually join the two.
+//
+// 2. Only cells whose OUTWARD neighbour is not itself wall. Pockets are a
+// grid of independently-positioned fragments (see stampPocket), and two of
+// them can sit close enough that a gap on fragment A's ring opens directly
+// against fragment B's wall one cell further out — again open by tile value,
+// leading nowhere. Checking the neighbour (rather than just clamping to the
+// interior, as the settlement gate does) is what makes this connected by
+// construction instead of by luck: every gap this picks genuinely reaches
+// open ground, because by the time pockets punch their gaps every pocket's
+// walls are already on the map (see generateOverworld's two-pass ordering).
+//
+// Falls back to the corner-excluded-but-unchecked list if every neighbour is
+// blocked, so a fragment still gets what gaps it can rather than none at all.
+function punchGaps(map, rng, x, y, w, h, n) {
+  const isCorner = (cx, cy) => (cx === x || cx === x + w - 1) && (cy === y || cy === y + h - 1)
+  const mid = perimeter(x, y, w, h).filter(([cx, cy]) => inInterior(map, cx, cy) && !isCorner(cx, cy))
+  const viable = mid.filter(([cx, cy]) => {
+    const [dx, dy] = outwardNormal(x, y, w, h, cx, cy)
+    return map[cy + dy]?.[cx + dx]?.tile !== TILE.WALL
+  })
+  const per = viable.length ? viable : mid
+  for (let k = 0; k < n && per.length; k++) {
+    const [gx, gy] = per.splice(Math.floor(rng() * per.length), 1)[0]
+    map[gy][gx].tile = TILE.FLOOR
+  }
+}
+
+// A pocket of broken street grid: fragments with gaps you walk through.
+//
+// Draws the wall only; the gap is punched in a later pass (see
+// generateOverworld) once every pocket's fragments are on the map. Pockets are
+// independently-positioned grids, and two of them can interleave close enough
+// that a gap punched right after this fragment's own wall opens straight into
+// a cell a DIFFERENT, not-yet-stamped pocket seals solid moments later —
+// sealing a fully enclosed micro-room. Deferring the punch until every wall is
+// final means a gap's exterior neighbour can never be overwritten afterward.
+// `fragments` collects {x, y, w, h, n} for the deferred pass; `n` is drawn
+// here so the rng sequence still runs one fragment at a time, wall then gap
+// count, exactly as before.
+function stampPocket(map, rng, p, fragments) {
+  const pw = 16 + Math.floor(rng() * 10), ph = 11 + Math.floor(rng() * 7)
+  for (let by = p.y - (ph >> 1); by < p.y + (ph >> 1); by += 5) {
+    for (let bx = p.x - (pw >> 1); bx < p.x + (pw >> 1); bx += 7) {
+      if (rng() < 0.25) continue
+      const fw = 4 + Math.floor(rng() * 3), fh = 3 + Math.floor(rng() * 2)
+      hollowWall(map, bx, by, fw, fh)
+      fragments.push({ x: bx, y: by, w: fw, h: fh, n: 2 + Math.floor(rng() * 2) })
+    }
+  }
+}
+
+// A walled compound with a guaranteed two-cell gate, holding a prefab if one
+// was supplied. Returns the compound rect and the prefab's own spawns.
+//
+// The gate is placed on the side the road arrives from, not at random. The road
+// is carved to the site centre and the compound wall is then stamped across it,
+// so a randomly-placed gate leaves the road dead-ending into a blank wall — a
+// cosmetic break that only becomes visible once roads are skinned, and a
+// confusing one to trace back to this function. `roadDir` is the unit vector
+// from the site toward its nearest road neighbour; pass null for an isolated
+// site and any side will do.
+function stampSettlement(map, rng, site, structures, id, roadDir = null) {
+  const s = structures.castle ?? structures.barracks ?? null
+  const iw = s?.w ?? 7, ih = s?.h ?? 6
+  const w = iw + 4, h = ih + 4
+  const x = Math.max(1, Math.min(map[0].length - w - 1, site.x - (w >> 1)))
+  const y = Math.max(1, Math.min(map.length - h - 1, site.y - (h >> 1)))
+  hollowWall(map, x, y, w, h)
+  punchGate(map, rng, x, y, w, h, roadDir)
+  const spawns = s ? placeStructure(map, s, x + 2, y + 2, id) : []
+  return { room: { id, x, y, w, h }, spawns }
+}
+
+// Open a two-cell gate on the side `roadDir` points toward, so the road meets
+// it. Falls back to a random side when the site has no road neighbour.
+function punchGate(map, rng, x, y, w, h, roadDir) {
+  const side = roadDir
+    ? (Math.abs(roadDir.x) > Math.abs(roadDir.y)
+        ? (roadDir.x > 0 ? 'e' : 'w')
+        : (roadDir.y > 0 ? 's' : 'n'))
+    : ['n', 's', 'e', 'w'][Math.floor(rng() * 4)]
+  const open = (cx, cy) => { if (inInterior(map, cx, cy)) map[cy][cx].tile = TILE.FLOOR }
+  if (side === 'n' || side === 's') {
+    const gx = x + 1 + Math.floor(rng() * Math.max(1, w - 3))
+    const gy = side === 'n' ? y : y + h - 1
+    open(gx, gy); open(gx + 1, gy)
+  } else {
+    const gy = y + 1 + Math.floor(rng() * Math.max(1, h - 3))
+    const gx = side === 'w' ? x : x + w - 1
+    open(gx, gy); open(gx, gy + 1)
+  }
+}
+
 export function generateOverworld(width = WORLD_W, height = WORLD_H, { structures = {}, rng = Math.random } = {}) {
   const map = createMap(width, height)
   fillGround(map)
 
   const n = contentCounts(width, height, rng)
   const sites = sampleSites(rng, n.settlements, { w: width, h: height, pad: 12, minSep: 26 })
-  carveRoads(map, sites)
+  const pockets = sampleSites(rng, n.pockets, { w: width, h: height, pad: 14, minSep: 24, avoid: sites, clearOf: 22 })
 
-  // w/h stay 0 until Task 3 stamps the compounds and knows their extent.
-  const rooms = sites.map((s, id) => ({ id, x: s.x, y: s.y, w: 0, h: 0 }))
-  return { map, entitySpawns: [], playerSpawn: { x: width >> 1, y: height >> 1 }, rooms }
+  carveRoads(map, sites)
+  const fragments = []
+  for (const p of pockets) stampPocket(map, rng, p, fragments)
+  // Punch every pocket's gaps only after every pocket's walls are down — see
+  // stampPocket for why interleaving the two lets one pocket reseal another's gap.
+  for (const f of fragments) punchGaps(map, rng, f.x, f.y, f.w, f.h, f.n)
+
+  // Which way the road leaves each site, so its gate faces the road.
+  const neighbour = new Map()
+  for (const { a, b } of roadEdges(sites)) {
+    if (!neighbour.has(a)) neighbour.set(a, b)
+    if (!neighbour.has(b)) neighbour.set(b, a)
+  }
+
+  const entitySpawns = []
+  const rooms = []
+  sites.forEach((site, id) => {
+    const nb = neighbour.has(id) ? sites[neighbour.get(id)] : null
+    const roadDir = nb ? { x: nb.x - site.x, y: nb.y - site.y } : null
+    const { room, spawns } = stampSettlement(map, rng, site, structures, id, roadDir)
+    rooms.push(room)
+    entitySpawns.push(...spawns)
+  })
+
+  return { map, entitySpawns, playerSpawn: { x: width >> 1, y: height >> 1 }, rooms }
 }

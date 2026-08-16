@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { generateOverworld, WORLD_W, WORLD_H, sampleSites, contentCounts, dist, roadEdges } from '../renderer/systems/overworld.js'
 import { isFullyConnected } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
@@ -199,5 +200,117 @@ describe('roadEdges', () => {
   it('returns nothing for fewer than two sites', () => {
     assert.deepEqual(roadEdges([]), [])
     assert.deepEqual(roadEdges([{ x: 5, y: 5 }]), [])
+  })
+})
+
+const STRUCTURES = JSON.parse(readFileSync(new URL('../renderer/data/structures.json', import.meta.url), 'utf8'))
+const withPrefabs = seed => generateOverworld(WORLD_W, WORLD_H, { structures: STRUCTURES, rng: mulberry32(seed) })
+
+describe('generateOverworld — structures', () => {
+  it('gives every settlement a sized compound', () => {
+    for (const s of SEEDS) {
+      for (const r of world(s).rooms) {
+        assert.ok(r.w > 0 && r.h > 0, `seed ${s}: room ${r.id} has no extent`)
+      }
+    }
+  })
+
+  it('walls the full perimeter of each compound bar its gate', () => {
+    for (const s of SEEDS) {
+      const { map, rooms } = world(s)
+      for (const r of rooms) {
+        let wall = 0, open = 0
+        for (let x = r.x; x < r.x + r.w; x++) for (const y of [r.y, r.y + r.h - 1]) {
+          if (map[y]?.[x]?.tile === TILE.WALL) wall++; else open++
+        }
+        for (let y = r.y + 1; y < r.y + r.h - 1; y++) for (const x of [r.x, r.x + r.w - 1]) {
+          if (map[y]?.[x]?.tile === TILE.WALL) wall++; else open++
+        }
+        assert.ok(wall > 0, `seed ${s}: room ${r.id} has no wall at all`)
+        // Exactly one 2-cell gate, so at most 2 perimeter cells are open.
+        assert.ok(open <= 2, `seed ${s}: room ${r.id} has ${open} open perimeter cells`)
+      }
+    }
+  })
+
+  it('faces each compound gate toward its road', () => {
+    // The road is carved to the site centre and the wall stamped across it, so
+    // a gate on the wrong side leaves the road dead-ending into blank wall.
+    //
+    // "Nearest by raw distance" is NOT the same thing as "the site's real MST
+    // neighbour": Prim's assigns each node whichever edge is globally
+    // cheapest during construction, which is not always that node's own
+    // closest point. Confirmed on seed 2, room 3: one other site sits 63 away
+    // and another 66 away, but roadEdges (the exact function the generator
+    // uses to derive roadDir) links room 3 to the 66-away site because that
+    // was the cheaper edge available when its subtree attached. A
+    // nearest-by-distance proxy disagrees with the generator on ties this
+    // close, so recompute the real MST here instead of approximating it.
+    for (const s of SEEDS) {
+      const { map, rooms } = world(s)
+      if (rooms.length < 2) continue
+      const centres = rooms.map(r => ({ x: r.x + (r.w >> 1), y: r.y + (r.h >> 1) }))
+      const neighbour = new Map()
+      for (const { a, b } of roadEdges(centres)) {
+        if (!neighbour.has(a)) neighbour.set(a, b)
+        if (!neighbour.has(b)) neighbour.set(b, a)
+      }
+      for (const r of rooms) {
+        // Compare centre-to-centre, matching how the generator itself derives
+        // roadDir (site-to-site) — mixing the neighbour's centre against this
+        // room's raw corner shifts each axis by roughly half the compound's
+        // width/height, which is enough to flip which axis "dominates" on a
+        // close call and was a second, self-inflicted bug here.
+        const c = centres[r.id]
+        const nearest = centres[neighbour.get(r.id)]
+        const wantE = nearest.x > c.x, wantS = nearest.y > c.y
+        const horizontal = Math.abs(nearest.x - c.x) > Math.abs(nearest.y - c.y)
+        // Find which side the open cells are on.
+        const sides = { n: 0, s: 0, w: 0, e: 0 }
+        for (let x = r.x; x < r.x + r.w; x++) {
+          if (map[r.y]?.[x]?.tile !== TILE.WALL) sides.n++
+          if (map[r.y + r.h - 1]?.[x]?.tile !== TILE.WALL) sides.s++
+        }
+        for (let y = r.y + 1; y < r.y + r.h - 1; y++) {
+          if (map[y]?.[r.x]?.tile !== TILE.WALL) sides.w++
+          if (map[y]?.[r.x + r.w - 1]?.tile !== TILE.WALL) sides.e++
+        }
+        const gateSide = Object.entries(sides).sort((a, b) => b[1] - a[1])[0][0]
+        const expected = horizontal ? (wantE ? 'e' : 'w') : (wantS ? 's' : 'n')
+        assert.equal(gateSide, expected, `seed ${s}: room ${r.id} gate on ${gateSide}, road runs ${expected}`)
+      }
+    }
+  })
+
+  it('stays connected with the real prefabs stamped in', () => {
+    for (const s of SEEDS) assert.ok(isFullyConnected(withPrefabs(s).map), `seed ${s} disconnected`)
+  })
+
+  it('emits the prefabs\' own door and chest spawns', () => {
+    const kinds = new Set()
+    for (const s of SEEDS) for (const sp of withPrefabs(s).entitySpawns) kinds.add(sp.kind)
+    assert.ok(kinds.has('chest') || kinds.has('door'), `got ${[...kinds].join(', ')}`)
+  })
+
+  it('works with no structures at all — an empty courtyard, not a crash', () => {
+    for (const s of SEEDS) {
+      const r = generateOverworld(WORLD_W, WORLD_H, { structures: {}, rng: mulberry32(s) })
+      assert.ok(isFullyConnected(r.map), `seed ${s} disconnected`)
+    }
+  })
+
+  it('carves ruin pockets on every seed', () => {
+    // A pocket is wall built away from any compound. Count wall tiles outside
+    // every compound's bounding box; with no pockets this is ~0.
+    for (const s of SEEDS) {
+      const { map, rooms } = world(s)
+      let outside = 0
+      for (let y = 1; y < WORLD_H - 1; y++) for (let x = 1; x < WORLD_W - 1; x++) {
+        if (map[y][x].tile !== TILE.WALL) continue
+        if (rooms.some(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)) continue
+        outside++
+      }
+      assert.ok(outside > 40, `seed ${s}: only ${outside} ruin wall tiles`)
+    }
   })
 })
