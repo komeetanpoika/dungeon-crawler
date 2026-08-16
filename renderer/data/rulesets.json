@@ -876,163 +876,591 @@
         "tags": [
           "castle.floor"
         ],
-        "weight": 160
+        "weight": 160,
+        "neighbors": {
+          "n": {
+            "tile_0048": 137,
+            "tile_0050": 3,
+            "tile_0030": 2,
+            "tile_0042": 1
+          },
+          "e": {
+            "tile_0048": 139,
+            "tile_0004": 1,
+            "tile_0015": 1,
+            "tile_0016": 1,
+            "tile_0057": 1,
+            "tile_0050": 1,
+            "tile_0042": 3
+          },
+          "s": {
+            "tile_0048": 137,
+            "tile_0004": 1,
+            "tile_0026": 4,
+            "tile_0005": 1
+          },
+          "w": {
+            "tile_0048": 139,
+            "tile_0005": 1,
+            "tile_0013": 1,
+            "tile_0017": 1,
+            "tile_0059": 1,
+            "tile_0050": 1,
+            "tile_0042": 3,
+            "tile_0066": 1
+          }
+        }
       },
       "tile_0004": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0048": 1
+          },
+          "e": {
+            "tile_0026": 1
+          },
+          "s": {
+            "tile_0015": 1
+          },
+          "w": {
+            "tile_0048": 1
+          }
+        }
       },
       "tile_0026": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 8
+        "weight": 8,
+        "neighbors": {
+          "n": {
+            "tile_0048": 4
+          },
+          "e": {
+            "tile_0026": 6,
+            "tile_0005": 2
+          },
+          "s": {
+            "tile_0000": 3,
+            "tile_0012": 1,
+            "tile_0001": 1,
+            "tile_0002": 3
+          },
+          "w": {
+            "tile_0004": 1,
+            "tile_0026": 6
+          }
+        }
       },
       "tile_0005": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 2
+        "weight": 2,
+        "neighbors": {
+          "n": {
+            "tile_0048": 1
+          },
+          "e": {
+            "tile_0048": 1
+          },
+          "s": {
+            "tile_0013": 1,
+            "tile_0017": 1
+          },
+          "w": {
+            "tile_0026": 2
+          }
+        }
       },
       "tile_0015": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0004": 1
+          },
+          "e": {
+            "tile_0000": 1
+          },
+          "s": {
+            "tile_0016": 1
+          },
+          "w": {
+            "tile_0048": 1
+          }
+        }
       },
       "tile_0000": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 3
+        "weight": 3,
+        "neighbors": {
+          "n": {
+            "tile_0026": 3
+          },
+          "e": {
+            "tile_0000": 2,
+            "tile_0012": 1
+          },
+          "s": {
+            "tile_0006": 1,
+            "tile_0002": 2
+          },
+          "w": {
+            "tile_0015": 1,
+            "tile_0000": 2
+          }
+        }
       },
       "tile_0012": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0026": 1
+          },
+          "e": {
+            "tile_0013": 1
+          },
+          "s": {
+            "tile_0006": 1
+          },
+          "w": {
+            "tile_0000": 1
+          }
+        }
       },
       "tile_0013": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0005": 1
+          },
+          "e": {
+            "tile_0048": 1
+          },
+          "s": {
+            "tile_0017": 1
+          },
+          "w": {
+            "tile_0012": 1
+          }
+        }
       },
       "tile_0016": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0015": 1
+          },
+          "e": {
+            "tile_0006": 1
+          },
+          "s": {
+            "tile_0057": 1
+          },
+          "w": {
+            "tile_0048": 1
+          }
+        }
       },
       "tile_0006": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 2
+        "weight": 2,
+        "neighbors": {
+          "n": {
+            "tile_0000": 1,
+            "tile_0012": 1
+          },
+          "e": {
+            "tile_0002": 1,
+            "tile_0017": 1
+          },
+          "s": {
+            "tile_0018": 2
+          },
+          "w": {
+            "tile_0016": 1,
+            "tile_0002": 1
+          }
+        }
       },
       "tile_0002": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 5
+        "weight": 5,
+        "neighbors": {
+          "n": {
+            "tile_0000": 2,
+            "tile_0026": 3
+          },
+          "e": {
+            "tile_0002": 3,
+            "tile_0006": 1,
+            "tile_0017": 1
+          },
+          "s": {
+            "tile_0045": 1,
+            "tile_0028": 2,
+            "tile_0014": 1,
+            "tile_0019": 1
+          },
+          "w": {
+            "tile_0006": 1,
+            "tile_0002": 3,
+            "tile_0001": 1
+          }
+        }
       },
       "tile_0017": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 2
+        "weight": 2,
+        "neighbors": {
+          "n": {
+            "tile_0013": 1,
+            "tile_0005": 1
+          },
+          "e": {
+            "tile_0048": 1
+          },
+          "s": {
+            "tile_0059": 2
+          },
+          "w": {
+            "tile_0006": 1,
+            "tile_0002": 1
+          }
+        }
       },
       "tile_0057": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0016": 1
+          },
+          "e": {
+            "tile_0018": 1
+          },
+          "s": {
+            "tile_0050": 1
+          },
+          "w": {
+            "tile_0048": 1
+          }
+        }
       },
       "tile_0018": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 2
+        "weight": 2,
+        "neighbors": {
+          "n": {
+            "tile_0006": 2
+          },
+          "e": {
+            "tile_0045": 1,
+            "tile_0059": 1
+          },
+          "s": {
+            "tile_0030": 2
+          },
+          "w": {
+            "tile_0057": 1,
+            "tile_0028": 1
+          }
+        }
       },
       "tile_0045": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0002": 1
+          },
+          "e": {
+            "tile_0028": 1
+          },
+          "s": {
+            "tile_0030": 1
+          },
+          "w": {
+            "tile_0018": 1
+          }
+        }
       },
       "tile_0028": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 2
+        "weight": 2,
+        "neighbors": {
+          "n": {
+            "tile_0002": 2
+          },
+          "e": {
+            "tile_0018": 1,
+            "tile_0014": 1
+          },
+          "s": {
+            "tile_0050": 2
+          },
+          "w": {
+            "tile_0045": 1
+          }
+        }
       },
       "tile_0059": {
         "tags": [
           "castle.wall"
         ],
-        "weight": 2
+        "weight": 2,
+        "neighbors": {
+          "n": {
+            "tile_0017": 2
+          },
+          "e": {
+            "tile_0048": 1
+          },
+          "s": {
+            "tile_0050": 2
+          },
+          "w": {
+            "tile_0018": 1,
+            "tile_0019": 1
+          }
+        }
       },
       "tile_0050": {
         "tags": [
           "castle.floor"
         ],
-        "weight": 6
+        "weight": 6,
+        "neighbors": {
+          "n": {
+            "tile_0057": 1,
+            "tile_0028": 2,
+            "tile_0059": 2,
+            "tile_0014": 1
+          },
+          "e": {
+            "tile_0030": 2,
+            "tile_0048": 1,
+            "tile_0050": 1,
+            "tile_0031": 1
+          },
+          "s": {
+            "tile_0048": 3
+          },
+          "w": {
+            "tile_0048": 1,
+            "tile_0030": 2,
+            "tile_0050": 1,
+            "tile_0031": 1
+          }
+        }
       },
       "tile_0030": {
         "tags": [
           "castle.floor"
         ],
-        "weight": 3
+        "weight": 3,
+        "neighbors": {
+          "n": {
+            "tile_0018": 2,
+            "tile_0045": 1
+          },
+          "e": {
+            "tile_0030": 1,
+            "tile_0050": 2
+          },
+          "s": {
+            "tile_0048": 2,
+            "tile_0042": 1
+          },
+          "w": {
+            "tile_0050": 2,
+            "tile_0030": 1
+          }
+        }
       },
       "tile_0042": {
         "tags": [
           "castle.floor"
         ],
-        "weight": 5
+        "weight": 5,
+        "neighbors": {
+          "n": {
+            "tile_0030": 1,
+            "tile_0042": 3
+          },
+          "e": {
+            "tile_0048": 3
+          },
+          "s": {
+            "tile_0042": 3,
+            "tile_0048": 1
+          },
+          "w": {
+            "tile_0048": 3
+          }
+        }
       },
       "tile_0001": {
         "tags": [
           "overlay.castle"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0026": 1
+          },
+          "e": {
+            "tile_0002": 1
+          },
+          "s": {},
+          "w": {}
+        }
       },
       "tile_0014": {
         "tags": [
           "overlay.castle"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0002": 1
+          },
+          "e": {
+            "tile_0019": 1
+          },
+          "s": {
+            "tile_0050": 1
+          },
+          "w": {
+            "tile_0028": 1
+          }
+        }
       },
       "tile_0019": {
         "tags": [
           "overlay.castle"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0002": 1
+          },
+          "e": {
+            "tile_0059": 1
+          },
+          "s": {
+            "tile_0031": 1
+          },
+          "w": {
+            "tile_0014": 1
+          }
+        }
       },
       "tile_0031": {
         "tags": [
           "overlay.castle"
         ],
-        "weight": 1
+        "weight": 1,
+        "neighbors": {
+          "n": {
+            "tile_0019": 1
+          },
+          "e": {
+            "tile_0050": 1
+          },
+          "s": {},
+          "w": {
+            "tile_0050": 1
+          }
+        }
       },
       "tile_0064": {
         "tags": [
           "overlay.castle"
         ],
-        "weight": 3
+        "weight": 3,
+        "neighbors": {
+          "n": {},
+          "e": {
+            "tile_0065": 2
+          },
+          "s": {
+            "tile_0066": 3
+          },
+          "w": {
+            "tile_0065": 2
+          }
+        }
       },
       "tile_0065": {
         "tags": [
           "overlay.castle"
         ],
-        "weight": 2
+        "weight": 2,
+        "neighbors": {
+          "n": {},
+          "e": {
+            "tile_0064": 2
+          },
+          "s": {
+            "tile_0066": 2
+          },
+          "w": {
+            "tile_0064": 2
+          }
+        }
       },
       "tile_0066": {
         "tags": [
           "overlay.castle"
         ],
-        "weight": 5
+        "weight": 5,
+        "neighbors": {
+          "n": {
+            "tile_0064": 3,
+            "tile_0065": 2
+          },
+          "e": {
+            "tile_0066": 4,
+            "tile_0048": 1
+          },
+          "s": {},
+          "w": {
+            "tile_0066": 4
+          }
+        }
       }
     },
     "tags": {
