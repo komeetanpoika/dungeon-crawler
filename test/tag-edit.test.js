@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { memberTiles, assignTileToTag, removeTileFromTag, brushStatus }
+import { memberTiles, assignTileToTag, removeTileFromTag, brushStatus, medianMemberWeight, blankTag }
   from '../tools/tile-editor/tag-edit.js'
 
 function fixture() {
@@ -74,6 +74,28 @@ describe('assignTileToTag', () => {
     assert.deepEqual(rs.tiles.a, { tags: ['floor.x'], weight: 1 })
     assert.equal(rs.tags['floor.x'].role, 'floor')
   })
+  it('collapses a multi-tag tile to the assigned tag, reporting only the first', () => {
+    const rs = fixture()
+    rs.tiles.a.tags = ['floor.moss', 'floor.extra']
+    assert.equal(assignTileToTag(rs, 'a', 'wall.brick'), 'floor.moss')
+    assert.deepEqual(rs.tiles.a.tags, ['wall.brick'])
+  })
+  it('creates a tag whose name collides with an Object.prototype key', () => {
+    const rs = fixture()
+    assignTileToTag(rs, 'a', 'constructor')
+    assert.equal(rs.tags.constructor.role, 'floor')
+    assert.deepEqual(rs.tags.constructor.allow, ['*'])
+  })
+  it('seeds a brand-new tile at the given weight', () => {
+    const rs = fixture()
+    assignTileToTag(rs, 'fresh', 'floor.moss', 'floor', 7)
+    assert.equal(rs.tiles.fresh.weight, 7)
+  })
+  it('ignores the seed weight for a tile the ruleset already knows', () => {
+    const rs = fixture()
+    assignTileToTag(rs, 'a', 'wall.brick', 'wall', 99)
+    assert.equal(rs.tiles.a.weight, 4)
+  })
 })
 
 describe('removeTileFromTag', () => {
@@ -113,5 +135,24 @@ describe('brushStatus', () => {
   })
   it('tolerates a missing ruleset', () => {
     assert.equal(brushStatus(undefined, 'a').untagged, true)
+  })
+})
+
+describe('medianMemberWeight', () => {
+  it('returns the middle weight for an odd number of members', () => {
+    const rs = fixture()
+    rs.tiles.d = { tags: ['floor.moss'], weight: 10 }
+    assert.equal(medianMemberWeight(rs, 'floor.moss'), 4)   // 1, 4, 10
+  })
+  it('averages the middle pair for an even number of members', () => {
+    assert.equal(medianMemberWeight(fixture(), 'floor.moss'), 2.5)   // 1, 4
+  })
+  it('returns 1 for a tag with no members', () => {
+    assert.equal(medianMemberWeight(fixture(), 'floor.empty'), 1)
+  })
+  it('treats a missing weight as 1', () => {
+    const rs = fixture()
+    rs.tiles.b = { tags: ['floor.moss'] }
+    assert.equal(medianMemberWeight(rs, 'floor.moss'), 2.5)   // 1, 4
   })
 })
