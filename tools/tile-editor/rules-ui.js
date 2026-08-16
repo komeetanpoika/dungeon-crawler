@@ -137,9 +137,11 @@ export function initRulesUI(state, { pickTile } = {}) {
       if (!pickTile) return
       assigning = null                       // the two modes are mutually exclusive
       const tag = selectedTag                // capture: the list stays clickable while picking
-      const seed = medianMemberWeight(rs, tag)
       pickTile(`pick a tile for ${tag}`, (name) => {
-        assign(rs, name, tag, seed)
+        // The ruleset can be switched and the tag deleted while the strip waits.
+        if (activeRs() !== rs || !rs.tags[tag]) return
+        assign(rs, name, tag, medianMemberWeight(rs, tag))
+        selectedTag = tag                    // show the tag that was actually written
         render()
       })
     })

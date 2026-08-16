@@ -216,8 +216,16 @@ document.getElementById('save-tile').addEventListener('click', async () => {
 })
 
 initRulesUI(state, {
-  pickTile: (prompt, handler) => library?.setPickMode(handler, prompt),
+  pickTile: (prompt, handler) => {
+    // buildLibrary resolves after ~139 IPC reads; the Rules tab isn't gated on it.
+    if (!library) { toast('Library still loading — try again in a moment.', 'info'); return }
+    if (library.picking) { library.setPickMode(null); return }   // a second click cancels
+    library.setPickMode(handler, prompt)
+  },
 })
+
+// A pick belongs to the ruleset it was started in — never let it land in another.
+document.addEventListener('ruleset-changed', () => library?.setPickMode(null))
 
 saveRulesBtn.addEventListener('click', async () => {
   try {

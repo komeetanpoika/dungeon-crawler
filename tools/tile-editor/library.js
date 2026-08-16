@@ -28,6 +28,9 @@ export async function buildLibrary(names, { onPick }) {
     img.src = src
     img.title = name
     img.dataset.name = name
+    // Respect an active filter — Save tile can append while one is typed in.
+    const q = filter.value.toLowerCase()
+    if (q && !name.toLowerCase().includes(q)) img.style.display = 'none'
     img.addEventListener('click', () => fire(name))
     container.appendChild(img)
     items.push({ name, img })
@@ -49,5 +52,6 @@ export async function buildLibrary(names, { onPick }) {
       addThumb(name, dataURL)
     },
     setPickMode,
+    get picking() { return !!pick },
   }
 }
