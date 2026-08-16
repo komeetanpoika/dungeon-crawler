@@ -15,7 +15,7 @@ import {
 import { textPrompt } from './text-prompt.js'
 import { toast } from './toast.js'
 import { setProperty, exportStructure } from './structure-lib.js'
-import { brushStatus } from './tag-edit.js'
+import { brushStatus, bestCoveringRuleset } from './tag-edit.js'
 
 // Merge a derived fragment into a ruleset: overwrite tile weights/tags and each
 // painted tag's role + adjacency (+ overlays on base tags), but preserve any
@@ -458,14 +458,29 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     renderSample(previewCanvas, rs, images)
   }
 
+  // A derive that reports nothing in the same dim grey as a success reads as a
+  // dead button. Failures go amber; the next success clears it.
+  function fail(msg) { reportEl.style.color = '#d9a441'; reportEl.textContent = msg }
+  function ok(msg)   { reportEl.style.color = '#9a9';    reportEl.textContent = msg }
+
   document.getElementById('derive-btn').addEventListener('click', async () => {
     persistNow()
     const rs = state.rulesets[state.active]
-    if (!rs) { reportEl.textContent = 'Select or create a ruleset first (top bar).'; return }
+    if (!rs) { fail('Select or create a ruleset first (top bar).'); return }
     const frag = deriveRules(grid.base, grid.overlay, tileMetaFromRuleset(rs))
     if (Object.keys(frag.tiles).length === 0) {
-      reportEl.textContent = 'Nothing derived — paint some tagged tiles first.' +
-        (frag.skipped ? ` (${frag.skipped} untagged cells skipped)` : '')
+      // Say which ruleset came up empty and which one actually knows these
+      // tiles. A painting stored under one ruleset but derived under another
+      // yields nothing, and the old "paint some tagged tiles first" blamed the
+      // user for the one thing they had already done.
+      const painted = new Set([...grid.base.flat(), ...grid.overlay.flat()].filter(Boolean))
+      const best = bestCoveringRuleset(state.rulesets, painted, state.active)
+      fail(painted.size === 0
+        ? 'Nothing derived — the canvas is empty.'
+        : `Nothing derived — none of the ${painted.size} painted tiles are tagged in "${state.active}".` +
+          (best
+            ? ` ${best.count} of them are tagged in "${best.name}" — switch ruleset in the header.`
+            : ' Tag them in the Rules tab.'))
       return
     }
     mergeFragment(rs, frag)
@@ -474,12 +489,11 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       document.dispatchEvent(new Event('ruleset-changed'))
       const adj = Object.values(frag.tags).reduce((s, t) =>
         s + ['n', 'e', 's', 'w'].reduce((a, d) => a + Object.keys(t.adjacency[d]).length, 0), 0)
-      reportEl.textContent =
-        `Derived ${Object.keys(frag.tiles).length} tiles, ${Object.keys(frag.tags).length} tags, ${adj} adjacencies` +
-        (frag.skipped ? ` — ${frag.skipped} untagged cells skipped` : '')
+      ok(`Derived ${Object.keys(frag.tiles).length} tiles, ${Object.keys(frag.tags).length} tags, ${adj} adjacencies` +
+        (frag.skipped ? ` — ${frag.skipped} untagged cells skipped` : ''))
       refreshPreview()
     } catch (err) {
-      reportEl.textContent = `Save failed: ${err.message}`
+      fail(`Save failed: ${err.message}`)
     }
   })
   document.getElementById('paint-reroll').addEventListener('click', refreshPreview)

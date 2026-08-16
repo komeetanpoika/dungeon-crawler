@@ -66,6 +66,30 @@ export function removeTileFromTag(ruleset, tileName, tag) {
   return true
 }
 
+// How many of `tileNames` this ruleset has tagged.
+export function taggedCount(ruleset, tileNames) {
+  let n = 0
+  for (const name of tileNames) if (ruleset?.tiles?.[name]?.tags?.length) n++
+  return n
+}
+
+// The ruleset other than `activeName` that recognises the most of `tileNames`,
+// as { name, count }, or null when no other ruleset recognises any.
+//
+// This exists to explain a derive that found nothing. A painting made while one
+// ruleset was active yields zero tiles under another, because deriveRules only
+// sees tiles the ACTIVE ruleset has tagged — and "paint some tagged tiles first"
+// is then exactly the wrong advice, since the tiles are tagged, elsewhere.
+export function bestCoveringRuleset(rulesets, tileNames, activeName) {
+  let best = null
+  for (const [name, set] of Object.entries(rulesets ?? {})) {
+    if (name === activeName) continue
+    const count = taggedCount(set, tileNames)
+    if (count > 0 && (!best || count > best.count)) best = { name, count }
+  }
+  return best
+}
+
 // One-line read-out for the Build tab's brush.
 export function brushStatus(ruleset, tileName) {
   if (!tileName) return { tile: null, tag: null, untagged: false, text: 'no brush selected' }

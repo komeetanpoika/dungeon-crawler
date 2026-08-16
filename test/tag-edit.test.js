@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { memberTiles, assignTileToTag, removeTileFromTag, brushStatus, medianMemberWeight, blankTag }
+import { memberTiles, assignTileToTag, removeTileFromTag, brushStatus, medianMemberWeight, blankTag,
+  taggedCount, bestCoveringRuleset }
   from '../tools/tile-editor/tag-edit.js'
 
 function fixture() {
@@ -168,5 +169,38 @@ describe('blankTag', () => {
       role: 'wall', allow: ['*'], forbid: [], directional: {},
       adjacency: { n: {}, e: {}, s: {}, w: {} },
     })
+  })
+})
+
+// Painted-vs-active coverage. A painting made under one ruleset derives to
+// nothing under another, and the old message blamed the user for not tagging.
+describe('taggedCount', () => {
+  const rs = { tiles: { a: { tags: ['x'] }, b: { tags: [] }, c: {} }, tags: { x: { role: 'floor' } } }
+  it('counts only tiles the ruleset has tagged', () => {
+    assert.equal(taggedCount(rs, new Set(['a', 'b', 'c', 'ghost'])), 1)
+  })
+  it('returns 0 for an empty name set', () => assert.equal(taggedCount(rs, new Set()), 0))
+  it('tolerates a missing ruleset', () => assert.equal(taggedCount(undefined, new Set(['a'])), 0))
+})
+
+describe('bestCoveringRuleset', () => {
+  const rulesets = {
+    catacombs: { tiles: { moss: { tags: ['floor.moss'] } } },
+    outdoors:  { tiles: { t1: { tags: ['a'] }, t2: { tags: ['b'] } } },
+    castle:    { tiles: { t1: { tags: ['a'] }, t2: { tags: ['b'] }, t3: { tags: ['c'] } } },
+  }
+  const painted = new Set(['t1', 't2', 't3'])
+
+  it('names the ruleset recognising the most painted tiles', () => {
+    assert.deepEqual(bestCoveringRuleset(rulesets, painted, 'catacombs'), { name: 'castle', count: 3 })
+  })
+  it('never suggests the ruleset already active', () => {
+    assert.deepEqual(bestCoveringRuleset(rulesets, painted, 'castle'), { name: 'outdoors', count: 2 })
+  })
+  it('returns null when no other ruleset recognises anything', () => {
+    assert.equal(bestCoveringRuleset({ only: rulesets.castle }, new Set(['zz']), 'only'), null)
+  })
+  it('tolerates a missing rulesets object', () => {
+    assert.equal(bestCoveringRuleset(undefined, painted, 'x'), null)
   })
 })
