@@ -7,8 +7,10 @@
 // hand-edited rulesets.json survives being viewed and edited tag-by-tag, but
 // a reassignment collapses it to one tag by design.
 //
-// `ruleset` must be an object; the mutators do not tolerate undefined. Every
-// caller already guards on an active ruleset before reaching them.
+// `assignTileToTag` requires `ruleset` to be an object — it writes containers
+// into it. The readers (`memberTiles`, `brushStatus`) and `removeTileFromTag`
+// all tolerate undefined. Every planned caller guards on an active ruleset
+// before reaching any of them.
 
 // Tiles carrying `tag`, in ruleset insertion order: [[name, def], ...].
 export function memberTiles(ruleset, tag) {
@@ -38,7 +40,8 @@ export function blankTag(role) {
 
 // Put `tileName` in `tag`. Keeps an existing weight (and any derived
 // `neighbors` table — the next ⚙ Derive rules regenerates those wholesale);
-// seeds a brand-new tile at `weight`, which defaults to 1. `tag` is created
+// seeds any tile that has no weight of its own at `weight`, which defaults to 1
+// — a brand-new one, or a hand-edited entry missing the key. `tag` is created
 // only if missing, so a hand-authored allow/forbid/directional on an existing
 // tag survives. Returns the tag the tile came from, or null if it was untagged
 // or already there — the caller uses this to report a move.

@@ -151,8 +151,22 @@ describe('medianMemberWeight', () => {
     assert.equal(medianMemberWeight(fixture(), 'floor.empty'), 1)
   })
   it('treats a missing weight as 1', () => {
+    // Without the ?? 1 fallback, this would be NaN. Distinct from the even-count
+    // case to prove the fallback is wired. (Odd length [1, 1, 4] vs even [1, 4].)
     const rs = fixture()
     rs.tiles.b = { tags: ['floor.moss'] }
-    assert.equal(medianMemberWeight(rs, 'floor.moss'), 2.5)   // 1, 4
+    rs.tiles.d = { tags: ['floor.moss'] }
+    assert.equal(medianMemberWeight(rs, 'floor.moss'), 1)   // 1, 1, 4
+  })
+})
+
+describe('blankTag', () => {
+  it('matches the shape deriveRules emits for a fresh tag', () => {
+    // Keep in step with tools/tile-editor/derive-rules.js — an editor-made tag
+    // and a derived one must be the same shape or the next derive surprises you.
+    assert.deepEqual(blankTag('wall'), {
+      role: 'wall', allow: ['*'], forbid: [], directional: {},
+      adjacency: { n: {}, e: {}, s: {}, w: {} },
+    })
   })
 })
