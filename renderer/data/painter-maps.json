@@ -1,6 +1,6 @@
 {
   "catacombs": {
-    "active": "castle-demo-1781607145194",
+    "active": "main",
     "maps": {
       "main": {
         "w": 16,
@@ -773,1085 +773,6 @@
             null,
             null,
             null
-          ]
-        ]
-      },
-      "castle-demo-1781607145194": {
-        "w": 16,
-        "h": 12,
-        "base": [
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0004",
-            "tile_0026",
-            "tile_0026",
-            "tile_0026",
-            "tile_0026",
-            "tile_0005",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0015",
-            "tile_0000",
-            "tile_0000",
-            "tile_0000",
-            "tile_0012",
-            "tile_0013",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0016",
-            "tile_0006",
-            "tile_0002",
-            "tile_0002",
-            "tile_0006",
-            "tile_0017",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0057",
-            "tile_0018",
-            "tile_0045",
-            "tile_0028",
-            "tile_0018",
-            "tile_0059",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0050",
-            "tile_0030",
-            "tile_0030",
-            "tile_0050",
-            "tile_0030",
-            "tile_0050",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0042",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0042",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0042",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ],
-          [
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048",
-            "tile_0048"
-          ]
-        ],
-        "overlay": [
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "tile_0026",
-            "tile_0026",
-            "tile_0026",
-            "tile_0026",
-            "tile_0005",
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "tile_0001",
-            "tile_0002",
-            "tile_0002",
-            "tile_0002",
-            "tile_0017",
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "tile_0028",
-            "tile_0014",
-            "tile_0019",
-            "tile_0059",
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "tile_0050",
-            "tile_0050",
-            "tile_0031",
-            "tile_0050",
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "tile_0064",
-            "tile_0065",
-            "tile_0064",
-            "tile_0065",
-            "tile_0064",
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "tile_0066",
-            "tile_0066",
-            "tile_0066",
-            "tile_0066",
-            "tile_0066",
-            "tile_0048",
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            "tile_0042",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-          ],
-          [
-            null,
-            null,
-            null,
-            null,
-            null,
-            "tile_0042",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-          ]
-        ],
-        "props": [
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "interaction": {
-                "type": "chest"
-              },
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "structure": true,
-              "collision": "wall"
-            },
-            {
-              "collision": "wall",
-              "structure": true
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            null,
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "interaction": {
-                "type": "door"
-              },
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "wall"
-            },
-            {
-              "collision": "wall"
-            },
-            {
-              "collision": "wall"
-            },
-            {
-              "collision": "wall"
-            },
-            {
-              "collision": "wall"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
-          ],
-          [
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            },
-            {
-              "collision": "walkable"
-            }
           ]
         ]
       }
@@ -5988,6 +4909,1090 @@
             {
               "collision": "walkable"
             },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ]
+        ]
+      }
+    }
+  },
+  "castle": {
+    "active": "castle-demo-1781607145194",
+    "maps": {
+      "castle-demo-1781607145194": {
+        "w": 16,
+        "h": 12,
+        "base": [
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0004",
+            "tile_0026",
+            "tile_0026",
+            "tile_0026",
+            "tile_0026",
+            "tile_0005",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0015",
+            "tile_0000",
+            "tile_0000",
+            "tile_0000",
+            "tile_0012",
+            "tile_0013",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0016",
+            "tile_0006",
+            "tile_0002",
+            "tile_0002",
+            "tile_0006",
+            "tile_0017",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0057",
+            "tile_0018",
+            "tile_0045",
+            "tile_0028",
+            "tile_0018",
+            "tile_0059",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0050",
+            "tile_0030",
+            "tile_0030",
+            "tile_0050",
+            "tile_0030",
+            "tile_0050",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0042",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0042",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0042",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ],
+          [
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048",
+            "tile_0048"
+          ]
+        ],
+        "overlay": [
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tile_0026",
+            "tile_0026",
+            "tile_0026",
+            "tile_0026",
+            "tile_0005",
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tile_0001",
+            "tile_0002",
+            "tile_0002",
+            "tile_0002",
+            "tile_0017",
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tile_0028",
+            "tile_0014",
+            "tile_0019",
+            "tile_0059",
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tile_0050",
+            "tile_0050",
+            "tile_0031",
+            "tile_0050",
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tile_0064",
+            "tile_0065",
+            "tile_0064",
+            "tile_0065",
+            "tile_0064",
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tile_0066",
+            "tile_0066",
+            "tile_0066",
+            "tile_0066",
+            "tile_0066",
+            "tile_0048",
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tile_0042",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tile_0042",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "props": [
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "interaction": {
+                "type": "chest"
+              },
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "structure": true,
+              "collision": "wall"
+            },
+            {
+              "collision": "wall",
+              "structure": true
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            null,
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "interaction": {
+                "type": "door"
+              },
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "wall"
+            },
+            {
+              "collision": "wall"
+            },
+            {
+              "collision": "wall"
+            },
+            {
+              "collision": "wall"
+            },
+            {
+              "collision": "wall"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            },
+            {
+              "collision": "walkable"
+            }
+          ],
+          [
             {
               "collision": "walkable"
             },
