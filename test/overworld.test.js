@@ -313,4 +313,16 @@ describe('generateOverworld — structures', () => {
       assert.ok(outside > 40, `seed ${s}: only ${outside} ruin wall tiles`)
     }
   })
+
+  it('is connected across a wide seed sweep, with and without prefabs', () => {
+    // 12 seeds missed a 1.3% failure rate — seeds 10 and 115 shipped sealed
+    // ruin interiors. This is the invariant the whole design rests on, so it
+    // gets a real sweep rather than the standard list.
+    for (let s = 1; s <= 120; s++) {
+      assert.ok(isFullyConnected(generateOverworld(WORLD_W, WORLD_H, { structures: STRUCTURES, rng: mulberry32(s) }).map),
+        `seed ${s} disconnected with prefabs`)
+      assert.ok(isFullyConnected(generateOverworld(WORLD_W, WORLD_H, { structures: {}, rng: mulberry32(s) }).map),
+        `seed ${s} disconnected without prefabs`)
+    }
+  })
 })

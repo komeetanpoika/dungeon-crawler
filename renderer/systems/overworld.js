@@ -139,8 +139,13 @@ function outwardNormal(x, y, w, h, cx, cy) {
 // open ground, because by the time pockets punch their gaps every pocket's
 // walls are already on the map (see generateOverworld's two-pass ordering).
 //
-// Falls back to the corner-excluded-but-unchecked list if every neighbour is
-// blocked, so a fragment still gets what gaps it can rather than none at all.
+// With footprintClear gating every stamp (see stampPocket), a stamped
+// fragment always sits in clear ground, so `viable` is never empty here.
+// Falling back to an unchecked cell would punch a gap into another wall — an
+// opening onto nothing — which is exactly how two seeds in an earlier 150-seed
+// sweep ended up with sealed interiors. No fallback: if this ever leaves a
+// fragment with no gaps, the connectivity test must catch it loudly instead
+// of the world quietly shipping broken.
 function punchGaps(map, rng, x, y, w, h, n) {
   const isCorner = (cx, cy) => (cx === x || cx === x + w - 1) && (cy === y || cy === y + h - 1)
   const mid = perimeter(x, y, w, h).filter(([cx, cy]) => inInterior(map, cx, cy) && !isCorner(cx, cy))
@@ -148,31 +153,48 @@ function punchGaps(map, rng, x, y, w, h, n) {
     const [dx, dy] = outwardNormal(x, y, w, h, cx, cy)
     return map[cy + dy]?.[cx + dx]?.tile !== TILE.WALL
   })
-  const per = viable.length ? viable : mid
+  const per = viable
   for (let k = 0; k < n && per.length; k++) {
     const [gx, gy] = per.splice(Math.floor(rng() * per.length), 1)[0]
     map[gy][gx].tile = TILE.FLOOR
   }
 }
 
+// True when the rect and a one-cell margin around it contain no wall at all.
+// A fragment stamped into clear ground can always be opened: every mid-edge
+// cell has an open outward neighbour. Fragments that would touch a compound,
+// the border, or another fragment are skipped instead — that is what keeps
+// punchGaps' viable list non-empty and the world connected by construction.
+// (inInterior returning false for an out-of-bounds margin means a fragment
+// near the world edge is skipped rather than clamped.)
+function footprintClear(map, x, y, w, h) {
+  for (let cy = y - 1; cy < y + h + 1; cy++) {
+    for (let cx = x - 1; cx < x + w + 1; cx++) {
+      if (!inInterior(map, cx, cy)) return false
+      if (map[cy][cx].tile === TILE.WALL) return false
+    }
+  }
+  return true
+}
+
 // A pocket of broken street grid: fragments with gaps you walk through.
 //
 // Draws the wall only; the gap is punched in a later pass (see
-// generateOverworld) once every pocket's fragments are on the map. Pockets are
-// independently-positioned grids, and two of them can interleave close enough
-// that a gap punched right after this fragment's own wall opens straight into
-// a cell a DIFFERENT, not-yet-stamped pocket seals solid moments later —
-// sealing a fully enclosed micro-room. Deferring the punch until every wall is
-// final means a gap's exterior neighbour can never be overwritten afterward.
-// `fragments` collects {x, y, w, h, n} for the deferred pass; `n` is drawn
-// here so the rng sequence still runs one fragment at a time, wall then gap
-// count, exactly as before.
+// generateOverworld) once every pocket's fragments are on the map. Compounds
+// are stamped before pockets, and footprintClear skips any fragment that
+// would touch existing wall (a compound, the border, or another fragment), so
+// by the time a fragment's wall goes down its surroundings are guaranteed
+// clear — no later stamp can touch it and reseal a gap. `fragments` collects
+// {x, y, w, h, n} for the deferred gap-punching pass; `n` is drawn here so
+// the rng sequence still runs one fragment at a time, wall then gap count,
+// exactly as before.
 function stampPocket(map, rng, p, fragments) {
   const pw = 16 + Math.floor(rng() * 10), ph = 11 + Math.floor(rng() * 7)
   for (let by = p.y - (ph >> 1); by < p.y + (ph >> 1); by += 5) {
     for (let bx = p.x - (pw >> 1); bx < p.x + (pw >> 1); bx += 7) {
       if (rng() < 0.25) continue
       const fw = 4 + Math.floor(rng() * 3), fh = 3 + Math.floor(rng() * 2)
+      if (!footprintClear(map, bx, by, fw, fh)) continue
       hollowWall(map, bx, by, fw, fh)
       fragments.push({ x: bx, y: by, w: fw, h: fh, n: 2 + Math.floor(rng() * 2) })
     }
@@ -230,12 +252,12 @@ export function generateOverworld(width = WORLD_W, height = WORLD_H, { structure
   const pockets = sampleSites(rng, n.pockets, { w: width, h: height, pad: 14, minSep: 24, avoid: sites, clearOf: 22 })
 
   carveRoads(map, sites)
-  const fragments = []
-  for (const p of pockets) stampPocket(map, rng, p, fragments)
-  // Punch every pocket's gaps only after every pocket's walls are down — see
-  // stampPocket for why interleaving the two lets one pocket reseal another's gap.
-  for (const f of fragments) punchGaps(map, rng, f.x, f.y, f.w, f.h, f.n)
 
+  // Compounds are stamped before pockets so footprintClear (see stampPocket)
+  // sees every compound wall already on the map — a pocket fragment that would
+  // touch a compound is skipped rather than punching a gap that a compound
+  // wall then seals.
+  //
   // Which way the road leaves each site, so its gate faces the road.
   const neighbour = new Map()
   for (const { a, b } of roadEdges(sites)) {
@@ -252,6 +274,12 @@ export function generateOverworld(width = WORLD_W, height = WORLD_H, { structure
     rooms.push(room)
     entitySpawns.push(...spawns)
   })
+
+  const fragments = []
+  for (const p of pockets) stampPocket(map, rng, p, fragments)
+  // Punch every pocket's gaps only after every pocket's walls are down — see
+  // stampPocket for why interleaving the two lets one pocket reseal another's gap.
+  for (const f of fragments) punchGaps(map, rng, f.x, f.y, f.w, f.h, f.n)
 
   return { map, entitySpawns, playerSpawn: { x: width >> 1, y: height >> 1 }, rooms }
 }
