@@ -2,7 +2,7 @@
 //   1 clearings — noise-density woods with carved clearings, village, paths
 //   2 river     — a river splits dense woods; bridges, lumber camp
 //   3 autumn    — autumn highland: rock outcrops, stone circle, hermit hut
-import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees } from './lib.mjs'
+import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,20 +26,12 @@ function grassBase(b, rng) {
     b.g(x, y, rng() < 0.95 ? 'ow_grass_0' : pick(rng, ['ow_grass_1', 'ow_grass_2']))
 }
 
-// A 2x2-footprint house: roof row above wall row. Blocks all four cells.
-function stampHouse(b, rng, x, y, kind = 'red') {
-  const roof = kind === 'red' ? ['ow_roof_red_l', 'ow_roof_red_r'] : ['ow_roof_gray_l', 'ow_roof_gray_r']
-  b.p(x, y, roof[0]); b.p(x + 1, y, roof[1])
-  const wall = kind === 'red' ? 'ow_house_wall' : 'ow_house_wall_brown'
-  b.p(x, y + 1, wall); b.p(x + 1, y + 1, kind === 'red' ? 'ow_house_door' : 'ow_house_door_2')
-}
-
 function stampVillage(b, rng, cx, cy) {
   // clear a plaza and lay cobble
   for (let y = -6; y <= 6; y++) for (let x = -8; x <= 8; x++)
     if (b.in(cx + x, cy + y)) { b.clearProp(cx + x, cy + y); if (x * x + y * y < 14) b.g(cx + x, cy + y, 'ow_cobble_green') }
   const spots = [[-6, -4], [3, -5], [-6, 3], [4, 3]]
-  for (const [dx, dy] of spots) stampHouse(b, rng, cx + dx, cy + dy, rng() < 0.5 ? 'red' : 'brown')
+  for (const [dx, dy] of spots) stampHouse3(b, rng, cx + dx, cy + dy, rng() < 0.5 ? 'red' : 'brown')
   b.p(cx, cy - 1, 'ow_well_top'); b.p(cx, cy, 'ow_well')
   b.p(cx - 2, cy + 1, 'ow_sign', { walkable: false })
   // fenced yard — l/m/r so the run has finished ends
@@ -150,7 +142,7 @@ function river() {
   // lumber camp west of river
   const camp = { x: 30, y: 40 }
   for (let y = -5; y <= 5; y++) for (let x = -7; x <= 7; x++) b.clearProp(camp.x + x, camp.y + y)
-  stampHouse(b, rng, camp.x - 4, camp.y - 3, 'brown')
+  stampHouse3(b, rng, camp.x - 4, camp.y - 3, 'brown')
   b.p(camp.x + 2, camp.y - 2, 'ow_pier_log', { walkable: false })
   b.p(camp.x + 3, camp.y - 2, 'ow_pier_log', { walkable: false })
   b.p(camp.x + 2, camp.y, 'ow_deadtree_0', { walkable: false })
@@ -199,10 +191,10 @@ function autumn() {
   // hermit hut in the south-west woods
   const hut = { x: 22, y: 58 }
   for (let y = -4; y <= 4; y++) for (let x = -5; x <= 5; x++) b.clearProp(hut.x + x, hut.y + y)
-  stampHouse(b, rng, hut.x, hut.y, 'brown')
+  stampHouse3(b, rng, hut.x, hut.y, 'brown')
   b.p(hut.x - 2, hut.y + 2, 'ow_beehive')
   b.p(hut.x + 3, hut.y + 1, 'ow_sign', { walkable: false })
-  b.poi('village', hut.x + 1, hut.y, 'hermit hut')
+  b.poi('village', hut.x + 1, hut.y + 2, 'hermit hut')
   // two mine mouths in the high rocks
   for (const [i, m] of [{ x: 102, y: 12 }, { x: 74, y: 8 }].entries()) {
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 2; dx++) b.clearProp(m.x + dx, m.y + dy)

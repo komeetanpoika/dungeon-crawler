@@ -62,7 +62,7 @@ export const TT = {
   ow_cobble_green: 43,
   // house walls: l/m/r edged sets per material, doors matched to material
   ow_house_wall_l: 48, ow_house_wall: 49, ow_house_wall_r: 50, ow_house_wall_win: 51,
-  ow_house_door: 85, ow_house_door_2: 89, ow_house_door_gray: 90,
+  ow_house_door: 85, ow_house_door_2: 89, ow_house_door_gray: 90, ow_house_door_brown: 86,
   ow_house_wall_brown_l: 72, ow_house_wall_brown: 73, ow_house_wall_brown_r: 75, ow_house_arch_brown: 74,
   ow_house_wall_stone_l: 76, ow_house_wall_stone: 77, ow_house_wall_stone_r: 79, ow_house_arch_stone: 78,
   // roofs: top row + eaves row per colour, gables, slate rows

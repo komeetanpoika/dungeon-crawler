@@ -2,7 +2,7 @@
 //   1 suomenlinna — derived from an aerial photo of the Helsinki sea fortress
 //   2 fishing village — noise coastline, piers, lighthouse islet
 //   3 archipelago — island chain linked by causeways, ruined monastery
-import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees } from './lib.mjs'
+import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -119,12 +119,8 @@ function fishingVillage() {
   // village on the shore
   const vy = 38, vx = coastX(vy) - 8
   for (let y = vy - 8; y <= vy + 8; y++) for (let x = vx - 8; x <= vx + 8; x++) if (b.in(x, y)) b.clearProp(x, y)
-  const house = (x, y, kind) => {
-    const roof = kind === 'red' ? ['ow_roof_red_l', 'ow_roof_red_r'] : ['ow_roof_gray_l', 'ow_roof_gray_r']
-    b.p(x, y, roof[0]); b.p(x + 1, y, roof[1])
-    b.p(x, y + 1, 'ow_house_wall'); b.p(x + 1, y + 1, 'ow_house_door')
-  }
-  house(vx - 5, vy - 6, 'red'); house(vx + 1, vy - 5, 'gray'); house(vx - 6, vy, 'gray'); house(vx, vy + 3, 'red')
+  const house = (x, y, kind) => stampHouse3(b, rng, x, y, kind)
+  house(vx - 5, vy - 6, 'red'); house(vx + 1, vy - 5, 'brown'); house(vx - 6, vy, 'brown'); house(vx, vy + 3, 'red')
   b.p(vx - 2, vy - 2, 'ow_well_top'); b.p(vx - 2, vy - 1, 'ow_well')
   b.poi('village', vx, vy - 2, 'Seagrave')
   // two piers with boats
@@ -140,8 +136,7 @@ function fishingVillage() {
   const li = { x: 106, y: 16 }
   for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++)
     if (x * x + y * y <= 5) { b.g(li.x + x, li.y + y, 'ow_stone_ground_0'); b.unblock(li.x + x, li.y + y); b.clearProp(li.x + x, li.y + y) }
-  b.p(li.x, li.y - 1, 'ow_roof_gray_m')
-  b.p(li.x, li.y, 'ow_house_wall_stone')
+  stampHouse3(b, rng, li.x - 1, li.y - 2, 'stone')
   b.poi('landmark', li.x, li.y, 'lighthouse')
   // sea cave in a rocky headland
   const cave = { x: coastX(64) - 1, y: 64 }
@@ -206,8 +201,7 @@ function archipelago() {
   if (comps[1]) {
     const m = centroid(comps[1])
     b.clearProp(m.x, m.y); b.clearProp(m.x + 1, m.y)
-    b.p(m.x, m.y - 1, 'ow_roof_gray_l'); b.p(m.x + 1, m.y - 1, 'ow_roof_gray_r')
-    b.p(m.x, m.y, 'ow_house_wall'); b.p(m.x + 1, m.y, 'ow_house_door_2')
+    stampHouse3(b, rng, m.x - 1, m.y - 2, 'brown')
     b.p(m.x + 3, m.y, 'ow_boat', { walkable: false })
     b.poi('village', m.x, m.y, 'fisher huts')
   }

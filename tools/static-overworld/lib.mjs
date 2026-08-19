@@ -47,6 +47,35 @@ export const TREE_PAIRS = [
   ['ow_tree_autumn_top', 'ow_tree_autumn_trunk'],
 ]
 
+// The approved house assembly (asset review round 2): 3-wide, 3-tall — roof
+// top row, eaves/slate row, edged wall row with the door in the middle. No
+// gables and no window tiles, both rejected in review. (x, y) is the top-left.
+export function stampHouse3(b, rng, x, y, kind = 'red') {
+  const K = {
+    red: {
+      roof: ['ow_roof_red_l', 'ow_roof_red_m', 'ow_roof_red_r'],
+      eaves: ['ow_roof_red_el', 'ow_roof_red_em', 'ow_roof_red_er'],
+      walls: ['ow_house_wall_l', 'ow_house_wall_r'],
+      doors: ['ow_house_door_gray', 'ow_house_door'],
+    },
+    brown: {
+      roof: ['ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r'],
+      eaves: ['ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r'],
+      walls: ['ow_house_wall_brown_l', 'ow_house_wall_brown_r'],
+      doors: ['ow_house_door_brown'],
+    },
+    stone: {
+      roof: ['ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r'],
+      eaves: ['ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r'],
+      walls: ['ow_house_wall_stone_l', 'ow_house_wall_stone_r'],
+      doors: ['ow_house_arch_stone'],
+    },
+  }[kind]
+  const door = K.doors[Math.floor(rng() * K.doors.length)]
+  for (let i = 0; i < 3; i++) { b.p(x + i, y, K.roof[i]); b.p(x + i, y + 1, K.eaves[i]) }
+  b.p(x, y + 2, K.walls[0]); b.p(x + 1, y + 2, door); b.p(x + 2, y + 2, K.walls[1])
+}
+
 // Plant a tree at (x, y). A kit lists 2-tall [top, trunk] pairs and complete
 // 1-tile trees; the pair needs the cell above free, otherwise a 1-tile tree
 // goes in instead.
