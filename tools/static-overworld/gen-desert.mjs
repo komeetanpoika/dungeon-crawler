@@ -33,7 +33,7 @@ function stampOasis(b, rng, cx, cy) {
     b.g(cx - 1 + x, cy - 1 + y, `ow_pond_${x}${y}`)
     b.block(cx - 1 + x, cy - 1 + y)
   }
-  const flora = [[-3, -1, 'ow_tree_round'], [3, 0, 'ow_tree_apple'], [-1, -3, 'ow_bush_0'], [2, 2, 'ow_shrub_0'], [-2, 2, 'ow_bush_1']]
+  const flora = [[-3, -1, 'ow_bush_round'], [3, 0, 'ow_tree_apple'], [-1, -3, 'ow_bush_0'], [2, 2, 'ow_shrub_0'], [-2, 2, 'ow_bush_1']]
   for (const [dx, dy, s] of flora) if (rng() < 0.85) b.p(cx + dx, cy + dy, s)
 }
 
@@ -47,9 +47,8 @@ function stampCamp(b, rng, x, y) {
 function stampCaveOutcrop(b, rng, x, y, rocks = ROCKS_G) {
   for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++)
     if (Math.abs(dx) + Math.abs(dy) < 3 && rng() < 0.9) b.p(x + dx, y + dy, pick(rng, rocks))
-  b.clearProp(x, y + 1)
-  b.p(x, y, 'ow_cave_arch_1')
-  b.block(x, y)
+  b.clearProp(x, y + 1); b.clearProp(x + 1, y + 1)
+  b.p(x, y, 'ow_cave_arch_0'); b.p(x + 1, y, 'ow_cave_arch_1')
 }
 
 function scatterFlora(b, rng, n, kinds, ok) {
@@ -81,7 +80,7 @@ function dunes() {
   // a small ruin
   const [r] = b.scatter(rng, 1, 30, isOpen(b))
   if (r) {
-    for (const [dx, dy, s] of [[-2, 0, 'ow_ruin_pillar'], [2, 0, 'ow_ruin_pillar_2'], [0, -2, 'ow_ruin_rubble'], [-1, 2, 'ow_ruin_crack_1']])
+    for (const [dx, dy, s] of [[-2, 0, 'ow_ruin_pillar'], [2, 0, 'ow_ruin_pillar_2'], [0, -2, 'ow_ruin_crack_0'], [-1, 2, 'ow_ruin_crack_1']])
       b.p(r.x + dx, r.y + dy, s)
     b.poi('ruin', r.x, r.y, 'toppled shrine')
   }
@@ -184,7 +183,7 @@ function lostCity() {
       b.g(cx, cy, rng() < 0.25 ? pick(rng, ['ow_ruin_crack_0', 'ow_ruin_crack_1', 'ow_ruin_crack_2']) : 'ow_sand_flat')
     // ruined perimeter: wall tiles with erosion gaps that grow eastward
     const wallAt = (cx, cy, fallback) => {
-      if (rng() < 0.12 + buried(cx)) { if (rng() < 0.4) b.p(cx, cy, 'ow_ruin_rubble'); return }
+      if (rng() < 0.12 + buried(cx)) { if (rng() < 0.4) b.p(cx, cy, pick(rng, ['ow_ruin_crack_0', 'ow_ruin_crack_2'])); return }
       b.p(cx, cy, rng() < 0.9 ? pick(rng, ['ow_ruin_wall_0', 'ow_ruin_wall_1']) : fallback)
     }
     for (let cx = x; cx < x + w; cx++) for (const cy of [y, y + h - 1]) wallAt(cx, cy, 'ow_ruin_wall_2')

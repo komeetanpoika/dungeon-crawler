@@ -48,21 +48,34 @@ export const RPG = {
 }
 
 // --- Tiny Town copies: name -> tile number ---
+// Tiny Town composes multi-tile items (asset review, 2026-08-19): trees are
+// top+trunk pairs, houses are roof-top + eaves + edged-wall rows, cave arches
+// are l+r pairs (113+114 open, 111+112 gated), the well has a roof tile.
 export const TT = {
   ow_grass_0: 0, ow_grass_1: 1, ow_grass_2: 2,
-  ow_tree_pine: 4, ow_tree_round: 16, ow_tree_big: 5, ow_tree_round2: 28,
-  ow_tree_pine_autumn: 3, ow_tree_autumn: 15, ow_tree_autumn2: 27,
-  ow_mushroom: 29, ow_sign: 83, ow_well: 104, ow_beehive: 94,
+  // trees: 2-tall pairs + complete 1-tile trees; 5 reads as a bush
+  ow_tree_pine_top: 4, ow_tree_pine_trunk: 16,
+  ow_tree_autumn_top: 3, ow_tree_autumn_trunk: 15,
+  ow_tree_small: 28, ow_tree_small_autumn: 27, ow_bush_round: 5,
+  ow_mushroom: 29, ow_sign: 83, ow_well: 104, ow_well_top: 92, ow_beehive: 94,
   ow_dirt_0: 40, ow_dirt_1: 41, ow_dirt_2: 39, ow_dirt_3: 42,
   ow_cobble_green: 43,
-  ow_house_wall: 49, ow_house_wall_win: 51, ow_house_door: 85, ow_house_door_2: 89,
-  ow_house_wall_brown: 73, ow_house_arch_brown: 74,
-  ow_house_wall_stone: 77, ow_house_arch_stone: 78,
+  // house walls: l/m/r edged sets per material, doors matched to material
+  ow_house_wall_l: 48, ow_house_wall: 49, ow_house_wall_r: 50, ow_house_wall_win: 51,
+  ow_house_door: 85, ow_house_door_2: 89, ow_house_door_gray: 90,
+  ow_house_wall_brown_l: 72, ow_house_wall_brown: 73, ow_house_wall_brown_r: 75, ow_house_arch_brown: 74,
+  ow_house_wall_stone_l: 76, ow_house_wall_stone: 77, ow_house_wall_stone_r: 79, ow_house_arch_stone: 78,
+  // roofs: top row + eaves row per colour, gables, slate rows
   ow_roof_red_l: 52, ow_roof_red_m: 53, ow_roof_red_r: 54,
-  ow_roof_ridge_l: 64, ow_roof_ridge_m: 65, ow_roof_ridge_r: 66, ow_roof_ridge_r2: 67,
+  ow_roof_red_el: 64, ow_roof_red_em: 65, ow_roof_red_er: 66,
+  ow_roof_gable_gray: 63, ow_roof_gable_red: 67,
   ow_roof_gray_l: 96, ow_roof_gray_m: 97, ow_roof_gray_r: 98,
+  ow_roof_slate_l: 120, ow_roof_slate_m: 121, ow_roof_slate_r: 122,
+  ow_roof_slate2_l: 108, ow_roof_slate2_m: 109, ow_roof_slate2_r: 110,
   ow_fence_l: 44, ow_fence_m: 45, ow_fence_r: 46, ow_fence_post: 47, ow_fence_v: 59,
-  ow_cave_arch_0: 113, ow_cave_arch_1: 114, ow_cave_door: 125, ow_brick: 126,
+  ow_cave_arch_0: 113, ow_cave_arch_1: 114,
+  ow_cave_gate_l: 111, ow_cave_gate_r: 112,
+  ow_cave_door: 125, ow_brick: 126,
 }
 
 const pad = n => String(n).padStart(4, '0')

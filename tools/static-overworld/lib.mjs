@@ -40,6 +40,39 @@ export function makeNoise(rng) {
   }
 }
 
+// 2-tall tree pairs: [top, trunk]. Kenney draws these as one tree across two
+// cells; either half alone is the half-tree bug the asset review flagged.
+export const TREE_PAIRS = [
+  ['ow_tree_pine_top', 'ow_tree_pine_trunk'],
+  ['ow_tree_autumn_top', 'ow_tree_autumn_trunk'],
+]
+
+// Plant a tree at (x, y). A kit lists 2-tall [top, trunk] pairs and complete
+// 1-tile trees; the pair needs the cell above free, otherwise a 1-tile tree
+// goes in instead.
+export function plantTree(b, rng, x, y, kit) {
+  const pick = a => a[Math.floor(rng() * a.length)]
+  const above = b.in(x, y - 1) && b.walkable(x, y - 1) && b.prop[y - 1][x] === -1
+  if (kit.tall?.length && above && rng() < (kit.tallChance ?? 0.6)) {
+    const [top, trunk] = pick(kit.tall)
+    b.p(x, y - 1, top)
+    b.p(x, y, trunk)
+  } else b.p(x, y, pick(kit.small))
+}
+
+// Clearings, paths, healing bridges and reachability carves all clearProp one
+// cell at a time, which can sever a 2-tall tree. Sweep out both orphan halves;
+// run this after the last prop-clearing step.
+export function pruneBrokenTrees(b) {
+  const trunkOf = new Map(TREE_PAIRS)
+  const topOf = new Map(TREE_PAIRS.map(([top, trunk]) => [trunk, top]))
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    const n = b.palette[b.prop[y][x]]
+    if (trunkOf.has(n) && b.palette[b.prop[y + 1]?.[x]] !== trunkOf.get(n)) b.clearProp(x, y)
+    else if (topOf.has(n) && b.palette[b.prop[y - 1]?.[x]] !== topOf.get(n)) b.clearProp(x, y)
+  }
+}
+
 export class MapBuilder {
   constructor(name, biome, technique, w, h) {
     Object.assign(this, { name, biome, technique, w, h, notes: '' })

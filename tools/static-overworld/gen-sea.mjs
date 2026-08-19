@@ -2,7 +2,7 @@
 //   1 suomenlinna — derived from an aerial photo of the Helsinki sea fortress
 //   2 fishing village — noise coastline, piers, lighthouse islet
 //   3 archipelago — island chain linked by causeways, ruined monastery
-import { MapBuilder, mulberry32, makeNoise, validate } from './lib.mjs'
+import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees } from './lib.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,7 +13,7 @@ fs.mkdirSync(OUT, { recursive: true })
 
 const WATER = ['ow_water_0', 'ow_water_1', 'ow_water_2', 'ow_water_3']
 const GRASS = ['ow_grass_0', 'ow_grass_1', 'ow_grass_2']
-const TREES = ['ow_tree_pine', 'ow_tree_round', 'ow_tree_big']
+const PINES = { tall: [['ow_tree_pine_top', 'ow_tree_pine_trunk']], small: ['ow_tree_small', 'ow_tree_small', 'ow_bush_round'], tallChance: 0.5 }
 const ROCKS_G = ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']
 const SKERRY = ['ow_rock_water_gray_0', 'ow_rock_water_gray_1', 'ow_rock_water_gray_2']
 const pick = (rng, a) => a[Math.floor(rng() * a.length)]
@@ -47,7 +47,7 @@ function suomenlinna() {
       case 'stone': b.g(x, y, 'ow_grass_0'); b.p(x, y, 'ow_house_wall_stone'); break
       case 'brick': b.g(x, y, 'ow_grass_0'); b.p(x, y, 'ow_roof_red_m'); break
       case 'path': b.g(x, y, pick(rng, ['ow_dirt_0', 'ow_dirt_1'])); break
-      case 'trees': b.g(x, y, 'ow_grass_0'); b.p(x, y, pick(rng, TREES)); break
+      case 'trees': b.g(x, y, 'ow_grass_0'); plantTree(b, rng, x, y, PINES); break
       default: b.g(x, y, rng() < 0.94 ? 'ow_grass_0' : pick(rng, GRASS))
     }
   }
@@ -84,12 +84,13 @@ function suomenlinna() {
   b.p(gate.x, gate.y, 'ow_ruin_gate')
   b.poi('ruin', gate.x, gate.y, "King's Gate walls")
   for (const [i, c] of [snap(10, 44), snap(82, 34)].entries()) {
-    b.p(c.x, c.y, 'ow_cave_arch_1')
+    b.p(c.x, c.y, 'ow_cave_arch_0'); b.p(c.x + 1, c.y, 'ow_cave_arch_1')
     b.poi('dungeon_entrance', c.x, c.y, `casemate ${i + 1}`)
   }
   for (const c of b.scatter(rng, 3, 25, (x, y) => main[y][x] && b.prop[y][x] === -1)) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = snap(58, 32)
   b.ensureReachable(pierOverWater(b))
+  pruneBrokenTrees(b)
   return b
 }
 
@@ -113,7 +114,7 @@ function fishingVillage() {
   for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
     if (!b.walkable(x, y) || x > coastX(y) - 6) continue
     const d = noise(x, y, { freq: 0.08, octaves: 3 })
-    if (d > 0.45 && rng() < (d - 0.45) * 4) b.p(x, y, pick(rng, TREES))
+    if (d > 0.45 && rng() < (d - 0.45) * 4) plantTree(b, rng, x, y, PINES)
   }
   // village on the shore
   const vy = 38, vx = coastX(vy) - 8
@@ -124,12 +125,14 @@ function fishingVillage() {
     b.p(x, y + 1, 'ow_house_wall'); b.p(x + 1, y + 1, 'ow_house_door')
   }
   house(vx - 5, vy - 6, 'red'); house(vx + 1, vy - 5, 'gray'); house(vx - 6, vy, 'gray'); house(vx, vy + 3, 'red')
-  b.p(vx - 2, vy - 1, 'ow_well')
+  b.p(vx - 2, vy - 2, 'ow_well_top'); b.p(vx - 2, vy - 1, 'ow_well')
   b.poi('village', vx, vy - 2, 'Seagrave')
   // two piers with boats
   for (const py of [vy - 3, vy + 6]) {
     const start = coastX(py)
-    for (let x = start - 2; x <= start + 5; x++) { b.clearProp(x, py); b.g(x, py, 'ow_pier_log'); b.unblock(x, py) }
+    for (let x = start - 2; x <= start + 5; x++) {
+      b.clearProp(x, py); b.g(x, py, x === start + 5 ? 'ow_pier_post' : 'ow_pier_log'); b.unblock(x, py)
+    }
     b.prop[py + 1]?.[start + 4] === -1 && b.p(start + 4, py + 1, 'ow_boat')
   }
   b.poi('landmark', coastX(vy - 3) + 4, vy - 3, 'north pier')
@@ -143,7 +146,9 @@ function fishingVillage() {
   // sea cave in a rocky headland
   const cave = { x: coastX(64) - 1, y: 64 }
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 2; dx++) if (rng() < 0.9) b.p(cave.x + dx, cave.y + dy, pick(rng, ROCKS_G))
-  b.clearProp(cave.x, cave.y); b.p(cave.x, cave.y, 'ow_cave_arch_1'); b.clearProp(cave.x, cave.y + 1)
+  b.clearProp(cave.x, cave.y); b.clearProp(cave.x + 1, cave.y)
+  b.p(cave.x, cave.y, 'ow_cave_arch_0'); b.p(cave.x + 1, cave.y, 'ow_cave_arch_1')
+  b.clearProp(cave.x, cave.y + 1); b.clearProp(cave.x + 1, cave.y + 1)
   b.poi('dungeon_entrance', cave.x, cave.y, 'sea cave')
   // skerries + boats offshore
   for (const s of b.scatter(rng, 22, 5, (x, y) => b.palette[b.ground[y][x]]?.startsWith('ow_water') && x > coastX(y) + 3)) {
@@ -155,6 +160,7 @@ function fishingVillage() {
   b.playerSpawn = { x: vx, y: vy + 1 }
   b.healFragmentation({ minKeep: 30, fill: (x, y) => { if (b.prop[y][x] === -1) b.p(x, y, pick(rng, ROCKS_G)) }, groundSkin: pierOverWater(b) })
   b.ensureReachable(pierOverWater(b))
+  pruneBrokenTrees(b)
   return b
 }
 
@@ -178,7 +184,7 @@ function archipelago() {
     const nearWater = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => b.palette[b.ground[y + dy]?.[x + dx]]?.startsWith('ow_water'))
     if (nearWater) { if (rng() < 0.2) b.p(x, y, pick(rng, ROCKS_G)); continue }
     const d = noise(x + 200, y, { freq: 0.09, octaves: 2 })
-    if (d > 0.52 && rng() < (d - 0.52) * 4) b.p(x, y, pick(rng, TREES))
+    if (d > 0.52 && rng() < (d - 0.52) * 4) plantTree(b, rng, x, y, PINES)
   }
   // find the three biggest islands for POIs
   const comps = b.components().slice(0, 3)
@@ -194,7 +200,8 @@ function archipelago() {
     b.clearProp(m.x, m.y - 1)
     b.poi('ruin', m.x, m.y - 2, 'monastery ruin')
     b.poi('dungeon_entrance', m.x - 5, m.y + 4, 'crypt')
-    b.clearProp(m.x - 5, m.y + 4); b.p(m.x - 5, m.y + 4, 'ow_cave_door')
+    b.clearProp(m.x - 5, m.y + 4); b.clearProp(m.x - 4, m.y + 4)
+    b.p(m.x - 5, m.y + 4, 'ow_cave_gate_l'); b.p(m.x - 4, m.y + 4, 'ow_cave_gate_r')
   }
   if (comps[1]) {
     const m = centroid(comps[1])
@@ -206,7 +213,8 @@ function archipelago() {
   }
   if (comps[2]) {
     const m = centroid(comps[2])
-    b.clearProp(m.x, m.y); b.p(m.x, m.y, 'ow_cave_arch_1')
+    b.clearProp(m.x, m.y); b.clearProp(m.x + 1, m.y)
+    b.p(m.x, m.y, 'ow_cave_arch_0'); b.p(m.x + 1, m.y, 'ow_cave_arch_1')
     b.poi('dungeon_entrance', m.x, m.y, 'grotto')
   }
   // boats + skerries
@@ -221,6 +229,7 @@ function archipelago() {
   const home = comps[1] ? centroid(comps[1]) : { x: 20, y: 20 }
   b.playerSpawn = { x: home.x, y: home.y + 2 }
   b.ensureReachable(pierOverWater(b))
+  pruneBrokenTrees(b)
   return b
 }
 

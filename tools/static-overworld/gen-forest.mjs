@@ -2,7 +2,7 @@
 //   1 clearings — noise-density woods with carved clearings, village, paths
 //   2 river     — a river splits dense woods; bridges, lumber camp
 //   3 autumn    — autumn highland: rock outcrops, stone circle, hermit hut
-import { MapBuilder, mulberry32, makeNoise, validate } from './lib.mjs'
+import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees } from './lib.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,8 +11,10 @@ const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'out/maps')
 fs.mkdirSync(OUT, { recursive: true })
 
 const GRASS = ['ow_grass_0', 'ow_grass_0', 'ow_grass_0', 'ow_grass_1', 'ow_grass_2']
-const TREES = ['ow_tree_pine', 'ow_tree_pine', 'ow_tree_round', 'ow_tree_big', 'ow_tree_round2']
-const AUTUMN = ['ow_tree_pine_autumn', 'ow_tree_autumn', 'ow_tree_autumn2']
+// Tree kits (see plantTree): 2-tall pairs plus approved 1-tile trees;
+// ow_bush_round reads as a bush, so it is a rare accent, not a tree.
+const PINES = { tall: [['ow_tree_pine_top', 'ow_tree_pine_trunk']], small: ['ow_tree_small', 'ow_tree_small', 'ow_bush_round'] }
+const AUTUMN = { tall: [['ow_tree_autumn_top', 'ow_tree_autumn_trunk']], small: ['ow_tree_small_autumn', 'ow_tree_autumn_top'] }
 const DIRT = ['ow_dirt_0', 'ow_dirt_1', 'ow_dirt_2', 'ow_dirt_3']
 const ROCKS_MOSS = ['ow_rock_gray_moss_0', 'ow_rock_gray_moss_1', 'ow_rock_gray_moss_2']
 const pick = (rng, a) => a[Math.floor(rng() * a.length)]
@@ -38,17 +40,18 @@ function stampVillage(b, rng, cx, cy) {
     if (b.in(cx + x, cy + y)) { b.clearProp(cx + x, cy + y); if (x * x + y * y < 14) b.g(cx + x, cy + y, 'ow_cobble_green') }
   const spots = [[-6, -4], [3, -5], [-6, 3], [4, 3]]
   for (const [dx, dy] of spots) stampHouse(b, rng, cx + dx, cy + dy, rng() < 0.5 ? 'red' : 'brown')
-  b.p(cx, cy, 'ow_well')
+  b.p(cx, cy - 1, 'ow_well_top'); b.p(cx, cy, 'ow_well')
   b.p(cx - 2, cy + 1, 'ow_sign', { walkable: false })
-  // fenced yard
-  for (let x = -2; x <= 2; x++) b.p(cx + x, cy + 5, 'ow_fence_m')
+  // fenced yard — l/m/r so the run has finished ends
+  for (let x = -2; x <= 2; x++) b.p(cx + x, cy + 5, x === -2 ? 'ow_fence_l' : x === 2 ? 'ow_fence_r' : 'ow_fence_m')
 }
 
 function stampCaveInRocks(b, rng, x, y) {
   for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++)
     if (Math.abs(dx) + Math.abs(dy) < 3 && rng() < 0.92) b.p(x + dx, y + dy, pick(rng, ROCKS_MOSS))
-  b.clearProp(x, y + 1)
-  b.p(x, y, 'ow_cave_arch_1')
+  // the arch is an l+r pair; approach stays clear below both halves
+  b.clearProp(x, y + 1); b.clearProp(x + 1, y + 1)
+  b.p(x, y, 'ow_cave_arch_0'); b.p(x + 1, y, 'ow_cave_arch_1')
 }
 
 // ---------- attempt 1: clearings ----------
@@ -60,7 +63,10 @@ function clearings() {
   grassBase(b, rng)
   for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
     const d = noise(x, y, { freq: 0.07, octaves: 3 })
-    if (d > 0.42 && rng() < (d - 0.42) * 5) b.p(x, y, pick(rng, rng() < 0.9 ? TREES : ['ow_bush_0', 'ow_bush_1', 'ow_mushroom']))
+    if (d > 0.42 && rng() < (d - 0.42) * 5) {
+      if (rng() < 0.9) plantTree(b, rng, x, y, PINES)
+      else b.p(x, y, pick(rng, ['ow_bush_0', 'ow_bush_1', 'ow_mushroom']))
+    }
   }
   const clearing = (cx, cy, r) => {
     for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++)
@@ -99,6 +105,7 @@ function clearings() {
   for (const c of b.scatter(rng, 4, 28, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: village.x, y: village.y + 2 }
   b.ensureReachable('ow_dirt_0')
+  pruneBrokenTrees(b)
   return b
 }
 
@@ -125,7 +132,10 @@ function river() {
     const d = noise(x, y, { freq: 0.08, octaves: 3 })
     const east = x > riverX(y)
     const thr = east ? 0.40 : 0.47
-    if (d > thr && rng() < (d - thr) * (east ? 5 : 3.5)) b.p(x, y, pick(rng, rng() < 0.92 ? TREES : ['ow_bush_0', 'ow_bush_berry']))
+    if (d > thr && rng() < (d - thr) * (east ? 5 : 3.5)) {
+      if (rng() < 0.92) plantTree(b, rng, x, y, PINES)
+      else b.p(x, y, pick(rng, ['ow_bush_0', 'ow_bush_berry']))
+    }
   }
   // two log bridges
   for (const by of [22, 58]) {
@@ -154,6 +164,7 @@ function river() {
   for (const c of b.scatter(rng, 4, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: camp.x, y: camp.y + 2 }
   b.ensureReachable('ow_dirt_0')
+  pruneBrokenTrees(b)
   return b
 }
 
@@ -174,7 +185,7 @@ function autumn() {
     } else if (e > 0.58 && rng() < 0.3) b.p(x, y, pick(rng, ['ow_rock_gray_0', 'ow_rock_gray_1']))
     else {
       const d = noise(x + 300, y, { freq: 0.08, octaves: 3 })
-      if (d > 0.48 && rng() < (d - 0.48) * 2.5) b.p(x, y, pick(rng, rng() < 0.75 ? AUTUMN : TREES))
+      if (d > 0.48 && rng() < (d - 0.48) * 2.5) plantTree(b, rng, x, y, rng() < 0.75 ? AUTUMN : PINES)
     }
   }
   // stone circle on a knoll
@@ -194,14 +205,16 @@ function autumn() {
   b.poi('village', hut.x + 1, hut.y, 'hermit hut')
   // two mine mouths in the high rocks
   for (const [i, m] of [{ x: 102, y: 12 }, { x: 74, y: 8 }].entries()) {
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) b.clearProp(m.x + dx, m.y + dy)
-    b.p(m.x, m.y, 'ow_cave_door')
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 2; dx++) b.clearProp(m.x + dx, m.y + dy)
+    // abandoned mines wear the gated arch pair
+    b.p(m.x, m.y, 'ow_cave_gate_l'); b.p(m.x + 1, m.y, 'ow_cave_gate_r')
     b.poi('dungeon_entrance', m.x, m.y, `old mine ${i + 1}`)
   }
   for (const c of b.scatter(rng, 4, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: hut.x + 1, y: hut.y + 3 }
   b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: 'ow_dirt_0' })
   b.ensureReachable('ow_dirt_0')
+  pruneBrokenTrees(b)
   return b
 }
 
