@@ -8,3 +8,4 @@ debug*.png
 arena-config.json
 tools/sword-compare/out/
 *.generated.*
+tools/asset-review/review.json
