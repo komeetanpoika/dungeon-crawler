@@ -75,16 +75,17 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onPlay, onExplore, onOpenEditor, onQuit, onCheat }) {
-  // The web release has no tile editor and nothing to quit to. Explore is
-  // gameplay, not a desktop affordance, so it ships everywhere.
+export function showTitle(meta, { onAdventure, onRush, onOpenEditor, onQuit, onCheat }) {
+  // The web release has no tile editor and nothing to quit to. The old
+  // procedural overworld left the menu with the mode split; it remains
+  // reachable as the level6 cheat.
   const isWeb = typeof window !== 'undefined' && window.saveAPI?.isWeb
   renderScreen({
     title: 'DUNGEON CRAWLER',
     subtitle: formatMetaSummary(meta),
     buttons: [
-      { label: 'Play', onSelect: onPlay },
-      { label: 'Explore', onSelect: onExplore },
+      { label: 'Adventure', onSelect: onAdventure },
+      { label: 'Dungeon Rush', onSelect: onRush },
       ...(isWeb ? [] : [
         { label: 'Open Editor', onSelect: onOpenEditor },
         { label: 'Quit', onSelect: onQuit },

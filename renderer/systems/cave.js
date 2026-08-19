@@ -85,6 +85,29 @@ export function restoreSurface(caveState) {
   }
 }
 
+// Adventure death is a setback, not a game over: wake at the map's spawn with
+// full hp, keeping whatever was carried (loot grabbed underground included).
+// Dying inside a cave abandons it UNSTORED — the world rolls back to the
+// cave's last-saved instance, or fresh if it never was.
+export function adventureRespawn(state, spawn) {
+  const surface = state.cave ? state.cave.surface : state
+  return {
+    ...surface,
+    player: {
+      ...state.player,
+      hp: state.player.maxHp,
+      x: spawn.x, y: spawn.y,
+      px: centered(spawn.x), py: centered(spawn.y),
+    },
+    projectiles: [],
+    fireZones: [],
+    shockwaves: [],
+    hitEffects: [],
+    gameOver: false,
+    entranceHold: false,
+  }
+}
+
 // Surface-time aging: cleared instances count toward their reset and vanish
 // at CAVE_RESET_TIME (the next entry generates fresh); uncleared instances
 // never age. Call from the surface update only. Returns whether any instance

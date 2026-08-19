@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildCaveState, restoreSurface, tickCaveInstances, CAVE_RESET_TIME } from '../renderer/systems/cave.js'
+import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, CAVE_RESET_TIME } from '../renderer/systems/cave.js'
 import { buildOpenMap } from '../renderer/systems/openmap.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -163,6 +163,42 @@ describe('cave instances', () => {
     assert.equal(again.entities[0].type, 'crab')
     assert.equal(again.dropSpawned, true)
     assert.equal(again.hasKey, true)
+  })
+})
+
+describe('adventureRespawn', () => {
+  const spawn = { x: 34, y: 32 }
+
+  it('death on the surface: back at the spawn, full hp, world intact, transients cleared', () => {
+    const state = surfaceState()
+    state.player.hp = 0
+    state.projectiles = [{ px: 1, py: 1 }]
+    state.fireZones = [{ tiles: [] }]
+    const back = adventureRespawn(state, spawn)
+    assert.deepEqual([back.player.x, back.player.y], [34, 32])
+    assert.equal(back.player.px, 34 * T + 16)
+    assert.equal(back.player.hp, back.player.maxHp)
+    assert.equal(back.map, state.map)
+    assert.equal(back.entities, state.entities)
+    assert.deepEqual(back.projectiles, [])
+    assert.deepEqual(back.fireZones, [])
+    assert.equal(back.gameOver, false)
+  })
+
+  it('death in a cave: surface world returns, the cave is abandoned unstored, gear kept', () => {
+    const surface = surfaceState()
+    const entrance = { x: 10, y: 12, caveDepth: 1, label: 'cave 1' }
+    const dungeon = { map: dungeonMap(), entities: [{ type: 'crab', isBoss: true }], playerSpawn: { x: 2, y: 4 }, theme: {} }
+    const cave = buildCaveState(surface, entrance, dungeon)
+    cave.player.hp = 0
+    cave.player.weapon = { name: 'Axe' }
+    const back = adventureRespawn(cave, spawn)
+    assert.equal(back.map, surface.map)
+    assert.equal(back.level, 7)
+    assert.equal(back.caveInstances?.['cave 1'], undefined, 'a cave that kills you is not saved')
+    assert.equal(back.player.weapon.name, 'Axe', 'loot grabbed before dying is kept')
+    assert.equal(back.player.hp, back.player.maxHp)
+    assert.equal(back.hasKey, true, 'surface key state is untouched')
   })
 })
 

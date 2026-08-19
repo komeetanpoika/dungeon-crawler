@@ -11,7 +11,7 @@ import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/de
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
-import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG, OVERWORLD_DEPTH } from './data/levels.js'
+import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG, OVERWORLD_DEPTH, ADVENTURE_DEPTH } from './data/levels.js'
 import { countBosses, spawnBossDrop } from './systems/progression.js'
 import { PHASE, canTransition } from './systems/phase.js'
 import * as menu from './ui/menu.js'
@@ -23,7 +23,7 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
-import { buildCaveState, restoreSurface, tickCaveInstances } from './systems/cave.js'
+import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { rollChestLoot } from './systems/loot.js'
@@ -277,8 +277,8 @@ function setPhase(to) {
 function goTitle() {
   phase = PHASE.TITLE
   menu.showTitle(meta, {
-    onPlay: beginRun,
-    onExplore: () => beginRun(OVERWORLD_DEPTH),
+    onAdventure: () => beginRun(ADVENTURE_DEPTH),
+    onRush: () => beginRun(1),
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
@@ -304,7 +304,8 @@ function resumeGame() {
 
 function pauseGame() {
   setPhase(PHASE.PAUSED)
-  menu.showPause({ onResume: resumeGame, onRestart: beginRun, onQuitToTitle: goTitle })
+  const restartDepth = state?.cave ? state.cave.surface.level : state?.level ?? 1
+  menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth), onQuitToTitle: goTitle })
 }
 
 function gameLoop(timestamp) {
@@ -742,8 +743,16 @@ function update(delta) {
     if (e.type === 'guard' || e.type === 'wizard') tickWalk(e, delta)
   }
 
-  // Player death
+  // Player death: in Adventure it is a setback — wake at the village spawn;
+  // in the dungeon rush it ends the run as ever.
   if (player.hp <= 0) {
+    const surfaceLevel = state.cave ? state.cave.surface.level : state.level
+    const mapData = OPEN_MAPS[surfaceLevel]
+    if (mapData) {
+      state = adventureRespawn(state, mapData.playerSpawn)
+      announce(state, 'You awaken back in Aspengrove…')
+      return
+    }
     state.gameOver = true
     endRun(false)
   }
