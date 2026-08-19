@@ -6,6 +6,7 @@ import { drawDragonBossPixel } from './dragonboss-pixel.js'
 import { PIXEL_SKIN } from '../systems/dragonboss.js'
 import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc } from '../systems/melee.js'
+import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 
 const TILE_SIZE = 32
 
@@ -816,7 +817,93 @@ export class Renderer {
       }
     }
 
+    this._drawFeedback(state)
+
     if (this.debug) this._drawDebug(state, c0, c1, r0, r1)
+  }
+
+  // Prominent message layer: rising damage/heal numbers, one speech/thought
+  // bubble above the player, and a centered banner for milestone events.
+  _drawFeedback(state) {
+    const { ctx, camX, camY } = this
+    const fb = state.feedback
+    if (!fb) return
+    if (fb.floats.length) {
+      ctx.save()
+      ctx.font = 'bold 13px monospace'
+      ctx.textAlign = 'center'
+      const COLORS = { taken: '#ef4444', dealt: '#f8fafc', heal: '#4ade80' }
+      for (const f of fb.floats) {
+        const k = f.t / FLOAT_DUR
+        const x = Math.round(f.px - camX), y = Math.round(f.py - camY - 14 - k * 22)
+        ctx.globalAlpha = Math.max(0, k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4)
+        ctx.lineWidth = 3
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)'
+        ctx.strokeText(f.text, x, y)
+        ctx.fillStyle = COLORS[f.kind] ?? '#fff'
+        ctx.fillText(f.text, x, y)
+      }
+      ctx.restore()
+    }
+    if (fb.bubble) this._drawBubble(state.player, fb.bubble)
+    if (fb.banner) this._drawBanner(fb.banner)
+  }
+
+  _drawBubble(player, b) {
+    const { ctx, camX, camY, viewW } = this
+    const px = Math.round(player.px - camX), py = Math.round(player.py - camY)
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.12, (BUBBLE_DUR - b.t) / 0.3))
+    ctx.font = '12px monospace'
+    const lines = ['']
+    for (const w of b.text.split(' ')) {
+      const cand = lines.at(-1) ? lines.at(-1) + ' ' + w : w
+      if (ctx.measureText(cand).width > 190 && lines.at(-1)) lines.push(w)
+      else lines[lines.length - 1] = cand
+    }
+    const padX = 8, lh = 15
+    const bw = Math.ceil(Math.max(...lines.map(l => ctx.measureText(l).width))) + padX * 2
+    const bh = lines.length * lh + 11
+    const tailY = py - 34
+    const bx = Math.max(4, Math.min(px - (bw >> 1), viewW - bw - 4))
+    const by = tailY - bh
+    ctx.fillStyle = 'rgba(250,250,245,0.95)'
+    ctx.strokeStyle = '#1c1917'
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill(); ctx.stroke()
+    if (b.kind === 'speech') {
+      ctx.beginPath()
+      ctx.moveTo(px - 5, tailY - 1); ctx.lineTo(px + 6, tailY - 1); ctx.lineTo(px, tailY + 7)
+      ctx.closePath(); ctx.fill(); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(px - 4, tailY - 1); ctx.lineTo(px + 5, tailY - 1); ctx.stroke()
+    } else {
+      for (const [r, dy] of [[3, 4], [2, 10]]) {
+        ctx.beginPath(); ctx.arc(px, tailY + dy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      }
+    }
+    ctx.fillStyle = '#1c1917'
+    ctx.textAlign = 'center'
+    lines.forEach((l, i) => ctx.fillText(l, bx + (bw >> 1), by + (i + 1) * lh - 1))
+    ctx.restore()
+  }
+
+  _drawBanner(b) {
+    const { ctx, viewW } = this
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.2, (BANNER_DUR - b.t) / 0.4))
+    ctx.font = 'bold 16px monospace'
+    const bw = Math.ceil(ctx.measureText(b.text).width) + 36
+    const bh = 40
+    const bx = Math.round((viewW - bw) / 2), by = 56
+    ctx.fillStyle = 'rgba(12,12,18,0.88)'
+    ctx.strokeStyle = '#b89030'
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 4); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#f5f0e6'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(b.text, bx + bw / 2, by + bh / 2)
+    ctx.restore()
   }
 
   _drawDebug(state, c0, c1, r0, r1) {

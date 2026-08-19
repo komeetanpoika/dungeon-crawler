@@ -22,6 +22,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
+import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { rollChestLoot } from './systems/loot.js'
@@ -59,7 +60,7 @@ window.addEventListener('keydown', e => {
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
   const mode = toggleAttackMode(state.player)
-  state.log = [...state.log, mode === 'ranged' ? 'Ranged stance.' : 'Melee stance.'].slice(-5)
+  think(state, mode === 'ranged' ? 'Ranged stance.' : 'Melee stance.')
 })
 
 // In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
@@ -72,7 +73,7 @@ window.addEventListener('keydown', e => {
     gameCheatBuffer = ''
     const def = WEAPON_TYPES[wt]
     state.player.weapon = { weaponType: wt, name: def.name, damage: def.damage }
-    state.log = [...state.log, `The ${def.name} answers your call! (${def.damage} dmg)`].slice(-5)
+    announce(state, `The ${def.name} answers your call! (${def.damage} dmg)`)
   }
 })
 
@@ -138,7 +139,12 @@ function detonateFireball(px, py) {
   const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE)
   const tiles = computeBlastTiles(state.map, tx, ty)
   if (!tiles.length) return
+  const before = state.entities
   const burst = applyBurst(state.entities, state.player, tiles)
+  burst.entities.forEach((e, i) => {
+    if (isEnemy(e) && before[i] && e.hp < before[i].hp)
+      addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${before[i].hp - e.hp}`, kind: 'dealt' })
+  })
   state.entities = burst.entities
   if (burst.playerBurned) damagePlayer(state, BURST_DAMAGE, 'hit', `The blast engulfs you! (-${BURST_DAMAGE} HP)`)
   state.fireZones.push(makeFireZone(tiles))
@@ -236,7 +242,8 @@ function startNewRun(depth = 1, arenaCfg = null) {
     projectiles: [],
     fireZones: [],
     shockwaves: [],
-    log: [depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…'],
+    log: [],
+    feedback: makeFeedback(),
     hitEffects: [],
     shake: 0,
     run: { deepestLevel: depth, won: false },
@@ -247,6 +254,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     lockedMsgCooldown: 0,
     fireMsgCooldown: 0,
   }
+  announce(state, depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…')
 }
 
 function setPhase(to) {
@@ -341,14 +349,15 @@ function update(delta) {
       // No free adjacent tile — give directly
       if (chest.contents.type === 'weapon') {
         player.weapon = { ...chest.contents }
-        state.log = [...state.log, `Found ${chest.contents.name}!`].slice(-5)
+        speak(state, `Found ${chest.contents.name}!`)
       } else if (chest.contents.type === 'ranged') {
         player.ranged = { ...chest.contents }
-        state.log = [...state.log, `Found ${chest.contents.name}! (${chest.contents.ammo} shots)`].slice(-5)
+        speak(state, `Found ${chest.contents.name}! (${chest.contents.ammo} shots)`)
       } else if (chest.contents.type === 'potion') {
         const healed = Math.min(player.maxHp - player.hp, chest.contents.amount)
         player.hp += healed
-        state.log = [...state.log, healed > 0 ? `Healed ${healed} HP!` : 'Already full.'].slice(-5)
+        if (healed > 0) { speak(state, `Healed ${healed} HP!`); addFloat(state.feedback, { px: player.px, py: player.py, text: `+${healed}`, kind: 'heal' }) }
+        else think(state, 'Already full.')
       }
     }
     state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
@@ -361,14 +370,15 @@ function update(delta) {
     const item = state.entities[floatIdx]
     if (item.contents.type === 'weapon') {
       player.weapon = { ...item.contents }
-      state.log = [...state.log, `Picked up ${item.contents.name}!`].slice(-5)
+      speak(state, `Picked up ${item.contents.name}!`)
     } else if (item.contents.type === 'ranged') {
       player.ranged = { ...item.contents }
-      state.log = [...state.log, `Picked up ${item.contents.name}! (${item.contents.ammo} shots)`].slice(-5)
+      speak(state, `Picked up ${item.contents.name}! (${item.contents.ammo} shots)`)
     } else if (item.contents.type === 'potion') {
       const healed = Math.min(player.maxHp - player.hp, item.contents.amount)
       player.hp += healed
-      state.log = [...state.log, healed > 0 ? `Healed ${healed} HP!` : 'Already full.'].slice(-5)
+      if (healed > 0) { speak(state, `Healed ${healed} HP!`); addFloat(state.feedback, { px: player.px, py: player.py, text: `+${healed}`, kind: 'heal' }) }
+      else think(state, 'Already full.')
     }
     state.entities = state.entities.filter((_, i) => i !== floatIdx)
   }
@@ -378,7 +388,7 @@ function update(delta) {
   if (keyIdx !== -1) {
     state.entities = state.entities.filter((_, i) => i !== keyIdx)
     state.hasKey = true
-    state.log = [...state.log, 'You picked up the key!'].slice(-5)
+    speak(state, 'You picked up the key!')
   }
 
   // Exit door — open and descend with the key, otherwise it stays locked
@@ -391,7 +401,7 @@ function update(delta) {
     }
     state.lockedMsgCooldown = Math.max(0, (state.lockedMsgCooldown ?? 0) - delta)
     if (state.lockedMsgCooldown <= 0) {
-      state.log = [...state.log, 'The door is locked — defeat the boss for its key.'].slice(-5)
+      think(state, 'The door is locked — defeat the boss for its key.')
       state.lockedMsgCooldown = 2
     }
   }
@@ -447,12 +457,14 @@ function update(delta) {
           const bossDmg = meleeDamageToDragon(player, e, swingHit)
           if (bossDmg <= 0) return e
           const bossHit = { ...e, hp: e.hp - bossDmg, inCombat: true }
+          addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${bossDmg}`, kind: 'dealt' })
           if (miekka) struck.push(bossHit)
           return bossHit
         }
         if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
+        addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
         startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback)
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
@@ -493,7 +505,7 @@ function update(delta) {
       }
       state.projectiles.push(proj)
     } else if (FIRE_FAIL_MESSAGES[shot.reason] && state.fireMsgCooldown <= 0) {
-      state.log = [...state.log, FIRE_FAIL_MESSAGES[shot.reason]].slice(-5)
+      think(state, FIRE_FAIL_MESSAGES[shot.reason])
       state.fireMsgCooldown = 1.5
     }
   }
@@ -526,6 +538,7 @@ function update(delta) {
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
+          addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
           return { ...e, hp: e.hp - p.damage, inCombat: true }
         }
         return e
@@ -696,6 +709,7 @@ function update(delta) {
 
   // Walk animation — player + humanoid enemies (guard, wizard)
   tickWalk(player, delta)
+  tickFeedback(state.feedback, delta)
   for (const e of state.entities) {
     if (e.type === 'guard' || e.type === 'wizard') tickWalk(e, delta)
   }
@@ -716,7 +730,7 @@ function update(delta) {
     const cfg = LEVEL_CONFIG.find(c => c.depth === state.level) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
-    state.log = [...state.log, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!'].slice(-5)
+    announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
   }
 
   // Advance in-flight enemy melee attacks (windup → strike → swing)
@@ -762,7 +776,8 @@ function descendLevel() {
       px: playerSpawn.x * TILE_SIZE + TILE_SIZE / 2,
       py: playerSpawn.y * TILE_SIZE + TILE_SIZE / 2,
     },
-    log: [`Level ${next}. Deeper…`],
+    log: [],
+    feedback: makeFeedback(),
     hitEffects: [],
     shake: 0,
     hasKey: false,
@@ -772,6 +787,7 @@ function descendLevel() {
     fireMsgCooldown: 0,
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
   }
+  announce(state, `Level ${next}. Deeper…`)
 }
 
 async function endRun(won) {
