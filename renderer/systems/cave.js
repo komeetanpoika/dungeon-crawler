@@ -8,7 +8,13 @@ import { makeFeedback } from './feedback.js'
 const TILE_SIZE = 32
 const centered = n => n * TILE_SIZE + TILE_SIZE / 2
 
-// entrance: {x, y, caveDepth, label}; dungeon: {map, entities, playerSpawn, theme}
+// Beaten caves regenerate this many seconds of SURFACE time after you leave;
+// a cave with its boss still alive keeps its state indefinitely.
+export const CAVE_RESET_TIME = 180
+
+// entrance: {x, y, caveDepth, label}; dungeon: {map, entities, playerSpawn,
+// theme} — either freshly generated or a stored instance, which additionally
+// carries the boss-drop flags and any unclaimed key.
 export function buildCaveState(surface, entrance, dungeon) {
   const { map, entities, playerSpawn, theme } = dungeon
   // the way back out: the spawn tile is the stairs you came down
@@ -30,9 +36,9 @@ export function buildCaveState(surface, entrance, dungeon) {
       x: playerSpawn.x, y: playerSpawn.y,
       px: centered(playerSpawn.x), py: centered(playerSpawn.y),
     },
-    hasKey: false,
-    dropSpawned: false,
-    lastBossTile: null,
+    hasKey: dungeon.hasKey ?? false,
+    dropSpawned: dungeon.dropSpawned ?? false,
+    lastBossTile: dungeon.lastBossTile ?? null,
     lockedMsgCooldown: 0,
     fireMsgCooldown: 0,
     entranceHold: false,
@@ -49,16 +55,43 @@ export function buildCaveState(surface, entrance, dungeon) {
 
 // Back to the stashed surface: same world, the player as the cave left them,
 // standing in the arch. entranceHold keeps the arch from swallowing them
-// again until they step off it.
+// again until they step off it. The cave itself is stored as an instance so
+// re-entering finds it exactly as left — killed enemies dead, loot looted.
 export function restoreSurface(caveState) {
-  const { surface, mouth } = caveState.cave
+  const { surface, mouth, label, stairs } = caveState.cave
   return {
     ...surface,
+    caveInstances: {
+      ...surface.caveInstances,
+      [label]: {
+        map: caveState.map,
+        entities: caveState.entities,
+        stairs: { ...stairs },
+        theme: caveState.theme,
+        level: caveState.level,
+        dropSpawned: caveState.dropSpawned,
+        lastBossTile: caveState.lastBossTile,
+        hasKey: caveState.hasKey,
+        cleared: !caveState.entities.some(e => e.isBoss),
+        age: 0,
+      },
+    },
     player: {
       ...caveState.player,
       x: mouth.x, y: mouth.y,
       px: centered(mouth.x), py: centered(mouth.y),
     },
     entranceHold: true,
+  }
+}
+
+// Surface-time aging: cleared instances count toward their reset and vanish
+// at CAVE_RESET_TIME (the next entry generates fresh); uncleared instances
+// never age. Call from the surface update only.
+export function tickCaveInstances(state, dt) {
+  for (const [label, inst] of Object.entries(state.caveInstances ?? {})) {
+    if (!inst.cleared) continue
+    inst.age += dt
+    if (inst.age >= CAVE_RESET_TIME) delete state.caveInstances[label]
   }
 }

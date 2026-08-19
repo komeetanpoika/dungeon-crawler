@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildCaveState, restoreSurface } from '../renderer/systems/cave.js'
+import { buildCaveState, restoreSurface, tickCaveInstances, CAVE_RESET_TIME } from '../renderer/systems/cave.js'
 import { buildOpenMap } from '../renderer/systems/openmap.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -86,6 +86,70 @@ describe('restoreSurface', () => {
   it('holds the entrance so the arch does not swallow the player again', () => {
     assert.equal(back.entranceHold, true)
     assert.equal(back.cave, undefined)
+  })
+})
+
+describe('cave instances', () => {
+  const enterAndExit = (mutate = () => {}) => {
+    const surface = surfaceState()
+    const entrance = { x: 10, y: 12, caveDepth: 1, label: 'cave 1' }
+    const dungeon = { map: dungeonMap(), entities: [{ type: 'crab', x: 5, y: 2, isBoss: true }], playerSpawn: { x: 2, y: 4 }, theme: { bgColor: '#000' } }
+    const cave = buildCaveState(surface, entrance, dungeon)
+    mutate(cave)
+    return { back: restoreSurface(cave), cave, entrance }
+  }
+
+  it('exiting stores the cave as it was left, uncleared while the boss lives', () => {
+    const { back, cave } = enterAndExit()
+    const inst = back.caveInstances['cave 1']
+    assert.equal(inst.map, cave.map)
+    assert.equal(inst.entities, cave.entities)
+    assert.deepEqual(inst.stairs, { x: 2, y: 4 })
+    assert.equal(inst.cleared, false)
+    assert.equal(inst.age, 0)
+  })
+
+  it('a boss-less cave stores as cleared, with its drop flags and key', () => {
+    const { back } = enterAndExit(cave => {
+      cave.entities = [{ type: 'key', x: 5, y: 2 }]
+      cave.dropSpawned = true
+      cave.lastBossTile = { x: 5, y: 2 }
+      cave.hasKey = false
+    })
+    const inst = back.caveInstances['cave 1']
+    assert.equal(inst.cleared, true)
+    assert.equal(inst.dropSpawned, true)
+    assert.deepEqual(inst.lastBossTile, { x: 5, y: 2 })
+  })
+
+  it('re-entering from an instance restores map, entities and flags', () => {
+    const { back, cave, entrance } = enterAndExit(c => { c.dropSpawned = true; c.hasKey = true })
+    const inst = back.caveInstances['cave 1']
+    const again = buildCaveState(back, entrance, {
+      map: inst.map, entities: inst.entities, playerSpawn: inst.stairs, theme: inst.theme,
+      dropSpawned: inst.dropSpawned, lastBossTile: inst.lastBossTile, hasKey: inst.hasKey,
+    })
+    assert.equal(again.map, cave.map)
+    assert.equal(again.entities, cave.entities)
+    assert.equal(again.dropSpawned, true)
+    assert.equal(again.hasKey, true)
+    assert.deepEqual([again.player.x, again.player.y], [2, 4])
+  })
+
+  it('only cleared instances age, and they reset after CAVE_RESET_TIME', () => {
+    const state = {
+      cave: null,
+      caveInstances: {
+        'cave 1': { cleared: false, age: 0 },
+        'cave 2': { cleared: true, age: 0 },
+      },
+    }
+    tickCaveInstances(state, CAVE_RESET_TIME - 1)
+    assert.equal(state.caveInstances['cave 1'].age, 0)
+    assert.ok(state.caveInstances['cave 2'].age > 0)
+    tickCaveInstances(state, 2)
+    assert.ok('cave 1' in state.caveInstances, 'uncleared caves never reset')
+    assert.ok(!('cave 2' in state.caveInstances), 'cleared caves reset after the timer')
   })
 })
 

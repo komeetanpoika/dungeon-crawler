@@ -23,7 +23,7 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
-import { buildCaveState, restoreSurface } from './systems/cave.js'
+import { buildCaveState, restoreSurface, tickCaveInstances } from './systems/cave.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { rollChestLoot } from './systems/loot.js'
@@ -255,6 +255,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     lockedMsgCooldown: 0,
     fireMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
+    caveInstances: {},
     entranceHold: false,
   }
   announce(state, depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…')
@@ -727,6 +728,7 @@ function update(delta) {
   // Walk animation — player + humanoid enemies (guard, wizard)
   tickWalk(player, delta)
   tickFeedback(state.feedback, delta)
+  if (!state.cave) tickCaveInstances(state, delta)
   for (const e of state.entities) {
     if (e.type === 'guard' || e.type === 'wizard') tickWalk(e, delta)
   }
@@ -771,6 +773,18 @@ function render() {
 }
 
 function enterCave(entrance) {
+  // A stored instance means the cave is exactly as it was left — killed
+  // enemies dead, loot looted; cleared instances vanish on their reset timer
+  // (tickCaveInstances), so missing here means generate fresh.
+  const inst = state.caveInstances?.[entrance.label]
+  if (inst) {
+    state = buildCaveState(state, entrance, {
+      map: inst.map, entities: inst.entities, playerSpawn: inst.stairs, theme: inst.theme,
+      dropSpawned: inst.dropSpawned, lastBossTile: inst.lastBossTile, hasKey: inst.hasKey,
+    })
+    announce(state, inst.cleared ? 'The cave lies silent.' : 'You descend into the dark…')
+    return
+  }
   const depth = entrance.caveDepth
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[1]
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
