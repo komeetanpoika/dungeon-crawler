@@ -27,5 +27,14 @@ export function buildOpenMap(data) {
   const entitySpawns = data.pois
     .filter(p => p.kind === 'chest')
     .map(p => ({ kind: 'chest', x: p.x, y: p.y }))
-  return { map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [] }
+  // Walk-onto triggers for both cells of each 2-wide arch; caveDepths pairs
+  // with the dungeon_entrance POIs in order.
+  const caveEntrances = data.pois
+    .filter(p => p.kind === 'dungeon_entrance')
+    .flatMap((p, i) => [0, 1].map(dx => ({
+      x: p.x + dx, y: p.y,
+      caveDepth: data.caveDepths?.[i] ?? 1,
+      label: p.label,
+    })))
+  return { map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [], caveEntrances }
 }

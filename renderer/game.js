@@ -23,6 +23,7 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
+import { buildCaveState, restoreSurface } from './systems/cave.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { rollChestLoot } from './systems/loot.js'
@@ -206,7 +207,7 @@ function buildEntities(spawns, map, depth) {
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
-  const { map, entitySpawns, playerSpawn } =
+  const { map, entitySpawns, playerSpawn, caveEntrances } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
@@ -253,6 +254,8 @@ function startNewRun(depth = 1, arenaCfg = null) {
     lastBossTile: null,
     lockedMsgCooldown: 0,
     fireMsgCooldown: 0,
+    caveEntrances: caveEntrances ?? [],
+    entranceHold: false,
   }
   announce(state, depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…')
 }
@@ -383,6 +386,18 @@ function update(delta) {
     state.entities = state.entities.filter((_, i) => i !== floatIdx)
   }
 
+  // Cave entrance — walking into an arch descends; the hold flag set on
+  // emerging keeps the arch from swallowing the player again until they
+  // step off it. Inside a cave, returning to the entry stairs retreats.
+  const arch = state.caveEntrances?.find(e => e.x === player.x && e.y === player.y)
+  if (arch && !state.entranceHold) { enterCave(arch); return }
+  if (!arch) state.entranceHold = false
+  if (state.cave) {
+    const onStairs = player.x === state.cave.stairs.x && player.y === state.cave.stairs.y
+    if (!onStairs) state.cave.offStairs = true
+    else if (state.cave.offStairs) { exitCave(); return }
+  }
+
   // Key pickup — walk onto the key the boss dropped
   const keyIdx = state.entities.findIndex(e => e.type === 'key' && e.x === player.x && e.y === player.y)
   if (keyIdx !== -1) {
@@ -397,7 +412,9 @@ function update(delta) {
     if (state.hasKey) {
       exitDoor.opening = true; exitDoor.frame = 3
       state.hasKey = false
-      descendLevel(); return
+      if (state.cave) exitCave()
+      else descendLevel()
+      return
     }
     state.lockedMsgCooldown = Math.max(0, (state.lockedMsgCooldown ?? 0) - delta)
     if (state.lockedMsgCooldown <= 0) {
@@ -751,6 +768,24 @@ function render() {
   renderer.updateCamera(state.player, state.shake ?? 0)
   renderer.render(state)
   updateHUD(state)
+}
+
+function enterCave(entrance) {
+  const depth = entrance.caveDepth
+  const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[1]
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
+  const { map, entitySpawns, playerSpawn } =
+    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
+  decorateMap(map, rulesets[theme.ruleset])
+  state = buildCaveState(state, entrance, {
+    map, entities: buildEntities(entitySpawns, map, depth), playerSpawn, theme,
+  })
+  announce(state, 'You descend into the dark…')
+}
+
+function exitCave() {
+  state = restoreSurface(state)
+  announce(state, 'You emerge into the light.')
 }
 
 function descendLevel() {

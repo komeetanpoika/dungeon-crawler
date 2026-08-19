@@ -11,7 +11,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.resolve(HERE, '../../renderer/data/open-maps.js')
 
 const EXPORTS = [
-  { depth: 7, file: 'forest-1-clearings.json', title: 'Clearings' },
+  // caveDepths: dungeon difficulty behind each dungeon_entrance POI, in POI
+  // order — cave 1 plays like depth 1, cave 2 like depth 3.
+  { depth: 7, file: 'forest-1-clearings.json', title: 'Clearings', caveDepths: [1, 3] },
 ]
 
 const maps = {}
@@ -20,7 +22,7 @@ for (const e of EXPORTS) {
   maps[e.depth] = {
     name: m.name, title: e.title, w: m.w, h: m.h,
     palette: m.palette, ground: m.ground, prop: m.prop, walk: m.walk,
-    pois: m.pois, playerSpawn: m.playerSpawn,
+    pois: m.pois, playerSpawn: m.playerSpawn, caveDepths: e.caveDepths ?? [],
   }
 }
 
