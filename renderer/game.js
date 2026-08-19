@@ -543,7 +543,16 @@ function update(delta) {
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
   }
-  if (player.attackMode !== 'ranged' && isChargeWeapon(meleeWT)) {
+  if (player.attackMode !== 'ranged' && !player.weapon) {
+    // Truly unarmed: no swing at all — like the empty ranged slot, the fix
+    // is finding a weapon, and the game says so instead of doing nothing.
+    player.charging = null
+    state.meleeMsgCooldown = Math.max(0, (state.meleeMsgCooldown ?? 0) - delta)
+    if (keys[' '] && state.meleeMsgCooldown <= 0) {
+      think(state, 'Unarmed — you need a weapon.')
+      state.meleeMsgCooldown = 2
+    }
+  } else if (player.attackMode !== 'ranged' && isChargeWeapon(meleeWT)) {
     if (player.charging) {
       if (keys[' ']) player.charging.t += delta
       else { const held = player.charging.t; player.charging = null; swing(resolveCharge(meleeWT, held)) }
