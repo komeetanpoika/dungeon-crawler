@@ -2,7 +2,7 @@
 //   1 clearings — noise-density woods with carved clearings, village, paths
 //   2 river     — a river splits dense woods; bridges, lumber camp
 //   3 autumn    — autumn highland: rock outcrops, stone circle, hermit hut
-import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
+import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3, stampEdgeBand } from './lib.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,6 +19,13 @@ const DIRT = ['ow_dirt_0', 'ow_dirt_1', 'ow_dirt_2', 'ow_dirt_3']
 const ROCKS_MOSS = ['ow_rock_gray_moss_0', 'ow_rock_gray_moss_1', 'ow_rock_gray_moss_2']
 const pick = (rng, a) => a[Math.floor(rng() * a.length)]
 const isOpen = b => (x, y) => b.walkable(x, y) && b.prop[y][x] === -1
+
+function forestEdge(b, rng, kit) {
+  stampEdgeBand(b, rng, (x, y) => {
+    if (b.palette[b.ground[y][x]]?.startsWith('ow_water')) return
+    plantTree(b, rng, x, y, kit)
+  })
+}
 
 function grassBase(b, rng) {
   // flower variants are loud — keep them rare accents
@@ -41,9 +48,11 @@ function stampVillage(b, rng, cx, cy) {
 function stampCaveInRocks(b, rng, x, y) {
   for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++)
     if (Math.abs(dx) + Math.abs(dy) < 3 && rng() < 0.92) b.p(x + dx, y + dy, pick(rng, ROCKS_MOSS))
-  // the arch is an l+r pair; approach stays clear below both halves
+  // the arch is an l+r pair you can stand in; clear first — a rock planted
+  // underneath would otherwise keep the cell blocked
+  b.clearProp(x, y); b.clearProp(x + 1, y)
   b.clearProp(x, y + 1); b.clearProp(x + 1, y + 1)
-  b.p(x, y, 'ow_cave_arch_0'); b.p(x + 1, y, 'ow_cave_arch_1')
+  b.p(x, y, 'ow_cave_arch_0', { walkable: true }); b.p(x + 1, y, 'ow_cave_arch_1', { walkable: true })
 }
 
 // ---------- attempt 1: clearings ----------
@@ -60,6 +69,7 @@ function clearings() {
       else b.p(x, y, pick(rng, ['ow_bush_0', 'ow_bush_1', 'ow_mushroom']))
     }
   }
+  forestEdge(b, rng, PINES)
   const clearing = (cx, cy, r) => {
     for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++)
       if (x * x + y * y <= r * r) b.clearProp(cx + x, cy + y)
@@ -129,6 +139,7 @@ function river() {
       else b.p(x, y, pick(rng, ['ow_bush_0', 'ow_bush_berry']))
     }
   }
+  forestEdge(b, rng, PINES)
   // two log bridges
   for (const by of [22, 58]) {
     const cx = riverX(by)
@@ -155,6 +166,9 @@ function river() {
   b.p(shrineX, shrineY, 'tile_0064'); b.poi('landmark', shrineX, shrineY, 'river shrine')
   for (const c of b.scatter(rng, 4, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: camp.x, y: camp.y + 2 }
+  // the blocked border removed the old around-the-edge routes; join what the
+  // river and the woods now split
+  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ['ow_rock_gray_0', 'ow_rock_gray_1'])), groundSkin: 'ow_dirt_0' })
   b.ensureReachable('ow_dirt_0')
   pruneBrokenTrees(b)
   return b
@@ -180,6 +194,7 @@ function autumn() {
       if (d > 0.48 && rng() < (d - 0.48) * 2.5) plantTree(b, rng, x, y, rng() < 0.75 ? AUTUMN : PINES)
     }
   }
+  forestEdge(b, rng, AUTUMN)
   // stone circle on a knoll
   const circ = { x: 84, y: 22 }
   for (let y = -5; y <= 5; y++) for (let x = -5; x <= 5; x++) if (x * x + y * y <= 25) b.clearProp(circ.x + x, circ.y + y)

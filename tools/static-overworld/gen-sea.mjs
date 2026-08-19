@@ -2,7 +2,7 @@
 //   1 suomenlinna — derived from an aerial photo of the Helsinki sea fortress
 //   2 fishing village — noise coastline, piers, lighthouse islet
 //   3 archipelago — island chain linked by causeways, ruined monastery
-import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
+import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3, stampEdgeBand } from './lib.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +18,17 @@ const ROCKS_G = ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']
 const SKERRY = ['ow_rock_water_gray_0', 'ow_rock_water_gray_1', 'ow_rock_water_gray_2']
 const pick = (rng, a) => a[Math.floor(rng() * a.length)]
 const isOpen = b => (x, y) => b.walkable(x, y) && b.prop[y][x] === -1
+// land edges get forest, sand edges get shore rocks, water is left alone —
+// it already reads as impassable
+function seaEdge(b, rng) {
+  stampEdgeBand(b, rng, (x, y) => {
+    const g = b.palette[b.ground[y][x]] ?? ''
+    if (g.startsWith('ow_water')) return
+    if (g.startsWith('ow_sand') || g.startsWith('ow_stone')) b.p(x, y, pick(rng, ROCKS_G))
+    else plantTree(b, rng, x, y, PINES)
+  })
+}
+
 // pier logs belong on water; a bridge crossing a tree pocket just fells the trees
 const pierOverWater = b => (x, y) => b.palette[b.ground[y][x]]?.startsWith('ow_water') ? 'ow_pier_log' : null
 
@@ -57,6 +68,7 @@ function suomenlinna() {
     const nearWater = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => b.palette[b.ground[y + dy]?.[x + dx]]?.startsWith('ow_water'))
     if (nearWater && rng() < 0.18) b.p(x, y, pick(rng, ROCKS_G))
   }
+  seaEdge(b, rng)
   // skerries and boats in open water
   for (const s of b.scatter(rng, 26, 6, (x, y) => b.palette[b.ground[y][x]]?.startsWith('ow_water'))) {
     b.prop[s.y][s.x] = b.skin(rng() < 0.75 ? pick(rng, SKERRY) : 'ow_boat')
@@ -84,7 +96,8 @@ function suomenlinna() {
   b.p(gate.x, gate.y, 'ow_ruin_gate')
   b.poi('ruin', gate.x, gate.y, "King's Gate walls")
   for (const [i, c] of [snap(10, 44), snap(82, 34)].entries()) {
-    b.p(c.x, c.y, 'ow_cave_arch_0'); b.p(c.x + 1, c.y, 'ow_cave_arch_1')
+    b.clearProp(c.x, c.y); b.clearProp(c.x + 1, c.y)
+    b.p(c.x, c.y, 'ow_cave_arch_0', { walkable: true }); b.p(c.x + 1, c.y, 'ow_cave_arch_1', { walkable: true })
     b.poi('dungeon_entrance', c.x, c.y, `casemate ${i + 1}`)
   }
   for (const c of b.scatter(rng, 3, 25, (x, y) => main[y][x] && b.prop[y][x] === -1)) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
@@ -116,6 +129,7 @@ function fishingVillage() {
     const d = noise(x, y, { freq: 0.08, octaves: 3 })
     if (d > 0.45 && rng() < (d - 0.45) * 4) plantTree(b, rng, x, y, PINES)
   }
+  seaEdge(b, rng)
   // village on the shore
   const vy = 38, vx = coastX(vy) - 8
   for (let y = vy - 8; y <= vy + 8; y++) for (let x = vx - 8; x <= vx + 8; x++) if (b.in(x, y)) b.clearProp(x, y)
@@ -142,7 +156,7 @@ function fishingVillage() {
   const cave = { x: coastX(64) - 1, y: 64 }
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 2; dx++) if (rng() < 0.9) b.p(cave.x + dx, cave.y + dy, pick(rng, ROCKS_G))
   b.clearProp(cave.x, cave.y); b.clearProp(cave.x + 1, cave.y)
-  b.p(cave.x, cave.y, 'ow_cave_arch_0'); b.p(cave.x + 1, cave.y, 'ow_cave_arch_1')
+  b.p(cave.x, cave.y, 'ow_cave_arch_0', { walkable: true }); b.p(cave.x + 1, cave.y, 'ow_cave_arch_1', { walkable: true })
   b.clearProp(cave.x, cave.y + 1); b.clearProp(cave.x + 1, cave.y + 1)
   b.poi('dungeon_entrance', cave.x, cave.y, 'sea cave')
   // skerries + boats offshore
@@ -181,6 +195,7 @@ function archipelago() {
     const d = noise(x + 200, y, { freq: 0.09, octaves: 2 })
     if (d > 0.52 && rng() < (d - 0.52) * 4) plantTree(b, rng, x, y, PINES)
   }
+  seaEdge(b, rng)
   // find the three biggest islands for POIs
   const comps = b.components().slice(0, 3)
   const centroid = c => {
@@ -208,7 +223,7 @@ function archipelago() {
   if (comps[2]) {
     const m = centroid(comps[2])
     b.clearProp(m.x, m.y); b.clearProp(m.x + 1, m.y)
-    b.p(m.x, m.y, 'ow_cave_arch_0'); b.p(m.x + 1, m.y, 'ow_cave_arch_1')
+    b.p(m.x, m.y, 'ow_cave_arch_0', { walkable: true }); b.p(m.x + 1, m.y, 'ow_cave_arch_1', { walkable: true })
     b.poi('dungeon_entrance', m.x, m.y, 'grotto')
   }
   // boats + skerries

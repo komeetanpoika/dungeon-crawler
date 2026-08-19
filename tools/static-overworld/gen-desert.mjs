@@ -2,7 +2,7 @@
 //   1 dunes-and-oasis — noise-layered open erg
 //   2 canyon          — carved wadi network through solid rock
 //   3 lost-city       — ruined sandstone city half-buried in sand
-import { MapBuilder, mulberry32, makeNoise, validate } from './lib.mjs'
+import { MapBuilder, mulberry32, makeNoise, validate, stampEdgeBand } from './lib.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,6 +16,7 @@ const SAND = ['ow_sand_0', 'ow_sand_0', 'ow_sand_0', 'ow_sand_flat']
 const ROCKS_B = ['ow_rock_brown_0', 'ow_rock_brown_1', 'ow_rock_brown_2']
 const ROCKS_G = ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']
 const pick = (rng, a) => a[Math.floor(rng() * a.length)]
+const desertEdge = (b, rng) => stampEdgeBand(b, rng, (x, y) => b.p(x, y, pick(rng, ROCKS_B)))
 
 function sandBase(b, rng, noise) {
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
@@ -47,8 +48,9 @@ function stampCamp(b, rng, x, y) {
 function stampCaveOutcrop(b, rng, x, y, rocks = ROCKS_G) {
   for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++)
     if (Math.abs(dx) + Math.abs(dy) < 3 && rng() < 0.9) b.p(x + dx, y + dy, pick(rng, rocks))
+  b.clearProp(x, y); b.clearProp(x + 1, y)
   b.clearProp(x, y + 1); b.clearProp(x + 1, y + 1)
-  b.p(x, y, 'ow_cave_arch_0'); b.p(x + 1, y, 'ow_cave_arch_1')
+  b.p(x, y, 'ow_cave_arch_0', { walkable: true }); b.p(x + 1, y, 'ow_cave_arch_1', { walkable: true })
 }
 
 function scatterFlora(b, rng, n, kinds, ok) {
@@ -88,6 +90,7 @@ function dunes() {
   for (const c of b.scatter(rng, 5, 25, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   const spawn = camps[0] ?? { x: 10, y: 10 }
   b.playerSpawn = { x: spawn.x - 2, y: spawn.y + 2 }
+  desertEdge(b, rng)
   b.ensureReachable('ow_sand_0')
   return b
 }
@@ -148,6 +151,7 @@ function canyon() {
   scatterFlora(b, rng, 30, ['ow_cactus', 'ow_deadtree_0', 'ow_shrub_0', 'ow_shrub_1'], isOpen(b))
   for (const c of b.scatter(rng, 4, 30, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: spots[0].x + 2, y: spots[0].y + 2 }
+  desertEdge(b, rng)
   b.ensureReachable('ow_hardpan_0')
   return b
 }
@@ -213,6 +217,7 @@ function lostCity() {
   scatterFlora(b, rng, 40, ['ow_cactus', 'ow_deadtree_0', 'ow_deadtree_1', 'ow_shrub_0'], (x, y) => isOpen(b)(x, y) && (x < cityX || x > cityX + cols * 18 || y < cityY || y > cityY + rows * 15))
   for (const c of b.scatter(rng, 5, 24, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: 24, y: 63 }
+  desertEdge(b, rng)
   b.ensureReachable('ow_sand_0')
   return b
 }

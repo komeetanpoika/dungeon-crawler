@@ -89,16 +89,29 @@ export function plantTree(b, rng, x, y, kit) {
   } else b.p(x, y, pick(kit.small))
 }
 
+// Dress the map edge as terrain so the boundary is visible, never an
+// invisible wall: the outer two rings always get the biome's blocker, ring 3
+// thins out for an organic falloff. plant(x, y) stamps one blocker and may
+// decline (e.g. skip water, which already reads as impassable).
+// Call after base terrain but before POIs, healing and reachability.
+export function stampEdgeBand(b, rng, plant) {
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    const dist = Math.min(x, y, b.w - 1 - x, b.h - 1 - y)
+    if (dist > 2 || b.prop[y][x] !== -1) continue
+    if (dist <= 1 || rng() < 0.5) plant(x, y)
+  }
+}
+
 // Clearings, paths, healing bridges and reachability carves all clearProp one
-// cell at a time, which can sever a 2-tall tree. Sweep out both orphan halves;
-// run this after the last prop-clearing step.
+// cell at a time, which can sever a 2-tall tree. Sweep out orphan TRUNKS only:
+// a lone trunk is the broken half-tree look, while a lone canopy reads as the
+// review-approved 1-tile tree (tops are also planted alone on purpose).
+// Run this after the last prop-clearing step.
 export function pruneBrokenTrees(b) {
-  const trunkOf = new Map(TREE_PAIRS)
   const topOf = new Map(TREE_PAIRS.map(([top, trunk]) => [trunk, top]))
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
     const n = b.palette[b.prop[y][x]]
-    if (trunkOf.has(n) && b.palette[b.prop[y + 1]?.[x]] !== trunkOf.get(n)) b.clearProp(x, y)
-    else if (topOf.has(n) && b.palette[b.prop[y - 1]?.[x]] !== topOf.get(n)) b.clearProp(x, y)
+    if (topOf.has(n) && b.palette[b.prop[y - 1]?.[x]] !== topOf.get(n)) b.clearProp(x, y)
   }
 }
 
@@ -112,7 +125,13 @@ export class MapBuilder {
     this.walkG = Array.from({ length: h }, () => new Array(w).fill(true))
     this.pois = []
     this.playerSpawn = { x: 1, y: 1 }
+    // The game force-blocks the border ring (openmap.js), so the builder does
+    // too — otherwise reachability passes route paths along an edge the game
+    // then severs, which is exactly how two caves shipped unreachable.
+    for (let x = 0; x < w; x++) { this.walkG[0][x] = false; this.walkG[h - 1][x] = false }
+    for (let y = 0; y < h; y++) { this.walkG[y][0] = false; this.walkG[y][w - 1] = false }
   }
+  isBorder(x, y) { return x === 0 || y === 0 || x === this.w - 1 || y === this.h - 1 }
   skin(name) {
     if (!this.pidx.has(name)) { this.pidx.set(name, this.palette.length); this.palette.push(name) }
     return this.pidx.get(name)
@@ -125,9 +144,9 @@ export class MapBuilder {
     this.prop[y][x] = this.skin(skin)
     if (!walkable) this.walkG[y][x] = false
   }
-  clearProp(x, y) { if (this.in(x, y)) { this.prop[y][x] = -1; this.walkG[y][x] = true } }
+  clearProp(x, y) { if (this.in(x, y)) { this.prop[y][x] = -1; if (!this.isBorder(x, y)) this.walkG[y][x] = true } }
   block(x, y) { if (this.in(x, y)) this.walkG[y][x] = false }
-  unblock(x, y) { if (this.in(x, y)) this.walkG[y][x] = true }
+  unblock(x, y) { if (this.in(x, y) && !this.isBorder(x, y)) this.walkG[y][x] = true }
   walkable(x, y) { return this.in(x, y) && this.walkG[y][x] }
   poi(kind, x, y, label) { this.pois.push({ kind, x, y, label }) }
 
@@ -212,7 +231,8 @@ export class MapBuilder {
       for (const [cx, cy] of queue) {
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const nx = cx + dx, ny = cy + dy
-          if (!this.in(nx, ny) || prev.has(key(nx, ny))) continue
+          // never bridge through the border: those cells cannot be opened
+          if (!this.in(nx, ny) || this.isBorder(nx, ny) || prev.has(key(nx, ny))) continue
           prev.set(key(nx, ny), [cx, cy])
           if (main[ny][nx]) {
             let at = [cx, cy]
