@@ -5,7 +5,7 @@ import { drawDragonBoss } from './dragonboss.js'
 import { drawDragonBossPixel } from './dragonboss-pixel.js'
 import { PIXEL_SKIN } from '../systems/dragonboss.js'
 import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
-import { getSwingArc } from '../systems/melee.js'
+import { getSwingArc, CHARGE } from '../systems/melee.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 
 const TILE_SIZE = 32
@@ -402,7 +402,32 @@ export function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   const t = 1 - player.attackTimer / player.attackDuration
   const base = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.attackFacing] ?? 0
   const ws = sprites[`weapon_${player.weapon?.weaponType}`]
-  drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base })
+  const reach = getSwingArc(player.attackStyle).reach * (player.attackReachMul ?? 1)
+  drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base, reach })
+}
+
+// Wind-up ring: fills while a charge weapon is held, stepping colour at each
+// release tier — white (tap), gold (full swing), red (overcharged).
+export function drawChargeRing(ctx, player, camX, camY) {
+  const c = CHARGE[player.weapon?.weaponType]
+  if (!c || !player.charging) return
+  const t = player.charging.t
+  const frac = Math.min(1, t / c.over)
+  const color = t >= c.over ? '#e5484d' : t >= c.full ? '#f5a524' : '#e6e8e3'
+  ctx.save()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 3
+  ctx.globalAlpha = 0.9
+  ctx.beginPath()
+  ctx.arc(player.px - camX, player.py - camY, 14, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
+  ctx.stroke()
+  if (frac >= 1) {   // fully wound: a faint pulse so "ready" reads at a glance
+    ctx.globalAlpha = 0.35
+    ctx.beginPath()
+    ctx.arc(player.px - camX, player.py - camY, 17, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.restore()
 }
 
 // Per-weapon enemy swing presentation: which art to use, in what colour. How
@@ -752,6 +777,7 @@ export class Renderer {
       ctx.restore()
     }
     drawMeleeSwing(ctx, player, sprites, camX, camY, S)
+    drawChargeRing(ctx, player, camX, camY)
     const dragon = entities.find(e => e.type === 'dragon')
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     const cyclops = entities.find(e => e.type === 'cyclops')

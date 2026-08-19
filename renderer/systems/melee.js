@@ -19,6 +19,34 @@ export function getAttack(weaponType) {
   return ATTACK_STYLES[weaponType] ?? DEFAULT_ATTACK
 }
 
+// Weighty weapons charge: press-and-hold winds up, release swings. `full` and
+// `over` are hold times (s) for the tier thresholds; `moveFactor` is how much
+// of the walk speed survives while winding up — weapon-specific by design.
+export const CHARGE = {
+  longsword:    { full: 0.5, over: 1.1, moveFactor: 0.6 },
+  axe:          { full: 0.6, over: 1.2, moveFactor: 0.35 },
+  maunonmiekka: { full: 0.5, over: 1.1, moveFactor: 0.5 },
+}
+
+export const isChargeWeapon = weaponType => weaponType in CHARGE
+
+export const chargeMoveFactor = weaponType => CHARGE[weaponType]?.moveFactor ?? 1
+
+// Release tiers: a tap is light and quick to recover from; the full swing is
+// the weapon's baseline; overcharging trades a long recovery for damage,
+// reach and knockback. Non-charge weapons always swing at baseline.
+const TIER_MODS = {
+  tap:  { dmgMul: 0.7, reachMul: 1,    kbMul: 0.7, cooldownMul: 0.75 },
+  full: { dmgMul: 1,   reachMul: 1,    kbMul: 1,   cooldownMul: 1 },
+  over: { dmgMul: 1.6, reachMul: 1.25, kbMul: 1.6, cooldownMul: 1.5 },
+}
+
+export function resolveCharge(weaponType, heldTime) {
+  const c = CHARGE[weaponType]
+  const tier = !c ? 'full' : heldTime >= c.over ? 'over' : heldTime >= c.full ? 'full' : 'tap'
+  return { tier, ...TIER_MODS[tier] }
+}
+
 // Swing geometry — the single source of truth for both the hit test and the
 // animation, so a swing always damages exactly the wedge it draws.
 //   reach     — how far from the player's center the swing bites (px; a tile is 32)

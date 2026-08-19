@@ -28,7 +28,7 @@ import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdven
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { rollChestLoot } from './systems/loot.js'
-import { getAttack, meleeHit } from './systems/melee.js'
+import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
 const TILE_SIZE = 32
@@ -62,6 +62,7 @@ window.addEventListener('keydown', e => {
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
   const mode = toggleAttackMode(state.player)
+  state.player.charging = null
   think(state, mode === 'ranged' ? 'Ranged stance.' : 'Melee stance.')
 })
 
@@ -340,7 +341,8 @@ function update(delta) {
   if (keys['ArrowDown']  || keys['s']) { vy += 1; player.facing = 'south' }
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
   const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
-  if (!wasGrabbed) moveEntity(player, vx * PLAYER_SPEED * delta, vy * PLAYER_SPEED * delta, map, PLAYER_HALF, boss)
+  const speed = PLAYER_SPEED * (player.charging ? chargeMoveFactor(player.weapon?.weaponType) : 1)
+  if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
 
   // Chest interaction (walk onto chest tile)
   const chestIdx = state.entities.findIndex(e =>
@@ -487,35 +489,41 @@ function update(delta) {
   player.attackTimer    = Math.max(0, player.attackTimer    - delta)
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
 
-  // Melee (Space)
-  if (keys[' '] && player.attackMode !== 'ranged' && player.meleeCooldown <= 0) {
-    const atk = getAttack(player.weapon?.weaponType)
-    player.meleeCooldown = atk.cooldown
+  // Melee (Space): light blades swing the instant the key lands; charge
+  // weapons wind up while held and swing on release, tiered by hold time.
+  const meleeWT = player.weapon?.weaponType
+  const swing = (mods) => {
+    const atk = getAttack(meleeWT)
+    player.meleeCooldown = atk.cooldown * mods.cooldownMul
     player.attackTimer = atk.duration
     player.attackDuration = atk.duration
     player.attackStyle = atk.style
     player.attackFacing = player.facing
-    const dmg = player.weapon?.damage ?? 1
+    player.attackReachMul = mods.reachMul
+    const dmg = Math.max(1, Math.round((player.weapon?.damage ?? 1) * mods.dmgMul))
     const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
-    const miekka = player.weapon?.weaponType === 'maunonmiekka'
+    const arc = getSwingArc(atk.style)
+    const hitAt = (dx, dy) => inSwing(arc.reach * mods.reachMul, arc.halfAngle, fa, dx, dy)
+    const miekka = meleeWT === 'maunonmiekka'
     const struck = []   // enemies hit this swing (for the Maunonmiekka's shockwave)
     state.entities = state.entities
       .map(e => {
         if (!isEnemy(e)) return e
         if (e.type === 'dragon_boss') {
-          const swingHit = (cx, cy) => meleeHit(atk.style, fa, cx - player.px, cy - player.py)
-          const bossDmg = meleeDamageToDragon(player, e, swingHit)
-          if (bossDmg <= 0) return e
+          const swingHit = (cx, cy) => hitAt(cx - player.px, cy - player.py)
+          const raw = meleeDamageToDragon(player, e, swingHit)
+          if (raw <= 0) return e
+          const bossDmg = Math.max(1, Math.round(raw * mods.dmgMul))
           const bossHit = { ...e, hp: e.hp - bossDmg, inCombat: true }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${bossDmg}`, kind: 'dealt' })
           if (miekka) struck.push(bossHit)
           return bossHit
         }
-        if (!meleeHit(atk.style, fa, e.px - player.px, e.py - player.py)) return e
+        if (!hitAt(e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
-        startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback)
+        startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback * mods.kbMul)
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
       })
@@ -534,6 +542,15 @@ function update(delta) {
       if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
+  }
+  if (player.attackMode !== 'ranged' && isChargeWeapon(meleeWT)) {
+    if (player.charging) {
+      if (keys[' ']) player.charging.t += delta
+      else { const held = player.charging.t; player.charging = null; swing(resolveCharge(meleeWT, held)) }
+    } else if (keys[' '] && player.meleeCooldown <= 0) player.charging = { t: 0 }
+  } else {
+    if (player.charging) player.charging = null   // weapon swapped mid-wind-up
+    if (keys[' '] && player.attackMode !== 'ranged' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
   }
 
   // Ranged (Space while in ranged stance). tryFire gates on weapon presence,
