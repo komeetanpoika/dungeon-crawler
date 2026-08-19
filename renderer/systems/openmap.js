@@ -36,5 +36,11 @@ export function buildOpenMap(data) {
       caveDepth: data.caveDepths?.[i] ?? 1,
       label: p.label,
     })))
-  return { map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [], caveEntrances }
+  // The waystone onward: a visible stone arch on a walkable cell. Progression
+  // (game.js) decides whether stepping onto it travels or stays sealed.
+  if (data.exit) map[data.exit.y][data.exit.x].overlay = 'ow_house_arch_stone'
+  return {
+    map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [],
+    caveEntrances, mapExit: data.exit ? { ...data.exit } : null,
+  }
 }

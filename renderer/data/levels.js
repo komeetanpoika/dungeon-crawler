@@ -165,9 +165,12 @@ export const LEVEL_CONFIG = [
   { depth: 5, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 4, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.012, landmark: 'GREAT_LAIR',     weapons: ['longsword', 'axe'] },
   // Depth 6 — cheat-only sandbox for the derived 'castle' ruleset (not part of the 1..5 run).
   { depth: 6, mapW: 180, mapH: 116, staircaseWidth: 1, guardCount: 2, monsterDensity: 0, trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: null, weapons: ['dagger'] },
-  // Depth 7 — static open map (Clearings), the Adventure main mode. Dimensions
-  // come from the map data; densities are moot: buildOpenMap spawns only chests.
-  { depth: 7, mapW: 120, mapH: 80, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] },
+  // Depths 7-15 — the Adventure chain of static open maps (see open-maps.js).
+  // Dimensions come from the map data; densities are moot: buildOpenMap spawns
+  // only chests. Each depth here also enables the level<N> cheat.
+  ...Array.from({ length: 9 }, (_, i) => (
+    { depth: 7 + i, mapW: 120, mapH: 80, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] }
+  )),
 ]
 
 export const DEPTH_THEMES = [
@@ -213,10 +216,28 @@ export const DEPTH_THEMES = [
     fogAlpha: 0.65,
     props: { room: [] },   // ruleset has overlays, so scattered props are skipped anyway
   },
+  // Adventure maps carry their own art (no ruleset, decorateMap no-ops);
+  // backgrounds follow the biome: forest 7-9, desert 10-12, sea 13-15.
   {
-    depths: [7],
-    floorTile: 'floor',    // no ruleset: the static map carries its own art, decorateMap no-ops
+    depths: [7, 8, 9],
+    floorTile: 'floor',
     bgColor:  '#0a1208',
+    tint:     null,
+    fogAlpha: 0.65,
+    props: { room: [] },
+  },
+  {
+    depths: [10, 11, 12],
+    floorTile: 'floor',
+    bgColor:  '#171006',
+    tint:     null,
+    fogAlpha: 0.65,
+    props: { room: [] },
+  },
+  {
+    depths: [13, 14, 15],
+    floorTile: 'floor',
+    bgColor:  '#061018',
     tint:     null,
     fogAlpha: 0.65,
     props: { room: [] },

@@ -72,6 +72,21 @@ describe('buildOpenMap', () => {
   })
 })
 
+describe('waystone exit', () => {
+  it('marks the exit cell with the arch overlay and keeps it walkable', () => {
+    const { map, mapExit } = buildOpenMap(DATA)
+    assert.deepEqual(mapExit, DATA.exit)
+    const c = map[mapExit.y][mapExit.x]
+    assert.equal(c.overlay, 'ow_house_arch_stone')
+    assert.equal(c.tile, TILE.FLOOR)
+  })
+
+  it('the last map has no exit and no marker', () => {
+    const { mapExit } = buildOpenMap(OPEN_MAPS[15])
+    assert.equal(mapExit, null)
+  })
+})
+
 describe('generateLevel depth 7', () => {
   it('dispatches to the static open map', () => {
     const { map } = generateLevel(7, DATA.w, DATA.h)

@@ -24,6 +24,7 @@ import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
+import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { rollChestLoot } from './systems/loot.js'
@@ -86,14 +87,15 @@ let rafId = null
 let rulesets = {}
 let structures = {}
 let phase = PHASE.TITLE
-// Cave instances persisted across sessions, keyed by open-map name -> label.
-let savedCaves = {}
+// Adventure save: cave instances (map name -> label -> instance) plus the
+// progression record (furthest map, permanently-cleared dungeons).
+let savedAdventure = normalizeAdventureSave(null)
 
-function persistCaves() {
-  const mapName = OPEN_MAPS[state.level]?.name
-  if (!mapName) return
-  savedCaves[mapName] = state.caveInstances
-  window.saveAPI.saveCaves?.(savedCaves)
+function persistAdventure() {
+  const surface = state?.cave ? state.cave.surface : state
+  const mapName = surface ? OPEN_MAPS[surface.level]?.name : null
+  if (mapName) savedAdventure.caves[mapName] = surface.caveInstances ?? {}
+  window.saveAPI.saveCaves?.(savedAdventure)
 }
 
 // Every distinct skin/overlay used by any structure, so the renderer can draw them
@@ -216,7 +218,7 @@ function buildEntities(spawns, map, depth) {
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
-  const { map, entitySpawns, playerSpawn, caveEntrances } =
+  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
@@ -264,7 +266,9 @@ function startNewRun(depth = 1, arenaCfg = null) {
     lockedMsgCooldown: 0,
     fireMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
-    caveInstances: OPEN_MAPS[depth] ? { ...savedCaves[OPEN_MAPS[depth].name] } : {},
+    caveInstances: OPEN_MAPS[depth] ? { ...savedAdventure.caves[OPEN_MAPS[depth].name] } : {},
+    mapExit: mapExit ?? null,
+    exitMsgCooldown: 0,
     entranceHold: false,
   }
   announce(state, depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…')
@@ -277,7 +281,7 @@ function setPhase(to) {
 function goTitle() {
   phase = PHASE.TITLE
   menu.showTitle(meta, {
-    onAdventure: () => beginRun(ADVENTURE_DEPTH),
+    onAdventure: () => beginRun(OPEN_MAPS[savedAdventure.progress.mapDepth] ? savedAdventure.progress.mapDepth : ADVENTURE_DEPTH),
     onRush: () => beginRun(1),
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
@@ -407,6 +411,24 @@ function update(delta) {
     const onStairs = player.x === state.cave.stairs.x && player.y === state.cave.stairs.y
     if (!onStairs) state.cave.offStairs = true
     else if (state.cave.offStairs) { exitCave(); return }
+  }
+
+  // Waystone: standing on the exit arch travels onward once every dungeon
+  // here is finished; sealed, it explains itself on a cooldown.
+  if (!state.cave && state.mapExit && player.x === state.mapExit.x && player.y === state.mapExit.y) {
+    const mapData = OPEN_MAPS[state.level]
+    if (mapData && isMapComplete(savedAdventure.progress, mapData)) {
+      const next = nextMapDepth(state.level)
+      if (next) { travelToMap(next); return }
+    } else if (mapData) {
+      state.exitMsgCooldown = (state.exitMsgCooldown ?? 0) - delta
+      if (state.exitMsgCooldown <= 0) {
+        const done = savedAdventure.progress.cleared[mapData.name] ?? []
+        const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
+        think(state, `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
+        state.exitMsgCooldown = 2
+      }
+    }
   }
 
   // Key pickup — walk onto the key the boss dropped
@@ -738,7 +760,7 @@ function update(delta) {
   // Walk animation — player + humanoid enemies (guard, wizard)
   tickWalk(player, delta)
   tickFeedback(state.feedback, delta)
-  if (!state.cave && tickCaveInstances(state, delta)) persistCaves()
+  if (!state.cave && tickCaveInstances(state, delta)) persistAdventure()
   for (const e of state.entities) {
     if (e.type === 'guard' || e.type === 'wizard') tickWalk(e, delta)
   }
@@ -763,11 +785,20 @@ function update(delta) {
     const boss = state.entities.find(e => e.isBoss)
     state.lastBossTile = { x: boss.x, y: boss.y }
   } else if (state.lastBossTile && !state.dropSpawned) {
-    const isFinal = state.level >= FINAL_DEPTH
+    // A cave boss always drops the key home — the campaign-ending treasure
+    // belongs to Dungeon Rush's final depth alone.
+    const isFinal = !state.cave && state.level >= FINAL_DEPTH
     const cfg = LEVEL_CONFIG.find(c => c.depth === state.level) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
     announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
+    if (state.cave) {
+      const mapData = OPEN_MAPS[state.cave.surface.level]
+      const before = isMapComplete(savedAdventure.progress, mapData)
+      markCleared(savedAdventure.progress, mapData.name, state.cave.label)
+      if (!before && isMapComplete(savedAdventure.progress, mapData)) state.cave.mapJustCompleted = true
+      persistAdventure()
+    }
   }
 
   // Advance in-flight enemy melee attacks (windup → strike → swing)
@@ -816,9 +847,47 @@ function enterCave(entrance) {
 }
 
 function exitCave() {
+  const mapJustCompleted = state.cave.mapJustCompleted
+  const next = nextMapDepth(state.cave.surface.level)
   state = restoreSurface(state)
-  persistCaves()
-  announce(state, 'You emerge into the light.')
+  persistAdventure()
+  if (mapJustCompleted) {
+    announce(state, next ? 'The waystone stirs — the way onward is open.'
+                         : 'The wilds are conquered — your adventure is complete!')
+  } else announce(state, 'You emerge into the light.')
+}
+
+// Waystone travel: a fresh open map, the player carried over to its spawn.
+function travelToMap(depth) {
+  const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
+  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit } =
+    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
+  decorateMap(map, rulesets[theme.ruleset])
+  const mapName = OPEN_MAPS[depth].name
+  state = {
+    ...state,
+    level: depth, map, theme,
+    entities: buildEntities(entitySpawns, map, depth),
+    projectiles: [], fireZones: [], shockwaves: [], hitEffects: [],
+    log: [], feedback: makeFeedback(),
+    player: {
+      ...state.player,
+      x: playerSpawn.x, y: playerSpawn.y,
+      px: playerSpawn.x * TILE_SIZE + TILE_SIZE / 2,
+      py: playerSpawn.y * TILE_SIZE + TILE_SIZE / 2,
+    },
+    hasKey: false, dropSpawned: false, lastBossTile: null,
+    lockedMsgCooldown: 0, fireMsgCooldown: 0, exitMsgCooldown: 0,
+    caveEntrances: caveEntrances ?? [],
+    caveInstances: { ...savedAdventure.caves[mapName] },
+    mapExit: mapExit ?? null,
+    entranceHold: false,
+    run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
+  }
+  savedAdventure.progress.mapDepth = depth
+  persistAdventure()
+  announce(state, `You arrive in ${OPEN_MAPS[depth].title}.`)
 }
 
 function descendLevel() {
@@ -878,7 +947,7 @@ async function init() {
   structures = (await window.saveAPI.loadStructures()) ?? {}
   await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES])
   pruneMissingTiles(rulesets, renderer.sprites)
-  savedCaves = (await window.saveAPI.loadCaves?.()) ?? {}
+  savedAdventure = normalizeAdventureSave(await window.saveAPI.loadCaves?.())
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
   // Resizing reallocates the canvas backing store (blank); repaint the current

@@ -213,8 +213,10 @@ function autumn() {
   // two mine mouths in the high rocks
   for (const [i, m] of [{ x: 102, y: 12 }, { x: 74, y: 8 }].entries()) {
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 2; dx++) b.clearProp(m.x + dx, m.y + dy)
-    // abandoned mines wear the gated arch pair
-    b.p(m.x, m.y, 'ow_cave_gate_l'); b.p(m.x + 1, m.y, 'ow_cave_gate_r')
+    // abandoned mines wear the gated arch pair — enterable: walking in is
+    // pushing the gate open
+    b.clearProp(m.x, m.y); b.clearProp(m.x + 1, m.y)
+    b.p(m.x, m.y, 'ow_cave_gate_l', { walkable: true }); b.p(m.x + 1, m.y, 'ow_cave_gate_r', { walkable: true })
     b.poi('dungeon_entrance', m.x, m.y, `old mine ${i + 1}`)
   }
   for (const c of b.scatter(rng, 4, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }

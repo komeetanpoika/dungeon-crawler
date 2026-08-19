@@ -217,7 +217,7 @@ describe('open map cave entrances', () => {
 
   it('maps caveDepths onto the entrances in POI order', () => {
     const byLabel = l => caveEntrances.filter(e => e.label === l)
-    assert.ok(byLabel('cave 1').every(e => e.caveDepth === 1))
-    assert.ok(byLabel('cave 2').every(e => e.caveDepth === 3))
+    assert.ok(byLabel('cave 1').every(e => e.caveDepth === OPEN_MAPS[7].caveDepths[0]))
+    assert.ok(byLabel('cave 2').every(e => e.caveDepth === OPEN_MAPS[7].caveDepths[1]))
   })
 })

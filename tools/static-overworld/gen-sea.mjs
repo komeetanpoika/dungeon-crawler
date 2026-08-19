@@ -211,7 +211,7 @@ function archipelago() {
     b.poi('ruin', m.x, m.y - 2, 'monastery ruin')
     b.poi('dungeon_entrance', m.x - 5, m.y + 4, 'crypt')
     b.clearProp(m.x - 5, m.y + 4); b.clearProp(m.x - 4, m.y + 4)
-    b.p(m.x - 5, m.y + 4, 'ow_cave_gate_l'); b.p(m.x - 4, m.y + 4, 'ow_cave_gate_r')
+    b.p(m.x - 5, m.y + 4, 'ow_cave_gate_l', { walkable: true }); b.p(m.x - 4, m.y + 4, 'ow_cave_gate_r', { walkable: true })
   }
   if (comps[1]) {
     const m = centroid(comps[1])
