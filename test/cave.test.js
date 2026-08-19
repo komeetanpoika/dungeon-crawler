@@ -144,12 +144,25 @@ describe('cave instances', () => {
         'cave 2': { cleared: true, age: 0 },
       },
     }
-    tickCaveInstances(state, CAVE_RESET_TIME - 1)
+    assert.equal(tickCaveInstances(state, CAVE_RESET_TIME - 1), false)
     assert.equal(state.caveInstances['cave 1'].age, 0)
     assert.ok(state.caveInstances['cave 2'].age > 0)
-    tickCaveInstances(state, 2)
+    assert.equal(tickCaveInstances(state, 2), true, 'reports the reset so it can be persisted')
     assert.ok('cave 1' in state.caveInstances, 'uncleared caves never reset')
     assert.ok(!('cave 2' in state.caveInstances), 'cleared caves reset after the timer')
+  })
+
+  it('instances survive a save-file JSON round-trip', () => {
+    const { back, entrance } = enterAndExit(c => { c.dropSpawned = true; c.hasKey = true })
+    const thawed = JSON.parse(JSON.stringify(back.caveInstances))['cave 1']
+    const again = buildCaveState(surfaceState(), entrance, {
+      map: thawed.map, entities: thawed.entities, playerSpawn: thawed.stairs, theme: thawed.theme,
+      dropSpawned: thawed.dropSpawned, lastBossTile: thawed.lastBossTile, hasKey: thawed.hasKey,
+    })
+    assert.equal(again.map[4][2].tile, TILE.STAIRS_UP)
+    assert.equal(again.entities[0].type, 'crab')
+    assert.equal(again.dropSpawned, true)
+    assert.equal(again.hasKey, true)
   })
 })
 

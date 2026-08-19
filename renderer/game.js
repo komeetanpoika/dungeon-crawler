@@ -1,6 +1,6 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
-import { OPEN_MAP_SPRITES } from './data/open-maps.js'
+import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
 import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, makeRangedContents, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
@@ -86,6 +86,15 @@ let rafId = null
 let rulesets = {}
 let structures = {}
 let phase = PHASE.TITLE
+// Cave instances persisted across sessions, keyed by open-map name -> label.
+let savedCaves = {}
+
+function persistCaves() {
+  const mapName = OPEN_MAPS[state.level]?.name
+  if (!mapName) return
+  savedCaves[mapName] = state.caveInstances
+  window.saveAPI.saveCaves?.(savedCaves)
+}
 
 // Every distinct skin/overlay used by any structure, so the renderer can draw them
 // even when the active ruleset doesn't reference those tiles.
@@ -255,7 +264,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     lockedMsgCooldown: 0,
     fireMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
-    caveInstances: {},
+    caveInstances: OPEN_MAPS[depth] ? { ...savedCaves[OPEN_MAPS[depth].name] } : {},
     entranceHold: false,
   }
   announce(state, depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…')
@@ -728,7 +737,7 @@ function update(delta) {
   // Walk animation — player + humanoid enemies (guard, wizard)
   tickWalk(player, delta)
   tickFeedback(state.feedback, delta)
-  if (!state.cave) tickCaveInstances(state, delta)
+  if (!state.cave && tickCaveInstances(state, delta)) persistCaves()
   for (const e of state.entities) {
     if (e.type === 'guard' || e.type === 'wizard') tickWalk(e, delta)
   }
@@ -799,6 +808,7 @@ function enterCave(entrance) {
 
 function exitCave() {
   state = restoreSurface(state)
+  persistCaves()
   announce(state, 'You emerge into the light.')
 }
 
@@ -859,6 +869,7 @@ async function init() {
   structures = (await window.saveAPI.loadStructures()) ?? {}
   await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES])
   pruneMissingTiles(rulesets, renderer.sprites)
+  savedCaves = (await window.saveAPI.loadCaves?.()) ?? {}
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
   // Resizing reallocates the canvas backing store (blank); repaint the current

@@ -5,6 +5,7 @@
 // same-shape API backed by localStorage (saves) and static fetches (data),
 // plus the browser-only keyboard fixes the desktop build doesn't need.
 const META_KEY = 'dungeon-crawler-meta'
+const CAVES_KEY = 'dungeon-crawler-caves'
 
 async function fetchJSON(url, fallback) {
   try {
@@ -23,6 +24,10 @@ if (!window.saveAPI) {
       try { return JSON.parse(localStorage.getItem(META_KEY)) } catch { return null }
     },
     deleteRun: async () => {},
+    saveCaves: async (data) => { try { localStorage.setItem(CAVES_KEY, JSON.stringify(data)) } catch {} },
+    loadCaves: async () => {
+      try { return JSON.parse(localStorage.getItem(CAVES_KEY)) } catch { return null }
+    },
     loadRulesets: () => fetchJSON('./data/rulesets.json', {}),
     loadStructures: () => fetchJSON('./data/structures.json', {}),
     loadArenaConfig: async () => null,   // arena testing is a desktop/dev feature

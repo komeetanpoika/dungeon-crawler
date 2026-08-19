@@ -87,11 +87,14 @@ export function restoreSurface(caveState) {
 
 // Surface-time aging: cleared instances count toward their reset and vanish
 // at CAVE_RESET_TIME (the next entry generates fresh); uncleared instances
-// never age. Call from the surface update only.
+// never age. Call from the surface update only. Returns whether any instance
+// was removed, so the caller knows to persist the change.
 export function tickCaveInstances(state, dt) {
+  let removed = false
   for (const [label, inst] of Object.entries(state.caveInstances ?? {})) {
     if (!inst.cleared) continue
     inst.age += dt
-    if (inst.age >= CAVE_RESET_TIME) delete state.caveInstances[label]
+    if (inst.age >= CAVE_RESET_TIME) { delete state.caveInstances[label]; removed = true }
   }
+  return removed
 }
