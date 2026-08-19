@@ -17,8 +17,12 @@ describe('parseLevelCheat', () => {
     assert.equal(parseLevelCheat('level6'), 6)
   })
 
+  it('accepts level7 (static open map: Clearings)', () => {
+    assert.equal(parseLevelCheat('level7'), 7)
+  })
+
   it('ignores depths with no LEVEL_CONFIG entry', () => {
-    assert.equal(parseLevelCheat('level7'), null)
+    assert.equal(parseLevelCheat('level8'), null)
     assert.equal(parseLevelCheat('level9'), null)
     assert.equal(parseLevelCheat('level10'), null)
   })

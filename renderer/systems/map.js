@@ -1,6 +1,8 @@
 import { TILE, isWalkable, WEAPON_TYPES } from './entities.js'
 import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, OVERWORLD_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
 import { generateOverworld } from './overworld.js'
+import { buildOpenMap } from './openmap.js'
+import { OPEN_MAPS } from '../data/open-maps.js'
 
 const MAP_W = 80
 const MAP_H = 50
@@ -571,6 +573,7 @@ export function buildBossTestArena(width, height) {
 export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null } = {}) {
   if (depth === 0) return buildArena({ size: { w: width, h: height }, ...(arena ?? {}) })
   if (depth === OVERWORLD_DEPTH) return generateOverworld(width, height, { structures })
+  if (OPEN_MAPS[depth]) return buildOpenMap(OPEN_MAPS[depth])
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {

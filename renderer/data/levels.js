@@ -165,6 +165,9 @@ export const LEVEL_CONFIG = [
   { depth: 5, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 4, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.012, landmark: 'GREAT_LAIR',     weapons: ['longsword', 'axe'] },
   // Depth 6 — cheat-only sandbox for the derived 'castle' ruleset (not part of the 1..5 run).
   { depth: 6, mapW: 180, mapH: 116, staircaseWidth: 1, guardCount: 2, monsterDensity: 0, trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: null, weapons: ['dagger'] },
+  // Depth 7 — static open map (Clearings), cheat-only. Dimensions come from the
+  // map data; densities are moot because buildOpenMap spawns only chests.
+  { depth: 7, mapW: 120, mapH: 80, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] },
 ]
 
 export const DEPTH_THEMES = [
@@ -209,6 +212,14 @@ export const DEPTH_THEMES = [
     tint:     null,
     fogAlpha: 0.65,
     props: { room: [] },   // ruleset has overlays, so scattered props are skipped anyway
+  },
+  {
+    depths: [7],
+    floorTile: 'floor',    // no ruleset: the static map carries its own art, decorateMap no-ops
+    bgColor:  '#0a1208',
+    tint:     null,
+    fogAlpha: 0.65,
+    props: { room: [] },
   },
 ]
 
