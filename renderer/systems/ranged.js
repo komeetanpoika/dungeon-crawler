@@ -2,7 +2,8 @@
 // game.js owns projectile spawning, log messages, and input.
 
 export function toggleAttackMode(player) {
-  player.attackMode = player.attackMode === 'ranged' ? 'melee' : 'ranged'
+  const cycle = { melee: 'ranged', ranged: 'magic', magic: 'melee' }
+  player.attackMode = cycle[player.attackMode] ?? 'melee'
   return player.attackMode
 }
 

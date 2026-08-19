@@ -60,10 +60,11 @@ function armedPlayer(over = {}) {
 }
 
 describe('toggleAttackMode', () => {
-  it('flips melee <-> ranged and returns the new mode', () => {
+  it('cycles melee -> ranged -> magic -> melee and returns the new mode', () => {
     const p = makePlayer(1, 1)
     assert.equal(toggleAttackMode(p), 'ranged')
     assert.equal(p.attackMode, 'ranged')
+    assert.equal(toggleAttackMode(p), 'magic')
     assert.equal(toggleAttackMode(p), 'melee')
   })
 

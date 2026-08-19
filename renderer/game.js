@@ -27,6 +27,7 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
+import { tickMana, tryGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
@@ -63,7 +64,7 @@ window.addEventListener('keydown', e => {
   if (phase !== PHASE.PLAYING || !state) return
   const mode = toggleAttackMode(state.player)
   state.player.charging = null
-  think(state, mode === 'ranged' ? 'Ranged stance.' : 'Melee stance.')
+  think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[mode])
 })
 
 // In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
@@ -488,6 +489,8 @@ function update(delta) {
   player.rangedCooldown = Math.max(0, player.rangedCooldown - delta)
   player.attackTimer    = Math.max(0, player.attackTimer    - delta)
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
+  player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
+  tickMana(player, delta)
 
   // Melee (Space): light blades swing the instant the key lands; charge
   // weapons wind up while held and swing on release, tiered by hold time.
@@ -543,7 +546,7 @@ function update(delta) {
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
   }
-  if (player.attackMode !== 'ranged' && !player.weapon) {
+  if (player.attackMode === 'melee' && !player.weapon) {
     // Truly unarmed: no swing at all — like the empty ranged slot, the fix
     // is finding a weapon, and the game says so instead of doing nothing.
     player.charging = null
@@ -552,20 +555,41 @@ function update(delta) {
       think(state, 'Unarmed — you need a weapon.')
       state.meleeMsgCooldown = 2
     }
-  } else if (player.attackMode !== 'ranged' && isChargeWeapon(meleeWT)) {
+  } else if (player.attackMode === 'melee' && isChargeWeapon(meleeWT)) {
     if (player.charging) {
       if (keys[' ']) player.charging.t += delta
       else { const held = player.charging.t; player.charging = null; swing(resolveCharge(meleeWT, held)) }
     } else if (keys[' '] && player.meleeCooldown <= 0) player.charging = { t: 0 }
   } else {
     if (player.charging) player.charging = null   // weapon swapped mid-wind-up
-    if (keys[' '] && player.attackMode !== 'ranged' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
+    if (keys[' '] && player.attackMode === 'melee' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
   }
 
   // Ranged (Space while in ranged stance). tryFire gates on weapon presence,
   // ammo, and the per-weapon cooldown; failures (except cooldown) get a
   // throttled HUD message so holding Space doesn't spam the log.
   state.fireMsgCooldown = Math.max(0, (state.fireMsgCooldown ?? 0) - delta)
+  // Magic (Space in magic stance): the gust — no damage, stun + shove in a
+  // cone. Cooldown refusals stay silent (the HUD shows the state); an empty
+  // pool explains itself on a gate.
+  if (keys[' '] && player.attackMode === 'magic') {
+    const cast = tryGust(state)
+    if (cast.ok) {
+      const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
+      state.shockwaves.push({
+        px: player.px + Math.cos(fa) * 44, py: player.py + Math.sin(fa) * 44,
+        t: 0, dur: 0.3, maxRadius: 44, color: '#a5f3fc',
+      })
+      state.log = [...state.log, 'A gust of wind!'].slice(-5)
+    } else if (cast.reason === 'mana') {
+      state.magicMsgCooldown = Math.max(0, (state.magicMsgCooldown ?? 0) - delta)
+      if (state.magicMsgCooldown <= 0) {
+        think(state, 'The wind is spent — wait for it to gather.')
+        state.magicMsgCooldown = 2
+      }
+    }
+  }
+
   if (keys[' '] && player.attackMode === 'ranged') {
     const shot = tryFire(player)
     if (shot.ok) {
@@ -643,6 +667,7 @@ function update(delta) {
   for (const e of [...state.entities]) {
     if (!isEnemy(e)) continue
 
+    if (e.stunTimer > 0) { e.stunTimer -= delta; continue }
     if (e.type === 'cyclops')    { updateCyclops(e, state, delta);    continue }
     if (e.type === 'wizard')     { updateWizard(e, state, delta);     continue }
     if (e.type === 'crab')       { updateCrab(e, state, delta);       continue }
@@ -752,7 +777,7 @@ function update(delta) {
     }
 
     // Contact melee — weapon framework (damage/range/cooldown from the enemy's weapon)
-    tryStartEnemyAttack(e, state)
+    if (!(e.stunTimer > 0)) tryStartEnemyAttack(e, state)
   }
 
   // Footfall screenshake — dragon boss stomps

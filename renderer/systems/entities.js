@@ -121,6 +121,7 @@ export function makePlayer(x, y, bonuses = []) {
     inventory: [], maxInventory: 5 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
     bonuses, weapon: null, ranged: null, attackMode: 'melee',
+    mana: 4, manaRegenT: 0, magicCooldown: 0,   // the innate gust (magic.js)
   }
 }
 

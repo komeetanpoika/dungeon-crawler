@@ -406,6 +406,20 @@ export function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base, reach })
 }
 
+// Dizzy orbit over a stunned enemy: three pale dots circling, phase driven
+// by the stun timer so no wall clock is needed.
+function drawStunStars(ctx, cx, cy, t) {
+  ctx.save()
+  ctx.fillStyle = '#fde68a'
+  for (let i = 0; i < 3; i++) {
+    const a = t * 6 + i * (Math.PI * 2 / 3)
+    ctx.beginPath()
+    ctx.arc(cx + Math.cos(a) * 8, cy + Math.sin(a) * 3, 2, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 // Wind-up ring: fills while a charge weapon is held, stepping colour at each
 // release tier — white (tap), gold (full swing), red (overcharged).
 export function drawChargeRing(ctx, player, camX, camY) {
@@ -765,6 +779,7 @@ export class Renderer {
       if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
       else drawEntity(ctx, e, epx, epy, S, sprites)
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
+      if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
     }
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
