@@ -1,6 +1,7 @@
 // Asset review server: renders multi-tile composite samples (current vs
-// candidate assemblies) so a human can pick the right one per item.
-// Verdicts are saved to review.json next to this script.
+// candidate assemblies) so a human can review them. Any number of options can
+// be marked correct, and clicking a tile inside a picture flags that specific
+// cell as wrong. Verdicts are saved to review.json next to this script.
 //
 //   node tools/asset-review/serve.mjs        -> http://127.0.0.1:8877
 //
@@ -35,9 +36,9 @@ const server = http.createServer((req, res) => {
       let body = ''
       req.on('data', c => { body += c })
       req.on('end', () => {
-        const v = JSON.parse(body)
+        const { itemId, ...verdict } = JSON.parse(body)
         const all = readVerdicts()
-        all[v.itemId] = { choice: v.choice, note: v.note ?? '', at: new Date().toISOString() }
+        all[itemId] = { ...verdict, at: new Date().toISOString() }
         fs.writeFileSync(REVIEW, JSON.stringify(all, null, 2))
         send(200, '{"ok":true}')
       })
@@ -57,8 +58,9 @@ const PAGE = `<!doctype html><meta charset="utf-8">
 <title>Asset review</title>
 <style>
   body { margin: 0; background: #14171a; color: #e6e8e3; font: 15px/1.5 system-ui, sans-serif; }
-  header { padding: 14px 22px; border-bottom: 1px solid #2b333a; display: flex; align-items: baseline; gap: 14px; }
+  header { padding: 14px 22px; border-bottom: 1px solid #2b333a; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
   h1 { margin: 0; font-size: 19px; }
+  header .hint { color: #98a196; font-size: 13px; }
   #progress { color: #98a196; font: 13px ui-monospace, monospace; margin-left: auto; }
   .item { padding: 18px 22px; border-bottom: 1px solid #2b333a; }
   .item h2 { margin: 0 0 2px; font-size: 16px; }
@@ -66,11 +68,13 @@ const PAGE = `<!doctype html><meta charset="utf-8">
   .note { color: #98a196; font-size: 13px; max-width: 72ch; margin: 0 0 10px; }
   .options { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
   .opt { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-  .opt canvas { image-rendering: pixelated; border-radius: 4px; }
+  .opt canvas { image-rendering: pixelated; border-radius: 4px; cursor: crosshair; }
+  .opt .flags { color: #e5484d; font: 11px ui-monospace, monospace; min-height: 15px; }
   .opt button { font: 12px ui-monospace, monospace; max-width: 220px; text-align: left; padding: 5px 9px;
     background: #1b2025; color: #e6e8e3; border: 1px solid #2b333a; border-radius: 5px; cursor: pointer; }
   .opt button:hover { border-color: #58b7c6; }
   .opt button.picked { background: #58b7c6; color: #0d1417; border-color: #58b7c6; }
+  .opt button.picked::before { content: '✓ '; }
   .extra { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .extra input { background: #1b2025; color: #e6e8e3; border: 1px solid #2b333a; border-radius: 5px;
     padding: 5px 9px; font: 13px system-ui; width: 340px; }
@@ -79,11 +83,12 @@ const PAGE = `<!doctype html><meta charset="utf-8">
   .extra button.picked { background: #e5484d; color: #fff; border-color: #e5484d; }
 </style>
 <header><h1>Overworld asset review</h1>
-  <span style="color:#98a196;font-size:13px">pick the assembly that looks right — verdicts save instantly</span>
+  <span class="hint">toggle every option that looks right · click a tile inside a picture to flag that tile as wrong</span>
   <span id="progress"></span></header>
 <div id="items"></div>
 <script>
-const SCALE = 5, T = 16
+const SCALE = 5, T = 16, PAD = 1
+const CELL = T * SCALE
 const imgCache = {}
 function loadImg(name) {
   imgCache[name] ??= new Promise((resolve, reject) => {
@@ -94,69 +99,118 @@ function loadImg(name) {
   })
   return imgCache[name]
 }
-async function draw(canvas, grid, ground) {
+async function draw(canvas, grid, ground, flagged) {
   const rows = grid.length, cols = Math.max(...grid.map(r => r.length))
-  const padX = 1, padY = 1
-  canvas.width = (cols + padX * 2) * T * SCALE
-  canvas.height = (rows + padY * 2) * T * SCALE
+  canvas.width = (cols + PAD * 2) * CELL
+  canvas.height = (rows + PAD * 2) * CELL
   const g = canvas.getContext('2d')
   g.imageSmoothingEnabled = false
   const groundImg = await loadImg(ground)
-  for (let y = 0; y < rows + padY * 2; y++) for (let x = 0; x < cols + padX * 2; x++)
-    g.drawImage(groundImg, x * T * SCALE, y * T * SCALE, T * SCALE, T * SCALE)
+  for (let y = 0; y < rows + PAD * 2; y++) for (let x = 0; x < cols + PAD * 2; x++)
+    g.drawImage(groundImg, x * CELL, y * CELL, CELL, CELL)
   for (let y = 0; y < rows; y++) for (let x = 0; x < grid[y].length; x++)
-    if (grid[y][x]) g.drawImage(await loadImg(grid[y][x]), (x + padX) * T * SCALE, (y + padY) * T * SCALE, T * SCALE, T * SCALE)
+    if (grid[y][x]) g.drawImage(await loadImg(grid[y][x]), (x + PAD) * CELL, (y + PAD) * CELL, CELL, CELL)
+  for (const key of flagged) {
+    const [x, y] = key.split(',').map(Number)
+    const px = (x + PAD) * CELL, py = (y + PAD) * CELL
+    g.fillStyle = 'rgba(229,72,77,0.25)'
+    g.fillRect(px, py, CELL, CELL)
+    g.strokeStyle = '#e5484d'
+    g.lineWidth = 3
+    g.strokeRect(px + 1.5, py + 1.5, CELL - 3, CELL - 3)
+    g.beginPath()
+    g.moveTo(px + 8, py + 8); g.lineTo(px + CELL - 8, py + CELL - 8)
+    g.moveTo(px + CELL - 8, py + 8); g.lineTo(px + 8, py + CELL - 8)
+    g.stroke()
+  }
+}
+// old single-choice verdicts from the first version of this page
+function migrate(v) {
+  if (!v || v.good || v.badCells) return v ?? null
+  return { good: v.choice === 'none' ? [] : [v.choice], none: v.choice === 'none', badCells: {}, note: v.note ?? '' }
 }
 async function main() {
-  const [items, verdicts] = await Promise.all([
+  const [items, raw] = await Promise.all([
     fetch('/api/items').then(r => r.json()),
     fetch('/api/verdicts').then(r => r.json()),
   ])
+  const verdicts = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, migrate(v)]))
   const root = document.getElementById('items')
+  const reviewed = v => v && (v.good.length > 0 || v.none || Object.values(v.badCells).some(c => c.length))
   const updateProgress = () =>
-    document.getElementById('progress').textContent = Object.keys(verdicts).length + '/' + items.length + ' reviewed'
+    document.getElementById('progress').textContent =
+      Object.values(verdicts).filter(reviewed).length + '/' + items.length + ' reviewed'
   for (const item of items) {
+    const v = verdicts[item.id] ??= { good: [], none: false, badCells: {}, note: '' }
     const sec = document.createElement('section')
-    sec.className = 'item' + (verdicts[item.id] ? ' done' : '')
+    sec.className = 'item'
     sec.innerHTML = '<h2>' + item.title + '</h2>' + (item.note ? '<p class="note">' + item.note + '</p>' : '')
     const opts = document.createElement('div')
     opts.className = 'options'
-    const buttons = []
-    const save = async (choice, note) => {
-      await fetch('/api/verdict', { method: 'POST', body: JSON.stringify({ itemId: item.id, choice, note }) })
-      verdicts[item.id] = { choice }
-      sec.classList.add('done')
-      buttons.forEach(b => b.classList.toggle('picked', b.dataset.choice === choice))
-      updateProgress()
+    const refreshDone = () => { sec.classList.toggle('done', reviewed(v)); updateProgress() }
+    const save = async () => {
+      await fetch('/api/verdict', { method: 'POST', body: JSON.stringify({ itemId: item.id, ...v }) })
+      refreshDone()
     }
+    const noneBtn = document.createElement('button')
     item.options.forEach(opt => {
       const box = document.createElement('div')
       box.className = 'opt'
       const c = document.createElement('canvas')
-      draw(c, opt.grid, item.ground || 'ow_grass_0')
+      const flagged = new Set(v.badCells[opt.label] ?? [])
+      const flagsLine = document.createElement('span')
+      flagsLine.className = 'flags'
+      const refresh = () => {
+        draw(c, opt.grid, item.ground || 'ow_grass_0', flagged)
+        flagsLine.textContent = flagged.size ? '✕ flagged: ' + [...flagged].join('  ') : ''
+      }
+      c.title = 'click a tile to flag/unflag it'
+      c.addEventListener('click', e => {
+        const r = c.getBoundingClientRect()
+        const x = Math.floor((e.clientX - r.left) / CELL) - PAD
+        const y = Math.floor((e.clientY - r.top) / CELL) - PAD
+        if (!opt.grid[y] || !opt.grid[y][x]) return
+        const key = x + ',' + y
+        flagged.has(key) ? flagged.delete(key) : flagged.add(key)
+        v.badCells[opt.label] = [...flagged]
+        if (!flagged.size) delete v.badCells[opt.label]
+        refresh(); save()
+      })
       const b = document.createElement('button')
       b.textContent = opt.label
-      b.dataset.choice = opt.label
-      if (verdicts[item.id]?.choice === opt.label) b.classList.add('picked')
-      b.onclick = () => save(opt.label, noteInput.value)
-      buttons.push(b)
-      box.append(c, b)
+      b.classList.toggle('picked', v.good.includes(opt.label))
+      b.onclick = () => {
+        const i = v.good.indexOf(opt.label)
+        i >= 0 ? v.good.splice(i, 1) : v.good.push(opt.label)
+        if (v.good.length) { v.none = false; noneBtn.classList.remove('picked') }
+        b.classList.toggle('picked', i < 0)
+        save()
+      }
+      refresh()
+      box.append(c, b, flagsLine)
       opts.appendChild(box)
     })
     const extra = document.createElement('div')
     extra.className = 'extra'
-    const noneBtn = document.createElement('button')
-    noneBtn.textContent = 'none of these — see note'
-    noneBtn.dataset.choice = 'none'
-    if (verdicts[item.id]?.choice === 'none') noneBtn.classList.add('picked')
-    buttons.push(noneBtn)
+    noneBtn.textContent = 'none of these look right'
+    noneBtn.classList.toggle('picked', v.none)
+    noneBtn.onclick = () => {
+      v.none = !v.none
+      if (v.none) {
+        v.good = []
+        opts.querySelectorAll('.opt button').forEach(b => b.classList.remove('picked'))
+      }
+      noneBtn.classList.toggle('picked', v.none)
+      save()
+    }
     const noteInput = document.createElement('input')
     noteInput.placeholder = 'optional note (what looks wrong / what you want instead)'
-    noteInput.onchange = () => { if (verdicts[item.id]) save(verdicts[item.id].choice, noteInput.value) }
-    noneBtn.onclick = () => save('none', noteInput.value)
+    noteInput.value = v.note
+    noteInput.onchange = () => { v.note = noteInput.value; save() }
     extra.append(noneBtn, noteInput)
     sec.append(opts, extra)
     root.appendChild(sec)
+    refreshDone()
   }
   updateProgress()
 }
