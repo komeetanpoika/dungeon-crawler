@@ -92,14 +92,17 @@ function initTouchControls() {
   bindHold(document.getElementById('touch-pause'), 'Escape')
 
   // --- Stance button doubles as a status icon. The HUD already renders the
-  // active stance ('▶ ' prefix on #hud-ranged); mirror it instead of
-  // reaching into game state. ---
-  const rangedEl = document.getElementById('hud-ranged')
+  // active stance ('▶ ' prefix on whichever slot is active); mirror it
+  // instead of reaching into game state. Observing #hud-top (rather than a
+  // single slot) also picks up magic once its talent unhides it. ---
+  const hudTop = document.getElementById('hud-top')
   const stanceBtn = document.getElementById('touch-stance')
   new MutationObserver(() => {
-    const icon = rangedEl.textContent.startsWith('▶') ? '🏹' : '🗡'
+    const active = ['hud-magic', 'hud-ranged'].find(id =>
+      document.getElementById(id).textContent.startsWith('▶'))
+    const icon = active === 'hud-magic' ? '✨' : active === 'hud-ranged' ? '🏹' : '🗡'
     if (stanceBtn.textContent !== icon) stanceBtn.textContent = icon
-  }).observe(rangedEl, { childList: true, characterData: true, subtree: true })
+  }).observe(hudTop, { childList: true, characterData: true, subtree: true })
 
   // --- Never leave keys stuck when the page loses the pointer/focus ---
   window.addEventListener('blur', () => { stickId = null; base.style.display = 'none'; dirs = []; buttonResets.forEach(reset => reset()); releaseAll() })
