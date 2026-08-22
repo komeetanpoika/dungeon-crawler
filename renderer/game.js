@@ -23,6 +23,7 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -165,6 +166,22 @@ function detonateFireball(px, py) {
   state.shockwaves.push({ px: tx * TILE_SIZE + TILE_SIZE / 2, py: ty * TILE_SIZE + TILE_SIZE / 2,
     t: 0, dur: 0.35, maxRadius: TILE_SIZE * 2.5, color: '#f97316' })
   state.log = [...state.log, 'The fireball erupts!'].slice(-5)
+}
+
+// Walk-onto item grant: hand if free, else sack. Returns false when the sack
+// is full so the caller can leave the item in the world.
+function grantContents(contents) {
+  const item = itemFromContents(contents)
+  if (!item) return true
+  const r = autoEquipOnPickup(state.player, item)
+  if (!r.ok) {
+    state.packMsgCooldown = state.packMsgCooldown ?? 0
+    if (state.packMsgCooldown <= 0) { think(state, 'My pack is full.'); state.packMsgCooldown = 2 }
+    return false
+  }
+  const ammo = contents.type === 'ranged' ? ` (${contents.ammo} shots)` : ''
+  speak(state, r.equipped ? `Picked up ${item.name}!${ammo}` : `${item.name} — into the pack.`)
+  return true
 }
 
 function buildEntities(spawns, map, depth) {
@@ -367,19 +384,7 @@ function update(delta) {
         progress: 0, duration: 0.35,
       })
     } else {
-      // No free adjacent tile — give directly
-      if (chest.contents.type === 'weapon') {
-        player.weapon = { ...chest.contents }
-        speak(state, `Found ${chest.contents.name}!`)
-      } else if (chest.contents.type === 'ranged') {
-        player.ranged = { ...chest.contents }
-        speak(state, `Found ${chest.contents.name}! (${chest.contents.ammo} shots)`)
-      } else if (chest.contents.type === 'potion') {
-        const healed = Math.min(player.maxHp - player.hp, chest.contents.amount)
-        player.hp += healed
-        if (healed > 0) { speak(state, `Healed ${healed} HP!`); addFloat(state.feedback, { px: player.px, py: player.py, text: `+${healed}`, kind: 'heal' }) }
-        else think(state, 'Already full.')
-      }
+      grantContents(chest.contents)
     }
     state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
   }
@@ -389,19 +394,9 @@ function update(delta) {
     e.type === 'floating_item' && e.progress >= 1 && e.x === player.x && e.y === player.y)
   if (floatIdx !== -1) {
     const item = state.entities[floatIdx]
-    if (item.contents.type === 'weapon') {
-      player.weapon = { ...item.contents }
-      speak(state, `Picked up ${item.contents.name}!`)
-    } else if (item.contents.type === 'ranged') {
-      player.ranged = { ...item.contents }
-      speak(state, `Picked up ${item.contents.name}! (${item.contents.ammo} shots)`)
-    } else if (item.contents.type === 'potion') {
-      const healed = Math.min(player.maxHp - player.hp, item.contents.amount)
-      player.hp += healed
-      if (healed > 0) { speak(state, `Healed ${healed} HP!`); addFloat(state.feedback, { px: player.px, py: player.py, text: `+${healed}`, kind: 'heal' }) }
-      else think(state, 'Already full.')
+    if (grantContents(item.contents)) {
+      state.entities = state.entities.filter((_, i) => i !== floatIdx)
     }
-    state.entities = state.entities.filter((_, i) => i !== floatIdx)
   }
 
   // Cave entrance — walking into an arch descends; the hold flag set on
@@ -569,6 +564,7 @@ function update(delta) {
   // ammo, and the per-weapon cooldown; failures (except cooldown) get a
   // throttled HUD message so holding Space doesn't spam the log.
   state.fireMsgCooldown = Math.max(0, (state.fireMsgCooldown ?? 0) - delta)
+  state.packMsgCooldown = Math.max(0, (state.packMsgCooldown ?? 0) - delta)
   // Magic (Space in magic stance): the gust — no damage, stun + shove in a
   // cone. Cooldown refusals stay silent (the HUD shows the state); an empty
   // pool explains itself on a gate.
