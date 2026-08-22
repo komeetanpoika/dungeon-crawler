@@ -44,6 +44,16 @@ describe('stacking and capacity', () => {
     removeItem(p, 0)
     assert.equal(p.inventory.length, 0)
   })
+
+  it('removeItem on a weapon item returns it without injecting count, and it round-trips', () => {
+    const p = mkPlayer()
+    const sword = itemFromContents(swordContents())
+    addItem(p, sword)
+    const removed = removeItem(p, 0)
+    assert.equal(removed.count, undefined)
+    assert.equal(p.inventory.length, 0)
+    assert.deepEqual(contentsFromItem(removed), swordContents())
+  })
 })
 
 describe('equipping', () => {

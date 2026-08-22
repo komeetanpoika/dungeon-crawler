@@ -46,7 +46,7 @@ export function removeItem(player, index) {
   if (!slot) return null
   if (slot.stackable && slot.count > 1) { slot.count -= 1; return { ...slot, count: 1 } }
   player.inventory.splice(index, 1)
-  return { ...slot, count: 1 }
+  return { ...slot }
 }
 
 export function canEquip(player, item) {
