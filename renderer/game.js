@@ -912,6 +912,7 @@ function update(delta) {
     if (e.type === 'prop' && e.flowing) {
       e.fountainTime = (e.fountainTime ?? 0) + delta
     }
+    if (e.type === 'wild_mushroom') e.hueT = (e.hueT ?? 0) + delta
   }
 
   // Advance Maunonmiekka shockwave rings
@@ -995,8 +996,9 @@ function update(delta) {
 
 function render() {
   maybeComputeFOV(state.map, state.player)
-  renderer.updateCamera(state.player, state.shake ?? 0)
-  renderer.render(state)
+  const fx = riteVisuals(state)
+  renderer.updateCamera(state.player, state.shake ?? 0, fx)
+  renderer.render(state, fx)
   updateHUD(state)
 }
 
