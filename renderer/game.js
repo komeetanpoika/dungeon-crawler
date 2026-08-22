@@ -31,7 +31,7 @@ import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { tickMana, tryGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
-import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
+import { TALENTS, grantTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
@@ -932,10 +932,10 @@ function update(delta) {
     const cfg = LEVEL_CONFIG.find(c => c.depth === state.level) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
+    announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
     if (!state.cave && !OPEN_MAPS[state.level] && RUSH_TALENT_LADDER[state.level]) {
       grantTalent(state, RUSH_TALENT_LADDER[state.level])
     }
-    announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
     if (state.cave) {
       const mapData = OPEN_MAPS[state.cave.surface.level]
       const before = isMapComplete(savedAdventure.progress, mapData)
