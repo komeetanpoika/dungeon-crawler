@@ -490,6 +490,7 @@ function update(delta) {
     // re-triggerable rather than silently destroying the contents.
     const directGrant = !adj && grantContents(chest.contents)
     const granted = adj || directGrant
+    if (directGrant && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
     if (adj) {
       state.entities.push({
         type: 'floating_item',
@@ -514,6 +515,7 @@ function update(delta) {
     const item = state.entities[floatIdx]
     if (grantContents(item.contents)) {
       state.entities = state.entities.filter((_, i) => i !== floatIdx)
+      if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
     }
   }
 
@@ -559,6 +561,7 @@ function update(delta) {
   const shroomIdx = state.entities.findIndex(e => e.type === 'wild_mushroom' && e.x === player.x && e.y === player.y)
   if (shroomIdx !== -1 && grantContents({ type: 'mushroom' })) {
     state.entities = state.entities.filter((_, i) => i !== shroomIdx)
+    if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
   }
 
   // Rite triggers: silent unless the rite's condition holds
