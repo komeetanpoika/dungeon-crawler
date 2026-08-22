@@ -259,8 +259,18 @@ describe them:
   then `grantTalent` for the rush-ladder talent runs immediately after (and,
   separately, for a map-clear reward) — so the talent-learned flash always
   appears after, never overlapping or before, the boss-key banner.
+- **Unequip did not ship.** §4's control list names "Equip/Unequip" as the
+  weapon-slot action; only Equip shipped. The panel's hand slots
+  (`renderer/ui/inventory-panel.js`) are display-only — there is no action to
+  send a held weapon back to the sack on its own. A hand's contents change
+  only as a side effect of equipping something else from the sack (the swap
+  in `equipItem`, `renderer/systems/inventory.js`), never by unequipping to
+  empty-handed. Ruled out of this build by the controller on review, not a
+  gap to fix.
 
-No other interim-vs-spec deviations were found; slot-cap math
-(10 + `extra_slot` bonuses), the `"My pack is full."` / `"Too heavy — I lack
-the strength."` refusal text, and the close-panel-on-consume behavior all
-match §3/§4 as written.
+A few interim-vs-spec deviations were found, listed above (rite/mushroom
+placement, dungeon keys, `removeItem`'s `count` omission, grant-announcement
+ordering, and the missing Unequip action); slot-cap math (10 + `extra_slot`
+bonuses), the `"My pack is full."` / `"Too heavy — I lack the strength."`
+refusal text, and the close-panel-on-consume behavior all match §3/§4 as
+written.
