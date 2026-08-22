@@ -56,12 +56,15 @@ describe('makePlayer ranged fields', () => {
 })
 
 function armedPlayer(over = {}) {
-  return { ...makePlayer(1, 1), rangedCooldown: 0, ranged: makeRangedContents('shortbow'), ...over }
+  return {
+    ...makePlayer(1, 1), rangedCooldown: 0, ranged: makeRangedContents('shortbow'),
+    talents: ['ranged_stance'], ...over,
+  }
 }
 
 describe('toggleAttackMode', () => {
   it('cycles melee -> ranged -> magic -> melee and returns the new mode', () => {
-    const p = makePlayer(1, 1)
+    const p = { ...makePlayer(1, 1), talents: ['ranged_stance', 'magic_stance'] }
     assert.equal(toggleAttackMode(p), 'ranged')
     assert.equal(p.attackMode, 'ranged')
     assert.equal(toggleAttackMode(p), 'magic')
@@ -69,7 +72,7 @@ describe('toggleAttackMode', () => {
   })
 
   it('toggles even with no ranged weapon or empty ammo', () => {
-    const bare = makePlayer(1, 1)
+    const bare = { ...makePlayer(1, 1), talents: ['ranged_stance'] }
     assert.equal(toggleAttackMode(bare), 'ranged')
     const empty = armedPlayer()
     empty.ranged.ammo = 0
@@ -124,5 +127,11 @@ describe('tryFire', () => {
   it('firewand shots are exploding bolts', () => {
     const p = armedPlayer({ ranged: makeRangedContents('firewand') })
     assert.deepEqual(tryFire(p), { ok: true, damage: 4, color: '#f97316', shape: 'bolt', explodes: true })
+  })
+
+  it('refuses without the ranged_stance talent', () => {
+    const p = { talents: [], ranged: { ammo: 5, cooldown: 0.5, damage: 2, color: '#fff', kind: 'bow' }, rangedCooldown: 0 }
+    assert.deepEqual(tryFire(p), { ok: false, reason: 'not_learned' })
+    assert.equal(p.ranged.ammo, 5)
   })
 })

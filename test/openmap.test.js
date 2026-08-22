@@ -55,7 +55,9 @@ describe('buildOpenMap', () => {
   it('turns chest POIs into chest spawns and drops their baked-in overlay', () => {
     const chests = DATA.pois.filter(p => p.kind === 'chest')
     assert.ok(chests.length > 0, 'Clearings has caches')
-    assert.equal(entitySpawns.length, chests.length)
+    // entitySpawns.length now also includes rite spawns (Task 10); compare
+    // against just the chest-kind spawns.
+    assert.equal(entitySpawns.filter(s => s.kind === 'chest').length, chests.length)
     for (const p of chests) {
       assert.ok(entitySpawns.some(s => s.kind === 'chest' && s.x === p.x && s.y === p.y), `spawn for cache at ${p.x},${p.y}`)
       assert.equal(map[p.y][p.x].overlay, undefined, 'chest art comes from the entity, not the map')
@@ -63,7 +65,11 @@ describe('buildOpenMap', () => {
   })
 
   it('spawns no enemies and no markers for scenery POIs', () => {
-    assert.ok(entitySpawns.every(s => s.kind === 'chest'))
+    // Rite triggers and wild mushrooms are new legitimate spawn kinds
+    // (Task 10) — this guards against anything else (enemies, markers)
+    // sneaking onto an open map's scenery.
+    const ALLOWED_KINDS = ['chest', 'talent_trigger', 'wild_mushroom']
+    assert.ok(entitySpawns.every(s => ALLOWED_KINDS.includes(s.kind)))
   })
 
   it('places the player on a walkable cell', () => {
@@ -100,5 +106,38 @@ describe('OPEN_MAP_SPRITES', () => {
   it('collects every palette name exactly once', () => {
     assert.equal(new Set(OPEN_MAP_SPRITES).size, OPEN_MAP_SPRITES.length)
     for (const n of DATA.palette) assert.ok(OPEN_MAP_SPRITES.includes(n))
+  })
+})
+
+// Synthetic 8x8 map: a mushroom-ring poi at (4,4) and two ow_mushroom props.
+const mkData = () => ({
+  name: 'forest-1-clearings', w: 8, h: 8,
+  palette: ['ow_grass_0', 'ow_mushroom'],
+  ground: Array.from({ length: 8 }, () => Array(8).fill(0)),
+  prop:   Array.from({ length: 8 }, (_, y) => Array.from({ length: 8 }, (_, x) =>
+    (y === 2 && (x === 2 || x === 5)) ? 1 : -1)),
+  walk:   Array.from({ length: 8 }, () => '11111111'),
+  pois: [{ kind: 'landmark', x: 4, y: 4, label: 'mushroom ring' }],
+  playerSpawn: { x: 1, y: 1 },
+})
+
+describe('rite spawns on open maps', () => {
+  it('emits a talent_trigger at the rite poi', () => {
+    const { entitySpawns } = buildOpenMap(mkData())
+    const trig = entitySpawns.find(s => s.kind === 'talent_trigger')
+    assert.deepEqual(trig, { kind: 'talent_trigger', x: 4, y: 4, talent: 'magic_stance', rite: 'mushroom_circle' })
+  })
+
+  it('spawns wild mushrooms beside mushroom props, deterministically', () => {
+    const a = buildOpenMap(mkData()).entitySpawns.filter(s => s.kind === 'wild_mushroom')
+    const b = buildOpenMap(mkData()).entitySpawns.filter(s => s.kind === 'wild_mushroom')
+    assert.ok(a.length >= 1)
+    assert.deepEqual(a, b)
+  })
+
+  it('maps without rites emit neither', () => {
+    const data = { ...mkData(), name: 'desert-1-dunes', pois: [] }
+    const spawns = buildOpenMap(data).entitySpawns
+    assert.equal(spawns.some(s => s.kind === 'talent_trigger'), false)
   })
 })

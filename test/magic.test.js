@@ -8,16 +8,29 @@ const T = 32
 const mkPlayer = () => ({
   px: 100, py: 100, facing: 'east', attackMode: 'magic',
   mana: MANA_MAX, manaRegenT: 0, magicCooldown: 0,
+  talents: ['magic_stance'],
 })
 const mkState = (entities = []) => ({ player: mkPlayer(), entities, feedback: makeFeedback(), log: [] })
 const guardAt = (dx, dy) => ({ type: 'guard', px: 100 + dx, py: 100 + dy, x: 0, y: 0, hp: 4, maxHp: 4 })
 
 describe('stance cycle', () => {
-  it('Shift walks melee -> ranged -> magic -> melee', () => {
-    const p = { attackMode: 'melee' }
+  it('cycles through every learned stance', () => {
+    const p = { attackMode: 'melee', talents: ['ranged_stance', 'magic_stance'] }
     assert.equal(toggleAttackMode(p), 'ranged')
     assert.equal(toggleAttackMode(p), 'magic')
     assert.equal(toggleAttackMode(p), 'melee')
+  })
+
+  it('skips unlearned stances', () => {
+    const p = { attackMode: 'melee', talents: ['magic_stance'] }
+    assert.equal(toggleAttackMode(p), 'magic')
+    assert.equal(toggleAttackMode(p), 'melee')
+  })
+
+  it('returns null with nothing else learned', () => {
+    const p = { attackMode: 'melee', talents: [] }
+    assert.equal(toggleAttackMode(p), null)
+    assert.equal(p.attackMode, 'melee')
   })
 })
 
@@ -97,5 +110,12 @@ describe('tryGust', () => {
     tryGust(state)
     assert.equal(boss.stunTimer, undefined)
     assert.equal(boss.knockback, undefined)
+  })
+
+  it('refuses without the magic_stance talent', () => {
+    const state = mkState([])
+    state.player.talents = []
+    assert.deepEqual(tryGust(state), { ok: false, reason: 'not_learned' })
+    assert.equal(state.player.mana, MANA_MAX)
   })
 })

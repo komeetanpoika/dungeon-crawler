@@ -23,12 +23,16 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { tickMana, tryGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
+import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
+import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
@@ -52,9 +56,17 @@ window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (phase === PHASE.PLAYING) pauseGame()
+    if (inventoryOpen) closeInventory()
+    else if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
   }
+})
+
+// I toggles the inventory panel: open while playing, close while it's open.
+window.addEventListener('keydown', e => {
+  if ((e.key !== 'i' && e.key !== 'I') || e.repeat) return
+  if (phase === PHASE.PLAYING) openInventory()
+  else if (inventoryOpen) closeInventory()
 })
 
 // Shift toggles melee/ranged stance. Edge-triggered: e.repeat filters the
@@ -63,6 +75,7 @@ window.addEventListener('keydown', e => {
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
   const mode = toggleAttackMode(state.player)
+  if (!mode) { think(state, 'I know no other ways to fight.'); return }
   state.player.charging = null
   think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[mode])
 })
@@ -82,6 +95,7 @@ window.addEventListener('keydown', e => {
 })
 
 let state = null
+let inventoryOpen = false
 let meta = null
 let renderer = null
 let lastTime = 0
@@ -97,6 +111,14 @@ function persistAdventure() {
   const surface = state?.cave ? state.cave.surface : state
   const mapName = surface ? OPEN_MAPS[surface.level]?.name : null
   if (mapName) savedAdventure.caves[mapName] = surface.caveInstances ?? {}
+  if (mapName && state.player) {
+    savedAdventure.talents = [...(state.player.talents ?? [])]
+    savedAdventure.body = {
+      weapon: state.player.weapon ? { ...state.player.weapon } : null,
+      ranged: state.player.ranged ? { ...state.player.ranged } : null,
+      inventory: state.player.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i }),
+    }
+  }
   window.saveAPI.saveCaves?.(savedAdventure)
 }
 
@@ -167,6 +189,22 @@ function detonateFireball(px, py) {
   state.log = [...state.log, 'The fireball erupts!'].slice(-5)
 }
 
+// Walk-onto item grant: hand if free, else sack. Returns false when the sack
+// is full so the caller can leave the item in the world.
+function grantContents(contents) {
+  const item = itemFromContents(contents)
+  if (!item) return true
+  const r = autoEquipOnPickup(state.player, item)
+  if (!r.ok) {
+    state.packMsgCooldown = state.packMsgCooldown ?? 0
+    if (state.packMsgCooldown <= 0) { think(state, 'My pack is full.'); state.packMsgCooldown = 2 }
+    return false
+  }
+  const ammo = contents.type === 'ranged' ? ` (${contents.ammo} shots)` : ''
+  speak(state, r.equipped ? `Picked up ${item.name}!${ammo}` : `${item.name} — into the pack.`)
+  return true
+}
+
 function buildEntities(spawns, map, depth) {
   return spawns.flatMap(s => {
     const cx = s.x * TILE_SIZE + TILE_SIZE / 2
@@ -191,7 +229,7 @@ function buildEntities(spawns, map, depth) {
       case 'weapon': {
         const wt = s.weaponType ?? 'dagger'
         const def = WEAPON_TYPES[wt] ?? WEAPON_TYPES.dagger
-        return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage })]
+        return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage, ...(def.heavy && { heavy: true }) })]
       }
       case 'ranged':  return [makeChest(s.x, s.y, makeRangedContents(s.weaponType))]
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
@@ -212,6 +250,8 @@ function buildEntities(spawns, map, depth) {
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
       case 'fountain_basin': return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
+      case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, talent: s.talent, rite: s.rite }]
+      case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
       default:               return []
     }
   })
@@ -233,6 +273,14 @@ function startNewRun(depth = 1, arenaCfg = null) {
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
   player.inventory.push(...getStartingItems(meta))
+  if (OPEN_MAPS[depth]) {
+    player.talents = [...savedAdventure.talents]
+    if (savedAdventure.body) {
+      player.weapon = savedAdventure.body.weapon ? { ...savedAdventure.body.weapon } : null
+      player.ranged = savedAdventure.body.ranged ? { ...savedAdventure.body.ranged } : null
+      player.inventory = savedAdventure.body.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i })
+    }
+  }
   if (depth === 0 && arenaCfg?.player) {
     const po = arenaCfg.player
     const def = WEAPON_TYPES[po.weaponType]
@@ -244,6 +292,12 @@ function startNewRun(depth = 1, arenaCfg = null) {
     if (Number.isFinite(po.hp) && po.hp >= 1) {
       player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
       player.hp = Math.round(po.hp)
+    }
+    if (Array.isArray(po.talents)) {
+      for (const t of po.talents) {
+        if (TALENTS[t]) player.talents.push(t)
+        else console.warn(`arena: unknown talent "${t}" — skipped`)
+      }
     }
   }
   decorateMap(map, rulesets[theme.ruleset])
@@ -314,6 +368,71 @@ function pauseGame() {
   menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth), onQuitToTitle: goTitle })
 }
 
+function openInventory() {
+  if (phase !== PHASE.PLAYING || !state) return
+  setPhase(PHASE.PAUSED)
+  inventoryOpen = true
+  showInventory(state, {
+    onEquip: (i) => {
+      const r = equipItem(state.player, i)
+      if (!r.ok) think(state, EQUIP_FAIL_MESSAGES[r.reason] ?? "Can't equip that.")
+      afterInventoryChange()
+    },
+    onUse: (i) => useInventoryItem(i),
+    onDrop: (i) => dropInventoryItem(i),
+    onClose: closeInventory,
+  })
+}
+
+function closeInventory() {
+  inventoryOpen = false
+  hideInventory()
+  setPhase(PHASE.PLAYING)
+}
+
+function afterInventoryChange() {
+  refreshInventory(state)
+  updateHUD(state)
+  if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+}
+
+function useInventoryItem(i) {
+  const item = state.player.inventory[i]
+  if (!item) return
+  if (item.kind === 'potion') {
+    const healed = Math.min(state.player.maxHp - state.player.hp, item.amount)
+    if (healed <= 0) { think(state, 'Already full.'); return }
+    removeItem(state.player, i)
+    state.player.hp += healed
+    addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: `+${healed}`, kind: 'heal' })
+    speak(state, `Healed ${healed} HP!`)
+    closeInventory()                      // see the effect land
+  }
+  if (item.kind === 'mushroom') {
+    removeItem(state.player, i)
+    startTrance(state.player)
+    think(state, 'It tastes… strange.')
+    closeInventory()
+  }
+  afterInventoryChange()
+}
+
+function dropInventoryItem(i) {
+  const { player, map } = state
+  const adj = [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: player.x+dx, y: player.y+dy }))
+    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x===t.x && e.y===t.y))
+  if (!adj) { think(state, 'No room to drop here.'); return }
+  const item = removeItem(player, i)
+  state.entities.push({
+    type: 'floating_item', contents: contentsFromItem(item),
+    x: adj.x, y: adj.y,
+    startPx: player.px, startPy: player.py,
+    targetPx: adj.x * TILE_SIZE + TILE_SIZE / 2, targetPy: adj.y * TILE_SIZE + TILE_SIZE / 2,
+    px: player.px, py: player.py, progress: 0, duration: 0.35,
+  })
+  afterInventoryChange()
+}
+
 function gameLoop(timestamp) {
   const delta = Math.min(timestamp - lastTime, 100) / 1000
   lastTime = timestamp
@@ -329,6 +448,18 @@ function gameLoop(timestamp) {
 
 function update(delta) {
   if (!state) return
+  // A running rite is a short cutscene: the world holds its breath.
+  if (state.rite) {
+    state.rite.t += delta
+    if (state.rite.t >= state.rite.dur) {
+      const talent = state.rite.talent
+      state.rite = null
+      state.player.trance = 0
+      if (grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+    }
+    tickFeedback(state.feedback, delta)
+    return
+  }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
 
@@ -353,6 +484,13 @@ function update(delta) {
     // Open chest — item jumps to adjacent floor tile
     const adj = [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: chest.x+dx, y: chest.y+dy }))
       .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x===t.x && e.y===t.y))
+    // With no free adjacent tile, the item grants straight into hand/sack —
+    // only mark the chest open if that grant actually lands; a full sack
+    // (plus occupied hand and no floor space) must leave it closed and
+    // re-triggerable rather than silently destroying the contents.
+    const directGrant = !adj && grantContents(chest.contents)
+    const granted = adj || directGrant
+    if (directGrant && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
     if (adj) {
       state.entities.push({
         type: 'floating_item',
@@ -366,22 +504,8 @@ function update(delta) {
         py: chest.y * TILE_SIZE + TILE_SIZE / 2,
         progress: 0, duration: 0.35,
       })
-    } else {
-      // No free adjacent tile — give directly
-      if (chest.contents.type === 'weapon') {
-        player.weapon = { ...chest.contents }
-        speak(state, `Found ${chest.contents.name}!`)
-      } else if (chest.contents.type === 'ranged') {
-        player.ranged = { ...chest.contents }
-        speak(state, `Found ${chest.contents.name}! (${chest.contents.ammo} shots)`)
-      } else if (chest.contents.type === 'potion') {
-        const healed = Math.min(player.maxHp - player.hp, chest.contents.amount)
-        player.hp += healed
-        if (healed > 0) { speak(state, `Healed ${healed} HP!`); addFloat(state.feedback, { px: player.px, py: player.py, text: `+${healed}`, kind: 'heal' }) }
-        else think(state, 'Already full.')
-      }
     }
-    state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
+    if (granted) state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
   }
 
   // Floating item pickup (step onto landing tile once arc completes)
@@ -389,19 +513,10 @@ function update(delta) {
     e.type === 'floating_item' && e.progress >= 1 && e.x === player.x && e.y === player.y)
   if (floatIdx !== -1) {
     const item = state.entities[floatIdx]
-    if (item.contents.type === 'weapon') {
-      player.weapon = { ...item.contents }
-      speak(state, `Picked up ${item.contents.name}!`)
-    } else if (item.contents.type === 'ranged') {
-      player.ranged = { ...item.contents }
-      speak(state, `Picked up ${item.contents.name}! (${item.contents.ammo} shots)`)
-    } else if (item.contents.type === 'potion') {
-      const healed = Math.min(player.maxHp - player.hp, item.contents.amount)
-      player.hp += healed
-      if (healed > 0) { speak(state, `Healed ${healed} HP!`); addFloat(state.feedback, { px: player.px, py: player.py, text: `+${healed}`, kind: 'heal' }) }
-      else think(state, 'Already full.')
+    if (grantContents(item.contents)) {
+      state.entities = state.entities.filter((_, i) => i !== floatIdx)
+      if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
     }
-    state.entities = state.entities.filter((_, i) => i !== floatIdx)
   }
 
   // Cave entrance — walking into an arch descends; the hold flag set on
@@ -440,6 +555,20 @@ function update(delta) {
     state.entities = state.entities.filter((_, i) => i !== keyIdx)
     state.hasKey = true
     speak(state, 'You picked up the key!')
+  }
+
+  // Wild mushrooms: walk-onto pickup into the sack
+  const shroomIdx = state.entities.findIndex(e => e.type === 'wild_mushroom' && e.x === player.x && e.y === player.y)
+  if (shroomIdx !== -1 && grantContents({ type: 'mushroom' })) {
+    state.entities = state.entities.filter((_, i) => i !== shroomIdx)
+    if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+  }
+
+  // Rite triggers: silent unless the rite's condition holds
+  tickTrance(player, delta)
+  const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
+  if (trigger && !hasTalent(player, trigger.talent) && riteConditionMet(trigger.rite, state)) {
+    state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent }
   }
 
   // Exit door — open and descend with the key, otherwise it stays locked
@@ -569,6 +698,7 @@ function update(delta) {
   // ammo, and the per-weapon cooldown; failures (except cooldown) get a
   // throttled HUD message so holding Space doesn't spam the log.
   state.fireMsgCooldown = Math.max(0, (state.fireMsgCooldown ?? 0) - delta)
+  state.packMsgCooldown = Math.max(0, (state.packMsgCooldown ?? 0) - delta)
   // Magic (Space in magic stance): the gust — no damage, stun + shove in a
   // cone. Cooldown refusals stay silent (the HUD shows the state); an empty
   // pool explains itself on a gate.
@@ -789,6 +919,7 @@ function update(delta) {
     if (e.type === 'prop' && e.flowing) {
       e.fountainTime = (e.fountainTime ?? 0) + delta
     }
+    if (e.type === 'wild_mushroom') e.hueT = (e.hueT ?? 0) + delta
   }
 
   // Advance Maunonmiekka shockwave rings
@@ -843,10 +974,15 @@ function update(delta) {
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
     announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
+    if (!state.cave && !OPEN_MAPS[state.level] && RUSH_TALENT_LADDER[state.level]) {
+      grantTalent(state, RUSH_TALENT_LADDER[state.level])
+    }
     if (state.cave) {
       const mapData = OPEN_MAPS[state.cave.surface.level]
       const before = isMapComplete(savedAdventure.progress, mapData)
       markCleared(savedAdventure.progress, mapData.name, state.cave.label)
+      const reward = MAP_CLEAR_TALENTS[mapData.name]
+      if (reward) grantTalent(state, reward)
       if (!before && isMapComplete(savedAdventure.progress, mapData)) state.cave.mapJustCompleted = true
       persistAdventure()
     }
@@ -867,8 +1003,9 @@ function update(delta) {
 
 function render() {
   maybeComputeFOV(state.map, state.player)
-  renderer.updateCamera(state.player, state.shake ?? 0)
-  renderer.render(state)
+  const fx = riteVisuals(state)
+  renderer.updateCamera(state.player, state.shake ?? 0, fx)
+  renderer.render(state, fx)
   updateHUD(state)
 }
 

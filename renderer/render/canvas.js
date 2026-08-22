@@ -176,6 +176,10 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
+    } else if (c.type === 'mushroom') {
+      const s = sprites.ow_mushroom
+      if (s) ctx.drawImage(s, px, py, S, S)
+      else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🍄', px + S/2, py + S/2) }
     }
     return
   }
@@ -258,6 +262,16 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       const ws = held && sprites[`weapon_${held.weaponType}`]
       if (ws) drawHeldWeapon(ctx, ws, S)
     }
+    ctx.restore()
+    return
+  }
+  if (entity.type === 'wild_mushroom') {
+    const s = sprites.ow_mushroom
+    const deg = Math.round(((entity.hueT ?? 0) * 60) % 360)
+    ctx.save()
+    ctx.filter = `hue-rotate(${deg}deg) saturate(1.6)`
+    if (s) ctx.drawImage(s, px, py, S, S)
+    else { ctx.font = `${Math.round(S * 0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🍄', px + S / 2, py + S / 2) }
     ctx.restore()
     return
   }
@@ -722,15 +736,16 @@ export class Renderer {
     this.ctx.imageSmoothingEnabled = false
   }
 
-  updateCamera(player, shake = 0) {
+  updateCamera(player, shake = 0, fx = null) {
     const px = player.px ?? (player.x * this.S + this.S / 2)
     const py = player.py ?? (player.y * this.S + this.S / 2)
     const o = shakeOffset(shake)
     this.camX = px - this.viewW / 2 + o.x
     this.camY = py - this.viewH / 2 + o.y
+    if (fx) { this.camX += fx.wobbleX; this.camY += fx.wobbleY }
   }
 
-  render(state) {
+  render(state, fx = null) {
     const { ctx, S, camX, camY, sprites } = this
     const { map, entities: rawEntities, player } = state
     const entities = rawEntities ?? []
@@ -791,6 +806,13 @@ export class Renderer {
       ctx.fillRect(ppx, ppy, S, S)
       ctx.restore()
     }
+    if (fx && fx.greenAlpha > 0) {
+      ctx.save()
+      ctx.globalAlpha = Math.min(0.6, fx.greenAlpha * 1.6)
+      ctx.fillStyle = '#4ade80'
+      ctx.fillRect(ppx, ppy, S, S)
+      ctx.restore()
+    }
     drawMeleeSwing(ctx, player, sprites, camX, camY, S)
     drawChargeRing(ctx, player, camX, camY)
     const dragon = entities.find(e => e.type === 'dragon')
@@ -810,6 +832,20 @@ export class Renderer {
         else ctx.fillRect(bpx - 1, bpy - 4, 2, 8)
       } else {
         ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
+      }
+    }
+
+    // Rite ceremony: blur the finished frame onto itself, wash it green.
+    if (fx && (fx.blur > 0 || fx.greenAlpha > 0)) {
+      if (fx.blur > 0) {
+        ctx.save()
+        ctx.filter = `blur(${fx.blur.toFixed(1)}px)`
+        ctx.drawImage(this.canvas, 0, 0, this.canvas.width, this.canvas.height, 0, 0, this.viewW, this.viewH)
+        ctx.restore()
+      }
+      if (fx.greenAlpha > 0) {
+        ctx.fillStyle = `rgba(74, 222, 128, ${fx.greenAlpha})`
+        ctx.fillRect(0, 0, this.viewW, this.viewH)
       }
     }
 
