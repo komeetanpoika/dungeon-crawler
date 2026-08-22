@@ -31,6 +31,7 @@ import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { tickMana, tryGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
+import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
@@ -288,6 +289,12 @@ function startNewRun(depth = 1, arenaCfg = null) {
     if (Number.isFinite(po.hp) && po.hp >= 1) {
       player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
       player.hp = Math.round(po.hp)
+    }
+    if (Array.isArray(po.talents)) {
+      for (const t of po.talents) {
+        if (TALENTS[t]) player.talents.push(t)
+        else console.warn(`arena: unknown talent "${t}" — skipped`)
+      }
     }
   }
   decorateMap(map, rulesets[theme.ruleset])
@@ -925,11 +932,16 @@ function update(delta) {
     const cfg = LEVEL_CONFIG.find(c => c.depth === state.level) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
+    if (!state.cave && !OPEN_MAPS[state.level] && RUSH_TALENT_LADDER[state.level]) {
+      grantTalent(state, RUSH_TALENT_LADDER[state.level])
+    }
     announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
     if (state.cave) {
       const mapData = OPEN_MAPS[state.cave.surface.level]
       const before = isMapComplete(savedAdventure.progress, mapData)
       markCleared(savedAdventure.progress, mapData.name, state.cave.label)
+      const reward = MAP_CLEAR_TALENTS[mapData.name]
+      if (reward) grantTalent(state, reward)
       if (!before && isMapComplete(savedAdventure.progress, mapData)) state.cave.mapJustCompleted = true
       persistAdventure()
     }
