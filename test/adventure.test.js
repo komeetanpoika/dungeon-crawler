@@ -106,4 +106,19 @@ describe('v3 save shape', () => {
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
     assert.deepEqual(normalizeAdventureSave(v3), v3)
   })
+
+  it('body inventory items with nested payload are preserved', () => {
+    const payload = { ammo: 5, type: 'ranged' }
+    const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
+      talents: [], body: {
+        weapon: null, ranged: null,
+        inventory: [
+          { kind: 'ranged', name: 'bow', emoji: '🏹', stackable: false, payload },
+        ],
+      } }
+    const s = normalizeAdventureSave(v3)
+    // After normalization, the payload should still exist and be the same data
+    assert.ok(s.body.inventory[0].payload, 'payload preserved')
+    assert.deepEqual(s.body.inventory[0].payload, payload, 'payload data matches')
+  })
 })

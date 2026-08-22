@@ -113,7 +113,7 @@ function persistAdventure() {
     savedAdventure.body = {
       weapon: state.player.weapon ? { ...state.player.weapon } : null,
       ranged: state.player.ranged ? { ...state.player.ranged } : null,
-      inventory: state.player.inventory.map(i => ({ ...i })),
+      inventory: state.player.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i }),
     }
   }
   window.saveAPI.saveCaves?.(savedAdventure)
@@ -273,7 +273,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     if (savedAdventure.body) {
       player.weapon = savedAdventure.body.weapon ? { ...savedAdventure.body.weapon } : null
       player.ranged = savedAdventure.body.ranged ? { ...savedAdventure.body.ranged } : null
-      player.inventory = savedAdventure.body.inventory.map(i => ({ ...i }))
+      player.inventory = savedAdventure.body.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i })
     }
   }
   if (depth === 0 && arenaCfg?.player) {
