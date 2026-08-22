@@ -176,6 +176,10 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
+    } else if (c.type === 'mushroom') {
+      const s = sprites.ow_mushroom
+      if (s) ctx.drawImage(s, px, py, S, S)
+      else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🍄', px + S/2, py + S/2) }
     }
     return
   }

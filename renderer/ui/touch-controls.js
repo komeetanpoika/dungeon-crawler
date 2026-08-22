@@ -88,6 +88,7 @@ function initTouchControls() {
   bindHold(document.getElementById('touch-attack'), ' ')
   bindHold(document.getElementById('touch-stance'), 'Shift')
   bindHold(document.getElementById('touch-fountain'), 'f')
+  bindHold(document.getElementById('touch-bag'), 'i')
   bindHold(document.getElementById('touch-pause'), 'Escape')
 
   // --- Stance button doubles as a status icon. The HUD already renders the

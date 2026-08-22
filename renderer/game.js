@@ -24,6 +24,7 @@ import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -53,9 +54,17 @@ window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (phase === PHASE.PLAYING) pauseGame()
+    if (inventoryOpen) closeInventory()
+    else if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
   }
+})
+
+// I toggles the inventory panel: open while playing, close while it's open.
+window.addEventListener('keydown', e => {
+  if ((e.key !== 'i' && e.key !== 'I') || e.repeat) return
+  if (phase === PHASE.PLAYING) openInventory()
+  else if (inventoryOpen) closeInventory()
 })
 
 // Shift toggles melee/ranged stance. Edge-triggered: e.repeat filters the
@@ -83,6 +92,7 @@ window.addEventListener('keydown', e => {
 })
 
 let state = null
+let inventoryOpen = false
 let meta = null
 let renderer = null
 let lastTime = 0
@@ -329,6 +339,66 @@ function pauseGame() {
   setPhase(PHASE.PAUSED)
   const restartDepth = state?.cave ? state.cave.surface.level : state?.level ?? 1
   menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth), onQuitToTitle: goTitle })
+}
+
+function openInventory() {
+  if (phase !== PHASE.PLAYING || !state) return
+  setPhase(PHASE.PAUSED)
+  inventoryOpen = true
+  showInventory(state, {
+    onEquip: (i) => {
+      const r = equipItem(state.player, i)
+      if (!r.ok) think(state, EQUIP_FAIL_MESSAGES[r.reason] ?? "Can't equip that.")
+      afterInventoryChange()
+    },
+    onUse: (i) => useInventoryItem(i),
+    onDrop: (i) => dropInventoryItem(i),
+    onClose: closeInventory,
+  })
+}
+
+function closeInventory() {
+  inventoryOpen = false
+  hideInventory()
+  setPhase(PHASE.PLAYING)
+}
+
+function afterInventoryChange() {
+  refreshInventory(state)
+  updateHUD(state)
+  if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+}
+
+function useInventoryItem(i) {
+  const item = state.player.inventory[i]
+  if (!item) return
+  if (item.kind === 'potion') {
+    const healed = Math.min(state.player.maxHp - state.player.hp, item.amount)
+    if (healed <= 0) { think(state, 'Already full.'); return }
+    removeItem(state.player, i)
+    state.player.hp += healed
+    addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: `+${healed}`, kind: 'heal' })
+    speak(state, `Healed ${healed} HP!`)
+    closeInventory()                      // see the effect land
+  }
+  // mushroom handling arrives with the rites task
+  afterInventoryChange()
+}
+
+function dropInventoryItem(i) {
+  const { player, map } = state
+  const adj = [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: player.x+dx, y: player.y+dy }))
+    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x===t.x && e.y===t.y))
+  if (!adj) { think(state, 'No room to drop here.'); return }
+  const item = removeItem(player, i)
+  state.entities.push({
+    type: 'floating_item', contents: contentsFromItem(item),
+    x: adj.x, y: adj.y,
+    startPx: player.px, startPy: player.py,
+    targetPx: adj.x * TILE_SIZE + TILE_SIZE / 2, targetPy: adj.y * TILE_SIZE + TILE_SIZE / 2,
+    px: player.px, py: player.py, progress: 0, duration: 0.35,
+  })
+  afterInventoryChange()
 }
 
 function gameLoop(timestamp) {
