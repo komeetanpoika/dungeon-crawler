@@ -17,7 +17,7 @@ export function rollChestLoot(depth, rng = Math.random) {
   if (r < 0.75) {
     const weaponType = pick(MELEE_POOLS[tier], rng)
     const def = WEAPON_TYPES[weaponType]
-    return { type: 'weapon', weaponType, name: def.name, damage: def.damage }
+    return { type: 'weapon', weaponType, name: def.name, damage: def.damage, ...(def.heavy && { heavy: true }) }
   }
   return makeRangedContents(pick(RANGED_POOLS[tier], rng))
 }

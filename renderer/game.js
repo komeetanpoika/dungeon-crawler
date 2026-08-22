@@ -228,7 +228,7 @@ function buildEntities(spawns, map, depth) {
       case 'weapon': {
         const wt = s.weaponType ?? 'dagger'
         const def = WEAPON_TYPES[wt] ?? WEAPON_TYPES.dagger
-        return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage })]
+        return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage, ...(def.heavy && { heavy: true }) })]
       }
       case 'ranged':  return [makeChest(s.x, s.y, makeRangedContents(s.weaponType))]
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]

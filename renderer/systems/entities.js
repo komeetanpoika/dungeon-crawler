@@ -18,8 +18,8 @@ export const DRAGON_STATE = { SLEEPING: 'sleeping', STIRRING: 'stirring', AWAKE:
 export const WEAPON_TYPES = {
   dagger:    { name: 'Dagger',    damage: 1 },
   sword:     { name: 'Sword',     damage: 2 },
-  longsword: { name: 'Longsword', damage: 3 },
-  axe:       { name: 'Axe',       damage: 4 },
+  longsword: { name: 'Longsword', damage: 3, heavy: true },
+  axe:       { name: 'Axe',       damage: 4, heavy: true },
   // The most powerful sword in the game (cheat-only for now: type "mauno" in
   // a run). On-hit crimson shockwave lives in systems/shockwave.js.
   maunonmiekka: { name: 'Maunonmiekka', damage: 10 },
@@ -155,7 +155,7 @@ export function makeDragon(x, y, roomId) {
 
 export function makeWeapon(x, y, weaponType = 'dagger') {
   const def = WEAPON_TYPES[weaponType] ?? WEAPON_TYPES.dagger
-  return { type: 'weapon', x, y, weaponType, name: def.name, damage: def.damage }
+  return { type: 'weapon', x, y, weaponType, name: def.name, damage: def.damage, ...(def.heavy && { heavy: true }) }
 }
 
 export function makePotion(x, y, amount = 4) {

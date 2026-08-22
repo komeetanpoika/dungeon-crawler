@@ -129,4 +129,15 @@ describe('pickup auto-equip', () => {
     const item = itemFromContents(bowContents())
     assert.deepEqual(contentsFromItem(item), bowContents())
   })
+
+  it('a looted longsword refuses to equip untrained end-to-end', () => {
+    const p = mkPlayer()
+    const contents = { type: 'weapon', weaponType: 'longsword', name: 'Longsword', damage: 3, heavy: true }
+    autoEquipOnPickup(p, itemFromContents(contents))
+    assert.equal(p.weapon, null)
+    assert.equal(p.inventory.length, 1)
+    p.talents = ['heavy_weapons']
+    assert.equal(equipItem(p, 0).ok, true)
+    assert.equal(p.weapon.heavy, true)
+  })
 })
