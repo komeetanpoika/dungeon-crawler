@@ -484,6 +484,12 @@ function update(delta) {
     // Open chest — item jumps to adjacent floor tile
     const adj = [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: chest.x+dx, y: chest.y+dy }))
       .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x===t.x && e.y===t.y))
+    // With no free adjacent tile, the item grants straight into hand/sack —
+    // only mark the chest open if that grant actually lands; a full sack
+    // (plus occupied hand and no floor space) must leave it closed and
+    // re-triggerable rather than silently destroying the contents.
+    const directGrant = !adj && grantContents(chest.contents)
+    const granted = adj || directGrant
     if (adj) {
       state.entities.push({
         type: 'floating_item',
@@ -497,10 +503,8 @@ function update(delta) {
         py: chest.y * TILE_SIZE + TILE_SIZE / 2,
         progress: 0, duration: 0.35,
       })
-    } else {
-      grantContents(chest.contents)
     }
-    state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
+    if (granted) state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
   }
 
   // Floating item pickup (step onto landing tile once arc completes)
