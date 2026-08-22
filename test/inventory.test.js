@@ -76,7 +76,7 @@ describe('equipping', () => {
   })
 
   it('ranged items equip into the ranged hand', () => {
-    const p = mkPlayer()
+    const p = mkPlayer({ talents: ['ranged_stance'] })
     addItem(p, itemFromContents(bowContents()))
     equipItem(p, 0)
     assert.equal(p.ranged.weaponType, 'shortbow')
@@ -93,6 +93,13 @@ describe('equipping', () => {
     assert.deepEqual(canEquip(mkPlayer(), heavy), { ok: false, reason: 'heavy' })
     assert.equal(canEquip(mkPlayer({ talents: ['heavy_weapons'] }), heavy).ok, true)
     assert.ok(EQUIP_FAIL_MESSAGES.heavy)
+  })
+
+  it('a ranged weapon refuses without ranged_stance and equips with it', () => {
+    const bow = itemFromContents(bowContents())
+    assert.deepEqual(canEquip(mkPlayer(), bow), { ok: false, reason: 'not_learned' })
+    assert.equal(canEquip(mkPlayer({ talents: ['ranged_stance'] }), bow).ok, true)
+    assert.ok(EQUIP_FAIL_MESSAGES.not_learned)
   })
 })
 
@@ -118,6 +125,20 @@ describe('pickup auto-equip', () => {
     const r = autoEquipOnPickup(p, heavy)
     assert.deepEqual(r, { ok: true, equipped: false })
     assert.equal(p.weapon, null)
+  })
+
+  it('a bow pickup without ranged_stance goes to the sack, hand stays empty; with the talent it equips', () => {
+    const untrained = mkPlayer()
+    const r1 = autoEquipOnPickup(untrained, itemFromContents(bowContents()))
+    assert.deepEqual(r1, { ok: true, equipped: false })
+    assert.equal(untrained.ranged, null)
+    assert.equal(untrained.inventory.length, 1)
+
+    const trained = mkPlayer({ talents: ['ranged_stance'] })
+    const r2 = autoEquipOnPickup(trained, itemFromContents(bowContents()))
+    assert.deepEqual(r2, { ok: true, equipped: true })
+    assert.equal(trained.ranged.weaponType, 'shortbow')
+    assert.equal(trained.inventory.length, 0)
   })
 
   it('reports full when neither hand nor sack can take it', () => {

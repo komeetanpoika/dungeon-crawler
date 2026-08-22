@@ -51,6 +51,8 @@ export function removeItem(player, index) {
 
 export function canEquip(player, item) {
   if (item.kind !== 'weapon' && item.kind !== 'ranged') return { ok: false, reason: 'not_equippable' }
+  if (item.kind === 'ranged' && !(player.talents ?? []).includes('ranged_stance'))
+    return { ok: false, reason: 'not_learned' }
   if (item.payload.heavy && !(player.talents ?? []).includes('heavy_weapons'))
     return { ok: false, reason: 'heavy' }
   return { ok: true }
@@ -88,4 +90,5 @@ export function autoEquipOnPickup(player, item) {
 export const EQUIP_FAIL_MESSAGES = {
   heavy: 'Too heavy — I lack the strength.',
   not_equippable: "I can't wield that.",
+  not_learned: "I don't know how to use this.",
 }
