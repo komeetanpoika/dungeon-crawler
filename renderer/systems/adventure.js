@@ -32,9 +32,13 @@ export function nextMapDepth(depth) {
 }
 
 // Save-file shapes: v1 was the bare caves map ({mapName: {label: instance}});
-// v2 is { caves, progress }. Anything else starts fresh.
+// v2 added { caves, progress }; v3 adds learned talents and the traveling
+// body (hands + sack). Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
-  if (raw && typeof raw === 'object' && raw.progress) return raw
-  if (raw && typeof raw === 'object' && !raw.caves) return { caves: raw, progress: freshProgress() }
-  return { caves: {}, progress: freshProgress() }
+  const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
+    : (raw && typeof raw === 'object' && !raw.caves) ? { caves: raw, progress: freshProgress() }
+    : { caves: {}, progress: freshProgress() }
+  base.talents ??= []
+  base.body ??= null
+  return base
 }

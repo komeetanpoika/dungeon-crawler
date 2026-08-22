@@ -108,6 +108,14 @@ function persistAdventure() {
   const surface = state?.cave ? state.cave.surface : state
   const mapName = surface ? OPEN_MAPS[surface.level]?.name : null
   if (mapName) savedAdventure.caves[mapName] = surface.caveInstances ?? {}
+  if (mapName && state.player) {
+    savedAdventure.talents = [...(state.player.talents ?? [])]
+    savedAdventure.body = {
+      weapon: state.player.weapon ? { ...state.player.weapon } : null,
+      ranged: state.player.ranged ? { ...state.player.ranged } : null,
+      inventory: state.player.inventory.map(i => ({ ...i })),
+    }
+  }
   window.saveAPI.saveCaves?.(savedAdventure)
 }
 
@@ -260,6 +268,14 @@ function startNewRun(depth = 1, arenaCfg = null) {
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
   player.inventory.push(...getStartingItems(meta))
+  if (OPEN_MAPS[depth]) {
+    player.talents = [...savedAdventure.talents]
+    if (savedAdventure.body) {
+      player.weapon = savedAdventure.body.weapon ? { ...savedAdventure.body.weapon } : null
+      player.ranged = savedAdventure.body.ranged ? { ...savedAdventure.body.ranged } : null
+      player.inventory = savedAdventure.body.inventory.map(i => ({ ...i }))
+    }
+  }
   if (depth === 0 && arenaCfg?.player) {
     const po = arenaCfg.player
     const def = WEAPON_TYPES[po.weaponType]

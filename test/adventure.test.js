@@ -70,9 +70,40 @@ describe('normalizeAdventureSave', () => {
     assert.equal(s.progress.mapDepth, ADVENTURE_DEPTH)
   })
 
-  it('passes a v2 file through', () => {
+  it('migrates a v2 file additively', () => {
     const v2 = { caves: { m: {} }, progress: { mapDepth: 10, cleared: { m: ['a'] } } }
     const s = normalizeAdventureSave(v2)
-    assert.deepEqual(s, v2)
+    assert.deepEqual(s.caves, v2.caves)
+    assert.deepEqual(s.progress, v2.progress)
+    assert.deepEqual(s.talents, [])
+    assert.equal(s.body, null)
+  })
+})
+
+describe('v3 save shape', () => {
+  it('fresh saves carry empty talents and no body', () => {
+    const s = normalizeAdventureSave(null)
+    assert.deepEqual(s.talents, [])
+    assert.equal(s.body, null)
+  })
+
+  it('v2 saves migrate additively, keeping caves and progress', () => {
+    const v2 = { caves: { m: {} }, progress: { mapDepth: 7, cleared: { m: ['a'] } } }
+    const s = normalizeAdventureSave(v2)
+    assert.deepEqual(s.talents, [])
+    assert.equal(s.body, null)
+    assert.deepEqual(s.progress.cleared, { m: ['a'] })
+  })
+
+  it('v1 bare-caves saves still migrate', () => {
+    const s = normalizeAdventureSave({ somemap: { cave1: {} } })
+    assert.ok(s.progress)
+    assert.deepEqual(s.talents, [])
+  })
+
+  it('v3 saves pass through untouched', () => {
+    const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
+      talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
+    assert.deepEqual(normalizeAdventureSave(v3), v3)
   })
 })
