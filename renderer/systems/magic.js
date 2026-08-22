@@ -4,6 +4,7 @@
 // too massive to care. Mana is a small pool that recharges slowly.
 import { inSwing } from './melee.js'
 import { startKnockback } from './knockback.js'
+import { hasTalent } from './talents.js'
 
 export const MANA_MAX = 4
 export const MANA_REGEN_TIME = 8   // seconds per charge
@@ -34,6 +35,7 @@ const stunnable = e => !e.isBoss && e.type !== 'dragon_boss'
 // caller can surface it.
 export function tryGust(state) {
   const p = state.player
+  if (!hasTalent(p, 'magic_stance')) return { ok: false, reason: 'not_learned' }
   if ((p.magicCooldown ?? 0) > 0) return { ok: false, reason: 'cooldown' }
   if ((p.mana ?? 0) < 1) return { ok: false, reason: 'mana' }
   p.mana -= 1

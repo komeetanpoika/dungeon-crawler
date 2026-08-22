@@ -73,6 +73,7 @@ window.addEventListener('keydown', e => {
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
   const mode = toggleAttackMode(state.player)
+  if (!mode) { think(state, 'I know no other ways to fight.'); return }
   state.player.charging = null
   think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[mode])
 })

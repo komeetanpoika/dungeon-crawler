@@ -120,8 +120,8 @@ export function makePlayer(x, y, bonuses = []) {
     hp: 10, maxHp: 10,
     inventory: [], maxInventory: 10 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
-    bonuses, weapon: null, ranged: null, attackMode: 'melee',
-    mana: 4, manaRegenT: 0, magicCooldown: 0,   // the innate gust (magic.js)
+    bonuses, weapon: null, ranged: null, attackMode: 'melee', talents: [],
+    mana: 4, manaRegenT: 0, magicCooldown: 0,   // gust unlocks via the magic_stance talent
   }
 }
 
