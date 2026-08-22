@@ -31,7 +31,8 @@ import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { tickMana, tryGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
-import { TALENTS, grantTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
+import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
+import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
@@ -249,6 +250,8 @@ function buildEntities(spawns, map, depth) {
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
       case 'fountain_basin': return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
+      case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, talent: s.talent, rite: s.rite }]
+      case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
       default:               return []
     }
   })
@@ -405,7 +408,12 @@ function useInventoryItem(i) {
     speak(state, `Healed ${healed} HP!`)
     closeInventory()                      // see the effect land
   }
-  // mushroom handling arrives with the rites task
+  if (item.kind === 'mushroom') {
+    removeItem(state.player, i)
+    startTrance(state.player)
+    think(state, 'It tastes… strange.')
+    closeInventory()
+  }
   afterInventoryChange()
 }
 
@@ -440,6 +448,18 @@ function gameLoop(timestamp) {
 
 function update(delta) {
   if (!state) return
+  // A running rite is a short cutscene: the world holds its breath.
+  if (state.rite) {
+    state.rite.t += delta
+    if (state.rite.t >= state.rite.dur) {
+      const talent = state.rite.talent
+      state.rite = null
+      state.player.trance = 0
+      if (grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+    }
+    tickFeedback(state.feedback, delta)
+    return
+  }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
 
@@ -529,6 +549,19 @@ function update(delta) {
     state.entities = state.entities.filter((_, i) => i !== keyIdx)
     state.hasKey = true
     speak(state, 'You picked up the key!')
+  }
+
+  // Wild mushrooms: walk-onto pickup into the sack
+  const shroomIdx = state.entities.findIndex(e => e.type === 'wild_mushroom' && e.x === player.x && e.y === player.y)
+  if (shroomIdx !== -1 && grantContents({ type: 'mushroom' })) {
+    state.entities = state.entities.filter((_, i) => i !== shroomIdx)
+  }
+
+  // Rite triggers: silent unless the rite's condition holds
+  tickTrance(player, delta)
+  const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
+  if (trigger && !hasTalent(player, trigger.talent) && riteConditionMet(trigger.rite, state)) {
+    state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent }
   }
 
   // Exit door — open and descend with the key, otherwise it stays locked

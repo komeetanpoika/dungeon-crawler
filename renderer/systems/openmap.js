@@ -7,6 +7,7 @@
 // the tile art and stay scenery.
 import { TILE } from './entities.js'
 import { createMap } from './map.js'
+import { MAP_RITES } from '../data/rites.js'
 
 export function buildOpenMap(data) {
   const map = createMap(data.w, data.h)
@@ -39,6 +40,27 @@ export function buildOpenMap(data) {
   // The waystone onward: a visible stone arch on a walkable cell. Progression
   // (game.js) decides whether stepping onto it travels or stays sealed.
   if (data.exit) map[data.exit.y][data.exit.x].overlay = 'ow_house_arch_stone'
+  // Rite triggers: invisible walk-onto spawns anchored to named landmark POIs.
+  for (const rite of MAP_RITES[data.name] ?? []) {
+    const poi = data.pois.find(p => p.kind === 'landmark' && p.label === rite.fromPoi)
+    if (poi) entitySpawns.push({ kind: 'talent_trigger', x: poi.x, y: poi.y, talent: rite.talent, rite: rite.rite })
+    else console.warn(`rites: poi "${rite.fromPoi}" not found on ${data.name}`)
+  }
+  // Wild mushrooms: pickable, colour-shifting. Deterministic — every third
+  // walkable cell adjacent to a mushroom prop, row-major, capped at 8.
+  if (MAP_RITES[data.name]) {
+    const spots = []
+    const mushroomProp = i => i >= 0 && data.palette[i] === 'ow_mushroom'
+    for (let y = 1; y < data.h - 1; y++) for (let x = 1; x < data.w - 1; x++) {
+      if (!mushroomProp(data.prop[y][x])) continue
+      for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        const nx = x + dx, ny = y + dy
+        if (map[ny][nx].tile === TILE.FLOOR && data.prop[ny][nx] < 0) { spots.push({ x: nx, y: ny }); break }
+      }
+    }
+    spots.filter((_, i) => i % 3 === 0).slice(0, 8)
+      .forEach(s => entitySpawns.push({ kind: 'wild_mushroom', x: s.x, y: s.y }))
+  }
   return {
     map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [],
     caveEntrances, mapExit: data.exit ? { ...data.exit } : null,
