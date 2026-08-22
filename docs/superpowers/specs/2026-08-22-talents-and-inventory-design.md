@@ -220,3 +220,47 @@ New pure module `renderer/systems/inventory.js`.
   bespoke by design.
 - No changes to loot tables beyond routing pickups through the sack.
 - No cross-device save sync (localStorage is per-browser).
+
+## Implementation notes (post-ship, Task 12 audit)
+
+Verified against the shipped code on `feat/talents-inventory`; the future-tasks
+list above still matches (none of death-drop retrieval, the consumable
+quick-slot, ranged/heavy rites, shield, NPC-dialogue grants, or gems have
+shipped). A few points of the design landed differently from how §2 and §3
+describe them:
+
+- **Rite and mushroom placement is data-driven, not tile-editor-authored.**
+  §2's "Editor support" bullet (a `talent_trigger` palette entry with
+  talent/rite dropdowns, plus a pickable color-shifting mushroom object) did
+  not ship — `tools/tile-editor/palette.js` has neither. Instead
+  `renderer/systems/openmap.js` derives both kinds algorithmically when
+  building a static open map: `talent_trigger` spawns are anchored to a named
+  `landmark` POI via `renderer/data/rites.js`'s `MAP_RITES` table
+  (`{ fromPoi, talent, rite }`), and `wild_mushroom` spawns are placed
+  deterministically next to `ow_mushroom` prop tiles (every third eligible
+  cell, row-major, capped at 8) on any map that has a `MAP_RITES` entry.
+  `buildEntities` in `game.js` does handle both kinds in its switch, as
+  described, so the runtime side of the plan shipped — only the editor
+  authoring path didn't.
+- **Dungeon keys were not folded into the sack.** They remain per-level
+  `state.hasKey` boolean state (see `renderer/systems/cave.js` and
+  `game.js`), set on boss kill and consumed at the locked door, exactly as
+  before this feature. `renderer/systems/inventory.js`'s `STACKABLE_KINDS`
+  registry has no `key` entry.
+- **`removeItem` (`renderer/systems/inventory.js`) omits `count` on
+  non-stackables.** For a stackable slot it returns `{ ...slot, count: 1 }`;
+  for a non-stackable (weapon/ranged) it returns `{ ...slot }` verbatim,
+  which carries no `count` field at all rather than an implicit 1 — callers
+  that branch on `item.count` for a dropped/consumed weapon should treat its
+  absence, not `1`, as "one of one."
+- **Grant-announcement ordering on the Dungeon Rush boss ladder:** in
+  `game.js`'s boss-drop handling, the "The boss drops a key!" /
+  "The dragon falls — treasure gleams!" banner (`announce`) fires first,
+  then `grantTalent` for the rush-ladder talent runs immediately after (and,
+  separately, for a map-clear reward) — so the talent-learned flash always
+  appears after, never overlapping or before, the boss-key banner.
+
+No other interim-vs-spec deviations were found; slot-cap math
+(10 + `extra_slot` bonuses), the `"My pack is full."` / `"Too heavy — I lack
+the strength."` refusal text, and the close-panel-on-consume behavior all
+match §3/§4 as written.
