@@ -37,6 +37,36 @@ export function buildOpenMap(data) {
       caveDepth: data.caveDepths?.[i] ?? 1,
       label: p.label,
     })))
+  // Every entrance is stamped as a sealed gate over whatever the bake put
+  // there: vined arch art on the two trigger cells, blocking gargoyle
+  // fountains on the flanks, walkable basins in front of them. Setting all
+  // of a gate's gargoyles flowing (F on a basin) opens it — systems/gates.js
+  // holds that logic and the open-arch art recorded on gate.cells.
+  const gates = {}
+  for (const p of data.pois.filter(p => p.kind === 'dungeon_entrance')) {
+    map[p.y][p.x].overlay = 'ow_cave_gate_l'
+    map[p.y][p.x + 1].overlay = 'ow_cave_gate_r'
+    map[p.y][p.x].tile = TILE.FLOOR
+    map[p.y][p.x + 1].tile = TILE.FLOOR
+    for (const fx of [p.x - 1, p.x + 2]) {
+      if (fx < 1 || fx > data.w - 2 || p.y + 1 > data.h - 2) continue
+      map[p.y][fx].tile = TILE.WALL
+      delete map[p.y][fx].overlay
+      map[p.y + 1][fx].tile = TILE.FLOOR
+      delete map[p.y + 1][fx].overlay
+      entitySpawns.push({ kind: 'fountain_wall', propType: 'prop_gargoyle_dry',
+        x: fx, y: p.y, pairX: fx, pairY: p.y + 1, gateId: p.label })
+      entitySpawns.push({ kind: 'fountain_basin', propType: 'prop_fountain_empty',
+        x: fx, y: p.y + 1, pairX: fx, pairY: p.y, gateId: p.label })
+    }
+    gates[p.label] = {
+      open: false, trigger: 'fountains',
+      cells: [
+        { x: p.x, y: p.y, overlay: 'ow_cave_arch_0' },
+        { x: p.x + 1, y: p.y, overlay: 'ow_cave_arch_1' },
+      ],
+    }
+  }
   // The waystone onward: a visible stone arch on a walkable cell. Progression
   // (game.js) decides whether stepping onto it travels or stays sealed.
   if (data.exit) map[data.exit.y][data.exit.x].overlay = 'ow_house_arch_stone'
@@ -63,6 +93,6 @@ export function buildOpenMap(data) {
   }
   return {
     map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [],
-    caveEntrances, mapExit: data.exit ? { ...data.exit } : null,
+    caveEntrances, gates, mapExit: data.exit ? { ...data.exit } : null,
   }
 }

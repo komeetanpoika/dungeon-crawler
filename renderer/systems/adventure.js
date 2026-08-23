@@ -40,5 +40,6 @@ export function normalizeAdventureSave(raw) {
     : { caves: {}, progress: freshProgress() }
   base.talents ??= []
   base.body ??= null
+  base.gates ??= {}
   return base
 }

@@ -7,8 +7,18 @@ import { TILE, isWalkable } from '../renderer/systems/entities.js'
 
 const DATA = OPEN_MAPS[7]
 
+// Cells rewritten by the gate stamp at each dungeon entrance (see
+// systems/gates.js): the 4-wide gate row plus the two basin cells below.
+const gateCells = data => new Set(data.pois
+  .filter(p => p.kind === 'dungeon_entrance')
+  .flatMap(p => [
+    `${p.x - 1},${p.y}`, `${p.x},${p.y}`, `${p.x + 1},${p.y}`, `${p.x + 2},${p.y}`,
+    `${p.x - 1},${p.y + 1}`, `${p.x + 2},${p.y + 1}`,
+  ]))
+
 describe('buildOpenMap', () => {
   const { map, entitySpawns, playerSpawn } = buildOpenMap(DATA)
+  const stamped = gateCells(DATA)
 
   it('produces a map with the data dimensions', () => {
     assert.equal(map.length, DATA.h)
@@ -17,6 +27,7 @@ describe('buildOpenMap', () => {
 
   it('mirrors the walk grid: open cells are FLOOR, blocked cells are WALL (interior)', () => {
     for (let y = 1; y < DATA.h - 1; y++) for (let x = 1; x < DATA.w - 1; x++) {
+      if (stamped.has(`${x},${y}`)) continue // gate stamp overrides the bake
       const open = DATA.walk[y][x] === '1'
       assert.equal(isWalkable(map[y][x].tile), open, `walkability mismatch at ${x},${y}`)
       assert.equal(map[y][x].tile, open ? TILE.FLOOR : TILE.WALL)
@@ -40,7 +51,7 @@ describe('buildOpenMap', () => {
       const c = map[y][x]
       assert.equal(c.skin, DATA.palette[DATA.ground[y][x]], `ground skin at ${x},${y}`)
       const pi = DATA.prop[y][x]
-      if (pi >= 0 && !entitySpawns.some(s => s.x === x && s.y === y)) {
+      if (pi >= 0 && !stamped.has(`${x},${y}`) && !entitySpawns.some(s => s.x === x && s.y === y)) {
         assert.equal(c.overlay, DATA.palette[pi], `prop overlay at ${x},${y}`)
         overlays++
       }
@@ -65,10 +76,10 @@ describe('buildOpenMap', () => {
   })
 
   it('spawns no enemies and no markers for scenery POIs', () => {
-    // Rite triggers and wild mushrooms are new legitimate spawn kinds
-    // (Task 10) — this guards against anything else (enemies, markers)
+    // Rite triggers, wild mushrooms and gate fountains are legitimate spawn
+    // kinds — this guards against anything else (enemies, markers)
     // sneaking onto an open map's scenery.
-    const ALLOWED_KINDS = ['chest', 'talent_trigger', 'wild_mushroom']
+    const ALLOWED_KINDS = ['chest', 'talent_trigger', 'wild_mushroom', 'fountain_wall', 'fountain_basin']
     assert.ok(entitySpawns.every(s => ALLOWED_KINDS.includes(s.kind)))
   })
 

@@ -23,6 +23,7 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
+import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
@@ -111,6 +112,8 @@ function persistAdventure() {
   const surface = state?.cave ? state.cave.surface : state
   const mapName = surface ? OPEN_MAPS[surface.level]?.name : null
   if (mapName) savedAdventure.caves[mapName] = surface.caveInstances ?? {}
+  if (mapName) savedAdventure.gates[mapName] =
+    Object.entries(surface.gates ?? {}).filter(([, g]) => g.open).map(([id]) => id)
   if (mapName && state.player) {
     savedAdventure.talents = [...(state.player.talents ?? [])]
     savedAdventure.body = {
@@ -247,9 +250,9 @@ function buildEntities(spawns, map, depth) {
       // from vanishing without a warning.
       case 'dungeon_entrance': return [{ type: 'prop', propType: 'prop_grave', x: s.x, y: s.y, isDungeonEntrance: true }]
       case 'fountain_wall':  return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
-        isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
+        isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
       case 'fountain_basin': return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
-        isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY }]
+        isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
       case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, talent: s.talent, rite: s.rite }]
       case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
       default:               return []
@@ -260,7 +263,7 @@ function buildEntities(spawns, map, depth) {
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
-  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit } =
+  const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
@@ -323,9 +326,21 @@ function startNewRun(depth = 1, arenaCfg = null) {
     fireMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
     caveInstances: OPEN_MAPS[depth] ? { ...savedAdventure.caves[OPEN_MAPS[depth].name] } : {},
+    gates: gates ?? {},
+    gateMsgCooldown: 0,
     mapExit: mapExit ?? null,
     exitMsgCooldown: 0,
     entranceHold: false,
+  }
+  // Gates opened on an earlier visit stay open: swap in the open art and
+  // set their fountains flowing before the first frame.
+  for (const id of savedAdventure.gates[OPEN_MAPS[depth]?.name] ?? []) {
+    openGate(state, id)
+    for (const e of state.entities) {
+      if (e.gateId !== id || !(e.isFountainWall || e.isFountainBasin)) continue
+      e.flowing = true
+      e.propType = e.isFountainWall ? 'prop_gargoyle_flow' : 'prop_fountain_full'
+    }
   }
   announce(state, depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…')
 }
@@ -523,7 +538,17 @@ function update(delta) {
   // emerging keeps the arch from swallowing the player again until they
   // step off it. Inside a cave, returning to the entry stairs retreats.
   const arch = state.caveEntrances?.find(e => e.x === player.x && e.y === player.y)
-  if (arch && !state.entranceHold) { enterCave(arch); return }
+  if (arch && !state.entranceHold) {
+    const gate = state.gates?.[arch.label]
+    if (gate && !gate.open) {
+      // Sealed: stay on the cell and explain on a cooldown, like the waystone.
+      state.gateMsgCooldown = (state.gateMsgCooldown ?? 0) - delta
+      if (state.gateMsgCooldown <= 0) {
+        think(state, 'The vined gate is sealed. The gargoyles beside it are dry…')
+        state.gateMsgCooldown = 2
+      }
+    } else { enterCave(arch); return }
+  }
   if (!arch) state.entranceHold = false
   if (state.cave) {
     const onStairs = player.x === state.cave.stairs.x && player.y === state.cave.stairs.y
@@ -609,6 +634,14 @@ function update(delta) {
         wall.flowing = basin.flowing
         wall.propType = wall.flowing ? 'prop_gargoyle_flow' : 'prop_gargoyle_dry'
         if (!wall.flowing) wall.fountainTime = 0
+      }
+      // Overworld gate fountains: all of a gate's gargoyles flowing opens it.
+      const gate = state.gates?.[basin.gateId]
+      const wasOpen = gate?.open
+      updateGates(state)
+      if (gate && !wasOpen && gate.open) {
+        speak(state, 'Water flows — the vined gate grinds open!')
+        persistAdventure()
       }
     }
   }

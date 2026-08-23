@@ -33,8 +33,10 @@ export const SPRITES = {
   prop_pipe_flow:      'tile_0008',
   prop_gargoyle_dry:   'tile_0019',
   prop_gargoyle_flow:  'tile_0020',
-  prop_fountain_empty: 'tile_0031',
-  prop_fountain_full:  'tile_0032',
+  // Cleaned copies of tile_0031/0032 (tan floor strip erased) so basins sit
+  // on grass at overworld gates; identical on the tan dungeon floors.
+  prop_fountain_empty: 'ow_fountain_basin_empty',
+  prop_fountain_full:  'ow_fountain_basin_full',
   prop_gravestone:     'tile_0065',
   prop_grave:          'tile_0066',
   prop_drain_empty:    'tile_0043',

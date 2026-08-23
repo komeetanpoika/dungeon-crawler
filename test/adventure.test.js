@@ -101,10 +101,10 @@ describe('v3 save shape', () => {
     assert.deepEqual(s.talents, [])
   })
 
-  it('v3 saves pass through untouched', () => {
+  it('v3 saves pass through untouched, gaining only the empty gates map', () => {
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
-    assert.deepEqual(normalizeAdventureSave(v3), v3)
+    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {} })
   })
 
   it('body inventory items with nested payload are preserved', () => {

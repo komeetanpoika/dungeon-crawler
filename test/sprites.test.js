@@ -77,8 +77,10 @@ describe('fountain and pipe props', () => {
   it('prop_pipe_flow      = tile_0008', () => assert.equal(SPRITES.prop_pipe_flow,      'tile_0008'))
   it('prop_gargoyle_dry   = tile_0019', () => assert.equal(SPRITES.prop_gargoyle_dry,   'tile_0019'))
   it('prop_gargoyle_flow  = tile_0020', () => assert.equal(SPRITES.prop_gargoyle_flow,  'tile_0020'))
-  it('prop_fountain_empty = tile_0031', () => assert.equal(SPRITES.prop_fountain_empty, 'tile_0031'))
-  it('prop_fountain_full  = tile_0032', () => assert.equal(SPRITES.prop_fountain_full,  'tile_0032'))
+  // Cleaned copies of tile_0031/0032: the baked tan floor strip is erased so
+  // basins sit on grass; on tan dungeon floors the two render identically.
+  it('prop_fountain_empty = ow_fountain_basin_empty', () => assert.equal(SPRITES.prop_fountain_empty, 'ow_fountain_basin_empty'))
+  it('prop_fountain_full  = ow_fountain_basin_full',  () => assert.equal(SPRITES.prop_fountain_full,  'ow_fountain_basin_full'))
   it('prop_drain_empty    = tile_0043', () => assert.equal(SPRITES.prop_drain_empty,    'tile_0043'))
   it('prop_drain_liquid   = tile_0044', () => assert.equal(SPRITES.prop_drain_liquid,   'tile_0044'))
 })
