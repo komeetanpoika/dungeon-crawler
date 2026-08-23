@@ -122,6 +122,14 @@ export function isFlickerVisible(invulnTimer, interval = 0.06) {
   return Math.floor(invulnTimer / interval) % 2 === 0
 }
 
+// The player's look follows the stance: bare adventurer (or the knight once
+// Might is learned) in melee, the ranger in ranged, the wizard in magic.
+export function playerSpriteKey(player, mode) {
+  if (mode === 'ranged') return 'player_ranged'
+  if (mode === 'magic') return 'player_magic'
+  return (player.talents ?? []).includes('heavy_weapons') ? 'player_melee_heavy' : 'player_base'
+}
+
 export function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'door') {
     const s = sprites[`door_${entity.frame}`]
@@ -256,9 +264,25 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     ctx.translate(px + S / 2, py + S)        // pivot at the feet
     ctx.rotate(tilt * Math.PI / 180)
     ctx.scale(flip ? -1 : 1, 1)              // flip handled here, so draw un-flipped below
-    if (sprites.player) ctx.drawImage(sprites.player, -S / 2, -S, S, S)
+    const sw = entity.stanceSwitch
+    if (sw) {
+      // Mid-switch: the old form fades into the new one.
+      const k = Math.min(1, sw.t / sw.dur)
+      const fromS = sprites[playerSpriteKey(entity, sw.from)]
+      const toS = sprites[playerSpriteKey(entity, sw.to)]
+      const prevAlpha = ctx.globalAlpha
+      if (fromS) { ctx.globalAlpha = 1 - k; ctx.drawImage(fromS, -S / 2, -S, S, S) }
+      if (toS) { ctx.globalAlpha = k; ctx.drawImage(toS, -S / 2, -S, S, S) }
+      ctx.globalAlpha = prevAlpha
+    } else {
+      const s = sprites[playerSpriteKey(entity, entity.attackMode)]
+      if (s) ctx.drawImage(s, -S / 2, -S, S, S)
+    }
     if (!(entity.attackTimer > 0)) {   // the swing animation draws the melee weapon instead
-      const held = entity.attackMode === 'ranged' ? entity.ranged : entity.weapon
+      // Magic stance: wands channel, blades don't — barehanded without one.
+      const held = entity.attackMode === 'ranged' ? entity.ranged
+        : entity.attackMode === 'magic' ? (entity.ranged?.kind === 'wand' ? entity.ranged : null)
+        : entity.weapon
       const ws = held && sprites[`weapon_${held.weaponType}`]
       if (ws) drawHeldWeapon(ctx, ws, S)
     }

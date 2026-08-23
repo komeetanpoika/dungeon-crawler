@@ -5,18 +5,42 @@ import { hasTalent } from './talents.js'
 const STANCE_ORDER = ['melee', 'ranged', 'magic']
 const STANCE_TALENT = { ranged: 'ranged_stance', magic: 'magic_stance' }
 
-// Cycle to the next learned stance; null (no change) when only melee is known.
-export function toggleAttackMode(player) {
+// Changing stance is a commitment: the new form takes a moment to settle,
+// and no attack works until it does.
+export const STANCE_SWITCH_DURATION = 0.7
+
+// The next learned stance in the cycle; null when only melee is known. Pure
+// query — flipping attackMode is tickStanceSwitch's job.
+export function nextStance(player) {
   const from = STANCE_ORDER.indexOf(player.attackMode)
   for (let step = 1; step <= STANCE_ORDER.length; step++) {
     const mode = STANCE_ORDER[(from + step) % STANCE_ORDER.length]
     if (mode === player.attackMode) break
-    if (!STANCE_TALENT[mode] || hasTalent(player, STANCE_TALENT[mode])) {
-      player.attackMode = mode
-      return mode
-    }
+    if (!STANCE_TALENT[mode] || hasTalent(player, STANCE_TALENT[mode])) return mode
   }
   return null
+}
+
+// Begin the timed transition. Returns the target mode, null when there is
+// nothing to switch to, or false when a switch is already running (ignored).
+export function startStanceSwitch(player) {
+  if (player.stanceSwitch) return false
+  const to = nextStance(player)
+  if (!to) return null
+  player.stanceSwitch = { from: player.attackMode, to, t: 0, dur: STANCE_SWITCH_DURATION }
+  return to
+}
+
+// Advance a running switch; on completion flips attackMode and returns the
+// landed mode (the caller announces it), otherwise null.
+export function tickStanceSwitch(player, dt) {
+  const sw = player.stanceSwitch
+  if (!sw) return null
+  sw.t += dt
+  if (sw.t < sw.dur) return null
+  player.attackMode = sw.to
+  player.stanceSwitch = null
+  return sw.to
 }
 
 // Attempt to fire the equipped ranged weapon. On success spends 1 ammo,

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { MANA_MAX, MANA_REGEN_TIME, GUST, tickMana, tryGust } from '../renderer/systems/magic.js'
-import { toggleAttackMode } from '../renderer/systems/ranged.js'
+import { nextStance } from '../renderer/systems/ranged.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 
 const T = 32
@@ -14,23 +14,14 @@ const mkState = (entities = []) => ({ player: mkPlayer(), entities, feedback: ma
 const guardAt = (dx, dy) => ({ type: 'guard', px: 100 + dx, py: 100 + dy, x: 0, y: 0, hp: 4, maxHp: 4 })
 
 describe('stance cycle', () => {
-  it('cycles through every learned stance', () => {
-    const p = { attackMode: 'melee', talents: ['ranged_stance', 'magic_stance'] }
-    assert.equal(toggleAttackMode(p), 'ranged')
-    assert.equal(toggleAttackMode(p), 'magic')
-    assert.equal(toggleAttackMode(p), 'melee')
+  it('magic is reachable in the cycle once learned', () => {
+    const p = { attackMode: 'ranged', talents: ['ranged_stance', 'magic_stance'] }
+    assert.equal(nextStance(p), 'magic')
   })
 
-  it('skips unlearned stances', () => {
-    const p = { attackMode: 'melee', talents: ['magic_stance'] }
-    assert.equal(toggleAttackMode(p), 'magic')
-    assert.equal(toggleAttackMode(p), 'melee')
-  })
-
-  it('returns null with nothing else learned', () => {
-    const p = { attackMode: 'melee', talents: [] }
-    assert.equal(toggleAttackMode(p), null)
-    assert.equal(p.attackMode, 'melee')
+  it('skips magic when unlearned', () => {
+    const p = { attackMode: 'ranged', talents: ['ranged_stance'] }
+    assert.equal(nextStance(p), 'melee')
   })
 })
 

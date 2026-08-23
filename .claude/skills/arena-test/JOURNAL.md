@@ -106,3 +106,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** (no enemies)
 **Score:** 5/5
 **Notes:** All criteria met via injected state.rite in an empty arena: t≈1.3s showed 7 distinct white-recolored wizards evenly ringed around the player; t≈4s showed 5 of 7 beams on (staggered ignition visible) with green wash + blur active and glyphs drifting above wizards; t≈7.2s showed all 7 beams converging on a player rendered visibly above its ground spot. Glyphs at 11px were illegible under the 3px ceremony blur — bumped to bold 15px serif and re-verified legible.
+
+## Run 16 — 2026-08-23 — CLOSED
+**Question:** Does the stance switch crossfade over ~0.7s and land each stance on its new sprite (base adventurer for melee, ranger for ranged, wizard for magic, knight for melee with heavy_weapons)?
+**Criteria:** Entry screenshot shows the base adventurer (0088) not the old wizard; a screenshot ~0.3s after Shift shows both sprites blended; after 0.7s the ranger (0112); next switch lands the wizard (0084); with heavy_weapons granted, landing melee shows the knight (0097); attacks stay dead mid-switch
+**Config:** (no enemies)
+**Score:** 5/5
+**Notes:** All criteria met: arena entry showed the base adventurer (0088) not the old wizard; ~0.3s after Shift the sprite was a visible blend of adventurer and ranger; at 0.7s the ranger (0112) landed with the 'Ranged stance.' bubble; next switch landed the wizard (0084); with heavy_weapons granted the melee landing showed the knight (0097); holding Space mid-switch fired nothing (mana 4, 0 shockwaves, 0 projectiles while stanceSwitch active).

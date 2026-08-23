@@ -12,7 +12,11 @@ export const SPRITES = {
   // characters
   dragon:       'creature_dragon',
   dragon_parts: 'dragon_boss_parts',
-  player:       'tile_0084',
+  player:       'tile_0084',           // legacy alias (menu art); stances use the four below
+  player_base:        'tile_0088',     // bare adventurer — melee before Might
+  player_melee_heavy: 'tile_0097',     // plumed knight — melee once Might is learned
+  player_ranged:      'tile_0112',     // hooded ranger
+  player_magic:       'tile_0084',     // the purple wizard
   guard:        'tile_0085',
   guard_alert:  'tile_0087',
   monster_weak:   'tile_0120',

@@ -29,7 +29,7 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
-import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
+import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { tickMana, tryGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
 import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
@@ -70,15 +70,15 @@ window.addEventListener('keydown', e => {
   else if (inventoryOpen) closeInventory()
 })
 
-// Shift toggles melee/ranged stance. Edge-triggered: e.repeat filters the
-// held-key auto-repeat so holding Shift doesn't flap the mode.
+// Shift starts a stance switch. Edge-triggered: e.repeat filters the
+// held-key auto-repeat so holding Shift doesn't flap the mode. The switch
+// takes a moment (see STANCE_SWITCH_DURATION) — the mode lands in update().
 window.addEventListener('keydown', e => {
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
-  const mode = toggleAttackMode(state.player)
-  if (!mode) { think(state, 'I know no other ways to fight.'); return }
-  state.player.charging = null
-  think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[mode])
+  const target = startStanceSwitch(state.player)
+  if (target === null) { think(state, 'I know no other ways to fight.'); return }
+  if (target) state.player.charging = null    // false = switch already running
 })
 
 // In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
@@ -653,6 +653,10 @@ function update(delta) {
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
   tickMana(player, delta)
+  const landedStance = tickStanceSwitch(player, delta)
+  if (landedStance) think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[landedStance])
+  // Mid-switch the old stance is still set but every attack is dead.
+  const attacking = keys[' '] && !player.stanceSwitch
 
   // Melee (Space): light blades swing the instant the key lands; charge
   // weapons wind up while held and swing on release, tiered by hold time.
@@ -713,7 +717,7 @@ function update(delta) {
     // is finding a weapon, and the game says so instead of doing nothing.
     player.charging = null
     state.meleeMsgCooldown = Math.max(0, (state.meleeMsgCooldown ?? 0) - delta)
-    if (keys[' '] && state.meleeMsgCooldown <= 0) {
+    if (attacking && state.meleeMsgCooldown <= 0) {
       think(state, 'Unarmed — you need a weapon.')
       state.meleeMsgCooldown = 2
     }
@@ -721,10 +725,10 @@ function update(delta) {
     if (player.charging) {
       if (keys[' ']) player.charging.t += delta
       else { const held = player.charging.t; player.charging = null; swing(resolveCharge(meleeWT, held)) }
-    } else if (keys[' '] && player.meleeCooldown <= 0) player.charging = { t: 0 }
+    } else if (attacking && player.meleeCooldown <= 0) player.charging = { t: 0 }
   } else {
     if (player.charging) player.charging = null   // weapon swapped mid-wind-up
-    if (keys[' '] && player.attackMode === 'melee' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
+    if (attacking && player.attackMode === 'melee' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
   }
 
   // Ranged (Space while in ranged stance). tryFire gates on weapon presence,
@@ -735,7 +739,7 @@ function update(delta) {
   // Magic (Space in magic stance): the gust — no damage, stun + shove in a
   // cone. Cooldown refusals stay silent (the HUD shows the state); an empty
   // pool explains itself on a gate.
-  if (keys[' '] && player.attackMode === 'magic') {
+  if (attacking && player.attackMode === 'magic') {
     const cast = tryGust(state)
     if (cast.ok) {
       const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
@@ -753,7 +757,7 @@ function update(delta) {
     }
   }
 
-  if (keys[' '] && player.attackMode === 'ranged') {
+  if (attacking && player.attackMode === 'ranged') {
     const shot = tryFire(player)
     if (shot.ok) {
       const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]

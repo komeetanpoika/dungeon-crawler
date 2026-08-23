@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, Renderer } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, playerSpriteKey, Renderer } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in.
@@ -153,7 +153,7 @@ describe('drawEntity — held idle weapons', () => {
   })
 
   it('player carries their weapon at idle and hides it while swinging', () => {
-    const psprites = { player: 'PLAYER', weapon_sword: 'SWORD' }
+    const psprites = { player_base: 'PLAYER', weapon_sword: 'SWORD' }
     const idle = { type: 'player', facing: 'east', walkPhase: 0, swayAmp: 0, weapon: { weaponType: 'sword' } }
 
     const ctx = swingCtx()
@@ -166,7 +166,7 @@ describe('drawEntity — held idle weapons', () => {
   })
 
   it('player carries the ranged weapon in ranged stance', () => {
-    const psprites = { player: 'PLAYER', weapon_sword: 'SWORD', weapon_shortbow: 'BOW' }
+    const psprites = { player_ranged: 'PLAYER', weapon_sword: 'SWORD', weapon_shortbow: 'BOW' }
     const p = { type: 'player', facing: 'east', walkPhase: 0, swayAmp: 0,
                 weapon: { weaponType: 'sword' }, ranged: { weaponType: 'shortbow' }, attackMode: 'ranged' }
     const ctx = swingCtx()
@@ -175,7 +175,7 @@ describe('drawEntity — held idle weapons', () => {
   })
 
   it('ranged stance with no ranged weapon shows an empty hand', () => {
-    const psprites = { player: 'PLAYER', weapon_sword: 'SWORD' }
+    const psprites = { player_ranged: 'PLAYER', weapon_sword: 'SWORD' }
     const p = { type: 'player', facing: 'east', walkPhase: 0, swayAmp: 0,
                 weapon: { weaponType: 'sword' }, ranged: null, attackMode: 'ranged' }
     const ctx = swingCtx()
@@ -291,5 +291,79 @@ describe('drawRiteCeremony', () => {
     const ctx = riteCtx()
     drawRiteCeremony(ctx, { wizards: [], glyphs: [], lift: 0 }, 0, 0, 32, 'WIZ', { px: 160, py: 160 })
     assert.equal(ctx.ops.images.length + ctx.ops.texts.length + ctx.ops.strokes, 0)
+  })
+})
+
+describe('player stance sprites', () => {
+  const SPR2 = { player_base: 'BASE', player_melee_heavy: 'HEAVY', player_ranged: 'RANGED', player_magic: 'MAGIC' }
+
+  it('picks the sprite for the stance, gated by the Might talent for melee', () => {
+    assert.equal(playerSpriteKey({ attackMode: 'melee', talents: [] }, 'melee'), 'player_base')
+    assert.equal(playerSpriteKey({ attackMode: 'melee', talents: ['heavy_weapons'] }, 'melee'), 'player_melee_heavy')
+    assert.equal(playerSpriteKey({ attackMode: 'ranged', talents: ['ranged_stance'] }, 'ranged'), 'player_ranged')
+    assert.equal(playerSpriteKey({ attackMode: 'magic', talents: ['magic_stance'] }, 'magic'), 'player_magic')
+  })
+
+  function playerCtx() {
+    const images = []
+    let alpha = 1
+    return {
+      images,
+      save: () => {}, restore: () => {}, translate: () => {}, rotate: () => {}, scale: () => {},
+      set globalAlpha(v) { alpha = v }, get globalAlpha() { return alpha },
+      drawImage: (img) => images.push({ img, alpha }),
+      fillRect: () => {}, beginPath: () => {}, arc: () => {}, stroke: () => {}, fill: () => {},
+      set fillStyle(_v) {}, set strokeStyle(_v) {}, set lineWidth(_v) {},
+    }
+  }
+  const player = over => ({ type: 'player', facing: 'east', attackMode: 'melee', talents: [], attackTimer: 0, ...over })
+
+  it('draws the stance sprite for a settled player', () => {
+    const ctx = playerCtx()
+    drawEntity(ctx, player({ attackMode: 'magic' }), 0, 0, 32, SPR2)
+    assert.deepEqual(ctx.images, [{ img: 'MAGIC', alpha: 1 }])
+  })
+
+  it('crossfades both sprites at complementary alphas mid-switch', () => {
+    const ctx = playerCtx()
+    drawEntity(ctx, player({ stanceSwitch: { from: 'melee', to: 'ranged', t: 0.35, dur: 0.7 } }), 0, 0, 32, SPR2)
+    assert.equal(ctx.images.length, 2)
+    const from = ctx.images.find(i => i.img === 'BASE')
+    const to = ctx.images.find(i => i.img === 'RANGED')
+    assert.ok(Math.abs(from.alpha - 0.5) < 1e-9)
+    assert.ok(Math.abs(to.alpha - 0.5) < 1e-9)
+  })
+
+  it('the target sprite honors talent gating during the fade', () => {
+    const ctx = playerCtx()
+    drawEntity(ctx, player({ talents: ['heavy_weapons'], attackMode: 'ranged',
+      stanceSwitch: { from: 'ranged', to: 'melee', t: 0.7 * 0.75, dur: 0.7 } }), 0, 0, 32, SPR2)
+    const to = ctx.images.find(i => i.img === 'HEAVY')
+    assert.ok(to, 'melee target renders the knight for a Might-trained player')
+    assert.ok(Math.abs(to.alpha - 0.75) < 1e-9)
+  })
+})
+
+describe('drawEntity — magic stance held weapon', () => {
+  const psprites = { player_magic: 'MAGIC', weapon_sword: 'SWORD', weapon_sparkwand: 'WAND', weapon_shortbow: 'BOW' }
+  const mage = over => ({ type: 'player', facing: 'east', walkPhase: 0, swayAmp: 0, attackMode: 'magic',
+    weapon: { weaponType: 'sword' }, ranged: null, ...over })
+
+  it('never carries the melee weapon in magic stance', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, mage(), 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['MAGIC'])
+  })
+
+  it('carries a wand in magic stance', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, mage({ ranged: { weaponType: 'sparkwand', kind: 'wand' } }), 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['MAGIC', 'WAND'])
+  })
+
+  it('a bow stays on the back in magic stance', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, mage({ ranged: { weaponType: 'shortbow', kind: 'bow' } }), 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['MAGIC'])
   })
 })
