@@ -92,3 +92,17 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** (default boss arena)
 **Score:** 5/5
 **Notes:** All four criteria met. Pixel boss renders in-game with every part present and connected — plated tail with the fused tip, scaled body, both mirrored wings, neck plates, horned head, four clawed feet; no gaps at neck base or wing roots across three facings. Edges are uniformly stair-stepped with no anti-aliasing anywhere on the dragon. Player sprite, stone-brick wall and HUD text drawn after the boss all stay sharp, confirming the imageSmoothingEnabled fix works in the real render loop. Parts stayed attached across frames while the boss turned and stomped. Observation for the art-scale decision: at ART_PX=4 the dragon is visibly chunkier than the 16x16 tileset it stands on (compare its edges to the brick wall) — deliberate, but pronounced.
+
+## Run 14 — 2026-08-22 — CLOSED
+**Question:** With magic_stance pre-granted via arena config, does Shift cycle to magic and does gust actually fire? Without any talents, does Shift show the no-other-ways message and does Space refuse unarmed melee?
+**Criteria:** Screenshot/log shows gust effect firing when magic_stance granted; with no talents, hud-log shows 'I know no other ways to fight.' on Shift and melee Space produces no swing/refusal
+**Config:** (no enemies)
+**Score:** 5/5
+**Notes:** Magic-stance-granted config: Shift skipped locked ranged straight to magic ('Magic stance.' bubble), Space fired gust successfully (log: 'A gust of wind!', mana pip depleted). No-talents+unarmed config: Shift produced 'I know no other ways to fight.' and Space produced 'Unarmed — you need a weapon.' with no swing. All four criteria observed directly via hud-log text, screenshots corroborate HUD state (Gust slot present/absent per no-spoilers rule).
+
+## Run 15 — 2026-08-23 — CLOSED
+**Question:** Does the reworked mushroom-circle rite ceremony render its full choreography (7 white wizards on a ring, beams igniting in order, chant glyphs, player levitation with ground shadow) when state.rite is injected in an empty arena?
+**Criteria:** Screenshots at t≈1.5s show 7 distinct white-tinted wizards ringed around the player; at t≈4s some but not all beams plus rune glyphs; at t≈7s all 7 beams converging on a player rendered ~20px above its shadow; wobble/blur/green wash still present
+**Config:** (no enemies)
+**Score:** 5/5
+**Notes:** All criteria met via injected state.rite in an empty arena: t≈1.3s showed 7 distinct white-recolored wizards evenly ringed around the player; t≈4s showed 5 of 7 beams on (staggered ignition visible) with green wash + blur active and glyphs drifting above wizards; t≈7.2s showed all 7 beams converging on a player rendered visibly above its ground spot. Glyphs at 11px were illegible under the 3px ceremony blur — bumped to bold 15px serif and re-verified legible.

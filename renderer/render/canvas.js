@@ -693,6 +693,57 @@ function drawCyclopsEffects(ctx, cyclops, camX, camY) {
   }
 }
 
+// The seven-wizard rite: white-robed figures on a ring, chant glyphs, and
+// beams converging on the (possibly levitating) player. All positions and
+// alphas come pre-computed in fx (systems/rites.js riteVisuals); target is
+// the player's ground-anchored center in world px.
+export function drawRiteCeremony(ctx, fx, camX, camY, S, wizardSprite, target) {
+  const wizards = fx?.wizards ?? []
+  if (!wizards.length) return
+  const lift = fx.lift ?? 0
+  const tx = target.px - camX
+  const ty = target.py - lift - camY
+
+  // Ground shadow stays behind while the player rises
+  if (lift > 0) {
+    ctx.save()
+    ctx.globalAlpha = 0.3 * (1 - lift / 60)
+    ctx.fillStyle = '#000'
+    ctx.beginPath()
+    ctx.ellipse(target.px - camX, target.py - camY + S * 0.4, S * 0.35, S * 0.12, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  ctx.save()
+  for (const w of wizards) {
+    if (w.beam > 0) {
+      const wx = w.px - camX, wy = w.py - camY
+      ctx.lineCap = 'round'
+      ctx.globalAlpha = 0.25 * w.beam
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 6
+      ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(tx, ty); ctx.stroke()
+      ctx.globalAlpha = 0.9 * w.beam
+      ctx.strokeStyle = '#fef3c7'
+      ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(tx, ty); ctx.stroke()
+    }
+  }
+  for (const w of wizards) {
+    ctx.globalAlpha = w.alpha
+    ctx.drawImage(wizardSprite, Math.round(w.px - S / 2 - camX), Math.round(w.py - S / 2 - camY), S, S)
+  }
+  ctx.font = 'bold 15px serif'
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#f8fafc'
+  for (const g of fx.glyphs ?? []) {
+    ctx.globalAlpha = g.alpha
+    ctx.fillText(g.char, Math.round(g.px - camX), Math.round(g.py - camY))
+  }
+  ctx.restore()
+}
+
 export function shakeOffset(shake) {
   if (!shake || shake <= 0) return { x: 0, y: 0 }
   return { x: (Math.random() * 2 - 1) * shake, y: (Math.random() * 2 - 1) * shake }
@@ -722,6 +773,27 @@ export class Renderer {
 
   async loadSprites(extraNames = []) {
     this.sprites = await loadSprites(extraNames)
+  }
+
+  // Rite wizards wear white: the enemy wizard sprite desaturated and
+  // brightened once into an offscreen canvas. Falls back to the plain
+  // sprite where offscreen canvases or filters are unavailable.
+  whiteWizardSprite() {
+    if (this._whiteWizard === undefined) {
+      this._whiteWizard = null
+      const src = this.sprites.wizard
+      try {
+        const c = document.createElement('canvas')
+        c.width = src.width
+        c.height = src.height
+        const cx = c.getContext('2d')
+        cx.imageSmoothingEnabled = false
+        cx.filter = 'saturate(0) brightness(1.7)'
+        cx.drawImage(src, 0, 0)
+        this._whiteWizard = c
+      } catch { /* keep the fallback */ }
+    }
+    return this._whiteWizard ?? this.sprites.wizard
   }
 
   resize() {
@@ -797,7 +869,14 @@ export class Renderer {
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
     }
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
-    const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
+    const lift = Math.round(fx?.lift ?? 0)
+    const ppy = (player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)) - lift
+    if (fx?.wizards?.length) {
+      drawRiteCeremony(ctx, fx, camX, camY, S, this.whiteWizardSprite(), {
+        px: player.px ?? player.x * S + S / 2,
+        py: player.py ?? player.y * S + S / 2,
+      })
+    }
     if (isFlickerVisible(player.invulnTimer)) drawEntity(ctx, player, ppx, ppy, S, sprites)
     if (player.grabbed) {
       ctx.save()

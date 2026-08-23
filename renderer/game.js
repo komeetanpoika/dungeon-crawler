@@ -593,7 +593,7 @@ function update(delta) {
   tickTrance(player, delta)
   const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
   if (trigger && !hasTalent(player, trigger.talent) && riteConditionMet(trigger.rite, state)) {
-    state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent }
+    state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent, cx: player.px, cy: player.py }
   }
 
   // Exit door — open and descend with the key, otherwise it stays locked

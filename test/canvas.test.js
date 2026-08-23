@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, Renderer } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, Renderer } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in.
@@ -238,5 +238,58 @@ describe('Renderer DPR-aware resize', () => {
     assert.equal(r.camX, 1000 - 200)  // viewW/2, not canvas.width/2
     assert.equal(r.camY, 500 - 150)
     globalThis.devicePixelRatio = prev
+  })
+})
+
+describe('drawRiteCeremony', () => {
+  // Records every kind of draw the ceremony makes.
+  function riteCtx() {
+    const ops = { images: [], texts: [], strokes: 0, alphas: [] }
+    let alpha = 1
+    return {
+      ops,
+      save: () => {}, restore: () => {},
+      set globalAlpha(v) { alpha = v }, get globalAlpha() { return alpha },
+      drawImage: (img) => ops.images.push({ img, alpha }),
+      fillText: (ch) => ops.texts.push({ ch, alpha }),
+      beginPath: () => {}, moveTo: () => {}, lineTo: () => {},
+      stroke: () => { ops.strokes++ },
+      ellipse: () => {}, arc: () => {}, fill: () => {}, fillRect: () => {},
+      set strokeStyle(_v) {}, set fillStyle(_v) {}, set lineWidth(_v) {},
+      set lineCap(_v) {}, set font(_v) {}, set textAlign(_v) {},
+    }
+  }
+
+  const wiz = (beam, alpha = 1) => ({ px: 100, py: 100, alpha, beam })
+
+  it('draws one sprite per wizard at its fade-in alpha', () => {
+    const ctx = riteCtx()
+    const fx = { wizards: [wiz(0, 0.5), wiz(0, 0.5), wiz(0, 0.5)], glyphs: [], lift: 0 }
+    drawRiteCeremony(ctx, fx, 0, 0, 32, 'WIZ', { px: 160, py: 160 })
+    assert.equal(ctx.ops.images.length, 3)
+    for (const d of ctx.ops.images) { assert.equal(d.img, 'WIZ'); assert.equal(d.alpha, 0.5) }
+  })
+
+  it('strokes a beam only for wizards whose beam is on', () => {
+    const ctx = riteCtx()
+    const fx = { wizards: [wiz(1), wiz(0.5), wiz(0)], glyphs: [], lift: 0 }
+    drawRiteCeremony(ctx, fx, 0, 0, 32, 'WIZ', { px: 160, py: 160 })
+    assert.ok(ctx.ops.strokes >= 2, 'two lit beams stroke')
+    const off = riteCtx()
+    drawRiteCeremony(off, { wizards: [wiz(0), wiz(0)], glyphs: [], lift: 0 }, 0, 0, 32, 'WIZ', { px: 160, py: 160 })
+    assert.equal(off.ops.strokes, 0)
+  })
+
+  it('renders each glyph as text', () => {
+    const ctx = riteCtx()
+    const fx = { wizards: [wiz(0)], glyphs: [{ px: 90, py: 80, alpha: 0.7, char: 'ᚠ' }], lift: 0 }
+    drawRiteCeremony(ctx, fx, 0, 0, 32, 'WIZ', { px: 160, py: 160 })
+    assert.deepEqual(ctx.ops.texts, [{ ch: 'ᚠ', alpha: 0.7 }])
+  })
+
+  it('draws nothing without wizards', () => {
+    const ctx = riteCtx()
+    drawRiteCeremony(ctx, { wizards: [], glyphs: [], lift: 0 }, 0, 0, 32, 'WIZ', { px: 160, py: 160 })
+    assert.equal(ctx.ops.images.length + ctx.ops.texts.length + ctx.ops.strokes, 0)
   })
 })
