@@ -92,9 +92,18 @@ export function buildOpenMap(data) {
     spots.filter((_, i) => i % 3 === 0).slice(0, 8)
       .forEach(s => entitySpawns.push({ kind: 'wild_mushroom', x: s.x, y: s.y }))
   }
+  // Signposts: stamp the sign art onto each sign tile and make it solid.
+  // A no-op where the bake already carries the ow_sign prop (Aspengrove).
+  const signs = signsForMap(data.name)
+  for (const s of signs) {
+    const c = map[s.y]?.[s.x]
+    if (!c) { console.warn(`signs: tile ${s.x},${s.y} outside ${data.name}`); continue }
+    c.overlay = 'ow_sign'
+    c.tile = TILE.WALL
+  }
   return {
     map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [],
     caveEntrances, gates, mapExit: data.exit ? { ...data.exit } : null,
-    signs: signsForMap(data.name),
+    signs,
   }
 }
