@@ -6,6 +6,59 @@
 // tile N, served straight from the downloaded pack), or null (ground shows).
 export const ITEMS = [
   {
+    id: 'gateway-gargoyle-fountains', title: 'Gargoyle gateway with fountain basins — refinement of #6', ground: 'ow_grass_0',
+    note: 'Bottom row of candidate 6 with the dungeon fountain pairing added: gargoyle walls (tile_0019 dry / tile_0020 flowing) over their basins (tile_0031 empty / tile_0032 full), as prop_gargoyle_* + prop_fountain_* pair in dungeon levels.',
+    options: [
+      { label: 'A dungeon pairing: dry left, flowing right', grid: [
+        ['tile_0019', 'ow_cave_arch_0', 'ow_cave_arch_1', 'tile_0020'],
+        ['ow_fountain_basin_empty', null, null, 'ow_fountain_basin_full'],
+      ] },
+      { label: 'B both flowing', grid: [
+        ['tile_0020', 'ow_cave_arch_0', 'ow_cave_arch_1', 'tile_0020'],
+        ['ow_fountain_basin_full', null, null, 'ow_fountain_basin_full'],
+      ] },
+      { label: 'C both dry', grid: [
+        ['tile_0019', 'ow_cave_arch_0', 'ow_cave_arch_1', 'tile_0019'],
+        ['ow_fountain_basin_empty', null, null, 'ow_fountain_basin_empty'],
+      ] },
+      { label: 'D both flowing + rock ridge top (4x3)', grid: [
+        ['ow_rock_gray_moss_1', 'ow_rock_gray_2', 'ow_rock_gray_1', 'ow_rock_gray_moss_2'],
+        ['tile_0020', 'ow_cave_arch_0', 'ow_cave_arch_1', 'tile_0020'],
+        ['ow_fountain_basin_full', null, null, 'ow_fountain_basin_full'],
+      ] },
+    ],
+  },
+  {
+    id: 'gateway-decorated', title: 'Decorated dungeon gateway — 4x2 candidates', ground: 'ow_grass_0',
+    note: 'Six 4-wide, 2-tall gateway assemblies around the 2-wide cave arch. Mixes Tiny Town overworld pieces with Tiny Dungeon masonry/props (same Kenney 16px style).',
+    options: [
+      { label: '1 mossy crag (natural ridge)', grid: [
+        ['ow_rock_gray_moss_0', 'ow_rock_gray_2', 'ow_rock_gray_moss_2', 'ow_rock_gray_1'],
+        ['ow_rock_gray_moss_1', 'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_rock_gray_moss_0'],
+      ] },
+      { label: '2 vined arch + dead trees', grid: [
+        [null, 'ow_rock_gray_moss_1', 'ow_rock_gray_moss_2', null],
+        ['ow_deadtree_0', 'ow_cave_gate_l', 'ow_cave_gate_r', 'ow_deadtree_1'],
+      ] },
+      { label: '3 dwarven brickwork face', grid: [
+        ['tile_0014', 'tile_0014', 'tile_0014', 'tile_0014'],
+        ['tile_0014', 'ow_cave_arch_0', 'ow_cave_arch_1', 'tile_0014'],
+      ] },
+      { label: '4 torch-lit brick flanks', grid: [
+        [null, 'tile_0014', 'tile_0014', null],
+        [['tile_0014', 'tile_0107'], 'ow_cave_arch_0', 'ow_cave_arch_1', ['tile_0014', 'tile_0107']],
+      ] },
+      { label: '5 ancient sandstone portal', grid: [
+        [null, 'ow_ruin_crack_0', 'ow_ruin_crack_1', null],
+        ['ow_ruin_pillar', 'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_ruin_pillar_2'],
+      ] },
+      { label: '6 carved sentinel faces', grid: [
+        ['ow_rock_gray_moss_1', 'ow_rock_gray_2', 'ow_rock_gray_1', 'ow_rock_gray_moss_2'],
+        ['tile_0019', 'ow_cave_arch_0', 'ow_cave_arch_1', 'tile_0020'],
+      ] },
+    ],
+  },
+  {
     id: 'tree-pine', title: 'Pine tree', ground: 'ow_grass_0',
     note: 'Generators scatter ow_tree_pine as a whole tree; in the pack it is the TOP half (tile 4), with tile 16 as its trunk half.',
     options: [
@@ -67,13 +120,47 @@ export const ITEMS = [
     ],
   },
   {
-    id: 'cave-mouth', title: 'Cave mouth', ground: 'ow_grass_0',
-    note: 'Generators place single ow_cave_arch_1 (tile 114) — the RIGHT half of a 2-wide arch (113+114). 111/112 are a vined variant.',
+    id: 'dungeon-entrance-l1', title: 'Dungeon entrance — level 1 (forest-1-clearings)', ground: 'ow_grass_0',
+    note: 'Both level-1 entrances bake only ow_cave_arch_1 (tile 114, RIGHT half of the 2-wide arch); the left half (113) at the POI cell is missing. Cells below are the real map neighborhoods (cave 2 at 108,50 / cave 1 at 12,66).',
+    options: [
+      { label: 'BROKEN in-game: cave 2 (109,50)', grid: [
+        [null, null, ['ow_dirt_0'], null, null, 'ow_tree_pine_trunk', 'ow_tree_small'],
+        [null, 'ow_rock_gray_moss_0', ['ow_dirt_0'], 'ow_rock_gray_moss_1', null, 'ow_bush_round', 'ow_tree_small'],
+        ['ow_rock_gray_moss_1', 'ow_rock_gray_moss_0', ['ow_dirt_0'], ['ow_grass_2', 'ow_cave_arch_1'], 'ow_rock_gray_moss_2', null, null],
+        [null, 'ow_rock_gray_moss_0', null, null, null, null, null],
+        [['ow_dirt_0'], null, null, null, null, 'ow_bush_1', 'ow_mushroom'],
+      ] },
+      { label: 'FIXED: arch_0 at POI cell (108,50)', grid: [
+        [null, null, ['ow_dirt_0'], null, null, 'ow_tree_pine_trunk', 'ow_tree_small'],
+        [null, 'ow_rock_gray_moss_0', ['ow_dirt_0'], 'ow_rock_gray_moss_1', null, 'ow_bush_round', 'ow_tree_small'],
+        ['ow_rock_gray_moss_1', 'ow_rock_gray_moss_0', ['ow_dirt_0', 'ow_cave_arch_0'], ['ow_grass_2', 'ow_cave_arch_1'], 'ow_rock_gray_moss_2', null, null],
+        [null, 'ow_rock_gray_moss_0', null, null, null, null, null],
+        [['ow_dirt_0'], null, null, null, null, 'ow_bush_1', 'ow_mushroom'],
+      ] },
+      { label: 'BROKEN in-game: cave 1 (13,66)', grid: [
+        [null, null, null, null, null, 'ow_bush_round', null],
+        [['ow_dirt_0'], ['ow_dirt_0'], ['ow_dirt_0'], ['ow_grass_1', 'ow_rock_gray_moss_0'], null, 'ow_tree_pine_top', null],
+        ['ow_rock_gray_moss_1', 'ow_rock_gray_moss_1', ['ow_dirt_0'], 'ow_cave_arch_1', 'ow_rock_gray_moss_1', ['ow_grass_2'], null],
+        [null, 'ow_rock_gray_moss_0', null, null, null, null, null],
+        [null, null, null, null, null, null, null],
+      ] },
+      { label: 'FIXED: arch_0 at POI cell (12,66)', grid: [
+        [null, null, null, null, null, 'ow_bush_round', null],
+        [['ow_dirt_0'], ['ow_dirt_0'], ['ow_dirt_0'], ['ow_grass_1', 'ow_rock_gray_moss_0'], null, 'ow_tree_pine_top', null],
+        ['ow_rock_gray_moss_1', 'ow_rock_gray_moss_1', ['ow_dirt_0', 'ow_cave_arch_0'], 'ow_cave_arch_1', 'ow_rock_gray_moss_1', ['ow_grass_2'], null],
+        [null, 'ow_rock_gray_moss_0', null, null, null, null, null],
+        [null, null, null, null, null, null, null],
+      ] },
+    ],
+  },
+  {
+    id: 'cave-mouth', title: 'Cave mouth pieces (isolated)', ground: 'ow_grass_0',
+    note: 'The extracted pieces: 2-wide arch = ow_cave_arch_0 (113) + ow_cave_arch_1 (114); vined pair = ow_cave_gate_l/r (111/112); door = ow_cave_door (125).',
     options: [
       { label: 'current: ow_cave_arch_1 alone', grid: [['ow_cave_arch_1']] },
       { label: 'current: ow_cave_arch_0 alone', grid: [['ow_cave_arch_0']] },
-      { label: '2-wide arch (113+114)', grid: [['tt:113', 'tt:114']] },
-      { label: '2-wide vined arch (111+112)', grid: [['tt:111', 'tt:112']] },
+      { label: '2-wide arch (arch_0 + arch_1)', grid: [['ow_cave_arch_0', 'ow_cave_arch_1']] },
+      { label: '2-wide vined (gate_l + gate_r)', grid: [['ow_cave_gate_l', 'ow_cave_gate_r']] },
       { label: 'cave door tile (125)', grid: [['ow_cave_door']] },
     ],
   },

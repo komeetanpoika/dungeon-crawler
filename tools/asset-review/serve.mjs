@@ -44,7 +44,7 @@ const server = http.createServer((req, res) => {
       })
       return
     }
-    const tile = /^\/tiles\/(ow_[a-z0-9_]+)\.png$/.exec(u.pathname)
+    const tile = /^\/tiles\/((?:ow|tile|road|custom)_[a-z0-9_]+)\.png$/.exec(u.pathname)
     if (tile) return send(200, fs.readFileSync(path.join(TILES, tile[1] + '.png')), 'image/png')
     const tt = /^\/tt\/(\d+)\.png$/.exec(u.pathname)
     if (tt) return send(200, fs.readFileSync(path.join(TT_DIR, `tile_${String(tt[1]).padStart(4, '0')}.png`)), 'image/png')
@@ -91,13 +91,22 @@ const SCALE = 5, T = 16, PAD = 1
 const CELL = T * SCALE
 const imgCache = {}
 function loadImg(name) {
-  imgCache[name] ??= new Promise((resolve, reject) => {
+  imgCache[name] ??= new Promise((resolve) => {
     const i = new Image()
     i.onload = () => resolve(i)
-    i.onerror = () => reject(new Error('missing tile ' + name))
+    i.onerror = () => resolve(null) // missing tile (e.g. tt: pack gone) -> placeholder
     i.src = name.startsWith('tt:') ? '/tt/' + name.slice(3) + '.png' : '/tiles/' + name + '.png'
   })
   return imgCache[name]
+}
+async function drawCell(g, name, px, py) {
+  const img = await loadImg(name)
+  if (img) return g.drawImage(img, px, py, CELL, CELL)
+  g.fillStyle = '#c633c6'
+  g.fillRect(px, py, CELL, CELL)
+  g.fillStyle = '#fff'
+  g.font = '11px ui-monospace'
+  g.fillText(name, px + 4, py + 14, CELL - 8)
 }
 async function draw(canvas, grid, ground, flagged) {
   const rows = grid.length, cols = Math.max(...grid.map(r => r.length))
@@ -108,8 +117,13 @@ async function draw(canvas, grid, ground, flagged) {
   const groundImg = await loadImg(ground)
   for (let y = 0; y < rows + PAD * 2; y++) for (let x = 0; x < cols + PAD * 2; x++)
     g.drawImage(groundImg, x * CELL, y * CELL, CELL, CELL)
-  for (let y = 0; y < rows; y++) for (let x = 0; x < grid[y].length; x++)
-    if (grid[y][x]) g.drawImage(await loadImg(grid[y][x]), (x + PAD) * CELL, (y + PAD) * CELL, CELL, CELL)
+  // a cell is null (ground only), a tile name, or an array of layers drawn bottom-up
+  for (let y = 0; y < rows; y++) for (let x = 0; x < grid[y].length; x++) {
+    const cell = grid[y][x]
+    if (!cell) continue
+    for (const layer of Array.isArray(cell) ? cell : [cell])
+      await drawCell(g, layer, (x + PAD) * CELL, (y + PAD) * CELL)
+  }
   for (const key of flagged) {
     const [x, y] = key.split(',').map(Number)
     const px = (x + PAD) * CELL, py = (y + PAD) * CELL
