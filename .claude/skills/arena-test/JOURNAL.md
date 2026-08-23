@@ -113,3 +113,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** (no enemies)
 **Score:** 5/5
 **Notes:** All criteria met: arena entry showed the base adventurer (0088) not the old wizard; ~0.3s after Shift the sprite was a visible blend of adventurer and ranger; at 0.7s the ranger (0112) landed with the 'Ranged stance.' bubble; next switch landed the wizard (0084); with heavy_weapons granted the melee landing showed the knight (0097); holding Space mid-switch fired nothing (mana 4, 0 shockwaves, 0 projectiles while stanceSwitch active).
+
+## Run 17 — 2026-08-23 — CLOSED
+**Question:** Does pressing F beside a sign open the paused signpost panel with title and lines, and does F again close it and resume play?
+**Criteria:** Screenshot shows the parchment panel with 'Aspengrove' title and the three direction lines; #sign-overlay computes display:flex while open; after a second F it is display:none and the game accepts movement again
+**Config:** (no enemies)
+**Score:** 5/5
+**Notes:** Panel opened on F beside an injected sign showing the Aspengrove title, all three direction lines and the Close (F) hint over the dimmed paused arena (#sign-overlay display:flex); the run caught a real close-reopen loop (window-dispatched keydowns collapse to at-target phase so keys.f survived the panel's stopPropagation and update() reopened the panel) — fixed by clearing keys.f in closeSign; after the fix the second F left the overlay display:none and ArrowDown moved the player (py 240 -> 312), proving resume.

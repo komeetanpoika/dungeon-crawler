@@ -34,6 +34,8 @@ import { tickMana, tryGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
 import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
+import { signNearby } from './systems/signs.js'
+import { showSign, hideSign } from './ui/sign-panel.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
@@ -263,7 +265,7 @@ function buildEntities(spawns, map, depth) {
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
-  const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit } =
+  const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
@@ -331,6 +333,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     mapExit: mapExit ?? null,
     exitMsgCooldown: 0,
     entranceHold: false,
+    signs: signs ?? [],
   }
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
@@ -402,6 +405,20 @@ function openInventory() {
 function closeInventory() {
   inventoryOpen = false
   hideInventory()
+  setPhase(PHASE.PLAYING)
+}
+
+// Signpost panel: pauses like the inventory; the panel's own capture-phase
+// key handler (F/Escape/Enter) routes back through closeSign.
+function openSign(sign) {
+  if (phase !== PHASE.PLAYING) return
+  setPhase(PHASE.PAUSED)
+  showSign(sign, closeSign)
+}
+
+function closeSign() {
+  keys['f'] = false; keys['F'] = false   // swallow the closing press so update() can't reopen
+  hideSign()
   setPhase(PHASE.PLAYING)
 }
 
@@ -623,6 +640,8 @@ function update(delta) {
     const basin = state.entities.find(e =>
       e.type === 'prop' && e.isFountainBasin && e.x === player.x && e.y === player.y
     )
+    const sign = basin ? null : signNearby(state.signs, player.x, player.y)
+    if (sign) { openSign(sign); return }
     if (basin) {
       basin.flowing = !basin.flowing
       basin.propType = basin.flowing ? 'prop_fountain_full' : 'prop_fountain_empty'
@@ -1086,7 +1105,7 @@ function exitCave() {
 function travelToMap(depth) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
-  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit } =
+  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   decorateMap(map, rulesets[theme.ruleset])
   const mapName = OPEN_MAPS[depth].name
@@ -1108,6 +1127,7 @@ function travelToMap(depth) {
     caveInstances: { ...savedAdventure.caves[mapName] },
     mapExit: mapExit ?? null,
     entranceHold: false,
+    signs: signs ?? [],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
   }
   savedAdventure.progress.mapDepth = depth

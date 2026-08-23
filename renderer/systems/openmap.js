@@ -8,6 +8,7 @@
 import { TILE } from './entities.js'
 import { createMap } from './map.js'
 import { MAP_RITES } from '../data/rites.js'
+import { signsForMap } from './signs.js'
 
 export function buildOpenMap(data) {
   const map = createMap(data.w, data.h)
@@ -94,5 +95,6 @@ export function buildOpenMap(data) {
   return {
     map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [],
     caveEntrances, gates, mapExit: data.exit ? { ...data.exit } : null,
+    signs: signsForMap(data.name),
   }
 }
