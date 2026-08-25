@@ -23,6 +23,8 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
+import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
+import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -55,6 +57,14 @@ const DRAGON_BREATH_COOLDOWN = 2.5
 const DRAGON_CONE_HALF       = Math.PI * 0.21
 
 const keys = {}
+const audio = makeAudio()
+
+function loadMutedPref() {
+  try { return localStorage.getItem('dc-muted') === '1' } catch { return false }
+}
+function saveMutedPref(m) {
+  try { localStorage.setItem('dc-muted', m ? '1' : '0') } catch {}
+}
 window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
 window.addEventListener('keydown', e => {
@@ -70,6 +80,16 @@ window.addEventListener('keydown', e => {
   if ((e.key !== 'i' && e.key !== 'I') || e.repeat) return
   if (phase === PHASE.PLAYING) openInventory()
   else if (inventoryOpen) closeInventory()
+})
+
+// M toggles sound. The muted flag lives on state.sfx; the audio engine
+// ramps its master gain when it sees the flag change in playCues.
+window.addEventListener('keydown', e => {
+  if ((e.key !== 'm' && e.key !== 'M') || e.repeat) return
+  if (!state?.sfx) return
+  state.sfx.muted = !state.sfx.muted
+  saveMutedPref(state.sfx.muted)
+  think(state, state.sfx.muted ? 'Sound muted.' : 'Sound on.')
 })
 
 // Shift starts a stance switch. Edge-triggered: e.repeat filters the
@@ -475,10 +495,13 @@ function gameLoop(timestamp) {
     update(delta)
     if (state) render()
   }
+  // Drain sound cues every frame — UI cues fire while PAUSED too.
+  if (state?.sfx) playCues(audio, drainSfx(state), state.player, state.sfx.muted)
   rafId = requestAnimationFrame(gameLoop)
 }
 
 function update(delta) {
+  if (!state.sfx) state.sfx = makeSfx(loadMutedPref())
   if (!state) return
   // A running rite is a short cutscene: the world holds its breath.
   if (state.rite) {
