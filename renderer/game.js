@@ -414,6 +414,7 @@ function openInventory() {
   if (phase !== PHASE.PLAYING || !state) return
   setPhase(PHASE.PAUSED)
   inventoryOpen = true
+  sfx(state, 'ui-open')
   showInventory(state, {
     onEquip: (i) => {
       const r = equipItem(state.player, i)
@@ -428,6 +429,7 @@ function openInventory() {
 }
 
 function closeInventory() {
+  sfx(state, 'ui-close')
   inventoryOpen = false
   hideInventory()
   setPhase(PHASE.PLAYING)
@@ -438,11 +440,13 @@ function closeInventory() {
 function openSign(sign) {
   if (phase !== PHASE.PLAYING) return
   setPhase(PHASE.PAUSED)
+  sfx(state, 'ui-open')
   showSign(sign, closeSign)
 }
 
 function closeSign() {
   keys['f'] = false; keys['F'] = false   // swallow the closing press so update() can't reopen
+  sfx(state, 'ui-close')
   hideSign()
   setPhase(PHASE.PLAYING)
 }

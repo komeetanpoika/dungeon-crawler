@@ -1,6 +1,7 @@
 // Pause-overlay loot sack panel. Renders player.inventory + the two hand
 // slots; all mutations happen in game.js via the handlers.
 import { canEquip, EQUIP_FAIL_MESSAGES } from '../systems/inventory.js'
+import { sfx } from '../systems/sfx.js'
 
 let keyHandler = null
 let selected = 0
@@ -97,6 +98,7 @@ export function showInventory(state, handlers) {
   keyHandler = (e) => {
     const n = state.player.inventory.length
     const cols = 5
+    const prev = selected
     if (e.key === 'ArrowRight') selected = Math.min(Math.max(0, n - 1), selected + 1)
     else if (e.key === 'ArrowLeft') selected = Math.max(0, selected - 1)
     else if (e.key === 'ArrowDown') selected = Math.min(Math.max(0, n - 1), selected + cols)
@@ -107,6 +109,7 @@ export function showInventory(state, handlers) {
     } else if (e.key === 'x' || e.key === 'X') {
       if (state.player.inventory[selected]) lastHandlers.onDrop(selected)
     } else return
+    if (selected !== prev) sfx(lastState, 'ui-move')
     e.preventDefault(); e.stopPropagation()
     refreshInventory(state)
   }
