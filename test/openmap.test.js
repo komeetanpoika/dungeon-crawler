@@ -152,3 +152,46 @@ describe('rite spawns on open maps', () => {
     assert.equal(spawns.some(s => s.kind === 'talent_trigger'), false)
   })
 })
+
+describe('LOS terrain classification', () => {
+  // The blocker a cell shows is its prop art if it has one, else its ground.
+  const effectiveSkin = (data, x, y) => {
+    const pi = data.prop[y][x]
+    return pi >= 0 ? data.palette[pi] : data.palette[data.ground[y][x]]
+  }
+  const CLEAR = ['ow_water_', 'ow_pond_']
+  const SOFT = ['ow_tree_', 'ow_deadtree_', 'ow_bush_', 'ow_shrub_', 'ow_mushroom', 'ow_cactus']
+  const startsWithAny = (s, prefixes) => prefixes.some(p => s?.startsWith(p))
+
+  it('flags water clear and foliage soft on every blocking interior cell, nothing else', () => {
+    let clear = 0, soft = 0
+    for (const data of Object.values(OPEN_MAPS)) {
+      const { map } = buildOpenMap(data)
+      const stamped = gateCells(data)
+      for (let y = 1; y < data.h - 1; y++) for (let x = 1; x < data.w - 1; x++) {
+        if (stamped.has(`${x},${y}`) || map[y][x].tile !== TILE.WALL) continue
+        const skin = effectiveSkin(data, x, y)
+        const wantClear = startsWithAny(skin, CLEAR)
+        const wantSoft = !wantClear && startsWithAny(skin, SOFT)
+        assert.equal(!!map[y][x].losClear, wantClear, `losClear at ${x},${y} (${skin})`)
+        assert.equal(!!map[y][x].losSoft, wantSoft, `losSoft at ${x},${y} (${skin})`)
+        if (wantClear) clear++
+        if (wantSoft) soft++
+      }
+    }
+    assert.ok(clear > 1000, 'the nine maps hold plenty of water')
+    assert.ok(soft > 5000, 'the nine maps hold plenty of foliage')
+  })
+
+  it('walkable cells and the border carry no LOS flags', () => {
+    const data = OPEN_MAPS[7]
+    const { map } = buildOpenMap(data)
+    for (let x = 0; x < data.w; x++) {
+      assert.equal(map[0][x].losClear ?? map[0][x].losSoft, undefined)
+    }
+    for (let y = 1; y < data.h - 1; y++) for (let x = 1; x < data.w - 1; x++) {
+      if (map[y][x].tile === TILE.FLOOR)
+        assert.equal(map[y][x].losClear ?? map[y][x].losSoft, undefined, `flag on floor at ${x},${y}`)
+    }
+  })
+})

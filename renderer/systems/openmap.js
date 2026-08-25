@@ -10,6 +10,14 @@ import { createMap } from './map.js'
 import { MAP_RITES } from '../data/rites.js'
 import { signsForMap } from './signs.js'
 
+// Vision classes for blocking cells, keyed off the art that blocks: open
+// water never impedes sight (losClear); foliage is shallow cover — a ray
+// crosses up to LOS_TREE_BUDGET such cells (losSoft). Rocks, buildings and
+// ruins stay fully opaque. See hasLineOfSight in entities.js.
+const LOS_CLEAR_PREFIXES = ['ow_water_', 'ow_pond_']
+const LOS_SOFT_PREFIXES = ['ow_tree_', 'ow_deadtree_', 'ow_bush_', 'ow_shrub_', 'ow_mushroom', 'ow_cactus']
+const startsWithAny = (s, prefixes) => prefixes.some(p => s?.startsWith(p))
+
 export function buildOpenMap(data) {
   const map = createMap(data.w, data.h)
   const chestAt = new Set(data.pois.filter(p => p.kind === 'chest').map(p => `${p.x},${p.y}`))
@@ -24,6 +32,12 @@ export function buildOpenMap(data) {
     // Cache cells get a real chest entity instead of the baked-in chest art —
     // same sprite, but lootable.
     if (pi >= 0 && !chestAt.has(`${x},${y}`)) c.overlay = data.palette[pi]
+    if (!border && c.tile === TILE.WALL) {
+      // The blocker the player sees is the prop art if any, else the ground.
+      const blocker = pi >= 0 ? data.palette[pi] : c.skin
+      if (startsWithAny(blocker, LOS_CLEAR_PREFIXES)) c.losClear = true
+      else if (startsWithAny(blocker, LOS_SOFT_PREFIXES)) c.losSoft = true
+    }
     c.locked = true
   }
   const entitySpawns = data.pois

@@ -52,15 +52,27 @@ export function isWalkable(tileId, tileObj = null) {
   return tileId !== TILE.WALL && tileId !== TILE.COLUMN
 }
 
+// A sight line may pass through this many foliage cells (losSoft) before it
+// is blocked; cells flagged losClear (open water) never block. Both flags are
+// stamped by buildOpenMap — dungeon tiles carry neither, so dungeon LOS is
+// unchanged.
+export const LOS_TREE_BUDGET = 2
+
 export function hasLineOfSight(map, y1, x1, y2, x2) {
   const dy = y2 - y1, dx = x2 - x1
   const steps = Math.max(Math.abs(dy), Math.abs(dx))
   if (steps === 0) return true
+  let soft = 0
   for (let i = 1; i <= steps; i++) {
     const y = Math.round(y1 + (dy * i) / steps)
     const x = Math.round(x1 + (dx * i) / steps)
     if (y === y2 && x === x2) break
-    if (!map[y]?.[x] || !isWalkable(map[y][x].tile, map[y][x])) return false
+    const t = map[y]?.[x]
+    if (!t) return false
+    if (isWalkable(t.tile, t)) continue
+    if (t.losClear) continue                            // open water: see across
+    if (t.losSoft && ++soft <= LOS_TREE_BUDGET) continue // foliage: shallow only
+    return false
   }
   return true
 }
