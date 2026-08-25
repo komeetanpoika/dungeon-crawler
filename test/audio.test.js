@@ -9,6 +9,11 @@ describe('recipe registry', () => {
       assert.ok(RECIPES[name], `no recipe for cue "${name}"`)
   })
 
+  it('every recipe key is a known cue name', () => {
+    for (const name of Object.keys(RECIPES))
+      assert.ok(CUE_NAMES.includes(name), `orphaned recipe "${name}"`)
+  })
+
   it('every recipe is well-formed', () => {
     for (const [name, r] of Object.entries(RECIPES)) {
       assert.ok(['blip', 'burst', 'swoosh', 'rumble'].includes(r.kind), `${name}: bad kind`)

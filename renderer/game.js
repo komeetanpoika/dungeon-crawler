@@ -512,8 +512,8 @@ function gameLoop(timestamp) {
 }
 
 function update(delta) {
-  if (!state.sfx) state.sfx = makeSfx(loadMutedPref())
   if (!state) return
+  if (!state.sfx) state.sfx = makeSfx(loadMutedPref())
   // A running rite is a short cutscene: the world holds its breath.
   if (state.rite) {
     state.rite.t += delta
@@ -1054,7 +1054,7 @@ function update(delta) {
   // Player death: in Adventure it is a setback — wake at the village spawn;
   // in the dungeon rush it ends the run as ever.
   if (player.hp <= 0) {
-    sfx(state, 'player-death', { px: player.px, py: player.py })
+    sfx(state, 'player-death')
     const surfaceLevel = state.cave ? state.cave.surface.level : state.level
     const mapData = OPEN_MAPS[surfaceLevel]
     if (mapData) {
@@ -1078,7 +1078,7 @@ function update(delta) {
     const cfg = LEVEL_CONFIG.find(c => c.depth === state.level) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
-    sfx(state, 'boss-death', { px: state.lastBossTile.x * TILE_SIZE, py: state.lastBossTile.y * TILE_SIZE })
+    sfx(state, 'boss-death', { px: state.lastBossTile.x * TILE_SIZE + TILE_SIZE / 2, py: state.lastBossTile.y * TILE_SIZE + TILE_SIZE / 2 })
     announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
     if (!state.cave && !OPEN_MAPS[state.level] && RUSH_TALENT_LADDER[state.level]) {
       grantTalent(state, RUSH_TALENT_LADDER[state.level])
