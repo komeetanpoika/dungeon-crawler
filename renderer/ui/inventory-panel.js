@@ -98,18 +98,19 @@ export function showInventory(state, handlers) {
   keyHandler = (e) => {
     const n = state.player.inventory.length
     const cols = 5
-    const prev = selected
-    if (e.key === 'ArrowRight') selected = Math.min(Math.max(0, n - 1), selected + 1)
-    else if (e.key === 'ArrowLeft') selected = Math.max(0, selected - 1)
-    else if (e.key === 'ArrowDown') selected = Math.min(Math.max(0, n - 1), selected + cols)
-    else if (e.key === 'ArrowUp') selected = Math.max(0, selected - cols)
-    else if (e.key === 'Enter') {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const prev = selected
+      if (e.key === 'ArrowRight') selected = Math.min(Math.max(0, n - 1), selected + 1)
+      else if (e.key === 'ArrowLeft') selected = Math.max(0, selected - 1)
+      else if (e.key === 'ArrowDown') selected = Math.min(Math.max(0, n - 1), selected + cols)
+      else selected = Math.max(0, selected - cols)
+      if (selected !== prev) sfx(lastState, 'ui-move')
+    } else if (e.key === 'Enter') {
       const p = primaryAction(state.player.inventory[selected])
       if (p) lastHandlers[p.fn](selected)
     } else if (e.key === 'x' || e.key === 'X') {
       if (state.player.inventory[selected]) lastHandlers.onDrop(selected)
     } else return
-    if (selected !== prev) sfx(lastState, 'ui-move')
     e.preventDefault(); e.stopPropagation()
     refreshInventory(state)
   }
