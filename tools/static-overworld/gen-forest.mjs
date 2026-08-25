@@ -19,6 +19,15 @@ const DIRT = ['ow_dirt_0', 'ow_dirt_1', 'ow_dirt_2', 'ow_dirt_3']
 const ROCKS_MOSS = ['ow_rock_gray_moss_0', 'ow_rock_gray_moss_1', 'ow_rock_gray_moss_2']
 const pick = (rng, a) => a[Math.floor(rng() * a.length)]
 const isOpen = b => (x, y) => b.walkable(x, y) && b.prop[y][x] === -1
+// Circular prop-clearing buffer around a POI. Every dungeon entrance needs
+// one before stampCaveInRocks/stampHouse3 etc: the runtime gate stamp
+// (openmap.js) always walls the two flank cells (x-1,y) and (x+2,y) beside
+// the arch, so an entrance carved straight into un-cleared terrain can end
+// up with only a single-tile-wide approach that the stamp then severs.
+function clearing(b, cx, cy, r) {
+  for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++)
+    if (x * x + y * y <= r * r) b.clearProp(cx + x, cy + y)
+}
 
 function forestEdge(b, rng, kit) {
   stampEdgeBand(b, rng, (x, y) => {
@@ -70,19 +79,15 @@ function clearings() {
     }
   }
   forestEdge(b, rng, PINES)
-  const clearing = (cx, cy, r) => {
-    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++)
-      if (x * x + y * y <= r * r) b.clearProp(cx + x, cy + y)
-  }
   const village = { x: 34, y: 30 }
-  clearing(village.x, village.y, 10)
+  clearing(b, village.x, village.y, 10)
   stampVillage(b, rng, village.x, village.y)
   b.poi('village', village.x, village.y - 1, 'Aspengrove')
   const shrine = { x: 88, y: 18 }
-  clearing(shrine.x, shrine.y, 5)
+  clearing(b, shrine.x, shrine.y, 5)
   b.p(shrine.x, shrine.y, 'tile_0064'); b.poi('landmark', shrine.x, shrine.y, 'forest shrine')
   const hollow = { x: 66, y: 62 }
-  clearing(hollow.x, hollow.y, 6)
+  clearing(b, hollow.x, hollow.y, 6)
   for (let i = 0; i < 8; i++) {
     const a = i / 8 * Math.PI * 2
     b.p(hollow.x + Math.round(Math.cos(a) * 4), hollow.y + Math.round(Math.sin(a) * 4), 'ow_mushroom', { walkable: false })
@@ -102,7 +107,7 @@ function clearings() {
   wander(village.x + 8, village.y, shrine.x, shrine.y)
   wander(village.x, village.y + 8, hollow.x, hollow.y)
   const caves = [{ x: 12, y: 66 }, { x: 108, y: 50 }]
-  caves.forEach((c, i) => { clearing(c.x, c.y, 3); stampCaveInRocks(b, rng, c.x, c.y); b.poi('dungeon_entrance', c.x, c.y, `cave ${i + 1}`) })
+  caves.forEach((c, i) => { clearing(b, c.x, c.y, 3); stampCaveInRocks(b, rng, c.x, c.y); b.poi('dungeon_entrance', c.x, c.y, `cave ${i + 1}`) })
   b.p(village.x - 9, village.y - 7, 'ow_beehive')
   for (const c of b.scatter(rng, 4, 28, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: village.x, y: village.y + 2 }
@@ -159,7 +164,10 @@ function river() {
   b.p(camp.x + 2, camp.y, 'ow_deadtree_0', { walkable: false })
   b.p(camp.x - 2, camp.y + 3, 'ow_fence_m'); b.p(camp.x - 1, camp.y + 3, 'ow_fence_m')
   b.poi('camp', camp.x, camp.y - 1, 'lumber camp')
-  // deep-woods cave east, shrine in a river bend
+  // deep-woods cave east, shrine in a river bend — clear a buffer first
+  // (unlike the dense woods around it) so the gate stamp's flank walls
+  // don't pinch the only approach down to nothing
+  clearing(b, 100, 24, 3)
   stampCaveInRocks(b, rng, 100, 24)
   b.poi('dungeon_entrance', 100, 24, 'bear cave')
   const shrineY = 40, shrineX = riverX(shrineY) + 6

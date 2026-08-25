@@ -195,3 +195,40 @@ describe('LOS terrain classification', () => {
     }
   })
 })
+
+describe('dungeon entrance reachability', () => {
+  // Flood-fill from playerSpawn over the post-stamp map (gate stamping can
+  // itself sever a narrow approach, so this must run against buildOpenMap's
+  // output, not the raw data.walk grid).
+  const floodFill = (map, start) => {
+    const h = map.length, w = map[0].length
+    const seen = Array.from({ length: h }, () => Array(w).fill(false))
+    const stack = [start]
+    seen[start.y][start.x] = true
+    while (stack.length) {
+      const { x, y } = stack.pop()
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy
+        if (nx < 0 || ny < 0 || ny >= h || nx >= w) continue
+        if (seen[ny][nx]) continue
+        if (!isWalkable(map[ny][nx].tile)) continue
+        seen[ny][nx] = true
+        stack.push({ x: nx, y: ny })
+      }
+    }
+    return seen
+  }
+
+  for (const [key, data] of Object.entries(OPEN_MAPS)) {
+    const entrances = data.pois.filter(p => p.kind === 'dungeon_entrance')
+    if (entrances.length === 0) continue
+    it(`every dungeon-entrance trigger cell is reachable from spawn on ${data.name} (map ${key})`, () => {
+      const { map, playerSpawn } = buildOpenMap(data)
+      const seen = floodFill(map, playerSpawn)
+      for (const p of entrances) {
+        assert.ok(seen[p.y]?.[p.x], `${data.name}: "${p.label}" trigger cell (${p.x},${p.y}) is unreachable from spawn`)
+        assert.ok(seen[p.y]?.[p.x + 1], `${data.name}: "${p.label}" trigger cell (${p.x + 1},${p.y}) is unreachable from spawn`)
+      }
+    })
+  }
+})
