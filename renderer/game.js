@@ -200,11 +200,14 @@ function detonateFireball(px, py) {
   const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE)
   const tiles = computeBlastTiles(state.map, tx, ty)
   if (!tiles.length) return
+  sfx(state, 'fire-burst', { px, py })
   const before = state.entities
   const burst = applyBurst(state.entities, state.player, tiles)
   burst.entities.forEach((e, i) => {
-    if (isEnemy(e) && before[i] && e.hp < before[i].hp)
+    if (isEnemy(e) && before[i] && e.hp < before[i].hp) {
       addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${before[i].hp - e.hp}`, kind: 'dealt' })
+      if (e.hp <= 0) sfx(state, 'enemy-death', { px: e.px, py: e.py })
+    }
   })
   state.entities = burst.entities
   if (burst.playerBurned) damagePlayer(state, BURST_DAMAGE, 'hit', `The blast engulfs you! (-${BURST_DAMAGE} HP)`)
@@ -710,6 +713,7 @@ function update(delta) {
     player.attackDuration = atk.duration
     player.attackStyle = atk.style
     player.attackFacing = player.facing
+    sfx(state, 'melee-swing', { px: player.px, py: player.py })
     player.attackReachMul = mods.reachMul
     const dmg = Math.max(1, Math.round((player.weapon?.damage ?? 1) * mods.dmgMul))
     const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
@@ -727,6 +731,7 @@ function update(delta) {
           const bossDmg = Math.max(1, Math.round(raw * mods.dmgMul))
           const bossHit = { ...e, hp: e.hp - bossDmg, inCombat: true }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${bossDmg}`, kind: 'dealt' })
+          sfx(state, 'melee-hit', { px: e.px, py: e.py })
           if (miekka) struck.push(bossHit)
           return bossHit
         }
@@ -734,6 +739,7 @@ function update(delta) {
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
+        sfx(state, hitEnemy.hp <= 0 ? 'enemy-death' : 'melee-hit', { px: e.px, py: e.py })
         startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback * mods.kbMul)
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
@@ -748,6 +754,7 @@ function update(delta) {
         const res = applyShockwave(state.entities, s.px, s.py, exclude)
         state.entities = res.entities
         state.shockwaves.push({ px: s.px, py: s.py, t: 0, dur: 0.35, maxRadius: SHOCK_RADIUS })
+        sfx(state, 'shockwave', { px: s.px, py: s.py })
         pulsed = pulsed || res.hitCount > 0
       }
       if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
@@ -789,6 +796,7 @@ function update(delta) {
         px: player.px + Math.cos(fa) * 44, py: player.py + Math.sin(fa) * 44,
         t: 0, dur: 0.3, maxRadius: 44, color: '#a5f3fc',
       })
+      sfx(state, 'magic-cast', { px: player.px, py: player.py })
       state.log = [...state.log, 'A gust of wind!'].slice(-5)
     } else if (cast.reason === 'mana') {
       state.magicMsgCooldown = Math.max(0, (state.magicMsgCooldown ?? 0) - delta)
@@ -813,6 +821,7 @@ function update(delta) {
         proj.lastPx = player.px; proj.lastPy = player.py   // last walkable spot, for wall detonations
       }
       state.projectiles.push(proj)
+      sfx(state, 'ranged-shot', { px: player.px, py: player.py })
     } else if (FIRE_FAIL_MESSAGES[shot.reason] && state.fireMsgCooldown <= 0) {
       think(state, FIRE_FAIL_MESSAGES[shot.reason])
       state.fireMsgCooldown = 1.5
@@ -848,6 +857,7 @@ function update(delta) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
+          sfx(state, e.hp - p.damage <= 0 ? 'enemy-death' : 'projectile-hit', { px: e.px, py: e.py })
           return { ...e, hp: e.hp - p.damage, inCombat: true }
         }
         return e
@@ -1029,6 +1039,7 @@ function update(delta) {
   // Player death: in Adventure it is a setback — wake at the village spawn;
   // in the dungeon rush it ends the run as ever.
   if (player.hp <= 0) {
+    sfx(state, 'player-death', { px: player.px, py: player.py })
     const surfaceLevel = state.cave ? state.cave.surface.level : state.level
     const mapData = OPEN_MAPS[surfaceLevel]
     if (mapData) {
@@ -1052,6 +1063,7 @@ function update(delta) {
     const cfg = LEVEL_CONFIG.find(c => c.depth === state.level) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
+    sfx(state, 'boss-death', { px: state.lastBossTile.x * TILE_SIZE, py: state.lastBossTile.y * TILE_SIZE })
     announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
     if (!state.cave && !OPEN_MAPS[state.level] && RUSH_TALENT_LADDER[state.level]) {
       grantTalent(state, RUSH_TALENT_LADDER[state.level])
