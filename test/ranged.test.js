@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { RANGED_WEAPON_TYPES, makeRangedContents, makePlayer } from '../renderer/systems/entities.js'
-import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from '../renderer/systems/ranged.js'
+import { nextStance, startStanceSwitch, tickStanceSwitch, STANCE_SWITCH_DURATION,
+  tryFire, FIRE_FAIL_MESSAGES } from '../renderer/systems/ranged.js'
 
 describe('RANGED_WEAPON_TYPES', () => {
   it('defines the five-weapon roster with full stat blocks', () => {
@@ -62,22 +63,72 @@ function armedPlayer(over = {}) {
   }
 }
 
-describe('toggleAttackMode', () => {
-  it('cycles melee -> ranged -> magic -> melee and returns the new mode', () => {
+describe('nextStance', () => {
+  it('cycles melee -> ranged -> magic -> melee among learned stances without flipping', () => {
     const p = { ...makePlayer(1, 1), talents: ['ranged_stance', 'magic_stance'] }
-    assert.equal(toggleAttackMode(p), 'ranged')
-    assert.equal(p.attackMode, 'ranged')
-    assert.equal(toggleAttackMode(p), 'magic')
-    assert.equal(toggleAttackMode(p), 'melee')
+    assert.equal(nextStance(p), 'ranged')
+    assert.equal(p.attackMode, 'melee')      // pure query, no mutation
+    p.attackMode = 'ranged'
+    assert.equal(nextStance(p), 'magic')
+    p.attackMode = 'magic'
+    assert.equal(nextStance(p), 'melee')
   })
 
-  it('toggles even with no ranged weapon or empty ammo', () => {
-    const bare = { ...makePlayer(1, 1), talents: ['ranged_stance'] }
-    assert.equal(toggleAttackMode(bare), 'ranged')
+  it('skips unlearned stances and returns null with nothing else learned', () => {
+    assert.equal(nextStance({ attackMode: 'melee', talents: ['magic_stance'] }), 'magic')
+    assert.equal(nextStance({ attackMode: 'melee', talents: [] }), null)
+  })
+
+  it('cycles even with no ranged weapon or empty ammo', () => {
     const empty = armedPlayer()
     empty.ranged.ammo = 0
-    assert.equal(toggleAttackMode(empty), 'ranged')
-    assert.equal(empty.attackMode, 'ranged')  // running dry never snaps back
+    assert.equal(nextStance(empty), 'ranged')
+  })
+})
+
+describe('stance switching', () => {
+  const learned = () => ({ ...makePlayer(1, 1), talents: ['ranged_stance', 'magic_stance'] })
+
+  it('startStanceSwitch begins a timed transition without flipping the mode yet', () => {
+    const p = learned()
+    assert.equal(startStanceSwitch(p), 'ranged')
+    assert.equal(p.attackMode, 'melee')
+    assert.deepEqual(p.stanceSwitch, { from: 'melee', to: 'ranged', t: 0, dur: STANCE_SWITCH_DURATION })
+  })
+
+  it('returns null when only melee is known and starts nothing', () => {
+    const p = { ...makePlayer(1, 1), talents: [] }
+    assert.equal(startStanceSwitch(p), null)
+    assert.equal(p.stanceSwitch, undefined)
+  })
+
+  it('ignores Shift while a switch is already running', () => {
+    const p = learned()
+    startStanceSwitch(p)
+    tickStanceSwitch(p, 0.3)
+    assert.equal(startStanceSwitch(p), false)
+    assert.equal(p.stanceSwitch.to, 'ranged')
+    assert.equal(p.stanceSwitch.t, 0.3)      // untouched, no restart
+  })
+
+  it('tickStanceSwitch flips the mode exactly once the duration elapses', () => {
+    const p = learned()
+    startStanceSwitch(p)
+    assert.equal(tickStanceSwitch(p, STANCE_SWITCH_DURATION - 0.1), null)
+    assert.equal(p.attackMode, 'melee')
+    assert.equal(tickStanceSwitch(p, 0.2), 'ranged')
+    assert.equal(p.attackMode, 'ranged')
+    assert.equal(p.stanceSwitch, null)
+  })
+
+  it('ticking without an active switch is a no-op', () => {
+    const p = learned()
+    assert.equal(tickStanceSwitch(p, 1), null)
+    assert.equal(p.attackMode, 'melee')
+  })
+
+  it('the switch takes 0.7 seconds', () => {
+    assert.equal(STANCE_SWITCH_DURATION, 0.7)
   })
 })
 

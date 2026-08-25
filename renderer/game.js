@@ -23,17 +23,21 @@ import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
+import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
+import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
-import { toggleAttackMode, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
+import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { tickMana, tryGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
 import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
+import { signNearby } from './systems/signs.js'
+import { showSign, hideSign } from './ui/sign-panel.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 
@@ -53,6 +57,14 @@ const DRAGON_BREATH_COOLDOWN = 2.5
 const DRAGON_CONE_HALF       = Math.PI * 0.21
 
 const keys = {}
+const audio = makeAudio()
+
+function loadMutedPref() {
+  try { return localStorage.getItem('dc-muted') === '1' } catch { return false }
+}
+function saveMutedPref(m) {
+  try { localStorage.setItem('dc-muted', m ? '1' : '0') } catch {}
+}
 window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
 window.addEventListener('keydown', e => {
@@ -70,15 +82,25 @@ window.addEventListener('keydown', e => {
   else if (inventoryOpen) closeInventory()
 })
 
-// Shift toggles melee/ranged stance. Edge-triggered: e.repeat filters the
-// held-key auto-repeat so holding Shift doesn't flap the mode.
+// M toggles sound. The muted flag lives on state.sfx; the audio engine
+// ramps its master gain when it sees the flag change in playCues.
+window.addEventListener('keydown', e => {
+  if ((e.key !== 'm' && e.key !== 'M') || e.repeat) return
+  if (!state?.sfx) return
+  state.sfx.muted = !state.sfx.muted
+  saveMutedPref(state.sfx.muted)
+  think(state, state.sfx.muted ? 'Sound muted.' : 'Sound on.')
+})
+
+// Shift starts a stance switch. Edge-triggered: e.repeat filters the
+// held-key auto-repeat so holding Shift doesn't flap the mode. The switch
+// takes a moment (see STANCE_SWITCH_DURATION) — the mode lands in update().
 window.addEventListener('keydown', e => {
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
-  const mode = toggleAttackMode(state.player)
-  if (!mode) { think(state, 'I know no other ways to fight.'); return }
-  state.player.charging = null
-  think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[mode])
+  const target = startStanceSwitch(state.player)
+  if (target === null) { think(state, 'I know no other ways to fight.'); return }
+  if (target) state.player.charging = null    // false = switch already running
 })
 
 // In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
@@ -178,11 +200,14 @@ function detonateFireball(px, py) {
   const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE)
   const tiles = computeBlastTiles(state.map, tx, ty)
   if (!tiles.length) return
+  sfx(state, 'fire-burst', { px, py })
   const before = state.entities
   const burst = applyBurst(state.entities, state.player, tiles)
   burst.entities.forEach((e, i) => {
-    if (isEnemy(e) && before[i] && e.hp < before[i].hp)
+    if (isEnemy(e) && before[i] && e.hp < before[i].hp) {
       addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${before[i].hp - e.hp}`, kind: 'dealt' })
+      if (e.hp <= 0) sfx(state, 'enemy-death', { px: e.px, py: e.py })
+    }
   })
   state.entities = burst.entities
   if (burst.playerBurned) damagePlayer(state, BURST_DAMAGE, 'hit', `The blast engulfs you! (-${BURST_DAMAGE} HP)`)
@@ -205,6 +230,7 @@ function grantContents(contents) {
   }
   const ammo = contents.type === 'ranged' ? ` (${contents.ammo} shots)` : ''
   speak(state, r.equipped ? `Picked up ${item.name}!${ammo}` : `${item.name} — into the pack.`)
+  sfx(state, 'pickup')
   return true
 }
 
@@ -263,7 +289,7 @@ function buildEntities(spawns, map, depth) {
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
-  const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit } =
+  const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
@@ -331,6 +357,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     mapExit: mapExit ?? null,
     exitMsgCooldown: 0,
     entranceHold: false,
+    signs: signs ?? [],
   }
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
@@ -387,10 +414,12 @@ function openInventory() {
   if (phase !== PHASE.PLAYING || !state) return
   setPhase(PHASE.PAUSED)
   inventoryOpen = true
+  sfx(state, 'ui-open')
   showInventory(state, {
     onEquip: (i) => {
       const r = equipItem(state.player, i)
       if (!r.ok) think(state, EQUIP_FAIL_MESSAGES[r.reason] ?? "Can't equip that.")
+      else sfx(state, 'equip')
       afterInventoryChange()
     },
     onUse: (i) => useInventoryItem(i),
@@ -400,8 +429,25 @@ function openInventory() {
 }
 
 function closeInventory() {
+  sfx(state, 'ui-close')
   inventoryOpen = false
   hideInventory()
+  setPhase(PHASE.PLAYING)
+}
+
+// Signpost panel: pauses like the inventory; the panel's own capture-phase
+// key handler (F/Escape/Enter) routes back through closeSign.
+function openSign(sign) {
+  if (phase !== PHASE.PLAYING) return
+  setPhase(PHASE.PAUSED)
+  sfx(state, 'ui-open')
+  showSign(sign, closeSign)
+}
+
+function closeSign() {
+  keys['f'] = false; keys['F'] = false   // swallow the closing press so update() can't reopen
+  sfx(state, 'ui-close')
+  hideSign()
   setPhase(PHASE.PLAYING)
 }
 
@@ -421,6 +467,7 @@ function useInventoryItem(i) {
     state.player.hp += healed
     addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: `+${healed}`, kind: 'heal' })
     speak(state, `Healed ${healed} HP!`)
+    sfx(state, 'heal')
     closeInventory()                      // see the effect land
   }
   if (item.kind === 'mushroom') {
@@ -445,6 +492,7 @@ function dropInventoryItem(i) {
     targetPx: adj.x * TILE_SIZE + TILE_SIZE / 2, targetPy: adj.y * TILE_SIZE + TILE_SIZE / 2,
     px: player.px, py: player.py, progress: 0, duration: 0.35,
   })
+  sfx(state, 'drop')
   afterInventoryChange()
 }
 
@@ -458,11 +506,14 @@ function gameLoop(timestamp) {
     update(delta)
     if (state) render()
   }
+  // Drain sound cues every frame — UI cues fire while PAUSED too.
+  if (state?.sfx) playCues(audio, drainSfx(state), state.player, state.sfx.muted)
   rafId = requestAnimationFrame(gameLoop)
 }
 
 function update(delta) {
   if (!state) return
+  if (!state.sfx) state.sfx = makeSfx(loadMutedPref())
   // A running rite is a short cutscene: the world holds its breath.
   if (state.rite) {
     state.rite.t += delta
@@ -580,6 +631,7 @@ function update(delta) {
     state.entities = state.entities.filter((_, i) => i !== keyIdx)
     state.hasKey = true
     speak(state, 'You picked up the key!')
+    sfx(state, 'key-pickup')
   }
 
   // Wild mushrooms: walk-onto pickup into the sack
@@ -593,7 +645,8 @@ function update(delta) {
   tickTrance(player, delta)
   const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
   if (trigger && !hasTalent(player, trigger.talent) && riteConditionMet(trigger.rite, state)) {
-    state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent }
+    state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent, cx: player.px, cy: player.py }
+    sfx(state, 'rite', { px: player.px, py: player.py })
   }
 
   // Exit door — open and descend with the key, otherwise it stays locked
@@ -609,6 +662,7 @@ function update(delta) {
     state.lockedMsgCooldown = Math.max(0, (state.lockedMsgCooldown ?? 0) - delta)
     if (state.lockedMsgCooldown <= 0) {
       think(state, 'The door is locked — defeat the boss for its key.')
+      sfx(state, 'door-locked')
       state.lockedMsgCooldown = 2
     }
   }
@@ -623,6 +677,8 @@ function update(delta) {
     const basin = state.entities.find(e =>
       e.type === 'prop' && e.isFountainBasin && e.x === player.x && e.y === player.y
     )
+    const sign = basin ? null : signNearby(state.signs, player.x, player.y)
+    if (sign) { openSign(sign); return }
     if (basin) {
       basin.flowing = !basin.flowing
       basin.propType = basin.flowing ? 'prop_fountain_full' : 'prop_fountain_empty'
@@ -641,6 +697,7 @@ function update(delta) {
       updateGates(state)
       if (gate && !wasOpen && gate.open) {
         speak(state, 'Water flows — the vined gate grinds open!')
+        sfx(state, 'gate-open')
         persistAdventure()
       }
     }
@@ -653,6 +710,13 @@ function update(delta) {
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
   tickMana(player, delta)
+  const landedStance = tickStanceSwitch(player, delta)
+  if (landedStance) {
+    think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[landedStance])
+    sfx(state, 'stance-switch')
+  }
+  // Mid-switch the old stance is still set but every attack is dead.
+  const attacking = keys[' '] && !player.stanceSwitch
 
   // Melee (Space): light blades swing the instant the key lands; charge
   // weapons wind up while held and swing on release, tiered by hold time.
@@ -664,6 +728,7 @@ function update(delta) {
     player.attackDuration = atk.duration
     player.attackStyle = atk.style
     player.attackFacing = player.facing
+    sfx(state, 'melee-swing', { px: player.px, py: player.py })
     player.attackReachMul = mods.reachMul
     const dmg = Math.max(1, Math.round((player.weapon?.damage ?? 1) * mods.dmgMul))
     const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
@@ -681,6 +746,7 @@ function update(delta) {
           const bossDmg = Math.max(1, Math.round(raw * mods.dmgMul))
           const bossHit = { ...e, hp: e.hp - bossDmg, inCombat: true }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${bossDmg}`, kind: 'dealt' })
+          sfx(state, 'melee-hit', { px: e.px, py: e.py })
           if (miekka) struck.push(bossHit)
           return bossHit
         }
@@ -688,6 +754,7 @@ function update(delta) {
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
+        sfx(state, hitEnemy.hp <= 0 ? 'enemy-death' : 'melee-hit', { px: e.px, py: e.py })
         startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback * mods.kbMul)
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
@@ -702,6 +769,7 @@ function update(delta) {
         const res = applyShockwave(state.entities, s.px, s.py, exclude)
         state.entities = res.entities
         state.shockwaves.push({ px: s.px, py: s.py, t: 0, dur: 0.35, maxRadius: SHOCK_RADIUS })
+        sfx(state, 'shockwave', { px: s.px, py: s.py })
         pulsed = pulsed || res.hitCount > 0
       }
       if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
@@ -713,7 +781,7 @@ function update(delta) {
     // is finding a weapon, and the game says so instead of doing nothing.
     player.charging = null
     state.meleeMsgCooldown = Math.max(0, (state.meleeMsgCooldown ?? 0) - delta)
-    if (keys[' '] && state.meleeMsgCooldown <= 0) {
+    if (attacking && state.meleeMsgCooldown <= 0) {
       think(state, 'Unarmed — you need a weapon.')
       state.meleeMsgCooldown = 2
     }
@@ -721,10 +789,10 @@ function update(delta) {
     if (player.charging) {
       if (keys[' ']) player.charging.t += delta
       else { const held = player.charging.t; player.charging = null; swing(resolveCharge(meleeWT, held)) }
-    } else if (keys[' '] && player.meleeCooldown <= 0) player.charging = { t: 0 }
+    } else if (attacking && player.meleeCooldown <= 0) player.charging = { t: 0 }
   } else {
     if (player.charging) player.charging = null   // weapon swapped mid-wind-up
-    if (keys[' '] && player.attackMode === 'melee' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
+    if (attacking && player.attackMode === 'melee' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
   }
 
   // Ranged (Space while in ranged stance). tryFire gates on weapon presence,
@@ -735,7 +803,7 @@ function update(delta) {
   // Magic (Space in magic stance): the gust — no damage, stun + shove in a
   // cone. Cooldown refusals stay silent (the HUD shows the state); an empty
   // pool explains itself on a gate.
-  if (keys[' '] && player.attackMode === 'magic') {
+  if (attacking && player.attackMode === 'magic') {
     const cast = tryGust(state)
     if (cast.ok) {
       const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
@@ -743,6 +811,7 @@ function update(delta) {
         px: player.px + Math.cos(fa) * 44, py: player.py + Math.sin(fa) * 44,
         t: 0, dur: 0.3, maxRadius: 44, color: '#a5f3fc',
       })
+      sfx(state, 'magic-cast', { px: player.px, py: player.py })
       state.log = [...state.log, 'A gust of wind!'].slice(-5)
     } else if (cast.reason === 'mana') {
       state.magicMsgCooldown = Math.max(0, (state.magicMsgCooldown ?? 0) - delta)
@@ -753,7 +822,7 @@ function update(delta) {
     }
   }
 
-  if (keys[' '] && player.attackMode === 'ranged') {
+  if (attacking && player.attackMode === 'ranged') {
     const shot = tryFire(player)
     if (shot.ok) {
       const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
@@ -767,6 +836,7 @@ function update(delta) {
         proj.lastPx = player.px; proj.lastPy = player.py   // last walkable spot, for wall detonations
       }
       state.projectiles.push(proj)
+      sfx(state, 'ranged-shot', { px: player.px, py: player.py })
     } else if (FIRE_FAIL_MESSAGES[shot.reason] && state.fireMsgCooldown <= 0) {
       think(state, FIRE_FAIL_MESSAGES[shot.reason])
       state.fireMsgCooldown = 1.5
@@ -802,6 +872,7 @@ function update(delta) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
+          sfx(state, e.hp - p.damage <= 0 ? 'enemy-death' : 'projectile-hit', { px: e.px, py: e.py })
           return { ...e, hp: e.hp - p.damage, inCombat: true }
         }
         return e
@@ -983,6 +1054,7 @@ function update(delta) {
   // Player death: in Adventure it is a setback — wake at the village spawn;
   // in the dungeon rush it ends the run as ever.
   if (player.hp <= 0) {
+    sfx(state, 'player-death')
     const surfaceLevel = state.cave ? state.cave.surface.level : state.level
     const mapData = OPEN_MAPS[surfaceLevel]
     if (mapData) {
@@ -1006,6 +1078,7 @@ function update(delta) {
     const cfg = LEVEL_CONFIG.find(c => c.depth === state.level) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
+    sfx(state, 'boss-death', { px: state.lastBossTile.x * TILE_SIZE + TILE_SIZE / 2, py: state.lastBossTile.y * TILE_SIZE + TILE_SIZE / 2 })
     announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
     if (!state.cave && !OPEN_MAPS[state.level] && RUSH_TALENT_LADDER[state.level]) {
       grantTalent(state, RUSH_TALENT_LADDER[state.level])
@@ -1053,6 +1126,7 @@ function enterCave(entrance) {
       dropSpawned: inst.dropSpawned, lastBossTile: inst.lastBossTile, hasKey: inst.hasKey,
     })
     announce(state, inst.cleared ? 'The cave lies silent.' : 'You descend into the dark…')
+    sfx(state, 'descend')
     return
   }
   const depth = entrance.caveDepth
@@ -1065,6 +1139,7 @@ function enterCave(entrance) {
     map, entities: buildEntities(entitySpawns, map, depth), playerSpawn, theme,
   })
   announce(state, 'You descend into the dark…')
+  sfx(state, 'descend')
 }
 
 function exitCave() {
@@ -1076,13 +1151,14 @@ function exitCave() {
     announce(state, next ? 'The waystone stirs — the way onward is open.'
                          : 'The wilds are conquered — your adventure is complete!')
   } else announce(state, 'You emerge into the light.')
+  sfx(state, 'emerge')
 }
 
 // Waystone travel: a fresh open map, the player carried over to its spawn.
 function travelToMap(depth) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
-  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit } =
+  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
   decorateMap(map, rulesets[theme.ruleset])
   const mapName = OPEN_MAPS[depth].name
@@ -1104,6 +1180,7 @@ function travelToMap(depth) {
     caveInstances: { ...savedAdventure.caves[mapName] },
     mapExit: mapExit ?? null,
     entranceHold: false,
+    signs: signs ?? [],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
   }
   savedAdventure.progress.mapDepth = depth
@@ -1146,6 +1223,7 @@ function descendLevel() {
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
   }
   announce(state, `Level ${next}. Deeper…`)
+  sfx(state, 'descend')
 }
 
 async function endRun(won) {
