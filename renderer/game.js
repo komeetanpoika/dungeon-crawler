@@ -230,6 +230,7 @@ function grantContents(contents) {
   }
   const ammo = contents.type === 'ranged' ? ` (${contents.ammo} shots)` : ''
   speak(state, r.equipped ? `Picked up ${item.name}!${ammo}` : `${item.name} — into the pack.`)
+  sfx(state, 'pickup')
   return true
 }
 
@@ -417,6 +418,7 @@ function openInventory() {
     onEquip: (i) => {
       const r = equipItem(state.player, i)
       if (!r.ok) think(state, EQUIP_FAIL_MESSAGES[r.reason] ?? "Can't equip that.")
+      else sfx(state, 'equip')
       afterInventoryChange()
     },
     onUse: (i) => useInventoryItem(i),
@@ -461,6 +463,7 @@ function useInventoryItem(i) {
     state.player.hp += healed
     addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: `+${healed}`, kind: 'heal' })
     speak(state, `Healed ${healed} HP!`)
+    sfx(state, 'heal')
     closeInventory()                      // see the effect land
   }
   if (item.kind === 'mushroom') {
@@ -485,6 +488,7 @@ function dropInventoryItem(i) {
     targetPx: adj.x * TILE_SIZE + TILE_SIZE / 2, targetPy: adj.y * TILE_SIZE + TILE_SIZE / 2,
     px: player.px, py: player.py, progress: 0, duration: 0.35,
   })
+  sfx(state, 'drop')
   afterInventoryChange()
 }
 
@@ -623,6 +627,7 @@ function update(delta) {
     state.entities = state.entities.filter((_, i) => i !== keyIdx)
     state.hasKey = true
     speak(state, 'You picked up the key!')
+    sfx(state, 'key-pickup')
   }
 
   // Wild mushrooms: walk-onto pickup into the sack
@@ -637,6 +642,7 @@ function update(delta) {
   const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
   if (trigger && !hasTalent(player, trigger.talent) && riteConditionMet(trigger.rite, state)) {
     state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent, cx: player.px, cy: player.py }
+    sfx(state, 'rite', { px: player.px, py: player.py })
   }
 
   // Exit door — open and descend with the key, otherwise it stays locked
@@ -652,6 +658,7 @@ function update(delta) {
     state.lockedMsgCooldown = Math.max(0, (state.lockedMsgCooldown ?? 0) - delta)
     if (state.lockedMsgCooldown <= 0) {
       think(state, 'The door is locked — defeat the boss for its key.')
+      sfx(state, 'door-locked')
       state.lockedMsgCooldown = 2
     }
   }
@@ -686,6 +693,7 @@ function update(delta) {
       updateGates(state)
       if (gate && !wasOpen && gate.open) {
         speak(state, 'Water flows — the vined gate grinds open!')
+        sfx(state, 'gate-open')
         persistAdventure()
       }
     }
@@ -699,7 +707,10 @@ function update(delta) {
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
   tickMana(player, delta)
   const landedStance = tickStanceSwitch(player, delta)
-  if (landedStance) think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[landedStance])
+  if (landedStance) {
+    think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[landedStance])
+    sfx(state, 'stance-switch')
+  }
   // Mid-switch the old stance is still set but every attack is dead.
   const attacking = keys[' '] && !player.stanceSwitch
 
@@ -1111,6 +1122,7 @@ function enterCave(entrance) {
       dropSpawned: inst.dropSpawned, lastBossTile: inst.lastBossTile, hasKey: inst.hasKey,
     })
     announce(state, inst.cleared ? 'The cave lies silent.' : 'You descend into the dark…')
+    sfx(state, 'descend')
     return
   }
   const depth = entrance.caveDepth
@@ -1123,6 +1135,7 @@ function enterCave(entrance) {
     map, entities: buildEntities(entitySpawns, map, depth), playerSpawn, theme,
   })
   announce(state, 'You descend into the dark…')
+  sfx(state, 'descend')
 }
 
 function exitCave() {
@@ -1134,6 +1147,7 @@ function exitCave() {
     announce(state, next ? 'The waystone stirs — the way onward is open.'
                          : 'The wilds are conquered — your adventure is complete!')
   } else announce(state, 'You emerge into the light.')
+  sfx(state, 'emerge')
 }
 
 // Waystone travel: a fresh open map, the player carried over to its spawn.
@@ -1205,6 +1219,7 @@ function descendLevel() {
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
   }
   announce(state, `Level ${next}. Deeper…`)
+  sfx(state, 'descend')
 }
 
 async function endRun(won) {

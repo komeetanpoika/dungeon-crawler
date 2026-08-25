@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { TALENTS, hasTalent, grantTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from '../renderer/systems/talents.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
+import { makeSfx } from '../renderer/systems/sfx.js'
 
 const mkState = () => ({ player: { talents: [] }, feedback: makeFeedback(), log: [] })
 
@@ -38,5 +39,13 @@ describe('grantTalent', () => {
     assert.equal(grantTalent(state, 'ranged_stance'), true)
     assert.ok(hasTalent(state.player, 'ranged_stance'))
     assert.equal(hasTalent({ }, 'ranged_stance'), false)
+  })
+
+  it('queues a talent-learned cue only when newly learned', () => {
+    const state = { player: {}, log: [], feedback: makeFeedback(), sfx: makeSfx() }
+    grantTalent(state, 'ranged_stance')
+    assert.deepEqual(state.sfx.cues.map(c => c.name), ['talent-learned'])
+    grantTalent(state, 'ranged_stance')          // already known — no new cue
+    assert.equal(state.sfx.cues.length, 1)
   })
 })
