@@ -99,7 +99,11 @@ function ensureCtx(audio) {
 export async function registerFile(audio, name, arrayBuffer) {
   ensureCtx(audio)
   if (audio.disabled) return
-  audio.files[name] = await audio.ctx.decodeAudioData(arrayBuffer)
+  try {
+    audio.files[name] = await audio.ctx.decodeAudioData(arrayBuffer)
+  } catch (err) {
+    console.warn('sfx: failed to decode file for "' + name + '":', err)
+  }
 }
 
 export function playCues(audio, cues, player, muted = false) {
@@ -133,7 +137,6 @@ function playCue(audio, cue, player) {
   }
   const now = audio.ctx.currentTime
   if (now - (audio.lastPlayed[cue.name] ?? -Infinity) < THROTTLE_S) return
-  audio.lastPlayed[cue.name] = now
 
   let gain = 1, pan = 0
   if (cue.px !== undefined && player) {
@@ -142,6 +145,7 @@ function playCue(audio, cue, player) {
     if (gain <= 0) return
     pan = panFor(dx)
   }
+  audio.lastPlayed[cue.name] = now
   while (audio.voices.length >= MAX_VOICES) audio.voices.shift().stop()
 
   const out = audio.ctx.createGain()
