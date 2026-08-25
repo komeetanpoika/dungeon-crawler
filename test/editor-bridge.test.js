@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { toPainter, fromPainter } from '../tools/static-overworld/editor-bridge.mjs'
+import { toPainter, fromPainter, deriveWalkFixes } from '../tools/static-overworld/editor-bridge.mjs'
 
 // A tiny 4x3 overworld map in the out/maps JSON shape: grass shore around a
 // water cell, one tree prop, one unwalkable water column.
@@ -93,5 +93,65 @@ describe('fromPainter', () => {
     p.base.push(p.base[0].slice())
     p.h = 4
     assert.throws(() => fromPainter(p, m), /resiz/i)
+  })
+})
+
+describe('deriveWalkFixes', () => {
+  // Edited fixture: the user repaints art but never touches collision.
+  const edited = () => {
+    const m = fixture()
+    const p = toPainter(m)
+    p.overlay[1][1] = 'ow_pier_log'        // bridge over the water channel
+    p.base[1][2] = 'ow_pond_12'            // water repainted as pond edge
+    p.base[2][1] = 'ow_water_0'            // grass repainted as water
+    p.overlay[2][1] = null                 //   (tree removed there)
+    p.base[0][3] = 'ow_grass_0'            // unchanged name — but same as before
+    return { m, p }
+  }
+
+  it('a bridge overlay makes the cell walkable', () => {
+    const { m, p } = edited()
+    const fixed = deriveWalkFixes(p, m)
+    assert.equal(fixed.props[1][1].collision, 'walkable')
+  })
+
+  it('cells repainted to water or pond become walls', () => {
+    const { m, p } = edited()
+    p.base[0][1] = 'ow_water_1'            // walkable grass -> open water
+    p.base[0][2] = 'ow_pond_01'            // walkable grass -> pond edge
+    const fixed = deriveWalkFixes(p, m)
+    assert.equal(fixed.props[0][1].collision, 'wall')
+    assert.equal(fixed.props[0][2].collision, 'wall')
+    assert.equal(fixed.props[2][1].collision, 'wall')
+    assert.equal(fixed.props[1][2].collision, 'wall')
+  })
+
+  it('cells repainted to grass become walkable', () => {
+    const { m, p } = edited()
+    p.base[1][2] = 'ow_grass_0'            // water -> grass instead
+    const fixed = deriveWalkFixes(p, m)
+    assert.equal(fixed.props[1][2].collision, 'walkable')
+  })
+
+  it('unchanged cells keep their collision even when art and walk disagree', () => {
+    const { m, p } = edited()
+    p.props[1][1] = { collision: 'wall' }  // pretend original said wall here
+    p.overlay[1][1] = null                 // and the cell is untouched art-wise
+    const fixed = deriveWalkFixes(p, m)
+    assert.equal(fixed.props[1][1].collision, 'wall')
+  })
+
+  it('changed cells with no rule keep their painted collision', () => {
+    const { m, p } = edited()
+    p.overlay[0][1] = 'ow_rock_gray_0'     // rock prop: no derivation rule
+    const fixed = deriveWalkFixes(p, m)
+    assert.equal(fixed.props[0][1].collision, 'walkable')
+  })
+
+  it('does not mutate its input', () => {
+    const { m, p } = edited()
+    const before = JSON.stringify(p)
+    deriveWalkFixes(p, m)
+    assert.equal(JSON.stringify(p), before)
   })
 })

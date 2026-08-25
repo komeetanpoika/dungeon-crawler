@@ -44,3 +44,29 @@ export function fromPainter(painter, original) {
 
   return { ...original, w: original.w, h: original.h, palette, ground, prop, walk }
 }
+
+// Repair the collision layer from the painted art, but ONLY on cells whose
+// art differs from the original export — hand edits usually touch tiles, not
+// the properties layer, so bridges land as walls and repainted banks as
+// walkable grass. Rules (top visible layer decides): pier/bridge overlays are
+// walkable, water/pond looks are walls, grass looks are walkable; anything
+// else (rocks, houses…) keeps its painted collision. Pure: returns a new
+// painter, input untouched.
+export function deriveWalkFixes(painter, original) {
+  const artClass = (base, overlay) => {
+    if (overlay?.startsWith('ow_pier_') || overlay?.includes('bridge')) return 'walkable'
+    const top = overlay ?? base
+    if (top?.startsWith('ow_water_') || top?.startsWith('ow_pond_')) return 'wall'
+    if (top?.startsWith('ow_grass')) return 'walkable'
+    return null
+  }
+  const props = painter.props.map((row, y) => row.map((p, x) => {
+    const origBase = original.palette[original.ground[y]?.[x]]
+    const origOverlay = original.prop[y]?.[x] >= 0 ? original.palette[original.prop[y][x]] : null
+    const changed = painter.base[y][x] !== origBase || painter.overlay[y][x] !== origOverlay
+    if (!changed) return p ? { ...p } : p
+    const derived = artClass(painter.base[y][x], painter.overlay[y][x])
+    return derived ? { ...p, collision: derived } : (p ? { ...p } : p)
+  }))
+  return { ...painter, props }
+}
