@@ -74,11 +74,17 @@ window.addEventListener('keyup',   e => { keys[e.key] = false })
 const SPRINT_DIR_KEYS = { ArrowUp: 'w', w: 'w', ArrowDown: 's', s: 's',
   ArrowLeft: 'a', a: 'a', ArrowRight: 'd', d: 'd' }
 const sprintDetector = makeSprintDetector()
+// isTrusted gates out the touch layer's synthetic KeyboardEvents (stick
+// press() dispatches real `new KeyboardEvent(...)` on window) — the
+// double-tap detector is desktop-only; touch sprint arrives separately as
+// the synthetic 'sprint' key.
 window.addEventListener('keydown', e => {
+  if (!e.isTrusted) return
   const dir = SPRINT_DIR_KEYS[e.key]
   if (dir && !e.repeat) sprintDetector.press(dir, performance.now() / 1000)
 })
 window.addEventListener('keyup', e => {
+  if (!e.isTrusted) return
   const dir = SPRINT_DIR_KEYS[e.key]
   if (dir) sprintDetector.release(dir)
 })
