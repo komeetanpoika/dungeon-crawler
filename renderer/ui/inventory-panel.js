@@ -2,6 +2,7 @@
 // slots; all mutations happen in game.js via the handlers.
 import { canEquip, EQUIP_FAIL_MESSAGES } from '../systems/inventory.js'
 import { sfx } from '../systems/sfx.js'
+import { iconSrcFor } from '../render/icons.js'
 
 let keyHandler = null
 let selected = 0
@@ -38,11 +39,31 @@ export function refreshInventory(state) {
   panel.innerHTML = `<div class="inv-title">PACK ${player.inventory.length}/${player.maxInventory}</div>`
   const hands = document.createElement('div')
   hands.className = 'inv-hands'
-  const handTexts = [`⚔ ${player.weapon ? player.weapon.name : 'Unarmed'}`]
-  if ((player.talents ?? []).includes('ranged_stance') || player.ranged)
-    handTexts.push(`🏹 ${player.ranged ? player.ranged.name : 'Empty'}`)
-  for (const t of handTexts) {
-    const h = document.createElement('div'); h.className = 'inv-hand'; h.textContent = t; hands.appendChild(h)
+  // Main weapon hand
+  {
+    const h = document.createElement('div')
+    h.className = 'inv-hand'
+    let html = ''
+    if (player.weapon) {
+      const src = iconSrcFor({ kind: 'weapon', payload: { weaponType: player.weapon.payload?.weaponType } })
+      if (src) html += `<img class="inv-icon" src="${src}" alt="${player.weapon.name}">`
+    }
+    html += `⚔ ${player.weapon ? player.weapon.name : 'Unarmed'}`
+    h.innerHTML = html
+    hands.appendChild(h)
+  }
+  // Ranged hand (if unlocked)
+  if ((player.talents ?? []).includes('ranged_stance') || player.ranged) {
+    const h = document.createElement('div')
+    h.className = 'inv-hand'
+    let html = ''
+    if (player.ranged) {
+      const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: player.ranged.payload?.weaponType } })
+      if (src) html += `<img class="inv-icon" src="${src}" alt="${player.ranged.name}">`
+    }
+    html += `🏹 ${player.ranged ? player.ranged.name : 'Empty'}`
+    h.innerHTML = html
+    hands.appendChild(h)
   }
   panel.appendChild(hands)
   const grid = document.createElement('div')
@@ -52,7 +73,9 @@ export function refreshInventory(state) {
     slot.className = 'inv-slot' + (i === selected ? ' selected' : '')
     const item = player.inventory[i]
     if (item) {
-      slot.textContent = item.emoji
+      const src = iconSrcFor(item)
+      if (src) slot.innerHTML = `<img class="inv-icon" src="${src}" alt="${item.name}">`
+      else slot.textContent = item.emoji
       if (item.stackable && item.count > 1) {
         const c = document.createElement('span'); c.className = 'inv-count'; c.textContent = `×${item.count}`
         slot.appendChild(c)
