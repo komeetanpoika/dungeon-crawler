@@ -1,39 +1,39 @@
 import { quickUseSummary } from '../systems/inventory.js'
 
-function bar(value, max, length = 6) {
-  if (!max) return '░'.repeat(length)
-  const filled = Math.round(Math.max(0, Math.min(1, value / max)) * length)
-  return '█'.repeat(filled) + '░'.repeat(length - filled)
-}
-
 function el(id) { return document.getElementById(id) }
+
+// One pixel heart as inline SVG; state maps to which halves are filled.
+const HEART_PATH = 'M1 1h2v1h1V1h2v3h-1v1h-1v1h-1V5H2V4H1z'   // 7x7 blocky heart
+function heart(state) {
+  const fills = { full: ['#ef4444', '#ef4444'], half: ['#ef4444', '#3a3a44'], empty: ['#3a3a44', '#3a3a44'] }
+  const [left, right] = fills[state]
+  return `<svg class="heart" data-state="${state}" viewBox="0 0 7 7" width="14" height="14">`
+    + `<clipPath id="hl"><rect x="0" y="0" width="3.5" height="7"/></clipPath>`
+    + `<path d="${HEART_PATH}" fill="${right}"/>`
+    + `<path d="${HEART_PATH}" fill="${left}" clip-path="url(#hl)"/></svg>`
+}
 
 export function updateHUD(state) {
   const { player, level, log } = state
   if (!player) return
   el('hud-level').textContent = `LVL ${level}`
-  el('hud-hp-bar').textContent = bar(player.hp, player.maxHp)
+  const hearts = Math.ceil((player.maxHp ?? 10) / 2)
+  el('hud-hearts').innerHTML = Array.from({ length: hearts }, (_, i) => {
+    const hpForHeart = Math.max(0, Math.min(2, player.hp - i * 2))
+    return heart(hpForHeart === 2 ? 'full' : hpForHeart === 1 ? 'half' : 'empty')
+  }).join('')
   const mode = player.attackMode
-  el('hud-weapon').textContent = (mode === 'melee' ? '▶ ' : '') + (player.weapon
-    ? `${player.weapon.name} (${player.weapon.damage} dmg)`
-    : 'Unarmed')
-  const rangedEl = el('hud-ranged')
-  const magicEl = el('hud-magic')
-  rangedEl.textContent = (mode === 'ranged' ? '▶ ' : '') + (player.ranged
-    ? `${player.ranged.name} (${player.ranged.damage} dmg) ${player.ranged.ammo}/${player.ranged.maxAmmo}`
-    : 'No ranged weapon')
-  magicEl.textContent = (mode === 'magic' ? '▶ ' : '') +
-    `Gust ${'✦'.repeat(player.mana ?? 0)}${'✧'.repeat(Math.max(0, 4 - (player.mana ?? 0)))}`
-  const talents = player.talents ?? []
-  rangedEl.style.display = talents.includes('ranged_stance') ? '' : 'none'
-  magicEl.style.display = talents.includes('magic_stance') ? '' : 'none'
-  const itemsEl = el('hud-items')
-  itemsEl.textContent =
-    player.inventory.length > 0 ? player.inventory.map(i => i.emoji).join(' ') : '—'
-  // Quick-use badge for the mobile touch layer: it mirrors HUD state from
-  // the DOM rather than reaching into game state.
+  el('hud-weapon-slot').textContent =
+    mode === 'magic' ? 'Gust'
+    : mode === 'ranged' ? (player.ranged ? `${player.ranged.name} ${player.ranged.ammo}/${player.ranged.maxAmmo}` : 'No ranged weapon')
+    : (player.weapon ? `${player.weapon.name} (${player.weapon.damage} dmg)` : 'Unarmed')
   const quick = quickUseSummary(player.inventory)
-  itemsEl.dataset.quickEmoji = quick?.emoji ?? ''
-  itemsEl.dataset.quickCount = quick ? String(quick.count) : ''
+  const consumableEl = el('hud-consumable')
+  consumableEl.textContent = quick ? `${quick.emoji}×${quick.count}` : '—'
+  consumableEl.dataset.quickEmoji = quick?.emoji ?? ''
+  const staminaEl = el('hud-stamina')
+  el('hud-stamina-fill').style.width =
+    `${Math.round(100 * (player.stamina ?? 0) / (player.maxStamina ?? 100))}%`
+  staminaEl.dataset.refused = (player.staminaRefusedT ?? 0) > 0 ? '1' : ''
   el('hud-log').textContent = log?.at(-1) ?? ''
 }

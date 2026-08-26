@@ -20,9 +20,21 @@
     }
     #hud-top {
       background: #1a1a1a; border-bottom: 1px solid #333;
-      padding: 4px 12px; display: flex; gap: 24px; align-items: center;
+      padding: 4px 12px; display: flex; gap: 16px; align-items: center;
       font-size: 13px; flex-shrink: 0;
     }
+    #hud-hearts { display: flex; gap: 3px; align-items: center; }
+    #hud-hearts .heart { image-rendering: pixelated; }
+    #hud-stamina {
+      margin-left: auto; width: 140px; height: 10px;
+      background: #101016; border: 1px solid #3a3a44; overflow: hidden;
+    }
+    #hud-stamina-fill {
+      display: block; height: 100%; width: 100%;
+      background: #e8b84b; transition: width 0.1s linear;
+    }
+    #hud-stamina[data-refused="1"] { border-color: #f87171; }
+    #hud-stamina[data-refused="1"] #hud-stamina-fill { background: #f87171; }
     #canvas-wrap { flex: 1; overflow: hidden; }
     canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
     #hud-log {
@@ -168,12 +180,11 @@
 </head>
 <body>
   <div id="hud-top">
+    <span id="hud-hearts"></span>
     <span id="hud-level">LVL 1</span>
-    <span>HP <span id="hud-hp-bar">██████</span></span>
-    <span id="hud-weapon" style="color:#f6ad55">Unarmed</span>
-    <span id="hud-ranged" style="color:#7dd3fc">No ranged weapon</span>
-    <span id="hud-magic" style="color:#a5f3fc">Gust ✦✦✦✦</span>
-    <span id="hud-items">—</span>
+    <span id="hud-weapon-slot" style="color:#f6ad55">Unarmed</span>
+    <span id="hud-consumable">—</span>
+    <span id="hud-stamina"><span id="hud-stamina-fill"></span></span>
   </div>
   <div id="canvas-wrap">
     <canvas id="game-canvas"></canvas>

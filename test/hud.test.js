@@ -4,7 +4,7 @@ import { updateHUD } from '../renderer/render/hud.js'
 
 function fakeDom() {
   const nodes = {}
-  globalThis.document = { getElementById: (id) => (nodes[id] ??= { textContent: '', style: {}, dataset: {} }) }
+  globalThis.document = { getElementById: (id) => (nodes[id] ??= { textContent: '', style: {}, dataset: {}, innerHTML: '' }) }
   return nodes
 }
 
@@ -12,68 +12,73 @@ function state(playerOver = {}) {
   return {
     level: 1, log: ['hi'],
     player: {
-      hp: 10, maxHp: 10, inventory: [], weapon: null, ranged: null, attackMode: 'melee',
+      hp: 10, maxHp: 10, stamina: 100, maxStamina: 100, inventory: [], weapon: null, ranged: null, attackMode: 'melee',
       talents: ['ranged_stance', 'magic_stance'],
       ...playerOver,
     },
   }
 }
 
-describe('updateHUD stance slots', () => {
-  it('marks the melee slot active and shows a ranged placeholder', () => {
+describe('updateHUD hearts', () => {
+  const hearts = nodes => [...nodes['hud-hearts'].innerHTML.matchAll(/data-state="(\w+)"/g)].map(m => m[1])
+  it('renders maxHp/2 hearts, half a heart per hitpoint', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ hp: 7, maxHp: 10 }))
+    assert.deepEqual(hearts(nodes), ['full', 'full', 'full', 'half', 'empty'])
+  })
+  it('full and empty extremes', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ hp: 10, maxHp: 10 }))
+    assert.deepEqual(hearts(nodes), ['full', 'full', 'full', 'full', 'full'])
+    updateHUD(state({ hp: 0, maxHp: 10 }))
+    assert.deepEqual(hearts(nodes), ['empty', 'empty', 'empty', 'empty', 'empty'])
+  })
+})
+
+describe('updateHUD weapon slot', () => {
+  it('shows the active stance weapon only', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ weapon: { name: 'Sword', damage: 2 },
+      ranged: { name: 'Shortbow', damage: 2, ammo: 8, maxAmmo: 12 }, attackMode: 'ranged' }))
+    assert.equal(nodes['hud-weapon-slot'].textContent, 'Shortbow 8/12')
+  })
+  it('melee shows name and damage; unarmed says so; magic says Gust', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ weapon: { name: 'Axe', damage: 4 }, attackMode: 'melee' }))
+    assert.equal(nodes['hud-weapon-slot'].textContent, 'Axe (4 dmg)')
+    updateHUD(state({ attackMode: 'melee' }))
+    assert.equal(nodes['hud-weapon-slot'].textContent, 'Unarmed')
+    updateHUD(state({ attackMode: 'magic' }))
+    assert.equal(nodes['hud-weapon-slot'].textContent, 'Gust')
+  })
+})
+
+describe('updateHUD consumable slot', () => {
+  it('shows next-up emoji with count and publishes the badge attribute', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ inventory: [{ kind: 'potion', emoji: '🧪', stackable: true, count: 3 }] }))
+    assert.equal(nodes['hud-consumable'].textContent, '🧪×3')
+    assert.equal(nodes['hud-consumable'].dataset.quickEmoji, '🧪')
+  })
+  it('empty sack shows a dash and clears the badge', () => {
     const nodes = fakeDom()
     updateHUD(state())
-    assert.equal(nodes['hud-weapon'].textContent, '▶ Unarmed')
-    assert.equal(nodes['hud-ranged'].textContent, 'No ranged weapon')
+    assert.equal(nodes['hud-consumable'].textContent, '—')
+    assert.equal(nodes['hud-consumable'].dataset.quickEmoji, '')
   })
+})
 
-  it('marks the ranged slot active and shows the ammo count', () => {
+describe('updateHUD stamina bar', () => {
+  it('fills proportionally', () => {
     const nodes = fakeDom()
-    updateHUD(state({
-      weapon: { name: 'Sword', damage: 2 },
-      ranged: { name: 'Shortbow', damage: 2, ammo: 8, maxAmmo: 12 },
-      attackMode: 'ranged',
-    }))
-    assert.equal(nodes['hud-weapon'].textContent, 'Sword (2 dmg)')
-    assert.equal(nodes['hud-ranged'].textContent, '▶ Shortbow (2 dmg) 8/12')
+    updateHUD(state({ stamina: 45, maxStamina: 100 }))
+    assert.equal(nodes['hud-stamina-fill'].style.width, '45%')
   })
-
-  it('hides the ranged and magic slots until their talents are learned', () => {
+  it('flags the refusal flash while staminaRefusedT is live', () => {
     const nodes = fakeDom()
-    const s = state({ talents: [] })
-    updateHUD(s)
-    assert.equal(nodes['hud-ranged'].style.display, 'none')
-    assert.equal(nodes['hud-magic'].style.display, 'none')
-
-    s.player.talents = ['ranged_stance', 'magic_stance']
-    updateHUD(s)
-    assert.equal(nodes['hud-ranged'].style.display, '')
-    assert.equal(nodes['hud-magic'].style.display, '')
-  })
-
-  it('publishes the quick-use badge (next-up emoji + combined count) as data attributes', () => {
-    const nodes = fakeDom()
-    updateHUD(state({ inventory: [
-      { kind: 'potion', emoji: '🧪', stackable: true, count: 2 },
-      { kind: 'mushroom', emoji: '🍄', stackable: true, count: 3 },
-    ] }))
-    assert.equal(nodes['hud-items'].dataset.quickEmoji, '🧪')
-    assert.equal(nodes['hud-items'].dataset.quickCount, '5')
-  })
-
-  it('clears the quick-use badge data when no consumables remain', () => {
-    const nodes = fakeDom()
-    updateHUD(state({ inventory: [{ kind: 'weapon', emoji: '⚔', stackable: false }] }))
-    assert.equal(nodes['hud-items'].dataset.quickEmoji, '')
-    assert.equal(nodes['hud-items'].dataset.quickCount, '')
-  })
-
-  it('defaults to hiding both slots when talents is absent', () => {
-    const nodes = fakeDom()
-    const s = state()
-    delete s.player.talents
-    updateHUD(s)
-    assert.equal(nodes['hud-ranged'].style.display, 'none')
-    assert.equal(nodes['hud-magic'].style.display, 'none')
+    updateHUD(state({ staminaRefusedT: 0.3 }))
+    assert.equal(nodes['hud-stamina'].dataset.refused, '1')
+    updateHUD(state({ staminaRefusedT: 0 }))
+    assert.equal(nodes['hud-stamina'].dataset.refused, '')
   })
 })
