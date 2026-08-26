@@ -1,13 +1,13 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { MANA_MAX, MANA_REGEN_TIME, GUST, tickMana, tryGust } from '../renderer/systems/magic.js'
+import { GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, tryGust } from '../renderer/systems/magic.js'
 import { nextStance } from '../renderer/systems/ranged.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 
 const T = 32
 const mkPlayer = () => ({
   px: 100, py: 100, facing: 'east', attackMode: 'magic',
-  mana: MANA_MAX, manaRegenT: 0, magicCooldown: 0,
+  stamina: 100, maxStamina: 100, staminaRegenT: 99, magicCooldown: 0,
   talents: ['magic_stance'],
 })
 const mkState = (entities = []) => ({ player: mkPlayer(), entities, feedback: makeFeedback(), log: [] })
@@ -25,49 +25,21 @@ describe('stance cycle', () => {
   })
 })
 
-describe('mana', () => {
-  it('recharges one charge per MANA_REGEN_TIME, capped at MANA_MAX', () => {
-    const p = { mana: 1, manaRegenT: 0 }
-    tickMana(p, MANA_REGEN_TIME - 0.1)
-    assert.equal(p.mana, 1)
-    tickMana(p, 0.2)
-    assert.equal(p.mana, 2)
-    tickMana(p, MANA_REGEN_TIME * 10)
-    assert.equal(p.mana, MANA_MAX)
-  })
-
-  it('a full pool does not bank regen time', () => {
-    const p = { mana: MANA_MAX, manaRegenT: 0 }
-    tickMana(p, 100)
-    assert.equal(p.manaRegenT, 0)
-  })
-})
-
 describe('tryGust', () => {
-  it('spends one mana, starts the cooldown, and reports ok', () => {
+  it('spends the tap cost, starts the cooldown, and reports ok', () => {
     const state = mkState([])
     const r = tryGust(state)
     assert.equal(r.ok, true)
-    assert.equal(state.player.mana, MANA_MAX - 1)
+    assert.equal(state.player.stamina, 100 - 14)
     assert.equal(state.player.magicCooldown, GUST.cooldown)
   })
 
-  it('four casts in a row empty the pool; the fifth refuses for mana', () => {
-    const state = mkState([])
-    for (let i = 0; i < 4; i++) {
-      state.player.magicCooldown = 0
-      assert.equal(tryGust(state).ok, true)
-    }
-    state.player.magicCooldown = 0
-    assert.deepEqual(tryGust(state), { ok: false, reason: 'mana' })
-  })
-
-  it('refuses while the cooldown runs, without spending mana', () => {
+  it('refuses while the cooldown runs, without spending stamina', () => {
     const state = mkState([])
     tryGust(state)
     const r = tryGust(state)
     assert.deepEqual(r, { ok: false, reason: 'cooldown' })
-    assert.equal(state.player.mana, MANA_MAX - 1)
+    assert.equal(state.player.stamina, 100 - 14)
   })
 
   it('stuns and knocks back a regular enemy in the cone', () => {
@@ -107,6 +79,64 @@ describe('tryGust', () => {
     const state = mkState([])
     state.player.talents = []
     assert.deepEqual(tryGust(state), { ok: false, reason: 'not_learned' })
-    assert.equal(state.player.mana, MANA_MAX)
+    assert.equal(state.player.stamina, 100)
+  })
+})
+
+describe('gust charge tiers', () => {
+  it('resolves hold time to tiers at 0.5/1.1s', () => {
+    assert.equal(resolveGustTier(0.1), 'tap')
+    assert.equal(resolveGustTier(0.5), 'full')
+    assert.equal(resolveGustTier(1.1), 'over')
+  })
+  it('auto-releases 0.5s past over', () => {
+    assert.equal(shouldAutoReleaseGust(1.55), false)   // threshold is 1.1 + 0.5 = 1.6, exclusive
+    assert.equal(shouldAutoReleaseGust(1.7), true)
+  })
+  it('tiers scale cone, stun, and shove; only over slams', () => {
+    assert.deepEqual(GUST_TIERS.tap,  { mul: 1,    stun: 1.0, knockback: 30, bossKnockback: 12, slam: false })
+    assert.deepEqual(GUST_TIERS.full, { mul: 1.25, stun: 1.5, knockback: 45, bossKnockback: 18, slam: false })
+    assert.deepEqual(GUST_TIERS.over, { mul: 1.5,  stun: 2.0, knockback: 70, bossKnockback: 28, slam: true })
+  })
+})
+
+describe('tryGust with stamina', () => {
+  const mkState = (playerOver = {}, entities = []) => {
+    const player = { type: 'player', px: 100, py: 100, facing: 'east',
+      talents: ['magic_stance'], magicCooldown: 0,
+      stamina: 100, maxStamina: 100, staminaRegenT: 99, ...playerOver }
+    return { player, entities: [player, ...entities] }
+  }
+  it('spends the tier cost on success', () => {
+    const s = mkState()
+    const r = tryGust(s, 'over')
+    assert.equal(r.ok, true)
+    assert.equal(s.player.stamina, 60)
+  })
+  it('refuses with reason stamina when the tank cannot cover the tier', () => {
+    const s = mkState({ stamina: 13 })
+    assert.deepEqual(tryGust(s, 'tap'), { ok: false, reason: 'stamina' })
+    assert.equal(s.player.stamina, 13)
+  })
+  it('over-tier knocks a caught enemy back with a slam flag', () => {
+    const enemy = { type: 'monster', hp: 3, px: 140, py: 100, x: 4, y: 3 }
+    const s = mkState({}, [enemy])
+    tryGust(s, 'over')
+    assert.ok(enemy.knockback)
+    assert.deepEqual(enemy.knockback.slam, { damage: 3 })
+  })
+  it('tap tier knocks back without a slam flag', () => {
+    const enemy = { type: 'monster', hp: 3, px: 140, py: 100, x: 4, y: 3 }
+    const s = mkState({}, [enemy])
+    tryGust(s, 'tap')
+    assert.ok(enemy.knockback)
+    assert.equal(enemy.knockback.slam, undefined)
+  })
+  it('over tier reaches further than tap', () => {
+    const enemy = { type: 'monster', hp: 3, px: 100 + 100, py: 100, x: 6, y: 3 }   // 100px out, past base 80 reach
+    const tap = mkState({}, [{ ...enemy }])
+    const over = mkState({}, [enemy])
+    assert.equal(tryGust(tap, 'tap').caught, 0)
+    assert.equal(tryGust(over, 'over').caught, 1)
   })
 })
