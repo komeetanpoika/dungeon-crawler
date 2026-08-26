@@ -93,6 +93,13 @@ describe('applyRunResult', () => {
     assert.equal(next.deepestReached, FINAL_DEPTH)
     assert.equal(next.runsCompleted, 1)
   })
+
+  it('carries bossToastsSeen and gateToastsSeen forward unchanged', () => {
+    const meta = { ...getInitialMeta(), bossToastsSeen: ['crab'], gateToastsSeen: ['forest-gate-1'] }
+    const next = applyRunResult(meta, { deepestLevel: 2, won: false })
+    assert.deepEqual(next.bossToastsSeen, ['crab'])
+    assert.deepEqual(next.gateToastsSeen, ['forest-gate-1'])
+  })
 })
 
 describe('getStartingItems', () => {

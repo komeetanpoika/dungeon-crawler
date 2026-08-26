@@ -32,7 +32,7 @@ export function grantTalent(state, id) {
   p.talents ??= []
   if (p.talents.includes(id)) return false
   p.talents.push(id)
-  queueToast(state, { title: 'Talent learned', lines: [def.name] })
+  queueToast(state, { title: 'Talent learned', lines: [def.name, def.desc].filter(Boolean) })
   sfx(state, 'talent-learned')
   return true
 }

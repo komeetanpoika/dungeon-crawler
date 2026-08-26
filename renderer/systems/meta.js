@@ -30,6 +30,8 @@ export function applyRunResult(meta, { deepestLevel, won }) {
     unlockedBonuses: newBonuses,
     runsCompleted: meta.runsCompleted + 1,
     treasureStolen: meta.treasureStolen || !!won,
+    bossToastsSeen: meta.bossToastsSeen,
+    gateToastsSeen: meta.gateToastsSeen,
   }
 }
 
