@@ -1,7 +1,7 @@
 // Learned abilities. Everything that unlocks a talent — rite, boss kill,
 // dungeon clear, future NPC — funnels through grantTalent. Persistence is
 // the caller's job (game.js persists for Adventure; Dungeon Rush never does).
-import { announce } from './feedback.js'
+import { queueToast } from './feedback.js'
 import { sfx } from './sfx.js'
 
 export const TALENTS = {
@@ -32,7 +32,7 @@ export function grantTalent(state, id) {
   p.talents ??= []
   if (p.talents.includes(id)) return false
   p.talents.push(id)
-  announce(state, `Talent learned — ${def.name}!`)
+  queueToast(state, { title: 'Talent learned', lines: [def.name] })
   sfx(state, 'talent-learned')
   return true
 }

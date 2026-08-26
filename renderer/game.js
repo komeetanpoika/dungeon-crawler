@@ -22,7 +22,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
-import { makeFeedback, tickFeedback, addFloat, speak, think, announce, drainToasts } from './systems/feedback.js'
+import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
@@ -261,8 +261,6 @@ function grantContents(contents) {
     if (state.packMsgCooldown <= 0) { think(state, 'My pack is full.'); state.packMsgCooldown = 2 }
     return false
   }
-  const ammo = contents.type === 'ranged' ? ` (${contents.ammo} shots)` : ''
-  speak(state, r.equipped ? `Picked up ${item.name}!${ammo}` : `${item.name} — into the pack.`)
   sfx(state, 'pickup')
   return true
 }
@@ -520,7 +518,6 @@ function useInventoryItem(i) {
     removeItem(state.player, i)
     state.player.hp += healed
     addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: `+${healed}`, kind: 'heal' })
-    speak(state, `Healed ${healed} HP!`)
     sfx(state, 'heal')
     if (inventoryOpen) closeInventory()   // see the effect land
   }
@@ -759,7 +756,12 @@ function update(delta) {
       const wasOpen = gate?.open
       updateGates(state)
       if (gate && !wasOpen && gate.open) {
-        speak(state, 'Water flows — the vined gate grinds open!')
+        const gateId = basin.gateId
+        if (!meta.gateToastsSeen.includes(gateId)) {
+          meta.gateToastsSeen.push(gateId)
+          window.saveAPI.saveMeta(meta)
+          queueToast(state, { title: 'A new area opens!', lines: ['Water flows — the vined gate grinds open.'] })
+        }
         sfx(state, 'gate-open')
         persistAdventure()
       }
@@ -776,7 +778,6 @@ function update(delta) {
   player.staminaRefusedT = Math.max(0, (player.staminaRefusedT ?? 0) - delta)
   const landedStance = tickStanceSwitch(player, delta)
   if (landedStance) {
-    think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[landedStance])
     sfx(state, 'stance-switch')
   }
   // Mid-switch the old stance is still set but every attack is dead.
@@ -1154,7 +1155,7 @@ function update(delta) {
     const mapData = OPEN_MAPS[surfaceLevel]
     if (mapData) {
       state = adventureRespawn(state, mapData.playerSpawn)
-      announce(state, 'You awaken back in Aspengrove…')
+      queueToast(state, { title: 'You awaken back in Aspengrove…', lines: ['The dark took its toll — but you are alive.'] })
       return
     }
     state.gameOver = true
@@ -1166,6 +1167,7 @@ function update(delta) {
   if (countBosses(state.entities) > 0) {
     const boss = state.entities.find(e => e.isBoss)
     state.lastBossTile = { x: boss.x, y: boss.y }
+    state.lastBossType = boss.type
   } else if (state.lastBossTile && !state.dropSpawned) {
     // A cave boss always drops the key home — the campaign-ending treasure
     // belongs to Dungeon Rush's final depth alone.
@@ -1174,7 +1176,14 @@ function update(delta) {
     state.entities.push(spawnBossDrop(state.lastBossTile, isFinal, cfg.weapons))
     state.dropSpawned = true
     sfx(state, 'boss-death', { px: state.lastBossTile.x * TILE_SIZE + TILE_SIZE / 2, py: state.lastBossTile.y * TILE_SIZE + TILE_SIZE / 2 })
-    announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
+    const bossType = state.lastBossType
+    if (bossType && !meta.bossToastsSeen.includes(bossType)) {
+      meta.bossToastsSeen.push(bossType)
+      window.saveAPI.saveMeta(meta)
+      queueToast(state, { title: isFinal ? 'The dragon falls!' : 'The boss falls!', lines: [isFinal ? 'Treasure gleams…' : 'It drops a key.'] })
+    } else {
+      announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
+    }
     if (!state.cave && !OPEN_MAPS[state.level] && RUSH_TALENT_LADDER[state.level]) {
       grantTalent(state, RUSH_TALENT_LADDER[state.level])
     }
