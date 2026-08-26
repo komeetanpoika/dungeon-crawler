@@ -35,35 +35,18 @@ describe('updateHUD hearts', () => {
   })
 })
 
-describe('updateHUD weapon slot', () => {
-  it('shows the active stance weapon only', () => {
-    const nodes = fakeDom()
-    updateHUD(state({ weapon: { name: 'Sword', damage: 2 },
-      ranged: { name: 'Shortbow', damage: 2, ammo: 8, maxAmmo: 12 }, attackMode: 'ranged' }))
-    assert.equal(nodes['hud-weapon-slot'].textContent, 'Shortbow 8/12')
-  })
-  it('melee shows name and damage; unarmed says so; magic says Gust', () => {
-    const nodes = fakeDom()
-    updateHUD(state({ weapon: { name: 'Axe', damage: 4 }, attackMode: 'melee' }))
-    assert.equal(nodes['hud-weapon-slot'].textContent, 'Axe (4 dmg)')
-    updateHUD(state({ attackMode: 'melee' }))
-    assert.equal(nodes['hud-weapon-slot'].textContent, 'Unarmed')
-    updateHUD(state({ attackMode: 'magic' }))
-    assert.equal(nodes['hud-weapon-slot'].textContent, 'Gust')
-  })
-})
-
 describe('updateHUD consumable slot', () => {
-  it('shows next-up emoji with count and publishes the badge attribute', () => {
+  it('shows the next-up item icon with count and publishes the badge attribute', () => {
     const nodes = fakeDom()
     updateHUD(state({ inventory: [{ kind: 'potion', emoji: '🧪', stackable: true, count: 3 }] }))
-    assert.equal(nodes['hud-consumable'].textContent, '🧪×3')
+    assert.match(nodes['hud-consumable'].innerHTML, /assets\/tiles\/.*\.png/)
+    assert.match(nodes['hud-consumable'].innerHTML, /×3/)
     assert.equal(nodes['hud-consumable'].dataset.quickEmoji, '🧪')
   })
-  it('empty sack shows a dash and clears the badge', () => {
+  it('empty sack renders empty and clears the badge', () => {
     const nodes = fakeDom()
     updateHUD(state())
-    assert.equal(nodes['hud-consumable'].textContent, '—')
+    assert.equal(nodes['hud-consumable'].innerHTML, '')
     assert.equal(nodes['hud-consumable'].dataset.quickEmoji, '')
   })
 })

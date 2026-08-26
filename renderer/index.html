@@ -16,32 +16,49 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       background: #0d0d0d; color: #ccc; font-family: monospace;
-      display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden;
+      height: 100vh; height: 100dvh; overflow: hidden;
     }
-    #hud-top {
-      background: #1a1a1a; border-bottom: 1px solid #333;
-      padding: 4px 12px; display: flex; gap: 16px; align-items: center;
-      font-size: 13px; flex-shrink: 0;
+    #canvas-wrap { position: fixed; inset: 0; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+    #hud-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
+    #hud-status {
+      position: absolute;
+      left: max(12px, env(safe-area-inset-left));
+      top: max(10px, env(safe-area-inset-top));
+      display: flex; flex-direction: column; gap: 6px;
     }
-    #hud-hearts { display: flex; gap: 3px; align-items: center; }
+    #hud-hearts { display: flex; gap: 3px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9)); }
     #hud-hearts .heart { image-rendering: pixelated; }
+    /* Blue pixel-framed stamina bar: stepped 8-bit border + 25% ticks */
     #hud-stamina {
-      margin-left: auto; width: 140px; height: 10px;
-      background: #101016; border: 1px solid #3a3a44; overflow: hidden;
+      width: 140px; height: 12px; position: relative;
+      background: rgba(13,13,16,0.75);
+      border: 2px solid #2a2a36; outline: 2px solid rgba(13,13,16,0.9);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.8);
     }
     #hud-stamina-fill {
       display: block; height: 100%; width: 100%;
-      background: #e8b84b; transition: width 0.1s linear;
+      background: #7dd3fc; transition: width 0.1s linear;
+    }
+    #hud-stamina::after {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background:
+        linear-gradient(#2a2a36, #2a2a36) 25% 0 / 2px 100%,
+        linear-gradient(#2a2a36, #2a2a36) 50% 0 / 2px 100%,
+        linear-gradient(#2a2a36, #2a2a36) 75% 0 / 2px 100%;
+      background-repeat: no-repeat;
     }
     #hud-stamina[data-refused="1"] { border-color: #f87171; }
     #hud-stamina[data-refused="1"] #hud-stamina-fill { background: #f87171; }
-    #canvas-wrap { flex: 1; overflow: hidden; }
-    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-    #hud-log {
-      background: #1a1a1a; border-top: 1px solid #333;
-      padding: 4px 12px; font-size: 12px; color: #888;
-      flex-shrink: 0; height: 24px; overflow: hidden;
+    #hud-consumable {
+      position: absolute;
+      right: max(14px, env(safe-area-inset-right));
+      top: max(10px, env(safe-area-inset-top));
+      display: flex; align-items: flex-end; gap: 2px;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9));
     }
+    .hud-icon { width: 48px; height: 48px; image-rendering: pixelated; }
+    .hud-count { font-size: 13px; color: #ccc; font-family: monospace; }
     #menu-overlay {
       position: fixed; inset: 0; display: none;
       align-items: center; justify-content: center;
@@ -171,18 +188,17 @@
   </style>
 </head>
 <body>
-  <div id="hud-top">
-    <span id="hud-hearts"></span>
-    <span id="hud-level">LVL 1</span>
-    <span id="hud-weapon-slot" style="color:#f6ad55">Unarmed</span>
-    <span id="hud-consumable">—</span>
-    <span id="hud-stamina"><span id="hud-stamina-fill"></span></span>
-  </div>
   <div id="canvas-wrap">
     <canvas id="game-canvas"></canvas>
   </div>
-  <div id="hud-log">Descend into the dungeon…</div>
   <div id="menu-overlay"></div>
+  <div id="hud-overlay">
+    <div id="hud-status">
+      <span id="hud-hearts"></span>
+      <span id="hud-stamina"><span id="hud-stamina-fill"></span></span>
+    </div>
+    <div id="hud-consumable"></div>
+  </div>
   <div id="touch-controls">
     <div id="joystick-zone">
       <div id="joystick-base"><div id="joystick-nub"></div></div>
