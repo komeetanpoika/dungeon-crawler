@@ -40,6 +40,8 @@ function initTouchControls() {
     const dx = x - centerX
     const dy = y - centerY
     const len = Math.hypot(dx, dy) || 1
+    if (len >= NUB_RADIUS * 0.9) press('sprint')
+    else release('sprint')
     const clamp = Math.min(len, NUB_RADIUS) / len
     nub.style.transform = `translate(${dx * clamp}px, ${dy * clamp}px)`
     setDirs(joystickDirs(dx, dy))
@@ -62,6 +64,7 @@ function initTouchControls() {
     if (e.pointerId !== stickId) return
     stickId = null
     nub.style.transform = 'translate(0, 0)'
+    release('sprint')
     setDirs([])
   }
   zone.addEventListener('pointerup', endStick)
@@ -96,17 +99,13 @@ function initTouchControls() {
   bindHold(document.getElementById('touch-start'), 'Escape')
 
   // --- The quick-use button mirrors the badge data the HUD publishes on
-  // #hud-items rather than reaching into game state: grey when the sack
-  // holds no consumables, count bubble otherwise. ---
-  const hudItems = document.getElementById('hud-items')
+  // #hud-consumable rather than reaching into game state: grey when the sack
+  // holds no consumables. ---
+  const consumable = document.getElementById('hud-consumable')
   const quickBtn = document.getElementById('touch-quickuse')
-  const quickCount = document.getElementById('quickuse-count')
   new MutationObserver(() => {
-    quickBtn.classList.toggle('empty', !hudItems.dataset.quickEmoji)
-    quickCount.textContent = hudItems.dataset.quickCount ?? ''
-  }).observe(hudItems, {
-    attributes: true, attributeFilter: ['data-quick-emoji', 'data-quick-count'],
-  })
+    quickBtn.classList.toggle('empty', !consumable.dataset.quickEmoji)
+  }).observe(consumable, { attributes: true, attributeFilter: ['data-quick-emoji'] })
 
   // --- Never leave keys stuck when the page loses the pointer/focus ---
   const resetAll = () => {
