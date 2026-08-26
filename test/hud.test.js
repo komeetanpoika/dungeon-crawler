@@ -43,10 +43,12 @@ describe('updateHUD consumable slot', () => {
     assert.match(nodes['hud-consumable'].innerHTML, /×3/)
     assert.equal(nodes['hud-consumable'].dataset.quickEmoji, '🧪')
   })
-  it('empty sack renders empty and clears the badge', () => {
+  it('empty sack renders a dimmed placeholder icon and clears the badge', () => {
     const nodes = fakeDom()
     updateHUD(state())
-    assert.equal(nodes['hud-consumable'].innerHTML, '')
+    assert.match(nodes['hud-consumable'].innerHTML, /assets\/tiles\/.*\.png/)
+    assert.match(nodes['hud-consumable'].innerHTML, /hud-icon-empty/)
+    assert.doesNotMatch(nodes['hud-consumable'].innerHTML, /hud-count/)
     assert.equal(nodes['hud-consumable'].dataset.quickEmoji, '')
   })
 })

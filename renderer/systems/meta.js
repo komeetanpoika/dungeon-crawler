@@ -35,6 +35,15 @@ export function applyRunResult(meta, { deepestLevel, won }) {
   }
 }
 
+// Records id as seen in list (mutates in place) and reports whether this was
+// its first appearance. Used to gate one-shot toasts (boss/gate) so the same
+// list, keyed correctly, never fires twice for the same id.
+export function firstTime(list, id) {
+  if (list.includes(id)) return false
+  list.push(id)
+  return true
+}
+
 export function getStartingItems(meta) {
   return meta.unlockedBonuses.includes('starting_potion') ? [makeItem('potion')] : []
 }

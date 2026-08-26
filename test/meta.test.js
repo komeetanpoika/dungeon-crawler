@@ -2,7 +2,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  getInitialMeta, applyRunResult, getStartingItems, validateMeta, MILESTONES,
+  getInitialMeta, applyRunResult, getStartingItems, validateMeta, MILESTONES, firstTime,
 } from '../renderer/systems/meta.js'
 import { FINAL_DEPTH } from '../renderer/data/levels.js'
 
@@ -95,10 +95,32 @@ describe('applyRunResult', () => {
   })
 
   it('carries bossToastsSeen and gateToastsSeen forward unchanged', () => {
-    const meta = { ...getInitialMeta(), bossToastsSeen: ['crab'], gateToastsSeen: ['forest-gate-1'] }
+    // gateToastsSeen entries are map-qualified ('<level>:<gateId>') so the
+    // same POI label (e.g. "cave 1") on different overworld maps doesn't
+    // collide — see game.js's fountain-gate toast check.
+    const meta = { ...getInitialMeta(), bossToastsSeen: ['crab'], gateToastsSeen: ['7:cave 1'] }
     const next = applyRunResult(meta, { deepestLevel: 2, won: false })
     assert.deepEqual(next.bossToastsSeen, ['crab'])
-    assert.deepEqual(next.gateToastsSeen, ['forest-gate-1'])
+    assert.deepEqual(next.gateToastsSeen, ['7:cave 1'])
+  })
+})
+
+describe('firstTime', () => {
+  it('returns true and records an id seen for the first time', () => {
+    const list = []
+    assert.equal(firstTime(list, '7:cave 1'), true)
+    assert.deepEqual(list, ['7:cave 1'])
+  })
+  it('returns false and leaves the list unchanged for an id already seen', () => {
+    const list = ['7:cave 1']
+    assert.equal(firstTime(list, '7:cave 1'), false)
+    assert.deepEqual(list, ['7:cave 1'])
+  })
+  it('treats the same POI label on different maps as distinct ids', () => {
+    const list = []
+    assert.equal(firstTime(list, '7:cave 1'), true)
+    assert.equal(firstTime(list, '3:cave 1'), true)
+    assert.deepEqual(list, ['7:cave 1', '3:cave 1'])
   })
 })
 

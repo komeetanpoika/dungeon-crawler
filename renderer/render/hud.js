@@ -29,7 +29,12 @@ export function updateHUD(state) {
     const src = iconSrcFor(item)
     consumableEl.innerHTML = (src ? `<img class="hud-icon" src="${src}" alt="">` : item.emoji)
       + `<span class="hud-count">×${quick.count}</span>`
-  } else consumableEl.innerHTML = ''
+  } else {
+    // No consumables in the sack: keep the icon visible but dimmed rather
+    // than vanishing the slot (spec §3), still with no count badge.
+    const emptySrc = iconSrcFor({ kind: 'potion' })
+    consumableEl.innerHTML = emptySrc ? `<img class="hud-icon hud-icon-empty" src="${emptySrc}" alt="">` : ''
+  }
   consumableEl.dataset.quickEmoji = quick?.emoji ?? ''
   const staminaEl = el('hud-stamina')
   el('hud-stamina-fill').style.width =

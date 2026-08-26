@@ -6,7 +6,7 @@ import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
 import { makeDragonBoss, updateDragonBoss, PIXEL_SKIN } from './systems/dragonboss.js'
-import { getInitialMeta, applyRunResult, getStartingItems, validateMeta } from './systems/meta.js'
+import { getInitialMeta, applyRunResult, getStartingItems, validateMeta, firstTime } from './systems/meta.js'
 import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/decorate.js'
 import { Renderer } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
@@ -756,9 +756,11 @@ function update(delta) {
       const wasOpen = gate?.open
       updateGates(state)
       if (gate && !wasOpen && gate.open) {
-        const gateId = basin.gateId
-        if (!meta.gateToastsSeen.includes(gateId)) {
-          meta.gateToastsSeen.push(gateId)
+        // basin.gateId is a POI label ("cave 1") that repeats across overworld
+        // maps — qualify with the map so opening one map's gate doesn't
+        // suppress the same-labeled gate's toast on another map.
+        const gateId = `${state.level}:${basin.gateId}`
+        if (firstTime(meta.gateToastsSeen, gateId)) {
           window.saveAPI.saveMeta(meta)
           queueToast(state, { title: 'A new area opens!', lines: ['Water flows — the vined gate grinds open.'] })
         }
