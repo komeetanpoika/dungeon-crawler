@@ -53,3 +53,35 @@ describe('stepKnockback', () => {
     assert.equal(e.px, 5)
   })
 })
+
+describe('wall slam', () => {
+  it('reports a slam once when a flagged knockback hits a wall at speed', () => {
+    const e = { px: 100, py: 100, x: 3, y: 3 }
+    startKnockback(e, 1, 0, 70, { slam: { damage: 3 } })
+    const wallAt = (px) => px < 105          // wall just to the east
+    const r1 = stepKnockback(e, 0.016, (px, py) => wallAt(px))
+    assert.deepEqual(r1, { slammed: true, damage: 3 })
+    const r2 = stepKnockback(e, 0.016, (px, py) => wallAt(px))
+    assert.equal(r2, null)
+  })
+  it('does not slam without the flag', () => {
+    const e = { px: 100, py: 100, x: 3, y: 3 }
+    startKnockback(e, 1, 0, 70)
+    assert.equal(stepKnockback(e, 0.016, () => false), null)
+  })
+  it('does not slam a slow drift into a wall', () => {
+    const e = { px: 100, py: 100, x: 3, y: 3 }
+    startKnockback(e, 1, 0, 70, { slam: { damage: 3 } })
+    // burn off speed in open space until below the slam threshold (400 px/s)
+    for (let i = 0; i < 200 && e.knockback; i++) {
+      if (Math.hypot(e.knockback.vx, e.knockback.vy) < 400) break
+      stepKnockback(e, 0.016, () => true)
+    }
+    if (e.knockback) assert.equal(stepKnockback(e, 0.016, () => false), null)
+  })
+  it('open-space steps still return null', () => {
+    const e = { px: 100, py: 100, x: 3, y: 3 }
+    startKnockback(e, 0, 1, 30)
+    assert.equal(stepKnockback(e, 0.016, () => true), null)
+  })
+})
