@@ -4,11 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>Dungeon Crawler</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0d0d0d">
+  <!-- iPhone Safari has no element-fullscreen API; installed home-screen
+       apps are the fullscreen path there. -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       background: #0d0d0d; color: #ccc; font-family: monospace;
-      display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+      display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden;
     }
     #hud-top {
       background: #1a1a1a; border-bottom: 1px solid #333;
@@ -153,6 +161,7 @@
   <div id="sign-overlay"></div>
   <div id="rotate-overlay">Rotate your device ↺<br>This dungeon is landscape-only</div>
   <script type="module" src="web-shim.js"></script>
+  <script type="module" src="ui/fullscreen.js"></script>
   <script type="module" src="ui/touch-controls.js"></script>
   <script type="module" src="game.js"></script>
 </body>
