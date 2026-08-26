@@ -10,7 +10,7 @@ export const BUBBLE_DUR = 2.0
 export const BANNER_DUR = 2.5
 
 export function makeFeedback() {
-  return { floats: [], bubble: null, banner: null }
+  return { floats: [], bubble: null, banner: null, toasts: [] }
 }
 
 export function addFloat(fb, { px, py, text, kind }) {
@@ -41,4 +41,18 @@ export function think(state, text) { bubble(state, text, 'thought') }
 export function announce(state, text) {
   log(state, text)
   if (state.feedback) state.feedback.banner = { text, t: 0 }
+}
+
+// Tier-A feedback: a pausing, dismissible panel. Systems queue; game.js
+// drains once per frame and owns the pause/DOM around it.
+export function queueToast(state, { title, lines = [] }) {
+  log(state, title)
+  if (state.feedback) state.feedback.toasts.push({ title, lines })
+}
+
+export function drainToasts(state) {
+  if (!state?.feedback?.toasts?.length) return []
+  const t = state.feedback.toasts
+  state.feedback.toasts = []
+  return t
 }

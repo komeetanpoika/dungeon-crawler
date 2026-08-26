@@ -162,6 +162,11 @@
       align-items: center; justify-content: center;
       background: rgba(8, 8, 12, 0.7);
     }
+    #toast-overlay {
+      position: fixed; inset: 0; display: none; z-index: 9;
+      align-items: center; justify-content: center;
+      background: rgba(8, 8, 12, 0.7);
+    }
     .sign-panel { background: #2a2118; border: 2px solid #8a6d3b; padding: 18px 26px;
       min-width: 320px; max-width: 70vw; font-size: 14px; color: #e5d5b0;
       text-align: center; cursor: pointer; }
@@ -218,6 +223,7 @@
   </div>
   <div id="inv-overlay"></div>
   <div id="sign-overlay"></div>
+  <div id="toast-overlay"></div>
   <div id="rotate-overlay">Rotate your device ↺<br>This dungeon is landscape-only</div>
   <script type="module" src="web-shim.js"></script>
   <script type="module" src="ui/fullscreen.js"></script>

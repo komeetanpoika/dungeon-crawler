@@ -122,4 +122,22 @@ describe('validateMeta', () => {
   it('returns false for missing fields', () => {
     assert.equal(validateMeta({ deepestReached: 0 }), false)
   })
+
+  // Note: validateMeta returns a boolean here (not a coerced copy — see the
+  // brief's sketch), so the toast-seen defaulting is observed as a mutation
+  // of the object passed in, matching the function's existing style.
+  it('tolerates saves that predate toast tracking and defaults their toast-seen lists', () => {
+    const data = { ...getInitialMeta(), bossToastsSeen: undefined, gateToastsSeen: undefined }
+    assert.equal(validateMeta(data), true)
+    assert.deepEqual(data.bossToastsSeen, [])
+    assert.deepEqual(data.gateToastsSeen, [])
+  })
+})
+
+describe('getInitialMeta toast tracking', () => {
+  it('starts with empty toast-seen lists', () => {
+    const m = getInitialMeta()
+    assert.deepEqual(m.bossToastsSeen, [])
+    assert.deepEqual(m.gateToastsSeen, [])
+  })
 })

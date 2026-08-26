@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   makeFeedback, addFloat, tickFeedback, speak, think, announce,
+  queueToast, drainToasts,
   FLOAT_DUR, BUBBLE_DUR, BANNER_DUR,
 } from '../renderer/systems/feedback.js'
 import { damagePlayer } from '../renderer/systems/player-damage.js'
@@ -101,5 +102,25 @@ describe('damagePlayer emits a taken-float', () => {
     const state = { player: { px: 0, py: 0, hp: 5, invulnTimer: 0 }, log: [] }
     assert.equal(damagePlayer(state, 2, 'hit', 'msg'), true)
     assert.equal(state.player.hp, 3)
+  })
+})
+
+describe('toast queue', () => {
+  it('queues and drains toasts in order', () => {
+    const state = { log: [], feedback: makeFeedback() }
+    queueToast(state, { title: 'Talent learned', lines: ['Gust'] })
+    queueToast(state, { title: 'Second', lines: [] })
+    const drained = drainToasts(state)
+    assert.equal(drained.length, 2)
+    assert.equal(drained[0].title, 'Talent learned')
+    assert.deepEqual(drainToasts(state), [])
+  })
+  it('logs the toast title so state.log history stays complete', () => {
+    const state = { log: [], feedback: makeFeedback() }
+    queueToast(state, { title: 'You awaken back in Aspengrove…', lines: [] })
+    assert.equal(state.log.at(-1), 'You awaken back in Aspengrove…')
+  })
+  it('is a no-op without feedback state', () => {
+    assert.doesNotThrow(() => queueToast({ log: [] }, { title: 'x', lines: [] }))
   })
 })

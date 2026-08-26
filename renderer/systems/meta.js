@@ -8,7 +8,10 @@ export const MILESTONES = [
 ]
 
 export function getInitialMeta() {
-  return { deepestReached: 0, unlockedBonuses: [], runsCompleted: 0, treasureStolen: false }
+  return {
+    deepestReached: 0, unlockedBonuses: [], runsCompleted: 0, treasureStolen: false,
+    bossToastsSeen: [], gateToastsSeen: [],
+  }
 }
 
 export function applyRunResult(meta, { deepestLevel, won }) {
@@ -35,7 +38,7 @@ export function getStartingItems(meta) {
 }
 
 export function validateMeta(data) {
-  return (
+  const valid = (
     data !== null &&
     data !== undefined &&
     typeof data.deepestReached === 'number' &&
@@ -43,4 +46,10 @@ export function validateMeta(data) {
     typeof data.runsCompleted === 'number' &&
     typeof data.treasureStolen === 'boolean'
   )
+  if (!valid) return false
+  // Saves that predate toast tracking simply lack these arrays — tolerate
+  // that by coercing them in place rather than rejecting the whole save.
+  data.bossToastsSeen = Array.isArray(data.bossToastsSeen) ? data.bossToastsSeen.filter(s => typeof s === 'string') : []
+  data.gateToastsSeen = Array.isArray(data.gateToastsSeen) ? data.gateToastsSeen.filter(s => typeof s === 'string') : []
+  return true
 }

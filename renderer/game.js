@@ -22,7 +22,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
-import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './systems/feedback.js'
+import { makeFeedback, tickFeedback, addFloat, speak, think, announce, drainToasts } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
@@ -38,6 +38,7 @@ import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS 
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
 import { signNearby } from './systems/signs.js'
 import { showSign, hideSign } from './ui/sign-panel.js'
+import { showToast, hideToast } from './ui/toast.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor, shouldAutoRelease, tierMods } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
@@ -484,6 +485,23 @@ function closeSign() {
   keys[' '] = false
   sfx(state, 'ui-close')
   hideSign()
+  setPhase(PHASE.PLAYING)
+}
+
+// Toast panel: pauses like the sign, but systems queue toasts (queueToast)
+// rather than the player triggering one directly; update() drains one per
+// PLAYING frame below.
+function openToast(t) {
+  if (phase !== PHASE.PLAYING) { state.feedback.toasts.unshift(t); return }  // re-queue; drained next PLAYING frame
+  setPhase(PHASE.PAUSED)
+  sfx(state, 'ui-open')
+  showToast(t, closeToast)
+}
+
+function closeToast() {
+  keys[' '] = false; keys['f'] = false   // swallow the dismissing press
+  sfx(state, 'ui-close')
+  hideToast()
   setPhase(PHASE.PLAYING)
 }
 
@@ -1191,6 +1209,10 @@ function update(delta) {
 
   // Clear hit flash — it fires once per swing
   if (state.hitEffects?.length > 0) state.hitEffects = []
+
+  // Tier-A toasts: open one pausing panel per frame; the rest stay queued.
+  const pending = drainToasts(state)
+  if (pending.length) { openToast(pending[0]); state.feedback.toasts.push(...pending.slice(1)) }
 }
 
 function render() {
