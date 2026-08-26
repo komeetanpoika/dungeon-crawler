@@ -133,7 +133,8 @@ export function makePlayer(x, y, bonuses = []) {
     inventory: [], maxInventory: 10 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
     bonuses, weapon: null, ranged: null, attackMode: 'melee', talents: [],
-    mana: 4, manaRegenT: 0, magicCooldown: 0,   // gust unlocks via the magic_stance talent
+    stamina: 100, maxStamina: 100, staminaRegenT: 0,
+    magicCooldown: 0,   // gust unlocks via the magic_stance talent
   }
 }
 

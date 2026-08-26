@@ -1,7 +1,7 @@
 // test/entities.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure, computePlayerFOV, maybeComputeFOV } from '../renderer/systems/entities.js'
+import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure, computePlayerFOV, maybeComputeFOV, makePlayer } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
 function openMap(w = 20, h = 20) {
@@ -202,5 +202,17 @@ describe('boss-drop and exit-door factories', () => {
     assert.equal(t.type, 'treasure')
     assert.equal(t.x, 7); assert.equal(t.y, 8)
     assert.equal(t.weaponType, 'axe')
+  })
+})
+
+describe('makePlayer', () => {
+  it('starts with a full stamina tank and no mana fields', () => {
+    const p = makePlayer(1, 1)
+    assert.equal(p.stamina, 100)
+    assert.equal(p.maxStamina, 100)
+    assert.equal(p.staminaRegenT, 0)
+    assert.equal(p.mana, undefined)
+    assert.equal(p.manaRegenT, undefined)
+    assert.equal(p.magicCooldown, 0)
   })
 })

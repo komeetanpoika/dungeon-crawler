@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { ATTACK_STYLES, getAttack, getSwingArc, meleeHit, SWING_ARCS } from '../renderer/systems/melee.js'
+import { ATTACK_STYLES, getAttack, getSwingArc, meleeHit, SWING_ARCS, shouldAutoRelease, tierMods, resolveCharge } from '../renderer/systems/melee.js'
 import { drawEnemySwing, drawMeleeSwing, swingPose } from '../renderer/render/canvas.js'
 import { WEAPONS, weaponWedge } from '../renderer/systems/enemy-attack.js'
 
@@ -283,4 +283,22 @@ describe('enemy swings are drawn at the reach they bite with', () => {
       assert.ok(tipReach <= w.reach, `${weaponId} telegraph is drawn past the reach it will strike with`)
     })
   }
+})
+
+describe('charge auto-release', () => {
+  it('fires 0.5s past the over threshold, per weapon', () => {
+    assert.equal(shouldAutoRelease('axe', 1.6), false)      // over=1.2, grace to 1.7
+    assert.equal(shouldAutoRelease('axe', 1.8), true)
+    assert.equal(shouldAutoRelease('longsword', 1.7), true) // over=1.1
+  })
+  it('never fires for non-charge weapons', () => {
+    assert.equal(shouldAutoRelease('dagger', 99), false)
+  })
+})
+
+describe('tierMods', () => {
+  it('returns the same mods resolveCharge would for that tier', () => {
+    assert.deepEqual(tierMods('tap'), resolveCharge('axe', 0))       // axe at 0s held = tap
+    assert.deepEqual(tierMods('full'), resolveCharge('dagger', 0))   // non-charge = full
+  })
 })

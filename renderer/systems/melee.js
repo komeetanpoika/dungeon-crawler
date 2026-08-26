@@ -41,6 +41,15 @@ const TIER_MODS = {
   over: { dmgMul: 1.6, reachMul: 1.25, kbMul: 1.6, cooldownMul: 1.5 },
 }
 
+const AUTO_RELEASE_GRACE = 0.5   // seconds past 'over' before the swing lets go
+
+export const shouldAutoRelease = (weaponType, heldTime) => {
+  const c = CHARGE[weaponType]
+  return !!c && heldTime > c.over + AUTO_RELEASE_GRACE
+}
+
+export const tierMods = tier => ({ tier, ...TIER_MODS[tier] })
+
 export function resolveCharge(weaponType, heldTime) {
   const c = CHARGE[weaponType]
   const tier = !c ? 'full' : heldTime >= c.over ? 'over' : heldTime >= c.full ? 'full' : 'tap'
