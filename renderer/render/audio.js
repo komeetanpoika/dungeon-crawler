@@ -24,6 +24,7 @@ export const RECIPES = {
   'magic-cast':     { kind: 'swoosh', f0: 400,  f1: 1600, dur: 0.25, vol: 0.6 },
   'fire-burst':     { kind: 'rumble', freq: 90,  dur: 0.50, vol: 1.0 },
   'shockwave':      { kind: 'rumble', freq: 70,  dur: 0.35, vol: 0.9 },
+  'wall-slam':      { kind: 'burst',  freq: 180,  q: 0.9,  dur: 0.16, vol: 1.0 },
   'player-hurt':    { kind: 'burst',  freq: 250,  q: 0.8,  dur: 0.15, vol: 1.0 },
   'player-death':   { kind: 'blip',   wave: 'square',   f0: 440,  f1: 55,   dur: 0.80, vol: 1.0 },
   'enemy-death':    { kind: 'blip',   wave: 'square',   f0: 330,  f1: 90,   dur: 0.25, vol: 0.7 },
