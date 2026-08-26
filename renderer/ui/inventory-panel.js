@@ -45,7 +45,7 @@ export function refreshInventory(state) {
     h.className = 'inv-hand'
     let html = ''
     if (player.weapon) {
-      const src = iconSrcFor({ kind: 'weapon', payload: { weaponType: player.weapon.payload?.weaponType } })
+      const src = iconSrcFor({ kind: 'weapon', payload: { weaponType: player.weapon.weaponType } })
       if (src) html += `<img class="inv-icon" src="${src}" alt="${player.weapon.name}">`
     }
     html += `⚔ ${player.weapon ? player.weapon.name : 'Unarmed'}`
@@ -58,7 +58,7 @@ export function refreshInventory(state) {
     h.className = 'inv-hand'
     let html = ''
     if (player.ranged) {
-      const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: player.ranged.payload?.weaponType } })
+      const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: player.ranged.weaponType } })
       if (src) html += `<img class="inv-icon" src="${src}" alt="${player.ranged.name}">`
     }
     html += `🏹 ${player.ranged ? player.ranged.name : 'Empty'}`
