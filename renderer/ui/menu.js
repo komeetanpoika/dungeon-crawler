@@ -11,6 +11,11 @@ let cheatBuffer = ''
 
 function overlayEl() { return document.getElementById('menu-overlay') }
 
+// Menu navigation accepts the touch controls' synthetic keys alongside the
+// desktop ones: stick w/s move, Space (the red button) confirms.
+const NAV_ACTIONS = { ArrowDown: 'down', s: 'down', ArrowUp: 'up', w: 'up', Enter: 'confirm', ' ': 'confirm' }
+export const navActionFor = key => NAV_ACTIONS[key] ?? null
+
 export function formatMetaSummary(meta) {
   const treasure = meta.treasureStolen ? '✓' : '✗'
   return `Deepest: Level ${meta.deepestReached} · Runs: ${meta.runsCompleted} · Treasure: ${treasure}`
@@ -60,11 +65,12 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
 
   clearKeyHandler()
   keyHandler = (e) => {
-    if (e.key === 'ArrowDown') {
+    const action = navActionFor(e.key)
+    if (action === 'down') {
       selectedIndex = (selectedIndex + 1) % buttons.length; highlight(); e.preventDefault()
-    } else if (e.key === 'ArrowUp') {
+    } else if (action === 'up') {
       selectedIndex = (selectedIndex - 1 + buttons.length) % buttons.length; highlight(); e.preventDefault()
-    } else if (e.key === 'Enter') {
+    } else if (action === 'confirm') {
       buttons[selectedIndex].onSelect(); e.preventDefault()
     } else if (onCheat && e.key.length === 1) {
       cheatBuffer = (cheatBuffer + e.key).toLowerCase().slice(-12)

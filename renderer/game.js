@@ -428,12 +428,14 @@ async function beginRun(depth = 1) {
   }
   setPhase(PHASE.PLAYING)
   menu.hide()
+  keys[' '] = false   // swallow the confirming Space so update() can't read it as an attack
   startNewRun(depth, arenaCfg)
 }
 
 function resumeGame() {
   setPhase(PHASE.PLAYING)
   menu.hide()
+  keys[' '] = false
 }
 
 function pauseGame() {
@@ -465,6 +467,7 @@ function closeInventory() {
   inventoryOpen = false
   hideInventory()
   setPhase(PHASE.PLAYING)
+  keys[' '] = false
 }
 
 // Signpost panel: pauses like the inventory; the panel's own capture-phase
@@ -478,6 +481,7 @@ function openSign(sign) {
 
 function closeSign() {
   keys['f'] = false; keys['F'] = false   // swallow the closing press so update() can't reopen
+  keys[' '] = false
   sfx(state, 'ui-close')
   hideSign()
   setPhase(PHASE.PLAYING)

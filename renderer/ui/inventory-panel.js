@@ -96,19 +96,22 @@ export function showInventory(state, handlers) {
   selected = 0
   refreshInventory(state)
   keyHandler = (e) => {
+    // Normalize the stick's synthetic wasd to the arrow keys this handler
+    // already understands.
+    const key = ({ d: 'ArrowRight', a: 'ArrowLeft', s: 'ArrowDown', w: 'ArrowUp' })[e.key] ?? e.key
     const n = state.player.inventory.length
     const cols = 5
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (key === 'ArrowRight' || key === 'ArrowLeft' || key === 'ArrowDown' || key === 'ArrowUp') {
       const prev = selected
-      if (e.key === 'ArrowRight') selected = Math.min(Math.max(0, n - 1), selected + 1)
-      else if (e.key === 'ArrowLeft') selected = Math.max(0, selected - 1)
-      else if (e.key === 'ArrowDown') selected = Math.min(Math.max(0, n - 1), selected + cols)
+      if (key === 'ArrowRight') selected = Math.min(Math.max(0, n - 1), selected + 1)
+      else if (key === 'ArrowLeft') selected = Math.max(0, selected - 1)
+      else if (key === 'ArrowDown') selected = Math.min(Math.max(0, n - 1), selected + cols)
       else selected = Math.max(0, selected - cols)
       if (selected !== prev) sfx(lastState, 'ui-move')
-    } else if (e.key === 'Enter') {
+    } else if (key === 'Enter' || key === ' ') {
       const p = primaryAction(state.player.inventory[selected])
       if (p) lastHandlers[p.fn](selected)
-    } else if (e.key === 'x' || e.key === 'X') {
+    } else if (key === 'x' || key === 'X') {
       if (state.player.inventory[selected]) lastHandlers.onDrop(selected)
     } else return
     e.preventDefault(); e.stopPropagation()

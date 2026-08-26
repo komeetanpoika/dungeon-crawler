@@ -16,7 +16,7 @@ export function showSign(sign, onClose) {
   root.appendChild(panel)
   root.style.display = 'flex'
   keyHandler = (e) => {
-    if (e.key !== 'f' && e.key !== 'F' && e.key !== 'Escape' && e.key !== 'Enter') return
+    if (e.key !== 'f' && e.key !== 'F' && e.key !== ' ' && e.key !== 'Escape' && e.key !== 'Enter') return
     e.preventDefault(); e.stopPropagation()
     onClose()
   }

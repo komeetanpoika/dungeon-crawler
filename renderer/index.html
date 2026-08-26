@@ -63,7 +63,7 @@
        bases, worn-gold rims, jewel-toned action rings. */
     body { overscroll-behavior: none; }
     canvas { touch-action: none; }
-    #touch-controls { display: none; }
+    #touch-controls { display: none; position: relative; z-index: 15; }
     @media (pointer: coarse) { #touch-controls { display: block; } }
     /* Left: fixed thumbstick — a stone dial with gold cardinal ticks */
     #joystick-zone {
