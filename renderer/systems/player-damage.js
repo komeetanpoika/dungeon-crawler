@@ -1,6 +1,9 @@
 // Single funnel for all player damage. 'hit' respects and grants i-frames;
 // 'dot' always applies and never touches them. Returns whether damage landed.
 
+import { addFloat } from './feedback.js'
+import { sfx } from './sfx.js'
+
 export const INVULN_DURATION = 0.8
 
 export function damagePlayer(state, amount, kind, message) {
@@ -8,6 +11,8 @@ export function damagePlayer(state, amount, kind, message) {
   if (kind === 'hit' && (player.invulnTimer ?? 0) > 0) return false
   player.hp -= amount
   if (kind === 'hit') player.invulnTimer = INVULN_DURATION
+  addFloat(state.feedback, { px: player.px, py: player.py, text: `-${amount}`, kind: 'taken' })
+  sfx(state, 'player-hurt', { px: player.px, py: player.py })
   if (message) state.log = [...state.log, message].slice(-5)
   return true
 }

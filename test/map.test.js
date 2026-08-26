@@ -41,6 +41,17 @@ describe('generateLevel', () => {
     assert.ok(Array.isArray(entitySpawns))
   })
 
+  it('procedural item placement emits loot-roll chests, not fixed weapon/potion chests', () => {
+    // Templates/structures may still emit fixed 'weapon'/'potion' chests; the
+    // density-driven procedural items must all be 'chest' (rolled at open time).
+    for (let depth = 1; depth <= 5; depth++) {
+      const { entitySpawns } = generateLevel(depth)
+      const chests = entitySpawns.filter(s => s.kind === 'chest')
+      assert.ok(chests.length > 0, `depth ${depth}: expected procedural loot-roll chests`)
+      for (const c of chests) assert.equal(c.weaponType, undefined, 'loot chests carry no fixed weaponType')
+    }
+  })
+
   it('produces rooms with valid walkable centers across all depths', () => {
     for (let depth = 1; depth <= 5; depth++) {
       const { map, rooms } = generateLevel(depth)
@@ -346,6 +357,20 @@ describe('placeTemplate', () => {
     assert.equal(map[0][1].tile, TILE.FLOOR)
   })
 
+  // PINS current behaviour, does not endorse it: `single` is tracked with one
+  // flag shared across ALL `single: true` legend entries, so mixing two
+  // different single symbols in one template keeps only whichever is
+  // scanned first (row-major) and silently drops the other. If a template
+  // ever needs both a regular and a pixel boss placed independently, this
+  // will need to change to per-kind tracking.
+  it('pins current behavior: mixing two different single symbols keeps only the first-scanned one', () => {
+    const map = createMap(2, 1)
+    const spawns = placeTemplate(map, { tiles: ['BQ'], width: 2, height: 1 }, 0, 0, 3)
+    assert.deepEqual(spawns.map(s => s.kind), ['dragon_boss'])
+    assert.equal(map[0][0].tile, TILE.FLOOR)      // both cells still become floor
+    assert.equal(map[0][1].tile, TILE.FLOOR)
+  })
+
   it('honors the ox/oy offset and ignores out-of-bounds cells', () => {
     const map = createMap(4, 4)
     placeTemplate(map, { tiles: ['##', '##'], width: 2, height: 2 }, 2, 2, 1)
@@ -364,7 +389,7 @@ describe('placeTemplate', () => {
   it('legend covers all template symbols with valid entries', () => {
     assert.deepEqual(
       Object.keys(TEMPLATE_LEGEND).sort(),
-      ['#', '.', 'B', 'C', 'D', 'L', 'P', 'R', 'S', 'T', 'W', 'X', 'Z'],
+      ['#', '.', 'B', 'C', 'D', 'L', 'P', 'Q', 'R', 'S', 'T', 'W', 'X', 'Z'],
     )
     for (const [ch, e] of Object.entries(TEMPLATE_LEGEND)) {
       assert.ok(e.label, `${ch} has a label`)

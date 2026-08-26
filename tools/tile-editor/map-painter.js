@@ -15,6 +15,7 @@ import {
 import { textPrompt } from './text-prompt.js'
 import { toast } from './toast.js'
 import { setProperty, exportStructure } from './structure-lib.js'
+import { brushStatus, bestCoveringRuleset } from './tag-edit.js'
 
 // Merge a derived fragment into a ruleset: overwrite tile weights/tags and each
 // painted tag's role + adjacency (+ overlays on base tags), but preserve any
@@ -194,7 +195,7 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     active = name
     markActive(name)
     if (name) ensureImage(name)
-    renderTagging()
+    renderBrushStatus()
   }
 
   // Append one tile thumbnail to the palette (skip if already present), so a
@@ -237,11 +238,9 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     btn.addEventListener('click', () => {
       propMode = btn.dataset.prop
       document.querySelectorAll('#prop-mode [data-prop]').forEach(b => b.classList.toggle('on', b === btn))
-      const isColl = propMode === 'collision', isInt = propMode === 'interaction'
-      document.getElementById('prop-collision').style.display = isColl ? 'block' : 'none'
-      document.getElementById('prop-collision-vals').style.display = isColl ? 'flex' : 'none'
-      document.getElementById('prop-interaction').style.display = isInt ? 'block' : 'none'
-      document.getElementById('prop-interaction-vals').style.display = isInt ? 'flex' : 'none'
+      // The label now lives inside each value row, so only the rows toggle.
+      document.getElementById('prop-collision-vals').style.display = propMode === 'collision' ? 'flex' : 'none'
+      document.getElementById('prop-interaction-vals').style.display = propMode === 'interaction' ? 'flex' : 'none'
     }))
   document.querySelectorAll('#prop-collision-vals [data-collision]').forEach(btn =>
     btn.addEventListener('click', () => {
@@ -408,46 +407,38 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
   const reportEl = document.getElementById('derive-report')
   const previewCanvas = document.getElementById('paint-preview')
 
-  function ensureRuleset() {
-    if (!state.active) {
-      state.active = 'derived'
-      document.dispatchEvent(new Event('ruleset-changed'))
-    }
-    state.rulesets[state.active] = state.rulesets[state.active] ?? { tiles: {}, tags: {} }
-    return state.rulesets[state.active]
-  }
-
-  // Inline role+tag assignment for the active brush tile (role includes overlay).
-  function renderTagging() {
-    taggingEl.innerHTML = ''
-    if (!active) { taggingEl.textContent = 'Pick a tile to tag…'; return }
+  // Read-only read-out of the active brush. Tag editing lives in the Rules tab;
+  // clicking here hands this tile over to it, so retagging mid-paint is one
+  // click out and one click back.
+  function renderBrushStatus() {
     const rs = state.rulesets[state.active]
-    const curTag = rs?.tiles?.[active]?.tags?.[0] ?? ''
-    const lbl = document.createElement('div')
-    lbl.className = 'label'
-    lbl.textContent = `Tag ${active}` + (curTag ? ` (now: ${curTag})` : ' (untagged)')
-    const roleSel = document.createElement('select')
-    for (const r of ['floor', 'wall', 'overlay']) {
-      const o = document.createElement('option'); o.value = o.textContent = r; roleSel.appendChild(o)
+    const st = brushStatus(rs, active)
+    // The markup still carries .label from before this migration: display:block
+    // makes .rlab's flex basis inert, and text-transform:uppercase would render
+    // TILE_0048 · CASTLE.FLOOR — the identifier case-folding .grp.ident exists
+    // to prevent. Claim the element as a .row here.
+    taggingEl.className = 'row'
+    taggingEl.innerHTML = ''
+    const lab = document.createElement('span')
+    lab.className = 'rlab'
+    lab.textContent = 'brush'
+    const val = document.createElement('span')
+    val.style.cssText = 'flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap'
+    // `untagged` already means "there is a brush and it has no tag", so no
+    // separate emptiness check is needed here.
+    val.style.color = st.untagged ? '#d9a441' : '#9a9'
+    val.textContent = st.text
+    if (active) {
+      val.style.cursor = 'pointer'
+      // The row clips at 240px and the tag is the half that disappears, so the
+      // tooltip has to carry the whole thing, not just the affordance.
+      val.title = `${st.text} — open in Rules`
+      val.addEventListener('click', () => {
+        if (!rs) { toast('Create a ruleset first (+ new in the header).', 'error'); return }
+        document.dispatchEvent(new CustomEvent('assign-tile', { detail: { tile: active, tag: st.tag } }))
+      })
     }
-    if (curTag && rs?.tags?.[curTag]?.role) roleSel.value = rs.tags[curTag].role
-    const tagInput = document.createElement('input')
-    tagInput.placeholder = 'overlay.barrel'; tagInput.value = curTag; tagInput.style.width = '100%'
-    const apply = document.createElement('button')
-    apply.textContent = 'apply tag'
-    apply.addEventListener('click', () => {
-      const tag = tagInput.value.trim()
-      if (!tag) return
-      const r = ensureRuleset()
-      r.tiles[active] = { tags: [tag], weight: r.tiles[active]?.weight ?? 1 }
-      if (!r.tags[tag]) {
-        r.tags[tag] = { role: roleSel.value, allow: ['*'], forbid: [], directional: {}, adjacency: { n: {}, e: {}, s: {}, w: {} } }
-      } else {
-        r.tags[tag].role = roleSel.value
-      }
-      renderTagging()
-    })
-    taggingEl.append(lbl, roleSel, tagInput, apply)
+    taggingEl.append(lab, val)
   }
 
   function tileMetaFromRuleset(rs) {
@@ -467,14 +458,29 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     renderSample(previewCanvas, rs, images)
   }
 
+  // A derive that reports nothing in the same dim grey as a success reads as a
+  // dead button. Failures go amber; the next success clears it.
+  function fail(msg) { reportEl.style.color = '#d9a441'; reportEl.textContent = msg }
+  function ok(msg)   { reportEl.style.color = '#9a9';    reportEl.textContent = msg }
+
   document.getElementById('derive-btn').addEventListener('click', async () => {
     persistNow()
     const rs = state.rulesets[state.active]
-    if (!rs) { reportEl.textContent = 'Select or create a ruleset first (top bar).'; return }
+    if (!rs) { fail('Select or create a ruleset first (top bar).'); return }
     const frag = deriveRules(grid.base, grid.overlay, tileMetaFromRuleset(rs))
     if (Object.keys(frag.tiles).length === 0) {
-      reportEl.textContent = 'Nothing derived — paint some tagged tiles first.' +
-        (frag.skipped ? ` (${frag.skipped} untagged cells skipped)` : '')
+      // Say which ruleset came up empty and which one actually knows these
+      // tiles. A painting stored under one ruleset but derived under another
+      // yields nothing, and the old "paint some tagged tiles first" blamed the
+      // user for the one thing they had already done.
+      const painted = new Set([...grid.base.flat(), ...grid.overlay.flat()].filter(Boolean))
+      const best = bestCoveringRuleset(state.rulesets, painted, state.active)
+      fail(painted.size === 0
+        ? 'Nothing derived — the canvas is empty.'
+        : `Nothing derived — none of the ${painted.size} painted tiles are tagged in "${state.active}".` +
+          (best
+            ? ` ${best.count} of them are tagged in "${best.name}" — switch ruleset in the header.`
+            : ' Tag them in the Rules tab.'))
       return
     }
     mergeFragment(rs, frag)
@@ -483,12 +489,11 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
       document.dispatchEvent(new Event('ruleset-changed'))
       const adj = Object.values(frag.tags).reduce((s, t) =>
         s + ['n', 'e', 's', 'w'].reduce((a, d) => a + Object.keys(t.adjacency[d]).length, 0), 0)
-      reportEl.textContent =
-        `Derived ${Object.keys(frag.tiles).length} tiles, ${Object.keys(frag.tags).length} tags, ${adj} adjacencies` +
-        (frag.skipped ? ` — ${frag.skipped} untagged cells skipped` : '')
+      ok(`Derived ${Object.keys(frag.tiles).length} tiles, ${Object.keys(frag.tags).length} tags, ${adj} adjacencies` +
+        (frag.skipped ? ` — ${frag.skipped} untagged cells skipped` : ''))
       refreshPreview()
     } catch (err) {
-      reportEl.textContent = `Save failed: ${err.message}`
+      fail(`Save failed: ${err.message}`)
     }
   })
   document.getElementById('paint-reroll').addEventListener('click', refreshPreview)
@@ -532,6 +537,10 @@ export function initMapPainter({ state, imageFor, tilesReady }) {
     persistNow()                 // flush the outgoing ruleset's map first
     loadActiveMapFor(state.active)
   })
+
+  document.addEventListener('rules-edited', renderBrushStatus)
+  document.addEventListener('ruleset-changed', renderBrushStatus)
+  renderBrushStatus()
 
   tilesReady.then(buildPalette).catch(err => {
     console.error('[map-painter] palette load failed:', err)

@@ -1,0 +1,234 @@
+import { describe, it } from 'node:test'
+import assert from 'node:assert/strict'
+import { buildOpenMap } from '../renderer/systems/openmap.js'
+import { generateLevel } from '../renderer/systems/map.js'
+import { OPEN_MAPS, OPEN_MAP_SPRITES } from '../renderer/data/open-maps.js'
+import { TILE, isWalkable } from '../renderer/systems/entities.js'
+
+const DATA = OPEN_MAPS[7]
+
+// Cells rewritten by the gate stamp at each dungeon entrance (see
+// systems/gates.js): the 4-wide gate row plus the two basin cells below.
+const gateCells = data => new Set(data.pois
+  .filter(p => p.kind === 'dungeon_entrance')
+  .flatMap(p => [
+    `${p.x - 1},${p.y}`, `${p.x},${p.y}`, `${p.x + 1},${p.y}`, `${p.x + 2},${p.y}`,
+    `${p.x - 1},${p.y + 1}`, `${p.x + 2},${p.y + 1}`,
+  ]))
+
+describe('buildOpenMap', () => {
+  const { map, entitySpawns, playerSpawn } = buildOpenMap(DATA)
+  const stamped = gateCells(DATA)
+
+  it('produces a map with the data dimensions', () => {
+    assert.equal(map.length, DATA.h)
+    assert.equal(map[0].length, DATA.w)
+  })
+
+  it('mirrors the walk grid: open cells are FLOOR, blocked cells are WALL (interior)', () => {
+    for (let y = 1; y < DATA.h - 1; y++) for (let x = 1; x < DATA.w - 1; x++) {
+      if (stamped.has(`${x},${y}`)) continue // gate stamp overrides the bake
+      const open = DATA.walk[y][x] === '1'
+      assert.equal(isWalkable(map[y][x].tile), open, `walkability mismatch at ${x},${y}`)
+      assert.equal(map[y][x].tile, open ? TILE.FLOOR : TILE.WALL)
+    }
+  })
+
+  it('blocks every border cell so the camera never shows the void', () => {
+    for (let x = 0; x < DATA.w; x++) {
+      assert.equal(map[0][x].tile, TILE.WALL)
+      assert.equal(map[DATA.h - 1][x].tile, TILE.WALL)
+    }
+    for (let y = 0; y < DATA.h; y++) {
+      assert.equal(map[y][0].tile, TILE.WALL)
+      assert.equal(map[y][DATA.w - 1].tile, TILE.WALL)
+    }
+  })
+
+  it('skins every cell from the palette, with props as overlays', () => {
+    let overlays = 0
+    for (let y = 0; y < DATA.h; y++) for (let x = 0; x < DATA.w; x++) {
+      const c = map[y][x]
+      assert.equal(c.skin, DATA.palette[DATA.ground[y][x]], `ground skin at ${x},${y}`)
+      const pi = DATA.prop[y][x]
+      if (pi >= 0 && !stamped.has(`${x},${y}`) && !entitySpawns.some(s => s.x === x && s.y === y)) {
+        assert.equal(c.overlay, DATA.palette[pi], `prop overlay at ${x},${y}`)
+        overlays++
+      }
+    }
+    assert.ok(overlays > 100, 'a forest should carry many prop overlays')
+  })
+
+  it('locks every cell so a decoration pass cannot repaint the art', () => {
+    for (const row of map) for (const c of row) assert.equal(c.locked, true)
+  })
+
+  it('turns chest POIs into chest spawns and drops their baked-in overlay', () => {
+    const chests = DATA.pois.filter(p => p.kind === 'chest')
+    assert.ok(chests.length > 0, 'Clearings has caches')
+    // entitySpawns.length now also includes rite spawns (Task 10); compare
+    // against just the chest-kind spawns.
+    assert.equal(entitySpawns.filter(s => s.kind === 'chest').length, chests.length)
+    for (const p of chests) {
+      assert.ok(entitySpawns.some(s => s.kind === 'chest' && s.x === p.x && s.y === p.y), `spawn for cache at ${p.x},${p.y}`)
+      assert.equal(map[p.y][p.x].overlay, undefined, 'chest art comes from the entity, not the map')
+    }
+  })
+
+  it('spawns no enemies and no markers for scenery POIs', () => {
+    // Rite triggers, wild mushrooms and gate fountains are legitimate spawn
+    // kinds — this guards against anything else (enemies, markers)
+    // sneaking onto an open map's scenery.
+    const ALLOWED_KINDS = ['chest', 'talent_trigger', 'wild_mushroom', 'fountain_wall', 'fountain_basin']
+    assert.ok(entitySpawns.every(s => ALLOWED_KINDS.includes(s.kind)))
+  })
+
+  it('places the player on a walkable cell', () => {
+    assert.deepEqual(playerSpawn, DATA.playerSpawn)
+    assert.ok(isWalkable(map[playerSpawn.y][playerSpawn.x].tile))
+  })
+})
+
+describe('waystone exit', () => {
+  it('marks the exit cell with the arch overlay and keeps it walkable', () => {
+    const { map, mapExit } = buildOpenMap(DATA)
+    assert.deepEqual(mapExit, DATA.exit)
+    const c = map[mapExit.y][mapExit.x]
+    assert.equal(c.overlay, 'ow_house_arch_stone')
+    assert.equal(c.tile, TILE.FLOOR)
+  })
+
+  it('the last map has no exit and no marker', () => {
+    const { mapExit } = buildOpenMap(OPEN_MAPS[15])
+    assert.equal(mapExit, null)
+  })
+})
+
+describe('generateLevel depth 7', () => {
+  it('dispatches to the static open map', () => {
+    const { map } = generateLevel(7, DATA.w, DATA.h)
+    assert.equal(map.length, DATA.h)
+    assert.equal(map[0].length, DATA.w)
+    assert.equal(map[DATA.playerSpawn.y][DATA.playerSpawn.x].tile, TILE.FLOOR)
+  })
+})
+
+describe('OPEN_MAP_SPRITES', () => {
+  it('collects every palette name exactly once', () => {
+    assert.equal(new Set(OPEN_MAP_SPRITES).size, OPEN_MAP_SPRITES.length)
+    for (const n of DATA.palette) assert.ok(OPEN_MAP_SPRITES.includes(n))
+  })
+})
+
+// Synthetic 8x8 map: a mushroom-ring poi at (4,4) and two ow_mushroom props.
+const mkData = () => ({
+  name: 'forest-1-clearings', w: 8, h: 8,
+  palette: ['ow_grass_0', 'ow_mushroom'],
+  ground: Array.from({ length: 8 }, () => Array(8).fill(0)),
+  prop:   Array.from({ length: 8 }, (_, y) => Array.from({ length: 8 }, (_, x) =>
+    (y === 2 && (x === 2 || x === 5)) ? 1 : -1)),
+  walk:   Array.from({ length: 8 }, () => '11111111'),
+  pois: [{ kind: 'landmark', x: 4, y: 4, label: 'mushroom ring' }],
+  playerSpawn: { x: 1, y: 1 },
+})
+
+describe('rite spawns on open maps', () => {
+  it('emits a talent_trigger at the rite poi', () => {
+    const { entitySpawns } = buildOpenMap(mkData())
+    const trig = entitySpawns.find(s => s.kind === 'talent_trigger')
+    assert.deepEqual(trig, { kind: 'talent_trigger', x: 4, y: 4, talent: 'magic_stance', rite: 'mushroom_circle' })
+  })
+
+  it('spawns wild mushrooms beside mushroom props, deterministically', () => {
+    const a = buildOpenMap(mkData()).entitySpawns.filter(s => s.kind === 'wild_mushroom')
+    const b = buildOpenMap(mkData()).entitySpawns.filter(s => s.kind === 'wild_mushroom')
+    assert.ok(a.length >= 1)
+    assert.deepEqual(a, b)
+  })
+
+  it('maps without rites emit neither', () => {
+    const data = { ...mkData(), name: 'desert-1-dunes', pois: [] }
+    const spawns = buildOpenMap(data).entitySpawns
+    assert.equal(spawns.some(s => s.kind === 'talent_trigger'), false)
+  })
+})
+
+describe('LOS terrain classification', () => {
+  // The blocker a cell shows is its prop art if it has one, else its ground.
+  const effectiveSkin = (data, x, y) => {
+    const pi = data.prop[y][x]
+    return pi >= 0 ? data.palette[pi] : data.palette[data.ground[y][x]]
+  }
+  const CLEAR = ['ow_water_', 'ow_pond_']
+  const SOFT = ['ow_tree_', 'ow_deadtree_', 'ow_bush_', 'ow_shrub_', 'ow_mushroom', 'ow_cactus']
+  const startsWithAny = (s, prefixes) => prefixes.some(p => s?.startsWith(p))
+
+  it('flags water clear and foliage soft on every blocking interior cell, nothing else', () => {
+    let clear = 0, soft = 0
+    for (const data of Object.values(OPEN_MAPS)) {
+      const { map } = buildOpenMap(data)
+      const stamped = gateCells(data)
+      for (let y = 1; y < data.h - 1; y++) for (let x = 1; x < data.w - 1; x++) {
+        if (stamped.has(`${x},${y}`) || map[y][x].tile !== TILE.WALL) continue
+        const skin = effectiveSkin(data, x, y)
+        const wantClear = startsWithAny(skin, CLEAR)
+        const wantSoft = !wantClear && startsWithAny(skin, SOFT)
+        assert.equal(!!map[y][x].losClear, wantClear, `losClear at ${x},${y} (${skin})`)
+        assert.equal(!!map[y][x].losSoft, wantSoft, `losSoft at ${x},${y} (${skin})`)
+        if (wantClear) clear++
+        if (wantSoft) soft++
+      }
+    }
+    assert.ok(clear > 1000, 'the nine maps hold plenty of water')
+    assert.ok(soft > 5000, 'the nine maps hold plenty of foliage')
+  })
+
+  it('walkable cells and the border carry no LOS flags', () => {
+    const data = OPEN_MAPS[7]
+    const { map } = buildOpenMap(data)
+    for (let x = 0; x < data.w; x++) {
+      assert.equal(map[0][x].losClear ?? map[0][x].losSoft, undefined)
+    }
+    for (let y = 1; y < data.h - 1; y++) for (let x = 1; x < data.w - 1; x++) {
+      if (map[y][x].tile === TILE.FLOOR)
+        assert.equal(map[y][x].losClear ?? map[y][x].losSoft, undefined, `flag on floor at ${x},${y}`)
+    }
+  })
+})
+
+describe('dungeon entrance reachability', () => {
+  // Flood-fill from playerSpawn over the post-stamp map (gate stamping can
+  // itself sever a narrow approach, so this must run against buildOpenMap's
+  // output, not the raw data.walk grid).
+  const floodFill = (map, start) => {
+    const h = map.length, w = map[0].length
+    const seen = Array.from({ length: h }, () => Array(w).fill(false))
+    const stack = [start]
+    seen[start.y][start.x] = true
+    while (stack.length) {
+      const { x, y } = stack.pop()
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy
+        if (nx < 0 || ny < 0 || ny >= h || nx >= w) continue
+        if (seen[ny][nx]) continue
+        if (!isWalkable(map[ny][nx].tile)) continue
+        seen[ny][nx] = true
+        stack.push({ x: nx, y: ny })
+      }
+    }
+    return seen
+  }
+
+  for (const [key, data] of Object.entries(OPEN_MAPS)) {
+    const entrances = data.pois.filter(p => p.kind === 'dungeon_entrance')
+    if (entrances.length === 0) continue
+    it(`every dungeon-entrance trigger cell is reachable from spawn on ${data.name} (map ${key})`, () => {
+      const { map, playerSpawn } = buildOpenMap(data)
+      const seen = floodFill(map, playerSpawn)
+      for (const p of entrances) {
+        assert.ok(seen[p.y]?.[p.x], `${data.name}: "${p.label}" trigger cell (${p.x},${p.y}) is unreachable from spawn`)
+        assert.ok(seen[p.y]?.[p.x + 1], `${data.name}: "${p.label}" trigger cell (${p.x + 1},${p.y}) is unreachable from spawn`)
+      }
+    })
+  }
+})

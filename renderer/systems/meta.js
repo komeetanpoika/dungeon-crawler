@@ -1,4 +1,4 @@
-import { ITEMS } from '../data/items.js'
+import { makeItem } from './inventory.js'
 import { FINAL_DEPTH } from '../data/levels.js'
 
 export const MILESTONES = [
@@ -31,7 +31,7 @@ export function applyRunResult(meta, { deepestLevel, won }) {
 }
 
 export function getStartingItems(meta) {
-  return meta.unlockedBonuses.includes('starting_potion') ? [{ ...ITEMS.POTION }] : []
+  return meta.unlockedBonuses.includes('starting_potion') ? [makeItem('potion')] : []
 }
 
 export function validateMeta(data) {

@@ -2,10 +2,11 @@ import { isWalkable } from './entities.js'
 import { damagePlayer } from './player-damage.js'
 import { startKnockback } from './knockback.js'
 import { dragonCapsules, pointInCapsule } from './capsules.js'
+import { buildNavGrid, findPath } from './nav.js'
 
 const TILE = 32
 export const BOSS_HP = 18   // tuned for flat-1 melee: ~12 neck hits (1.5x) to kill
-const TURN_RATE   = 0.8            // rad/s the body rotates to track the player (~3.9s for a 180° turn)
+const TURN_RATE   = 0.25           // rad/s the body rotates to track the player (~12.5s for a 180° turn — slow enough that flanking into the tail arc is possible)
 const CONTACT_DMG = 2
 const CONTACT_CD  = 0.8
 const CONE_HALF   = 0.34
@@ -34,9 +35,18 @@ export function pointInCone(px, py, ox, oy, aim, half, len) {
   return Math.abs(diff) <= half
 }
 
-export function makeDragonBoss(x, y) {
+export const PIXEL_SKIN = 'pixel'
+
+// `opts.skin` selects a renderer variant only — the type, AI, hitboxes and
+// damage are shared with the default boss, so a skinned copy can never drift
+// out of sync with the real one. Not the same idea as `cell.skin` on map
+// tiles: a tile's `skin` is looked up directly as a sprite-map key
+// (`sprites[tileObj.skin]`), while `e.skin` here is a semantic tag a
+// renderer branches on with a ternary/switch, not a lookup key.
+export function makeDragonBoss(x, y, opts = {}) {
   return {
     type: 'dragon_boss', x, y, hp: BOSS_HP, maxHp: BOSS_HP, inCombat: false,
+    ...(opts.skin && { skin: opts.skin }),
     anchorX: x, anchorY: y, facing: 0,
     // animation state read by the renderer:
     neckRear: 0, headAim: 0, tailSwing: 0, breathTime: 0,
@@ -193,12 +203,21 @@ function coneDamage(e, state, aim, delta) {
   }
 }
 
-// Begin a single grid-step toward the player along the best walkable cardinal/diagonal.
+// Begin a single grid-step toward the player. A* (clearance 2 — the boss is
+// wide) picks the step so the boss rounds obstacles; the old greedy step
+// remains as a fallback for tight arenas where clearance-2 has no route.
 function startStomp(e, state) {
   const { map, player } = state
   const here = { x: Math.floor(e.px / TILE), y: Math.floor(e.py / TILE) }
+  const path = findPath(buildNavGrid(map), here.x, here.y, player.x, player.y, 2)
+  if (path && path.length) {
+    const step = path[0]
+    e.stepFrom = { x: e.px, y: e.py }
+    e.stepTo = { x: step.x * TILE + TILE / 2, y: step.y * TILE + TILE / 2 }
+    e.stepK = 0; e.crushDone = false; e.state = 'stomp'
+    return
+  }
   const sx = Math.sign(player.px - e.px), sy = Math.sign(player.py - e.py)
-  // candidate steps, preferring the direction that most reduces distance
   const cands = [[sx, sy], [sx, 0], [0, sy]].filter(([dx, dy]) => dx !== 0 || dy !== 0)
   for (const [dx, dy] of cands) {
     const tx = here.x + dx, ty = here.y + dy
@@ -209,7 +228,6 @@ function startStomp(e, state) {
       return
     }
   }
-  // nowhere to step — stay idle
   e.state = 'idle'; e.stepTimer = STEP_INTERVAL
 }
 

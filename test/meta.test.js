@@ -105,7 +105,8 @@ describe('getStartingItems', () => {
     const meta = { ...getInitialMeta(), unlockedBonuses: ['starting_potion'] }
     const items = getStartingItems(meta)
     assert.equal(items.length, 1)
-    assert.equal(items[0].use, 'heal')
+    assert.equal(items[0].kind, 'potion')
+    assert.equal(items[0].count, 1)
   })
 })
 

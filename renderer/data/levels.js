@@ -6,7 +6,9 @@ import { TILE } from '../systems/entities.js'
 //   kind 'tile'  → sets map cell tile (walls get no roomId; everything else does)
 //   kind 'spawn' → cell becomes FLOOR + roomId; pushes a spawn.
 //     roomScoped: include roomId on the spawn (monsters yes; items/doors no)
-//     single:     place at most one (the dragon boss)
+//     single:     at most one spawn total across ALL `single` entries combined
+//                 (placeTemplate tracks one shared flag, not one per symbol) —
+//                 e.g. a 'B'/'Q' block scans 'B' before 'Q' and drops 'Q'
 // color/icon drive the editor palette + canvas; the game ignores them.
 export const TEMPLATE_LEGEND = {
   '#': { label: 'Wall',     kind: 'tile',  tile: TILE.WALL,     color: '#3a3a44' },
@@ -20,6 +22,7 @@ export const TEMPLATE_LEGEND = {
   'P': { label: 'Potion',   kind: 'spawn', spawn: 'potion',      roomScoped: false, color: '#8a3a8a', icon: '⚗' },
   'D': { label: 'Dragon',   kind: 'spawn', spawn: 'dragon',      roomScoped: true,  isBoss: true, color: '#a33333', icon: '🐉' },
   'B': { label: 'Boss',     kind: 'spawn', spawn: 'dragon_boss', roomScoped: true, single: true, isBoss: true, color: '#cc2222', icon: '🐲' },
+  'Q': { label: 'Boss (pixel)', kind: 'spawn', spawn: 'dragon_boss_pixel', roomScoped: true, single: true, isBoss: true, color: '#cc7722', icon: '🟧' },
   'R': { label: 'Crab',     kind: 'spawn', spawn: 'crab',        roomScoped: false, isBoss: true, color: '#c87a3a', icon: '🦀' },
   'Z': { label: 'Wizard',   kind: 'spawn', spawn: 'wizard',      roomScoped: false, isBoss: true, color: '#6a3a8a', icon: '🧙' },
 }
@@ -161,7 +164,13 @@ export const LEVEL_CONFIG = [
   { depth: 4, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 7, monsterDensity: 0.010, trapDensity: 0.08, puzzleDensity: 0.03, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'DRAGON_LAIR',    weapons: ['longsword', 'axe'] },
   { depth: 5, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 4, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.012, landmark: 'GREAT_LAIR',     weapons: ['longsword', 'axe'] },
   // Depth 6 — cheat-only sandbox for the derived 'castle' ruleset (not part of the 1..5 run).
-  { depth: 6, mapW: 40, mapH: 26, staircaseWidth: 1, guardCount: 2, monsterDensity: 0, trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: null, weapons: ['dagger'] },
+  { depth: 6, mapW: 180, mapH: 116, staircaseWidth: 1, guardCount: 2, monsterDensity: 0, trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: null, weapons: ['dagger'] },
+  // Depths 7-15 — the Adventure chain of static open maps (see open-maps.js).
+  // Dimensions come from the map data; densities are moot: buildOpenMap spawns
+  // only chests. Each depth here also enables the level<N> cheat.
+  ...Array.from({ length: 9 }, (_, i) => (
+    { depth: 7 + i, mapW: 120, mapH: 80, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] }
+  )),
 ]
 
 export const DEPTH_THEMES = [
@@ -207,6 +216,41 @@ export const DEPTH_THEMES = [
     fogAlpha: 0.65,
     props: { room: [] },   // ruleset has overlays, so scattered props are skipped anyway
   },
+  // Adventure maps carry their own art (no ruleset, decorateMap no-ops);
+  // backgrounds follow the biome: forest 7-9, desert 10-12, sea 13-15.
+  {
+    depths: [7, 8, 9],
+    floorTile: 'floor',
+    bgColor:  '#0a1208',
+    tint:     null,
+    fogAlpha: 0.65,
+    props: { room: [] },
+  },
+  {
+    depths: [10, 11, 12],
+    floorTile: 'floor',
+    bgColor:  '#171006',
+    tint:     null,
+    fogAlpha: 0.65,
+    props: { room: [] },
+  },
+  {
+    depths: [13, 14, 15],
+    floorTile: 'floor',
+    bgColor:  '#061018',
+    tint:     null,
+    fogAlpha: 0.65,
+    props: { room: [] },
+  },
 ]
 
 export const FINAL_DEPTH = 5
+
+// The overworld reuses the depth-6 slot, which already exists as a castle-ruleset
+// sandbox and already has a DEPTH_THEMES entry naming `ruleset: 'castle'`.
+// Since the mode split it is cheat-only (level6); Adventure is the main game.
+export const OVERWORLD_DEPTH = 6
+
+// Adventure — the static open world (Clearings), the game's main mode.
+// Dungeon Rush is the classic depth 1-5 descent.
+export const ADVENTURE_DEPTH = 7

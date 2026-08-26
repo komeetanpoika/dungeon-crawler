@@ -2,7 +2,10 @@
 // Each grid is grid[row][col] = tile name or null (empty); both share dimensions.
 // tileMeta: Map<tileName, { role: 'floor'|'wall'|'overlay', tags: string[] }>.
 // Returns { tiles, tags, skipped }:
-//   tiles[name] = { tags, weight }
+//   tiles[name] = { tags, weight, neighbors:{n,e,s,w} }
+//                 `neighbors[d][otherTileName]` is the exact per-sprite pair count.
+//                 The tag tables below generalize; this one does not, which is what
+//                 lets two sprites sharing a tag stop being interchangeable.
 //   tags[tag]   = { role, allow:['*'], forbid:[], directional:{}, adjacency:{n,e,s,w} }
 //                 base (floor/wall) tags additionally gain `overlays` (base-conditional
 //                 distribution over overlay tags + '' = no overlay) during conditioning.
@@ -21,7 +24,8 @@ function metaOf(tileMeta, name) {
   return m && Array.isArray(m.tags) && m.tags.length ? m : null
 }
 
-// Weights + tag registration + same-layer directional adjacency. Mutates tiles/tags.
+// Weights + tag registration + same-layer directional adjacency, recorded both
+// per tag (generalizing) and per tile (exact). Mutates tiles/tags.
 function accumulateLayer(grid, tileMeta, tiles, tags) {
   let skipped = 0
   for (const row of grid) {
@@ -29,7 +33,7 @@ function accumulateLayer(grid, tileMeta, tiles, tags) {
       if (name == null) continue
       const meta = metaOf(tileMeta, name)
       if (!meta) { skipped++; continue }
-      tiles[name] = tiles[name] ?? { tags: meta.tags.slice(), weight: 0 }
+      tiles[name] = tiles[name] ?? { tags: meta.tags.slice(), weight: 0, neighbors: { n: {}, e: {}, s: {}, w: {} } }
       tiles[name].weight++
       for (const t of meta.tags) {
         if (!tags[t]) {
@@ -40,11 +44,14 @@ function accumulateLayer(grid, tileMeta, tiles, tags) {
   }
   for (let y = 0; y < grid.length; y++) {
     for (let x = 0; x < grid[y].length; x++) {
-      const meta = metaOf(tileMeta, grid[y][x])
+      const name = grid[y][x]
+      const meta = metaOf(tileMeta, name)
       if (!meta) continue
       for (const { dx, dy, d } of DIRS) {
-        const nbMeta = metaOf(tileMeta, grid[y + dy]?.[x + dx])
+        const nbName = grid[y + dy]?.[x + dx]
+        const nbMeta = metaOf(tileMeta, nbName)
         if (!nbMeta) continue
+        tiles[name].neighbors[d][nbName] = (tiles[name].neighbors[d][nbName] ?? 0) + 1
         for (const t of meta.tags) {
           for (const u of nbMeta.tags) {
             tags[t].adjacency[d][u] = (tags[t].adjacency[d][u] ?? 0) + 1

@@ -16,6 +16,7 @@ const saveTileBtn = document.getElementById('save-tile')
 const saveRulesBtn = document.getElementById('save-rules')
 const buildView = document.getElementById('build-view')
 const tabBuild = document.getElementById('tab-build')
+let library   // set once buildLibrary resolves; declared here so showTab can reach it
 
 function showTab(tab) {
   drawView.style.display  = tab === 'draw'  ? 'flex' : 'none'
@@ -28,10 +29,14 @@ function showTab(tab) {
   saveRulesBtn.style.display    = tab === 'rules' ? '' : 'none'
   // The shared bottom library strip belongs to the Draw tab only.
   document.getElementById('library-bar').style.display = tab === 'build' ? 'none' : ''
+  library?.setPickMode(null)   // a mode must never survive leaving the tab that set it
+  document.dispatchEvent(new CustomEvent('tab-changed', { detail: { tab } }))
 }
 tabDraw.addEventListener('click', () => showTab('draw'))
 tabRules.addEventListener('click', () => showTab('rules'))
 tabBuild.addEventListener('click', () => showTab('build'))
+// The Build tab hands its brush to the Rules tab to be tagged.
+document.addEventListener('assign-tile', () => showTab('rules'))
 showTab('draw')
 
 const preview1x = document.getElementById('preview-1x')
@@ -136,7 +141,6 @@ tilesReady.catch(err => {
   toast('Could not load tiles: ' + (err?.message ?? err), 'error')
 })
 
-let library
 tilesReady.then(async names => {
   library = await buildLibrary(names, {
     onPick: (name) => {
@@ -204,31 +208,26 @@ document.getElementById('save-tile').addEventListener('click', async () => {
     if (library) library.add(name, dataURL)
     // Surface the new tile everywhere it can be used (Draw library above + Build palette).
     document.dispatchEvent(new CustomEvent('tile-saved', { detail: { name } }))
-
-    const tags = document.getElementById('tile-tags').value
-      .split(',').map(s => s.trim()).filter(Boolean)
-    const rs = state.rulesets[state.active]
-    const where = `Saved to renderer/assets/tiles/${name}.png — now in the library and Build palette`
-    if (rs && tags.length) {
-      rs.tiles[name] = { tags, weight: rs.tiles[name]?.weight ?? 1 }
-      for (const tag of tags) {
-        if (!rs.tags[tag]) {
-          const role = tag.startsWith('wall') ? 'wall' : 'floor'
-          rs.tags[tag] = { role, allow: ['*'], forbid: [], directional: {} }
-        }
-      }
-      await window.editorAPI.saveRulesets(state.rulesets)
-      document.dispatchEvent(new Event('ruleset-changed'))
-      toast(`${where}, and registered in ruleset '${state.active}'.`, 'ok')
-    } else {
-      toast(`${where}. (No tags / no active ruleset — not registered in a ruleset.)`, 'ok')
-    }
+    // Tagging lives in the Rules tab now — a ruleset's tile list is exactly its
+    // tagged tiles, so a freshly drawn tile is just a library sprite until it
+    // is assigned there.
+    toast(`Saved ${name}.png — add it to a tag in Rules.`, 'ok')
   } catch (err) {
     toast(`Save failed: ${err?.message ?? err}`, 'error')
   }
 })
 
-initRulesUI(state)
+initRulesUI(state, {
+  pickTile: (prompt, handler) => {
+    // buildLibrary resolves after ~139 IPC reads; the Rules tab isn't gated on it.
+    if (!library) { toast('Library still loading — try again in a moment.', 'info'); return }
+    if (library.picking) { library.setPickMode(null); return }   // a second click cancels
+    library.setPickMode(handler, prompt)
+  },
+})
+
+// A pick belongs to the ruleset it was started in — never let it land in another.
+document.addEventListener('ruleset-changed', () => library?.setPickMode(null))
 
 saveRulesBtn.addEventListener('click', async () => {
   try {

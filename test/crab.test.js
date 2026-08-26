@@ -27,7 +27,6 @@ describe('makeCrab', () => {
     assert.equal(c.grabState, null)
     assert.equal(c.grabCooldown, 0)
     assert.equal(typeof c.facing, 'number')
-    assert.ok(c.strafeDir === 1 || c.strafeDir === -1)
   })
 })
 
@@ -65,6 +64,27 @@ describe('updateCrab — grab', () => {
     const state = makeState(c, player)
     updateCrab(c, state, 0.016)
     assert.equal(c.grabState, null)
+  })
+})
+
+describe('updateCrab — strafing movement', () => {
+  it('orbits the player with LOS: distance stays roughly stable (allowing inward drift) while its angle around the player changes', () => {
+    const c = makeCrab(5, 5)
+    c.px = 5 * S + 16; c.py = 5 * S + 16
+    c.grabCooldown = 99  // stay out of grab range so strafing isn't interrupted
+    const player = { x: 10, y: 5, px: 10 * S + 16, py: 5 * S + 16, hp: 10, grabbed: false }
+    const state = makeState(c, player)
+    const startDist = Math.hypot(c.px - player.px, c.py - player.py)
+    const startAngle = Math.atan2(c.py - player.py, c.px - player.px)
+    for (let i = 0; i < 60; i++) updateCrab(c, state, 1 / 60)
+    const endDist = Math.hypot(c.px - player.px, c.py - player.py)
+    const endAngle = Math.atan2(c.py - player.py, c.px - player.px)
+    assert.ok(endDist > startDist * 0.5 && endDist < startDist * 1.1,
+      `distance should stay roughly stable (inward drift allowed), start=${startDist} end=${endDist}`)
+    let angleDelta = Math.abs(endAngle - startAngle)
+    if (angleDelta > Math.PI) angleDelta = 2 * Math.PI - angleDelta
+    assert.ok(angleDelta > 0.15,
+      `crab should orbit sideways around the player, angleDelta=${angleDelta}`)
   })
 })
 

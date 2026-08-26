@@ -1,5 +1,8 @@
 import { TILE, isWalkable, WEAPON_TYPES } from './entities.js'
-import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
+import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, OVERWORLD_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
+import { generateOverworld } from './overworld.js'
+import { buildOpenMap } from './openmap.js'
+import { OPEN_MAPS } from '../data/open-maps.js'
 
 const MAP_W = 80
 const MAP_H = 50
@@ -252,6 +255,13 @@ export function templateHasBoss(template) {
 
 export function placeTemplate(map, template, ox, oy, roomId) {
   const spawns = []
+  // Shared across ALL `single: true` legend entries, not tracked per spawn
+  // kind. This is deliberate for the common case — a multi-cell block of the
+  // same symbol (e.g. a 2x2 'B' block) collapses to one spawn — but it also
+  // means a template mixing two different `single` symbols (e.g. 'B' and
+  // 'Q') keeps only whichever is scanned first (row-major), silently
+  // dropping the other. Fine today since only one boss variant is painted
+  // per lair; revisit if that changes.
   let bossPlaced = false
   template.tiles.forEach((row, dy) => {
     ;[...row].forEach((ch, dx) => {
@@ -368,7 +378,7 @@ function chooseShape(leaf, depth) {
   return 'rect'
 }
 
-function healConnectivity(map) {
+export function healConnectivity(map) {
   for (let pass = 0; pass < 10; pass++) {
     if (isFullyConnected(map)) return
     const floors = []
@@ -401,11 +411,19 @@ function healConnectivity(map) {
   }
 }
 
-// Build the level-0 debug arena: a single walled room with the dragon boss
-// centered and 20 weapon/potion chests ringed around the interior perimeter.
-// Pure (map + spawn data only); returns the same shape as generateLevel so the
-// startNewRun → buildEntities wiring is unchanged. Deterministic: no randomness.
-export function buildBossTestArena(width, height) {
+// Build the level-0 test arena: a single walled room with spawns taken from a
+// config ({ size, enemies, chests, player } — every field optional). With
+// neither enemies nor chests configured it produces the original debug arena:
+// dragon boss centered, 20 weapon/potion chests ringed around the interior
+// perimeter. All configured spawns (explicit and auto) are collision-checked
+// against the occupied set, player spawn first. Pure and deterministic;
+// `warn` is injected so tests stay quiet.
+export function buildArena(config = {}, warn = console.warn) {
+  const clampInt = (v, lo, hi, dflt) =>
+    Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : dflt
+  const width  = clampInt(config.size?.w, 8, 40, 26)
+  const height = clampInt(config.size?.h, 8, 30, 18)
+
   const map = createMap(width, height) // all TILE.WALL
   for (let y = 1; y < height - 1; y++)
     for (let x = 1; x < width - 1; x++)
@@ -413,36 +431,149 @@ export function buildBossTestArena(width, height) {
 
   const cx = Math.floor(width / 2)
   const cy = Math.floor(height / 2)
-  const playerSpawn = { x: cx, y: height - 2 } // bottom-center interior
 
-  const entitySpawns = [{ kind: 'dragon_boss', x: cx, y: cy, isBoss: true }]
+  // Player spawn: configured (clamped to the interior) or bottom-center.
+  const playerSpawn = {
+    x: clampInt(config.player?.x, 1, width - 2, cx),
+    y: clampInt(config.player?.y, 1, height - 2, height - 2),
+  }
+
+  // Interior obstacles: config.columns = [{x, y}, ...] become COLUMN tiles
+  // (LOS + movement blockers for pathfinding tests). Clamped to the interior,
+  // never on the player spawn; bad entries warn and are skipped.
+  const columnCells = new Set()
+  for (const c of (Array.isArray(config.columns) ? config.columns : [])) {
+    if (!c || !Number.isFinite(c.x) || !Number.isFinite(c.y)) { warn(`arena: column at (${c?.x},${c?.y}) invalid — skipped`); continue }
+    const x = Math.round(c.x), y = Math.round(c.y)
+    if (x < 1 || x > width - 2 || y < 1 || y > height - 2) { warn(`arena: column at (${x},${y}) out of bounds — skipped`); continue }
+    if (x === playerSpawn.x && y === playerSpawn.y) { warn(`arena: column at (${x},${y}) overlaps player spawn — skipped`); continue }
+    map[y][x].tile = TILE.COLUMN
+    columnCells.add(`${x},${y}`)
+  }
 
   // Ordered ring of interior-perimeter floor cells (clockwise from top-left),
-  // minus the player-spawn cell so a chest never lands on the player.
+  // minus the player-spawn cell and any column so a chest never lands on either.
   const ring = []
   for (let x = 1; x <= width - 2; x++)   ring.push({ x, y: 1 })           // top
   for (let y = 2; y <= height - 2; y++)  ring.push({ x: width - 2, y })   // right
   for (let x = width - 3; x >= 1; x--)   ring.push({ x, y: height - 2 })  // bottom
   for (let y = height - 3; y >= 2; y--)  ring.push({ x: 1, y })           // left
-  const cells = ring.filter(c => !(c.x === playerSpawn.x && c.y === playerSpawn.y))
+  const ringCells = ring.filter(c =>
+    !(c.x === playerSpawn.x && c.y === playerSpawn.y) && !columnCells.has(`${c.x},${c.y}`))
 
-  // 20 evenly-spaced chests; alternate weapon/potion, cycling weapon types.
-  const weaponKeys = Object.keys(WEAPON_TYPES)
-  const CHEST_COUNT = 20
-  for (let i = 0; i < CHEST_COUNT; i++) {
-    const cell = cells[Math.round(i * cells.length / CHEST_COUNT) % cells.length]
-    if (i % 2 === 0) {
-      entitySpawns.push({ kind: 'weapon', x: cell.x, y: cell.y, weaponType: weaponKeys[(i / 2) % weaponKeys.length] })
+  const entitySpawns = []
+
+  // Default content — the boss arena — when the config specifies neither
+  // enemies nor chests. The boss here is the pixel-art skin: level 0 is the
+  // showcase arena, and it is the only boss the web build can reach (the web
+  // shim returns no arena config, so this default is what ships). The depth-5
+  // boss is unaffected — it spawns `dragon_boss` and renders the vector art.
+  if (config.enemies === undefined && config.chests === undefined) {
+    if (columnCells.has(`${cx},${cy}`)) {
+      map[cy][cx].tile = TILE.FLOOR
+      columnCells.delete(`${cx},${cy}`)
+      warn(`arena: column at (${cx},${cy}) removed — default boss spawn takes precedence`)
+    }
+    entitySpawns.push({ kind: 'dragon_boss_pixel', x: cx, y: cy, isBoss: true })
+    const weaponKeys = Object.keys(WEAPON_TYPES)
+    const CHEST_COUNT = 20
+    for (let i = 0; i < CHEST_COUNT; i++) {
+      const cell = ringCells[Math.round(i * ringCells.length / CHEST_COUNT) % ringCells.length]
+      if (i % 2 === 0) {
+        entitySpawns.push({ kind: 'weapon', x: cell.x, y: cell.y, weaponType: weaponKeys[(i / 2) % weaponKeys.length] })
+      } else {
+        entitySpawns.push({ kind: 'potion', x: cell.x, y: cell.y })
+      }
+    }
+    return { map, entitySpawns, playerSpawn, rooms: [] }
+  }
+
+  const occupied = new Set([`${playerSpawn.x},${playerSpawn.y}`, ...columnCells])
+  const inBounds = (x, y) => x >= 1 && x <= width - 2 && y >= 1 && y <= height - 2
+
+  // Deterministic auto-placement: the free interior cell closest to the
+  // center (Chebyshev), row-major tie-break.
+  function nextFreeCell() {
+    let best = null, bestD = Infinity
+    for (let y = 1; y <= height - 2; y++)
+      for (let x = 1; x <= width - 2; x++) {
+        if (occupied.has(`${x},${y}`)) continue
+        const d = Math.max(Math.abs(x - cx), Math.abs(y - cy))
+        if (d < bestD) { bestD = d; best = { x, y } }
+      }
+    return best
+  }
+
+  const ENEMY_KINDS = new Set(['guard', 'monster', 'dragon', 'crab', 'cyclops', 'wizard', 'dragon_boss', 'dragon_boss_pixel'])
+  for (const e of (Array.isArray(config.enemies) ? config.enemies : [])) {
+    if (!e || !ENEMY_KINDS.has(e.kind)) { warn(`arena: unknown enemy kind "${e?.kind}" — skipped`); continue }
+    let pos
+    if (e.x !== undefined || e.y !== undefined) {
+      if (!Number.isFinite(e.x) || !Number.isFinite(e.y) || !inBounds(Math.round(e.x), Math.round(e.y))) {
+        warn(`arena: enemy ${e.kind} at (${e.x},${e.y}) out of bounds — skipped`); continue
+      }
+      pos = { x: Math.round(e.x), y: Math.round(e.y) }
+      if (occupied.has(`${pos.x},${pos.y}`)) {
+        warn(`arena: enemy ${e.kind} at (${pos.x},${pos.y}) overlaps another spawn — skipped`); continue
+      }
     } else {
-      entitySpawns.push({ kind: 'potion', x: cell.x, y: cell.y })
+      pos = nextFreeCell()
+      if (!pos) { warn(`arena: no free cell left for ${e.kind} — skipped`); continue }
+    }
+    occupied.add(`${pos.x},${pos.y}`)
+    entitySpawns.push({
+      kind: e.kind, x: pos.x, y: pos.y,
+      ...(e.variant !== undefined && { variant: e.variant }),
+      ...(Number.isFinite(e.hp) && { hp: Math.round(e.hp) }),
+      ...(e.isBoss && { isBoss: true }),
+    })
+  }
+
+  // Chests: explicit positions honored; the rest spaced evenly on the ring.
+  const chests = Array.isArray(config.chests) ? config.chests : []
+  const autoChests = []
+  for (const c of chests) {
+    if (!c || (c.kind !== 'weapon' && c.kind !== 'potion' && c.kind !== 'ranged')) { warn(`arena: unknown chest kind "${c?.kind}" — skipped`); continue }
+    if (c.x !== undefined || c.y !== undefined) {
+      if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !inBounds(Math.round(c.x), Math.round(c.y))) {
+        warn(`arena: chest at (${c.x},${c.y}) out of bounds — skipped`); continue
+      }
+      const pos = { x: Math.round(c.x), y: Math.round(c.y) }
+      if (occupied.has(`${pos.x},${pos.y}`)) {
+        warn(`arena: chest at (${pos.x},${pos.y}) overlaps another spawn — skipped`); continue
+      }
+      occupied.add(`${pos.x},${pos.y}`)
+      entitySpawns.push({ kind: c.kind, x: pos.x, y: pos.y,
+        ...((c.kind === 'weapon' || c.kind === 'ranged') && { weaponType: c.weaponType ?? 'dagger' }) })
+    } else {
+      autoChests.push(c)
     }
   }
+  autoChests.forEach((c, i) => {
+    const start = Math.round(i * ringCells.length / Math.max(autoChests.length, 1)) % ringCells.length
+    let cell = null
+    for (let k = 0; k < ringCells.length; k++) {
+      const cand = ringCells[(start + k) % ringCells.length]
+      if (!occupied.has(`${cand.x},${cand.y}`)) { cell = cand; break }
+    }
+    if (!cell) { warn('arena: no free ring cell for chest — skipped'); return }
+    occupied.add(`${cell.x},${cell.y}`)
+    entitySpawns.push({ kind: c.kind, x: cell.x, y: cell.y,
+      ...((c.kind === 'weapon' || c.kind === 'ranged') && { weaponType: c.weaponType ?? 'dagger' }) })
+  })
 
   return { map, entitySpawns, playerSpawn, rooms: [] }
 }
 
-export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {} } = {}) {
-  if (depth === 0) return buildBossTestArena(width, height)
+// Back-compat wrapper — the original debug-arena entry point.
+export function buildBossTestArena(width, height) {
+  return buildArena({ size: { w: width, h: height } })
+}
+
+export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null } = {}) {
+  if (depth === 0) return buildArena({ size: { w: width, h: height }, ...(arena ?? {}) })
+  if (depth === OVERWORLD_DEPTH) return generateOverworld(width, height, { structures })
+  if (OPEN_MAPS[depth]) return buildOpenMap(OPEN_MAPS[depth])
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -619,13 +750,12 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     for (let i = 0; i < puzzleCount && idx < farTiles.length; i++, idx++) {
       entitySpawns.push({ kind: 'puzzle', ...farTiles[idx] })
     }
-    const weaponPool = cfg.weapons ?? ['dagger']
-    for (let i = 0; i < weaponCount && idx < farTiles.length; i++, idx++) {
-      const weaponType = weaponPool[Math.floor(Math.random() * weaponPool.length)]
-      entitySpawns.push({ kind: 'weapon', weaponType, ...farTiles[idx] })
-    }
-    for (let i = 0; i < potionCount && idx < farTiles.length; i++, idx++) {
-      entitySpawns.push({ kind: 'potion', ...farTiles[idx] })
+    // Procedural chests roll the loot table when opened (systems/loot.js:
+    // potion / melee / ranged, depth-tiered) instead of carrying fixed
+    // contents. The two density knobs still control total chest supply;
+    // cfg.weapons remains the boss-drop pool.
+    for (let i = 0; i < weaponCount + potionCount && idx < farTiles.length; i++, idx++) {
+      entitySpawns.push({ kind: 'chest', ...farTiles[idx] })
     }
 
     const wizardCount = cfg.wizardCount ?? 0

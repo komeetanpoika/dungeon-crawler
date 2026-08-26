@@ -11,7 +11,12 @@ export const SPRITES = {
   column:       'tile_0075',  // crate — no pillar exists in tileset
   // characters
   dragon:       'creature_dragon',
-  player:       'tile_0084',
+  dragon_parts: 'dragon_boss_parts',
+  player:       'tile_0084',           // legacy alias (menu art); stances use the four below
+  player_base:        'tile_0088',     // bare adventurer — melee before Might
+  player_melee_heavy: 'tile_0097',     // plumed knight — melee once Might is learned
+  player_ranged:      'tile_0112',     // hooded ranger
+  player_magic:       'tile_0084',     // the purple wizard
   guard:        'tile_0085',
   guard_alert:  'tile_0087',
   monster_weak:   'tile_0120',
@@ -32,8 +37,10 @@ export const SPRITES = {
   prop_pipe_flow:      'tile_0008',
   prop_gargoyle_dry:   'tile_0019',
   prop_gargoyle_flow:  'tile_0020',
-  prop_fountain_empty: 'tile_0031',
-  prop_fountain_full:  'tile_0032',
+  // Cleaned copies of tile_0031/0032 (tan floor strip erased) so basins sit
+  // on grass at overworld gates; identical on the tan dungeon floors.
+  prop_fountain_empty: 'ow_fountain_basin_empty',
+  prop_fountain_full:  'ow_fountain_basin_full',
   prop_gravestone:     'tile_0065',
   prop_grave:          'tile_0066',
   prop_drain_empty:    'tile_0043',
@@ -51,6 +58,11 @@ export const SPRITES = {
   weapon_longsword: 'tile_0106',
   weapon_axe:       'tile_0118',
   weapon_club:      'tile_0107',
+  weapon_maunonmiekka: 'weapon_maunonmiekka',   // 24px custom art (from the miekka drawing)
+  weapon_shortbow:  'weapon_shortbow',    // custom art — tileset has no bow
+  weapon_longbow:   'weapon_longbow',     // custom art — tileset has no bow
+  weapon_sparkwand: 'tile_0130',
+  weapon_stormwand: 'tile_0129',
   potion:           'tile_0116',
   // door animation frames (0 = closed … 3 = open)
   door_0: 'tile_0009',

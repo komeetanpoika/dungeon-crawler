@@ -55,37 +55,100 @@ export function pickWeighted(ruleset, names, rng) {
   return names[names.length - 1]
 }
 
-// Smoothing so unseen adjacencies stay possible but unlikely (the "loose" model).
+// Default smoothing for direct adjacencyScore callers that have no candidate set
+// to size a floor against (the overlay pass).
 export const ADJACENCY_ALPHA = 0.5
 
-// Multiplicative adjacency score for placing `tileName` given decided neighbors.
-// neighbors: [{ dir, skin }] where skin is the neighbor's tile name. Each tag of
-// `tileName` contributes its observed count toward the neighbor's tags in `dir`;
-// a tag with no adjacency data contributes a flat ALPHA, so the score is
-// constant across candidates and cancels — reducing selection to weight-only —
-// when no adjacency info exists. Returns 1 (neutral) when there are no neighbors.
-export function adjacencyScore(ruleset, tileName, neighbors) {
-  const tags = tagsOf(ruleset, tileName)
-  let score = 1
-  for (const nb of neighbors) {
-    const nbTags = tagsOf(ruleset, nb.skin)
-    let count = 0
-    for (const t of tags) {
-      const dirMap = ruleset.tags[t]?.adjacency?.[nb.dir]
-      if (!dirMap) continue
-      for (const u of nbTags) count += dirMap[u] ?? 0
-    }
-    score *= count + ADJACENCY_ALPHA
+// Share of a context's observed mass reserved for pairings the painting never
+// showed — the "loose" model's escape hatch. Held FIXED as the candidate set
+// grows: a flat per-candidate floor let the unobserved group's mass scale with
+// the number of tiles in the ruleset, so adding sprites quietly destroyed the
+// adjacency signal (a 20-tile wall set put over half its probability on
+// combinations the painting never contained).
+export const ADJACENCY_EPSILON = 0.02
+
+// Total weight of every tile carrying `tag`. Memoized per ruleset — this sits in
+// the innermost decoration loop, and the editor keeps one ruleset object alive
+// across weight edits, so decorateMap drops the cache at the start of each pass.
+const tagMassCache = new WeakMap()
+function tagMass(ruleset, tag) {
+  let byTag = tagMassCache.get(ruleset)
+  if (!byTag) { byTag = new Map(); tagMassCache.set(ruleset, byTag) }
+  const hit = byTag.get(tag)
+  if (hit !== undefined) return hit
+  let mass = 0
+  for (const def of Object.values(ruleset.tiles)) {
+    if ((def.tags ?? []).includes(tag)) mass += def.weight ?? 1
   }
+  byTag.set(tag, mass)
+  return mass
+}
+
+// Observed count for placing `tileName` next to the decided neighbor `nb`
+// ({ dir, skin } where skin is the neighbor's tile name).
+//
+// A tile the painting covered carries its own exact per-sprite table, and that
+// wins outright: an absent entry there is a real "never seen", not a reason to
+// consult the coarser tag table. Without this, sprites sharing a tag are
+// indistinguishable to the scorer — every wall in a 17-sprite `castle.wall` tag
+// scores identically and the pick collapses to weight-only noise.
+//
+// A tile the painting never covered (hand-added in the Draw tab, say) falls back
+// to its tag's table, scaled by the tile's share of the tag so within-tag weights
+// still decide between its siblings.
+export function adjacencyCount(ruleset, tileName, nb) {
+  const perTile = ruleset.tiles?.[tileName]?.neighbors?.[nb.dir]
+  if (perTile) return perTile[nb.skin] ?? 0
+
+  const nbTags = tagsOf(ruleset, nb.skin)
+  let count = 0
+  for (const t of tagsOf(ruleset, tileName)) {
+    const dirMap = ruleset.tags[t]?.adjacency?.[nb.dir]
+    if (!dirMap) continue
+    const mass = tagMass(ruleset, t)
+    const share = mass > 0 ? (ruleset.tiles[tileName]?.weight ?? 1) / mass : 1
+    for (const u of nbTags) count += (dirMap[u] ?? 0) * share
+  }
+  return count
+}
+
+// Multiplicative adjacency score for placing `tileName` given decided neighbors.
+// `alphas` is the per-neighbor smoothing floor, parallel to `neighbors`; callers
+// that know the candidate set size it against the context (see pickByAdjacency),
+// everyone else gets the flat ADJACENCY_ALPHA. Returns 1 (neutral) with no
+// neighbors.
+export function adjacencyScore(ruleset, tileName, neighbors, alphas = null) {
+  let score = 1
+  neighbors.forEach((nb, i) => {
+    score *= adjacencyCount(ruleset, tileName, nb) + (alphas ? alphas[i] : ADJACENCY_ALPHA)
+  })
   return score
 }
 
-// Weighted pick combining each tile's base weight with its adjacency score.
+// Adjacency-weighted pick among `names`.
+//
+// The observed counts are the posterior already: a tile painted often has
+// proportionally larger counts, so they REPLACE `weight` rather than multiply it.
+// Multiplying squared the frequency prior and let a frequently-painted sprite
+// outbid the correct answer in contexts where it had never once appeared.
+// `weight` still decides when the painting is silent about a context.
 export function pickByAdjacency(ruleset, names, neighbors, rng) {
-  const weights = names.map(n =>
-    (ruleset.tiles[n].weight ?? 1) * adjacencyScore(ruleset, n, neighbors))
+  // Per neighbor: how much evidence the painting offers for this context across
+  // the candidate set. Zero mass means it is silent, so that neighbor must not
+  // steer the pick at all — otherwise it multiplies every candidate by the same
+  // floor and only adds rounding noise.
+  const informative = [], alphas = []
+  for (const nb of neighbors) {
+    const mass = names.reduce((s, n) => s + adjacencyCount(ruleset, n, nb), 0)
+    if (mass <= 0) continue
+    informative.push(nb)
+    alphas.push(ADJACENCY_EPSILON * mass / names.length)
+  }
+  if (informative.length === 0) return pickWeighted(ruleset, names, rng)
+
+  const weights = names.map(n => adjacencyScore(ruleset, n, informative, alphas))
   const total = weights.reduce((s, w) => s + w, 0)
-  if (total <= 0) return names[names.length - 1]
+  if (total <= 0) return pickWeighted(ruleset, names, rng)
   let r = rng() * total
   for (let i = 0; i < names.length; i++) {
     r -= weights[i]
@@ -173,6 +236,7 @@ function decorateOverlays(map, ruleset, rng) {
 // Returns the number of dead-end fallbacks (cells a covered role failed on).
 export function decorateMap(map, ruleset, rng = Math.random) {
   if (!ruleset) return 0
+  tagMassCache.delete(ruleset)   // weights may have been edited since the last pass
   let fallbacks = 0
   const byRole = {
     floor: candidatesForRole(ruleset, 'floor'),

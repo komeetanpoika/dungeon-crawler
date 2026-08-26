@@ -10,3 +10,9 @@ export function parseLevelCheat(buffer) {
   const depth = Number(m[1])
   return LEVEL_CONFIG.some(c => c.depth === depth) ? depth : null
 }
+
+// In-game weapon cheat: typing "mauno" equips the Maunonmiekka. Suffix-matched
+// like the level cheat so stray earlier keystrokes don't block it.
+export function parseWeaponCheat(buffer) {
+  return /mauno$/.test(String(buffer).toLowerCase()) ? 'maunonmiekka' : null
+}

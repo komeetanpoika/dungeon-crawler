@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SFX audition</title>
+<style>
+  body { font-family: monospace; background: #1a1a1f; color: #ddd; padding: 20px; max-width: 720px }
+  h1 { font-size: 16px } h2 { font-size: 13px; color: #8af; margin-top: 20px }
+  button { margin: 3px; padding: 6px 10px; background: #2a2a33; color: #ddd; border: 1px solid #444; cursor: pointer }
+  button:hover { background: #3a3a46 }
+  label { display: block; margin: 8px 0 }
+  #hint { color: #888 }
+</style>
+<h1>SFX audition</h1>
+<p id="hint">Click anywhere once to unlock audio, then press buttons. Sliders spatialize the next play.</p>
+<label>Distance (tiles): <input id="dist" type="range" min="0" max="16" value="0" step="0.5"> <span id="distv">0</span></label>
+<label>Horizontal offset (tiles, − left / + right): <input id="dx" type="range" min="-16" max="16" value="0" step="0.5"> <span id="dxv">0</span></label>
+<div id="groups"></div>
+<script type="module">
+  import { makeAudio, playCues, RECIPES, TILE_SIZE } from '/renderer/render/audio.js'
+  import { CUE_NAMES } from '/renderer/systems/sfx.js'
+
+  const audio = makeAudio()
+  const player = { px: 0, py: 0 }
+  const dist = document.getElementById('dist'), dx = document.getElementById('dx')
+  dist.oninput = () => document.getElementById('distv').textContent = dist.value
+  dx.oninput = () => document.getElementById('dxv').textContent = dx.value
+
+  const groups = { combat: [], world: [], ui: [] }
+  for (const name of CUE_NAMES) {
+    const g = name.startsWith('ui-') ? 'ui'
+      : ['pickup','key-pickup','heal','equip','drop','gate-open','door-locked','descend','emerge','stance-switch','talent-learned','rite'].includes(name) ? 'world'
+      : 'combat'
+    groups[g].push(name)
+  }
+  const root = document.getElementById('groups')
+  for (const [title, names] of Object.entries(groups)) {
+    const h = document.createElement('h2'); h.textContent = title; root.append(h)
+    for (const name of names) {
+      const b = document.createElement('button')
+      b.textContent = `${name} (${RECIPES[name].kind})`
+      b.onclick = () => {
+        const dPx = Number(dist.value) * TILE_SIZE
+        const dxPx = Number(dx.value) * TILE_SIZE
+        const dyPx = Math.sqrt(Math.max(0, dPx * dPx - dxPx * dxPx))
+        playCues(audio, [{ name, px: player.px + dxPx, py: player.py + dyPx }], player, false)
+      }
+      root.append(b)
+    }
+  }
+</script>

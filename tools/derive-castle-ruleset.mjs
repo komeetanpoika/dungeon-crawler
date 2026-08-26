@@ -11,7 +11,7 @@ import { deriveRules } from './tile-editor/derive-rules.js'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const MAPS_FILE = join(ROOT, 'renderer/data/painter-maps.json')
 const RULESETS_FILE = join(ROOT, 'renderer/data/rulesets.json')
-const SOURCE_RULESET = 'catacombs'                    // where the painting is stored
+const SOURCE_RULESET = 'castle'                       // where the painting is stored
 const SOURCE_MAP = 'castle-demo-1781607145194'
 const TARGET = 'castle'
 

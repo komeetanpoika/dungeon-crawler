@@ -2,7 +2,11 @@ import { TILE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
-import { WEAPONS } from '../systems/enemy-attack.js'
+import { drawDragonBossPixel } from './dragonboss-pixel.js'
+import { PIXEL_SKIN } from '../systems/dragonboss.js'
+import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
+import { getSwingArc, CHARGE } from '../systems/melee.js'
+import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 
 const TILE_SIZE = 32
 
@@ -118,6 +122,14 @@ export function isFlickerVisible(invulnTimer, interval = 0.06) {
   return Math.floor(invulnTimer / interval) % 2 === 0
 }
 
+// The player's look follows the stance: bare adventurer (or the knight once
+// Might is learned) in melee, the ranger in ranged, the wizard in magic.
+export function playerSpriteKey(player, mode) {
+  if (mode === 'ranged') return 'player_ranged'
+  if (mode === 'magic') return 'player_magic'
+  return (player.talents ?? []).includes('heavy_weapons') ? 'player_melee_heavy' : 'player_base'
+}
+
 export function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'door') {
     const s = sprites[`door_${entity.frame}`]
@@ -167,11 +179,15 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'floating_item') {
     const c = entity.contents
-    if (c.type === 'weapon') {
+    if (c.type === 'weapon' || c.type === 'ranged') {
       const s = sprites[`weapon_${c.weaponType}`]
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
+    } else if (c.type === 'mushroom') {
+      const s = sprites.ow_mushroom
+      if (s) ctx.drawImage(s, px, py, S, S)
+      else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🍄', px + S/2, py + S/2) }
     }
     return
   }
@@ -248,11 +264,38 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     ctx.translate(px + S / 2, py + S)        // pivot at the feet
     ctx.rotate(tilt * Math.PI / 180)
     ctx.scale(flip ? -1 : 1, 1)              // flip handled here, so draw un-flipped below
-    if (sprites.player) ctx.drawImage(sprites.player, -S / 2, -S, S, S)
-    if (entity.weapon && !(entity.attackTimer > 0)) {   // the swing draws it instead
-      const ws = sprites[`weapon_${entity.weapon.weaponType}`]
+    const sw = entity.stanceSwitch
+    if (sw) {
+      // Mid-switch: the old form fades into the new one.
+      const k = Math.min(1, sw.t / sw.dur)
+      const fromS = sprites[playerSpriteKey(entity, sw.from)]
+      const toS = sprites[playerSpriteKey(entity, sw.to)]
+      const prevAlpha = ctx.globalAlpha
+      if (fromS) { ctx.globalAlpha = 1 - k; ctx.drawImage(fromS, -S / 2, -S, S, S) }
+      if (toS) { ctx.globalAlpha = k; ctx.drawImage(toS, -S / 2, -S, S, S) }
+      ctx.globalAlpha = prevAlpha
+    } else {
+      const s = sprites[playerSpriteKey(entity, entity.attackMode)]
+      if (s) ctx.drawImage(s, -S / 2, -S, S, S)
+    }
+    if (!(entity.attackTimer > 0)) {   // the swing animation draws the melee weapon instead
+      // Magic stance: wands channel, blades don't — barehanded without one.
+      const held = entity.attackMode === 'ranged' ? entity.ranged
+        : entity.attackMode === 'magic' ? (entity.ranged?.kind === 'wand' ? entity.ranged : null)
+        : entity.weapon
+      const ws = held && sprites[`weapon_${held.weaponType}`]
       if (ws) drawHeldWeapon(ctx, ws, S)
     }
+    ctx.restore()
+    return
+  }
+  if (entity.type === 'wild_mushroom') {
+    const s = sprites.ow_mushroom
+    const deg = Math.round(((entity.hueT ?? 0) * 60) % 360)
+    ctx.save()
+    ctx.filter = `hue-rotate(${deg}deg) saturate(1.6)`
+    if (s) ctx.drawImage(s, px, py, S, S)
+    else { ctx.font = `${Math.round(S * 0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🍄', px + S / 2, py + S / 2) }
     ctx.restore()
     return
   }
@@ -288,14 +331,51 @@ function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/
 // Per-style default trail tints — the player's original colors.
 const SWING_TINTS = { snap: [255, 230, 80], arc: [180, 180, 255], slash: [150, 220, 255], spin: [255, 140, 50] }
 
+// The drawn swing is derived from the same wedge the hit test uses, as
+// fractions of that wedge's reach: the trail's centreline, its stroke width and
+// the blade tip all stay inside the reach, so nothing ever looks like it should
+// have connected when it didn't.
+const TRAIL_RADIUS = 0.80
+const TRAIL_WIDTH  = 0.24
+const BLADE_TIP    = 0.72
+const SPRITE_LEN   = 0.9    // the weapon tile is drawn 0.9 tiles long, grip to tip
+
+// Where the blade is at swing progress t ∈ [0,1]. Angles are offsets from the
+// facing direction; radius/trailWidth are pixels at a 32px tile. `reachOverride`
+// sizes the swing to a wielder that is not the player — enemy weapons carry
+// their own reach.
+export function swingPose(style, t, reachOverride = null) {
+  const { halfAngle } = getSwingArc(style)
+  const reach = reachOverride ?? getSwingArc(style).reach
+  const pose = {
+    radius: reach * TRAIL_RADIUS,
+    trailWidth: reach * TRAIL_WIDTH,
+    wscale: (reach * BLADE_TIP) / (TILE_SIZE * SPRITE_LEN),
+    from: -halfAngle,
+    angle: 0,
+  }
+  if (style === 'spin') {
+    // Axe: a full whirl, so the sweep is the circle rather than the wedge.
+    pose.from = 0
+    pose.angle = easeInOutCubic(t) * Math.PI * 2
+  } else if (style === 'snap') {
+    // Dagger: flicks out fast, then recoils a touch — a poke, not a sweep.
+    const raw = t < 0.65 ? easeOutCubic(t / 0.65) : 1 - Math.sin((t - 0.65) / 0.35 * Math.PI) * 0.12
+    pose.angle = (raw * 2 - 1) * halfAngle
+  } else {
+    // Sword/longsword: sweep the whole wedge, fast out of the windup.
+    pose.angle = (easeOutCubic(t) * 2 - 1) * halfAngle
+  }
+  return pose
+}
+
 // Shared swing core: rotates a weapon sprite (or draws natural-attack marks)
 // around (cx, cy) with a colored arc trail. t ∈ [0,1] is swing progress.
-// opts: { baseAngle, tint: [r,g,b], scale, marks: 'claw'|'pincer'|null }
+// opts: { baseAngle, tint: [r,g,b], reach, marks: 'claw'|'pincer'|null }
 function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
   const alpha = t < 0.8 ? 1 : 1 - (t - 0.8) / 0.2
   const base = opts.baseAngle ?? 0
   const [r, g, b] = opts.tint ?? SWING_TINTS[style] ?? [200, 200, 200]
-  const scale = opts.scale ?? 1
 
   function trail(a0, a1, radius, width) {
     const lo = Math.min(a0, a1), hi = Math.max(a0, a1)
@@ -303,7 +383,7 @@ function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
     ctx.save()
     ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.4})`
     ctx.lineWidth = width; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.arc(cx, cy, radius * scale, lo, hi); ctx.stroke()
+    ctx.beginPath(); ctx.arc(cx, cy, radius, lo, hi); ctx.stroke()
     ctx.restore()
   }
 
@@ -311,8 +391,10 @@ function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
     ctx.save()
     ctx.translate(cx, cy)
     ctx.rotate(angle)
-    ctx.rotate(-Math.PI / 2)   // orient so blade points outward along the arm
-    ctx.scale(wscale * scale, wscale * scale)
+    // Weapon tiles are drawn tip-up, so a +90° turn points the blade along the
+    // swing angle — outward along the arm, not back over the shoulder.
+    ctx.rotate(Math.PI / 2)
+    ctx.scale(wscale, wscale)
     ctx.globalAlpha = alpha
     if (ws) {
       ctx.drawImage(ws, -S/2, -S * 0.9, S, S)
@@ -337,71 +419,90 @@ function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
     ctx.restore()
   }
 
-  if (style === 'snap') {
-    // Dagger/claw: fast 90° snap with slight overshoot
-    const raw = t < 0.65
-      ? easeOutCubic(t / 0.65)
-      : 1 + Math.sin((t - 0.65) / 0.35 * Math.PI) * 0.22
-    const angle = base + (raw - 0.5) * (Math.PI / 2)
-    trail(base - Math.PI/4, angle, S * 0.8, 7)
-    weapon(angle, 0.85)
+  const pose = swingPose(style, t, opts.reach)
+  const R = pose.radius * S / TILE_SIZE
+  const W = pose.trailWidth * S / TILE_SIZE
 
-  } else if (style === 'arc') {
-    // Sword: 140° side-to-side sweep
-    const sweep = (easeOutCubic(t) * 2 - 1) * (Math.PI * 70/180)
-    const angle = base + sweep
-    trail(base - Math.PI*70/180, angle, S * 1.3, 11)
-    weapon(angle)
-
-  } else if (style === 'slash') {
-    // Longsword/club: overhead slam from –162° to +18°
-    const startA = base - Math.PI * 0.9
-    const endA   = base + Math.PI * 0.1
-    const angle  = startA + easeOutCubic(t) * (endA - startA)
-    trail(startA, angle, S * 1.55, 14)
-    weapon(angle, 1.25)
-
-  } else if (style === 'spin') {
-    // Axe: full 360° spin with fading trail
-    const angle = base + easeInOutCubic(t) * Math.PI * 2
+  if (style === 'spin') {
+    // Axe: full 360° whirl with a fading trail smeared inside the reach
     for (let i = 2; i >= 0; i--) {
       const ta = Math.max(0, t - i * 0.07)
-      trail(base, base + easeInOutCubic(ta) * Math.PI * 2, S + i * 5, 13 - i * 3)
+      trail(base, base + swingPose(style, ta, opts.reach).angle, R - i * 4, W - i * 3)
     }
-    weapon(angle, 1.15)
+  } else {
+    trail(base + pose.from, base + pose.angle, R, W)
   }
+  weapon(base + pose.angle, pose.wscale)
 }
 
-function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
+export function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   if (!(player.attackTimer > 0) || !(player.attackDuration > 0)) return
   const t = 1 - player.attackTimer / player.attackDuration
   const base = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.attackFacing] ?? 0
   const ws = sprites[`weapon_${player.weapon?.weaponType}`]
-  drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base })
+  const reach = getSwingArc(player.attackStyle).reach * (player.attackReachMul ?? 1)
+  drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base, reach })
 }
 
-// Per-weapon enemy swing presentation (tint/scale on top of the shared core).
+// Dizzy orbit over a stunned enemy: three pale dots circling, phase driven
+// by the stun timer so no wall clock is needed.
+function drawStunStars(ctx, cx, cy, t) {
+  ctx.save()
+  ctx.fillStyle = '#fde68a'
+  for (let i = 0; i < 3; i++) {
+    const a = t * 6 + i * (Math.PI * 2 / 3)
+    ctx.beginPath()
+    ctx.arc(cx + Math.cos(a) * 8, cy + Math.sin(a) * 3, 2, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
+// Wind-up ring: fills while a charge weapon is held, stepping colour at each
+// release tier — white (tap), gold (full swing), red (overcharged).
+export function drawChargeRing(ctx, player, camX, camY) {
+  const c = CHARGE[player.weapon?.weaponType]
+  if (!c || !player.charging) return
+  const t = player.charging.t
+  const frac = Math.min(1, t / c.over)
+  const color = t >= c.over ? '#e5484d' : t >= c.full ? '#f5a524' : '#e6e8e3'
+  ctx.save()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 3
+  ctx.globalAlpha = 0.9
+  ctx.beginPath()
+  ctx.arc(player.px - camX, player.py - camY, 14, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
+  ctx.stroke()
+  if (frac >= 1) {   // fully wound: a faint pulse so "ready" reads at a glance
+    ctx.globalAlpha = 0.35
+    ctx.beginPath()
+    ctx.arc(player.px - camX, player.py - camY, 17, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+// Per-weapon enemy swing presentation: which art to use, in what colour. How
+// big it is drawn is not a choice here — that comes from the weapon's reach.
 const ENEMY_SWING = {
-  sword:       { spriteKey: 'weapon_sword', tint: [180, 180, 255], scale: 1 },
-  club:        { spriteKey: 'weapon_club',  tint: [255, 170, 60],  scale: 1.3 },
-  claw:        { marks: 'claw',   tint: [220, 220, 200], scale: 1 },
-  dragon_claw: { marks: 'claw',   tint: [255, 150, 60],  scale: 1.4 },
-  pincer:      { marks: 'pincer', tint: [255, 90, 90],   scale: 1 },
+  sword:       { spriteKey: 'weapon_sword', tint: [180, 180, 255] },
+  club:        { spriteKey: 'weapon_club',  tint: [255, 170, 60] },
+  claw:        { marks: 'claw',   tint: [220, 220, 200] },
+  dragon_claw: { marks: 'claw',   tint: [255, 150, 60] },
+  pincer:      { marks: 'pincer', tint: [255, 90, 90] },
 }
 
-// Where each swing style starts, relative to its base angle — the windup pose
-// holds the weapon there so the telegraph shows where the swing will come from.
-const SWING_START = { snap: -Math.PI / 4, arc: -Math.PI * 70/180, slash: -Math.PI * 0.9, spin: 0 }
-
-function drawWindupPose(ctx, cx, cy, ws, baseAngle, style, k, S, cfg) {
+function drawWindupPose(ctx, cx, cy, ws, baseAngle, style, k, S, cfg, reach) {
   const quiver = Math.sin(Date.now() * 0.04) * 0.08 * k
-  const angle = baseAngle + (SWING_START[style] ?? -Math.PI / 2) + quiver
-  const scale = cfg.scale ?? 1
+  // Hold the weapon where the swing will start, so the telegraph shows the
+  // side the blow is coming from — at the size it will strike at.
+  const pose = swingPose(style, 0, reach)
+  const angle = baseAngle + pose.from + quiver
   ctx.save()
   ctx.translate(cx, cy)
   ctx.rotate(angle)
-  ctx.rotate(-Math.PI / 2)
-  ctx.scale(scale, scale)
+  ctx.rotate(Math.PI / 2)
+  ctx.scale(pose.wscale, pose.wscale)
   ctx.globalAlpha = 0.55 + 0.45 * k
   if (ws) {
     ctx.drawImage(ws, -S/2, -S * 0.9, S, S)
@@ -420,15 +521,18 @@ export function drawEnemySwing(ctx, e, sprites, camX, camY, S) {
   const a = e.attack
   if (!a) return
   const cfg = ENEMY_SWING[a.weaponId] ?? {}
-  const style = WEAPONS[a.weaponId]?.style ?? 'arc'
+  // The wielder's own weapon, so per-entity weaponOverrides show up on screen.
+  const w = getEnemyWeapon(e) ?? WEAPONS[a.weaponId] ?? {}
+  const style = w.style ?? 'arc'
   const cx = e.px - camX, cy = e.py - camY
   const ws = cfg.spriteKey ? sprites[cfg.spriteKey] : null
   const k = a.duration > 0 ? 1 - a.timer / a.duration : 1
   if (a.phase === 'windup') {
-    drawWindupPose(ctx, cx, cy, ws, a.angle, style, k, S, cfg)
+    drawWindupPose(ctx, cx, cy, ws, a.angle, style, k, S, cfg, w.reach)
     return
   }
-  drawSwing(ctx, cx, cy, ws, style, k, S, { baseAngle: a.angle, tint: cfg.tint, scale: cfg.scale, marks: cfg.marks })
+  drawSwing(ctx, cx, cy, ws, style, k, S,
+    { baseAngle: a.angle, tint: cfg.tint, marks: cfg.marks, reach: w.reach })
 }
 
 const FIRE_PAL = [
@@ -613,9 +717,68 @@ function drawCyclopsEffects(ctx, cyclops, camX, camY) {
   }
 }
 
+// The seven-wizard rite: white-robed figures on a ring, chant glyphs, and
+// beams converging on the (possibly levitating) player. All positions and
+// alphas come pre-computed in fx (systems/rites.js riteVisuals); target is
+// the player's ground-anchored center in world px.
+export function drawRiteCeremony(ctx, fx, camX, camY, S, wizardSprite, target) {
+  const wizards = fx?.wizards ?? []
+  if (!wizards.length) return
+  const lift = fx.lift ?? 0
+  const tx = target.px - camX
+  const ty = target.py - lift - camY
+
+  // Ground shadow stays behind while the player rises
+  if (lift > 0) {
+    ctx.save()
+    ctx.globalAlpha = 0.3 * (1 - lift / 60)
+    ctx.fillStyle = '#000'
+    ctx.beginPath()
+    ctx.ellipse(target.px - camX, target.py - camY + S * 0.4, S * 0.35, S * 0.12, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  ctx.save()
+  for (const w of wizards) {
+    if (w.beam > 0) {
+      const wx = w.px - camX, wy = w.py - camY
+      ctx.lineCap = 'round'
+      ctx.globalAlpha = 0.25 * w.beam
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 6
+      ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(tx, ty); ctx.stroke()
+      ctx.globalAlpha = 0.9 * w.beam
+      ctx.strokeStyle = '#fef3c7'
+      ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(tx, ty); ctx.stroke()
+    }
+  }
+  for (const w of wizards) {
+    ctx.globalAlpha = w.alpha
+    ctx.drawImage(wizardSprite, Math.round(w.px - S / 2 - camX), Math.round(w.py - S / 2 - camY), S, S)
+  }
+  ctx.font = 'bold 15px serif'
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#f8fafc'
+  for (const g of fx.glyphs ?? []) {
+    ctx.globalAlpha = g.alpha
+    ctx.fillText(g.char, Math.round(g.px - camX), Math.round(g.py - camY))
+  }
+  ctx.restore()
+}
+
 export function shakeOffset(shake) {
   if (!shake || shake <= 0) return { x: 0, y: 0 }
   return { x: (Math.random() * 2 - 1) * shake, y: (Math.random() * 2 - 1) * shake }
+}
+
+// Boss skins pick a renderer, nothing else: type, AI, hitboxes and damage are
+// shared, so an unknown skin must still draw the real boss rather than nothing.
+export function drawBossBySkin(ctx, e, camX, camY, S, sprites,
+                               impl = { vector: drawDragonBoss, pixel: drawDragonBossPixel }) {
+  if (e.skin === PIXEL_SKIN) impl.pixel(ctx, e, camX, camY, S, sprites)
+  else impl.vector(ctx, e, camX, camY, S)
 }
 
 export class Renderer {
@@ -624,6 +787,8 @@ export class Renderer {
     this.ctx = canvas.getContext('2d')
     this.ctx.imageSmoothingEnabled = false
     this.S = TILE_SIZE
+    this.viewW = canvas.width
+    this.viewH = canvas.height
     this.camX = 0
     this.camY = 0
     this.debug = false
@@ -634,28 +799,56 @@ export class Renderer {
     this.sprites = await loadSprites(extraNames)
   }
 
+  // Rite wizards wear white: the enemy wizard sprite desaturated and
+  // brightened once into an offscreen canvas. Falls back to the plain
+  // sprite where offscreen canvases or filters are unavailable.
+  whiteWizardSprite() {
+    if (this._whiteWizard === undefined) {
+      this._whiteWizard = null
+      const src = this.sprites.wizard
+      try {
+        const c = document.createElement('canvas')
+        c.width = src.width
+        c.height = src.height
+        const cx = c.getContext('2d')
+        cx.imageSmoothingEnabled = false
+        cx.filter = 'saturate(0) brightness(1.7)'
+        cx.drawImage(src, 0, 0)
+        this._whiteWizard = c
+      } catch { /* keep the fallback */ }
+    }
+    return this._whiteWizard ?? this.sprites.wizard
+  }
+
   resize() {
-    this.canvas.width = this.canvas.offsetWidth
-    this.canvas.height = this.canvas.offsetHeight
+    // Backing store at devicePixelRatio for crisp rendering; all camera/view
+    // math stays in logical CSS pixels via viewW/viewH.
+    const dpr = globalThis.devicePixelRatio ?? 1
+    this.viewW = this.canvas.offsetWidth
+    this.viewH = this.canvas.offsetHeight
+    this.canvas.width = Math.round(this.viewW * dpr)
+    this.canvas.height = Math.round(this.viewH * dpr)
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     this.ctx.imageSmoothingEnabled = false
   }
 
-  updateCamera(player, shake = 0) {
+  updateCamera(player, shake = 0, fx = null) {
     const px = player.px ?? (player.x * this.S + this.S / 2)
     const py = player.py ?? (player.y * this.S + this.S / 2)
     const o = shakeOffset(shake)
-    this.camX = px - this.canvas.width / 2 + o.x
-    this.camY = py - this.canvas.height / 2 + o.y
+    this.camX = px - this.viewW / 2 + o.x
+    this.camY = py - this.viewH / 2 + o.y
+    if (fx) { this.camX += fx.wobbleX; this.camY += fx.wobbleY }
   }
 
-  render(state) {
+  render(state, fx = null) {
     const { ctx, S, camX, camY, sprites } = this
     const { map, entities: rawEntities, player } = state
     const entities = rawEntities ?? []
 
     if (!map || !map.length || !map[0]) return
     if (!player) return
-    const W = this.canvas.width, H = this.canvas.height
+    const W = this.viewW, H = this.viewH
     if (W === 0 || H === 0) return
 
     const theme = state.theme ?? { bgColor: '#000', tint: null, fogAlpha: 0.65 }
@@ -694,12 +887,20 @@ export class Renderer {
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
-      if (e.type === 'dragon_boss') drawDragonBoss(ctx, e, camX, camY, S)
+      if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
       else drawEntity(ctx, e, epx, epy, S, sprites)
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
+      if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
     }
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
-    const ppy = player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)
+    const lift = Math.round(fx?.lift ?? 0)
+    const ppy = (player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)) - lift
+    if (fx?.wizards?.length) {
+      drawRiteCeremony(ctx, fx, camX, camY, S, this.whiteWizardSprite(), {
+        px: player.px ?? player.x * S + S / 2,
+        py: player.py ?? player.y * S + S / 2,
+      })
+    }
     if (isFlickerVisible(player.invulnTimer)) drawEntity(ctx, player, ppx, ppy, S, sprites)
     if (player.grabbed) {
       ctx.save()
@@ -708,19 +909,85 @@ export class Renderer {
       ctx.fillRect(ppx, ppy, S, S)
       ctx.restore()
     }
+    if (fx && fx.greenAlpha > 0) {
+      ctx.save()
+      ctx.globalAlpha = Math.min(0.6, fx.greenAlpha * 1.6)
+      ctx.fillStyle = '#4ade80'
+      ctx.fillRect(ppx, ppy, S, S)
+      ctx.restore()
+    }
     drawMeleeSwing(ctx, player, sprites, camX, camY, S)
+    drawChargeRing(ctx, player, camX, camY)
     const dragon = entities.find(e => e.type === 'dragon')
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     const cyclops = entities.find(e => e.type === 'cyclops')
     if (cyclops) drawCyclopsEffects(ctx, cyclops, camX, camY)
     drawHealthBars(ctx, entities, map, camX, camY, S)
 
-    // Draw projectiles
+    // Draw projectiles. Arrows are elongated along their travel axis;
+    // wand bolts and enemy shots stay 4x4 squares.
     for (const p of state.projectiles ?? []) {
       const bpx = Math.round(p.px - camX)
       const bpy = Math.round(p.py - camY)
       ctx.fillStyle = p.color ?? '#facc15'
-      ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
+      if (p.shape === 'arrow') {
+        if (Math.abs(p.dx) >= Math.abs(p.dy)) ctx.fillRect(bpx - 4, bpy - 1, 8, 2)
+        else ctx.fillRect(bpx - 1, bpy - 4, 2, 8)
+      } else {
+        ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
+      }
+    }
+
+    // Rite ceremony: blur the finished frame onto itself, wash it green.
+    if (fx && (fx.blur > 0 || fx.greenAlpha > 0)) {
+      if (fx.blur > 0) {
+        ctx.save()
+        ctx.filter = `blur(${fx.blur.toFixed(1)}px)`
+        ctx.drawImage(this.canvas, 0, 0, this.canvas.width, this.canvas.height, 0, 0, this.viewW, this.viewH)
+        ctx.restore()
+      }
+      if (fx.greenAlpha > 0) {
+        ctx.fillStyle = `rgba(74, 222, 128, ${fx.greenAlpha})`
+        ctx.fillRect(0, 0, this.viewW, this.viewH)
+      }
+    }
+
+    // Fireball zones: flickering flames per burning tile. Deterministic
+    // flicker seeded by zone age + tile coords (no wall-clock), fading over
+    // the final 0.7 s of the zone's 3 s life.
+    for (const z of state.fireZones ?? []) {
+      const fade = Math.max(0, Math.min(1, (3.0 - z.age) / 0.7))
+      for (const t of z.tiles) {
+        const fx = Math.round(t.x * S - camX), fy = Math.round(t.y * S - camY)
+        const phase = z.age * 10 + t.x * 7 + t.y * 13
+        const flick = 0.75 + 0.25 * Math.sin(phase)
+        ctx.save()
+        ctx.globalAlpha = 0.35 * fade * flick
+        ctx.fillStyle = '#ef4444'
+        ctx.fillRect(fx + 2, fy + 2, S - 4, S - 4)
+        ctx.globalAlpha = 0.7 * fade * flick
+        ctx.fillStyle = '#f97316'
+        const h = S * 0.5 * (0.7 + 0.3 * Math.sin(phase * 1.7))
+        ctx.fillRect(fx + 6, fy + S - 6 - h, S - 12, h)
+        ctx.globalAlpha = 0.8 * fade
+        ctx.fillStyle = '#fbbf24'
+        const h2 = S * 0.28 * (0.7 + 0.3 * Math.sin(phase * 2.3 + 1))
+        ctx.fillRect(fx + 10, fy + S - 6 - h2, S - 20, h2)
+        ctx.restore()
+      }
+    }
+
+    // Maunonmiekka shockwaves: expanding crimson rings that fade out
+    for (const w of state.shockwaves ?? []) {
+      const k = Math.min(1, w.t / w.dur)
+      ctx.save()
+      ctx.strokeStyle = w.color ?? '#dc2626'
+      ctx.lineWidth = 3
+      ctx.globalAlpha = Math.max(0, 1 - k)
+      ctx.beginPath()
+      ctx.arc(w.px - camX, w.py - camY, w.maxRadius * k, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
     }
 
     if (state.hitEffects?.length > 0) {
@@ -730,7 +997,93 @@ export class Renderer {
       }
     }
 
+    this._drawFeedback(state)
+
     if (this.debug) this._drawDebug(state, c0, c1, r0, r1)
+  }
+
+  // Prominent message layer: rising damage/heal numbers, one speech/thought
+  // bubble above the player, and a centered banner for milestone events.
+  _drawFeedback(state) {
+    const { ctx, camX, camY } = this
+    const fb = state.feedback
+    if (!fb) return
+    if (fb.floats.length) {
+      ctx.save()
+      ctx.font = 'bold 13px monospace'
+      ctx.textAlign = 'center'
+      const COLORS = { taken: '#ef4444', dealt: '#f8fafc', heal: '#4ade80' }
+      for (const f of fb.floats) {
+        const k = f.t / FLOAT_DUR
+        const x = Math.round(f.px - camX), y = Math.round(f.py - camY - 14 - k * 22)
+        ctx.globalAlpha = Math.max(0, k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4)
+        ctx.lineWidth = 3
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)'
+        ctx.strokeText(f.text, x, y)
+        ctx.fillStyle = COLORS[f.kind] ?? '#fff'
+        ctx.fillText(f.text, x, y)
+      }
+      ctx.restore()
+    }
+    if (fb.bubble) this._drawBubble(state.player, fb.bubble)
+    if (fb.banner) this._drawBanner(fb.banner)
+  }
+
+  _drawBubble(player, b) {
+    const { ctx, camX, camY, viewW } = this
+    const px = Math.round(player.px - camX), py = Math.round(player.py - camY)
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.12, (BUBBLE_DUR - b.t) / 0.3))
+    ctx.font = '12px monospace'
+    const lines = ['']
+    for (const w of b.text.split(' ')) {
+      const cand = lines.at(-1) ? lines.at(-1) + ' ' + w : w
+      if (ctx.measureText(cand).width > 190 && lines.at(-1)) lines.push(w)
+      else lines[lines.length - 1] = cand
+    }
+    const padX = 8, lh = 15
+    const bw = Math.ceil(Math.max(...lines.map(l => ctx.measureText(l).width))) + padX * 2
+    const bh = lines.length * lh + 11
+    const tailY = py - 34
+    const bx = Math.max(4, Math.min(px - (bw >> 1), viewW - bw - 4))
+    const by = tailY - bh
+    ctx.fillStyle = 'rgba(250,250,245,0.95)'
+    ctx.strokeStyle = '#1c1917'
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill(); ctx.stroke()
+    if (b.kind === 'speech') {
+      ctx.beginPath()
+      ctx.moveTo(px - 5, tailY - 1); ctx.lineTo(px + 6, tailY - 1); ctx.lineTo(px, tailY + 7)
+      ctx.closePath(); ctx.fill(); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(px - 4, tailY - 1); ctx.lineTo(px + 5, tailY - 1); ctx.stroke()
+    } else {
+      for (const [r, dy] of [[3, 4], [2, 10]]) {
+        ctx.beginPath(); ctx.arc(px, tailY + dy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      }
+    }
+    ctx.fillStyle = '#1c1917'
+    ctx.textAlign = 'center'
+    lines.forEach((l, i) => ctx.fillText(l, bx + (bw >> 1), by + (i + 1) * lh - 1))
+    ctx.restore()
+  }
+
+  _drawBanner(b) {
+    const { ctx, viewW } = this
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.2, (BANNER_DUR - b.t) / 0.4))
+    ctx.font = 'bold 16px monospace'
+    const bw = Math.ceil(ctx.measureText(b.text).width) + 36
+    const bh = 40
+    const bx = Math.round((viewW - bw) / 2), by = 56
+    ctx.fillStyle = 'rgba(12,12,18,0.88)'
+    ctx.strokeStyle = '#b89030'
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 4); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#f5f0e6'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(b.text, bx + bw / 2, by + bh / 2)
+    ctx.restore()
   }
 
   _drawDebug(state, c0, c1, r0, r1) {

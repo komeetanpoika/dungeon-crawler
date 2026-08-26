@@ -62,11 +62,19 @@ describe('updateDragonBoss facing', () => {
     e.attackCooldown = 999   // prevent attacks; stomp is now the boss's pursuit behaviour
     const player = mkPlayer(10*T, 16*T)           // due south — boss pursues and tracks
     const state = mkState(e, player)
+    const southAngle = Math.atan2(player.py - e.py, player.px - e.px)  // player is due south and never moves
+    const initialGap = Math.abs(southAngle - e.facing)
     for (let i = 0; i < 120; i++) updateDragonBoss(e, state, 1/60)  // 2s
-    // Boss may have stomped toward the player; check it is facing wherever the player
-    // now is from the boss's final position (intent: facing converges on the player).
-    const expectedFacing = Math.atan2(player.py - e.py, player.px - e.px)
-    assert.ok(Math.abs(e.facing - expectedFacing) < 0.2, `facing should approach player direction, got ${e.facing} vs expected ${expectedFacing}`)
+    // The turn rate is deliberately slow (0.25 rad/s — flanking the rear arc must be
+    // possible), so 2s closes only ~0.5 rad. Assert steady progress toward the player,
+    // not convergence: the gap must have shrunk by roughly TURN_RATE * 2s. Compare
+    // against the fixed south direction rather than recomputing atan2 from the boss's
+    // post-stomp position — pursuit (A* or the old greedy step) can leave the boss a
+    // few px off the exact column via tile-centre snapping, which side depends on the
+    // stepping algorithm and adds quantization noise unrelated to turn-rate correctness.
+    const finalGap = Math.abs(southAngle - e.facing)
+    assert.ok(finalGap < initialGap, `facing should move toward player direction, gap ${initialGap} -> ${finalGap}`)
+    assert.ok(initialGap - finalGap > 0.4, `expected ~0.5 rad of progress over 2s, got ${initialGap - finalGap}`)
   })
 })
 
@@ -151,9 +159,21 @@ describe('grid-stomp locomotion', () => {
     boss.state = 'stomp'; boss.stepTimer = 0; boss.stepFrom = null
     const player = mkPlayer(20 * 32 + 16, 10 * 32 + 16)  // due east, far
     const state = mkState(boss, player)
-    const startX = boss.px
-    for (let i = 0; i < 80; i++) updateDragonBoss(boss, state, 0.05)  // ~4s
-    assert.ok(boss.px > startX, 'expected the boss to advance east toward the player')
+    const startX = boss.px, startY = boss.py
+    // Drive until the step COMPLETES, never for a fixed number of frames.
+    // Math.random() in the attack scheduler (sweep-vs-cone, and the 1.2-1.8s
+    // attackCooldown) shifts when steps start, so a fixed frame count samples
+    // the boss mid-step ~2.5% of the time — and mid-step px is eased between
+    // tile centres, so the assertion below fails. footfall is the one-frame
+    // pulse raised on a completed step, at which point px IS the destination.
+    let stepped = false
+    for (let i = 0; i < 400 && !stepped; i++) {
+      updateDragonBoss(boss, state, 0.05)
+      if (boss.footfall) stepped = true
+    }
+    assert.ok(stepped, 'expected the boss to complete a stomp step within 20s')
+    assert.equal(boss.px - startX, 32, 'expected to advance exactly one tile east')
+    assert.equal(boss.py, startY, 'expected no y drift — the player is due east')
     // landed on a tile centre (…*32 + 16)
     assert.equal(((boss.px - 16) % 32 + 32) % 32, 0, 'expected to land on a tile centre x')
   })

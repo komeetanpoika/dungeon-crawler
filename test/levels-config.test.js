@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES } from '../renderer/data/levels.js'
+import { LEVEL_CONFIG, FINAL_DEPTH, DEPTH_THEMES, OVERWORLD_DEPTH } from '../renderer/data/levels.js'
+import { WORLD_W, WORLD_H } from '../renderer/systems/overworld.js'
 
 describe('LEVEL_CONFIG (5-level run)', () => {
   it('has 5 playable levels (depths 1..5) plus the depth-0 debug arena', () => {
@@ -57,13 +58,18 @@ describe('boss test arena (depth 0)', () => {
   })
 })
 
-describe('castle test level (depth 6)', () => {
-  it('has a depth-6 config beyond FINAL_DEPTH (cheat-only sandbox)', () => {
+describe('overworld (depth 6)', () => {
+  it('sizes the depth-6 slot for the overworld, outside normal progression', () => {
     const cfg = LEVEL_CONFIG.find(c => c.depth === 6)
     assert.ok(cfg, 'depth-6 config exists')
-    assert.ok(cfg.depth > FINAL_DEPTH, 'stays outside normal progression')
-    assert.deepEqual([cfg.mapW, cfg.mapH], [40, 26])
-    assert.equal(cfg.landmark, null)
+    assert.ok(cfg.depth > FINAL_DEPTH, 'stays outside the 1..5 run')
+    // Was a 40x26 castle-ruleset sandbox; the overworld reuses the slot.
+    assert.deepEqual([cfg.mapW, cfg.mapH], [WORLD_W, WORLD_H])
+    assert.equal(cfg.landmark, null, 'the overworld places its own landmarks')
+  })
+
+  it('is the depth OVERWORLD_DEPTH names', () => {
+    assert.equal(OVERWORLD_DEPTH, 6)
   })
 
   it('themes depth 6 with the castle ruleset', () => {

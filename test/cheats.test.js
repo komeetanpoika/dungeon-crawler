@@ -17,10 +17,13 @@ describe('parseLevelCheat', () => {
     assert.equal(parseLevelCheat('level6'), 6)
   })
 
+  it('accepts the adventure chain, level7 through level15', () => {
+    for (let d = 7; d <= 15; d++) assert.equal(parseLevelCheat(`level${d}`), d)
+  })
+
   it('ignores depths with no LEVEL_CONFIG entry', () => {
-    assert.equal(parseLevelCheat('level7'), null)
-    assert.equal(parseLevelCheat('level9'), null)
-    assert.equal(parseLevelCheat('level10'), null)
+    assert.equal(parseLevelCheat('level16'), null)
+    assert.equal(parseLevelCheat('level20'), null)
   })
 
   it('returns null for partial or empty input', () => {
@@ -35,5 +38,15 @@ describe('parseLevelCheat', () => {
 
   it('is case-insensitive', () => {
     assert.equal(parseLevelCheat('LEVEL4'), 4)
+  })
+})
+
+describe('parseWeaponCheat', () => {
+  it('matches the mauno suffix regardless of earlier keystrokes', async () => {
+    const { parseWeaponCheat } = await import('../renderer/systems/cheats.js')
+    assert.equal(parseWeaponCheat('xxmauno'), 'maunonmiekka')
+    assert.equal(parseWeaponCheat('MAUNO'), 'maunonmiekka')
+    assert.equal(parseWeaponCheat('maun'), null)
+    assert.equal(parseWeaponCheat('level3'), null)
   })
 })

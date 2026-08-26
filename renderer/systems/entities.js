@@ -18,8 +18,33 @@ export const DRAGON_STATE = { SLEEPING: 'sleeping', STIRRING: 'stirring', AWAKE:
 export const WEAPON_TYPES = {
   dagger:    { name: 'Dagger',    damage: 1 },
   sword:     { name: 'Sword',     damage: 2 },
-  longsword: { name: 'Longsword', damage: 3 },
-  axe:       { name: 'Axe',       damage: 4 },
+  longsword: { name: 'Longsword', damage: 3, heavy: true },
+  axe:       { name: 'Axe',       damage: 4, heavy: true },
+  // The most powerful sword in the game (cheat-only for now: type "mauno" in
+  // a run). On-hit crimson shockwave lives in systems/shockwave.js.
+  maunonmiekka: { name: 'Maunonmiekka', damage: 10 },
+}
+
+// Projectile weapons — looted from chests, never a starting item. `ammo`
+// depletes per shot and is only refilled by picking up a new weapon.
+// `kind` drives projectile rendering (arrows are elongated, wand bolts square).
+export const RANGED_WEAPON_TYPES = {
+  shortbow:  { name: 'Shortbow',   damage: 2, maxAmmo: 12, cooldown: 0.6,  color: '#facc15', kind: 'bow' },
+  longbow:   { name: 'Longbow',    damage: 3, maxAmmo: 10, cooldown: 0.7,  color: '#facc15', kind: 'bow' },
+  sparkwand: { name: 'Spark Wand', damage: 2, maxAmmo: 16, cooldown: 0.45, color: '#22d3ee', kind: 'wand' },
+  stormwand: { name: 'Storm Wand', damage: 5, maxAmmo: 6,  cooldown: 0.8,  color: '#a78bfa', kind: 'wand' },
+  firewand:  { name: 'Fireball Wand', damage: 4, maxAmmo: 5,  cooldown: 1.0,  color: '#f97316', kind: 'wand', explodes: true },
+}
+
+export function makeRangedContents(weaponType = 'shortbow') {
+  const wt = RANGED_WEAPON_TYPES[weaponType] ? weaponType : 'shortbow'
+  const def = RANGED_WEAPON_TYPES[wt]
+  return {
+    type: 'ranged', weaponType: wt, name: def.name, damage: def.damage,
+    ammo: def.maxAmmo, maxAmmo: def.maxAmmo, cooldown: def.cooldown,
+    color: def.color, kind: def.kind,
+    ...(def.explodes ? { explodes: true } : {}),
+  }
 }
 
 export function isWalkable(tileId, tileObj = null) {
@@ -27,15 +52,27 @@ export function isWalkable(tileId, tileObj = null) {
   return tileId !== TILE.WALL && tileId !== TILE.COLUMN
 }
 
+// A sight line may pass through this many foliage cells (losSoft) before it
+// is blocked; cells flagged losClear (open water) never block. Both flags are
+// stamped by buildOpenMap — dungeon tiles carry neither, so dungeon LOS is
+// unchanged.
+export const LOS_TREE_BUDGET = 2
+
 export function hasLineOfSight(map, y1, x1, y2, x2) {
   const dy = y2 - y1, dx = x2 - x1
   const steps = Math.max(Math.abs(dy), Math.abs(dx))
   if (steps === 0) return true
+  let soft = 0
   for (let i = 1; i <= steps; i++) {
     const y = Math.round(y1 + (dy * i) / steps)
     const x = Math.round(x1 + (dx * i) / steps)
     if (y === y2 && x === x2) break
-    if (!map[y]?.[x] || !isWalkable(map[y][x].tile, map[y][x])) return false
+    const t = map[y]?.[x]
+    if (!t) return false
+    if (isWalkable(t.tile, t)) continue
+    if (t.losClear) continue                            // open water: see across
+    if (t.losSoft && ++soft <= LOS_TREE_BUDGET) continue // foliage: shallow only
+    return false
   }
   return true
 }
@@ -93,9 +130,10 @@ export function makePlayer(x, y, bonuses = []) {
   return {
     type: 'player', x, y,
     hp: 10, maxHp: 10,
-    inventory: [], maxInventory: 5 + extraSlots,
+    inventory: [], maxInventory: 10 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
-    bonuses, weapon: null,
+    bonuses, weapon: null, ranged: null, attackMode: 'melee', talents: [],
+    mana: 4, manaRegenT: 0, magicCooldown: 0,   // gust unlocks via the magic_stance talent
   }
 }
 
@@ -129,7 +167,7 @@ export function makeDragon(x, y, roomId) {
 
 export function makeWeapon(x, y, weaponType = 'dagger') {
   const def = WEAPON_TYPES[weaponType] ?? WEAPON_TYPES.dagger
-  return { type: 'weapon', x, y, weaponType, name: def.name, damage: def.damage }
+  return { type: 'weapon', x, y, weaponType, name: def.name, damage: def.damage, ...(def.heavy && { heavy: true }) }
 }
 
 export function makePotion(x, y, amount = 4) {
