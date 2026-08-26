@@ -1,9 +1,10 @@
-// Mobile touch layer: floating joystick + action buttons. Emits synthetic
-// KeyboardEvents on window so the game's existing key listeners and keys{}
-// map work unchanged. Self-gating: does nothing on fine-pointer devices.
+// Mobile touch layer: fixed thumbstick + diamond action cluster + start/
+// select pills. Emits synthetic KeyboardEvents on window so the game's
+// existing key listeners and keys{} map work unchanged. Self-gating: does
+// nothing on fine-pointer devices.
 import { joystickDirs, diffDirs } from './touch-input.js'
 
-const NUB_RADIUS = 34   // px the nub may travel from the anchor
+const NUB_RADIUS = 34   // px the nub may travel from the stick center
 
 function initTouchControls() {
   if (!matchMedia('(pointer: coarse)').matches) return
@@ -20,12 +21,13 @@ function initTouchControls() {
   }
   const releaseAll = () => { for (const k of [...held]) release(k) }
 
-  // --- Joystick: anchor under the first touch in the zone, 8-way quantized ---
+  // --- Thumbstick: fixed dial; direction measured from the dial's center,
+  // so even the first touch steers immediately. 8-way quantized. ---
   const zone = document.getElementById('joystick-zone')
   const base = document.getElementById('joystick-base')
   const nub = document.getElementById('joystick-nub')
   let stickId = null
-  let originX = 0, originY = 0
+  let centerX = 0, centerY = 0
   let dirs = []
 
   const setDirs = next => {
@@ -34,31 +36,32 @@ function initTouchControls() {
     p.forEach(press)
     dirs = next
   }
-
-  zone.addEventListener('pointerdown', e => {
-    if (stickId !== null) return   // one stick pointer at a time
-    stickId = e.pointerId
-    originX = e.clientX
-    originY = e.clientY
-    zone.setPointerCapture(e.pointerId)
-    base.style.left = `${originX}px`
-    base.style.top = `${originY}px`
-    base.style.display = 'block'
-    nub.style.transform = 'translate(0, 0)'
-  })
-  zone.addEventListener('pointermove', e => {
-    if (e.pointerId !== stickId) return
-    const dx = e.clientX - originX
-    const dy = e.clientY - originY
+  const steer = (x, y) => {
+    const dx = x - centerX
+    const dy = y - centerY
     const len = Math.hypot(dx, dy) || 1
     const clamp = Math.min(len, NUB_RADIUS) / len
     nub.style.transform = `translate(${dx * clamp}px, ${dy * clamp}px)`
     setDirs(joystickDirs(dx, dy))
+  }
+
+  zone.addEventListener('pointerdown', e => {
+    if (stickId !== null) return   // one stick pointer at a time
+    stickId = e.pointerId
+    const rect = base.getBoundingClientRect()
+    centerX = rect.left + rect.width / 2
+    centerY = rect.top + rect.height / 2
+    zone.setPointerCapture(e.pointerId)
+    steer(e.clientX, e.clientY)
+  })
+  zone.addEventListener('pointermove', e => {
+    if (e.pointerId !== stickId) return
+    steer(e.clientX, e.clientY)
   })
   const endStick = e => {
     if (e.pointerId !== stickId) return
     stickId = null
-    base.style.display = 'none'
+    nub.style.transform = 'translate(0, 0)'
     setDirs([])
   }
   zone.addEventListener('pointerup', endStick)
@@ -88,27 +91,33 @@ function initTouchControls() {
   bindHold(document.getElementById('touch-attack'), ' ')
   bindHold(document.getElementById('touch-stance'), 'Shift')
   bindHold(document.getElementById('touch-fountain'), 'f')
-  bindHold(document.getElementById('touch-bag'), 'i')
-  bindHold(document.getElementById('touch-pause'), 'Escape')
+  bindHold(document.getElementById('touch-quickuse'), 'q')
+  bindHold(document.getElementById('touch-select'), 'i')
+  bindHold(document.getElementById('touch-start'), 'Escape')
 
-  // --- Stance button doubles as a status icon. The HUD already renders the
-  // active stance ('▶ ' prefix on whichever slot is active); mirror it
-  // instead of reaching into game state. Observing #hud-top (rather than a
-  // single slot) also picks up magic once its talent unhides it. ---
-  const hudTop = document.getElementById('hud-top')
-  const stanceBtn = document.getElementById('touch-stance')
+  // --- The quick-use button mirrors the badge data the HUD publishes on
+  // #hud-items rather than reaching into game state: grey when the sack
+  // holds no consumables, count bubble otherwise. ---
+  const hudItems = document.getElementById('hud-items')
+  const quickBtn = document.getElementById('touch-quickuse')
+  const quickCount = document.getElementById('quickuse-count')
   new MutationObserver(() => {
-    const active = ['hud-magic', 'hud-ranged'].find(id =>
-      document.getElementById(id).textContent.startsWith('▶'))
-    const icon = active === 'hud-magic' ? '✨' : active === 'hud-ranged' ? '🏹' : '🗡'
-    if (stanceBtn.textContent !== icon) stanceBtn.textContent = icon
-  }).observe(hudTop, { childList: true, characterData: true, subtree: true })
+    quickBtn.classList.toggle('empty', !hudItems.dataset.quickEmoji)
+    quickCount.textContent = hudItems.dataset.quickCount ?? ''
+  }).observe(hudItems, {
+    attributes: true, attributeFilter: ['data-quick-emoji', 'data-quick-count'],
+  })
 
   // --- Never leave keys stuck when the page loses the pointer/focus ---
-  window.addEventListener('blur', () => { stickId = null; base.style.display = 'none'; dirs = []; buttonResets.forEach(reset => reset()); releaseAll() })
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { stickId = null; base.style.display = 'none'; dirs = []; buttonResets.forEach(reset => reset()); releaseAll() }
-  })
+  const resetAll = () => {
+    stickId = null
+    nub.style.transform = 'translate(0, 0)'
+    dirs = []
+    buttonResets.forEach(reset => reset())
+    releaseAll()
+  }
+  window.addEventListener('blur', resetAll)
+  document.addEventListener('visibilitychange', () => { if (document.hidden) resetAll() })
 }
 
 initTouchControls()

@@ -4,7 +4,7 @@ import { updateHUD } from '../renderer/render/hud.js'
 
 function fakeDom() {
   const nodes = {}
-  globalThis.document = { getElementById: (id) => (nodes[id] ??= { textContent: '', style: {} }) }
+  globalThis.document = { getElementById: (id) => (nodes[id] ??= { textContent: '', style: {}, dataset: {} }) }
   return nodes
 }
 
@@ -49,6 +49,23 @@ describe('updateHUD stance slots', () => {
     updateHUD(s)
     assert.equal(nodes['hud-ranged'].style.display, '')
     assert.equal(nodes['hud-magic'].style.display, '')
+  })
+
+  it('publishes the quick-use badge (next-up emoji + combined count) as data attributes', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ inventory: [
+      { kind: 'potion', emoji: '🧪', stackable: true, count: 2 },
+      { kind: 'mushroom', emoji: '🍄', stackable: true, count: 3 },
+    ] }))
+    assert.equal(nodes['hud-items'].dataset.quickEmoji, '🧪')
+    assert.equal(nodes['hud-items'].dataset.quickCount, '5')
+  })
+
+  it('clears the quick-use badge data when no consumables remain', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ inventory: [{ kind: 'weapon', emoji: '⚔', stackable: false }] }))
+    assert.equal(nodes['hud-items'].dataset.quickEmoji, '')
+    assert.equal(nodes['hud-items'].dataset.quickCount, '')
   })
 
   it('defaults to hiding both slots when talents is absent', () => {

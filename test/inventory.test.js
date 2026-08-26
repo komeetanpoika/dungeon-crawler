@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   makeItem, itemFromContents, contentsFromItem, addItem, removeItem,
   canEquip, equipItem, autoEquipOnPickup, EQUIP_FAIL_MESSAGES,
+  findQuickUseIndex, quickUseSummary,
 } from '../renderer/systems/inventory.js'
 
 const mkPlayer = (over = {}) => ({
@@ -160,5 +161,32 @@ describe('pickup auto-equip', () => {
     p.talents = ['heavy_weapons']
     assert.equal(equipItem(p, 0).ok, true)
     assert.equal(p.weapon.heavy, true)
+  })
+})
+
+describe('quick-use consumable', () => {
+  const potion = (count = 1) => ({ ...makeItem('potion'), count })
+  const mushroom = (count = 1) => ({ ...makeItem('mushroom'), count })
+  const sword = () => itemFromContents(swordContents())
+
+  it('finds the first consumable slot in sack order', () => {
+    assert.equal(findQuickUseIndex([sword(), potion()]), 1)
+    assert.equal(findQuickUseIndex([mushroom(), potion()]), 0)
+  })
+
+  it('returns -1 when the sack has no consumables', () => {
+    assert.equal(findQuickUseIndex([]), -1)
+    assert.equal(findQuickUseIndex([sword()]), -1)
+  })
+
+  it('summarizes the next-up emoji with the combined consumable count', () => {
+    assert.deepEqual(quickUseSummary([sword(), potion(2), mushroom(3)]),
+      { emoji: '🧪', count: 5 })
+    assert.deepEqual(quickUseSummary([mushroom()]), { emoji: '🍄', count: 1 })
+  })
+
+  it('summarizes an empty or consumable-free sack as null', () => {
+    assert.equal(quickUseSummary([]), null)
+    assert.equal(quickUseSummary([sword()]), null)
   })
 })

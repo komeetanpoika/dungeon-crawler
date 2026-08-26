@@ -30,6 +30,24 @@ export function contentsFromItem(item) {
   return { type: 'mushroom' }
 }
 
+// Quick-use (Q / the green touch button): first potion-or-mushroom slot in
+// sack order. The summary drives the button badge — next-up slot's emoji,
+// combined count across all consumable slots.
+const CONSUMABLE_KINDS = ['potion', 'mushroom']
+
+export function findQuickUseIndex(inventory) {
+  return inventory.findIndex(i => CONSUMABLE_KINDS.includes(i.kind))
+}
+
+export function quickUseSummary(inventory) {
+  const first = findQuickUseIndex(inventory)
+  if (first === -1) return null
+  const count = inventory
+    .filter(i => CONSUMABLE_KINDS.includes(i.kind))
+    .reduce((sum, i) => sum + (i.count ?? 1), 0)
+  return { emoji: inventory[first].emoji, count }
+}
+
 export function addItem(player, item) {
   if (item.stackable) {
     const slot = player.inventory.find(i => i.kind === item.kind)

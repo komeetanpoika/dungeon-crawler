@@ -46,49 +46,83 @@
     .menu-btn:hover, .menu-btn.selected {
       background: #2a2a36; color: #fff; border-color: #e8b84b;
     }
-    /* --- Mobile touch layer (coarse-pointer devices only) --- */
+    /* --- Mobile touch layer (coarse-pointer devices only) ---
+       A bespoke virtual gamepad in the game's own materials: dark stone
+       bases, worn-gold rims, jewel-toned action rings. */
     body { overscroll-behavior: none; }
     canvas { touch-action: none; }
     #touch-controls { display: none; }
     @media (pointer: coarse) { #touch-controls { display: block; } }
+    /* Left: fixed thumbstick — a stone dial with gold cardinal ticks */
     #joystick-zone {
-      position: fixed; left: 0; bottom: 0; width: 50vw; height: 70vh;
-      z-index: 5; touch-action: none;
+      position: fixed;
+      left: max(12px, env(safe-area-inset-left));
+      bottom: max(12px, env(safe-area-inset-bottom));
+      width: 196px; height: 196px; z-index: 5; touch-action: none;
+      display: flex; align-items: center; justify-content: center;
     }
     #joystick-base {
-      position: fixed; width: 96px; height: 96px; margin: -48px 0 0 -48px;
-      border-radius: 50%; border: 2px solid rgba(255,255,255,0.35);
-      background: rgba(255,255,255,0.08); display: none;
-      pointer-events: none; z-index: 6;
+      position: relative; width: 128px; height: 128px; border-radius: 50%;
+      background: radial-gradient(circle at 50% 42%, rgba(42,42,54,0.85), rgba(13,13,16,0.88) 72%);
+      border: 2px solid rgba(232,184,75,0.45);
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.7);
+      pointer-events: none;
+    }
+    #joystick-base::before {
+      content: ''; position: absolute; inset: 7px; border-radius: 50%;
+      background:
+        linear-gradient(rgba(232,184,75,0.55), rgba(232,184,75,0.55)) top center / 2px 9px,
+        linear-gradient(rgba(232,184,75,0.55), rgba(232,184,75,0.55)) bottom center / 2px 9px,
+        linear-gradient(rgba(232,184,75,0.55), rgba(232,184,75,0.55)) left center / 9px 2px,
+        linear-gradient(rgba(232,184,75,0.55), rgba(232,184,75,0.55)) right center / 9px 2px;
+      background-repeat: no-repeat;
     }
     #joystick-nub {
-      position: absolute; left: 50%; top: 50%; width: 44px; height: 44px;
-      margin: -22px 0 0 -22px; border-radius: 50%;
-      background: rgba(255,255,255,0.35);
+      position: absolute; left: 50%; top: 50%; width: 58px; height: 58px;
+      margin: -29px 0 0 -29px; border-radius: 50%;
+      background: radial-gradient(circle at 50% 35%, #3c3c4a, #17171f 78%);
+      border: 2px solid rgba(232,184,75,0.7);
+      box-shadow: 0 3px 9px rgba(0,0,0,0.6);
     }
-    #touch-actions {
+    /* Right: diamond of colour-coded action buttons (gamepad face cluster) */
+    #touch-diamond {
       position: fixed;
-      right: max(16px, env(safe-area-inset-right));
-      bottom: max(16px, env(safe-area-inset-bottom));
-      display: flex; flex-direction: column; gap: 14px; align-items: center;
-      z-index: 5;
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(14px, env(safe-area-inset-bottom));
+      width: 192px; height: 192px; z-index: 5;
     }
     .touch-btn {
-      width: 68px; height: 68px; border-radius: 50%;
-      background: rgba(26,26,34,0.55); border: 1px solid rgba(232,184,75,0.5);
-      color: #ccc; font-size: 28px;
-      display: flex; align-items: center; justify-content: center;
+      position: absolute; width: 72px; height: 72px; border-radius: 50%;
+      background: var(--btn-color, #3a3a44);
       touch-action: none; user-select: none; -webkit-user-select: none;
     }
-    .touch-btn.active { background: rgba(232,184,75,0.35); }
-    #touch-attack { width: 84px; height: 84px; font-size: 34px; }
-    #touch-fountain { width: 48px; height: 48px; font-size: 20px; opacity: 0.55; }
-    #touch-bag { width: 48px; height: 48px; font-size: 20px; opacity: 0.55; }
-    #touch-pause {
-      position: fixed; width: 44px; height: 44px; font-size: 18px;
-      top: max(34px, env(safe-area-inset-top));
-      right: max(12px, env(safe-area-inset-right));
+    .touch-btn.active { filter: brightness(1.35); }
+    #touch-fountain { --btn-color: rgba(125,211,252,0.7); top: 0; left: 50%; margin-left: -36px; }
+    #touch-stance   { --btn-color: rgba(232,184,75,0.7); left: 0; top: 50%; margin-top: -36px; }
+    #touch-quickuse { --btn-color: rgba(74,222,128,0.7); right: 0; top: 50%; margin-top: -36px; }
+    #touch-attack   { --btn-color: rgba(248,113,113,0.75); bottom: 0; left: 50%; margin-left: -36px; }
+    #quickuse-count {
+      position: absolute; right: -4px; bottom: -4px; min-width: 20px; height: 20px;
+      border-radius: 10px; padding: 0 4px;
+      background: #0d0d0d; border: 1px solid rgba(74,222,128,0.8);
+      font-family: monospace; font-size: 12px; line-height: 18px; text-align: center;
+      color: #ccc;
     }
+    #touch-quickuse.empty { opacity: 0.35; filter: grayscale(1); }
+    #touch-quickuse.empty #quickuse-count { display: none; }
+    /* Bottom center: slanted SELECT / START pills */
+    #touch-pills {
+      position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: max(30px, env(safe-area-inset-bottom));
+      display: flex; gap: 18px; z-index: 5;
+    }
+    .touch-pill {
+      padding: 7px 18px; border-radius: 14px; transform: skewX(-12deg);
+      background: rgba(16,16,22,0.62); border: 1px solid rgba(232,184,75,0.4);
+      color: #9a8a6a; font-size: 11px; letter-spacing: 2px;
+      touch-action: none; user-select: none; -webkit-user-select: none;
+    }
+    .touch-pill.active { background: rgba(232,184,75,0.3); color: #fff; }
     #rotate-overlay {
       position: fixed; inset: 0; z-index: 20; display: none;
       align-items: center; justify-content: center; text-align: center;
@@ -147,15 +181,19 @@
   <div id="hud-log">Descend into the dungeon…</div>
   <div id="menu-overlay"></div>
   <div id="touch-controls">
-    <div id="joystick-zone"></div>
-    <div id="joystick-base"><div id="joystick-nub"></div></div>
-    <div id="touch-actions">
-      <div id="touch-stance" class="touch-btn">🗡</div>
-      <div id="touch-attack" class="touch-btn">⚔</div>
-      <div id="touch-fountain" class="touch-btn">⛲</div>
-      <div id="touch-bag" class="touch-btn">🎒</div>
+    <div id="joystick-zone">
+      <div id="joystick-base"><div id="joystick-nub"></div></div>
     </div>
-    <div id="touch-pause" class="touch-btn">⏸</div>
+    <div id="touch-diamond">
+      <div id="touch-fountain" class="touch-btn"></div>
+      <div id="touch-stance" class="touch-btn"></div>
+      <div id="touch-quickuse" class="touch-btn empty"><span id="quickuse-count"></span></div>
+      <div id="touch-attack" class="touch-btn"></div>
+    </div>
+    <div id="touch-pills">
+      <div id="touch-select" class="touch-pill">SELECT</div>
+      <div id="touch-start" class="touch-pill">START</div>
+    </div>
   </div>
   <div id="inv-overlay"></div>
   <div id="sign-overlay"></div>

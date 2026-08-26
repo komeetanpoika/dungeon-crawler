@@ -26,7 +26,7 @@ import { makeFeedback, tickFeedback, addFloat, speak, think, announce } from './
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
-import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
@@ -90,6 +90,16 @@ window.addEventListener('keydown', e => {
   state.sfx.muted = !state.sfx.muted
   saveMutedPref(state.sfx.muted)
   think(state, state.sfx.muted ? 'Sound muted.' : 'Sound on.')
+})
+
+// Q quick-uses the first consumable in the sack (potion or mushroom)
+// without opening the panel — also the green diamond button on touch.
+window.addEventListener('keydown', e => {
+  if ((e.key !== 'q' && e.key !== 'Q') || e.repeat) return
+  if (phase !== PHASE.PLAYING || !state) return
+  const i = findQuickUseIndex(state.player.inventory)
+  if (i === -1) { think(state, 'Nothing left to use.'); return }
+  useInventoryItem(i)
 })
 
 // Shift starts a stance switch. Edge-triggered: e.repeat filters the
@@ -468,13 +478,13 @@ function useInventoryItem(i) {
     addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: `+${healed}`, kind: 'heal' })
     speak(state, `Healed ${healed} HP!`)
     sfx(state, 'heal')
-    closeInventory()                      // see the effect land
+    if (inventoryOpen) closeInventory()   // see the effect land
   }
   if (item.kind === 'mushroom') {
     removeItem(state.player, i)
     startTrance(state.player)
     think(state, 'It tastes… strange.')
-    closeInventory()
+    if (inventoryOpen) closeInventory()
   }
   afterInventoryChange()
 }
