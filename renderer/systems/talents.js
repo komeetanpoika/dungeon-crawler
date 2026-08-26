@@ -6,7 +6,7 @@ import { sfx } from './sfx.js'
 
 export const TALENTS = {
   ranged_stance: { name: 'Marksmanship', desc: 'Use bows and wands in the ranged stance.' },
-  magic_stance:  { name: 'Gust of Wind', desc: 'Channel mana in the magic stance.' },
+  magic_stance:  { name: 'Gust of Wind', desc: 'Shape the wind in the magic stance — gusts cost stamina.' },
   heavy_weapons: { name: 'Might',        desc: 'Wield heavy weapons.' },
 }
 

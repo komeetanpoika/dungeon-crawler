@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, tryGust } from '../renderer/systems/magic.js'
+import { GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, tryGust, affordableGustTier } from '../renderer/systems/magic.js'
 import { nextStance } from '../renderer/systems/ranged.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 
@@ -138,5 +138,28 @@ describe('tryGust with stamina', () => {
     const over = mkState({}, [enemy])
     assert.equal(tryGust(tap, 'tap').caught, 0)
     assert.equal(tryGust(over, 'over').caught, 1)
+  })
+})
+
+describe('affordableGustTier', () => {
+  it('keeps the reached tier when the tank covers it', () => {
+    assert.equal(affordableGustTier(100, 'over'), 'over')
+    assert.equal(affordableGustTier(22, 'full'), 'full')
+    assert.equal(affordableGustTier(14, 'tap'), 'tap')
+  })
+  it('degrades a held-to-over release to the highest affordable tier', () => {
+    assert.equal(affordableGustTier(30, 'over'), 'full')   // 40 > 30 >= 22
+    assert.equal(affordableGustTier(20, 'over'), 'tap')    // 40, 22 both > 20 >= 14
+  })
+  it('degrades a held-to-full release too', () => {
+    assert.equal(affordableGustTier(20, 'full'), 'tap')
+  })
+  it('returns null when even tap is unaffordable, so the caller still refuses', () => {
+    assert.equal(affordableGustTier(13, 'over'), null)
+    assert.equal(affordableGustTier(13, 'tap'), null)
+    const s = { player: { px: 100, py: 100, facing: 'east', talents: ['magic_stance'],
+      magicCooldown: 0, stamina: 13, maxStamina: 100, staminaRegenT: 99 }, entities: [] }
+    assert.deepEqual(tryGust(s, affordableGustTier(s.player.stamina, 'over') ?? 'tap'),
+      { ok: false, reason: 'stamina' })
   })
 })

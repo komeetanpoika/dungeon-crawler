@@ -32,7 +32,7 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
-import { tryGust, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust } from './systems/magic.js'
+import { tryGust, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, affordableGustTier } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
 import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
@@ -573,7 +573,7 @@ function update(delta) {
   const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
   const moving = vx !== 0 || vy !== 0
   const profile = sprintProfile(player.attackMode)
-  const sprinting = moving && !player.charging && player.stamina > 0 &&
+  const sprinting = moving && !player.charging && player.stamina > 0 && !wasGrabbed &&
     (keys['sprint'] || sprintDetector.sprinting())
   const chargeFactor = player.charging
     ? (player.charging.kind === 'gust' ? GUST_CHARGE.moveFactor
@@ -768,7 +768,7 @@ function update(delta) {
     if (!canAfford(player, cost)) {
       mods = tierMods('tap')                     // starved: weak swing
       player.staminaRefusedT = 0.4
-      spendStamina(player, meleeCost(meleeWT, 'tap'))  // drains whatever is left
+      spendStamina(player, player.stamina)        // starved swing drains all remaining stamina
     } else {
       spendStamina(player, cost)
     }
@@ -863,7 +863,10 @@ function update(delta) {
       if (keys[' '] && !shouldAutoReleaseGust(player.charging.t)) {
         player.charging.t += delta
       } else {
-        const tier = resolveGustTier(player.charging.t)
+        const reached = resolveGustTier(player.charging.t)
+        // A reached tier the tank can't cover degrades to the highest
+        // affordable one instead of refusing the whole cast outright.
+        const tier = affordableGustTier(player.stamina, reached) ?? 'tap'
         player.charging = null
         keys[' '] = false
         const cast = tryGust(state, tier)
@@ -1172,7 +1175,7 @@ function update(delta) {
   // a one-shot wall-collision hit, applied only to enemies.
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
-    if (slam && isEnemy(e)) {
+    if (slam && isEnemy(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
       e.hp -= slam.damage
       e.inCombat = true
       addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${slam.damage}`, kind: 'dealt' })

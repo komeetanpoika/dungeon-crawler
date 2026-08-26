@@ -6,6 +6,7 @@ import { drawDragonBossPixel } from './dragonboss-pixel.js'
 import { PIXEL_SKIN } from '../systems/dragonboss.js'
 import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc, CHARGE } from '../systems/melee.js'
+import { GUST_CHARGE } from '../systems/magic.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 
 const TILE_SIZE = 32
@@ -461,8 +462,11 @@ function drawStunStars(ctx, cx, cy, t) {
 // Wind-up ring: fills while a charge weapon is held, stepping colour at each
 // release tier — white (tap), gold (full swing), red (overcharged).
 export function drawChargeRing(ctx, player, camX, camY) {
-  const c = CHARGE[player.weapon?.weaponType]
-  if (!c || !player.charging) return
+  if (!player.charging) return
+  // Gust charges use their own thresholds regardless of the equipped
+  // weapon — a melee charge weapon may still be holstered in magic stance.
+  const c = player.charging.kind === 'gust' ? GUST_CHARGE : CHARGE[player.weapon?.weaponType]
+  if (!c) return
   const t = player.charging.t
   const frac = Math.min(1, t / c.over)
   const color = t >= c.over ? '#e5484d' : t >= c.full ? '#f5a524' : '#e6e8e3'

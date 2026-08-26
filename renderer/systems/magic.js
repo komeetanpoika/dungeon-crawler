@@ -25,6 +25,20 @@ const AUTO_RELEASE_GRACE = 0.5
 export const resolveGustTier = held =>
   held >= GUST_CHARGE.over ? 'over' : held >= GUST_CHARGE.full ? 'full' : 'tap'
 
+// A release at a tier the player can't afford degrades to the highest tier
+// they *can* afford (over -> full -> tap) rather than refusing outright —
+// the charge isn't wasted just because the reached tier overshoots the
+// tank. Returns null when even tap is unaffordable, so the caller can fall
+// through to tryGust's own refusal path.
+const GUST_TIER_ORDER = ['over', 'full', 'tap']
+export function affordableGustTier(stamina, tier) {
+  const start = GUST_TIER_ORDER.indexOf(tier)
+  for (let i = start; i < GUST_TIER_ORDER.length; i++) {
+    if (stamina >= GUST_COSTS[GUST_TIER_ORDER[i]]) return GUST_TIER_ORDER[i]
+  }
+  return null
+}
+
 export const shouldAutoReleaseGust = held =>
   held > GUST_CHARGE.over + AUTO_RELEASE_GRACE
 
