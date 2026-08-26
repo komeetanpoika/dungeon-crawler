@@ -32,14 +32,15 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
-import { tickMana, tryGust } from './systems/magic.js'
+import { tryGust, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
 import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
 import { signNearby } from './systems/signs.js'
 import { showSign, hideSign } from './ui/sign-panel.js'
-import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor } from './systems/melee.js'
+import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor, shouldAutoRelease, tierMods } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
+import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -67,6 +68,21 @@ function saveMutedPref(m) {
 }
 window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
+
+// Desktop sprint: double-tap a direction and hold. Touch sprint arrives as
+// the synthetic 'sprint' key from the stick rim (ui/touch-controls.js).
+const SPRINT_DIR_KEYS = { ArrowUp: 'w', w: 'w', ArrowDown: 's', s: 's',
+  ArrowLeft: 'a', a: 'a', ArrowRight: 'd', d: 'd' }
+const sprintDetector = makeSprintDetector()
+window.addEventListener('keydown', e => {
+  const dir = SPRINT_DIR_KEYS[e.key]
+  if (dir && !e.repeat) sprintDetector.press(dir, performance.now() / 1000)
+})
+window.addEventListener('keyup', e => {
+  const dir = SPRINT_DIR_KEYS[e.key]
+  if (dir) sprintDetector.release(dir)
+})
+
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (inventoryOpen) closeInventory()
@@ -549,7 +565,16 @@ function update(delta) {
   if (keys['ArrowDown']  || keys['s']) { vy += 1; player.facing = 'south' }
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
   const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
-  const speed = PLAYER_SPEED * (player.charging ? chargeMoveFactor(player.weapon?.weaponType) : 1)
+  const moving = vx !== 0 || vy !== 0
+  const profile = sprintProfile(player.attackMode)
+  const sprinting = moving && !player.charging && player.stamina > 0 &&
+    (keys['sprint'] || sprintDetector.sprinting())
+  const chargeFactor = player.charging
+    ? (player.charging.kind === 'gust' ? GUST_CHARGE.moveFactor
+                                       : chargeMoveFactor(player.weapon?.weaponType))
+    : 1
+  const speed = PLAYER_SPEED * chargeFactor * (sprinting ? profile.speedMul : 1)
+  if (sprinting) spendStamina(player, profile.drain * delta)
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
 
   // Chest interaction (walk onto chest tile)
@@ -719,7 +744,8 @@ function update(delta) {
   player.attackTimer    = Math.max(0, player.attackTimer    - delta)
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
-  tickMana(player, delta)
+  tickStamina(player, delta)
+  player.staminaRefusedT = Math.max(0, (player.staminaRefusedT ?? 0) - delta)
   const landedStance = tickStanceSwitch(player, delta)
   if (landedStance) {
     think(state, { melee: 'Melee stance.', ranged: 'Ranged stance.', magic: 'Magic stance.' }[landedStance])
@@ -732,6 +758,14 @@ function update(delta) {
   // weapons wind up while held and swing on release, tiered by hold time.
   const meleeWT = player.weapon?.weaponType
   const swing = (mods) => {
+    const cost = meleeCost(meleeWT, mods.tier)
+    if (!canAfford(player, cost)) {
+      mods = tierMods('tap')                     // starved: weak swing
+      player.staminaRefusedT = 0.4
+      spendStamina(player, meleeCost(meleeWT, 'tap'))  // drains whatever is left
+    } else {
+      spendStamina(player, cost)
+    }
     const atk = getAttack(meleeWT)
     player.meleeCooldown = atk.cooldown * mods.cooldownMul
     player.attackTimer = atk.duration
@@ -797,11 +831,17 @@ function update(delta) {
     }
   } else if (player.attackMode === 'melee' && isChargeWeapon(meleeWT)) {
     if (player.charging) {
-      if (keys[' ']) player.charging.t += delta
-      else { const held = player.charging.t; player.charging = null; swing(resolveCharge(meleeWT, held)) }
+      if (keys[' '] && !shouldAutoRelease(meleeWT, player.charging.t)) {
+        player.charging.t += delta
+      } else {
+        const held = player.charging.t
+        player.charging = null
+        swing(resolveCharge(meleeWT, held))
+        keys[' '] = false     // an auto-release must not instantly re-wind
+      }
     } else if (attacking && player.meleeCooldown <= 0) player.charging = { t: 0 }
   } else {
-    if (player.charging) player.charging = null   // weapon swapped mid-wind-up
+    if (player.charging && player.charging.kind !== 'gust') player.charging = null   // weapon swapped mid-wind-up
     if (attacking && player.attackMode === 'melee' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
   }
 
@@ -810,25 +850,39 @@ function update(delta) {
   // throttled HUD message so holding Space doesn't spam the log.
   state.fireMsgCooldown = Math.max(0, (state.fireMsgCooldown ?? 0) - delta)
   state.packMsgCooldown = Math.max(0, (state.packMsgCooldown ?? 0) - delta)
-  // Magic (Space in magic stance): the gust — no damage, stun + shove in a
-  // cone. Cooldown refusals stay silent (the HUD shows the state); an empty
-  // pool explains itself on a gate.
-  if (attacking && player.attackMode === 'magic') {
-    const cast = tryGust(state)
-    if (cast.ok) {
-      const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
-      state.shockwaves.push({
-        px: player.px + Math.cos(fa) * 44, py: player.py + Math.sin(fa) * 44,
-        t: 0, dur: 0.3, maxRadius: 44, color: '#a5f3fc',
-      })
-      sfx(state, 'magic-cast', { px: player.px, py: player.py })
-      state.log = [...state.log, 'A gust of wind!'].slice(-5)
-    } else if (cast.reason === 'mana') {
-      state.magicMsgCooldown = Math.max(0, (state.magicMsgCooldown ?? 0) - delta)
-      if (state.magicMsgCooldown <= 0) {
-        think(state, 'The wind is spent — wait for it to gather.')
-        state.magicMsgCooldown = 2
+  // Magic (Space in magic stance): hold to charge the gust; release casts
+  // at the reached tier. Overlong holds auto-release.
+  if (player.attackMode === 'magic') {
+    if (player.charging?.kind === 'gust') {
+      if (keys[' '] && !shouldAutoReleaseGust(player.charging.t)) {
+        player.charging.t += delta
+      } else {
+        const tier = resolveGustTier(player.charging.t)
+        player.charging = null
+        keys[' '] = false
+        const cast = tryGust(state, tier)
+        if (cast.ok) {
+          const mul = GUST_TIERS[tier].mul
+          const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
+          state.shockwaves.push({
+            px: player.px + Math.cos(fa) * 44 * mul, py: player.py + Math.sin(fa) * 44 * mul,
+            t: 0, dur: 0.3, maxRadius: 44 * mul, color: '#a5f3fc',
+          })
+          sfx(state, 'magic-cast', { px: player.px, py: player.py })
+          state.log = [...state.log,
+            tier === 'over' ? 'A raging gale!' : tier === 'full' ? 'A strong gust!' : 'A gust of wind!',
+          ].slice(-5)
+        } else if (cast.reason === 'stamina') {
+          player.staminaRefusedT = 0.4
+          state.magicMsgCooldown = Math.max(0, (state.magicMsgCooldown ?? 0) - delta)
+          if (state.magicMsgCooldown <= 0) {
+            think(state, 'Too winded to shape the wind.')
+            state.magicMsgCooldown = 2
+          }
+        }
       }
+    } else if (attacking && (player.magicCooldown ?? 0) <= 0 && hasTalent(player, 'magic_stance')) {
+      player.charging = { t: 0, kind: 'gust' }
     }
   }
 
@@ -1108,9 +1162,18 @@ function update(delta) {
   for (const e of state.entities) stepEnemyAttack(e, state, delta)
 
   // Resolve knockback slides after AI has moved everything this frame.
+  // An overcharged gust (or the Maunonmiekka shockwave) can flag a slam:
+  // a one-shot wall-collision hit, applied only to enemies.
   for (const e of state.entities) {
-    stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
+    const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
+    if (slam && isEnemy(e)) {
+      e.hp -= slam.damage
+      e.inCombat = true
+      addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${slam.damage}`, kind: 'dealt' })
+      sfx(state, e.hp <= 0 ? 'enemy-death' : 'wall-slam', { px: e.px, py: e.py })
+    }
   }
+  state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
   stepKnockback(player, delta, (px, py) => canMoveTo(map, px, py, PLAYER_HALF))
 
   // Clear hit flash — it fires once per swing
