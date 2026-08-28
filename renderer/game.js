@@ -236,10 +236,14 @@ function moveEntity(e, dx, dy, map, half = PLAYER_HALF, boss = null) {
   e.y = Math.floor(e.py / TILE_SIZE)
 }
 
-// A blow landed on an npc: species reaction + village wrath (once).
-function npcStruck(e) {
+// A blow landed on an npc: hurt cue + species reaction + village wrath (once).
+// An animal that survives yelps; villagers keep the human cue the hit site
+// already plays. `alive` is passed explicitly by the splash path, where the
+// snapshot entity still carries its pre-blast hp.
+function npcStruck(e, alive = e.hp > 0) {
   if (e.type !== 'npc') return
   npcDirty = true
+  if (alive && !NPC_SPECIES[e.species]?.walker) sfx(state, 'npc-hurt', { px: e.px, py: e.py })
   const r = onNpcHit(e, state)
   if (r.wrath) { announce(state, 'The village turns on you!'); sfx(state, 'npc-wrath') }
 }
@@ -257,7 +261,7 @@ function npcsStruckSince(snap) {
   const live = new Map(state.entities.filter(e => e.type === 'npc').map(e => [e.id, e]))
   for (const { e, hp } of snap) {
     const now = live.get(e.id)
-    if (!now) npcStruck(e)                 // culled: the splash killed it
+    if (!now) npcStruck(e, false)          // culled: the splash killed it
     else if (now.hp < hp) npcStruck(now)
   }
 }
@@ -368,8 +372,10 @@ const npcSpawns = spawns => spawns.filter(s => s.kind === 'npc').map(s => s.id)
 function respawnNpcs() {
   const data = OPEN_MAPS[state.level]
   if (!data) return
+  const spawns = npcSpawnsForMap(data)
   state.entities = state.entities.filter(e => e.type !== 'npc')
-  state.entities.push(...buildEntities(npcSpawnsForMap(data), state.map, state.level))
+  state.entities.push(...buildEntities(spawns, state.map, state.level))
+  state.npcSpawnIds = npcSpawns(spawns)
   state.npcWrath = false
 }
 
