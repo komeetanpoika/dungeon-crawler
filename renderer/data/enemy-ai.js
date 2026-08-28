@@ -3,6 +3,8 @@
 // badly hurt; beasts and bosses fight to the death. Explicit fleeHp overrides.
 // `half` is the pixel half-size used for collision AND clearance class
 // (<= 16 fits one tile; the 56px-wide cyclops needs 2-tile clearance).
+import { NPC_SPECIES } from './npcs.js'
+
 const fleeDefault = taxon => (taxon === 'humanoid' || taxon === 'mammal') ? 0.3 : 0
 
 const BASE = {
@@ -12,6 +14,8 @@ const BASE = {
   crab:        { taxon: 'beast',    speed: 65, wanderSpeed: 25, half: 4,  sightRange: 240, stopRange: 0, combat: 'strafe', inward: 0.3 },
   wizard:      { taxon: 'humanoid', speed: 70, wanderSpeed: 30, half: 4,  sightRange: 300, stopRange: 0, kiteBand: [120, 240], fleeHp: 0 },
   cyclops:     { taxon: 'humanoid', speed: 40, wanderSpeed: 20, half: 28, sightRange: 320, stopRange: 40, fleeHp: 0 },
+  // npc: speed/wanderSpeed/fleeHp come from the species (see getAIConfig)
+  npc:         { taxon: 'humanoid', speed: 70, wanderSpeed: 40, half: 4,  sightRange: 200, stopRange: 20 },
   // dragon_boss row is documentation only — updateDragonBoss never consults getAIConfig (its stomp navigation is bespoke)
   dragon_boss: { taxon: 'beast',    speed: 0,  wanderSpeed: 0,  half: 28, sightRange: 448, stopRange: 0 },
 }
@@ -26,7 +30,12 @@ const VARIANTS = {
 
 export function getAIConfig(e) {
   const base = BASE[e.type] ?? BASE.monster
-  const merged = e.type === 'monster' ? { ...base, ...(VARIANTS[e.variant] ?? {}) } : { ...base }
+  let merged = e.type === 'monster' ? { ...base, ...(VARIANTS[e.variant] ?? {}) } : { ...base }
+  if (e.type === 'npc') {
+    const sp = NPC_SPECIES[e.species]
+    if (sp) merged = { ...merged, speed: sp.speed, wanderSpeed: sp.wanderSpeed, fleeHp: sp.fleeHp,
+                       taxon: sp.walker ? 'humanoid' : 'mammal' }
+  }
   if (merged.fleeHp === undefined) merged.fleeHp = fleeDefault(merged.taxon)
   return merged
 }
