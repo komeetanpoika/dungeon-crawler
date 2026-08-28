@@ -1,0 +1,149 @@
+// Friendly creatures: villagers and animals that go about their business.
+// A species carries an ordered list of goal names; every frame the first goal
+// whose `when` holds runs and returns a movement intent for act(). Hostile
+// NPCs hand the decision to the enemy brain, so they chase and fight like a
+// guard. Pure logic — no DOM.
+import { NPC_SPECIES } from '../data/npcs.js'
+import { getAIConfig } from '../data/enemy-ai.js'
+import { hasLineOfSight } from './entities.js'
+import { buildNavGrid, findPath, passable } from './nav.js'
+import { act } from './act.js'
+import { updateBrain } from './brain.js'
+import { tryStartEnemyAttack } from './enemy-attack.js'
+
+const S = 32
+export const FLEE_TIME = 3          // s a hit `flee` species keeps running
+export const STARTLE_TIME = 2       // s a startled animal keeps running
+export const REACT_TIME = 0.5       // s an animal's interact hop/bounce lasts
+export const WANDER_DWELL = [1, 4]  // s paused at each wander point
+export const VILLAGER_DWELL_MAX = 6 // villagers linger longer
+const THREAT_RANGE = 240            // px inside which a hurt NPC bothers fleeing
+const WANDER_TRIES = 10             // rejected candidate points before a rest
+
+export function makeNpc({ species, id, x, y, hostile = false }) {
+  const def = NPC_SPECIES[species]
+  if (!def) { console.warn(`npc: unknown species "${species}"`); return null }
+  return {
+    type: 'npc', species, id, faction: def.faction,
+    x, y, px: x * S + S / 2, py: y * S + S / 2,
+    hp: def.hp, maxHp: def.hp, hostile: !!hostile,
+    home: { x, y }, objective: null, facing: 'east', inCombat: false,
+    damageCooldown: 0, aiHalf: 4,
+    ai: { current: null, goals: {}, fleeTimer: 0, startleTimer: 0, reactTimer: 0 },
+  }
+}
+
+export function buildCtx(e, state, delta) {
+  const { player, map } = state
+  const def = NPC_SPECIES[e.species]
+  return {
+    state, delta, def, cfg: getAIConfig(e),
+    playerDist: Math.hypot(player.px - e.px, player.py - e.py),
+    canSeePlayer: hasLineOfSight(map, e.y, e.x, player.y, player.x),
+    hpFrac: e.maxHp ? e.hp / e.maxHp : 1,
+  }
+}
+
+const atTile = (e, t) => Math.hypot(t.x * S + S / 2 - e.px, t.y * S + S / 2 - e.py) < S * 0.6
+const rand = (lo, hi) => lo + Math.random() * (hi - lo)
+
+// Pick a wander point within `roam` of home, reachable from the NPC's tile.
+function pickWanderPoint(e, ctx) {
+  const nav = buildNavGrid(ctx.state.map)
+  const r = ctx.def.roam
+  for (let i = 0; i < WANDER_TRIES; i++) {
+    const x = e.home.x + Math.round(rand(-r, r))
+    const y = e.home.y + Math.round(rand(-r, r))
+    if (x === e.x && y === e.y) continue
+    if (!passable(nav, x, y, 1)) continue
+    if (!findPath(nav, e.x, e.y, x, y, 1)) continue
+    return { x, y }
+  }
+  return null
+}
+
+export const GOALS = {
+  flee_hurt: {
+    when: (e, ctx) => e.ai.fleeTimer > 0 ||
+      (e.hp < e.maxHp && ctx.hpFrac <= ctx.def.fleeHp && ctx.playerDist < THREAT_RANGE),
+    enter: e => { e.ai.fleeTimer = Math.max(e.ai.fleeTimer, FLEE_TIME) },
+    run: (e, ctx, dt) => { e.ai.fleeTimer = Math.max(0, e.ai.fleeTimer - dt); return { mode: 'flee', speed: ctx.cfg.speed } },
+  },
+  attack_hostile: {
+    when: e => e.hostile,
+    run: (e, ctx) => {
+      const intent = updateBrain(e, ctx.state, ctx.delta)
+      tryStartEnemyAttack(e, ctx.state)
+      return intent
+    },
+  },
+  startle: {
+    when: (e, ctx) => !!ctx.def.startle && (e.ai.startleTimer > 0 || ctx.playerDist < ctx.def.startle),
+    enter: e => { e.ai.startleTimer = Math.max(e.ai.startleTimer, STARTLE_TIME) },
+    run: (e, ctx, dt) => { e.ai.startleTimer = Math.max(0, e.ai.startleTimer - dt); return { mode: 'flee', speed: ctx.cfg.speed } },
+  },
+  go_to: {
+    when: e => !!e.objective,
+    run: (e, ctx) => {
+      if (atTile(e, e.objective)) { e.objective = null; return { mode: 'hold' } }
+      // act() leaves ai.path === null for an unpathable target; give up after a while
+      const unpathable = e.ai.path === null && e.ai.pathTarget &&
+        e.ai.pathTarget.x === e.objective.x && e.ai.pathTarget.y === e.objective.y
+      if (unpathable) {
+        e.ai.giveUp = (e.ai.giveUp ?? 0) + ctx.delta
+        if (e.ai.giveUp >= 3) { e.ai.giveUp = 0; e.objective = null; return { mode: 'hold' } }
+      }
+      return { mode: 'patrol', target: e.objective, speed: ctx.cfg.speed }
+    },
+  },
+  wander: {
+    when: () => true,
+    enter: e => { e.ai.wanderPt = null; e.ai.dwell = 0 },
+    run: (e, ctx, dt) => {
+      const ai = e.ai
+      if (ai.dwell > 0) { ai.dwell = Math.max(0, ai.dwell - dt); return { mode: 'hold' } }
+      if (!ai.wanderPt) {
+        ai.wanderPt = pickWanderPoint(e, ctx)
+        if (!ai.wanderPt) { ai.dwell = WANDER_DWELL[0]; return { mode: 'hold' } }
+      }
+      const stuck = ai.path === null && ai.pathTarget &&
+        ai.pathTarget.x === ai.wanderPt.x && ai.pathTarget.y === ai.wanderPt.y
+      if (atTile(e, ai.wanderPt) || stuck) {
+        ai.wanderPt = null
+        const max = ctx.def.walker ? VILLAGER_DWELL_MAX : WANDER_DWELL[1]
+        ai.dwell = rand(WANDER_DWELL[0], max)
+        return { mode: 'hold' }
+      }
+      return { mode: 'patrol', target: ai.wanderPt, speed: ctx.cfg.wanderSpeed }
+    },
+  },
+}
+
+// First goal in the species list whose `when` holds. Runs `enter` on a change.
+export function selectGoal(e, ctx) {
+  const def = ctx.def
+  let chosen = 'wander'
+  for (const name of def.priorities) {
+    const g = GOALS[name]
+    if (g && g.when(e, ctx)) { chosen = name; break }
+  }
+  if (e.ai.current !== chosen) {
+    e.ai.current = chosen
+    GOALS[chosen].enter?.(e, ctx)
+  }
+  return chosen
+}
+
+export function updateNpc(e, state, delta) {
+  if (!NPC_SPECIES[e.species]) return
+  e.damageCooldown = Math.max(0, (e.damageCooldown ?? 0) - delta)
+  e.ai.reactTimer = Math.max(0, (e.ai.reactTimer ?? 0) - delta)
+  if (e.stunTimer > 0) { e.stunTimer -= delta; return }
+  const ctx = buildCtx(e, state, delta)
+  const name = selectGoal(e, ctx)
+  const intent = GOALS[name].run(e, ctx, delta)
+  const prevPx = e.px
+  if (intent) act(e, state, delta, intent)
+  const movedX = e.px - prevPx
+  if (Math.abs(movedX) > 0.1) e.facing = movedX > 0 ? 'east' : 'west'
+}
