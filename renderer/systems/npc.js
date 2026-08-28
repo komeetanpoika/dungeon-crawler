@@ -19,6 +19,7 @@ export const WANDER_DWELL = [1, 4]  // s paused at each wander point
 export const VILLAGER_DWELL_MAX = 6 // villagers linger longer
 const THREAT_RANGE = 240            // px inside which a hurt NPC bothers fleeing
 const WANDER_TRIES = 10             // rejected candidate points before a rest
+const GIVE_UP_TIME = 3              // s stuck against an unpathable target before giving up
 
 export function makeNpc({ species, id, x, y, hostile = false }) {
   const def = NPC_SPECIES[species]
@@ -46,6 +47,9 @@ export function buildCtx(e, state, delta) {
 
 const atTile = (e, t) => Math.hypot(t.x * S + S / 2 - e.px, t.y * S + S / 2 - e.py) < S * 0.6
 const rand = (lo, hi) => lo + Math.random() * (hi - lo)
+// act() leaves ai.path === null when its cached A* target is unpathable.
+const isStuckOn = (e, target) => e.ai.path === null && e.ai.pathTarget &&
+  e.ai.pathTarget.x === target.x && e.ai.pathTarget.y === target.y
 
 // Pick a wander point within `roam` of home, reachable from the NPC's tile.
 function pickWanderPoint(e, ctx) {
@@ -84,14 +88,16 @@ export const GOALS = {
   },
   go_to: {
     when: e => !!e.objective,
+    enter: e => { e.ai.giveUp = 0 },
     run: (e, ctx) => {
       if (atTile(e, e.objective)) { e.objective = null; return { mode: 'hold' } }
-      // act() leaves ai.path === null for an unpathable target; give up after a while
-      const unpathable = e.ai.path === null && e.ai.pathTarget &&
-        e.ai.pathTarget.x === e.objective.x && e.ai.pathTarget.y === e.objective.y
-      if (unpathable) {
+      // give up on a target that stays unpathable for a while; a merely stray
+      // stuck frame (transient obstruction) resets the counter instead of accruing
+      if (isStuckOn(e, e.objective)) {
         e.ai.giveUp = (e.ai.giveUp ?? 0) + ctx.delta
-        if (e.ai.giveUp >= 3) { e.ai.giveUp = 0; e.objective = null; return { mode: 'hold' } }
+        if (e.ai.giveUp >= GIVE_UP_TIME) { e.ai.giveUp = 0; e.objective = null; return { mode: 'hold' } }
+      } else {
+        e.ai.giveUp = 0
       }
       return { mode: 'patrol', target: e.objective, speed: ctx.cfg.speed }
     },
@@ -106,9 +112,7 @@ export const GOALS = {
         ai.wanderPt = pickWanderPoint(e, ctx)
         if (!ai.wanderPt) { ai.dwell = WANDER_DWELL[0]; return { mode: 'hold' } }
       }
-      const stuck = ai.path === null && ai.pathTarget &&
-        ai.pathTarget.x === ai.wanderPt.x && ai.pathTarget.y === ai.wanderPt.y
-      if (atTile(e, ai.wanderPt) || stuck) {
+      if (atTile(e, ai.wanderPt) || isStuckOn(e, ai.wanderPt)) {
         ai.wanderPt = null
         const max = ctx.def.walker ? VILLAGER_DWELL_MAX : WANDER_DWELL[1]
         ai.dwell = rand(WANDER_DWELL[0], max)

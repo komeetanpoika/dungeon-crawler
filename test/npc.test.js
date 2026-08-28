@@ -114,3 +114,35 @@ describe('wander', () => {
     assert.ok(Math.hypot(e.px - start.px, e.py - start.py) > S, 'deer never moved')
   })
 })
+
+describe('go_to give-up', () => {
+  // A target inside the 3x3 wall block is NOT actually unpathable: findPath
+  // snaps a blocked target to the nearest passable tile via nearestPassable
+  // and routes there successfully. A target far outside the map has no
+  // passable tile within nearestPassable's search radius, so it stays
+  // genuinely unreachable (ai.path === null) — that's what exercises give-up.
+  it('gives up on a genuinely unreachable objective, leaving the NPC alive and positioned sanely', () => {
+    const map = field()
+    const e = npcAt('villager', 3, 3)
+    const state = makeState(map, { x: 17, y: 11 }, [e])
+    e.objective = { x: 100, y: 100 }
+    for (let i = 0; i < 240; i++) updateNpc(e, state, 1 / 60)   // ~4 s; give-up fires at 3 s stuck
+    assert.equal(e.objective, null)
+    assert.ok(e.hp > 0)
+    assert.ok(Number.isFinite(e.px) && Number.isFinite(e.py))
+  })
+  it('does not carry a partial give-up timer into a fresh objective set mid-goal', () => {
+    const map = field()
+    const e = npcAt('villager', 3, 3)
+    const state = makeState(map, { x: 17, y: 11 }, [e])
+    e.objective = { x: 100, y: 100 }
+    for (let i = 0; i < 174; i++) updateNpc(e, state, 1 / 60)   // ~2.9 s stuck — just under the 3 s threshold
+    assert.ok(e.ai.giveUp > 2.5, 'setup: should have accrued most of the give-up timer')
+    assert.equal(e.objective.x, 100, 'setup: objective should not have been dropped yet')
+    e.objective = { x: 8, y: 3 }                // swap to a fresh, reachable objective — still inside go_to, no goal switch
+    updateNpc(e, state, 1 / 60)
+    assert.equal(e.ai.giveUp, 0, 'stale give-up time leaked into the new objective')
+    for (let i = 0; i < 30; i++) updateNpc(e, state, 1 / 60)   // 0.5 s more
+    assert.notEqual(e.objective, null, 'fresh objective was wrongly abandoned')
+  })
+})
