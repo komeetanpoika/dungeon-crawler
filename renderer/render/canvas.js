@@ -8,6 +8,8 @@ import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc, CHARGE } from '../systems/melee.js'
 import { GUST_CHARGE } from '../systems/magic.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
+import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
+import { NPC_SPECIES } from '../data/npcs.js'
 
 const TILE_SIZE = 32
 
@@ -252,6 +254,18 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     const flip = entity.facing === 'west'
     const held = entity.attack ? null : sprites.weapon_sword   // the swing draws it instead
     if (sprites.guard) drawWalker(ctx, sprites.guard, px, py, S, flip, walkTilt(entity), held)
+    return
+  }
+  if (entity.type === 'npc') {
+    const def = NPC_SPECIES[entity.species]
+    const key = spriteKeyFor(entity)
+    const s = (entity.hostile && def?.walker ? sprites.guard_alert : null) ?? sprites[key]
+    if (!s) return
+    const flip = entity.facing === 'west'
+    if (def?.walker) { drawWalker(ctx, s, px, py, S, flip, walkTilt(entity)); return }
+    const rt = entity.ai?.reactTimer ?? 0
+    const hop = rt > 0 ? Math.round(6 * Math.sin(Math.PI * (1 - rt / REACT_TIME))) : 0
+    drawImg(ctx, s, px, py - hop, S, S, flip)
     return
   }
   if (entity.type === 'crab') {

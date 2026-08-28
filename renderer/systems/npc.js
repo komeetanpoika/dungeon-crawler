@@ -173,6 +173,15 @@ export function onNpcHit(e, state) {
   return { hostile: e.hostile, wrath }
 }
 
+// Villagers rotate faces by their spawn index so a village is not clones.
+export function spriteKeyFor(e) {
+  const def = NPC_SPECIES[e.species]
+  if (!def) return null
+  if (e.species !== 'villager') return def.sprite
+  const idx = Number(e.id?.split(':').at(-1)) || 0
+  return ['npc_villager', 'npc_villager_2', 'npc_villager_3'][idx % 3]
+}
+
 export function nearestPeacefulNpc(state, maxPx = 48) {
   const { player } = state
   let best = null, bestD = maxPx

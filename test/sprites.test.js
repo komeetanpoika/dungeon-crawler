@@ -109,3 +109,10 @@ describe('ranged weapons', () => {
     assert.equal(SPRITES.weapon_longbow, 'weapon_longbow')
   })
 })
+
+describe('npc sprites', () => {
+  it('registers every npc species sprite', () => {
+    for (const k of ['npc_villager', 'npc_villager_2', 'npc_villager_3', 'npc_elder', 'npc_mouse', 'npc_chicken', 'npc_deer'])
+      assert.ok(SPRITES[k], k)
+  })
+})

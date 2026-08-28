@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME } from '../renderer/systems/npc.js'
+import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME, spriteKeyFor } from '../renderer/systems/npc.js'
 import { buildNavGrid, findPath } from '../renderer/systems/nav.js'
 import { getEnemyWeapon } from '../renderer/systems/enemy-attack.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
@@ -258,5 +258,14 @@ describe('interactNpc', () => {
     const state = makeState(map, { x: 4, y: 5 }, [far, mad, near])
     assert.equal(nearestPeacefulNpc(state), near)
     assert.equal(nearestPeacefulNpc(makeState(map, { x: 15, y: 12 }, [near])), null)
+  })
+})
+
+describe('spriteKeyFor', () => {
+  it('rotates villager faces by spawn index and uses the species sprite otherwise', () => {
+    assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:0' })), 'npc_villager')
+    assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:1' })), 'npc_villager_2')
+    assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:5' })), 'npc_villager_3')
+    assert.equal(spriteKeyFor(npcAt('deer', 1, 1)), 'npc_deer')
   })
 })

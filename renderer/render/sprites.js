@@ -26,6 +26,14 @@ export const SPRITES = {
   cyclops:      'tile_0109',
   wizard:       'tile_0111',
   crab:         'tile_0110',
+  // npcs — villagers rotate through three faces by spawn index (npc.js)
+  npc_villager:   'tile_0098',
+  npc_villager_2: 'tile_0086',
+  npc_villager_3: 'tile_0099',
+  npc_elder:      'tile_0100',
+  npc_mouse:      'tile_0124',
+  npc_chicken:    'npc_chicken',   // placeholder art until extract-npc-sprites.mjs runs
+  npc_deer:       'npc_deer',
   // floor variants
   sand:                'tile_0048',
   // props — civilisation gradient
