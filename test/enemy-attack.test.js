@@ -38,6 +38,12 @@ describe('getEnemyWeapon', () => {
     assert.equal(w.windup, 0.5)
   })
 
+  it('npc type defaults to fists', () => {
+    const w = getEnemyWeapon(makeEnemy('npc'))
+    assert.equal(w.id, 'fists')
+    assert.equal(w.damage, 1)
+  })
+
   it('returns null for enemies with no melee weapon', () => {
     assert.equal(getEnemyWeapon(makeEnemy('wizard')), null)
     assert.equal(getEnemyWeapon(makeEnemy('dragon_boss')), null)

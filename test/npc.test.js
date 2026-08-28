@@ -2,8 +2,9 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, FLEE_TIME, STARTLE_TIME } from '../renderer/systems/npc.js'
+import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME } from '../renderer/systems/npc.js'
 import { buildNavGrid, findPath } from '../renderer/systems/nav.js'
+import { getEnemyWeapon } from '../renderer/systems/enemy-attack.js'
 
 const S = 32
 // 20x14 open field with a solid 3x3 block at (10..12, 5..7)
@@ -144,5 +145,81 @@ describe('go_to give-up', () => {
     assert.equal(e.ai.giveUp, 0, 'stale give-up time leaked into the new objective')
     for (let i = 0; i < 30; i++) updateNpc(e, state, 1 / 60)   // 0.5 s more
     assert.notEqual(e.objective, null, 'fresh objective was wrongly abandoned')
+  })
+})
+
+describe('onNpcHit', () => {
+  it('a flee species runs and stays peaceful', () => {
+    const map = field()
+    const e = npcAt('chicken', 3, 3)
+    const state = makeState(map, { x: 4, y: 3 }, [e])
+    e.hp -= 1
+    const r = onNpcHit(e, state)
+    assert.equal(e.hostile, false)
+    assert.equal(e.ai.fleeTimer, FLEE_TIME)
+    assert.deepEqual(r, { hostile: false, wrath: false })
+    assert.equal(selectGoal(e, buildCtx(e, state, 1 / 60)), 'flee_hurt')
+  })
+  it('a fight species turns hostile and the whole village follows', () => {
+    const map = field()
+    const a = npcAt('villager', 3, 3), b = npcAt('villager', 15, 10), old = npcAt('elder', 5, 5), hen = npcAt('chicken', 8, 8)
+    const state = makeState(map, { x: 4, y: 3 }, [a, b, old, hen])
+    a.hp -= 1
+    const r = onNpcHit(a, state)
+    assert.deepEqual(r, { hostile: true, wrath: true })
+    assert.equal(a.hostile, true)
+    assert.equal(b.hostile, true, 'far villager joins the wrath')
+    assert.equal(old.hostile, false, 'elders flee, they do not fight')
+    assert.equal(hen.hostile, false, 'wild animals are not villagers')
+    assert.equal(state.npcWrath, true)
+    assert.equal(onNpcHit(b, state).wrath, false, 'wrath announces once')
+  })
+  it('hitting a fleeing elder still provokes the village', () => {
+    const map = field()
+    const old = npcAt('elder', 5, 5), v = npcAt('villager', 3, 3)
+    const state = makeState(map, { x: 6, y: 5 }, [old, v])
+    old.hp -= 1
+    const r = onNpcHit(old, state)
+    assert.equal(old.hostile, false)
+    assert.equal(old.ai.fleeTimer, FLEE_TIME)
+    assert.equal(v.hostile, true)
+    assert.equal(r.wrath, true)
+  })
+  it('hitting a wild animal provokes nobody else', () => {
+    const map = field()
+    const deer = npcAt('deer', 5, 5), v = npcAt('villager', 3, 3)
+    const state = makeState(map, { x: 6, y: 5 }, [deer, v])
+    deer.hp -= 1
+    onNpcHit(deer, state)
+    assert.equal(v.hostile, false)
+    assert.equal(state.npcWrath, undefined)
+  })
+})
+
+describe('startle and hostile goals', () => {
+  it('a deer bolts inside its startle radius and not outside', () => {
+    const map = field()
+    const e = npcAt('deer', 5, 5)          // startle 96 px = 3 tiles
+    const near = makeState(map, { x: 7, y: 5 }, [e])
+    assert.equal(selectGoal(e, buildCtx(e, near, 1 / 60)), 'startle')
+    assert.equal(e.ai.startleTimer, STARTLE_TIME)
+    const e2 = npcAt('deer', 5, 5)
+    const far = makeState(map, { x: 12, y: 11 }, [e2])
+    assert.equal(selectGoal(e2, buildCtx(e2, far, 1 / 60)), 'wander')
+  })
+  it('a hostile villager approaches the player through the enemy brain', () => {
+    const map = field()
+    const e = npcAt('villager', 3, 3, { hostile: true })
+    const state = makeState(map, { x: 6, y: 3 }, [e])
+    const ctx = buildCtx(e, state, 1 / 60)
+    assert.equal(selectGoal(e, ctx), 'attack_hostile')
+    const intent = GOALS.attack_hostile.run(e, ctx, 1 / 60)
+    assert.equal(intent.mode, 'approach')
+    assert.equal(e.ai.mode, 'chase')
+  })
+  it('hostile villagers fight with fists', () => {
+    const w = getEnemyWeapon({ type: 'npc', species: 'villager' })
+    assert.equal(w.id, 'fists')
+    assert.equal(w.damage, 1)
   })
 })

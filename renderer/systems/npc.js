@@ -151,3 +151,22 @@ export function updateNpc(e, state, delta) {
   const movedX = e.px - prevPx
   if (Math.abs(movedX) > 0.1) e.facing = movedX > 0 ? 'east' : 'west'
 }
+
+// Called by every damage site right after an NPC's hp drops. Flee species run;
+// fight species turn hostile; any blow on a villager rouses the village.
+export function onNpcHit(e, state) {
+  const def = NPC_SPECIES[e.species]
+  if (!def) return { hostile: false, wrath: false }
+  e.inCombat = true
+  if (def.onHit === 'fight') e.hostile = true
+  else e.ai.fleeTimer = Math.max(e.ai.fleeTimer ?? 0, FLEE_TIME)
+  let wrath = false
+  if (def.faction === 'village') {
+    for (const o of state.entities) {
+      if (o.type !== 'npc' || o.faction !== 'village') continue
+      if (NPC_SPECIES[o.species]?.onHit === 'fight') o.hostile = true
+    }
+    if (!state.npcWrath) { state.npcWrath = true; wrath = true }
+  }
+  return { hostile: e.hostile, wrath }
+}
