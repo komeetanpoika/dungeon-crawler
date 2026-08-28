@@ -6,7 +6,7 @@
 import { NPC_SPECIES } from '../data/npcs.js'
 import { getAIConfig } from '../data/enemy-ai.js'
 import { hasLineOfSight } from './entities.js'
-import { buildNavGrid, findPath, passable } from './nav.js'
+import { buildNavGrid, passable } from './nav.js'
 import { act } from './act.js'
 import { updateBrain } from './brain.js'
 import { tryStartEnemyAttack } from './enemy-attack.js'
@@ -20,7 +20,6 @@ export const REACT_TIME = 0.5       // s an animal's interact hop/bounce lasts
 export const WANDER_DWELL = [1, 4]  // s paused at each wander point
 export const VILLAGER_DWELL_MAX = 6 // villagers linger longer
 const THREAT_RANGE = 240            // px inside which a hurt NPC bothers fleeing
-const WANDER_TRIES = 10             // rejected candidate points before a rest
 const GIVE_UP_TIME = 3              // s stuck against an unpathable target before giving up
 
 export function makeNpc({ species, id, x, y, hostile = false }) {
@@ -53,19 +52,46 @@ const rand = (lo, hi) => lo + Math.random() * (hi - lo)
 const isStuckOn = (e, target) => e.ai.path === null && e.ai.pathTarget &&
   e.ai.pathTarget.x === target.x && e.ai.pathTarget.y === target.y
 
-// Pick a wander point within `roam` of home, reachable from the NPC's tile.
+// The tiles a wander may target: within `roam` chebyshev of home and reachable
+// from home without stepping outside that box. One bounded 4-neighbour BFS,
+// cached on the NPC and keyed by the nav grid object (a new map builds a new
+// grid, which invalidates it), replaces a fistful of A* searches per repick.
+function wanderReach(e, nav, roam) {
+  const goals = e.ai.goals ?? (e.ai.goals = {})
+  const w = goals.wander ?? (goals.wander = {})
+  if (w.reach && w.nav === nav) return w.reach
+  const { x: hx, y: hy } = e.home
+  const inBox = (x, y) => Math.abs(x - hx) <= roam && Math.abs(y - hy) <= roam
+  const reach = []
+  if (passable(nav, hx, hy, 1)) {
+    const seen = new Set([`${hx},${hy}`])
+    reach.push({ x: hx, y: hy })
+    for (let i = 0; i < reach.length; i++) {
+      const t = reach[i]
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = t.x + dx, y = t.y + dy, k = `${x},${y}`
+        if (seen.has(k) || !inBox(x, y) || !passable(nav, x, y, 1)) continue
+        seen.add(k)
+        reach.push({ x, y })
+      }
+    }
+  }
+  w.nav = nav; w.reach = reach
+  return reach
+}
+
+// Pick a wander point: one random draw from the reach set, never the tile the
+// NPC already stands on. An NPC that has strayed outside its box (after a
+// flee) simply walks back toward a box tile — act()'s patrol plus the
+// isStuckOn give-up in wander handle a route that does not work out.
 function pickWanderPoint(e, ctx) {
   const nav = buildNavGrid(ctx.state.map)
-  const r = ctx.def.roam
-  for (let i = 0; i < WANDER_TRIES; i++) {
-    const x = e.home.x + Math.round(rand(-r, r))
-    const y = e.home.y + Math.round(rand(-r, r))
-    if (x === e.x && y === e.y) continue
-    if (!passable(nav, x, y, 1)) continue
-    if (!findPath(nav, e.x, e.y, x, y, 1)) continue
-    return { x, y }
-  }
-  return null
+  const reach = wanderReach(e, nav, ctx.def.roam)
+  if (!reach.length) return null
+  let i = Math.floor(Math.random() * reach.length)
+  if (reach[i].x === e.x && reach[i].y === e.y) i = (i + 1) % reach.length
+  const t = reach[i]
+  return (t.x === e.x && t.y === e.y) ? null : { x: t.x, y: t.y }
 }
 
 export const GOALS = {
@@ -93,8 +119,8 @@ export const GOALS = {
     enter: e => { e.ai.giveUp = 0 },
     run: (e, ctx) => {
       if (atTile(e, e.objective)) { e.objective = null; return { mode: 'hold' } }
-      // give up on a target that stays unpathable for a while; a merely stray
-      // stuck frame (transient obstruction) resets the counter instead of accruing
+      // give up on a target that stays unpathable for a while; a single stray
+      // frame in which the path does come back resets the counter to zero
       if (isStuckOn(e, e.objective)) {
         e.ai.giveUp = (e.ai.giveUp ?? 0) + ctx.delta
         if (e.ai.giveUp >= GIVE_UP_TIME) { e.ai.giveUp = 0; e.objective = null; return { mode: 'hold' } }

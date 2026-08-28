@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME, spriteKeyFor } from '../renderer/systems/npc.js'
-import { buildNavGrid, findPath } from '../renderer/systems/nav.js'
+import { buildNavGrid, findPath, passable } from '../renderer/systems/nav.js'
 import { getEnemyWeapon } from '../renderer/systems/enemy-attack.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 
@@ -106,6 +106,27 @@ describe('wander', () => {
       assert.ok(Math.abs(pt.x - 3) <= 3 && Math.abs(pt.y - 3) <= 3, `point ${pt.x},${pt.y} outside roam`)
       assert.ok(findPath(nav, 3, 3, pt.x, pt.y, 1), 'unreachable point')
     }
+  })
+  it('caches a reach set that stops at the wall block and never leaves the roam box', () => {
+    const map = field()
+    const nav = buildNavGrid(map)
+    const e = npcAt('deer', 11, 3)            // roam 8, three tiles above the block
+    const state = makeState(map, { x: 17, y: 11 }, [e])
+    selectGoal(e, buildCtx(e, state, 1 / 60))
+    GOALS.wander.run(e, buildCtx(e, state, 1 / 60), 5)
+    const reach = e.ai.goals.wander.reach
+    assert.ok(reach.length > 0, 'no reachable tiles')
+    for (const t of reach) {
+      assert.ok(Math.max(Math.abs(t.x - 11), Math.abs(t.y - 3)) <= 8, `tile ${t.x},${t.y} outside roam`)
+      assert.ok(!(t.x >= 10 && t.x <= 12 && t.y >= 5 && t.y <= 7), `tile ${t.x},${t.y} is solid`)
+      assert.ok(passable(nav, t.x, t.y, 1), `tile ${t.x},${t.y} is not passable`)
+    }
+    assert.ok(reach.some(t => t.x === 11 && t.y === 3), 'home missing from the reach set')
+    assert.ok(reach.some(t => t.x === 3 && t.y === 3), 'the open west side should be reachable')
+    // computed once and reused while the nav grid stands
+    e.ai.wanderPt = null; e.ai.dwell = 0
+    GOALS.wander.run(e, buildCtx(e, state, 1 / 60), 5)
+    assert.equal(e.ai.goals.wander.reach, reach, 'reach set recomputed')
   })
   it('moves the NPC over time', () => {
     const map = field()
