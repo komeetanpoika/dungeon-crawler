@@ -32,6 +32,7 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
+import { isEnemy, isHittable } from './systems/factions.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
@@ -234,14 +235,6 @@ function moveEntity(e, dx, dy, map, half = PLAYER_HALF, boss = null) {
   e.x = Math.floor(e.px / TILE_SIZE)
   e.y = Math.floor(e.py / TILE_SIZE)
 }
-
-function isEnemy(e) {
-  return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
-      || e.type === 'cyclops' || e.type === 'wizard' || e.type === 'crab'
-      || e.type === 'dragon_boss' || (e.type === 'npc' && e.hostile)
-}
-// Things the player's weapons can hurt: every enemy plus peaceful NPCs.
-function isHittable(e) { return isEnemy(e) || e.type === 'npc' }
 
 // A blow landed on an npc: species reaction + village wrath (once).
 function npcStruck(e) {
