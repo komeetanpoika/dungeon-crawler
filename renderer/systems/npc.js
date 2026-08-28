@@ -170,3 +170,7 @@ export function onNpcHit(e, state) {
   }
   return { hostile: e.hostile, wrath }
 }
+
+// Task 7 replaces this with the real interaction (villagers speak, animals
+// react). The stub keeps game.js's import resolvable in the meantime.
+export function interactNpc() { return null }

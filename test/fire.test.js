@@ -142,3 +142,19 @@ describe('fire zones', () => {
     assert.equal(r.zones.length, 2, 'both zones still alive')
   })
 })
+
+describe('npc burnability', () => {
+  it('a fireball burst hurts an npc standing on a blast tile', () => {
+    const hp = BURST_DAMAGE + 3   // tougher than any real species, so it survives to be checked
+    const npc = { type: 'npc', id: 'n', hp, maxHp: hp, px: 48, py: 48 }
+    const r = applyBurst([npc], { px: 400, py: 400 }, [{ x: 1, y: 1 }])
+    assert.equal(r.hitCount, 1)
+    assert.equal(r.entities[0].hp, hp - BURST_DAMAGE)
+  })
+
+  it('culls an npc the burst kills outright', () => {
+    const npc = { type: 'npc', id: 'n', hp: 3, maxHp: 3, px: 48, py: 48 }
+    const r = applyBurst([npc], { px: 400, py: 400 }, [{ x: 1, y: 1 }])
+    assert.equal(r.entities.length, 0)
+  })
+})

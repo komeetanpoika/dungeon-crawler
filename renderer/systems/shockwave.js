@@ -7,7 +7,7 @@ export const SHOCK_RADIUS = 80    // px
 export const SHOCK_DAMAGE = 3
 export const SHOCK_KNOCKBACK = 30 // px of shove away from the blast center
 
-const SPLASHABLE = new Set(['guard', 'monster', 'dragon', 'cyclops', 'wizard', 'crab'])
+const SPLASHABLE = new Set(['guard', 'monster', 'dragon', 'cyclops', 'wizard', 'crab', 'npc'])
 
 // Splash out from (cx, cy). `exclude` is the set of directly-struck enemies
 // (they already took the full weapon hit). Returns the updated entity list
