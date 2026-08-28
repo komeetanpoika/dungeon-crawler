@@ -1029,13 +1029,16 @@ export class Renderer {
       }
       ctx.restore()
     }
-    if (fb.bubble) this._drawBubble(state.player, fb.bubble)
+    if (fb.bubble) {
+      const anchor = (fb.bubble.anchorId && state.entities.find(e => e.id === fb.bubble.anchorId)) || state.player
+      this._drawBubble(anchor, fb.bubble)
+    }
     if (fb.banner) this._drawBanner(fb.banner)
   }
 
-  _drawBubble(player, b) {
+  _drawBubble(anchor, b) {
     const { ctx, camX, camY, viewW } = this
-    const px = Math.round(player.px - camX), py = Math.round(player.py - camY)
+    const px = Math.round(anchor.px - camX), py = Math.round(anchor.py - camY)
     ctx.save()
     ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.12, (BUBBLE_DUR - b.t) / 0.3))
     ctx.font = '12px monospace'

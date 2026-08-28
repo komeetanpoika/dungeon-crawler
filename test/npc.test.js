@@ -2,9 +2,10 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME } from '../renderer/systems/npc.js'
+import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME } from '../renderer/systems/npc.js'
 import { buildNavGrid, findPath } from '../renderer/systems/nav.js'
 import { getEnemyWeapon } from '../renderer/systems/enemy-attack.js'
+import { makeFeedback } from '../renderer/systems/feedback.js'
 
 const S = 32
 // 20x14 open field with a solid 3x3 block at (10..12, 5..7)
@@ -221,5 +222,41 @@ describe('startle and hostile goals', () => {
     const w = getEnemyWeapon({ type: 'npc', species: 'villager' })
     assert.equal(w.id, 'fists')
     assert.equal(w.damage, 1)
+  })
+})
+
+describe('interactNpc', () => {
+  it('a villager faces the player, lingers and speaks a species line', () => {
+    const map = field()
+    const e = npcAt('villager', 5, 5)
+    const state = makeState(map, { x: 4, y: 5 }, [e]); state.feedback = makeFeedback()
+    const r = interactNpc(state, e, () => 0)
+    assert.equal(r.kind, 'speech')
+    assert.equal(r.text, 'Fine weather for it.')
+    assert.equal(e.facing, 'west')
+    assert.ok(e.ai.dwell >= 3)
+    assert.equal(state.feedback.bubble.anchorId, e.id)
+    assert.equal(state.feedback.bubble.text, r.text)
+  })
+  it('an animal reacts per species and queues its cue', () => {
+    const map = field()
+    const hen = npcAt('chicken', 5, 5), deer = npcAt('deer', 9, 9)
+    const state = makeState(map, { x: 6, y: 5 }, [hen, deer])
+    assert.deepEqual(interactNpc(state, hen), { kind: 'react', react: 'hop' })
+    assert.equal(hen.ai.reactTimer, REACT_TIME)
+    assert.deepEqual(interactNpc(state, deer), { kind: 'react', react: 'bolt' })
+    assert.equal(deer.ai.startleTimer, STARTLE_TIME)
+    assert.deepEqual(state.sfx.cues.map(c => c.name), ['npc-chicken', 'npc-deer'])
+  })
+  it('hostile NPCs ignore the button', () => {
+    const e = npcAt('villager', 5, 5, { hostile: true })
+    assert.equal(interactNpc(makeState(field(), { x: 4, y: 5 }, [e]), e), null)
+  })
+  it('nearestPeacefulNpc finds the closest peaceful npc within reach', () => {
+    const map = field()
+    const near = npcAt('chicken', 5, 5), far = npcAt('deer', 9, 9), mad = npcAt('villager', 4, 4, { hostile: true })
+    const state = makeState(map, { x: 4, y: 5 }, [far, mad, near])
+    assert.equal(nearestPeacefulNpc(state), near)
+    assert.equal(nearestPeacefulNpc(makeState(map, { x: 15, y: 12 }, [near])), null)
   })
 })

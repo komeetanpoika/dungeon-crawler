@@ -10,6 +10,8 @@ import { buildNavGrid, findPath, passable } from './nav.js'
 import { act } from './act.js'
 import { updateBrain } from './brain.js'
 import { tryStartEnemyAttack } from './enemy-attack.js'
+import { speakFrom } from './feedback.js'
+import { sfx } from './sfx.js'
 
 const S = 32
 export const FLEE_TIME = 3          // s a hit `flee` species keeps running
@@ -171,6 +173,33 @@ export function onNpcHit(e, state) {
   return { hostile: e.hostile, wrath }
 }
 
-// Task 7 replaces this with the real interaction (villagers speak, animals
-// react). The stub keeps game.js's import resolvable in the meantime.
-export function interactNpc() { return null }
+export function nearestPeacefulNpc(state, maxPx = 48) {
+  const { player } = state
+  let best = null, bestD = maxPx
+  for (const e of state.entities) {
+    if (e.type !== 'npc' || e.hostile) continue
+    const d = Math.hypot(e.px - player.px, e.py - player.py)
+    if (d < bestD) { best = e; bestD = d }
+  }
+  return best
+}
+
+// The interact button on a peaceful NPC. Villagers turn, linger and speak;
+// animals do their species reaction with a cue. Hostile NPCs ignore it.
+export function interactNpc(state, e, rng = Math.random) {
+  const def = NPC_SPECIES[e.species]
+  if (!def || e.hostile) return null
+  const { player } = state
+  if (def.lines) {
+    e.facing = player.px < e.px ? 'west' : 'east'
+    e.ai.wanderPt = null
+    e.ai.dwell = Math.max(e.ai.dwell ?? 0, 3)
+    const text = def.lines[Math.floor(rng() * def.lines.length)]
+    speakFrom(state, e, text)
+    return { kind: 'speech', text }
+  }
+  sfx(state, `npc-${e.species}`, { px: e.px, py: e.py })
+  if (def.react === 'hop') e.ai.reactTimer = REACT_TIME
+  else e.ai.startleTimer = Math.max(e.ai.startleTimer, def.react === 'bolt' ? STARTLE_TIME : 1)
+  return { kind: 'react', react: def.react }
+}

@@ -42,7 +42,8 @@ describe('sfx queue', () => {
   })
 
   it('CUE_NAMES covers the starter set', () => {
-    for (const name of ['melee-swing', 'melee-hit', 'player-hurt', 'pickup', 'ui-open'])
+    for (const name of ['melee-swing', 'melee-hit', 'player-hurt', 'pickup', 'ui-open',
+      'npc-chicken', 'npc-deer', 'npc-mouse', 'npc-hurt', 'npc-death', 'npc-wrath'])
       assert.ok(CUE_NAMES.includes(name), `${name} missing from CUE_NAMES`)
     assert.equal(new Set(CUE_NAMES).size, CUE_NAMES.length, 'duplicate cue names')
   })

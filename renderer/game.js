@@ -30,7 +30,7 @@ import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeI
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
-import { makeNpc, updateNpc, onNpcHit, interactNpc } from './systems/npc.js'
+import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -797,6 +797,8 @@ function update(delta) {
       e.type === 'prop' && e.isFountainBasin && e.x === player.x && e.y === player.y
     )
     const sign = basin ? null : signNearby(state.signs, player.x, player.y)
+    const npc = (basin || sign) ? null : nearestPeacefulNpc(state)
+    if (npc) { interactNpc(state, npc); return }
     if (sign) { openSign(sign); return }
     if (basin) {
       basin.flowing = !basin.flowing

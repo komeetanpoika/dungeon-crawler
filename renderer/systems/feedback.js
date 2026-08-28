@@ -38,6 +38,13 @@ function bubble(state, text, kind) {
 export function speak(state, text) { bubble(state, text, 'speech') }
 export function think(state, text) { bubble(state, text, 'thought') }
 
+// A speech bubble above another entity (an NPC). The renderer resolves
+// anchorId against state.entities and falls back to the player.
+export function speakFrom(state, entity, text) {
+  log(state, text)
+  if (state.feedback) state.feedback.bubble = { text, kind: 'speech', t: 0, anchorId: entity.id }
+}
+
 export function announce(state, text) {
   log(state, text)
   if (state.feedback) state.feedback.banner = { text, t: 0 }

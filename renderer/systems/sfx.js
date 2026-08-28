@@ -13,6 +13,8 @@ export const CUE_NAMES = [
   'stance-switch', 'talent-learned', 'rite',
   // UI (positionless)
   'ui-open', 'ui-close', 'ui-move',
+  // npcs
+  'npc-chicken', 'npc-deer', 'npc-mouse', 'npc-hurt', 'npc-death', 'npc-wrath',
 ]
 
 export function makeSfx(muted = false) {
