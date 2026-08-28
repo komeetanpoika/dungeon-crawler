@@ -9,6 +9,7 @@ import { TILE } from './entities.js'
 import { createMap } from './map.js'
 import { MAP_RITES } from '../data/rites.js'
 import { signsForMap } from './signs.js'
+import { NPC_SPECIES } from '../data/npcs.js'
 
 // Vision classes for blocking cells, keyed off the art that blocks: open
 // water never impedes sight (losClear); foliage is shallow cover — a ray
@@ -18,7 +19,65 @@ const LOS_CLEAR_PREFIXES = ['ow_water_', 'ow_pond_']
 const LOS_SOFT_PREFIXES = ['ow_tree_', 'ow_deadtree_', 'ow_bush_', 'ow_shrub_', 'ow_mushroom', 'ow_cactus']
 const startsWithAny = (s, prefixes) => prefixes.some(p => s?.startsWith(p))
 
-export function buildOpenMap(data) {
+export const WILD_MIN_FROM_VILLAGE = 12
+export const WILD_MIN_FROM_CAVE = 4
+const SAMPLE_TRIES = 200
+const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by))
+
+// Homes for the map's declared NPC population. Village NPCs cluster on the
+// village/camp POI within their species' roam; wild ones keep clear of the
+// village and every cave mouth. Ids index the concatenated village+wild list,
+// so they are stable while the homes reroll on every spawn.
+export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {}) {
+  if (!data.npcs) return []
+  const walkable = (x, y) => x >= 1 && y >= 1 && x < data.w - 1 && y < data.h - 1 && data.walk[y][x] === '1'
+  const taken = new Set([`${data.playerSpawn.x},${data.playerSpawn.y}`])
+  const anchor = data.pois.find(p => p.kind === 'village' || p.kind === 'camp') ?? null
+  const caves = data.pois.filter(p => p.kind === 'dungeon_entrance')
+  const dead = new Set(record?.dead ?? [])
+  const spawns = []
+  const place = (species, i, pick) => {
+    const id = `npc:${data.name}:${i}`
+    if (dead.has(id)) return
+    const def = NPC_SPECIES[species]
+    if (!def) { console.warn(`npc: unknown species "${species}" on ${data.name}`); return }
+    const t = pick(def)
+    if (!t) { console.warn(`npc: no home found for ${id}`); return }
+    taken.add(`${t.x},${t.y}`)
+    spawns.push({ kind: 'npc', species, x: t.x, y: t.y, id,
+      hostile: !!(record?.hostile && def.faction === 'village') })
+  }
+  const free = (x, y) => walkable(x, y) && !taken.has(`${x},${y}`)
+  const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))
+  // village: uniform in the roam box around the anchor, expanding if crowded
+  const pickVillage = def => {
+    if (!anchor) return null
+    for (let r = def.roam, tries = 0; tries < SAMPLE_TRIES; tries++, r += tries % 20 === 0 ? 1 : 0) {
+      const x = anchor.x + ri(-r, r), y = anchor.y + ri(-r, r)
+      if (free(x, y)) return { x, y }
+    }
+    return null
+  }
+  // wild: anywhere, then relax the village distance, then anywhere free
+  const pickWild = () => {
+    for (const minV of [WILD_MIN_FROM_VILLAGE, 6, 0]) {
+      for (let tries = 0; tries < SAMPLE_TRIES; tries++) {
+        const x = ri(1, data.w - 2), y = ri(1, data.h - 2)
+        if (!free(x, y)) continue
+        if (anchor && cheb(x, y, anchor.x, anchor.y) < minV) continue
+        if (caves.some(c => cheb(x, y, c.x, c.y) < WILD_MIN_FROM_CAVE)) continue
+        return { x, y }
+      }
+    }
+    return null
+  }
+  const village = anchor ? data.npcs.village ?? [] : []
+  village.forEach((sp, i) => place(sp, i, pickVillage))
+  ;(data.npcs.wild ?? []).forEach((sp, i) => place(sp, village.length + i, pickWild))
+  return spawns
+}
+
+export function buildOpenMap(data, { npcs = null, rng = Math.random } = {}) {
   const map = createMap(data.w, data.h)
   const chestAt = new Set(data.pois.filter(p => p.kind === 'chest').map(p => `${p.x},${p.y}`))
   for (let y = 0; y < data.h; y++) for (let x = 0; x < data.w; x++) {
@@ -115,6 +174,7 @@ export function buildOpenMap(data) {
     c.overlay = 'ow_sign'
     c.tile = TILE.WALL
   }
+  entitySpawns.push(...npcSpawnsForMap(data, { record: npcs, rng }))
   return {
     map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [],
     caveEntrances, gates, mapExit: data.exit ? { ...data.exit } : null,

@@ -570,10 +570,10 @@ export function buildBossTestArena(width, height) {
   return buildArena({ size: { w: width, h: height } })
 }
 
-export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null } = {}) {
+export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null, npcs = null } = {}) {
   if (depth === 0) return buildArena({ size: { w: width, h: height }, ...(arena ?? {}) })
   if (depth === OVERWORLD_DEPTH) return generateOverworld(width, height, { structures })
-  if (OPEN_MAPS[depth]) return buildOpenMap(OPEN_MAPS[depth])
+  if (OPEN_MAPS[depth]) return buildOpenMap(OPEN_MAPS[depth], { npcs })
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
 
   for (let attempt = 0; attempt < 5; attempt++) {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildOpenMap } from '../renderer/systems/openmap.js'
+import { buildOpenMap, npcSpawnsForMap } from '../renderer/systems/openmap.js'
 import { generateLevel } from '../renderer/systems/map.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from '../renderer/data/open-maps.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
@@ -79,7 +79,7 @@ describe('buildOpenMap', () => {
     // Rite triggers, wild mushrooms and gate fountains are legitimate spawn
     // kinds — this guards against anything else (enemies, markers)
     // sneaking onto an open map's scenery.
-    const ALLOWED_KINDS = ['chest', 'talent_trigger', 'wild_mushroom', 'fountain_wall', 'fountain_basin']
+    const ALLOWED_KINDS = ['chest', 'talent_trigger', 'wild_mushroom', 'fountain_wall', 'fountain_basin', 'npc']
     assert.ok(entitySpawns.every(s => ALLOWED_KINDS.includes(s.kind)))
   })
 
@@ -231,4 +231,60 @@ describe('dungeon entrance reachability', () => {
       }
     })
   }
+})
+
+// Deterministic LCG so sampling tests are reproducible.
+function lcg(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32) }
+const cheb = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y))
+
+describe('npcSpawnsForMap', () => {
+  for (const depth of [7, 8, 9]) {
+    const data = OPEN_MAPS[depth]
+    it(`${data.name}: spawns the declared population on walkable, distinct tiles`, () => {
+      const spawns = npcSpawnsForMap(data, { rng: lcg(1) })
+      assert.equal(spawns.length, data.npcs.village.length + data.npcs.wild.length)
+      const seen = new Set()
+      for (const s of spawns) {
+        assert.equal(s.kind, 'npc')
+        assert.equal(data.walk[s.y][s.x], '1', `${s.id} on a blocked tile`)
+        assert.ok(!seen.has(`${s.x},${s.y}`), `${s.id} shares a tile`); seen.add(`${s.x},${s.y}`)
+        assert.ok(!(s.x === data.playerSpawn.x && s.y === data.playerSpawn.y), 'on the player spawn')
+        assert.equal(s.hostile, false)
+      }
+    })
+    it(`${data.name}: village homes sit within roam of the anchor, wild homes keep their distance`, () => {
+      const anchor = data.pois.find(p => p.kind === 'village' || p.kind === 'camp')
+      const caves = data.pois.filter(p => p.kind === 'dungeon_entrance')
+      const spawns = npcSpawnsForMap(data, { rng: lcg(2) })
+      const nVillage = data.npcs.village.length
+      spawns.slice(0, nVillage).forEach(s => assert.ok(cheb(s, anchor) <= 8, `${s.id} far from village`))
+      spawns.slice(nVillage).forEach(s => {
+        assert.ok(cheb(s, anchor) >= 12, `${s.id} too close to the village`)
+        for (const c of caves) assert.ok(cheb(s, c) >= 4, `${s.id} clogs ${c.label}`)
+      })
+    })
+  }
+  it('ids are stable across rngs; homes are not', () => {
+    const a = npcSpawnsForMap(OPEN_MAPS[7], { rng: lcg(3) })
+    const b = npcSpawnsForMap(OPEN_MAPS[7], { rng: lcg(4) })
+    assert.deepEqual(a.map(s => s.id), b.map(s => s.id))
+    assert.equal(a[0].id, 'npc:forest-1-clearings:0')
+    assert.ok(a.some((s, i) => s.x !== b[i].x || s.y !== b[i].y))
+  })
+  it('honours a saved record: dead ids are skipped, a hostile village spawns hostile', () => {
+    const record = { dead: ['npc:forest-1-clearings:0', 'npc:forest-1-clearings:7'], hostile: true }
+    const spawns = npcSpawnsForMap(OPEN_MAPS[7], { record, rng: lcg(5) })
+    assert.equal(spawns.length, 11 - 2)
+    assert.ok(!spawns.some(s => record.dead.includes(s.id)))
+    for (const s of spawns) assert.equal(s.hostile, s.species === 'villager' || s.species === 'elder')
+  })
+  it('a map without npcs yields nothing', () => {
+    assert.deepEqual(npcSpawnsForMap(OPEN_MAPS[10], { rng: lcg(6) }), [])
+  })
+  it('buildOpenMap emits the npc spawns and forwards the record', () => {
+    const record = { dead: ['npc:forest-1-clearings:0'], hostile: false }
+    const { entitySpawns } = buildOpenMap(OPEN_MAPS[7], { npcs: record, rng: lcg(7) })
+    const npcs = entitySpawns.filter(s => s.kind === 'npc')
+    assert.equal(npcs.length, 10)
+  })
 })
