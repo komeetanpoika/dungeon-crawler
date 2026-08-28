@@ -272,12 +272,17 @@ function detonateFireball(px, py) {
   const before = state.entities
   const npcSnap = npcSnapshot()
   const burst = applyBurst(state.entities, state.player, tiles)
-  burst.entities.forEach((e, i) => {
-    if (isHittable(e) && before[i] && e.hp < before[i].hp) {
-      addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${before[i].hp - e.hp}`, kind: 'dealt' })
-      if (e.hp <= 0) sfx(state, deathCue(e), { px: e.px, py: e.py })
-    }
-  })
+  // applyBurst hands back a fresh copy for everything it burned and culls the
+  // dead, so positional indices shift the moment one entity dies. Diff by
+  // identity instead, the way npcsStruckSince does: an entity from the before
+  // list that is no longer in the after list by reference was burned — copied
+  // if it survived, dropped if the blast killed it.
+  const untouched = new Set(burst.entities)
+  for (const e of before) {
+    if (!isHittable(e) || e.hp <= 0 || untouched.has(e)) continue
+    addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${BURST_DAMAGE}`, kind: 'dealt' })
+    if (e.hp - BURST_DAMAGE <= 0) sfx(state, deathCue(e), { px: e.px, py: e.py })
+  }
   state.entities = burst.entities
   npcsStruckSince(npcSnap)
   if (burst.playerBurned) damagePlayer(state, BURST_DAMAGE, 'hit', `The blast engulfs you! (-${BURST_DAMAGE} HP)`)
