@@ -71,9 +71,11 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
     }
     return null
   }
-  const village = anchor ? data.npcs.village ?? [] : []
-  village.forEach((sp, i) => place(sp, i, pickVillage))
-  ;(data.npcs.wild ?? []).forEach((sp, i) => place(sp, village.length + i, pickWild))
+  const declaredVillage = data.npcs.village ?? []
+  if (declaredVillage.length && !anchor)
+    console.warn(`npc: ${data.name} declares ${declaredVillage.length} village npcs but has no village/camp POI`)
+  if (anchor) declaredVillage.forEach((sp, i) => place(sp, i, pickVillage))
+  ;(data.npcs.wild ?? []).forEach((sp, i) => place(sp, declaredVillage.length + i, pickWild))
   return spawns
 }
 

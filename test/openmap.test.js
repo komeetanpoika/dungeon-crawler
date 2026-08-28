@@ -281,6 +281,13 @@ describe('npcSpawnsForMap', () => {
   it('a map without npcs yields nothing', () => {
     assert.deepEqual(npcSpawnsForMap(OPEN_MAPS[10], { rng: lcg(6) }), [])
   })
+  it('a map with a declared village but no village/camp POI drops only the village group', () => {
+    const data = { ...OPEN_MAPS[7], pois: OPEN_MAPS[7].pois.filter(p => p.kind !== 'village' && p.kind !== 'camp') }
+    const spawns = npcSpawnsForMap(data, { rng: lcg(8) })
+    assert.equal(spawns.length, data.npcs.wild.length)
+    assert.ok(spawns.every(s => data.npcs.wild.includes(s.species)))
+    assert.equal(spawns[0].id, 'npc:forest-1-clearings:6')
+  })
   it('buildOpenMap emits the npc spawns and forwards the record', () => {
     const record = { dead: ['npc:forest-1-clearings:0'], hostile: false }
     const { entitySpawns } = buildOpenMap(OPEN_MAPS[7], { npcs: record, rng: lcg(7) })
