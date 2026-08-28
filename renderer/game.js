@@ -162,6 +162,10 @@ let rafId = null
 let rulesets = {}
 let structures = {}
 let phase = PHASE.TITLE
+// An NPC was hurt (or the village roused) since the last save — the frame
+// that ends with this set flushes the record, so kills and wrath survive a
+// map change or a quit rather than waiting for some unrelated save.
+let npcDirty = false
 // Adventure save: cave instances (map name -> label -> instance) plus the
 // progression record (furthest map, permanently-cleared dungeons).
 let savedAdventure = normalizeAdventureSave(null)
@@ -236,6 +240,7 @@ function isHittable(e) { return isEnemy(e) || e.type === 'npc' }
 // A blow landed on an npc: species reaction + village wrath (once).
 function npcStruck(e) {
   if (e.type !== 'npc') return
+  npcDirty = true
   const r = onNpcHit(e, state)
   if (r.wrath) { announce(state, 'The village turns on you!'); sfx(state, 'npc-wrath') }
 }
@@ -351,6 +356,10 @@ function buildEntities(spawns, map, depth) {
   })
 }
 
+// Ids of the npcs a build actually placed (the sampler drops any it could
+// not home, and those must not be tombstoned as dead).
+const npcSpawns = spawns => spawns.filter(s => s.kind === 'npc').map(s => s.id)
+
 // Groundhog Day: every NPC on the current surface returns, alive and calm.
 function respawnNpcs() {
   const data = OPEN_MAPS[state.level]
@@ -363,9 +372,11 @@ function respawnNpcs() {
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
+  const openMap = OPEN_MAPS[depth]
+  const npcRecord = openMap ? npcRecordFor(savedAdventure, openMap.name) : null
   const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
-      npcs: OPEN_MAPS[depth] ? npcRecordFor(savedAdventure, OPEN_MAPS[depth].name) : null })
+      npcs: npcRecord })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -433,10 +444,10 @@ function startNewRun(depth = 1, arenaCfg = null) {
     exitMsgCooldown: 0,
     entranceHold: false,
     signs: signs ?? [],
-    npcWrath: !!(OPEN_MAPS[depth] && npcRecordFor(savedAdventure, OPEN_MAPS[depth].name).hostile),
-    // The full declared id list, dead ones included — a dead npc must stay
-    // recorded as dead on the next persist rather than being forgotten.
-    npcSpawnIds: OPEN_MAPS[depth] ? npcSpawnsForMap(OPEN_MAPS[depth]).map(s => s.id) : [],
+    npcWrath: !!npcRecord?.hostile,
+    // The ids actually built, plus the ones already tombstoned — a dead npc
+    // must stay recorded as dead on the next persist rather than be forgotten.
+    npcSpawnIds: npcRecord ? [...npcSpawns(entitySpawns), ...npcRecord.dead] : [],
   }
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
@@ -1215,6 +1226,7 @@ function update(delta) {
     const mapData = OPEN_MAPS[surfaceLevel]
     if (mapData) {
       resetNpcs(savedAdventure)
+      npcDirty = false
       state = adventureRespawn(state, mapData.playerSpawn)
       respawnNpcs()
       persistAdventure()
@@ -1280,6 +1292,10 @@ function update(delta) {
   state.entities = state.entities.filter(e => !isHittable(e) || e.hp > 0)
   stepKnockback(player, delta, (px, py) => canMoveTo(map, px, py, PLAYER_HALF))
 
+  // Flush NPC deaths and wrath. It has to sit after the cull above, because
+  // recordNpcState reads `dead` as "declared id with no entity left".
+  if (npcDirty && !state.cave && OPEN_MAPS[state.level]) { npcDirty = false; persistAdventure() }
+
   // Clear hit flash — it fires once per swing
   if (state.hitEffects?.length > 0) state.hitEffects = []
 
@@ -1339,13 +1355,17 @@ function exitCave() {
 
 // Waystone travel: a fresh open map, the player carried over to its spawn.
 function travelToMap(depth) {
+  // The map being left still owns its npc record — write it before `state`
+  // becomes the new map and the departing kills/wrath are out of reach.
+  if (OPEN_MAPS[state.level]) { npcDirty = false; persistAdventure() }
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
+  const mapName = OPEN_MAPS[depth].name
+  const npcRecord = npcRecordFor(savedAdventure, mapName)
   const { map, entitySpawns, playerSpawn, caveEntrances, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures,
-      npcs: npcRecordFor(savedAdventure, OPEN_MAPS[depth].name) })
+      npcs: npcRecord })
   decorateMap(map, rulesets[theme.ruleset])
-  const mapName = OPEN_MAPS[depth].name
   state = {
     ...state,
     level: depth, map, theme,
@@ -1365,8 +1385,8 @@ function travelToMap(depth) {
     mapExit: mapExit ?? null,
     entranceHold: false,
     signs: signs ?? [],
-    npcWrath: npcRecordFor(savedAdventure, mapName).hostile,
-    npcSpawnIds: npcSpawnsForMap(OPEN_MAPS[depth]).map(s => s.id),
+    npcWrath: npcRecord.hostile,
+    npcSpawnIds: [...npcSpawns(entitySpawns), ...npcRecord.dead],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
   }
   savedAdventure.progress.mapDepth = depth
