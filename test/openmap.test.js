@@ -271,12 +271,16 @@ describe('npcSpawnsForMap', () => {
     assert.equal(a[0].id, 'npc:forest-1-clearings:0')
     assert.ok(a.some((s, i) => s.x !== b[i].x || s.y !== b[i].y))
   })
-  it('honours a saved record: dead ids are skipped, a hostile village spawns hostile', () => {
+  it('honours a saved record: dead ids are skipped, only fight-capable villagers spawn hostile', () => {
     const record = { dead: ['npc:forest-1-clearings:0', 'npc:forest-1-clearings:7'], hostile: true }
     const spawns = npcSpawnsForMap(OPEN_MAPS[7], { record, rng: lcg(5) })
     assert.equal(spawns.length, 11 - 2)
     assert.ok(!spawns.some(s => record.dead.includes(s.id)))
-    for (const s of spawns) assert.equal(s.hostile, s.species === 'villager' || s.species === 'elder')
+    // elders flee when hit, so onNpcHit never turns them hostile: a reloaded
+    // wrath must not hand them a fight they cannot have
+    for (const s of spawns) assert.equal(s.hostile, s.species === 'villager')
+    assert.ok(spawns.some(s => s.species === 'villager' && s.hostile))
+    assert.ok(spawns.some(s => s.species === 'elder' && !s.hostile))
   })
   it('a map without npcs yields nothing', () => {
     assert.deepEqual(npcSpawnsForMap(OPEN_MAPS[10], { rng: lcg(6) }), [])

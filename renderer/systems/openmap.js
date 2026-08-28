@@ -44,8 +44,10 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
     const t = pick(def)
     if (!t) { console.warn(`npc: no home found for ${id}`); return }
     taken.add(`${t.x},${t.y}`)
+    // a reloaded wrath only re-arms the villagers who can actually fight —
+    // onNpcHit never turns a flee species hostile, so nor may a saved record
     spawns.push({ kind: 'npc', species, x: t.x, y: t.y, id,
-      hostile: !!(record?.hostile && def.faction === 'village') })
+      hostile: !!(record?.hostile && def.faction === 'village' && def.onHit === 'fight') })
   }
   const free = (x, y) => walkable(x, y) && !taken.has(`${x},${y}`)
   const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))
