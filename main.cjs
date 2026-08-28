@@ -25,7 +25,7 @@ function createWindow() {
       contextIsolation: true,
     },
   })
-  win.loadFile('renderer/index.html')
+  win.loadFile('renderer/index.html', process.argv.includes('--dcdebug') ? { search: 'dcdebug=1' } : undefined)
 }
 
 function createEditorWindow() {

@@ -154,6 +154,12 @@ window.addEventListener('keydown', e => {
 })
 
 let state = null
+// Tooling hook (verify-npcs.mjs etc.): only wired up when launched with
+// --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
+// normal run never exposes internal state.
+if (new URLSearchParams(location.search).has('dcdebug')) {
+  window.__dc = { get state() { return state } }
+}
 let inventoryOpen = false
 let meta = null
 let renderer = null
