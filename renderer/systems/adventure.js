@@ -33,7 +33,8 @@ export function nextMapDepth(depth) {
 
 // Save-file shapes: v1 was the bare caves map ({mapName: {label: instance}});
 // v2 added { caves, progress }; v3 adds learned talents and the traveling
-// body (hands + sack). Migration is additive — missing fields default.
+// body (hands + sack); v4 adds npcs ({mapName: {dead, hostile}}) — wiped on
+// player death. Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
   const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
     : (raw && typeof raw === 'object' && !raw.caves) ? { caves: raw, progress: freshProgress() }
@@ -41,5 +42,22 @@ export function normalizeAdventureSave(raw) {
   base.talents ??= []
   base.body ??= null
   base.gates ??= {}
+  base.npcs ??= {}
   return base
+}
+
+export function npcRecordFor(save, mapName) {
+  const r = save.npcs?.[mapName]
+  return { dead: [...(r?.dead ?? [])], hostile: !!r?.hostile }
+}
+
+// dead = every declared spawn id with no living npc entity behind it.
+export function recordNpcState(save, mapName, spawnIds, entities, wrath) {
+  const alive = new Set(entities.filter(e => e.type === 'npc').map(e => e.id))
+  save.npcs[mapName] = { dead: spawnIds.filter(id => !alive.has(id)), hostile: !!wrath }
+}
+
+// Groundhog Day: the player's death forgets every map's dead and wrath.
+export function resetNpcs(save) {
+  save.npcs = {}
 }
