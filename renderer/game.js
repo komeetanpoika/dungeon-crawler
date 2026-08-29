@@ -32,7 +32,7 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
-import { felledCells } from './systems/lumber.js'
+import { felledCells, findTreeHit, chopTree } from './systems/lumber.js'
 import { isEnemy, isHittable } from './systems/factions.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -936,6 +936,28 @@ function update(delta) {
       if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
+    // Chopping: a hatchet/axe swing also lands on the nearest tree in the
+    // wedge. Damage is silent bar-less chopHp on the cell; the fall is what
+    // you hear and see, and the lumber arcs onto the stump for a walk-onto
+    // pickup.
+    const chop = player.weapon?.chop
+    if (chop) {
+      const tree = findTreeHit(state.map, player, hitAt, arc.reach * mods.reachMul)
+      if (tree) {
+        const res = chopTree(state.map, tree.x, tree.y, chop)
+        state.hitEffects.push({ x: tree.x, y: tree.y })
+        const tpx = tree.x * TILE_SIZE + TILE_SIZE / 2, tpy = tree.y * TILE_SIZE + TILE_SIZE / 2
+        sfx(state, res.felled ? 'tree-fall' : 'chop', { px: tpx, py: tpy })
+        if (res.felled) {
+          state.entities.push({
+            type: 'floating_item', contents: { type: 'lumber', count: res.yield }, x: tree.x, y: tree.y,
+            startPx: tpx, startPy: tpy - TILE_SIZE, targetPx: tpx, targetPy: tpy,
+            px: tpx, py: tpy - TILE_SIZE, progress: 0, duration: 0.35,
+          })
+          if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+        }
+      }
+    }
   }
   if (player.attackMode === 'melee' && !player.weapon) {
     // Truly unarmed: no swing at all — like the empty ranged slot, the fix

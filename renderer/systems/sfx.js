@@ -15,6 +15,8 @@ export const CUE_NAMES = [
   'ui-open', 'ui-close', 'ui-move',
   // npcs
   'npc-chicken', 'npc-deer', 'npc-mouse', 'npc-hurt', 'npc-death', 'npc-wrath',
+  // lumber & campfire
+  'chop', 'tree-fall', 'campfire-light', 'campfire-out', 'sizzle',
 ]
 
 export function makeSfx(muted = false) {

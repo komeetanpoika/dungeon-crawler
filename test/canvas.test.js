@@ -367,3 +367,23 @@ describe('drawEntity — magic stance held weapon', () => {
     assert.deepEqual(ctx.images, ['MAGIC'])
   })
 })
+
+describe('trees never show damage', () => {
+  it('a chopped-but-standing tree cell draws exactly like an untouched one', () => {
+    const spr = { ow_grass_0: 'G', ow_tree_small: 'T' }
+    const a = recordingCtx(), b = recordingCtx()
+    drawTile(a, TILE.WALL, 0, 0, 32, spr, { skin: 'ow_grass_0', overlay: 'ow_tree_small' })
+    drawTile(b, TILE.WALL, 0, 0, 32, spr, { skin: 'ow_grass_0', overlay: 'ow_tree_small', chopHp: 1 })
+    assert.deepEqual(a.calls, b.calls)
+  })
+})
+
+describe('floating consumables use atlas sprites', () => {
+  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['mushroom', 'ow_mushroom']])
+    it(`${type} draws ${key}`, () => {
+      const ctx = recordingCtx()
+      ctx.fillText = () => {}
+      drawEntity(ctx, { type: 'floating_item', contents: { type } }, 0, 0, 32, { [key]: key.toUpperCase() })
+      assert.deepEqual(ctx.calls, [key.toUpperCase()])
+    })
+})

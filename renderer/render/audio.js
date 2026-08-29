@@ -50,6 +50,11 @@ export const RECIPES = {
   'npc-hurt':       { kind: 'burst',  freq: 500,  q: 1.0,  dur: 0.08, vol: 0.6 },
   'npc-death':      { kind: 'blip',   wave: 'triangle', f0: 600,  f1: 200,  dur: 0.20, vol: 0.5 },
   'npc-wrath':      { kind: 'rumble', freq: 110, dur: 0.60, vol: 0.8 },
+  'chop':           { kind: 'burst',  freq: 320,  q: 2.0,  dur: 0.10, vol: 0.8 },
+  'tree-fall':      { kind: 'rumble', freq: 75,  dur: 0.60, vol: 0.9 },
+  'campfire-light': { kind: 'swoosh', f0: 300,  f1: 1200, dur: 0.30, vol: 0.5 },
+  'campfire-out':   { kind: 'blip',   wave: 'triangle', f0: 400,  f1: 150,  dur: 0.30, vol: 0.4 },
+  'sizzle':         { kind: 'burst',  freq: 2400, q: 0.5,  dur: 0.35, vol: 0.5 },
 }
 
 export function falloffGain(distPx) {
