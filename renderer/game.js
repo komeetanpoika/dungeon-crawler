@@ -34,7 +34,7 @@ import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcD
 import { npcSpawnsForMap } from './systems/openmap.js'
 import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, echoAdjacent, echoLine, ruleCtx, makeEpCtx } from './systems/leap.js'
 import { EPISODE_MODULES } from './systems/episodes/index.js'
-import { felledCells, findTreeHit, chopTree } from './systems/lumber.js'
+import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable } from './systems/factions.js'
 import { NPC_SPECIES } from './data/npcs.js'
@@ -1040,24 +1040,28 @@ function update(delta) {
       if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
-    // Chopping: a hatchet/axe swing also lands on the nearest tree in the
-    // wedge. Damage is silent bar-less chopHp on the cell; the fall is what
-    // you hear and see, and the lumber arcs onto the stump for a walk-onto
+    // Harvesting: a hatchet/axe swing lands on the nearest tree in the
+    // wedge, a pick's mine also lands on the nearest rock. Damage is silent
+    // bar-less chopHp on the cell; the fall/clear is what you hear and see,
+    // and the lumber (trees only) arcs onto the stump for a walk-onto
     // pickup.
-    const chop = player.weapon?.chop
-    if (chop) {
-      const tree = findTreeHit(state.map, player, hitAt, arc.reach * mods.reachMul)
-      if (tree) {
-        const res = chopTree(state.map, tree.x, tree.y, chop)
-        state.hitEffects.push({ x: tree.x, y: tree.y })
-        const tpx = tree.x * TILE_SIZE + TILE_SIZE / 2, tpy = tree.y * TILE_SIZE + TILE_SIZE / 2
-        sfx(state, res.felled ? 'tree-fall' : 'chop', { px: tpx, py: tpy })
+    const tool = { chop: player.weapon?.chop, mine: player.weapon?.mine }
+    if (tool.chop || tool.mine) {
+      const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, tool)
+      if (spot) {
+        const res = harvest(state.map, spot.x, spot.y, tool)
+        state.hitEffects.push({ x: spot.x, y: spot.y })
+        const spx = spot.x * TILE_SIZE + TILE_SIZE / 2, spy = spot.y * TILE_SIZE + TILE_SIZE / 2
+        const cue = res.kind === 'rock' ? 'wall-slam' : res.felled ? 'tree-fall' : 'chop'
+        sfx(state, cue, { px: spx, py: spy })
         if (res.felled) {
-          state.entities.push({
-            type: 'floating_item', contents: { type: 'lumber', count: res.yield }, x: tree.x, y: tree.y,
-            startPx: tpx, startPy: tpy - TILE_SIZE, targetPx: tpx, targetPy: tpy,
-            px: tpx, py: tpy - TILE_SIZE, progress: 0, duration: 0.35,
-          })
+          if (res.yield > 0) {
+            state.entities.push({
+              type: 'floating_item', contents: { type: 'lumber', count: res.yield }, x: spot.x, y: spot.y,
+              startPx: spx, startPy: spy - TILE_SIZE, targetPx: spx, targetPy: spy,
+              px: spx, py: spy - TILE_SIZE, progress: 0, duration: 0.35,
+            })
+          }
           if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
         }
       }
