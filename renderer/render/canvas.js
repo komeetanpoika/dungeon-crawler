@@ -11,6 +11,7 @@ import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha } from '../systems/campfire.js'
+import { isCreature, creatureAlpha } from '../systems/creatures.js'
 
 const TILE_SIZE = 32
 
@@ -725,9 +726,10 @@ function drawDragonBreath(ctx, dragon, camX, camY) {
   }
 }
 
-function drawHealthBars(ctx, entities, map, camX, camY, S) {
+function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
   for (const e of entities) {
     if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
+    if (isCreature(e) && creatureAlpha(e, state) === 0) continue
     if (!map[e.y]?.[e.x]?.visible) continue
     const px = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
     const py = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
@@ -940,7 +942,11 @@ export class Renderer {
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
-      if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
+      if (isCreature(e)) {
+        const alpha = creatureAlpha(e, state)
+        if (alpha > 0) drawCreature(ctx, sprites, e.type, epx + S / 2, epy + S / 2, S, { alpha })
+      }
+      else if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
       else drawEntity(ctx, e, epx, epy, S, sprites)
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
@@ -975,7 +981,7 @@ export class Renderer {
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     const cyclops = entities.find(e => e.type === 'cyclops')
     if (cyclops) drawCyclopsEffects(ctx, cyclops, camX, camY)
-    drawHealthBars(ctx, entities, map, camX, camY, S)
+    drawHealthBars(ctx, entities, map, camX, camY, S, state)
 
     // Draw projectiles. Arrows are elongated along their travel axis;
     // wand bolts and enemy shots stay 4x4 squares.

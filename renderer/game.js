@@ -36,7 +36,8 @@ import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, echoAd
 import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
-import { isEnemy, isHittable } from './systems/factions.js'
+import { isEnemy, isHittable, isDead } from './systems/factions.js'
+import { isCreature, strikeCreature, updateCreature, makeCreature } from './systems/creatures.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
@@ -374,6 +375,7 @@ function buildEntities(spawns, map, depth) {
       case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
       case 'echo':    return [{ type: 'echo', id: `echo:${s.spot}`, x: s.x, y: s.y, spot: s.spot, px: cx, py: cy }]
       case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
+      case 'creature': { const c = makeCreature(s.creature, s.x, s.y); return c ? [{ ...c, px: cx, py: cy }] : [] }
       default:               return []
     }
   })
@@ -1014,6 +1016,12 @@ function update(delta) {
         }
         if (!hitAt(e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
+        if (isCreature(e)) {
+          const r = strikeCreature(e, state, dmg)
+          if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
+          if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
+          return r.entity
+        }
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
         npcStruck(hitEnemy)
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
@@ -1022,7 +1030,7 @@ function update(delta) {
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
       })
-      .filter(e => !isHittable(e) || e.hp > 0)
+      .filter(e => !isDead(e))
     // Maunonmiekka magic: a crimson shockwave bursts from every struck enemy,
     // splashing damage + knockback onto its neighbours.
     if (struck.length) {
@@ -1185,6 +1193,12 @@ function update(delta) {
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
+          if (isCreature(e)) {
+            const r = strikeCreature(e, state, p.damage)
+            if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
+            if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
+            return r.entity
+          }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
           const struck = { ...e, hp: e.hp - p.damage, inCombat: true }
           npcStruck(struck)
@@ -1193,7 +1207,7 @@ function update(delta) {
         }
         return e
       })
-      state.entities = state.entities.filter(e => !isHittable(e) || e.hp > 0)
+      state.entities = state.entities.filter(e => !isDead(e))
       if (hit && p.explodes) detonateFireball(p.px, p.py)
     } else {
       if (Math.hypot(player.px - p.px, player.py - p.py) < 10) {
@@ -1220,6 +1234,7 @@ function update(delta) {
     // updateNpc drives peaceful AND hostile NPCs (the hostile ones run the
     // enemy brain inside their attack_hostile goal) — never both paths.
     if (e.type === 'npc') { updateNpc(e, state, delta); continue }
+    if (isCreature(e)) { updateCreature(e, state, delta); continue }
     if (!isEnemy(e)) continue
 
     if (e.stunTimer > 0) { e.stunTimer -= delta; continue }
@@ -1448,7 +1463,7 @@ function update(delta) {
       sfx(state, e.hp <= 0 ? deathCue(e) : 'wall-slam', { px: e.px, py: e.py })
     }
   }
-  state.entities = state.entities.filter(e => !isHittable(e) || e.hp > 0)
+  state.entities = state.entities.filter(e => !isDead(e))
   stepKnockback(player, delta, (px, py) => canMoveTo(map, px, py, PLAYER_HALF))
 
   // Flush NPC deaths and wrath. It has to sit after the cull above, because

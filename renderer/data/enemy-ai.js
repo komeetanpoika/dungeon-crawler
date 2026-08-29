@@ -18,6 +18,10 @@ const BASE = {
   npc:         { taxon: 'humanoid', speed: 70, wanderSpeed: 40, half: 4,  sightRange: 200, stopRange: 20 },
   // dragon_boss row is documentation only — updateDragonBoss never consults getAIConfig (its stomp navigation is bespoke)
   dragon_boss: { taxon: 'beast',    speed: 0,  wanderSpeed: 0,  half: 28, sightRange: 448, stopRange: 0 },
+  // Leap-episode creatures. nakki has no row here — it is never isEnemy, so
+  // its movement is driven entirely by its own update hook, not the brain.
+  maahinen:    { taxon: 'beast', speed: 70, wanderSpeed: 0,  half: 28, sightRange: 320, stopRange: 30, fleeHp: 0 },
+  sammunut:    { taxon: 'beast', speed: 80, wanderSpeed: 40, half: 12, sightRange: 400, stopRange: 0,  fleeHp: 0 },
 }
 
 // Monster variants override the base monster row.
