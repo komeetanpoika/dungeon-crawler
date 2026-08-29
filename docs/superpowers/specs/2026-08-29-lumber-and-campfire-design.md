@@ -17,7 +17,9 @@ proper meal. Three linked pieces, each small:
 
 - Lumber has no other use yet (no building, trading, bridges).
 - Trees never regrow; felled trees are permanent per adventure save.
-- No campfire fuel, light radius, or enemy reaction to fire.
+- No campfire light radius or enemy reaction to fire.
+- No damage states for tree art: a tree looks untouched until it falls, and
+  never shows an HP bar. Per-damage tree graphics may come later.
 - Only the open (overworld) maps have trees; caves are untouched.
 
 ## 1. Hatchet
@@ -65,7 +67,9 @@ below it if that trunk is a tree; otherwise it is ignored (an orphan top is
 scenery).
 
 Chop damage is tracked as `cell.chopHp`, initialised lazily from the table
-on first hit, so `buildOpenMap` needs no per-cell setup.
+on first hit, so `buildOpenMap` needs no per-cell setup. It is invisible: the
+overlay art stays the plain tree until the cell is felled, and no HP bar or
+number is drawn for tree cells (the `hp`-bar path is for entities only).
 
 ### Hit selection
 
@@ -116,18 +120,16 @@ Feedback is sfx + spark only. No text on hit; the fall is audible.
 `adventure.js` save shape becomes **v5**, additive as before:
 
 ```
-felled:    { [mapName]: ['x,y', ...] }     // trunk cells
-campfires: { [mapName]: [{ x, y }, ...] }
+felled: { [mapName]: ['x,y', ...] }     // trunk cells
 ```
 
-- `normalizeAdventureSave` defaults both to `{}`.
-- `buildOpenMap(data, { npcs, felled, campfires })` applies each felled
-  trunk via the same felling routine (`applyFelled(map, list)` in
-  `lumber.js`) before LOS flags are relied on, and emits a
-  `{ kind: 'campfire', x, y }` entity spawn per saved campfire.
-- `persistAdventure` writes both from `surface.felled` / campfire entities.
-- Neither is wiped on player death (unlike npcs): a cleared path stays
-  cleared; a built fire stays built.
+- `normalizeAdventureSave` defaults it to `{}`.
+- `buildOpenMap(data, { npcs, felled })` applies each felled trunk via the
+  same felling routine (`applyFelled(map, list)` in `lumber.js`) before LOS
+  flags are relied on.
+- `persistAdventure` writes it from `surface.felled`.
+- Not wiped on player death (unlike npcs): a cleared path stays cleared.
+- Campfires are not saved — they burn out within a minute (section 5).
 
 ## 4. Items
 
@@ -167,9 +169,11 @@ New pure module `renderer/systems/campfire.js`:
 
 ```
 CAMPFIRE_COST = 3            // lumber per fire
+CAMPFIRE_DURATION = 60       // seconds a fire burns
 canBuildCampfire(player) -> { ok } | { ok: false, reason: 'lumber' }
 buildSpot(map, entities, player) -> { x, y } | null   // nearest free adjacent walkable tile (drop's search)
-makeCampfire(x, y) -> { type: 'campfire', x, y, px, py }
+makeCampfire(x, y) -> { type: 'campfire', x, y, px, py, t: 0 }
+tickCampfires(entities, delta) -> entities   // ages fires; drops those past CAMPFIRE_DURATION
 cookMeat(player) -> number   // converts every raw meat stack into cooked_meat; returns count cooked
 ```
 
@@ -178,8 +182,11 @@ Wiring:
 - **Build**: sack panel *Build fire* → `game.js` `buildCampfire(i)`:
   refuses with `think('Not enough lumber.')` below 3 or
   `think('No room for a fire here.')` with no spot; otherwise removes 3
-  lumber, pushes the entity, cues `campfire-light`, closes the panel,
-  `persistAdventure()`.
+  lumber, pushes the entity, cues `campfire-light`, closes the panel.
+- **Burn-out**: `tickCampfires` runs each frame; a fire vanishes 60 s after
+  it was lit (cue `campfire-out`). The last ~10 s the flame draws dimmer so
+  the player sees it dying. Fires are per-session — leaving the map or
+  reloading forgets them.
 - **Cook**: walk-onto. Each frame, if the player's tile holds a campfire and
   the sack has raw meat, `cookMeat` runs once (`sizzle` cue,
   `think('You cook the meat.')`). Standing still on the fire does not
@@ -192,7 +199,7 @@ Wiring:
 
 New recipes in `render/audio.js`: `chop` (burst, wood-ish ~320 Hz),
 `tree-fall` (rumble, ~75 Hz, 0.6 s), `campfire-light` (swoosh up),
-`sizzle` (short noise burst).
+`sizzle` (short noise burst), `campfire-out` (soft downward blip).
 
 ## Testing
 
@@ -202,15 +209,18 @@ New recipes in `render/audio.js`: `chop` (burst, wood-ish ~320 Hz),
   `findTreeHit` picks the nearest trunk inside the wedge and ignores cells
   outside it; `chopTree` hp, felling both cells, yield, LOS flags;
   `applyFelled` idempotence.
-- `test/campfire.test.js` — cost gate, spot search, `cookMeat` converts all
-  raw stacks and returns the count, is a no-op without meat.
+- `test/campfire.test.js` — cost gate, spot search, `tickCampfires` ages and
+  removes fires past 60 s, `cookMeat` converts all raw stacks and returns the
+  count, is a no-op without meat.
 - `test/inventory.test.js` — new kinds round-trip through
   `itemFromContents`/`contentsFromItem` with counts; quick-use includes
   cooked meat.
-- `test/adventure.test.js` — v5 defaults; v4 saves pass through gaining
-  empty `felled`/`campfires`.
-- `test/openmap.test.js` — felled record produces stump floor; campfire
-  record produces a spawn; starter is the hatchet.
+- `test/adventure.test.js` — v5 defaults; v4 saves pass through gaining an
+  empty `felled`.
+- `test/openmap.test.js` — felled record produces stump floor; starter is
+  the hatchet.
+- `test/canvas.test.js` — a damaged (unfelled) tree cell renders identically
+  to an untouched one (no bar, same overlay).
 - `test/melee.test.js` / `test/stamina.test.js` — hatchet entries.
 - `test/sprites.test.js` / `test/icons.test.js` — new sprite keys resolve to
   existing PNGs.
