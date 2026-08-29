@@ -5,7 +5,7 @@
 // Every episode POI the game reads is declared here by label; test/leap-maps.test.js
 // lists them.
 import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
-import { PINES, ROCKS_MOSS, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
+import { PINES, ROCKS_MOSS, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -153,14 +153,92 @@ function lake() {
   return b
 }
 
-export const LEAP_MAPS = [lake]
+function fold() {
+  const rng = mulberry32(909)
+  const noise = makeNoise(rng)
+  const b = new MapBuilder('highland-2-fold', 'forest', 'highland fold, wolf den, sealed burrow', 120, 80)
+  b.notes = "Aino's highland: the fold by the village, the wolves' hollow north, the burrow beyond it."
+  grassBase(b, rng)
+  const elev = (x, y) => noise(x, y, { freq: 0.05, octaves: 3 }) * 0.7 + ((b.h - y) / b.h) * 0.3
+  for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
+    const e = elev(x, y)
+    if (e > 0.64) { b.g(x, y, rng() < 0.2 ? 'ow_stone_ground_0' : 'ow_grass_0'); if (rng() < 0.7) b.p(x, y, pick(rng, ROCKS_MOSS)) }
+    else { const d = noise(x + 300, y, { freq: 0.08, octaves: 3 }); if (d > 0.47 && rng() < (d - 0.47) * 3) plantTree(b, rng, x, y, PINES) }
+  }
+  forestEdge(b, rng, PINES)
+  // village south with the fold beside it
+  const village = { x: 40, y: 58 }
+  stampVillage(b, rng, village.x, village.y)
+  b.poi('village', village.x, village.y - 1, 'village')
+  const fold = { x: village.x + 14, y: village.y }
+  for (let y = -3; y <= 3; y++) for (let x = -4; x <= 4; x++) b.clearProp(fold.x + x, fold.y + y)
+  for (let x = -4; x <= 4; x++) { b.p(fold.x + x, fold.y - 3, x === -4 ? 'ow_fence_l' : x === 4 ? 'ow_fence_r' : 'ow_fence_m'); if (x !== 0) b.p(fold.x + x, fold.y + 3, x === -4 ? 'ow_fence_l' : x === 4 ? 'ow_fence_r' : 'ow_fence_m') }
+  for (let y = -2; y <= 2; y++) { b.p(fold.x - 4, fold.y + y, 'ow_fence_v'); b.p(fold.x + 4, fold.y + y, 'ow_fence_v') }
+  b.poi('landmark', fold.x, fold.y, 'fold')
+  // the wolves' hollow: a rock ring north-east
+  const den = { x: 78, y: 34 }
+  clearing(b, den.x, den.y, 4)
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; if (i !== 9) b.p(den.x + Math.round(Math.cos(a) * 4), den.y + Math.round(Math.sin(a) * 4), pick(rng, ROCKS_MOSS)) }
+  b.poi('landmark', den.x, den.y, 'den')
+  // the lamb trail: dirt cells from the fold gap past the den to the burrow
+  const burrow = { x: 96, y: 18 }
+  const trail = [[fold.x, fold.y + 3], [fold.x + 6, fold.y - 6], [den.x - 8, den.y + 6], [den.x + 6, den.y - 4], [burrow.x - 2, burrow.y + 3]]
+  for (let i = 1; i < trail.length; i++) {
+    const [ax, ay] = trail[i - 1], [bx, by] = trail[i]
+    const n = Math.max(Math.abs(bx - ax), Math.abs(by - ay))
+    for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); b.clearProp(x, y); b.g(x, y, pick(rng, DIRT)) }
+  }
+  // the burrow: a rock pocket whose mouth is three rocks across; the lair inside
+  clearing(b, burrow.x, burrow.y, 5)
+  for (let y = -5; y <= 5; y++) for (let x = -5; x <= 5; x++) {
+    const r2 = x * x + y * y
+    if (r2 > 16 && r2 <= 25) b.p(burrow.x + x, burrow.y + y, pick(rng, ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']))
+  }
+  const mouth = { x: burrow.x, y: burrow.y + 4 }
+  for (const dx of [-1, 0, 1]) { b.clearProp(mouth.x + dx, mouth.y); b.p(mouth.x + dx, mouth.y, pick(rng, ['ow_rock_gray_0', 'ow_rock_gray_1'])) }
+  b.poi('landmark', mouth.x, mouth.y, 'burrow')
+  b.poi('landmark', burrow.x, burrow.y - 1, 'lair')
+  b.p(mouth.x, mouth.y + 1, 'tile_0089', { walkable: true }); b.poi('chest', mouth.x, mouth.y + 1, 'fleece cache')
+  // the four burn bands: forest pockets the villagers torch in order,
+  // marching from the village toward the den
+  for (const [i, c] of [[52, 50], [60, 44], [68, 40], [74, 30]].entries()) b.poi('landmark', c[0], c[1], `burn ${i + 1}`)
+  // the old mine
+  const mine = { x: 20, y: 14 }
+  clearing(b, mine.x, mine.y, 3); stampCaveInRocks(b, rng, mine.x, mine.y); b.poi('dungeon_entrance', mine.x, mine.y, 'old mine')
+  for (const c of b.scatter(rng, 3, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
+  stampRunestone(b, village.x - 14, village.y)
+  b.p(burrow.x - 14, burrow.y + 8, 'ow_house_arch_stone', { walkable: true }); b.poi('landmark', burrow.x - 14, burrow.y + 8, 'ridge stone')
+  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: 'ow_dirt_0' })
+  b.ensureReachable('ow_dirt_0')
+  // healFragmentation/ensureReachable must not have breached the burrow:
+  // 'lair' is a POI, so ensureReachable carves the nearest path to it —
+  // not necessarily through the mouth. Re-stamp the whole ring (undoing any
+  // carve anywhere around it, not just at the mouth) before resealing the
+  // three-cell mouth on top.
+  for (let y = -5; y <= 5; y++) for (let x = -5; x <= 5; x++) {
+    const r2 = x * x + y * y
+    if (r2 > 16 && r2 <= 25) b.p(burrow.x + x, burrow.y + y, pick(rng, ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']))
+  }
+  for (const dx of [-1, 0, 1]) b.p(mouth.x + dx, mouth.y, pick(rng, ['ow_rock_gray_0', 'ow_rock_gray_1']))
+  // the fleece cache sits right on the ring's radius (r2 === 25) just south
+  // of the mouth — the restamp above just re-rocked it; put it back. `p()`'s
+  // walkable:true only avoids blocking, it never force-unblocks a cell a
+  // prior call already blocked, so unblock explicitly too.
+  b.p(mouth.x, mouth.y + 1, 'tile_0089', { walkable: true })
+  b.unblock(mouth.x, mouth.y + 1)
+  pruneBrokenTrees(b)
+  return b
+}
+
+export const LEAP_MAPS = [lake, fold]
 for (const make of LEAP_MAPS) {
   const b = make()
   const problems = validate(b)
   // the orchard is deliberately unreachable until the Näkki is fed, and the
   // islet cache is deliberately unreachable by plain walking (only the tree
-  // ring/connector, felled, gets you there)
-  const ok = problems.filter(p => !/orchard|pier gap|nakki|islet/.test(p))
+  // ring/connector, felled, gets you there); the highland lair is
+  // deliberately unreachable until the burrow rocks are mined
+  const ok = problems.filter(p => !/orchard|pier gap|nakki|islet|lair/.test(p))
   if (ok.length) { console.error(b.name, ok); process.exitCode = 1 }
   fs.writeFileSync(path.join(OUT, `${b.name}.json`), JSON.stringify(b.toJSON()))
   console.log('wrote', b.name, problems.length ? `(expected-unreachable: ${problems.join('; ')})` : '')

@@ -88,6 +88,34 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
         assert.ok(reachedAt(reached, poi('orchard')), 'orchard should be reachable once the gap is crossed')
       })
     }
+
+    if (name === 'highland-2-fold') {
+      it('declares three wolves and seals the burrow with rocks', () => {
+        assert.equal(data.npcs.wild.filter(s => s === 'wolf').length, 3)
+        const burrow = data.pois.find(p => p.label === 'burrow')
+        const rocks = [[0, 0], [-1, 0], [1, 0]].filter(([dx, dy]) => (data.palette[data.prop[burrow.y + dy][burrow.x + dx]] ?? '').startsWith('ow_rock_'))
+        assert.equal(rocks.length, 3)
+      })
+
+      const spawn = [data.playerSpawn.x, data.playerSpawn.y]
+      const poi = label => { const p = data.pois.find(q => q.label === label); return [p.x, p.y] }
+      const reachedAt = (set, [x, y]) => set.has(`${x},${y}`)
+      const isRockProp = data => (x, y) => {
+        const idx = data.prop[y]?.[x]
+        return idx >= 0 && data.palette[idx].startsWith('ow_rock_')
+      }
+
+      it('the lair is unreachable by plain walking from spawn', () => {
+        const reached = bfsReachable(data, [spawn], walkable(data))
+        assert.ok(!reachedAt(reached, poi('lair')), 'lair should be unreachable')
+      })
+
+      it('the lair becomes reachable once the burrow rocks are treated as passable', () => {
+        const passable = (x, y) => walkable(data)(x, y) || isRockProp(data)(x, y)
+        const reached = bfsReachable(data, [spawn], passable)
+        assert.ok(reachedAt(reached, poi('lair')), 'lair should be reachable with rocks passable')
+      })
+    }
   })
 }
 

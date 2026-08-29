@@ -10,11 +10,12 @@ import { ADVENTURE_DEPTH } from '../renderer/data/levels.js'
 describe('the adventure map chain', () => {
   it('exports the adventure chain at depths 7..18 (leap maps at 8-10)', () => {
     const depths = Object.keys(OPEN_MAPS).map(Number).sort((a, b) => a - b)
-    assert.deepEqual(depths, [7, 8, 11, 12, 13, 14, 15, 16, 17, 18])
+    assert.deepEqual(depths, [7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18])
     assert.equal(OPEN_MAPS[7].name, 'forest-1-clearings')
     assert.equal(OPEN_MAPS[11].name, 'forest-2-river')
     assert.equal(OPEN_MAPS[18].name, 'sea-3-archipelago')
     assert.equal(OPEN_MAPS[8].leap, true)
+    assert.equal(OPEN_MAPS[9].leap, true)
     assert.equal(OPEN_MAPS[11].leap, undefined)
   })
 
