@@ -4,7 +4,8 @@
 // same art the world does.
 import { SPRITES } from './sprites.js'
 
-const KIND_ICONS = { potion: 'potion', mushroom: 'ow_mushroom', meat: 'item_meat' }
+const KIND_ICONS = { potion: 'potion', mushroom: 'ow_mushroom', meat: 'item_meat',
+  cooked_meat: 'item_meat_cooked', lumber: 'item_lumber' }
 
 export function iconSpriteFor(item) {
   if (!item) return null

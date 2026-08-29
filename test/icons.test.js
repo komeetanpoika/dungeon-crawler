@@ -7,6 +7,9 @@ describe('iconSpriteFor', () => {
   it('maps consumables by kind', () => {
     assert.equal(iconSpriteFor({ kind: 'potion' }), 'potion')
     assert.equal(iconSpriteFor({ kind: 'mushroom' }), 'ow_mushroom')
+    assert.equal(iconSpriteFor({ kind: 'meat' }), 'item_meat')
+    assert.equal(iconSpriteFor({ kind: 'cooked_meat' }), 'item_meat_cooked')
+    assert.equal(iconSpriteFor({ kind: 'lumber' }), 'item_lumber')
   })
   it('maps weapons by payload weaponType', () => {
     assert.equal(iconSpriteFor({ kind: 'weapon', payload: { weaponType: 'axe' } }), 'weapon_axe')

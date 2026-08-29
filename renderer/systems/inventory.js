@@ -3,14 +3,16 @@
 // Pure player-state logic — game.js owns pickups, drops, and messages.
 
 const STACKABLE_KINDS = {
-  potion:   { name: 'Potion',   emoji: '🧪', extra: { amount: 4 } },
-  mushroom: { name: 'Mushroom', emoji: '🍄', extra: {} },
-  meat:     { name: 'Meat',     emoji: '🍖', extra: { heal: 2 } },   // animal drop
+  potion:      { name: 'Potion',      emoji: '🧪', extra: { amount: 4 } },
+  mushroom:    { name: 'Mushroom',    emoji: '🍄', extra: {} },
+  meat:        { name: 'Meat',        emoji: '🍖', extra: { heal: 1 } },   // animal drop, raw
+  cooked_meat: { name: 'Cooked Meat', emoji: '🍗', extra: { heal: 4 } },   // raw meat cooked on a campfire
+  lumber:      { name: 'Lumber',      emoji: '🪵', extra: {} },            // felled tree (systems/lumber.js)
 }
 
-export function makeItem(kind) {
+export function makeItem(kind, count = 1) {
   const def = STACKABLE_KINDS[kind]
-  return { kind, name: def.name, emoji: def.emoji, stackable: true, count: 1, ...def.extra }
+  return { kind, name: def.name, emoji: def.emoji, stackable: true, count, ...def.extra }
 }
 
 // Chest/floating `contents` -> sack item. Unknown types return null.
@@ -19,9 +21,7 @@ export function itemFromContents(contents) {
     const { type, ...payload } = contents
     return { kind: type, name: contents.name, emoji: type === 'weapon' ? '⚔' : '🏹', stackable: false, payload }
   }
-  if (contents.type === 'potion') return makeItem('potion')
-  if (contents.type === 'mushroom') return makeItem('mushroom')
-  if (contents.type === 'meat') return makeItem('meat')
+  if (STACKABLE_KINDS[contents.type]) return makeItem(contents.type, contents.count ?? 1)
   return null
 }
 
@@ -29,14 +29,13 @@ export function contentsFromItem(item) {
   if (item.kind === 'weapon') return { ...item.payload, type: 'weapon' }
   if (item.kind === 'ranged') return { ...item.payload, type: 'ranged' }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
-  if (item.kind === 'meat') return { type: 'meat' }
-  return { type: 'mushroom' }
+  return { type: item.kind, count: item.count ?? 1 }
 }
 
 // Quick-use (Q / the green touch button): first potion-or-mushroom slot in
 // sack order. The summary drives the button badge — next-up slot's emoji,
 // combined count across all consumable slots.
-const CONSUMABLE_KINDS = ['potion', 'mushroom', 'meat']
+const CONSUMABLE_KINDS = ['potion', 'mushroom', 'meat', 'cooked_meat']
 
 export function findQuickUseIndex(inventory) {
   return inventory.findIndex(i => CONSUMABLE_KINDS.includes(i.kind))
