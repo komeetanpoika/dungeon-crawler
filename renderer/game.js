@@ -39,6 +39,7 @@ import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, 
 import { isEnemy, isHittable, isDead } from './systems/factions.js'
 import { isCreature, strikeCreature, updateCreature, makeCreature } from './systems/creatures.js'
 import './systems/nakki.js'
+import './systems/maahinen.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
@@ -1456,7 +1457,7 @@ function update(delta) {
   // a one-shot wall-collision hit, applied only to enemies.
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
-    if (slam && isHittable(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
+    if (slam && isHittable(e) && !isCreature(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
       e.hp -= slam.damage
       e.inCombat = true
       npcStruck(e)

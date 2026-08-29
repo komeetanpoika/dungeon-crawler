@@ -7,6 +7,7 @@ import { inSwing } from './melee.js'
 import { startKnockback } from './knockback.js'
 import { hasTalent } from './talents.js'
 import { GUST_COSTS, canAfford, spendStamina } from './stamina.js'
+import { isCreature } from './creatures.js'
 
 export const GUST = {
   cooldown: 3,
@@ -66,7 +67,7 @@ export function tryGust(state, tier = 'tap') {
   const slamOpts = t.slam ? { slam: { damage: SLAM_DAMAGE } } : undefined
   let caught = 0
   for (const e of state.entities) {
-    if (!e.hp || e.type === 'player') continue
+    if (!e.hp || e.type === 'player' || isCreature(e)) continue
     if (!inSwing(GUST.reach * t.mul, GUST.halfAngle * t.mul, fa, e.px - p.px, e.py - p.py)) continue
     if (e.type === 'dragon_boss') continue
     caught++

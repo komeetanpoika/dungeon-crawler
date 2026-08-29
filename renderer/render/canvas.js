@@ -742,6 +742,27 @@ function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
   }
 }
 
+// Maahinen eruption telegraph: a brown dust ring expanding from 8 to 40 px
+// over ERUPT_TIME (0.6s), reusing the cyclops slam-ring drawing style. The
+// entity's own countdown timer (running ERUPT_TIME -> 0) drives progress.
+const ERUPT_TIME = 0.6
+const ERUPT_RING_MIN = 8
+const ERUPT_RING_MAX = 40
+
+function drawEruptRing(ctx, e, camX, camY) {
+  const cx = Math.round(e.px - camX)
+  const cy = Math.round(e.py - camY)
+  const progress = 1 - Math.max(0, Math.min(1, (e.timer ?? 0) / ERUPT_TIME))
+  const radius = ERUPT_RING_MIN + (ERUPT_RING_MAX - ERUPT_RING_MIN) * progress
+  ctx.save()
+  ctx.strokeStyle = `rgba(120,80,45,${Math.max(0, 1 - progress)})`
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+}
+
 function drawCyclopsEffects(ctx, cyclops, camX, camY) {
   if (!cyclops) return
   const cx = Math.round(cyclops.px - camX)
@@ -945,6 +966,7 @@ export class Renderer {
       if (isCreature(e)) {
         const alpha = creatureAlpha(e, state)
         if (alpha > 0) drawCreature(ctx, sprites, e.type, epx + S / 2, epy + S / 2, S, { alpha })
+        if (e.state === 'erupting') drawEruptRing(ctx, e, camX, camY)
       }
       else if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
       else drawEntity(ctx, e, epx, epy, S, sprites)

@@ -67,6 +67,14 @@ describe('tryGust', () => {
     assert.ok(crab.knockback, 'still shoved')
   })
 
+  it('leaves a creature in the wedge alone, even on an over-tier gust (creature damage only flows through strikeCreature)', () => {
+    const maahinen = { type: 'maahinen', state: 'surfaced', px: 100 + T, py: 100, x: 0, y: 0, hp: 24, maxHp: 24 }
+    const state = mkState([maahinen])
+    tryGust(state, 'over')
+    assert.equal(maahinen.stunTimer, undefined)
+    assert.equal(maahinen.knockback, undefined)
+  })
+
   it('the dragon boss ignores the wind entirely', () => {
     const boss = { type: 'dragon_boss', isBoss: true, px: 100 + T, py: 100, x: 0, y: 0, hp: 60 }
     const state = mkState([boss])
