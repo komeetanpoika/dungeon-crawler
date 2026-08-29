@@ -5,6 +5,7 @@ import { generateLevel } from '../renderer/systems/map.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from '../renderer/data/open-maps.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
+import { TREES, STUMP } from '../renderer/systems/lumber.js'
 
 const DATA = OPEN_MAPS[7]
 
@@ -323,5 +324,34 @@ describe('starter weapon', () => {
   })
   it('other maps get no starter chest', () => {
     for (const d of [8, 9, 10]) assert.equal(buildOpenMap(OPEN_MAPS[d]).entitySpawns.filter(s => s.kind === 'weapon').length, 0)
+  })
+})
+
+describe('felled trees', () => {
+  const firstTrunk = () => {
+    for (let y = 1; y < DATA.h - 1; y++) for (let x = 1; x < DATA.w - 1; x++) {
+      const pi = DATA.prop[y][x]
+      if (pi >= 0 && TREES[DATA.palette[pi]]) return { x, y }
+    }
+    throw new Error('no tree on the map')
+  }
+  it('a recorded trunk is rebuilt as a walkable stump', () => {
+    const { x, y } = firstTrunk()
+    const { map } = buildOpenMap(DATA, { felled: [`${x},${y}`] })
+    assert.equal(map[y][x].tile, TILE.FLOOR)
+    assert.equal(map[y][x].overlay, STUMP)
+    assert.ok(isWalkable(map[y][x].tile, map[y][x]))
+    assert.equal(map[y][x].losSoft, undefined)
+  })
+  it('without a record the tree stands', () => {
+    const { x, y } = firstTrunk()
+    const { map } = buildOpenMap(DATA)
+    assert.equal(map[y][x].tile, TILE.WALL)
+    assert.ok(TREES[map[y][x].overlay])
+  })
+  it('generateLevel threads the record through', () => {
+    const { x, y } = firstTrunk()
+    const { map } = generateLevel(7, DATA.w, DATA.h, { felled: [`${x},${y}`] })
+    assert.equal(map[y][x].overlay, STUMP)
   })
 })

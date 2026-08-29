@@ -32,6 +32,7 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
+import { felledCells } from './systems/lumber.js'
 import { isEnemy, isHittable } from './systems/factions.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -184,6 +185,7 @@ function persistAdventure() {
   if (mapName) savedAdventure.gates[mapName] =
     Object.entries(surface.gates ?? {}).filter(([, g]) => g.open).map(([id]) => id)
   if (mapName) recordNpcState(savedAdventure, mapName, surface.npcSpawnIds ?? [], surface.entities, surface.npcWrath)
+  if (mapName) savedAdventure.felled[mapName] = felledCells(surface.map)
   if (mapName && state.player) {
     savedAdventure.talents = [...(state.player.talents ?? [])]
     savedAdventure.body = {
@@ -393,9 +395,10 @@ function startNewRun(depth = 1, arenaCfg = null) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
   const openMap = OPEN_MAPS[depth]
   const npcRecord = openMap ? npcRecordFor(savedAdventure, openMap.name) : null
+  const felledRecord = openMap ? savedAdventure.felled[openMap.name] ?? [] : null
   const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
-      npcs: npcRecord })
+      npcs: npcRecord, felled: felledRecord })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -1384,9 +1387,10 @@ function travelToMap(depth) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const mapName = OPEN_MAPS[depth].name
   const npcRecord = npcRecordFor(savedAdventure, mapName)
+  const felledRecord = savedAdventure.felled[mapName] ?? []
   const { map, entitySpawns, playerSpawn, caveEntrances, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures,
-      npcs: npcRecord })
+      npcs: npcRecord, felled: felledRecord })
   decorateMap(map, rulesets[theme.ruleset])
   state = {
     ...state,

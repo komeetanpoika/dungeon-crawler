@@ -10,6 +10,7 @@ import { createMap } from './map.js'
 import { MAP_RITES } from '../data/rites.js'
 import { signsForMap } from './signs.js'
 import { NPC_SPECIES } from '../data/npcs.js'
+import { applyFelled } from './lumber.js'
 
 // Vision classes for blocking cells, keyed off the art that blocks: open
 // water never impedes sight (losClear); foliage is shallow cover — a ray
@@ -81,7 +82,7 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
   return spawns
 }
 
-export function buildOpenMap(data, { npcs = null, rng = Math.random } = {}) {
+export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.random } = {}) {
   const map = createMap(data.w, data.h)
   const chestAt = new Set(data.pois.filter(p => p.kind === 'chest').map(p => `${p.x},${p.y}`))
   for (let y = 0; y < data.h; y++) for (let x = 0; x < data.w; x++) {
@@ -103,6 +104,9 @@ export function buildOpenMap(data, { npcs = null, rng = Math.random } = {}) {
     }
     c.locked = true
   }
+  // Trees the player has already felled here come back as stumps — done
+  // before anything reads walkability or the LOS flags.
+  applyFelled(map, felled)
   const entitySpawns = data.pois
     .filter(p => p.kind === 'chest')
     .map(p => ({ kind: 'chest', x: p.x, y: p.y }))
