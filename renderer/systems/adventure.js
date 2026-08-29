@@ -34,7 +34,8 @@ export function nextMapDepth(depth) {
 // Save-file shapes: v1 was the bare caves map ({mapName: {label: instance}});
 // v2 added { caves, progress }; v3 adds learned talents and the traveling
 // body (hands + sack); v4 adds npcs ({mapName: {dead, hostile}}) — wiped on
-// player death. Migration is additive — missing fields default.
+// player death; v5 adds felled ({mapName: ['x,y']}) — permanent, not wiped
+// on death. Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
   const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
     : (raw && typeof raw === 'object' && !raw.caves) ? { caves: raw, progress: freshProgress() }
@@ -43,6 +44,7 @@ export function normalizeAdventureSave(raw) {
   base.body ??= null
   base.gates ??= {}
   base.npcs ??= {}
+  base.felled ??= {}
   return base
 }
 

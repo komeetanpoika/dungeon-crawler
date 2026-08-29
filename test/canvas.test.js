@@ -2,16 +2,20 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, playerSpriteKey, Renderer } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
+import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in.
 function recordingCtx() {
   const calls = []
+  let alpha = 1
   return {
     calls,
     drawImage: (img) => calls.push(img),
     fillRect: () => {},
     set fillStyle(_v) {},
     get fillStyle() { return '' },
+    set globalAlpha(v) { alpha = v },
+    get globalAlpha() { return alpha },
   }
 }
 
@@ -365,5 +369,48 @@ describe('drawEntity — magic stance held weapon', () => {
     const ctx = swingCtx()
     drawEntity(ctx, mage({ ranged: { weaponType: 'shortbow', kind: 'bow' } }), 0, 0, 32, psprites)
     assert.deepEqual(ctx.images, ['MAGIC'])
+  })
+})
+
+describe('trees never show damage', () => {
+  it('a chopped-but-standing tree cell draws exactly like an untouched one', () => {
+    const spr = { ow_grass_0: 'G', ow_tree_small: 'T' }
+    const a = recordingCtx(), b = recordingCtx()
+    drawTile(a, TILE.WALL, 0, 0, 32, spr, { skin: 'ow_grass_0', overlay: 'ow_tree_small' })
+    drawTile(b, TILE.WALL, 0, 0, 32, spr, { skin: 'ow_grass_0', overlay: 'ow_tree_small', chopHp: 1 })
+    assert.deepEqual(a.calls, b.calls)
+  })
+})
+
+describe('floating consumables use atlas sprites', () => {
+  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['mushroom', 'ow_mushroom']])
+    it(`${type} draws ${key}`, () => {
+      const ctx = recordingCtx()
+      ctx.fillText = () => {}
+      drawEntity(ctx, { type: 'floating_item', contents: { type } }, 0, 0, 32, { [key]: key.toUpperCase() })
+      assert.deepEqual(ctx.calls, [key.toUpperCase()])
+    })
+})
+
+describe('drawEntity — campfire', () => {
+  it('draws prop_campfire scaled by campfireAlpha and restores globalAlpha after', () => {
+    const ctx = recordingCtx()
+    const fire = { type: 'campfire', t: CAMPFIRE_DURATION - CAMPFIRE_FADE / 2 }
+    let seenAlpha
+    const sprites = {
+      get prop_campfire() { return 'FIRE' },
+    }
+    const origDrawImage = ctx.drawImage
+    ctx.drawImage = (img) => { seenAlpha = ctx.globalAlpha; origDrawImage(img) }
+    drawEntity(ctx, fire, 0, 0, 32, sprites)
+    assert.deepEqual(ctx.calls, ['FIRE'])
+    assert.equal(seenAlpha, campfireAlpha(fire))
+    assert.equal(ctx.globalAlpha, 1)
+  })
+
+  it('draws nothing when the sprite is missing', () => {
+    const ctx = recordingCtx()
+    drawEntity(ctx, { type: 'campfire', t: 0 }, 0, 0, 32, {})
+    assert.deepEqual(ctx.calls, [])
   })
 })

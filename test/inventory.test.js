@@ -192,11 +192,42 @@ describe('quick-use consumable', () => {
 })
 
 describe('meat', () => {
-  it('is a stackable consumable that heals 2', () => {
+  it('is a stackable consumable that heals 1', () => {
     const m = makeItem('meat')
-    assert.equal(m.stackable, true); assert.equal(m.heal, 2); assert.equal(m.kind, 'meat')
+    assert.equal(m.stackable, true); assert.equal(m.heal, 1); assert.equal(m.kind, 'meat')
     assert.equal(findQuickUseIndex([m]), 0)
     assert.deepEqual(itemFromContents({ type: 'meat' }).kind, 'meat')
-    assert.deepEqual(contentsFromItem(m), { type: 'meat' })
+    assert.deepEqual(contentsFromItem(m), { type: 'meat', count: 1 })
+  })
+})
+
+describe('lumber and cooked meat', () => {
+  it('lumber stacks and carries a count through contents', () => {
+    const item = itemFromContents({ type: 'lumber', count: 2 })
+    assert.equal(item.kind, 'lumber')
+    assert.equal(item.stackable, true)
+    assert.equal(item.count, 2)
+    assert.deepEqual(contentsFromItem(item), { type: 'lumber', count: 2 })
+    const p = mkPlayer()
+    addItem(p, item)
+    addItem(p, makeItem('lumber'))
+    assert.equal(p.inventory.length, 1)
+    assert.equal(p.inventory[0].count, 3)
+  })
+  it('contents without a count default to one', () => {
+    assert.equal(itemFromContents({ type: 'lumber' }).count, 1)
+    assert.equal(itemFromContents({ type: 'meat' }).count, 1)
+  })
+  it('raw meat heals 1, cooked meat heals 4, both are quick-use consumables', () => {
+    assert.equal(makeItem('meat').heal, 1)
+    assert.equal(makeItem('cooked_meat').heal, 4)
+    assert.equal(itemFromContents({ type: 'cooked_meat' }).kind, 'cooked_meat')
+    assert.deepEqual(contentsFromItem(makeItem('cooked_meat')), { type: 'cooked_meat', count: 1 })
+    const p = mkPlayer({ inventory: [makeItem('lumber'), makeItem('cooked_meat')] })
+    assert.equal(findQuickUseIndex(p.inventory), 1)
+    assert.equal(quickUseSummary(p.inventory).count, 1)
+  })
+  it('lumber is not a consumable', () => {
+    assert.equal(findQuickUseIndex([makeItem('lumber')]), -1)
   })
 })

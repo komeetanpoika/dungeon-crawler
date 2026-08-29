@@ -6,6 +6,7 @@
 // always faced east, and the same numbers hold for all four facings.
 
 export const ATTACK_STYLES = {
+  hatchet:      { style: 'arc',   duration: 0.18, cooldown: 0.38, knockback: 14 },
   dagger:       { style: 'snap',  duration: 0.12, cooldown: 0.30, knockback: 10 },
   sword:        { style: 'arc',   duration: 0.20, cooldown: 0.40, knockback: 18 },
   longsword:    { style: 'slash', duration: 0.22, cooldown: 0.50, knockback: 24 },

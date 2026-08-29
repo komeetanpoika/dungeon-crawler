@@ -21,6 +21,9 @@ describe('melee costs', () => {
     assert.equal(meleeCost('mystery', 'full'), 8)
     assert.equal(meleeCost('mystery', 'tap'), 8)
   })
+  it('the hatchet costs between dagger and sword', () => {
+    assert.equal(meleeCost('hatchet', 'full'), 10)
+  })
 })
 
 describe('spend and regen', () => {

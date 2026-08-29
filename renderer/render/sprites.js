@@ -41,6 +41,10 @@ export const SPRITES = {
   npc_wolf:       'npc_wolf',
   npc_bear:       'npc_bear',
   item_meat:      'item_meat',     // drawn by tools/npc-placeholders.mjs
+  item_lumber:      'item_lumber',       // placeholders drawn by tools/npc-placeholders.mjs
+  item_meat_cooked: 'item_meat_cooked',
+  ow_stump:         'ow_stump',          // felled-tree cell overlay (systems/lumber.js)
+  prop_campfire:    'prop_campfire',     // campfire entity (systems/campfire.js)
   // floor variants
   sand:                'tile_0048',
   // props — civilisation gradient
@@ -69,6 +73,7 @@ export const SPRITES = {
   puzzle:       'tile_0072',
   // items
   weapon_dagger:    'tile_0103',
+  weapon_hatchet:   'tile_0119',   // single-bit axe; the chopping starter
   weapon_sword:     'tile_0104',
   weapon_longsword: 'tile_0106',
   weapon_axe:       'tile_0118',

@@ -1,7 +1,7 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, makeRangedContents, TILE, isWalkable } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, makeRangedContents, weaponContents, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -32,6 +32,8 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
+import { felledCells, findTreeHit, chopTree } from './systems/lumber.js'
+import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable } from './systems/factions.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -149,7 +151,7 @@ window.addEventListener('keydown', e => {
   if (wt) {
     gameCheatBuffer = ''
     const def = WEAPON_TYPES[wt]
-    state.player.weapon = { weaponType: wt, name: def.name, damage: def.damage }
+    state.player.weapon = weaponContents(wt)
     announce(state, `The ${def.name} answers your call! (${def.damage} dmg)`)
   }
 })
@@ -184,6 +186,7 @@ function persistAdventure() {
   if (mapName) savedAdventure.gates[mapName] =
     Object.entries(surface.gates ?? {}).filter(([, g]) => g.open).map(([id]) => id)
   if (mapName) recordNpcState(savedAdventure, mapName, surface.npcSpawnIds ?? [], surface.entities, surface.npcWrath)
+  if (mapName) savedAdventure.felled[mapName] = felledCells(surface.map)
   if (mapName && state.player) {
     savedAdventure.talents = [...(state.player.talents ?? [])]
     savedAdventure.body = {
@@ -344,11 +347,8 @@ function buildEntities(spawns, map, depth) {
   breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...aiInit(), ...(s.isBoss && { isBoss: true }) })]
       case 'trap':    return [makeTrap(s.x, s.y)]
       case 'puzzle':  return [makePuzzle(s.x, s.y)]
-      case 'weapon': {
-        const wt = s.weaponType ?? 'dagger'
-        const def = WEAPON_TYPES[wt] ?? WEAPON_TYPES.dagger
-        return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage, ...(def.heavy && { heavy: true }) })]
-      }
+      case 'weapon':
+        return [makeChest(s.x, s.y, { type: 'weapon', ...weaponContents(s.weaponType ?? 'dagger') })]
       case 'ranged':  return [makeChest(s.x, s.y, makeRangedContents(s.weaponType))]
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
@@ -396,9 +396,10 @@ function startNewRun(depth = 1, arenaCfg = null) {
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
   const openMap = OPEN_MAPS[depth]
   const npcRecord = openMap ? npcRecordFor(savedAdventure, openMap.name) : null
+  const felledRecord = openMap ? savedAdventure.felled[openMap.name] ?? [] : null
   const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
-      npcs: npcRecord })
+      npcs: npcRecord, felled: felledRecord })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -413,15 +414,23 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (OPEN_MAPS[depth]) {
     player.talents = [...savedAdventure.talents]
     if (savedAdventure.body) {
-      player.weapon = savedAdventure.body.weapon ? { ...savedAdventure.body.weapon } : null
+      // Melee payloads are re-derived from the weapon table rather than
+      // copied: saves written before lumber landed carry no `chop`, and a
+      // hatchet or axe out of one of those must still fell trees. Ranged
+      // payloads are copied as-is — their `ammo` is run state, not table data.
+      player.weapon = savedAdventure.body.weapon ? weaponContents(savedAdventure.body.weapon.weaponType) : null
       player.ranged = savedAdventure.body.ranged ? { ...savedAdventure.body.ranged } : null
-      player.inventory = savedAdventure.body.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i })
+      player.inventory = savedAdventure.body.inventory.map(i => {
+        if (!i.payload) return { ...i }
+        if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
+        return { ...i, payload: { ...i.payload } }
+      })
     }
   }
   if (depth === 0 && arenaCfg?.player) {
     const po = arenaCfg.player
     const def = WEAPON_TYPES[po.weaponType]
-    if (def) player.weapon = { weaponType: po.weaponType, name: def.name, damage: def.damage }
+    if (def) player.weapon = weaponContents(po.weaponType)
     else if (po.weaponType !== undefined) console.warn(`arena: unknown player weaponType "${po.weaponType}" — keeping current weapon`)
     const rdef = RANGED_WEAPON_TYPES[po.rangedType]
     if (rdef) player.ranged = makeRangedContents(po.rangedType)
@@ -538,6 +547,7 @@ function openInventory() {
     },
     onUse: (i) => useInventoryItem(i),
     onDrop: (i) => dropInventoryItem(i),
+    onBuild: () => buildCampfire(),
     onClose: closeInventory,
   })
 }
@@ -593,8 +603,8 @@ function afterInventoryChange() {
 function useInventoryItem(i) {
   const item = state.player.inventory[i]
   if (!item) return
-  if (item.kind === 'potion' || item.kind === 'meat') {
-    const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'meat' ? item.heal : item.amount)
+  if (item.kind === 'potion' || item.kind === 'meat' || item.kind === 'cooked_meat') {
+    const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'potion' ? item.amount : item.heal)
     if (healed <= 0) { think(state, 'Already full.'); return }
     removeItem(state.player, i)
     state.player.hp += healed
@@ -625,6 +635,19 @@ function dropInventoryItem(i) {
     px: player.px, py: player.py, progress: 0, duration: 0.35,
   })
   sfx(state, 'drop')
+  afterInventoryChange()
+}
+
+function buildCampfire() {
+  const gate = canBuildCampfire(state.player)
+  if (!gate.ok) { think(state, 'Not enough lumber.'); return }
+  const spot = buildSpot(state.map, state.entities, state.player)
+  if (!spot) { think(state, 'No room for a fire here.'); return }
+  spendLumber(state.player)
+  const fire = makeCampfire(spot.x, spot.y)
+  state.entities.push(fire)
+  sfx(state, 'campfire-light', { px: fire.px, py: fire.py })
+  if (inventoryOpen) closeInventory()
   afterInventoryChange()
 }
 
@@ -723,6 +746,18 @@ function update(delta) {
     if (grantContents(item.contents)) {
       state.entities = state.entities.filter((_, i) => i !== floatIdx)
       if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+    }
+  }
+
+  // Campfire cooking — standing on a fire cooks every raw meat carried.
+  // cookMeat empties the raw stack, so it can't fire twice for the same meat.
+  const fire = state.entities.find(e => e.type === 'campfire' && e.x === player.x && e.y === player.y)
+  if (fire) {
+    const n = cookMeat(player)
+    if (n) {
+      sfx(state, 'sizzle', { px: fire.px, py: fire.py })
+      think(state, 'You cook the meat.')
+      afterInventoryChange()
     }
   }
 
@@ -936,6 +971,28 @@ function update(delta) {
       if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
+    // Chopping: a hatchet/axe swing also lands on the nearest tree in the
+    // wedge. Damage is silent bar-less chopHp on the cell; the fall is what
+    // you hear and see, and the lumber arcs onto the stump for a walk-onto
+    // pickup.
+    const chop = player.weapon?.chop
+    if (chop) {
+      const tree = findTreeHit(state.map, player, hitAt, arc.reach * mods.reachMul)
+      if (tree) {
+        const res = chopTree(state.map, tree.x, tree.y, chop)
+        state.hitEffects.push({ x: tree.x, y: tree.y })
+        const tpx = tree.x * TILE_SIZE + TILE_SIZE / 2, tpy = tree.y * TILE_SIZE + TILE_SIZE / 2
+        sfx(state, res.felled ? 'tree-fall' : 'chop', { px: tpx, py: tpy })
+        if (res.felled) {
+          state.entities.push({
+            type: 'floating_item', contents: { type: 'lumber', count: res.yield }, x: tree.x, y: tree.y,
+            startPx: tpx, startPy: tpy - TILE_SIZE, targetPx: tpx, targetPy: tpy,
+            px: tpx, py: tpy - TILE_SIZE, progress: 0, duration: 0.35,
+          })
+          if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+        }
+      }
+    }
   }
   if (player.attackMode === 'melee' && !player.weapon) {
     // Truly unarmed: no swing at all — like the empty ranged slot, the fix
@@ -1234,6 +1291,11 @@ function update(delta) {
     e.py = e.startPy + (e.targetPy - e.startPy) * t - arcH * 4 * t * (1 - t)
   }
 
+  // Campfires burn out after a minute.
+  const fires = tickCampfires(state.entities, delta)
+  state.entities = fires.entities
+  for (const f of fires.expired) sfx(state, 'campfire-out', { px: f.px, py: f.py })
+
   // Walk animation — player + humanoid enemies (guard, wizard)
   tickWalk(player, delta)
   tickFeedback(state.feedback, delta)
@@ -1387,9 +1449,10 @@ function travelToMap(depth) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const mapName = OPEN_MAPS[depth].name
   const npcRecord = npcRecordFor(savedAdventure, mapName)
+  const felledRecord = savedAdventure.felled[mapName] ?? []
   const { map, entitySpawns, playerSpawn, caveEntrances, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures,
-      npcs: npcRecord })
+      npcs: npcRecord, felled: felledRecord })
   decorateMap(map, rulesets[theme.ruleset])
   state = {
     ...state,

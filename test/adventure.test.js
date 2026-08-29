@@ -101,10 +101,20 @@ describe('v3 save shape', () => {
     assert.deepEqual(s.talents, [])
   })
 
-  it('v3 saves pass through untouched, gaining only the empty gates and npcs maps', () => {
+  it('v3 saves pass through untouched, gaining only the empty gates, npcs and felled maps', () => {
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
-    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {} })
+    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {}, felled: {} })
+  })
+
+  it('v4 saves keep their npcs and gain an empty felled map', () => {
+    const v4 = { caves: {}, progress: { mapDepth: 7, cleared: {} }, talents: [], body: null,
+      gates: {}, npcs: { 'forest-1-clearings': { dead: ['npc:forest-1-clearings:0'], hostile: false } } }
+    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {} })
+  })
+
+  it('a fresh save has no felled trees', () => {
+    assert.deepEqual(normalizeAdventureSave(null).felled, {})
   })
 
   it('body inventory items with nested payload are preserved', () => {

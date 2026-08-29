@@ -15,7 +15,8 @@ function primaryAction(item) {
   if (!item) return null
   if (item.kind === 'weapon' || item.kind === 'ranged') return { label: 'Equip', fn: 'onEquip' }
   if (item.kind === 'potion') return { label: 'Drink', fn: 'onUse' }
-  if (item.kind === 'mushroom') return { label: 'Eat', fn: 'onUse' }
+  if (item.kind === 'mushroom' || item.kind === 'meat' || item.kind === 'cooked_meat') return { label: 'Eat', fn: 'onUse' }
+  if (item.kind === 'lumber') return { label: 'Build fire', fn: 'onBuild' }
   return null
 }
 

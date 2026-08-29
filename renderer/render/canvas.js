@@ -10,6 +10,7 @@ import { GUST_CHARGE } from '../systems/magic.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { NPC_SPECIES } from '../data/npcs.js'
+import { campfireAlpha } from '../systems/campfire.js'
 
 const TILE_SIZE = 32
 
@@ -180,6 +181,15 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     drawPotion(ctx, px, py, S, sprites.potion)
     return
   }
+  if (entity.type === 'campfire') {
+    const s = sprites.prop_campfire
+    if (!s) return
+    const prev = ctx.globalAlpha
+    ctx.globalAlpha = prev * campfireAlpha(entity)
+    ctx.drawImage(s, px, py, S, S)
+    ctx.globalAlpha = prev
+    return
+  }
   if (entity.type === 'floating_item') {
     const c = entity.contents
     if (c.type === 'weapon' || c.type === 'ranged') {
@@ -187,10 +197,11 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
-    } else if (c.type === 'mushroom') {
-      const s = sprites.ow_mushroom
+    } else {
+      const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber' }[c.type]
+      const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
-      else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🍄', px + S/2, py + S/2) }
+      else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }
     }
     return
   }

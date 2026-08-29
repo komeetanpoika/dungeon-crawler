@@ -116,3 +116,15 @@ describe('npc sprites', () => {
       assert.ok(SPRITES[k], k)
   })
 })
+
+describe('hatchet art', () => {
+  it('weapon_hatchet = tile_0119 (single-bit axe); the big axe keeps tile_0118', () => {
+    assert.equal(SPRITES.weapon_hatchet, 'tile_0119')
+    assert.equal(SPRITES.weapon_axe, 'tile_0118')
+  })
+})
+
+describe('lumber and campfire placeholders', () => {
+  for (const key of ['item_lumber', 'item_meat_cooked', 'ow_stump', 'prop_campfire'])
+    it(`${key} is registered under its own file name`, () => assert.equal(SPRITES[key], key))
+})
