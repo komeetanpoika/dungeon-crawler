@@ -60,10 +60,9 @@ export function campfireAlpha(fire) {
 
 // Every raw meat stack becomes cooked meat. Returns how many were cooked.
 export function cookMeat(player) {
-  const i = player.inventory.findIndex(it => it.kind === 'meat')
-  if (i === -1) return 0
-  const n = player.inventory[i].count ?? 1
-  player.inventory.splice(i, 1)
-  addItem(player, makeItem('cooked_meat', n))   // the freed slot guarantees room
-  return n
+  const total = player.inventory.reduce((n, it) => it.kind === 'meat' ? n + (it.count ?? 1) : n, 0)
+  if (total === 0) return 0
+  player.inventory = player.inventory.filter(it => it.kind !== 'meat')
+  addItem(player, makeItem('cooked_meat', total))   // the freed slots guarantee room
+  return total
 }

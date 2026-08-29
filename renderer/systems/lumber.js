@@ -20,23 +20,35 @@ export const TREES = {
   ow_deadtree_1:        { hp: 2, yield: 1, cells: 1 },
   ow_tree_pine_trunk:   { hp: 4, yield: 2, cells: 2 },
   ow_tree_autumn_trunk: { hp: 4, yield: 2, cells: 2 },
+  // The autumn canopy art does double duty: gen-forest.mjs stamps it both as
+  // the top of the tall autumn pair and, far more often, as a standalone
+  // small tree. Standing alone it is a tree in its own right; sitting on an
+  // autumn trunk it is that trunk's canopy (resolveTree checks that first).
+  ow_tree_autumn_top:   { hp: 3, yield: 1, cells: 1 },
 }
 
 const isTop = overlay => typeof overlay === 'string' && overlay.endsWith('_top')
 
-// The tree a cell belongs to: trunks resolve to themselves, tops to the
-// trunk directly below. Null for anything else (an orphan top is scenery).
+// The tree def of a cell, or undefined. Border cells never count: openmap
+// forces the map edge to WALL because the camera is unbounded, so felling
+// one would punch a walkable hole into the void.
+function treeAt(map, x, y) {
+  if (!(y > 0 && y < map.length - 1)) return undefined
+  if (!(x > 0 && x < map[y].length - 1)) return undefined
+  return TREES[map[y][x].overlay]
+}
+
+// The tree a cell belongs to: a canopy over a two-cell trunk resolves to
+// that trunk, anything else that is a tree resolves to itself. Null
+// otherwise (an orphan pine top is scenery).
 export function resolveTree(map, x, y) {
-  const cell = map[y]?.[x]
-  if (!cell) return null
-  const def = TREES[cell.overlay]
-  if (def) return { x, y, def }
-  if (isTop(cell.overlay)) {
-    const below = map[y + 1]?.[x]
-    const tdef = below && TREES[below.overlay]
+  if (!map[y]?.[x]) return null
+  if (isTop(map[y][x].overlay)) {
+    const tdef = treeAt(map, x, y + 1)
     if (tdef && tdef.cells === 2) return { x, y: y + 1, def: tdef }
   }
-  return null
+  const def = treeAt(map, x, y)
+  return def ? { x, y, def } : null
 }
 
 // Nearest tree trunk whose cell centre lies inside the swing wedge —
@@ -61,7 +73,6 @@ function fell(map, x, y, def) {
   const cell = map[y][x]
   cell.tile = TILE.FLOOR
   cell.overlay = STUMP
-  cell.dirty = true
   delete cell.losSoft
   delete cell.chopHp
   if (def.cells === 2) {
@@ -69,17 +80,19 @@ function fell(map, x, y, def) {
     if (top && isTop(top.overlay)) {
       top.tile = TILE.FLOOR
       top.overlay = null
-      top.dirty = true
       delete top.losSoft
     }
   }
 }
 
-// Deal `chop` to the trunk at (x, y). Felled trunks become walkable stumps.
+// Deal `chop` to the tree addressed at (x, y). Felled trees become walkable
+// stumps. Only the tree's own cell is an address: a canopy that resolves to
+// the trunk below it is refused, so damage always lands in one place.
 export function chopTree(map, x, y, chop) {
-  const cell = map[y]?.[x]
-  const def = cell && TREES[cell.overlay]
-  if (!def) return { felled: false, yield: 0 }
+  const t = resolveTree(map, x, y)
+  if (!t || t.x !== x || t.y !== y) return { felled: false, yield: 0 }
+  const { def } = t
+  const cell = map[y][x]
   cell.chopHp = (cell.chopHp ?? def.hp) - chop
   if (cell.chopHp > 0) return { felled: false, yield: 0 }
   fell(map, x, y, def)
@@ -97,9 +110,9 @@ export function felledCells(map) {
 
 export function applyFelled(map, keys) {
   for (const key of keys ?? []) {
+    if (typeof key !== 'string') continue
     const [x, y] = key.split(',').map(Number)
-    const cell = map[y]?.[x]
-    const def = cell && TREES[cell.overlay]
+    const def = map[y]?.[x] && treeAt(map, x, y)
     if (def) fell(map, x, y, def)
   }
 }

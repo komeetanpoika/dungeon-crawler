@@ -67,6 +67,11 @@ describe('cooking', () => {
     assert.equal(cookMeat(p), 3)
     assert.deepEqual(p.inventory.map(i => [i.kind, i.count]), [['lumber', 1], ['cooked_meat', 3]])
   })
+  it('cooks every raw stack, not just the first', () => {
+    const p = mkPlayer([makeItem('meat', 2), makeItem('lumber'), makeItem('meat', 1)])
+    assert.equal(cookMeat(p), 3)
+    assert.deepEqual(p.inventory.map(i => [i.kind, i.count]), [['lumber', 1], ['cooked_meat', 3]])
+  })
   it('stacks onto cooked meat already carried', () => {
     const p = mkPlayer([makeItem('cooked_meat', 2), makeItem('meat', 1)])
     assert.equal(cookMeat(p), 1)

@@ -60,11 +60,14 @@ Keyed by the overlay art name `buildOpenMap` stamps on a blocking cell:
 | `ow_tree_small`, `ow_tree_small_autumn`, `ow_tree_apple` | 3 | 1 | 1 |
 | `ow_deadtree_0`, `ow_deadtree_1` | 2 | 1 | 1 |
 | `ow_tree_pine_trunk`, `ow_tree_autumn_trunk` | 4 | 2 | 2 (top at `y-1`) |
+| `ow_tree_autumn_top` | 3 | 1 | 1 (standalone small tree; directly above an autumn trunk it is that tree's canopy instead) |
 
-Two-cell trees are addressed by their **trunk** cell. A `_top` overlay is
-never a target on its own: hitting a top cell resolves to the trunk directly
-below it if that trunk is a tree; otherwise it is ignored (an orphan top is
-scenery).
+Two-cell trees are addressed by their **trunk** cell. A `_top` overlay above
+a two-cell trunk is never a target on its own: hitting such a top cell
+resolves to the trunk directly below it. Otherwise the top cell is a tree
+only if the table lists it (`ow_tree_autumn_top`); an orphan top is scenery.
+Border cells (`x` or `y` on the map edge) are never trees — `buildOpenMap`
+forces the edge to wall because the camera is unbounded.
 
 Chop damage is tracked as `cell.chopHp`, initialised lazily from the table
 on first hit, so `buildOpenMap` needs no per-cell setup. It is invisible: the

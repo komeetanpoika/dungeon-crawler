@@ -30,8 +30,9 @@ export const WEAPON_TYPES = {
 
 // The melee-weapon payload every chest, drop and hand slot carries.
 export function weaponContents(weaponType) {
-  const def = WEAPON_TYPES[weaponType] ?? WEAPON_TYPES.dagger
-  return { weaponType: def === WEAPON_TYPES[weaponType] ? weaponType : 'dagger', name: def.name, damage: def.damage,
+  const wt = WEAPON_TYPES[weaponType] ? weaponType : 'dagger'
+  const def = WEAPON_TYPES[wt]
+  return { weaponType: wt, name: def.name, damage: def.damage,
     ...(def.heavy && { heavy: true }), ...(def.chop && { chop: def.chop }) }
 }
 

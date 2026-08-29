@@ -349,6 +349,14 @@ describe('felled trees', () => {
     assert.equal(map[y][x].tile, TILE.WALL)
     assert.ok(TREES[map[y][x].overlay])
   })
+  it('a border key never punches a hole in the map edge', () => {
+    // The border is forced to WALL because the camera is unbounded; a felled
+    // border tree would open the void.
+    const { map } = buildOpenMap(DATA, { felled: ['0,5', '5,0', `${DATA.w - 1},5`] })
+    assert.equal(map[5][0].tile, TILE.WALL)
+    assert.equal(map[0][5].tile, TILE.WALL)
+    assert.equal(map[5][DATA.w - 1].tile, TILE.WALL)
+  })
   it('generateLevel threads the record through', () => {
     const { x, y } = firstTrunk()
     const { map } = generateLevel(7, DATA.w, DATA.h, { felled: [`${x},${y}`] })
