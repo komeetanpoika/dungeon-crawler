@@ -149,7 +149,7 @@ window.addEventListener('keydown', e => {
   if (wt) {
     gameCheatBuffer = ''
     const def = WEAPON_TYPES[wt]
-    state.player.weapon = { weaponType: wt, name: def.name, damage: def.damage }
+    state.player.weapon = weaponContents(wt)
     announce(state, `The ${def.name} answers your call! (${def.damage} dmg)`)
   }
 })
@@ -418,7 +418,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (depth === 0 && arenaCfg?.player) {
     const po = arenaCfg.player
     const def = WEAPON_TYPES[po.weaponType]
-    if (def) player.weapon = { weaponType: po.weaponType, name: def.name, damage: def.damage }
+    if (def) player.weapon = weaponContents(po.weaponType)
     else if (po.weaponType !== undefined) console.warn(`arena: unknown player weaponType "${po.weaponType}" — keeping current weapon`)
     const rdef = RANGED_WEAPON_TYPES[po.rangedType]
     if (rdef) player.ranged = makeRangedContents(po.rangedType)
