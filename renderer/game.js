@@ -33,6 +33,7 @@ import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdven
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
 import { felledCells, findTreeHit, chopTree } from './systems/lumber.js'
+import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable } from './systems/factions.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -538,6 +539,7 @@ function openInventory() {
     },
     onUse: (i) => useInventoryItem(i),
     onDrop: (i) => dropInventoryItem(i),
+    onBuild: () => buildCampfire(),
     onClose: closeInventory,
   })
 }
@@ -593,8 +595,8 @@ function afterInventoryChange() {
 function useInventoryItem(i) {
   const item = state.player.inventory[i]
   if (!item) return
-  if (item.kind === 'potion' || item.kind === 'meat') {
-    const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'meat' ? item.heal : item.amount)
+  if (item.kind === 'potion' || item.kind === 'meat' || item.kind === 'cooked_meat') {
+    const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'potion' ? item.amount : item.heal)
     if (healed <= 0) { think(state, 'Already full.'); return }
     removeItem(state.player, i)
     state.player.hp += healed
@@ -625,6 +627,19 @@ function dropInventoryItem(i) {
     px: player.px, py: player.py, progress: 0, duration: 0.35,
   })
   sfx(state, 'drop')
+  afterInventoryChange()
+}
+
+function buildCampfire() {
+  const gate = canBuildCampfire(state.player)
+  if (!gate.ok) { think(state, 'Not enough lumber.'); return }
+  const spot = buildSpot(state.map, state.entities, state.player)
+  if (!spot) { think(state, 'No room for a fire here.'); return }
+  spendLumber(state.player)
+  const fire = makeCampfire(spot.x, spot.y)
+  state.entities.push(fire)
+  sfx(state, 'campfire-light', { px: fire.px, py: fire.py })
+  if (inventoryOpen) closeInventory()
   afterInventoryChange()
 }
 
@@ -723,6 +738,18 @@ function update(delta) {
     if (grantContents(item.contents)) {
       state.entities = state.entities.filter((_, i) => i !== floatIdx)
       if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+    }
+  }
+
+  // Campfire cooking — standing on a fire cooks every raw meat carried.
+  // cookMeat empties the raw stack, so it can't fire twice for the same meat.
+  const fire = state.entities.find(e => e.type === 'campfire' && e.x === player.x && e.y === player.y)
+  if (fire) {
+    const n = cookMeat(player)
+    if (n) {
+      sfx(state, 'sizzle', { px: fire.px, py: fire.py })
+      think(state, 'You cook the meat.')
+      afterInventoryChange()
     }
   }
 
@@ -1255,6 +1282,11 @@ function update(delta) {
     e.px = e.startPx + (e.targetPx - e.startPx) * t
     e.py = e.startPy + (e.targetPy - e.startPy) * t - arcH * 4 * t * (1 - t)
   }
+
+  // Campfires burn out after a minute.
+  const fires = tickCampfires(state.entities, delta)
+  state.entities = fires.entities
+  for (const f of fires.expired) sfx(state, 'campfire-out', { px: f.px, py: f.py })
 
   // Walk animation — player + humanoid enemies (guard, wizard)
   tickWalk(player, delta)

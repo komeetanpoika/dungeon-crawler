@@ -10,6 +10,7 @@ import { GUST_CHARGE } from '../systems/magic.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { NPC_SPECIES } from '../data/npcs.js'
+import { campfireAlpha } from '../systems/campfire.js'
 
 const TILE_SIZE = 32
 
@@ -178,6 +179,15 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'potion') {
     drawPotion(ctx, px, py, S, sprites.potion)
+    return
+  }
+  if (entity.type === 'campfire') {
+    const s = sprites.prop_campfire
+    if (!s) return
+    const prev = ctx.globalAlpha
+    ctx.globalAlpha = prev * campfireAlpha(entity)
+    ctx.drawImage(s, px, py, S, S)
+    ctx.globalAlpha = prev
     return
   }
   if (entity.type === 'floating_item') {
