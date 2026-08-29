@@ -70,8 +70,19 @@ describe('tryGust', () => {
   it('leaves a creature in the wedge alone, even on an over-tier gust (creature damage only flows through strikeCreature)', () => {
     const maahinen = { type: 'maahinen', state: 'surfaced', px: 100 + T, py: 100, x: 0, y: 0, hp: 24, maxHp: 24 }
     const state = mkState([maahinen])
-    tryGust(state, 'over')
+    const r = tryGust(state, 'over')
     assert.equal(maahinen.stunTimer, undefined)
+    assert.equal(maahinen.knockback, undefined)
+    assert.equal(r.caught, 0, 'the creature must not be counted as caught at all')
+
+    // Same wedge, but with a regular enemy alongside the creature: the enemy
+    // is still caught, proving the creature is excluded specifically, not
+    // just uncounted because the wedge/loop broke.
+    const guard = guardAt(T, 0)
+    const state2 = mkState([maahinen, guard])
+    const r2 = tryGust(state2, 'over')
+    assert.equal(r2.caught, 1)
+    assert.ok(guard.knockback)
     assert.equal(maahinen.knockback, undefined)
   })
 

@@ -31,12 +31,13 @@ export function makeMaahinen(x, y) {
 // Deterministic ring search around (cx, cy) in tile coords: nearest ring
 // first, row-major within a ring, first walkable tile wins. `minR`/`maxR`
 // bound the Chebyshev radius searched (inclusive).
-function ringSearch(map, cx, cy, minR, maxR) {
+function ringSearch(map, cx, cy, minR, maxR, exclude = null) {
   for (let r = minR; r <= maxR; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
         const tx = cx + dx, ty = cy + dy
+        if (exclude && tx === exclude.x && ty === exclude.y) continue
         const cell = map[ty]?.[tx]
         if (cell && isWalkable(cell.tile, cell)) return { x: tx, y: ty }
       }
@@ -61,7 +62,7 @@ function submergedTick(e, state, delta) {
 
   const newDist = Math.hypot(player.px - e.px, player.py - e.py)
   if (newDist <= ERUPT_DIST && e.timer <= 0) {
-    const tile = ringSearch(map, e.x, e.y, 0, 20) ?? { x: e.x, y: e.y }
+    const tile = ringSearch(map, e.x, e.y, 0, 20, { x: player.x, y: player.y }) ?? { x: e.x, y: e.y }
     e.x = tile.x; e.y = tile.y
     e.px = tile.x * S + S / 2; e.py = tile.y * S + S / 2
     e.state = 'erupting'
@@ -76,15 +77,16 @@ function eruptingTick(e, delta) {
 }
 
 function surfacedTick(e, state, delta) {
+  e.damageCooldown = Math.max(0, (e.damageCooldown ?? 0) - delta)
   const prevPx = e.px
   act(e, state, delta, updateBrain(e, state, delta))
   if (Math.abs(e.px - prevPx) > 0.1) e.facing = e.px - prevPx > 0 ? 'east' : 'west'
   tryStartEnemyAttack(e, state)
 
   if (!e.dived && e.hp <= e.maxHp / 2) {
-    e.state = 'submerging'; e.timer = SUBMERGE_TIME; e.dived = true
+    e.state = 'submerging'; e.timer = SUBMERGE_TIME; e.dived = true; e.attack = null
   } else if (e.dived && !e.dived2 && e.hp <= e.maxHp / 4) {
-    e.state = 'submerging'; e.timer = SUBMERGE_TIME; e.dived2 = true
+    e.state = 'submerging'; e.timer = SUBMERGE_TIME; e.dived2 = true; e.attack = null
   }
 }
 

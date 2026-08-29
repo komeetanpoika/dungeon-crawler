@@ -9,6 +9,7 @@ import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
+import { stepEnemyAttack } from '../renderer/systems/enemy-attack.js'
 
 const S = 32
 
@@ -78,6 +79,19 @@ describe('updateMaahinen — submerged glide', () => {
     const state = makeState(m, player)
     updateMaahinen(m, state, 0.016)
     assert.equal(m.state, 'submerged')
+  })
+
+  it('snaps to an adjacent walkable tile, not the player\'s own tile, when they are co-located', () => {
+    const m = makeMaahinen(5, 5)
+    m.px = 5 * S + 16; m.py = 5 * S + 16
+    const player = makePlayer(5, 5, { px: m.px, py: m.py })
+    const state = makeState(m, player)
+    updateMaahinen(m, state, 0.016)
+    assert.equal(m.state, 'erupting')
+    assert.ok(!(m.x === player.x && m.y === player.y), 'must not erupt onto the player\'s own tile')
+    const cheb = Math.max(Math.abs(m.x - player.x), Math.abs(m.y - player.y))
+    assert.equal(cheb, 1, 'nearest ring search should land adjacent')
+    assert.equal(state.map[m.y][m.x].tile, TILE.FLOOR)
   })
 })
 
@@ -184,6 +198,40 @@ describe('updateMaahinen — surfaced', () => {
     updateMaahinen(m, state, 0.1)
     assert.equal(m.state, 'submerging')
     assert.equal(m.dived2, true)
+  })
+
+  it('damageCooldown ticks down each surfaced update, so the maul lands repeatedly (not just once)', () => {
+    const m = makeMaahinen(5, 5)
+    m.px = 5 * S + 16; m.py = 5 * S + 16
+    m.state = 'surfaced'
+    // Player parked well within reach (34px) and stopRange (30px) the whole time.
+    const player = makePlayer(5, 5, { px: m.px + 20, py: m.py, hp: 999, invulnTimer: 0 })
+    const state = makeState(m, player)
+    let attacksStarted = 0
+    for (let t = 0; t < 4; t += 0.05) {
+      const hadAttack = !!m.attack
+      // game.js decrements the player's i-frame timer every frame (separately
+      // from the enemy update) — replicate that here, or the first hit's
+      // invulnerability window would never expire and mask the real fix.
+      player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - 0.05)
+      updateMaahinen(m, state, 0.05)
+      if (!hadAttack && m.attack) attacksStarted++
+      stepEnemyAttack(m, state, 0.05)
+    }
+    assert.ok(attacksStarted >= 3, `expected >= 3 attacks started over 4s, got ${attacksStarted}`)
+  })
+
+  it('clears a pending attack when diving into submerging (no swing sprite over an invisible body)', () => {
+    const m = makeMaahinen(5, 5)
+    m.px = 5 * S + 16; m.py = 5 * S + 16
+    m.state = 'surfaced'
+    m.hp = 12
+    m.attack = { weaponId: 'maul', phase: 'swing', timer: 0.1, duration: 0.3, angle: 0, message: 'x' }
+    const player = makePlayer(9, 5)
+    const state = makeState(m, player)
+    updateMaahinen(m, state, 0.1)
+    assert.equal(m.state, 'submerging')
+    assert.equal(m.attack, null)
   })
 })
 
