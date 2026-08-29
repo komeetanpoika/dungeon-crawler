@@ -233,11 +233,12 @@ export function interactNpc(state, e, rng = Math.random) {
   const def = NPC_SPECIES[e.species]
   if (!def || e.hostile) return null
   const { player } = state
-  if (def.lines) {
+  const lines = state.villagerLines?.[e.species] ?? def.lines
+  if (lines) {
     e.facing = player.px < e.px ? 'west' : 'east'
     e.ai.wanderPt = null
     e.ai.dwell = Math.max(e.ai.dwell ?? 0, 3)
-    const text = def.lines[Math.floor(rng() * def.lines.length)]
+    const text = lines[Math.floor(rng() * lines.length)]
     speakFrom(state, e, text)
     return { kind: 'speech', text }
   }

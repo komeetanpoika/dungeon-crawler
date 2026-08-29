@@ -282,6 +282,20 @@ describe('interactNpc', () => {
   })
 })
 
+describe('persona lines', () => {
+  it('interactNpc prefers state.villagerLines for the species over the species lines', () => {
+    const map = field()
+    const e = npcAt('villager', 5, 5)
+    const state = makeState(map, { x: 4, y: 5 }, [e])
+    state.feedback = makeFeedback()
+    state.villagerLines = { villager: ["You're back, Toivo!"] }
+    const r = interactNpc(state, e, () => 0)
+    assert.equal(r.text, "You're back, Toivo!")
+    delete state.villagerLines
+    assert.notEqual(interactNpc(state, e, () => 0).text, "You're back, Toivo!")
+  })
+})
+
 describe('spriteKeyFor', () => {
   it('rotates villager faces by spawn index and uses the species sprite otherwise', () => {
     assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:0' })), 'npc_villager')

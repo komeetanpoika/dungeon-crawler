@@ -32,6 +32,7 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
+import { episodeFor, isMapUnlocked, isResolved, leapFlags, missingSpawn } from './systems/leap.js'
 import { felledCells, findTreeHit, chopTree } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable } from './systems/factions.js'
@@ -391,6 +392,38 @@ function respawnNpcs() {
   state.npcWrath = false
 }
 
+// Leap maps: install the persona while the episode is open, or bring the
+// missing person home if it is already resolved.
+function arriveOnMap() {
+  const mapData = OPEN_MAPS[state.level]
+  const ep = episodeFor(mapData)
+  state.episode = ep
+  state.villagerLines = null
+  state.episodeResolved = false
+  if (!ep) return
+  if (isResolved(savedAdventure, mapData)) {
+    state.episodeResolved = true
+    state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
+  } else {
+    state.villagerLines = ep.villagerLines
+  }
+}
+
+// Fires the moment an episode's rule is first satisfied: the missing person
+// walks back into the village and the runestone hums. Idempotent per visit
+// via `state.episodeResolved` — episode modules (Task 5) call this through ctx
+// right after setting the flag that might complete the rule.
+function resolveEpisode() {
+  const mapData = OPEN_MAPS[state.level]
+  if (!state.episode || state.episodeResolved || !isResolved(savedAdventure, mapData)) return
+  state.episodeResolved = true
+  state.villagerLines = null
+  state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
+  sfx(state, 'leap', { px: state.player.px, py: state.player.py })
+  announce(state, `${state.episode.persona} walks back into the village. The runestone hums.`)
+  persistAdventure()
+}
+
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
@@ -480,6 +513,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     // must stay recorded as dead on the next persist rather than be forgotten.
     npcSpawnIds: npcRecord ? [...npcSpawns(entitySpawns), ...npcRecord.dead] : [],
   }
+  if (OPEN_MAPS[depth]) arriveOnMap()
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
   for (const id of savedAdventure.gates[OPEN_MAPS[depth]?.name] ?? []) {
@@ -785,19 +819,24 @@ function update(delta) {
     else if (state.cave.offStairs) { exitCave(); return }
   }
 
-  // Waystone: standing on the exit arch travels onward once every dungeon
-  // here is finished; sealed, it explains itself on a cooldown.
+  // Waystone: standing on the exit arch travels onward once the map is
+  // unlocked — every dungeon here finished, or (leap maps) the episode
+  // resolved; sealed, it explains itself on a cooldown.
   if (!state.cave && state.mapExit && player.x === state.mapExit.x && player.y === state.mapExit.y) {
     const mapData = OPEN_MAPS[state.level]
-    if (mapData && isMapComplete(savedAdventure.progress, mapData)) {
+    if (mapData && isMapUnlocked(savedAdventure, mapData)) {
       const next = nextMapDepth(state.level)
       if (next) { travelToMap(next); return }
     } else if (mapData) {
       state.exitMsgCooldown = (state.exitMsgCooldown ?? 0) - delta
       if (state.exitMsgCooldown <= 0) {
-        const done = savedAdventure.progress.cleared[mapData.name] ?? []
-        const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
-        think(state, `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
+        if (mapData.leap) {
+          think(state, 'The runestone is dark. Something here is still wrong.')
+        } else {
+          const done = savedAdventure.progress.cleared[mapData.name] ?? []
+          const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
+          think(state, `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
+        }
         state.exitMsgCooldown = 2
       }
     }
@@ -1481,6 +1520,7 @@ function travelToMap(depth) {
   }
   savedAdventure.progress.mapDepth = depth
   persistAdventure()
+  arriveOnMap()
   announce(state, `You arrive in ${OPEN_MAPS[depth].title}.`)
 }
 
