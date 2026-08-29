@@ -101,7 +101,7 @@ describe('waystone exit', () => {
   })
 
   it('the last map has no exit and no marker', () => {
-    const { mapExit } = buildOpenMap(OPEN_MAPS[15])
+    const { mapExit } = buildOpenMap(OPEN_MAPS[18])
     assert.equal(mapExit, null)
   })
 })
@@ -240,7 +240,7 @@ function lcg(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 10139
 const cheb = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y))
 
 describe('npcSpawnsForMap', () => {
-  for (const depth of [7, 8, 9]) {
+  for (const depth of [7, 8, 11, 12]) {
     const data = OPEN_MAPS[depth]
     it(`${data.name}: spawns the declared population on walkable, distinct tiles`, () => {
       const spawns = npcSpawnsForMap(data, { rng: lcg(1) })
@@ -292,7 +292,7 @@ describe('npcSpawnsForMap', () => {
     for (const s of spawns.filter(s => s.species === 'boar' || s.species === 'sheep')) assert.equal(s.hostile, false)
   })
   it('a map without npcs yields nothing', () => {
-    assert.deepEqual(npcSpawnsForMap(OPEN_MAPS[10], { rng: lcg(6) }), [])
+    assert.deepEqual(npcSpawnsForMap(OPEN_MAPS[13], { rng: lcg(6) }), [])
   })
   it('a map with a declared village but no village/camp POI drops only the village group', () => {
     const data = { ...OPEN_MAPS[7], pois: OPEN_MAPS[7].pois.filter(p => p.kind !== 'village' && p.kind !== 'camp') }
@@ -323,7 +323,7 @@ describe('starter weapon', () => {
     assert.ok(!entitySpawns.some(s => s !== c && s.x === c.x && s.y === c.y), 'tile shared')
   })
   it('other maps get no starter chest', () => {
-    for (const d of [8, 9, 10]) assert.equal(buildOpenMap(OPEN_MAPS[d]).entitySpawns.filter(s => s.kind === 'weapon').length, 0)
+    for (const d of [8, 11, 12]) assert.equal(buildOpenMap(OPEN_MAPS[d]).entitySpawns.filter(s => s.kind === 'weapon').length, 0)
   })
 })
 

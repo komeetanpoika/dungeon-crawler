@@ -1,4 +1,4 @@
-// Adventure progression: nine open maps chained by depth (see open-maps.js).
+// Adventure progression: twelve open maps chained by depth (see open-maps.js).
 // A map's waystone leads onward only when every one of its dungeons has been
 // finished — recorded here permanently, so the cave reset timer never
 // re-locks a map and dying after a boss kill keeps the credit.
@@ -35,7 +35,9 @@ export function nextMapDepth(depth) {
 // v2 added { caves, progress }; v3 adds learned talents and the traveling
 // body (hands + sack); v4 adds npcs ({mapName: {dead, hostile}}) — wiped on
 // player death; v5 adds felled ({mapName: ['x,y']}) — permanent, not wiped
-// on death. Migration is additive — missing fields default.
+// on death. v6 adds leaps ({mapName: {flags}}) and shifts pre-v6 mapDepth >= 8
+// by +3 (three leap maps inserted at 8-10); save.v6 marks the shift done.
+// Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
   const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
     : (raw && typeof raw === 'object' && !raw.caves) ? { caves: raw, progress: freshProgress() }
@@ -45,6 +47,11 @@ export function normalizeAdventureSave(raw) {
   base.gates ??= {}
   base.npcs ??= {}
   base.felled ??= {}
+  base.leaps ??= {}
+  if (!base.v6) {
+    if (base.progress.mapDepth >= 8) base.progress.mapDepth += 3
+    base.v6 = true
+  }
   return base
 }
 

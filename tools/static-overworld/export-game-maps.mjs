@@ -18,16 +18,18 @@ const EXPORTS = [
     starter: 'hatchet',
     npcs: { village: ['villager', 'villager', 'villager', 'elder', 'chicken', 'chicken', 'sheep', 'sheep', 'goat'],
             wild: ['deer', 'deer', 'mouse', 'mouse', 'chicken', 'wolf', 'boar'] } },
-  { depth: 8,  file: 'forest-2-river.json',        title: 'River Split',     caveDepths: [2],    exitPoi: 'river shrine',
+  { depth: 8,  file: 'lake-1-ferry.json',          title: "Toivo's Lake",    caveDepths: [2],    exitPoi: 'orchard stone', leap: true,
+    npcs: { village: ['villager', 'villager', 'elder', 'chicken', 'chicken'], wild: ['deer', 'deer', 'mouse', 'boar'] } },
+  { depth: 11, file: 'forest-2-river.json',        title: 'River Split',     caveDepths: [2],    exitPoi: 'river shrine',
     npcs: { village: ['villager', 'villager', 'chicken', 'goat'], wild: ['deer', 'deer', 'deer', 'mouse', 'mouse', 'wolf', 'wolf', 'boar'] } },
-  { depth: 9,  file: 'forest-3-autumn.json',       title: 'Autumn Highland', caveDepths: [2, 3], exitPoi: 'stone circle',
+  { depth: 12, file: 'forest-3-autumn.json',       title: 'Autumn Highland', caveDepths: [2, 3], exitPoi: 'stone circle',
     npcs: { village: ['villager', 'elder', 'sheep', 'goat'], wild: ['deer', 'deer', 'mouse', 'mouse', 'mouse', 'bear', 'boar', 'wolf'] } },
-  { depth: 10, file: 'desert-1-dunes.json',        title: 'Open Erg',        caveDepths: [3, 3], exitPoi: 'toppled shrine' },
-  { depth: 11, file: 'desert-2-canyon.json',       title: 'Wadi Canyon',     caveDepths: [4],    exitPoi: 'buried temple' },
-  { depth: 12, file: 'desert-3-lost-city.json',    title: 'Lost City',       caveDepths: [4],    exitPoi: 'palace gate' },
-  { depth: 13, file: 'sea-1-suomenlinna.json',     title: 'Suomenlinna',     caveDepths: [4, 4], exitPoi: 'church island' },
-  { depth: 14, file: 'sea-2-fishing-village.json', title: 'Seagrave Coast',  caveDepths: [4],    exitPoi: 'lighthouse' },
-  { depth: 15, file: 'sea-3-archipelago.json',     title: 'Archipelago',     caveDepths: [5, 5] },
+  { depth: 13, file: 'desert-1-dunes.json',        title: 'Open Erg',        caveDepths: [3, 3], exitPoi: 'toppled shrine' },
+  { depth: 14, file: 'desert-2-canyon.json',       title: 'Wadi Canyon',     caveDepths: [4],    exitPoi: 'buried temple' },
+  { depth: 15, file: 'desert-3-lost-city.json',    title: 'Lost City',       caveDepths: [4],    exitPoi: 'palace gate' },
+  { depth: 16, file: 'sea-1-suomenlinna.json',     title: 'Suomenlinna',     caveDepths: [4, 4], exitPoi: 'church island' },
+  { depth: 17, file: 'sea-2-fishing-village.json', title: 'Seagrave Coast',  caveDepths: [4],    exitPoi: 'lighthouse' },
+  { depth: 18, file: 'sea-3-archipelago.json',     title: 'Archipelago',     caveDepths: [5, 5] },
 ]
 
 // Nearest walkable, prop-free cell to (x, y) by expanding square search.
@@ -60,6 +62,7 @@ for (const e of EXPORTS) {
     palette: m.palette, ground: m.ground, prop: m.prop, walk: m.walk,
     pois: m.pois, playerSpawn: m.playerSpawn, caveDepths: e.caveDepths, exit,
     npcs: e.npcs ?? null, starter: e.starter ?? null,
+    leap: e.leap ?? undefined,
   }
 }
 

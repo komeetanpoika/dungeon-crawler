@@ -17,12 +17,12 @@ describe('parseLevelCheat', () => {
     assert.equal(parseLevelCheat('level6'), 6)
   })
 
-  it('accepts the adventure chain, level7 through level15', () => {
-    for (let d = 7; d <= 15; d++) assert.equal(parseLevelCheat(`level${d}`), d)
+  it('accepts the adventure chain, level7 through level18', () => {
+    for (let d = 7; d <= 18; d++) assert.equal(parseLevelCheat(`level${d}`), d)
   })
 
   it('ignores depths with no LEVEL_CONFIG entry', () => {
-    assert.equal(parseLevelCheat('level16'), null)
+    assert.equal(parseLevelCheat('level19'), null)
     assert.equal(parseLevelCheat('level20'), null)
   })
 
