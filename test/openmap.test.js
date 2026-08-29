@@ -4,6 +4,7 @@ import { buildOpenMap, npcSpawnsForMap } from '../renderer/systems/openmap.js'
 import { generateLevel } from '../renderer/systems/map.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from '../renderer/data/open-maps.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
+import { NPC_SPECIES } from '../renderer/data/npcs.js'
 
 const DATA = OPEN_MAPS[7]
 
@@ -79,7 +80,7 @@ describe('buildOpenMap', () => {
     // Rite triggers, wild mushrooms and gate fountains are legitimate spawn
     // kinds — this guards against anything else (enemies, markers)
     // sneaking onto an open map's scenery.
-    const ALLOWED_KINDS = ['chest', 'talent_trigger', 'wild_mushroom', 'fountain_wall', 'fountain_basin', 'npc']
+    const ALLOWED_KINDS = ['chest', 'talent_trigger', 'wild_mushroom', 'fountain_wall', 'fountain_basin', 'npc', 'weapon']
     assert.ok(entitySpawns.every(s => ALLOWED_KINDS.includes(s.kind)))
   })
 
@@ -249,7 +250,7 @@ describe('npcSpawnsForMap', () => {
         assert.equal(data.walk[s.y][s.x], '1', `${s.id} on a blocked tile`)
         assert.ok(!seen.has(`${s.x},${s.y}`), `${s.id} shares a tile`); seen.add(`${s.x},${s.y}`)
         assert.ok(!(s.x === data.playerSpawn.x && s.y === data.playerSpawn.y), 'on the player spawn')
-        assert.equal(s.hostile, false)
+        assert.equal(s.hostile, !!NPC_SPECIES[s.species].hostile, `${s.id} hostility`)
       }
     })
     it(`${data.name}: village homes sit within roam of the anchor, wild homes keep their distance`, () => {
@@ -274,13 +275,20 @@ describe('npcSpawnsForMap', () => {
   it('honours a saved record: dead ids are skipped, only fight-capable villagers spawn hostile', () => {
     const record = { dead: ['npc:forest-1-clearings:0', 'npc:forest-1-clearings:7'], hostile: true }
     const spawns = npcSpawnsForMap(OPEN_MAPS[7], { record, rng: lcg(5) })
-    assert.equal(spawns.length, 11 - 2)
+    assert.equal(spawns.length, 16 - 2)
     assert.ok(!spawns.some(s => record.dead.includes(s.id)))
     // elders flee when hit, so onNpcHit never turns them hostile: a reloaded
     // wrath must not hand them a fight they cannot have
-    for (const s of spawns) assert.equal(s.hostile, s.species === 'villager')
+    for (const s of spawns) assert.equal(s.hostile, s.species === 'villager' || !!NPC_SPECIES[s.species].hostile)
     assert.ok(spawns.some(s => s.species === 'villager' && s.hostile))
     assert.ok(spawns.some(s => s.species === 'elder' && !s.hostile))
+  })
+  it('hostile-on-sight species spawn hostile without any saved record', () => {
+    const spawns = npcSpawnsForMap(OPEN_MAPS[7], { rng: lcg(8) })
+    const wolves = spawns.filter(s => s.species === 'wolf')
+    assert.ok(wolves.length >= 1)
+    for (const w of wolves) assert.equal(w.hostile, true)
+    for (const s of spawns.filter(s => s.species === 'boar' || s.species === 'sheep')) assert.equal(s.hostile, false)
   })
   it('a map without npcs yields nothing', () => {
     assert.deepEqual(npcSpawnsForMap(OPEN_MAPS[10], { rng: lcg(6) }), [])
@@ -290,12 +298,30 @@ describe('npcSpawnsForMap', () => {
     const spawns = npcSpawnsForMap(data, { rng: lcg(8) })
     assert.equal(spawns.length, data.npcs.wild.length)
     assert.ok(spawns.every(s => data.npcs.wild.includes(s.species)))
-    assert.equal(spawns[0].id, 'npc:forest-1-clearings:6')
+    assert.equal(spawns[0].id, 'npc:forest-1-clearings:9')
   })
   it('buildOpenMap emits the npc spawns and forwards the record', () => {
     const record = { dead: ['npc:forest-1-clearings:0'], hostile: false }
     const { entitySpawns } = buildOpenMap(OPEN_MAPS[7], { npcs: record, rng: lcg(7) })
     const npcs = entitySpawns.filter(s => s.kind === 'npc')
-    assert.equal(npcs.length, 10)
+    assert.equal(npcs.length, 15)
+  })
+})
+
+describe('starter weapon', () => {
+  it('Clearings declares a dagger; the chest lands beside the village spawn', () => {
+    const data = OPEN_MAPS[7]
+    assert.equal(data.starter, 'dagger')
+    const { entitySpawns } = buildOpenMap(data)
+    const starters = entitySpawns.filter(s => s.kind === 'weapon')
+    assert.equal(starters.length, 1)
+    const c = starters[0]
+    assert.equal(c.weaponType, 'dagger')
+    assert.ok(cheb(c, data.playerSpawn) >= 1 && cheb(c, data.playerSpawn) <= 3, `chest at ${c.x},${c.y}`)
+    assert.equal(data.walk[c.y][c.x], '1')
+    assert.ok(!entitySpawns.some(s => s !== c && s.x === c.x && s.y === c.y), 'tile shared')
+  })
+  it('other maps get no starter chest', () => {
+    for (const d of [8, 9, 10]) assert.equal(buildOpenMap(OPEN_MAPS[d]).entitySpawns.filter(s => s.kind === 'weapon').length, 0)
   })
 })

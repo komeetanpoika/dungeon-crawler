@@ -32,8 +32,15 @@ export const SPRITES = {
   npc_villager_3: 'tile_0099',
   npc_elder:      'tile_0100',
   npc_mouse:      'tile_0124',
-  npc_chicken:    'npc_chicken',   // placeholder art until extract-npc-sprites.mjs runs
+  // animals from the CC0 Tiny Creatures pack (tools/extract-npc-sprites.mjs)
+  npc_chicken:    'npc_chicken',
   npc_deer:       'npc_deer',
+  npc_sheep:      'npc_sheep',
+  npc_goat:       'npc_goat',
+  npc_boar:       'npc_boar',
+  npc_wolf:       'npc_wolf',
+  npc_bear:       'npc_bear',
+  item_meat:      'item_meat',     // drawn by tools/npc-placeholders.mjs
   // floor variants
   sand:                'tile_0048',
   // props — civilisation gradient

@@ -17,7 +17,12 @@ const CELL = 16
 // 161 boar, 162 doe, 163 stag, 164 bear, 166 wolf, 170 fox — pick here.
 const PICKS = {
   npc_chicken: 151,
+  npc_goat:    153,
+  npc_sheep:   154,
+  npc_boar:    161,
   npc_deer:    162,
+  npc_bear:    164,
+  npc_wolf:    166,
 }
 
 if (!fs.existsSync(PACK)) {

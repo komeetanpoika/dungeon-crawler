@@ -47,7 +47,7 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
     // a reloaded wrath only re-arms the villagers who can actually fight —
     // onNpcHit never turns a flee species hostile, so nor may a saved record
     spawns.push({ kind: 'npc', species, x: t.x, y: t.y, id,
-      hostile: !!(record?.hostile && def.faction === 'village' && def.onHit === 'fight') })
+      hostile: !!(def.hostile || (record?.hostile && def.faction === 'village' && def.onHit === 'fight')) })
   }
   const free = (x, y) => walkable(x, y) && !taken.has(`${x},${y}`)
   const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))
@@ -179,6 +179,23 @@ export function buildOpenMap(data, { npcs = null, rng = Math.random } = {}) {
     c.tile = TILE.WALL
   }
   entitySpawns.push(...npcSpawnsForMap(data, { record: npcs, rng }))
+  // Starter weapon: a chest beside the spawn so a fresh adventurer is armed
+  // before the first cave. Nearest free walkable tile 1–3 steps out, row-major
+  // by ring so it lands on the same tile every visit.
+  if (data.starter) {
+    const taken = new Set(entitySpawns.map(s => `${s.x},${s.y}`))
+    const { x: sx, y: sy } = data.playerSpawn
+    let spot = null
+    for (let r = 1; r <= 3 && !spot; r++) {
+      for (let dy = -r; dy <= r && !spot; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+        const x = sx + dx, y = sy + dy
+        if (map[y]?.[x]?.tile === TILE.FLOOR && !taken.has(`${x},${y}`)) { spot = { x, y }; break }
+      }
+    }
+    if (spot) entitySpawns.push({ kind: 'weapon', weaponType: data.starter, x: spot.x, y: spot.y })
+    else console.warn(`starter: no free tile beside the spawn on ${data.name}`)
+  }
   return {
     map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [],
     caveEntrances, gates, mapExit: data.exit ? { ...data.exit } : null,

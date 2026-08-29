@@ -28,9 +28,10 @@ export function makeNpc({ species, id, x, y, hostile = false }) {
   return {
     type: 'npc', species, id, faction: def.faction,
     x, y, px: x * S + S / 2, py: y * S + S / 2,
-    hp: def.hp, maxHp: def.hp, hostile: !!hostile,
+    hp: def.hp, maxHp: def.hp, hostile: !!(hostile || def.hostile),
     home: { x, y }, objective: null, facing: 'east', inCombat: false,
     damageCooldown: 0, aiHalf: 4,
+    ...(def.weapon ? { weaponId: def.weapon } : {}),
     ai: { current: null, goals: {}, fleeTimer: 0, startleTimer: 0, reactTimer: 0 },
   }
 }
@@ -197,6 +198,13 @@ export function onNpcHit(e, state) {
     if (!state.npcWrath) { state.npcWrath = true; wrath = true }
   }
   return { hostile: e.hostile, wrath }
+}
+
+// What a dead NPC leaves behind: meat, with the species' chance. Villagers
+// (no `drop`) never yield anything. Returns chest-style contents or null.
+export function rollNpcDrop(e, rng = Math.random) {
+  const chance = NPC_SPECIES[e.species]?.drop ?? 0
+  return chance > 0 && rng() < chance ? { type: 'meat' } : null
 }
 
 // Villagers rotate faces by their spawn index so a village is not clones.

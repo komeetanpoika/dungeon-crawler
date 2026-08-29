@@ -21,6 +21,7 @@ export const WEAPONS = {
   dragon_claw: { sprite: null,           style: 'arc',   marks: 'claw',   damage: 2, windup: 0, duration: 0.25, reach: 44 },
   pincer:      { sprite: null,           style: 'snap',  marks: 'pincer', damage: 1, windup: 0, duration: 0.20, reach: 28 },
   fists:       { sprite: null,           style: 'snap',  marks: null,     damage: 1, windup: 0, duration: 0.20, reach: 26 },
+  maul:        { sprite: null,           style: 'slash', marks: 'claw',   damage: 2, windup: 0, duration: 0.30, reach: 34 },
 }
 
 // The wedge a weapon carves: its own reach, at the width of its swing style.

@@ -30,7 +30,7 @@ import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeI
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
-import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc } from './systems/npc.js'
+import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
 import { isEnemy, isHittable } from './systems/factions.js'
 import { NPC_SPECIES } from './data/npcs.js'
@@ -240,10 +240,22 @@ function moveEntity(e, dx, dy, map, half = PLAYER_HALF, boss = null) {
 // An animal that survives yelps; villagers keep the human cue the hit site
 // already plays. `alive` is passed explicitly by the splash path, where the
 // snapshot entity still carries its pre-blast hp.
+// Drops rolled for NPCs that died this frame. Damage sites run inside
+// state.entities rebuilds, so pushing a pickup there would be lost — they
+// queue here and land after the frame's final cull.
+let pendingDrops = []
 function npcStruck(e, alive = e.hp > 0) {
   if (e.type !== 'npc') return
   npcDirty = true
   if (alive && !NPC_SPECIES[e.species]?.walker) sfx(state, 'npc-hurt', { px: e.px, py: e.py })
+  if (!alive) {
+    const contents = rollNpcDrop(e)
+    if (contents) pendingDrops.push({
+      type: 'floating_item', contents, x: e.x, y: e.y,
+      startPx: e.px, startPy: e.py, targetPx: e.x * TILE_SIZE + TILE_SIZE / 2, targetPy: e.y * TILE_SIZE + TILE_SIZE / 2,
+      px: e.px, py: e.py, progress: 0, duration: 0.3,
+    })
+  }
   const r = onNpcHit(e, state)
   if (r.wrath) { announce(state, 'The village turns on you!'); sfx(state, 'npc-wrath') }
 }
@@ -581,8 +593,8 @@ function afterInventoryChange() {
 function useInventoryItem(i) {
   const item = state.player.inventory[i]
   if (!item) return
-  if (item.kind === 'potion') {
-    const healed = Math.min(state.player.maxHp - state.player.hp, item.amount)
+  if (item.kind === 'potion' || item.kind === 'meat') {
+    const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'meat' ? item.heal : item.amount)
     if (healed <= 0) { think(state, 'Already full.'); return }
     removeItem(state.player, i)
     state.player.hp += healed
@@ -1307,6 +1319,7 @@ function update(delta) {
   // Flush NPC deaths and wrath. It has to sit after the cull above, because
   // recordNpcState reads `dead` as "declared id with no entity left".
   if (npcDirty && !state.cave && OPEN_MAPS[state.level]) { npcDirty = false; persistAdventure() }
+  if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
 
   // Clear hit flash — it fires once per swing
   if (state.hitEffects?.length > 0) state.hitEffects = []

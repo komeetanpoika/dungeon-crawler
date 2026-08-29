@@ -209,3 +209,11 @@ describe('stepEnemyAttack — swing lifecycle', () => {
     assert.equal(e.attack ?? null, null)
   })
 })
+
+describe('animal weapons', () => {
+  it('a bear mauls for 2; a per-entity weaponId beats the npc default', () => {
+    assert.equal(WEAPONS.maul.damage, 2)
+    assert.equal(getEnemyWeapon({ type: 'npc', weaponId: 'maul' }).id, 'maul')
+    assert.equal(getEnemyWeapon({ type: 'npc', weaponId: 'claw' }).id, 'claw')
+  })
+})

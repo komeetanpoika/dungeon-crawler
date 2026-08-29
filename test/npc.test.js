@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME, spriteKeyFor } from '../renderer/systems/npc.js'
+import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME, spriteKeyFor, rollNpcDrop } from '../renderer/systems/npc.js'
 import { buildNavGrid, findPath, passable } from '../renderer/systems/nav.js'
 import { getEnemyWeapon } from '../renderer/systems/enemy-attack.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
@@ -288,5 +288,26 @@ describe('spriteKeyFor', () => {
     assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:1' })), 'npc_villager_2')
     assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:5' })), 'npc_villager_3')
     assert.equal(spriteKeyFor(npcAt('deer', 1, 1)), 'npc_deer')
+  })
+})
+
+describe('hostile animals and drops', () => {
+  it('a wolf spawns hostile with its species weapon; a boar is peaceful until hit', () => {
+    const wolf = npcAt('wolf', 3, 3)
+    assert.equal(wolf.hostile, true)
+    assert.equal(wolf.weaponId, 'claw')
+    assert.equal(npcAt('bear', 3, 3).weaponId, 'maul')
+    const boar = npcAt('boar', 3, 3)
+    assert.equal(boar.hostile, false)
+    boar.hp -= 1
+    const r = onNpcHit(boar, makeState(field(), { x: 4, y: 3 }, [boar]))
+    assert.deepEqual(r, { hostile: true, wrath: false })
+  })
+  it('rollNpcDrop yields meat under the species chance and nothing above it', () => {
+    const hen = npcAt('chicken', 3, 3)      // drop 0.5
+    assert.deepEqual(rollNpcDrop(hen, () => 0.2), { type: 'meat' })
+    assert.equal(rollNpcDrop(hen, () => 0.9), null)
+    assert.deepEqual(rollNpcDrop(npcAt('bear', 3, 3), () => 0.99), { type: 'meat' })
+    assert.equal(rollNpcDrop(npcAt('villager', 3, 3), () => 0), null)
   })
 })

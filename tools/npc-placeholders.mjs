@@ -30,7 +30,15 @@ const DEER = paint([
   '..#b#.#..#.#b#..', '..#b#.#..#.#b#..', '..##..##.##.##..', '................',
 ], { b: [150, 100, 60, 255], w: [245, 235, 215, 255] })
 
-for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER]]) {
+// Meat drumstick — the animal drop's sack/HUD icon (no such tile in the packs).
+const MEAT = paint([
+  '................', '................', '......####......', '.....#rrrr#.....',
+  '....#rrrrrr#....', '....#rrpprr#....', '....#rrrrrr#....', '....#rrrrr#.....',
+  '.....#rrr#......', '......#b#.......', '......#b#.......', '.......#b#......',
+  '.......#b##.....', '........#ww#....', '.........##.....', '................',
+], { r: [196, 96, 64, 255], p: [230, 140, 100, 255], b: [222, 205, 170, 255], w: [245, 240, 225, 255] })
+
+for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER], ['item_meat', MEAT]]) {
   const p = path.join(OUT, `${name}.png`)
   if (process.argv.includes('--force') || !existsSync(p)) { writePng(p, 16, 16, px); console.log('wrote', p) }
   else console.log('kept', p)
