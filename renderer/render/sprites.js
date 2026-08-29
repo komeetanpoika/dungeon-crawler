@@ -45,6 +45,8 @@ export const SPRITES = {
   item_meat_cooked: 'item_meat_cooked',
   ow_stump:         'ow_stump',          // felled-tree cell overlay (systems/lumber.js)
   prop_campfire:    'prop_campfire',     // campfire entity (systems/campfire.js)
+  prop_hearth_cold: 'prop_hearth_cold',  // placeholders drawn by tools/npc-placeholders.mjs
+  prop_hearth_lit:  'prop_hearth_lit',
   // floor variants
   sand:                'tile_0048',
   // props — civilisation gradient

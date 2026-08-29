@@ -126,6 +126,34 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
         assert.ok(reachedAt(reached, poi('lair')), 'lair should be reachable with rocks passable')
       })
     }
+
+    if (name === 'marsh-3-hermit') {
+      it('the three village hearths carry the cold hearth prop', () => {
+        for (const n of [1, 2, 3]) {
+          const p = data.pois.find(q => q.label === `hearth ${n}`)
+          assert.equal(data.palette[data.prop[p.y][p.x]], 'prop_hearth_cold')
+        }
+      })
+
+      const spawn = [data.playerSpawn.x, data.playerSpawn.y]
+      const poi = label => { const p = data.pois.find(q => q.label === label); return [p.x, p.y] }
+      // Hearth props (and the cave arch) are non-walkable overlays, so
+      // "reached" means the walk grid reaches the cell itself or a cell
+      // orthogonally beside it — the same rule buildOpenMap's own POI test
+      // above uses for spawn/POI adjacency.
+      const reachedNear = (reached, [x, y]) =>
+        reached.has(`${x},${y}`) || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reached.has(`${x + dx},${y + dy}`))
+
+      it('spawn reaches the hearths, hermit hut, mushroom ring, cave and every cache over plain walk', () => {
+        const reached = bfsReachable(data, [spawn], walkable(data))
+        for (const label of ['hearth', 'hermit hut', 'mushroom ring', 'hearth 1', 'hearth 2', 'hearth 3'])
+          assert.ok(reachedNear(reached, poi(label)), `${label} should be reachable`)
+        const cave = data.pois.find(p => p.kind === 'dungeon_entrance')
+        assert.ok(reachedNear(reached, [cave.x, cave.y]), 'the cave should be reachable')
+        for (const c of data.pois.filter(p => p.kind === 'chest'))
+          assert.ok(reachedNear(reached, [c.x, c.y]), `cache at ${c.x},${c.y} should be reachable`)
+      })
+    }
   })
 }
 

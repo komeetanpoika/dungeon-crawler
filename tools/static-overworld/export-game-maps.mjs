@@ -22,6 +22,8 @@ const EXPORTS = [
     npcs: { village: ['villager', 'villager', 'elder', 'chicken', 'chicken'], wild: ['deer', 'deer', 'mouse', 'boar'] } },
   { depth: 9,  file: 'highland-2-fold.json',       title: "Aino's Fold",     caveDepths: [2],    exitPoi: 'ridge stone', leap: true,
     npcs: { village: ['villager', 'villager', 'elder', 'sheep', 'sheep', 'sheep', 'goat'], wild: ['wolf', 'wolf', 'wolf', 'deer', 'mouse'] } },
+  { depth: 10, file: 'marsh-3-hermit.json',      title: 'Coldhearth Marsh', caveDepths: [3], exitPoi: 'knoll stone', leap: true,
+    npcs: { village: ['villager', 'villager', 'villager', 'elder', 'goat'], wild: ['deer', 'mouse', 'mouse', 'boar'] } },
   { depth: 11, file: 'forest-2-river.json',        title: 'River Split',     caveDepths: [2],    exitPoi: 'river shrine',
     npcs: { village: ['villager', 'villager', 'chicken', 'goat'], wild: ['deer', 'deer', 'deer', 'mouse', 'mouse', 'wolf', 'wolf', 'boar'] } },
   { depth: 12, file: 'forest-3-autumn.json',       title: 'Autumn Highland', caveDepths: [2, 3], exitPoi: 'stone circle',

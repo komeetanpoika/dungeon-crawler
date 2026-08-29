@@ -5,7 +5,7 @@
 // Every episode POI the game reads is declared here by label; test/leap-maps.test.js
 // lists them.
 import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
-import { PINES, ROCKS_MOSS, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
+import { PINES, AUTUMN, ROCKS_MOSS, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -244,7 +244,61 @@ function fold() {
   return b
 }
 
-export const LEAP_MAPS = [lake, fold]
+function marsh() {
+  const rng = mulberry32(1010)
+  const noise = makeNoise(rng)
+  const b = new MapBuilder('marsh-3-hermit', 'forest', 'autumn marsh, cold village, hermit knoll', 120, 80)
+  b.notes = "Lauri's marsh: pools and autumn woods, the cold village south, the hermit's knoll north ringed by dead trees."
+  grassBase(b, rng)
+  // pools
+  for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
+    const w = noise(x, y, { freq: 0.07, octaves: 2 })
+    if (w > 0.62) { b.g(x, y, pick(rng, WATER)); b.block(x, y) }
+    else if (w > 0.58) b.g(x, y, pick(rng, DIRT))
+  }
+  for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
+    if (!b.walkable(x, y)) continue
+    const d = noise(x + 500, y, { freq: 0.08, octaves: 3 })
+    if (d > 0.47 && rng() < (d - 0.47) * 3) plantTree(b, rng, x, y, AUTUMN)
+    else if (d > 0.55 && rng() < 0.08) b.p(x, y, 'ow_mushroom')
+  }
+  forestEdge(b, rng, AUTUMN)
+  // the cold village: three hearths in the plaza
+  const village = { x: 60, y: 60 }
+  stampVillage(b, rng, village.x, village.y)
+  b.poi('village', village.x, village.y - 1, 'village')
+  for (const [i, [dx, dy]] of [[-4, -2], [4, -2], [0, 3]].entries()) {
+    b.clearProp(village.x + dx, village.y + dy); b.p(village.x + dx, village.y + dy, 'prop_hearth_cold', { walkable: false })
+    b.poi('landmark', village.x + dx, village.y + dy, `hearth ${i + 1}`)
+  }
+  // the hermit's knoll north, ringed by dead trees, hearth in front of the door
+  const hut = { x: 58, y: 18 }
+  clearing(b, hut.x, hut.y, 7)
+  stampHouse3(b, rng, hut.x, hut.y, 'brown')
+  b.poi('village', hut.x + 1, hut.y + 2, 'hermit hut')
+  b.clearProp(hut.x + 1, hut.y + 4); b.poi('landmark', hut.x + 1, hut.y + 4, 'hearth')
+  for (let i = 0; i < 18; i++) {
+    const a = i / 18 * Math.PI * 2
+    const x = hut.x + 1 + Math.round(Math.cos(a) * 7), y = hut.y + 2 + Math.round(Math.sin(a) * 6)
+    if (i % 5 !== 0) b.p(x, y, pick(rng, ['ow_deadtree_0', 'ow_deadtree_1']))
+  }
+  // the mushroom ring east, the rite anchor
+  const ring = { x: 92, y: 40 }
+  clearing(b, ring.x, ring.y, 4)
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; b.p(ring.x + Math.round(Math.cos(a) * 3), ring.y + Math.round(Math.sin(a) * 3), 'ow_mushroom') }
+  b.poi('landmark', ring.x, ring.y, 'mushroom ring')
+  const cave = { x: 22, y: 30 }
+  clearing(b, cave.x, cave.y, 3); stampCaveInRocks(b, rng, cave.x, cave.y); b.poi('dungeon_entrance', cave.x, cave.y, 'bog cave')
+  for (const c of b.scatter(rng, 3, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
+  stampRunestone(b, village.x - 16, village.y + 4)
+  b.p(hut.x + 14, hut.y + 2, 'ow_house_arch_stone', { walkable: true }); b.poi('landmark', hut.x + 14, hut.y + 2, 'knoll stone')
+  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: 'ow_dirt_0' })
+  b.ensureReachable('ow_dirt_0')
+  pruneBrokenTrees(b)
+  return b
+}
+
+export const LEAP_MAPS = [lake, fold, marsh]
 for (const make of LEAP_MAPS) {
   const b = make()
   const problems = validate(b)

@@ -70,8 +70,23 @@ const CAMPFIRE = paint([
   '..#bbbbbbbbb#...', '.#bbbb#b#bbbb#..', '..###..#..###...', '................',
 ], { y: [255, 230, 120, 255], o: [255, 150, 40, 255], r: [220, 60, 30, 255], b: [120, 75, 40, 255] })
 
+// Cold hearth: a ring of stones round grey ash. Lit: the same ring with flame.
+const HEARTH_COLD = paint([
+  '................', '................', '................', '.....######.....',
+  '....#ssssss#....', '...#saaaaaas#...', '...#saaaaaas#...', '...#saaaaaas#...',
+  '...#saaaaaas#...', '....#ssssss#....', '.....######.....', '................',
+  '................', '................', '................', '................',
+], { s: [120, 120, 125, 255], a: [90, 88, 86, 255] })
+const HEARTH_LIT = paint([
+  '................', '.......#........', '......#y#.......', '.....#yoy#......',
+  '....#soooos#....', '...#soorroos#...', '...#sorrrros#...', '...#soorroos#...',
+  '...#saoooaas#...', '....#ssssss#....', '.....######.....', '................',
+  '................', '................', '................', '................',
+], { s: [120, 120, 125, 255], a: [90, 88, 86, 255], y: [255, 230, 120, 255], o: [255, 150, 40, 255], r: [220, 60, 30, 255] })
+
 for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER], ['item_meat', MEAT],
-  ['item_lumber', LUMBER], ['item_meat_cooked', MEAT_COOKED], ['ow_stump', STUMP], ['prop_campfire', CAMPFIRE]]) {
+  ['item_lumber', LUMBER], ['item_meat_cooked', MEAT_COOKED], ['ow_stump', STUMP], ['prop_campfire', CAMPFIRE],
+  ['prop_hearth_cold', HEARTH_COLD], ['prop_hearth_lit', HEARTH_LIT]]) {
   const p = path.join(OUT, `${name}.png`)
   if (process.argv.includes('--force') || !existsSync(p)) { writePng(p, 16, 16, px); console.log('wrote', p) }
   else console.log('kept', p)

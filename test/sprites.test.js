@@ -125,6 +125,6 @@ describe('hatchet art', () => {
 })
 
 describe('lumber and campfire placeholders', () => {
-  for (const key of ['item_lumber', 'item_meat_cooked', 'ow_stump', 'prop_campfire'])
+  for (const key of ['item_lumber', 'item_meat_cooked', 'ow_stump', 'prop_campfire', 'prop_hearth_cold', 'prop_hearth_lit'])
     it(`${key} is registered under its own file name`, () => assert.equal(SPRITES[key], key))
 })

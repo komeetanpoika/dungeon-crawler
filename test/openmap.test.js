@@ -155,6 +155,19 @@ describe('rite spawns on open maps', () => {
   })
 })
 
+// The marsh's mushroom ring anchors a talent-less rite: the trance and
+// ceremony still play, but there is nothing to learn (see game.js).
+describe('marsh-3-hermit talent-less rite', () => {
+  it('emits one talent_trigger at the mushroom ring with talent: null', () => {
+    const data = OPEN_MAPS[10]
+    const { entitySpawns } = buildOpenMap(data)
+    const triggers = entitySpawns.filter(s => s.kind === 'talent_trigger')
+    assert.equal(triggers.length, 1)
+    const ring = data.pois.find(p => p.label === 'mushroom ring')
+    assert.deepEqual(triggers[0], { kind: 'talent_trigger', x: ring.x, y: ring.y, talent: null, rite: 'mushroom_circle' })
+  })
+})
+
 describe('LOS terrain classification', () => {
   // The blocker a cell shows is its prop art if it has one, else its ground.
   const effectiveSkin = (data, x, y) => {

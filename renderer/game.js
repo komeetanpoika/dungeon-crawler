@@ -676,7 +676,9 @@ function update(delta) {
       const talent = state.rite.talent
       state.rite = null
       state.player.trance = 0
-      if (grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+      // Talent-less anchors (e.g. the marsh's mushroom ring) still play the
+      // trance and ceremony but grant nothing — skip grantTalent entirely.
+      if (talent && grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
     }
     tickFeedback(state.feedback, delta)
     return
@@ -820,7 +822,7 @@ function update(delta) {
   // Rite triggers: silent unless the rite's condition holds
   tickTrance(player, delta)
   const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
-  if (trigger && !hasTalent(player, trigger.talent) && riteConditionMet(trigger.rite, state)) {
+  if (trigger && (!trigger.talent || !hasTalent(player, trigger.talent)) && riteConditionMet(trigger.rite, state)) {
     state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent, cx: player.px, cy: player.py }
     sfx(state, 'rite', { px: player.px, py: player.py })
   }
