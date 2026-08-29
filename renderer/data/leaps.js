@@ -6,6 +6,7 @@ export const EPISODES = {
   'lake-1-ferry': {
     persona: 'Toivo',
     missing: { species: 'villager' },
+    items: [{ kind: 'clapper', fromPoi: 'islet cache' }],
     villagerLines: {
       villager: ["Toivo! The lake gave you back?", 'The orchard rots over there and we eat seed grain.', 'Ring the bell like you used to — nobody dares the pier.'],
       elder:    ['You always rang it at dusk, Toivo, and the water lay flat after.', 'It was never the lake that took you. It was what lives in it.'],
@@ -31,6 +32,7 @@ export const EPISODES = {
   'highland-2-fold': {
     persona: 'Aino',
     missing: { species: 'villager' },
+    items: [{ kind: 'fleece', fromPoi: 'fleece cache' }],
     villagerLines: {
       villager: ['Aino! Back from the city — the lambs are gone again.', 'We burn the forest tomorrow. The wolves have had their chance.', 'Your father would have shot every wolf on the ridge.'],
       elder:    ['The wolves never took lambs before the prospector came, Aino.', 'Bring me proof and I will call the torches off.'],

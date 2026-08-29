@@ -91,6 +91,19 @@ describe('buildOpenMap', () => {
   })
 })
 
+describe('episode chest contents', () => {
+  const LAKE = Object.values(OPEN_MAPS).find(m => m.name === 'lake-1-ferry')
+
+  it("the islet cache chest spawn carries the episode's clapper; other caches carry none", () => {
+    const { entitySpawns } = buildOpenMap(LAKE)
+    const chests = entitySpawns.filter(s => s.kind === 'chest')
+    const islet = LAKE.pois.find(p => p.kind === 'chest' && p.label === 'islet cache')
+    const islands = chests.find(s => s.x === islet.x && s.y === islet.y)
+    assert.deepEqual(islands.contents, { type: 'clapper' })
+    for (const s of chests) if (s.x !== islet.x || s.y !== islet.y) assert.equal(s.contents, undefined)
+  })
+})
+
 describe('waystone exit', () => {
   it('marks the exit cell with the arch overlay and keeps it walkable', () => {
     const { map, mapExit } = buildOpenMap(DATA)

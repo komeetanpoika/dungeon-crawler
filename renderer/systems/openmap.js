@@ -11,6 +11,7 @@ import { MAP_RITES } from '../data/rites.js'
 import { signsForMap } from './signs.js'
 import { NPC_SPECIES } from '../data/npcs.js'
 import { applyFelled } from './lumber.js'
+import { EPISODES } from '../data/leaps.js'
 
 // Vision classes for blocking cells, keyed off the art that blocks: open
 // water never impedes sight (losClear); foliage is shallow cover — a ray
@@ -107,9 +108,16 @@ export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.rand
   // Trees the player has already felled here come back as stumps — done
   // before anything reads walkability or the LOS flags.
   applyFelled(map, felled)
+  // A chest whose POI label matches an episode item's fromPoi carries that
+  // item as its contents instead of rolling ordinary loot (buildEntities
+  // 'chest' case: `s.contents ?? rollChestLoot(depth)`).
+  const episodeItems = EPISODES[data.name]?.items ?? []
   const entitySpawns = data.pois
     .filter(p => p.kind === 'chest')
-    .map(p => ({ kind: 'chest', x: p.x, y: p.y }))
+    .map(p => {
+      const item = episodeItems.find(it => it.fromPoi === p.label)
+      return item ? { kind: 'chest', x: p.x, y: p.y, contents: { type: item.kind } } : { kind: 'chest', x: p.x, y: p.y }
+    })
   // Walk-onto triggers for both cells of each 2-wide arch; caveDepths pairs
   // with the dungeon_entrance POIs in order.
   const caveEntrances = data.pois

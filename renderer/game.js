@@ -359,7 +359,7 @@ function buildEntities(spawns, map, depth) {
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
       case 'exit_door': return [makeExitDoor(s.x, s.y)]
-      case 'chest':   return [makeChest(s.x, s.y, rollChestLoot(depth))]
+      case 'chest':   return [makeChest(s.x, s.y, s.contents ?? rollChestLoot(depth))]
       case 'cyclops': return [hpOverride({ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'wizard':  return [hpOverride({ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'crab':    return [hpOverride({ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
@@ -428,6 +428,7 @@ function arriveOnMap() {
   } else {
     state.villagerLines = ep.villagerLines
   }
+  EPISODE_MODULES[mapData.name]?.onArrive?.(state.epCtx)
 }
 
 // Fires the moment an episode's rule is first satisfied: the missing person
