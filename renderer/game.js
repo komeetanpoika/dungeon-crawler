@@ -32,7 +32,7 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
-import { episodeFor, isMapUnlocked, isResolved, leapFlags, setFlag, missingSpawn, echoSpawns, echoAdjacent, echoLine, ruleCtx } from './systems/leap.js'
+import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, echoAdjacent, echoLine, ruleCtx, makeEpCtx } from './systems/leap.js'
 import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { felledCells, findTreeHit, chopTree } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
@@ -411,12 +411,11 @@ function arriveOnMap() {
   state.epCtx = null
   state.echoHold = null
   if (!ep) return
-  state.epCtx = {
-    state, save: savedAdventure, mapData, episode: ep, flags: leapFlags(savedAdventure, mapData.name),
-    set: (f, v = true) => setFlag(savedAdventure, mapData.name, f, v),
+  state.epCtx = makeEpCtx({
+    getState: () => state, save: savedAdventure, mapData,
     persist: persistAdventure, resolve: resolveEpisode, refreshInventory: afterInventoryChange,
     spawn: spawns => state.entities.push(...buildEntities(spawns, state.map, state.level)),
-  }
+  })
   state.entities.push(...buildEntities(echoSpawns(mapData), state.map, state.level))
   if (isResolved(savedAdventure, mapData)) {
     state.episodeResolved = true
@@ -803,7 +802,8 @@ function update(delta) {
   }
 
   // Leap episodes: the Echo speaks when approached; the episode module runs.
-  if (state.epCtx) {
+  // Gated off underground — epCtx/mapData describe the surface, not the cave.
+  if (state.epCtx && !state.cave) {
     const echo = echoAdjacent(state.entities, player)
     if (echo && state.echoHold !== echo) {
       const line = echoLine(state.episode, echo.spot, state.epCtx.flags, ruleCtx(savedAdventure, state.epCtx.mapData))

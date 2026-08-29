@@ -70,6 +70,21 @@ export function echoAdjacent(entities, player) {
   return entities.find(e => e.type === 'echo' && Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 1) ?? null
 }
 
+// The per-map episode ctx handed to onArrive/tick. `state` is a live getter
+// (not a captured value) so it always reflects the current module-level
+// state object even after game.js swaps it wholesale on a cave dive/return
+// (buildCaveState / restoreSurface) — a captured reference would go stale
+// the moment `state` is reassigned, silently mutating a stashed surface
+// object underground and reading a stale player afterward.
+export function makeEpCtx({ getState, save, mapData, persist, resolve, refreshInventory, spawn }) {
+  return {
+    get state() { return getState() },
+    save, mapData, episode: episodeFor(mapData), flags: leapFlags(save, mapData.name),
+    set: (f, v = true) => setFlag(save, mapData.name, f, v),
+    persist, resolve, refreshInventory, spawn,
+  }
+}
+
 const carries = (player, kind) => player.inventory.findIndex(i => i.kind === kind)
 const onCell = (player, c) => c && player.x === c.x && player.y === c.y
 const besideNpc = (entities, player, species) => entities.some(e => e.type === 'npc' && e.species === species && !e.hostile

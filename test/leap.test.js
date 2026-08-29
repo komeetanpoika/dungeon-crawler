@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EPISODES } from '../renderer/data/leaps.js'
-import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn, echoSpawns, echoAdjacent, checkDeliveries } from '../renderer/systems/leap.js'
+import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn, echoSpawns, echoAdjacent, checkDeliveries, makeEpCtx } from '../renderer/systems/leap.js'
 import { normalizeAdventureSave, markCleared } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { npcSpawnsForMap } from '../renderer/systems/openmap.js'
@@ -109,6 +109,34 @@ describe('echo', () => {
     const e = { type: 'echo', x: 5, y: 5, spot: 0 }
     assert.equal(echoAdjacent([e], { x: 5, y: 6 }), e)
     assert.equal(echoAdjacent([e], { x: 6, y: 6 }), null)
+  })
+})
+
+describe('makeEpCtx', () => {
+  it('ctx.state is a live getter that follows getState, not a value frozen at construction', () => {
+    const save = normalizeAdventureSave(null)
+    let current = { player: { x: 1, y: 1 } }
+    const ctx = makeEpCtx({ getState: () => current, save, mapData: lake,
+      persist: () => {}, resolve: () => {}, refreshInventory: () => {}, spawn: () => {} })
+    assert.equal(ctx.state, current)
+    assert.equal(ctx.state.player.x, 1)
+    // Simulate a cave dive/return: game.js reassigns the module-level `state`
+    // binding wholesale (buildCaveState / restoreSurface) rather than
+    // mutating it in place — a captured `state` value would go stale here.
+    current = { player: { x: 9, y: 9 } }
+    assert.equal(ctx.state, current)
+    assert.equal(ctx.state.player.x, 9)
+  })
+  it('carries save/mapData/episode/flags and wires set() through to the save', () => {
+    const save = normalizeAdventureSave(null)
+    const ctx = makeEpCtx({ getState: () => ({ player: {} }), save, mapData: lake,
+      persist: () => {}, resolve: () => {}, refreshInventory: () => {}, spawn: () => {} })
+    assert.equal(ctx.mapData, lake)
+    assert.equal(ctx.episode, episodeFor(lake))
+    assert.deepEqual(ctx.flags, {})
+    ctx.set('nakki_gone')
+    assert.equal(ctx.flags.nakki_gone, true)
+    assert.equal(leapFlags(save, lake.name).nakki_gone, true)
   })
 })
 
