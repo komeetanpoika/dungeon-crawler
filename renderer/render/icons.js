@@ -5,7 +5,8 @@
 import { SPRITES } from './sprites.js'
 
 const KIND_ICONS = { potion: 'potion', mushroom: 'ow_mushroom', meat: 'item_meat',
-  cooked_meat: 'item_meat_cooked', lumber: 'item_lumber' }
+  cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
+  clapper: 'item_clapper', fleece: 'item_fleece' }
 
 export function iconSpriteFor(item) {
   if (!item) return null

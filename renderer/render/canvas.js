@@ -190,6 +190,16 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     ctx.globalAlpha = prev
     return
   }
+  if (entity.type === 'echo') {
+    const s = sprites.player_magic
+    if (!s) return
+    const prevA = ctx.globalAlpha, prevF = ctx.filter
+    ctx.globalAlpha = prevA * 0.5
+    ctx.filter = 'hue-rotate(160deg) saturate(0.6)'
+    ctx.drawImage(s, px, py, S, S)
+    ctx.filter = prevF; ctx.globalAlpha = prevA
+    return
+  }
   if (entity.type === 'floating_item') {
     const c = entity.contents
     if (c.type === 'weapon' || c.type === 'ranged') {

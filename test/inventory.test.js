@@ -230,4 +230,9 @@ describe('lumber and cooked meat', () => {
   it('lumber is not a consumable', () => {
     assert.equal(findQuickUseIndex([makeItem('lumber')]), -1)
   })
+  it('quest items (clapper, fleece) are not consumable and round-trip through contents', () => {
+    assert.equal(makeItem('clapper').quest, true)
+    assert.equal(findQuickUseIndex([makeItem('clapper')]), -1)
+    assert.equal(itemFromContents({ type: 'fleece' }).kind, 'fleece')
+  })
 })

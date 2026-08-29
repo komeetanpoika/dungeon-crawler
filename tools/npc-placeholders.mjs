@@ -84,9 +84,26 @@ const HEARTH_LIT = paint([
   '................', '................', '................', '................',
 ], { s: [120, 120, 125, 255], a: [90, 88, 86, 255], y: [255, 230, 120, 255], o: [255, 150, 40, 255], r: [220, 60, 30, 255] })
 
+// Bell clapper — a bronze teardrop, the leap episode's quest item.
+const CLAPPER = paint([
+  '................', '................', '................', '.......##.......',
+  '......#bb#......', '......#bb#......', '.....#bbbb#.....', '.....#bbbb#.....',
+  '....#bbbbbb#....', '....#bbbbbb#....', '....#bbbbbb#....', '.....#bbbb#.....',
+  '......#bb#......', '.......##.......', '................', '................',
+], { b: [180, 130, 60, 255] })
+
+// Lamb's fleece — a cream tuft, the leap episode's other quest item.
+const FLEECE = paint([
+  '................', '................', '..#w##w##w#.....', '.#wwwwwwwww#....',
+  '#wwwwwwwwwwww#..', '#wwwwwwwwwwww#..', '#wwwwwwwwwwww#..', '.#wwwwwwwwww#...',
+  '..#wwwwwwww#....', '...#wwwwww#.....', '................', '................',
+  '................', '................', '................', '................',
+], { w: [240, 235, 220, 255] })
+
 for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER], ['item_meat', MEAT],
   ['item_lumber', LUMBER], ['item_meat_cooked', MEAT_COOKED], ['ow_stump', STUMP], ['prop_campfire', CAMPFIRE],
-  ['prop_hearth_cold', HEARTH_COLD], ['prop_hearth_lit', HEARTH_LIT]]) {
+  ['prop_hearth_cold', HEARTH_COLD], ['prop_hearth_lit', HEARTH_LIT],
+  ['item_clapper', CLAPPER], ['item_fleece', FLEECE]]) {
   const p = path.join(OUT, `${name}.png`)
   if (process.argv.includes('--force') || !existsSync(p)) { writePng(p, 16, 16, px); console.log('wrote', p) }
   else console.log('kept', p)

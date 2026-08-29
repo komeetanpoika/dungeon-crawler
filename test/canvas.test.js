@@ -8,6 +8,7 @@ import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/sys
 function recordingCtx() {
   const calls = []
   let alpha = 1
+  let filter = 'none'
   return {
     calls,
     drawImage: (img) => calls.push(img),
@@ -16,6 +17,8 @@ function recordingCtx() {
     get fillStyle() { return '' },
     set globalAlpha(v) { alpha = v },
     get globalAlpha() { return alpha },
+    set filter(v) { filter = v },
+    get filter() { return filter },
   }
 }
 
@@ -411,6 +414,27 @@ describe('drawEntity — campfire', () => {
   it('draws nothing when the sprite is missing', () => {
     const ctx = recordingCtx()
     drawEntity(ctx, { type: 'campfire', t: 0 }, 0, 0, 32, {})
+    assert.deepEqual(ctx.calls, [])
+  })
+})
+
+describe('drawEntity — echo', () => {
+  it('draws player_magic hue-shifted at half alpha, and restores both after', () => {
+    const ctx = recordingCtx()
+    let seenAlpha, seenFilter
+    const origDrawImage = ctx.drawImage
+    ctx.drawImage = (img) => { seenAlpha = ctx.globalAlpha; seenFilter = ctx.filter; origDrawImage(img) }
+    drawEntity(ctx, { type: 'echo' }, 0, 0, 32, { player_magic: 'WIZ' })
+    assert.deepEqual(ctx.calls, ['WIZ'])
+    assert.equal(seenAlpha, 0.5)
+    assert.equal(seenFilter, 'hue-rotate(160deg) saturate(0.6)')
+    assert.equal(ctx.globalAlpha, 1)
+    assert.equal(ctx.filter, 'none')
+  })
+
+  it('draws nothing when player_magic sprite is missing', () => {
+    const ctx = recordingCtx()
+    drawEntity(ctx, { type: 'echo' }, 0, 0, 32, {})
     assert.deepEqual(ctx.calls, [])
   })
 })

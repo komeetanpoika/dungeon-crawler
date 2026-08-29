@@ -323,4 +323,7 @@ describe('hatchet', () => {
     const oldV4AxePayload = { weaponType: 'axe', name: 'Axe', damage: 4, heavy: true }
     assert.deepEqual(weaponContents(oldV4AxePayload.weaponType), { ...oldV4AxePayload, chop: 2 })
   })
+  it('the pick chops and mines', () => {
+    assert.deepEqual(weaponContents('pick'), { weaponType: 'pick', name: 'Pick', damage: 2, chop: 1, mine: 1 })
+  })
 })

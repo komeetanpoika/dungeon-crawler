@@ -43,6 +43,8 @@ export const SPRITES = {
   item_meat:      'item_meat',     // drawn by tools/npc-placeholders.mjs
   item_lumber:      'item_lumber',       // placeholders drawn by tools/npc-placeholders.mjs
   item_meat_cooked: 'item_meat_cooked',
+  item_clapper:     'item_clapper',      // placeholders drawn by tools/npc-placeholders.mjs
+  item_fleece:      'item_fleece',       // placeholders drawn by tools/npc-placeholders.mjs
   ow_stump:         'ow_stump',          // felled-tree cell overlay (systems/lumber.js)
   prop_campfire:    'prop_campfire',     // campfire entity (systems/campfire.js)
   prop_hearth_cold: 'prop_hearth_cold',  // placeholders drawn by tools/npc-placeholders.mjs
@@ -80,6 +82,7 @@ export const SPRITES = {
   weapon_longsword: 'tile_0106',
   weapon_axe:       'tile_0118',
   weapon_club:      'tile_0107',
+  weapon_pick:      'tile_0117',
   weapon_maunonmiekka: 'weapon_maunonmiekka',   // 24px custom art (from the miekka drawing)
   weapon_shortbow:  'weapon_shortbow',    // custom art — tileset has no bow
   weapon_longbow:   'weapon_longbow',     // custom art — tileset has no bow

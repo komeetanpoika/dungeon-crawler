@@ -22,7 +22,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
-import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
+import { makeFeedback, tickFeedback, addFloat, speak, think, speakFrom, announce, queueToast, drainToasts } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
@@ -32,7 +32,8 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
-import { episodeFor, isMapUnlocked, isResolved, leapFlags, missingSpawn } from './systems/leap.js'
+import { episodeFor, isMapUnlocked, isResolved, leapFlags, setFlag, missingSpawn, echoSpawns, echoAdjacent, echoLine, ruleCtx } from './systems/leap.js'
+import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { felledCells, findTreeHit, chopTree } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable } from './systems/factions.js'
@@ -371,6 +372,7 @@ function buildEntities(spawns, map, depth) {
         isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
       case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, talent: s.talent, rite: s.rite }]
       case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
+      case 'echo':    return [{ type: 'echo', id: `echo:${s.spot}`, x: s.x, y: s.y, spot: s.spot, px: cx, py: cy }]
       case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
       default:               return []
     }
@@ -406,7 +408,16 @@ function arriveOnMap() {
   state.episode = ep
   state.villagerLines = null
   state.episodeResolved = false
+  state.epCtx = null
+  state.echoHold = null
   if (!ep) return
+  state.epCtx = {
+    state, save: savedAdventure, mapData, episode: ep, flags: leapFlags(savedAdventure, mapData.name),
+    set: (f, v = true) => setFlag(savedAdventure, mapData.name, f, v),
+    persist: persistAdventure, resolve: resolveEpisode, refreshInventory: afterInventoryChange,
+    spawn: spawns => state.entities.push(...buildEntities(spawns, state.map, state.level)),
+  }
+  state.entities.push(...buildEntities(echoSpawns(mapData), state.map, state.level))
   if (isResolved(savedAdventure, mapData)) {
     state.episodeResolved = true
     state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
@@ -789,6 +800,17 @@ function update(delta) {
       state.entities = state.entities.filter((_, i) => i !== floatIdx)
       if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
     }
+  }
+
+  // Leap episodes: the Echo speaks when approached; the episode module runs.
+  if (state.epCtx) {
+    const echo = echoAdjacent(state.entities, player)
+    if (echo && state.echoHold !== echo) {
+      const line = echoLine(state.episode, echo.spot, state.epCtx.flags, ruleCtx(savedAdventure, state.epCtx.mapData))
+      if (line) { speakFrom(state, echo, line); sfx(state, 'echo', { px: echo.px, py: echo.py }) }
+    }
+    state.echoHold = echo
+    EPISODE_MODULES[state.epCtx.mapData.name]?.tick(state.epCtx, delta)
   }
 
   // Campfire cooking — standing on a fire cooks every raw meat carried.

@@ -14,6 +14,7 @@ const MELEE_COSTS = {
   longsword:    { tap: 10, full: 18, over: 34 },
   axe:          { tap: 12, full: 24, over: 48 },
   maunonmiekka: { tap: 14, full: 30, over: 60 },
+  pick:         { full: 12 },
 }
 export function meleeCost(weaponType, tier) {
   const table = MELEE_COSTS[weaponType] ?? MELEE_COSTS.dagger

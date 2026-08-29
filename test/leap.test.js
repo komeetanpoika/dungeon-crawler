@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EPISODES } from '../renderer/data/leaps.js'
-import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn } from '../renderer/systems/leap.js'
+import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn, echoSpawns, echoAdjacent, checkDeliveries } from '../renderer/systems/leap.js'
 import { normalizeAdventureSave, markCleared } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { npcSpawnsForMap } from '../renderer/systems/openmap.js'
+import { makeItem } from '../renderer/systems/inventory.js'
 
 const fold = Object.values(OPEN_MAPS).find(m => m.name === 'highland-2-fold')
 const lake = Object.values(OPEN_MAPS).find(m => m.name === 'lake-1-ferry')
@@ -95,5 +96,42 @@ describe('echo and resolution helpers', () => {
     assert.equal(lake.walk[s.y][s.x], '1')
     const v = poiCell(lake, 'village')
     assert.ok(Math.max(Math.abs(s.x - v.x), Math.abs(s.y - v.y)) <= 4)
+  })
+})
+
+describe('echo', () => {
+  it('spawns one echo per spot, on the POI cell', () => {
+    const s = echoSpawns(lake)
+    assert.equal(s.length, episodeFor(lake).echoSpots.length)
+    assert.deepEqual(s[0], { kind: 'echo', x: poiCell(lake, 'runestone').x, y: poiCell(lake, 'runestone').y, spot: 0 })
+  })
+  it('echoAdjacent finds an echo on or orthogonally beside the player', () => {
+    const e = { type: 'echo', x: 5, y: 5, spot: 0 }
+    assert.equal(echoAdjacent([e], { x: 5, y: 6 }), e)
+    assert.equal(echoAdjacent([e], { x: 6, y: 6 }), null)
+  })
+})
+
+describe('deliveries', () => {
+  const mk = (over) => ({ player: { x: 3, y: 3, inventory: [makeItem('clapper')], maxInventory: 10 }, entities: [], ...over })
+  it('delivers to a POI cell when standing on it, removing the item and setting the flag', () => {
+    const save = normalizeAdventureSave(null)
+    const state = mk({})
+    const ctx = { state, save, mapData: { name: 'm', pois: [{ kind: 'landmark', label: 'bell', x: 3, y: 3 }] }, flags: leapFlags(save, 'm'), set: (f, v = true) => setFlag(save, 'm', f, v) }
+    const d = checkDeliveries(ctx, [{ item: 'clapper', to: { poi: 'bell' }, sets: 'bell_hung' }])
+    assert.equal(d?.sets, 'bell_hung')
+    assert.equal(ctx.flags.bell_hung, true)
+    assert.equal(state.player.inventory.length, 0)
+    assert.equal(checkDeliveries(ctx, [{ item: 'clapper', to: { poi: 'bell' }, sets: 'bell_hung' }]), null)
+  })
+  it('delivers to an NPC species when beside it, and not to a hostile one', () => {
+    const save = normalizeAdventureSave(null)
+    const elder = { type: 'npc', species: 'elder', x: 4, y: 3, hostile: false }
+    const state = mk({ player: { x: 3, y: 3, inventory: [makeItem('fleece')], maxInventory: 10 }, entities: [elder] })
+    const ctx = { state, save, mapData: { name: 'm', pois: [] }, flags: leapFlags(save, 'm'), set: (f, v = true) => setFlag(save, 'm', f, v) }
+    elder.hostile = true
+    assert.equal(checkDeliveries(ctx, [{ item: 'fleece', to: { species: 'elder' }, sets: 'fleece_shown' }]), null)
+    elder.hostile = false
+    assert.equal(checkDeliveries(ctx, [{ item: 'fleece', to: { species: 'elder' }, sets: 'fleece_shown' }]).sets, 'fleece_shown')
   })
 })
