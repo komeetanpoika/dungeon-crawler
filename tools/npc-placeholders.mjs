@@ -128,19 +128,20 @@ const NAKKI_32 = [
 ]
 const NAKKI_PAL = { n: [60, 90, 60, 255], k: [20, 35, 30, 255], e: [220, 235, 200, 255] }
 
-// Maahinen — brown burrower, blunt snout, two digging claws, dust at the
-// base (the top quadrants hold the snout, the bottom quadrants the claws).
+// Maahinen — brown burrower: a low squat mound (no waist), a blunt rounded
+// snout lobe on the front-lower edge with one eye and two nostril dots, two
+// big splayed claws below it with visible finger tips, and dust at the base.
 const MAAHINEN_32 = [
-  '................................', '..........############..........', '.......###bbbbbbbbbbbb###.......', '......#bbbbbbdbbbbdbbbbbb#......',
-  '......#bbbbbbbbbbbbbbbbbb#......', '.......#bbbbbbbbbbbbbbbb#.......', '.......#bbbbbbbbbbbbbbbb#.......', '........#bbbbbbbbbbbbbb#........',
-  '........#bbbbbbbbbbbbbb#........', '.........#bbbbbbbbbbbb#.........', '.........#bbbbbbbbbbbb#.........', '..........#bbbbbbbbbb#..........',
-  '..........#bbbbbbbbbb#..........', '...........#bbbbbbbb#...........', '...........#bbbbbbbb#...........', '............#bbbbbb#............',
-  '............#bbbbbb#............', '..........##bbbbbbbb##..........', '........##bbbbbbbbbbbb##........', '......##bbbbb######bbbbb##......',
-  '.....#bbbbbb#......#bbbbbb#.....', '....#bbbbbb#........#bbbbbb#....', '...#bbbbbb#..........#bbbbbb#...', '...#bbbbb#............#bbbbb#...',
-  '..#bbbbbb#............#bbbbbb#..', '..#bbbbb#..............#bbbbb#..', '..#bbbb#................#bbbb#..', '..#####..................#####..',
-  '...ccc....................ccc...', '.cc.c.c..................c.c.cc.', '.........c.....c.....c..........', '............c.....c.....c.......',
+  '................................', '................................', '................................', '................................',
+  '................................', '................................', '..........############..........', '........##bbbbbbbbbbbb##........',
+  '......##bbbbbbbbbbbbbbbb##......', '.....#bbbbbbbbbbbbbbbbbbbb#.....', '....#bbbbbbbbbbbbbbbbbddbbb#....', '....#bbbbbbbbbbbbbbbbbddbbb#....',
+  '...#bbbbbbbbbbbbbbbbbbbbbbbb##..', '...#bbbbbbbbbbbbbbbbbbbbbbbbbb#.', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#',
+  '...#bbbbbbbbbbbbbbbbbbbbbbbddbb#', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#',
+  '....#bbbbbbbbbbbbbbbbbbbbbbddbb#', '....#bbbbbbbbbbbbbbbbbbbbbbbbbb#', '.....#####################bbbb#.', '.......#yyyy#......#yyyy#.####..',
+  '......#yyyyyy#....#yyyyyy#......', '.....##########..##########.....', '......y..y...y....y..y...y......', '................................',
+  '....t.....t.........t........t..', '......t.........t.........t.....', '.............t.........t........', '................................',
 ]
-const MAAHINEN_PAL = { b: [120, 80, 45, 255], d: [70, 45, 25, 255], c: [200, 190, 170, 255] }
+const MAAHINEN_PAL = { b: [120, 80, 45, 255], d: [70, 45, 25, 255], y: [235, 215, 150, 255], t: [210, 180, 140, 255] }
 
 // Sammunut — blue-grey ragged wraith, hood, one ember eye, trailing wisps,
 // no feet: the hem tears unevenly and dissolves into wisps below it.
