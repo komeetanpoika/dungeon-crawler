@@ -123,3 +123,8 @@ describe('hatchet art', () => {
     assert.equal(SPRITES.weapon_axe, 'tile_0118')
   })
 })
+
+describe('lumber and campfire placeholders', () => {
+  for (const key of ['item_lumber', 'item_meat_cooked', 'ow_stump', 'prop_campfire'])
+    it(`${key} is registered under its own file name`, () => assert.equal(SPRITES[key], key))
+})

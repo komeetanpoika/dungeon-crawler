@@ -38,7 +38,40 @@ const MEAT = paint([
   '.......#b##.....', '........#ww#....', '.........##.....', '................',
 ], { r: [196, 96, 64, 255], p: [230, 140, 100, 255], b: [222, 205, 170, 255], w: [245, 240, 225, 255] })
 
-for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER], ['item_meat', MEAT]]) {
+// Lumber — two logs stacked, cut ends showing rings.
+const LUMBER = paint([
+  '................', '................', '................', '..############..',
+  '.#bbbbbbbbbbbbc#', '#rbbbbbbbbbbbbc#', '#rbbbbbbbbbbbbc#', '.#bbbbbbbbbbbbc#',
+  '..############..', '.#bbbbbbbbbbbbc#', '#rbbbbbbbbbbbbc#', '#rbbbbbbbbbbbbc#',
+  '.#bbbbbbbbbbbbc#', '..############..', '................', '................',
+], { b: [139, 90, 43, 255], c: [222, 184, 135, 255], r: [200, 160, 110, 255] })
+
+// Cooked meat — the drumstick, browned with a char line.
+const MEAT_COOKED = paint([
+  '................', '................', '......####......', '.....#rrrr#.....',
+  '....#rrkkrr#....', '....#rkrrkr#....', '....#rrrrrr#....', '....#rrrrr#.....',
+  '.....#rrr#......', '......#b#.......', '......#b#.......', '.......#b#......',
+  '.......#b##.....', '........#ww#....', '.........##.....', '................',
+], { r: [150, 75, 40, 255], k: [80, 40, 20, 255], b: [222, 205, 170, 255], w: [245, 240, 225, 255] })
+
+// Stump — a cut trunk seen from above-front, rings on the cut face.
+const STUMP = paint([
+  '................', '................', '................', '................',
+  '................', '.....######.....', '....#ccccccc#...', '...#ccrrrrrcc#..',
+  '...#crrcccrrc#..', '...#ccrrrrrcc#..', '...#bbbbbbbbb#..', '...#bbbbbbbbb#..',
+  '...#bbbbbbbbb#..', '....#########...', '................', '................',
+], { b: [110, 70, 35, 255], c: [222, 184, 135, 255], r: [190, 150, 100, 255] })
+
+// Campfire — crossed logs with a flame.
+const CAMPFIRE = paint([
+  '................', '................', '.......#........', '......#y#.......',
+  '.....#yyy#......', '.....#yoy#......', '....#yoooy#.....', '....#ooroo#.....',
+  '...#oorrroo#....', '...#orrrrro#....', '....#rrrrr#.....', '.#bb#######bb#..',
+  '..#bbbbbbbbb#...', '.#bbbb#b#bbbb#..', '..###..#..###...', '................',
+], { y: [255, 230, 120, 255], o: [255, 150, 40, 255], r: [220, 60, 30, 255], b: [120, 75, 40, 255] })
+
+for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER], ['item_meat', MEAT],
+  ['item_lumber', LUMBER], ['item_meat_cooked', MEAT_COOKED], ['ow_stump', STUMP], ['prop_campfire', CAMPFIRE]]) {
   const p = path.join(OUT, `${name}.png`)
   if (process.argv.includes('--force') || !existsSync(p)) { writePng(p, 16, 16, px); console.log('wrote', p) }
   else console.log('kept', p)
