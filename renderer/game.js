@@ -414,9 +414,17 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (OPEN_MAPS[depth]) {
     player.talents = [...savedAdventure.talents]
     if (savedAdventure.body) {
-      player.weapon = savedAdventure.body.weapon ? { ...savedAdventure.body.weapon } : null
+      // Melee payloads are re-derived from the weapon table rather than
+      // copied: saves written before lumber landed carry no `chop`, and a
+      // hatchet or axe out of one of those must still fell trees. Ranged
+      // payloads are copied as-is — their `ammo` is run state, not table data.
+      player.weapon = savedAdventure.body.weapon ? weaponContents(savedAdventure.body.weapon.weaponType) : null
       player.ranged = savedAdventure.body.ranged ? { ...savedAdventure.body.ranged } : null
-      player.inventory = savedAdventure.body.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i })
+      player.inventory = savedAdventure.body.inventory.map(i => {
+        if (!i.payload) return { ...i }
+        if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
+        return { ...i, payload: { ...i.payload } }
+      })
     }
   }
   if (depth === 0 && arenaCfg?.player) {

@@ -319,4 +319,8 @@ describe('hatchet', () => {
     assert.deepEqual(weaponContents('dagger'), { weaponType: 'dagger', name: 'Dagger', damage: 1 })
     assert.equal(makeWeapon(0, 0, 'hatchet').chop, 1)
   })
+  it('re-deriving a pre-branch payload only adds chop (how old saves regain it)', () => {
+    const oldV4AxePayload = { weaponType: 'axe', name: 'Axe', damage: 4, heavy: true }
+    assert.deepEqual(weaponContents(oldV4AxePayload.weaponType), { ...oldV4AxePayload, chop: 2 })
+  })
 })
