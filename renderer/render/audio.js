@@ -44,6 +44,12 @@ export const RECIPES = {
   'ui-open':        { kind: 'blip',   wave: 'square',   f0: 500,  f1: 620,  dur: 0.06, vol: 0.4 },
   'ui-close':       { kind: 'blip',   wave: 'square',   f0: 620,  f1: 500,  dur: 0.06, vol: 0.4 },
   'ui-move':        { kind: 'blip',   wave: 'square',   f0: 700,  f1: 700,  dur: 0.03, vol: 0.3 },
+  'npc-chicken':    { kind: 'blip',   wave: 'square',   f0: 880,  f1: 1320, dur: 0.10, vol: 0.5 },
+  'npc-deer':       { kind: 'swoosh', f0: 600,  f1: 200,  dur: 0.18, vol: 0.4 },
+  'npc-mouse':      { kind: 'blip',   wave: 'triangle', f0: 1500, f1: 2200, dur: 0.06, vol: 0.4 },
+  'npc-hurt':       { kind: 'burst',  freq: 500,  q: 1.0,  dur: 0.08, vol: 0.6 },
+  'npc-death':      { kind: 'blip',   wave: 'triangle', f0: 600,  f1: 200,  dur: 0.20, vol: 0.5 },
+  'npc-wrath':      { kind: 'rumble', freq: 110, dur: 0.60, vol: 0.8 },
 }
 
 export function falloffGain(distPx) {

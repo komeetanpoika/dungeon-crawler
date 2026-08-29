@@ -6,6 +6,7 @@ import { deflateSync } from 'node:zlib'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { readPng } from '../tools/png-read.mjs'
+import { encodePng } from '../tools/png-write.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const TILES = join(__dirname, '../renderer/assets/tiles')
@@ -103,5 +104,17 @@ describe('readPng', () => {
       10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255,
       5, 5, 5, 255, 15, 15, 15, 255, 25, 25, 25, 255,
     ])
+  })
+})
+
+describe('png-write round trip', () => {
+  it('readPng decodes what encodePng wrote', () => {
+    const w = 3, h = 2
+    const rgba = new Uint8Array([255,0,0,255, 0,255,0,255, 0,0,255,255, 0,0,0,0, 255,255,255,255, 10,20,30,40])
+    const p = join(mkdtempSync(join(tmpdir(), 'png-')), 'rt.png')
+    writeFileSync(p, encodePng(w, h, rgba))
+    const img = readPng(p)
+    assert.equal(img.width, w); assert.equal(img.height, h)
+    assert.deepEqual([...img.pixels], [...rgba])
   })
 })

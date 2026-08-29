@@ -37,7 +37,7 @@ export function computeBlastTiles(map, tileX, tileY, count = BLAST_TILES) {
 }
 
 // dragon_boss is deliberately absent — it keeps full ranged immunity.
-const BURNABLE = new Set(['guard', 'monster', 'dragon', 'cyclops', 'wizard', 'crab'])
+const BURNABLE = new Set(['guard', 'monster', 'dragon', 'cyclops', 'wizard', 'crab', 'npc'])
 
 const tileKey = e => `${Math.floor(e.px / TILE_SIZE)},${Math.floor(e.py / TILE_SIZE)}`
 const keySet = tiles => new Set(tiles.map(t => `${t.x},${t.y}`))

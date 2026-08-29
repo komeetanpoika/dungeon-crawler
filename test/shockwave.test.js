@@ -41,3 +41,15 @@ describe('applyShockwave', () => {
     assert.equal(entities.length, 2)
   })
 })
+
+describe('npc splashability', () => {
+  it('splashes an npc inside the radius and culls it when the splash kills', () => {
+    const npc = { type: 'npc', species: 'chicken', id: 'n', px: 140, py: 100, hp: 5, maxHp: 5 }
+    const frail = { type: 'npc', species: 'chicken', id: 'm', px: 100, py: 140, hp: 1, maxHp: 1 }
+    const { entities, hitCount } = applyShockwave([npc, frail], 100, 100, new Set())
+    assert.equal(hitCount, 2)
+    assert.equal(entities.length, 1, 'the killed npc is culled')
+    assert.equal(entities[0].hp, 5 - SHOCK_DAMAGE)
+    assert.ok(entities[0].knockback, 'splash shoves the npc')
+  })
+})

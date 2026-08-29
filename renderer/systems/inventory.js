@@ -5,6 +5,7 @@
 const STACKABLE_KINDS = {
   potion:   { name: 'Potion',   emoji: '🧪', extra: { amount: 4 } },
   mushroom: { name: 'Mushroom', emoji: '🍄', extra: {} },
+  meat:     { name: 'Meat',     emoji: '🍖', extra: { heal: 2 } },   // animal drop
 }
 
 export function makeItem(kind) {
@@ -20,6 +21,7 @@ export function itemFromContents(contents) {
   }
   if (contents.type === 'potion') return makeItem('potion')
   if (contents.type === 'mushroom') return makeItem('mushroom')
+  if (contents.type === 'meat') return makeItem('meat')
   return null
 }
 
@@ -27,13 +29,14 @@ export function contentsFromItem(item) {
   if (item.kind === 'weapon') return { ...item.payload, type: 'weapon' }
   if (item.kind === 'ranged') return { ...item.payload, type: 'ranged' }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
+  if (item.kind === 'meat') return { type: 'meat' }
   return { type: 'mushroom' }
 }
 
 // Quick-use (Q / the green touch button): first potion-or-mushroom slot in
 // sack order. The summary drives the button badge — next-up slot's emoji,
 // combined count across all consumable slots.
-const CONSUMABLE_KINDS = ['potion', 'mushroom']
+const CONSUMABLE_KINDS = ['potion', 'mushroom', 'meat']
 
 export function findQuickUseIndex(inventory) {
   return inventory.findIndex(i => CONSUMABLE_KINDS.includes(i.kind))

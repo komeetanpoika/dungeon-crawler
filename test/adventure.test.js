@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   dungeonLabels, markCleared, isMapComplete, nextMapDepth,
-  normalizeAdventureSave, freshProgress,
+  normalizeAdventureSave, freshProgress, npcRecordFor, recordNpcState, resetNpcs,
 } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../renderer/data/levels.js'
@@ -101,10 +101,10 @@ describe('v3 save shape', () => {
     assert.deepEqual(s.talents, [])
   })
 
-  it('v3 saves pass through untouched, gaining only the empty gates map', () => {
+  it('v3 saves pass through untouched, gaining only the empty gates and npcs maps', () => {
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
-    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {} })
+    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {} })
   })
 
   it('body inventory items with nested payload are preserved', () => {
@@ -120,5 +120,31 @@ describe('v3 save shape', () => {
     // After normalization, the payload should still exist and be the same data
     assert.ok(s.body.inventory[0].payload, 'payload preserved')
     assert.deepEqual(s.body.inventory[0].payload, payload, 'payload data matches')
+  })
+})
+
+describe('npc persistence (save v4)', () => {
+  it('migrates older saves with an empty npcs map', () => {
+    assert.deepEqual(normalizeAdventureSave({ caves: {}, progress: freshProgress() }).npcs, {})
+    assert.deepEqual(normalizeAdventureSave(null).npcs, {})
+    const kept = normalizeAdventureSave({ caves: {}, progress: freshProgress(), npcs: { a: { dead: ['x'], hostile: true } } })
+    assert.deepEqual(kept.npcs, { a: { dead: ['x'], hostile: true } })
+  })
+  it('npcRecordFor defaults to alive and peaceful', () => {
+    const save = normalizeAdventureSave(null)
+    assert.deepEqual(npcRecordFor(save, 'forest-1-clearings'), { dead: [], hostile: false })
+  })
+  it('recordNpcState lists the ids that no longer live and the wrath flag', () => {
+    const save = normalizeAdventureSave(null)
+    const ids = ['npc:m:0', 'npc:m:1', 'npc:m:2']
+    const entities = [{ type: 'npc', id: 'npc:m:1', hp: 2 }, { type: 'chest' }]
+    recordNpcState(save, 'm', ids, entities, true)
+    assert.deepEqual(save.npcs.m, { dead: ['npc:m:0', 'npc:m:2'], hostile: true })
+  })
+  it('resetNpcs forgets every map', () => {
+    const save = normalizeAdventureSave(null)
+    recordNpcState(save, 'm', ['npc:m:0'], [], false)
+    resetNpcs(save)
+    assert.deepEqual(save.npcs, {})
   })
 })

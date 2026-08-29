@@ -24,4 +24,15 @@ describe('getAIConfig', () => {
   it('unknown types fall back to the base monster row', () => {
     assert.equal(getAIConfig({ type: 'mystery' }).speed, 80)
   })
+
+  it('npc rows merge the species speed and fleeHp', () => {
+    const c = getAIConfig({ type: 'npc', species: 'villager' })
+    assert.equal(c.speed, 70)
+    assert.equal(c.wanderSpeed, 40)
+    assert.equal(c.fleeHp, 0.3)
+    assert.equal(c.half, 4)
+    assert.equal(c.taxon, 'humanoid')
+    assert.equal(getAIConfig({ type: 'npc', species: 'deer' }).speed, 130)
+    assert.equal(getAIConfig({ type: 'npc', species: 'deer' }).fleeHp, 1)
+  })
 })

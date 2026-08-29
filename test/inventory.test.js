@@ -190,3 +190,13 @@ describe('quick-use consumable', () => {
     assert.equal(quickUseSummary([sword()]), null)
   })
 })
+
+describe('meat', () => {
+  it('is a stackable consumable that heals 2', () => {
+    const m = makeItem('meat')
+    assert.equal(m.stackable, true); assert.equal(m.heal, 2); assert.equal(m.kind, 'meat')
+    assert.equal(findQuickUseIndex([m]), 0)
+    assert.deepEqual(itemFromContents({ type: 'meat' }).kind, 'meat')
+    assert.deepEqual(contentsFromItem(m), { type: 'meat' })
+  })
+})

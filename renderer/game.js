@@ -29,7 +29,11 @@ import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
-import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave } from './systems/adventure.js'
+import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
+import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
+import { npcSpawnsForMap } from './systems/openmap.js'
+import { isEnemy, isHittable } from './systems/factions.js'
+import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { tryGust, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, affordableGustTier } from './systems/magic.js'
@@ -151,6 +155,12 @@ window.addEventListener('keydown', e => {
 })
 
 let state = null
+// Tooling hook (verify-npcs.mjs etc.): only wired up when launched with
+// --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
+// normal run never exposes internal state.
+if (new URLSearchParams(location.search).has('dcdebug')) {
+  window.__dc = { get state() { return state } }
+}
 let inventoryOpen = false
 let meta = null
 let renderer = null
@@ -159,6 +169,10 @@ let rafId = null
 let rulesets = {}
 let structures = {}
 let phase = PHASE.TITLE
+// An NPC was hurt (or the village roused) since the last save — the frame
+// that ends with this set flushes the record, so kills and wrath survive a
+// map change or a quit rather than waiting for some unrelated save.
+let npcDirty = false
 // Adventure save: cave instances (map name -> label -> instance) plus the
 // progression record (furthest map, permanently-cleared dungeons).
 let savedAdventure = normalizeAdventureSave(null)
@@ -169,6 +183,7 @@ function persistAdventure() {
   if (mapName) savedAdventure.caves[mapName] = surface.caveInstances ?? {}
   if (mapName) savedAdventure.gates[mapName] =
     Object.entries(surface.gates ?? {}).filter(([, g]) => g.open).map(([id]) => id)
+  if (mapName) recordNpcState(savedAdventure, mapName, surface.npcSpawnIds ?? [], surface.entities, surface.npcWrath)
   if (mapName && state.player) {
     savedAdventure.talents = [...(state.player.talents ?? [])]
     savedAdventure.body = {
@@ -221,10 +236,46 @@ function moveEntity(e, dx, dy, map, half = PLAYER_HALF, boss = null) {
   e.y = Math.floor(e.py / TILE_SIZE)
 }
 
-function isEnemy(e) {
-  return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
-      || e.type === 'cyclops' || e.type === 'wizard' || e.type === 'crab'
-      || e.type === 'dragon_boss'
+// A blow landed on an npc: hurt cue + species reaction + village wrath (once).
+// An animal that survives yelps; villagers keep the human cue the hit site
+// already plays. `alive` is passed explicitly by the splash path, where the
+// snapshot entity still carries its pre-blast hp.
+// Drops rolled for NPCs that died this frame. Damage sites run inside
+// state.entities rebuilds, so pushing a pickup there would be lost — they
+// queue here and land after the frame's final cull.
+let pendingDrops = []
+function npcStruck(e, alive = e.hp > 0) {
+  if (e.type !== 'npc') return
+  npcDirty = true
+  if (alive && !NPC_SPECIES[e.species]?.walker) sfx(state, 'npc-hurt', { px: e.px, py: e.py })
+  if (!alive) {
+    const contents = rollNpcDrop(e)
+    if (contents) pendingDrops.push({
+      type: 'floating_item', contents, x: e.x, y: e.y,
+      startPx: e.px, startPy: e.py, targetPx: e.x * TILE_SIZE + TILE_SIZE / 2, targetPy: e.y * TILE_SIZE + TILE_SIZE / 2,
+      px: e.px, py: e.py, progress: 0, duration: 0.3,
+    })
+  }
+  const r = onNpcHit(e, state)
+  if (r.wrath) { announce(state, 'The village turns on you!'); sfx(state, 'npc-wrath') }
+}
+
+// Animals die with their own small cue; villagers keep the human one.
+const deathCue = e => e.type === 'npc' && !NPC_SPECIES[e.species]?.walker ? 'npc-death' : 'enemy-death'
+
+// Splash damage (shockwave, fireball burst, lingering flames) hands back fresh
+// entity copies with the dead already culled, so the hits are found by diffing
+// an id-keyed snapshot taken before the blast. A killed NPC reacts too — a
+// villager who dies to a stray fireball still has to rouse the village.
+const npcSnapshot = () => state.entities.filter(e => e.type === 'npc').map(e => ({ e, hp: e.hp }))
+function npcsStruckSince(snap) {
+  if (!snap.length) return
+  const live = new Map(state.entities.filter(e => e.type === 'npc').map(e => [e.id, e]))
+  for (const { e, hp } of snap) {
+    const now = live.get(e.id)
+    if (!now) npcStruck(e, false)          // culled: the splash killed it
+    else if (now.hp < hp) npcStruck(now)
+  }
 }
 
 // Fireball detonation: flood-fill the blast, burst everyone standing in it
@@ -235,14 +286,21 @@ function detonateFireball(px, py) {
   if (!tiles.length) return
   sfx(state, 'fire-burst', { px, py })
   const before = state.entities
+  const npcSnap = npcSnapshot()
   const burst = applyBurst(state.entities, state.player, tiles)
-  burst.entities.forEach((e, i) => {
-    if (isEnemy(e) && before[i] && e.hp < before[i].hp) {
-      addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${before[i].hp - e.hp}`, kind: 'dealt' })
-      if (e.hp <= 0) sfx(state, 'enemy-death', { px: e.px, py: e.py })
-    }
-  })
+  // applyBurst hands back a fresh copy for everything it burned and culls the
+  // dead, so positional indices shift the moment one entity dies. Diff by
+  // identity instead, the way npcsStruckSince does: an entity from the before
+  // list that is no longer in the after list by reference was burned — copied
+  // if it survived, dropped if the blast killed it.
+  const untouched = new Set(burst.entities)
+  for (const e of before) {
+    if (!isHittable(e) || e.hp <= 0 || untouched.has(e)) continue
+    addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${BURST_DAMAGE}`, kind: 'dealt' })
+    if (e.hp - BURST_DAMAGE <= 0) sfx(state, deathCue(e), { px: e.px, py: e.py })
+  }
   state.entities = burst.entities
+  npcsStruckSince(npcSnap)
   if (burst.playerBurned) damagePlayer(state, BURST_DAMAGE, 'hit', `The blast engulfs you! (-${BURST_DAMAGE} HP)`)
   state.fireZones.push(makeFireZone(tiles))
   state.shockwaves.push({ px: tx * TILE_SIZE + TILE_SIZE / 2, py: ty * TILE_SIZE + TILE_SIZE / 2,
@@ -312,16 +370,35 @@ function buildEntities(spawns, map, depth) {
         isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
       case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, talent: s.talent, rite: s.rite }]
       case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
+      case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
       default:               return []
     }
   })
 }
 
+// Ids of the npcs a build actually placed (the sampler drops any it could
+// not home, and those must not be tombstoned as dead).
+const npcSpawns = spawns => spawns.filter(s => s.kind === 'npc').map(s => s.id)
+
+// Groundhog Day: every NPC on the current surface returns, alive and calm.
+function respawnNpcs() {
+  const data = OPEN_MAPS[state.level]
+  if (!data) return
+  const spawns = npcSpawnsForMap(data)
+  state.entities = state.entities.filter(e => e.type !== 'npc')
+  state.entities.push(...buildEntities(spawns, state.map, state.level))
+  state.npcSpawnIds = npcSpawns(spawns)
+  state.npcWrath = false
+}
+
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
+  const openMap = OPEN_MAPS[depth]
+  const npcRecord = openMap ? npcRecordFor(savedAdventure, openMap.name) : null
   const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit, signs } =
-    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg })
+    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
+      npcs: npcRecord })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
@@ -389,6 +466,10 @@ function startNewRun(depth = 1, arenaCfg = null) {
     exitMsgCooldown: 0,
     entranceHold: false,
     signs: signs ?? [],
+    npcWrath: !!npcRecord?.hostile,
+    // The ids actually built, plus the ones already tombstoned — a dead npc
+    // must stay recorded as dead on the next persist rather than be forgotten.
+    npcSpawnIds: npcRecord ? [...npcSpawns(entitySpawns), ...npcRecord.dead] : [],
   }
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
@@ -512,8 +593,8 @@ function afterInventoryChange() {
 function useInventoryItem(i) {
   const item = state.player.inventory[i]
   if (!item) return
-  if (item.kind === 'potion') {
-    const healed = Math.min(state.player.maxHp - state.player.hp, item.amount)
+  if (item.kind === 'potion' || item.kind === 'meat') {
+    const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'meat' ? item.heal : item.amount)
     if (healed <= 0) { think(state, 'Already full.'); return }
     removeItem(state.player, i)
     state.player.hp += healed
@@ -738,6 +819,8 @@ function update(delta) {
       e.type === 'prop' && e.isFountainBasin && e.x === player.x && e.y === player.y
     )
     const sign = basin ? null : signNearby(state.signs, player.x, player.y)
+    const npc = (basin || sign) ? null : nearestPeacefulNpc(state)
+    if (npc) { interactNpc(state, npc); return }
     if (sign) { openSign(sign); return }
     if (basin) {
       basin.flowing = !basin.flowing
@@ -813,7 +896,7 @@ function update(delta) {
     const struck = []   // enemies hit this swing (for the Maunonmiekka's shockwave)
     state.entities = state.entities
       .map(e => {
-        if (!isEnemy(e)) return e
+        if (!isHittable(e)) return e
         if (e.type === 'dragon_boss') {
           const swingHit = (cx, cy) => hitAt(cx - player.px, cy - player.py)
           const raw = meleeDamageToDragon(player, e, swingHit)
@@ -828,21 +911,24 @@ function update(delta) {
         if (!hitAt(e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
+        npcStruck(hitEnemy)
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
-        sfx(state, hitEnemy.hp <= 0 ? 'enemy-death' : 'melee-hit', { px: e.px, py: e.py })
+        sfx(state, hitEnemy.hp <= 0 ? deathCue(hitEnemy) : 'melee-hit', { px: e.px, py: e.py })
         startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback * mods.kbMul)
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
       })
-      .filter(e => !isEnemy(e) || e.hp > 0)
+      .filter(e => !isHittable(e) || e.hp > 0)
     // Maunonmiekka magic: a crimson shockwave bursts from every struck enemy,
     // splashing damage + knockback onto its neighbours.
     if (struck.length) {
       const exclude = new Set(struck)
       let pulsed = false
       for (const s of struck) {
+        const snap = npcSnapshot()
         const res = applyShockwave(state.entities, s.px, s.py, exclude)
         state.entities = res.entities
+        npcsStruckSince(snap)
         state.shockwaves.push({ px: s.px, py: s.py, t: 0, dur: 0.35, maxRadius: SHOCK_RADIUS })
         sfx(state, 'shockwave', { px: s.px, py: s.py })
         pulsed = pulsed || res.hitCount > 0
@@ -963,19 +1049,21 @@ function update(delta) {
     let hit = false
     if (p.friendly) {
       state.entities = state.entities.map(e => {
-        if (!isEnemy(e) || hit) return e
+        if (!isHittable(e) || hit) return e
         if (e.type === 'dragon_boss') return e          // immune to ranged; projectile passes over
         const hitR = 8
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
-          sfx(state, e.hp - p.damage <= 0 ? 'enemy-death' : 'projectile-hit', { px: e.px, py: e.py })
-          return { ...e, hp: e.hp - p.damage, inCombat: true }
+          const struck = { ...e, hp: e.hp - p.damage, inCombat: true }
+          npcStruck(struck)
+          sfx(state, struck.hp <= 0 ? deathCue(struck) : 'projectile-hit', { px: e.px, py: e.py })
+          return struck
         }
         return e
       })
-      state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
+      state.entities = state.entities.filter(e => !isHittable(e) || e.hp > 0)
       if (hit && p.explodes) detonateFireball(p.px, p.py)
     } else {
       if (Math.hypot(player.px - p.px, player.py - p.py) < 10) {
@@ -989,14 +1077,19 @@ function update(delta) {
 
   // Lingering fireball flames — tick everyone standing in them
   if (state.fireZones?.length) {
+    const snap = npcSnapshot()
     const fz = updateFireZones(state.fireZones, state.entities, player, delta)
     state.fireZones = fz.zones
     state.entities = fz.entities
+    npcsStruckSince(snap)
     if (fz.playerDamage > 0) damagePlayer(state, fz.playerDamage, 'dot', "You're burning! (-1 HP)")
   }
 
   // Enemy AI — iterate a snapshot so wizard summons don't re-enter this frame
   for (const e of [...state.entities]) {
+    // updateNpc drives peaceful AND hostile NPCs (the hostile ones run the
+    // enemy brain inside their attack_hostile goal) — never both paths.
+    if (e.type === 'npc') { updateNpc(e, state, delta); continue }
     if (!isEnemy(e)) continue
 
     if (e.stunTimer > 0) { e.stunTimer -= delta; continue }
@@ -1146,7 +1239,7 @@ function update(delta) {
   tickFeedback(state.feedback, delta)
   if (!state.cave && tickCaveInstances(state, delta)) persistAdventure()
   for (const e of state.entities) {
-    if (e.type === 'guard' || e.type === 'wizard') tickWalk(e, delta)
+    if (e.type === 'guard' || e.type === 'wizard' || (e.type === 'npc' && NPC_SPECIES[e.species]?.walker)) tickWalk(e, delta)
   }
 
   // Player death: in Adventure it is a setback — wake at the village spawn;
@@ -1156,7 +1249,11 @@ function update(delta) {
     const surfaceLevel = state.cave ? state.cave.surface.level : state.level
     const mapData = OPEN_MAPS[surfaceLevel]
     if (mapData) {
+      resetNpcs(savedAdventure)
+      npcDirty = false
       state = adventureRespawn(state, mapData.playerSpawn)
+      respawnNpcs()
+      persistAdventure()
       queueToast(state, { title: 'You awaken back in Aspengrove…', lines: ['The dark took its toll — but you are alive.'] })
       return
     }
@@ -1208,15 +1305,21 @@ function update(delta) {
   // a one-shot wall-collision hit, applied only to enemies.
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
-    if (slam && isEnemy(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
+    if (slam && isHittable(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
       e.hp -= slam.damage
       e.inCombat = true
+      npcStruck(e)
       addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${slam.damage}`, kind: 'dealt' })
-      sfx(state, e.hp <= 0 ? 'enemy-death' : 'wall-slam', { px: e.px, py: e.py })
+      sfx(state, e.hp <= 0 ? deathCue(e) : 'wall-slam', { px: e.px, py: e.py })
     }
   }
-  state.entities = state.entities.filter(e => !isEnemy(e) || e.hp > 0)
+  state.entities = state.entities.filter(e => !isHittable(e) || e.hp > 0)
   stepKnockback(player, delta, (px, py) => canMoveTo(map, px, py, PLAYER_HALF))
+
+  // Flush NPC deaths and wrath. It has to sit after the cull above, because
+  // recordNpcState reads `dead` as "declared id with no entity left".
+  if (npcDirty && !state.cave && OPEN_MAPS[state.level]) { npcDirty = false; persistAdventure() }
+  if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
 
   // Clear hit flash — it fires once per swing
   if (state.hitEffects?.length > 0) state.hitEffects = []
@@ -1277,12 +1380,17 @@ function exitCave() {
 
 // Waystone travel: a fresh open map, the player carried over to its spawn.
 function travelToMap(depth) {
+  // The map being left still owns its npc record — write it before `state`
+  // becomes the new map and the departing kills/wrath are out of reach.
+  if (OPEN_MAPS[state.level]) { npcDirty = false; persistAdventure() }
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
-  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit, signs } =
-    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures })
-  decorateMap(map, rulesets[theme.ruleset])
   const mapName = OPEN_MAPS[depth].name
+  const npcRecord = npcRecordFor(savedAdventure, mapName)
+  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit, signs } =
+    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures,
+      npcs: npcRecord })
+  decorateMap(map, rulesets[theme.ruleset])
   state = {
     ...state,
     level: depth, map, theme,
@@ -1302,6 +1410,8 @@ function travelToMap(depth) {
     mapExit: mapExit ?? null,
     entranceHold: false,
     signs: signs ?? [],
+    npcWrath: npcRecord.hostile,
+    npcSpawnIds: [...npcSpawns(entitySpawns), ...npcRecord.dead],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
   }
   savedAdventure.progress.mapDepth = depth

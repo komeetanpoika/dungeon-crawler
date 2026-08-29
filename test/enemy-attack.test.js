@@ -38,6 +38,12 @@ describe('getEnemyWeapon', () => {
     assert.equal(w.windup, 0.5)
   })
 
+  it('npc type defaults to fists', () => {
+    const w = getEnemyWeapon(makeEnemy('npc'))
+    assert.equal(w.id, 'fists')
+    assert.equal(w.damage, 1)
+  })
+
   it('returns null for enemies with no melee weapon', () => {
     assert.equal(getEnemyWeapon(makeEnemy('wizard')), null)
     assert.equal(getEnemyWeapon(makeEnemy('dragon_boss')), null)
@@ -201,5 +207,13 @@ describe('stepEnemyAttack — swing lifecycle', () => {
     const state = makeState({ px: 110, py: 100, hp: 10 })
     stepEnemyAttack(e, state, 0.016)
     assert.equal(e.attack ?? null, null)
+  })
+})
+
+describe('animal weapons', () => {
+  it('a bear mauls for 2; a per-entity weaponId beats the npc default', () => {
+    assert.equal(WEAPONS.maul.damage, 2)
+    assert.equal(getEnemyWeapon({ type: 'npc', weaponId: 'maul' }).id, 'maul')
+    assert.equal(getEnemyWeapon({ type: 'npc', weaponId: 'claw' }).id, 'claw')
   })
 })

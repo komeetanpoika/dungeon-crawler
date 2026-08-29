@@ -26,6 +26,21 @@ export const SPRITES = {
   cyclops:      'tile_0109',
   wizard:       'tile_0111',
   crab:         'tile_0110',
+  // npcs — villagers rotate through three faces by spawn index (npc.js)
+  npc_villager:   'tile_0098',
+  npc_villager_2: 'tile_0086',
+  npc_villager_3: 'tile_0099',
+  npc_elder:      'tile_0100',
+  npc_mouse:      'tile_0124',
+  // animals from the CC0 Tiny Creatures pack (tools/extract-npc-sprites.mjs)
+  npc_chicken:    'npc_chicken',
+  npc_deer:       'npc_deer',
+  npc_sheep:      'npc_sheep',
+  npc_goat:       'npc_goat',
+  npc_boar:       'npc_boar',
+  npc_wolf:       'npc_wolf',
+  npc_bear:       'npc_bear',
+  item_meat:      'item_meat',     // drawn by tools/npc-placeholders.mjs
   // floor variants
   sand:                'tile_0048',
   // props — civilisation gradient

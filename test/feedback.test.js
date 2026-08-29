@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  makeFeedback, addFloat, tickFeedback, speak, think, announce,
+  makeFeedback, addFloat, tickFeedback, speak, think, announce, speakFrom,
   queueToast, drainToasts,
   FLOAT_DUR, BUBBLE_DUR, BANNER_DUR,
 } from '../renderer/systems/feedback.js'
@@ -122,5 +122,14 @@ describe('toast queue', () => {
   })
   it('is a no-op without feedback state', () => {
     assert.doesNotThrow(() => queueToast({ log: [] }, { title: 'x', lines: [] }))
+  })
+})
+
+describe('speakFrom', () => {
+  it('anchors the bubble to the speaker and logs the line', () => {
+    const state = { log: [], feedback: makeFeedback() }
+    speakFrom(state, { id: 'npc:x:1' }, 'Hello.')
+    assert.deepEqual(state.feedback.bubble, { text: 'Hello.', kind: 'speech', t: 0, anchorId: 'npc:x:1' })
+    assert.deepEqual(state.log, ['Hello.'])
   })
 })

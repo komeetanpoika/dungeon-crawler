@@ -14,9 +14,14 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.resolve(HERE, '../../renderer/data/open-maps.js')
 
 const EXPORTS = [
-  { depth: 7,  file: 'forest-1-clearings.json',    title: 'Clearings',       caveDepths: [1, 2], exitPoi: 'forest shrine' },
-  { depth: 8,  file: 'forest-2-river.json',        title: 'River Split',     caveDepths: [2],    exitPoi: 'river shrine' },
-  { depth: 9,  file: 'forest-3-autumn.json',       title: 'Autumn Highland', caveDepths: [2, 3], exitPoi: 'stone circle' },
+  { depth: 7,  file: 'forest-1-clearings.json',    title: 'Clearings',       caveDepths: [1, 2], exitPoi: 'forest shrine',
+    starter: 'dagger',
+    npcs: { village: ['villager', 'villager', 'villager', 'elder', 'chicken', 'chicken', 'sheep', 'sheep', 'goat'],
+            wild: ['deer', 'deer', 'mouse', 'mouse', 'chicken', 'wolf', 'boar'] } },
+  { depth: 8,  file: 'forest-2-river.json',        title: 'River Split',     caveDepths: [2],    exitPoi: 'river shrine',
+    npcs: { village: ['villager', 'villager', 'chicken', 'goat'], wild: ['deer', 'deer', 'deer', 'mouse', 'mouse', 'wolf', 'wolf', 'boar'] } },
+  { depth: 9,  file: 'forest-3-autumn.json',       title: 'Autumn Highland', caveDepths: [2, 3], exitPoi: 'stone circle',
+    npcs: { village: ['villager', 'elder', 'sheep', 'goat'], wild: ['deer', 'deer', 'mouse', 'mouse', 'mouse', 'bear', 'boar', 'wolf'] } },
   { depth: 10, file: 'desert-1-dunes.json',        title: 'Open Erg',        caveDepths: [3, 3], exitPoi: 'toppled shrine' },
   { depth: 11, file: 'desert-2-canyon.json',       title: 'Wadi Canyon',     caveDepths: [4],    exitPoi: 'buried temple' },
   { depth: 12, file: 'desert-3-lost-city.json',    title: 'Lost City',       caveDepths: [4],    exitPoi: 'palace gate' },
@@ -54,6 +59,7 @@ for (const e of EXPORTS) {
     name: m.name, title: e.title, w: m.w, h: m.h,
     palette: m.palette, ground: m.ground, prop: m.prop, walk: m.walk,
     pois: m.pois, playerSpawn: m.playerSpawn, caveDepths: e.caveDepths, exit,
+    npcs: e.npcs ?? null, starter: e.starter ?? null,
   }
 }
 
