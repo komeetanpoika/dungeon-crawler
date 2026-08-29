@@ -200,8 +200,22 @@ function fold() {
   b.poi('landmark', burrow.x, burrow.y - 1, 'lair')
   b.p(mouth.x, mouth.y + 1, 'tile_0089', { walkable: true }); b.poi('chest', mouth.x, mouth.y + 1, 'fleece cache')
   // the four burn bands: forest pockets the villagers torch in order,
-  // marching from the village toward the den
-  for (const [i, c] of [[52, 50], [60, 44], [68, 40], [74, 30]].entries()) b.poi('landmark', c[0], c[1], `burn ${i + 1}`)
+  // marching from the village toward the den. Each must carry enough fuel
+  // (tree-prop cells) that converting them to dead trees at burn time reads
+  // as a real burn — burn 1 sits close to the village's thinner cover, so
+  // guarantee fuel explicitly rather than rely on the base terrain pass.
+  const nearFoldOrVillage = (x, y) =>
+    (x >= village.x - 10 && x <= village.x + 10 && y >= village.y - 8 && y <= village.y + 8) ||
+    (x >= fold.x - 6 && x <= fold.x + 6 && y >= fold.y - 5 && y <= fold.y + 5)
+  const isDirtGround = (x, y) => DIRT.includes(b.palette[b.ground[y][x]])
+  for (const [i, c] of [[52, 50], [60, 44], [68, 40], [74, 30]].entries()) {
+    b.poi('landmark', c[0], c[1], `burn ${i + 1}`)
+    for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+      const x = c[0] + dx, y = c[1] + dy
+      if (!b.in(x, y) || nearFoldOrVillage(x, y) || isDirtGround(x, y)) continue
+      if (isOpen(b)(x, y) && rng() < 0.75) plantTree(b, rng, x, y, PINES)
+    }
+  }
   // the old mine
   const mine = { x: 20, y: 14 }
   clearing(b, mine.x, mine.y, 3); stampCaveInRocks(b, rng, mine.x, mine.y); b.poi('dungeon_entrance', mine.x, mine.y, 'old mine')

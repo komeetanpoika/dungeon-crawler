@@ -97,6 +97,16 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
         assert.equal(rocks.length, 3)
       })
 
+      for (let n = 1; n <= 4; n++) it(`burn ${n} has enough fuel to be a real burn stage`, () => {
+        const p = data.pois.find(q => q.label === `burn ${n}`)
+        let trees = 0
+        for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+          const idx = data.prop[p.y + dy]?.[p.x + dx]
+          if (idx >= 0 && data.palette[idx].startsWith('ow_tree_')) trees++
+        }
+        assert.ok(trees >= 20, `burn ${n} has only ${trees} tree cells within radius 6`)
+      })
+
       const spawn = [data.playerSpawn.x, data.playerSpawn.y]
       const poi = label => { const p = data.pois.find(q => q.label === label); return [p.x, p.y] }
       const reachedAt = (set, [x, y]) => set.has(`${x},${y}`)
