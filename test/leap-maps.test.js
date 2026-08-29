@@ -12,6 +12,32 @@ const REQUIRED = {
 }
 const byName = Object.fromEntries(Object.values(OPEN_MAPS).map(m => [m.name, m]))
 
+// 4-neighbour BFS over a map's `walk` grid ('1' = passable), starting from
+// `starts` ([x, y] pairs). `passable(x, y)` overrides walkability per cell —
+// pass it something that also treats certain props as passable to simulate
+// felling them. Returns the set of reached "x,y" keys.
+function bfsReachable(data, starts, passable) {
+  const seen = new Set(starts.map(([x, y]) => `${x},${y}`))
+  const queue = [...starts]
+  while (queue.length) {
+    const [x, y] = queue.shift()
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy, key = `${nx},${ny}`
+      if (nx < 0 || ny < 0 || ny >= data.h || nx >= data.w || seen.has(key)) continue
+      if (!passable(nx, ny)) continue
+      seen.add(key)
+      queue.push([nx, ny])
+    }
+  }
+  return seen
+}
+
+const walkable = data => (x, y) => data.walk[y]?.[x] === '1'
+const isTreeProp = data => (x, y) => {
+  const idx = data.prop[y]?.[x]
+  return idx >= 0 && /^(ow_tree_|ow_deadtree_|ow_bush_)/.test(data.palette[idx])
+}
+
 for (const [name, labels] of Object.entries(REQUIRED)) {
   describe(name, { skip: !byName[name] && 'not exported yet' }, () => {
     const data = byName[name]
@@ -35,12 +61,44 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
     it('has at least three caches', () => {
       assert.ok(data.pois.filter(p => p.kind === 'chest').length >= 3)
     })
+
+    if (name === 'lake-1-ferry') {
+      const spawn = [data.playerSpawn.x, data.playerSpawn.y]
+      const poi = label => { const p = data.pois.find(q => q.label === label); return [p.x, p.y] }
+      const reachedAt = (set, [x, y]) => set.has(`${x},${y}`)
+
+      it('the islet, the pier gap and the orchard are unreachable by plain walking from spawn', () => {
+        const reached = bfsReachable(data, [spawn], walkable(data))
+        assert.ok(!reachedAt(reached, poi('islet cache')), 'islet cache should be unreachable')
+        assert.ok(!reachedAt(reached, poi('pier gap 1')), 'pier gap 1 should be unreachable')
+        assert.ok(!reachedAt(reached, poi('orchard')), 'orchard should be unreachable')
+      })
+
+      it('the islet becomes reachable once its tree ring/connector is treated as felled', () => {
+        const passable = (x, y) => walkable(data)(x, y) || isTreeProp(data)(x, y)
+        const reached = bfsReachable(data, [spawn], passable)
+        assert.ok(reachedAt(reached, poi('islet cache')), 'islet cache should be reachable with trees felled')
+      })
+
+      it('the orchard is reachable from the pier gap once the gap itself is crossable', () => {
+        const [g1x, g1y] = poi('pier gap 1')
+        const [g2x, g2y] = poi('pier gap 2')
+        const passable = (x, y) => walkable(data)(x, y) || (x === g1x && y === g1y) || (x === g2x && y === g2y)
+        const reached = bfsReachable(data, [poi('pier gap 2')], passable)
+        assert.ok(reachedAt(reached, poi('orchard')), 'orchard should be reachable once the gap is crossed')
+      })
+    }
   })
 }
 
 describe('gen-forest maps are unchanged by the kit refactor', () => {
   it('forest-1-clearings JSON on disk still matches the exported data', () => {
     const json = JSON.parse(readFileSync(new URL('../tools/static-overworld/out/maps/forest-1-clearings.json', import.meta.url)))
-    assert.deepEqual(json.ground, byName['forest-1-clearings'].ground)
+    const data = byName['forest-1-clearings']
+    assert.deepEqual(json.ground, data.ground)
+    assert.deepEqual(json.prop, data.prop)
+    assert.deepEqual(json.walk, data.walk)
+    assert.deepEqual(json.pois, data.pois)
+    assert.deepEqual(json.playerSpawn, data.playerSpawn)
   })
 })

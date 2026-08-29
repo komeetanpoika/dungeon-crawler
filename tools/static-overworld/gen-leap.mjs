@@ -85,9 +85,13 @@ function lake() {
       }
     // dense cover east of the wall (the isolated side never has to look
     // walkably sparse — nobody crosses it except across the pier) keeps the
-    // secluded pocket small relative to total walkable area
+    // secluded pocket small relative to total walkable area — but never on
+    // the pier itself, or the resumed pier east of the gap grows tree props
+    // that block walking straight across to the orchard
     for (let y = 1; y < b.h - 1; y++) for (let x = cx + 4; x < b.w - 1; x++)
-      if (b.walkable(x, y) && b.prop[y][x] === -1 && !isWater(b, x, y) && Math.hypot(x - orchard.x, y - orchard.y) > 8 && rng() < 0.97)
+      if (b.walkable(x, y) && b.prop[y][x] === -1 && !isWater(b, x, y) &&
+          b.palette[b.ground[y][x]] !== 'ow_pier_log' &&
+          Math.hypot(x - orchard.x, y - orchard.y) > 8 && rng() < 0.97)
         plantTree(b, rng, x, y, PINES)
   }
   sealEastBank()
@@ -101,11 +105,12 @@ function lake() {
   for (let y = -2; y <= 2; y++) for (let x = -3; x <= 3; x++)
     if (x * x + y * y > 4 && x * x + y * y <= 9) b.p(islet.x + x, islet.y + y, 'ow_tree_small')
   b.p(islet.x, islet.y, 'tile_0089', { walkable: true }); b.poi('chest', islet.x, islet.y, 'islet cache')
-  // a strip of shore trees joins the islet to the south shore so it is
-  // reachable on foot once chopped — record the cells so ensureReachable's
-  // auto-carve there (below) survives the wall/orchard snapshot restore
-  const isletConnector = []
-  for (let y = islet.y + 3; isWater(b, islet.x, y); y++) { b.g(islet.x, y, 'ow_grass_0'); b.p(islet.x, y, 'ow_tree_small'); isletConnector.push([islet.x, y]) }
+  // a strip of shore trees joins the islet to the south shore: land under
+  // the trees, so it is reachable on foot once chopped, but every crossing
+  // cell stays tree-blocked so plain walking never gets there. This column
+  // falls inside the EAST_FROM snapshot span below, so ensureReachable's
+  // own auto-carve through it is always discarded, never reapplied.
+  for (let y = islet.y + 3; isWater(b, islet.x, y); y++) { b.g(islet.x, y, 'ow_grass_0'); b.p(islet.x, y, 'ow_tree_small') }
   // one cave in the north woods
   const cave = { x: 60, y: 10 }
   clearing(b, cave.x, cave.y, 3); stampCaveInRocks(b, rng, cave.x, cave.y); b.poi('dungeon_entrance', cave.x, cave.y, 'lake cave')
@@ -121,12 +126,12 @@ function lake() {
   // (fed by the Näkki, a later task) — but healFragmentation treats any
   // pocket over minKeep cells as an accidental gap to bridge, and
   // ensureReachable independently bulldozes a path to every POI including
-  // 'orchard'/'orchard stone'. Both routinely tunnel straight through the
-  // wall (or the lake itself) to do it. Snapshot that whole span and
-  // restore it verbatim afterward, so the only edits either pass can make
-  // there are ones we then throw away; west of it (village, cave, and the
-  // islet's shore connector, which *should* get auto-carved — captured
-  // separately below) still gets healed and connected normally.
+  // 'orchard'/'orchard stone'/'islet cache' (the islet and its shore
+  // connector both sit east of the pier gap too). Both routinely tunnel
+  // straight through the wall, the lake, or the islet's tree ring to do it.
+  // Snapshot that whole span and restore it verbatim afterward — no carve
+  // either pass makes in it is ever kept — while west of it (village, cave)
+  // still gets healed and connected normally.
   const EAST_FROM = bellX + 1
   const snapshot = { ground: [], prop: [], walk: [] }
   for (let y = 0; y < b.h; y++) {
@@ -136,16 +141,11 @@ function lake() {
   }
   b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: 'ow_dirt_0' })
   b.ensureReachable('ow_dirt_0')
-  // the islet's connector falls inside the snapshot span (its x is east of
-  // the pier gap) — capture what ensureReachable carved there before the
-  // restore below undoes it, then reapply it on top afterward.
-  const isletCarved = isletConnector.map(([x, y]) => ({ x, y, ground: b.ground[y][x], prop: b.prop[y][x], walk: b.walkG[y][x] }))
   for (let y = 0; y < b.h; y++) for (let i = 0; i < snapshot.ground[y].length; i++) {
     b.ground[y][EAST_FROM + i] = snapshot.ground[y][i]
     b.prop[y][EAST_FROM + i] = snapshot.prop[y][i]
     b.walkG[y][EAST_FROM + i] = snapshot.walk[y][i]
   }
-  for (const c of isletCarved) { b.ground[c.y][c.x] = c.ground; b.prop[c.y][c.x] = c.prop; b.walkG[c.y][c.x] = c.walk }
   // the pier gap cells must stay water/blocked regardless of what either
   // pass did to them.
   for (const label of ['pier gap 1', 'pier gap 2']) { const p = b.pois.find(q => q.label === label); b.g(p.x, p.y, pick(rng, WATER)); b.block(p.x, p.y) }
@@ -157,8 +157,10 @@ export const LEAP_MAPS = [lake]
 for (const make of LEAP_MAPS) {
   const b = make()
   const problems = validate(b)
-  // the orchard is deliberately unreachable until the Näkki is fed
-  const ok = problems.filter(p => !/orchard|pier gap|nakki/.test(p))
+  // the orchard is deliberately unreachable until the Näkki is fed, and the
+  // islet cache is deliberately unreachable by plain walking (only the tree
+  // ring/connector, felled, gets you there)
+  const ok = problems.filter(p => !/orchard|pier gap|nakki|islet/.test(p))
   if (ok.length) { console.error(b.name, ok); process.exitCode = 1 }
   fs.writeFileSync(path.join(OUT, `${b.name}.json`), JSON.stringify(b.toJSON()))
   console.log('wrote', b.name, problems.length ? `(expected-unreachable: ${problems.join('; ')})` : '')
