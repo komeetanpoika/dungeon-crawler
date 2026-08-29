@@ -116,3 +116,10 @@ describe('npc sprites', () => {
       assert.ok(SPRITES[k], k)
   })
 })
+
+describe('hatchet art', () => {
+  it('weapon_hatchet = tile_0119 (single-bit axe); the big axe keeps tile_0118', () => {
+    assert.equal(SPRITES.weapon_hatchet, 'tile_0119')
+    assert.equal(SPRITES.weapon_axe, 'tile_0118')
+  })
+})

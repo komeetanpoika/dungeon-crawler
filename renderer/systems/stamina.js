@@ -8,6 +8,7 @@ const REGEN_DELAY = 0.7   // seconds after the last spend before regen starts
 // Per-weapon swing prices by charge tier. Light weapons only ever swing
 // 'full'; unknown weapons price like the dagger.
 const MELEE_COSTS = {
+  hatchet:      { full: 10 },
   dagger:       { full: 8 },
   sword:        { full: 12 },
   longsword:    { tap: 10, full: 18, over: 34 },

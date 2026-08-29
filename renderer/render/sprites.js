@@ -69,6 +69,7 @@ export const SPRITES = {
   puzzle:       'tile_0072',
   // items
   weapon_dagger:    'tile_0103',
+  weapon_hatchet:   'tile_0119',   // single-bit axe; the chopping starter
   weapon_sword:     'tile_0104',
   weapon_longsword: 'tile_0106',
   weapon_axe:       'tile_0118',

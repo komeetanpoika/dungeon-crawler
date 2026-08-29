@@ -309,14 +309,14 @@ describe('npcSpawnsForMap', () => {
 })
 
 describe('starter weapon', () => {
-  it('Clearings declares a dagger; the chest lands beside the village spawn', () => {
+  it('Clearings declares a hatchet; the chest lands beside the village spawn', () => {
     const data = OPEN_MAPS[7]
-    assert.equal(data.starter, 'dagger')
+    assert.equal(data.starter, 'hatchet')
     const { entitySpawns } = buildOpenMap(data)
     const starters = entitySpawns.filter(s => s.kind === 'weapon')
     assert.equal(starters.length, 1)
     const c = starters[0]
-    assert.equal(c.weaponType, 'dagger')
+    assert.equal(c.weaponType, 'hatchet')
     assert.ok(cheb(c, data.playerSpawn) >= 1 && cheb(c, data.playerSpawn) <= 3, `chest at ${c.x},${c.y}`)
     assert.equal(data.walk[c.y][c.x], '1')
     assert.ok(!entitySpawns.some(s => s !== c && s.x === c.x && s.y === c.y), 'tile shared')

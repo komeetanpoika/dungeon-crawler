@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { ATTACK_STYLES, getAttack, getSwingArc, meleeHit, SWING_ARCS, shouldAutoRelease, tierMods, resolveCharge } from '../renderer/systems/melee.js'
+import { ATTACK_STYLES, getAttack, getSwingArc, meleeHit, SWING_ARCS, shouldAutoRelease, tierMods, resolveCharge, isChargeWeapon } from '../renderer/systems/melee.js'
+import { WEAPON_TYPES, weaponContents, makeWeapon } from '../renderer/systems/entities.js'
 import { drawEnemySwing, drawMeleeSwing, swingPose } from '../renderer/render/canvas.js'
 import { WEAPONS, weaponWedge } from '../renderer/systems/enemy-attack.js'
 
@@ -300,5 +301,22 @@ describe('tierMods', () => {
   it('returns the same mods resolveCharge would for that tier', () => {
     assert.deepEqual(tierMods('tap'), resolveCharge('axe', 0))       // axe at 0s held = tap
     assert.deepEqual(tierMods('full'), resolveCharge('dagger', 0))   // non-charge = full
+  })
+})
+
+describe('hatchet', () => {
+  it('is a light arc chopper that can chop wood; the axe chops harder', () => {
+    assert.equal(WEAPON_TYPES.hatchet.chop, 1)
+    assert.equal(WEAPON_TYPES.axe.chop, 2)
+    assert.equal(WEAPON_TYPES.dagger.chop, undefined)
+    assert.equal(WEAPON_TYPES.hatchet.heavy, undefined)
+    assert.equal(getAttack('hatchet').style, 'arc')
+    assert.equal(isChargeWeapon('hatchet'), false)
+  })
+  it('weapon payloads carry chop (and heavy) only when the type has it', () => {
+    assert.deepEqual(weaponContents('hatchet'), { weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 })
+    assert.deepEqual(weaponContents('axe'), { weaponType: 'axe', name: 'Axe', damage: 4, heavy: true, chop: 2 })
+    assert.deepEqual(weaponContents('dagger'), { weaponType: 'dagger', name: 'Dagger', damage: 1 })
+    assert.equal(makeWeapon(0, 0, 'hatchet').chop, 1)
   })
 })

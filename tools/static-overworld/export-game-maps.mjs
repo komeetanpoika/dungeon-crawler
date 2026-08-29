@@ -15,7 +15,7 @@ const OUT = path.resolve(HERE, '../../renderer/data/open-maps.js')
 
 const EXPORTS = [
   { depth: 7,  file: 'forest-1-clearings.json',    title: 'Clearings',       caveDepths: [1, 2], exitPoi: 'forest shrine',
-    starter: 'dagger',
+    starter: 'hatchet',
     npcs: { village: ['villager', 'villager', 'villager', 'elder', 'chicken', 'chicken', 'sheep', 'sheep', 'goat'],
             wild: ['deer', 'deer', 'mouse', 'mouse', 'chicken', 'wolf', 'boar'] } },
   { depth: 8,  file: 'forest-2-river.json',        title: 'River Split',     caveDepths: [2],    exitPoi: 'river shrine',

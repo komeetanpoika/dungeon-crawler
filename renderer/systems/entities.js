@@ -16,13 +16,23 @@ export const TILE = {
 export const DRAGON_STATE = { SLEEPING: 'sleeping', STIRRING: 'stirring', AWAKE: 'awake' }
 
 export const WEAPON_TYPES = {
+  // `chop` is the damage a swing deals a tree (systems/lumber.js); blades
+  // without it can't fell anything.
+  hatchet:   { name: 'Hatchet',   damage: 1, chop: 1 },
   dagger:    { name: 'Dagger',    damage: 1 },
   sword:     { name: 'Sword',     damage: 2 },
   longsword: { name: 'Longsword', damage: 3, heavy: true },
-  axe:       { name: 'Axe',       damage: 4, heavy: true },
+  axe:       { name: 'Axe',       damage: 4, heavy: true, chop: 2 },
   // The most powerful sword in the game (cheat-only for now: type "mauno" in
   // a run). On-hit crimson shockwave lives in systems/shockwave.js.
   maunonmiekka: { name: 'Maunonmiekka', damage: 10 },
+}
+
+// The melee-weapon payload every chest, drop and hand slot carries.
+export function weaponContents(weaponType) {
+  const def = WEAPON_TYPES[weaponType] ?? WEAPON_TYPES.dagger
+  return { weaponType: def === WEAPON_TYPES[weaponType] ? weaponType : 'dagger', name: def.name, damage: def.damage,
+    ...(def.heavy && { heavy: true }), ...(def.chop && { chop: def.chop }) }
 }
 
 // Projectile weapons — looted from chests, never a starting item. `ammo`
@@ -167,8 +177,7 @@ export function makeDragon(x, y, roomId) {
 }
 
 export function makeWeapon(x, y, weaponType = 'dagger') {
-  const def = WEAPON_TYPES[weaponType] ?? WEAPON_TYPES.dagger
-  return { type: 'weapon', x, y, weaponType, name: def.name, damage: def.damage, ...(def.heavy && { heavy: true }) }
+  return { type: 'weapon', x, y, ...weaponContents(weaponType) }
 }
 
 export function makePotion(x, y, amount = 4) {

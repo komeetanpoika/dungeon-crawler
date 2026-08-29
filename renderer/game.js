@@ -1,7 +1,7 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, makeRangedContents, TILE, isWalkable } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, makeRangedContents, weaponContents, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -344,11 +344,8 @@ function buildEntities(spawns, map, depth) {
   breathProgress: 0, breathParticles: [], breathDamageAcc: 0, ...aiInit(), ...(s.isBoss && { isBoss: true }) })]
       case 'trap':    return [makeTrap(s.x, s.y)]
       case 'puzzle':  return [makePuzzle(s.x, s.y)]
-      case 'weapon': {
-        const wt = s.weaponType ?? 'dagger'
-        const def = WEAPON_TYPES[wt] ?? WEAPON_TYPES.dagger
-        return [makeChest(s.x, s.y, { type: 'weapon', weaponType: wt, name: def.name, damage: def.damage, ...(def.heavy && { heavy: true }) })]
-      }
+      case 'weapon':
+        return [makeChest(s.x, s.y, { type: 'weapon', ...weaponContents(s.weaponType ?? 'dagger') })]
       case 'ranged':  return [makeChest(s.x, s.y, makeRangedContents(s.weaponType))]
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
