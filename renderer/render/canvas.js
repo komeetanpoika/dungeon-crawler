@@ -120,6 +120,20 @@ function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg, heldWeapon = null) {
   ctx.restore()
 }
 
+// Leap episode creatures — each is four editor-native custom_<name>_00|01|10|11
+// 16px tiles assembled 2x2 into the same 64px footprint the cyclops uses.
+export const CREATURE_SPRITES = { nakki: 'custom_nakki', maahinen: 'custom_maahinen', sammunut: 'custom_sammunut' }
+export function drawCreature(ctx, sprites, name, px, py, S, { alpha = 1 } = {}) {
+  const base = CREATURE_SPRITES[name]
+  const prev = ctx.globalAlpha
+  ctx.globalAlpha = prev * alpha
+  for (const [q, dx, dy] of [['00', 0, 0], ['01', 1, 0], ['10', 0, 1], ['11', 1, 1]]) {
+    const s = sprites[`${base}_${q}`]
+    if (s) ctx.drawImage(s, px - S / 2 + dx * S, py - S / 2 + dy * S, S, S)
+  }
+  ctx.globalAlpha = prev
+}
+
 // Whether to draw the player this frame. Flickers while invulnerable (i-frames).
 export function isFlickerVisible(invulnTimer, interval = 0.06) {
   if (!(invulnTimer > 0)) return true
