@@ -34,17 +34,23 @@ export function buildSpot(map, entities, player) {
     .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !entities.some(e => e.x === t.x && e.y === t.y)) ?? null
 }
 
-export function makeCampfire(x, y) {
-  return { type: 'campfire', x, y, px: x * TILE_SIZE + TILE_SIZE / 2, py: y * TILE_SIZE + TILE_SIZE / 2, t: 0 }
+// `eternal` fires (the hermit's hearth) never burn out and are always
+// vulnerability/alpha 1 — only stamped onto the object when true, so the
+// default fire's shape is unchanged.
+export function makeCampfire(x, y, { eternal = false } = {}) {
+  const fire = { type: 'campfire', x, y, px: x * TILE_SIZE + TILE_SIZE / 2, py: y * TILE_SIZE + TILE_SIZE / 2, t: 0 }
+  if (eternal) fire.eternal = true
+  return fire
 }
 
-// Age every fire; those past their duration are dropped and returned.
+// Age every fire; those past their duration are dropped and returned. Eternal
+// fires still age (so campfireAlpha's t-based math stays sane) but never expire.
 export function tickCampfires(entities, delta) {
   const expired = []
   const kept = entities.filter(e => {
     if (e.type !== 'campfire') return true
     e.t += delta
-    if (e.t < CAMPFIRE_DURATION) return true
+    if (e.eternal || e.t < CAMPFIRE_DURATION) return true
     expired.push(e)
     return false
   })
@@ -52,7 +58,9 @@ export function tickCampfires(entities, delta) {
 }
 
 // 1 while burning well; eases down to 0.3 over the final CAMPFIRE_FADE seconds.
+// Eternal fires never dim.
 export function campfireAlpha(fire) {
+  if (fire.eternal) return 1
   const left = CAMPFIRE_DURATION - fire.t
   if (left >= CAMPFIRE_FADE) return 1
   return 0.3 + 0.7 * Math.max(0, left) / CAMPFIRE_FADE

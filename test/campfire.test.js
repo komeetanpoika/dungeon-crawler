@@ -38,6 +38,10 @@ describe('building', () => {
   it('makeCampfire is a fresh fire centred on its tile', () => {
     assert.deepEqual(makeCampfire(2, 3), { type: 'campfire', x: 2, y: 3, px: 80, py: 112, t: 0 })
   })
+  it('makeCampfire only stamps eternal onto the shape when true', () => {
+    assert.deepEqual(makeCampfire(2, 3, { eternal: true }), { type: 'campfire', x: 2, y: 3, px: 80, py: 112, t: 0, eternal: true })
+    assert.deepEqual(makeCampfire(2, 3, { eternal: false }), { type: 'campfire', x: 2, y: 3, px: 80, py: 112, t: 0 })
+  })
 })
 
 describe('burning out', () => {
@@ -58,6 +62,17 @@ describe('burning out', () => {
     const late = campfireAlpha({ t: 55 })
     assert.ok(late < 1 && late > 0.3, `alpha ${late}`)
     assert.ok(campfireAlpha({ t: 60 }) <= 0.3 + 1e-9)
+  })
+  it('an eternal fire never expires, even long past the usual duration', () => {
+    const guard = { type: 'guard', hp: 3 }
+    const r = tickCampfires([guard, makeCampfire(1, 1, { eternal: true })], 61)
+    assert.equal(r.entities.length, 2)
+    assert.deepEqual(r.expired, [])
+    assert.equal(r.entities.find(e => e.type === 'campfire').t, 61)
+  })
+  it('an eternal fire is always alpha 1, regardless of age', () => {
+    assert.equal(campfireAlpha({ t: 0, eternal: true }), 1)
+    assert.equal(campfireAlpha({ t: 61, eternal: true }), 1)
   })
 })
 
