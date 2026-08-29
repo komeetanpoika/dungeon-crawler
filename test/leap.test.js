@@ -4,6 +4,7 @@ import { EPISODES } from '../renderer/data/leaps.js'
 import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn } from '../renderer/systems/leap.js'
 import { normalizeAdventureSave, markCleared } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
+import { npcSpawnsForMap } from '../renderer/systems/openmap.js'
 
 const fold = Object.values(OPEN_MAPS).find(m => m.name === 'highland-2-fold')
 const lake = Object.values(OPEN_MAPS).find(m => m.name === 'lake-1-ferry')
@@ -68,6 +69,16 @@ describe('rules', () => {
     const v = fold.npcs.village.length
     save.npcs[fold.name] = { dead: [v, v + 1, v + 2].map(i => `npc:${fold.name}:${i}`), hostile: false }
     assert.equal(isMapUnlocked(save, fold), false)
+  })
+})
+
+describe('missing person spawn id', () => {
+  it("missingSpawn's id is never among the declared roster's ids, so recordNpcState can never tombstone the returned local", () => {
+    for (const m of Object.values(OPEN_MAPS)) {
+      if (!episodeFor(m)) continue
+      const declaredIds = npcSpawnsForMap(m).map(s => s.id)
+      assert.ok(!declaredIds.includes(missingSpawn(m).id), m.name)
+    }
   })
 })
 

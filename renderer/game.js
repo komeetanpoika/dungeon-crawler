@@ -382,12 +382,18 @@ function buildEntities(spawns, map, depth) {
 const npcSpawns = spawns => spawns.filter(s => s.kind === 'npc').map(s => s.id)
 
 // Groundhog Day: every NPC on the current surface returns, alive and calm.
+// A resolved leap map's missing person is not part of the declared roster
+// (their spawn id must never be tombstoned by recordNpcState), so they are
+// re-added separately and left out of npcSpawnIds.
 function respawnNpcs() {
   const data = OPEN_MAPS[state.level]
   if (!data) return
   const spawns = npcSpawnsForMap(data)
   state.entities = state.entities.filter(e => e.type !== 'npc')
   state.entities.push(...buildEntities(spawns, state.map, state.level))
+  if (episodeFor(data) && isResolved(savedAdventure, data)) {
+    state.entities.push(...buildEntities([missingSpawn(data)], state.map, state.level))
+  }
   state.npcSpawnIds = npcSpawns(spawns)
   state.npcWrath = false
 }
