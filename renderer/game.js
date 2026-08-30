@@ -22,7 +22,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
-import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
+import { makeFeedback, tickFeedback, addFloat, speak, think, speakFrom, announce, queueToast, drainToasts } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
@@ -32,9 +32,15 @@ import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } f
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
-import { felledCells, findTreeHit, chopTree } from './systems/lumber.js'
+import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, echoAdjacent, echoLine, ruleCtx, makeEpCtx } from './systems/leap.js'
+import { EPISODE_MODULES } from './systems/episodes/index.js'
+import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
-import { isEnemy, isHittable } from './systems/factions.js'
+import { isEnemy, isHittable, isDead } from './systems/factions.js'
+import { isCreature, strikeCreature, updateCreature, makeCreature } from './systems/creatures.js'
+import './systems/nakki.js'
+import './systems/maahinen.js'
+import './systems/sammunut.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
@@ -353,7 +359,7 @@ function buildEntities(spawns, map, depth) {
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
       case 'exit_door': return [makeExitDoor(s.x, s.y)]
-      case 'chest':   return [makeChest(s.x, s.y, rollChestLoot(depth))]
+      case 'chest':   return [makeChest(s.x, s.y, s.contents ?? rollChestLoot(depth))]
       case 'cyclops': return [hpOverride({ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'wizard':  return [hpOverride({ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'crab':    return [hpOverride({ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
@@ -370,7 +376,9 @@ function buildEntities(spawns, map, depth) {
         isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
       case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, talent: s.talent, rite: s.rite }]
       case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
+      case 'echo':    return [{ type: 'echo', id: `echo:${s.spot}`, x: s.x, y: s.y, spot: s.spot, px: cx, py: cy }]
       case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
+      case 'creature': { const c = makeCreature(s.creature, s.x, s.y); return c ? [{ ...c, px: cx, py: cy }] : [] }
       default:               return []
     }
   })
@@ -381,14 +389,73 @@ function buildEntities(spawns, map, depth) {
 const npcSpawns = spawns => spawns.filter(s => s.kind === 'npc').map(s => s.id)
 
 // Groundhog Day: every NPC on the current surface returns, alive and calm.
+// A resolved leap map's missing person is not part of the declared roster
+// (their spawn id must never be tombstoned by recordNpcState), so they are
+// re-added separately and left out of npcSpawnIds.
 function respawnNpcs() {
   const data = OPEN_MAPS[state.level]
   if (!data) return
   const spawns = npcSpawnsForMap(data)
   state.entities = state.entities.filter(e => e.type !== 'npc')
   state.entities.push(...buildEntities(spawns, state.map, state.level))
+  if (episodeFor(data) && isResolved(savedAdventure, data)) {
+    state.entities.push(...buildEntities([missingSpawn(data)], state.map, state.level))
+  }
   state.npcSpawnIds = npcSpawns(spawns)
   state.npcWrath = false
+}
+
+// Leap maps: install the persona while the episode is open, or bring the
+// missing person home if it is already resolved.
+function arriveOnMap() {
+  const mapData = OPEN_MAPS[state.level]
+  const ep = episodeFor(mapData)
+  state.episode = ep
+  state.villagerLines = null
+  state.episodeResolved = false
+  state.epCtx = null
+  state.echoHold = null
+  if (!ep) return
+  state.epCtx = makeEpCtx({
+    getState: () => state, save: savedAdventure, mapData,
+    persist: persistAdventure, resolve: resolveEpisode, refreshInventory: afterInventoryChange,
+    spawn: spawns => state.entities.push(...buildEntities(spawns, state.map, state.level)),
+  })
+  state.entities.push(...buildEntities(echoSpawns(mapData), state.map, state.level))
+  if (isResolved(savedAdventure, mapData)) {
+    state.episodeResolved = true
+    state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
+    state.villagerLines = ep.resolvedLines ?? null
+  } else {
+    state.villagerLines = ep.villagerLines
+  }
+  EPISODE_MODULES[mapData.name]?.onArrive?.(state.epCtx)
+}
+
+// Fires the moment an episode's rule is first satisfied: the missing person
+// walks back into the village and the runestone hums. Idempotent per visit
+// via `state.episodeResolved` — episode modules (Task 5) call this through ctx
+// right after setting the flag that might complete the rule.
+// The one place a creature death is declared. Episode modules read
+// `state.creatureKills[type]` rather than inferring death from the
+// creature's absence — a creature that never spawned, or one removed for
+// any other reason, must not resolve an episode for free. Per-visit: the
+// record is reset wherever a map's `state` is built.
+function recordCreatureKill(e, r) {
+  if (r.absorbed || !(r.entity.hp <= 0)) return false
+  state.creatureKills = { ...(state.creatureKills ?? {}), [e.type]: true }
+  return true
+}
+
+function resolveEpisode() {
+  const mapData = OPEN_MAPS[state.level]
+  if (!state.episode || state.episodeResolved || !isResolved(savedAdventure, mapData)) return
+  state.episodeResolved = true
+  state.villagerLines = state.episode.resolvedLines ?? null
+  state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
+  sfx(state, 'leap', { px: state.player.px, py: state.player.py })
+  announce(state, `${state.episode.persona} walks back into the village. The runestone hums.`)
+  persistAdventure()
 }
 
 function startNewRun(depth = 1, arenaCfg = null) {
@@ -476,10 +543,14 @@ function startNewRun(depth = 1, arenaCfg = null) {
     entranceHold: false,
     signs: signs ?? [],
     npcWrath: !!npcRecord?.hostile,
+    // Creature kills are per-visit: an episode's own flags carry the story
+    // forward, this only reports what died on this map since arriving.
+    creatureKills: {},
     // The ids actually built, plus the ones already tombstoned — a dead npc
     // must stay recorded as dead on the next persist rather than be forgotten.
     npcSpawnIds: npcRecord ? [...npcSpawns(entitySpawns), ...npcRecord.dead] : [],
   }
+  if (OPEN_MAPS[depth]) arriveOnMap()
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
   for (const id of savedAdventure.gates[OPEN_MAPS[depth]?.name] ?? []) {
@@ -676,7 +747,9 @@ function update(delta) {
       const talent = state.rite.talent
       state.rite = null
       state.player.trance = 0
-      if (grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+      // Talent-less anchors (e.g. the marsh's mushroom ring) still play the
+      // trance and ceremony but grant nothing — skip grantTalent entirely.
+      if (talent && grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
     }
     tickFeedback(state.feedback, delta)
     return
@@ -749,6 +822,23 @@ function update(delta) {
     }
   }
 
+  // Leap episodes: the Echo speaks when approached; the episode module runs.
+  // Gated off underground — epCtx/mapData describe the surface, not the cave.
+  if (state.epCtx && !state.cave) {
+    const echo = echoAdjacent(state.entities, player)
+    if (echo && state.echoHold !== echo) {
+      const line = echoLine(state.episode, echo.spot, state.epCtx.flags, ruleCtx(savedAdventure, state.epCtx.mapData))
+      if (line) { speakFrom(state, echo, line); sfx(state, 'echo', { px: echo.px, py: echo.py }) }
+    }
+    state.echoHold = echo
+    EPISODE_MODULES[state.epCtx.mapData.name]?.tick(state.epCtx, delta)
+    // The rule can also come true off a module's own flags (a wolf killed,
+    // an npc record change), so the surface frame re-checks it rather than
+    // relying on the modules' ctx.resolve() calls alone. Self-guarding on
+    // episodeResolved/isResolved, so this is a no-op once resolved.
+    resolveEpisode()
+  }
+
   // Campfire cooking — standing on a fire cooks every raw meat carried.
   // cookMeat empties the raw stack, so it can't fire twice for the same meat.
   const fire = state.entities.find(e => e.type === 'campfire' && e.x === player.x && e.y === player.y)
@@ -783,19 +873,24 @@ function update(delta) {
     else if (state.cave.offStairs) { exitCave(); return }
   }
 
-  // Waystone: standing on the exit arch travels onward once every dungeon
-  // here is finished; sealed, it explains itself on a cooldown.
+  // Waystone: standing on the exit arch travels onward once the map is
+  // unlocked — every dungeon here finished, or (leap maps) the episode
+  // resolved; sealed, it explains itself on a cooldown.
   if (!state.cave && state.mapExit && player.x === state.mapExit.x && player.y === state.mapExit.y) {
     const mapData = OPEN_MAPS[state.level]
-    if (mapData && isMapComplete(savedAdventure.progress, mapData)) {
+    if (mapData && isMapUnlocked(savedAdventure, mapData)) {
       const next = nextMapDepth(state.level)
       if (next) { travelToMap(next); return }
     } else if (mapData) {
       state.exitMsgCooldown = (state.exitMsgCooldown ?? 0) - delta
       if (state.exitMsgCooldown <= 0) {
-        const done = savedAdventure.progress.cleared[mapData.name] ?? []
-        const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
-        think(state, `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
+        if (mapData.leap) {
+          think(state, 'The runestone is dark. Something here is still wrong.')
+        } else {
+          const done = savedAdventure.progress.cleared[mapData.name] ?? []
+          const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
+          think(state, `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
+        }
         state.exitMsgCooldown = 2
       }
     }
@@ -820,7 +915,7 @@ function update(delta) {
   // Rite triggers: silent unless the rite's condition holds
   tickTrance(player, delta)
   const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
-  if (trigger && !hasTalent(player, trigger.talent) && riteConditionMet(trigger.rite, state)) {
+  if (trigger && (!trigger.talent || !hasTalent(player, trigger.talent)) && riteConditionMet(trigger.rite, state)) {
     state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent, cx: player.px, cy: player.py }
     sfx(state, 'rite', { px: player.px, py: player.py })
   }
@@ -945,6 +1040,13 @@ function update(delta) {
         }
         if (!hitAt(e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
+        if (isCreature(e)) {
+          const r = strikeCreature(e, state, dmg)
+          const cue = recordCreatureKill(e, r) ? 'enemy-death' : r.cue
+          if (cue) sfx(state, cue, { px: e.px, py: e.py })
+          if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
+          return r.entity
+        }
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
         npcStruck(hitEnemy)
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
@@ -953,7 +1055,7 @@ function update(delta) {
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
       })
-      .filter(e => !isHittable(e) || e.hp > 0)
+      .filter(e => !isDead(e))
     // Maunonmiekka magic: a crimson shockwave bursts from every struck enemy,
     // splashing damage + knockback onto its neighbours.
     if (struck.length) {
@@ -971,24 +1073,28 @@ function update(delta) {
       if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
-    // Chopping: a hatchet/axe swing also lands on the nearest tree in the
-    // wedge. Damage is silent bar-less chopHp on the cell; the fall is what
-    // you hear and see, and the lumber arcs onto the stump for a walk-onto
+    // Harvesting: a hatchet/axe swing lands on the nearest tree in the
+    // wedge, a pick's mine also lands on the nearest rock. Damage is silent
+    // bar-less chopHp on the cell; the fall/clear is what you hear and see,
+    // and the lumber (trees only) arcs onto the stump for a walk-onto
     // pickup.
-    const chop = player.weapon?.chop
-    if (chop) {
-      const tree = findTreeHit(state.map, player, hitAt, arc.reach * mods.reachMul)
-      if (tree) {
-        const res = chopTree(state.map, tree.x, tree.y, chop)
-        state.hitEffects.push({ x: tree.x, y: tree.y })
-        const tpx = tree.x * TILE_SIZE + TILE_SIZE / 2, tpy = tree.y * TILE_SIZE + TILE_SIZE / 2
-        sfx(state, res.felled ? 'tree-fall' : 'chop', { px: tpx, py: tpy })
+    const tool = { chop: player.weapon?.chop, mine: player.weapon?.mine }
+    if (tool.chop || tool.mine) {
+      const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, tool)
+      if (spot) {
+        const res = harvest(state.map, spot.x, spot.y, tool)
+        state.hitEffects.push({ x: spot.x, y: spot.y })
+        const spx = spot.x * TILE_SIZE + TILE_SIZE / 2, spy = spot.y * TILE_SIZE + TILE_SIZE / 2
+        const cue = res.kind === 'rock' ? 'wall-slam' : res.felled ? 'tree-fall' : 'chop'
+        sfx(state, cue, { px: spx, py: spy })
         if (res.felled) {
-          state.entities.push({
-            type: 'floating_item', contents: { type: 'lumber', count: res.yield }, x: tree.x, y: tree.y,
-            startPx: tpx, startPy: tpy - TILE_SIZE, targetPx: tpx, targetPy: tpy,
-            px: tpx, py: tpy - TILE_SIZE, progress: 0, duration: 0.35,
-          })
+          if (res.yield > 0) {
+            state.entities.push({
+              type: 'floating_item', contents: { type: 'lumber', count: res.yield }, x: spot.x, y: spot.y,
+              startPx: spx, startPy: spy - TILE_SIZE, targetPx: spx, targetPy: spy,
+              px: spx, py: spy - TILE_SIZE, progress: 0, duration: 0.35,
+            })
+          }
           if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
         }
       }
@@ -1112,6 +1218,13 @@ function update(delta) {
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
+          if (isCreature(e)) {
+            const r = strikeCreature(e, state, p.damage)
+            const cue = recordCreatureKill(e, r) ? 'enemy-death' : r.cue
+            if (cue) sfx(state, cue, { px: e.px, py: e.py })
+            if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
+            return r.entity
+          }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
           const struck = { ...e, hp: e.hp - p.damage, inCombat: true }
           npcStruck(struck)
@@ -1120,7 +1233,7 @@ function update(delta) {
         }
         return e
       })
-      state.entities = state.entities.filter(e => !isHittable(e) || e.hp > 0)
+      state.entities = state.entities.filter(e => !isDead(e))
       if (hit && p.explodes) detonateFireball(p.px, p.py)
     } else {
       if (Math.hypot(player.px - p.px, player.py - p.py) < 10) {
@@ -1147,6 +1260,7 @@ function update(delta) {
     // updateNpc drives peaceful AND hostile NPCs (the hostile ones run the
     // enemy brain inside their attack_hostile goal) — never both paths.
     if (e.type === 'npc') { updateNpc(e, state, delta); continue }
+    if (isCreature(e)) { updateCreature(e, state, delta); continue }
     if (!isEnemy(e)) continue
 
     if (e.stunTimer > 0) { e.stunTimer -= delta; continue }
@@ -1367,7 +1481,7 @@ function update(delta) {
   // a one-shot wall-collision hit, applied only to enemies.
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
-    if (slam && isHittable(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
+    if (slam && isHittable(e) && !isCreature(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
       e.hp -= slam.damage
       e.inCombat = true
       npcStruck(e)
@@ -1375,7 +1489,7 @@ function update(delta) {
       sfx(state, e.hp <= 0 ? deathCue(e) : 'wall-slam', { px: e.px, py: e.py })
     }
   }
-  state.entities = state.entities.filter(e => !isHittable(e) || e.hp > 0)
+  state.entities = state.entities.filter(e => !isDead(e))
   stepKnockback(player, delta, (px, py) => canMoveTo(map, px, py, PLAYER_HALF))
 
   // Flush NPC deaths and wrath. It has to sit after the cull above, because
@@ -1474,11 +1588,13 @@ function travelToMap(depth) {
     entranceHold: false,
     signs: signs ?? [],
     npcWrath: npcRecord.hostile,
+    creatureKills: {},
     npcSpawnIds: [...npcSpawns(entitySpawns), ...npcRecord.dead],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
   }
   savedAdventure.progress.mapDepth = depth
   persistAdventure()
+  arriveOnMap()
   announce(state, `You arrive in ${OPEN_MAPS[depth].title}.`)
 }
 

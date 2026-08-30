@@ -11,6 +11,10 @@ describe('iconSpriteFor', () => {
     assert.equal(iconSpriteFor({ kind: 'cooked_meat' }), 'item_meat_cooked')
     assert.equal(iconSpriteFor({ kind: 'lumber' }), 'item_lumber')
   })
+  it('maps quest items by kind', () => {
+    assert.equal(iconSpriteFor({ kind: 'clapper' }), 'item_clapper')
+    assert.equal(iconSpriteFor({ kind: 'fleece' }), 'item_fleece')
+  })
   it('maps weapons by payload weaponType', () => {
     assert.equal(iconSpriteFor({ kind: 'weapon', payload: { weaponType: 'axe' } }), 'weapon_axe')
     assert.equal(iconSpriteFor({ kind: 'ranged', payload: { weaponType: 'longbow' } }), 'weapon_longbow')

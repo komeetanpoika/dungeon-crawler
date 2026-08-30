@@ -11,6 +11,8 @@ import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha } from '../systems/campfire.js'
+import { isCreature, creatureAlpha } from '../systems/creatures.js'
+import { ERUPT_TIME } from '../systems/maahinen.js'
 
 const TILE_SIZE = 32
 
@@ -120,6 +122,20 @@ function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg, heldWeapon = null) {
   ctx.restore()
 }
 
+// Leap episode creatures — each is four editor-native custom_<name>_00|01|10|11
+// 16px tiles assembled 2x2 into the same 64px footprint the cyclops uses.
+export const CREATURE_SPRITES = { nakki: 'custom_nakki', maahinen: 'custom_maahinen', sammunut: 'custom_sammunut' }
+export function drawCreature(ctx, sprites, name, px, py, S, { alpha = 1 } = {}) {
+  const base = CREATURE_SPRITES[name]
+  const prev = ctx.globalAlpha
+  ctx.globalAlpha = prev * alpha
+  for (const [q, dx, dy] of [['00', 0, 0], ['01', 1, 0], ['10', 0, 1], ['11', 1, 1]]) {
+    const s = sprites[`${base}_${q}`]
+    if (s) ctx.drawImage(s, px - S / 2 + dx * S, py - S / 2 + dy * S, S, S)
+  }
+  ctx.globalAlpha = prev
+}
+
 // Whether to draw the player this frame. Flickers while invulnerable (i-frames).
 export function isFlickerVisible(invulnTimer, interval = 0.06) {
   if (!(invulnTimer > 0)) return true
@@ -190,6 +206,16 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     ctx.globalAlpha = prev
     return
   }
+  if (entity.type === 'echo') {
+    const s = sprites.player_magic
+    if (!s) return
+    const prevA = ctx.globalAlpha, prevF = ctx.filter
+    ctx.globalAlpha = prevA * 0.5
+    ctx.filter = 'hue-rotate(160deg) saturate(0.6)'
+    ctx.drawImage(s, px, py, S, S)
+    ctx.filter = prevF; ctx.globalAlpha = prevA
+    return
+  }
   if (entity.type === 'floating_item') {
     const c = entity.contents
     if (c.type === 'weapon' || c.type === 'ranged') {
@@ -198,7 +224,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
     } else {
-      const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber' }[c.type]
+      const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
+                    clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
       const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
       else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }
@@ -701,9 +728,10 @@ function drawDragonBreath(ctx, dragon, camX, camY) {
   }
 }
 
-function drawHealthBars(ctx, entities, map, camX, camY, S) {
+function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
   for (const e of entities) {
     if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
+    if (isCreature(e) && creatureAlpha(e, state) === 0) continue
     if (!map[e.y]?.[e.x]?.visible) continue
     const px = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
     const py = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
@@ -714,6 +742,26 @@ function drawHealthBars(ctx, entities, map, camX, camY, S) {
     ctx.fillStyle = color
     ctx.fillRect(px, py - 7, Math.round(ratio * S), 4)
   }
+}
+
+// Maahinen eruption telegraph: a brown dust ring expanding from 8 to 40 px
+// over ERUPT_TIME, reusing the cyclops slam-ring drawing style. The
+// entity's own countdown timer (running ERUPT_TIME -> 0) drives progress.
+const ERUPT_RING_MIN = 8
+const ERUPT_RING_MAX = 40
+
+function drawEruptRing(ctx, e, camX, camY) {
+  const cx = Math.round(e.px - camX)
+  const cy = Math.round(e.py - camY)
+  const progress = 1 - Math.max(0, Math.min(1, (e.timer ?? 0) / ERUPT_TIME))
+  const radius = ERUPT_RING_MIN + (ERUPT_RING_MAX - ERUPT_RING_MIN) * progress
+  ctx.save()
+  ctx.strokeStyle = `rgba(120,80,45,${Math.max(0, 1 - progress)})`
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
 }
 
 function drawCyclopsEffects(ctx, cyclops, camX, camY) {
@@ -916,7 +964,12 @@ export class Renderer {
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
-      if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
+      if (isCreature(e)) {
+        const alpha = creatureAlpha(e, state)
+        if (alpha > 0) drawCreature(ctx, sprites, e.type, epx + S / 2, epy + S / 2, S, { alpha })
+        if (e.state === 'erupting') drawEruptRing(ctx, e, camX, camY)
+      }
+      else if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
       else drawEntity(ctx, e, epx, epy, S, sprites)
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
@@ -951,7 +1004,7 @@ export class Renderer {
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     const cyclops = entities.find(e => e.type === 'cyclops')
     if (cyclops) drawCyclopsEffects(ctx, cyclops, camX, camY)
-    drawHealthBars(ctx, entities, map, camX, camY, S)
+    drawHealthBars(ctx, entities, map, camX, camY, S, state)
 
     // Draw projectiles. Arrows are elongated along their travel axis;
     // wand bolts and enemy shots stay 4x4 squares.

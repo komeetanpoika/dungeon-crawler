@@ -125,6 +125,14 @@ describe('hatchet art', () => {
 })
 
 describe('lumber and campfire placeholders', () => {
-  for (const key of ['item_lumber', 'item_meat_cooked', 'ow_stump', 'prop_campfire'])
+  for (const key of ['item_lumber', 'item_meat_cooked', 'ow_stump', 'prop_campfire', 'prop_hearth_cold', 'prop_hearth_lit'])
     it(`${key} is registered under its own file name`, () => assert.equal(SPRITES[key], key))
+})
+
+describe('leap creature sprites (editor-native 2x2 custom tiles)', () => {
+  for (const name of ['nakki', 'maahinen', 'sammunut'])
+    for (const q of ['00', '01', '10', '11']) {
+      const key = `custom_${name}_${q}`
+      it(`${key} is registered under its own file name`, () => assert.equal(SPRITES[key], key))
+    }
 })

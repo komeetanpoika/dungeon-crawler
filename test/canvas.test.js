@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, playerSpriteKey, Renderer } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, playerSpriteKey, Renderer, drawCreature } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
 
@@ -8,6 +8,7 @@ import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/sys
 function recordingCtx() {
   const calls = []
   let alpha = 1
+  let filter = 'none'
   return {
     calls,
     drawImage: (img) => calls.push(img),
@@ -16,6 +17,8 @@ function recordingCtx() {
     get fillStyle() { return '' },
     set globalAlpha(v) { alpha = v },
     get globalAlpha() { return alpha },
+    set filter(v) { filter = v },
+    get filter() { return filter },
   }
 }
 
@@ -383,7 +386,8 @@ describe('trees never show damage', () => {
 })
 
 describe('floating consumables use atlas sprites', () => {
-  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['mushroom', 'ow_mushroom']])
+  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['mushroom', 'ow_mushroom'],
+                            ['clapper', 'item_clapper'], ['fleece', 'item_fleece']])
     it(`${type} draws ${key}`, () => {
       const ctx = recordingCtx()
       ctx.fillText = () => {}
@@ -412,5 +416,53 @@ describe('drawEntity — campfire', () => {
     const ctx = recordingCtx()
     drawEntity(ctx, { type: 'campfire', t: 0 }, 0, 0, 32, {})
     assert.deepEqual(ctx.calls, [])
+  })
+})
+
+describe('drawEntity — echo', () => {
+  it('draws player_magic hue-shifted at half alpha, and restores both after', () => {
+    const ctx = recordingCtx()
+    let seenAlpha, seenFilter
+    const origDrawImage = ctx.drawImage
+    ctx.drawImage = (img) => { seenAlpha = ctx.globalAlpha; seenFilter = ctx.filter; origDrawImage(img) }
+    drawEntity(ctx, { type: 'echo' }, 0, 0, 32, { player_magic: 'WIZ' })
+    assert.deepEqual(ctx.calls, ['WIZ'])
+    assert.equal(seenAlpha, 0.5)
+    assert.equal(seenFilter, 'hue-rotate(160deg) saturate(0.6)')
+    assert.equal(ctx.globalAlpha, 1)
+    assert.equal(ctx.filter, 'none')
+  })
+
+  it('draws nothing when player_magic sprite is missing', () => {
+    const ctx = recordingCtx()
+    drawEntity(ctx, { type: 'echo' }, 0, 0, 32, {})
+    assert.deepEqual(ctx.calls, [])
+  })
+})
+
+describe('drawCreature', () => {
+  it('draws the four quadrants row-major into a 2x2 box anchored like the cyclops', () => {
+    const calls = []
+    const ctx = { drawImage: (img, x, y, w, h) => calls.push([img, x, y, w, h]), globalAlpha: 1 }
+    const spr = Object.fromEntries(['00', '01', '10', '11'].map(q => [`custom_nakki_${q}`, q]))
+    drawCreature(ctx, spr, 'nakki', 100, 100, 32)
+    assert.deepEqual(calls, [['00', 84, 84, 32, 32], ['01', 116, 84, 32, 32], ['10', 84, 116, 32, 32], ['11', 116, 116, 32, 32]])
+  })
+
+  it('multiplies alpha into globalAlpha for the draw and restores it after', () => {
+    const seen = []
+    const ctx = { drawImage: () => seen.push(ctx.globalAlpha), globalAlpha: 0.8 }
+    const spr = Object.fromEntries(['00', '01', '10', '11'].map(q => [`custom_maahinen_${q}`, q]))
+    drawCreature(ctx, spr, 'maahinen', 0, 0, 16, { alpha: 0.5 })
+    assert.deepEqual(seen, [0.4, 0.4, 0.4, 0.4])
+    assert.equal(ctx.globalAlpha, 0.8)
+  })
+
+  it('skips quadrants with no matching sprite', () => {
+    const calls = []
+    const ctx = { drawImage: (img) => calls.push(img), globalAlpha: 1 }
+    const spr = { custom_sammunut_00: '00', custom_sammunut_11: '11' }
+    drawCreature(ctx, spr, 'sammunut', 0, 0, 16)
+    assert.deepEqual(calls, ['00', '11'])
   })
 })

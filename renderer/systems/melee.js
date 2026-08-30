@@ -12,6 +12,7 @@ export const ATTACK_STYLES = {
   longsword:    { style: 'slash', duration: 0.22, cooldown: 0.50, knockback: 24 },
   axe:          { style: 'spin',  duration: 0.35, cooldown: 0.60, knockback: 34 },
   maunonmiekka: { style: 'arc',   duration: 0.20, cooldown: 0.40, knockback: 60 },
+  pick:         { style: 'arc',   duration: 0.22, cooldown: 0.45, knockback: 16 },
 }
 
 const DEFAULT_ATTACK = { style: 'arc', duration: 0.20, cooldown: 0.40, knockback: 18 }

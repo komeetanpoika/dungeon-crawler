@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildOpenMap, npcSpawnsForMap } from '../renderer/systems/openmap.js'
+import { buildOpenMap, npcSpawnsForMap, npcSpawnIndex } from '../renderer/systems/openmap.js'
 import { generateLevel } from '../renderer/systems/map.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from '../renderer/data/open-maps.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
@@ -91,6 +91,19 @@ describe('buildOpenMap', () => {
   })
 })
 
+describe('episode chest contents', () => {
+  const LAKE = Object.values(OPEN_MAPS).find(m => m.name === 'lake-1-ferry')
+
+  it("the islet cache chest spawn carries the episode's clapper; other caches carry none", () => {
+    const { entitySpawns } = buildOpenMap(LAKE)
+    const chests = entitySpawns.filter(s => s.kind === 'chest')
+    const islet = LAKE.pois.find(p => p.kind === 'chest' && p.label === 'islet cache')
+    const islands = chests.find(s => s.x === islet.x && s.y === islet.y)
+    assert.deepEqual(islands.contents, { type: 'clapper' })
+    for (const s of chests) if (s.x !== islet.x || s.y !== islet.y) assert.equal(s.contents, undefined)
+  })
+})
+
 describe('waystone exit', () => {
   it('marks the exit cell with the arch overlay and keeps it walkable', () => {
     const { map, mapExit } = buildOpenMap(DATA)
@@ -101,7 +114,7 @@ describe('waystone exit', () => {
   })
 
   it('the last map has no exit and no marker', () => {
-    const { mapExit } = buildOpenMap(OPEN_MAPS[15])
+    const { mapExit } = buildOpenMap(OPEN_MAPS[18])
     assert.equal(mapExit, null)
   })
 })
@@ -152,6 +165,19 @@ describe('rite spawns on open maps', () => {
     const data = { ...mkData(), name: 'desert-1-dunes', pois: [] }
     const spawns = buildOpenMap(data).entitySpawns
     assert.equal(spawns.some(s => s.kind === 'talent_trigger'), false)
+  })
+})
+
+// The marsh's mushroom ring anchors a talent-less rite: the trance and
+// ceremony still play, but there is nothing to learn (see game.js).
+describe('marsh-3-hermit talent-less rite', () => {
+  it('emits one talent_trigger at the mushroom ring with talent: null', () => {
+    const data = OPEN_MAPS[10]
+    const { entitySpawns } = buildOpenMap(data)
+    const triggers = entitySpawns.filter(s => s.kind === 'talent_trigger')
+    assert.equal(triggers.length, 1)
+    const ring = data.pois.find(p => p.label === 'mushroom ring')
+    assert.deepEqual(triggers[0], { kind: 'talent_trigger', x: ring.x, y: ring.y, talent: null, rite: 'mushroom_circle' })
   })
 })
 
@@ -240,7 +266,7 @@ function lcg(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 10139
 const cheb = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y))
 
 describe('npcSpawnsForMap', () => {
-  for (const depth of [7, 8, 9]) {
+  for (const depth of [7, 8, 11, 12]) {
     const data = OPEN_MAPS[depth]
     it(`${data.name}: spawns the declared population on walkable, distinct tiles`, () => {
       const spawns = npcSpawnsForMap(data, { rng: lcg(1) })
@@ -292,7 +318,7 @@ describe('npcSpawnsForMap', () => {
     for (const s of spawns.filter(s => s.species === 'boar' || s.species === 'sheep')) assert.equal(s.hostile, false)
   })
   it('a map without npcs yields nothing', () => {
-    assert.deepEqual(npcSpawnsForMap(OPEN_MAPS[10], { rng: lcg(6) }), [])
+    assert.deepEqual(npcSpawnsForMap(OPEN_MAPS[13], { rng: lcg(6) }), [])
   })
   it('a map with a declared village but no village/camp POI drops only the village group', () => {
     const data = { ...OPEN_MAPS[7], pois: OPEN_MAPS[7].pois.filter(p => p.kind !== 'village' && p.kind !== 'camp') }
@@ -306,6 +332,73 @@ describe('npcSpawnsForMap', () => {
     const { entitySpawns } = buildOpenMap(OPEN_MAPS[7], { npcs: record, rng: lcg(7) })
     const npcs = entitySpawns.filter(s => s.kind === 'npc')
     assert.equal(npcs.length, 15)
+  })
+})
+
+describe('npcSpawnIndex', () => {
+  it('lists the declared roster in id order: village, then wild, then each at-list in object order', () => {
+    const data = { name: 'm', npcs: { village: ['villager', 'elder'], wild: ['deer'], at: { a: ['wolf', 'wolf'], b: ['hermit'] } } }
+    assert.deepEqual(npcSpawnIndex(data), [
+      { species: 'villager', i: 0, group: 'village', label: null },
+      { species: 'elder', i: 1, group: 'village', label: null },
+      { species: 'deer', i: 2, group: 'wild', label: null },
+      { species: 'wolf', i: 3, group: 'at', label: 'a' },
+      { species: 'wolf', i: 4, group: 'at', label: 'a' },
+      { species: 'hermit', i: 5, group: 'at', label: 'b' },
+    ])
+  })
+
+  it('is empty for a map that declares no npcs, and matches the ids npcSpawnsForMap hands out', () => {
+    assert.deepEqual(npcSpawnIndex({ name: 'm' }), [])
+    for (const data of Object.values(OPEN_MAPS)) {
+      const ids = new Set(npcSpawnsForMap(data, { rng: lcg(11) }).map(s => s.id))
+      const roster = new Set(npcSpawnIndex(data).map(e => `npc:${data.name}:${e.i}`))
+      for (const id of ids) assert.ok(roster.has(id), `${id} not in the roster`)
+    }
+  })
+})
+
+describe('npcSpawnsForMap — npcs.at', () => {
+  it('highland-2-fold: homes all three wolves at the den, with ids after village+wild', () => {
+    const data = Object.values(OPEN_MAPS).find(m => m.name === 'highland-2-fold')
+    const den = data.pois.find(p => p.label === 'den')
+    const spawns = npcSpawnsForMap(data, { rng: lcg(2) })
+    const wolves = spawns.filter(s => s.species === 'wolf')
+    assert.equal(wolves.length, 3)
+    const nVillage = data.npcs.village.length, nWild = data.npcs.wild.length
+    assert.deepEqual(wolves.map(w => w.id),
+      [0, 1, 2].map(k => `npc:highland-2-fold:${nVillage + nWild + k}`))
+    for (const w of wolves) {
+      assert.ok(cheb(w, den) <= 4, `wolf at ${w.x},${w.y} too far from the den`)
+      assert.equal(data.walk[w.y][w.x], '1')
+      assert.equal(w.hostile, true)
+    }
+  })
+
+  it('marsh-3-hermit: homes the hermit beside the hermit hut POI, with an id after village+wild', () => {
+    const data = OPEN_MAPS[10]
+    const spawns = npcSpawnsForMap(data, { rng: lcg(1) })
+    const hut = data.pois.find(p => p.label === 'hermit hut')
+    const hermit = spawns.find(s => s.species === 'hermit')
+    assert.ok(hermit, 'hermit spawned')
+    assert.ok(cheb(hermit, hut) <= 3, `hermit at ${hermit.x},${hermit.y} too far from the hut`)
+    assert.equal(data.walk[hermit.y][hermit.x], '1')
+    const nVillage = data.npcs.village.length, nWild = data.npcs.wild.length
+    assert.equal(hermit.id, `npc:marsh-3-hermit:${nVillage + nWild}`)
+    assert.equal(spawns.length, nVillage + nWild + 1)
+  })
+
+  it('honours the dead record for an npcs.at spawn like any other', () => {
+    const data = OPEN_MAPS[10]
+    const nVillage = data.npcs.village.length, nWild = data.npcs.wild.length
+    const record = { dead: [`npc:marsh-3-hermit:${nVillage + nWild}`] }
+    const spawns = npcSpawnsForMap(data, { record, rng: lcg(1) })
+    assert.equal(spawns.some(s => s.species === 'hermit'), false)
+  })
+
+  it('a species listed under an undeclared POI label is dropped, not crashed on', () => {
+    const data = { ...mkData(), npcs: { at: { 'no such poi': ['villager'] } } }
+    assert.deepEqual(npcSpawnsForMap(data, { rng: lcg(1) }), [])
   })
 })
 
@@ -323,7 +416,7 @@ describe('starter weapon', () => {
     assert.ok(!entitySpawns.some(s => s !== c && s.x === c.x && s.y === c.y), 'tile shared')
   })
   it('other maps get no starter chest', () => {
-    for (const d of [8, 9, 10]) assert.equal(buildOpenMap(OPEN_MAPS[d]).entitySpawns.filter(s => s.kind === 'weapon').length, 0)
+    for (const d of [8, 11, 12]) assert.equal(buildOpenMap(OPEN_MAPS[d]).entitySpawns.filter(s => s.kind === 'weapon').length, 0)
   })
 })
 

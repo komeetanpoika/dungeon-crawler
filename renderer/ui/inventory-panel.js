@@ -13,6 +13,7 @@ const el = () => document.getElementById('inv-overlay')
 
 function primaryAction(item) {
   if (!item) return null
+  if (item.quest) return null   // clapper, fleece, ... — carry-only; Drop stays available
   if (item.kind === 'weapon' || item.kind === 'ranged') return { label: 'Equip', fn: 'onEquip' }
   if (item.kind === 'potion') return { label: 'Drink', fn: 'onUse' }
   if (item.kind === 'mushroom' || item.kind === 'meat' || item.kind === 'cooked_meat') return { label: 'Eat', fn: 'onUse' }

@@ -22,11 +22,12 @@ export const VILLAGER_DWELL_MAX = 6 // villagers linger longer
 const THREAT_RANGE = 240            // px inside which a hurt NPC bothers fleeing
 const GIVE_UP_TIME = 3              // s stuck against an unpathable target before giving up
 
-export function makeNpc({ species, id, x, y, hostile = false }) {
+export function makeNpc({ species, id, x, y, hostile = false, role = null }) {
   const def = NPC_SPECIES[species]
   if (!def) { console.warn(`npc: unknown species "${species}"`); return null }
   return {
     type: 'npc', species, id, faction: def.faction,
+    ...(role ? { role } : {}),
     x, y, px: x * S + S / 2, py: y * S + S / 2,
     hp: def.hp, maxHp: def.hp, hostile: !!(hostile || def.hostile),
     home: { x, y }, objective: null, facing: 'east', inCombat: false,
@@ -208,9 +209,12 @@ export function rollNpcDrop(e, rng = Math.random) {
 }
 
 // Villagers rotate faces by their spawn index so a village is not clones.
+// The returned local is the exception: they get one fixed face of their own,
+// so the person who walks back in is visibly not a neighbour.
 export function spriteKeyFor(e) {
   const def = NPC_SPECIES[e.species]
   if (!def) return null
+  if (e.role === 'missing') return 'npc_villager_3'
   if (e.species !== 'villager') return def.sprite
   const idx = Number(e.id?.split(':').at(-1)) || 0
   return ['npc_villager', 'npc_villager_2', 'npc_villager_3'][idx % 3]
@@ -233,11 +237,12 @@ export function interactNpc(state, e, rng = Math.random) {
   const def = NPC_SPECIES[e.species]
   if (!def || e.hostile) return null
   const { player } = state
-  if (def.lines) {
+  const lines = state.villagerLines?.[e.species] ?? def.lines
+  if (lines) {
     e.facing = player.px < e.px ? 'west' : 'east'
     e.ai.wanderPt = null
     e.ai.dwell = Math.max(e.ai.dwell ?? 0, 3)
-    const text = def.lines[Math.floor(rng() * def.lines.length)]
+    const text = lines[Math.floor(rng() * lines.length)]
     speakFrom(state, e, text)
     return { kind: 'speech', text }
   }

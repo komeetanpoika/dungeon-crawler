@@ -8,7 +8,7 @@ const GOAL_NAMES = new Set(['flee_hurt', 'attack_hostile', 'startle', 'go_to', '
 describe('NPC_SPECIES', () => {
   it('defines the villagers, livestock and wild animals', () => {
     assert.deepEqual(Object.keys(NPC_SPECIES).sort(),
-      ['bear', 'boar', 'chicken', 'deer', 'elder', 'goat', 'mouse', 'sheep', 'villager', 'wolf'])
+      ['bear', 'boar', 'chicken', 'deer', 'elder', 'goat', 'hermit', 'mouse', 'sheep', 'villager', 'wolf'])
   })
 
   it('every species has the fields the goal loop reads', () => {
@@ -25,6 +25,9 @@ describe('NPC_SPECIES', () => {
 
   it('villagers speak; peaceful animals startle and react; hostile animals carry a weapon', () => {
     for (const [name, s] of Object.entries(NPC_SPECIES)) {
+      // The hermit is the one walker deliberately kept to a single silent
+      // line ('…') until the episode resolves (data/leaps.js resolvedLines).
+      if (name === 'hermit') { assert.deepEqual(s.lines, ['…'], `${name} lines`); continue }
       if (s.walker) { assert.ok(s.lines.length >= 2, `${name} lines`); continue }
       if (s.hostile) {
         assert.ok(WEAPONS[s.weapon], `${name} weapon`)

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { TREES, STUMP, resolveTree, findTreeHit, chopTree, applyFelled, felledCells } from '../renderer/systems/lumber.js'
+import { TREES, STUMP, resolveTree, findTreeHit, chopTree, applyFelled, felledCells, HARVEST, findHarvestHit, harvest } from '../renderer/systems/lumber.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
@@ -177,5 +177,25 @@ describe('applyFelled robustness', () => {
     assert.doesNotThrow(() => applyFelled(m, [null, { x: 1 }, 3]))
     assert.equal(m[3][3].overlay, 'ow_tree_small')
     assert.deepEqual(felledCells(m), [])
+  })
+})
+
+describe('rocks', () => {
+  const rock = (m, x, y) => { m[y][x].tile = TILE.WALL; m[y][x].overlay = 'ow_rock_gray_1' }
+  it('a pick mines a rock in three blows; the cell clears to plain floor and is recorded', () => {
+    const m = grass(); rock(m, 3, 3)
+    assert.equal(HARVEST.ow_rock_gray_1.tool, 'mine')
+    assert.deepEqual(harvest(m, 3, 3, { mine: 1 }), { felled: false, yield: 0, kind: 'rock' })
+    assert.deepEqual(harvest(m, 3, 3, { mine: 2 }), { felled: true, yield: 0, kind: 'rock' })
+    assert.equal(m[3][3].tile, TILE.FLOOR); assert.equal(m[3][3].overlay, null)
+    assert.deepEqual(felledCells(m), ['3,3'])
+    const fresh = grass(); rock(fresh, 3, 3); applyFelled(fresh, ['3,3']); assert.equal(fresh[3][3].tile, TILE.FLOOR)
+  })
+  it('a hatchet cannot mine and a pick can also chop', () => {
+    const m = grass(); rock(m, 3, 3); tree(m, 4, 3, 'ow_tree_small')
+    assert.deepEqual(harvest(m, 3, 3, { chop: 1 }), { felled: false, yield: 0, kind: null })
+    assert.equal(findHarvestHit(m, player(2, 3), anyHit, 46, { chop: 1 }), null)
+    assert.deepEqual(findHarvestHit(m, player(2, 3), anyHit, 46, { mine: 1 }), { x: 3, y: 3 })
+    assert.deepEqual(harvest(m, 4, 3, { chop: 1, mine: 1 }), { felled: false, yield: 0, kind: 'tree' })
   })
 })

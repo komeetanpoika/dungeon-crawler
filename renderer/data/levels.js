@@ -165,10 +165,11 @@ export const LEVEL_CONFIG = [
   { depth: 5, mapW: 80, mapH: 50, staircaseWidth: 1, guardCount: 4, monsterDensity: 0.004, trapDensity: 0.05, puzzleDensity: 0.02, weaponDensity: 0.012, potionDensity: 0.012, landmark: 'GREAT_LAIR',     weapons: ['longsword', 'axe'] },
   // Depth 6 — cheat-only sandbox for the derived 'castle' ruleset (not part of the 1..5 run).
   { depth: 6, mapW: 180, mapH: 116, staircaseWidth: 1, guardCount: 2, monsterDensity: 0, trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: null, weapons: ['dagger'] },
-  // Depths 7-15 — the Adventure chain of static open maps (see open-maps.js).
-  // Dimensions come from the map data; densities are moot: buildOpenMap spawns
-  // only chests. Each depth here also enables the level<N> cheat.
-  ...Array.from({ length: 9 }, (_, i) => (
+  // Depths 7-18 — the Adventure chain of static open maps (7, 11-18
+  // forest/desert/sea; 8-10 the leap maps) (see open-maps.js). Dimensions
+  // come from the map data; densities are moot: buildOpenMap spawns only
+  // chests. Each depth here also enables the level<N> cheat.
+  ...Array.from({ length: 12 }, (_, i) => (
     { depth: 7 + i, mapW: 120, mapH: 80, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] }
   )),
 ]
