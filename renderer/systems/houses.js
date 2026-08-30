@@ -36,3 +36,27 @@ export function houseDoorsForMap(data, episode) {
   }
   return doors
 }
+
+// Interior generation: house doors transition into a BSP level at this fixed
+// depth (generateLevel's LEVEL_CONFIG lookup is bypassed via the `config`
+// option, so this depth never needs its own LEVEL_CONFIG entry).
+export const INTERIOR_DEPTH = 19
+const base = { depth: INTERIOR_DEPTH, mapW: 44, mapH: 28, staircaseWidth: 1, guardCount: 0, trapDensity: 0, puzzleDensity: 0, landmark: null, weapons: ['dagger'] }
+export const INTERIOR_CONFIG = {
+  safe: { ...base, monsterDensity: 0,     variantPool: [],                             weaponDensity: 0,     potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel'] },
+  hut:  { ...base, monsterDensity: 0.006, variantPool: ['weak'],                       weaponDensity: 0.004, potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel', 'prop_anvil'] },
+  ruin: { ...base, monsterDensity: 0.010, variantPool: ['medium', 'medium', 'strong'], weaponDensity: 0.008, potionDensity: 0.008, props: ['prop_gravestone', 'prop_barrel'] },
+}
+
+// Prefab pickup slots -> the story house's items, laid on the floor. A
+// `{ kind: 'pickup', slot }` spawn (from placeStructure spreading a prefab
+// cell's `interaction: { type: 'pickup', slot }`) becomes a walk-into
+// floating pickup carrying `pickups[slot]`; a slot with no matching content
+// (or no pickups passed at all) is dropped.
+export function attachPickups(entitySpawns, pickups = []) {
+  return entitySpawns.flatMap(s => {
+    if (s.kind !== 'pickup') return [s]
+    const contents = pickups[s.slot]
+    return contents ? [{ kind: 'floating_pickup', x: s.x, y: s.y, contents }] : []
+  })
+}
