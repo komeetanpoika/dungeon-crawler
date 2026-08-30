@@ -425,6 +425,7 @@ function arriveOnMap() {
   if (isResolved(savedAdventure, mapData)) {
     state.episodeResolved = true
     state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
+    state.villagerLines = ep.resolvedLines ?? null
   } else {
     state.villagerLines = ep.villagerLines
   }
@@ -439,7 +440,7 @@ function resolveEpisode() {
   const mapData = OPEN_MAPS[state.level]
   if (!state.episode || state.episodeResolved || !isResolved(savedAdventure, mapData)) return
   state.episodeResolved = true
-  state.villagerLines = null
+  state.villagerLines = state.episode.resolvedLines ?? null
   state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
   sfx(state, 'leap', { px: state.player.px, py: state.player.py })
   announce(state, `${state.episode.persona} walks back into the village. The runestone hums.`)

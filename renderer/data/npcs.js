@@ -77,4 +77,14 @@ export const NPC_SPECIES = {
     speed: 60, wanderSpeed: 25, roam: 6,
     priorities: ['flee_hurt', 'attack_hostile', 'go_to', 'wander'],
   },
+  // The marsh-3-hermit episode's silent hermit, homed at the hut (npcs.at)
+  // rather than a village anchor. Speaks only the one line "…" until the
+  // episode resolves (state.villagerLines.hermit, see data/leaps.js).
+  hermit: {
+    faction: 'village', sprite: 'npc_elder', walker: true,
+    hp: 2, onHit: 'flee', fleeHp: 1,
+    speed: 40, wanderSpeed: 15, roam: 1,
+    priorities: ['flee_hurt', 'go_to', 'wander'],
+    lines: ['…'],
+  },
 }

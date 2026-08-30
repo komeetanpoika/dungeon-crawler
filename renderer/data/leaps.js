@@ -61,7 +61,12 @@ export const EPISODES = {
     villagerLines: {
       villager: ['Lauri. So you came back after all.', 'Every hearth went cold the night you two quarrelled.', 'The old man sits up on the knoll and says nothing.'],
       elder:    ['Fires light and something puts them out again, Lauri. Something that walks.', 'Only his own wood ever burned on that hearth.'],
+      hermit:   ['…'],
     },
+    // Set as state.villagerLines once wraith_dead resolves the episode (see
+    // resolveEpisode/arriveOnMap in game.js, and hermit.js's own onArrive) —
+    // the silent hermit finally has something to say.
+    resolvedLines: { hermit: ['You came back.', 'The fire held. I was wrong, Lauri.'] },
     echoSpots: [
       { fromPoi: 'runestone', lines: [
         { when: f => f.wraith_dead, text: 'Hearths are lit. Ziggy says the old man is talking again. Oh boy.' },

@@ -335,6 +335,34 @@ describe('npcSpawnsForMap', () => {
   })
 })
 
+describe('npcSpawnsForMap — npcs.at', () => {
+  it('marsh-3-hermit: homes the hermit beside the hermit hut POI, with an id after village+wild', () => {
+    const data = OPEN_MAPS[10]
+    const spawns = npcSpawnsForMap(data, { rng: lcg(1) })
+    const hut = data.pois.find(p => p.label === 'hermit hut')
+    const hermit = spawns.find(s => s.species === 'hermit')
+    assert.ok(hermit, 'hermit spawned')
+    assert.ok(cheb(hermit, hut) <= 3, `hermit at ${hermit.x},${hermit.y} too far from the hut`)
+    assert.equal(data.walk[hermit.y][hermit.x], '1')
+    const nVillage = data.npcs.village.length, nWild = data.npcs.wild.length
+    assert.equal(hermit.id, `npc:marsh-3-hermit:${nVillage + nWild}`)
+    assert.equal(spawns.length, nVillage + nWild + 1)
+  })
+
+  it('honours the dead record for an npcs.at spawn like any other', () => {
+    const data = OPEN_MAPS[10]
+    const nVillage = data.npcs.village.length, nWild = data.npcs.wild.length
+    const record = { dead: [`npc:marsh-3-hermit:${nVillage + nWild}`] }
+    const spawns = npcSpawnsForMap(data, { record, rng: lcg(1) })
+    assert.equal(spawns.some(s => s.species === 'hermit'), false)
+  })
+
+  it('a species listed under an undeclared POI label is dropped, not crashed on', () => {
+    const data = { ...mkData(), npcs: { at: { 'no such poi': ['villager'] } } }
+    assert.deepEqual(npcSpawnsForMap(data, { rng: lcg(1) }), [])
+  })
+})
+
 describe('starter weapon', () => {
   it('Clearings declares a hatchet; the chest lands beside the village spawn', () => {
     const data = OPEN_MAPS[7]

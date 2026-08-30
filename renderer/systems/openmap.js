@@ -75,11 +75,28 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
     }
     return null
   }
+  // A landmark-homed species: nearest walkable free cell to that POI,
+  // expanding rings (mirrors leap.js's missingSpawn).
+  const pickAt = poi => () => {
+    for (let r = 1; r <= 4; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+      const x = poi.x + dx, y = poi.y + dy
+      if (free(x, y)) return { x, y }
+    }
+    return null
+  }
   const declaredVillage = data.npcs.village ?? []
+  const declaredWild = data.npcs.wild ?? []
   if (declaredVillage.length && !anchor)
     console.warn(`npc: ${data.name} declares ${declaredVillage.length} village npcs but has no village/camp POI`)
   if (anchor) declaredVillage.forEach((sp, i) => place(sp, i, pickVillage))
-  ;(data.npcs.wild ?? []).forEach((sp, i) => place(sp, declaredVillage.length + i, pickWild))
+  declaredWild.forEach((sp, i) => place(sp, declaredVillage.length + i, pickWild))
+  let atIndex = declaredVillage.length + declaredWild.length
+  for (const [label, species] of Object.entries(data.npcs.at ?? {})) {
+    const poi = data.pois.find(p => p.label === label)
+    if (!poi) console.warn(`npc: ${data.name} declares npcs.at["${label}"] but has no POI labeled "${label}"`)
+    for (const sp of species) { place(sp, atIndex, poi ? pickAt(poi) : () => null); atIndex++ }
+  }
   return spawns
 }
 
