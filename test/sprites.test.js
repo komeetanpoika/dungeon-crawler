@@ -31,6 +31,9 @@ describe('environment tiles', () => {
   it('shrine    = tile_0064', () => assert.equal(SPRITES.shrine,     'tile_0064'))
   it('column  = tile_0075 (crate — no pillar in tileset)', () => assert.equal(SPRITES.column, 'tile_0075'))
   it('column is NOT tile_0077 (that is a fence)', () => assert.notEqual(SPRITES.column, 'tile_0077'))
+  it('floor_wood = custom_floor_wood (painted plank tile — no plank in the tileset, was aliased to the crate tile_0075)', () => {
+    assert.equal(SPRITES.floor_wood, 'custom_floor_wood')
+  })
 })
 
 describe('door animation frames', () => {

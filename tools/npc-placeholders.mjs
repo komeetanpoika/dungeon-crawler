@@ -107,6 +107,17 @@ const FLEECE = paint([
   '................', '................', '................', '................',
 ], { w: [240, 235, 220, 255] })
 
+// House-interior floorboards (docs/superpowers/specs/2026-08-30-house-interiors-design.md
+// §2) — three horizontal boards (two brown shades) separated by darker seam
+// rows. Fully opaque (no '.' transparent cells) since floor tiles always
+// paint under everything else.
+const FLOOR_WOOD = paint([
+  'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa',
+  'aaaaaaaaaaaaaaaa', 'ssssssssssssssss', 'bbbbbbbbbbbbbbbb', 'bbbbbbbbbbbbbbbb',
+  'bbbbbbbbbbbbbbbb', 'bbbbbbbbbbbbbbbb', 'bbbbbbbbbbbbbbbb', 'ssssssssssssssss',
+  'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa',
+], { a: [150, 105, 60, 255], b: [130, 88, 48, 255], s: [70, 45, 25, 255] })
+
 // Leap episode creatures (docs/superpowers/specs/2026-08-29-leap-episodes-design.md
 // §4) — each is designed once on a 32x32 grid, then split into the four
 // custom_<name>_00|01|10|11 16x16 quadrants the editor's 2x2 format expects
@@ -168,7 +179,7 @@ const CREATURE_TILES = CREATURES.flatMap(([name, rows32, pal]) => [
 for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER], ['item_meat', MEAT],
   ['item_lumber', LUMBER], ['item_meat_cooked', MEAT_COOKED], ['ow_stump', STUMP], ['prop_campfire', CAMPFIRE],
   ['prop_hearth_cold', HEARTH_COLD], ['prop_hearth_lit', HEARTH_LIT],
-  ['item_clapper', CLAPPER], ['item_fleece', FLEECE], ...CREATURE_TILES]) {
+  ['item_clapper', CLAPPER], ['item_fleece', FLEECE], ['custom_floor_wood', FLOOR_WOOD], ...CREATURE_TILES]) {
   const p = path.join(OUT, `${name}.png`)
   if (process.argv.includes('--force') || !existsSync(p)) { writePng(p, 16, 16, px); console.log('wrote', p) }
   else console.log('kept', p)

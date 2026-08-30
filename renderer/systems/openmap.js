@@ -12,6 +12,7 @@ import { signsForMap } from './signs.js'
 import { NPC_SPECIES } from '../data/npcs.js'
 import { applyFelled } from './lumber.js'
 import { EPISODES } from '../data/leaps.js'
+import { houseDoorsForMap } from './houses.js'
 
 // Vision classes for blocking cells, keyed off the art that blocks: open
 // water never impedes sight (losClear); foliage is shallow cover — a ray
@@ -147,6 +148,13 @@ export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.rand
   // Trees the player has already felled here come back as stumps — done
   // before anything reads walkability or the LOS flags.
   applyFelled(map, felled)
+  // House doors: make the cell walkable, keeping the door art (already set
+  // as the overlay above) as a state-level trigger like caveEntrances.
+  const houseDoors = houseDoorsForMap(data, EPISODES[data.name] ?? null)
+  for (const d of houseDoors) {
+    map[d.y][d.x].tile = TILE.FLOOR
+    delete map[d.y][d.x].losSoft
+  }
   // A chest whose POI label matches an episode item's fromPoi carries that
   // item as its contents instead of rolling ordinary loot (buildEntities
   // 'chest' case: `s.contents ?? rollChestLoot(depth)`).
@@ -250,6 +258,6 @@ export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.rand
   return {
     map, entitySpawns, playerSpawn: { ...data.playerSpawn }, rooms: [],
     caveEntrances, gates, mapExit: data.exit ? { ...data.exit } : null,
-    signs,
+    signs, houseDoors,
   }
 }

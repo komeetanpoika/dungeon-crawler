@@ -28,7 +28,8 @@ import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
-import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
+import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
+import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
@@ -376,6 +377,10 @@ function buildEntities(spawns, map, depth) {
         isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
       case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, talent: s.talent, rite: s.rite }]
       case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
+      // A story house's prefab pickup slot (attachPickups, systems/houses.js)
+      // — lands already-arrived (progress: 1) rather than arcing in.
+      case 'floating_pickup': return [{ type: 'floating_item', contents: s.contents, x: s.x, y: s.y,
+        startPx: cx, startPy: cy, targetPx: cx, targetPy: cy, px: cx, py: cy, progress: 1, duration: 0.3 }]
       case 'echo':    return [{ type: 'echo', id: `echo:${s.spot}`, x: s.x, y: s.y, spot: s.spot, px: cx, py: cy }]
       case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
       case 'creature': { const c = makeCreature(s.creature, s.x, s.y); return c ? [{ ...c, px: cx, py: cy }] : [] }
@@ -464,7 +469,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   const openMap = OPEN_MAPS[depth]
   const npcRecord = openMap ? npcRecordFor(savedAdventure, openMap.name) : null
   const felledRecord = openMap ? savedAdventure.felled[openMap.name] ?? [] : null
-  const { map, entitySpawns, playerSpawn, caveEntrances, gates, mapExit, signs } =
+  const { map, entitySpawns, playerSpawn, caveEntrances, houseDoors, gates, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
       npcs: npcRecord, felled: felledRecord })
   const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
@@ -535,6 +540,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     lockedMsgCooldown: 0,
     fireMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
+    houseDoors: houseDoors ?? [],
     caveInstances: OPEN_MAPS[depth] ? { ...savedAdventure.caves[OPEN_MAPS[depth].name] } : {},
     gates: gates ?? {},
     gateMsgCooldown: 0,
@@ -866,7 +872,10 @@ function update(delta) {
       }
     } else { enterCave(arch); return }
   }
-  if (!arch) state.entranceHold = false
+  // House doors — same walk-onto/hold pattern as arches, no gate to check.
+  const door = !state.cave && state.houseDoors?.find(d => d.x === player.x && d.y === player.y)
+  if (door && !state.entranceHold) { enterHouse(door); return }
+  if (!arch && !door) state.entranceHold = false
   if (state.cave) {
     const onStairs = player.x === state.cave.stairs.x && player.y === state.cave.stairs.y
     if (!onStairs) state.cave.offStairs = true
@@ -1542,12 +1551,42 @@ function enterCave(entrance) {
   sfx(state, 'descend')
 }
 
+// House doors reuse the cave transition wholesale — a stored instance means
+// killed vermin stay dead and taken pickups stay taken; missing here means
+// generate a fresh interior (generic BSP layout, or the story house's
+// prefab + pickups when the door resolves to one).
+function enterHouse(door) {
+  const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
+  const inst = state.caveInstances?.[door.label]
+  if (inst) {
+    state = buildCaveState(state, entrance, {
+      map: inst.map, entities: inst.entities, playerSpawn: inst.stairs, theme: inst.theme,
+      dropSpawned: inst.dropSpawned, lastBossTile: inst.lastBossTile, hasKey: inst.hasKey,
+    })
+  } else {
+    const cfg = INTERIOR_CONFIG[door.tier]
+    const theme = DEPTH_THEMES.find(t => t.depths.includes(INTERIOR_DEPTH)) ?? DEPTH_THEMES[0]
+    const structs = storyStructures(structures, state.episode, door.story)
+    const { map, entitySpawns, playerSpawn } =
+      generateLevel(INTERIOR_DEPTH, cfg.mapW, cfg.mapH, { config: cfg, structures: structs })
+    const spawns = attachPickups(entitySpawns, state.episode?.houses?.[door.story]?.pickups ?? [])
+    state = buildCaveState(state, entrance, {
+      map, entities: buildEntities(spawns, map, INTERIOR_DEPTH), playerSpawn, theme,
+    })
+  }
+  announce(state, 'You step inside.')
+  sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
+}
+
 function exitCave() {
-  const mapJustCompleted = state.cave.mapJustCompleted
+  const isHouse = state.cave.label.startsWith('house:')
+  const mapJustCompleted = !isHouse && state.cave.mapJustCompleted
   const next = nextMapDepth(state.cave.surface.level)
   state = restoreSurface(state)
   persistAdventure()
-  if (mapJustCompleted) {
+  if (isHouse) {
+    announce(state, 'You step back out.')
+  } else if (mapJustCompleted) {
     announce(state, next ? 'The waystone stirs — the way onward is open.'
                          : 'The wilds are conquered — your adventure is complete!')
   } else announce(state, 'You emerge into the light.')
@@ -1557,14 +1596,20 @@ function exitCave() {
 // Waystone travel: a fresh open map, the player carried over to its spawn.
 function travelToMap(depth) {
   // The map being left still owns its npc record — write it before `state`
-  // becomes the new map and the departing kills/wrath are out of reach.
-  if (OPEN_MAPS[state.level]) { npcDirty = false; persistAdventure() }
+  // becomes the new map and the departing kills/wrath are out of reach. Its
+  // cleared instances go too: nothing ages them once we are elsewhere, so
+  // they would pile up in the save one 44x28 interior per door opened.
+  if (OPEN_MAPS[state.level]) {
+    npcDirty = false
+    state.caveInstances = pruneClearedInstances(state.caveInstances)
+    persistAdventure()
+  }
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const mapName = OPEN_MAPS[depth].name
   const npcRecord = npcRecordFor(savedAdventure, mapName)
   const felledRecord = savedAdventure.felled[mapName] ?? []
-  const { map, entitySpawns, playerSpawn, caveEntrances, mapExit, signs } =
+  const { map, entitySpawns, playerSpawn, caveEntrances, houseDoors, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures,
       npcs: npcRecord, felled: felledRecord })
   decorateMap(map, rulesets[theme.ruleset])
@@ -1583,6 +1628,7 @@ function travelToMap(depth) {
     hasKey: false, dropSpawned: false, lastBossTile: null,
     lockedMsgCooldown: 0, fireMsgCooldown: 0, exitMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
+    houseDoors: houseDoors ?? [],
     caveInstances: { ...savedAdventure.caves[mapName] },
     mapExit: mapExit ?? null,
     entranceHold: false,

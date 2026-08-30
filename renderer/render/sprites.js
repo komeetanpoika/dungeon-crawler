@@ -1,7 +1,7 @@
 export const SPRITES = {
   // tiles
   floor:        'tile_0000',
-  floor_wood:   'tile_0075',
+  floor_wood:   'custom_floor_wood',  // painted plank tile (tools/npc-placeholders.mjs) — no plank tile in the tileset
   wall:         'tile_0040',
   door:         'tile_0021',
   stairs_dn:    'tile_0056',

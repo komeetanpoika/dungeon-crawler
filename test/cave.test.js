@@ -1,10 +1,12 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, CAVE_RESET_TIME } from '../renderer/systems/cave.js'
+import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances, CAVE_RESET_TIME } from '../renderer/systems/cave.js'
 import { buildOpenMap } from '../renderer/systems/openmap.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
+import { generateLevel } from '../renderer/systems/map.js'
+import { INTERIOR_DEPTH, INTERIOR_CONFIG } from '../renderer/systems/houses.js'
 
 const T = 32
 const dungeonMap = () => Array.from({ length: 6 }, () =>
@@ -219,5 +221,85 @@ describe('open map cave entrances', () => {
     const byLabel = l => caveEntrances.filter(e => e.label === l)
     assert.ok(byLabel('cave 1').every(e => e.caveDepth === OPEN_MAPS[7].caveDepths[0]))
     assert.ok(byLabel('cave 2').every(e => e.caveDepth === OPEN_MAPS[7].caveDepths[1]))
+  })
+})
+
+// House doors reuse the exact same cave transition machinery — buildCaveState/
+// restoreSurface/tickCaveInstances need no house-specific branch. This
+// exercises the round trip with a real lake-map door and a real generated
+// interior, standing in for what enterHouse/exitCave (game.js) will do.
+describe('house doors round-trip through the cave transition', () => {
+  const surfaceMap = buildOpenMap(OPEN_MAPS[8])
+  const door = surfaceMap.houseDoors[0]
+
+  it('has at least one door on the lake map', () => {
+    assert.ok(door, 'lake-1-ferry should have at least one house door')
+  })
+
+  const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
+  const surface = { ...surfaceState(), houseDoors: surfaceMap.houseDoors, caveInstances: {} }
+  const interior = generateLevel(INTERIOR_DEPTH, INTERIOR_CONFIG.safe.mapW, INTERIOR_CONFIG.safe.mapH,
+    { config: INTERIOR_CONFIG.safe, structures: {} })
+
+  it('buildCaveState labels the cave with the door label, at the interior depth, spawn as up-stairs', () => {
+    const state = buildCaveState(surface, entrance, {
+      map: interior.map, entities: [], playerSpawn: interior.playerSpawn, theme: {},
+    })
+    assert.equal(state.cave.label, door.label)
+    assert.equal(state.level, INTERIOR_DEPTH)
+    assert.equal(state.map[interior.playerSpawn.y][interior.playerSpawn.x].tile, TILE.STAIRS_UP)
+    assert.deepEqual([state.player.x, state.player.y], [interior.playerSpawn.x, interior.playerSpawn.y])
+  })
+
+  it('restoreSurface stores the instance under the door label, cleared (no boss), player back on the door cell, entranceHold set', () => {
+    const state = buildCaveState(surface, entrance, {
+      map: interior.map, entities: [], playerSpawn: interior.playerSpawn, theme: {},
+    })
+    const back = restoreSurface(state)
+    const inst = back.caveInstances[door.label]
+    assert.ok(inst)
+    assert.equal(inst.cleared, true)
+    assert.equal(inst.age, 0)
+    assert.deepEqual([back.player.x, back.player.y], [door.x, door.y])
+    assert.equal(back.entranceHold, true)
+  })
+
+  it('tickCaveInstances drops the cleared house instance after CAVE_RESET_TIME of surface time', () => {
+    const state = buildCaveState(surface, entrance, {
+      map: interior.map, entities: [], playerSpawn: interior.playerSpawn, theme: {},
+    })
+    const back = restoreSurface(state)
+    assert.equal(tickCaveInstances(back, CAVE_RESET_TIME - 1), false)
+    assert.ok(back.caveInstances[door.label])
+    assert.equal(tickCaveInstances(back, 2), true)
+    assert.equal(back.caveInstances[door.label], undefined)
+  })
+})
+
+// Leaving a map for good: a cleared instance (a beaten cave, or any house —
+// houses have no boss, so they store as cleared the moment you walk out)
+// would otherwise sit in the save forever, a 44x28 map per door visited.
+describe('pruneClearedInstances', () => {
+  const insts = () => ({
+    'house:lake-1-ferry:23,45': { cleared: true, age: 4, map: [[1]] },
+    'cave:lake-1-ferry:0': { cleared: true, age: 0, map: [[1]] },
+    'cave:lake-1-ferry:1': { cleared: false, age: 0, map: [[1]] },
+  })
+
+  it('drops every cleared instance and keeps the uncleared ones', () => {
+    assert.deepEqual(Object.keys(pruneClearedInstances(insts())), ['cave:lake-1-ferry:1'])
+  })
+
+  it('keeps the surviving instances by identity and leaves the input alone', () => {
+    const before = insts()
+    const after = pruneClearedInstances(before)
+    assert.equal(after['cave:lake-1-ferry:1'], before['cave:lake-1-ferry:1'])
+    assert.equal(Object.keys(before).length, 3, 'input untouched')
+  })
+
+  it('handles an empty or missing map of instances', () => {
+    assert.deepEqual(pruneClearedInstances({}), {})
+    assert.deepEqual(pruneClearedInstances(undefined), {})
+    assert.deepEqual(pruneClearedInstances(null), {})
   })
 })

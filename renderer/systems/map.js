@@ -1,4 +1,4 @@
-import { TILE, isWalkable, WEAPON_TYPES } from './entities.js'
+import { TILE, isWalkable, WEAPON_TYPES, weaponContents } from './entities.js'
 import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, OVERWORLD_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
 import { generateOverworld } from './overworld.js'
 import { buildOpenMap } from './openmap.js'
@@ -312,7 +312,7 @@ export function placeStructure(map, structure, ox, oy, roomId) {
     if (cell.interaction) {
       m.tile = TILE.FLOOR        // anything you interact with stands on floor
       m.roomId = roomId
-      spawns.push({ kind: cell.interaction.type, x: tx, y: ty })
+      spawns.push({ kind: cell.interaction.type, x: tx, y: ty, ...cell.interaction })
     }
   }
   return spawns
@@ -570,11 +570,15 @@ export function buildBossTestArena(width, height) {
   return buildArena({ size: { w: width, h: height } })
 }
 
-export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null, npcs = null, felled = null } = {}) {
+export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null, npcs = null, felled = null, config = null, pickups = null } = {}) {
   if (depth === 0) return buildArena({ size: { w: width, h: height }, ...(arena ?? {}) })
   if (depth === OVERWORLD_DEPTH) return generateOverworld(width, height, { structures })
   if (OPEN_MAPS[depth]) return buildOpenMap(OPEN_MAPS[depth], { npcs, felled })
-  const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
+  // `config` overrides the LEVEL_CONFIG lookup entirely (used by house
+  // interiors, which generate at a fixed depth with no LEVEL_CONFIG entry of
+  // their own). `pickups` is accepted but unused here — callers run
+  // houses.attachPickups on the returned entitySpawns instead.
+  const cfg = config ?? (LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1])
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const map = createMap(width, height)
@@ -696,8 +700,13 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       entitySpawns.push({ kind: 'exit_door', x: ec.x, y: ec.y })
     }
 
-    // Entrance passage going up from spawn room — returns player spawn position
-    const entranceSpawn = carveEntrancePassage(map, rooms)
+    // Entrance passage going up from spawn room — returns player spawn position.
+    // House interiors (generateLevel called with a `config` override) have no
+    // "level above" to connect to: the door back out is just the spawn room's
+    // centre (buildCaveState stamps it TILE.STAIRS_UP on the way out — see
+    // systems/cave.js), so the dungeon-descent passage is skipped entirely and
+    // every walkable cell stays a plain carved floor.
+    const entranceSpawn = config ? null : carveEntrancePassage(map, rooms)
 
     if (!isFullyConnected(map)) continue
 
@@ -725,7 +734,11 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     ))
 
     const guardCount = Math.min(cfg.guardCount ?? 2, farTiles.length)
-    const monsterCount = Math.floor(farTiles.length * (cfg.monsterDensity ?? 0))
+    // `guaranteed` variants (e.g. a ruin's mandatory strong spider) count
+    // toward monsterCount rather than adding to it, and claim the first
+    // slots below with their fixed variant instead of the density roll.
+    const guaranteed = cfg.guaranteed ?? []
+    const monsterCount = Math.max(Math.floor(farTiles.length * (cfg.monsterDensity ?? 0)), guaranteed.length)
     const trapCount = Math.floor(farTiles.length * cfg.trapDensity)
     const puzzleCount = Math.floor(farTiles.length * (cfg.puzzleDensity ?? 0))
     const weaponCount = Math.floor(farTiles.length * (cfg.weaponDensity ?? 0))
@@ -737,11 +750,15 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     }
     for (let i = 0; i < monsterCount && idx < farTiles.length; i++, idx++) {
       const r = Math.random()
-      const variant = depth <= 5
-        ? (r < 0.7 ? 'weak' : 'medium')
-        : depth <= 7
-          ? (r < 0.4 ? 'medium' : 'strong')
-          : (r < 0.5 ? 'strong' : 'boss')
+      const variant = i < guaranteed.length
+        ? guaranteed[i]
+        : cfg.variantPool?.length
+          ? cfg.variantPool[Math.floor(Math.random() * cfg.variantPool.length)]
+          : depth <= 5
+            ? (r < 0.7 ? 'weak' : 'medium')
+            : depth <= 7
+              ? (r < 0.4 ? 'medium' : 'strong')
+              : (r < 0.5 ? 'strong' : 'boss')
       entitySpawns.push({ kind: 'monster', variant, ...farTiles[idx] })
     }
     for (let i = 0; i < trapCount && idx < farTiles.length; i++, idx++) {
@@ -754,8 +771,24 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     // potion / melee / ranged, depth-tiered) instead of carrying fixed
     // contents. The two density knobs still control total chest supply;
     // cfg.weapons remains the boss-drop pool.
-    for (let i = 0; i < weaponCount + potionCount && idx < farTiles.length; i++, idx++) {
-      entitySpawns.push({ kind: 'chest', ...farTiles[idx] })
+    //
+    // House interiors (a `config` override) get NO chests: a chest rolls the
+    // depth-19 "deep" loot tier, which would hand out endgame gear in a
+    // villager's kitchen. Their loot lies on the floor instead — potions of 4
+    // and, in a ruin only, a plain weapon from cfg.weaponPool.
+    if (config) {
+      for (let i = 0; i < potionCount && idx < farTiles.length; i++, idx++) {
+        entitySpawns.push({ kind: 'floating_pickup', ...farTiles[idx], contents: { type: 'potion', amount: 4 } })
+      }
+      const weaponPool = cfg.weaponPool ?? []
+      for (let i = 0; i < weaponCount && idx < farTiles.length && weaponPool.length; i++, idx++) {
+        const wt = weaponPool[Math.floor(Math.random() * weaponPool.length)]
+        entitySpawns.push({ kind: 'floating_pickup', ...farTiles[idx], contents: { type: 'weapon', ...weaponContents(wt) } })
+      }
+    } else {
+      for (let i = 0; i < weaponCount + potionCount && idx < farTiles.length; i++, idx++) {
+        entitySpawns.push({ kind: 'chest', ...farTiles[idx] })
+      }
     }
 
     const wizardCount = cfg.wizardCount ?? 0
@@ -767,8 +800,10 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       entitySpawns.push({ kind: 'crab', ...farTiles[idx] })
     }
 
-    // Scatter props based on depth theme (skipped when a ruleset places overlays)
-    const roomProps = skipProps ? [] : (theme?.props?.room ?? [])
+    // Scatter props: a config's own prop pool wins (house interiors pick
+    // tier-specific dressing), else the depth theme's room props (skipped
+    // when a ruleset places overlays)
+    const roomProps = skipProps ? [] : (cfg.props ?? theme?.props?.room ?? [])
     if (roomProps.length > 0) {
       for (const room of rooms) {
         const count = Math.floor(Math.random() * 3)  // 0–2 props per room
@@ -785,8 +820,10 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       }
     }
 
-    // Place paired gargoyle+basin fountains on stone-floor levels only
-    if (theme?.floorTile !== 'sand') {
+    // Place paired gargoyle+basin fountains on stone-floor levels only —
+    // never in a house interior (a `config` override): a wall gargoyle in
+    // somebody's kitchen reads as dungeon dressing.
+    if (theme?.floorTile !== 'sand' && !config) {
       for (const room of rooms) {
         if (Math.random() > 0.6) continue  // 60% chance per room
 
@@ -816,6 +853,17 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
         occupiedKeys.add(`${pick.wx},${pick.wy}`)
         occupiedKeys.add(`${pick.fx},${pick.fy}`)
       }
+    }
+
+    // Wooden floors (house interiors): a final pass, not an earlier carve-time
+    // swap like sand — floorTiles above and every spawn-placement predicate in
+    // this function test `tile === TILE.FLOOR` strictly, so converting sooner
+    // would starve them. Movement/LOS/nav (isWalkable) already accept
+    // FLOOR_WOOD.
+    if (theme?.floorTile === 'floor_wood') {
+      for (let row = 0; row < height; row++)
+        for (let col = 0; col < width; col++)
+          if (map[row][col].tile === TILE.FLOOR) map[row][col].tile = TILE.FLOOR_WOOD
     }
 
     return { map, entitySpawns, playerSpawn, rooms }

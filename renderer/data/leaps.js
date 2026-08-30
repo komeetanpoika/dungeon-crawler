@@ -7,6 +7,11 @@ export const EPISODES = {
     persona: 'Toivo',
     missing: { species: 'villager' },
     items: [{ kind: 'clapper', fromPoi: 'islet cache' }],
+    houses: { "Toivo's hut": { room: 'toivo_kitchen', pickups: [
+      { type: 'meat', count: 3 },
+      { type: 'weapon', weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 },
+      { type: 'lumber', count: 3 },
+    ] } },
     villagerLines: {
       villager: ["Toivo! The lake gave you back?", 'The orchard rots over there and we eat seed grain.', 'Ring the bell like you used to — nobody dares the pier.'],
       elder:    ['You always rang it at dusk, Toivo, and the water lay flat after.', 'It was never the lake that took you. It was what lives in it.'],
@@ -36,6 +41,9 @@ export const EPISODES = {
     persona: 'Aino',
     missing: { species: 'villager' },
     items: [{ kind: 'fleece', fromPoi: 'fleece cache' }],
+    houses: { "Aino's house": { room: 'aino_larder', pickups: [
+      { type: 'meat', count: 2 },
+    ] } },
     villagerLines: {
       villager: ['Aino! Back from the city — the lambs are gone again.', 'We burn the forest tomorrow. The wolves have had their chance.', 'Your father would have shot every wolf on the ridge.'],
       elder:    ['The wolves never took lambs before the prospector came, Aino.', 'Bring me proof and I will call the torches off.'],
@@ -64,6 +72,10 @@ export const EPISODES = {
   'marsh-3-hermit': {
     persona: 'Lauri',
     missing: { species: 'villager' },
+    houses: { 'hermit hut': { room: 'hermit_woodpile', pickups: [
+      { type: 'weapon', weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 },
+      { type: 'lumber', count: 3 },
+    ] } },
     villagerLines: {
       villager: ['Lauri. So you came back after all.', 'Every hearth went cold the night you two quarrelled.', 'The old man sits up on the knoll and says nothing.'],
       elder:    ['Fires light and something puts them out again, Lauri. Something that walks.', 'Only his own wood ever burned on that hearth.'],

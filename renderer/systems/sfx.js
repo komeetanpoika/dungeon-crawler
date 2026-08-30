@@ -9,7 +9,7 @@ export const CUE_NAMES = [
   'player-hurt', 'player-death', 'enemy-death', 'boss-death',
   // world & items
   'pickup', 'key-pickup', 'heal', 'equip', 'drop',
-  'gate-open', 'door-locked', 'descend', 'emerge',
+  'gate-open', 'door-locked', 'descend', 'emerge', 'door-open',
   'stance-switch', 'talent-learned', 'rite',
   // UI (positionless)
   'ui-open', 'ui-close', 'ui-move',
