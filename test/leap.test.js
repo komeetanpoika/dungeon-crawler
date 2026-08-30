@@ -4,7 +4,7 @@ import { EPISODES } from '../renderer/data/leaps.js'
 import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn, echoSpawns, echoAdjacent, checkDeliveries, makeEpCtx } from '../renderer/systems/leap.js'
 import { normalizeAdventureSave, markCleared } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
-import { npcSpawnsForMap } from '../renderer/systems/openmap.js'
+import { npcSpawnsForMap, npcSpawnIndex } from '../renderer/systems/openmap.js'
 import { makeItem } from '../renderer/systems/inventory.js'
 
 const fold = Object.values(OPEN_MAPS).find(m => m.name === 'highland-2-fold')
@@ -56,19 +56,26 @@ describe('rules', () => {
     assert.equal(isMapUnlocked(save, lake), true)
     assert.equal(isResolved(save, lake), true)
   })
-  it('wolvesAlive counts declared wolves minus the dead record', () => {
+  // The fold's wolves are homed at the den (npcs.at), so their ids sit after
+  // village + wild — wolvesAlive has to read the same roster openmap.js
+  // assigns ids from, not just the wild list.
+  const wolfIds = m => npcSpawnIndex(m).filter(e => e.species === 'wolf').map(e => `npc:${m.name}:${e.i}`)
+
+  it('wolvesAlive counts declared wolves minus the dead record, wherever they are declared', () => {
     const save = normalizeAdventureSave(null)
     assert.equal(wolvesAlive(save, fold), 3)
-    const v = fold.npcs.village.length
-    save.npcs[fold.name] = { dead: [`npc:${fold.name}:${v}`, `npc:${fold.name}:${v + 1}`], hostile: false }
+    const ids = wolfIds(fold)
+    assert.equal(ids.length, 3)
+    const v = fold.npcs.village.length, w = (fold.npcs.wild ?? []).length
+    assert.deepEqual(ids, [v + w, v + w + 1, v + w + 2].map(i => `npc:${fold.name}:${i}`))
+    save.npcs[fold.name] = { dead: ids.slice(0, 2), hostile: false }
     assert.equal(wolvesAlive(save, fold), 1)
   })
   it('the fold needs the Maahinen dead and a wolf alive', () => {
     const save = normalizeAdventureSave(null)
     setFlag(save, fold.name, 'maahinen_dead')
     assert.equal(isMapUnlocked(save, fold), true)
-    const v = fold.npcs.village.length
-    save.npcs[fold.name] = { dead: [v, v + 1, v + 2].map(i => `npc:${fold.name}:${i}`), hostile: false }
+    save.npcs[fold.name] = { dead: wolfIds(fold), hostile: false }
     assert.equal(isMapUnlocked(save, fold), false)
   })
 })

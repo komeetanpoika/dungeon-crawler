@@ -4,6 +4,7 @@
 import { EPISODES } from '../data/leaps.js'
 import { isMapComplete } from './adventure.js'
 import { removeItem } from './inventory.js'
+import { npcSpawnIndex } from './openmap.js'
 
 export function episodeFor(mapData) { return (mapData?.leap && EPISODES[mapData.name]) || null }
 
@@ -19,12 +20,12 @@ export function poiCell(mapData, label) {
   return p ? { x: p.x, y: p.y } : null
 }
 
-// Declared wild wolves whose spawn id is not in the dead record. Ids index
-// the concatenated village+wild list (openmap.js npcSpawnsForMap).
+// Declared wolves whose spawn id is not in the dead record — wherever they
+// are declared. The fold homes its wolves at the den (npcs.at), so the ids
+// come from openmap.js's own roster rather than an offset recomputed here.
 export function wolvesAlive(save, mapData) {
-  const village = mapData.npcs?.village?.length ?? 0
   const dead = new Set(save.npcs?.[mapData.name]?.dead ?? [])
-  return (mapData.npcs?.wild ?? []).filter((sp, i) => sp === 'wolf' && !dead.has(`npc:${mapData.name}:${village + i}`)).length
+  return npcSpawnIndex(mapData).filter(e => e.species === 'wolf' && !dead.has(`npc:${mapData.name}:${e.i}`)).length
 }
 
 export const ruleCtx = (save, mapData) => ({ wolvesAlive: wolvesAlive(save, mapData) })

@@ -9,7 +9,7 @@ import { makeItem } from '../renderer/systems/inventory.js'
 import { makeCreature } from '../renderer/systems/creatures.js'
 import { makeNpc } from '../renderer/systems/npc.js'
 import { harvest } from '../renderer/systems/lumber.js'
-import { buildOpenMap } from '../renderer/systems/openmap.js'
+import { buildOpenMap, npcSpawnIndex } from '../renderer/systems/openmap.js'
 import { updateMaahinen } from '../renderer/systems/maahinen.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import '../renderer/systems/maahinen.js' // registers CREATURE_MAKE.maahinen etc.
@@ -431,8 +431,11 @@ describe('isMapUnlocked — real fold map', () => {
     const realSave = normalizeAdventureSave(null)
     setFlag(realSave, fold.name, 'maahinen_dead')
     assert.equal(isMapUnlocked(realSave, fold), true)
-    const v = fold.npcs.village.length
-    realSave.npcs[fold.name] = { dead: fold.npcs.wild.map((_, i) => `npc:${fold.name}:${v + i}`), hostile: false }
+    // The wolves are homed at the den, so their ids come off openmap's roster.
+    realSave.npcs[fold.name] = {
+      dead: npcSpawnIndex(fold).filter(e => e.species === 'wolf').map(e => `npc:${fold.name}:${e.i}`),
+      hostile: false,
+    }
     assert.equal(isMapUnlocked(realSave, fold), false)
   })
 })

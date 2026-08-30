@@ -90,8 +90,9 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
     }
 
     if (name === 'highland-2-fold') {
-      it('declares three wolves and seals the burrow with rocks', () => {
-        assert.equal(data.npcs.wild.filter(s => s === 'wolf').length, 3)
+      it('homes three wolves at the den and seals the burrow with rocks', () => {
+        assert.deepEqual(data.npcs.at.den, ['wolf', 'wolf', 'wolf'])
+        assert.equal((data.npcs.wild ?? []).filter(s => s === 'wolf').length, 0, 'no loose wolves')
         const burrow = data.pois.find(p => p.label === 'burrow')
         const rocks = [[0, 0], [-1, 0], [1, 0]].filter(([dx, dy]) => (data.palette[data.prop[burrow.y + dy][burrow.x + dx]] ?? '').startsWith('ow_rock_'))
         assert.equal(rocks.length, 3)
@@ -128,6 +129,13 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
     }
 
     if (name === 'marsh-3-hermit') {
+      it('the hermit hut is a landmark, so only the real village anchors the village npcs', () => {
+        const huts = data.pois.filter(p => p.label === 'hermit hut')
+        assert.equal(huts.length, 1)
+        assert.equal(huts[0].kind, 'landmark')
+        assert.equal(data.pois.filter(p => p.kind === 'village' || p.kind === 'camp').length, 1)
+      })
+
       it('the three village hearths carry the cold hearth prop', () => {
         for (const n of [1, 2, 3]) {
           const p = data.pois.find(q => q.label === `hearth ${n}`)

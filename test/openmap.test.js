@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildOpenMap, npcSpawnsForMap } from '../renderer/systems/openmap.js'
+import { buildOpenMap, npcSpawnsForMap, npcSpawnIndex } from '../renderer/systems/openmap.js'
 import { generateLevel } from '../renderer/systems/map.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from '../renderer/data/open-maps.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
@@ -335,7 +335,46 @@ describe('npcSpawnsForMap', () => {
   })
 })
 
+describe('npcSpawnIndex', () => {
+  it('lists the declared roster in id order: village, then wild, then each at-list in object order', () => {
+    const data = { name: 'm', npcs: { village: ['villager', 'elder'], wild: ['deer'], at: { a: ['wolf', 'wolf'], b: ['hermit'] } } }
+    assert.deepEqual(npcSpawnIndex(data), [
+      { species: 'villager', i: 0, group: 'village', label: null },
+      { species: 'elder', i: 1, group: 'village', label: null },
+      { species: 'deer', i: 2, group: 'wild', label: null },
+      { species: 'wolf', i: 3, group: 'at', label: 'a' },
+      { species: 'wolf', i: 4, group: 'at', label: 'a' },
+      { species: 'hermit', i: 5, group: 'at', label: 'b' },
+    ])
+  })
+
+  it('is empty for a map that declares no npcs, and matches the ids npcSpawnsForMap hands out', () => {
+    assert.deepEqual(npcSpawnIndex({ name: 'm' }), [])
+    for (const data of Object.values(OPEN_MAPS)) {
+      const ids = new Set(npcSpawnsForMap(data, { rng: lcg(11) }).map(s => s.id))
+      const roster = new Set(npcSpawnIndex(data).map(e => `npc:${data.name}:${e.i}`))
+      for (const id of ids) assert.ok(roster.has(id), `${id} not in the roster`)
+    }
+  })
+})
+
 describe('npcSpawnsForMap — npcs.at', () => {
+  it('highland-2-fold: homes all three wolves at the den, with ids after village+wild', () => {
+    const data = Object.values(OPEN_MAPS).find(m => m.name === 'highland-2-fold')
+    const den = data.pois.find(p => p.label === 'den')
+    const spawns = npcSpawnsForMap(data, { rng: lcg(2) })
+    const wolves = spawns.filter(s => s.species === 'wolf')
+    assert.equal(wolves.length, 3)
+    const nVillage = data.npcs.village.length, nWild = data.npcs.wild.length
+    assert.deepEqual(wolves.map(w => w.id),
+      [0, 1, 2].map(k => `npc:highland-2-fold:${nVillage + nWild + k}`))
+    for (const w of wolves) {
+      assert.ok(cheb(w, den) <= 4, `wolf at ${w.x},${w.y} too far from the den`)
+      assert.equal(data.walk[w.y][w.x], '1')
+      assert.equal(w.hostile, true)
+    }
+  })
+
   it('marsh-3-hermit: homes the hermit beside the hermit hut POI, with an id after village+wild', () => {
     const data = OPEN_MAPS[10]
     const spawns = npcSpawnsForMap(data, { rng: lcg(1) })

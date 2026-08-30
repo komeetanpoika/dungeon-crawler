@@ -26,10 +26,27 @@ export const WILD_MIN_FROM_CAVE = 4
 const SAMPLE_TRIES = 200
 const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by))
 
+// The map's declared NPC roster in id order: village first, then wild, then
+// each `npcs.at` list in object order. `i` is the spawn id's suffix, so this
+// is the single source of truth for id assignment — anything that has to
+// reason about a declared npc's id (leap.js's wolvesAlive, say) reads it
+// from here rather than re-deriving the offsets.
+export function npcSpawnIndex(data) {
+  const village = data.npcs?.village ?? []
+  const wild = data.npcs?.wild ?? []
+  const out = village.map((species, i) => ({ species, i, group: 'village', label: null }))
+  wild.forEach((species, k) => out.push({ species, i: village.length + k, group: 'wild', label: null }))
+  let i = village.length + wild.length
+  for (const [label, list] of Object.entries(data.npcs?.at ?? {}))
+    for (const species of list) out.push({ species, i: i++, group: 'at', label })
+  return out
+}
+
 // Homes for the map's declared NPC population. Village NPCs cluster on the
 // village/camp POI within their species' roam; wild ones keep clear of the
-// village and every cave mouth. Ids index the concatenated village+wild list,
-// so they are stable while the homes reroll on every spawn.
+// village and every cave mouth; `npcs.at` ones sit beside the POI they name.
+// Ids come from npcSpawnIndex, so they are stable while the homes reroll on
+// every spawn.
 export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {}) {
   if (!data.npcs) return []
   const walkable = (x, y) => x >= 1 && y >= 1 && x < data.w - 1 && y < data.h - 1 && data.walk[y][x] === '1'
@@ -86,16 +103,21 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
     return null
   }
   const declaredVillage = data.npcs.village ?? []
-  const declaredWild = data.npcs.wild ?? []
   if (declaredVillage.length && !anchor)
     console.warn(`npc: ${data.name} declares ${declaredVillage.length} village npcs but has no village/camp POI`)
-  if (anchor) declaredVillage.forEach((sp, i) => place(sp, i, pickVillage))
-  declaredWild.forEach((sp, i) => place(sp, declaredVillage.length + i, pickWild))
-  let atIndex = declaredVillage.length + declaredWild.length
-  for (const [label, species] of Object.entries(data.npcs.at ?? {})) {
-    const poi = data.pois.find(p => p.label === label)
+  const atPoi = new Map()
+  for (const label of Object.keys(data.npcs.at ?? {})) {
+    const poi = data.pois.find(p => p.label === label) ?? null
     if (!poi) console.warn(`npc: ${data.name} declares npcs.at["${label}"] but has no POI labeled "${label}"`)
-    for (const sp of species) { place(sp, atIndex, poi ? pickAt(poi) : () => null); atIndex++ }
+    atPoi.set(label, poi)
+  }
+  for (const { species, i, group, label } of npcSpawnIndex(data)) {
+    if (group === 'village') { if (anchor) place(species, i, pickVillage) }
+    else if (group === 'wild') place(species, i, pickWild)
+    else {
+      const poi = atPoi.get(label)
+      place(species, i, poi ? pickAt(poi) : () => null)
+    }
   }
   return spawns
 }

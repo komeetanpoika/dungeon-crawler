@@ -21,7 +21,10 @@ const EXPORTS = [
   { depth: 8,  file: 'lake-1-ferry.json',          title: "Toivo's Lake",    caveDepths: [2],    exitPoi: 'orchard stone', leap: true,
     npcs: { village: ['villager', 'villager', 'elder', 'chicken', 'chicken'], wild: ['deer', 'deer', 'mouse', 'boar'] } },
   { depth: 9,  file: 'highland-2-fold.json',       title: "Aino's Fold",     caveDepths: [2],    exitPoi: 'ridge stone', leap: true,
-    npcs: { village: ['villager', 'villager', 'elder', 'sheep', 'sheep', 'sheep', 'goat'], wild: ['wolf', 'wolf', 'wolf', 'deer', 'mouse'] } },
+    // The fold's wolves live at the den — the episode is about who is really
+    // taking the lambs, and wolves scattered across the map read as the answer.
+    npcs: { village: ['villager', 'villager', 'elder', 'sheep', 'sheep', 'sheep', 'goat'], wild: ['deer', 'mouse'],
+            at: { den: ['wolf', 'wolf', 'wolf'] } } },
   { depth: 10, file: 'marsh-3-hermit.json',      title: 'Coldhearth Marsh', caveDepths: [3], exitPoi: 'knoll stone', leap: true,
     npcs: { village: ['villager', 'villager', 'villager', 'elder', 'goat'], wild: ['deer', 'mouse', 'mouse', 'boar'],
             at: { 'hermit hut': ['hermit'] } } },

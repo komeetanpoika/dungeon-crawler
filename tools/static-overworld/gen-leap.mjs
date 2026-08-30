@@ -275,7 +275,9 @@ function marsh() {
   const hut = { x: 58, y: 18 }
   clearing(b, hut.x, hut.y, 7)
   stampHouse3(b, rng, hut.x, hut.y, 'brown')
-  b.poi('village', hut.x + 1, hut.y + 2, 'hermit hut')
+  // A landmark, not a village: npcSpawnsForMap anchors the village roster on
+  // the first village/camp POI, and the hermit's hut is not the village.
+  b.poi('landmark', hut.x + 1, hut.y + 2, 'hermit hut')
   b.clearProp(hut.x + 1, hut.y + 4); b.poi('landmark', hut.x + 1, hut.y + 4, 'hearth')
   for (let i = 0; i < 18; i++) {
     const a = i / 18 * Math.PI * 2
