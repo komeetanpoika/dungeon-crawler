@@ -734,7 +734,11 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     ))
 
     const guardCount = Math.min(cfg.guardCount ?? 2, farTiles.length)
-    const monsterCount = Math.floor(farTiles.length * (cfg.monsterDensity ?? 0))
+    // `guaranteed` variants (e.g. a ruin's mandatory strong spider) count
+    // toward monsterCount rather than adding to it, and claim the first
+    // slots below with their fixed variant instead of the density roll.
+    const guaranteed = cfg.guaranteed ?? []
+    const monsterCount = Math.max(Math.floor(farTiles.length * (cfg.monsterDensity ?? 0)), guaranteed.length)
     const trapCount = Math.floor(farTiles.length * cfg.trapDensity)
     const puzzleCount = Math.floor(farTiles.length * (cfg.puzzleDensity ?? 0))
     const weaponCount = Math.floor(farTiles.length * (cfg.weaponDensity ?? 0))
@@ -746,13 +750,15 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     }
     for (let i = 0; i < monsterCount && idx < farTiles.length; i++, idx++) {
       const r = Math.random()
-      const variant = cfg.variantPool?.length
-        ? cfg.variantPool[Math.floor(Math.random() * cfg.variantPool.length)]
-        : depth <= 5
-          ? (r < 0.7 ? 'weak' : 'medium')
-          : depth <= 7
-            ? (r < 0.4 ? 'medium' : 'strong')
-            : (r < 0.5 ? 'strong' : 'boss')
+      const variant = i < guaranteed.length
+        ? guaranteed[i]
+        : cfg.variantPool?.length
+          ? cfg.variantPool[Math.floor(Math.random() * cfg.variantPool.length)]
+          : depth <= 5
+            ? (r < 0.7 ? 'weak' : 'medium')
+            : depth <= 7
+              ? (r < 0.4 ? 'medium' : 'strong')
+              : (r < 0.5 ? 'strong' : 'boss')
       entitySpawns.push({ kind: 'monster', variant, ...farTiles[idx] })
     }
     for (let i = 0; i < trapCount && idx < farTiles.length; i++, idx++) {

@@ -42,10 +42,15 @@ export function houseDoorsForMap(data, episode) {
 // option, so this depth never needs its own LEVEL_CONFIG entry).
 export const INTERIOR_DEPTH = 19
 const base = { depth: INTERIOR_DEPTH, mapW: 44, mapH: 28, staircaseWidth: 1, guardCount: 0, trapDensity: 0, puzzleDensity: 0, landmark: null, weapons: ['dagger'] }
+// `guaranteed`: variants generateLevel must place at least one of each,
+// counted toward (not added on top of) the density roll — spec "a ruin has
+// spiders + 1 strong" needs a deterministic strong (and, so the interior test
+// can assert per-generation, a deterministic medium too) rather than leaving
+// both to chance against a 3-monster sample. Empty/absent elsewhere.
 export const INTERIOR_CONFIG = {
   safe: { ...base, monsterDensity: 0,     variantPool: [],                             weaponDensity: 0,     potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel'] },
   hut:  { ...base, monsterDensity: 0.006, variantPool: ['weak'],                       weaponDensity: 0.004, potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel', 'prop_anvil'] },
-  ruin: { ...base, monsterDensity: 0.010, variantPool: ['medium', 'medium', 'strong'], weaponDensity: 0.008, potionDensity: 0.008, props: ['prop_gravestone', 'prop_barrel'] },
+  ruin: { ...base, monsterDensity: 0.010, variantPool: ['medium', 'medium', 'strong'], weaponDensity: 0.008, potionDensity: 0.008, props: ['prop_gravestone', 'prop_barrel'], guaranteed: ['strong', 'medium'] },
 }
 
 // Prefab pickup slots -> the story house's items, laid on the floor. A

@@ -19,21 +19,16 @@ describe('interior config', () => {
 
 describe('generated interiors', () => {
   it('safe houses have no enemies; huts have only rats; ruins have spiders and a strong one', () => {
-    // Ruin monster counts are aggregated across the 5 generations (rather than
-    // asserted per-generation) before checking medium/strong presence: a ruin
-    // this size only rolls ~3 monsters from a 2-medium/1-strong pool, so
-    // requiring both variants within every single draw is flaky by sampling
-    // chance alone (well under half the time) even though the config is
-    // correct. Pooling ~15 draws makes an all-medium or all-strong outcome
-    // astronomically unlikely while still catching a wrong pool/density.
-    let ruinMedium = 0, ruinStrong = 0, ruinBoss = 0
+    // Ruin monster counts must hold per generation, not just in aggregate:
+    // spec section 2 guarantees a ruin "1 strong" monster, so
+    // INTERIOR_CONFIG.ruin carries guaranteed: ['strong', 'medium']
+    // (houses.js) and generateLevel places those variants deterministically
+    // ahead of the density roll, rather than leaving them to chance.
     for (let i = 0; i < 5; i++) {
       const s = gen('safe').entitySpawns; assert.equal(count(s, 'monster'), 0); assert.equal(count(s, 'guard'), 0)
       const h = gen('hut').entitySpawns; assert.ok(count(h, 'monster') >= 1); assert.equal(count(h, 'monster'), count(h, 'monster', 'weak'))
-      const r = gen('ruin').entitySpawns
-      ruinMedium += count(r, 'monster', 'medium'); ruinStrong += count(r, 'monster', 'strong'); ruinBoss += count(r, 'monster', 'boss')
+      const r = gen('ruin').entitySpawns; assert.ok(count(r, 'monster', 'medium') >= 1); assert.ok(count(r, 'monster', 'strong') >= 1); assert.equal(count(r, 'monster', 'boss'), 0)
     }
-    assert.ok(ruinMedium >= 1); assert.ok(ruinStrong >= 1); assert.equal(ruinBoss, 0)
   })
   it('floors are wooden and walkable, the map is 44x28 with a stairs-free spawn', () => {
     const { map, playerSpawn } = gen('safe')
