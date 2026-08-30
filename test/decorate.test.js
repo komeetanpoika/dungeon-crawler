@@ -38,9 +38,12 @@ const RS = {
 }
 
 describe('roleOf', () => {
-  it('FLOOR and SAND are floor-role', () => {
+  it('FLOOR, SAND and FLOOR_WOOD are floor-role', () => {
     assert.equal(roleOf(TILE.FLOOR), 'floor')
     assert.equal(roleOf(TILE.SAND), 'floor')
+    // House interiors swap their carved floor to FLOOR_WOOD before the
+    // decoration pass runs, so the wooden floor must decorate like a floor.
+    assert.equal(roleOf(TILE.FLOOR_WOOD), 'floor')
   })
   it('WALL is wall-role', () => assert.equal(roleOf(TILE.WALL), 'wall'))
   it('other tiles have no role', () => {

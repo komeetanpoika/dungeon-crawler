@@ -1017,7 +1017,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0077",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1025,7 +1025,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0077",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1033,7 +1033,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0077",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1041,7 +1041,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0077",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1049,7 +1049,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0077",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1057,7 +1057,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0077",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1065,7 +1065,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0077",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1188,7 +1188,7 @@
         "y": 3,
         "skin": "custom_floor_wood",
         "overlay": "tile_0072",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1536,7 +1536,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0075",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1544,7 +1544,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0075",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1552,7 +1552,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0075",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1560,7 +1560,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0075",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1568,7 +1568,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0075",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1576,7 +1576,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0075",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1584,7 +1584,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0075",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1608,7 +1608,7 @@
         "y": 2,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1659,7 +1659,7 @@
         "y": 2,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1683,7 +1683,7 @@
         "y": 3,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1707,7 +1707,7 @@
         "y": 3,
         "skin": "custom_floor_wood",
         "overlay": "tile_0075",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1731,7 +1731,7 @@
         "y": 3,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1755,7 +1755,7 @@
         "y": 4,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -1803,7 +1803,7 @@
         "y": 4,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2052,7 +2052,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2060,7 +2060,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2068,7 +2068,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2076,7 +2076,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2084,7 +2084,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2092,7 +2092,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2100,7 +2100,7 @@
         "y": 1,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2124,7 +2124,7 @@
         "y": 2,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2172,7 +2172,7 @@
         "y": 2,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2196,7 +2196,7 @@
         "y": 3,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2220,7 +2220,7 @@
         "y": 3,
         "skin": "custom_floor_wood",
         "overlay": "tile_0072",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2244,7 +2244,7 @@
         "y": 3,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2268,7 +2268,7 @@
         "y": 4,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {
@@ -2316,7 +2316,7 @@
         "y": 4,
         "skin": "custom_floor_wood",
         "overlay": "tile_0082",
-        "collision": "walkable",
+        "collision": "wall",
         "interaction": null
       },
       {

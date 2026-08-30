@@ -68,10 +68,14 @@ const base = { depth: INTERIOR_DEPTH, mapW: 44, mapH: 28, staircaseWidth: 1, gua
 // spiders + 1 strong" needs a deterministic strong (and, so the interior test
 // can assert per-generation, a deterministic medium too) rather than leaving
 // both to chance against a 3-monster sample. Empty/absent elsewhere.
+// `weaponDensity` counts FLOOR weapons, not chests (generateLevel's `config`
+// path lays floating pickups — a house has no chests to open). Only a ruin
+// arms you, and only from `weaponPool`: the two humblest melee weapons, so a
+// derelict cottage never out-gifts a dungeon.
 export const INTERIOR_CONFIG = {
   safe: { ...base, monsterDensity: 0,     variantPool: [],                             weaponDensity: 0,     potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel'] },
-  hut:  { ...base, monsterDensity: 0.006, variantPool: ['weak'],                       weaponDensity: 0.004, potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel', 'prop_anvil'] },
-  ruin: { ...base, monsterDensity: 0.010, variantPool: ['medium', 'medium', 'strong'], weaponDensity: 0.008, potionDensity: 0.008, props: ['prop_gravestone', 'prop_barrel'], guaranteed: ['strong', 'medium'] },
+  hut:  { ...base, monsterDensity: 0.006, variantPool: ['weak'],                       weaponDensity: 0,     potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel', 'prop_anvil'] },
+  ruin: { ...base, monsterDensity: 0.010, variantPool: ['medium', 'medium', 'strong'], weaponDensity: 0.008, potionDensity: 0.008, weaponPool: ['dagger', 'sword'], props: ['prop_gravestone', 'prop_barrel'], guaranteed: ['strong', 'medium'] },
 }
 
 // Prefab pickup slots -> the story house's items, laid on the floor. A

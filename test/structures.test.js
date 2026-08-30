@@ -70,6 +70,10 @@ const ASSETS = join(__dirname, '../renderer/assets/tiles')
 const tileExists = name => existsSync(join(ASSETS, `${name}.png`))
 const STRUCTURES = JSON.parse(readFileSync(new URL('../renderer/data/structures.json', import.meta.url)))
 
+// tile_0072 table, tile_0075 crate, tile_0077 rack, tile_0082 barrel.
+const SOLID_OVERLAYS = ['tile_0072', 'tile_0075', 'tile_0077', 'tile_0082']
+const CHAIR = 'tile_0073'
+
 describe('story house prefabs', () => {
   for (const name of ['toivo_kitchen', 'hermit_woodpile', 'aino_larder']) {
     describe(name, () => {
@@ -122,6 +126,32 @@ describe('story house prefabs', () => {
 
       it('does not carry a targetDepth (storyStructures adds that at runtime)', () => {
         assert.equal(s.targetDepth, undefined)
+      })
+
+      // Solid furniture is furniture you bump into: tables, crates, barrels
+      // and the fish rack block, chairs you can stand on do not.
+      it('gives every solid furniture overlay wall collision and keeps chairs walkable', () => {
+        for (const c of s.cells) {
+          if (SOLID_OVERLAYS.includes(c.overlay)) assert.equal(c.collision, 'wall', `${c.overlay} at ${c.x},${c.y}`)
+          if (c.overlay === CHAIR) assert.equal(c.collision, 'walkable', `chair at ${c.x},${c.y}`)
+        }
+      })
+
+      it('keeps the doorway and every pickup reachable inside the room', () => {
+        const at = new Map(s.cells.map(c => [`${c.x},${c.y}`, c]))
+        const walkable = c => c && c.collision !== 'wall'
+        const door = s.cells.filter(c => c.x === 0 || c.x === s.w - 1 || c.y === 0 || c.y === s.h - 1).find(c => c.collision !== 'wall')
+        const seen = new Set([`${door.x},${door.y}`])
+        const q = [door]
+        while (q.length) {
+          const c = q.shift()
+          for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+            const k = `${c.x + dx},${c.y + dy}`
+            if (!seen.has(k) && walkable(at.get(k))) { seen.add(k); q.push(at.get(k)) }
+          }
+        }
+        for (const c of s.cells) if (c.interaction?.type === 'pickup')
+          assert.ok(seen.has(`${c.x},${c.y}`), `pickup slot ${c.interaction.slot} at ${c.x},${c.y} is walled off from the doorway`)
       })
     })
   }

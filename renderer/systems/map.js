@@ -1,4 +1,4 @@
-import { TILE, isWalkable, WEAPON_TYPES } from './entities.js'
+import { TILE, isWalkable, WEAPON_TYPES, weaponContents } from './entities.js'
 import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, OVERWORLD_DEPTH, DEPTH_THEMES, TEMPLATE_LEGEND } from '../data/levels.js'
 import { generateOverworld } from './overworld.js'
 import { buildOpenMap } from './openmap.js'
@@ -771,8 +771,24 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     // potion / melee / ranged, depth-tiered) instead of carrying fixed
     // contents. The two density knobs still control total chest supply;
     // cfg.weapons remains the boss-drop pool.
-    for (let i = 0; i < weaponCount + potionCount && idx < farTiles.length; i++, idx++) {
-      entitySpawns.push({ kind: 'chest', ...farTiles[idx] })
+    //
+    // House interiors (a `config` override) get NO chests: a chest rolls the
+    // depth-19 "deep" loot tier, which would hand out endgame gear in a
+    // villager's kitchen. Their loot lies on the floor instead — potions of 4
+    // and, in a ruin only, a plain weapon from cfg.weaponPool.
+    if (config) {
+      for (let i = 0; i < potionCount && idx < farTiles.length; i++, idx++) {
+        entitySpawns.push({ kind: 'floating_pickup', ...farTiles[idx], contents: { type: 'potion', amount: 4 } })
+      }
+      const weaponPool = cfg.weaponPool ?? []
+      for (let i = 0; i < weaponCount && idx < farTiles.length && weaponPool.length; i++, idx++) {
+        const wt = weaponPool[Math.floor(Math.random() * weaponPool.length)]
+        entitySpawns.push({ kind: 'floating_pickup', ...farTiles[idx], contents: { type: 'weapon', ...weaponContents(wt) } })
+      }
+    } else {
+      for (let i = 0; i < weaponCount + potionCount && idx < farTiles.length; i++, idx++) {
+        entitySpawns.push({ kind: 'chest', ...farTiles[idx] })
+      }
     }
 
     const wizardCount = cfg.wizardCount ?? 0
@@ -804,8 +820,10 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       }
     }
 
-    // Place paired gargoyle+basin fountains on stone-floor levels only
-    if (theme?.floorTile !== 'sand') {
+    // Place paired gargoyle+basin fountains on stone-floor levels only —
+    // never in a house interior (a `config` override): a wall gargoyle in
+    // somebody's kitchen reads as dungeon dressing.
+    if (theme?.floorTile !== 'sand' && !config) {
       for (const room of rooms) {
         if (Math.random() > 0.6) continue  // 60% chance per room
 

@@ -11,6 +11,25 @@ const STRUCTURES = JSON.parse(readFileSync(new URL('../renderer/data/structures.
 
 const gen = (tier, extra = {}) => generateLevel(INTERIOR_DEPTH, 44, 28, { config: INTERIOR_CONFIG[tier], structures: {}, ...extra })
 const count = (spawns, kind, variant) => spawns.filter(s => s.kind === kind && (variant === undefined || s.variant === variant)).length
+const pickupsOf = (spawns, type) => spawns.filter(s => s.kind === 'floating_pickup' && s.contents?.type === type)
+// The generator now lays its own potion/weapon floating pickups, so a story
+// room's items are picked out by identity: attachPickups hands the episode's
+// own contents objects straight through.
+const storyPickups = (spawns, pickups) => spawns.filter(s => s.kind === 'floating_pickup' && pickups.includes(s.contents))
+
+// Flood the walkable cells from `from`; returns the reached key set.
+function reachable(map, from) {
+  const seen = new Set([`${from.x},${from.y}`])
+  const q = [from]
+  while (q.length) {
+    const { x, y } = q.shift()
+    for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      const nx = x + dx, ny = y + dy, k = `${nx},${ny}`
+      if (!seen.has(k) && map[ny]?.[nx] && isWalkable(map[ny][nx].tile)) { seen.add(k); q.push({ x: nx, y: ny }) }
+    }
+  }
+  return seen
+}
 
 describe('interior config', () => {
   it('has the three tiers with the spec densities and no boss/landmark/guards', () => {
@@ -53,7 +72,7 @@ describe('generated interiors', () => {
     const pickups = [{ type: 'meat', count: 3 }, { type: 'weapon', weaponType: 'hatchet' }]
     const { map, entitySpawns } = gen('hut', { structures: { toivo: prefab } })
     const spawns = attachPickups(entitySpawns, pickups)
-    const fp = spawns.filter(s => s.kind === 'floating_pickup')
+    const fp = storyPickups(spawns, pickups)
     assert.equal(fp.length, 2)
     assert.deepEqual(fp.map(s => s.contents).sort((a, b) => a.type.localeCompare(b.type)), pickups.slice().sort((a, b) => a.type.localeCompare(b.type)))
     for (const s of fp) assert.ok(isWalkable(map[s.y][s.x].tile))
@@ -64,7 +83,7 @@ describe('generated interiors', () => {
     const structures = storyStructures(STRUCTURES, episode, "Toivo's hut")
     const { map, entitySpawns } = gen('hut', { structures })
     const spawns = attachPickups(entitySpawns, episode.houses["Toivo's hut"].pickups)
-    const fp = spawns.filter(s => s.kind === 'floating_pickup')
+    const fp = storyPickups(spawns, episode.houses["Toivo's hut"].pickups)
     assert.equal(fp.length, 3)
     assert.deepEqual(
       fp.map(s => s.contents).sort((a, b) => a.type.localeCompare(b.type)),
@@ -73,4 +92,70 @@ describe('generated interiors', () => {
     for (const s of fp) assert.ok(isWalkable(map[s.y][s.x].tile))
     assert.equal(spawns.some(s => s.kind === 'pickup'), false)
   })
+})
+
+// F2/F3: an interior is a home, not a dungeon room — no chests to open, no
+// gargoyle fountains on the wall. Loot lies on the floor as walk-into pickups.
+describe('interior loot and dressing', () => {
+  it('never emits a chest spawn at any tier', () => {
+    for (const tier of ['safe', 'hut', 'ruin'])
+      for (let i = 0; i < 10; i++)
+        assert.equal(count(gen(tier).entitySpawns, 'chest'), 0, tier)
+  })
+
+  it('never places a fountain gargoyle or basin indoors', () => {
+    for (const tier of ['safe', 'hut', 'ruin'])
+      for (let i = 0; i < 10; i++) {
+        const s = gen(tier).entitySpawns
+        assert.equal(count(s, 'fountain_wall'), 0, tier)
+        assert.equal(count(s, 'fountain_basin'), 0, tier)
+      }
+  })
+
+  it('lays potions on the floor as floating pickups of 4', () => {
+    let seen = 0
+    for (const tier of ['safe', 'hut', 'ruin'])
+      for (let i = 0; i < 10; i++)
+        for (const p of pickupsOf(gen(tier).entitySpawns, 'potion')) {
+          seen++
+          assert.deepEqual(p.contents, { type: 'potion', amount: 4 })
+          assert.equal(typeof p.x, 'number'); assert.equal(typeof p.y, 'number')
+        }
+    assert.ok(seen > 0, 'some interior laid out potions')
+  })
+
+  it('leaves no weapons in a safe house or a hut, and only daggers/swords in a ruin', () => {
+    assert.equal(INTERIOR_CONFIG.safe.weaponDensity, 0)
+    assert.equal(INTERIOR_CONFIG.hut.weaponDensity, 0)
+    assert.deepEqual(INTERIOR_CONFIG.ruin.weaponPool, ['dagger', 'sword'])
+    for (const tier of ['safe', 'hut'])
+      for (let i = 0; i < 10; i++) assert.equal(pickupsOf(gen(tier).entitySpawns, 'weapon').length, 0, tier)
+    let seen = 0
+    for (let i = 0; i < 20; i++)
+      for (const p of pickupsOf(gen('ruin').entitySpawns, 'weapon')) {
+        seen++
+        assert.ok(['dagger', 'sword'].includes(p.contents.weaponType), p.contents.weaponType)
+        assert.equal(p.contents.name, p.contents.weaponType === 'dagger' ? 'Dagger' : 'Sword')
+      }
+    assert.ok(seen > 0, 'a ruin laid out weapons')
+  })
+})
+
+// F6: the story rooms' solid furniture blocks, so the room must still be
+// walkable end to end — every item on the floor has to be reachable on foot.
+describe('story house reachability', () => {
+  for (const [map, story] of [['lake-1-ferry', "Toivo's hut"], ['highland-2-fold', "Aino's house"], ['marsh-3-hermit', 'hermit hut']]) {
+    it(`walks from the spawn to every pickup in ${story}`, () => {
+      const episode = EPISODES[map]
+      const structures = storyStructures(STRUCTURES, episode, story)
+      for (let i = 0; i < 20; i++) {
+        const { map: grid, entitySpawns, playerSpawn } = gen('hut', { structures })
+        const spawns = attachPickups(entitySpawns, episode.houses[story].pickups)
+        const fp = spawns.filter(s => s.kind === 'floating_pickup')
+        assert.equal(storyPickups(spawns, episode.houses[story].pickups).length, episode.houses[story].pickups.length, `${story} run ${i}`)
+        const seen = reachable(grid, playerSpawn)
+        for (const s of fp) assert.ok(seen.has(`${s.x},${s.y}`), `${story} run ${i}: pickup at ${s.x},${s.y} unreachable`)
+      }
+    })
+  }
 })

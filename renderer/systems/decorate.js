@@ -5,7 +5,9 @@ const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e' }
 // Which logical map tiles a rule role may skin. The decoration pass only ever
 // swaps visuals within the same role, so walkability cannot change.
 export function roleOf(tileId) {
-  if (tileId === TILE.FLOOR || tileId === TILE.SAND) return 'floor'
+  // FLOOR_WOOD is a house interior's floor (map.js swaps it in before the
+  // decoration pass runs), so it decorates with the floor-role tiles.
+  if (tileId === TILE.FLOOR || tileId === TILE.SAND || tileId === TILE.FLOOR_WOOD) return 'floor'
   if (tileId === TILE.WALL) return 'wall'
   return null
 }
