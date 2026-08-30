@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, CAVE_RESET_TIME } from '../renderer/systems/cave.js'
+import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances, CAVE_RESET_TIME } from '../renderer/systems/cave.js'
 import { buildOpenMap } from '../renderer/systems/openmap.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -273,5 +273,33 @@ describe('house doors round-trip through the cave transition', () => {
     assert.ok(back.caveInstances[door.label])
     assert.equal(tickCaveInstances(back, 2), true)
     assert.equal(back.caveInstances[door.label], undefined)
+  })
+})
+
+// Leaving a map for good: a cleared instance (a beaten cave, or any house —
+// houses have no boss, so they store as cleared the moment you walk out)
+// would otherwise sit in the save forever, a 44x28 map per door visited.
+describe('pruneClearedInstances', () => {
+  const insts = () => ({
+    'house:lake-1-ferry:23,45': { cleared: true, age: 4, map: [[1]] },
+    'cave:lake-1-ferry:0': { cleared: true, age: 0, map: [[1]] },
+    'cave:lake-1-ferry:1': { cleared: false, age: 0, map: [[1]] },
+  })
+
+  it('drops every cleared instance and keeps the uncleared ones', () => {
+    assert.deepEqual(Object.keys(pruneClearedInstances(insts())), ['cave:lake-1-ferry:1'])
+  })
+
+  it('keeps the surviving instances by identity and leaves the input alone', () => {
+    const before = insts()
+    const after = pruneClearedInstances(before)
+    assert.equal(after['cave:lake-1-ferry:1'], before['cave:lake-1-ferry:1'])
+    assert.equal(Object.keys(before).length, 3, 'input untouched')
+  })
+
+  it('handles an empty or missing map of instances', () => {
+    assert.deepEqual(pruneClearedInstances({}), {})
+    assert.deepEqual(pruneClearedInstances(undefined), {})
+    assert.deepEqual(pruneClearedInstances(null), {})
   })
 })

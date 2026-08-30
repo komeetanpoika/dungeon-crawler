@@ -121,3 +121,14 @@ export function tickCaveInstances(state, dt) {
   }
   return removed
 }
+
+// Leaving a map for good: drop every stored instance already marked cleared —
+// beaten caves and houses alike (a house has no boss, so restoreSurface stores
+// it cleared the moment you walk back out). They would regenerate on the next
+// visit anyway once tickCaveInstances aged them out, but nothing ages them
+// while you are on another map, so without this every door ever opened keeps a
+// 44x28 map alive in the save. Uncleared instances (a cave whose boss still
+// lives) are kept. Pure: returns a new map, the input is untouched.
+export function pruneClearedInstances(caveInstances) {
+  return Object.fromEntries(Object.entries(caveInstances ?? {}).filter(([, inst]) => inst?.cleared !== true))
+}

@@ -28,7 +28,7 @@ import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
-import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn } from './systems/cave.js'
+import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
@@ -1596,8 +1596,14 @@ function exitCave() {
 // Waystone travel: a fresh open map, the player carried over to its spawn.
 function travelToMap(depth) {
   // The map being left still owns its npc record — write it before `state`
-  // becomes the new map and the departing kills/wrath are out of reach.
-  if (OPEN_MAPS[state.level]) { npcDirty = false; persistAdventure() }
+  // becomes the new map and the departing kills/wrath are out of reach. Its
+  // cleared instances go too: nothing ages them once we are elsewhere, so
+  // they would pile up in the save one 44x28 interior per door opened.
+  if (OPEN_MAPS[state.level]) {
+    npcDirty = false
+    state.caveInstances = pruneClearedInstances(state.caveInstances)
+    persistAdventure()
+  }
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const mapName = OPEN_MAPS[depth].name
