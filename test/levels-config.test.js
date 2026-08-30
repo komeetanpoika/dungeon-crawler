@@ -84,3 +84,15 @@ describe('overworld (depth 6)', () => {
         `theme for depth ${d} is separate from the test theme`)
   })
 })
+
+describe('adventure depth themes follow the biome after the leap-map insertion', () => {
+  it('every open map depth 7-18 has a theme, grouped forest / desert / sea', () => {
+    const themeOf = d => DEPTH_THEMES.find(t => t.depths.includes(d))
+    for (let d = 7; d <= 18; d++) assert.ok(themeOf(d), `depth ${d} has no theme`)
+    const bg = d => themeOf(d).bgColor
+    for (const d of [8, 9, 10, 11, 12]) assert.equal(bg(d), bg(7), `depth ${d} should share the forest backdrop`)
+    for (const d of [14, 15]) assert.equal(bg(d), bg(13), `depth ${d} should share the desert backdrop`)
+    for (const d of [17, 18]) assert.equal(bg(d), bg(16), `depth ${d} should share the sea backdrop`)
+    assert.notEqual(bg(7), bg(13)); assert.notEqual(bg(13), bg(16))
+  })
+})

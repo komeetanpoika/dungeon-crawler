@@ -218,9 +218,10 @@ export const DEPTH_THEMES = [
     props: { room: [] },   // ruleset has overlays, so scattered props are skipped anyway
   },
   // Adventure maps carry their own art (no ruleset, decorateMap no-ops);
-  // backgrounds follow the biome: forest 7-9, desert 10-12, sea 13-15.
+  // backgrounds follow the biome: forest 7-12 (Clearings, the three leap
+  // maps, River Split, Autumn Highland), desert 13-15, sea 16-18.
   {
-    depths: [7, 8, 9],
+    depths: [7, 8, 9, 10, 11, 12],
     floorTile: 'floor',
     bgColor:  '#0a1208',
     tint:     null,
@@ -228,7 +229,7 @@ export const DEPTH_THEMES = [
     props: { room: [] },
   },
   {
-    depths: [10, 11, 12],
+    depths: [13, 14, 15],
     floorTile: 'floor',
     bgColor:  '#171006',
     tint:     null,
@@ -236,7 +237,7 @@ export const DEPTH_THEMES = [
     props: { room: [] },
   },
   {
-    depths: [13, 14, 15],
+    depths: [16, 17, 18],
     floorTile: 'floor',
     bgColor:  '#061018',
     tint:     null,
