@@ -38,6 +38,7 @@ export const RECIPES = {
   'door-locked':    { kind: 'blip',   wave: 'square',   f0: 220,  f1: 180,  dur: 0.15, vol: 0.6 },
   'descend':        { kind: 'rumble', freq: 65,  dur: 0.90, vol: 0.8 },
   'emerge':         { kind: 'blip',   wave: 'triangle', f0: 330,  f1: 660,  dur: 0.40, vol: 0.6 },
+  'door-open':      { kind: 'burst',  freq: 200,  q: 1.5,  dur: 0.12, vol: 0.6 },
   'stance-switch':  { kind: 'blip',   wave: 'triangle', f0: 500,  f1: 750,  dur: 0.10, vol: 0.5 },
   'talent-learned': { kind: 'blip',   wave: 'triangle', f0: 523,  f1: 1046, dur: 0.50, vol: 0.7 },
   'rite':           { kind: 'rumble', freq: 100, dur: 1.00, vol: 0.7 },
