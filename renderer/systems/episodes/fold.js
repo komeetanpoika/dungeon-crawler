@@ -4,11 +4,13 @@
 import { poiCell, checkDeliveries } from '../leap.js'
 import { HARVEST } from '../lumber.js'
 import { isWalkable, weaponContents } from '../entities.js'
+import { itemFromContents, autoEquipOnPickup } from '../inventory.js'
 import { NPC_SPECIES } from '../../data/npcs.js'
 import { sfx } from '../sfx.js'
 import { think, announce } from '../feedback.js'
 
 const S = 32
+const GIFT_MSG_COOLDOWN = 3
 
 export const DELIVERIES = [{
   item: 'fleece', to: { species: 'elder' }, sets: 'fleece_shown',
@@ -22,11 +24,12 @@ export const BURN_RADIUS = 6
 const DEADTREE = ['ow_deadtree_0', 'ow_deadtree_1']
 
 // A tree overlay for burn purposes: anything HARVEST tags as choppable, plus
-// canopy `_top` overlays sitting over a two-cell trunk — those aren't HARVEST
-// keys in their own right (only the trunk below them is), but they still
-// have to char along with it.
+// `ow_tree_*_top` canopy overlays sitting over a two-cell trunk — those
+// aren't HARVEST keys in their own right (only the trunk below them is), but
+// they still have to char along with it. Scoped to `ow_tree_*` so unrelated
+// `_top` art (e.g. `ow_well_top`, also in the fold's palette) never chars.
 const isTreeOverlay = overlay => typeof overlay === 'string' &&
-  (HARVEST[overlay]?.tool === 'chop' || overlay.endsWith('_top'))
+  (HARVEST[overlay]?.tool === 'chop' || (overlay.startsWith('ow_tree_') && overlay.endsWith('_top')))
 
 // Every tree overlay within BURN_RADIUS (Chebyshev — the same tile-radius
 // idiom leap.js's missingSpawn and nav.js's ringSearch use) of `burn n`'s POI
@@ -72,20 +75,67 @@ function setVillageHostile(state, hostile) {
   }
 }
 
-// Mirrors game.js's dropInventoryItem: the elder's gift lands on a free
-// orthogonal walkable tile beside the player and floats in.
-function dropGift(state, contents) {
+// The free orthogonal walkable tile beside the player, or null. Mirrors
+// game.js's dropInventoryItem's own adjacency search.
+function freeAdjTile(state) {
   const { player, map } = state
-  const adj = [[-1, 0], [1, 0], [0, -1], [0, 1]].map(([dx, dy]) => ({ x: player.x + dx, y: player.y + dy }))
-    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x === t.x && e.y === t.y))
-  if (!adj) return
+  return [[-1, 0], [1, 0], [0, -1], [0, 1]].map(([dx, dy]) => ({ x: player.x + dx, y: player.y + dy }))
+    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x === t.x && e.y === t.y)) ?? null
+}
+
+// Whether the pick could land directly in the sack/hand right now: an empty
+// weapon hand always has room (autoEquipOnPickup equips into it regardless
+// of sack fill), otherwise a free sack slot is needed.
+const hasSackRoom = player => !player.weapon || player.inventory.length < player.maxInventory
+
+function dropGiftAt(state, contents, spot) {
+  const { player } = state
   state.entities.push({
-    type: 'floating_item', contents, x: adj.x, y: adj.y,
+    type: 'floating_item', contents, x: spot.x, y: spot.y,
     startPx: player.px, startPy: player.py,
-    targetPx: adj.x * S + S / 2, targetPy: adj.y * S + S / 2,
+    targetPx: spot.x * S + S / 2, targetPy: spot.y * S + S / 2,
     px: player.px, py: player.py, progress: 0, duration: 0.35,
   })
-  sfx(state, 'pickup', { px: player.px, py: player.py })
+}
+
+// The one delivery this episode declares, checked without side effects so
+// the caller can gate on room *before* checkDeliveries consumes the fleece
+// and sets fleece_shown.
+function pendingDelivery(ctx) {
+  const { state, mapData, flags } = ctx
+  const d = DELIVERIES[0]
+  if (flags[d.sets]) return null
+  if (!state.player.inventory.some(i => i.kind === d.item)) return null
+  const beside = state.entities.some(e => e.type === 'npc' && e.species === d.to.species && !e.hostile
+    && Math.abs(e.x - state.player.x) + Math.abs(e.y - state.player.y) <= 1)
+  return beside ? d : null
+}
+
+// Never lose the gift: dropped beside the player when there's room on the
+// ground; granted straight into the sack/hand when there isn't; and if
+// neither has room, the delivery itself is deferred (fleece stays carried,
+// fleece_shown stays unset) until the player frees up space.
+function tryDeliverFleece(ctx, delta) {
+  const { state } = ctx
+  if (!pendingDelivery(ctx)) return
+  const spot = freeAdjTile(state)
+  if (!spot && !hasSackRoom(state.player)) {
+    state.foldMsgCooldown = Math.max(0, (state.foldMsgCooldown ?? 0) - delta)
+    if (state.foldMsgCooldown <= 0) {
+      think(state, 'The elder holds the pick for you.')
+      state.foldMsgCooldown = GIFT_MSG_COOLDOWN
+    }
+    return
+  }
+  const delivered = checkDeliveries(ctx, DELIVERIES)
+  if (!delivered) return
+  setVillageHostile(state, false)
+  if (spot) dropGiftAt(state, delivered.gives, spot)
+  else autoEquipOnPickup(state.player, itemFromContents(delivered.gives))
+  sfx(state, 'pickup', { px: state.player.px, py: state.player.py })
+  sfx(state, 'talent-learned', { px: state.player.px, py: state.player.py })
+  ctx.refreshInventory()
+  ctx.persist()
 }
 
 function tickBurn(ctx, delta) {
@@ -99,7 +149,7 @@ function tickBurn(ctx, delta) {
   const next = burn + 1
   ctx.set('burn', next)
   const keys = burnBand(state.map, mapData, next)
-  ctx.set('burnt', [...(flags.burnt ?? []), ...keys])
+  ctx.set('burnt', [...new Set([...(flags.burnt ?? []), ...keys])])
   const spot = poiCell(mapData, `burn ${next}`)
   sfx(state, 'fire-burst', spot ? { px: spot.x * S + S / 2, py: spot.y * S + S / 2 } : undefined)
   think(state, "Smoke on the ridge — they've lit another band.")
@@ -134,18 +184,10 @@ export function onArrive(ctx) {
 }
 
 export function tick(ctx, delta) {
-  const { state } = ctx
-
   // Delivering the fleece on the same frame a burn tier would land stops
-  // that burn: tickBurn checks fleece_shown first thing.
-  const delivered = checkDeliveries(ctx, DELIVERIES)
-  if (delivered) {
-    setVillageHostile(state, false)
-    dropGift(state, delivered.gives)
-    sfx(state, 'talent-learned', { px: state.player.px, py: state.player.py })
-    ctx.refreshInventory()
-    ctx.persist()
-  }
+  // that burn: tickBurn checks fleece_shown first thing. A delivery deferred
+  // for lack of room doesn't set fleece_shown, so the burn timer keeps going.
+  tryDeliverFleece(ctx, delta)
 
   tickBurn(ctx, delta)
   tickMaahinen(ctx)

@@ -45,11 +45,13 @@ const TREE_LEFT = { x: BURN1.x - 6, y: BURN1.y, overlay: 'ow_tree_small' }
 const TREE_RIGHT = { x: BURN1.x + 6, y: BURN1.y, overlay: 'ow_tree_small' }
 const TREE_FAR = { x: BURN1.x + 7, y: BURN1.y, overlay: 'ow_tree_small' }
 const ROCK = { x: BURN1.x + 2, y: BURN1.y + 2, overlay: 'ow_rock_gray_0' }
+// Unrelated `_top` art in the fold's real palette — must never char.
+const WELL_TOP = { x: BURN1.x - 1, y: BURN1.y - 1, overlay: 'ow_well_top' }
 
 function makeMap() {
   const map = createMap(N, N)
   for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) map[y][x].tile = TILE.FLOOR
-  for (const t of [TREE_TOP, TREE_LEFT, TREE_RIGHT, TREE_FAR, ROCK]) {
+  for (const t of [TREE_TOP, TREE_LEFT, TREE_RIGHT, TREE_FAR, ROCK, WELL_TOP]) {
     const cell = map[t.y][t.x]
     cell.tile = TILE.WALL
     cell.overlay = t.overlay
@@ -130,6 +132,9 @@ describe('burnBand', () => {
     // outside the radius / not a tree: untouched
     assert.equal(state.map[10][17].overlay, 'ow_tree_small')
     assert.equal(state.map[12][12].overlay, 'ow_rock_gray_0')
+    // ow_well_top ends in `_top` but is not `ow_tree_*` — never chars
+    assert.equal(state.map[9][9].overlay, 'ow_well_top')
+    assert.equal(keys.includes('9,9'), false)
     // burnt cells stay blocking and foliage-soft — a char, not a felling
     assert.equal(state.map[5][10].tile, TILE.WALL)
     assert.equal(state.map[5][10].losSoft, true)
@@ -300,5 +305,86 @@ describe('isMapUnlocked — real fold map', () => {
     const v = fold.npcs.village.length
     realSave.npcs[fold.name] = { dead: fold.npcs.wild.map((_, i) => `npc:${fold.name}:${v + i}`), hostile: false }
     assert.equal(isMapUnlocked(realSave, fold), false)
+  })
+})
+
+describe('tick — delivering the fleece without a free ground tile', () => {
+  // Player boxed in beside the elder: west/north/south walled off, the
+  // elder itself occupies east (besideNpc range), so freeAdjTile finds
+  // nothing.
+  const P = { x: 10, y: 3 }
+  const E = { x: 11, y: 3 }
+
+  beforeEach(() => {
+    for (const [dx, dy] of [[-1, 0], [0, -1], [0, 1]]) {
+      const c = state.map[P.y + dy][P.x + dx]
+      c.tile = TILE.WALL
+      c.overlay = null
+    }
+    state.entities.push(makeNpc({ species: 'elder', id: 'npc:highland-2-fold:2', x: E.x, y: E.y }))
+    state.player.x = P.x; state.player.y = P.y
+    state.player.px = P.x * S + 16; state.player.py = P.y * S + 16
+    state.player.inventory.push(makeItem('fleece'))
+  })
+
+  it('grants the pick straight into an empty weapon hand when the sack has room but the ground does not', () => {
+    assert.equal(state.player.weapon, undefined)
+    tick(ctx, 0)
+    assert.equal(ctx.flags.fleece_shown, true)
+    assert.equal(state.player.weapon?.weaponType, 'pick')
+    assert.equal(state.player.inventory.length, 0)
+    assert.equal(state.entities.some(e => e.type === 'floating_item'), false, 'nothing dropped on the ground')
+    assert.ok(cue(state, 'pickup'))
+    assert.ok(cue(state, 'talent-learned'))
+    assert.equal(spies.calls.persist, 1)
+  })
+
+  it('defers the delivery when neither the ground nor the sack has room, keeping the fleece and throttling the message', () => {
+    state.player.weapon = weaponContents('dagger')  // hand occupied
+    state.player.maxInventory = 1                   // only the fleece itself fits
+
+    tick(ctx, 0)
+    assert.equal(ctx.flags.fleece_shown, undefined, 'delivery deferred')
+    assert.equal(state.player.inventory.length, 1, 'fleece kept')
+    assert.equal(state.player.inventory[0].kind, 'fleece')
+    assert.equal(spies.calls.persist, 0)
+    assert.equal(spies.calls.refreshInventory, 0)
+    const msg = 'The elder holds the pick for you.'
+    assert.ok(state.log.includes(msg))
+
+    // throttled: an immediate re-tick does not log it again
+    const before = state.log.filter(l => l === msg).length
+    tick(ctx, 0)
+    assert.equal(state.log.filter(l => l === msg).length, before, 'still cooling down')
+
+    // past the cooldown it fires again
+    tick(ctx, 10)
+    assert.equal(state.log.filter(l => l === msg).length, before + 1)
+
+    // once the player frees a sack slot, a later tick completes the delivery
+    state.player.maxInventory = 5
+    tick(ctx, 0)
+    assert.equal(ctx.flags.fleece_shown, true)
+    assert.equal(state.player.inventory.some(i => i.kind === 'fleece'), false)
+    assert.equal(state.player.inventory.some(i => i.kind === 'weapon'), true, 'pick landed in the sack')
+  })
+})
+
+describe('tick — burnt keys dedupe across overlapping bands', () => {
+  it('never records the same "x,y" key twice when two burn bands overlap', () => {
+    // Pull burn 2 in close enough that its radius-6 band overlaps burn 1's,
+    // re-hitting TREE_RIGHT (16,10, already charred) and TREE_TOP (10,5,
+    // already charred) — both are still "trees" once deadtree'd, since
+    // ow_deadtree_* is itself a chop-tool HARVEST key.
+    const burn2 = mapData.pois.find(p => p.label === 'burn 2')
+    burn2.x = BURN1.x + 4
+    burn2.y = BURN1.y
+
+    tick(ctx, BURN_INTERVAL) // burn 1: chars '10,5', '4,10', '16,10'
+    tick(ctx, BURN_INTERVAL) // burn 2: re-hits '10,5' and '16,10', adds '17,10'
+
+    const keys = ctx.flags.burnt
+    assert.equal(new Set(keys).size, keys.length, 'no duplicate keys')
+    assert.deepEqual(keys, ['10,5', '4,10', '16,10', '17,10'])
   })
 })
