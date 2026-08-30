@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { buildOpenMap } from '../renderer/systems/openmap.js'
 import { TILE } from '../renderer/systems/entities.js'
+import { isHouseDoorArt } from '../renderer/systems/houses.js'
 
 const REQUIRED = {
   'lake-1-ferry':     ['runestone', 'village', 'bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'islet cache'],
@@ -125,6 +126,13 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
         const passable = (x, y) => walkable(data)(x, y) || isRockProp(data)(x, y)
         const reached = bfsReachable(data, [spawn], passable)
         assert.ok(reachedAt(reached, poi('lair')), 'lair should be reachable with rocks passable')
+      })
+
+      it("Aino's house is a declared landmark POI on a door cell", () => {
+        const p = data.pois.find(q => q.label === "Aino's house")
+        assert.ok(p, "Aino's house POI missing")
+        assert.equal(p.kind, 'landmark')
+        assert.equal(isHouseDoorArt(data.palette[data.prop[p.y][p.x]]), true)
       })
     }
 

@@ -6,6 +6,7 @@ import { OPEN_MAPS, OPEN_MAP_SPRITES } from '../renderer/data/open-maps.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { TREES, STUMP } from '../renderer/systems/lumber.js'
+import { isHouseDoorArt } from '../renderer/systems/houses.js'
 
 const DATA = OPEN_MAPS[7]
 
@@ -18,9 +19,16 @@ const gateCells = data => new Set(data.pois
     `${p.x - 1},${p.y + 1}`, `${p.x + 2},${p.y + 1}`,
   ]))
 
+// House door cells: the bake carries them as blocking props, but buildOpenMap
+// makes them walkable floor (see the "house doors" describe block below).
+const doorCells = data => new Set(data.prop.flatMap((row, y) => row
+  .map((pi, x) => (pi >= 0 && isHouseDoorArt(data.palette[pi])) ? `${x},${y}` : null)
+  .filter(Boolean)))
+
 describe('buildOpenMap', () => {
   const { map, entitySpawns, playerSpawn } = buildOpenMap(DATA)
   const stamped = gateCells(DATA)
+  const doors = doorCells(DATA)
 
   it('produces a map with the data dimensions', () => {
     assert.equal(map.length, DATA.h)
@@ -29,7 +37,7 @@ describe('buildOpenMap', () => {
 
   it('mirrors the walk grid: open cells are FLOOR, blocked cells are WALL (interior)', () => {
     for (let y = 1; y < DATA.h - 1; y++) for (let x = 1; x < DATA.w - 1; x++) {
-      if (stamped.has(`${x},${y}`)) continue // gate stamp overrides the bake
+      if (stamped.has(`${x},${y}`) || doors.has(`${x},${y}`)) continue // gate/door stamps override the bake
       const open = DATA.walk[y][x] === '1'
       assert.equal(isWalkable(map[y][x].tile), open, `walkability mismatch at ${x},${y}`)
       assert.equal(map[y][x].tile, open ? TILE.FLOOR : TILE.WALL)
@@ -454,5 +462,20 @@ describe('felled trees', () => {
     const { x, y } = firstTrunk()
     const { map } = generateLevel(7, DATA.w, DATA.h, { felled: [`${x},${y}`] })
     assert.equal(map[y][x].overlay, STUMP)
+  })
+})
+
+describe('house doors', () => {
+  it('door cells become walkable floor keeping the door art, and buildOpenMap returns the triggers', () => {
+    const { map, houseDoors } = buildOpenMap(DATA)
+    assert.ok(houseDoors.length >= 4)
+    for (const d of houseDoors) {
+      assert.equal(map[d.y][d.x].tile, TILE.FLOOR)
+      assert.ok(map[d.y][d.x].overlay.startsWith('ow_house_'), map[d.y][d.x].overlay)
+      assert.equal(map[d.y][d.x].losSoft, undefined)
+    }
+  })
+  it('maps without houses return an empty list', () => {
+    assert.deepEqual(buildOpenMap(OPEN_MAPS[13]).houseDoors, [])
   })
 })

@@ -170,6 +170,9 @@ function fold() {
   const village = { x: 40, y: 58 }
   stampVillage(b, rng, village.x, village.y)
   b.poi('village', village.x, village.y - 1, 'village')
+  // the south-east village house's door (stampVillage's [4, 3] spot, door at
+  // x+1, y+2 of that house's origin) doubles as Aino's front door.
+  b.poi('landmark', village.x + 5, village.y + 5, "Aino's house")
   const fold = { x: village.x + 14, y: village.y }
   for (let y = -3; y <= 3; y++) for (let x = -4; x <= 4; x++) b.clearProp(fold.x + x, fold.y + y)
   for (let x = -4; x <= 4; x++) { b.p(fold.x + x, fold.y - 3, x === -4 ? 'ow_fence_l' : x === 4 ? 'ow_fence_r' : 'ow_fence_m'); if (x !== 0) b.p(fold.x + x, fold.y + 3, x === -4 ? 'ow_fence_l' : x === 4 ? 'ow_fence_r' : 'ow_fence_m') }
