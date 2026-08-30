@@ -43,9 +43,10 @@ function removeNakki(ctx) {
   ctx.state.entities = ctx.state.entities.filter(e => e.type !== 'nakki')
 }
 
-// Arrival: a resolved episode just re-opens the gaps (the Näkki is long
-// gone); an open one with the bell already rung re-spawns the Näkki so it
-// survives a cave dive/return or a fresh load.
+// Arrival — a fresh load or a waystone journey; a cave dive stashes the
+// surface state whole and never re-runs this. A resolved episode just
+// re-opens the gaps (the Näkki is long gone); an open one with the bell
+// already rung re-spawns the Näkki so the fight survives a reload.
 export function onArrive(ctx) {
   if (ctx.flags.nakki_gone) { openGaps(ctx); return }
   if (ctx.flags.bell_hung) spawnNakki(ctx)

@@ -1,5 +1,6 @@
 // The Sammunut — a blind, wall-ignoring wraith that drifts toward campfires
-// and snuffs them out (leap-3 hermit episode, systems.md §3.3). It does NOT
+// and snuffs them out (leap-3 hermit episode, docs/superpowers/specs/
+// 2026-08-29-leap-episodes-design.md §3.3). It does NOT
 // use the enemy brain/nav — no pathfinding, no line of sight, just a straight
 // line toward the nearest fire (or a wandered point when none burns). It is
 // invisible and invulnerable outside firelight, a mushroom trance, or the

@@ -1,4 +1,5 @@
-// The Maahinen — a burrowing 2x2 melee brute (leap-2, systems.md §3.2). It
+// The Maahinen — a burrowing 2x2 melee brute (leap-2, docs/superpowers/
+// specs/2026-08-29-leap-episodes-design.md §3.2). It
 // glides underground toward the player invisible and invulnerable, erupts
 // with a telegraphed dust ring, fights on the surface with the enemy brain
 // and a maul, then dives back under at half and quarter HP to resurface a

@@ -1,5 +1,5 @@
 // The Näkki — a stationary, unkillable water creature that waits beside the
-// leap-1 pier (systems.md §3.1). It never has hp/maxHp: any hit just sinks
+// leap-1 pier (docs/superpowers/specs/2026-08-29-leap-episodes-design.md §3.1). It never has hp/maxHp: any hit just sinks
 // it. Surfaced, standing on its pier-end POI drags the player toward the
 // water on a timer; feeding it cooked meat (not raw) sinks it for good.
 // Pure — no browser/Electron imports.
