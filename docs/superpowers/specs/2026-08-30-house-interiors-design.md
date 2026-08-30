@@ -27,15 +27,22 @@ room** prefab per story house that carries the episode's items.
 ## 1. Doors are entrances
 
 `buildOpenMap` scans prop cells whose palette name starts with `ow_house_door`
-or `ow_house_arch_` and, for each:
+or `ow_house_arch_`. A door cell must sit between house wall props — the prop
+immediately left or right of it starts with `ow_house_wall` (`stampHouse3`
+always lays `walls[0]`/`walls[1]` beside a door). The leap maps' arrival
+runestone and their exit waystones share the `ow_house_arch_stone` art but
+stand alone in the open, so they are **not** doors. For each cell that
+qualifies:
 
 - makes the cell walkable (`tile = FLOOR`), keeping the door art as the overlay;
 - emits a `houseDoors` entry `{ x, y, label, tier, story }` (state-level
   triggers, like `caveEntrances`), where
   - `label = 'house:<mapName>:<x>,<y>'` (stable across visits and rebuilds),
   - `tier` is `'safe'` when the door lies within the village/camp POI's roam
-    box (Chebyshev ≤ 10 of the `village`/`camp` POI), `'ruin'` when the door art
-    is `ow_house_arch_stone` or the map has no village, else `'hut'`;
+    box (Chebyshev ≤ 10 of the **nearest** `village`/`camp` POI), `'ruin'` when
+    the door art is `ow_house_arch_stone` or the map has no village, else
+    `'hut'` (no stone-arch house exists on the shipped maps today, so no door
+    resolves to `ruin`);
   - `story` is the label of a `houses` entry in the map's episode (§4) whose
     named POI is nearest this door (Chebyshev ≤ 4), else `null`.
 

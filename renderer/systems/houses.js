@@ -2,16 +2,37 @@
 // story houses, how dangerous the inside is. Pure — openmap.js stamps the
 // triggers, game.js walks through them (systems/cave.js does the transition).
 export const HOUSE_DOOR_PREFIXES = ['ow_house_door', 'ow_house_arch_']
+export const HOUSE_WALL_PREFIX = 'ow_house_wall'
 export const SAFE_RADIUS = 10          // Chebyshev tiles from the village/camp POI
 export const STORY_RADIUS = 4          // door ↔ story POI distance
 
 export const isHouseDoorArt = name => typeof name === 'string' && HOUSE_DOOR_PREFIXES.some(p => name.startsWith(p))
+export const isHouseWallArt = name => typeof name === 'string' && name.startsWith(HOUSE_WALL_PREFIX)
 const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by))
+const propArt = (data, x, y) => {
+  const pi = data.prop[y]?.[x]
+  return pi >= 0 ? data.palette[pi] : null
+}
+
+// Door art alone is not a door: the leap maps' arrival runestone and their
+// exit waystones are stamped with `ow_house_arch_stone` too, and one of them
+// sits a tile from the player spawn. A real door is a house FRONT — stampHouse3
+// always lays walls[0]/walls[1] immediately left and right of it — so require a
+// house wall beside the cell.
+export const hasHouseContext = (data, x, y) =>
+  isHouseWallArt(propArt(data, x - 1, y)) || isHouseWallArt(propArt(data, x + 1, y))
 
 export function tierForDoor(data, x, y, art) {
-  const anchor = data.pois.find(p => p.kind === 'village' || p.kind === 'camp')
+  // Nearest village/camp POI, not the first listed: a map may anchor more than
+  // one settlement, and a door belongs to the one it actually stands in.
+  let anchor = null, bestD = Infinity
+  for (const p of data.pois ?? []) {
+    if (p.kind !== 'village' && p.kind !== 'camp') continue
+    const d = cheb(x, y, p.x, p.y)
+    if (d < bestD) { bestD = d; anchor = p }
+  }
   if (!anchor || art === 'ow_house_arch_stone') return 'ruin'
-  return cheb(x, y, anchor.x, anchor.y) <= SAFE_RADIUS ? 'safe' : 'hut'
+  return bestD <= SAFE_RADIUS ? 'safe' : 'hut'
 }
 
 export function storyForDoor(data, episode, x, y) {
@@ -30,7 +51,7 @@ export function houseDoorsForMap(data, episode) {
   for (let y = 1; y < data.h - 1; y++) for (let x = 1; x < data.w - 1; x++) {
     const pi = data.prop[y][x]
     const art = pi >= 0 ? data.palette[pi] : null
-    if (!isHouseDoorArt(art)) continue
+    if (!isHouseDoorArt(art) || !hasHouseContext(data, x, y)) continue
     const story = storyForDoor(data, episode, x, y)
     doors.push({ x, y, label: `house:${data.name}:${x},${y}`, tier: story ? 'hut' : tierForDoor(data, x, y, art), story })
   }
