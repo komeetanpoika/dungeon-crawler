@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseLevelCheat } from '../renderer/systems/cheats.js'
+import { parseLevelCheat, cheatDecision, CHEAT_HOLD_MS } from '../renderer/systems/cheats.js'
 
 describe('parseLevelCheat', () => {
   it('matches level1 through level5', () => {
@@ -48,5 +48,31 @@ describe('parseWeaponCheat', () => {
     assert.equal(parseWeaponCheat('MAUNO'), 'maunonmiekka')
     assert.equal(parseWeaponCheat('maun'), null)
     assert.equal(parseWeaponCheat('level3'), null)
+  })
+})
+
+// The level cheat is suffix-matched, so "level1" matches the moment the 1
+// lands even though the player may be halfway through typing "level18".
+// cheatDecision says whether to fire now or hold for another digit.
+describe('cheatDecision', () => {
+  it('holds a depth that a further digit could extend', () => {
+    assert.deepEqual(cheatDecision('level1'), { depth: 1, wait: true })   // 10..18 extend it
+  })
+
+  it('fires immediately for a depth nothing can extend', () => {
+    assert.deepEqual(cheatDecision('level10'), { depth: 10, wait: false }) // no depth 100+
+    assert.deepEqual(cheatDecision('level18'), { depth: 18, wait: false })
+    assert.deepEqual(cheatDecision('level5'), { depth: 5, wait: false })   // no depth 50+
+    assert.deepEqual(cheatDecision('level0'), { depth: 0, wait: false })   // no depth 0N
+  })
+
+  it('is null wherever parseLevelCheat is', () => {
+    assert.equal(cheatDecision('levelx'), null)
+    assert.equal(cheatDecision('level19'), null)
+    assert.equal(cheatDecision(''), null)
+  })
+
+  it('declares a hold window the menu can arm a timer with', () => {
+    assert.ok(CHEAT_HOLD_MS >= 300 && CHEAT_HOLD_MS <= 1500)
   })
 })

@@ -16,3 +16,21 @@ export function parseLevelCheat(buffer) {
 export function parseWeaponCheat(buffer) {
   return /mauno$/.test(String(buffer).toLowerCase()) ? 'maunonmiekka' : null
 }
+
+// How long the title screen holds a matched-but-extendable level cheat,
+// waiting for another digit.
+export const CHEAT_HOLD_MS = 600
+
+// Whether a further digit could turn `depth` into a different valid depth —
+// typing "level1" also matches on the way to "level18".
+const couldExtend = depth =>
+  LEVEL_CONFIG.some(c => c.depth !== depth && String(c.depth).startsWith(String(depth)))
+
+// What the menu should do with the buffer as it stands: nothing (null), fire
+// `depth` now (`wait: false`), or hold briefly in case the player is still
+// typing a longer depth (`wait: true`). Pure — the timer lives in menu.js.
+export function cheatDecision(buffer) {
+  const depth = parseLevelCheat(buffer)
+  if (depth === null) return null
+  return { depth, wait: couldExtend(depth) }
+}

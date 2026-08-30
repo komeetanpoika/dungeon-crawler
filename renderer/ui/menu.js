@@ -1,4 +1,4 @@
-import { parseLevelCheat } from '../systems/cheats.js'
+import { cheatDecision, CHEAT_HOLD_MS } from '../systems/cheats.js'
 
 // Overlay menu screens (title / pause / game over). DOM-only; receives callbacks.
 // Keep all document access inside functions so the pure helper stays importable
@@ -8,6 +8,7 @@ let keyHandler = null
 let currentButtons = []
 let selectedIndex = 0
 let cheatBuffer = ''
+let cheatTimer = null
 
 function overlayEl() { return document.getElementById('menu-overlay') }
 
@@ -21,7 +22,12 @@ export function formatMetaSummary(meta) {
   return `Deepest: Level ${meta.deepestReached} · Runs: ${meta.runsCompleted} · Treasure: ${treasure}`
 }
 
+function clearCheatTimer() {
+  if (cheatTimer !== null) { clearTimeout(cheatTimer); cheatTimer = null }
+}
+
 function clearKeyHandler() {
+  clearCheatTimer()
   if (keyHandler) { window.removeEventListener('keydown', keyHandler); keyHandler = null }
 }
 
@@ -61,6 +67,7 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
   el.style.display = 'flex'
   selectedIndex = 0
   cheatBuffer = ''
+  clearCheatTimer()
   highlight()
 
   clearKeyHandler()
@@ -74,8 +81,17 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
       buttons[selectedIndex].onSelect(); e.preventDefault()
     } else if (onCheat && e.key.length === 1) {
       cheatBuffer = (cheatBuffer + e.key).toLowerCase().slice(-12)
-      const depth = parseLevelCheat(cheatBuffer)
-      if (depth !== null) { cheatBuffer = ''; onCheat(depth) } // depth 0 (boss arena) is valid but falsy
+      // The cheat is suffix-matched, so "level1" matches while the player may
+      // still be typing "level18". A depth a further digit could extend is
+      // held for CHEAT_HOLD_MS; only a further match cancels that pending fire
+      // and re-decides on the longer buffer, so a stray keystroke can't eat the
+      // cheat. depth 0 is valid but falsy — never test the depth for truthiness.
+      const decision = cheatDecision(cheatBuffer)
+      if (!decision) return
+      clearCheatTimer()
+      const fire = () => { cheatTimer = null; cheatBuffer = ''; onCheat(decision.depth) }
+      if (decision.wait) cheatTimer = setTimeout(fire, CHEAT_HOLD_MS)
+      else fire()
     }
   }
   window.addEventListener('keydown', keyHandler)
