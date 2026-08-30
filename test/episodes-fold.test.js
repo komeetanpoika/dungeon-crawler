@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { onArrive, tick, DELIVERIES, BURN_INTERVAL, BURN_STAGES, BURN_RADIUS, burnBand, applyBurnt } from '../renderer/systems/episodes/fold.js'
+import { onArrive, tick, DELIVERIES, BURN_INTERVAL, BURN_STAGES, BURN_RADIUS, burnBand, applyBurnt, burrowOpen } from '../renderer/systems/episodes/fold.js'
 import { makeEpCtx, poiCell, isMapUnlocked, setFlag } from '../renderer/systems/leap.js'
 import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
 import { createMap } from '../renderer/systems/map.js'
@@ -8,6 +8,9 @@ import { TILE, weaponContents } from '../renderer/systems/entities.js'
 import { makeItem } from '../renderer/systems/inventory.js'
 import { makeCreature } from '../renderer/systems/creatures.js'
 import { makeNpc } from '../renderer/systems/npc.js'
+import { harvest } from '../renderer/systems/lumber.js'
+import { buildOpenMap } from '../renderer/systems/openmap.js'
+import { updateMaahinen } from '../renderer/systems/maahinen.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import '../renderer/systems/maahinen.js' // registers CREATURE_MAKE.maahinen etc.
 
@@ -20,6 +23,9 @@ const BURN2 = { x: 30, y: 10 }
 const BURN3 = { x: 10, y: 30 }
 const BURN4 = { x: 30, y: 30 }
 const LAIR = { x: 20, y: 20 }
+// The burrow mouth: the POI cell and its two horizontal neighbours, sealed
+// with rock until a pick clears one.
+const BURROW = { x: 20, y: 22 }
 const ELDER_SPOT = { x: 3, y: 3 }
 
 function makeMapData() {
@@ -31,6 +37,7 @@ function makeMapData() {
       { kind: 'landmark', x: BURN3.x, y: BURN3.y, label: 'burn 3' },
       { kind: 'landmark', x: BURN4.x, y: BURN4.y, label: 'burn 4' },
       { kind: 'landmark', x: LAIR.x, y: LAIR.y, label: 'lair' },
+      { kind: 'landmark', x: BURROW.x, y: BURROW.y, label: 'burrow' },
     ],
     npcs: { village: ['villager', 'villager', 'elder'], wild: ['wolf'] },
   }
@@ -57,7 +64,18 @@ function makeMap() {
     cell.overlay = t.overlay
     cell.losSoft = true
   }
+  // The three sealed mouth cells.
+  for (const dx of [-1, 0, 1]) {
+    const cell = map[BURROW.y][BURROW.x + dx]
+    cell.tile = TILE.WALL
+    cell.overlay = 'ow_rock_gray_0'
+  }
   return map
+}
+
+// Mine one mouth cell through (rocks take 3 blows) so burrowOpen holds.
+function openMouth(map, dx = 0) {
+  for (let i = 0; i < 3; i++) harvest(map, BURROW.x + dx, BURROW.y, { mine: 1 })
 }
 
 function makePlayer(overrides = {}) {
@@ -254,8 +272,33 @@ describe('tick — delivering the fleece', () => {
   })
 })
 
+describe('burrowOpen', () => {
+  it('is false while all three mouth cells are still sealed', () => {
+    assert.equal(burrowOpen(state.map, mapData), false)
+  })
+
+  it('is true once any one mouth cell has been mined through', () => {
+    openMouth(state.map, -1)
+    assert.equal(burrowOpen(state.map, mapData), true)
+  })
+
+  it('is false on a map with no burrow POI', () => {
+    mapData.pois = mapData.pois.filter(p => p.label !== 'burrow')
+    openMouth(state.map)
+    assert.equal(burrowOpen(state.map, mapData), false)
+  })
+})
+
 describe('Maahinen', () => {
-  it('onArrive spawns it at the lair and sets maahinen_spawned', () => {
+  it('onArrive spawns nothing while the burrow mouth is still sealed', () => {
+    onArrive(ctx)
+    assert.equal(maahinenIn(state), undefined)
+    assert.equal(ctx.flags.maahinen_spawned, undefined)
+    assert.equal(spies.calls.persist, 0)
+  })
+
+  it('onArrive spawns it at the lair once the mouth is open, and sets maahinen_spawned', () => {
+    openMouth(state.map)
     onArrive(ctx)
     const m = maahinenIn(state)
     assert.ok(m)
@@ -266,21 +309,48 @@ describe('Maahinen', () => {
   })
 
   it('onArrive does nothing once maahinen_dead is set', () => {
+    openMouth(state.map)
     ctx.set('maahinen_dead')
     onArrive(ctx)
     assert.equal(maahinenIn(state), undefined)
   })
 
+  it('tick spawns it the moment the player breaks through, exactly once', () => {
+    onArrive(ctx)
+    tick(ctx, 0)
+    assert.equal(maahinenIn(state), undefined, 'still sealed')
+    openMouth(state.map)
+    tick(ctx, 0)
+    const m = maahinenIn(state)
+    assert.ok(m, 'spawned on the break-through tick')
+    assert.equal(m.x, LAIR.x)
+    assert.equal(m.y, LAIR.y)
+    assert.equal(ctx.flags.maahinen_spawned, true)
+    tick(ctx, 0)
+    assert.equal(state.entities.filter(e => e.type === 'maahinen').length, 1, 'no second spawn')
+  })
+
   it('tick leaves maahinen_dead unset and never resolves while the creature is alive', () => {
+    openMouth(state.map)
     onArrive(ctx)
     tick(ctx, 0)
     assert.equal(ctx.flags.maahinen_dead, undefined)
     assert.equal(spies.calls.resolve, 0)
   })
 
-  it('tick sets maahinen_dead and resolves exactly once once the creature is gone', () => {
+  it('a maahinen merely absent (not killed) never counts as dead', () => {
+    openMouth(state.map)
     onArrive(ctx)
     state.entities = state.entities.filter(e => e.type !== 'maahinen')
+    tick(ctx, 0)
+    assert.equal(ctx.flags.maahinen_dead, undefined)
+    assert.equal(spies.calls.resolve, 0)
+  })
+
+  it('tick sets maahinen_dead and resolves exactly once on the recorded kill', () => {
+    openMouth(state.map)
+    onArrive(ctx)
+    state.creatureKills = { maahinen: true }
     tick(ctx, 0)
     assert.equal(ctx.flags.maahinen_dead, true)
     assert.equal(spies.calls.resolve, 1)
@@ -292,6 +362,65 @@ describe('Maahinen', () => {
     tick(ctx, 0)
     assert.equal(ctx.flags.maahinen_dead, undefined)
     assert.equal(spies.calls.resolve, 0)
+  })
+})
+
+describe('tick — burn timer stops once the Maahinen is dead', () => {
+  it('never advances a burn tier after maahinen_dead', () => {
+    ctx.set('maahinen_dead')
+    tick(ctx, BURN_INTERVAL * 10)
+    assert.equal(ctx.flags.burn, undefined)
+  })
+})
+
+// The real map, not a fixture: the fold's lair sits 70 tiles from the
+// player's spawn behind three rock-sealed mouth cells. Regression for the
+// bug where the Maahinen spawned on arrival and glided through walls to
+// erupt on the player.
+describe('Maahinen on the real fold map', () => {
+  const fold = Object.values(OPEN_MAPS).find(m => m.name === 'highland-2-fold')
+  const LEASH_MARGIN = 12
+
+  function realCtx() {
+    const { map, playerSpawn } = buildOpenMap(fold)
+    const st = {
+      player: { ...makePlayer(), x: playerSpawn.x, y: playerSpawn.y,
+        px: playerSpawn.x * S + 16, py: playerSpawn.y * S + 16 },
+      map, entities: [], log: [], sfx: { cues: [] },
+    }
+    const realSave = normalizeAdventureSave(null)
+    const realSpies = makeSpies()
+    const c = makeEpCtx({
+      getState: () => st, save: realSave, mapData: fold,
+      persist: realSpies.persist, resolve: realSpies.resolve, refreshInventory: realSpies.refreshInventory,
+      spawn: spawnInto(st),
+    })
+    return { st, ctx: c }
+  }
+
+  it('never spawns while the mouth is sealed, even after 120s on the map', () => {
+    const { st, ctx: c } = realCtx()
+    onArrive(c)
+    for (let t = 0; t < 120; t += 0.1) {
+      tick(c, 0.1)
+      for (const e of st.entities.filter(e => e.type === 'maahinen')) updateMaahinen(e, st, 0.1)
+    }
+    assert.equal(st.entities.some(e => e.type === 'maahinen'), false, 'never spawned')
+  })
+
+  it('once spawned, stays in the lair area for 120s while the player is far away', () => {
+    const { st, ctx: c } = realCtx()
+    const burrow = poiCell(fold, 'burrow')
+    const lair = poiCell(fold, 'lair')
+    for (let i = 0; i < 3; i++) harvest(st.map, burrow.x, burrow.y, { mine: 1 })
+    assert.equal(burrowOpen(st.map, fold), true)
+    tick(c, 0.1)
+    const m = st.entities.find(e => e.type === 'maahinen')
+    assert.ok(m, 'spawned on the break-through tick')
+    for (let t = 0; t < 120; t += 0.1) updateMaahinen(m, st, 0.1)
+    const cheb = Math.max(Math.abs(m.px / S - (lair.x + 0.5)), Math.abs(m.py / S - (lair.y + 0.5)))
+    assert.ok(cheb <= LEASH_MARGIN, `wandered ${cheb.toFixed(1)} tiles from the lair`)
+    assert.equal(m.state, 'submerged', 'never erupted on a player 70 tiles away')
   })
 })
 

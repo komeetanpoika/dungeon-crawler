@@ -90,12 +90,28 @@ describe('echo and resolution helpers', () => {
     assert.equal(echoLine(ep, 0, { a: true }, {}), 'A')
     assert.equal(echoLine(ep, 5, {}, {}), null)
   })
-  it('missingSpawn lands on walkable ground beside the village', () => {
+  it('missingSpawn lands on walkable ground beside the village, tagged as the returned local', () => {
     const s = missingSpawn(lake)
     assert.equal(s.kind, 'npc'); assert.equal(s.id, 'npc:lake-1-ferry:missing')
+    assert.equal(s.role, 'missing')
     assert.equal(lake.walk[s.y][s.x], '1')
     const v = poiCell(lake, 'village')
     assert.ok(Math.max(Math.abs(s.x - v.x), Math.abs(s.y - v.y)) <= 4)
+  })
+})
+
+describe('returned local', () => {
+  it('every leap map tags its missing person with role: missing', () => {
+    for (const m of Object.values(OPEN_MAPS)) {
+      if (!episodeFor(m)) continue
+      assert.equal(missingSpawn(m).role, 'missing', m.name)
+    }
+  })
+  it('every episode has resolved lines for the villagers to speak', () => {
+    for (const [name, ep] of Object.entries(EPISODES)) {
+      assert.ok(ep.resolvedLines && Object.keys(ep.resolvedLines).length, name)
+      for (const lines of Object.values(ep.resolvedLines)) assert.ok(lines.length, name)
+    }
   })
 })
 

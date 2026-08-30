@@ -17,6 +17,11 @@ export const BURROW_SPEED = 60
 export const ERUPT_DIST = 48
 export const ERUPT_TIME = 0.6
 export const RESURFACE_DELAY = 2
+// How far the player may stray from the Maahinen's lair before it loses
+// interest: past this it burrows home instead of hunting, and never erupts.
+// Without it the burrower ignores walls and follows the player across the
+// whole map, erupting on the village.
+export const LEASH_TILES = 10
 export const SUBMERGE_TIME = 0.4
 
 export function makeMaahinen(x, y) {
@@ -46,11 +51,27 @@ function ringSearch(map, cx, cy, minR, maxR, exclude = null) {
   return null
 }
 
+// True while the player is farther than LEASH_TILES (Chebyshev, in px) from
+// the Maahinen's home — the same tile-radius idiom the rest of the episode
+// uses.
+function outsideLeash(e, player) {
+  const home = e.home ?? { x: e.x, y: e.y }
+  const hx = home.x * S + S / 2, hy = home.y * S + S / 2
+  return Math.max(Math.abs(player.px - hx), Math.abs(player.py - hy)) > LEASH_TILES * S
+}
+
 function submergedTick(e, state, delta) {
   const { player, map } = state
   e.timer = Math.max(0, e.timer - delta)
 
-  const dx = player.px - e.px, dy = player.py - e.py
+  // Outside the leash it burrows back to its lair and stays down; inside, it
+  // hunts the player as before.
+  const leashed = outsideLeash(e, player)
+  const home = e.home ?? { x: e.x, y: e.y }
+  const tx = leashed ? home.x * S + S / 2 : player.px
+  const ty = leashed ? home.y * S + S / 2 : player.py
+
+  const dx = tx - e.px, dy = ty - e.py
   const dist = Math.hypot(dx, dy)
   if (dist > 1e-6) {
     const step = Math.min(dist, BURROW_SPEED * delta)
@@ -59,6 +80,7 @@ function submergedTick(e, state, delta) {
     e.x = Math.floor(e.px / S)
     e.y = Math.floor(e.py / S)
   }
+  if (leashed) return
 
   const newDist = Math.hypot(player.px - e.px, player.py - e.py)
   if (newDist <= ERUPT_DIST && e.timer <= 0) {

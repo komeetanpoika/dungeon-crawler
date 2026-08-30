@@ -436,6 +436,17 @@ function arriveOnMap() {
 // walks back into the village and the runestone hums. Idempotent per visit
 // via `state.episodeResolved` — episode modules (Task 5) call this through ctx
 // right after setting the flag that might complete the rule.
+// The one place a creature death is declared. Episode modules read
+// `state.creatureKills[type]` rather than inferring death from the
+// creature's absence — a creature that never spawned, or one removed for
+// any other reason, must not resolve an episode for free. Per-visit: the
+// record is reset wherever a map's `state` is built.
+function recordCreatureKill(e, r) {
+  if (r.absorbed || !(r.entity.hp <= 0)) return false
+  state.creatureKills = { ...(state.creatureKills ?? {}), [e.type]: true }
+  return true
+}
+
 function resolveEpisode() {
   const mapData = OPEN_MAPS[state.level]
   if (!state.episode || state.episodeResolved || !isResolved(savedAdventure, mapData)) return
@@ -532,6 +543,9 @@ function startNewRun(depth = 1, arenaCfg = null) {
     entranceHold: false,
     signs: signs ?? [],
     npcWrath: !!npcRecord?.hostile,
+    // Creature kills are per-visit: an episode's own flags carry the story
+    // forward, this only reports what died on this map since arriving.
+    creatureKills: {},
     // The ids actually built, plus the ones already tombstoned — a dead npc
     // must stay recorded as dead on the next persist rather than be forgotten.
     npcSpawnIds: npcRecord ? [...npcSpawns(entitySpawns), ...npcRecord.dead] : [],
@@ -818,6 +832,11 @@ function update(delta) {
     }
     state.echoHold = echo
     EPISODE_MODULES[state.epCtx.mapData.name]?.tick(state.epCtx, delta)
+    // The rule can also come true off a module's own flags (a wolf killed,
+    // an npc record change), so the surface frame re-checks it rather than
+    // relying on the modules' ctx.resolve() calls alone. Self-guarding on
+    // episodeResolved/isResolved, so this is a no-op once resolved.
+    resolveEpisode()
   }
 
   // Campfire cooking — standing on a fire cooks every raw meat carried.
@@ -1023,7 +1042,8 @@ function update(delta) {
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         if (isCreature(e)) {
           const r = strikeCreature(e, state, dmg)
-          if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
+          const cue = recordCreatureKill(e, r) ? 'enemy-death' : r.cue
+          if (cue) sfx(state, cue, { px: e.px, py: e.py })
           if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
           return r.entity
         }
@@ -1200,7 +1220,8 @@ function update(delta) {
           hit = true
           if (isCreature(e)) {
             const r = strikeCreature(e, state, p.damage)
-            if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
+            const cue = recordCreatureKill(e, r) ? 'enemy-death' : r.cue
+            if (cue) sfx(state, cue, { px: e.px, py: e.py })
             if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
             return r.entity
           }
@@ -1567,6 +1588,7 @@ function travelToMap(depth) {
     entranceHold: false,
     signs: signs ?? [],
     npcWrath: npcRecord.hostile,
+    creatureKills: {},
     npcSpawnIds: [...npcSpawns(entitySpawns), ...npcRecord.dead],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
   }

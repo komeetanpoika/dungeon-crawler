@@ -249,8 +249,15 @@ describe('tick — wraith death', () => {
     assert.equal(spies.calls.resolve, 0)
   })
 
-  it('removing the wraith sets wraith_dead, lights all three hearths, and resolves once', () => {
+  it('a wraith merely absent (not killed) never counts as dead', () => {
     state.entities = state.entities.filter(e => e.type !== 'sammunut')
+    tick(ctx, 0)
+    assert.equal(ctx.flags.wraith_dead, undefined)
+    assert.equal(spies.calls.resolve, 0)
+  })
+
+  it('a recorded kill sets wraith_dead, lights all three hearths, and resolves once', () => {
+    state.creatureKills = { sammunut: true }
     tick(ctx, 0)
     assert.equal(ctx.flags.wraith_dead, true)
     for (const h of [HEARTH1, HEARTH2, HEARTH3]) assert.equal(state.map[h.y][h.x].overlay, 'prop_hearth_lit')

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   makeMaahinen, updateMaahinen,
-  BURROW_SPEED, ERUPT_DIST, ERUPT_TIME, RESURFACE_DELAY, SUBMERGE_TIME,
+  BURROW_SPEED, ERUPT_DIST, ERUPT_TIME, RESURFACE_DELAY, SUBMERGE_TIME, LEASH_TILES,
 } from '../renderer/systems/maahinen.js'
 import { strikeCreature, creatureAlpha } from '../renderer/systems/creatures.js'
 import { createMap } from '../renderer/systems/map.js'
@@ -92,6 +92,50 @@ describe('updateMaahinen — submerged glide', () => {
     const cheb = Math.max(Math.abs(m.x - player.x), Math.abs(m.y - player.y))
     assert.equal(cheb, 1, 'nearest ring search should land adjacent')
     assert.equal(state.map[m.y][m.x].tile, TILE.FLOOR)
+  })
+})
+
+describe('updateMaahinen — leash', () => {
+  it('LEASH_TILES is 10', () => {
+    assert.equal(LEASH_TILES, 10)
+  })
+
+  it('glides back toward home, and never erupts, while the player is outside the leash', () => {
+    const m = makeMaahinen(5, 5)
+    // Player 15 tiles east of home: well outside the 10-tile leash.
+    const player = makePlayer(20, 5)
+    const state = makeState(m, player, openMap(40, 40))
+    // Displace it a few tiles off home so "toward home" is measurable.
+    m.px = 9 * S + 16; m.py = 5 * S + 16; m.x = 9; m.y = 5
+    const homePx = 5 * S + 16, homePy = 5 * S + 16
+    const before = Math.hypot(homePx - m.px, homePy - m.py)
+    updateMaahinen(m, state, 1)
+    const after = Math.hypot(homePx - m.px, homePy - m.py)
+    assert.ok(after < before, `expected it to close on home, went ${before} -> ${after}`)
+    assert.ok(Math.abs((before - after) - BURROW_SPEED) < 1, `expected ~${BURROW_SPEED}px closed`)
+    assert.equal(m.state, 'submerged')
+  })
+
+  it('never erupts on a player standing on it from outside the leash', () => {
+    const m = makeMaahinen(5, 5)
+    const player = makePlayer(20, 5)
+    const state = makeState(m, player, openMap(40, 40))
+    for (let t = 0; t < 60; t += 0.1) updateMaahinen(m, state, 0.1)
+    assert.equal(m.state, 'submerged')
+    assert.ok(!state.sfx.cues.some(c => c.name === 'erupt'), 'no erupt cue')
+    // parked on home, not drifting toward the distant player
+    assert.equal(m.x, 5)
+    assert.equal(m.y, 5)
+  })
+
+  it('still hunts a player inside the leash', () => {
+    const m = makeMaahinen(5, 5)
+    const player = makePlayer(13, 5)   // 8 tiles: inside the leash
+    const state = makeState(m, player, openMap(40, 40))
+    const before = Math.hypot(player.px - m.px, player.py - m.py)
+    updateMaahinen(m, state, 1)
+    const after = Math.hypot(player.px - m.px, player.py - m.py)
+    assert.ok(Math.abs((before - after) - BURROW_SPEED) < 1, 'closes on the player')
   })
 })
 

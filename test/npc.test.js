@@ -303,6 +303,17 @@ describe('spriteKeyFor', () => {
     assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:5' })), 'npc_villager_3')
     assert.equal(spriteKeyFor(npcAt('deer', 1, 1)), 'npc_deer')
   })
+  it('the returned local wears the third villager face whatever its id', () => {
+    assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:missing', role: 'missing' })), 'npc_villager_3')
+    assert.equal(spriteKeyFor(npcAt('villager', 1, 1, { id: 'npc:m:0', role: 'missing' })), 'npc_villager_3')
+  })
+})
+
+describe('makeNpc role', () => {
+  it('carries a declared role through onto the entity, and omits it otherwise', () => {
+    assert.equal(npcAt('villager', 1, 1, { role: 'missing' }).role, 'missing')
+    assert.equal('role' in npcAt('villager', 1, 1), false)
+  })
 })
 
 describe('hostile animals and drops', () => {

@@ -45,16 +45,20 @@ export function echoLine(episode, spotIndex, flags, ctx) {
 }
 
 // The returned local: a villager beside the village POI, on the nearest
-// walkable cell by expanding rings (never the POI itself, which is usually art).
+// walkable cell by expanding rings (never the POI itself, which is usually
+// art). `role: 'missing'` is what tells the renderer to give them their own
+// face instead of the id-rotated village one — the person who came back
+// should not look like one of the neighbours.
 export function missingSpawn(mapData) {
   const ep = episodeFor(mapData)
   const v = poiCell(mapData, 'village') ?? mapData.playerSpawn
+  const at = (x, y) => ({ kind: 'npc', species: ep.missing.species, id: `npc:${mapData.name}:missing`, role: 'missing', x, y, hostile: false })
   for (let r = 1; r <= 4; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
     const x = v.x + dx, y = v.y + dy
-    if (mapData.walk[y]?.[x] === '1') return { kind: 'npc', species: ep.missing.species, id: `npc:${mapData.name}:missing`, x, y, hostile: false }
+    if (mapData.walk[y]?.[x] === '1') return at(x, y)
   }
-  return { kind: 'npc', species: ep.missing.species, id: `npc:${mapData.name}:missing`, x: mapData.playerSpawn.x, y: mapData.playerSpawn.y, hostile: false }
+  return at(mapData.playerSpawn.x, mapData.playerSpawn.y)
 }
 
 // One Echo per declared spot, standing on the POI cell it speaks from. A spot

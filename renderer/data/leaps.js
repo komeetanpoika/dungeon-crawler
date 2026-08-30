@@ -27,6 +27,9 @@ export const EPISODES = {
         { when: () => true, text: 'A fish rack. He fed the lake every dusk. Ziggy is very sure that matters.' },
       ] },
     ],
+    resolvedLines: {
+      villager: ['Toivo rings the bell at dusk again.', 'The orchard is ours — try an apple.'],
+    },
     rule: f => !!f.nakki_gone,
   },
   'highland-2-fold': {
@@ -53,6 +56,9 @@ export const EPISODES = {
         { when: () => true, text: "Lamb's fleece, and the prospector's mess. Show the elder before the torches reach the den." },
       ] },
     ],
+    resolvedLines: {
+      villager: ['Aino brought the torches down. The wolves can keep the ridge.', 'The lambs sleep through the night now.'],
+    },
     rule: (f, c) => !!f.maahinen_dead && (c?.wolvesAlive ?? 0) >= 1,
   },
   'marsh-3-hermit': {

@@ -48,7 +48,7 @@ export function hearthFireAt(entities, hearth) {
 function spawnWraith(ctx) {
   const { state, flags } = ctx
   const spot = sammunutSpot(state.map, state.player)
-  if (!spot) return
+  if (!spot) { console.warn(`hermit: no spot ${SAMMUNUT_MIN_DIST}+ tiles from the player — the Sammunut cannot spawn`); return }
   ctx.spawn([{ kind: 'creature', creature: 'sammunut', x: spot.x, y: spot.y }])
   if (!flags.sammunut_spawned) { ctx.set('sammunut_spawned'); ctx.persist() }
 }
@@ -66,6 +66,8 @@ function relightHearth(ctx) {
   state.entities.push(makeCampfire(hearth.x, hearth.y, { eternal: true }))
 }
 
+// Arrival — a fresh load or a waystone journey; a cave dive stashes the
+// surface state whole and never re-runs this.
 export function onArrive(ctx) {
   const { state, mapData, flags, episode } = ctx
   if (flags.wraith_dead) {
@@ -97,10 +99,13 @@ function tickHearth(ctx) {
   ctx.persist()
 }
 
+// Death is the explicit kill game.js records on state.creatureKills, never
+// the creature's absence: a Sammunut that failed to find a spawn spot, or
+// one not yet spawned, must not resolve the episode for free.
 function tickWraith(ctx) {
   const { state, mapData, flags } = ctx
   if (!flags.sammunut_spawned || flags.wraith_dead) return
-  if (state.entities.some(e => e.type === 'sammunut')) return
+  if (!state.creatureKills?.sammunut) return
   ctx.set('wraith_dead')
   lightHearths(state.map, mapData)
   ctx.persist()

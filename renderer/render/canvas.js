@@ -12,6 +12,7 @@ import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha } from '../systems/campfire.js'
 import { isCreature, creatureAlpha } from '../systems/creatures.js'
+import { ERUPT_TIME } from '../systems/maahinen.js'
 
 const TILE_SIZE = 32
 
@@ -223,7 +224,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
     } else {
-      const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber' }[c.type]
+      const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
+                    clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
       const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
       else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }
@@ -743,9 +745,8 @@ function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
 }
 
 // Maahinen eruption telegraph: a brown dust ring expanding from 8 to 40 px
-// over ERUPT_TIME (0.6s), reusing the cyclops slam-ring drawing style. The
+// over ERUPT_TIME, reusing the cyclops slam-ring drawing style. The
 // entity's own countdown timer (running ERUPT_TIME -> 0) drives progress.
-const ERUPT_TIME = 0.6
 const ERUPT_RING_MIN = 8
 const ERUPT_RING_MAX = 40
 

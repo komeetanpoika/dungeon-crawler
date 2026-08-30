@@ -386,7 +386,8 @@ describe('trees never show damage', () => {
 })
 
 describe('floating consumables use atlas sprites', () => {
-  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['mushroom', 'ow_mushroom']])
+  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['mushroom', 'ow_mushroom'],
+                            ['clapper', 'item_clapper'], ['fleece', 'item_fleece']])
     it(`${type} draws ${key}`, () => {
       const ctx = recordingCtx()
       ctx.fillText = () => {}

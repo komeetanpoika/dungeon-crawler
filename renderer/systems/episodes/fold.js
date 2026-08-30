@@ -140,7 +140,7 @@ function tryDeliverFleece(ctx, delta) {
 
 function tickBurn(ctx, delta) {
   const { state, mapData, flags } = ctx
-  if (flags.fleece_shown) return
+  if (flags.fleece_shown || flags.maahinen_dead) return
   const burn = flags.burn ?? 0
   if (burn >= BURN_STAGES) return
   state.burnT = (state.burnT ?? 0) + delta
@@ -160,26 +160,56 @@ function tickBurn(ctx, delta) {
   ctx.persist()
 }
 
+// The burrow mouth is the `burrow` POI cell plus its two horizontal
+// neighbours, all sealed with rock. lumber.js's harvest tags a mined-through
+// rock cell `cleared === 'rock'` (and applyFelled re-tags it on a rebuilt
+// map), so one cleared mouth cell means the player broke in.
+export function burrowOpen(map, mapData) {
+  const mouth = poiCell(mapData, 'burrow')
+  if (!mouth) return false
+  return [-1, 0, 1].some(dx => map[mouth.y]?.[mouth.x + dx]?.cleared === 'rock')
+}
+
+// Puts the Maahinen on the lair POI. Returns whether it actually spawned.
+function spawnMaahinen(ctx) {
+  const spot = poiCell(ctx.mapData, 'lair')
+  if (!spot) { console.warn('fold: no lair POI — the Maahinen cannot spawn'); return false }
+  ctx.spawn([{ kind: 'creature', creature: 'maahinen', x: spot.x, y: spot.y }])
+  return true
+}
+
+// The Maahinen exists only behind the sealed burrow: it appears when the
+// player mines the mouth open (spawning on the arrival that finds it already
+// open, so the fight survives a reload or waystone return), and dies only on
+// a recorded kill — mere absence is not death, or a not-yet-spawned creature
+// would resolve the episode for free.
 function tickMaahinen(ctx) {
-  const { state, flags } = ctx
-  if (!flags.maahinen_spawned || flags.maahinen_dead) return
-  if (state.entities.some(e => e.type === 'maahinen')) return
+  const { state, mapData, flags } = ctx
+  if (flags.maahinen_dead) return
+  if (!flags.maahinen_spawned) {
+    if (!burrowOpen(state.map, mapData)) return
+    if (!spawnMaahinen(ctx)) return
+    ctx.set('maahinen_spawned')
+    ctx.persist()
+    return
+  }
+  if (!state.creatureKills?.maahinen) return
   ctx.set('maahinen_dead')
   ctx.persist()
   ctx.resolve()
 }
 
-// Arrival: re-stamp any burnt band from a prior session, and (re)spawn the
-// Maahinen at the lair unless it's already dead — mirrors ferry.js's
-// spawnNakki-on-arrival so the fight survives a cave dive/return or a fresh
-// load. maahinen_spawned only needs setting (and persisting) once.
+// Arrival (a fresh load or a waystone journey — a cave dive stashes the
+// surface state whole and never re-runs this): re-stamp any burnt band from
+// a prior session, and put the Maahinen back at the lair if the mouth is
+// already open and it is not yet dead. maahinen_spawned only needs setting
+// (and persisting) once.
 export function onArrive(ctx) {
   const { state, mapData, flags } = ctx
   applyBurnt(state.map, flags.burnt)
   if (flags.maahinen_dead) return
-  const spot = poiCell(mapData, 'lair')
-  if (!spot) return
-  ctx.spawn([{ kind: 'creature', creature: 'maahinen', x: spot.x, y: spot.y }])
+  if (!burrowOpen(state.map, mapData)) return
+  if (!spawnMaahinen(ctx)) return
   if (!flags.maahinen_spawned) { ctx.set('maahinen_spawned'); ctx.persist() }
 }
 
