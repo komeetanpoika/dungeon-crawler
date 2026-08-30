@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { buildOpenMap } from '../renderer/systems/openmap.js'
-import { TILE } from '../renderer/systems/entities.js'
-import { isHouseDoorArt } from '../renderer/systems/houses.js'
+import { TILE, weaponContents } from '../renderer/systems/entities.js'
+import { isHouseDoorArt, houseDoorsForMap } from '../renderer/systems/houses.js'
+import { EPISODES } from '../renderer/data/leaps.js'
 
 const REQUIRED = {
   'lake-1-ferry':     ['runestone', 'village', 'bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'islet cache'],
@@ -183,4 +184,41 @@ describe('gen-forest maps are unchanged by the kit refactor', () => {
     assert.deepEqual(json.pois, data.pois)
     assert.deepEqual(json.playerSpawn, data.playerSpawn)
   })
+})
+
+describe('story houses', () => {
+  const REQUIRED_ITEMS = {
+    'lake-1-ferry':   { house: "Toivo's hut", hatchet: true, lumber: 3, meat: 3 },
+    'highland-2-fold': { house: "Aino's house" },
+    'marsh-3-hermit': { house: 'hermit hut', hatchet: true, lumber: 3 },
+  }
+
+  for (const [mapName, req] of Object.entries(REQUIRED_ITEMS)) {
+    it(`${mapName}: the "${req.house}" POI exists and resolves to exactly one door`, () => {
+      const data = byName[mapName]
+      assert.ok(data.pois.some(p => p.label === req.house), `missing POI ${req.house}`)
+      const doors = houseDoorsForMap(data, EPISODES[mapName]).filter(d => d.story === req.house)
+      assert.equal(doors.length, 1, `expected exactly one door resolving to ${req.house}`)
+    })
+
+    it(`${mapName}: "${req.house}" carries the episode's required items`, () => {
+      const pickups = EPISODES[mapName].houses[req.house].pickups
+      if (req.hatchet) {
+        const hatchet = pickups.find(p => p.type === 'weapon' && p.weaponType === 'hatchet')
+        assert.ok(hatchet, 'missing hatchet pickup')
+        assert.deepEqual(
+          { weaponType: hatchet.weaponType, name: hatchet.name, damage: hatchet.damage, chop: hatchet.chop },
+          weaponContents('hatchet'),
+        )
+      }
+      if (req.lumber) {
+        const lumber = pickups.filter(p => p.type === 'lumber').reduce((n, p) => n + (p.count ?? 0), 0)
+        assert.ok(lumber >= req.lumber, `expected lumber >= ${req.lumber}, got ${lumber}`)
+      }
+      if (req.meat) {
+        const meat = pickups.filter(p => p.type === 'meat').reduce((n, p) => n + (p.count ?? 0), 0)
+        assert.ok(meat >= req.meat, `expected meat >= ${req.meat}, got ${meat}`)
+      }
+    })
+  }
 })

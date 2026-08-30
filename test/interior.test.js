@@ -1,9 +1,13 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups } from '../renderer/systems/houses.js'
+import { readFileSync } from 'node:fs'
+import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from '../renderer/systems/houses.js'
 import { generateLevel } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 import { DEPTH_THEMES } from '../renderer/data/levels.js'
+import { EPISODES } from '../renderer/data/leaps.js'
+
+const STRUCTURES = JSON.parse(readFileSync(new URL('../renderer/data/structures.json', import.meta.url)))
 
 const gen = (tier, extra = {}) => generateLevel(INTERIOR_DEPTH, 44, 28, { config: INTERIOR_CONFIG[tier], structures: {}, ...extra })
 const count = (spawns, kind, variant) => spawns.filter(s => s.kind === kind && (variant === undefined || s.variant === variant)).length
@@ -52,6 +56,20 @@ describe('generated interiors', () => {
     const fp = spawns.filter(s => s.kind === 'floating_pickup')
     assert.equal(fp.length, 2)
     assert.deepEqual(fp.map(s => s.contents).sort((a, b) => a.type.localeCompare(b.type)), pickups.slice().sort((a, b) => a.type.localeCompare(b.type)))
+    for (const s of fp) assert.ok(isWalkable(map[s.y][s.x].tile))
+    assert.equal(spawns.some(s => s.kind === 'pickup'), false)
+  })
+  it("generates Toivo's hut with storyStructures: the kitchen prefab lands with its three pickups", () => {
+    const episode = EPISODES['lake-1-ferry']
+    const structures = storyStructures(STRUCTURES, episode, "Toivo's hut")
+    const { map, entitySpawns } = gen('hut', { structures })
+    const spawns = attachPickups(entitySpawns, episode.houses["Toivo's hut"].pickups)
+    const fp = spawns.filter(s => s.kind === 'floating_pickup')
+    assert.equal(fp.length, 3)
+    assert.deepEqual(
+      fp.map(s => s.contents).sort((a, b) => a.type.localeCompare(b.type)),
+      episode.houses["Toivo's hut"].pickups.slice().sort((a, b) => a.type.localeCompare(b.type)),
+    )
     for (const s of fp) assert.ok(isWalkable(map[s.y][s.x].tile))
     assert.equal(spawns.some(s => s.kind === 'pickup'), false)
   })

@@ -65,3 +65,21 @@ export function attachPickups(entitySpawns, pickups = []) {
     return contents ? [{ kind: 'floating_pickup', x: s.x, y: s.y, contents }] : []
   })
 }
+
+// Resolves a story door's prefab into the `structures` shape generateLevel
+// expects, so it lands as the interior's landmark room. `structures` is the
+// runtime-loaded structures.json (renderer/systems must stay pure, so it is
+// never imported here — game.js passes it in via saveAPI.loadStructures()).
+// Returns {} when there is no story (a generic house) or when the episode's
+// story house names a room that isn't in structures.json (warns once).
+export function storyStructures(structures, episode, story) {
+  if (!story) return {}
+  const room = episode?.houses?.[story]?.room
+  if (!room) return {}
+  const prefab = structures?.[room]
+  if (!prefab) {
+    console.warn(`storyStructures: room "${room}" for story house "${story}" not found in structures.json`)
+    return {}
+  }
+  return { [room]: { ...prefab, targetDepth: INTERIOR_DEPTH } }
+}

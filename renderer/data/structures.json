@@ -927,5 +927,1553 @@
         "interaction": null
       }
     ]
+  },
+  "toivo_kitchen": {
+    "w": 9,
+    "h": 7,
+    "cells": [
+      {
+        "x": 0,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0077",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0077",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0077",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0077",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0077",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0077",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0077",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 1,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 2,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": {
+          "type": "pickup",
+          "slot": 0
+        }
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0073",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 2,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 3,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0073",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0072",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0073",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": {
+          "type": "pickup",
+          "slot": 1
+        }
+      },
+      {
+        "x": 8,
+        "y": 3,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 4,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 4,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 5,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": {
+          "type": "pickup",
+          "slot": 2
+        }
+      },
+      {
+        "x": 3,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 5,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 6,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      }
+    ]
+  },
+  "hermit_woodpile": {
+    "w": 9,
+    "h": 7,
+    "cells": [
+      {
+        "x": 0,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0075",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0075",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0075",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0075",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0075",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0075",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0075",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 1,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 2,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": {
+          "type": "pickup",
+          "slot": 0
+        }
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 2,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 3,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0075",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 3,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 4,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 4,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 5,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": {
+          "type": "pickup",
+          "slot": 1
+        }
+      },
+      {
+        "x": 3,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 5,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 6,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      }
+    ]
+  },
+  "aino_larder": {
+    "w": 9,
+    "h": 7,
+    "cells": [
+      {
+        "x": 0,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 0,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 1,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 1,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 2,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 2,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 2,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 3,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0072",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 3,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 3,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 4,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 4,
+        "skin": "custom_floor_wood",
+        "overlay": "tile_0082",
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 4,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 5,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": {
+          "type": "pickup",
+          "slot": 0
+        }
+      },
+      {
+        "x": 3,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 5,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 5,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 0,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 1,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 2,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 3,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 4,
+        "y": 6,
+        "skin": "custom_floor_wood",
+        "overlay": null,
+        "collision": "walkable",
+        "interaction": null
+      },
+      {
+        "x": 5,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 6,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 7,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      },
+      {
+        "x": 8,
+        "y": 6,
+        "skin": "tile_0040",
+        "overlay": null,
+        "collision": "wall",
+        "interaction": null
+      }
+    ]
   }
 }
