@@ -8,7 +8,8 @@
     "editor": "electron . --editor",
     "test": "node --test test/",
     "web": "node tools/web-server.mjs",
-    "bake": "node tools/bake-dragon-parts.mjs"
+    "bake": "node tools/bake-dragon-parts.mjs",
+    "monster-lab": "node tools/monster-lab/server.mjs"
   },
   "devDependencies": {
     "electron": "^30.0.0",
