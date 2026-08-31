@@ -25,6 +25,12 @@
     "speed": 70,
     "half": 8
   },
-  "behavior": {},
-  "name": "podeboo"
+  "behavior": {
+    "kiteBand": [
+      100,
+      200
+    ]
+  },
+  "name": "podeboo",
+  "hooks": true
 }

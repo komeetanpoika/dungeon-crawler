@@ -5,6 +5,7 @@
 // register into CREATURE_HIT/UPDATE/ALPHA keyed by monster name; game.js
 // dispatches those explicitly for registry types.
 import { clampParams } from '../render/monster-rigs/schema.js'
+import { TILE_ART_PX, snapFacing, palette } from '../render/monster-rigs/pixel.js'
 import { registerMonsterAI } from '../data/enemy-ai.js'
 import { creatureAlpha, CREATURE_TYPES } from './creatures.js'
 
@@ -116,7 +117,10 @@ export function updateMonsterPose(e, delta) {
 
 export function entityPose(e) {
   const p = e.pose ?? { t: 0, state: 'idle', stateT: 0, facing: 0, speed01: 0, seed: 0 }
-  return { t: p.t, state: p.state, stateT: p.stateT, facing: p.facing, speed01: p.speed01, seed: p.seed }
+  // headAim/eyeGlow are optional channels a hook may write into e.pose
+  // (e.g. podeboo's laser charge); rigs that don't read them ignore them.
+  return { t: p.t, state: p.state, stateT: p.stateT, facing: p.facing, speed01: p.speed01, seed: p.seed,
+           headAim: p.headAim, eyeGlow: p.eyeGlow ?? 0 }
 }
 
 // Draw dispatch for the canvas entity loop: translate to the entity's screen
@@ -131,5 +135,42 @@ export function drawGeneratedMonster(ctx, e, cx, cy, S, state) {
   ctx.globalAlpha *= alpha
   ctx.translate(cx, cy)
   d.rig.drawMonster(ctx, d.params, entityPose(e), S)
+  drawLasers(ctx, e, d, S)
   ctx.restore()
+}
+
+// Beams live outside the rig's pixel stage (they run far past it), so they
+// render here in screen space: chunky segmented rects from the rig's eye
+// anchors, flickering white / eye colour. ctx is already at the entity
+// centre. Beam angles are world angles set by the hook (e.laser.beams).
+function drawLasers(ctx, e, d, S) {
+  const l = e.laser
+  if (!l || l.state !== 'fire' || !l.beams?.length) return
+  const k = S / TILE_ART_PX
+  const pose = entityPose(e)
+  const body = snapFacing(pose.facing + Math.PI / 2)
+  const head = snapFacing(pose.headAim ?? 0)
+  const anchors = typeof d.rig.eyeAnchors === 'function' ? d.rig.eyeAnchors(d.params) : null
+  const pal = palette(d.params.eyeColor ?? '#ff4040')
+  const hot = Math.floor(pose.t * 20) % 2 === 0
+  const origins = anchors
+    ? anchors.eyes.map(eye => {
+        const rx = eye.x * Math.cos(head) - eye.y * Math.sin(head) + anchors.pivot.x
+        const ry = eye.x * Math.sin(head) + eye.y * Math.cos(head) + anchors.pivot.y
+        return { x: (rx * Math.cos(body) - ry * Math.sin(body)) * k,
+                 y: (rx * Math.sin(body) + ry * Math.cos(body)) * k }
+      })
+    : [{ x: 0, y: 0 }]
+  const len = 320 * (S / 32)
+  const step = 4 * k
+  const w = Math.max(2, Math.round(2 * k))
+  for (const b of l.beams) {
+    const dx = Math.cos(b.ang), dy = Math.sin(b.ang)
+    for (const o of origins) {
+      for (let s = step; s < len; s += step) {
+        ctx.fillStyle = hot === (Math.floor(s / step) % 2 === 0) ? '#ffffff' : pal.light
+        ctx.fillRect(Math.round(o.x + dx * s - w / 2), Math.round(o.y + dy * s - w / 2), w, w)
+      }
+    }
+  }
 }

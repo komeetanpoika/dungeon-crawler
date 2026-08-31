@@ -127,3 +127,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** boarhound
 **Score:** 5/5
 **Notes:** All 5 acceptance criteria confirmed with screenshot evidence: renders via quadruped rig (clear parametric ellipse/leg/tusk shapes, zoomed screenshots), chases player (repeatedly closed distance across separated positions), walk gait animates (asymmetric splayed-leg mid-stride pose while actually moving vs symmetric static legs when idle/glued), sword hit flashes white (caught a non-lethal 2-dmg hit via a CanvasRenderingContext2D.fill monkeypatch + --dcdebug state inspection to align facing precisely — screenshot shows the white/lavender flash ellipse + '-2' damage number + yellow HP bar), dies and is removed (entities array empty after a lethal combo, screenshot shows player alone at full HP). Took real effort to land a clean single hit: sword is a non-charge weapon that swings every frame 'attacking' is true and cooldown allows, so a held key produces several swings — needed --dcdebug (window.__dc.state) to read exact facing/positions since melee hit-region is facing-relative and the default 'south' spawn facing rarely matched the boarhound's actual approach direction.
+
+## Run 19 — 2026-08-31 — CLOSED
+**Question:** Does podeboo's eye-laser attack work end to end in play: stop + head-track + eye-glow telegraph during charge, 5-beam fan burst above half HP, sweeping beam at/below half HP, with beams rendered and damage landing?
+**Criteria:** 1) in range+LOS podeboo stops and eyeGlow ramps >=0.5s before firing; 2) full-HP mode=burst with 5 beams, visible in screenshot, player damage possible; 3) pre-damaged (hp<=5) mode=sweep with advancing beam angle; 4) zero console errors
+**Config:** podeboo
+**Score:** 5/5
+**Notes:** All four criteria met with direct evidence: state polling showed the repeating idle->charge(glow 0.3->0.9, headAim engaged)->fire->cooldown cycle; burst mode confirmed (5-beam fan visible in screenshot, killed the unprotected player); pre-damaged to 4hp switched to sweep with twin eye-origin dotted beams visible live and the beam angle advancing mid-sweep; zero console errors.

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf } from '../renderer/render/monster-rigs/quadruped.js'
+import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, eyeAnchors } from '../renderer/render/monster-rigs/quadruped.js'
 
 // Recording 2D-context stand-in: every method call is logged, every property
 // set is accepted, gradients are inert. Lets us assert "drew something" and
@@ -127,5 +127,31 @@ describe('quadruped hitHalf', () => {
   })
   it('floors at 8 for minimal params', () => {
     assert.equal(hitHalf(extremes('min')), 8)
+  })
+})
+
+// Laser support: aimable head + glowing eyes + eye anchor positions.
+describe('quadruped head aim and eye glow', () => {
+  it('exports eyeAnchors: a pivot and two x-symmetric eyes forward of centre', () => {
+    const a = eyeAnchors(defaultParams(PARAM_SCHEMA))
+    assert.equal(a.eyes.length, 2)
+    assert.equal(a.eyes[0].x, -a.eyes[1].x)
+    assert.equal(a.eyes[0].y, a.eyes[1].y)
+    assert.ok(a.eyes[0].y < 0, 'eyes should sit forward of the pivot')
+    assert.ok(Number.isFinite(a.pivot.y))
+  })
+  it('headAim snaps to 45° buckets like body facing', () => {
+    const a = recordingCtx(), b = recordingCtx(), c = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('idle', { headAim: 0.05 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('idle', { headAim: -0.05 }), 32)
+    drawMonster(c, defaultParams(PARAM_SCHEMA), pose('idle', { headAim: Math.PI / 2 }), 32)
+    assert.deepEqual(a.ops, b.ops)
+    assert.notDeepEqual(a.ops, c.ops)
+  })
+  it('eyeGlow changes the drawn output', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('idle'), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('idle', { eyeGlow: 1 }), 32)
+    assert.notDeepEqual(a.ops, b.ops)
   })
 })

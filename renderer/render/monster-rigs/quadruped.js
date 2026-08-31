@@ -5,7 +5,7 @@
 // pure drawMonster(ctx, params, pose, S), origin at the monster's centre,
 // -y forward before rotation. PARAM_SCHEMA is unchanged from v1, so saved
 // monsters and the lab keep working; lengths quantize to art px at draw time.
-import { TILE_ART_PX, palette, frameOf, withPixelStage } from './pixel.js'
+import { TILE_ART_PX, palette, frameOf, withPixelStage, snapFacing } from './pixel.js'
 
 export const RIG_ID = 'quadruped'
 
@@ -63,6 +63,17 @@ function dims(p) {
 // body + head so the hitbox tracks the visuals. 0.6 keeps it a touch inside
 // the sprite (player-fair); clamped to the nav-supported clearance range —
 // 28 is the cyclops-tested 2-tile ceiling.
+// Art-px offsets of the two eyes relative to the neck pivot (and the pivot
+// relative to the monster centre), pre-rotation — so hooks and the beam
+// renderer can place effects on the actual eye pixels.
+export function eyeAnchors(p) {
+  const d = dims(p)
+  const eyePx = Math.max(1, R(p.eyeSize * 8))
+  const x = d.headW / 2 - 1 - Math.floor(eyePx / 2)
+  const y = -d.headH + 1 + Math.floor(eyePx / 2)
+  return { pivot: { x: 0, y: -d.bl / 2 }, eyes: [{ x: -x, y }, { x, y }] }
+}
+
 export function hitHalf(p) {
   const d = dims(p)
   const halfLen = (d.bl + d.headH + d.snout + 2) / 2
@@ -137,8 +148,13 @@ export function drawMonster(ctx, p, pose, S) {
           c.fillRect(R(x), y, 1, 1)
     }
 
-    // head block + snout + horns + eyes at the front (-y)
-    const hw2 = d.headW / 2, headTop = -bl2j - d.headH
+    // head group at the front (-y), pivoted at the neck so a hook-written
+    // pose.headAim can aim it — snapped to the same 45° buckets as the body.
+    // Rotating inside the stage still rasterizes onto the art-px grid.
+    const hw2 = d.headW / 2, headTop = -d.headH        // relative to the neck pivot
+    c.save()
+    c.translate(0, -bl2j)
+    c.rotate(snapFacing(pose.headAim ?? 0))
     if (p.horns) {
       c.fillStyle = pal.light
       c.fillRect(-hw2 - d.hornW, headTop - d.hornH, d.hornW, d.hornH + 3)
@@ -154,10 +170,21 @@ export function drawMonster(ctx, p, pose, S) {
       c.fillStyle = pal.light
       c.fillRect(-Math.floor(hw2 / 2), headTop - d.snout, Math.floor(hw2), d.snout)
     }
-    const eyePx = Math.max(1, R(p.eyeSize * 8))
-    c.fillStyle = eye
+    // eyes: grow and flicker white as a hook charges eyeGlow toward 1
+    const glow = pose.eyeGlow ?? 0
+    const eyePx = Math.max(1, R(p.eyeSize * 8)) + (glow > 0 ? Math.max(1, R(glow * 2)) : 0)
+    c.fillStyle = glow > 0.6 && frameOf(pose.t, 12, 2) === 0 ? '#ffffff' : eye
     c.fillRect(-hw2 + 1, headTop + 1, eyePx, eyePx)
     c.fillRect(hw2 - 1 - eyePx, headTop + 1, eyePx, eyePx)
+    if (glow > 0.5) {
+      c.fillStyle = pal.light
+      for (const sx of [-1, 1]) {
+        const ex = sx < 0 ? -hw2 + 1 : hw2 - 1 - eyePx
+        c.fillRect(ex - 1, headTop + 1, 1, eyePx)
+        c.fillRect(ex + eyePx, headTop + 1, 1, eyePx)
+      }
+    }
+    c.restore()
 
     c.restore()
   })
