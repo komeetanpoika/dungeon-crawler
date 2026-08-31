@@ -81,5 +81,7 @@ export function createLabServer(opts = {}) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT) || 5180
-  createLabServer().listen(port, () => console.log(`monster lab: http://localhost:${port}`))
+  // Bind to loopback only: this server serves the whole repo root and accepts
+  // PUT writes to renderer/data/monsters/ — it must never be reachable off-host.
+  createLabServer().listen(port, '127.0.0.1', () => console.log(`monster lab: http://localhost:${port}`))
 }

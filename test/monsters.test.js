@@ -41,6 +41,14 @@ describe('registerMonsters', () => {
   it('rejects bad names', async () => {
     assert.equal(await load([{ ...DEF, name: '../evil' }]), 0)
   })
+  it('skips a reserved built-in name, warns, loads the rest', async () => {
+    const warnings = []
+    const n = await load([{ ...DEF, name: 'monster' }, { ...DEF, name: 'ok' }], { warn: m => warnings.push(m) })
+    assert.equal(n, 1)
+    assert.equal(getMonsterDef('monster'), null)
+    assert.ok(getMonsterDef('ok'))
+    assert.ok(warnings.some(w => w.includes('monster') && w.includes('reserved')))
+  })
   it('__proto__ name: stored as own key, cleared by clearMonsters', async () => {
     assert.equal(await load([{ ...DEF, name: '__proto__' }]), 1)
     const d = getMonsterDef('__proto__')

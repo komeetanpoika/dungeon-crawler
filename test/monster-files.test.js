@@ -28,6 +28,11 @@ describe('writeMonster', () => {
     assert.throws(() => writeMonster(dir, 'Bad', {}))
     assert.throws(() => writeMonster(dir, 'a/b', {}))
   })
+  it('rejects a reserved built-in name', () => {
+    const dir = tmp()
+    assert.throws(() => writeMonster(dir, 'crab', {}), /reserved/)
+    assert.ok(!fs.existsSync(path.join(dir, 'crab.json')))
+  })
 })
 
 describe('readMonsters', () => {

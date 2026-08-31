@@ -6,11 +6,34 @@
 // dispatches those explicitly for registry types.
 import { clampParams } from '../render/monster-rigs/schema.js'
 import { registerMonsterAI } from '../data/enemy-ai.js'
-import { creatureAlpha } from './creatures.js'
+import { creatureAlpha, CREATURE_TYPES } from './creatures.js'
 
 const REGISTRY = Object.create(null)
 const NAME_RE = /^[a-z0-9_]+$/
 const HIT_FLASH = 0.18
+
+// Names a generated monster may NEVER take: built-in entity/enemy kinds.
+// registerMonsterAI(name, ...) writes BASE[name] in renderer/data/enemy-ai.js
+// — for a built-in name (e.g. 'monster', the universal fallback row BASE.monster
+// consulted by getAIConfig) that overwrites core AI tuning. getMonsterDef(name)
+// also hijacks the buildEntities/canvas draw dispatch for that kind wherever a
+// caller checks it before the built-in switch (renderer/systems/map.js
+// buildArena). Sources: enemy-ai.js BASE keys + map.js buildArena's
+// ENEMY_KINDS (guard, monster, dragon, crab, wizard, cyclops, npc,
+// dragon_boss, dragon_boss_pixel), the other non-enemy entity kinds
+// game.js buildEntities switches on (trap, puzzle, weapon, ranged, potion,
+// door, exit_door, chest, prop, dungeon_entrance, fountain_wall,
+// fountain_basin, talent_trigger, wild_mushroom, floating_pickup, echo,
+// creature), and CREATURE_TYPES (the leap-episode creatures, which route
+// through their own hit/update/draw hooks instead of the generic path).
+const RESERVED_NAMES = new Set([
+  'guard', 'monster', 'dragon', 'crab', 'wizard', 'cyclops', 'npc',
+  'dragon_boss', 'dragon_boss_pixel',
+  'trap', 'puzzle', 'weapon', 'ranged', 'potion', 'door', 'exit_door', 'chest',
+  'prop', 'dungeon_entrance', 'fountain_wall', 'fountain_basin', 'talent_trigger',
+  'wild_mushroom', 'floating_pickup', 'echo', 'creature',
+  ...CREATURE_TYPES,
+])
 
 const defaultLoadRig = id => import(`../render/monster-rigs/${id}.js`)
 const defaultLoadHooks = name => import(`./monsters/${name}.js`)
@@ -21,6 +44,9 @@ export async function registerMonsters(defs, opts = {}) {
   for (const raw of defs ?? []) {
     if (!raw || typeof raw.name !== 'string' || !NAME_RE.test(raw.name)) {
       warn(`monsters: bad name "${raw?.name}" — skipped`); continue
+    }
+    if (RESERVED_NAMES.has(raw.name)) {
+      warn(`monsters: name "${raw.name}" is reserved for a built-in type — skipped`); continue
     }
     let rig
     try {

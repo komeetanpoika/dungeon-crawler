@@ -419,7 +419,7 @@ export function healConnectivity(map) {
 export function pickMonsterSpawn(cfg, depth, i, guaranteed, genPool, rand = Math.random) {
   if (i < guaranteed.length) return { kind: 'monster', variant: guaranteed[i] }
   const genWeight = genPool.reduce((a, m) => a + (m.weight ?? 1), 0)
-  const builtins = cfg.variantPool?.length ?? 2
+  const builtins = cfg.variantPool?.length || 2
   if (genWeight > 0 && rand() < genWeight / (builtins + genWeight)) {
     let r = rand() * genWeight
     for (const m of genPool) { r -= m.weight ?? 1; if (r <= 0) return { kind: m.name } }
