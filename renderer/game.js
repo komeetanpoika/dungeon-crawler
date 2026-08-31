@@ -30,7 +30,9 @@ import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeI
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
-import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs } from './systems/adventure.js'
+import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
+import { modeForDepth } from './systems/mode.js'
+import { normalizeTimewarpSave, enterEpisode, episodeEntries } from './systems/timewarp.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
 import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, echoAdjacent, echoLine, ruleCtx, makeEpCtx } from './systems/leap.js'
@@ -186,24 +188,34 @@ let npcDirty = false
 // Adventure save: cave instances (map name -> label -> instance) plus the
 // progression record (furthest map, permanently-cleared dungeons).
 let savedAdventure = normalizeAdventureSave(null)
+// Which of the three modes (plus the arena) this run is. Set in beginRun;
+// mode decisions read this, never depth ranges.
+let runMode = 'rush'
+let savedTimewarp = normalizeTimewarpSave(null)
+// The save the current run reads and writes: the adventure save, or — in
+// timewarp — the picked episode's own adventure-shaped mini-save. Every
+// map-state helper goes through this so the two modes can't cross-write.
+let activeSave = savedAdventure
 
-function persistAdventure() {
+function persistRun() {
+  if (runMode !== 'adventure' && runMode !== 'timewarp') return
   const surface = state?.cave ? state.cave.surface : state
   const mapName = surface ? OPEN_MAPS[surface.level]?.name : null
-  if (mapName) savedAdventure.caves[mapName] = surface.caveInstances ?? {}
-  if (mapName) savedAdventure.gates[mapName] =
+  if (mapName) activeSave.caves[mapName] = surface.caveInstances ?? {}
+  if (mapName) activeSave.gates[mapName] =
     Object.entries(surface.gates ?? {}).filter(([, g]) => g.open).map(([id]) => id)
-  if (mapName) recordNpcState(savedAdventure, mapName, surface.npcSpawnIds ?? [], surface.entities, surface.npcWrath)
-  if (mapName) savedAdventure.felled[mapName] = felledCells(surface.map)
+  if (mapName) recordNpcState(activeSave, mapName, surface.npcSpawnIds ?? [], surface.entities, surface.npcWrath)
+  if (mapName) activeSave.felled[mapName] = felledCells(surface.map)
   if (mapName && state.player) {
-    savedAdventure.talents = [...(state.player.talents ?? [])]
-    savedAdventure.body = {
+    activeSave.talents = [...(state.player.talents ?? [])]
+    activeSave.body = {
       weapon: state.player.weapon ? { ...state.player.weapon } : null,
       ranged: state.player.ranged ? { ...state.player.ranged } : null,
       inventory: state.player.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i }),
     }
   }
-  window.saveAPI.saveCaves?.(savedAdventure)
+  if (runMode === 'timewarp') window.saveAPI.saveTimewarp?.(savedTimewarp)
+  else window.saveAPI.saveCaves?.(savedAdventure)
 }
 
 // Every distinct skin/overlay used by any structure, so the renderer can draw them
@@ -407,7 +419,7 @@ function respawnNpcs() {
   const spawns = npcSpawnsForMap(data)
   state.entities = state.entities.filter(e => e.type !== 'npc')
   state.entities.push(...buildEntities(spawns, state.map, state.level))
-  if (episodeFor(data) && isResolved(savedAdventure, data)) {
+  if (episodeFor(data) && isResolved(activeSave, data)) {
     state.entities.push(...buildEntities([missingSpawn(data)], state.map, state.level))
   }
   state.npcSpawnIds = npcSpawns(spawns)
@@ -426,12 +438,12 @@ function arriveOnMap() {
   state.echoHold = null
   if (!ep) return
   state.epCtx = makeEpCtx({
-    getState: () => state, save: savedAdventure, mapData,
-    persist: persistAdventure, resolve: resolveEpisode, refreshInventory: afterInventoryChange,
+    getState: () => state, save: activeSave, mapData,
+    persist: persistRun, resolve: resolveEpisode, refreshInventory: afterInventoryChange,
     spawn: spawns => state.entities.push(...buildEntities(spawns, state.map, state.level)),
   })
   state.entities.push(...buildEntities(echoSpawns(mapData), state.map, state.level))
-  if (isResolved(savedAdventure, mapData)) {
+  if (isResolved(activeSave, mapData)) {
     state.episodeResolved = true
     state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
     state.villagerLines = ep.resolvedLines ?? null
@@ -458,21 +470,43 @@ function recordCreatureKill(e, r) {
 
 function resolveEpisode() {
   const mapData = OPEN_MAPS[state.level]
-  if (!state.episode || state.episodeResolved || !isResolved(savedAdventure, mapData)) return
+  if (!state.episode || state.episodeResolved || !isResolved(activeSave, mapData)) return
   state.episodeResolved = true
   state.villagerLines = state.episode.resolvedLines ?? null
   state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
   sfx(state, 'leap', { px: state.player.px, py: state.player.py })
   announce(state, `${state.episode.persona} walks back into the village. The runestone hums.`)
-  persistAdventure()
+  persistRun()
+}
+
+// Apply a loadout override (arena config's `player`, or a timewarp episode's
+// kit — same shape): weaponType/rangedType/hp/talents, each optional.
+function applyLoadout(player, po) {
+  if (!po) return
+  const def = WEAPON_TYPES[po.weaponType]
+  if (def) player.weapon = weaponContents(po.weaponType)
+  else if (po.weaponType !== undefined) console.warn(`loadout: unknown player weaponType "${po.weaponType}" — keeping current weapon`)
+  const rdef = RANGED_WEAPON_TYPES[po.rangedType]
+  if (rdef) player.ranged = makeRangedContents(po.rangedType)
+  else if (po.rangedType !== undefined) console.warn(`loadout: unknown player rangedType "${po.rangedType}" — no ranged weapon`)
+  if (Number.isFinite(po.hp) && po.hp >= 1) {
+    player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
+    player.hp = Math.round(po.hp)
+  }
+  if (Array.isArray(po.talents)) {
+    for (const t of po.talents) {
+      if (TALENTS[t]) player.talents.push(t)
+      else console.warn(`loadout: unknown talent "${t}" — skipped`)
+    }
+  }
 }
 
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
   const openMap = OPEN_MAPS[depth]
-  const npcRecord = openMap ? npcRecordFor(savedAdventure, openMap.name) : null
-  const felledRecord = openMap ? savedAdventure.felled[openMap.name] ?? [] : null
+  const npcRecord = openMap ? npcRecordFor(activeSave, openMap.name) : null
+  const felledRecord = openMap ? activeSave.felled[openMap.name] ?? [] : null
   const { map, entitySpawns, playerSpawn, caveEntrances, houseDoors, gates, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
       npcs: npcRecord, felled: felledRecord })
@@ -488,43 +522,29 @@ function startNewRun(depth = 1, arenaCfg = null) {
   player.attackFacing = 'south'
   player.inventory.push(...getStartingItems(meta))
   if (OPEN_MAPS[depth]) {
-    player.talents = [...savedAdventure.talents]
-    if (savedAdventure.body) {
+    player.talents = [...activeSave.talents]
+    if (activeSave.body) {
       // Melee payloads are re-derived from the weapon table rather than
       // copied: saves written before lumber landed carry no `chop`, and a
       // hatchet or axe out of one of those must still fell trees. Ranged
       // payloads are copied as-is — their `ammo` is run state, not table data.
-      player.weapon = savedAdventure.body.weapon ? weaponContents(savedAdventure.body.weapon.weaponType) : null
-      player.ranged = savedAdventure.body.ranged ? { ...savedAdventure.body.ranged } : null
-      player.inventory = savedAdventure.body.inventory.map(i => {
+      player.weapon = activeSave.body.weapon ? weaponContents(activeSave.body.weapon.weaponType) : null
+      player.ranged = activeSave.body.ranged ? { ...activeSave.body.ranged } : null
+      player.inventory = activeSave.body.inventory.map(i => {
         if (!i.payload) return { ...i }
         if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
         return { ...i, payload: { ...i.payload } }
       })
     }
   }
-  if (depth === 0 && arenaCfg?.player) {
-    const po = arenaCfg.player
-    const def = WEAPON_TYPES[po.weaponType]
-    if (def) player.weapon = weaponContents(po.weaponType)
-    else if (po.weaponType !== undefined) console.warn(`arena: unknown player weaponType "${po.weaponType}" — keeping current weapon`)
-    const rdef = RANGED_WEAPON_TYPES[po.rangedType]
-    if (rdef) player.ranged = makeRangedContents(po.rangedType)
-    else if (po.rangedType !== undefined) console.warn(`arena: unknown player rangedType "${po.rangedType}" — no ranged weapon`)
-    if (Number.isFinite(po.hp) && po.hp >= 1) {
-      player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
-      player.hp = Math.round(po.hp)
-    }
-    if (Array.isArray(po.talents)) {
-      for (const t of po.talents) {
-        if (TALENTS[t]) player.talents.push(t)
-        else console.warn(`arena: unknown talent "${t}" — skipped`)
-      }
-    }
-  }
+  if (depth === 0 && arenaCfg?.player) applyLoadout(player, arenaCfg.player)
+  // First entry into an episode: the fixed kit, not the adventure body.
+  // A mid-episode resume has a body in the mini-save and restored it above.
+  if (runMode === 'timewarp' && !activeSave.body) applyLoadout(player, episodeFor(OPEN_MAPS[depth])?.kit)
   decorateMap(map, rulesets[theme.ruleset])
   state = {
     level: depth,
+    mode: runMode,
     map,
     player,
     theme,
@@ -545,7 +565,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     fireMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
     houseDoors: houseDoors ?? [],
-    caveInstances: OPEN_MAPS[depth] ? { ...savedAdventure.caves[OPEN_MAPS[depth].name] } : {},
+    caveInstances: OPEN_MAPS[depth] ? { ...activeSave.caves[OPEN_MAPS[depth].name] } : {},
     gates: gates ?? {},
     gateMsgCooldown: 0,
     mapExit: mapExit ?? null,
@@ -563,7 +583,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (OPEN_MAPS[depth]) arriveOnMap()
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
-  for (const id of savedAdventure.gates[OPEN_MAPS[depth]?.name] ?? []) {
+  for (const id of activeSave.gates[OPEN_MAPS[depth]?.name] ?? []) {
     openGate(state, id)
     for (const e of state.entities) {
       if (e.gateId !== id || !(e.isFountainWall || e.isFountainBasin)) continue
@@ -581,15 +601,21 @@ function setPhase(to) {
 function goTitle() {
   phase = PHASE.TITLE
   menu.showTitle(meta, {
-    onAdventure: () => beginRun(OPEN_MAPS[savedAdventure.progress.mapDepth] ? savedAdventure.progress.mapDepth : ADVENTURE_DEPTH),
-    onRush: () => beginRun(1),
+    onAdventure: () => beginRun(OPEN_MAPS[savedAdventure.progress.mapDepth] ? savedAdventure.progress.mapDepth : ADVENTURE_DEPTH, 'adventure'),
+    onTimewarp: () => goEpisodeSelect(),
+    onRush: () => beginRun(1, 'rush'),
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
   })
 }
 
-async function beginRun(depth = 1) {
+// Replaced by the real episode-select flow in the next task.
+function goEpisodeSelect() { /* replaced in the episode-flow task */ }
+
+async function beginRun(depth = 1, mode = modeForDepth(depth)) {
+  runMode = mode
+  activeSave = mode === 'timewarp' ? enterEpisode(savedTimewarp, depth).save : savedAdventure
   let arenaCfg = null
   if (depth === 0 && window.saveAPI?.loadArenaConfig) {
     const res = await window.saveAPI.loadArenaConfig()
@@ -611,7 +637,7 @@ function resumeGame() {
 function pauseGame() {
   setPhase(PHASE.PAUSED)
   const restartDepth = state?.cave ? state.cave.surface.level : state?.level ?? 1
-  menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth), onQuitToTitle: goTitle })
+  menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth, runMode), onQuitToTitle: goTitle })
 }
 
 function openInventory() {
@@ -678,7 +704,7 @@ function closeToast() {
 function afterInventoryChange() {
   refreshInventory(state)
   updateHUD(state)
-  if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+  if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
 }
 
 function useInventoryItem(i) {
@@ -759,7 +785,7 @@ function update(delta) {
       state.player.trance = 0
       // Talent-less anchors (e.g. the marsh's mushroom ring) still play the
       // trance and ceremony but grant nothing — skip grantTalent entirely.
-      if (talent && grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+      if (talent && grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
     }
     tickFeedback(state.feedback, delta)
     return
@@ -803,7 +829,7 @@ function update(delta) {
     // re-triggerable rather than silently destroying the contents.
     const directGrant = !adj && grantContents(chest.contents)
     const granted = adj || directGrant
-    if (directGrant && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+    if (directGrant && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
     if (adj) {
       state.entities.push({
         type: 'floating_item',
@@ -828,7 +854,7 @@ function update(delta) {
     const item = state.entities[floatIdx]
     if (grantContents(item.contents)) {
       state.entities = state.entities.filter((_, i) => i !== floatIdx)
-      if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+      if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
     }
   }
 
@@ -837,7 +863,7 @@ function update(delta) {
   if (state.epCtx && !state.cave) {
     const echo = echoAdjacent(state.entities, player)
     if (echo && state.echoHold !== echo) {
-      const line = echoLine(state.episode, echo.spot, state.epCtx.flags, ruleCtx(savedAdventure, state.epCtx.mapData))
+      const line = echoLine(state.episode, echo.spot, state.epCtx.flags, ruleCtx(activeSave, state.epCtx.mapData))
       if (line) { speakFrom(state, echo, line); sfx(state, 'echo', { px: echo.px, py: echo.py }) }
     }
     state.echoHold = echo
@@ -891,7 +917,7 @@ function update(delta) {
   // resolved; sealed, it explains itself on a cooldown.
   if (!state.cave && state.mapExit && player.x === state.mapExit.x && player.y === state.mapExit.y) {
     const mapData = OPEN_MAPS[state.level]
-    if (mapData && isMapUnlocked(savedAdventure, mapData)) {
+    if (mapData && isMapUnlocked(activeSave, mapData)) {
       const next = nextMapDepth(state.level)
       if (next) { travelToMap(next); return }
     } else if (mapData) {
@@ -900,7 +926,7 @@ function update(delta) {
         if (mapData.leap) {
           think(state, 'The runestone is dark. Something here is still wrong.')
         } else {
-          const done = savedAdventure.progress.cleared[mapData.name] ?? []
+          const done = activeSave.progress.cleared[mapData.name] ?? []
           const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
           think(state, `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
         }
@@ -922,7 +948,7 @@ function update(delta) {
   const shroomIdx = state.entities.findIndex(e => e.type === 'wild_mushroom' && e.x === player.x && e.y === player.y)
   if (shroomIdx !== -1 && grantContents({ type: 'mushroom' })) {
     state.entities = state.entities.filter((_, i) => i !== shroomIdx)
-    if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+    if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
   }
 
   // Rite triggers: silent unless the rite's condition holds
@@ -991,7 +1017,7 @@ function update(delta) {
           queueToast(state, { title: 'A new area opens!', lines: ['Water flows — the vined gate grinds open.'] })
         }
         sfx(state, 'gate-open')
-        persistAdventure()
+        persistRun()
       }
     }
   }
@@ -1108,7 +1134,7 @@ function update(delta) {
               px: spx, py: spy - TILE_SIZE, progress: 0, duration: 0.35,
             })
           }
-          if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistAdventure()
+          if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
         }
       }
     }
@@ -1427,7 +1453,7 @@ function update(delta) {
   // Walk animation — player + humanoid enemies (guard, wizard)
   tickWalk(player, delta)
   tickFeedback(state.feedback, delta)
-  if (!state.cave && tickCaveInstances(state, delta)) persistAdventure()
+  if (!state.cave && tickCaveInstances(state, delta)) persistRun()
   for (const e of state.entities) {
     if (e.type === 'guard' || e.type === 'wizard' || (e.type === 'npc' && NPC_SPECIES[e.species]?.walker)) tickWalk(e, delta)
   }
@@ -1439,11 +1465,11 @@ function update(delta) {
     const surfaceLevel = state.cave ? state.cave.surface.level : state.level
     const mapData = OPEN_MAPS[surfaceLevel]
     if (mapData) {
-      resetNpcs(savedAdventure)
+      resetNpcs(activeSave)
       npcDirty = false
       state = adventureRespawn(state, mapData.playerSpawn)
       respawnNpcs()
-      persistAdventure()
+      persistRun()
       queueToast(state, { title: 'You awaken back in Aspengrove…', lines: ['The dark took its toll — but you are alive.'] })
       return
     }
@@ -1473,17 +1499,17 @@ function update(delta) {
     } else {
       announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
     }
-    if (!state.cave && !OPEN_MAPS[state.level] && RUSH_TALENT_LADDER[state.level]) {
+    if (!state.cave && runMode === 'rush' && RUSH_TALENT_LADDER[state.level]) {
       grantTalent(state, RUSH_TALENT_LADDER[state.level])
     }
     if (state.cave) {
       const mapData = OPEN_MAPS[state.cave.surface.level]
-      const before = isMapComplete(savedAdventure.progress, mapData)
-      markCleared(savedAdventure.progress, mapData.name, state.cave.label)
+      const before = isMapComplete(activeSave.progress, mapData)
+      markCleared(activeSave.progress, mapData.name, state.cave.label)
       const reward = MAP_CLEAR_TALENTS[mapData.name]
       if (reward) grantTalent(state, reward)
-      if (!before && isMapComplete(savedAdventure.progress, mapData)) state.cave.mapJustCompleted = true
-      persistAdventure()
+      if (!before && isMapComplete(activeSave.progress, mapData)) state.cave.mapJustCompleted = true
+      persistRun()
     }
   }
 
@@ -1508,7 +1534,7 @@ function update(delta) {
 
   // Flush NPC deaths and wrath. It has to sit after the cull above, because
   // recordNpcState reads `dead` as "declared id with no entity left".
-  if (npcDirty && !state.cave && OPEN_MAPS[state.level]) { npcDirty = false; persistAdventure() }
+  if (npcDirty && !state.cave && OPEN_MAPS[state.level]) { npcDirty = false; persistRun() }
   if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
 
   // Clear hit flash — it fires once per swing
@@ -1588,7 +1614,7 @@ function exitCave() {
   const mapJustCompleted = !isHouse && state.cave.mapJustCompleted
   const next = nextMapDepth(state.cave.surface.level)
   state = restoreSurface(state)
-  persistAdventure()
+  persistRun()
   if (isHouse) {
     announce(state, 'You step back out.')
   } else if (mapJustCompleted) {
@@ -1607,13 +1633,13 @@ function travelToMap(depth) {
   if (OPEN_MAPS[state.level]) {
     npcDirty = false
     state.caveInstances = pruneClearedInstances(state.caveInstances)
-    persistAdventure()
+    persistRun()
   }
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1]
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const mapName = OPEN_MAPS[depth].name
-  const npcRecord = npcRecordFor(savedAdventure, mapName)
-  const felledRecord = savedAdventure.felled[mapName] ?? []
+  const npcRecord = npcRecordFor(activeSave, mapName)
+  const felledRecord = activeSave.felled[mapName] ?? []
   const { map, entitySpawns, playerSpawn, caveEntrances, houseDoors, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures,
       npcs: npcRecord, felled: felledRecord })
@@ -1634,7 +1660,7 @@ function travelToMap(depth) {
     lockedMsgCooldown: 0, fireMsgCooldown: 0, exitMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
     houseDoors: houseDoors ?? [],
-    caveInstances: { ...savedAdventure.caves[mapName] },
+    caveInstances: { ...activeSave.caves[mapName] },
     mapExit: mapExit ?? null,
     entranceHold: false,
     signs: signs ?? [],
@@ -1643,8 +1669,8 @@ function travelToMap(depth) {
     npcSpawnIds: [...npcSpawns(entitySpawns), ...npcRecord.dead],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
   }
-  savedAdventure.progress.mapDepth = depth
-  persistAdventure()
+  activeSave.progress.mapDepth = depth
+  persistRun()
   arriveOnMap()
   announce(state, `You arrive in ${OPEN_MAPS[depth].title}.`)
 }
@@ -1689,7 +1715,7 @@ function descendLevel() {
 
 async function endRun(won) {
   state.run.won = won
-  meta = applyRunResult(meta, { deepestLevel: state.run.deepestLevel, won })
+  if (runMode === 'rush') meta = applyRunResult(meta, { deepestLevel: state.run.deepestLevel, won })
   await window.saveAPI.saveMeta(meta)
   await window.saveAPI.deleteRun()
   setPhase(PHASE.GAMEOVER)
@@ -1709,6 +1735,7 @@ async function init() {
   await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES])
   pruneMissingTiles(rulesets, renderer.sprites)
   savedAdventure = normalizeAdventureSave(await window.saveAPI.loadCaves?.())
+  savedTimewarp = normalizeTimewarpSave(await window.saveAPI.loadTimewarp?.(), savedAdventure.leaps, savedAdventure.npcs)
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
   // Resizing reallocates the canvas backing store (blank); repaint the current
