@@ -1,0 +1,30 @@
+{
+  "rig": "quadruped",
+  "params": {
+    "bodyLength": 1.6,
+    "bodyWidth": 0.9,
+    "bulge": 0.2,
+    "legLength": 0.7,
+    "legThick": 0.18,
+    "headSize": 0.55,
+    "snout": 0.35,
+    "eyeSize": 0.1,
+    "horns": false,
+    "tailLength": 0.8,
+    "tailTaper": 0.5,
+    "hideColor": "#7c4a24",
+    "bellyColor": "#c9a06a",
+    "eyeColor": "#ffd23a",
+    "scales": false,
+    "gaitFreq": 7,
+    "bob": 0.08
+  },
+  "stats": {
+    "hp": 10,
+    "dmg": 1,
+    "speed": 70,
+    "half": 8
+  },
+  "behavior": {},
+  "name": "rappeluu"
+}
