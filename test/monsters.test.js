@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerMonsters, clearMonsters, getMonsterDef, monsterNames, monstersForDepth,
-         makeMonsterFromDef, updateMonsterPose, entityPose } from '../renderer/systems/monsters.js'
+         makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster } from '../renderer/systems/monsters.js'
 import { getAIConfig } from '../renderer/data/enemy-ai.js'
 import { CREATURE_TYPES } from '../renderer/systems/creatures.js'
 
@@ -133,5 +133,46 @@ describe('rig-derived hitbox', () => {
   it('falls back to stats.half for rigs without hitHalf', async () => {
     await registerMonsters([DEF], { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
     assert.equal(getMonsterDef('boarhound').stats.half, 10)
+  })
+})
+
+describe('pose passthrough for hooks', () => {
+  beforeEach(async () => { clearMonsters(); await load([DEF]) })
+  it('entityPose carries headAim and eyeGlow written into e.pose by a hook', () => {
+    const e = { ...makeMonsterFromDef('boarhound', 2, 3), px: 80, py: 112 }
+    updateMonsterPose(e, 0.016)
+    e.pose.headAim = 0.7
+    e.pose.eyeGlow = 0.5
+    const p = entityPose(e)
+    assert.equal(p.headAim, 0.7)
+    assert.equal(p.eyeGlow, 0.5)
+  })
+  it('eyeGlow defaults to 0 when no hook wrote it', () => {
+    const e = { ...makeMonsterFromDef('boarhound', 2, 3), px: 80, py: 112 }
+    updateMonsterPose(e, 0.016)
+    assert.equal(entityPose(e).eyeGlow, 0)
+  })
+})
+
+describe('laser beam rendering', () => {
+  beforeEach(clearMonsters)
+  it('draws beam segments when a hook has a fire-state laser on the entity', async () => {
+    const rig = { ...FAKE_RIG, eyeAnchors: () => ({ pivot: { x: 0, y: -5 }, eyes: [{ x: -2, y: -3 }, { x: 2, y: -3 }] }) }
+    await registerMonsters([DEF], { loadRig: async () => rig, loadHooks: async () => {}, warn: () => {} })
+    const mk = () => ({ ...makeMonsterFromDef('boarhound', 2, 3), px: 80, py: 112 })
+    const quiet = { ops: [] }, firing = { ops: [] }
+    const proxy = t => new Proxy(t, {
+      get(o, k) { if (k in o) return o[k]; return (...a) => { o.ops.push([k, ...a]) } },
+      set(o, k, v) { o[k] = v; return true },
+    })
+    const a = mk()
+    updateMonsterPose(a, 0.016)
+    drawGeneratedMonster(proxy(quiet), a, 100, 100, 32, {})
+    const b = mk()
+    updateMonsterPose(b, 0.016)
+    b.laser = { state: 'fire', beams: [{ ang: 0 }] }
+    drawGeneratedMonster(proxy(firing), b, 100, 100, 32, {})
+    const rects = o => o.ops.filter(x => x[0] === 'fillRect').length
+    assert.ok(rects(firing) > rects(quiet) + 10, `expected many beam rects, got ${rects(firing)} vs ${rects(quiet)}`)
   })
 })

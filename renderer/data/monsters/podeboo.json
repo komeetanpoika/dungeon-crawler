@@ -26,5 +26,6 @@
     "half": 8
   },
   "behavior": {},
-  "name": "podeboo"
+  "name": "podeboo",
+  "hooks": true
 }
