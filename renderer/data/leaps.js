@@ -6,6 +6,7 @@ export const EPISODES = {
   'lake-1-ferry': {
     persona: 'Toivo',
     missing: { species: 'villager' },
+    kit: {},   // fixed per-episode loadout (arena player-override shape); {} = plain new-game kit
     items: [{ kind: 'clapper', fromPoi: 'islet cache' }],
     houses: { "Toivo's hut": { room: 'toivo_kitchen', pickups: [
       { type: 'meat', count: 3 },
@@ -40,6 +41,7 @@ export const EPISODES = {
   'highland-2-fold': {
     persona: 'Aino',
     missing: { species: 'villager' },
+    kit: {},   // fixed per-episode loadout (arena player-override shape); {} = plain new-game kit
     items: [{ kind: 'fleece', fromPoi: 'fleece cache' }],
     houses: { "Aino's house": { room: 'aino_larder', pickups: [
       { type: 'meat', count: 2 },
@@ -72,6 +74,7 @@ export const EPISODES = {
   'marsh-3-hermit': {
     persona: 'Lauri',
     missing: { species: 'villager' },
+    kit: {},   // fixed per-episode loadout (arena player-override shape); {} = plain new-game kit
     houses: { 'hermit hut': { room: 'hermit_woodpile', pickups: [
       { type: 'weapon', weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 },
       { type: 'lumber', count: 3 },
