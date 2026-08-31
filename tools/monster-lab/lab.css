@@ -1,0 +1,25 @@
+/* tools/monster-lab/lab.css — tile-editor-flavored dark chrome */
+* { box-sizing: border-box; }
+body { margin: 0; background: #1b1d22; color: #cfd2d8; font: 13px/1.4 system-ui, sans-serif; }
+#layout { display: grid; grid-template-columns: 200px 1fr 300px; gap: 8px; height: 100vh; padding: 8px; }
+aside, main { background: #24272e; border: 1px solid #33363e; border-radius: 6px; padding: 10px; overflow-y: auto; }
+h2 { margin: 0 0 8px; font-size: 14px; color: #e8b04b; }
+button { background: #2f333b; color: #cfd2d8; border: 1px solid #444956; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+button:hover { background: #3a3f49; }
+button.active { background: #e8b04b; color: #1b1d22; border-color: #e8b04b; }
+#stage { background: #202329; border: 1px solid #33363e; border-radius: 4px; display: block; margin: 0 auto; }
+#simbar, #stagebar { display: flex; gap: 6px; justify-content: center; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+#monster-list { list-style: none; margin: 0 0 8px; padding: 0; }
+#monster-list li { padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+#monster-list li:hover { background: #2f333b; }
+#monster-list li.active { background: #3a3f49; color: #e8b04b; }
+#monster-list li.dirty::after { content: ' •'; color: #e8b04b; }
+.group { border-top: 1px solid #33363e; margin-top: 8px; padding-top: 4px; }
+.group h3 { margin: 2px 0 4px; font-size: 12px; text-transform: uppercase; color: #8b909b; cursor: pointer; }
+.group.closed .rows { display: none; }
+.row { display: grid; grid-template-columns: 90px 1fr 44px; gap: 6px; align-items: center; margin: 3px 0; }
+.row input[type=range] { width: 100%; }
+#save { width: 100%; margin-top: 10px; background: #3c6e3c; }
+#save:disabled { opacity: 0.4; cursor: default; }
+#pins { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+#pins canvas { border: 1px solid #33363e; border-radius: 4px; cursor: pointer; }
