@@ -1,0 +1,30 @@
+<!-- tools/monster-lab/index.html -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Monster Lab</title>
+<link rel="stylesheet" href="/tools/monster-lab/lab.css">
+</head>
+<body>
+<div id="layout">
+  <aside id="library"><h2>Monsters</h2><ul id="monster-list"></ul><button id="new-monster">+ New monster</button></aside>
+  <main id="stagecol">
+    <canvas id="stage" width="640" height="480"></canvas>
+    <div id="simbar"></div>
+    <div id="stagebar">
+      <label>zoom <input id="zoom" type="range" min="1" max="4" step="0.5" value="2"></label>
+      <label><input id="backdrop" type="checkbox" checked> floor</label>
+      <label><input id="overlay" type="checkbox"> hitbox</label>
+    </div>
+    <div id="pins"></div>
+  </main>
+  <aside id="controls">
+    <div id="params"></div>
+    <div id="editors"></div>
+    <button id="save" disabled>Save</button>
+  </aside>
+</div>
+<script type="module" src="/tools/monster-lab/main.js"></script>
+</body>
+</html>

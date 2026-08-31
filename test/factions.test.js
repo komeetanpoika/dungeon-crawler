@@ -1,6 +1,16 @@
-import { describe, it } from 'node:test'
+import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { isEnemy, isHittable, isDead } from '../renderer/systems/factions.js'
+import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
+
+const FAKE_RIG = {
+  RIG_ID: 'fakerig',
+  PARAM_SCHEMA: [{ key: 'size', label: 'Size', group: 'body', type: 'range', min: 0, max: 2, step: 0.1, default: 1 }],
+  drawMonster: () => {},
+}
+const registerFake = name => registerMonsters(
+  [{ name, rig: 'fakerig', stats: { hp: 30, dmg: 8, speed: 85, half: 10 } }],
+  { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
 
 describe('isEnemy / isHittable', () => {
   it('a hostile npc is an enemy and hittable', () => {
@@ -33,6 +43,20 @@ describe('isEnemy / isHittable', () => {
     assert.equal(isEnemy({ type: 'sammunut' }), true)
     assert.equal(isEnemy({ type: 'nakki' }), false)
     assert.equal(isHittable({ type: 'nakki' }), true)
+  })
+  describe('a registered generated monster', () => {
+    afterEach(clearMonsters)
+    it('becomes an enemy and hittable once registered, and stops being either once cleared', async () => {
+      const e = { type: 'testboar', hp: 5 }
+      assert.equal(isEnemy(e), false)
+      assert.equal(isHittable(e), false)
+      assert.equal(await registerFake('testboar'), 1)
+      assert.equal(isEnemy(e), true)
+      assert.equal(isHittable(e), true)
+      clearMonsters()
+      assert.equal(isEnemy(e), false)
+      assert.equal(isHittable(e), false)
+    })
   })
 })
 

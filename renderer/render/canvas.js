@@ -13,6 +13,7 @@ import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha } from '../systems/campfire.js'
 import { isCreature, creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/maahinen.js'
+import { getMonsterDef, drawGeneratedMonster } from '../systems/monsters.js'
 
 const TILE_SIZE = 32
 
@@ -959,7 +960,7 @@ export class Renderer {
     }
 
     for (const e of entities) {
-      const margin = e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0
+      const margin = getMonsterDef(e.type) ? 3 : e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0
       if (e.x + margin < c0 || e.x - margin >= c1 || e.y + margin < r0 || e.y - margin >= r1) continue
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
@@ -970,6 +971,7 @@ export class Renderer {
         if (e.state === 'erupting') drawEruptRing(ctx, e, camX, camY)
       }
       else if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
+      else if (getMonsterDef(e.type)) drawGeneratedMonster(ctx, e, epx + S / 2, epy + S / 2, S, state)
       else drawEntity(ctx, e, epx, epy, S, sprites)
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)

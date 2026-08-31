@@ -24,6 +24,13 @@ const BASE = {
   maahinen:    { taxon: 'beast', speed: 70, wanderSpeed: 0,  half: 28, sightRange: 320, stopRange: 30, fleeHp: 0 },
 }
 
+// Generated monsters (systems/monsters.js) register their behavior rows here
+// at load; getAIConfig then resolves them like any built-in type.
+export function registerMonsterAI(name, row = {}) {
+  BASE[name] = { taxon: 'beast', speed: 70, wanderSpeed: 25, half: 8,
+                 sightRange: 200, stopRange: 16, ...row }
+}
+
 // Monster variants override the base monster row.
 const VARIANTS = {
   weak:   { taxon: 'mammal' },                      // rats: rout when badly hurt

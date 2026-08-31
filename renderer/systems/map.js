@@ -3,6 +3,7 @@ import { TEMPLATES, LEVEL_CONFIG, FINAL_DEPTH, OVERWORLD_DEPTH, DEPTH_THEMES, TE
 import { generateOverworld } from './overworld.js'
 import { buildOpenMap } from './openmap.js'
 import { OPEN_MAPS } from '../data/open-maps.js'
+import { monstersForDepth, getMonsterDef } from './monsters.js'
 
 const MAP_W = 80
 const MAP_H = 50
@@ -411,6 +412,30 @@ export function healConnectivity(map) {
   }
 }
 
+// One monster-spawn roll. Built-in behavior is unchanged when genPool is
+// empty. With generated monsters, first split the roll between built-ins
+// (share = number of built-in variant types, 2 for the depth defaults) and
+// the generated pool (share = summed weights), then pick within the branch.
+export function pickMonsterSpawn(cfg, depth, i, guaranteed, genPool, rand = Math.random) {
+  if (i < guaranteed.length) return { kind: 'monster', variant: guaranteed[i] }
+  const genWeight = genPool.reduce((a, m) => a + (m.weight ?? 1), 0)
+  const builtins = cfg.variantPool?.length || 2
+  if (genWeight > 0 && rand() < genWeight / (builtins + genWeight)) {
+    let r = rand() * genWeight
+    for (const m of genPool) { r -= m.weight ?? 1; if (r <= 0) return { kind: m.name } }
+    return { kind: genPool[genPool.length - 1].name }
+  }
+  const r = rand()
+  const variant = cfg.variantPool?.length
+    ? cfg.variantPool[Math.floor(rand() * cfg.variantPool.length)]
+    : depth <= 5
+      ? (r < 0.7 ? 'weak' : 'medium')
+      : depth <= 7
+        ? (r < 0.4 ? 'medium' : 'strong')
+        : (r < 0.5 ? 'strong' : 'boss')
+  return { kind: 'monster', variant }
+}
+
 // Build the level-0 test arena: a single walled room with spawns taken from a
 // config ({ size, enemies, chests, player } — every field optional). With
 // neither enemies nor chests configured it produces the original debug arena:
@@ -506,7 +531,7 @@ export function buildArena(config = {}, warn = console.warn) {
 
   const ENEMY_KINDS = new Set(['guard', 'monster', 'dragon', 'crab', 'cyclops', 'wizard', 'dragon_boss', 'dragon_boss_pixel'])
   for (const e of (Array.isArray(config.enemies) ? config.enemies : [])) {
-    if (!e || !ENEMY_KINDS.has(e.kind)) { warn(`arena: unknown enemy kind "${e?.kind}" — skipped`); continue }
+    if (!e || (!ENEMY_KINDS.has(e.kind) && !getMonsterDef(e.kind))) { warn(`arena: unknown enemy kind "${e?.kind}" — skipped`); continue }
     let pos
     if (e.x !== undefined || e.y !== undefined) {
       if (!Number.isFinite(e.x) || !Number.isFinite(e.y) || !inBounds(Math.round(e.x), Math.round(e.y))) {
@@ -748,18 +773,9 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     for (let i = 0; i < guardCount && idx < farTiles.length; i++, idx++) {
       entitySpawns.push({ kind: 'guard', ...farTiles[idx] })
     }
+    const genPool = monstersForDepth(depth)
     for (let i = 0; i < monsterCount && idx < farTiles.length; i++, idx++) {
-      const r = Math.random()
-      const variant = i < guaranteed.length
-        ? guaranteed[i]
-        : cfg.variantPool?.length
-          ? cfg.variantPool[Math.floor(Math.random() * cfg.variantPool.length)]
-          : depth <= 5
-            ? (r < 0.7 ? 'weak' : 'medium')
-            : depth <= 7
-              ? (r < 0.4 ? 'medium' : 'strong')
-              : (r < 0.5 ? 'strong' : 'boss')
-      entitySpawns.push({ kind: 'monster', variant, ...farTiles[idx] })
+      entitySpawns.push({ ...pickMonsterSpawn(cfg, depth, i, guaranteed, genPool), ...farTiles[idx] })
     }
     for (let i = 0; i < trapCount && idx < farTiles.length; i++, idx++) {
       entitySpawns.push({ kind: 'trap', ...farTiles[idx] })
