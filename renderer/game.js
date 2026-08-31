@@ -476,6 +476,7 @@ function resolveEpisode() {
   state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
   sfx(state, 'leap', { px: state.player.px, py: state.player.py })
   announce(state, `${state.episode.persona} walks back into the village. The runestone hums.`)
+  if (runMode === 'timewarp') savedTimewarp.episodes[mapData.name].resolved = true
   persistRun()
 }
 
@@ -580,6 +581,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     // must stay recorded as dead on the next persist rather than be forgotten.
     npcSpawnIds: npcRecord ? [...npcSpawns(entitySpawns), ...npcRecord.dead] : [],
   }
+  if (runMode === 'adventure' && OPEN_MAPS[depth]) recordVisit(activeSave.progress, OPEN_MAPS[depth].name)
   if (OPEN_MAPS[depth]) arriveOnMap()
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
@@ -610,8 +612,13 @@ function goTitle() {
   })
 }
 
-// Replaced by the real episode-select flow in the next task.
-function goEpisodeSelect() { /* replaced in the episode-flow task */ }
+function goEpisodeSelect() {
+  phase = PHASE.TITLE
+  menu.showEpisodeSelect(episodeEntries(savedTimewarp), {
+    onPick: depth => beginRun(depth, 'timewarp'),
+    onBack: goTitle,
+  })
+}
 
 async function beginRun(depth = 1, mode = modeForDepth(depth)) {
   runMode = mode
@@ -638,6 +645,15 @@ function pauseGame() {
   setPhase(PHASE.PAUSED)
   const restartDepth = state?.cave ? state.cave.surface.level : state?.level ?? 1
   menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth, runMode), onQuitToTitle: goTitle })
+}
+
+function openWaystoneMenu(dests) {
+  setPhase(PHASE.PAUSED)
+  state.exitMenuHold = true
+  menu.showDestinations(dests, {
+    onPick: depth => { resumeGame(); travelToMap(depth) },
+    onCancel: resumeGame,
+  })
 }
 
 function openInventory() {
@@ -912,28 +928,34 @@ function update(delta) {
     else if (state.cave.offStairs) { exitCave(); return }
   }
 
-  // Waystone: standing on the exit arch travels onward once the map is
-  // unlocked — every dungeon here finished, or (leap maps) the episode
-  // resolved; sealed, it explains itself on a cooldown.
+  // Waystone. Timewarp: a resolved episode's runestone leads back to the
+  // episode select. Adventure: the arch opens a destination menu — every
+  // visited map, plus the next chain map once the frontier is cleared; the
+  // hold flag keeps a cancelled menu from instantly reopening until the
+  // player steps off and back on.
   if (!state.cave && state.mapExit && player.x === state.mapExit.x && player.y === state.mapExit.y) {
     const mapData = OPEN_MAPS[state.level]
-    if (mapData && isMapUnlocked(activeSave, mapData)) {
-      const next = nextMapDepth(state.level)
-      if (next) { travelToMap(next); return }
-    } else if (mapData) {
+    if (mapData && runMode === 'timewarp') {
+      if (isMapUnlocked(activeSave, mapData)) { persistRun(); goEpisodeSelect(); return }
       state.exitMsgCooldown = (state.exitMsgCooldown ?? 0) - delta
       if (state.exitMsgCooldown <= 0) {
-        if (mapData.leap) {
-          think(state, 'The runestone is dark. Something here is still wrong.')
-        } else {
+        think(state, 'The runestone is dark. Something here is still wrong.')
+        state.exitMsgCooldown = 2
+      }
+    } else if (mapData) {
+      const dests = waystoneDestinations(activeSave).filter(d => d.depth !== state.level)
+      if (dests.length && !state.exitMenuHold) { openWaystoneMenu(dests); return }
+      if (!dests.length) {
+        state.exitMsgCooldown = (state.exitMsgCooldown ?? 0) - delta
+        if (state.exitMsgCooldown <= 0) {
           const done = activeSave.progress.cleared[mapData.name] ?? []
           const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
           think(state, `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
+          state.exitMsgCooldown = 2
         }
-        state.exitMsgCooldown = 2
       }
     }
-  }
+  } else state.exitMenuHold = false
 
   // Key pickup — walk onto the key the boss dropped
   const keyIdx = state.entities.findIndex(e => e.type === 'key' && e.x === player.x && e.y === player.y)
@@ -1670,6 +1692,7 @@ function travelToMap(depth) {
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
   }
   activeSave.progress.mapDepth = depth
+  recordVisit(activeSave.progress, OPEN_MAPS[depth].name)
   persistRun()
   arriveOnMap()
   announce(state, `You arrive in ${OPEN_MAPS[depth].title}.`)
