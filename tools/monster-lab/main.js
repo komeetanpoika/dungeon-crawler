@@ -4,11 +4,32 @@ import { makeStage } from './stage.js'
 import { buildParamsPanel, buildFieldEditors } from './params-panel.js'
 import { defaultParams, clampParams } from '/renderer/render/monster-rigs/schema.js'
 import { toast } from '/tools/tile-editor/toast.js'
+import { makePinStrip } from './compare.js'
 
 const stage = makeStage(document.getElementById('stage'), document.getElementById('simbar'))
 document.getElementById('zoom').oninput = e => { stage.zoom = Number(e.target.value) }
 document.getElementById('backdrop').onchange = e => { stage.backdrop = e.target.checked }
 document.getElementById('overlay').onchange = e => { stage.overlay = e.target.checked }
+
+const pinBtn = Object.assign(document.createElement('button'), { textContent: '📌 pin variant' })
+document.getElementById('stagebar').append(pinBtn)
+const pinStrip = makePinStrip(document.getElementById('pins'),
+  () => rigMod, () => stage.sim,
+  params => { Object.assign(work.params, params); stage.setParams(work.params)
+              buildParamsPanel(els.params, rigMod.PARAM_SCHEMA, work.params,
+                (k, v) => { work.params[k] = v; markDirty() }); markDirty() })
+pinBtn.onclick = () => work && pinStrip.pin(work.params)
+
+// live reload: a rig edit re-imports the module in place; a monster-file
+// change refreshes the library (params of the open, dirty monster are kept)
+io.onFilesChanged(async ({ dir, file }) => {
+  if (dir === 'rigs' && work && file === `${work.rigId}.js`) {
+    rigMod = await io.loadRig(work.rigId)
+    stage.setRig(rigMod)
+    buildParamsPanel(els.params, rigMod.PARAM_SCHEMA, work.params,
+      (k, v) => { work.params[k] = v; markDirty() })
+  } else if (dir === 'monsters') await refreshList()
+})
 
 const els = { list: document.getElementById('monster-list'), params: document.getElementById('params'),
               editors: document.getElementById('editors'), save: document.getElementById('save'),
