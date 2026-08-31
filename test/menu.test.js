@@ -62,39 +62,45 @@ function buttonsOf(overlay) {
 describe('showEpisodeSelect', () => {
   it('renders one button per episode plus Back, tinting resolved ones', () => {
     const overlay = stubDom()
-    const picks = []
-    showEpisodeSelect(
-      [{ depth: 8, title: 'Ferry', resolved: true }, { depth: 9, title: 'Fold', resolved: false }],
-      { onPick: d => picks.push(d), onBack: () => picks.push('back') },
-    )
-    const btns = buttonsOf(overlay)
-    assert.deepEqual(btns.map(b => b.textContent), ['Ferry', 'Fold', 'Back'])
-    assert.equal(btns[0].className, 'menu-btn done')
-    assert.equal(btns[1].className, 'menu-btn')
-    btns[1].listeners.click()
-    btns[2].listeners.click()
-    assert.deepEqual(picks, [9, 'back'])
-    hide()
-    delete globalThis.document
-    delete globalThis.window
+    try {
+      const picks = []
+      showEpisodeSelect(
+        [{ depth: 8, title: 'Ferry', resolved: true }, { depth: 9, title: 'Fold', resolved: false }],
+        { onPick: d => picks.push(d), onBack: () => picks.push('back') },
+      )
+      const btns = buttonsOf(overlay)
+      assert.deepEqual(btns.map(b => b.textContent), ['Ferry', 'Fold', 'Back'])
+      assert.equal(btns[0].className, 'menu-btn done')
+      assert.equal(btns[1].className, 'menu-btn')
+      btns[1].listeners.click()
+      btns[2].listeners.click()
+      assert.deepEqual(picks, [9, 'back'])
+      hide()
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
   })
 })
 
 describe('showDestinations', () => {
   it('renders one button per destination plus Stay', () => {
     const overlay = stubDom()
-    const picks = []
-    showDestinations(
-      [{ depth: 7, title: 'Clearings' }, { depth: 11, title: 'River' }],
-      { onPick: d => picks.push(d), onCancel: () => picks.push('stay') },
-    )
-    const btns = buttonsOf(overlay)
-    assert.deepEqual(btns.map(b => b.textContent), ['Clearings', 'River', 'Stay'])
-    btns[0].listeners.click()
-    btns[2].listeners.click()
-    assert.deepEqual(picks, [7, 'stay'])
-    hide()
-    delete globalThis.document
-    delete globalThis.window
+    try {
+      const picks = []
+      showDestinations(
+        [{ depth: 7, title: 'Clearings' }, { depth: 11, title: 'River' }],
+        { onPick: d => picks.push(d), onCancel: () => picks.push('stay') },
+      )
+      const btns = buttonsOf(overlay)
+      assert.deepEqual(btns.map(b => b.textContent), ['Clearings', 'River', 'Stay'])
+      btns[0].listeners.click()
+      btns[2].listeners.click()
+      assert.deepEqual(picks, [7, 'stay'])
+      hide()
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
   })
 })

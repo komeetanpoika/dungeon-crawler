@@ -15,14 +15,36 @@ export function leapDepths() {
 function freshEpisodeSave(depth) {
   const s = normalizeAdventureSave(null)
   s.progress.mapDepth = depth
+  s.progress.visited = []   // junk field in timewarp — freshProgress() seeds it for adventure
   return s
+}
+
+// Depths keyed by map name, for pinning a stored record's mapDepth back to
+// its episode when the raw record lacked one (or it named an unknown map).
+function depthByMapName() {
+  const byName = {}
+  for (const depth of leapDepths()) byName[OPEN_MAPS[depth].name] = depth
+  return byName
 }
 
 // legacyLeaps/legacyNpcs: the pre-split adventure save's records, used once
 // to seed episodes so pre-v7 progress isn't lost. resolved is derived with
 // the episode's real rule (fold's needs the npc record for wolvesAlive).
 export function normalizeTimewarpSave(raw, legacyLeaps = null, legacyNpcs = null) {
-  if (raw && typeof raw === 'object' && raw.episodes) return { episodes: { ...raw.episodes } }
+  if (raw && typeof raw === 'object' && raw.episodes) {
+    const byName = depthByMapName()
+    const episodes = {}
+    for (const [name, r] of Object.entries(raw.episodes)) {
+      const depth = byName[name]
+      if (depth === undefined) continue   // unknown map name — drop it
+      const save = normalizeAdventureSave(r?.save ?? null)
+      // A mini-save is scoped to one map — anything else stored under
+      // mapDepth (missing, or another map's depth) is not valid here.
+      if (OPEN_MAPS[save.progress.mapDepth]?.name !== name) save.progress.mapDepth = depth
+      episodes[name] = { resolved: !!r?.resolved, save }
+    }
+    return { episodes }
+  }
   const tw = { episodes: {} }
   for (const depth of leapDepths()) {
     const name = OPEN_MAPS[depth].name

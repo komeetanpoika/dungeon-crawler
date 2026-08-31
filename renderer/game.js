@@ -511,7 +511,9 @@ function startNewRun(depth = 1, arenaCfg = null) {
   const { map, entitySpawns, playerSpawn, caveEntrances, houseDoors, gates, mapExit, signs } =
     generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
       npcs: npcRecord, felled: felledRecord })
-  const player = makePlayer(playerSpawn.x, playerSpawn.y, meta.unlockedBonuses)
+  // Timewarp is fully mode-independent of the rush meta: no unlocked
+  // bonuses, no meta starting items — episodes run on their fixed kit only.
+  const player = makePlayer(playerSpawn.x, playerSpawn.y, runMode === 'timewarp' ? [] : meta.unlockedBonuses)
   player.px = playerSpawn.x * TILE_SIZE + TILE_SIZE / 2
   player.py = playerSpawn.y * TILE_SIZE + TILE_SIZE / 2
   player.facing = 'south'
@@ -521,7 +523,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   player.attackDuration = 0.20
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
-  player.inventory.push(...getStartingItems(meta))
+  if (runMode !== 'timewarp') player.inventory.push(...getStartingItems(meta))
   if (OPEN_MAPS[depth]) {
     player.talents = [...activeSave.talents]
     if (activeSave.body) {
@@ -650,6 +652,7 @@ function pauseGame() {
 function openWaystoneMenu(dests) {
   setPhase(PHASE.PAUSED)
   state.exitMenuHold = true
+  sfx(state, 'ui-open')
   menu.showDestinations(dests, {
     onPick: depth => { resumeGame(); travelToMap(depth) },
     onCancel: resumeGame,
@@ -1492,7 +1495,8 @@ function update(delta) {
       state = adventureRespawn(state, mapData.playerSpawn)
       respawnNpcs()
       persistRun()
-      queueToast(state, { title: 'You awaken back in Aspengrove…', lines: ['The dark took its toll — but you are alive.'] })
+      const wakeTitle = runMode === 'timewarp' ? 'You awaken where you fell asleep…' : 'You awaken back in Aspengrove…'
+      queueToast(state, { title: wakeTitle, lines: ['The dark took its toll — but you are alive.'] })
       return
     }
     state.gameOver = true
@@ -1744,7 +1748,7 @@ async function endRun(won) {
   setPhase(PHASE.GAMEOVER)
   menu.showGameOver(
     { won, deepestLevel: state.run.deepestLevel },
-    { onPlayAgain: beginRun, onQuitToTitle: goTitle },
+    { onPlayAgain: () => beginRun(1, 'rush'), onQuitToTitle: goTitle },
   )
 }
 

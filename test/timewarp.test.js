@@ -8,10 +8,28 @@ describe('normalizeTimewarpSave', () => {
   it('starts empty from nothing', () => {
     assert.deepEqual(normalizeTimewarpSave(null), { episodes: {} })
   })
-  it('keeps existing episode records', () => {
+  it('keeps existing episode records, re-normalizing the mini-save', () => {
     const rec = { resolved: true, save: { caves: {}, progress: { mapDepth: 8, cleared: {} } } }
     const tw = normalizeTimewarpSave({ episodes: { 'lake-1-ferry': rec } })
-    assert.equal(tw.episodes['lake-1-ferry'].resolved, true)
+    const loaded = tw.episodes['lake-1-ferry']
+    assert.equal(loaded.resolved, true)
+    assert.equal(loaded.save.progress.mapDepth, 8)
+    assert.deepEqual(loaded.save.felled, {})
+    assert.deepEqual(loaded.save.npcs, {})
+    assert.deepEqual(loaded.save.talents, [])
+    assert.equal(loaded.save.v7, true)
+  })
+  it('rebuilds a partial/corrupt record into a usable fresh mini-save at the right depth', () => {
+    const tw = normalizeTimewarpSave({ episodes: { 'highland-2-fold': { resolved: false, save: null } } })
+    const loaded = tw.episodes['highland-2-fold']
+    assert.equal(loaded.resolved, false)
+    assert.equal(loaded.save.progress.mapDepth, 9)
+    assert.deepEqual(loaded.save.caves, {})
+    assert.equal(loaded.save.body, null)
+  })
+  it('drops a record stored under an unknown map name', () => {
+    const tw = normalizeTimewarpSave({ episodes: { 'not-a-real-map': { resolved: true, save: null } } })
+    assert.deepEqual(tw.episodes, {})
   })
   it('seeds from a legacy adventure leaps record, deriving resolved via the rule', () => {
     const legacy = {
