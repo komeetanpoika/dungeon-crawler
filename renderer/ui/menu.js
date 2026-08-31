@@ -54,9 +54,9 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
     panel.appendChild(s)
   }
 
-  currentButtons = buttons.map(({ label, onSelect }) => {
+  currentButtons = buttons.map(({ label, onSelect, className }) => {
     const btn = document.createElement('button')
-    btn.className = 'menu-btn'
+    btn.className = className ? `menu-btn ${className}` : 'menu-btn'
     btn.textContent = label
     btn.addEventListener('click', () => onSelect())
     panel.appendChild(btn)
@@ -97,7 +97,7 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onAdventure, onRush, onOpenEditor, onQuit, onCheat }) {
+export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor, onQuit, onCheat }) {
   // The web release has no tile editor and nothing to quit to. The old
   // procedural overworld left the menu with the mode split; it remains
   // reachable as the level6 cheat.
@@ -107,6 +107,7 @@ export function showTitle(meta, { onAdventure, onRush, onOpenEditor, onQuit, onC
     subtitle: formatMetaSummary(meta),
     buttons: [
       { label: 'Adventure', onSelect: onAdventure },
+      { label: 'Timewarp', onSelect: onTimewarp },
       { label: 'Dungeon Rush', onSelect: onRush },
       ...(isWeb ? [] : [
         { label: 'Open Editor', onSelect: onOpenEditor },
@@ -114,6 +115,30 @@ export function showTitle(meta, { onAdventure, onRush, onOpenEditor, onQuit, onC
       ]),
     ],
     onCheat,
+  })
+}
+
+// Timewarp's episode picker. Resolved episodes are tinted (colour only, no
+// badges) via the `done` class; entries come from timewarp.js's episodeEntries.
+export function showEpisodeSelect(entries, { onPick, onBack }) {
+  renderScreen({
+    title: 'Timewarp',
+    subtitle: 'Set right what once went wrong',
+    buttons: [
+      ...entries.map(e => ({ label: e.title, className: e.resolved ? 'done' : undefined, onSelect: () => onPick(e.depth) })),
+      { label: 'Back', onSelect: onBack },
+    ],
+  })
+}
+
+// The adventure waystone's destination list; entries from waystoneDestinations.
+export function showDestinations(entries, { onPick, onCancel }) {
+  renderScreen({
+    title: 'Waystone',
+    buttons: [
+      ...entries.map(e => ({ label: e.title, onSelect: () => onPick(e.depth) })),
+      { label: 'Stay', onSelect: onCancel },
+    ],
   })
 }
 
