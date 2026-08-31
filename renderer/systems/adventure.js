@@ -24,9 +24,10 @@ export function isMapComplete(progress, mapData) {
   return dungeonLabels(mapData).every(l => done.includes(l))
 }
 
-// The chain follows depth order; null past the last map.
+// The chain follows depth order but skips the leap maps — those belong to
+// timewarp mode now; null past the last map or off the chain entirely.
 export function nextMapDepth(depth) {
-  const depths = Object.keys(OPEN_MAPS).map(Number).sort((a, b) => a - b)
+  const depths = Object.keys(OPEN_MAPS).map(Number).sort((a, b) => a - b).filter(d => !OPEN_MAPS[d].leap)
   const i = depths.indexOf(Number(depth))
   return i >= 0 && i + 1 < depths.length ? depths[i + 1] : null
 }
@@ -37,6 +38,10 @@ export function nextMapDepth(depth) {
 // player death; v5 adds felled ({mapName: ['x,y']}) — permanent, not wiped
 // on death. v6 adds leaps ({mapName: {flags}}) and shifts pre-v6 mapDepth >= 8
 // by +3 (three leap maps inserted at 8-10); save.v6 marks the shift done.
+// v7 splits the modes: leap maps leave the adventure chain (a mapDepth of
+// 8-10 moves to 11), progress.visited lists every map reached (seeded with
+// the non-leap maps at or below mapDepth), and the leaps record is only kept
+// for seeding the separate timewarp save.
 // Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
   const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
@@ -52,6 +57,14 @@ export function normalizeAdventureSave(raw) {
     if (base.progress.mapDepth >= 8) base.progress.mapDepth += 3
     base.v6 = true
   }
+  if (!base.v7) {
+    if (base.progress.mapDepth >= 8 && base.progress.mapDepth <= 10) base.progress.mapDepth = 11
+    base.v7 = true
+  }
+  base.progress.visited ??= Object.keys(OPEN_MAPS).map(Number)
+    .filter(d => !OPEN_MAPS[d].leap && d <= base.progress.mapDepth)
+    .sort((a, b) => a - b)
+    .map(d => OPEN_MAPS[d].name)
   return base
 }
 
@@ -69,4 +82,23 @@ export function recordNpcState(save, mapName, spawnIds, entities, wrath) {
 // Groundhog Day: the player's death forgets every map's dead and wrath.
 export function resetNpcs(save) {
   save.npcs = {}
+}
+
+export function recordVisit(progress, mapName) {
+  progress.visited ??= []
+  if (!progress.visited.includes(mapName)) progress.visited.push(mapName)
+}
+
+// The waystone's destination list: every visited (non-leap) map in depth
+// order, plus the next chain map once the frontier — the deepest visited
+// map — has all its dungeons finished. The gate rides on the frontier only;
+// visited maps are always hoppable.
+export function waystoneDestinations(save) {
+  const visited = save.progress.visited ?? []
+  const depths = Object.keys(OPEN_MAPS).map(Number).sort((a, b) => a - b)
+    .filter(d => !OPEN_MAPS[d].leap && visited.includes(OPEN_MAPS[d].name))
+  const frontier = depths[depths.length - 1]
+  const next = frontier != null ? nextMapDepth(frontier) : null
+  if (next !== null && isMapComplete(save.progress, OPEN_MAPS[frontier])) depths.push(next)
+  return depths.map(d => ({ depth: d, title: OPEN_MAPS[d].title }))
 }

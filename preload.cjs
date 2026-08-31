@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('saveAPI', {
   deleteRun: () => ipcRenderer.invoke('delete-run'),
   saveCaves: (data) => ipcRenderer.invoke('save-caves', data),
   loadCaves: () => ipcRenderer.invoke('load-caves'),
+  saveTimewarp: (data) => ipcRenderer.invoke('save-timewarp', data),
+  loadTimewarp: () => ipcRenderer.invoke('load-timewarp'),
   loadRulesets: () => ipcRenderer.invoke('load-rulesets'),
   loadMonsters: () => ipcRenderer.invoke('load-monsters'),
   loadStructures: () => ipcRenderer.invoke('load-structures'),

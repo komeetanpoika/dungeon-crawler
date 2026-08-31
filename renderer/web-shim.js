@@ -6,6 +6,7 @@
 // plus the browser-only keyboard fixes the desktop build doesn't need.
 const META_KEY = 'dungeon-crawler-meta'
 const CAVES_KEY = 'dungeon-crawler-caves'
+const TIMEWARP_KEY = 'dungeon-crawler-timewarp'
 
 async function fetchJSON(url, fallback) {
   try {
@@ -27,6 +28,10 @@ if (!window.saveAPI) {
     saveCaves: async (data) => { try { localStorage.setItem(CAVES_KEY, JSON.stringify(data)) } catch {} },
     loadCaves: async () => {
       try { return JSON.parse(localStorage.getItem(CAVES_KEY)) } catch { return null }
+    },
+    saveTimewarp: async (data) => { try { localStorage.setItem(TIMEWARP_KEY, JSON.stringify(data)) } catch {} },
+    loadTimewarp: async () => {
+      try { return JSON.parse(localStorage.getItem(TIMEWARP_KEY)) } catch { return null }
     },
     loadRulesets: () => fetchJSON('./data/rulesets.json', {}),
     loadStructures: () => fetchJSON('./data/structures.json', {}),
