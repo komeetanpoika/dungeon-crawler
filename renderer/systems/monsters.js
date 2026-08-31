@@ -57,6 +57,10 @@ export async function registerMonsters(defs, opts = {}) {
     }
     const params = clampParams(rig.PARAM_SCHEMA, raw.params ?? {}, m => warn(`monsters: ${raw.name}: ${m}`))
     const stats = { hp: 10, dmg: 1, speed: 70, half: 8, ...(raw.stats ?? {}) }
+    // A rig that knows its drawn extent owns the hitbox: collision and nav
+    // clearance track the visuals, and the def's stats.half is a fallback
+    // for rigs without hitHalf.
+    if (typeof rig.hitHalf === 'function') stats.half = rig.hitHalf(params)
     REGISTRY[raw.name] = { name: raw.name, rigId: raw.rig, rig, params, stats,
                           behavior: raw.behavior ?? {}, spawn: raw.spawn ?? null }
     registerMonsterAI(raw.name, { speed: stats.speed, half: stats.half, ...(raw.behavior ?? {}) })

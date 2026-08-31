@@ -39,6 +39,8 @@ const GAIT = [[2, -2, -2, 2], [0, 0, 0, 0], [-2, 2, 2, -2], [0, 0, 0, 0]]
 
 // All art-px dimensions derive here so the stage is sized to fit them.
 // Body width/length are forced even so the centre splits on whole pixels.
+// The stage is centred on the body, so its height covers the LARGER of the
+// forward reach (head + snout + horns) and the backward reach (tail).
 function dims(p) {
   const bw = 2 * Math.max(2, R(p.bodyWidth * 6))
   const bl = 2 * Math.max(3, R(p.bodyLength * 6))
@@ -48,9 +50,24 @@ function dims(p) {
   const headH = Math.max(3, R(p.headSize * 9))
   const snout = R(p.snout * 8)
   const tailLen = R(p.tailLength * 10)
-  return { bw, bl, legLen, legThick, headW, headH, snout, tailLen,
+  const hornW = Math.max(2, R(headW * 0.25))
+  const hornH = Math.max(4, headH - 1)
+  const forward = bl / 2 + headH + Math.max(snout, hornH) + 3
+  const back = bl / 2 + tailLen + 3
+  return { bw, bl, legLen, legThick, headW, headH, snout, tailLen, hornW, hornH,
            artW: ceilTile(bw + 2 * legLen + 6),
-           artH: ceilTile(bl + headH + snout + tailLen + 10) }
+           artH: ceilTile(2 * Math.max(forward, back)) }
+}
+
+// Collision half-size (screen px at 32-px tiles) derived from the drawn
+// body + head so the hitbox tracks the visuals. 0.6 keeps it a touch inside
+// the sprite (player-fair); clamped to the nav-supported clearance range —
+// 28 is the cyclops-tested 2-tile ceiling.
+export function hitHalf(p) {
+  const d = dims(p)
+  const halfLen = (d.bl + d.headH + d.snout + 2) / 2
+  const halfW = (d.bw + 2 * d.legLen + 2) / 2
+  return Math.max(8, Math.min(28, Math.round((halfLen + halfW) / 2 * 2 * 0.6)))
 }
 
 export function drawMonster(ctx, p, pose, S) {
@@ -78,14 +95,16 @@ export function drawMonster(ctx, p, pose, S) {
     const jit = (seed * 7) % 3 - 1          // ±1 art px per-individual length variance
     const bl2j = bl2 + jit
 
-    // tail: shrinking squares stepping back (+y), wiggling by frame
+    // tail: contiguous segmented strip stepping back (+y), wiggling by frame
     if (d.tailLen > 0) {
       c.fillStyle = pal.outline
       const segs = Math.max(2, Math.floor(d.tailLen / 3))
       const wig = walking || state === 'idle' ? [0, 1, 0, -1][F] : 0
-      for (let i = 0; i < segs; i++) {
-        const size = Math.max(1, R((d.bw * 0.3) * (1 - (i / segs) * (1 - p.tailTaper))))
-        c.fillRect((i % 2 ? wig : 0) - Math.floor(size / 2), bl2j + i * 3, size, size)
+      let ty = bl2j
+      for (let i = 0; i < segs && ty < bl2j + d.tailLen; i++) {
+        const size = Math.max(2, R((d.bw * 0.35) * (1 - (i / segs) * (1 - p.tailTaper))))
+        c.fillRect((i % 2 ? wig : 0) - Math.floor(size / 2), ty, size, size)
+        ty += size
       }
     }
 
@@ -122,8 +141,8 @@ export function drawMonster(ctx, p, pose, S) {
     const hw2 = d.headW / 2, headTop = -bl2j - d.headH
     if (p.horns) {
       c.fillStyle = pal.light
-      c.fillRect(-hw2 - 2, headTop - 3, 2, 5)
-      c.fillRect(hw2, headTop - 3, 2, 5)
+      c.fillRect(-hw2 - d.hornW, headTop - d.hornH, d.hornW, d.hornH + 3)
+      c.fillRect(hw2, headTop - d.hornH, d.hornW, d.hornH + 3)
     }
     c.fillStyle = pal.outline
     c.fillRect(-hw2 - 1, headTop - 1, d.headW + 2, d.headH + 2)

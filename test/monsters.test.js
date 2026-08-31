@@ -120,3 +120,18 @@ describe('updateMonsterPose / entityPose', () => {
     assert.ok(entityPose(e).stateT <= 0.016)
   })
 })
+
+describe('rig-derived hitbox', () => {
+  beforeEach(clearMonsters)
+  it('uses rig.hitHalf(params) over the def stats.half for collision and AI clearance', async () => {
+    const rig = { ...FAKE_RIG, hitHalf: params => 21 + (params.size === 2 ? 1 : 0) }
+    await registerMonsters([{ ...DEF, params: { size: 5 } }],   // size clamps to 2
+      { loadRig: async () => rig, loadHooks: async () => {}, warn: () => {} })
+    assert.equal(getMonsterDef('boarhound').stats.half, 22)     // derived, not DEF's 10
+    assert.equal(getAIConfig({ type: 'boarhound' }).half, 22)
+  })
+  it('falls back to stats.half for rigs without hitHalf', async () => {
+    await registerMonsters([DEF], { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
+    assert.equal(getMonsterDef('boarhound').stats.half, 10)
+  })
+})

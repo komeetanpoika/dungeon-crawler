@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { RIG_ID, PARAM_SCHEMA, drawMonster } from '../renderer/render/monster-rigs/quadruped.js'
+import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf } from '../renderer/render/monster-rigs/quadruped.js'
 
 // Recording 2D-context stand-in: every method call is logged, every property
 // set is accepted, gradients are inert. Lets us assert "drew something" and
@@ -104,5 +104,28 @@ describe('quadruped pixel discipline', () => {
     drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.30 }), 32)
     drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.45 }), 32)
     assert.notDeepEqual(a.ops, b.ops)
+  })
+})
+
+// hitHalf: collision half-size derived from the drawn body + head, so the
+// hitbox tracks the visuals instead of a hand-typed stat.
+describe('quadruped hitHalf', () => {
+  it('returns an integer within the supported clearance range [8, 28]', () => {
+    for (const params of [defaultParams(PARAM_SCHEMA), extremes('min'), extremes('max')]) {
+      const h = hitHalf(params)
+      assert.equal(h, Math.round(h))
+      assert.ok(h >= 8 && h <= 28, `hitHalf ${h} out of range`)
+    }
+  })
+  it('grows with body length', () => {
+    const small = hitHalf({ ...defaultParams(PARAM_SCHEMA), bodyLength: 0.8 })
+    const big = hitHalf({ ...defaultParams(PARAM_SCHEMA), bodyLength: 3.0 })
+    assert.ok(big > small, `${big} !> ${small}`)
+  })
+  it('caps at 28 for maxed-out params', () => {
+    assert.equal(hitHalf(extremes('max')), 28)
+  })
+  it('floors at 8 for minimal params', () => {
+    assert.equal(hitHalf(extremes('min')), 8)
   })
 })
