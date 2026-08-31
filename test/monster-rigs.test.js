@@ -59,3 +59,50 @@ describe('quadruped drawMonster', () => {
     assert.deepEqual(a.ops, b.ops)
   })
 })
+
+// v2: 16-bit pixel discipline. The rig draws rect-only art on an integer
+// art-px grid, snaps facing to 8 directions, and steps animation in frames.
+describe('quadruped pixel discipline', () => {
+  const CURVES = new Set(['ellipse', 'arc', 'quadraticCurveTo', 'bezierCurveTo'])
+  it('draws rects only — no curve primitives', () => {
+    for (const state of STATES) {
+      const ctx = recordingCtx()
+      drawMonster(ctx, defaultParams(PARAM_SCHEMA), pose(state), 32)
+      assert.ok(!ctx.ops.some(o => CURVES.has(o[0])), `state ${state} used a curve primitive`)
+    }
+  })
+  it('every fillRect lands on integer art-px coordinates', () => {
+    for (const params of [defaultParams(PARAM_SCHEMA), extremes('min'), extremes('max')]) {
+      const ctx = recordingCtx()
+      drawMonster(ctx, params, pose('walk'), 32)
+      for (const op of ctx.ops) {
+        if (op[0] !== 'fillRect') continue
+        for (const v of op.slice(1)) assert.equal(v, Math.round(v), `non-integer fillRect arg ${v}`)
+      }
+    }
+  })
+  it('facing snaps: two angles in the same 45° bucket draw identically', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { facing: 0.05 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { facing: -0.05 }), 32)
+    assert.deepEqual(a.ops, b.ops)
+  })
+  it('facing snaps: adjacent buckets draw differently', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { facing: 0 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { facing: Math.PI / 4 }), 32)
+    assert.notDeepEqual(a.ops, b.ops)
+  })
+  it('animation is frame-stepped: nearby times in one frame draw identically', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.301 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.302 }), 32)
+    assert.deepEqual(a.ops, b.ops)
+  })
+  it('animation advances across frame boundaries', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.30 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.45 }), 32)
+    assert.notDeepEqual(a.ops, b.ops)
+  })
+})
