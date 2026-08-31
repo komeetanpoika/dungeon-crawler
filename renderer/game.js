@@ -1633,7 +1633,7 @@ function enterHouse(door) {
 
 function exitCave() {
   const isHouse = state.cave.label.startsWith('house:')
-  const mapJustCompleted = !isHouse && state.cave.mapJustCompleted
+  const mapJustCompleted = runMode === 'adventure' && !isHouse && state.cave.mapJustCompleted
   const next = nextMapDepth(state.cave.surface.level)
   state = restoreSurface(state)
   persistRun()
