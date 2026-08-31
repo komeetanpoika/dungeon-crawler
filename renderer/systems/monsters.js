@@ -84,6 +84,18 @@ export function monstersForDepth(depth) {
     .map(d => ({ name: d.name, weight: d.spawn.weight ?? 1 }))
 }
 
+// Open-map outskirts roster for a depth: monsters whose spawn.openMaps
+// range covers it, with their per-map counts. The three leap story maps
+// (depths 8-10, see systems/leap.js) never take random outskirts monsters —
+// the episodes own their creature casts.
+export function monstersForOpenMap(depth) {
+  if (depth >= 8 && depth <= 10) return []
+  return Object.values(REGISTRY)
+    .filter(d => Array.isArray(d.spawn?.openMaps?.depths) &&
+                 depth >= d.spawn.openMaps.depths[0] && depth <= d.spawn.openMaps.depths[1])
+    .map(d => ({ name: d.name, count: d.spawn.openMaps.count ?? 1 }))
+}
+
 export function makeMonsterFromDef(name, x, y) {
   const d = REGISTRY[name]
   if (!d) return null
