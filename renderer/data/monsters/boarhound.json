@@ -6,7 +6,7 @@
     "legLength": 0.8, "legThick": 0.2,
     "headSize": 0.6, "snout": 0.5, "eyeSize": 0.09, "horns": true,
     "tailLength": 0.6, "tailTaper": 0.4,
-    "hideColor": "#5d3a1e", "bellyColor": "#b08a5a", "eyeColor": "#e33",
+    "hideColor": "#5d3a1e", "bellyColor": "#b08a5a", "eyeColor": "#ee3333",
     "gaitFreq": 9, "bob": 0.1
   },
   "stats": { "hp": 6, "dmg": 1, "speed": 85, "half": 8 },
