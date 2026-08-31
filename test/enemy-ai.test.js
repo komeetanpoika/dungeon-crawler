@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { getAIConfig } from '../renderer/data/enemy-ai.js'
+import { getAIConfig, registerMonsterAI } from '../renderer/data/enemy-ai.js'
 
 describe('getAIConfig', () => {
   it('humanoids and mammals flee at low HP by default; beasts do not', () => {
@@ -34,5 +34,21 @@ describe('getAIConfig', () => {
     assert.equal(c.taxon, 'humanoid')
     assert.equal(getAIConfig({ type: 'npc', species: 'deer' }).speed, 130)
     assert.equal(getAIConfig({ type: 'npc', species: 'deer' }).fleeHp, 1)
+  })
+})
+
+describe('registerMonsterAI', () => {
+  it('registered rows resolve through getAIConfig with beast defaults', () => {
+    registerMonsterAI('boarhound', { speed: 85, sightRange: 260, combat: 'strafe' })
+    const cfg = getAIConfig({ type: 'boarhound' })
+    assert.equal(cfg.speed, 85)
+    assert.equal(cfg.sightRange, 260)
+    assert.equal(cfg.combat, 'strafe')
+    assert.equal(cfg.taxon, 'beast')
+    assert.equal(cfg.fleeHp, 0)          // beast default: fights to the death
+    assert.equal(cfg.half, 8)            // default half when row omits it
+  })
+  it('an unregistered type still falls back to BASE.monster', () => {
+    assert.equal(getAIConfig({ type: 'nosuch' }).speed, 80)
   })
 })
