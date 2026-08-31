@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   dungeonLabels, markCleared, isMapComplete, nextMapDepth,
   normalizeAdventureSave, freshProgress, npcRecordFor, recordNpcState, resetNpcs,
+  recordVisit, waystoneDestinations,
 } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../renderer/data/levels.js'
@@ -35,10 +36,12 @@ describe('the adventure map chain', () => {
       assert.equal(m.caveDepths.length, dungeonLabels(m).length, m.name)
   })
 
-  it('nextMapDepth walks the chain and ends after the last map', () => {
-    assert.equal(nextMapDepth(7), 8)
+  it('nextMapDepth walks the chain, skipping leap maps, and ends after the last map', () => {
+    assert.equal(nextMapDepth(7), 11)
+    assert.equal(nextMapDepth(11), 12)
     assert.equal(nextMapDepth(17), 18)
     assert.equal(nextMapDepth(18), null)
+    assert.equal(nextMapDepth(8), null, 'leap maps are not on the chain')
   })
 })
 
@@ -112,13 +115,13 @@ describe('v3 save shape', () => {
   it('v3 saves pass through untouched, gaining only the empty gates, npcs and felled maps', () => {
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
-    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {}, felled: {}, leaps: {}, v6: true })
+    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {}, felled: {}, leaps: {}, v6: true, v7: true })
   })
 
   it('v4 saves keep their npcs and gain an empty felled map', () => {
     const v4 = { caves: {}, progress: { mapDepth: 7, cleared: {} }, talents: [], body: null,
       gates: {}, npcs: { 'forest-1-clearings': { dead: ['npc:forest-1-clearings:0'], hostile: false } } }
-    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, v6: true })
+    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, v6: true, v7: true })
   })
 
   it('a fresh save has no felled trees', () => {
@@ -184,5 +187,72 @@ describe('save v6', () => {
     assert.equal(normalizeAdventureSave({ caves: {}, progress: { mapDepth: 7, cleared: {} } }).progress.mapDepth, 7)
     const twice = normalizeAdventureSave(normalizeAdventureSave({ caves: {}, progress: { mapDepth: 9, cleared: {} } }))
     assert.equal(twice.progress.mapDepth, 12)
+  })
+})
+
+describe('save v7 (mode split)', () => {
+  it('a fresh save carries visited=[Clearings] and the v7 marker', () => {
+    const s = normalizeAdventureSave(null)
+    assert.deepEqual(s.progress.visited, ['forest-1-clearings'])
+    assert.equal(s.v7, true)
+  })
+  it('a v6 save stranded on a leap map is moved to the river (depth 11)', () => {
+    const v6 = { caves: {}, progress: { mapDepth: 9, cleared: {} }, talents: [], body: null,
+      gates: {}, npcs: {}, felled: {}, leaps: {}, v6: true }
+    const s = normalizeAdventureSave(v6)
+    assert.equal(s.progress.mapDepth, 11)
+    assert.equal(s.v7, true)
+  })
+  it('visited is seeded with every non-leap map at or below the current depth', () => {
+    const v6 = { caves: {}, progress: { mapDepth: 12, cleared: {} }, talents: [], body: null,
+      gates: {}, npcs: {}, felled: {}, leaps: {}, v6: true }
+    const s = normalizeAdventureSave(v6)
+    assert.deepEqual(s.progress.visited,
+      ['forest-1-clearings', 'forest-2-river', 'forest-3-autumn'])
+  })
+  it('an existing visited list is kept, and the bump never runs twice', () => {
+    const v7 = { caves: {}, progress: { mapDepth: 11, cleared: {}, visited: ['forest-1-clearings'] },
+      talents: [], body: null, gates: {}, npcs: {}, felled: {}, leaps: {}, v6: true, v7: true }
+    const s = normalizeAdventureSave(v7)
+    assert.deepEqual(s.progress.visited, ['forest-1-clearings'])
+    assert.equal(s.progress.mapDepth, 11)
+  })
+})
+
+describe('recordVisit', () => {
+  it('appends once, ignoring duplicates', () => {
+    const progress = freshProgress()
+    progress.visited = []
+    recordVisit(progress, 'forest-2-river')
+    recordVisit(progress, 'forest-2-river')
+    assert.deepEqual(progress.visited, ['forest-2-river'])
+  })
+})
+
+describe('waystoneDestinations', () => {
+  it('lists only the visited map while its dungeons are uncleared', () => {
+    const s = normalizeAdventureSave(null)   // visited: Clearings, nothing cleared
+    assert.deepEqual(s.progress.visited, ['forest-1-clearings'])
+    const dests = waystoneDestinations(s)
+    assert.deepEqual(dests.map(d => d.depth), [7])
+  })
+  it('adds the next chain map once the frontier map is complete', () => {
+    const s = normalizeAdventureSave(null)
+    for (const label of dungeonLabels(OPEN_MAPS[7])) markCleared(s.progress, OPEN_MAPS[7].name, label)
+    const dests = waystoneDestinations(s)
+    assert.deepEqual(dests.map(d => d.depth), [7, 11], 'skips the leap maps')
+    assert.equal(dests[1].title, OPEN_MAPS[11].title)
+  })
+  it('an uncleared frontier still allows hopping back through every visited map', () => {
+    const s = normalizeAdventureSave(null)
+    recordVisit(s.progress, OPEN_MAPS[11].name)
+    recordVisit(s.progress, OPEN_MAPS[12].name)   // frontier: autumn, uncleared
+    assert.deepEqual(waystoneDestinations(s).map(d => d.depth), [7, 11, 12])
+  })
+  it('the last map has no next entry even when complete', () => {
+    const s = normalizeAdventureSave(null)
+    for (const d of [11, 12, 13, 14, 15, 16, 17, 18]) recordVisit(s.progress, OPEN_MAPS[d].name)
+    for (const label of dungeonLabels(OPEN_MAPS[18])) markCleared(s.progress, OPEN_MAPS[18].name, label)
+    assert.deepEqual(waystoneDestinations(s).map(d => d.depth), [7, 11, 12, 13, 14, 15, 16, 17, 18])
   })
 })
