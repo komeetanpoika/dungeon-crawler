@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const { readMonsters } = require('./tools/monster-lab/monster-files.cjs')
 
 // WSL2/WSLg: the hardware GPU process fails to initialize and can hang the
 // app before any window appears — always use software rendering.
@@ -15,6 +16,7 @@ const PAINTER_MAPS_FILE = path.join(__dirname, 'renderer', 'data', 'painter-maps
 const STRUCTURES_FILE = path.join(__dirname, 'renderer', 'data', 'structures.json')
 const ARENA_CONFIG_FILE = path.join(__dirname, 'arena-config.json')
 const TILES_DIR = path.join(__dirname, 'renderer', 'assets', 'tiles')
+const MONSTERS_DIR = path.join(__dirname, 'renderer', 'data', 'monsters')
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -65,6 +67,11 @@ ipcMain.handle('load-rulesets', () => {
 })
 ipcMain.handle('save-rulesets', (_e, data) =>
   fs.writeFileSync(RULESETS_FILE, JSON.stringify(data, null, 2)))
+ipcMain.handle('load-monsters', () => {
+  const { defs, warnings } = readMonsters(MONSTERS_DIR)
+  for (const w of warnings) console.warn(w)
+  return defs
+})
 
 ipcMain.handle('load-painter-maps', () => {
   try { return JSON.parse(fs.readFileSync(PAINTER_MAPS_FILE, 'utf8')) } catch { return {} }

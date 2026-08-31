@@ -39,6 +39,7 @@ import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable, isDead } from './systems/factions.js'
 import { isCreature, strikeCreature, updateCreature, makeCreature } from './systems/creatures.js'
+import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose } from './systems/monsters.js'
 import './systems/nakki.js'
 import './systems/maahinen.js'
 import './systems/sammunut.js'
@@ -1699,6 +1700,7 @@ async function init() {
   renderer = new Renderer(canvas)
   renderer.resize()
   rulesets = (await window.saveAPI.loadRulesets()) ?? {}
+  await registerMonsters((await window.saveAPI.loadMonsters?.()) ?? [])
   structures = (await window.saveAPI.loadStructures()) ?? {}
   await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES])
   pruneMissingTiles(rulesets, renderer.sprites)

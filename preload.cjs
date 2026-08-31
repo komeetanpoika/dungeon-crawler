@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('saveAPI', {
   saveCaves: (data) => ipcRenderer.invoke('save-caves', data),
   loadCaves: () => ipcRenderer.invoke('load-caves'),
   loadRulesets: () => ipcRenderer.invoke('load-rulesets'),
+  loadMonsters: () => ipcRenderer.invoke('load-monsters'),
   loadStructures: () => ipcRenderer.invoke('load-structures'),
   loadArenaConfig: () => ipcRenderer.invoke('load-arena-config'),
   openEditor: () => ipcRenderer.invoke('open-editor'),

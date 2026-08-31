@@ -1,0 +1,15 @@
+{
+  "name": "boarhound",
+  "rig": "quadruped",
+  "params": {
+    "bodyLength": 1.4, "bodyWidth": 0.8, "bulge": 0.25,
+    "legLength": 0.8, "legThick": 0.2,
+    "headSize": 0.6, "snout": 0.5, "eyeSize": 0.09, "horns": true,
+    "tailLength": 0.6, "tailTaper": 0.4,
+    "hideColor": "#5d3a1e", "bellyColor": "#b08a5a", "eyeColor": "#e33",
+    "gaitFreq": 9, "bob": 0.1
+  },
+  "stats": { "hp": 6, "dmg": 1, "speed": 85, "half": 8 },
+  "behavior": { "taxon": "beast", "sightRange": 260, "stopRange": 18 },
+  "spawn": { "depths": [3, 5], "weight": 1 }
+}
