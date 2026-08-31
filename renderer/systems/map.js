@@ -598,7 +598,7 @@ export function buildBossTestArena(width, height) {
 export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps = false, structures = {}, arena = null, npcs = null, felled = null, config = null, pickups = null } = {}) {
   if (depth === 0) return buildArena({ size: { w: width, h: height }, ...(arena ?? {}) })
   if (depth === OVERWORLD_DEPTH) return generateOverworld(width, height, { structures })
-  if (OPEN_MAPS[depth]) return buildOpenMap(OPEN_MAPS[depth], { npcs, felled })
+  if (OPEN_MAPS[depth]) return buildOpenMap(OPEN_MAPS[depth], { npcs, felled, depth })
   // `config` overrides the LEVEL_CONFIG lookup entirely (used by house
   // interiors, which generate at a fixed depth with no LEVEL_CONFIG entry of
   // their own). `pickups` is accepted but unused here — callers run

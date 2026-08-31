@@ -32,5 +32,19 @@
     ]
   },
   "name": "podeboo",
-  "hooks": true
+  "hooks": true,
+  "spawn": {
+    "depths": [
+      4,
+      5
+    ],
+    "weight": 1,
+    "openMaps": {
+      "depths": [
+        11,
+        18
+      ],
+      "count": 2
+    }
+  }
 }

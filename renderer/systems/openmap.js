@@ -13,6 +13,7 @@ import { NPC_SPECIES } from '../data/npcs.js'
 import { applyFelled } from './lumber.js'
 import { EPISODES } from '../data/leaps.js'
 import { houseDoorsForMap } from './houses.js'
+import { monstersForOpenMap } from './monsters.js'
 
 // Vision classes for blocking cells, keyed off the art that blocks: open
 // water never impedes sight (losClear); foliage is shallow cover — a ray
@@ -123,7 +124,27 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
   return spawns
 }
 
-export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.random } = {}) {
+// Walkable tiles on the map fringe — within `band` of the border and at
+// least `minDist` (Chebyshev) from the player spawn, so outskirts monsters
+// never land in or near the village. Shuffled with the map's rng.
+export function outskirtsSpots(map, playerSpawn, taken, rng = Math.random, { band = 12, minDist = 25 } = {}) {
+  const h = map.length, w = map[0].length
+  const spots = []
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    if (map[y][x].tile !== TILE.FLOOR) continue
+    if (Math.min(x, y, w - 1 - x, h - 1 - y) > band) continue
+    if (Math.max(Math.abs(x - playerSpawn.x), Math.abs(y - playerSpawn.y)) < minDist) continue
+    if (taken.has(`${x},${y}`)) continue
+    spots.push({ x, y })
+  }
+  for (let i = spots.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[spots[i], spots[j]] = [spots[j], spots[i]]
+  }
+  return spots
+}
+
+export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.random, depth = null } = {}) {
   const map = createMap(data.w, data.h)
   const chestAt = new Set(data.pois.filter(p => p.kind === 'chest').map(p => `${p.x},${p.y}`))
   for (let y = 0; y < data.h; y++) for (let x = 0; x < data.w; x++) {
@@ -238,6 +259,19 @@ export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.rand
     c.tile = TILE.WALL
   }
   entitySpawns.push(...npcSpawnsForMap(data, { record: npcs, rng }))
+  // Generated-monster outskirts: registered monsters whose spawn.openMaps
+  // range covers this depth land on the fringe, away from the village.
+  // They rebuild every entry like all open-map entities (Groundhog Day).
+  if (depth != null) {
+    const gen = monstersForOpenMap(depth)
+    if (gen.length) {
+      const taken = new Set(entitySpawns.map(s => `${s.x},${s.y}`))
+      const spots = outskirtsSpots(map, data.playerSpawn, taken, rng)
+      let si = 0
+      for (const m of gen) for (let i = 0; i < m.count && si < spots.length; i++, si++)
+        entitySpawns.push({ kind: m.name, x: spots[si].x, y: spots[si].y })
+    }
+  }
   // Starter weapon: a chest beside the spawn so a fresh adventurer is armed
   // before the first cave. Nearest free walkable tile 1–3 steps out, row-major
   // by ring so it lands on the same tile every visit.

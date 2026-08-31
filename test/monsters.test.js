@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerMonsters, clearMonsters, getMonsterDef, monsterNames, monstersForDepth,
-         makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster } from '../renderer/systems/monsters.js'
+         makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster, monstersForOpenMap } from '../renderer/systems/monsters.js'
 import { getAIConfig } from '../renderer/data/enemy-ai.js'
 import { CREATURE_TYPES } from '../renderer/systems/creatures.js'
 
@@ -174,5 +174,25 @@ describe('laser beam rendering', () => {
     drawGeneratedMonster(proxy(firing), b, 100, 100, 32, {})
     const rects = o => o.ops.filter(x => x[0] === 'fillRect').length
     assert.ok(rects(firing) > rects(quiet) + 10, `expected many beam rects, got ${rects(firing)} vs ${rects(quiet)}`)
+  })
+})
+
+describe('monstersForOpenMap', () => {
+  beforeEach(clearMonsters)
+  const om = (name, depths, count) => ({ ...DEF, name, spawn: { ...DEF.spawn, openMaps: { depths, count } } })
+  it('lists monsters whose openMaps range covers the depth, with counts', async () => {
+    await load([om('aa', [7, 14], 3), om('bb', [11, 18], 2), { ...DEF, name: 'cc' }])
+    assert.deepEqual(monstersForOpenMap(12), [{ name: 'aa', count: 3 }, { name: 'bb', count: 2 }])
+    assert.deepEqual(monstersForOpenMap(7), [{ name: 'aa', count: 3 }])
+    assert.deepEqual(monstersForOpenMap(18), [{ name: 'bb', count: 2 }])
+    assert.deepEqual(monstersForOpenMap(19), [])
+  })
+  it('always excludes the leap story maps (depths 8-10)', async () => {
+    await load([om('aa', [7, 14], 3)])
+    for (const d of [8, 9, 10]) assert.deepEqual(monstersForOpenMap(d), [], `depth ${d}`)
+  })
+  it('count defaults to 1', async () => {
+    await load([{ ...DEF, spawn: { openMaps: { depths: [7, 18] } } }])
+    assert.deepEqual(monstersForOpenMap(12), [{ name: 'boarhound', count: 1 }])
   })
 })
