@@ -121,9 +121,10 @@ Runs once at startup:
    the rig's schema (out-of-range → clamped + warn; unknown keys → ignored +
    warn).
 2. Registers each monster into existing seams:
-   - **AI:** `getAIConfig` gains one fallback — before defaulting to
-     `BASE.monster`, consult the monster registry for the entity's type and
-     use its `behavior` row.
+   - **AI:** `enemy-ai.js` exports `registerMonsterAI(name, row)`; the
+     loader registers each monster's `behavior` row (over beast defaults)
+     into `BASE`, so the existing `getAIConfig` lookup resolves generated
+     types with no change to its logic.
    - **Spawning:** `buildEntities` (renderer/game.js) gains a **single** new
      case that checks the registry — one case for all generated monsters.
      The arena allowlist gets the same check (unknown kinds are silently
@@ -133,9 +134,13 @@ Runs once at startup:
      `speed01` from actual velocity, `seed` from spawn position) → call the
      rig's `drawMonster`.
    - **Hooks:** `hooks: true` → dynamic-`import()` the hook module, which
-     assigns into `CREATURE_HIT`/`CREATURE_UPDATE`/`CREATURE_MAKE`/
-     `CREATURE_ALPHA` exactly like the leap creatures; the loader appends
-     the name to `CREATURE_TYPES`.
+     assigns into `CREATURE_HIT`/`CREATURE_UPDATE`/`CREATURE_ALPHA` keyed by
+     the monster's name. Generated monsters are **never** added to
+     `CREATURE_TYPES` — `isCreature` membership diverts an entity away from
+     the brain, the normal strike path, and the enemy draw path
+     (game.js:1052/1272, canvas.js). Instead the strike gates also dispatch
+     when `CREATURE_HIT[e.type]` exists, and the enemy update loop calls
+     `CREATURE_UPDATE[e.type]` (if any) *after* brain+act as a supplement.
 3. Death, loot, XP, hit flash, knockback ride the existing enemy pipeline
    untouched — a generated monster dies like a crab dies, rolling the same
    depth-tiered loot.
@@ -212,8 +217,10 @@ Electron renderers — reuse the `text-prompt.js` pattern for any text input.)
   `speed01`; seed deterministic from spawn position.
 - **Server:** name sanitization rejects path escapes; save updates
   `index.json` atomically (handlers tested directly, no live server).
-- **Canvas:** playwright-core renders the v1 monster per state; asserts
-  non-blank, state-distinct output.
+- **Canvas:** a recording mock-ctx (proxy logging every draw call) asserts
+  each state emits draw ops, states are distinct, save/restore balances, and
+  output is deterministic — no browser needed; visual quality is judged live
+  in the lab.
 - **Runtime:** one short, time-boxed arena run for the full loop (spawns,
   chases, hits, dies, drops loot); logic paths stay on unit coverage.
 - **Lab UI:** exercised manually (dev tool; tile-editor precedent).
