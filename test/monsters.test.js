@@ -41,6 +41,16 @@ describe('registerMonsters', () => {
   it('rejects bad names', async () => {
     assert.equal(await load([{ ...DEF, name: '../evil' }]), 0)
   })
+  it('__proto__ name: stored as own key, cleared by clearMonsters', async () => {
+    assert.equal(await load([{ ...DEF, name: '__proto__' }]), 1)
+    const d = getMonsterDef('__proto__')
+    assert.ok(d)
+    assert.ok(monsterNames().includes('__proto__'))
+    assert.ok(Object.prototype.hasOwnProperty.call(d, 'name'))
+    clearMonsters()
+    assert.equal(getMonsterDef('__proto__'), null)
+    assert.ok(!monsterNames().includes('__proto__'))
+  })
   it('a failing hooks module is non-fatal and never touches CREATURE_TYPES', async () => {
     const before = [...CREATURE_TYPES]
     const n = await registerMonsters([{ ...DEF, hooks: true }],

@@ -8,7 +8,7 @@ import { clampParams } from '../render/monster-rigs/schema.js'
 import { registerMonsterAI } from '../data/enemy-ai.js'
 import { creatureAlpha } from './creatures.js'
 
-const REGISTRY = {}
+const REGISTRY = Object.create(null)
 const NAME_RE = /^[a-z0-9_]+$/
 const HIT_FLASH = 0.18
 
