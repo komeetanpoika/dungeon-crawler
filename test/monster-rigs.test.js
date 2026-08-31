@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { RIG_ID, PARAM_SCHEMA, drawMonster } from '../renderer/render/monster-rigs/quadruped.js'
+import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf } from '../renderer/render/monster-rigs/quadruped.js'
 
 // Recording 2D-context stand-in: every method call is logged, every property
 // set is accepted, gradients are inert. Lets us assert "drew something" and
@@ -57,5 +57,75 @@ describe('quadruped drawMonster', () => {
     drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk'), 32)
     drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk'), 32)
     assert.deepEqual(a.ops, b.ops)
+  })
+})
+
+// v2: 16-bit pixel discipline. The rig draws rect-only art on an integer
+// art-px grid, snaps facing to 8 directions, and steps animation in frames.
+describe('quadruped pixel discipline', () => {
+  const CURVES = new Set(['ellipse', 'arc', 'quadraticCurveTo', 'bezierCurveTo'])
+  it('draws rects only — no curve primitives', () => {
+    for (const state of STATES) {
+      const ctx = recordingCtx()
+      drawMonster(ctx, defaultParams(PARAM_SCHEMA), pose(state), 32)
+      assert.ok(!ctx.ops.some(o => CURVES.has(o[0])), `state ${state} used a curve primitive`)
+    }
+  })
+  it('every fillRect lands on integer art-px coordinates', () => {
+    for (const params of [defaultParams(PARAM_SCHEMA), extremes('min'), extremes('max')]) {
+      const ctx = recordingCtx()
+      drawMonster(ctx, params, pose('walk'), 32)
+      for (const op of ctx.ops) {
+        if (op[0] !== 'fillRect') continue
+        for (const v of op.slice(1)) assert.equal(v, Math.round(v), `non-integer fillRect arg ${v}`)
+      }
+    }
+  })
+  it('facing snaps: two angles in the same 45° bucket draw identically', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { facing: 0.05 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { facing: -0.05 }), 32)
+    assert.deepEqual(a.ops, b.ops)
+  })
+  it('facing snaps: adjacent buckets draw differently', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { facing: 0 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { facing: Math.PI / 4 }), 32)
+    assert.notDeepEqual(a.ops, b.ops)
+  })
+  it('animation is frame-stepped: nearby times in one frame draw identically', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.301 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.302 }), 32)
+    assert.deepEqual(a.ops, b.ops)
+  })
+  it('animation advances across frame boundaries', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.30 }), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk', { t: 0.45 }), 32)
+    assert.notDeepEqual(a.ops, b.ops)
+  })
+})
+
+// hitHalf: collision half-size derived from the drawn body + head, so the
+// hitbox tracks the visuals instead of a hand-typed stat.
+describe('quadruped hitHalf', () => {
+  it('returns an integer within the supported clearance range [8, 28]', () => {
+    for (const params of [defaultParams(PARAM_SCHEMA), extremes('min'), extremes('max')]) {
+      const h = hitHalf(params)
+      assert.equal(h, Math.round(h))
+      assert.ok(h >= 8 && h <= 28, `hitHalf ${h} out of range`)
+    }
+  })
+  it('grows with body length', () => {
+    const small = hitHalf({ ...defaultParams(PARAM_SCHEMA), bodyLength: 0.8 })
+    const big = hitHalf({ ...defaultParams(PARAM_SCHEMA), bodyLength: 3.0 })
+    assert.ok(big > small, `${big} !> ${small}`)
+  })
+  it('caps at 28 for maxed-out params', () => {
+    assert.equal(hitHalf(extremes('max')), 28)
+  })
+  it('floors at 8 for minimal params', () => {
+    assert.equal(hitHalf(extremes('min')), 8)
   })
 })

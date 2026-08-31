@@ -16,8 +16,8 @@ document.getElementById('stagebar').append(pinBtn)
 const pinStrip = makePinStrip(document.getElementById('pins'),
   () => rigMod, () => stage.sim,
   params => { Object.assign(work.params, params); stage.setParams(work.params)
-              buildParamsPanel(els.params, rigMod.PARAM_SCHEMA, work.params,
-                (k, v) => { work.params[k] = v; markDirty() }); markDirty() })
+              buildParamsPanel(els.params, rigMod.PARAM_SCHEMA, work.params, onParamEdit)
+              syncHalf(); markDirty() })
 pinBtn.onclick = () => work && pinStrip.pin(work.params)
 
 // live reload: a rig edit re-imports the module in place; a monster-file
@@ -26,8 +26,8 @@ io.onFilesChanged(async ({ dir, file }) => {
   if (dir === 'rigs' && work && file === `${work.rigId}.js`) {
     rigMod = await io.loadRig(work.rigId)
     stage.setRig(rigMod)
-    buildParamsPanel(els.params, rigMod.PARAM_SCHEMA, work.params,
-      (k, v) => { work.params[k] = v; markDirty() })
+    buildParamsPanel(els.params, rigMod.PARAM_SCHEMA, work.params, onParamEdit)
+    syncHalf()
   } else if (dir === 'monsters') await refreshList()
 })
 
@@ -45,16 +45,20 @@ function markDirty() {
   renderLibrary()
 }
 
+// The hitbox overlay tracks the rig-derived hitHalf when the rig has one
+// (mirroring the game loader); stats.half is the fallback for rigs without.
+function syncHalf() { stage.setHalf(rigMod?.hitHalf?.(work.params) ?? work.stats.half ?? 8) }
+function onParamEdit(k, v) { work.params[k] = v; syncHalf(); markDirty() }
+
 async function setWork(w) {
   work = w
   rigMod = await io.loadRig(w.rigId)
   work.params = clampParams(rigMod.PARAM_SCHEMA, work.params)
   stage.setRig(rigMod)
   stage.setParams(work.params)
-  stage.setHalf(work.stats.half ?? 8)
-  buildParamsPanel(els.params, rigMod.PARAM_SCHEMA, work.params,
-    (k, v) => { work.params[k] = v; markDirty() })
-  buildFieldEditors(els.editors, work, () => { stage.setHalf(work.stats.half ?? 8); markDirty() })
+  syncHalf()
+  buildParamsPanel(els.params, rigMod.PARAM_SCHEMA, work.params, onParamEdit)
+  buildFieldEditors(els.editors, work, () => { syncHalf(); markDirty() })
   els.save.disabled = !work.dirty
   renderLibrary()
 }

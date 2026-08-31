@@ -1,7 +1,12 @@
-// Baseline top-down quadruped rig. Pure: draws around origin from
-// (params, pose, S) only. -y is forward after rotating by pose.facing + PI/2
-// (same convention as render/dragonboss.js). Every pose.state renders:
-// hit = white flash, death = collapse + fade.
+// 16-bit pixel quadruped rig. Draws rect-only art on an integer art-px grid
+// (TILE_ART_PX per map tile) through the shared pixel stage: facing snaps to
+// 8 directions, animation steps in frames (4-frame gait, 2-frame attack,
+// white-flash hit, 2-step death collapse). Same contract as every rig:
+// pure drawMonster(ctx, params, pose, S), origin at the monster's centre,
+// -y forward before rotation. PARAM_SCHEMA is unchanged from v1, so saved
+// monsters and the lab keep working; lengths quantize to art px at draw time.
+import { TILE_ART_PX, palette, frameOf, withPixelStage } from './pixel.js'
+
 export const RIG_ID = 'quadruped'
 
 export const PARAM_SCHEMA = [
@@ -24,86 +29,136 @@ export const PARAM_SCHEMA = [
   { key: 'bob',        label: 'Body bob',    group: 'motion', type: 'range', min: 0.0, max: 0.3, step: 0.01, default: 0.08 },
 ]
 
-function hash(i, j) { const s = Math.sin(i * 12.9898 + j * 78.233) * 43758.5453; return s - Math.floor(s) }
-function shade(hex, d) {
-  const n = parseInt(hex.slice(1), 16)
-  const c = v => Math.max(0, Math.min(255, v + d))
-  return `rgb(${c(n >> 16)},${c((n >> 8) & 255)},${c(n & 255)})`
+const R = Math.round
+const ceilTile = v => Math.max(TILE_ART_PX, Math.ceil(v / TILE_ART_PX) * TILE_ART_PX)
+const WHITE = '#f8f8f8'
+
+// Per-frame leg swing (art px along y) for the 4-frame gait, per leg
+// (frontL, frontR, backL, backR) — classic alternating trot.
+const GAIT = [[2, -2, -2, 2], [0, 0, 0, 0], [-2, 2, 2, -2], [0, 0, 0, 0]]
+
+// All art-px dimensions derive here so the stage is sized to fit them.
+// Body width/length are forced even so the centre splits on whole pixels.
+// The stage is centred on the body, so its height covers the LARGER of the
+// forward reach (head + snout + horns) and the backward reach (tail).
+function dims(p) {
+  const bw = 2 * Math.max(2, R(p.bodyWidth * 6))
+  const bl = 2 * Math.max(3, R(p.bodyLength * 6))
+  const legLen = Math.max(2, R(p.legLength * 8))
+  const legThick = Math.max(1, R(p.legThick * 6))
+  const headW = 2 * Math.max(2, R(p.headSize * 5))
+  const headH = Math.max(3, R(p.headSize * 9))
+  const snout = R(p.snout * 8)
+  const tailLen = R(p.tailLength * 10)
+  const hornW = Math.max(2, R(headW * 0.25))
+  const hornH = Math.max(4, headH - 1)
+  const forward = bl / 2 + headH + Math.max(snout, hornH) + 3
+  const back = bl / 2 + tailLen + 3
+  return { bw, bl, legLen, legThick, headW, headH, snout, tailLen, hornW, hornH,
+           artW: ceilTile(bw + 2 * legLen + 6),
+           artH: ceilTile(2 * Math.max(forward, back)) }
+}
+
+// Collision half-size (screen px at 32-px tiles) derived from the drawn
+// body + head so the hitbox tracks the visuals. 0.6 keeps it a touch inside
+// the sprite (player-fair); clamped to the nav-supported clearance range —
+// 28 is the cyclops-tested 2-tile ceiling.
+export function hitHalf(p) {
+  const d = dims(p)
+  const halfLen = (d.bl + d.headH + d.snout + 2) / 2
+  const halfW = (d.bw + 2 * d.legLen + 2) / 2
+  return Math.max(8, Math.min(28, Math.round((halfLen + halfW) / 2 * 2 * 0.6)))
 }
 
 export function drawMonster(ctx, p, pose, S) {
-  const { t, state, stateT, seed } = pose
-  const jit = 0.92 + 0.16 * hash(seed, 1)
-  const bl = p.bodyLength * S * jit, bw = p.bodyWidth * S * jit
-  const dead = state === 'death'
-  const deathK = dead ? Math.min(1, stateT / 0.5) : 0
-  const gait = dead ? 0 : pose.speed01
+  const d = dims(p)
+  const { state, stateT, seed } = pose
+  withPixelStage(ctx, d.artW, d.artH, pose.facing + Math.PI / 2, S, c => {
+    const pal = state === 'hit'
+      ? { outline: WHITE, base: WHITE, light: WHITE }
+      : palette(p.hideColor)
+    const belly = state === 'hit' ? WHITE : palette(p.bellyColor).base
+    const eye = state === 'hit' ? WHITE : palette(p.eyeColor).light
 
-  ctx.save()
-  ctx.rotate(pose.facing + Math.PI / 2)
-  ctx.globalAlpha *= 1 - deathK * 0.8
-  ctx.scale(1, 1 - deathK * 0.6)
-  ctx.translate(0, Math.sin(t * p.gaitFreq) * p.bob * S * gait)
-  const lunge = state === 'attack' ? -Math.sin(Math.min(stateT, 0.3) / 0.3 * Math.PI) * S * 0.35 : 0
+    const walking = state === 'walk'
+    const F = walking ? frameOf(pose.t, p.gaitFreq, 4) : 0
+    const attackF = state === 'attack' ? frameOf(stateT, 8, 2) : 0
+    const deathF = state === 'death' ? Math.min(1, Math.floor(stateT / 0.25)) : 0
 
-  // legs first (under the body): stubs out the sides, swinging along y with the gait
-  const ll = p.legLength * S, lw = Math.max(1, p.legThick * S)
-  ctx.strokeStyle = shade(p.hideColor, -30); ctx.lineWidth = lw; ctx.lineCap = 'round'
-  const anchors = [[-1, -bl * 0.3, 0], [1, -bl * 0.3, Math.PI], [-1, bl * 0.32, Math.PI], [1, bl * 0.32, 0]]
-  for (const [sx, y, phase] of anchors) {
-    const swing = Math.sin(t * p.gaitFreq + phase) * 0.6 * gait
-    const x0 = sx * bw * 0.45
-    ctx.beginPath(); ctx.moveTo(x0, y)
-    ctx.lineTo(x0 + sx * ll * 0.55, y + swing * ll * 0.5); ctx.stroke()
-  }
+    c.save()
+    if (state === 'death') { c.globalAlpha *= deathF ? 0.5 : 1; c.scale(1, deathF ? 0.5 : 0.8) }
+    if (state === 'attack') c.translate(0, attackF ? -3 : -1)
+    const bobPx = R(p.bob * 8)
+    if (walking && bobPx) c.translate(0, (F % 2) ? bobPx : 0)
 
-  // tail: chain of shrinking discs swinging behind (+y)
-  const segs = 5, tl = p.tailLength * S
-  let tx = 0, ty = bl * 0.48, ang = Math.PI / 2
-  ctx.fillStyle = shade(p.hideColor, -15)
-  for (let i = 0; i < segs && tl > 0; i++) {
-    ang += dead ? 0 : Math.sin(t * 2.1 - i * 0.8) * 0.25
-    tx += Math.cos(ang) * tl / segs; ty += Math.sin(ang) * tl / segs
-    const r = Math.max(1, bw * 0.22 * (1 - (i / segs) * (1 - p.tailTaper)))
-    ctx.beginPath(); ctx.arc(tx, ty, r, 0, Math.PI * 2); ctx.fill()
-  }
+    const bw2 = d.bw / 2, bl2 = d.bl / 2
+    const jit = (seed * 7) % 3 - 1          // ±1 art px per-individual length variance
+    const bl2j = bl2 + jit
 
-  // body + belly
-  ctx.fillStyle = p.hideColor
-  ctx.beginPath(); ctx.ellipse(0, lunge * 0.3, bw * (1 + p.bulge * 0.4), bl * 0.5, 0, 0, Math.PI * 2); ctx.fill()
-  ctx.fillStyle = p.bellyColor
-  ctx.beginPath(); ctx.ellipse(0, bl * 0.08 + lunge * 0.3, bw * 0.55 * (1 + p.bulge), bl * 0.3, 0, 0, Math.PI * 2); ctx.fill()
-  if (p.scales) {
-    ctx.strokeStyle = shade(p.hideColor, -40); ctx.lineWidth = 1
-    for (let i = 0; i < 14; i++) {
-      const sx = (hash(seed, i * 2) - 0.5) * bw * 1.4
-      const sy = (hash(seed, i * 2 + 1) - 0.5) * bl * 0.8
-      ctx.beginPath(); ctx.arc(sx, sy + lunge * 0.3, bw * 0.12, 0.2, Math.PI - 0.2); ctx.stroke()
+    // tail: contiguous segmented strip stepping back (+y), wiggling by frame
+    if (d.tailLen > 0) {
+      c.fillStyle = pal.outline
+      const segs = Math.max(2, Math.floor(d.tailLen / 3))
+      const wig = walking || state === 'idle' ? [0, 1, 0, -1][F] : 0
+      let ty = bl2j
+      for (let i = 0; i < segs && ty < bl2j + d.tailLen; i++) {
+        const size = Math.max(2, R((d.bw * 0.35) * (1 - (i / segs) * (1 - p.tailTaper))))
+        c.fillRect((i % 2 ? wig : 0) - Math.floor(size / 2), ty, size, size)
+        ty += size
+      }
     }
-  }
 
-  // head at the front (-y), lunging forward on attack
-  const hs = p.headSize * S, hy = -bl * 0.5 - hs * 0.4 + lunge
-  if (p.horns) {
-    ctx.strokeStyle = '#d8c8a6'; ctx.lineWidth = Math.max(1.5, hs * 0.14); ctx.lineCap = 'round'
-    for (const s of [-1, 1]) {
-      ctx.beginPath(); ctx.moveTo(s * hs * 0.5, hy)
-      ctx.quadraticCurveTo(s * hs * 1.1, hy - hs * 0.3, s * hs * 0.9, hy - hs * 1.0); ctx.stroke()
+    // legs: stubs out the sides, swinging along y with the gait frame
+    c.fillStyle = pal.outline
+    const anchors = [[-1, -bl2 + 2, 0], [1, -bl2 + 2, 1], [-1, bl2 - 2 - d.legThick, 2], [1, bl2 - 2 - d.legThick, 3]]
+    for (const [sx, y, li] of anchors) {
+      const swing = (walking ? GAIT[F][li] : 0) + (state === 'death' ? (sx > 0 ? 2 : -2) : 0)
+      const x = sx > 0 ? bw2 : -bw2 - d.legLen
+      c.fillRect(x, y + swing, d.legLen, d.legThick)
     }
-  }
-  ctx.fillStyle = p.hideColor
-  ctx.beginPath(); ctx.ellipse(0, hy, hs * 0.8, hs * 0.7, 0, 0, Math.PI * 2); ctx.fill()
-  ctx.fillStyle = shade(p.hideColor, 12) // snout
-  ctx.beginPath(); ctx.ellipse(0, hy - hs * 0.5 - p.snout * S * 0.5, hs * 0.35, hs * 0.35 + p.snout * S * 0.5, 0, 0, Math.PI * 2); ctx.fill()
-  ctx.fillStyle = p.eyeColor
-  for (const s of [-1, 1]) {
-    ctx.beginPath(); ctx.ellipse(s * hs * 0.4, hy - hs * 0.15, p.eyeSize * S, p.eyeSize * S * 0.7, 0, 0, Math.PI * 2); ctx.fill()
-  }
 
-  // hit flash on top of everything
-  if (state === 'hit') {
-    ctx.globalAlpha *= 0.7; ctx.fillStyle = '#ffffff'
-    ctx.beginPath(); ctx.ellipse(0, 0, bw * 1.1, bl * 0.55, 0, 0, Math.PI * 2); ctx.fill()
-  }
-  ctx.restore()
+    // body: 1px outline ring, base fill, lighter belly, optional bulge strips
+    c.fillStyle = pal.outline
+    c.fillRect(-bw2 - 1, -bl2j - 1, d.bw + 2, d.bl + 2)
+    c.fillStyle = pal.base
+    c.fillRect(-bw2, -bl2j, d.bw, d.bl)
+    const bulgePx = R(p.bulge * 5)
+    if (bulgePx > 0) {
+      c.fillStyle = pal.base
+      c.fillRect(-bw2 - bulgePx, -2, bulgePx, 6)
+      c.fillRect(bw2, -2, bulgePx, 6)
+    }
+    c.fillStyle = belly
+    c.fillRect(-Math.floor(bw2 / 2), -Math.floor(bl2 / 2) + 1, Math.floor(bw2), d.bl - Math.floor(bl2) - 1)
+    if (p.scales) {
+      c.fillStyle = pal.outline
+      for (let y = -bl2j + 2; y < bl2j - 2; y += 3)
+        for (let x = -bw2 + 2 + (((y + bl2j) / 3) % 2); x < bw2 - 1; x += 3)
+          c.fillRect(R(x), y, 1, 1)
+    }
+
+    // head block + snout + horns + eyes at the front (-y)
+    const hw2 = d.headW / 2, headTop = -bl2j - d.headH
+    if (p.horns) {
+      c.fillStyle = pal.light
+      c.fillRect(-hw2 - d.hornW, headTop - d.hornH, d.hornW, d.hornH + 3)
+      c.fillRect(hw2, headTop - d.hornH, d.hornW, d.hornH + 3)
+    }
+    c.fillStyle = pal.outline
+    c.fillRect(-hw2 - 1, headTop - 1, d.headW + 2, d.headH + 2)
+    c.fillStyle = pal.base
+    c.fillRect(-hw2, headTop, d.headW, d.headH)
+    if (d.snout > 0) {
+      c.fillStyle = pal.outline
+      c.fillRect(-Math.floor(hw2 / 2) - 1, headTop - d.snout - 1, Math.floor(hw2) + 2, d.snout + 2)
+      c.fillStyle = pal.light
+      c.fillRect(-Math.floor(hw2 / 2), headTop - d.snout, Math.floor(hw2), d.snout)
+    }
+    const eyePx = Math.max(1, R(p.eyeSize * 8))
+    c.fillStyle = eye
+    c.fillRect(-hw2 + 1, headTop + 1, eyePx, eyePx)
+    c.fillRect(hw2 - 1 - eyePx, headTop + 1, eyePx, eyePx)
+
+    c.restore()
+  })
 }
