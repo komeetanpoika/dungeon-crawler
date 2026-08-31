@@ -38,7 +38,7 @@ import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable, isDead } from './systems/factions.js'
-import { isCreature, strikeCreature, updateCreature, makeCreature } from './systems/creatures.js'
+import { isCreature, strikeCreature, updateCreature, makeCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
 import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose } from './systems/monsters.js'
 import './systems/nakki.js'
 import './systems/maahinen.js'
@@ -385,7 +385,10 @@ function buildEntities(spawns, map, depth) {
       case 'echo':    return [{ type: 'echo', id: `echo:${s.spot}`, x: s.x, y: s.y, spot: s.spot, px: cx, py: cy }]
       case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
       case 'creature': { const c = makeCreature(s.creature, s.x, s.y); return c ? [{ ...c, px: cx, py: cy }] : [] }
-      default:               return []
+      default: {
+        const gen = makeMonsterFromDef(s.kind, s.x, s.y)
+        return gen ? [hpOverride({ ...gen, px: cx, py: cy, ...aiInit() })] : []
+      }
     }
   })
 }
@@ -1050,7 +1053,7 @@ function update(delta) {
         }
         if (!hitAt(e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
-        if (isCreature(e)) {
+        if (isCreature(e) || (CREATURE_HIT[e.type] && getMonsterDef(e.type))) {
           const r = strikeCreature(e, state, dmg)
           const cue = recordCreatureKill(e, r) ? 'enemy-death' : r.cue
           if (cue) sfx(state, cue, { px: e.px, py: e.py })
@@ -1228,7 +1231,7 @@ function update(delta) {
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
-          if (isCreature(e)) {
+          if (isCreature(e) || (CREATURE_HIT[e.type] && getMonsterDef(e.type))) {
             const r = strikeCreature(e, state, p.damage)
             const cue = recordCreatureKill(e, r) ? 'enemy-death' : r.cue
             if (cue) sfx(state, cue, { px: e.px, py: e.py })
@@ -1284,6 +1287,7 @@ function update(delta) {
     const canMove = e.type !== 'dragon' || e.breathState === 'idle'
     const prevPx = e.px
     if (canMove) act(e, state, delta, updateBrain(e, state, delta))
+    if (getMonsterDef(e.type)) { updateMonsterPose(e, delta); CREATURE_UPDATE[e.type]?.(e, state, delta) }
     const movedX = e.px - prevPx
     if (Math.abs(movedX) > 0.1) e.facing = movedX > 0 ? 'east' : 'west'
 
