@@ -115,6 +115,53 @@ export function pruneBrokenTrees(b) {
   }
 }
 
+// Open water is only ever these two skins. ow_water_2/3 in the atlas are
+// Kenney's shore-corner tiles (a sand wedge in one corner) — painting them
+// at random put beaches in the middle of every lake.
+export const WATER_SKINS = ['ow_water_0', 'ow_water_1']
+export const isWaterSkin = n => !!n && (n.startsWith('ow_water') || n.startsWith('ow_pond_'))
+
+// Dress every water cell that touches land with the 3x3 pond autotile's
+// rim, so lakes, rivers and coasts read as shores: land to the N/S/E/W
+// picks the matching edge tile, land on two adjacent sides the corner.
+// Open water keeps its plain skin. Piers and the map edge count as water
+// (logs sit over it; the sea runs off the map). The set has no inner-corner
+// or channel tiles, so a one-wide channel or pocket takes its top/left bank.
+// Run LAST: every generator's own isWater check keys on the ow_water prefix
+// this pass repaints.
+// Strip a finished map's water back to plain open water so shoreline() can
+// lay one consistent rim: shore-corner skins (ow_water_2/3) and any pond rim
+// on the ground become plain water, and water/pond painted on the overlay
+// layer (the editor's hand-painted banks) is folded into the ground and the
+// overlay cleared. Collision is untouched. Returns how many cells changed.
+export function reshore(b) {
+  let n = 0
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    const over = b.palette[b.prop[y][x]]
+    const ground = b.palette[b.ground[y][x]]
+    const plain = WATER_SKINS[(x + y) & 1]
+    if (isWaterSkin(over)) { b.prop[y][x] = -1; b.g(x, y, plain); n++ }
+    else if (isWaterSkin(ground) && !WATER_SKINS.includes(ground)) { b.g(x, y, plain); n++ }
+  }
+  return n
+}
+
+const RIM = { N: 'ow_pond_10', S: 'ow_pond_12', W: 'ow_pond_01', E: 'ow_pond_21', NW: 'ow_pond_00', NE: 'ow_pond_20', SW: 'ow_pond_02', SE: 'ow_pond_22' }
+export function shoreline(b) {
+  const wet = (x, y) => {
+    if (!b.in(x, y)) return true
+    const n = b.palette[b.ground[y][x]]
+    return isWaterSkin(n) || n === 'ow_pier_log'
+  }
+  const repaint = []
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!b.palette[b.ground[y][x]]?.startsWith('ow_water')) continue
+    const key = (!wet(x, y - 1) ? 'N' : !wet(x, y + 1) ? 'S' : '') + (!wet(x - 1, y) ? 'W' : !wet(x + 1, y) ? 'E' : '')
+    if (key) repaint.push([x, y, RIM[key]])
+  }
+  for (const [x, y, skin] of repaint) b.g(x, y, skin)
+}
+
 export class MapBuilder {
   constructor(name, biome, technique, w, h) {
     Object.assign(this, { name, biome, technique, w, h, notes: '' })
@@ -130,6 +177,35 @@ export class MapBuilder {
     // then severs, which is exactly how two caves shipped unreachable.
     for (let x = 0; x < w; x++) { this.walkG[0][x] = false; this.walkG[h - 1][x] = false }
     for (let y = 0; y < h; y++) { this.walkG[y][0] = false; this.walkG[y][w - 1] = false }
+  }
+  // Hydrate a builder from a map JSON (toJSON's shape), so passes like
+  // shoreline() can run over a finished, hand-edited map without regenerating
+  // it — regeneration would discard every editor edit.
+  static fromJSON(m) {
+    const b = new MapBuilder(m.name, m.biome, m.technique, m.w, m.h)
+    b.notes = m.notes ?? ''
+    b.pois = m.pois.map(p => ({ ...p }))
+    b.playerSpawn = { ...m.playerSpawn }
+    b.palette = [...m.palette]
+    b.pidx = new Map(b.palette.map((n, i) => [n, i]))
+    b.ground = m.ground.map(r => [...r])
+    b.prop = m.prop.map(r => [...r])
+    b.walkG = m.walk.map(row => [...row].map(ch => ch === '1'))
+    return b
+  }
+  // Drop palette names no cell uses any more (after repaints), keeping the
+  // surviving names in their familiar order.
+  compactPalette() {
+    const used = new Set()
+    for (const row of this.ground) for (const i of row) used.add(i)
+    for (const row of this.prop) for (const i of row) if (i >= 0) used.add(i)
+    const remap = new Map()
+    const palette = []
+    this.palette.forEach((n, i) => { if (used.has(i)) { remap.set(i, palette.length); palette.push(n) } })
+    this.palette = palette
+    this.pidx = new Map(palette.map((n, i) => [n, i]))
+    this.ground = this.ground.map(r => r.map(i => remap.get(i)))
+    this.prop = this.prop.map(r => r.map(i => (i >= 0 ? remap.get(i) : -1)))
   }
   isBorder(x, y) { return x === 0 || y === 0 || x === this.w - 1 || y === this.h - 1 }
   skin(name) {
