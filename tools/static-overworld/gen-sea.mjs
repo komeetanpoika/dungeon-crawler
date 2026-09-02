@@ -2,7 +2,7 @@
 //   1 suomenlinna — derived from an aerial photo of the Helsinki sea fortress
 //   2 fishing village — noise coastline, piers, lighthouse islet
 //   3 archipelago — island chain linked by causeways, ruined monastery
-import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3, stampEdgeBand } from './lib.mjs'
+import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3, stampEdgeBand } from './lib.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,7 +11,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.join(HERE, 'out/maps')
 fs.mkdirSync(OUT, { recursive: true })
 
-const WATER = ['ow_water_0', 'ow_water_1', 'ow_water_2', 'ow_water_3']
+const WATER = WATER_SKINS
 const GRASS = ['ow_grass_0', 'ow_grass_1', 'ow_grass_2']
 const PINES = { tall: [['ow_tree_pine_top', 'ow_tree_pine_trunk']], small: ['ow_tree_small', 'ow_tree_small', 'ow_bush_round'], tallChance: 0.5 }
 const ROCKS_G = ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']
@@ -244,6 +244,7 @@ function archipelago() {
 
 for (const make of [suomenlinna, fishingVillage, archipelago]) {
   const b = make()
+  shoreline(b)
   const problems = validate(b)
   console.log(`${b.name}: ${problems.length ? 'PROBLEMS ' + problems.join('; ') : 'ok'}`)
   fs.writeFileSync(path.join(OUT, b.name + '.json'), JSON.stringify(b.toJSON()))

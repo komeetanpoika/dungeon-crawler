@@ -2,7 +2,7 @@
 //   1 clearings — noise-density woods with carved clearings, village, paths
 //   2 river     — a river splits dense woods; bridges, lumber camp
 //   3 autumn    — autumn highland: rock outcrops, stone circle, hermit hut
-import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
+import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
 import { GRASS, PINES, AUTUMN, DIRT, ROCKS_MOSS, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -75,7 +75,7 @@ function river() {
   for (let y = 0; y < b.h; y++) {
     const cx = riverX(y)
     for (let x = cx - 2; x <= cx + 2; x++) {
-      b.g(x, y, pick(rng, ['ow_water_0', 'ow_water_1', 'ow_water_2', 'ow_water_3']))
+      b.g(x, y, pick(rng, WATER_SKINS))
       b.block(x, y)
       if (Math.abs(x - cx) === 2 && rng() < 0.1) b.p(x, y, pick(rng, ['ow_rock_water_gray_0', 'ow_rock_water_gray_1']))
     }
@@ -184,6 +184,7 @@ function autumn() {
 
 for (const make of [clearings, river, autumn]) {
   const b = make()
+  shoreline(b)
   const problems = validate(b)
   console.log(`${b.name}: ${problems.length ? 'PROBLEMS ' + problems.join('; ') : 'ok'}`)
   fs.writeFileSync(path.join(OUT, b.name + '.json'), JSON.stringify(b.toJSON()))

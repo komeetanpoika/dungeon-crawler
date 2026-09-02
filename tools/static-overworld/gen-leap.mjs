@@ -4,7 +4,7 @@
 //   marsh-3-hermit   — Lauri's cold village, the hermit's hearth, the Sammunut
 // Every episode POI the game reads is declared here by label; test/leap-maps.test.js
 // lists them.
-import { MapBuilder, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
+import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
 import { PINES, AUTUMN, ROCKS_MOSS, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'out/maps')
 fs.mkdirSync(OUT, { recursive: true })
-const WATER = ['ow_water_0', 'ow_water_1', 'ow_water_2', 'ow_water_3']
+const WATER = WATER_SKINS
 const isWater = (b, x, y) => b.palette[b.ground[y]?.[x]]?.startsWith('ow_water')
 
 // The arrival runestone: a walkable stone arch with the spawn just south of it.
@@ -306,6 +306,7 @@ function marsh() {
 export const LEAP_MAPS = [lake, fold, marsh]
 for (const make of LEAP_MAPS) {
   const b = make()
+  shoreline(b)
   const problems = validate(b)
   // the orchard is deliberately unreachable until the Näkki is fed, and the
   // islet cache is deliberately unreachable by plain walking (only the tree
