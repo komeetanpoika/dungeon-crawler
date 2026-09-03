@@ -4,7 +4,7 @@ import {
   makeMaahinen, updateMaahinen,
   BURROW_SPEED, ERUPT_DIST, ERUPT_TIME, RESURFACE_DELAY, SUBMERGE_TIME, LEASH_TILES,
 } from '../renderer/systems/monsters/maahinen.js'
-import { strikeCreature, creatureAlpha } from '../renderer/systems/creatures.js'
+import { strikeCreature, creatureAlpha, CREATURE_HIT, CREATURE_ALPHA } from '../renderer/systems/creatures.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
@@ -95,15 +95,15 @@ describe('updateMaahinen — submerged glide', () => {
 })
 
 describe('updateMaahinen — leash', () => {
-  it('LEASH_TILES is 10', () => {
-    assert.equal(LEASH_TILES, 10)
+  it('LEASH_TILES is 24', () => {
+    assert.equal(LEASH_TILES, 24)
   })
 
   it('glides back toward home, and never erupts, while the player is outside the leash', () => {
     const m = makeMaahinen(5, 5)
-    // Player 15 tiles east of home: well outside the 10-tile leash.
-    const player = makePlayer(20, 5)
-    const state = makeState(m, player, openMap(40, 40))
+    // Player 30 tiles east of home: well outside the 24-tile leash.
+    const player = makePlayer(35, 5)
+    const state = makeState(m, player, openMap(50, 50))
     // Displace it a few tiles off home so "toward home" is measurable.
     m.px = 9 * S + 16; m.py = 5 * S + 16; m.x = 9; m.y = 5
     const homePx = 5 * S + 16, homePy = 5 * S + 16
@@ -117,8 +117,8 @@ describe('updateMaahinen — leash', () => {
 
   it('never erupts on a player standing on it from outside the leash', () => {
     const m = makeMaahinen(5, 5)
-    const player = makePlayer(20, 5)
-    const state = makeState(m, player, openMap(40, 40))
+    const player = makePlayer(35, 5)
+    const state = makeState(m, player, openMap(50, 50))
     for (let t = 0; t < 60; t += 0.1) updateMaahinen(m, state, 0.1)
     assert.equal(m.state, 'submerged')
     assert.ok(!state.sfx.cues.some(c => c.name === 'erupt'), 'no erupt cue')
@@ -308,15 +308,57 @@ describe('updateMaahinen — submerging', () => {
 })
 
 describe('CREATURE_ALPHA.maahinen', () => {
-  it('is 0 submerged, 0.4 submerging, 1 otherwise', () => {
+  it('reads fadeA directly (defaulting to fully opaque when unset)', () => {
     const m = makeMaahinen(5, 5)
-    m.state = 'submerged'
-    assert.equal(creatureAlpha(m), 0)
-    m.state = 'submerging'
+    assert.equal(creatureAlpha(m), 0)   // spawns submerged: fadeA stamped 0
+    m.fadeA = 0.4
     assert.equal(creatureAlpha(m), 0.4)
-    m.state = 'erupting'
+    m.fadeA = undefined
     assert.equal(creatureAlpha(m), 1)
-    m.state = 'surfaced'
-    assert.equal(creatureAlpha(m), 1)
+  })
+})
+
+describe('maahinen hit sources', () => {
+  it('a player hit wounds it and forces an immediate dive', () => {
+    const m = { ...makeMaahinen(5, 5), state: 'surfaced' }
+    const r = CREATURE_HIT.maahinen(m, {}, 3, { source: 'player' })
+    assert.equal(r.absorbed, false)
+    assert.equal(r.entity.hp, 33)
+    assert.equal(r.entity.state, 'submerging')
+    assert.equal(r.think, 'It just dives.')
+  })
+  it('a wolf bite wounds it without a dive', () => {
+    const m = { ...makeMaahinen(5, 5), state: 'surfaced' }
+    const r = CREATURE_HIT.maahinen(m, {}, 2, { source: 'wolf' })
+    assert.equal(r.entity.hp, 34)
+    assert.equal(r.entity.state, 'surfaced')
+  })
+  it('a killing player blow does not dive (it dies on the surface)', () => {
+    const m = { ...makeMaahinen(5, 5), state: 'surfaced', hp: 2 }
+    const r = CREATURE_HIT.maahinen(m, {}, 3, { source: 'player' })
+    assert.equal(r.entity.state, 'surfaced')
+    assert.ok(r.entity.hp <= 0)
+  })
+  it('leash is 24 tiles', () => assert.equal(LEASH_TILES, 24))
+})
+
+describe('maahinen sink channel', () => {
+  it('submerging drives sink 0 → 1 then fades out; erupting rises over its last 0.3 s', () => {
+    const m = { ...makeMaahinen(5, 5), state: 'submerging', timer: SUBMERGE_TIME, sink: 0, fadeA: 1 }
+    const state = { player: { x: 5, y: 12, px: 5 * 32 + 16, py: 12 * 32 + 16 }, map: openMap(), entities: [], sfx: makeSfx() }
+    updateMaahinen(m, state, SUBMERGE_TIME / 2)
+    assert.ok(Math.abs(m.sink - 0.5) < 1e-6)
+    updateMaahinen(m, state, SUBMERGE_TIME)
+    assert.equal(m.state, 'submerged')
+    assert.equal(m.sink, 1)
+    updateMaahinen(m, state, 1)
+    assert.equal(CREATURE_ALPHA.maahinen(m, state), 0)
+    Object.assign(m, { state: 'erupting', timer: ERUPT_TIME })
+    updateMaahinen(m, state, ERUPT_TIME - 0.15)
+    assert.ok(Math.abs(m.sink - 0.5) < 0.05)
+    updateMaahinen(m, state, 0.2)
+    assert.equal(m.state, 'surfaced')
+    assert.equal(m.sink, 0)
+    assert.ok(CREATURE_ALPHA.maahinen(m, state) > 0.9)
   })
 })
