@@ -18,7 +18,7 @@ export const CUE_NAMES = [
   // lumber & campfire
   'chop', 'tree-fall', 'campfire-light', 'campfire-out', 'sizzle',
   // leap episodes
-  'leap', 'echo', 'bell', 'drag', 'erupt', 'wraith-touch',
+  'leap', 'echo', 'bell', 'drag', 'sink', 'erupt', 'wraith-touch',
 ]
 
 export function makeSfx(muted = false) {

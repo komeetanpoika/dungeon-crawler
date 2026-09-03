@@ -2,7 +2,7 @@
 // 2026-08-29-leap-episodes-design.md §3.1). Pure — no browser/Electron
 // imports; game.js wires onArrive/tick through the epCtx.
 import { poiCell, checkDeliveries } from '../leap.js'
-import { feedNakki } from '../monsters/nakki.js'
+import { feedNakki, sinkNakki } from '../monsters/nakki.js'
 import { sfx } from '../sfx.js'
 import { think } from '../feedback.js'
 import { TILE } from '../entities.js'
@@ -40,7 +40,10 @@ function spawnNakki(ctx) {
 }
 
 function removeNakki(ctx) {
-  ctx.state.entities = ctx.state.entities.filter(e => e.type !== 'nakki')
+  const n = ctx.state.entities.find(e => e.type === 'nakki')
+  if (!n) return
+  n.leaving = true
+  sinkNakki(n)
 }
 
 // Arrival — a fresh load or a waystone journey; a cave dive stashes the

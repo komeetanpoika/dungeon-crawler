@@ -9,10 +9,12 @@ import { sfx } from '../sfx.js'
 import { startKnockback } from '../knockback.js'
 import { removeItem } from '../inventory.js'
 import { CREATURE_HIT, CREATURE_UPDATE, CREATURE_ALPHA } from '../creatures.js'
+import { stepFade } from '../fade.js'
 
 const S = 32
 const DRAG_DISTANCE = 24
 
+export const SINK_TIME = 0.6
 export const SUBMERGE_TIME = 4
 export const DRAG_INTERVAL = 2
 
@@ -22,7 +24,7 @@ export const DRAG_INTERVAL = 2
 export function ensureNakki(e) {
   if (e.lurk) return e
   delete e.hp; delete e.maxHp
-  Object.assign(e, { lurk: true, state: 'surfaced', timer: 0, dragCooldown: 0, pierEnd: e.pierEnd ?? null })
+  Object.assign(e, { lurk: true, state: 'surfaced', timer: 0, dragCooldown: 0, pierEnd: e.pierEnd ?? null, sink: 0, fadeA: 1 })
   return e
 }
 
@@ -31,22 +33,35 @@ export function makeNakki(x, y) {
 }
 
 export function sinkNakki(e) {
-  e.state = 'submerged'
-  e.timer = SUBMERGE_TIME
+  if (e.state === 'sinking' || e.state === 'submerged') return
+  e.state = 'sinking'
+  e.timer = SINK_TIME
 }
 
 export function updateNakki(e, state, delta) {
   ensureNakki(e)
   const { player } = state
+  if (e.pose) e.pose.facing = player.px < e.px ? Math.PI : 0
 
-  if (e.state === 'submerged') {
+  if (e.state === 'sinking') {
     e.timer = Math.max(0, e.timer - delta)
-    if (e.timer <= 0) e.state = 'surfaced'
-    return
+    e.sink = 1 - e.timer / SINK_TIME
+    if (e.timer <= 0) {
+      if (e.leaving) { state.entities = state.entities.filter(x => x !== e); return }
+      e.state = 'submerged'; e.timer = SUBMERGE_TIME
+    }
+  } else if (e.state === 'submerged') {
+    e.timer = Math.max(0, e.timer - delta)
+    if (e.timer <= 0) { e.state = 'rising'; e.timer = SINK_TIME }
+  } else if (e.state === 'rising') {
+    e.timer = Math.max(0, e.timer - delta)
+    e.sink = e.timer / SINK_TIME
+    if (e.timer <= 0) { e.state = 'surfaced'; e.sink = 0 }
   }
+  stepFade(e, e.state === 'submerged' ? 0 : 1, delta, { inTime: 0.1, outTime: 0.1 })
+  if (e.state !== 'surfaced') return
 
   if (!e.pierEnd || player.x !== e.pierEnd.x || player.y !== e.pierEnd.y) return
-
   e.dragCooldown -= delta
   if (e.dragCooldown <= 0) {
     if (damagePlayer(state, 1, 'hit', 'The lake pulls at you!')) {
@@ -67,9 +82,5 @@ export function feedNakki(e, player) {
 }
 
 CREATURE_UPDATE.nakki = updateNakki
-CREATURE_HIT.nakki = (e) => {
-  const entity = { ...ensureNakki(e) }
-  sinkNakki(entity)
-  return { entity, absorbed: true, cue: 'drag' }
-}
-CREATURE_ALPHA.nakki = e => e.state === 'surfaced' ? 1 : 0
+CREATURE_HIT.nakki = (e) => { ensureNakki(e); const entity = { ...e }; sinkNakki(entity); return { entity, absorbed: true, cue: 'sink' } }
+CREATURE_ALPHA.nakki = e => e.fadeA ?? 1
