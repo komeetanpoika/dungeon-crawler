@@ -158,7 +158,19 @@ CREATURE_UPDATE.maahinen = updateMaahinen
 // Diving out of a fight: shared by a wound-triggered dive (surfacedTick's HP
 // thresholds) and a player-hit-triggered dive (CREATURE_HIT below). Clears
 // any pending swing so no attack sprite plays over an invisible body.
-const dive = e => { e.state = 'submerging'; e.timer = SUBMERGE_TIME; e.attack = null }
+// Continues from the current sink (rather than resetting to 0) so a dive
+// forced mid-eruption doesn't pop the sink value back up for a frame before
+// re-shrinking; a normal `surfaced` dive has sink 0, so that case is
+// unaffected. Also marks any HP threshold already crossed, so a forced dive
+// that happens to cross a dive threshold doesn't leave surfacedTick's own
+// threshold check to fire again right after resurfacing.
+const dive = e => {
+  e.state = 'submerging'
+  e.timer = SUBMERGE_TIME * (1 - Math.max(0, Math.min(1, e.sink ?? 0)))
+  e.attack = null
+  if (e.hp <= e.maxHp / 2) e.dived = true
+  if (e.hp <= e.maxHp / 4) e.dived2 = true
+}
 
 CREATURE_HIT.maahinen = (e, state, dmg, { source = 'player' } = {}) => {
   ensureMaahinen(e)

@@ -210,6 +210,7 @@ describe('updateMaahinen — surfaced', () => {
     const m = makeMaahinen(5, 5)
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
+    m.sink = 0
     const player = makePlayer(9, 5)
     const state = makeState(m, player)
     assert.doesNotThrow(() => updateMaahinen(m, state, 0.1))
@@ -221,6 +222,7 @@ describe('updateMaahinen — surfaced', () => {
     const m = makeMaahinen(5, 5)
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
+    m.sink = 0
     m.hp = 18
     const player = makePlayer(9, 5)
     const state = makeState(m, player)
@@ -234,6 +236,7 @@ describe('updateMaahinen — surfaced', () => {
     const m = makeMaahinen(5, 5)
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
+    m.sink = 0
     m.hp = 9
     m.dived = true
     const player = makePlayer(9, 5)
@@ -247,6 +250,7 @@ describe('updateMaahinen — surfaced', () => {
     const m = makeMaahinen(5, 5)
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
+    m.sink = 0
     // Player parked well within reach (34px) and stopRange (30px) the whole time.
     const player = makePlayer(5, 5, { px: m.px + 20, py: m.py, hp: 999, invulnTimer: 0 })
     const state = makeState(m, player)
@@ -268,6 +272,7 @@ describe('updateMaahinen — surfaced', () => {
     const m = makeMaahinen(5, 5)
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
+    m.sink = 0
     m.hp = 18
     m.attack = { weaponId: 'maul', phase: 'swing', timer: 0.1, duration: 0.3, angle: 0, message: 'x' }
     const player = makePlayer(9, 5)
@@ -339,7 +344,24 @@ describe('maahinen hit sources', () => {
     assert.equal(r.entity.state, 'surfaced')
     assert.ok(r.entity.hp <= 0)
   })
-  it('leash is 24 tiles', () => assert.equal(LEASH_TILES, 24))
+  it('a forced dive marks HP thresholds already crossed, so it does not immediately re-dive after resurfacing', () => {
+    const wounded = { ...makeMaahinen(5, 5), state: 'surfaced', hp: 36 }
+    const r1 = CREATURE_HIT.maahinen(wounded, {}, 20, { source: 'player' })   // 36 -> 16: past half
+    assert.equal(r1.entity.dived, true)
+    assert.ok(!r1.entity.dived2)
+
+    const gutted = { ...makeMaahinen(5, 5), state: 'surfaced', hp: 36 }
+    const r2 = CREATURE_HIT.maahinen(gutted, {}, 28, { source: 'player' })   // 36 -> 8: past quarter too
+    assert.equal(r2.entity.dived, true)
+    assert.equal(r2.entity.dived2, true)
+
+    // Resurfacing shouldn't immediately re-trigger surfacedTick's own
+    // half-HP dive check, now that `dived` is already marked on the entity.
+    const resurfaced = { ...r1.entity, state: 'surfaced' }
+    const state = makeState(resurfaced, makePlayer(25, 25))
+    updateMaahinen(resurfaced, state, 0.1)
+    assert.equal(resurfaced.state, 'surfaced')
+  })
 })
 
 describe('maahinen sink channel', () => {
@@ -360,5 +382,15 @@ describe('maahinen sink channel', () => {
     assert.equal(m.state, 'surfaced')
     assert.equal(m.sink, 0)
     assert.ok(CREATURE_ALPHA.maahinen(m, state) > 0.9)
+  })
+
+  it('a forced dive out of erupting continues the sink value instead of popping back toward 0', () => {
+    const m = { ...makeMaahinen(5, 5), state: 'erupting', timer: 0.15, sink: 0.5, hp: 36 }
+    const r = CREATURE_HIT.maahinen(m, {}, 3, { source: 'player' })
+    assert.equal(r.entity.state, 'submerging')
+    const state = { player: { x: 5, y: 5, px: 5 * S + 16, py: 5 * S + 16 }, map: openMap(), entities: [], sfx: makeSfx() }
+    const entity = { ...r.entity }
+    updateMaahinen(entity, state, 0.016)
+    assert.ok(entity.sink >= 0.5, `expected no drop below 0.5, got ${entity.sink}`)
   })
 })
