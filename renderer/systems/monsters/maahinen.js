@@ -145,6 +145,7 @@ export function updateMaahinen(e, state, delta) {
 
 CREATURE_UPDATE.maahinen = updateMaahinen
 CREATURE_HIT.maahinen = (e, state, dmg) => {
+  ensureMaahinen(e)
   if (e.state === 'submerged' || e.state === 'submerging') {
     return { entity: { ...e }, absorbed: true, cue: null }
   }

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeNakki, updateNakki, sinkNakki, feedNakki, SUBMERGE_TIME, DRAG_INTERVAL } from '../renderer/systems/monsters/nakki.js'
+import { ensureNakki, makeNakki, updateNakki, sinkNakki, feedNakki, SUBMERGE_TIME, DRAG_INTERVAL } from '../renderer/systems/monsters/nakki.js'
 import { strikeCreature } from '../renderer/systems/creatures.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 
@@ -27,6 +27,24 @@ describe('makeNakki', () => {
     assert.equal(n.pierEnd, null)
     assert.equal('hp' in n, false)
     assert.equal('maxHp' in n, false)
+  })
+})
+
+// makeMonsterFromDef stamps hp/maxHp on every registry monster; the Näkki
+// must carry neither, so the first ensure strips them.
+describe('ensureNakki', () => {
+  it('strips the registry hp/maxHp, stamps the surfaced state, and is idempotent', () => {
+    const e = ensureNakki({ type: 'nakki', x: 1, y: 1, px: 48, py: 48, hp: 1, maxHp: 1 })
+    assert.equal('hp' in e, false)
+    assert.equal('maxHp' in e, false)
+    assert.equal(e.state, 'surfaced')
+    assert.equal(e.lurk, true)
+
+    e.state = 'submerged'
+    ensureNakki(e)
+    assert.equal(e.lurk, true)
+    assert.equal(e.state, 'submerged', 'a second ensure must not reset live state')
+    assert.equal('hp' in e, false)
   })
 })
 

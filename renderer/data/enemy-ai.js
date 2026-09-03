@@ -18,14 +18,13 @@ const BASE = {
   npc:         { taxon: 'humanoid', speed: 70, wanderSpeed: 40, half: 4,  sightRange: 200, stopRange: 20 },
   // dragon_boss row is documentation only — updateDragonBoss never consults getAIConfig (its stomp navigation is bespoke)
   dragon_boss: { taxon: 'beast',    speed: 0,  wanderSpeed: 0,  half: 28, sightRange: 448, stopRange: 0 },
-  // Leap-episode creatures. Only the Maahinen has a row: nakki and sammunut
-  // never reach the brain — their movement is driven entirely by their own
-  // update hooks, and neither ever calls getAIConfig.
-  maahinen:    { taxon: 'beast', speed: 70, wanderSpeed: 0,  half: 28, sightRange: 320, stopRange: 30, fleeHp: 0 },
 }
 
 // Generated monsters (systems/monsters.js) register their behavior rows here
-// at load; getAIConfig then resolves them like any built-in type.
+// at load; getAIConfig then resolves them like any built-in type. That
+// includes the leap-episode creatures — a def's `behavior` block is the one
+// place its row is tuned, so no built-in row may shadow a registry name
+// (registerMonsterAI replaces BASE[name] wholesale, defaults and all).
 export function registerMonsterAI(name, row = {}) {
   BASE[name] = { taxon: 'beast', speed: 70, wanderSpeed: 25, half: 8,
                  sightRange: 200, stopRange: 16, ...row }
