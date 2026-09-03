@@ -16,12 +16,25 @@ export const CREATURE_UPDATE = {}
 export const CREATURE_MAKE = {}
 export const CREATURE_ALPHA = {}
 
-// The one place player damage to a creature is decided. Registered types
-// resolve their own hook; everything else takes plain damage.
-export function strikeCreature(e, state, dmg) {
+// The one place player/wolf/fire damage to a creature is decided. Registered
+// types resolve their own hook (which also sees `opts`, e.g. { source });
+// everything else takes plain damage. Returns a fresh entity, never mutates.
+export function strikeCreature(e, state, dmg, opts = {}) {
   const hook = CREATURE_HIT[e.type]
-  if (hook) return hook(e, state, dmg)
+  if (hook) return hook(e, state, dmg, opts)
   return { entity: { ...e, hp: e.hp - dmg, inCombat: true }, absorbed: false, cue: 'melee-hit' }
+}
+
+// Strike and apply: mutates the live entity with the hook's result and
+// records the kill on state.creatureKills the first time hp reaches 0. The
+// episodes read that record — never a creature's absence — as the death.
+export function hurtCreature(state, e, dmg, opts = {}) {
+  const r = strikeCreature(e, state, dmg, opts)
+  if (r.entity !== e) Object.assign(e, r.entity)
+  const dead = !r.absorbed && Number.isFinite(e.hp) && e.hp <= 0
+  const killed = dead && !state.creatureKills?.[e.type]
+  if (killed) state.creatureKills = { ...(state.creatureKills ?? {}), [e.type]: true }
+  return { absorbed: r.absorbed, cue: killed ? 'enemy-death' : r.cue, think: r.think, killed }
 }
 
 // Per-frame creature update, dispatched from the enemy loop instead of the

@@ -1,7 +1,8 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerMonsters, clearMonsters, getMonsterDef, monsterNames, monstersForDepth,
-         makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster, monstersForOpenMap } from '../renderer/systems/monsters.js'
+         makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster, monstersForOpenMap,
+         isStoryCreature } from '../renderer/systems/monsters.js'
 import { getAIConfig } from '../renderer/data/enemy-ai.js'
 import { CREATURE_TYPES } from '../renderer/systems/creatures.js'
 
@@ -202,5 +203,15 @@ describe('entityPose channels', () => {
     assert.deepEqual([entityPose({}).sink, entityPose({}).burn, entityPose({}).flicker], [0, 0, 0])
     const p = entityPose({ sink: 0.5, burn: 0.25, flicker: 1 })
     assert.deepEqual([p.sink, p.burn, p.flicker], [0.5, 0.25, 1])
+  })
+})
+
+describe('isStoryCreature', () => {
+  beforeEach(clearMonsters)
+  it('is true only for a registry def with behavior.driver === "hook"', async () => {
+    await load([{ ...DEF, name: 'hooked', behavior: { driver: 'hook' } }, { ...DEF, name: 'plain' }])
+    assert.equal(isStoryCreature({ type: 'hooked' }), true)
+    assert.equal(isStoryCreature({ type: 'plain' }), false)
+    assert.equal(isStoryCreature({ type: 'guard' }), false)
   })
 })
