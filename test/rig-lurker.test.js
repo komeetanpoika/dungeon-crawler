@@ -36,6 +36,11 @@ describe('lurker rig', () => {
     const fills = ops => ops.filter(o => o[0] === 'fillRect').length
     assert.ok(fills(down.ops) < fills(up.ops))
     assert.ok(down.ops.some(o => o[0] === 'clip'))
+    const translates = ops => ops.filter(o => o[0] === 'translate')
+    assert.ok(translates(up.ops).every(o => !o[2]), 'surfaced pose should not translate the waterline downward')
+    const sunkTranslate = translates(down.ops).find(o => o[2] > 0)
+    assert.ok(sunkTranslate, 'expected a translate with positive y when fully sunk')
+    assert.ok(sunkTranslate[2] >= 7, String(sunkTranslate[2]))
   })
   it('flips when facing west', () => {
     const ctx = recordingCtx()
