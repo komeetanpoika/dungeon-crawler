@@ -196,11 +196,24 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'echo') {
     const s = sprites.player_magic
-    if (!s) return
+    const fade = entity.fadeA ?? 0
+    if (!s || fade <= 0) return
+    const bob = Math.round(Math.sin((entity.t ?? 0) * 2.2 * Math.PI * 2) * 3)
     const prevA = ctx.globalAlpha, prevF = ctx.filter
-    ctx.globalAlpha = prevA * 0.5
+    ctx.fillStyle = `rgba(120,200,255,${(0.18 * fade).toFixed(3)})`
+    ctx.beginPath()
+    ctx.ellipse(px + S / 2, py + S - 2, S * 0.45, S * 0.18, 0, 0, Math.PI * 2)
+    ctx.fill()
     ctx.filter = 'hue-rotate(160deg) saturate(0.6)'
-    ctx.drawImage(s, px, py, S, S)
+    const trail = entity.trail ?? []
+    for (const [j, a] of [[2, 0.12], [1, 0.25]]) {
+      const tr = trail[j]
+      if (!tr) continue
+      ctx.globalAlpha = prevA * 0.55 * fade * a
+      ctx.drawImage(s, px + Math.round(tr.px - entity.px), py + Math.round(tr.py - entity.py) + bob, S, S)
+    }
+    ctx.globalAlpha = prevA * 0.55 * fade
+    ctx.drawImage(s, px, py + bob, S, S)
     ctx.filter = prevF; ctx.globalAlpha = prevA
     return
   }

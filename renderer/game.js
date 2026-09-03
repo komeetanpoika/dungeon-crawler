@@ -22,7 +22,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
-import { makeFeedback, tickFeedback, addFloat, speak, think, speakFrom, announce, queueToast, drainToasts } from './systems/feedback.js'
+import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
@@ -35,7 +35,8 @@ import { modeForDepth } from './systems/mode.js'
 import { normalizeTimewarpSave, enterEpisode, episodeEntries } from './systems/timewarp.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
-import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, echoAdjacent, echoLine, ruleCtx, makeEpCtx } from './systems/leap.js'
+import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, ruleCtx, makeEpCtx } from './systems/leap.js'
+import { updateEcho } from './systems/echo.js'
 import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
@@ -392,7 +393,7 @@ function buildEntities(spawns, map, depth) {
       // — lands already-arrived (progress: 1) rather than arcing in.
       case 'floating_pickup': return [{ type: 'floating_item', contents: s.contents, x: s.x, y: s.y,
         startPx: cx, startPy: cy, targetPx: cx, targetPy: cy, px: cx, py: cy, progress: 1, duration: 0.3 }]
-      case 'echo':    return [{ type: 'echo', id: `echo:${s.spot}`, x: s.x, y: s.y, spot: s.spot, px: cx, py: cy }]
+      case 'echo':    return [{ type: 'echo', id: 'echo', x: s.x, y: s.y, px: cx, py: cy, fadeA: 0, t: 0, trail: [], said: null }]
       case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
       default: {
         const gen = makeMonsterFromDef(s.kind, s.x, s.y)
@@ -432,14 +433,13 @@ function arriveOnMap() {
   state.villagerLines = null
   state.episodeResolved = false
   state.epCtx = null
-  state.echoHold = null
   if (!ep) return
   state.epCtx = makeEpCtx({
     getState: () => state, save: activeSave, mapData,
     persist: persistRun, resolve: resolveEpisode, refreshInventory: afterInventoryChange,
     spawn: spawns => state.entities.push(...buildEntities(spawns, state.map, state.level)),
   })
-  state.entities.push(...buildEntities(echoSpawns(mapData), state.map, state.level))
+  state.entities.push(...buildEntities(echoSpawns(mapData, { x: state.player.x, y: state.player.y }), state.map, state.level))
   if (isResolved(activeSave, mapData)) {
     state.episodeResolved = true
     state.entities.push(...buildEntities([missingSpawn(mapData)], state.map, state.level))
@@ -863,15 +863,13 @@ function update(delta) {
     }
   }
 
-  // Leap episodes: the Echo speaks when approached; the episode module runs.
-  // Gated off underground — epCtx/mapData describe the surface, not the cave.
+  // Leap episodes: the Echo trails the player and speaks near a spot; the
+  // episode module runs. Gated off underground — epCtx/mapData describe the
+  // surface, not the cave.
   if (state.epCtx && !state.cave) {
-    const echo = echoAdjacent(state.entities, player)
-    if (echo && state.echoHold !== echo) {
-      const line = echoLine(state.episode, echo.spot, state.epCtx.flags, ruleCtx(activeSave, state.epCtx.mapData))
-      if (line) { speakFrom(state, echo, line); sfx(state, 'echo', { px: echo.px, py: echo.py }) }
-    }
-    state.echoHold = echo
+    const echo = state.entities.find(e => e.type === 'echo')
+    if (echo) updateEcho(echo, state, { episode: state.episode, mapData: state.epCtx.mapData, flags: state.epCtx.flags,
+                                        ctx: ruleCtx(activeSave, state.epCtx.mapData) }, delta)
     EPISODE_MODULES[state.epCtx.mapData.name]?.tick(state.epCtx, delta)
     // The rule can also come true off a module's own flags (a wolf killed,
     // an npc record change), so the surface frame re-checks it rather than

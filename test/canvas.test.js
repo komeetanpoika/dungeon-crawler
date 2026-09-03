@@ -4,13 +4,18 @@ import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, dr
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
 
-// Minimal ctx that records drawImage calls by the sprite passed in.
+// Minimal ctx that records drawImage calls by the sprite passed in. `ops`
+// records any other method call (name + args) via the Proxy fallback below,
+// so callers that need e.g. ellipse/beginPath/fill need not extend this by
+// hand — any method "just works" and is recorded generically.
 function recordingCtx() {
   const calls = []
+  const ops = []
   let alpha = 1
   let filter = 'none'
-  return {
+  const base = {
     calls,
+    ops,
     drawImage: (img) => calls.push(img),
     fillRect: () => {},
     set fillStyle(_v) {},
@@ -20,6 +25,12 @@ function recordingCtx() {
     set filter(v) { filter = v },
     get filter() { return filter },
   }
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      if (prop in target) return Reflect.get(target, prop, receiver)
+      return (...args) => { ops.push({ name: prop, args }) }
+    },
+  })
 }
 
 const SPR = { floor: 'FLOOR', fl: 'SKIN_FL', br: 'OVERLAY_BR' }
@@ -420,23 +431,22 @@ describe('drawEntity — campfire', () => {
 })
 
 describe('drawEntity — echo', () => {
-  it('draws player_magic hue-shifted at half alpha, and restores both after', () => {
+  it('draws two trail steps plus the body (three drawImage) and a glow ellipse, and restores state', () => {
     const ctx = recordingCtx()
-    let seenAlpha, seenFilter
-    const origDrawImage = ctx.drawImage
-    ctx.drawImage = (img) => { seenAlpha = ctx.globalAlpha; seenFilter = ctx.filter; origDrawImage(img) }
-    drawEntity(ctx, { type: 'echo' }, 0, 0, 32, { player_magic: 'WIZ' })
-    assert.deepEqual(ctx.calls, ['WIZ'])
-    assert.equal(seenAlpha, 0.5)
-    assert.equal(seenFilter, 'hue-rotate(160deg) saturate(0.6)')
+    const entity = { type: 'echo', fadeA: 1, t: 0.3, px: 100, py: 100,
+      trail: [{ px: 96, py: 100 }, { px: 92, py: 100 }, { px: 88, py: 100 }] }
+    drawEntity(ctx, entity, 100, 100, 32, { player_magic: 'WIZ' })
+    assert.deepEqual(ctx.calls, ['WIZ', 'WIZ', 'WIZ'])
+    assert.equal(ctx.ops.filter(o => o.name === 'ellipse').length, 1)
     assert.equal(ctx.globalAlpha, 1)
     assert.equal(ctx.filter, 'none')
   })
 
-  it('draws nothing when player_magic sprite is missing', () => {
+  it('draws nothing when fadeA is 0', () => {
     const ctx = recordingCtx()
-    drawEntity(ctx, { type: 'echo' }, 0, 0, 32, {})
+    drawEntity(ctx, { type: 'echo', fadeA: 0 }, 0, 0, 32, { player_magic: 'WIZ' })
     assert.deepEqual(ctx.calls, [])
+    assert.deepEqual(ctx.ops, [])
   })
 })
 

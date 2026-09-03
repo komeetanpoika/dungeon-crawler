@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EPISODES } from '../renderer/data/leaps.js'
-import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn, echoSpawns, echoAdjacent, checkDeliveries, makeEpCtx } from '../renderer/systems/leap.js'
+import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn, echoSpawns, checkDeliveries, makeEpCtx } from '../renderer/systems/leap.js'
 import { normalizeAdventureSave, markCleared } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { npcSpawnsForMap, npcSpawnIndex } from '../renderer/systems/openmap.js'
@@ -123,15 +123,9 @@ describe('returned local', () => {
 })
 
 describe('echo', () => {
-  it('spawns one echo per spot, on the POI cell', () => {
-    const s = echoSpawns(lake)
-    assert.equal(s.length, episodeFor(lake).echoSpots.length)
-    assert.deepEqual(s[0], { kind: 'echo', x: poiCell(lake, 'runestone').x, y: poiCell(lake, 'runestone').y, spot: 0 })
-  })
-  it('echoAdjacent finds an echo on or orthogonally beside the player', () => {
-    const e = { type: 'echo', x: 5, y: 5, spot: 0 }
-    assert.equal(echoAdjacent([e], { x: 5, y: 6 }), e)
-    assert.equal(echoAdjacent([e], { x: 6, y: 6 }), null)
+  it('spawns one echo on the arrival cell of a leap map, none on a plain map', () => {
+    assert.deepEqual(echoSpawns(lake, { x: 3, y: 4 }), [{ kind: 'echo', x: 3, y: 4 }])
+    assert.deepEqual(echoSpawns(clearings, { x: 3, y: 4 }), [])
   })
 })
 
