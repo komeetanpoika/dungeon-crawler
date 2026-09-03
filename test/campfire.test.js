@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CAMPFIRE_COST, CAMPFIRE_DURATION, canBuildCampfire, buildSpot, makeCampfire, spendLumber,
-  tickCampfires, campfireAlpha, cookMeat,
+  tickCampfires, campfireAlpha, cookMeat, isDeadwoodFire,
 } from '../renderer/systems/campfire.js'
 import { makeItem } from '../renderer/systems/inventory.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -96,5 +96,20 @@ describe('cooking', () => {
     const p = mkPlayer([makeItem('potion')])
     assert.equal(cookMeat(p), 0)
     assert.equal(p.inventory.length, 1)
+  })
+})
+
+describe('deadwood fuel', () => {
+  it('builds from three deadwood and stamps fuel on the fire', () => {
+    const p = { inventory: [makeItem('deadwood', 3)], maxInventory: 10 }
+    assert.equal(canBuildCampfire(p, 'deadwood').ok, true)
+    assert.equal(canBuildCampfire(p, 'lumber').ok, false)
+    spendLumber(p, 'deadwood')
+    assert.equal(p.inventory.length, 0)
+    const f = makeCampfire(2, 3, { fuel: 'deadwood' })
+    assert.equal(f.fuel, 'deadwood')
+    assert.equal(isDeadwoodFire(f), true)
+    assert.equal('fuel' in makeCampfire(2, 3), false)
+    assert.equal(isDeadwoodFire(makeCampfire(2, 3)), false)
   })
 })

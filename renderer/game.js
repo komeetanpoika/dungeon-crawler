@@ -659,7 +659,7 @@ function openInventory() {
     },
     onUse: (i) => useInventoryItem(i),
     onDrop: (i) => dropInventoryItem(i),
-    onBuild: () => buildCampfire(),
+    onBuild: slot => buildCampfire(state.player.inventory[slot]?.kind ?? 'lumber'),
     onClose: closeInventory,
   })
 }
@@ -750,15 +750,15 @@ function dropInventoryItem(i) {
   afterInventoryChange()
 }
 
-function buildCampfire() {
-  const gate = canBuildCampfire(state.player)
-  if (!gate.ok) { think(state, 'Not enough lumber.'); return }
+function buildCampfire(fuel = 'lumber') {
+  const gate = canBuildCampfire(state.player, fuel)
+  if (!gate.ok) { think(state, 'Not enough wood.'); return }
   const spot = buildSpot(state.map, state.entities, state.player)
   if (!spot) { think(state, 'No room for a fire here.'); return }
-  spendLumber(state.player)
-  const fire = makeCampfire(spot.x, spot.y)
+  spendLumber(state.player, fuel)
+  const fire = makeCampfire(spot.x, spot.y, { fuel })
   state.entities.push(fire)
-  sfx(state, 'campfire-light', { px: fire.px, py: fire.py })
+  sfx(state, fuel === 'deadwood' ? 'grey-fire' : 'campfire-light', { px: fire.px, py: fire.py })
   if (inventoryOpen) closeInventory()
   afterInventoryChange()
 }
@@ -1140,7 +1140,7 @@ function update(delta) {
         if (res.felled) {
           if (res.yield > 0) {
             state.entities.push({
-              type: 'floating_item', contents: { type: 'lumber', count: res.yield }, x: spot.x, y: spot.y,
+              type: 'floating_item', contents: { type: res.drop ?? 'lumber', count: res.yield }, x: spot.x, y: spot.y,
               startPx: spx, startPy: spy - TILE_SIZE, targetPx: spx, targetPy: spy,
               px: spx, py: spy - TILE_SIZE, progress: 0, duration: 0.35,
             })

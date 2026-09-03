@@ -42,6 +42,7 @@ export const SPRITES = {
   npc_bear:       'npc_bear',
   item_meat:      'item_meat',     // drawn by tools/npc-placeholders.mjs
   item_lumber:      'item_lumber',       // placeholders drawn by tools/npc-placeholders.mjs
+  item_deadwood:    'item_deadwood',     // placeholders drawn by tools/npc-placeholders.mjs
   item_meat_cooked: 'item_meat_cooked',
   item_clapper:     'item_clapper',      // placeholders drawn by tools/npc-placeholders.mjs
   item_fleece:      'item_fleece',       // placeholders drawn by tools/npc-placeholders.mjs

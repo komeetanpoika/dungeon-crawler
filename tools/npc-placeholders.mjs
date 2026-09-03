@@ -40,12 +40,16 @@ const MEAT = paint([
 ], { r: [196, 96, 64, 255], p: [230, 140, 100, 255], b: [222, 205, 170, 255], w: [245, 240, 225, 255] })
 
 // Lumber — two logs stacked, cut ends showing rings.
-const LUMBER = paint([
+const LUMBER_ROWS = [
   '................', '................', '................', '..############..',
   '.#bbbbbbbbbbbbc#', '#rbbbbbbbbbbbbc#', '#rbbbbbbbbbbbbc#', '.#bbbbbbbbbbbbc#',
   '..############..', '.#bbbbbbbbbbbbc#', '#rbbbbbbbbbbbbc#', '#rbbbbbbbbbbbbc#',
   '.#bbbbbbbbbbbbc#', '..############..', '................', '................',
-], { b: [139, 90, 43, 255], c: [222, 184, 135, 255], r: [200, 160, 110, 255] })
+]
+const LUMBER = paint(LUMBER_ROWS, { b: [139, 90, 43, 255], c: [222, 184, 135, 255], r: [200, 160, 110, 255] })
+
+// Grey wood — the same log, ash-grey: the hermit's dead-tree fuel.
+const DEADWOOD = paint(LUMBER_ROWS, { b: [112, 112, 106, 255], c: [176, 176, 168, 255], r: [140, 140, 134, 255] })
 
 // Cooked meat — the drumstick, browned with a char line.
 const MEAT_COOKED = paint([
@@ -113,7 +117,7 @@ const FLOOR_WOOD = paint([
 ], { a: [150, 105, 60, 255], b: [130, 88, 48, 255], s: [70, 45, 25, 255] })
 
 for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER], ['item_meat', MEAT],
-  ['item_lumber', LUMBER], ['item_meat_cooked', MEAT_COOKED], ['ow_stump', STUMP], ['prop_campfire', CAMPFIRE],
+  ['item_lumber', LUMBER], ['item_deadwood', DEADWOOD], ['item_meat_cooked', MEAT_COOKED], ['ow_stump', STUMP], ['prop_campfire', CAMPFIRE],
   ['prop_hearth_cold', HEARTH_COLD], ['prop_hearth_lit', HEARTH_LIT],
   ['item_clapper', CLAPPER], ['item_fleece', FLEECE], ['custom_floor_wood', FLOOR_WOOD]]) {
   const p = path.join(OUT, `${name}.png`)

@@ -439,3 +439,12 @@ describe('drawEntity — echo', () => {
     assert.deepEqual(ctx.calls, [])
   })
 })
+
+describe('drawEntity — grey campfire', () => {
+  it('applies a filter for deadwood fires and restores it', () => {
+    const ctx = recordingCtx(); ctx.filter = 'none'
+    drawEntity(ctx, { type: 'campfire', t: 0, fuel: 'deadwood' }, 0, 0, 32, { prop_campfire: 'F' })
+    assert.deepEqual(ctx.calls, ['F'])
+    assert.equal(ctx.filter, 'none')
+  })
+})

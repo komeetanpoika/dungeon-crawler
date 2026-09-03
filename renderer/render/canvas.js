@@ -187,10 +187,11 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'campfire') {
     const s = sprites.prop_campfire
     if (!s) return
-    const prev = ctx.globalAlpha
+    const prev = ctx.globalAlpha, prevF = ctx.filter
     ctx.globalAlpha = prev * campfireAlpha(entity)
+    if (entity.fuel === 'deadwood') ctx.filter = 'hue-rotate(185deg) saturate(0.45) brightness(1.25)'
     ctx.drawImage(s, px, py, S, S)
-    ctx.globalAlpha = prev
+    ctx.filter = prevF; ctx.globalAlpha = prev
     return
   }
   if (entity.type === 'echo') {
