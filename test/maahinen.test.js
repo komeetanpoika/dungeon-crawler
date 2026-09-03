@@ -310,6 +310,19 @@ describe('updateMaahinen — submerging', () => {
     assert.equal(m.px, px)
     assert.equal(m.py, py)
   })
+
+  it('fades fully invisible before it relocates — the alpha channel drives the body out of view before it teleports', () => {
+    const m = { ...makeMaahinen(5, 5), state: 'submerging', timer: SUBMERGE_TIME, sink: 0, fadeA: 1 }
+    const startX = m.x, startY = m.y
+    const player = makePlayer(15, 15)
+    const state = makeState(m, player)
+    updateMaahinen(m, state, SUBMERGE_TIME - 0.01)
+    assert.equal(m.state, 'submerging')
+    assert.equal(CREATURE_ALPHA.maahinen(m, state), 0)
+    updateMaahinen(m, state, 0.02)
+    assert.equal(m.state, 'submerged')
+    assert.ok(m.x !== startX || m.y !== startY, 'expected the body to have relocated')
+  })
 })
 
 describe('CREATURE_ALPHA.maahinen', () => {

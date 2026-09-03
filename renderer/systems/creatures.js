@@ -13,7 +13,10 @@ export const CREATURE_ALPHA = {}
 
 // The one place player/wolf/fire damage to a creature is decided. Registered
 // types resolve their own hook (which also sees `opts`, e.g. { source });
-// everything else takes plain damage. Returns a fresh entity, never mutates.
+// everything else takes plain damage. The default path returns a fresh
+// entity and never mutates `e` — but a registered hook is free to touch the
+// live entity itself (the nakki's ensureNakki does), so this is not a
+// guarantee across all types.
 export function strikeCreature(e, state, dmg, opts = {}) {
   const hook = CREATURE_HIT[e.type]
   if (hook) return hook(e, state, dmg, opts)
@@ -30,14 +33,6 @@ export function hurtCreature(state, e, dmg, opts = {}) {
   const killed = dead && !state.creatureKills?.[e.type]
   if (killed) state.creatureKills = { ...(state.creatureKills ?? {}), [e.type]: true }
   return { absorbed: r.absorbed, cue: killed ? 'enemy-death' : r.cue, think: r.think, killed }
-}
-
-// Per-frame creature update, dispatched from the enemy loop instead of the
-// enemy brain (creatures — including the nakki, which is not isEnemy — still
-// need to tick every frame). No-op for a type with nothing registered.
-export function updateCreature(e, state, delta) {
-  const hook = CREATURE_UPDATE[e.type]
-  if (hook) hook(e, state, delta)
 }
 
 // Render alpha (e.g. the nakki fading in/out of visibility). Defaults to

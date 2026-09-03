@@ -1,8 +1,10 @@
 // The death phase: a rig-drawn monster that reaches 0 hp stays in the
 // entity list for DEATH_TIME playing its 'death' pose and fading, instead
-// of vanishing on the frame it dies. Dependency-free so game.js, factions
-// and the monster registry can all import it without cycles: the caller
-// says which entities have a death pose.
+// of vanishing on the frame it dies. The caller says which entities have a
+// death pose. This module does import isDead from factions.js, and
+// dying → factions → monsters → dying is a real cycle in the module graph —
+// it works only because ES module bindings are live and everything here is
+// used at call time (inside functions), never read at module-eval time.
 import { isDead } from './factions.js'
 
 export const DEATH_TIME = 0.7

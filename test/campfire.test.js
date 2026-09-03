@@ -35,6 +35,10 @@ describe('building', () => {
     m[3][2].tile = TILE.WALL; m[3][4].tile = TILE.WALL; m[2][3].tile = TILE.WALL; m[4][3].tile = TILE.WALL
     assert.equal(buildSpot(m, [], p), null)
   })
+  it('buildSpot never treats the Echo as an occupant blocking the tile', () => {
+    const m = grass(); const p = mkPlayer()
+    assert.deepEqual(buildSpot(m, [{ type: 'echo', x: 2, y: 3 }], p), { x: 2, y: 3 })
+  })
   it('makeCampfire is a fresh fire centred on its tile', () => {
     assert.deepEqual(makeCampfire(2, 3), { type: 'campfire', x: 2, y: 3, px: 80, py: 112, t: 0 })
   })

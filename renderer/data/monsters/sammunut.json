@@ -4,7 +4,7 @@
   "params": { "height": 1.6, "width": 0.9, "cowl": 0.6, "tatterCount": 4, "tatterLength": 0.7,
               "flutterFreq": 6, "eyeSize": 0.12,
               "cloakColor": "#3a3550", "emberColor": "#ff7a2a", "eyeColor": "#ffb040" },
-  "stats": { "hp": 18, "dmg": 0, "speed": 80, "half": 10 },
+  "stats": { "hp": 18, "dmg": 0, "speed": 80 },
   "behavior": { "taxon": "beast", "driver": "hook", "sightRange": 0 },
   "spawn": null,
   "hooks": true

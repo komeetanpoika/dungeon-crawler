@@ -156,7 +156,7 @@ export function updateMaahinen(e, state, delta) {
   else if (e.state === 'erupting') eruptingTick(e, delta)
   else if (e.state === 'surfaced') surfacedTick(e, state, delta)
   else if (e.state === 'submerging') submergingTick(e, state, delta)
-  stepFade(e, e.state === 'submerged' ? 0 : 1, delta, { inTime: 0.1, outTime: 0.25 })
+  stepFade(e, e.state === 'submerged' || e.state === 'submerging' ? 0 : 1, delta, { inTime: 0.1, outTime: 0.25 })
 }
 
 CREATURE_UPDATE.maahinen = updateMaahinen

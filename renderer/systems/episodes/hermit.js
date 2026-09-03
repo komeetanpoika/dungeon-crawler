@@ -3,7 +3,7 @@
 // imports; game.js wires onArrive/tick through the epCtx.
 import { poiCell } from '../leap.js'
 import { makeCampfire } from '../campfire.js'
-import { isWalkable } from '../entities.js'
+import { isWalkable, occupiesCell } from '../entities.js'
 import { sfx } from '../sfx.js'
 import { think } from '../feedback.js'
 
@@ -91,7 +91,7 @@ function tickHearth(ctx) {
   }
   ctx.set('hearth_lit')
   fire.eternal = true
-  const occupied = state.entities.some(e => e !== fire && e.x === hearth.x && e.y === hearth.y)
+  const occupied = state.entities.some(e => e !== fire && occupiesCell(e) && e.x === hearth.x && e.y === hearth.y)
   if (!occupied) {
     fire.x = hearth.x
     fire.y = hearth.y

@@ -4,7 +4,7 @@ import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME, spriteKeyFor, rollNpcDrop, BITE_DMG, BITE_INTERVAL } from '../renderer/systems/npc.js'
 import { buildNavGrid, findPath, passable } from '../renderer/systems/nav.js'
-import { getEnemyWeapon } from '../renderer/systems/enemy-attack.js'
+import { getEnemyWeapon, stepEnemyAttack } from '../renderer/systems/enemy-attack.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 // Side-effect import: registers CREATURE_HIT.maahinen so hurtCreature's
@@ -382,5 +382,21 @@ describe('hunt_prey', () => {
     GOALS.hunt_prey.run(wolf, ctx, BITE_INTERVAL)
     assert.equal(prey.hp, 36 - 2 * BITE_DMG)
     assert.ok(state.sfx.cues.some(c => c.name === 'melee-hit'))
+  })
+  it('a bite sets a cosmetic claw swing aimed at the prey, which can never strike the player', () => {
+    const wolf = makeNpc({ species: 'wolf', id: 'w', x: 5, y: 5, hostile: false })
+    const prey = { type: 'maahinen', state: 'surfaced', hp: 36, maxHp: 36, x: 5, y: 5, px: wolf.px + 20, py: wolf.py }
+    const state = openState(wolf, prey)
+    // Player standing right on the wolf, well inside every weapon's reach.
+    state.player = { x: 5, y: 5, px: wolf.px, py: wolf.py, hp: 10, invulnTimer: 0 }
+    const ctx = buildCtx(wolf, state, 0.05)
+    selectGoal(wolf, ctx)
+    GOALS.hunt_prey.run(wolf, ctx, 0.05)
+    assert.ok(wolf.attack, 'expected a swing to be started')
+    assert.equal(wolf.attack.weaponId, 'claw')
+    assert.equal(wolf.attack.phase, 'swing')
+    assert.ok(Math.abs(wolf.attack.angle - Math.atan2(prey.py - wolf.py, prey.px - wolf.px)) < 1e-6)
+    stepEnemyAttack(wolf, state, 0.01)
+    assert.equal(state.player.hp, 10, 'the cosmetic swing must never damage the player')
   })
 })

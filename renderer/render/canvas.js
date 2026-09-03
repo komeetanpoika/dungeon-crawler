@@ -732,6 +732,7 @@ function drawDragonBreath(ctx, dragon, camX, camY) {
 function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
   for (const e of entities) {
     if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
+    if (e.dying > 0) continue
     if (isStoryCreature(e) && creatureAlpha(e, state) === 0) continue
     if (!map[e.y]?.[e.x]?.visible) continue
     const px = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)

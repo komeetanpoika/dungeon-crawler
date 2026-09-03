@@ -66,6 +66,12 @@ export function isWalkable(tileId, tileObj = null) {
   return tileId !== TILE.WALL && tileId !== TILE.COLUMN
 }
 
+// The Echo is a spectral guide only the player sees — it has live x,y like
+// any other entity, but it never physically occupies a tile. Cell-occupancy
+// searches (campfire placement, gift drops, hearth relighting) should filter
+// it out before treating an entity as a blocker.
+export const occupiesCell = e => e.type !== 'echo'
+
 // A sight line may pass through this many foliage cells (losSoft) before it
 // is blocked; cells flagged losClear (open water) never block. Both flags are
 // stamped by buildOpenMap — dungeon tiles carry neither, so dungeon LOS is

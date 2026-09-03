@@ -9,7 +9,7 @@ import { hasLineOfSight } from './entities.js'
 import { buildNavGrid, passable } from './nav.js'
 import { act } from './act.js'
 import { updateBrain } from './brain.js'
-import { tryStartEnemyAttack } from './enemy-attack.js'
+import { tryStartEnemyAttack, WEAPONS } from './enemy-attack.js'
 import { speakFrom } from './feedback.js'
 import { sfx } from './sfx.js'
 import { hurtCreature } from './creatures.js'
@@ -137,6 +137,15 @@ export const GOALS = {
         e.ai.biteT = BITE_INTERVAL
         const r = hurtCreature(ctx.state, prey, BITE_DMG, { source: 'wolf' })
         if (r.cue) sfx(ctx.state, r.cue, { px: prey.px, py: prey.py })
+        // Cosmetic claw swing so the bite reads on screen. Started directly
+        // in the 'swing' phase (never 'windup'), so stepEnemyAttack's strike
+        // path — which would aim at the player — is never reached; this can
+        // never damage the player.
+        const w = WEAPONS.claw
+        e.attack = {
+          weaponId: 'claw', phase: 'swing', timer: w.duration, duration: w.duration,
+          angle: Math.atan2(prey.py - e.py, prey.px - e.px),
+        }
       }
       return { mode: 'hold' }
     },

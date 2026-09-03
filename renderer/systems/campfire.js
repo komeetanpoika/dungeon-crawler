@@ -1,7 +1,7 @@
 // Campfires: built from lumber next to the player, burn for a minute, and
 // cook raw meat for whoever stands on them. Pure — game.js wires the sack
 // panel, the per-frame tick, cues and messages; canvas.js draws the flame.
-import { isWalkable } from './entities.js'
+import { isWalkable, occupiesCell } from './entities.js'
 import { makeItem, addItem } from './inventory.js'
 
 const TILE_SIZE = 32
@@ -34,7 +34,7 @@ export function spendLumber(player, fuel = 'lumber') {
 export function buildSpot(map, entities, player) {
   return [[-1, 0], [1, 0], [0, -1], [0, 1]]
     .map(([dx, dy]) => ({ x: player.x + dx, y: player.y + dy }))
-    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !entities.some(e => e.x === t.x && e.y === t.y)) ?? null
+    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !entities.some(e => occupiesCell(e) && e.x === t.x && e.y === t.y)) ?? null
 }
 
 // `eternal` fires (the hermit's hearth) never burn out and are always

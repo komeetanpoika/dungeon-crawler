@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { strikeCreature, hurtCreature, CREATURE_HIT, CREATURE_UPDATE, CREATURE_ALPHA, updateCreature } from '../renderer/systems/creatures.js'
+import { strikeCreature, hurtCreature, CREATURE_HIT, CREATURE_UPDATE, CREATURE_ALPHA } from '../renderer/systems/creatures.js'
 describe('creature registry', () => {
   it('unregistered types take plain damage; registered hooks decide', () => {
     const e = { type: 'maahinen', hp: 10, maxHp: 24 }
@@ -9,8 +9,6 @@ describe('creature registry', () => {
     assert.equal(strikeCreature({ type: 'testtype', hp: 1 }, {}, 5).absorbed, true)
     delete CREATURE_HIT.testtype
   })
-  it('updateCreature is a no-op for a type with no update', () => { assert.doesNotThrow(() => updateCreature({ type: 'nakki' }, {}, 0.016)) })
-
   // The kill signal the episodes read (state.creatureKills[type]) is written
   // by game.js, which has no unit tests by design. What is testable here is
   // the predicate it keys off: an unabsorbed strike that takes the creature
