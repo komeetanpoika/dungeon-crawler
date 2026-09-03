@@ -3,6 +3,17 @@ import assert from 'node:assert/strict'
 import { GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, tryGust, affordableGustTier } from '../renderer/systems/magic.js'
 import { nextStance } from '../renderer/systems/ranged.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
+import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
+
+const FAKE_RIG = {
+  PARAM_SCHEMA: [{ key: 'size', label: 'Size', group: 'body', type: 'range', min: 0, max: 2, step: 0.1, default: 1 }],
+  drawMonster: () => {},
+}
+// The gust skips story creatures — registry monsters whose hook module owns
+// their update (behavior.driver 'hook'), which is what the maahinen is.
+const registerStoryCreature = name => registerMonsters(
+  [{ name, rig: 'fakerig', stats: { hp: 24, dmg: 2, speed: 70, half: 20 }, behavior: { driver: 'hook' } }],
+  { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
 
 const T = 32
 const mkPlayer = () => ({
@@ -67,7 +78,8 @@ describe('tryGust', () => {
     assert.ok(crab.knockback, 'still shoved')
   })
 
-  it('leaves a creature in the wedge alone, even on an over-tier gust (creature damage only flows through strikeCreature)', () => {
+  it('leaves a creature in the wedge alone, even on an over-tier gust (creature damage only flows through strikeCreature)', async () => {
+    await registerStoryCreature('maahinen')
     const maahinen = { type: 'maahinen', state: 'surfaced', px: 100 + T, py: 100, x: 0, y: 0, hp: 24, maxHp: 24 }
     const state = mkState([maahinen])
     const r = tryGust(state, 'over')
@@ -84,6 +96,7 @@ describe('tryGust', () => {
     assert.equal(r2.caught, 1)
     assert.ok(guard.knockback)
     assert.equal(maahinen.knockback, undefined)
+    clearMonsters()
   })
 
   it('the dragon boss ignores the wind entirely', () => {

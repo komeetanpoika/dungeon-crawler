@@ -4,11 +4,11 @@
 // water on a timer; feeding it cooked meat (not raw) sinks it for good.
 // Pure — no browser/Electron imports.
 
-import { damagePlayer } from './player-damage.js'
-import { sfx } from './sfx.js'
-import { startKnockback } from './knockback.js'
-import { removeItem } from './inventory.js'
-import { CREATURE_HIT, CREATURE_UPDATE, CREATURE_MAKE, CREATURE_ALPHA } from './creatures.js'
+import { damagePlayer } from '../player-damage.js'
+import { sfx } from '../sfx.js'
+import { startKnockback } from '../knockback.js'
+import { removeItem } from '../inventory.js'
+import { CREATURE_HIT, CREATURE_UPDATE, CREATURE_ALPHA } from '../creatures.js'
 
 const S = 32
 const DRAG_DISTANCE = 24
@@ -16,11 +16,18 @@ const DRAG_DISTANCE = 24
 export const SUBMERGE_TIME = 4
 export const DRAG_INTERVAL = 2
 
+// makeMonsterFromDef gives every registry monster hp/maxHp; the Näkki has
+// neither (it never dies, and no hp bar must ever show), so the first
+// touch strips them and stamps the lurker state. Idempotent.
+export function ensureNakki(e) {
+  if (e.lurk) return e
+  delete e.hp; delete e.maxHp
+  Object.assign(e, { lurk: true, state: 'surfaced', timer: 0, dragCooldown: 0, pierEnd: e.pierEnd ?? null })
+  return e
+}
+
 export function makeNakki(x, y) {
-  return {
-    type: 'nakki', x, y, px: x * S + 16, py: y * S + 16,
-    state: 'surfaced', timer: 0, dragCooldown: 0, pierEnd: null,
-  }
+  return ensureNakki({ type: 'nakki', x, y, px: x * S + 16, py: y * S + 16 })
 }
 
 export function sinkNakki(e) {
@@ -29,6 +36,7 @@ export function sinkNakki(e) {
 }
 
 export function updateNakki(e, state, delta) {
+  ensureNakki(e)
   const { player } = state
 
   if (e.state === 'submerged') {
@@ -58,10 +66,9 @@ export function feedNakki(e, player) {
   return true
 }
 
-CREATURE_MAKE.nakki = makeNakki
 CREATURE_UPDATE.nakki = updateNakki
 CREATURE_HIT.nakki = (e) => {
-  const entity = { ...e }
+  const entity = { ...ensureNakki(e) }
   sinkNakki(entity)
   return { entity, absorbed: true, cue: 'drag' }
 }

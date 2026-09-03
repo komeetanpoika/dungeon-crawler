@@ -1,19 +1,14 @@
 // Creature registry: the leap-episode critters (nakki, maahinen, sammunut)
-// each plug in a hit hook, an update hook, a maker, and an alpha function
-// without game.js knowing their type-specific behaviour. Tasks 9–11 populate
-// the registries below by importing this module and assigning into them;
-// this module owns only the dispatch, plus a sane default for each hook.
-// Pure — no browser/Electron imports.
-
-export const CREATURE_TYPES = ['nakki', 'maahinen', 'sammunut']
-
-export function isCreature(e) { return CREATURE_TYPES.includes(e.type) }
+// are registry monsters whose hook modules (systems/monsters/*.js) register
+// into these tables, so game.js never learns their type-specific behaviour.
+// Podeboo-style supplements for ordinary generated monsters register here
+// too. This module owns only the dispatch, plus a sane default for each
+// hook. Pure — no browser/Electron imports.
 
 // Keyed by creature type. Plain mutable objects so per-type modules can
 // assign `CREATURE_HIT.maahinen = fn` etc. on import, side-effect style.
 export const CREATURE_HIT = {}
 export const CREATURE_UPDATE = {}
-export const CREATURE_MAKE = {}
 export const CREATURE_ALPHA = {}
 
 // The one place player/wolf/fire damage to a creature is decided. Registered
@@ -43,12 +38,6 @@ export function hurtCreature(state, e, dmg, opts = {}) {
 export function updateCreature(e, state, delta) {
   const hook = CREATURE_UPDATE[e.type]
   if (hook) hook(e, state, delta)
-}
-
-// buildEntities 'creature' case dispatches here; null for an unregistered type.
-export function makeCreature(type, x, y) {
-  const hook = CREATURE_MAKE[type]
-  return hook ? hook(x, y) : null
 }
 
 // Render alpha (e.g. the nakki fading in/out of visibility). Defaults to

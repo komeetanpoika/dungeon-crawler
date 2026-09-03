@@ -18,12 +18,6 @@ function paint(rows, pal) {
   return rgba
 }
 
-// Split a 32x32 design (32 rows of 32 chars, row-major) into one 16x16
-// quadrant: (r, c) = (0,0) top-left … (1,1) bottom-right — matches the
-// custom_<name>_00|01|10|11 file suffixes the editor's 2x2 format expects.
-function quad(rows32, r, c) {
-  return rows32.slice(r * 16, r * 16 + 16).map(row => row.slice(c * 16, c * 16 + 16))
-}
 const CHICKEN = paint([
   '................', '................', '.......##.......', '......#rr#......',
   '.....##ww##.....', '....#wwwwww#....', '...#wwwwwwww#...', '...#wwwwwwww#..#',
@@ -118,68 +112,10 @@ const FLOOR_WOOD = paint([
   'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa',
 ], { a: [150, 105, 60, 255], b: [130, 88, 48, 255], s: [70, 45, 25, 255] })
 
-// Leap episode creatures (docs/superpowers/specs/2026-08-29-leap-episodes-design.md
-// §4) — each is designed once on a 32x32 grid, then split into the four
-// custom_<name>_00|01|10|11 16x16 quadrants the editor's 2x2 format expects
-// (00 top-left, 01 top-right, 10 bottom-left, 11 bottom-right).
-
-// Näkki — green-black water spirit, weed-hair, two pale eyes, head and
-// shoulders only (it is always in water): a waterline bar closes off the
-// bottom quadrants, and the surface below is left transparent but for a
-// few ripples.
-const NAKKI_32 = [
-  '.............#..#..#............', '.............#..#..#............', '..........#..#..#..#..#.........', '..........#..#..#..#..#.........',
-  '............########............', '..........##nnnnnnnn##..........', '.........#nnnnnnnnnnnn#.........', '........#nnnnnnnnnnnnnn#........',
-  '........#nnneennnneennn#........', '........#nnneennnneennn#........', '.........#nnnnnnnnnnnn#.........', '..........#nnnnkknnnn#..........',
-  '......####nnnnnnnnnnnn####......', '....##nnnnnnnnnnnnnnnnnnnn##....', '..##nnnnnnnnnnnnnnnnnnnnnnnn##..', '..############################..',
-  '..#n##n##n##n##n##n##n##n##n##..', '................................', '................................', '....kk....kk....kk....kk...kk...',
-  '................................', '................................', '.......nn....nn....nn....nn.....', '................................',
-  '................................', '................................', '................................', '................................',
-  '................................', '................................', '................................', '................................',
-]
-const NAKKI_PAL = { n: [60, 90, 60, 255], k: [20, 35, 30, 255], e: [220, 235, 200, 255] }
-
-// Maahinen — brown burrower: a low squat mound (no waist), a blunt rounded
-// snout lobe on the front-lower edge with one eye and two nostril dots, two
-// big splayed claws below it with visible finger tips, and dust at the base.
-const MAAHINEN_32 = [
-  '................................', '................................', '................................', '................................',
-  '................................', '................................', '..........############..........', '........##bbbbbbbbbbbb##........',
-  '......##bbbbbbbbbbbbbbbb##......', '.....#bbbbbbbbbbbbbbbbbbbb#.....', '....#bbbbbbbbbbbbbbbbbddbbb#....', '....#bbbbbbbbbbbbbbbbbddbbb#....',
-  '...#bbbbbbbbbbbbbbbbbbbbbbbb##..', '...#bbbbbbbbbbbbbbbbbbbbbbbbbb#.', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#',
-  '...#bbbbbbbbbbbbbbbbbbbbbbbddbb#', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#', '...#bbbbbbbbbbbbbbbbbbbbbbbbbbb#',
-  '....#bbbbbbbbbbbbbbbbbbbbbbddbb#', '....#bbbbbbbbbbbbbbbbbbbbbbbbbb#', '.....#####################bbbb#.', '.......#yyyy#......#yyyy#.####..',
-  '......#yyyyyy#....#yyyyyy#......', '.....##########..##########.....', '......y..y...y....y..y...y......', '................................',
-  '....t.....t.........t........t..', '......t.........t.........t.....', '.............t.........t........', '................................',
-]
-const MAAHINEN_PAL = { b: [120, 80, 45, 255], d: [70, 45, 25, 255], y: [235, 215, 150, 255], t: [210, 180, 140, 255] }
-
-// Sammunut — blue-grey ragged wraith, hood, one ember eye, trailing wisps,
-// no feet: the hem tears unevenly and dissolves into wisps below it.
-const SAMMUNUT_32 = [
-  '..............####..............', '............##gggg##............', '...........wggggggggw...........', '..........#gggggggggg#..........',
-  '.........#gggggggggggg#.........', '.........wggggggggggggw.........', '........#gggggggggggggg#........', '........#gggggggggrgggg#........',
-  '........#gggggggggrgggg#........', '.......#gggggggggggggggg#.......', '.......wggggggggggggggggw.......', '......#gggggggggggggggggg#......',
-  '......#gggggggggggggggggg#......', '......#gggggggggggggggggg#......', '.....#gggggggggggggggggggg#.....', '.....#gggggggggggggggggggg#.....',
-  '.....#gggggggggggggggggggg#.....', '.....#gggggggggggggggggggg#.....', '.....#gggggggggggggggggggg#.....', '.....#gggggggggggggggggggg#.....',
-  '......#gggggggggggggggggg#......', '......####################......', '......#.#.#.#...#.#.#.#...#.#...', '......#.#...#...#...#.#...#.....',
-  '.......g#...#...#...#.....#.....', '........g...#.......g...........', '.......g....#.........g.........', '.........g...........g..........',
-  '..........g............g........', '...............g.........g......', '........w...g...g.........w.....', '.........w.......w......w.......',
-]
-const SAMMUNUT_PAL = { g: [120, 130, 160, 255], w: [200, 205, 220, 255], r: [255, 120, 40, 255] }
-
-const CREATURES = [['nakki', NAKKI_32, NAKKI_PAL], ['maahinen', MAAHINEN_32, MAAHINEN_PAL], ['sammunut', SAMMUNUT_32, SAMMUNUT_PAL]]
-const CREATURE_TILES = CREATURES.flatMap(([name, rows32, pal]) => [
-  [`custom_${name}_00`, paint(quad(rows32, 0, 0), pal)],
-  [`custom_${name}_01`, paint(quad(rows32, 0, 1), pal)],
-  [`custom_${name}_10`, paint(quad(rows32, 1, 0), pal)],
-  [`custom_${name}_11`, paint(quad(rows32, 1, 1), pal)],
-])
-
 for (const [name, px] of [['npc_chicken', CHICKEN], ['npc_deer', DEER], ['item_meat', MEAT],
   ['item_lumber', LUMBER], ['item_meat_cooked', MEAT_COOKED], ['ow_stump', STUMP], ['prop_campfire', CAMPFIRE],
   ['prop_hearth_cold', HEARTH_COLD], ['prop_hearth_lit', HEARTH_LIT],
-  ['item_clapper', CLAPPER], ['item_fleece', FLEECE], ['custom_floor_wood', FLOOR_WOOD], ...CREATURE_TILES]) {
+  ['item_clapper', CLAPPER], ['item_fleece', FLEECE], ['custom_floor_wood', FLOOR_WOOD]]) {
   const p = path.join(OUT, `${name}.png`)
   if (process.argv.includes('--force') || !existsSync(p)) { writePng(p, 16, 16, px); console.log('wrote', p) }
   else console.log('kept', p)

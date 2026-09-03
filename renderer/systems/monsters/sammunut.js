@@ -6,9 +6,9 @@
 // invisible and invulnerable outside firelight, a mushroom trance, or the
 // half-second after touching the player. Pure — no browser/Electron imports.
 
-import { spendStamina } from './stamina.js'
-import { sfx } from './sfx.js'
-import { CREATURE_HIT, CREATURE_UPDATE, CREATURE_MAKE, CREATURE_ALPHA } from './creatures.js'
+import { spendStamina } from '../stamina.js'
+import { sfx } from '../sfx.js'
+import { CREATURE_HIT, CREATURE_UPDATE, CREATURE_ALPHA } from '../creatures.js'
 
 const TILE_SIZE = 32
 
@@ -19,12 +19,18 @@ export const TOUCH_TIME = 0.5      // seconds touchT (and visibility-after-touch
 export const DRAIN_PER_S = 12      // stamina drained per second of touch
 export const WANDER_REPICK = 3     // seconds between wander-target picks
 
+// Lazy init: a registry spawn arrives with only type/x/y/px/py/hp, so the
+// first touch stamps the wraith state on it. Idempotent — the `wisp` flag
+// is the "already stamped" marker.
+export function ensureSammunut(e) {
+  if (e.wisp) return e
+  Object.assign(e, { wisp: true, target: null, wanderT: 0, touchT: 0, inCombat: false,
+                     hp: e.hp ?? 18, maxHp: e.maxHp ?? 18 })
+  return e
+}
+
 export function makeSammunut(x, y) {
-  return {
-    type: 'sammunut', hp: 18, maxHp: 18,
-    px: x * TILE_SIZE + TILE_SIZE / 2, py: y * TILE_SIZE + TILE_SIZE / 2,
-    x, y, target: null, wanderT: 0, touchT: 0, inCombat: false,
-  }
+  return ensureSammunut({ type: 'sammunut', x, y, px: x * TILE_SIZE + TILE_SIZE / 2, py: y * TILE_SIZE + TILE_SIZE / 2 })
 }
 
 export function nearestFire(entities, e) {
@@ -70,6 +76,7 @@ function pickWanderPoint(map, rng) {
 }
 
 export function updateSammunut(e, state, delta) {
+  ensureSammunut(e)
   const { entities, map, player } = state
 
   const target = nearestFire(entities, e)
@@ -110,7 +117,6 @@ export function updateSammunut(e, state, delta) {
   if (!sammunutVisible(e, state)) e.inCombat = false
 }
 
-CREATURE_MAKE.sammunut = makeSammunut
 CREATURE_UPDATE.sammunut = updateSammunut
 CREATURE_HIT.sammunut = (e, state, dmg) => {
   if (inFirelight(state.entities, e.px, e.py)) {

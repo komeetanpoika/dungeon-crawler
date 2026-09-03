@@ -6,9 +6,8 @@ import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeCampfire, tickCampfires } from '../renderer/systems/campfire.js'
-import { makeCreature } from '../renderer/systems/creatures.js'
+import { makeSammunut } from '../renderer/systems/monsters/sammunut.js'
 import { EPISODES } from '../renderer/data/leaps.js'
-import '../renderer/systems/sammunut.js' // registers CREATURE_MAKE.sammunut etc.
 
 const S = 32
 const N = 40
@@ -53,13 +52,12 @@ function makeSpies() {
   }
 }
 
-// Mirrors game.js's buildEntities 'creature' case, as in episodes-ferry.test.js.
+// Mirrors game.js's buildEntities registry-monster case, as in episodes-ferry.test.js.
 function spawnInto(state) {
   return spawns => {
     for (const s of spawns) {
-      if (s.kind !== 'creature') continue
-      const c = makeCreature(s.creature, s.x, s.y)
-      if (c) state.entities.push({ ...c, px: s.x * S + 16, py: s.y * S + 16 })
+      if (s.kind !== 'sammunut') continue
+      state.entities.push({ ...makeSammunut(s.x, s.y), px: s.x * S + 16, py: s.y * S + 16 })
     }
   }
 }

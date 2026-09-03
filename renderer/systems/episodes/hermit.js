@@ -49,7 +49,7 @@ function spawnWraith(ctx) {
   const { state, flags } = ctx
   const spot = sammunutSpot(state.map, state.player)
   if (!spot) { console.warn(`hermit: no spot ${SAMMUNUT_MIN_DIST}+ tiles from the player — the Sammunut cannot spawn`); return }
-  ctx.spawn([{ kind: 'creature', creature: 'sammunut', x: spot.x, y: spot.y }])
+  ctx.spawn([{ kind: 'sammunut', x: spot.x, y: spot.y }])
   if (!flags.sammunut_spawned) { ctx.set('sammunut_spawned'); ctx.persist() }
 }
 
@@ -113,7 +113,7 @@ function tickWraith(ctx) {
 }
 
 // delta is unused here — the Sammunut's own drift/touch timers run off the
-// main creature-update loop (updateCreature), not this tick.
+// main story-creature update loop (CREATURE_UPDATE), not this tick.
 export function tick(ctx, delta) {
   tickHearth(ctx)
   tickWraith(ctx)

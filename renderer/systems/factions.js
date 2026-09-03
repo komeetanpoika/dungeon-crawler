@@ -5,9 +5,10 @@ import { getMonsterDef } from './monsters.js'
 
 // Hostile NPCs count as enemies for as long as they stay hostile; every other
 // entity type is decided by its kind alone.
-// Leap-episode creatures: maahinen and sammunut are combatants (chased,
-// brain-targeted); nakki is never an enemy — it must not be chased or
-// brain-targeted, it is only isHittable so the player's weapons can reach it.
+// Leap-episode creatures are registry monsters like any other: maahinen and
+// sammunut are combatants (chased, brain-targeted); the nakki's def is
+// `passive`, so it is never an enemy — it must not be chased or
+// brain-targeted, only isHittable so the player's weapons can reach it.
 // Generated monsters (registered in systems/monsters.js) join as enemies too,
 // so they run the brain and the standard hit/death pipeline like any built-in
 // type — registry membership decides it, never a literal type-string list.
@@ -16,16 +17,16 @@ export function isEnemy(e) {
   const def = getMonsterDef(e.type)
   return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
       || e.type === 'cyclops' || e.type === 'wizard' || e.type === 'crab'
-      || e.type === 'dragon_boss' || e.type === 'maahinen' || e.type === 'sammunut'
+      || e.type === 'dragon_boss'
       || (e.type === 'npc' && e.hostile)
       || (!!def && !def.behavior?.passive)
 }
 
-// Things the player's weapons can hurt: every enemy, peaceful NPCs, nakki,
-// and every registry monster (passive ones included).
+// Things the player's weapons can hurt: every enemy, peaceful NPCs, and
+// every registry monster (passive ones like the nakki included).
 export function isHittable(e) {
   if (e.dying > 0) return false
-  return isEnemy(e) || e.type === 'npc' || e.type === 'nakki' || !!getMonsterDef(e.type)
+  return isEnemy(e) || e.type === 'npc' || !!getMonsterDef(e.type)
 }
 
 // The frame's death cull predicate. hp is `undefined` for creatures like the

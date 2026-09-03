@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   makeSammunut, updateSammunut, nearestFire, inFirelight, sammunutVisible,
   FIRELIGHT, DRIFT, TOUCH, TOUCH_TIME, DRAIN_PER_S, WANDER_REPICK,
-} from '../renderer/systems/sammunut.js'
+} from '../renderer/systems/monsters/sammunut.js'
 import { makeCampfire } from '../renderer/systems/campfire.js'
 import { strikeCreature, creatureAlpha } from '../renderer/systems/creatures.js'
 import { createMap } from '../renderer/systems/map.js'

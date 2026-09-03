@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeNakki, updateNakki, sinkNakki, feedNakki, SUBMERGE_TIME, DRAG_INTERVAL } from '../renderer/systems/nakki.js'
+import { makeNakki, updateNakki, sinkNakki, feedNakki, SUBMERGE_TIME, DRAG_INTERVAL } from '../renderer/systems/monsters/nakki.js'
 import { strikeCreature } from '../renderer/systems/creatures.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 

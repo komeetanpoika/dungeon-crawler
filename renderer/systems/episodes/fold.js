@@ -174,7 +174,7 @@ export function burrowOpen(map, mapData) {
 function spawnMaahinen(ctx) {
   const spot = poiCell(ctx.mapData, 'lair')
   if (!spot) { console.warn('fold: no lair POI — the Maahinen cannot spawn'); return false }
-  ctx.spawn([{ kind: 'creature', creature: 'maahinen', x: spot.x, y: spot.y }])
+  ctx.spawn([{ kind: 'maahinen', x: spot.x, y: spot.y }])
   return true
 }
 

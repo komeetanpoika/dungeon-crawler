@@ -2,7 +2,7 @@
 // 2026-08-29-leap-episodes-design.md §3.1). Pure — no browser/Electron
 // imports; game.js wires onArrive/tick through the epCtx.
 import { poiCell, checkDeliveries } from '../leap.js'
-import { feedNakki } from '../nakki.js'
+import { feedNakki } from '../monsters/nakki.js'
 import { sfx } from '../sfx.js'
 import { think } from '../feedback.js'
 import { TILE } from '../entities.js'
@@ -34,7 +34,7 @@ function spawnNakki(ctx) {
   const { state, mapData } = ctx
   const spot = poiCell(mapData, 'nakki')
   if (!spot) return
-  ctx.spawn([{ kind: 'creature', creature: 'nakki', x: spot.x, y: spot.y }])
+  ctx.spawn([{ kind: 'nakki', x: spot.x, y: spot.y }])
   const nakki = state.entities.find(e => e.type === 'nakki')
   if (nakki) nakki.pierEnd = poiCell(mapData, 'pier end')
 }
@@ -53,7 +53,7 @@ export function onArrive(ctx) {
 }
 
 // delta is unused here — the Näkki's own submerge/surface timer runs off
-// the main creature-update loop (updateCreature), not this tick.
+// the main story-creature update loop (CREATURE_UPDATE), not this tick.
 export function tick(ctx, delta) {
   const { state, mapData, flags } = ctx
 

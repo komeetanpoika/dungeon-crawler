@@ -132,10 +132,11 @@ describe('lumber and campfire placeholders', () => {
     it(`${key} is registered under its own file name`, () => assert.equal(SPRITES[key], key))
 })
 
-describe('leap creature sprites (editor-native 2x2 custom tiles)', () => {
-  for (const name of ['nakki', 'maahinen', 'sammunut'])
-    for (const q of ['00', '01', '10', '11']) {
-      const key = `custom_${name}_${q}`
-      it(`${key} is registered under its own file name`, () => assert.equal(SPRITES[key], key))
-    }
+// The three leap creatures are rig-drawn registry monsters (renderer/data/
+// monsters/{nakki,maahinen,sammunut}.json) — they own no sprite tiles.
+describe('leap creature sprites', () => {
+  it('no custom_<creature>_XY tile entries remain', () => {
+    const leftover = Object.keys(SPRITES).filter(k => /^custom_(nakki|maahinen|sammunut)_/.test(k))
+    assert.deepEqual(leftover, [])
+  })
 })

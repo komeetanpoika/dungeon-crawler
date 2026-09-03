@@ -39,13 +39,10 @@ import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, echoAd
 import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
-import { isEnemy, isHittable, isDead } from './systems/factions.js'
-import { isCreature, strikeCreature, updateCreature, makeCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
-import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose } from './systems/monsters.js'
+import { isEnemy, isHittable } from './systems/factions.js'
+import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
+import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature } from './systems/monsters.js'
 import { cullDead, tickDying } from './systems/dying.js'
-import './systems/nakki.js'
-import './systems/maahinen.js'
-import './systems/sammunut.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
@@ -397,7 +394,6 @@ function buildEntities(spawns, map, depth) {
         startPx: cx, startPy: cy, targetPx: cx, targetPy: cy, px: cx, py: cy, progress: 1, duration: 0.3 }]
       case 'echo':    return [{ type: 'echo', id: `echo:${s.spot}`, x: s.x, y: s.y, spot: s.spot, px: cx, py: cy }]
       case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
-      case 'creature': { const c = makeCreature(s.creature, s.x, s.y); return c ? [{ ...c, px: cx, py: cy }] : [] }
       default: {
         const gen = makeMonsterFromDef(s.kind, s.x, s.y)
         return gen ? [hpOverride({ ...gen, px: cx, py: cy, ...aiInit() })] : []
@@ -458,17 +454,6 @@ function arriveOnMap() {
 // walks back into the village and the runestone hums. Idempotent per visit
 // via `state.episodeResolved` — episode modules (Task 5) call this through ctx
 // right after setting the flag that might complete the rule.
-// The one place a creature death is declared. Episode modules read
-// `state.creatureKills[type]` rather than inferring death from the
-// creature's absence — a creature that never spawned, or one removed for
-// any other reason, must not resolve an episode for free. Per-visit: the
-// record is reset wherever a map's `state` is built.
-function recordCreatureKill(e, r) {
-  if (r.absorbed || !(r.entity.hp <= 0)) return false
-  state.creatureKills = { ...(state.creatureKills ?? {}), [e.type]: true }
-  return true
-}
-
 function resolveEpisode() {
   const mapData = OPEN_MAPS[state.level]
   if (!state.episode || state.episodeResolved || !isResolved(activeSave, mapData)) return
@@ -1105,12 +1090,12 @@ function update(delta) {
         }
         if (!hitAt(e.px - player.px, e.py - player.py)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
-        if (isCreature(e) || (CREATURE_HIT[e.type] && getMonsterDef(e.type))) {
-          const r = strikeCreature(e, state, dmg)
-          const cue = recordCreatureKill(e, r) ? 'enemy-death' : r.cue
-          if (cue) sfx(state, cue, { px: e.px, py: e.py })
+        if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
+          const r = hurtCreature(state, e, dmg, { source: 'player' })
+          if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
+          if (r.think) think(state, r.think)
           if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
-          return r.entity
+          return e
         }
         const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
         npcStruck(hitEnemy)
@@ -1283,12 +1268,12 @@ function update(delta) {
         if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
           if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
           hit = true
-          if (isCreature(e) || (CREATURE_HIT[e.type] && getMonsterDef(e.type))) {
-            const r = strikeCreature(e, state, p.damage)
-            const cue = recordCreatureKill(e, r) ? 'enemy-death' : r.cue
-            if (cue) sfx(state, cue, { px: e.px, py: e.py })
+          if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
+            const r = hurtCreature(state, e, p.damage, { source: 'player' })
+            if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
+            if (r.think) think(state, r.think)
             if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
-            return r.entity
+            return e
           }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
           const struck = { ...e, hp: e.hp - p.damage, inCombat: true }
@@ -1327,7 +1312,7 @@ function update(delta) {
     // enemy brain inside their attack_hostile goal) — never both paths.
     if (e.type === 'npc') { updateNpc(e, state, delta); continue }
     if (e.dying > 0) { if (getMonsterDef(e.type)) updateMonsterPose(e, delta); continue }
-    if (isCreature(e)) { updateCreature(e, state, delta); continue }
+    if (isStoryCreature(e)) { CREATURE_UPDATE[e.type]?.(e, state, delta); updateMonsterPose(e, delta); continue }
     if (!isEnemy(e)) continue
 
     if (e.stunTimer > 0) { e.stunTimer -= delta; continue }
@@ -1550,7 +1535,7 @@ function update(delta) {
   // a one-shot wall-collision hit, applied only to enemies.
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
-    if (slam && isHittable(e) && !isCreature(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
+    if (slam && isHittable(e) && !isStoryCreature(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
       e.hp -= slam.damage
       e.inCombat = true
       npcStruck(e)

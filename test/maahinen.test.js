@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   makeMaahinen, updateMaahinen,
   BURROW_SPEED, ERUPT_DIST, ERUPT_TIME, RESURFACE_DELAY, SUBMERGE_TIME, LEASH_TILES,
-} from '../renderer/systems/maahinen.js'
+} from '../renderer/systems/monsters/maahinen.js'
 import { strikeCreature, creatureAlpha } from '../renderer/systems/creatures.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -35,14 +35,13 @@ describe('makeMaahinen', () => {
     assert.equal(m.type, 'maahinen')
     assert.equal(m.x, 5)
     assert.equal(m.y, 5)
-    assert.equal(m.hp, 24)
-    assert.equal(m.maxHp, 24)
+    assert.equal(m.hp, 36)
+    assert.equal(m.maxHp, 36)
     assert.equal(m.state, 'submerged')
     assert.equal(m.timer, 0)
     assert.equal(m.weaponId, 'maul')
     assert.equal(m.damageCooldown, 0)
     assert.equal(m.inCombat, false)
-    assert.equal(m.aiHalf, 28)
     assert.equal(m.facing, 'east')
     assert.deepEqual(m.home, { x: 5, y: 5 })
   })
@@ -172,7 +171,7 @@ describe('strikeCreature — maahinen', () => {
     const r = strikeCreature(m, state, 6)
     assert.equal(r.absorbed, true)
     assert.equal(r.cue, null)
-    assert.equal(r.entity.hp, 24)
+    assert.equal(r.entity.hp, 36)
   })
 
   it('absorbs damage while submerging (hp unchanged, cue null)', () => {
@@ -182,7 +181,7 @@ describe('strikeCreature — maahinen', () => {
     const r = strikeCreature(m, state, 6)
     assert.equal(r.absorbed, true)
     assert.equal(r.cue, null)
-    assert.equal(r.entity.hp, 24)
+    assert.equal(r.entity.hp, 36)
   })
 
   it('damages while surfaced', () => {
@@ -192,7 +191,7 @@ describe('strikeCreature — maahinen', () => {
     const r = strikeCreature(m, state, 6)
     assert.equal(r.absorbed, false)
     assert.equal(r.cue, 'melee-hit')
-    assert.equal(r.entity.hp, 18)
+    assert.equal(r.entity.hp, 30)
     assert.equal(r.entity.inCombat, true)
   })
 
@@ -202,7 +201,7 @@ describe('strikeCreature — maahinen', () => {
     const state = makeState(m, makePlayer(5, 5))
     const r = strikeCreature(m, state, 6)
     assert.equal(r.absorbed, false)
-    assert.equal(r.entity.hp, 18)
+    assert.equal(r.entity.hp, 30)
   })
 })
 
@@ -218,11 +217,11 @@ describe('updateMaahinen — surfaced', () => {
     assert.ok(m.ai, 'brain initialised an ai object on the entity')
   })
 
-  it('enters submerging on the next update once hp drops to half (12)', () => {
+  it('enters submerging on the next update once hp drops to half (18)', () => {
     const m = makeMaahinen(5, 5)
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
-    m.hp = 12
+    m.hp = 18
     const player = makePlayer(9, 5)
     const state = makeState(m, player)
     updateMaahinen(m, state, 0.1)
@@ -231,11 +230,11 @@ describe('updateMaahinen — surfaced', () => {
     assert.equal(m.dived, true)
   })
 
-  it('allows a second dive once hp drops to a quarter (6), after the first dive', () => {
+  it('allows a second dive once hp drops to a quarter (9), after the first dive', () => {
     const m = makeMaahinen(5, 5)
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
-    m.hp = 6
+    m.hp = 9
     m.dived = true
     const player = makePlayer(9, 5)
     const state = makeState(m, player)
@@ -269,7 +268,7 @@ describe('updateMaahinen — surfaced', () => {
     const m = makeMaahinen(5, 5)
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
-    m.hp = 12
+    m.hp = 18
     m.attack = { weaponId: 'maul', phase: 'swing', timer: 0.1, duration: 0.3, angle: 0, message: 'x' }
     const player = makePlayer(9, 5)
     const state = makeState(m, player)

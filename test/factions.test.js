@@ -8,8 +8,8 @@ const FAKE_RIG = {
   PARAM_SCHEMA: [{ key: 'size', label: 'Size', group: 'body', type: 'range', min: 0, max: 2, step: 0.1, default: 1 }],
   drawMonster: () => {},
 }
-const registerFake = name => registerMonsters(
-  [{ name, rig: 'fakerig', stats: { hp: 30, dmg: 8, speed: 85, half: 10 } }],
+const registerFake = (name, behavior) => registerMonsters(
+  [{ name, rig: 'fakerig', stats: { hp: 30, dmg: 8, speed: 85, half: 10 }, behavior }],
   { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
 
 describe('isEnemy / isHittable', () => {
@@ -38,11 +38,20 @@ describe('isEnemy / isHittable', () => {
       assert.equal(isHittable({ type }), false, type)
     }
   })
-  it('maahinen and sammunut are enemies; nakki is hittable but never an enemy', () => {
-    assert.equal(isEnemy({ type: 'maahinen' }), true)
-    assert.equal(isEnemy({ type: 'sammunut' }), true)
-    assert.equal(isEnemy({ type: 'nakki' }), false)
-    assert.equal(isHittable({ type: 'nakki' }), true)
+  // The leap creatures are registry monsters: their def decides it, not a
+  // literal type-string list. A `passive` def (the nakki) is hittable but
+  // never an enemy.
+  describe('the leap creatures, once registered', () => {
+    afterEach(clearMonsters)
+    it('maahinen and sammunut are enemies; a passive nakki is hittable but never an enemy', async () => {
+      await registerFake('maahinen')
+      await registerFake('sammunut')
+      await registerFake('nakki', { passive: true })
+      assert.equal(isEnemy({ type: 'maahinen' }), true)
+      assert.equal(isEnemy({ type: 'sammunut' }), true)
+      assert.equal(isEnemy({ type: 'nakki' }), false)
+      assert.equal(isHittable({ type: 'nakki' }), true)
+    })
   })
   describe('a registered generated monster', () => {
     afterEach(clearMonsters)
@@ -61,10 +70,14 @@ describe('isEnemy / isHittable', () => {
 })
 
 describe('isDead', () => {
-  it('a creature with no hp (nakki) is never dead', () => {
+  afterEach(clearMonsters)
+  it('a registered creature with no hp (nakki) is never dead', async () => {
+    await registerFake('nakki', { passive: true })
+    assert.equal(isHittable({ type: 'nakki' }), true, 'hittable, so the hp test is the one doing the work')
     assert.equal(isDead({ type: 'nakki' }), false)
   })
-  it('a hittable entity at 0 hp is dead', () => {
+  it('a hittable entity at 0 hp is dead', async () => {
+    await registerFake('maahinen')
     assert.equal(isDead({ type: 'maahinen', hp: 0 }), true)
     assert.equal(isDead({ type: 'npc', hp: 0 }), true)
   })

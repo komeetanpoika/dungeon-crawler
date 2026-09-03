@@ -5,12 +5,12 @@
 // and a maul, then dives back under at half and quarter HP to resurface a
 // few tiles from the player. Pure — no browser/Electron imports.
 
-import { isWalkable } from './entities.js'
-import { tryStartEnemyAttack } from './enemy-attack.js'
-import { updateBrain } from './brain.js'
-import { act } from './act.js'
-import { sfx } from './sfx.js'
-import { CREATURE_HIT, CREATURE_UPDATE, CREATURE_MAKE, CREATURE_ALPHA } from './creatures.js'
+import { isWalkable } from '../entities.js'
+import { tryStartEnemyAttack } from '../enemy-attack.js'
+import { updateBrain } from '../brain.js'
+import { act } from '../act.js'
+import { sfx } from '../sfx.js'
+import { CREATURE_HIT, CREATURE_UPDATE, CREATURE_ALPHA } from '../creatures.js'
 
 const S = 32
 
@@ -25,13 +25,21 @@ export const RESURFACE_DELAY = 2
 export const LEASH_TILES = 10
 export const SUBMERGE_TIME = 0.4
 
+// Lazy init: a registry spawn arrives with only type/x/y/px/py/hp, so the
+// first touch stamps the burrower state on it. Idempotent — the `burrow`
+// flag is the "already stamped" marker.
+export function ensureMaahinen(e) {
+  if (e.burrow) return e
+  Object.assign(e, {
+    burrow: true, state: 'submerged', timer: 0, weaponId: 'maul',
+    damageCooldown: 0, inCombat: false, facing: 'east', home: { x: e.x, y: e.y },
+    hp: e.hp ?? 36, maxHp: e.maxHp ?? 36,
+  })
+  return e
+}
+
 export function makeMaahinen(x, y) {
-  return {
-    type: 'maahinen', x, y, px: x * S + S / 2, py: y * S + S / 2,
-    hp: 24, maxHp: 24, state: 'submerged', timer: 0,
-    weaponId: 'maul', damageCooldown: 0, inCombat: false,
-    aiHalf: 28, facing: 'east', home: { x, y },
-  }
+  return ensureMaahinen({ type: 'maahinen', x, y, px: x * S + S / 2, py: y * S + S / 2 })
 }
 
 // Deterministic ring search around (cx, cy) in tile coords: nearest ring
@@ -128,13 +136,13 @@ function submergingTick(e, state, delta) {
 }
 
 export function updateMaahinen(e, state, delta) {
+  ensureMaahinen(e)
   if (e.state === 'submerged') return submergedTick(e, state, delta)
   if (e.state === 'erupting') return eruptingTick(e, delta)
   if (e.state === 'surfaced') return surfacedTick(e, state, delta)
   if (e.state === 'submerging') return submergingTick(e, state, delta)
 }
 
-CREATURE_MAKE.maahinen = makeMaahinen
 CREATURE_UPDATE.maahinen = updateMaahinen
 CREATURE_HIT.maahinen = (e, state, dmg) => {
   if (e.state === 'submerged' || e.state === 'submerging') {

@@ -1,13 +1,14 @@
 // Registry + loader for generated monsters (rig-drawn, JSON-defined).
-// Generated monsters are normal enemies: they run the brain, take the normal
-// strike path, and are NEVER added to CREATURE_TYPES (membership would divert
-// brain/strike/draw — see the design spec). Their optional hook modules
-// register into CREATURE_HIT/UPDATE/ALPHA keyed by monster name; game.js
-// dispatches those explicitly for registry types.
+// Generated monsters are normal enemies by default: they run the brain and
+// take the normal strike path. Their optional hook modules register into
+// CREATURE_HIT/UPDATE/ALPHA keyed by monster name; game.js dispatches those
+// explicitly for registry types. A def with behavior.driver 'hook' (the
+// leap-episode story creatures) hands its whole per-frame update to that
+// module instead — see isStoryCreature below.
 import { clampParams } from '../render/monster-rigs/schema.js'
 import { TILE_ART_PX, snapFacing, palette } from '../render/monster-rigs/pixel.js'
 import { registerMonsterAI } from '../data/enemy-ai.js'
-import { creatureAlpha, CREATURE_TYPES } from './creatures.js'
+import { creatureAlpha } from './creatures.js'
 import { dyingAlpha } from './dying.js'
 
 const REGISTRY = Object.create(null)
@@ -25,16 +26,13 @@ const HIT_FLASH = 0.18
 // dragon_boss, dragon_boss_pixel), the other non-enemy entity kinds
 // game.js buildEntities switches on (trap, puzzle, weapon, ranged, potion,
 // door, exit_door, chest, prop, dungeon_entrance, fountain_wall,
-// fountain_basin, talent_trigger, wild_mushroom, floating_pickup, echo,
-// creature), and CREATURE_TYPES (the leap-episode creatures, which route
-// through their own hit/update/draw hooks instead of the generic path).
+// fountain_basin, talent_trigger, wild_mushroom, floating_pickup, echo).
 const RESERVED_NAMES = new Set([
   'guard', 'monster', 'dragon', 'crab', 'wizard', 'cyclops', 'npc',
   'dragon_boss', 'dragon_boss_pixel',
   'trap', 'puzzle', 'weapon', 'ranged', 'potion', 'door', 'exit_door', 'chest',
   'prop', 'dungeon_entrance', 'fountain_wall', 'fountain_basin', 'talent_trigger',
   'wild_mushroom', 'floating_pickup', 'echo', 'creature',
-  ...CREATURE_TYPES,
 ])
 
 const defaultLoadRig = id => import(`../render/monster-rigs/${id}.js`)
