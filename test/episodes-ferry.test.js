@@ -6,9 +6,7 @@ import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeItem } from '../renderer/systems/inventory.js'
-import { makeCreature } from '../renderer/systems/creatures.js'
-import { updateNakki } from '../renderer/systems/nakki.js'
-import '../renderer/systems/nakki.js' // registers CREATURE_MAKE.nakki etc.
+import { makeNakki, updateNakki, SINK_TIME } from '../renderer/systems/monsters/nakki.js'
 
 const S = 32
 const N = 12
@@ -62,14 +60,14 @@ function makeSpies() {
   }
 }
 
-// Mirrors game.js's buildEntities 'creature' case closely enough for these
-// tests: makeCreature + px/py, pushed straight into the live state.
+// Mirrors game.js's buildEntities registry-monster default case closely
+// enough for these tests: the nakki entity + px/py, pushed straight into
+// the live state.
 function spawnInto(state) {
   return spawns => {
     for (const s of spawns) {
-      if (s.kind !== 'creature') continue
-      const c = makeCreature(s.creature, s.x, s.y)
-      if (c) state.entities.push({ ...c, px: s.x * S + 16, py: s.y * S + 16 })
+      if (s.kind !== 'nakki') continue
+      state.entities.push({ ...makeNakki(s.x, s.y), px: s.x * S + 16, py: s.y * S + 16 })
     }
   }
 }
@@ -130,14 +128,23 @@ describe('tick — feeding', () => {
 
       if (i < 3) {
         const n = nakkiIn(state)
+        assert.equal(n.state, 'sinking', `nakki starts sinking after feed ${i}`)
+        updateNakki(n, state, SINK_TIME + 0.001)
         assert.equal(n.state, 'submerged', `nakki submerges after feed ${i}`)
-        updateNakki(n, state, 4.1) // past SUBMERGE_TIME so it resurfaces before the next feed
+        updateNakki(n, state, 4.1) // past SUBMERGE_TIME
+        assert.equal(n.state, 'rising')
+        updateNakki(n, state, SINK_TIME + 0.001) // resurfaces before the next feed
         assert.equal(n.state, 'surfaced')
       }
     }
 
     assert.equal(ctx.flags.nakki_gone, true)
-    assert.equal(nakkiIn(state), undefined, 'nakki removed')
+    const gone = nakkiIn(state)
+    assert.ok(gone, 'nakki still present until the sink completes')
+    assert.equal(gone.leaving, true)
+    assert.equal(gone.state, 'sinking')
+    updateNakki(gone, state, SINK_TIME + 0.001)
+    assert.equal(nakkiIn(state), undefined, 'nakki removed once the sink completes')
     for (const g of [GAP1, GAP2]) {
       const cell = state.map[g.y][g.x]
       assert.equal(cell.tile, TILE.FLOOR)

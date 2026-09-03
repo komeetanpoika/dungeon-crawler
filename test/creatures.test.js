@@ -1,17 +1,14 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { isCreature, strikeCreature, CREATURE_HIT, CREATURE_UPDATE, CREATURE_ALPHA, updateCreature } from '../renderer/systems/creatures.js'
+import { strikeCreature, hurtCreature, CREATURE_HIT, CREATURE_UPDATE, CREATURE_ALPHA } from '../renderer/systems/creatures.js'
 describe('creature registry', () => {
   it('unregistered types take plain damage; registered hooks decide', () => {
-    assert.equal(isCreature({ type: 'maahinen' }), true); assert.equal(isCreature({ type: 'npc' }), false)
     const e = { type: 'maahinen', hp: 10, maxHp: 24 }
     assert.deepEqual(strikeCreature(e, {}, 3), { entity: { ...e, hp: 7, inCombat: true }, absorbed: false, cue: 'melee-hit' })
     CREATURE_HIT.testtype = (e) => ({ entity: e, absorbed: true, cue: 'chop' })
     assert.equal(strikeCreature({ type: 'testtype', hp: 1 }, {}, 5).absorbed, true)
     delete CREATURE_HIT.testtype
   })
-  it('updateCreature is a no-op for a type with no update', () => { assert.doesNotThrow(() => updateCreature({ type: 'nakki' }, {}, 0.016)) })
-
   // The kill signal the episodes read (state.creatureKills[type]) is written
   // by game.js, which has no unit tests by design. What is testable here is
   // the predicate it keys off: an unabsorbed strike that takes the creature
@@ -34,5 +31,37 @@ describe('creature registry', () => {
     const r = strikeCreature({ type: 'hpless' }, {}, 4)
     assert.equal(r.entity.hp <= 0, false)
     delete CREATURE_HIT.hpless
+  })
+})
+
+describe('hurtCreature', () => {
+  it('applies the hook result in place and passes opts to the hook', () => {
+    let seen = null
+    CREATURE_HIT.probe = (e, state, dmg, opts) => { seen = opts; return { entity: { ...e, hp: e.hp - dmg }, absorbed: false, cue: 'melee-hit' } }
+    const e = { type: 'probe', hp: 5 }
+    const state = { creatureKills: {} }
+    const r = hurtCreature(state, e, 2, { source: 'wolf' })
+    assert.equal(e.hp, 3)
+    assert.deepEqual(seen, { source: 'wolf' })
+    assert.deepEqual(r, { absorbed: false, cue: 'melee-hit', think: undefined, killed: false })
+    delete CREATURE_HIT.probe
+  })
+  it('records the first kill and cues enemy-death exactly once', () => {
+    const e = { type: 'maahinen', hp: 1, maxHp: 24 }
+    const state = {}
+    const r1 = hurtCreature(state, e, 3)
+    assert.equal(r1.killed, true)
+    assert.equal(r1.cue, 'enemy-death')
+    assert.equal(state.creatureKills.maahinen, true)
+    const r2 = hurtCreature(state, e, 3)
+    assert.equal(r2.killed, false)
+  })
+  it('an absorbed hit never kills or records', () => {
+    CREATURE_HIT.wall = e => ({ entity: e, absorbed: true, cue: 'chop', think: 'Nope.' })
+    const state = {}
+    const r = hurtCreature(state, { type: 'wall', hp: 0 }, 9)
+    assert.deepEqual(r, { absorbed: true, cue: 'chop', think: 'Nope.', killed: false })
+    assert.equal(state.creatureKills, undefined)
+    delete CREATURE_HIT.wall
   })
 })

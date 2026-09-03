@@ -190,7 +190,7 @@ describe('story houses', () => {
   const REQUIRED_ITEMS = {
     'lake-1-ferry':   { house: "Toivo's hut", hatchet: true, lumber: 3, meat: 3 },
     'highland-2-fold': { house: "Aino's house" },
-    'marsh-3-hermit': { house: 'hermit hut', hatchet: true, lumber: 3 },
+    'marsh-3-hermit': { house: 'hermit hut', hatchet: true, deadwood: 3 },
   }
 
   for (const [mapName, req] of Object.entries(REQUIRED_ITEMS)) {
@@ -214,6 +214,10 @@ describe('story houses', () => {
       if (req.lumber) {
         const lumber = pickups.filter(p => p.type === 'lumber').reduce((n, p) => n + (p.count ?? 0), 0)
         assert.ok(lumber >= req.lumber, `expected lumber >= ${req.lumber}, got ${lumber}`)
+      }
+      if (req.deadwood) {
+        const deadwood = pickups.filter(p => p.type === 'deadwood').reduce((n, p) => n + (p.count ?? 0), 0)
+        assert.ok(deadwood >= req.deadwood, `expected deadwood >= ${req.deadwood}, got ${deadwood}`)
       }
       if (req.meat) {
         const meat = pickups.filter(p => p.type === 'meat').reduce((n, p) => n + (p.count ?? 0), 0)

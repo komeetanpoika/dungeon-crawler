@@ -1,16 +1,21 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, playerSpriteKey, Renderer, drawCreature } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, playerSpriteKey, Renderer } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
 
-// Minimal ctx that records drawImage calls by the sprite passed in.
+// Minimal ctx that records drawImage calls by the sprite passed in. `ops`
+// records any other method call (name + args) via the Proxy fallback below,
+// so callers that need e.g. ellipse/beginPath/fill need not extend this by
+// hand — any method "just works" and is recorded generically.
 function recordingCtx() {
   const calls = []
+  const ops = []
   let alpha = 1
   let filter = 'none'
-  return {
+  const base = {
     calls,
+    ops,
     drawImage: (img) => calls.push(img),
     fillRect: () => {},
     set fillStyle(_v) {},
@@ -20,6 +25,12 @@ function recordingCtx() {
     set filter(v) { filter = v },
     get filter() { return filter },
   }
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      if (prop in target) return Reflect.get(target, prop, receiver)
+      return (...args) => { ops.push({ name: prop, args }) }
+    },
+  })
 }
 
 const SPR = { floor: 'FLOOR', fl: 'SKIN_FL', br: 'OVERLAY_BR' }
@@ -420,49 +431,30 @@ describe('drawEntity — campfire', () => {
 })
 
 describe('drawEntity — echo', () => {
-  it('draws player_magic hue-shifted at half alpha, and restores both after', () => {
+  it('draws two trail steps plus the body (three drawImage) and a glow ellipse, and restores state', () => {
     const ctx = recordingCtx()
-    let seenAlpha, seenFilter
-    const origDrawImage = ctx.drawImage
-    ctx.drawImage = (img) => { seenAlpha = ctx.globalAlpha; seenFilter = ctx.filter; origDrawImage(img) }
-    drawEntity(ctx, { type: 'echo' }, 0, 0, 32, { player_magic: 'WIZ' })
-    assert.deepEqual(ctx.calls, ['WIZ'])
-    assert.equal(seenAlpha, 0.5)
-    assert.equal(seenFilter, 'hue-rotate(160deg) saturate(0.6)')
+    const entity = { type: 'echo', fadeA: 1, t: 0.3, px: 100, py: 100,
+      trail: [{ px: 96, py: 100 }, { px: 92, py: 100 }, { px: 88, py: 100 }] }
+    drawEntity(ctx, entity, 100, 100, 32, { player_magic: 'WIZ' })
+    assert.deepEqual(ctx.calls, ['WIZ', 'WIZ', 'WIZ'])
+    assert.equal(ctx.ops.filter(o => o.name === 'ellipse').length, 1)
     assert.equal(ctx.globalAlpha, 1)
     assert.equal(ctx.filter, 'none')
   })
 
-  it('draws nothing when player_magic sprite is missing', () => {
+  it('draws nothing when fadeA is 0', () => {
     const ctx = recordingCtx()
-    drawEntity(ctx, { type: 'echo' }, 0, 0, 32, {})
+    drawEntity(ctx, { type: 'echo', fadeA: 0 }, 0, 0, 32, { player_magic: 'WIZ' })
     assert.deepEqual(ctx.calls, [])
+    assert.deepEqual(ctx.ops, [])
   })
 })
 
-describe('drawCreature', () => {
-  it('draws the four quadrants row-major into a 2x2 box anchored like the cyclops', () => {
-    const calls = []
-    const ctx = { drawImage: (img, x, y, w, h) => calls.push([img, x, y, w, h]), globalAlpha: 1 }
-    const spr = Object.fromEntries(['00', '01', '10', '11'].map(q => [`custom_nakki_${q}`, q]))
-    drawCreature(ctx, spr, 'nakki', 100, 100, 32)
-    assert.deepEqual(calls, [['00', 84, 84, 32, 32], ['01', 116, 84, 32, 32], ['10', 84, 116, 32, 32], ['11', 116, 116, 32, 32]])
-  })
-
-  it('multiplies alpha into globalAlpha for the draw and restores it after', () => {
-    const seen = []
-    const ctx = { drawImage: () => seen.push(ctx.globalAlpha), globalAlpha: 0.8 }
-    const spr = Object.fromEntries(['00', '01', '10', '11'].map(q => [`custom_maahinen_${q}`, q]))
-    drawCreature(ctx, spr, 'maahinen', 0, 0, 16, { alpha: 0.5 })
-    assert.deepEqual(seen, [0.4, 0.4, 0.4, 0.4])
-    assert.equal(ctx.globalAlpha, 0.8)
-  })
-
-  it('skips quadrants with no matching sprite', () => {
-    const calls = []
-    const ctx = { drawImage: (img) => calls.push(img), globalAlpha: 1 }
-    const spr = { custom_sammunut_00: '00', custom_sammunut_11: '11' }
-    drawCreature(ctx, spr, 'sammunut', 0, 0, 16)
-    assert.deepEqual(calls, ['00', '11'])
+describe('drawEntity — grey campfire', () => {
+  it('applies a filter for deadwood fires and restores it', () => {
+    const ctx = recordingCtx(); ctx.filter = 'none'
+    drawEntity(ctx, { type: 'campfire', t: 0, fuel: 'deadwood' }, 0, 0, 32, { prop_campfire: 'F' })
+    assert.deepEqual(ctx.calls, ['F'])
+    assert.equal(ctx.filter, 'none')
   })
 })

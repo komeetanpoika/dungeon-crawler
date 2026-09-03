@@ -11,9 +11,9 @@ import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha } from '../systems/campfire.js'
-import { isCreature, creatureAlpha } from '../systems/creatures.js'
-import { ERUPT_TIME } from '../systems/maahinen.js'
-import { getMonsterDef, drawGeneratedMonster } from '../systems/monsters.js'
+import { creatureAlpha } from '../systems/creatures.js'
+import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
+import { getMonsterDef, drawGeneratedMonster, isStoryCreature } from '../systems/monsters.js'
 
 const TILE_SIZE = 32
 
@@ -123,20 +123,6 @@ function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg, heldWeapon = null) {
   ctx.restore()
 }
 
-// Leap episode creatures — each is four editor-native custom_<name>_00|01|10|11
-// 16px tiles assembled 2x2 into the same 64px footprint the cyclops uses.
-export const CREATURE_SPRITES = { nakki: 'custom_nakki', maahinen: 'custom_maahinen', sammunut: 'custom_sammunut' }
-export function drawCreature(ctx, sprites, name, px, py, S, { alpha = 1 } = {}) {
-  const base = CREATURE_SPRITES[name]
-  const prev = ctx.globalAlpha
-  ctx.globalAlpha = prev * alpha
-  for (const [q, dx, dy] of [['00', 0, 0], ['01', 1, 0], ['10', 0, 1], ['11', 1, 1]]) {
-    const s = sprites[`${base}_${q}`]
-    if (s) ctx.drawImage(s, px - S / 2 + dx * S, py - S / 2 + dy * S, S, S)
-  }
-  ctx.globalAlpha = prev
-}
-
 // Whether to draw the player this frame. Flickers while invulnerable (i-frames).
 export function isFlickerVisible(invulnTimer, interval = 0.06) {
   if (!(invulnTimer > 0)) return true
@@ -201,19 +187,33 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   if (entity.type === 'campfire') {
     const s = sprites.prop_campfire
     if (!s) return
-    const prev = ctx.globalAlpha
+    const prev = ctx.globalAlpha, prevF = ctx.filter
     ctx.globalAlpha = prev * campfireAlpha(entity)
+    if (entity.fuel === 'deadwood') ctx.filter = 'hue-rotate(185deg) saturate(0.45) brightness(1.25)'
     ctx.drawImage(s, px, py, S, S)
-    ctx.globalAlpha = prev
+    ctx.filter = prevF; ctx.globalAlpha = prev
     return
   }
   if (entity.type === 'echo') {
     const s = sprites.player_magic
-    if (!s) return
+    const fade = entity.fadeA ?? 0
+    if (!s || fade <= 0) return
+    const bob = Math.round(Math.sin((entity.t ?? 0) * 2.2 * Math.PI * 2) * 3)
     const prevA = ctx.globalAlpha, prevF = ctx.filter
-    ctx.globalAlpha = prevA * 0.5
+    ctx.fillStyle = `rgba(120,200,255,${(0.18 * fade).toFixed(3)})`
+    ctx.beginPath()
+    ctx.ellipse(px + S / 2, py + S - 2, S * 0.45, S * 0.18, 0, 0, Math.PI * 2)
+    ctx.fill()
     ctx.filter = 'hue-rotate(160deg) saturate(0.6)'
-    ctx.drawImage(s, px, py, S, S)
+    const trail = entity.trail ?? []
+    for (const [j, a] of [[2, 0.12], [1, 0.25]]) {
+      const tr = trail[j]
+      if (!tr) continue
+      ctx.globalAlpha = prevA * 0.55 * fade * a
+      ctx.drawImage(s, px + Math.round(tr.px - entity.px), py + Math.round(tr.py - entity.py) + bob, S, S)
+    }
+    ctx.globalAlpha = prevA * 0.55 * fade
+    ctx.drawImage(s, px, py + bob, S, S)
     ctx.filter = prevF; ctx.globalAlpha = prevA
     return
   }
@@ -732,7 +732,8 @@ function drawDragonBreath(ctx, dragon, camX, camY) {
 function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
   for (const e of entities) {
     if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
-    if (isCreature(e) && creatureAlpha(e, state) === 0) continue
+    if (e.dying > 0) continue
+    if (isStoryCreature(e) && creatureAlpha(e, state) === 0) continue
     if (!map[e.y]?.[e.x]?.visible) continue
     const px = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
     const py = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
@@ -965,13 +966,11 @@ export class Renderer {
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
-      if (isCreature(e)) {
-        const alpha = creatureAlpha(e, state)
-        if (alpha > 0) drawCreature(ctx, sprites, e.type, epx + S / 2, epy + S / 2, S, { alpha })
+      if (getMonsterDef(e.type)) {
+        drawGeneratedMonster(ctx, e, epx + S / 2, epy + S / 2, S, state)
         if (e.state === 'erupting') drawEruptRing(ctx, e, camX, camY)
       }
       else if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
-      else if (getMonsterDef(e.type)) drawGeneratedMonster(ctx, e, epx + S / 2, epy + S / 2, S, state)
       else drawEntity(ctx, e, epx, epy, S, sprites)
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)

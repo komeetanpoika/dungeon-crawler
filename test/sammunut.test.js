@@ -2,10 +2,10 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   makeSammunut, updateSammunut, nearestFire, inFirelight, sammunutVisible,
-  FIRELIGHT, DRIFT, TOUCH, TOUCH_TIME, DRAIN_PER_S, WANDER_REPICK,
-} from '../renderer/systems/sammunut.js'
+  FIRELIGHT, DRIFT, TOUCH, TOUCH_TIME, DRAIN_PER_S, WANDER_REPICK, BURN_DPS,
+} from '../renderer/systems/monsters/sammunut.js'
 import { makeCampfire } from '../renderer/systems/campfire.js'
-import { strikeCreature, creatureAlpha } from '../renderer/systems/creatures.js'
+import { strikeCreature, creatureAlpha, CREATURE_HIT, CREATURE_ALPHA, hurtCreature } from '../renderer/systems/creatures.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
@@ -20,12 +20,17 @@ function openMap(w = 30, h = 30) {
   return map
 }
 
-function makePlayer(x, y, overrides = {}) {
+// Two call shapes: makePlayer(x, y, overrides) and makePlayer({ x, y, ...overrides }).
+function makePlayer(x = 0, y = 0, overrides = {}) {
+  if (x !== null && typeof x === 'object') ({ x = 0, y = 0, ...overrides } = x)
   return { x, y, px: x * S + 16, py: y * S + 16, stamina: 100, staminaRegenT: 0, trance: 0, ...overrides }
 }
 
-function makeState(sammunut, player, entities, map = openMap()) {
-  return { player, map, entities: entities ?? [sammunut], projectiles: [], log: [], sfx: makeSfx() }
+// entities defaults to [sammunut, ...extra] so callers can pass just the
+// extra entities (e.g. fires) without re-listing the sammunut itself.
+function makeState(sammunut, player, extraEntities, map = openMap()) {
+  const entities = extraEntities ?? [sammunut]
+  return { player, map, entities, projectiles: [], log: [], sfx: makeSfx() }
 }
 
 describe('makeSammunut', () => {
@@ -220,26 +225,141 @@ describe('strikeCreature — sammunut', () => {
     assert.equal(r.entity.hp, 18)
   })
 
-  it('damages inside firelight', () => {
+  it('absorbs damage at an ordinary fire too — visible there, but vulnerable only in deadwood light', () => {
     const fire = makeCampfire(5, 5)
+    const e = makeSammunut(5, 5)
+    const state = { player: makePlayer(0, 0), entities: [e, fire] }
+    const r = strikeCreature(e, state, 6)
+    assert.equal(r.absorbed, true)
+    assert.equal(r.cue, 'chop')
+    assert.equal(r.entity.hp, 18)
+  })
+
+  it('damages inside deadwood firelight — a flat 1 regardless of the swing, and starts a flee', () => {
+    const fire = makeCampfire(5, 5, { fuel: 'deadwood' })
     const e = makeSammunut(5, 5)
     const state = { player: makePlayer(0, 0), entities: [e, fire] }
     const r = strikeCreature(e, state, 6)
     assert.equal(r.absorbed, false)
     assert.equal(r.cue, 'melee-hit')
-    assert.equal(r.entity.hp, 12)
+    assert.equal(r.entity.hp, 17)
     assert.equal(r.entity.inCombat, true)
+    assert.equal(r.entity.state, 'fleeing')
   })
 })
 
 describe('CREATURE_ALPHA.sammunut', () => {
-  it('is 0.85 when visible, 0 when not', () => {
-    const fire = makeCampfire(5, 5)
+  // fadeA ramps rather than snapping now (see 'sammunut visibility fade'
+  // below), so a single long update settles it fully toward its target
+  // instead of asserting an instant 0.85/0. The fire is eternal so it can't
+  // be snuffed mid-update, keeping "visible" stable across the long step.
+  it('settles to 0.85 when visible, to 0 when not, after a long update', () => {
+    const fire = makeCampfire(5, 5, { eternal: true })
     const e = makeSammunut(5, 5)
-    const state = { player: makePlayer(0, 0), entities: [e, fire] }
-    assert.equal(creatureAlpha(e, state), 0.85)
+    const state = makeState(e, makePlayer(0, 0), [e, fire])
+    updateSammunut(e, state, 2)
+    assert.ok(Math.abs(creatureAlpha(e, state) - 0.85) < 1e-6)
+
     const hidden = makeSammunut(20, 20)
-    const state2 = { player: makePlayer(0, 0), entities: [hidden] }
+    const state2 = makeState(hidden, makePlayer(0, 0), [hidden])
+    updateSammunut(hidden, state2, 2)
     assert.equal(creatureAlpha(hidden, state2), 0)
+  })
+})
+
+const fireAt = (x, y, fuel) => makeCampfire(x, y, { fuel })
+
+describe('sammunut and deadwood fire', () => {
+  it('drifts to an ordinary fire and snuffs it, clearing shun', () => {
+    const w = { ...makeSammunut(10, 10), shun: true }
+    const fire = fireAt(10, 11)
+    const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [fire])
+    for (let i = 0; i < 60; i++) updateSammunut(w, state, 0.05)
+    assert.equal(state.entities.includes(fire), false)
+    assert.equal(w.shun, false)
+  })
+  it('cannot snuff a deadwood fire; hovers at it and burns, driving the burn channel', () => {
+    const w = makeSammunut(10, 10)
+    const fire = fireAt(10, 11, 'deadwood')
+    const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [fire])
+    updateSammunut(w, state, 0.5)
+    assert.equal(state.entities.includes(fire), true)
+    assert.ok(w.hp < 18)
+    assert.ok(Math.abs(w.hp - (18 - BURN_DPS * 0.5)) < 1e-6)
+    assert.ok(Math.abs(w.burn - (1 - w.hp / 18)) < 1e-6)
+  })
+  it('crossing a third makes it flee and shun deadwood fires', () => {
+    const w = { ...makeSammunut(10, 10), hp: 12.1 }
+    const fire = fireAt(10, 11, 'deadwood')
+    const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [fire])
+    updateSammunut(w, state, 0.1)
+    assert.equal(w.state, 'fleeing')
+    assert.equal(w.shun, true)
+    assert.equal(w.burnStage, 1)
+    const before = Math.hypot(w.px - fire.px, w.py - fire.py)
+    updateSammunut(w, state, 0.5)
+    assert.ok(Math.hypot(w.px - fire.px, w.py - fire.py) > before)
+    // Pin the wander rng so the wraith drifts to the far map corner instead
+    // of wandering back into the fire's light during the drift below.
+    w.rng = () => 0.99
+    for (let i = 0; i < 80; i++) updateSammunut(w, state, 0.05)
+    assert.equal(w.state, 'drift')
+    assert.equal(w.shun, true)          // still shunning: no ordinary fire snuffed yet
+  })
+  it('a shunning wraith ignores deadwood fires but not ordinary ones', () => {
+    const w = { ...makeSammunut(10, 10), shun: true }
+    const grey = fireAt(10, 11, 'deadwood'), plain = fireAt(20, 10)
+    const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [grey, plain])
+    updateSammunut(w, state, 0.1)
+    assert.equal(w.target, plain)
+  })
+  it('burning to 0 records the kill through hurtCreature', () => {
+    const w = { ...makeSammunut(10, 10), hp: 0.1, burnStage: 2 }
+    const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [fireAt(10, 11, 'deadwood')])
+    updateSammunut(w, state, 0.1)
+    assert.equal(state.creatureKills.sammunut, true)
+    assert.ok(state.sfx.cues.some(c => c.name === 'enemy-death'), 'enemy-death cue recorded')
+  })
+})
+
+describe('sammunut player hits', () => {
+  it('outside deadwood light hits are absorbed with a dull cue and a thought', () => {
+    const w = makeSammunut(10, 10)
+    const state = makeState(w, makePlayer(), [fireAt(10, 11)])   // ordinary fire: visible, not vulnerable
+    const r = CREATURE_HIT.sammunut(w, state, 5)
+    assert.equal(r.absorbed, true)
+    assert.equal(r.cue, 'chop')
+    assert.equal(r.think, 'Your blade passes through it.')
+  })
+  it('inside deadwood light a hit is a flat 1 and makes it flee and shun', () => {
+    const w = makeSammunut(10, 10)
+    const state = makeState(w, makePlayer(), [fireAt(10, 11, 'deadwood')])
+    const r = CREATURE_HIT.sammunut(w, state, 5, { source: 'player' })
+    assert.equal(r.absorbed, false)
+    assert.equal(r.entity.hp, 17)
+    assert.equal(r.entity.state, 'fleeing')
+    assert.equal(r.entity.shun, true)
+  })
+  it('fire damage is plain damage', () => {
+    const r = CREATURE_HIT.sammunut(makeSammunut(1, 1), { entities: [] }, 0.4, { source: 'fire' })
+    assert.ok(Math.abs(r.entity.hp - 17.6) < 1e-9)
+    assert.equal(r.absorbed, false)
+  })
+})
+
+describe('sammunut visibility fade', () => {
+  it('fades in inside firelight and out beyond it instead of snapping', () => {
+    const w = makeSammunut(10, 10)
+    const fire = fireAt(10, 11)
+    const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [fire])
+    updateSammunut(w, state, 0.1)
+    const a1 = CREATURE_ALPHA.sammunut(w, state)
+    assert.ok(a1 > 0 && a1 < 0.85, String(a1))
+    state.entities = state.entities.filter(e => e !== fire)
+    w.fadeA = 1
+    updateSammunut(w, state, 0.1)
+    const a2 = CREATURE_ALPHA.sammunut(w, state)
+    assert.ok(a2 > 0 && a2 < 0.85, String(a2))
+    assert.ok(w.flicker > 0)
   })
 })

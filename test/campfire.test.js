@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CAMPFIRE_COST, CAMPFIRE_DURATION, canBuildCampfire, buildSpot, makeCampfire, spendLumber,
-  tickCampfires, campfireAlpha, cookMeat,
+  tickCampfires, campfireAlpha, cookMeat, isDeadwoodFire,
 } from '../renderer/systems/campfire.js'
 import { makeItem } from '../renderer/systems/inventory.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -34,6 +34,10 @@ describe('building', () => {
     assert.deepEqual(buildSpot(m, [{ x: 2, y: 3 }], p), { x: 4, y: 3 })
     m[3][2].tile = TILE.WALL; m[3][4].tile = TILE.WALL; m[2][3].tile = TILE.WALL; m[4][3].tile = TILE.WALL
     assert.equal(buildSpot(m, [], p), null)
+  })
+  it('buildSpot never treats the Echo as an occupant blocking the tile', () => {
+    const m = grass(); const p = mkPlayer()
+    assert.deepEqual(buildSpot(m, [{ type: 'echo', x: 2, y: 3 }], p), { x: 2, y: 3 })
   })
   it('makeCampfire is a fresh fire centred on its tile', () => {
     assert.deepEqual(makeCampfire(2, 3), { type: 'campfire', x: 2, y: 3, px: 80, py: 112, t: 0 })
@@ -96,5 +100,20 @@ describe('cooking', () => {
     const p = mkPlayer([makeItem('potion')])
     assert.equal(cookMeat(p), 0)
     assert.equal(p.inventory.length, 1)
+  })
+})
+
+describe('deadwood fuel', () => {
+  it('builds from three deadwood and stamps fuel on the fire', () => {
+    const p = { inventory: [makeItem('deadwood', 3)], maxInventory: 10 }
+    assert.equal(canBuildCampfire(p, 'deadwood').ok, true)
+    assert.equal(canBuildCampfire(p, 'lumber').ok, false)
+    spendLumber(p, 'deadwood')
+    assert.equal(p.inventory.length, 0)
+    const f = makeCampfire(2, 3, { fuel: 'deadwood' })
+    assert.equal(f.fuel, 'deadwood')
+    assert.equal(isDeadwoodFire(f), true)
+    assert.equal('fuel' in makeCampfire(2, 3), false)
+    assert.equal(isDeadwoodFire(makeCampfire(2, 3)), false)
   })
 })

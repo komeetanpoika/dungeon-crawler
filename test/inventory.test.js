@@ -236,3 +236,7 @@ describe('lumber and cooked meat', () => {
     assert.equal(itemFromContents({ type: 'fleece' }).kind, 'fleece')
   })
 })
+
+describe('deadwood', () => {
+  it('deadwood is a stackable kind', () => assert.equal(makeItem('deadwood', 2).count, 2))
+})

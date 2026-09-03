@@ -3,7 +3,7 @@
 // imports; game.js wires onArrive/tick through the epCtx.
 import { poiCell, checkDeliveries } from '../leap.js'
 import { HARVEST } from '../lumber.js'
-import { isWalkable, weaponContents } from '../entities.js'
+import { isWalkable, weaponContents, occupiesCell } from '../entities.js'
 import { itemFromContents, autoEquipOnPickup } from '../inventory.js'
 import { NPC_SPECIES } from '../../data/npcs.js'
 import { sfx } from '../sfx.js'
@@ -80,7 +80,7 @@ function setVillageHostile(state, hostile) {
 function freeAdjTile(state) {
   const { player, map } = state
   return [[-1, 0], [1, 0], [0, -1], [0, 1]].map(([dx, dy]) => ({ x: player.x + dx, y: player.y + dy }))
-    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x === t.x && e.y === t.y)) ?? null
+    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => occupiesCell(e) && e.x === t.x && e.y === t.y)) ?? null
 }
 
 // Whether the pick could land directly in the sack/hand right now: an empty
@@ -174,7 +174,7 @@ export function burrowOpen(map, mapData) {
 function spawnMaahinen(ctx) {
   const spot = poiCell(ctx.mapData, 'lair')
   if (!spot) { console.warn('fold: no lair POI — the Maahinen cannot spawn'); return false }
-  ctx.spawn([{ kind: 'creature', creature: 'maahinen', x: spot.x, y: spot.y }])
+  ctx.spawn([{ kind: 'maahinen', x: spot.x, y: spot.y }])
   return true
 }
 

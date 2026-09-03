@@ -3,7 +3,7 @@
 // imports; game.js wires onArrive/tick through the epCtx.
 import { poiCell } from '../leap.js'
 import { makeCampfire } from '../campfire.js'
-import { isWalkable } from '../entities.js'
+import { isWalkable, occupiesCell } from '../entities.js'
 import { sfx } from '../sfx.js'
 import { think } from '../feedback.js'
 
@@ -49,7 +49,7 @@ function spawnWraith(ctx) {
   const { state, flags } = ctx
   const spot = sammunutSpot(state.map, state.player)
   if (!spot) { console.warn(`hermit: no spot ${SAMMUNUT_MIN_DIST}+ tiles from the player — the Sammunut cannot spawn`); return }
-  ctx.spawn([{ kind: 'creature', creature: 'sammunut', x: spot.x, y: spot.y }])
+  ctx.spawn([{ kind: 'sammunut', x: spot.x, y: spot.y }])
   if (!flags.sammunut_spawned) { ctx.set('sammunut_spawned'); ctx.persist() }
 }
 
@@ -63,7 +63,7 @@ function relightHearth(ctx) {
   if (!hearth) return
   const existing = hearthFireAt(state.entities, hearth)
   if (existing?.eternal) return
-  state.entities.push(makeCampfire(hearth.x, hearth.y, { eternal: true }))
+  state.entities.push(makeCampfire(hearth.x, hearth.y, { eternal: true, fuel: 'deadwood' }))
 }
 
 // Arrival — a fresh load or a waystone journey; a cave dive stashes the
@@ -85,9 +85,13 @@ function tickHearth(ctx) {
   const hearth = poiCell(mapData, 'hearth')
   const fire = hearth && hearthFireAt(state.entities, hearth)
   if (!fire) return
+  if (fire.fuel !== 'deadwood') {
+    if (!fire.gutterSaid) { fire.gutterSaid = true; think(state, 'It gutters. Not his wood.') }
+    return
+  }
   ctx.set('hearth_lit')
   fire.eternal = true
-  const occupied = state.entities.some(e => e !== fire && e.x === hearth.x && e.y === hearth.y)
+  const occupied = state.entities.some(e => e !== fire && occupiesCell(e) && e.x === hearth.x && e.y === hearth.y)
   if (!occupied) {
     fire.x = hearth.x
     fire.y = hearth.y
@@ -113,7 +117,7 @@ function tickWraith(ctx) {
 }
 
 // delta is unused here — the Sammunut's own drift/touch timers run off the
-// main creature-update loop (updateCreature), not this tick.
+// main story-creature update loop (CREATURE_UPDATE), not this tick.
 export function tick(ctx, delta) {
   tickHearth(ctx)
   tickWraith(ctx)

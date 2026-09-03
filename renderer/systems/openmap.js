@@ -56,6 +56,7 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
   const anchor = data.pois.find(p => p.kind === 'village' || p.kind === 'camp') ?? null
   const caves = data.pois.filter(p => p.kind === 'dungeon_entrance')
   const dead = new Set(record?.dead ?? [])
+  const tame = new Set(EPISODES[data.name]?.tame ?? [])
   const spawns = []
   const place = (species, i, pick) => {
     const id = `npc:${data.name}:${i}`
@@ -68,7 +69,7 @@ export function npcSpawnsForMap(data, { record = null, rng = Math.random } = {})
     // a reloaded wrath only re-arms the villagers who can actually fight —
     // onNpcHit never turns a flee species hostile, so nor may a saved record
     spawns.push({ kind: 'npc', species, x: t.x, y: t.y, id,
-      hostile: !!(def.hostile || (record?.hostile && def.faction === 'village' && def.onHit === 'fight')) })
+      hostile: !tame.has(species) && !!(def.hostile || (record?.hostile && def.faction === 'village' && def.onHit === 'fight')) })
   }
   const free = (x, y) => walkable(x, y) && !taken.has(`${x},${y}`)
   const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))

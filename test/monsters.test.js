@@ -1,9 +1,10 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerMonsters, clearMonsters, getMonsterDef, monsterNames, monstersForDepth,
-         makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster, monstersForOpenMap } from '../renderer/systems/monsters.js'
+         makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster, monstersForOpenMap,
+         isStoryCreature } from '../renderer/systems/monsters.js'
 import { getAIConfig } from '../renderer/data/enemy-ai.js'
-import { CREATURE_TYPES } from '../renderer/systems/creatures.js'
+import { isEnemy } from '../renderer/systems/factions.js'
 
 const FAKE_RIG = {
   RIG_ID: 'fakerig',
@@ -59,13 +60,27 @@ describe('registerMonsters', () => {
     assert.equal(getMonsterDef('__proto__'), null)
     assert.ok(!monsterNames().includes('__proto__'))
   })
-  it('a failing hooks module is non-fatal and never touches CREATURE_TYPES', async () => {
-    const before = [...CREATURE_TYPES]
+  it('a failing hooks module is non-fatal — the def still registers', async () => {
     const n = await registerMonsters([{ ...DEF, hooks: true }],
       { loadRig: rigLoader({ fakerig: FAKE_RIG }), loadHooks: async () => { throw new Error('boom') }, warn: () => {} })
     assert.equal(n, 1)
     assert.ok(getMonsterDef('boarhound'))
-    assert.deepEqual([...CREATURE_TYPES], before)
+  })
+
+  // The three leap-episode creatures are ordinary registry monsters now: the
+  // defs on disk must load against the real rigs with no warnings, and the
+  // driver/passive flags they carry are what game.js and factions read.
+  it('the three story creature defs on disk load against their rigs', async () => {
+    const fs = await import('node:fs')
+    const defs = ['nakki', 'maahinen', 'sammunut'].map(n => JSON.parse(fs.readFileSync(`renderer/data/monsters/${n}.json`, 'utf8')))
+    const rigs = { quadruped: await import('../renderer/render/monster-rigs/quadruped.js'),
+                   lurker: await import('../renderer/render/monster-rigs/lurker.js'),
+                   wraith: await import('../renderer/render/monster-rigs/wraith.js') }
+    assert.equal(await registerMonsters(defs, { loadRig: async id => rigs[id], loadHooks: async () => {}, warn: m => { throw new Error(m) } }), 3)
+    assert.equal(getMonsterDef('nakki').behavior.passive, true)
+    assert.equal(isStoryCreature({ type: 'maahinen' }), true)
+    assert.equal(isEnemy({ type: 'nakki' }), false)
+    assert.equal(isEnemy({ type: 'maahinen' }), true)
   })
 })
 
@@ -194,5 +209,23 @@ describe('monstersForOpenMap', () => {
   it('count defaults to 1', async () => {
     await load([{ ...DEF, spawn: { openMaps: { depths: [7, 18] } } }])
     assert.deepEqual(monstersForOpenMap(12), [{ name: 'boarhound', count: 1 }])
+  })
+})
+
+describe('entityPose channels', () => {
+  it('passes sink/burn/flicker through from the entity, defaulting to 0', () => {
+    assert.deepEqual([entityPose({}).sink, entityPose({}).burn, entityPose({}).flicker], [0, 0, 0])
+    const p = entityPose({ sink: 0.5, burn: 0.25, flicker: 1 })
+    assert.deepEqual([p.sink, p.burn, p.flicker], [0.5, 0.25, 1])
+  })
+})
+
+describe('isStoryCreature', () => {
+  beforeEach(clearMonsters)
+  it('is true only for a registry def with behavior.driver === "hook"', async () => {
+    await load([{ ...DEF, name: 'hooked', behavior: { driver: 'hook' } }, { ...DEF, name: 'plain' }])
+    assert.equal(isStoryCreature({ type: 'hooked' }), true)
+    assert.equal(isStoryCreature({ type: 'plain' }), false)
+    assert.equal(isStoryCreature({ type: 'guard' }), false)
   })
 })

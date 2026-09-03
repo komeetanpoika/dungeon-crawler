@@ -2,10 +2,14 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME, spriteKeyFor, rollNpcDrop } from '../renderer/systems/npc.js'
+import { makeNpc, GOALS, buildCtx, selectGoal, updateNpc, onNpcHit, FLEE_TIME, STARTLE_TIME, interactNpc, nearestPeacefulNpc, REACT_TIME, spriteKeyFor, rollNpcDrop, BITE_DMG, BITE_INTERVAL } from '../renderer/systems/npc.js'
 import { buildNavGrid, findPath, passable } from '../renderer/systems/nav.js'
-import { getEnemyWeapon } from '../renderer/systems/enemy-attack.js'
+import { getEnemyWeapon, stepEnemyAttack } from '../renderer/systems/enemy-attack.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
+import { makeSfx } from '../renderer/systems/sfx.js'
+// Side-effect import: registers CREATURE_HIT.maahinen so hurtCreature's
+// wolf-bite damage lands (without forcing a dive) in the hunt_prey tests.
+import '../renderer/systems/monsters/maahinen.js'
 
 const S = 32
 // 20x14 open field with a solid 3x3 block at (10..12, 5..7)
@@ -20,7 +24,11 @@ function makeState(map, playerTile, entities = []) {
     px: playerTile.x * S + S / 2, py: playerTile.y * S + S / 2, maxHp: 10, hp: 10 }
   return { map, player, entities, feedback: null, log: [], sfx: { cues: [], muted: false } }
 }
-const npcAt = (species, x, y, extra = {}) => makeNpc({ species, id: `npc:test:${x},${y}`, x, y, hostile: false, ...extra })
+// No `hostile` default here: an explicit `false` (as makeNpc's own default
+// used to be) would now pin the NPC non-hostile even for a hostile-on-sight
+// species like wolf/bear — leave it unset so makeNpc falls back to the
+// species default, and pass `{ hostile: ... }` in `extra` to override.
+const npcAt = (species, x, y, extra = {}) => makeNpc({ species, id: `npc:test:${x},${y}`, x, y, ...extra })
 
 describe('makeNpc', () => {
   it('shapes an entity from its species', () => {
@@ -334,5 +342,61 @@ describe('hostile animals and drops', () => {
     assert.equal(rollNpcDrop(hen, () => 0.9), null)
     assert.deepEqual(rollNpcDrop(npcAt('bear', 3, 3), () => 0.99), { type: 'meat' })
     assert.equal(rollNpcDrop(npcAt('villager', 3, 3), () => 0), null)
+  })
+})
+
+describe('hunt_prey', () => {
+  const S = 32
+  const openState = (wolf, prey) => {
+    const map = createMap(30, 30)
+    for (let y = 1; y < 29; y++) for (let x = 1; x < 29; x++) map[y][x].tile = TILE.FLOOR
+    return { map, player: { x: 1, y: 1, px: 48, py: 48, hp: 10 }, entities: [wolf, prey], sfx: makeSfx(), feedback: { floats: [] } }
+  }
+  it('a tame wolf chooses hunt_prey for a surfaced maahinen in sight and walks at it', () => {
+    const wolf = makeNpc({ species: 'wolf', id: 'w', x: 5, y: 5, hostile: false })
+    const prey = { type: 'maahinen', state: 'surfaced', hp: 36, maxHp: 36, x: 10, y: 5, px: 10 * S + 16, py: 5 * S + 16 }
+    const state = openState(wolf, prey)
+    const ctx = buildCtx(wolf, state, 0.05)
+    assert.equal(selectGoal(wolf, ctx), 'hunt_prey')
+    const intent = GOALS.hunt_prey.run(wolf, ctx, 0.05)
+    assert.deepEqual(intent, { mode: 'patrol', target: { x: 10, y: 5 }, speed: ctx.cfg.speed })
+  })
+  it('ignores a submerged or dying maahinen and one out of range', () => {
+    const wolf = makeNpc({ species: 'wolf', id: 'w', x: 5, y: 5, hostile: false })
+    for (const prey of [
+      { type: 'maahinen', state: 'submerged', hp: 36, x: 10, y: 5, px: 10 * S + 16, py: 5 * S + 16 },
+      { type: 'maahinen', state: 'surfaced', hp: 0, dying: 0.5, x: 10, y: 5, px: 10 * S + 16, py: 5 * S + 16 },
+      { type: 'maahinen', state: 'surfaced', hp: 36, x: 25, y: 5, px: 25 * S + 16, py: 5 * S + 16 },
+    ]) assert.equal(selectGoal(wolf, buildCtx(wolf, openState(wolf, prey), 0.05)), 'wander')
+  })
+  it('within reach it bites every BITE_INTERVAL for BITE_DMG through hurtCreature', () => {
+    const wolf = makeNpc({ species: 'wolf', id: 'w', x: 5, y: 5, hostile: false })
+    const prey = { type: 'maahinen', state: 'surfaced', hp: 36, maxHp: 36, x: 5, y: 5, px: wolf.px + 20, py: wolf.py }
+    const state = openState(wolf, prey)
+    const ctx = buildCtx(wolf, state, 0.05)
+    selectGoal(wolf, ctx)
+    assert.deepEqual(GOALS.hunt_prey.run(wolf, ctx, 0.05), { mode: 'hold' })
+    assert.equal(prey.hp, 36 - BITE_DMG)
+    GOALS.hunt_prey.run(wolf, ctx, 0.05)
+    assert.equal(prey.hp, 36 - BITE_DMG)
+    GOALS.hunt_prey.run(wolf, ctx, BITE_INTERVAL)
+    assert.equal(prey.hp, 36 - 2 * BITE_DMG)
+    assert.ok(state.sfx.cues.some(c => c.name === 'melee-hit'))
+  })
+  it('a bite sets a cosmetic claw swing aimed at the prey, which can never strike the player', () => {
+    const wolf = makeNpc({ species: 'wolf', id: 'w', x: 5, y: 5, hostile: false })
+    const prey = { type: 'maahinen', state: 'surfaced', hp: 36, maxHp: 36, x: 5, y: 5, px: wolf.px + 20, py: wolf.py }
+    const state = openState(wolf, prey)
+    // Player standing right on the wolf, well inside every weapon's reach.
+    state.player = { x: 5, y: 5, px: wolf.px, py: wolf.py, hp: 10, invulnTimer: 0 }
+    const ctx = buildCtx(wolf, state, 0.05)
+    selectGoal(wolf, ctx)
+    GOALS.hunt_prey.run(wolf, ctx, 0.05)
+    assert.ok(wolf.attack, 'expected a swing to be started')
+    assert.equal(wolf.attack.weaponId, 'claw')
+    assert.equal(wolf.attack.phase, 'swing')
+    assert.ok(Math.abs(wolf.attack.angle - Math.atan2(prey.py - wolf.py, prey.px - wolf.px)) < 1e-6)
+    stepEnemyAttack(wolf, state, 0.01)
+    assert.equal(state.player.hp, 10, 'the cosmetic swing must never damage the player')
   })
 })

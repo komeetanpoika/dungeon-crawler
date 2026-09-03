@@ -6,9 +6,8 @@ import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeCampfire, tickCampfires } from '../renderer/systems/campfire.js'
-import { makeCreature } from '../renderer/systems/creatures.js'
+import { makeSammunut } from '../renderer/systems/monsters/sammunut.js'
 import { EPISODES } from '../renderer/data/leaps.js'
-import '../renderer/systems/sammunut.js' // registers CREATURE_MAKE.sammunut etc.
 
 const S = 32
 const N = 40
@@ -53,13 +52,12 @@ function makeSpies() {
   }
 }
 
-// Mirrors game.js's buildEntities 'creature' case, as in episodes-ferry.test.js.
+// Mirrors game.js's buildEntities registry-monster case, as in episodes-ferry.test.js.
 function spawnInto(state) {
   return spawns => {
     for (const s of spawns) {
-      if (s.kind !== 'creature') continue
-      const c = makeCreature(s.creature, s.x, s.y)
-      if (c) state.entities.push({ ...c, px: s.x * S + 16, py: s.y * S + 16 })
+      if (s.kind !== 'sammunut') continue
+      state.entities.push({ ...makeSammunut(s.x, s.y), px: s.x * S + 16, py: s.y * S + 16 })
     }
   }
 }
@@ -87,6 +85,10 @@ describe('EPISODES marsh-3-hermit data', () => {
     const ep = EPISODES['marsh-3-hermit']
     assert.deepEqual(ep.villagerLines.hermit, ['…'])
     assert.deepEqual(ep.resolvedLines, { hermit: ['You came back.', 'The fire held. I was wrong, Lauri.'] })
+  })
+
+  it("the hermit's woodpile carries deadwood", () => {
+    assert.deepEqual(EPISODES['marsh-3-hermit'].houses['hermit hut'].pickups.find(p => p.type === 'deadwood'), { type: 'deadwood', count: 3 })
   })
 })
 
@@ -152,8 +154,8 @@ describe('hearthFireAt', () => {
 })
 
 describe('tick — hearth detection', () => {
-  it('an adjacent fire is marked eternal, the flag is set, moved onto the hearth cell, cued and logged', () => {
-    const fire = makeCampfire(HEARTH.x + 1, HEARTH.y, {})
+  it('an adjacent deadwood fire is marked eternal, the flag is set, moved onto the hearth cell, cued and logged', () => {
+    const fire = makeCampfire(HEARTH.x + 1, HEARTH.y, { fuel: 'deadwood' })
     state.entities.push(fire)
     tick(ctx, 0)
     assert.equal(ctx.flags.hearth_lit, true)
@@ -168,7 +170,7 @@ describe('tick — hearth detection', () => {
   })
 
   it('a fire two tiles away does nothing', () => {
-    const fire = makeCampfire(HEARTH.x + 2, HEARTH.y, {})
+    const fire = makeCampfire(HEARTH.x + 2, HEARTH.y, { fuel: 'deadwood' })
     state.entities.push(fire)
     tick(ctx, 0)
     assert.equal(ctx.flags.hearth_lit, undefined)
@@ -179,11 +181,28 @@ describe('tick — hearth detection', () => {
 
   it('does nothing once hearth_lit is already set', () => {
     ctx.set('hearth_lit')
-    const fire = makeCampfire(HEARTH.x + 1, HEARTH.y, {})
+    const fire = makeCampfire(HEARTH.x + 1, HEARTH.y, { fuel: 'deadwood' })
     state.entities.push(fire)
     tick(ctx, 0)
     assert.equal(fire.eternal, undefined)
     assert.equal(spies.calls.persist, 0)
+  })
+
+  it('a lumber fire on the hearth gutters: no hearth_lit, one thought per fire', () => {
+    const fire = makeCampfire(HEARTH.x, HEARTH.y)
+    state.entities.push(fire)
+    tick(ctx, 0.1); tick(ctx, 0.1)
+    assert.equal(ctx.flags.hearth_lit, undefined)
+    assert.equal(state.log.filter(l => /gutters/.test(l.text ?? l)).length, 1)
+  })
+
+  it('a deadwood fire on the hearth lights it and becomes eternal', () => {
+    state.entities.push(makeCampfire(HEARTH.x, HEARTH.y, { fuel: 'deadwood' }))
+    tick(ctx, 0.1)
+    assert.equal(ctx.flags.hearth_lit, true)
+    const fire = hearthFireAt(state.entities, HEARTH)
+    assert.equal(fire.eternal, true)
+    assert.equal(fire.fuel, 'deadwood')
   })
 })
 
@@ -237,6 +256,13 @@ describe('onArrive — hearth re-creation', () => {
   it('without hearth_lit, no campfire is created', () => {
     onArrive(ctx)
     assert.equal(state.entities.some(e => e.type === 'campfire'), false)
+  })
+
+  it('relighting on arrival re-derives a deadwood eternal fire', () => {
+    ctx.set('hearth_lit')
+    onArrive(ctx)
+    const fire = hearthFireAt(state.entities, HEARTH)
+    assert.deepEqual([fire.eternal, fire.fuel], [true, 'deadwood'])
   })
 })
 

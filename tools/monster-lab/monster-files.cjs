@@ -11,14 +11,13 @@ const NAME_RE = /^[a-z0-9_]+$/
 // these names would overwrite a built-in enemy-ai row or hijack the
 // buildEntities/canvas draw dispatch for that kind — see the comment there
 // for the full list of sources (enemy-ai.js BASE keys, map.js buildArena's
-// ENEMY_KINDS, other game.js buildEntities spawn kinds, CREATURE_TYPES).
+// ENEMY_KINDS, other game.js buildEntities spawn kinds).
 const RESERVED_NAMES = new Set([
   'guard', 'monster', 'dragon', 'crab', 'wizard', 'cyclops', 'npc',
   'dragon_boss', 'dragon_boss_pixel',
   'trap', 'puzzle', 'weapon', 'ranged', 'potion', 'door', 'exit_door', 'chest',
   'prop', 'dungeon_entrance', 'fountain_wall', 'fountain_basin', 'talent_trigger',
   'wild_mushroom', 'floating_pickup', 'echo', 'creature',
-  'nakki', 'maahinen', 'sammunut',
 ])
 
 function readMonsters(dir) {

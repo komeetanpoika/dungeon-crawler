@@ -62,17 +62,10 @@ export function missingSpawn(mapData) {
   return at(mapData.playerSpawn.x, mapData.playerSpawn.y)
 }
 
-// One Echo per declared spot, standing on the POI cell it speaks from. A spot
-// whose POI the map doesn't actually declare is silently dropped (poiCell(...)
-// -> null), matching the "every echo spot names a POI the map declares" rule.
-export function echoSpawns(mapData) {
-  const ep = episodeFor(mapData)
-  return (ep?.echoSpots ?? []).map((s, i) => ({ ...poiCell(mapData, s.fromPoi), kind: 'echo', spot: i }))
-    .filter(s => Number.isFinite(s.x)).map(({ kind, x, y, spot }) => ({ kind, x, y, spot }))
-}
-
-export function echoAdjacent(entities, player) {
-  return entities.find(e => e.type === 'echo' && Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 1) ?? null
+// One Echo per leap map, spawned on the player's arrival cell; it follows
+// from there (systems/echo.js). Non-leap maps get none.
+export function echoSpawns(mapData, at) {
+  return episodeFor(mapData) ? [{ kind: 'echo', x: at.x, y: at.y }] : []
 }
 
 // The per-map episode ctx handed to onArrive/tick. `state` is a live getter

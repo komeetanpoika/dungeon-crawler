@@ -17,8 +17,8 @@ export const TREES = {
   ow_tree_small:        { hp: 3, yield: 1, cells: 1 },
   ow_tree_small_autumn: { hp: 3, yield: 1, cells: 1 },
   ow_tree_apple:        { hp: 3, yield: 1, cells: 1 },
-  ow_deadtree_0:        { hp: 2, yield: 1, cells: 1 },
-  ow_deadtree_1:        { hp: 2, yield: 1, cells: 1 },
+  ow_deadtree_0:        { hp: 2, yield: 1, cells: 1, drop: 'deadwood' },
+  ow_deadtree_1:        { hp: 2, yield: 1, cells: 1, drop: 'deadwood' },
   ow_tree_pine_trunk:   { hp: 4, yield: 2, cells: 2 },
   ow_tree_autumn_trunk: { hp: 4, yield: 2, cells: 2 },
   // The autumn canopy art does double duty: gen-forest.mjs stamps it both as
@@ -139,17 +139,17 @@ function clearRock(map, x, y) {
 // weapon doesn't carry deals no damage.
 export function harvest(map, x, y, weapon) {
   const t = resolveHarvest(map, x, y)
-  if (!t || t.x !== x || t.y !== y) return { felled: false, yield: 0, kind: null }
+  if (!t || t.x !== x || t.y !== y) return { felled: false, yield: 0, kind: null, drop: null }
   const { def } = t
   const power = weapon?.[def.tool]
-  if (!power) return { felled: false, yield: 0, kind: null }
+  if (!power) return { felled: false, yield: 0, kind: null, drop: null }
   const kind = def.tool === 'chop' ? 'tree' : 'rock'
   const cell = map[y][x]
   cell.chopHp = (cell.chopHp ?? def.hp) - power
-  if (cell.chopHp > 0) return { felled: false, yield: 0, kind }
+  if (cell.chopHp > 0) return { felled: false, yield: 0, kind, drop: null }
   if (def.tool === 'chop') fell(map, x, y, def)
   else clearRock(map, x, y)
-  return { felled: true, yield: def.yield, kind }
+  return { felled: true, yield: def.yield, kind, drop: def.drop ?? 'lumber' }
 }
 
 // Thin wrapper: trees only, same shape as before.

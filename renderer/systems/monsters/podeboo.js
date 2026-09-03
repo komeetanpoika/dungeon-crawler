@@ -4,7 +4,8 @@
 // while healthy, twin sweeping beams at or below half HP. Runs as a
 // CREATURE_UPDATE supplement AFTER brain+act (see systems/monsters.js), so
 // "stopping" means undoing this frame's movement, which also idles the gait.
-// Never registered in CREATURE_TYPES — podeboo stays a normal enemy.
+// Its def carries no behavior.driver, so podeboo stays a normal enemy: the
+// brain still drives it and this hook only supplements the frame.
 import { CREATURE_UPDATE } from '../creatures.js'
 import { hasLineOfSight } from '../entities.js'
 import { damagePlayer } from '../player-damage.js'

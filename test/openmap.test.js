@@ -155,6 +155,16 @@ const mkData = () => ({
   playerSpawn: { x: 1, y: 1 },
 })
 
+// Minimal 12x12 open map with a 'den' landmark POI and one npcs.at wolf —
+// used to test tame-species spawning (EPISODES['highland-2-fold'].tame).
+const foldData = () => ({
+  name: 'highland-2-fold', w: 12, h: 12,
+  walk: Array.from({ length: 12 }, () => '111111111111'),
+  playerSpawn: { x: 1, y: 1 },
+  pois: [{ kind: 'landmark', label: 'den', x: 6, y: 6 }],
+  npcs: { at: { den: ['wolf'] } },
+})
+
 describe('rite spawns on open maps', () => {
   it('emits a talent_trigger at the rite poi', () => {
     const { entitySpawns } = buildOpenMap(mkData())
@@ -379,8 +389,17 @@ describe('npcSpawnsForMap — npcs.at', () => {
     for (const w of wolves) {
       assert.ok(cheb(w, den) <= 4, `wolf at ${w.x},${w.y} too far from the den`)
       assert.equal(data.walk[w.y][w.x], '1')
-      assert.equal(w.hostile, true)
+      // Task 13: the fold's den wolves are tamed — spawn non-hostile.
+      assert.equal(w.hostile, false)
     }
+  })
+
+  it('tame species on a leap map spawn non-hostile', () => {
+    const data = foldData()   // name 'highland-2-fold', den POI, npcs.at.den = ['wolf']
+    const s = npcSpawnsForMap(data).find(x => x.species === 'wolf')
+    assert.equal(s.hostile, false)
+    const elsewhere = npcSpawnsForMap({ ...data, name: 'forest-1-clearings' }).find(x => x.species === 'wolf')
+    assert.equal(elsewhere.hostile, true)
   })
 
   it('marsh-3-hermit: homes the hermit beside the hermit hut POI, with an id after village+wild', () => {

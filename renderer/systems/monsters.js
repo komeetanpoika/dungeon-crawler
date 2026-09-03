@@ -1,13 +1,15 @@
 // Registry + loader for generated monsters (rig-drawn, JSON-defined).
-// Generated monsters are normal enemies: they run the brain, take the normal
-// strike path, and are NEVER added to CREATURE_TYPES (membership would divert
-// brain/strike/draw — see the design spec). Their optional hook modules
-// register into CREATURE_HIT/UPDATE/ALPHA keyed by monster name; game.js
-// dispatches those explicitly for registry types.
+// Generated monsters are normal enemies by default: they run the brain and
+// take the normal strike path. Their optional hook modules register into
+// CREATURE_HIT/UPDATE/ALPHA keyed by monster name; game.js dispatches those
+// explicitly for registry types. A def with behavior.driver 'hook' (the
+// leap-episode story creatures) hands its whole per-frame update to that
+// module instead — see isStoryCreature below.
 import { clampParams } from '../render/monster-rigs/schema.js'
 import { TILE_ART_PX, snapFacing, palette } from '../render/monster-rigs/pixel.js'
 import { registerMonsterAI } from '../data/enemy-ai.js'
-import { creatureAlpha, CREATURE_TYPES } from './creatures.js'
+import { creatureAlpha } from './creatures.js'
+import { dyingAlpha } from './dying.js'
 
 const REGISTRY = Object.create(null)
 const NAME_RE = /^[a-z0-9_]+$/
@@ -24,16 +26,13 @@ const HIT_FLASH = 0.18
 // dragon_boss, dragon_boss_pixel), the other non-enemy entity kinds
 // game.js buildEntities switches on (trap, puzzle, weapon, ranged, potion,
 // door, exit_door, chest, prop, dungeon_entrance, fountain_wall,
-// fountain_basin, talent_trigger, wild_mushroom, floating_pickup, echo,
-// creature), and CREATURE_TYPES (the leap-episode creatures, which route
-// through their own hit/update/draw hooks instead of the generic path).
+// fountain_basin, talent_trigger, wild_mushroom, floating_pickup, echo).
 const RESERVED_NAMES = new Set([
   'guard', 'monster', 'dragon', 'crab', 'wizard', 'cyclops', 'npc',
   'dragon_boss', 'dragon_boss_pixel',
   'trap', 'puzzle', 'weapon', 'ranged', 'potion', 'door', 'exit_door', 'chest',
   'prop', 'dungeon_entrance', 'fountain_wall', 'fountain_basin', 'talent_trigger',
   'wild_mushroom', 'floating_pickup', 'echo', 'creature',
-  ...CREATURE_TYPES,
 ])
 
 const defaultLoadRig = id => import(`../render/monster-rigs/${id}.js`)
@@ -76,6 +75,11 @@ export async function registerMonsters(defs, opts = {}) {
 
 export function clearMonsters() { for (const k of Object.keys(REGISTRY)) delete REGISTRY[k] }
 export function getMonsterDef(name) { return REGISTRY[name] ?? null }
+
+// A registry monster whose hook module owns its movement (behavior.driver
+// 'hook'): the enemy loop skips brain/act for it, gust/slam ignore it, and
+// it is updated even when it is not an enemy (the passive Näkki).
+export function isStoryCreature(e) { return getMonsterDef(e.type)?.behavior?.driver === 'hook' }
 export function monsterNames() { return Object.keys(REGISTRY) }
 
 export function monstersForDepth(depth) {
@@ -129,10 +133,11 @@ export function updateMonsterPose(e, delta) {
 
 export function entityPose(e) {
   const p = e.pose ?? { t: 0, state: 'idle', stateT: 0, facing: 0, speed01: 0, seed: 0 }
-  // headAim/eyeGlow are optional channels a hook may write into e.pose
-  // (e.g. podeboo's laser charge); rigs that don't read them ignore them.
   return { t: p.t, state: p.state, stateT: p.stateT, facing: p.facing, speed01: p.speed01, seed: p.seed,
-           headAim: p.headAim, eyeGlow: p.eyeGlow ?? 0 }
+           headAim: p.headAim, eyeGlow: p.eyeGlow ?? 0,
+           // hook-written channels live on the entity (a hook may run before
+           // the first pose update): how far it has sunk, burned, flickers
+           sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0 }
 }
 
 // Draw dispatch for the canvas entity loop: translate to the entity's screen
@@ -141,7 +146,7 @@ export function entityPose(e) {
 export function drawGeneratedMonster(ctx, e, cx, cy, S, state) {
   const d = REGISTRY[e.type]
   if (!d) return
-  const alpha = creatureAlpha(e, state)
+  const alpha = creatureAlpha(e, state) * dyingAlpha(e)
   if (alpha <= 0) return
   ctx.save()
   ctx.globalAlpha *= alpha

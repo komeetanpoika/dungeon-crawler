@@ -1,5 +1,7 @@
 # Leap episodes — design
 
+> Superseded in part by 2026-09-03-timewarp-refinement-design.md (creature art, Echo, fold/hermit resolution).
+
 Date: 2026-08-29
 
 ## Goal

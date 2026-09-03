@@ -20,8 +20,8 @@ describe('tree table', () => {
     assert.deepEqual(TREES.ow_tree_small, { hp: 3, yield: 1, cells: 1 })
     assert.deepEqual(TREES.ow_tree_apple, { hp: 3, yield: 1, cells: 1 })
     assert.deepEqual(TREES.ow_tree_small_autumn, { hp: 3, yield: 1, cells: 1 })
-    assert.deepEqual(TREES.ow_deadtree_0, { hp: 2, yield: 1, cells: 1 })
-    assert.deepEqual(TREES.ow_deadtree_1, { hp: 2, yield: 1, cells: 1 })
+    assert.deepEqual(TREES.ow_deadtree_0, { hp: 2, yield: 1, cells: 1, drop: 'deadwood' })
+    assert.deepEqual(TREES.ow_deadtree_1, { hp: 2, yield: 1, cells: 1, drop: 'deadwood' })
     assert.deepEqual(TREES.ow_tree_pine_trunk, { hp: 4, yield: 2, cells: 2 })
     assert.deepEqual(TREES.ow_tree_autumn_trunk, { hp: 4, yield: 2, cells: 2 })
     assert.deepEqual(TREES.ow_tree_autumn_top, { hp: 3, yield: 1, cells: 1 })
@@ -185,17 +185,30 @@ describe('rocks', () => {
   it('a pick mines a rock in three blows; the cell clears to plain floor and is recorded', () => {
     const m = grass(); rock(m, 3, 3)
     assert.equal(HARVEST.ow_rock_gray_1.tool, 'mine')
-    assert.deepEqual(harvest(m, 3, 3, { mine: 1 }), { felled: false, yield: 0, kind: 'rock' })
-    assert.deepEqual(harvest(m, 3, 3, { mine: 2 }), { felled: true, yield: 0, kind: 'rock' })
+    assert.deepEqual(harvest(m, 3, 3, { mine: 1 }), { felled: false, yield: 0, kind: 'rock', drop: null })
+    assert.deepEqual(harvest(m, 3, 3, { mine: 2 }), { felled: true, yield: 0, kind: 'rock', drop: 'lumber' })
     assert.equal(m[3][3].tile, TILE.FLOOR); assert.equal(m[3][3].overlay, null)
     assert.deepEqual(felledCells(m), ['3,3'])
     const fresh = grass(); rock(fresh, 3, 3); applyFelled(fresh, ['3,3']); assert.equal(fresh[3][3].tile, TILE.FLOOR)
   })
   it('a hatchet cannot mine and a pick can also chop', () => {
     const m = grass(); rock(m, 3, 3); tree(m, 4, 3, 'ow_tree_small')
-    assert.deepEqual(harvest(m, 3, 3, { chop: 1 }), { felled: false, yield: 0, kind: null })
+    assert.deepEqual(harvest(m, 3, 3, { chop: 1 }), { felled: false, yield: 0, kind: null, drop: null })
     assert.equal(findHarvestHit(m, player(2, 3), anyHit, 46, { chop: 1 }), null)
     assert.deepEqual(findHarvestHit(m, player(2, 3), anyHit, 46, { mine: 1 }), { x: 3, y: 3 })
-    assert.deepEqual(harvest(m, 4, 3, { chop: 1, mine: 1 }), { felled: false, yield: 0, kind: 'tree' })
+    assert.deepEqual(harvest(m, 4, 3, { chop: 1, mine: 1 }), { felled: false, yield: 0, kind: 'tree', drop: null })
+  })
+})
+
+describe('deadwood drop', () => {
+  it('dead trees drop deadwood, other trees lumber', () => {
+    assert.equal(HARVEST.ow_deadtree_0.drop, 'deadwood')
+    assert.equal(HARVEST.ow_tree_small.drop ?? 'lumber', 'lumber')
+    const map = createMap(5, 5)
+    for (let y = 1; y < 4; y++) for (let x = 1; x < 4; x++) map[y][x].tile = TILE.FLOOR
+    map[2][2].overlay = 'ow_deadtree_1'
+    const r = harvest(map, 2, 2, { chop: 2 })
+    assert.equal(r.felled, true)
+    assert.equal(r.drop, 'deadwood')
   })
 })

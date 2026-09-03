@@ -98,6 +98,8 @@ export function drawMonster(ctx, p, pose, S) {
 
     c.save()
     if (state === 'death') { c.globalAlpha *= deathF ? 0.5 : 1; c.scale(1, deathF ? 0.5 : 0.8) }
+    const sink = Math.max(0, Math.min(1, pose.sink ?? 0))
+    if (sink > 0) { const k = 1 - 0.75 * sink; c.scale(k, k); c.globalAlpha *= 1 - 0.5 * sink }
     if (state === 'attack') c.translate(0, attackF ? -3 : -1)
     const bobPx = R(p.bob * 8)
     if (walking && bobPx) c.translate(0, (F % 2) ? bobPx : 0)

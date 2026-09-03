@@ -9,9 +9,10 @@ import { hasLineOfSight } from './entities.js'
 import { buildNavGrid, passable } from './nav.js'
 import { act } from './act.js'
 import { updateBrain } from './brain.js'
-import { tryStartEnemyAttack } from './enemy-attack.js'
+import { tryStartEnemyAttack, WEAPONS } from './enemy-attack.js'
 import { speakFrom } from './feedback.js'
 import { sfx } from './sfx.js'
+import { hurtCreature } from './creatures.js'
 
 const S = 32
 export const FLEE_TIME = 3          // s a hit `flee` species keeps running
@@ -21,15 +22,19 @@ export const WANDER_DWELL = [1, 4]  // s paused at each wander point
 export const VILLAGER_DWELL_MAX = 6 // villagers linger longer
 const THREAT_RANGE = 240            // px inside which a hurt NPC bothers fleeing
 const GIVE_UP_TIME = 3              // s stuck against an unpathable target before giving up
+export const HUNT_RANGE = 8 * S     // px a `prey` species will chase a target within
+export const BITE_REACH = 30        // px within which hunt_prey stops closing and bites
+export const BITE_INTERVAL = 0.8    // s between bites once in reach
+export const BITE_DMG = 2           // damage per bite, via hurtCreature
 
-export function makeNpc({ species, id, x, y, hostile = false, role = null }) {
+export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
   const def = NPC_SPECIES[species]
   if (!def) { console.warn(`npc: unknown species "${species}"`); return null }
   return {
     type: 'npc', species, id, faction: def.faction,
     ...(role ? { role } : {}),
     x, y, px: x * S + S / 2, py: y * S + S / 2,
-    hp: def.hp, maxHp: def.hp, hostile: !!(hostile || def.hostile),
+    hp: def.hp, maxHp: def.hp, hostile: hostile === undefined ? !!def.hostile : !!hostile,
     home: { x, y }, objective: null, facing: 'east', inCombat: false,
     damageCooldown: 0, aiHalf: 4,
     ...(def.weapon ? { weaponId: def.weapon } : {}),
@@ -96,12 +101,54 @@ function pickWanderPoint(e, ctx) {
   return (t.x === e.x && t.y === e.y) ? null : { x: t.x, y: t.y }
 }
 
+// A species with `prey` hunts the nearest surfaced, living prey entity it
+// can see within HUNT_RANGE — the fold's wolves versus the Maahinen.
+export function findPrey(e, ctx) {
+  const prey = ctx.def.prey
+  if (!prey) return null
+  let best = null, bestD = HUNT_RANGE
+  for (const p of ctx.state.entities) {
+    if (!prey.includes(p.type) || p.state !== 'surfaced' || p.dying > 0 || !(p.hp > 0)) continue
+    const d = Math.hypot(p.px - e.px, p.py - e.py)
+    if (d > bestD || !hasLineOfSight(ctx.state.map, e.y, e.x, p.y, p.x)) continue
+    best = p; bestD = d
+  }
+  return best
+}
+
 export const GOALS = {
   flee_hurt: {
     when: (e, ctx) => e.ai.fleeTimer > 0 ||
       (e.hp < e.maxHp && ctx.hpFrac <= ctx.def.fleeHp && ctx.playerDist < THREAT_RANGE),
     enter: e => { e.ai.fleeTimer = Math.max(e.ai.fleeTimer, FLEE_TIME) },
     run: (e, ctx, dt) => { e.ai.fleeTimer = Math.max(0, e.ai.fleeTimer - dt); return { mode: 'flee', speed: ctx.cfg.speed } },
+  },
+  hunt_prey: {
+    when: (e, ctx) => !!findPrey(e, ctx),
+    enter: e => { e.ai.biteT = 0 },
+    run: (e, ctx, dt) => {
+      const prey = findPrey(e, ctx)
+      if (!prey) return { mode: 'hold' }
+      e.ai.biteT = Math.max(0, (e.ai.biteT ?? 0) - dt)
+      if (Math.hypot(prey.px - e.px, prey.py - e.py) > BITE_REACH)
+        return { mode: 'patrol', target: { x: prey.x, y: prey.y }, speed: ctx.cfg.speed }
+      e.facing = prey.px < e.px ? 'west' : 'east'
+      if (e.ai.biteT <= 0) {
+        e.ai.biteT = BITE_INTERVAL
+        const r = hurtCreature(ctx.state, prey, BITE_DMG, { source: 'wolf' })
+        if (r.cue) sfx(ctx.state, r.cue, { px: prey.px, py: prey.py })
+        // Cosmetic claw swing so the bite reads on screen. Started directly
+        // in the 'swing' phase (never 'windup'), so stepEnemyAttack's strike
+        // path — which would aim at the player — is never reached; this can
+        // never damage the player.
+        const w = WEAPONS.claw
+        e.attack = {
+          weaponId: 'claw', phase: 'swing', timer: w.duration, duration: w.duration,
+          angle: Math.atan2(prey.py - e.py, prey.px - e.px),
+        }
+      }
+      return { mode: 'hold' }
+    },
   },
   attack_hostile: {
     when: e => e.hostile,

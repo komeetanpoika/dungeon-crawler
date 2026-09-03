@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeNakki, updateNakki, sinkNakki, feedNakki, SUBMERGE_TIME, DRAG_INTERVAL } from '../renderer/systems/nakki.js'
-import { strikeCreature } from '../renderer/systems/creatures.js'
+import { ensureNakki, makeNakki, updateNakki, sinkNakki, feedNakki, SINK_TIME, SUBMERGE_TIME, DRAG_INTERVAL } from '../renderer/systems/monsters/nakki.js'
+import { strikeCreature, CREATURE_ALPHA } from '../renderer/systems/creatures.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
+import { makeItem } from '../renderer/systems/inventory.js'
 
 const S = 32
 
@@ -30,23 +31,57 @@ describe('makeNakki', () => {
   })
 })
 
-describe('sinkNakki', () => {
-  it('submerges and resets the timer to SUBMERGE_TIME', () => {
-    const n = makeNakki(0, 0)
-    sinkNakki(n)
-    assert.equal(n.state, 'submerged')
-    assert.equal(n.timer, SUBMERGE_TIME)
-    assert.equal(SUBMERGE_TIME, 4)
+// makeMonsterFromDef stamps hp/maxHp on every registry monster; the Näkki
+// must carry neither, so the first ensure strips them.
+describe('ensureNakki', () => {
+  it('strips the registry hp/maxHp, stamps the surfaced state, and is idempotent', () => {
+    const e = ensureNakki({ type: 'nakki', x: 1, y: 1, px: 48, py: 48, hp: 1, maxHp: 1 })
+    assert.equal('hp' in e, false)
+    assert.equal('maxHp' in e, false)
+    assert.equal(e.state, 'surfaced')
+    assert.equal(e.lurk, true)
+
+    e.state = 'submerged'
+    ensureNakki(e)
+    assert.equal(e.lurk, true)
+    assert.equal(e.state, 'submerged', 'a second ensure must not reset live state')
+    assert.equal('hp' in e, false)
   })
 })
 
-describe('updateNakki — submerge/surface cycle', () => {
-  it('resurfaces once SUBMERGE_TIME has elapsed', () => {
+describe('sinkNakki', () => {
+  it('starts sinking and resets the timer to SINK_TIME', () => {
+    const n = makeNakki(0, 0)
+    sinkNakki(n)
+    assert.equal(n.state, 'sinking')
+    assert.equal(n.timer, SINK_TIME)
+    assert.equal(SINK_TIME, 0.6)
+  })
+
+  it('is a no-op while already sinking or submerged', () => {
+    const n = makeNakki(0, 0)
+    sinkNakki(n)
+    n.timer = 0.2
+    sinkNakki(n)
+    assert.equal(n.timer, 0.2, 'already sinking: timer left alone')
+    n.state = 'submerged'; n.timer = SUBMERGE_TIME - 1
+    sinkNakki(n)
+    assert.equal(n.state, 'submerged')
+    assert.equal(n.timer, SUBMERGE_TIME - 1, 'already submerged: timer left alone')
+  })
+})
+
+describe('updateNakki — full submerge/surface cycle', () => {
+  it('resurfaces once sinking, submerged and rising have all elapsed', () => {
     const n = makeNakki(0, 0)
     sinkNakki(n)
     const player = makePlayer()
     const state = makeState(n, player)
+    updateNakki(n, state, SINK_TIME + 0.1)
+    assert.equal(n.state, 'submerged')
     updateNakki(n, state, SUBMERGE_TIME + 0.1)
+    assert.equal(n.state, 'rising')
+    updateNakki(n, state, SINK_TIME + 0.1)
     assert.equal(n.state, 'surfaced')
   })
 
@@ -55,6 +90,7 @@ describe('updateNakki — submerge/surface cycle', () => {
     sinkNakki(n)
     const player = makePlayer()
     const state = makeState(n, player)
+    updateNakki(n, state, SINK_TIME + 0.1)
     updateNakki(n, state, 1)
     assert.equal(n.state, 'submerged')
     assert.equal(n.timer, SUBMERGE_TIME - 1)
@@ -97,10 +133,11 @@ describe('updateNakki — drag attack', () => {
   it('does not tick dragCooldown while submerged', () => {
     const n = makeNakki(5, 5)
     n.pierEnd = { x: 6, y: 5 }
-    sinkNakki(n)
-    n.dragCooldown = 1
     const player = makePlayer({ x: 6, y: 5, px: 6 * S + 16, py: 5 * S + 16 })
     const state = makeState(n, player)
+    sinkNakki(n)
+    updateNakki(n, state, SINK_TIME + 0.1) // now submerged
+    n.dragCooldown = 1
     updateNakki(n, state, 1)
     assert.equal(n.dragCooldown, 1)
   })
@@ -116,35 +153,62 @@ describe('feedNakki', () => {
     assert.equal(n.state, 'surfaced')
   })
 
-  it('cooked meat feeds and sinks the nakki, removing one', () => {
+  it('cooked meat feeds and starts sinking the nakki, removing one', () => {
     const n = makeNakki(0, 0)
     const player = makePlayer({ inventory: [{ kind: 'cooked_meat', count: 1 }] })
     const result = feedNakki(n, player)
     assert.equal(result, true)
     assert.equal(player.inventory.length, 0)
-    assert.equal(n.state, 'submerged')
+    assert.equal(n.state, 'sinking')
   })
 
-  it('does nothing while submerged', () => {
+  it('does nothing while sinking or submerged', () => {
     const n = makeNakki(0, 0)
     sinkNakki(n)
     const player = makePlayer({ inventory: [{ kind: 'cooked_meat', count: 1 }] })
-    const result = feedNakki(n, player)
-    assert.equal(result, false)
+    assert.equal(feedNakki(n, player), false)
+    assert.equal(player.inventory.length, 1)
+
+    n.state = 'submerged'
+    assert.equal(feedNakki(n, player), false)
     assert.equal(player.inventory.length, 1)
   })
 })
 
-describe('strikeCreature on nakki', () => {
-  it('is absorbed, sinks the nakki, and never adds an hp key', () => {
-    const n = makeNakki(5, 5)
-    const player = makePlayer()
-    const state = makeState(n, player)
-    const result = strikeCreature(n, state, 5)
-    assert.equal(result.absorbed, true)
-    assert.equal(result.cue, 'drag')
-    assert.equal(result.entity.state, 'submerged')
-    assert.equal('hp' in result.entity, false)
-    assert.equal('maxHp' in result.entity, false)
+describe('nakki sink cycle', () => {
+  it('a hit starts sinking with the sink channel rising, then submerges, rises and surfaces', () => {
+    const n = makeNakki(3, 4)
+    const state = makeState(n, makePlayer())
+    const r = strikeCreature(n, state, 5)
+    assert.equal(r.absorbed, true)
+    assert.equal(r.cue, 'sink')
+    assert.equal(r.entity.state, 'sinking')
+    Object.assign(n, r.entity)
+    updateNakki(n, state, SINK_TIME / 2)
+    assert.ok(Math.abs(n.sink - 0.5) < 1e-6)
+    updateNakki(n, state, SINK_TIME / 2 + 0.001)
+    assert.equal(n.state, 'submerged')
+    assert.equal(CREATURE_ALPHA.nakki(n, state), 0)
+    updateNakki(n, state, SUBMERGE_TIME + 0.001)
+    assert.equal(n.state, 'rising')
+    updateNakki(n, state, SINK_TIME / 2)
+    assert.ok(n.sink > 0 && n.sink < 1)
+    updateNakki(n, state, SINK_TIME / 2 + 0.001)
+    assert.equal(n.state, 'surfaced')
+    assert.equal(n.sink, 0)
+  })
+  it('a leaving nakki removes itself from state.entities when the sink completes', () => {
+    const n = makeNakki(3, 4)
+    const state = makeState(n, makePlayer())
+    sinkNakki(n); n.leaving = true
+    updateNakki(n, state, SINK_TIME + 0.001)
+    assert.equal(state.entities.includes(n), false)
+  })
+  it('feeding only works surfaced and starts a sink', () => {
+    const n = makeNakki(3, 4)
+    const p = makePlayer({ inventory: [makeItem('cooked_meat', 1)] })
+    assert.equal(feedNakki(n, p), true)
+    assert.equal(n.state, 'sinking')
+    assert.equal(feedNakki(n, p), false)
   })
 })

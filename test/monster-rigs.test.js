@@ -58,6 +58,14 @@ describe('quadruped drawMonster', () => {
     drawMonster(b, defaultParams(PARAM_SCHEMA), pose('walk'), 32)
     assert.deepEqual(a.ops, b.ops)
   })
+  it('sink shrinks the figure (a scale op appears) and stays balanced', () => {
+    const a = recordingCtx(), b = recordingCtx()
+    drawMonster(a, defaultParams(PARAM_SCHEMA), pose('idle'), 32)
+    drawMonster(b, defaultParams(PARAM_SCHEMA), pose('idle', { sink: 0.8 }), 32)
+    const scales = ops => ops.filter(o => o[0] === 'scale').length
+    assert.ok(scales(b.ops) > scales(a.ops))
+    assert.equal(b.ops.filter(o => o[0] === 'save').length, b.ops.filter(o => o[0] === 'restore').length)
+  })
 })
 
 // v2: 16-bit pixel discipline. The rig draws rect-only art on an integer

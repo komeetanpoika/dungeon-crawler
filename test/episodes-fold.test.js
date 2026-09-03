@@ -6,13 +6,11 @@ import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE, weaponContents } from '../renderer/systems/entities.js'
 import { makeItem } from '../renderer/systems/inventory.js'
-import { makeCreature } from '../renderer/systems/creatures.js'
 import { makeNpc } from '../renderer/systems/npc.js'
 import { harvest } from '../renderer/systems/lumber.js'
 import { buildOpenMap, npcSpawnIndex } from '../renderer/systems/openmap.js'
-import { updateMaahinen } from '../renderer/systems/maahinen.js'
+import { makeMaahinen, updateMaahinen } from '../renderer/systems/monsters/maahinen.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
-import '../renderer/systems/maahinen.js' // registers CREATURE_MAKE.maahinen etc.
 
 const S = 32
 const N = 40
@@ -93,13 +91,12 @@ function makeSpies() {
   }
 }
 
-// Mirrors game.js's buildEntities 'creature' case, as in episodes-ferry.test.js.
+// Mirrors game.js's buildEntities registry-monster case, as in episodes-ferry.test.js.
 function spawnInto(state) {
   return spawns => {
     for (const s of spawns) {
-      if (s.kind !== 'creature') continue
-      const c = makeCreature(s.creature, s.x, s.y)
-      if (c) state.entities.push({ ...c, px: s.x * S + 16, py: s.y * S + 16 })
+      if (s.kind !== 'maahinen') continue
+      state.entities.push({ ...makeMaahinen(s.x, s.y), px: s.x * S + 16, py: s.y * S + 16 })
     }
   }
 }
