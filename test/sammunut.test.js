@@ -318,6 +318,7 @@ describe('sammunut and deadwood fire', () => {
     const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [fireAt(10, 11, 'deadwood')])
     updateSammunut(w, state, 0.1)
     assert.equal(state.creatureKills.sammunut, true)
+    assert.ok(state.sfx.cues.some(c => c.name === 'enemy-death'), 'enemy-death cue recorded')
   })
 })
 

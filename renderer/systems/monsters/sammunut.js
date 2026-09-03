@@ -127,8 +127,9 @@ function fleeTick(e, delta, map) {
 function burnTick(e, state, delta) {
   const fire = nearestDeadwoodInLight(state.entities, e)
   if (!fire) return
-  hurtCreature(state, e, BURN_DPS * delta, { source: 'fire' })
-  e.burn = Math.max(0, 1 - e.hp / e.maxHp)
+  const r = hurtCreature(state, e, BURN_DPS * delta, { source: 'fire' })
+  if (r.killed) sfx(state, 'enemy-death', { px: e.px, py: e.py })
+  e.burn = Math.min(1, Math.max(0, 1 - e.hp / e.maxHp))
   if (e.pose) e.pose.hpSeen = e.hp          // a slow burn is not a hit flash
   e.burnCue = (e.burnCue ?? 0) - delta
   if (e.burnCue <= 0) { sfx(state, 'wraith-burn', { px: e.px, py: e.py }); e.burnCue = 0.6 }

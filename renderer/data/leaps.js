@@ -19,18 +19,18 @@ export const EPISODES = {
     },
     echoSpots: [
       { fromPoi: 'runestone', lines: [
-        { when: f => f.nakki_gone, text: 'Ziggy says the lake is quiet. Oh boy — here we go.' },
-        { when: f => f.bell_hung, text: "It comes up when the bell rings. Ziggy's at 91 % you should feed it, not fight it." },
-        { when: f => f.clapper, text: "That's the clapper. The bell's out on the pier." },
-        { when: () => true, text: "Oh boy. They think you're Toivo, the ferryman. The bell on the pier has no clapper — Ziggy likes the islet." },
+        { when: f => f.nakki_gone, text: "The lake's gone flat. Oh boy — that's a wrap." },
+        { when: f => f.bell_hung, text: "Ziggy says whatever's out there isn't angry. It's hungry." },
+        { when: f => f.clapper, text: "The bell's been silent a long time. Toivo never let it." },
+        { when: () => true, text: 'Oh boy. They call you Toivo. Ferryman. Something out on that pier has stopped.' },
       ] },
       { fromPoi: 'bell', lines: [
-        { when: f => f.fed >= 1 && !f.nakki_gone, text: `It liked that. Toivo smoked his fish, Sam — cooked, never raw.` },
-        { when: f => f.bell_hung, text: 'Stand at the end with something cooked in your pack and let it come.' },
-        { when: () => true, text: 'No clapper. Ziggy puts the islet cache at 72 %.' },
+        { when: f => f.fed >= 1 && !f.nakki_gone, text: 'It liked that. Ziggy says Toivo never served anything raw.' },
+        { when: f => f.bell_hung, text: "It's watching the end of the pier. It looks hungry." },
+        { when: () => true, text: 'No clapper. Ziggy is oddly fond of the islet.' },
       ] },
       { fromPoi: "Toivo's hut", lines: [
-        { when: () => true, text: 'A fish rack. He fed the lake every dusk. Ziggy is very sure that matters.' },
+        { when: () => true, text: 'A fish rack, and a cold hearth. He fed the lake every dusk.' },
       ] },
     ],
     resolvedLines: {
@@ -53,18 +53,18 @@ export const EPISODES = {
     },
     echoSpots: [
       { fromPoi: 'runestone', lines: [
-        { when: (f, c) => f.maahinen_dead && c.wolvesAlive < 1, text: "The thing is dead, but so are the wolves. Ziggy's odds are 0 %, Sam. This isn't the fix." },
-        { when: f => f.maahinen_dead, text: 'Ziggy says the fold will be quiet tonight. Oh boy.' },
-        { when: f => f.fleece_shown, text: 'Torches are down. Whatever took the lambs is behind those rocks, and now you have a pick.' },
-        { when: f => f.burn >= 3, text: "They're burning toward the den. Ziggy gives the wolves 40 % if you don't hurry." },
-        { when: () => true, text: "Oh boy. You're Aino, the shepherd's girl. They blame the wolves. Ziggy puts that at 12 %. Follow the tracks." },
+        { when: (f, c) => f.maahinen_dead && c.wolvesAlive < 1, text: "It's gone, and so are they. Ziggy's at 0 %, Sam. That isn't the fix." },
+        { when: f => f.maahinen_dead, text: 'Quiet night at the fold. Oh boy.' },
+        { when: f => f.fleece_shown, text: "Torches are down. Whatever's under the ridge keeps to its own ground — Ziggy thinks it dislikes company." },
+        { when: f => f.burn >= 3, text: "They're burning toward the den. Ziggy gives the wolves 40 %." },
+        { when: () => true, text: "Oh boy. You're Aino. They blame the wolves. Ziggy puts that at 12 %." },
       ] },
       { fromPoi: 'den', lines: [
-        { when: () => true, text: "Wolves, but no bones, no wool. The tracks keep going. Ziggy's at 88 % it's not them." },
+        { when: () => true, text: "Wolves. No bones, no wool. Ziggy says they'd fight anything that came near their pups." },
       ] },
       { fromPoi: 'burrow', lines: [
-        { when: f => f.fleece_shown, text: 'Break the rocks. Whatever is in there comes up from under you — watch the ground.' },
-        { when: () => true, text: "Lamb's fleece, and the prospector's mess. Show the elder before the torches reach the den." },
+        { when: f => f.fleece_shown, text: "Break the rocks and it'll come up after you. Somewhere with teeth would be nice." },
+        { when: () => true, text: "Lamb's fleece, and the prospector's mess. The elder should see this." },
       ] },
     ],
     resolvedLines: {
@@ -91,16 +91,16 @@ export const EPISODES = {
     resolvedLines: { hermit: ['You came back.', 'The fire held. I was wrong, Lauri.'] },
     echoSpots: [
       { fromPoi: 'runestone', lines: [
-        { when: f => f.wraith_dead, text: 'Hearths are lit. Ziggy says the old man is talking again. Oh boy.' },
-        { when: f => f.hearth_lit, text: "That fire it can't eat. It'll come for it anyway — that's where you fight it." },
-        { when: () => true, text: "Oh boy. You're Lauri, the apprentice. Something is eating the fires. Ziggy says the dead trees on the knoll are his woodpile." },
+        { when: f => f.wraith_dead, text: 'Hearths are lit. The old man is talking again. Oh boy.' },
+        { when: f => f.hearth_lit, text: "That fire it can't put out. It hates it, and it can't leave a flame alone." },
+        { when: () => true, text: "Oh boy. You're Lauri. Something walks through here and eats the fires. Ziggy says only his own wood ever burned on that hearth." },
       ] },
       { fromPoi: 'hearth', lines: [
-        { when: f => f.hearth_lit, text: "It's coming. Stay in the light — outside it you can't touch it, and it drains you." },
-        { when: () => true, text: 'His hearth. Build a fire here from his own wood and it stays lit.' },
+        { when: f => f.hearth_lit, text: "Stay in the light. Out there you can't touch it, and it drains you." },
+        { when: () => true, text: 'His hearth. The grey trees on the knoll were his woodpile.' },
       ] },
       { fromPoi: 'mushroom ring', lines: [
-        { when: () => true, text: 'The ring. Ziggy says a trance shows you where it walks, even in the dark.' },
+        { when: () => true, text: 'The ring. A trance shows you where it walks, even in the dark.' },
       ] },
     ],
     rule: f => !!f.wraith_dead,
