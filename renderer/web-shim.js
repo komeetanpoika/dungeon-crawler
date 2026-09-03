@@ -34,6 +34,16 @@ if (!window.saveAPI) {
       try { return JSON.parse(localStorage.getItem(TIMEWARP_KEY)) } catch { return null }
     },
     loadRulesets: () => fetchJSON('./data/rulesets.json', {}),
+    // Mirrors main.cjs's load-monsters: the index lists names, each name is
+    // its own JSON def. A missing or bad file is skipped, never fatal — the
+    // game's registerMonsters warns per def and the spawn rolls fall back.
+    loadMonsters: async () => {
+      const names = await fetchJSON('./data/monsters/index.json', [])
+      if (!Array.isArray(names)) return []
+      const defs = await Promise.all(names.map(n =>
+        typeof n === 'string' && /^[a-z0-9_]+$/.test(n) ? fetchJSON(`./data/monsters/${n}.json`, null) : null))
+      return defs.filter(Boolean)
+    },
     loadStructures: () => fetchJSON('./data/structures.json', {}),
     loadArenaConfig: async () => null,   // arena testing is a desktop/dev feature
     openEditor: async () => {},          // no editor in the web release
