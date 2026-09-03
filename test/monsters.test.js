@@ -196,3 +196,11 @@ describe('monstersForOpenMap', () => {
     assert.deepEqual(monstersForOpenMap(12), [{ name: 'boarhound', count: 1 }])
   })
 })
+
+describe('entityPose channels', () => {
+  it('passes sink/burn/flicker through from the entity, defaulting to 0', () => {
+    assert.deepEqual([entityPose({}).sink, entityPose({}).burn, entityPose({}).flicker], [0, 0, 0])
+    const p = entityPose({ sink: 0.5, burn: 0.25, flicker: 1 })
+    assert.deepEqual([p.sink, p.burn, p.flicker], [0.5, 0.25, 1])
+  })
+})

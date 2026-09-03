@@ -130,10 +130,11 @@ export function updateMonsterPose(e, delta) {
 
 export function entityPose(e) {
   const p = e.pose ?? { t: 0, state: 'idle', stateT: 0, facing: 0, speed01: 0, seed: 0 }
-  // headAim/eyeGlow are optional channels a hook may write into e.pose
-  // (e.g. podeboo's laser charge); rigs that don't read them ignore them.
   return { t: p.t, state: p.state, stateT: p.stateT, facing: p.facing, speed01: p.speed01, seed: p.seed,
-           headAim: p.headAim, eyeGlow: p.eyeGlow ?? 0 }
+           headAim: p.headAim, eyeGlow: p.eyeGlow ?? 0,
+           // hook-written channels live on the entity (a hook may run before
+           // the first pose update): how far it has sunk, burned, flickers
+           sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0 }
 }
 
 // Draw dispatch for the canvas entity loop: translate to the entity's screen
