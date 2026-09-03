@@ -12,18 +12,27 @@ import { getMonsterDef } from './monsters.js'
 // so they run the brain and the standard hit/death pipeline like any built-in
 // type — registry membership decides it, never a literal type-string list.
 export function isEnemy(e) {
+  if (e.dying > 0) return false
+  const def = getMonsterDef(e.type)
   return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
       || e.type === 'cyclops' || e.type === 'wizard' || e.type === 'crab'
       || e.type === 'dragon_boss' || e.type === 'maahinen' || e.type === 'sammunut'
       || (e.type === 'npc' && e.hostile)
-      || !!getMonsterDef(e.type)
+      || (!!def && !def.behavior?.passive)
 }
 
-// Things the player's weapons can hurt: every enemy plus peaceful NPCs plus nakki.
-export function isHittable(e) { return isEnemy(e) || e.type === 'npc' || e.type === 'nakki' }
+// Things the player's weapons can hurt: every enemy, peaceful NPCs, nakki,
+// and every registry monster (passive ones included).
+export function isHittable(e) {
+  if (e.dying > 0) return false
+  return isEnemy(e) || e.type === 'npc' || e.type === 'nakki' || !!getMonsterDef(e.type)
+}
 
 // The frame's death cull predicate. hp is `undefined` for creatures like the
 // nakki that carry no hp field — Number.isFinite keeps those alive here so a
 // plain `e.hp > 0` check (which would evaluate `undefined > 0` to false and
 // wrongly cull them) never appears at a cull site.
-export function isDead(e) { return isHittable(e) && Number.isFinite(e.hp) && e.hp <= 0 }
+export function isDead(e) {
+  if (e.dying > 0) return false
+  return isHittable(e) && Number.isFinite(e.hp) && e.hp <= 0
+}

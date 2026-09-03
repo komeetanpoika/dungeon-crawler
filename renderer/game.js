@@ -42,6 +42,7 @@ import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, 
 import { isEnemy, isHittable, isDead } from './systems/factions.js'
 import { isCreature, strikeCreature, updateCreature, makeCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
 import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose } from './systems/monsters.js'
+import { cullDead, tickDying } from './systems/dying.js'
 import './systems/nakki.js'
 import './systems/maahinen.js'
 import './systems/sammunut.js'
@@ -1119,7 +1120,7 @@ function update(delta) {
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
       })
-      .filter(e => !isDead(e))
+    state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
     // Maunonmiekka magic: a crimson shockwave bursts from every struck enemy,
     // splashing damage + knockback onto its neighbours.
     if (struck.length) {
@@ -1297,7 +1298,7 @@ function update(delta) {
         }
         return e
       })
-      state.entities = state.entities.filter(e => !isDead(e))
+      state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
       if (hit && p.explodes) detonateFireball(p.px, p.py)
     } else {
       if (Math.hypot(player.px - p.px, player.py - p.py) < 10) {
@@ -1320,10 +1321,12 @@ function update(delta) {
   }
 
   // Enemy AI — iterate a snapshot so wizard summons don't re-enter this frame
+  state.entities = tickDying(state.entities, delta)
   for (const e of [...state.entities]) {
     // updateNpc drives peaceful AND hostile NPCs (the hostile ones run the
     // enemy brain inside their attack_hostile goal) — never both paths.
     if (e.type === 'npc') { updateNpc(e, state, delta); continue }
+    if (e.dying > 0) { if (getMonsterDef(e.type)) updateMonsterPose(e, delta); continue }
     if (isCreature(e)) { updateCreature(e, state, delta); continue }
     if (!isEnemy(e)) continue
 
@@ -1555,7 +1558,7 @@ function update(delta) {
       sfx(state, e.hp <= 0 ? deathCue(e) : 'wall-slam', { px: e.px, py: e.py })
     }
   }
-  state.entities = state.entities.filter(e => !isDead(e))
+  state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
   stepKnockback(player, delta, (px, py) => canMoveTo(map, px, py, PLAYER_HALF))
 
   // Flush NPC deaths and wrath. It has to sit after the cull above, because

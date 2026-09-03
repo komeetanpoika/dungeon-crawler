@@ -8,6 +8,7 @@ import { clampParams } from '../render/monster-rigs/schema.js'
 import { TILE_ART_PX, snapFacing, palette } from '../render/monster-rigs/pixel.js'
 import { registerMonsterAI } from '../data/enemy-ai.js'
 import { creatureAlpha, CREATURE_TYPES } from './creatures.js'
+import { dyingAlpha } from './dying.js'
 
 const REGISTRY = Object.create(null)
 const NAME_RE = /^[a-z0-9_]+$/
@@ -141,7 +142,7 @@ export function entityPose(e) {
 export function drawGeneratedMonster(ctx, e, cx, cy, S, state) {
   const d = REGISTRY[e.type]
   if (!d) return
-  const alpha = creatureAlpha(e, state)
+  const alpha = creatureAlpha(e, state) * dyingAlpha(e)
   if (alpha <= 0) return
   ctx.save()
   ctx.globalAlpha *= alpha
