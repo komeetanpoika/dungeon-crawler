@@ -31,15 +31,21 @@ const RISE_TIME = 0.3
 
 // Lazy init: a registry spawn arrives with only type/x/y/px/py/hp, so the
 // first touch stamps the burrower state on it. Idempotent — the `burrow`
-// flag is the "already stamped" marker.
+// flag is the "already stamped" marker. A real spawn never carries a
+// `state`, so it stamps in submerged and invisible as before; a caller that
+// already declared a state (e.g. a synthetic already-surfaced entity in a
+// unit test) has that respected, fully visible, rather than clobbered back
+// to submerged on its first hit.
 export function ensureMaahinen(e) {
   if (e.burrow) return e
+  const surfaced = e.state != null && e.state !== 'submerged'
   Object.assign(e, {
-    burrow: true, state: 'submerged', timer: 0, weaponId: 'maul',
+    burrow: true, state: e.state ?? 'submerged', timer: 0, weaponId: 'maul',
     damageCooldown: 0, inCombat: false, facing: 'east', home: { x: e.x, y: e.y },
     hp: e.hp ?? 36, maxHp: e.maxHp ?? 36,
-    // Spawns submerged and invisible: fully sunk, fully faded.
-    sink: 1, fadeA: 0,
+    // Spawns submerged and invisible: fully sunk, fully faded — unless
+    // already declared otherwise.
+    sink: surfaced ? 0 : 1, fadeA: surfaced ? 1 : 0,
   })
   return e
 }

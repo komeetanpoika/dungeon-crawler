@@ -42,6 +42,7 @@ export const EPISODES = {
     persona: 'Aino',
     missing: { species: 'villager' },
     kit: {},   // fixed per-episode loadout (arena player-override shape); {} = plain new-game kit
+    tame: ['wolf'],   // spawn non-hostile here: the wolves are innocent
     items: [{ kind: 'fleece', fromPoi: 'fleece cache' }],
     houses: { "Aino's house": { room: 'aino_larder', pickups: [
       { type: 'meat', count: 2 },

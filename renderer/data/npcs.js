@@ -10,6 +10,7 @@
 //   hostile     true = hostile on sight: spawns as an enemy (wolf, bear).
 //   weapon      enemy-attack.js WEAPONS id used once hostile (npc default: fists).
 //   drop        chance an animal leaves meat when it dies (villagers: none).
+//   prey        creature types (systems/creatures.js) the hunt_prey goal chases and bites.
 //   priorities  ordered goal names; first goal whose `when` holds runs.
 export const NPC_SPECIES = {
   villager: {
@@ -64,12 +65,14 @@ export const NPC_SPECIES = {
     speed: 95, wanderSpeed: 30, roam: 5,
     priorities: ['flee_hurt', 'attack_hostile', 'go_to', 'wander'],
   },
-  // Hostile on sight: the enemy brain runs from the first frame.
+  // Hostile on sight: the enemy brain runs from the first frame. Tamed for
+  // the fold episode (data/leaps.js), it hunts the Maahinen instead — see
+  // `prey` and hunt_prey ahead of attack_hostile in the priority list.
   wolf: {
     faction: 'wild', sprite: 'npc_wolf', hostile: true, weapon: 'claw',
     hp: 3, onHit: 'fight', fleeHp: 0.25, drop: 0.4,
-    speed: 110, wanderSpeed: 40, roam: 7,
-    priorities: ['flee_hurt', 'attack_hostile', 'go_to', 'wander'],
+    speed: 110, wanderSpeed: 40, roam: 7, prey: ['maahinen'],
+    priorities: ['flee_hurt', 'hunt_prey', 'attack_hostile', 'go_to', 'wander'],
   },
   bear: {
     faction: 'wild', sprite: 'npc_bear', hostile: true, weapon: 'maul',

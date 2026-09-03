@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { WEAPONS } from '../renderer/systems/enemy-attack.js'
 
-const GOAL_NAMES = new Set(['flee_hurt', 'attack_hostile', 'startle', 'go_to', 'wander'])
+const GOAL_NAMES = new Set(['flee_hurt', 'hunt_prey', 'attack_hostile', 'startle', 'go_to', 'wander'])
 
 describe('NPC_SPECIES', () => {
   it('defines the villagers, livestock and wild animals', () => {
@@ -54,6 +54,16 @@ describe('NPC_SPECIES', () => {
     assert.equal(NPC_SPECIES.bear.hostile, true)
     assert.equal(NPC_SPECIES.boar.hostile, undefined)
     assert.equal(NPC_SPECIES.boar.onHit, 'fight')
+  })
+
+  it('the wolf hunts the maahinen, ahead of its own hostile-brain fight goal', () => {
+    assert.deepEqual(NPC_SPECIES.wolf.prey, ['maahinen'])
+    assert.deepEqual(NPC_SPECIES.wolf.priorities,
+      ['flee_hurt', 'hunt_prey', 'attack_hostile', 'go_to', 'wander'])
+    for (const [name, s] of Object.entries(NPC_SPECIES)) {
+      if (name === 'wolf') continue
+      assert.equal(s.prey, undefined, `${name} should not carry prey`)
+    }
   })
 
   it('fight species have attack_hostile in their list; flee species do not', () => {
