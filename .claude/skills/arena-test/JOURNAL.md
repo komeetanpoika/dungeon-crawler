@@ -134,3 +134,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** podeboo
 **Score:** 5/5
 **Notes:** All four criteria met with direct evidence: state polling showed the repeating idle->charge(glow 0.3->0.9, headAim engaged)->fire->cooldown cycle; burst mode confirmed (5-beam fan visible in screenshot, killed the unprotected player); pre-damaged to 4hp switched to sweep with twin eye-origin dotted beams visible live and the beam angle advancing mid-sweep; zero console errors.
+
+## Run 20 — 2026-09-03 — CLOSED
+**Question:** Do the refined Timewarp creatures, Echo and lure puzzles behave and render as the spec describes in the live game?
+**Criteria:** Nakki sinks/rises without a snap; Maahinen erupts/dives smoothly and wolves bite it; grey fire lights the hearth and burns the wraith into embers; Echo trails and fades in at spots; no console warnings
+**Config:** (default boss arena)
+**Score:** 5/5
+**Notes:** All four live checks passed: no monsters: warnings on boot; Nakki sink 0->1 over ~0.6s, ~4s submerged at fadeA 0, smooth rise, resurface ~5.2s, 3 cooked-meat feeds set nakki_gone and resolved the episode; wolves spawn hostile:false and flip to hunt_prey biting the surfaced Maahinen 2 hp a bite, it dove at <=18 hp and erupted again, a player sword hit dove it instantly; a Grey Wood fire built from the sack on the hearth came out fuel:deadwood eternal:true and set hearth_lit with a pale blue flame, the Sammunut burned 18->0 hp in its light, flipped to fleeing+shun at <=12 hp, went fadeA 0 outside the light and died through a dying countdown setting wraith_dead + resolve; monster-lab lists lurker/quadruped/wraith with nakki/maahinen/sammunut bound to them. No bugs found.
