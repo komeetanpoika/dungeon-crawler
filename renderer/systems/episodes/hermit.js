@@ -63,7 +63,7 @@ function relightHearth(ctx) {
   if (!hearth) return
   const existing = hearthFireAt(state.entities, hearth)
   if (existing?.eternal) return
-  state.entities.push(makeCampfire(hearth.x, hearth.y, { eternal: true }))
+  state.entities.push(makeCampfire(hearth.x, hearth.y, { eternal: true, fuel: 'deadwood' }))
 }
 
 // Arrival — a fresh load or a waystone journey; a cave dive stashes the
@@ -85,6 +85,10 @@ function tickHearth(ctx) {
   const hearth = poiCell(mapData, 'hearth')
   const fire = hearth && hearthFireAt(state.entities, hearth)
   if (!fire) return
+  if (fire.fuel !== 'deadwood') {
+    if (!fire.gutterSaid) { fire.gutterSaid = true; think(state, 'It gutters. Not his wood.') }
+    return
+  }
   ctx.set('hearth_lit')
   fire.eternal = true
   const occupied = state.entities.some(e => e !== fire && e.x === hearth.x && e.y === hearth.y)

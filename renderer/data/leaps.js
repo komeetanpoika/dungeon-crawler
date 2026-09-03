@@ -78,7 +78,7 @@ export const EPISODES = {
     kit: {},   // fixed per-episode loadout (arena player-override shape); {} = plain new-game kit
     houses: { 'hermit hut': { room: 'hermit_woodpile', pickups: [
       { type: 'weapon', weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 },
-      { type: 'lumber', count: 3 },
+      { type: 'deadwood', count: 3 },
     ] } },
     villagerLines: {
       villager: ['Lauri. So you came back after all.', 'Every hearth went cold the night you two quarrelled.', 'The old man sits up on the knoll and says nothing.'],

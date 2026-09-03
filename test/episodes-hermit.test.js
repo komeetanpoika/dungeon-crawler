@@ -86,6 +86,10 @@ describe('EPISODES marsh-3-hermit data', () => {
     assert.deepEqual(ep.villagerLines.hermit, ['…'])
     assert.deepEqual(ep.resolvedLines, { hermit: ['You came back.', 'The fire held. I was wrong, Lauri.'] })
   })
+
+  it("the hermit's woodpile carries deadwood", () => {
+    assert.deepEqual(EPISODES['marsh-3-hermit'].houses['hermit hut'].pickups.find(p => p.type === 'deadwood'), { type: 'deadwood', count: 3 })
+  })
 })
 
 describe('sammunutSpot', () => {
@@ -150,8 +154,8 @@ describe('hearthFireAt', () => {
 })
 
 describe('tick — hearth detection', () => {
-  it('an adjacent fire is marked eternal, the flag is set, moved onto the hearth cell, cued and logged', () => {
-    const fire = makeCampfire(HEARTH.x + 1, HEARTH.y, {})
+  it('an adjacent deadwood fire is marked eternal, the flag is set, moved onto the hearth cell, cued and logged', () => {
+    const fire = makeCampfire(HEARTH.x + 1, HEARTH.y, { fuel: 'deadwood' })
     state.entities.push(fire)
     tick(ctx, 0)
     assert.equal(ctx.flags.hearth_lit, true)
@@ -166,7 +170,7 @@ describe('tick — hearth detection', () => {
   })
 
   it('a fire two tiles away does nothing', () => {
-    const fire = makeCampfire(HEARTH.x + 2, HEARTH.y, {})
+    const fire = makeCampfire(HEARTH.x + 2, HEARTH.y, { fuel: 'deadwood' })
     state.entities.push(fire)
     tick(ctx, 0)
     assert.equal(ctx.flags.hearth_lit, undefined)
@@ -177,11 +181,28 @@ describe('tick — hearth detection', () => {
 
   it('does nothing once hearth_lit is already set', () => {
     ctx.set('hearth_lit')
-    const fire = makeCampfire(HEARTH.x + 1, HEARTH.y, {})
+    const fire = makeCampfire(HEARTH.x + 1, HEARTH.y, { fuel: 'deadwood' })
     state.entities.push(fire)
     tick(ctx, 0)
     assert.equal(fire.eternal, undefined)
     assert.equal(spies.calls.persist, 0)
+  })
+
+  it('a lumber fire on the hearth gutters: no hearth_lit, one thought per fire', () => {
+    const fire = makeCampfire(HEARTH.x, HEARTH.y)
+    state.entities.push(fire)
+    tick(ctx, 0.1); tick(ctx, 0.1)
+    assert.equal(ctx.flags.hearth_lit, undefined)
+    assert.equal(state.log.filter(l => /gutters/.test(l.text ?? l)).length, 1)
+  })
+
+  it('a deadwood fire on the hearth lights it and becomes eternal', () => {
+    state.entities.push(makeCampfire(HEARTH.x, HEARTH.y, { fuel: 'deadwood' }))
+    tick(ctx, 0.1)
+    assert.equal(ctx.flags.hearth_lit, true)
+    const fire = hearthFireAt(state.entities, HEARTH)
+    assert.equal(fire.eternal, true)
+    assert.equal(fire.fuel, 'deadwood')
   })
 })
 
@@ -235,6 +256,13 @@ describe('onArrive — hearth re-creation', () => {
   it('without hearth_lit, no campfire is created', () => {
     onArrive(ctx)
     assert.equal(state.entities.some(e => e.type === 'campfire'), false)
+  })
+
+  it('relighting on arrival re-derives a deadwood eternal fire', () => {
+    ctx.set('hearth_lit')
+    onArrive(ctx)
+    const fire = hearthFireAt(state.entities, HEARTH)
+    assert.deepEqual([fire.eternal, fire.fuel], [true, 'deadwood'])
   })
 })
 
