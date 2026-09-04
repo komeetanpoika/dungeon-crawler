@@ -185,13 +185,17 @@ under floats, bubbles, banners and the DOM HUD.
 4. Blit the layer with `globalAlpha = 0.85 × look.fog`, smoothing on.
 
 Fog cells outside the view are skipped by the same `c0..c1 / r0..r1` clip the
-tile loop uses. There are at most a few hundred cells in the disc.
+tile loop uses, widened by one cell so a just-off-screen cell's blurred edge
+still bleeds correctly into view. There are at most a few hundred cells in
+the disc.
 
 ### Cost
 
 Per frame: two full-layer fills at quarter res, ≤ 16 gradients, ≤ ~300 small
-rects behind one blur, three upscaled blits. Well under the rite blur's cost,
-which redraws the full canvas through a filter.
+unblurred rects composited additively (`lighter`) into the mask, one blurred
+mask blit (`destination-in`, `filter: blur(2px)`), three upscaled blits.
+Well under the rite blur's cost, which redraws the full canvas through a
+filter.
 
 ## 5. Wiring in `game.js`
 

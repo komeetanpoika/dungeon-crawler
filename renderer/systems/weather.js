@@ -43,6 +43,7 @@ export function advanceClock(save, delta) {
   return save.clock
 }
 
+const FOG_CELL_MIN_WEIGHT = 0.01   // drop cells this faint at build time — invisible in the mask, not worth carrying
 const TILE_SIZE = 32
 const CAMPFIRE_LIGHT_TILES = 4.5
 const FIRE_ZONE_LIGHT_TILES = 2
@@ -66,7 +67,9 @@ function fogCells(data, { at, radius }) {
       const d = Math.hypot(x - poi.x, y - poi.y) / radius
       if (d >= 1) continue
       const s = 1 - d
-      cells.push({ x, y, w: s * s * (3 - 2 * s) })
+      const w = s * s * (3 - 2 * s)
+      if (w < FOG_CELL_MIN_WEIGHT) continue
+      cells.push({ x, y, w })
     }
   }
   return { cx: poi.x, cy: poi.y, radius, cells }

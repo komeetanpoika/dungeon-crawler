@@ -5,7 +5,7 @@
 // flames and over everything on the water). Phases come from look.t — the
 // surface animation timer — never the wall clock.
 
-const LAYER_SCALE = 0.25
+const LAYER_SCALE = 0.25   // quarter logical resolution — an eighth of device pixels at 2x DPR; softer punched holes on HiDPI are accepted
 const BLOB_COUNT = 16
 const BLOB_ALPHA = 0.55
 const DRIFT_TILES = 0.8      // sine drift amplitude
@@ -126,12 +126,21 @@ export function fogBlobs(fog) {
   return blobs
 }
 
-export function drawFog(ctx, layer, look, fog, { camX, camY }, { W, H }, S) {
+export function drawFog(ctx, layer, look, fog, { camX, camY }, { W, H }, S, map = null) {
   if (!fog || !(look.fog >= FOG_FLOOR)) return
-  const c0 = Math.floor(camX / S), c1 = Math.ceil((camX + W) / S)
-  const r0 = Math.floor(camY / S), r1 = Math.ceil((camY + H) / S)
-  const cells = fog.cells.filter(c => c.x >= c0 && c.x < c1 && c.y >= r0 && c.y < r1)
-  if (!cells.length) return
+  // One-cell margin: a cell just outside the view still bleeds a blurred
+  // edge in, so keep it in the mask rather than clip exactly to view.
+  const c0 = Math.floor(camX / S) - 1, c1 = Math.ceil((camX + W) / S) + 1
+  const r0 = Math.floor(camY / S) - 1, r1 = Math.ceil((camY + H) / S) + 1
+  const shown = c => c.x >= c0 && c.x < c1 && c.y >= r0 && c.y < r1 &&
+    !(map && !map[c.y]?.[c.x]?.explored)
+
+  // Count first and bail before any op — cells is walked in place below,
+  // no fresh array allocated per frame.
+  let any = false
+  for (const c of fog.cells) { if (shown(c)) { any = true; break } }
+  if (!any) return
+
   const L = layer.ctx, M = layer.maskCtx, k = layer.k
 
   prep(L, layer.w, layer.h)
@@ -144,16 +153,23 @@ export function drawFog(ctx, layer, look, fog, { camX, camY }, { W, H }, S) {
     L.fillRect(x - rad, y - rad, 2 * rad, 2 * rad)
   }
 
+  // Mask: sum the (unblurred) per-cell weights additively, then blur the
+  // mask once as a whole. Blur is linear, so blur(sum of rects) equals
+  // blur(their union) — one filtered op instead of one per cell, and no
+  // lattice from compositing individually-blurred rects edge to edge.
   prep(M, layer.w, layer.h)
-  M.filter = 'blur(2px)'
-  for (const c of cells) {
+  M.globalCompositeOperation = 'lighter'
+  for (const c of fog.cells) {
+    if (!shown(c)) continue
     M.fillStyle = `rgba(0,0,0,${c.w})`
     M.fillRect((c.x * S - camX) * k, (c.y * S - camY) * k, S * k, S * k)
   }
-  M.filter = 'none'
+  M.globalCompositeOperation = 'source-over'
 
   L.globalCompositeOperation = 'destination-in'
+  L.filter = 'blur(2px)'
   L.drawImage(layer.mask, 0, 0)
+  L.filter = 'none'
   L.globalCompositeOperation = 'source-over'
 
   blit(ctx, layer, 'source-over', FOG_ALPHA * look.fog, W, H)

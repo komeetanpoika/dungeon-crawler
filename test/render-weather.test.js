@@ -7,12 +7,15 @@ import { makeWeatherLayer, fogBlobs, drawNight, drawFog } from '../renderer/rend
 function recordingCtx() {
   const ops = []
   let alpha = 1, gco = 'source-over', filter = 'none', fillStyle = '', smooth = false
+  const stack = []
   const base = {
     ops,
-    drawImage: (img, ...a) => ops.push({ name: 'drawImage', img, a, gco, alpha, smooth }),
+    drawImage: (img, ...a) => ops.push({ name: 'drawImage', img, a, gco, alpha, smooth, filter }),
     fillRect: (...a) => ops.push({ name: 'fillRect', a, gco, alpha, filter, fillStyle }),
     clearRect: (...a) => ops.push({ name: 'clearRect', a }),
     createRadialGradient: () => ({ stops: [], addColorStop(o, c) { this.stops.push([o, c]) } }),
+    save: () => stack.push({ gco, alpha, filter, smooth }),
+    restore: () => { const s = stack.pop(); if (s) ({ gco, alpha, filter, smooth } = s) },
     get imageSmoothingEnabled() { return smooth }, set imageSmoothingEnabled(v) { smooth = v },
     get globalAlpha() { return alpha }, set globalAlpha(v) { alpha = v },
     get globalCompositeOperation() { return gco }, set globalCompositeOperation(v) { gco = v },
@@ -89,6 +92,9 @@ describe('drawNight', () => {
     assert.equal(blit.smooth, true)
     assert.deepEqual(blit.a, [0, 0, 100, 75, 0, 0, 400, 300])
     assert.equal(ctx.imageSmoothingEnabled, false, 'smoothing restored')
+    assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
+    assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
+    assert.equal(ctx.filter, 'none', 'ctx filter settled')
   })
 
   it('punches a destination-out hole per light in the layer and adds a lighter glow on the frame', () => {
@@ -103,6 +109,9 @@ describe('drawNight', () => {
     assert.equal(glow.length, 1)
     const blitIdx = ctx.ops.findIndex(o => o.name === 'drawImage')
     assert.ok(ctx.ops.indexOf(glow[0]) > blitIdx, 'glow lands after the wash')
+    assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
+    assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
+    assert.equal(ctx.filter, 'none', 'ctx filter settled')
   })
 
   it('skips lights that are off the layer', () => {
@@ -128,23 +137,25 @@ describe('drawFog', () => {
     assert.deepEqual(ctx.ops, [])
   })
 
-  it('paints blobs, masks them through a blurred cell mask, and blits at 0.85 × fog level', () => {
+  it('paints blobs, masks them additively then blurs the mask in one blit, and blits at 0.85 × fog level', () => {
     const ctx = recordingCtx(), layer = layerWith()
     drawFog(ctx, layer, look({ fog: 0.5 }), fog, cam, view, S)
     // blobs: source-over gradient fills in the layer
     assert.ok(layer.ctx.ops.some(o => o.name === 'fillRect' && o.gco === 'source-over'))
-    // mask: one blurred rect per visible cell, alpha from the cell weight
+    // mask: one unblurred rect per visible cell, summed additively, alpha from the cell weight
     const maskRects = layer.maskCtx.ops.filter(o => o.name === 'fillRect')
     assert.equal(maskRects.length, 2)
-    assert.equal(maskRects[0].filter, 'blur(2px)')
+    assert.equal(maskRects[0].gco, 'lighter')
+    assert.equal(maskRects[0].filter, 'none')
     assert.equal(maskRects[0].fillStyle, 'rgba(0,0,0,1)')
     assert.deepEqual(maskRects[0].a, [5 * 32 * 0.25, 4 * 32 * 0.25, 8, 8])
     assert.equal(maskRects[1].fillStyle, 'rgba(0,0,0,0.5)')
-    // mask applied with one destination-in drawImage of the mask canvas
+    // mask applied with one blurred destination-in drawImage of the mask canvas
     const applied = layer.ctx.ops.filter(o => o.name === 'drawImage')
     assert.equal(applied.length, 1)
     assert.equal(applied[0].img, layer.mask)
     assert.equal(applied[0].gco, 'destination-in')
+    assert.equal(applied[0].filter, 'blur(2px)')
     // final blit
     const blit = ctx.ops.find(o => o.name === 'drawImage')
     assert.equal(blit.img, layer.canvas)
@@ -152,6 +163,9 @@ describe('drawFog', () => {
     assert.ok(Math.abs(blit.alpha - 0.425) < 1e-9)
     assert.equal(blit.smooth, true)
     assert.equal(ctx.imageSmoothingEnabled, false, 'smoothing restored')
+    assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
+    assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
+    assert.equal(ctx.filter, 'none', 'ctx filter settled')
   })
 
   it('moves the blobs with the animation timer', () => {
@@ -162,5 +176,35 @@ describe('drawFog', () => {
     drawFog(b, layer, look({ t: 5 }), fog, cam, view, S)
     const second = layer.ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'source-over').map(o => o.a)
     assert.notDeepEqual(first, second)
+  })
+
+  it('keeps a one-cell margin outside the view but clips beyond it', () => {
+    // c0 = floor(0/32) = 0, so x = -1 is one column left of view, x = -2 is two.
+    const near = { cx: -1, cy: 4, radius: 3, cells: [{ x: -1, y: 4, w: 1 }] }
+    const nearCtx = recordingCtx(), nearLayer = layerWith()
+    drawFog(nearCtx, nearLayer, look(), near, cam, view, S)
+    assert.equal(nearLayer.maskCtx.ops.filter(o => o.name === 'fillRect').length, 1, 'one cell left of view is still drawn')
+
+    const far = { cx: -2, cy: 4, radius: 3, cells: [{ x: -2, y: 4, w: 1 }] }
+    const farCtx = recordingCtx(), farLayer = layerWith()
+    drawFog(farCtx, farLayer, look(), far, cam, view, S)
+    assert.deepEqual(farCtx.ops, [], 'two cells left of view draws nothing')
+  })
+
+  it('skips an unexplored cell, draws an explored one, and gates nothing when no map is passed', () => {
+    // fog cells: (5,4) and (6,4). Mark (5,4) unexplored, (6,4) explored.
+    const map = { 4: { 5: { explored: false }, 6: { explored: true } } }
+    const ctx1 = recordingCtx(), layer1 = layerWith()
+    drawFog(ctx1, layer1, look(), fog, cam, view, S, map)
+    assert.equal(layer1.maskCtx.ops.filter(o => o.name === 'fillRect').length, 1, 'only the explored cell is drawn into the mask')
+
+    const explored = { 4: { 5: { explored: true }, 6: { explored: true } } }
+    const ctx2 = recordingCtx(), layer2 = layerWith()
+    drawFog(ctx2, layer2, look(), fog, cam, view, S, explored)
+    assert.equal(layer2.maskCtx.ops.filter(o => o.name === 'fillRect').length, 2, 'both explored cells are drawn')
+
+    const ctx3 = recordingCtx(), layer3 = layerWith()
+    drawFog(ctx3, layer3, look(), fog, cam, view, S)   // no map ⇒ no explored gating
+    assert.equal(layer3.maskCtx.ops.filter(o => o.name === 'fillRect').length, 2)
   })
 })

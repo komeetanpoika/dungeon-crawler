@@ -1044,8 +1044,9 @@ export class Renderer {
     // Weather, pass one: the night wash with holes punched around fires —
     // before the flames so they stay bright. look is null underground.
     const look = state.weather?.look
-    const weatherCam = { camX, camY }, weatherView = { W, H }
-    if (look && this.weatherLayer) drawNight(ctx, this.weatherLayer, look, weatherCam, weatherView, S)
+    if (look && this.weatherLayer) {
+      drawNight(ctx, this.weatherLayer, look, { camX, camY }, { W, H }, S)
+    }
 
     // Fireball zones: flickering flames per burning tile. Deterministic
     // flicker seeded by zone age + tile coords (no wall-clock), fading over
@@ -1094,7 +1095,9 @@ export class Renderer {
 
     // Weather, pass two: mist over the water, planks, creatures and player —
     // under floats, bubbles and banners.
-    if (look && this.weatherLayer) drawFog(ctx, this.weatherLayer, look, state.weather.fog, weatherCam, weatherView, S)
+    if (look && this.weatherLayer) {
+      drawFog(ctx, this.weatherLayer, look, state.weather.fog, { camX, camY }, { W, H }, S, map)
+    }
 
     this._drawFeedback(state)
 

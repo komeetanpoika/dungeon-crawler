@@ -59,6 +59,11 @@ import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAM
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
 import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
 
+// Fresh weather state for a depth's map — rebuilt on every surface-map
+// construction so a departing map's weather (and its fog cells, keyed to
+// that map's own tiles) is never inherited by the one arrived at.
+const weatherForDepth = depth => OPEN_MAPS[depth] ? makeWeather(OPEN_MAPS[depth]) : null
+
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
 const MELEE_COOLDOWN = 0.4
@@ -566,7 +571,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     // Weather (day clock + pier fog) for maps with a config entry; null
     // elsewhere. Cave/interior states spread this along — look is nulled
     // underground and the clock only moves on surface frames.
-    weather: OPEN_MAPS[depth] ? makeWeather(OPEN_MAPS[depth]) : null,
+    weather: weatherForDepth(depth),
     // Creature kills are per-visit: an episode's own flags carry the story
     // forward, this only reports what died on this map since arriving.
     creatureKills: {},
@@ -1693,6 +1698,7 @@ function travelToMap(depth) {
     creatureKills: {},
     npcSpawnIds: [...npcSpawns(entitySpawns), ...npcRecord.dead],
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, depth) },
+    weather: weatherForDepth(depth),
   }
   activeSave.progress.mapDepth = depth
   recordVisit(activeSave.progress, OPEN_MAPS[depth].name)
@@ -1734,6 +1740,7 @@ function descendLevel() {
     lockedMsgCooldown: 0,
     fireMsgCooldown: 0,
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
+    weather: weatherForDepth(next),
   }
   announce(state, `Level ${next}. Deeper…`)
   sfx(state, 'descend')
