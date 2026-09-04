@@ -85,12 +85,20 @@ describe('dayPhase', () => {
 
 // A 12×12 lake: water inside a radius-5 disc around (6,6), grass elsewhere.
 // `pier gap 2` sits at the disc centre, as on the real map's pier row.
-function lakeMapData({ withPoi = true } = {}) {
-  const N = 12, palette = ['ow_grass_0', 'ow_water_0']
+function lakeMapData({ withPoi = true, withPond = false } = {}) {
+  const N = 12, palette = ['ow_grass_0', 'ow_water_0', 'ow_pond_0']
   const ground = []
   for (let y = 0; y < N; y++) {
     ground.push([])
-    for (let x = 0; x < N; x++) ground[y].push(Math.hypot(x - 6, y - 6) <= 5 ? 1 : 0)
+    for (let x = 0; x < N; x++) {
+      const d = Math.hypot(x - 6, y - 6)
+      if (d <= 5) {
+        // pond cell at (6,9) if requested
+        ground[y].push(withPond && x === 6 && y === 9 ? 2 : 1)
+      } else {
+        ground[y].push(0)
+      }
+    }
   }
   return { name: 'lake-1-ferry', w: N, h: N, palette, ground,
     pois: withPoi ? [{ kind: 'landmark', x: 6, y: 6, label: 'pier gap 2' }] : [] }
@@ -120,6 +128,13 @@ describe('makeWeather', () => {
     assert.equal(at(0, 0), undefined)                 // grass
     assert.equal(fog.cells.some(c => Math.hypot(c.x - 6, c.y - 6) > 5), false)   // no grass sneaks in
     for (const c of fog.cells) assert.ok(c.w > 0 && c.w <= 1)
+  })
+
+  it('includes pond cells in the fog mask, sharing the openmap water predicate', () => {
+    const { fog } = makeWeather(lakeMapData({ withPond: true }))
+    const at = (x, y) => fog.cells.find(c => c.x === x && c.y === y)
+    assert.ok(at(6, 9), 'pond cell (6,9) is in fog')   // ow_pond_0 cell inside radius
+    assert.equal(fog.cells.some(c => Math.hypot(c.x - 6, c.y - 6) > 5), false)   // no grass sneaks in
   })
 
   it('uses the whole disc when the radius exceeds the map, never indexing off the edge', () => {

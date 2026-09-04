@@ -4,6 +4,7 @@
 import { DAY_LENGTH, DAY_START, weatherFor } from '../data/weather.js'
 import { campfireAlpha, isDeadwoodFire } from './campfire.js'
 import { FIRE_DURATION } from './fire.js'
+import { LOS_CLEAR_PREFIXES } from './openmap.js'
 
 // Light through the day, at fractions of DAY_LENGTH. `dark` is the multiply
 // wash's alpha, `ambient` its colour, `fog` scales the mist. Linear between
@@ -48,7 +49,7 @@ const FIRE_ZONE_LIGHT_TILES = 2
 const FIRE_ZONE_FADE = 0.7   // last seconds of a zone, same clamp the flame draw uses
 
 // The same predicate openmap.js uses for losClear: open water by palette skin.
-const isWater = (data, x, y) => String(data.palette[data.ground[y]?.[x]] ?? '').startsWith('ow_water_')
+const isOpenWater = (data, x, y) => LOS_CLEAR_PREFIXES.some(p => String(data.palette[data.ground[y]?.[x]] ?? '').startsWith(p))
 
 // Open-water cells within `radius` tiles of the anchor POI, weighted by a
 // smoothstep from 1 at the anchor to 0 at the rim. Null (with a warning)
@@ -61,7 +62,7 @@ function fogCells(data, { at, radius }) {
   const x0 = Math.max(0, poi.x - radius), x1 = Math.min(data.w - 1, poi.x + radius)
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      if (!isWater(data, x, y)) continue
+      if (!isOpenWater(data, x, y)) continue
       const d = Math.hypot(x - poi.x, y - poi.y) / radius
       if (d >= 1) continue
       const s = 1 - d
