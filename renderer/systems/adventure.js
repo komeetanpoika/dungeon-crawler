@@ -4,6 +4,7 @@
 // re-locks a map and dying after a boss kill keeps the credit.
 import { OPEN_MAPS } from '../data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../data/levels.js'
+import { DAY_START } from '../data/weather.js'
 
 export function dungeonLabels(mapData) {
   return [...new Set(mapData.pois.filter(p => p.kind === 'dungeon_entrance').map(p => p.label))]
@@ -42,6 +43,7 @@ export function nextMapDepth(depth) {
 // 8-10 moves to 11), progress.visited lists every map reached (seeded with
 // the non-leap maps at or below mapDepth), and the leaps record is only kept
 // for seeding the separate timewarp save.
+// The weather clock (`clock`, seconds into the day) is additive with a default.
 // Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
   const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
@@ -53,6 +55,7 @@ export function normalizeAdventureSave(raw) {
   base.npcs ??= {}
   base.felled ??= {}
   base.leaps ??= {}
+  base.clock ??= DAY_START   // seconds into the in-game day (systems/weather.js)
   if (!base.v6) {
     if (base.progress.mapDepth >= 8) base.progress.mapDepth += 3
     base.v6 = true

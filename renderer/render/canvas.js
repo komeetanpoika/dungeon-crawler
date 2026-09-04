@@ -14,6 +14,7 @@ import { campfireAlpha } from '../systems/campfire.js'
 import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
 import { getMonsterDef, drawGeneratedMonster, isStoryCreature } from '../systems/monsters.js'
+import { makeWeatherLayer, drawNight, drawFog } from './weather.js'
 
 const TILE_SIZE = 32
 
@@ -861,7 +862,9 @@ export function drawBossBySkin(ctx, e, camX, camY, S, sprites,
 }
 
 export class Renderer {
-  constructor(canvas) {
+  // `weatherLayer` is injectable for tests; in the app it is the pair of
+  // quarter-resolution offscreen canvases the weather passes paint through.
+  constructor(canvas, { weatherLayer } = {}) {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')
     this.ctx.imageSmoothingEnabled = false
@@ -872,6 +875,8 @@ export class Renderer {
     this.camY = 0
     this.debug = false
     this.sprites = {}
+    this.weatherLayer = weatherLayer
+      ?? (typeof document !== 'undefined' ? makeWeatherLayer(() => document.createElement('canvas')) : null)
   }
 
   async loadSprites(extraNames = []) {
@@ -909,6 +914,7 @@ export class Renderer {
     this.canvas.height = Math.round(this.viewH * dpr)
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     this.ctx.imageSmoothingEnabled = false
+    this.weatherLayer?.resize(this.viewW, this.viewH)
   }
 
   updateCamera(player, shake = 0, fx = null) {
@@ -1035,6 +1041,13 @@ export class Renderer {
       }
     }
 
+    // Weather, pass one: the night wash with holes punched around fires —
+    // before the flames so they stay bright. look is null underground.
+    const look = state.weather?.look
+    if (look && this.weatherLayer) {
+      drawNight(ctx, this.weatherLayer, look, { camX, camY }, { W, H }, S)
+    }
+
     // Fireball zones: flickering flames per burning tile. Deterministic
     // flicker seeded by zone age + tile coords (no wall-clock), fading over
     // the final 0.7 s of the zone's 3 s life.
@@ -1078,6 +1091,12 @@ export class Renderer {
         if (x < c0 || x >= c1 || y < r0 || y >= r1) continue
         drawHitEffect(ctx, x, y, camX, camY, S)
       }
+    }
+
+    // Weather, pass two: mist over the water, planks, creatures and player —
+    // under floats, bubbles and banners.
+    if (look && this.weatherLayer) {
+      drawFog(ctx, this.weatherLayer, look, state.weather.fog, { camX, camY }, { W, H }, S, map)
     }
 
     this._drawFeedback(state)

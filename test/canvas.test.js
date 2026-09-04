@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, playerSpriteKey, Renderer } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
+import { createMap } from '../renderer/systems/map.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in. `ops`
 // records any other method call (name + args) via the Proxy fallback below,
@@ -456,5 +457,129 @@ describe('drawEntity — grey campfire', () => {
     drawEntity(ctx, { type: 'campfire', t: 0, fuel: 'deadwood' }, 0, 0, 32, { prop_campfire: 'F' })
     assert.deepEqual(ctx.calls, ['F'])
     assert.equal(ctx.filter, 'none')
+  })
+})
+
+describe('Renderer.render weather layers', () => {
+  // Records draws with the composite op in force so the two weather blits
+  // (multiply wash, fog) can be told apart from everything else.
+  function orderCtx() {
+    const ops = []
+    let gco = 'source-over', alpha = 1, fs = '', filter = 'none', smooth = false
+    const stack = []
+    const base = {
+      ops,
+      drawImage: (img) => ops.push({ name: 'drawImage', img, gco, filter }),
+      fillRect: (...a) => ops.push({ name: 'fillRect', a, gco, fs }),
+      clearRect: () => {},
+      createRadialGradient: () => ({ addColorStop() {} }),
+      setTransform() {},
+      save: () => stack.push({ gco, alpha, filter, smooth }),
+      restore: () => { const s = stack.pop(); if (s) ({ gco, alpha, filter, smooth } = s) },
+      get fillStyle() { return fs }, set fillStyle(v) { fs = v },
+      get globalAlpha() { return alpha }, set globalAlpha(v) { alpha = v },
+      get globalCompositeOperation() { return gco }, set globalCompositeOperation(v) { gco = v },
+      get filter() { return filter }, set filter(v) { filter = v },
+      get imageSmoothingEnabled() { return smooth }, set imageSmoothingEnabled(v) { smooth = v },
+    }
+    return new Proxy(base, {
+      get(t, p, r) { if (p in t) return Reflect.get(t, p, r); return (...args) => { ops.push({ name: p, args }) } },
+    })
+  }
+
+  function stubLayer() {
+    const canvas = { id: 'LAYER', width: 0, height: 0 }, mask = { id: 'MASK', width: 0, height: 0 }
+    const layer = { canvas, ctx: orderCtx(), mask, maskCtx: orderCtx(), w: 32, h: 24, k: 0.25, resized: [],
+      resize(w, h) { layer.resized.push([w, h]) } }
+    return layer
+  }
+
+  function scene(weather, entities = []) {
+    const map = createMap(4, 3)
+    for (const row of map) for (const c of row) { c.tile = TILE.FLOOR; c.explored = true; c.visible = true }
+    const player = { x: 1, y: 1, px: 48, py: 48, facing: 'south', invulnTimer: 0, hp: 5, maxHp: 5, inventory: [] }
+    return { map, player, entities, projectiles: [], shockwaves: [], hitEffects: [],
+      fireZones: [{ tiles: [{ x: 0, y: 0 }], age: 0 }],
+      feedback: { floats: [{ px: 48, py: 40, text: '1', kind: 'damage', t: 0 }], bubble: null, banner: null, toasts: [] },
+      weather }
+  }
+
+  function renderScene(weather, { entities = [], sprites = {} } = {}) {
+    const ctx = orderCtx()
+    const canvas = { width: 128, height: 96, offsetWidth: 128, offsetHeight: 96, getContext: () => ctx }
+    const layer = stubLayer()
+    const r = new Renderer(canvas, { weatherLayer: layer })
+    r.viewW = 128; r.viewH = 96
+    r.sprites = { ...r.sprites, ...sprites }
+    const state = scene(weather, entities)
+    r.updateCamera(state.player, 0)
+    r.render(state, null)
+    return { ops: ctx.ops, layer, ctx }
+  }
+
+  // The first flame rect is the fire-zone loop's red '#ef4444' fill.
+  const flameIdx = ops => ops.findIndex(o => o.name === 'fillRect' && o.fs === '#ef4444')
+  const feedbackIdx = ops => ops.findIndex(o => o.name === 'fillText' || o.name === 'strokeText' || o.name === 'font')
+
+  it('draws no weather when the map has none', () => {
+    const { ops } = renderScene(null)
+    assert.equal(ops.some(o => o.name === 'drawImage' && o.img.id === 'LAYER'), false)
+  })
+
+  it('blits the multiply wash after the entities and before the flames', () => {
+    const fog = { cx: 1, cy: 1, radius: 2, cells: [] }
+    const look = { dark: 0.85, ambient: [40, 60, 120], fog: 0, t: 0, lights: [] }
+    // A crab entity resolves to a plain sprites.crab drawImage — pins the
+    // wash after actual entity draws, not just after the tile loop.
+    const crab = { type: 'crab', x: 2, y: 1 }
+    const { ops, ctx } = renderScene({ dayCycle: true, t: 0, fog, look }, { entities: [crab], sprites: { crab: 'CRAB' } })
+    const entityDraw = ops.findIndex(o => o.name === 'drawImage' && o.img === 'CRAB')
+    assert.ok(entityDraw >= 0, 'entity sprite drawn')
+    const wash = ops.findIndex(o => o.name === 'drawImage' && o.img.id === 'LAYER' && o.gco === 'multiply')
+    assert.ok(wash >= 0, 'wash drawn')
+    assert.ok(wash < flameIdx(ops), 'wash before flames')
+    assert.ok(wash > entityDraw, 'wash after the entity sprite')
+    assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
+    assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
+    assert.equal(ctx.filter, 'none', 'ctx filter settled')
+  })
+
+  it('blits the fog after the flames and before the feedback layer', () => {
+    const fog = { cx: 1, cy: 1, radius: 2, cells: [{ x: 1, y: 1, w: 1 }] }
+    const look = { dark: 0, ambient: [255, 255, 255], fog: 1, t: 0, lights: [] }
+    const { ops, ctx } = renderScene({ dayCycle: true, t: 0, fog, look })
+    const fogBlit = ops.findIndex(o => o.name === 'drawImage' && o.img.id === 'LAYER' && o.gco === 'source-over')
+    assert.ok(fogBlit >= 0, 'fog drawn')
+    assert.ok(fogBlit > flameIdx(ops), 'fog after flames')
+    const fb = feedbackIdx(ops)
+    assert.ok(fb >= 0, 'feedback drawn')
+    assert.ok(fogBlit < fb, 'fog before feedback')
+    assert.equal(ops.some(o => o.name === 'drawImage' && o.gco === 'multiply'), false, 'no wash by day')
+    assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
+    assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
+    assert.equal(ctx.filter, 'none', 'ctx filter settled')
+  })
+
+  it('skips weather when look is null (underground)', () => {
+    const fog = { cx: 1, cy: 1, radius: 2, cells: [{ x: 1, y: 1, w: 1 }] }
+    const { ops } = renderScene({ dayCycle: true, t: 0, fog, look: null })
+    assert.equal(ops.some(o => o.name === 'drawImage' && o.img.id === 'LAYER'), false)
+  })
+
+  it('resizes the layer with the view', () => {
+    const ctx = orderCtx()
+    const canvas = { width: 0, height: 0, offsetWidth: 200, offsetHeight: 100, getContext: () => ctx }
+    const layer = stubLayer()
+    const r = new Renderer(canvas, { weatherLayer: layer })
+    r.resize()
+    assert.deepEqual(layer.resized.at(-1), [200, 100])
+  })
+
+  it('has no layer when there is no document and no injection', () => {
+    const ctx = orderCtx()
+    const canvas = { width: 0, height: 0, offsetWidth: 200, offsetHeight: 100, getContext: () => ctx }
+    const r = new Renderer(canvas)
+    assert.equal(r.weatherLayer, null)
+    assert.doesNotThrow(() => r.resize())
   })
 })
