@@ -7,6 +7,7 @@ import {
 } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../renderer/data/levels.js'
+import { DAY_START } from '../renderer/data/weather.js'
 
 describe('the adventure map chain', () => {
   it('exports the adventure chain at depths 7..18 (leap maps at 8-10)', () => {
@@ -115,13 +116,13 @@ describe('v3 save shape', () => {
   it('v3 saves pass through untouched, gaining only the empty gates, npcs and felled maps', () => {
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
-    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {}, felled: {}, leaps: {}, v6: true, v7: true })
+    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {}, felled: {}, leaps: {}, clock: DAY_START, v6: true, v7: true })
   })
 
   it('v4 saves keep their npcs and gain an empty felled map', () => {
     const v4 = { caves: {}, progress: { mapDepth: 7, cleared: {} }, talents: [], body: null,
       gates: {}, npcs: { 'forest-1-clearings': { dead: ['npc:forest-1-clearings:0'], hostile: false } } }
-    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, v6: true, v7: true })
+    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, clock: DAY_START, v6: true, v7: true })
   })
 
   it('a fresh save has no felled trees', () => {
