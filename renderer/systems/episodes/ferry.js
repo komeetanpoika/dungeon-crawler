@@ -10,22 +10,22 @@ import { TILE } from '../entities.js'
 export const DELIVERIES = [{ item: 'clapper', to: { poi: 'bell' }, sets: 'bell_hung' }]
 
 const FEEDS_TO_CLEAR = 3
-const GAP_LABELS = ['pier gap 1', 'pier gap 2']
+const GAP_RE = /^pier gap \d+$/
 
 const onCell = (entity, c) => !!c && entity.x === c.x && entity.y === c.y
 
-// The pier's last two cells: water (WALL, losClear) while the Näkki lives,
-// walkable pier planks once it's fed off.
+// The pier's gap cells (every `pier gap N` POI): water (WALL, losClear)
+// while the Näkki lives, walkable pier planks once it's fed off. The planks
+// go on the overlay over the untouched water skin, exactly how the rest of
+// the pier is baked (a walkable pier-log prop over lake ground): the log art
+// is transparent above and below the planks and needs water showing through.
 function openGaps(ctx) {
   const { state, mapData } = ctx
-  for (const label of GAP_LABELS) {
-    const spot = poiCell(mapData, label)
-    if (!spot) continue
+  for (const spot of mapData.pois.filter(p => GAP_RE.test(p.label))) {
     const cell = state.map[spot.y]?.[spot.x]
     if (!cell) continue
     cell.tile = TILE.FLOOR
-    cell.skin = 'ow_pier_log'
-    cell.overlay = null
+    cell.overlay = 'ow_pier_log'
     delete cell.losClear
   }
 }

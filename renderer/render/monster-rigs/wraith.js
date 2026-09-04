@@ -1,120 +1,102 @@
-// 16-bit pixel wraith: rounded cowl, hollow face with ember eyes, a body
-// that tapers into tatters fluttering on a 4-frame loop. Upright, flips
-// with facing. Channels: `flicker` jitters alpha per frame (the Sammunut
-// shuddering at the edge of the light), `burn` shortens the body from the
-// tatters up and spreads the ember tint. Death: tatters lift off as ember
-// pixels while the cowl collapses and fades.
-import { TILE_ART_PX, palette, frameOf, withPixelStage } from './pixel.js'
+// Sprite-sheet wraith: blits hand-drawn frames from
+// renderer/assets/monsters/wraith.png (built by tools/extract-wraith-sheet.mjs
+// from assets/wraith.png; grid in the generated wraith-sheet.js). Upright,
+// flips with facing. Two rows: `float` — the five-frame drifting loop — and
+// `dissolve`, the body unravelling to a wisp and a pair of eyes. Channels:
+// `flicker` (the Sammunut moving while faded, 0..1) picks dissolve frames so
+// it materialises eyes-first out of the dark and unravels as it leaves the
+// light; `burn` (0..1) tints it ember; death plays the dissolve row through.
+// Without a DOM Image (Node tests) or before the sheet has loaded it draws a
+// plain hooded silhouette so nothing ever vanishes.
+import { SHEET } from '../../assets/monsters/wraith-sheet.js'
+import { frameOf, drawSheetCell } from './pixel.js'
 
 export const RIG_ID = 'wraith'
 
 export const PARAM_SCHEMA = [
-  { key: 'height',       label: 'Height',        group: 'body', type: 'range', min: 0.8, max: 2.5, step: 0.05, default: 1.6 },
-  { key: 'width',        label: 'Width',         group: 'body', type: 'range', min: 0.5, max: 1.6, step: 0.05, default: 0.9 },
-  { key: 'cowl',         label: 'Cowl',          group: 'body', type: 'range', min: 0.0, max: 1.0, step: 0.05, default: 0.6 },
-  { key: 'tatterCount',  label: 'Tatters',       group: 'tatters', type: 'range', min: 2, max: 6, step: 1, default: 4 },
-  { key: 'tatterLength', label: 'Tatter length', group: 'tatters', type: 'range', min: 0.2, max: 1.5, step: 0.05, default: 0.7 },
-  { key: 'flutterFreq',  label: 'Flutter',       group: 'tatters', type: 'range', min: 2, max: 12, step: 0.5, default: 6 },
-  { key: 'eyeSize',      label: 'Eye size',      group: 'face', type: 'range', min: 0.05, max: 0.3, step: 0.01, default: 0.12 },
-  { key: 'cloakColor',   label: 'Cloak',  group: 'skin', type: 'color', default: '#3a3550' },
-  { key: 'emberColor',   label: 'Ember',  group: 'skin', type: 'color', default: '#ff7a2a' },
-  { key: 'eyeColor',     label: 'Eyes',   group: 'skin', type: 'color', default: '#ffb040' },
+  { key: 'height',     label: 'Height (tiles)', group: 'body',   type: 'range', min: 1.5, max: 4.5, step: 0.05, default: 2.85 },
+  { key: 'lift',       label: 'Lift (tiles)',   group: 'body',   type: 'range', min: -0.5, max: 1.0, step: 0.05, default: 0.25 },
+  { key: 'floatFps',   label: 'Float speed',    group: 'motion', type: 'range', min: 1, max: 12, step: 1, default: 6 },
+  { key: 'bob',        label: 'Hover bob',      group: 'motion', type: 'range', min: 0.0, max: 1.0, step: 0.05, default: 0.5 },
+  { key: 'emberColor', label: 'Ember',          group: 'skin',   type: 'color', default: '#ff7a2a' },
 ]
 
 const R = Math.round
 const WHITE = '#f8f8f8'
+const DEATH_TIME = 0.7
+const SHEET_URL = new URL('../../assets/monsters/wraith.png', import.meta.url).href
 const clamp01 = v => Math.max(0, Math.min(1, v ?? 0))
-const ceilTile = v => Math.max(TILE_ART_PX, Math.ceil(v / TILE_ART_PX) * TILE_ART_PX)
 
-function dims(p) {
-  const bodyW = 2 * Math.max(2, R(p.width * 6))
-  const bodyH = Math.max(8, R(p.height * 14))
-  const cowlH = Math.max(2, R(p.cowl * 6))
-  const faceH = Math.max(3, R(bodyH * 0.3))
-  const tatters = R(p.tatterCount)
-  const tatLen = Math.max(2, R(p.tatterLength * 8))
-  const eye = Math.max(1, R(p.eyeSize * 8))
-  return { bodyW, bodyH, cowlH, faceH, tatters, tatLen, eye,
-           artW: ceilTile(bodyW + 8),
-           artH: ceilTile(bodyH + 2 * cowlH + 2 * tatLen + 12) }
+let sheet = null
+function sheetImage() {
+  if (sheet === null && typeof Image !== 'undefined') { sheet = new Image(); sheet.src = SHEET_URL }
+  return sheet && sheet.complete && sheet.naturalWidth > 0 ? sheet : null
 }
+// Test seam: swap in any drawable with naturalWidth > 0 / complete = true.
+export function _setSheetImage(img) { sheet = img }
 
 export function hitHalf(p) {
-  const d = dims(p)
-  return Math.max(8, Math.min(28, R((d.bodyW + d.bodyH / 2) * 0.5)))
+  return Math.max(8, Math.min(28, R(p.height * 16 * 0.35)))
+}
+
+// Which sheet cell a pose shows. Death and a strong flicker both walk the
+// dissolve row (flicker reversed on the way in: a rising fade means a falling
+// flicker, so the eyes appear first and the body gathers under them);
+// otherwise the float loop. Exported for tests.
+export function frameFor(p, pose) {
+  const dis = SHEET.rows.dissolve, fl = SHEET.rows.float
+  if (pose.state === 'death') {
+    const k = clamp01((pose.stateT ?? 0) / DEATH_TIME)
+    return { row: dis.row, frame: Math.min(dis.frames - 1, Math.floor(k * dis.frames)) }
+  }
+  const flick = clamp01(pose.flicker)
+  if (flick > 0.35) {
+    const k = (flick - 0.35) / 0.65
+    return { row: dis.row, frame: Math.min(dis.frames - 1, Math.floor(k * dis.frames)) }
+  }
+  return { row: fl.row, frame: frameOf(pose.t ?? 0, p.floatFps, fl.frames) }
 }
 
 export function drawMonster(ctx, p, pose, S) {
-  const d = dims(p)
-  const { state, stateT, seed } = pose
-  const hit = state === 'hit'
-  const cloak = hit ? { outline: WHITE, base: WHITE, light: WHITE } : palette(p.cloakColor)
-  const ember = hit ? { outline: WHITE, base: WHITE, light: WHITE } : palette(p.emberColor)
-  const eye = hit ? WHITE : palette(p.eyeColor).light
-  const burn = clamp01(pose.burn)
-  const flick = clamp01(pose.flicker)
+  const { row, frame } = frameFor(p, pose)
   const flip = Math.cos(pose.facing ?? 0) < 0
-  const F = frameOf(pose.t, p.flutterFreq, 4)
+  const k = p.height * S / SHEET.cellH                  // scale: a cell spans `height` tiles
+  const w = R(SHEET.cellW * k), h = R(SHEET.cellH * k)
+  const bob = R(Math.sin((pose.t ?? 0) * 2.4 + (pose.seed ?? 0)) * p.bob * S * 0.1)
+  const dx = -R(w / 2), dy = -R(h / 2) - R(p.lift * S) + bob
+  const sx = frame * SHEET.cellW, sy = row * SHEET.cellH
+  const burn = clamp01(pose.burn)
+  const hit = pose.state === 'hit'
+  const tint = hit ? { color: WHITE, alpha: 1 } : burn > 0 ? { color: p.emberColor, alpha: burn * 0.7 } : null
 
-  withPixelStage(ctx, d.artW, d.artH, 0, S, c => {
-    c.save()
-    if (flip) c.scale(-1, 1)
-    if (flick > 0) {
-      const r = (((seed ?? 0) + Math.floor(pose.t * 30)) * 7919 % 13) / 13
-      c.globalAlpha *= 1 - flick * (0.25 + 0.6 * r)
-    }
-    const top = -d.bodyH / 2
-    const bottom = d.bodyH / 2
+  ctx.save()
+  if (flip) ctx.scale(-1, 1)
+  ctx.imageSmoothingEnabled = false
+  if (pose.state === 'death') {
+    const kd = clamp01((pose.stateT ?? 0) / DEATH_TIME)
+    ctx.globalAlpha *= 1 - kd
+  }
+  const img = sheetImage()
+  if (!img) drawSilhouette(ctx, w, h, dx, dy, row === SHEET.rows.dissolve.row, hit, burn, p.emberColor)
+  else drawSheetCell(ctx, img, sx, sy, SHEET.cellW, SHEET.cellH, dx, dy, w, h, tint)
+  ctx.restore()
+}
 
-    if (state === 'death') {
-      const k = Math.min(1, stateT / 0.7)
-      c.fillStyle = ember.light
-      for (let i = 0; i < d.tatters + 2; i++) {
-        const x = -d.bodyW / 2 + R(i * d.bodyW / (d.tatters + 1))
-        const y = bottom - R(k * (d.bodyH + 12)) - (i % 3) * 2
-        c.fillRect(x, y, 1, 1)
-      }
-      c.globalAlpha *= 1 - k
-      c.translate(0, R(k * d.bodyH * 0.4))
-      c.scale(1, Math.max(0.05, 1 - k * 0.8))
-    }
-
-    // body: tapering rows, the lowest rows ember-tinted as it burns
-    const visH = Math.max(2, R(d.bodyH * (1 - 0.5 * burn)))
-    const emberRows = R(burn * 6)
-    for (let y = 0; y < visH; y++) {
-      const w = 2 * Math.max(1, R((d.bodyW / 2) * (1 - 0.4 * y / d.bodyH)))
-      c.fillStyle = cloak.outline
-      c.fillRect(-w / 2 - 1, top + y, w + 2, 1)
-      c.fillStyle = (emberRows > 0 && y >= visH - emberRows) ? ember.base : cloak.base
-      c.fillRect(-w / 2, top + y, w, 1)
-    }
-
-    // tatters trailing below the visible body
-    const tatLen = Math.max(1, R(d.tatLen * (1 - burn)))
-    for (let i = 0; i < d.tatters; i++) {
-      const x = -d.bodyW / 2 + 1 + R(i * Math.max(1, d.bodyW - 3) / Math.max(1, d.tatters - 1))
-      const dy = [0, 1, 0, -1][(F + i) % 4]
-      c.fillStyle = i % 2 ? cloak.base : cloak.outline
-      c.fillRect(x, top + visH + dy, 2, tatLen)
-    }
-
-    // cowl: rounded rows widening downward, a light rim
-    for (let r = 0; r < d.cowlH; r++) {
-      const w = 2 * Math.max(1, R((d.bodyW / 2 + 1) * Math.sqrt((r + 1) / d.cowlH)))
-      c.fillStyle = cloak.outline
-      c.fillRect(-w / 2 - 1, top - d.cowlH + r, w + 2, 1)
-      c.fillStyle = cloak.light
-      c.fillRect(-w / 2, top - d.cowlH + r, w, 1)
-    }
-
-    // hollow face and ember eyes
-    c.fillStyle = cloak.outline
-    c.fillRect(-d.bodyW / 2 + 1, top, d.bodyW - 2, d.faceH)
-    c.fillStyle = eye
-    c.fillRect(-R(d.bodyW / 4) - Math.floor(d.eye / 2), top + 1, d.eye, d.eye)
-    c.fillRect(R(d.bodyW / 4) - Math.floor(d.eye / 2), top + 1, d.eye, d.eye)
-
-    c.restore()
-  })
+// Fallback when no sheet can be drawn: a hooded block with two bright eyes
+// and a tapering skirt (just the eyes and a wisp while dissolving).
+function drawSilhouette(ctx, w, h, dx, dy, dissolving, hit, burn, ember) {
+  const cloak = hit ? WHITE : burn > 0.5 ? ember : '#3a3550'
+  const eye = hit ? WHITE : '#ffb040'
+  const cx = dx + R(w / 2)
+  if (!dissolving) {
+    ctx.fillStyle = cloak
+    ctx.fillRect(dx + R(w * 0.2), dy + R(h * 0.05), R(w * 0.6), R(h * 0.35))    // hood
+    ctx.fillRect(dx + R(w * 0.25), dy + R(h * 0.4), R(w * 0.5), R(h * 0.45))    // skirt
+  } else {
+    ctx.fillStyle = cloak
+    ctx.fillRect(cx - 1, dy + R(h * 0.3), 3, R(h * 0.5))                         // wisp
+  }
+  ctx.fillStyle = eye
+  ctx.fillRect(cx - R(w * 0.14), dy + R(h * 0.18), Math.max(1, R(w * 0.08)), Math.max(1, R(w * 0.08)))
+  ctx.fillRect(cx + R(w * 0.06), dy + R(h * 0.18), Math.max(1, R(w * 0.08)), Math.max(1, R(w * 0.08)))
 }

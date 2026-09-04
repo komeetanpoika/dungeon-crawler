@@ -51,22 +51,29 @@ function lake() {
   b.p(village.x + 1, village.y + 12, 'ow_sign', { walkable: false })
   b.poi('landmark', village.x, village.y + 12, "Toivo's hut")
   // the pier: from the west shore straight east to the bell post, then a
-  // two-cell gap of open water (the Näkki's), then the orchard bank
+  // PIER_GAP-cell gap of open water (the Näkki's — it sits in the first gap
+  // cell, within a swing of the pier end; the rest is room for its sprite
+  // sheet body and tail), then the orchard bank
+  const PIER_GAP = 4
   const py = cy
   let x0 = cx - rx
   while (!isWater(b, x0, py)) x0++
   const pierLen = 14
-  for (let x = x0; x < x0 + pierLen; x++) { b.clearProp(x, py); b.g(x, py, 'ow_pier_log'); b.unblock(x, py) }
+  // Pier logs are a walkable prop laid over the lake, never the ground: the
+  // log art has transparent rows above and below the planks, so the water
+  // skin under it must still be drawn (openmap.js bakes a walkable prop over
+  // water ground to a FLOOR cell with a water skin and the log as overlay).
+  const layPier = x => { b.clearProp(x, py); b.p(x, py, 'ow_pier_log', { walkable: true }); b.unblock(x, py) }
+  for (let x = x0; x < x0 + pierLen; x++) layPier(x)
   const bellX = x0 + pierLen - 1
   b.p(bellX, py - 1, 'ow_pier_post', { walkable: false })
   b.poi('landmark', bellX, py, 'bell')
   b.poi('landmark', bellX, py, 'pier end')
   b.poi('landmark', bellX + 1, py, 'nakki')          // water beside the pier end, right where it meets the pier
-  b.poi('landmark', bellX + 1, py, 'pier gap 1')          // water until the Näkki is gone
-  b.poi('landmark', bellX + 2, py, 'pier gap 2')
+  for (let i = 1; i <= PIER_GAP; i++) b.poi('landmark', bellX + i, py, `pier gap ${i}`)   // water until the Näkki is gone
   // the pier resumes after the gap and runs to the east bank
-  let x1 = bellX + 3
-  while (isWater(b, x1, py)) { b.clearProp(x1, py); b.g(x1, py, 'ow_pier_log'); b.unblock(x1, py); x1++ }
+  let x1 = bellX + 1 + PIER_GAP
+  while (isWater(b, x1, py)) { layPier(x1); x1++ }
   // orchard on the east bank — apple trees on a cleared lawn
   const orchard = { x: x1 + 6, y: py }
   clearing(b, orchard.x, orchard.y, 7)
@@ -85,12 +92,12 @@ function lake() {
       }
     // dense cover east of the wall (the isolated side never has to look
     // walkably sparse — nobody crosses it except across the pier) keeps the
-    // secluded pocket small relative to total walkable area — but never on
-    // the pier itself, or the resumed pier east of the gap grows tree props
-    // that block walking straight across to the orchard
+    // secluded pocket small relative to total walkable area — never on the
+    // pier itself (it sits on water ground and already carries the log
+    // prop), or the resumed pier east of the gap would grow tree props that
+    // block walking straight across to the orchard
     for (let y = 1; y < b.h - 1; y++) for (let x = cx + 4; x < b.w - 1; x++)
       if (b.walkable(x, y) && b.prop[y][x] === -1 && !isWater(b, x, y) &&
-          b.palette[b.ground[y][x]] !== 'ow_pier_log' &&
           Math.hypot(x - orchard.x, y - orchard.y) > 8 && rng() < 0.97)
         plantTree(b, rng, x, y, PINES)
   }
@@ -148,7 +155,7 @@ function lake() {
   }
   // the pier gap cells must stay water/blocked regardless of what either
   // pass did to them.
-  for (const label of ['pier gap 1', 'pier gap 2']) { const p = b.pois.find(q => q.label === label); b.g(p.x, p.y, pick(rng, WATER)); b.block(p.x, p.y) }
+  for (const p of b.pois.filter(q => /^pier gap \d+$/.test(q.label))) { b.g(p.x, p.y, pick(rng, WATER)); b.block(p.x, p.y) }
   pruneBrokenTrees(b)
   return b
 }

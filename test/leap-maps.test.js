@@ -8,7 +8,7 @@ import { isHouseDoorArt, houseDoorsForMap } from '../renderer/systems/houses.js'
 import { EPISODES } from '../renderer/data/leaps.js'
 
 const REQUIRED = {
-  'lake-1-ferry':     ['runestone', 'village', 'bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'islet cache'],
+  'lake-1-ferry':     ['runestone', 'village', 'bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'islet cache'],
   'highland-2-fold':  ['runestone', 'village', 'fold', 'den', 'burrow', 'lair', 'fleece cache', 'burn 1', 'burn 2', 'burn 3', 'burn 4'],
   'marsh-3-hermit':   ['runestone', 'village', 'hearth', 'hermit hut', 'mushroom ring', 'hearth 1', 'hearth 2', 'hearth 3'],
 }
@@ -58,7 +58,9 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
       const open = (x, y) => map[y]?.[x]?.tile === TILE.FLOOR
       const near = (x, y) => open(x, y) || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => open(x + dx, y + dy))
       assert.ok(open(data.playerSpawn.x, data.playerSpawn.y), 'spawn')
-      for (const p of data.pois) assert.ok(near(p.x, p.y), `poi ${p.label} at ${p.x},${p.y}`)
+      // the lake's `pier gap N` run is open water by design (the episode
+      // planks it over later), so its inner cells touch no floor
+      for (const p of data.pois) if (!/^pier gap \d+$/.test(p.label)) assert.ok(near(p.x, p.y), `poi ${p.label} at ${p.x},${p.y}`)
     })
     it('has at least three caches', () => {
       assert.ok(data.pois.filter(p => p.kind === 'chest').length >= 3)
@@ -83,10 +85,10 @@ for (const [name, labels] of Object.entries(REQUIRED)) {
       })
 
       it('the orchard is reachable from the pier gap once the gap itself is crossable', () => {
-        const [g1x, g1y] = poi('pier gap 1')
-        const [g2x, g2y] = poi('pier gap 2')
-        const passable = (x, y) => walkable(data)(x, y) || (x === g1x && y === g1y) || (x === g2x && y === g2y)
-        const reached = bfsReachable(data, [poi('pier gap 2')], passable)
+        const gaps = data.pois.filter(p => /^pier gap \d+$/.test(p.label))
+        assert.equal(gaps.length, 4, 'four gap cells give the serpent room')
+        const passable = (x, y) => walkable(data)(x, y) || gaps.some(g => g.x === x && g.y === y)
+        const reached = bfsReachable(data, [poi('pier gap 1')], passable)
         assert.ok(reachedAt(reached, poi('orchard')), 'orchard should be reachable once the gap is crossed')
       })
     }

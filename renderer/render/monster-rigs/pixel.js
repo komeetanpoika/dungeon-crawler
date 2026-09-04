@@ -72,3 +72,32 @@ export function withPixelStage(ctx, artW, artH, angle, S, drawFn) {
     ctx.restore()
   }
 }
+
+// Sprite-sheet rigs (serpent, wraith) blit one cell of a hand-drawn sheet
+// instead of drawing shapes. `tint` ({ color, alpha }) recolours the cell's
+// opaque pixels through a shared offscreen buffer — the hit flash (white, 1)
+// and slow burns (ember, partial) both go through it. Without OffscreenCanvas
+// the cell is drawn plain. ctx is expected to already carry any flip.
+const cellBufs = new Map()
+function cellBuffer(w, h) {
+  if (typeof OffscreenCanvas === 'undefined') return null
+  const key = w + 'x' + h
+  let buf = cellBufs.get(key)
+  if (!buf) { buf = new OffscreenCanvas(w, h); cellBufs.set(key, buf) }
+  return buf
+}
+
+export function drawSheetCell(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh, tint = null) {
+  const buf = tint && tint.alpha > 0 ? cellBuffer(sw, sh) : null
+  if (!buf) { ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh); return }
+  const b = buf.getContext('2d')
+  b.clearRect(0, 0, sw, sh)
+  b.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+  b.globalCompositeOperation = 'source-atop'
+  b.globalAlpha = Math.min(1, tint.alpha)
+  b.fillStyle = tint.color
+  b.fillRect(0, 0, sw, sh)
+  b.globalAlpha = 1
+  b.globalCompositeOperation = 'source-over'
+  ctx.drawImage(buf, 0, 0, sw, sh, dx, dy, dw, dh)
+}

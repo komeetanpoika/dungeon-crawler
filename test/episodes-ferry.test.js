@@ -13,10 +13,13 @@ const N = 12
 
 // A minimal stand-in for the real lake-1-ferry POIs: bell and pier end share
 // a cell (as on the real map), the Näkki sits one cell further out on the
-// first pier gap, and the second gap is one further still.
+// first pier gap, and the remaining gap cells run on east of it (the real
+// map has four; three here prove openGaps takes every `pier gap N` POI).
 const BELL = { x: 5, y: 5 }
 const GAP1 = { x: 6, y: 5 }
 const GAP2 = { x: 7, y: 5 }
+const GAP3 = { x: 8, y: 5 }
+const GAPS = [GAP1, GAP2, GAP3]
 
 function makeMapData() {
   return {
@@ -27,6 +30,7 @@ function makeMapData() {
       { kind: 'landmark', x: GAP1.x, y: GAP1.y, label: 'nakki' },
       { kind: 'landmark', x: GAP1.x, y: GAP1.y, label: 'pier gap 1' },
       { kind: 'landmark', x: GAP2.x, y: GAP2.y, label: 'pier gap 2' },
+      { kind: 'landmark', x: GAP3.x, y: GAP3.y, label: 'pier gap 3' },
     ],
     npcs: { village: [], wild: [] },
   }
@@ -36,8 +40,8 @@ function makeMap() {
   const map = createMap(N, N)
   for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) map[y][x].tile = TILE.FLOOR
   // The pier gaps start as water — WALL and losClear — until the episode
-  // opens them (mirrors openmap.js's bake for `pier gap 1/2`).
-  for (const g of [GAP1, GAP2]) {
+  // opens them (mirrors openmap.js's bake for the `pier gap N` cells).
+  for (const g of GAPS) {
     map[g.y][g.x].tile = TILE.WALL
     map[g.y][g.x].skin = 'ow_water_0'
     map[g.y][g.x].losClear = true
@@ -145,11 +149,11 @@ describe('tick — feeding', () => {
     assert.equal(gone.state, 'sinking')
     updateNakki(gone, state, SINK_TIME + 0.001)
     assert.equal(nakkiIn(state), undefined, 'nakki removed once the sink completes')
-    for (const g of [GAP1, GAP2]) {
+    for (const g of GAPS) {
       const cell = state.map[g.y][g.x]
       assert.equal(cell.tile, TILE.FLOOR)
-      assert.equal(cell.skin, 'ow_pier_log')
-      assert.equal(cell.overlay, null)
+      assert.equal(cell.skin, 'ow_water_0', 'water skin stays under the planks')
+      assert.equal(cell.overlay, 'ow_pier_log', 'planks go on the overlay like the rest of the pier')
       assert.equal('losClear' in cell, false)
     }
     assert.equal(spies.calls.resolve, 1, 'resolve called exactly once')
@@ -172,11 +176,11 @@ describe('onArrive', () => {
     ctx.set('nakki_gone')
     onArrive(ctx)
     assert.equal(nakkiIn(state), undefined)
-    for (const g of [GAP1, GAP2]) {
+    for (const g of GAPS) {
       const cell = state.map[g.y][g.x]
       assert.equal(cell.tile, TILE.FLOOR)
-      assert.equal(cell.skin, 'ow_pier_log')
-      assert.equal(cell.overlay, null)
+      assert.equal(cell.skin, 'ow_water_0', 'water skin stays under the planks')
+      assert.equal(cell.overlay, 'ow_pier_log', 'planks go on the overlay like the rest of the pier')
       assert.equal('losClear' in cell, false)
     }
   })
@@ -188,12 +192,12 @@ describe('onArrive', () => {
     assert.ok(n)
     assert.equal(n.state, 'surfaced')
     assert.deepEqual(n.pierEnd, poiCell(mapData, 'pier end'))
-    for (const g of [GAP1, GAP2]) assert.equal(state.map[g.y][g.x].tile, TILE.WALL)
+    for (const g of GAPS) assert.equal(state.map[g.y][g.x].tile, TILE.WALL)
   })
 
   it('with neither flag set: does nothing', () => {
     onArrive(ctx)
     assert.equal(nakkiIn(state), undefined)
-    for (const g of [GAP1, GAP2]) assert.equal(state.map[g.y][g.x].tile, TILE.WALL)
+    for (const g of GAPS) assert.equal(state.map[g.y][g.x].tile, TILE.WALL)
   })
 })
