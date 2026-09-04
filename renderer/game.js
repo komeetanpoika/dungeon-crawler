@@ -57,6 +57,7 @@ import { showToast, hideToast } from './ui/toast.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor, shouldAutoRelease, tierMods } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
+import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
@@ -170,7 +171,7 @@ let state = null
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
 if (new URLSearchParams(location.search).has('dcdebug')) {
-  window.__dc = { get state() { return state } }
+  window.__dc = { get state() { return state }, get save() { return activeSave } }
 }
 let inventoryOpen = false
 let meta = null
@@ -562,6 +563,10 @@ function startNewRun(depth = 1, arenaCfg = null) {
     entranceHold: false,
     signs: signs ?? [],
     npcWrath: !!npcRecord?.hostile,
+    // Weather (day clock + pier fog) for maps with a config entry; null
+    // elsewhere. Cave/interior states spread this along — look is nulled
+    // underground and the clock only moves on surface frames.
+    weather: OPEN_MAPS[depth] ? makeWeather(OPEN_MAPS[depth]) : null,
     // Creature kills are per-visit: an episode's own flags carry the story
     // forward, this only reports what died on this map since arriving.
     creatureKills: {},
@@ -876,6 +881,13 @@ function update(delta) {
     // relying on the modules' ctx.resolve() calls alone. Self-guarding on
     // episodeResolved/isResolved, so this is a no-op once resolved.
     resolveEpisode()
+  }
+
+  // Weather runs on the surface only: the animation timer always, the day
+  // clock when the map has a cycle. Underground both hold.
+  if (state.weather && !state.cave) {
+    state.weather.t += delta
+    if (state.weather.dayCycle) advanceClock(activeSave, delta)
   }
 
   // Campfire cooking — standing on a fire cooks every raw meat carried.
@@ -1562,6 +1574,7 @@ function render() {
   // matches the audio falloff edge, so what you hear you can usually see.
   maybeComputeFOV(state.map, state.player, !state.cave && OPEN_MAPS[state.level] ? 14 : 8)
   const fx = riteVisuals(state)
+  if (state.weather) state.weather.look = state.cave ? null : weatherLook(state, activeSave)
   renderer.updateCamera(state.player, state.shake ?? 0, fx)
   renderer.render(state, fx)
   updateHUD(state)
