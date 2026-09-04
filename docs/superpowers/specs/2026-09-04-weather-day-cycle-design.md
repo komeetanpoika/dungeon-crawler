@@ -17,8 +17,9 @@ atmospheric:
 2. **Pier fog.** Mist lies on the water around the pier, over the planks, the
    Näkki and the player, thin at midday and heavy at dawn and night.
 
-Both are built as a generic per-map system so another map can opt in with one
-config line, but only Toivo's Lake is enabled by this work.
+Both are built as a generic per-map system so a map opts in with one config
+line. The first cut enabled only Toivo's Lake; the day cycle was then switched
+on for every open map (see the Non-goals addendum).
 
 ## Non-goals
 
@@ -27,8 +28,11 @@ config line, but only Toivo's Lake is enabled by this work.
   the frame; it does not hide anything the player could see by day.
 - **No ambient sound.** The cue system is one-shot only and nothing here
   needs a looping bed.
-- **No weather on any other map, no rain/snow/wind.** The config table is
-  the extension point; the only entry is the lake.
+- **No rain/snow/wind, no fog outside the lake.** The config table is the
+  extension point. (Addendum 2026-09-04: every open map now carries
+  `dayCycle: true` — the Adventure chain on its one shared clock, each
+  Timewarp episode on its own — so "lake only" applies to the fog, not the
+  day cycle.)
 - **No save version bump.** The clock is one additive field with a default.
 - **No changes to the generated `open-maps.js`.**
 

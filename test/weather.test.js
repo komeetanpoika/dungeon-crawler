@@ -222,3 +222,15 @@ describe('weatherLook', () => {
     assert.equal(look.fog, 1)
   })
 })
+
+describe('day cycle on every open map', () => {
+  it('gives each OPEN_MAPS entry a dayCycle config, fog only on the lake', async () => {
+    const { OPEN_MAPS } = await import('../renderer/data/open-maps.js')
+    for (const data of Object.values(OPEN_MAPS)) {
+      const cfg = weatherFor(data)
+      assert.equal(cfg?.dayCycle, true, `${data.name} has no day cycle`)
+      assert.equal(!!cfg.fog, data.name === 'lake-1-ferry', `${data.name} fog`)
+    }
+    assert.equal(Object.keys(WEATHER).length, Object.keys(OPEN_MAPS).length)
+  })
+})
