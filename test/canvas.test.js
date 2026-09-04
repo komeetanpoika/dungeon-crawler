@@ -496,7 +496,7 @@ describe('Renderer.render weather layers', () => {
     const player = { x: 1, y: 1, px: 48, py: 48, facing: 'south', invulnTimer: 0, hp: 5, maxHp: 5, inventory: [] }
     return { map, player, entities: [], projectiles: [], shockwaves: [], hitEffects: [],
       fireZones: [{ tiles: [{ x: 0, y: 0 }], age: 0 }],
-      feedback: { floats: [], bubble: null, banner: null, toasts: [] },
+      feedback: { floats: [{ px: 48, py: 40, text: '1', kind: 'damage', t: 0 }], bubble: null, banner: null, toasts: [] },
       weather }
   }
 
@@ -539,7 +539,8 @@ describe('Renderer.render weather layers', () => {
     assert.ok(fogBlit >= 0, 'fog drawn')
     assert.ok(fogBlit > flameIdx(ops), 'fog after flames')
     const fb = feedbackIdx(ops)
-    assert.ok(fb === -1 || fogBlit < fb, 'fog before feedback')
+    assert.ok(fb >= 0, 'feedback drawn')
+    assert.ok(fogBlit < fb, 'fog before feedback')
     assert.equal(ops.some(o => o.name === 'drawImage' && o.gco === 'multiply'), false, 'no wash by day')
   })
 
