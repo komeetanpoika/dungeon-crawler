@@ -75,6 +75,7 @@ describe('registerMonsters', () => {
     const defs = ['nakki', 'maahinen', 'sammunut'].map(n => JSON.parse(fs.readFileSync(`renderer/data/monsters/${n}.json`, 'utf8')))
     const rigs = { quadruped: await import('../renderer/render/monster-rigs/quadruped.js'),
                    lurker: await import('../renderer/render/monster-rigs/lurker.js'),
+                   serpent: await import('../renderer/render/monster-rigs/serpent.js'),
                    wraith: await import('../renderer/render/monster-rigs/wraith.js') }
     assert.equal(await registerMonsters(defs, { loadRig: async id => rigs[id], loadHooks: async () => {}, warn: m => { throw new Error(m) } }), 3)
     assert.equal(getMonsterDef('nakki').behavior.passive, true)

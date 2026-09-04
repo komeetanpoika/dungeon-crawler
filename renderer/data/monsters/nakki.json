@@ -1,9 +1,7 @@
 {
   "name": "nakki",
-  "rig": "lurker",
-  "params": { "headWidth": 1.2, "headHeight": 0.7, "eyeSize": 0.12, "eyeGap": 0.5,
-              "weedLength": 0.6, "weedCount": 5, "sway": 0.5, "rippleSize": 1.2,
-              "skinColor": "#3f5a3a", "weedColor": "#2c3f26", "eyeColor": "#d8e86a", "rippleColor": "#6f9fbf" },
+  "rig": "serpent",
+  "params": { "width": 4.5, "shift": 1.4, "waterline": 0.45, "idleFps": 5, "swimFps": 8, "bob": 0.4 },
   "stats": { "hp": 1, "dmg": 1, "speed": 0 },
   "behavior": { "taxon": "beast", "driver": "hook", "passive": true, "sightRange": 0 },
   "spawn": null,
