@@ -5,6 +5,45 @@
 import { OPEN_MAPS } from '../data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../data/levels.js'
 import { DAY_START } from '../data/weather.js'
+import { WAND_TYPES, RANGED_WEAPON_TYPES, makeWandContents, makeRangedContents, emptyAmmo } from './entities.js'
+
+// The traveling body's wands-and-bows redesign (Task 1): the ranged hand
+// gains a `wand` sibling and ammo moves off the weapon into a shared
+// `ammo` pool by kind. A pre-redesign body might still have `ranged` set to
+// a wand (wands used to be ranged weapons) or a bow carrying its own
+// `ammo`/`maxAmmo` — fold those into the new shape here rather than at every
+// read site. Sack items follow the same rule for the wand case. Additive
+// and idempotent: normalizing an already-current body is a no-op, and an
+// unrecognised weaponType is dropped instead of crashing later.
+export function normalizeBody(body) {
+  if (body == null) return null
+  const out = { ...body }
+  out.wand ??= null
+  out.ammo = { ...emptyAmmo(), ...(out.ammo ?? {}) }
+  if (out.ranged) {
+    const wt = out.ranged.weaponType
+    if (WAND_TYPES[wt]) {
+      out.wand = makeWandContents(wt)
+      out.ranged = null
+    } else if (RANGED_WEAPON_TYPES[wt]) {
+      out.ammo[RANGED_WEAPON_TYPES[wt].ammoKind] += out.ranged.ammo ?? 0
+      out.ranged = makeRangedContents(wt)
+    } else {
+      out.ranged = null   // unknown weapon type — drop rather than crash
+    }
+  }
+  out.inventory = (out.inventory ?? []).map(item => {
+    if (item.kind !== 'ranged') return item
+    const wt = item.payload?.weaponType
+    if (WAND_TYPES[wt]) {
+      const { type, ...payload } = makeWandContents(wt)
+      return { kind: 'wand', name: payload.name, emoji: '🪄', stackable: false, payload }
+    }
+    if (!RANGED_WEAPON_TYPES[wt]) return null   // unknown weapon type — drop
+    return item
+  }).filter(Boolean)
+  return out
+}
 
 export function dungeonLabels(mapData) {
   return [...new Set(mapData.pois.filter(p => p.kind === 'dungeon_entrance').map(p => p.label))]
@@ -50,7 +89,7 @@ export function normalizeAdventureSave(raw) {
     : (raw && typeof raw === 'object' && !raw.caves) ? { caves: raw, progress: freshProgress() }
     : { caves: {}, progress: freshProgress() }
   base.talents ??= []
-  base.body ??= null
+  base.body = normalizeBody(base.body ?? null)
   base.gates ??= {}
   base.npcs ??= {}
   base.felled ??= {}

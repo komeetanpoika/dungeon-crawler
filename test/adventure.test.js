@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   dungeonLabels, markCleared, isMapComplete, nextMapDepth,
-  normalizeAdventureSave, freshProgress, npcRecordFor, recordNpcState, resetNpcs,
+  normalizeAdventureSave, normalizeBody, freshProgress, npcRecordFor, recordNpcState, resetNpcs,
   recordVisit, waystoneDestinations,
 } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
@@ -116,7 +116,10 @@ describe('v3 save shape', () => {
   it('v3 saves pass through untouched, gaining only the empty gates, npcs and felled maps', () => {
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
-    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {}, felled: {}, leaps: {}, clock: DAY_START, v6: true, v7: true })
+    assert.deepEqual(normalizeAdventureSave(v3), {
+      ...v3, body: { ...v3.body, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 } },
+      gates: {}, npcs: {}, felled: {}, leaps: {}, clock: DAY_START, v6: true, v7: true,
+    })
   })
 
   it('v4 saves keep their npcs and gain an empty felled map', () => {
@@ -130,7 +133,9 @@ describe('v3 save shape', () => {
   })
 
   it('body inventory items with nested payload are preserved', () => {
-    const payload = { ammo: 5, type: 'ranged' }
+    // weaponType must be a real bow so normalizeBody's migration doesn't drop
+    // this sack item as an unrecognised legacy weapon.
+    const payload = { weaponType: 'shortbow', ammo: 5, type: 'ranged' }
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: [], body: {
         weapon: null, ranged: null,
@@ -255,5 +260,58 @@ describe('waystoneDestinations', () => {
     for (const d of [11, 12, 13, 14, 15, 16, 17, 18]) recordVisit(s.progress, OPEN_MAPS[d].name)
     for (const label of dungeonLabels(OPEN_MAPS[18])) markCleared(s.progress, OPEN_MAPS[18].name, label)
     assert.deepEqual(waystoneDestinations(s).map(d => d.depth), [7, 11, 12, 13, 14, 15, 16, 17, 18])
+  })
+})
+
+describe('normalizeBody', () => {
+  it('passes null through untouched', () => {
+    assert.equal(normalizeBody(null), null)
+  })
+
+  it('defaults wand and ammo on an otherwise-current body', () => {
+    const b = normalizeBody({ weapon: null, ranged: null, inventory: [] })
+    assert.equal(b.wand, null)
+    assert.deepEqual(b.ammo, { arrow: 0, bolt: 0, stone: 0 })
+  })
+
+  it('moves a legacy ranged wand to the wand slot', () => {
+    const b = normalizeBody({ weapon: null, ranged: { weaponType: 'sparkwand', ammo: 5 }, inventory: [] })
+    assert.equal(b.wand.weaponType, 'sparkwand')
+    assert.equal(b.ranged, null)
+  })
+
+  it('folds a legacy bow\'s own ammo into the pool and drops ammo/maxAmmo from the weapon', () => {
+    const b = normalizeBody({ weapon: null, ranged: { weaponType: 'longbow', ammo: 7, maxAmmo: 10 }, inventory: [] })
+    assert.equal(b.ammo.arrow, 7)
+    assert.equal(b.ranged.weaponType, 'longbow')
+    assert.ok(!('ammo' in b.ranged), 'ammo dropped from the weapon')
+    assert.ok(!('maxAmmo' in b.ranged), 'maxAmmo dropped from the weapon')
+  })
+
+  it('converts a sack ranged item with a wand payload to kind wand', () => {
+    const b = normalizeBody({
+      weapon: null, ranged: null,
+      inventory: [{ kind: 'ranged', name: 'x', emoji: '🏹', stackable: false, payload: { weaponType: 'firewand', ammo: 3 } }],
+    })
+    assert.equal(b.inventory[0].kind, 'wand')
+    assert.equal(b.inventory[0].payload.weaponType, 'firewand')
+    assert.ok(!('ammo' in b.inventory[0].payload), 'wand payload has no ammo field')
+  })
+
+  it('drops unknown weapon types rather than crashing', () => {
+    const b = normalizeBody({
+      weapon: null, ranged: { weaponType: 'made-up-gun', ammo: 1 },
+      inventory: [{ kind: 'ranged', name: 'x', emoji: '🏹', stackable: false, payload: { weaponType: 'made-up-gun' } }],
+    })
+    assert.equal(b.ranged, null)
+    assert.deepEqual(b.inventory, [])
+  })
+
+  it('is idempotent', () => {
+    const once = normalizeBody({ weapon: null, ranged: { weaponType: 'longbow', ammo: 7, maxAmmo: 10 }, inventory: [
+      { kind: 'ranged', name: 'x', emoji: '🏹', stackable: false, payload: { weaponType: 'stormwand' } },
+    ] })
+    const twice = normalizeBody(once)
+    assert.deepEqual(twice, once)
   })
 })
