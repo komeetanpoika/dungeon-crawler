@@ -1,133 +1,157 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readPng } from '../tools/png-read.mjs'
 import { MapBuilder } from '../tools/static-overworld/lib.mjs'
-import { MTN, isMass, isMassSkin, rimShape, stampMass, clearMountain, stampMountainRim } from '../tools/static-overworld/mountain.mjs'
+import { MTN, LAT_PX, LAT_PY, isMassSkin, rimShape, stampMass, stampRock, clearMountain, stampMountainRim } from '../tools/static-overworld/mountain.mjs'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { buildOpenMap } from '../renderer/systems/openmap.js'
 import { TILE, hasLineOfSight, computePlayerFOV, makePlayer } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
+import { HARVEST } from '../renderer/systems/lumber.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TILES = path.join(HERE, '../renderer/assets/tiles')
 const rng = () => 0.5
-
 const f = (s = '') => ({ N: s.includes('N'), E: s.includes('E'), S: s.includes('S'), W: s.includes('W') })
-const d = (s = '') => ({ NE: s.includes('NE'), NW: s.includes('NW'), SE: s.includes('SE'), SW: s.includes('SW') })
+const d = () => ({ NE: false, NW: false, SE: false, SW: false })
+const png = n => readPng(path.join(TILES, `${n}.png`))
+const alphaAt = (p, x, y) => p.pixels[(y * p.width + x) * 4 + 3]
 
 describe('mountain tiles on disk', () => {
-  it('every tile the rim pass can pick exists as a 16x16 PNG', () => {
-    const names = [...MTN.floor, ...MTN.peak, ...MTN.scree, ...Object.values(MTN.edge).flat()]
+  it('every tile the rules can pick exists as a 16x16 PNG, and no name is used twice', () => {
+    const names = [...MTN.ground, ...MTN.shade, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.cluster, ...MTN.rock]
     assert.equal(new Set(names).size, names.length)
-    for (const n of names) {
-      const png = readPng(path.join(TILES, `${n}.png`))
-      assert.equal(`${png.width}x${png.height}`, '16x16', n)
+    for (const n of names) { const p = png(n); assert.equal(`${p.width}x${p.height}`, '16x16', n) }
+  })
+  it('a lattice cell with an open north side has transparent pixels along its top edge and is opaque at its foot', () => {
+    let clear = 0
+    for (let q = 0; q < LAT_PX * LAT_PY; q++) {
+      const p = png(MTN.lat[1][q])
+      for (let x = 0; x < 16; x++) for (let y = 0; y < 3; y++) if (alphaAt(p, x, y) === 0) clear++
+      for (let x = 0; x < 16; x++) assert.equal(alphaAt(p, x, 15), 255, `${q}:${x}`)
     }
+    assert.ok(clear > 40, `only ${clear} transparent pixels along the top three rows`)
+  })
+  it('an interior lattice cell is fully opaque; a keyed piece has both transparent and opaque pixels', () => {
+    const p = png(MTN.lat[0][5])
+    for (let i = 3; i < p.pixels.length; i += 4) assert.equal(p.pixels[i], 255)
+    for (const n of [MTN.cluster[0], MTN.rock[0], MTN.ridge.dr[0]]) {
+      const q = png(n)
+      const a = new Set(); for (let i = 3; i < q.pixels.length; i += 4) a.add(q.pixels[i])
+      assert.deepEqual([...a].sort(), [0, 255], n)
+    }
+  })
+  it('the shade tile is darker at its top rows than its plain ground and equal lower down', () => {
+    const g = png(MTN.ground[0]), s = png(MTN.shade[0])
+    const row = (p, y) => { let t = 0; for (let x = 0; x < 16; x++) t += p.pixels[(y * 16 + x) * 4]; return t }
+    assert.ok(row(s, 0) < row(g, 0) * 0.75)
+    assert.equal(row(s, 12), row(g, 12))
   })
 })
 
 describe('rimShape', () => {
-  it('a straight face runs the ridge along it', () => {
-    assert.equal(rimShape(f('S'), d()), 'h')
-    assert.equal(rimShape(f('N'), d()), 'h')
-    assert.equal(rimShape(f('E'), d()), 'v')
-    assert.equal(rimShape(f('W'), d()), 'v')
+  it('returns the open-side mask for a lattice cell', () => {
+    assert.equal(rimShape(f(), d()), 0)
+    assert.equal(rimShape(f('N'), d()), 1)
+    assert.equal(rimShape(f('E'), d()), 2)
+    assert.equal(rimShape(f('S'), d()), 4)
+    assert.equal(rimShape(f('W'), d()), 8)
+    assert.equal(rimShape(f('NE'), d()), 3)
+    assert.equal(rimShape(f('ESW'), d()), 'cluster')
   })
-  it('convex corners turn toward the two mass sides', () => {
-    assert.equal(rimShape(f('SE'), d()), 'tl')
-    assert.equal(rimShape(f('SW'), d()), 'tr')
-    assert.equal(rimShape(f('NE'), d()), 'lb')
-    assert.equal(rimShape(f('NW'), d()), 'br')
-  })
-  it('a one-wide spur or column keeps a straight ridge', () => {
-    assert.equal(rimShape(f('NS'), d()), 'h')
-    assert.equal(rimShape(f('EW'), d()), 'v')
-    assert.equal(rimShape(f('NES'), d()), 'v')
-    assert.equal(rimShape(f('NEW'), d()), 'h')
-  })
-  it('concave corners see floor only diagonally and turn the same way', () => {
-    assert.equal(rimShape(f(), d('NE')), 'tr')
-    assert.equal(rimShape(f(), d('NW')), 'tl')
-    assert.equal(rimShape(f(), d('SE')), 'br')
-    assert.equal(rimShape(f(), d('SW')), 'lb')
-  })
-  it('interior cells and diagonal junctions stay peak fill; an island is scree', () => {
-    assert.equal(rimShape(f(), d()), null)
-    assert.equal(rimShape(f(), d('NE SW')), null)
-    assert.equal(rimShape(f('NESW'), d()), 'scree')
+  it('an island is a cluster; a one-cell wall is a lattice unless ridge walls are asked for', () => {
+    assert.equal(rimShape(f('NESW'), d()), 'cluster')
+    assert.equal(rimShape(f('NS'), d(), { walls: 'lattice' }), 5)
+    assert.equal(rimShape(f('NS'), d()), 'wall')
+    assert.equal(rimShape(f('EW'), d()), 'wall')
+    assert.equal(rimShape(f('N'), d()), 1)
   })
 })
 
 describe('stampMountainRim', () => {
-  const block = () => {
-    const b = new MapBuilder('t', 'forest', 't', 12, 12)
-    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) b.g(x, y, 'ow_grass_0')
-    for (let y = 3; y <= 7; y++) for (let x = 3; x <= 8; x++) stampMass(b, rng, x, y)
+  const fresh = (w = 12, h = 12) => {
+    const b = new MapBuilder('t', 'forest', 't', w, h)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) b.g(x, y, MTN.ground[0])
     return b
   }
-  const skin = (b, x, y) => b.palette[b.ground[y][x]]
+  const block = () => { const b = fresh(); for (let y = 3; y <= 7; y++) for (let x = 3; x <= 8; x++) stampMass(b, rng, x, y); return b }
+  const prop = (b, x, y) => b.palette[b.prop[y][x]]
+  const ground = (b, x, y) => b.palette[b.ground[y][x]]
+  const latAt = (m, x, y) => MTN.lat[m][(x % LAT_PX) + LAT_PX * (y % LAT_PY)]
 
-  it('rims a solid block: straight faces, turned corners, peaks inside', () => {
+  it('paints every mass cell with the lattice tile for its mask and lattice position', () => {
     const b = block()
     stampMountainRim(b, rng)
-    assert.match(skin(b, 5, 3), /^ow_mtn_edge_h_/)
-    assert.match(skin(b, 5, 7), /^ow_mtn_edge_h_/)
-    assert.match(skin(b, 3, 5), /^ow_mtn_edge_v_/)
-    assert.match(skin(b, 8, 5), /^ow_mtn_edge_v_/)
-    assert.match(skin(b, 3, 3), /^ow_mtn_edge_br_/)
-    assert.match(skin(b, 8, 3), /^ow_mtn_edge_lb_/)
-    assert.match(skin(b, 3, 7), /^ow_mtn_edge_tr_/)
-    assert.match(skin(b, 8, 7), /^ow_mtn_edge_tl_/)
-    assert.match(skin(b, 5, 5), /^ow_mtn_peak_/)
+    assert.equal(prop(b, 5, 5), latAt(0, 5, 5))
+    assert.equal(prop(b, 5, 3), latAt(1, 5, 3))       // north face
+    assert.equal(prop(b, 8, 5), latAt(2, 8, 5))       // east face
+    assert.equal(prop(b, 3, 7), latAt(4 | 8, 3, 7))   // south-west corner
     for (let y = 3; y <= 7; y++) for (let x = 3; x <= 8; x++) assert.equal(b.walkable(x, y), false)
-    assert.equal(skin(b, 1, 1), 'ow_grass_0')
+    assert.equal(b.walkable(2, 5), true)
   })
 
-  it('a notch cut into the block gives its inner corners turns', () => {
+  it('with apron on, shades only the mountain ground directly south of a mass, and undoes it when the mass goes', () => {
     const b = block()
-    clearMountain(b, rng, 5, 7, 1)   // opens (5,7), (4,7), (6,7), (5,6)
-    assert.equal(b.walkable(5, 6), true)
-    stampMountainRim(b, rng)
-    assert.match(skin(b, 4, 6), /^ow_mtn_edge_(v|tl)_/)  // floor E and S → tl... or v when only E
-    assert.match(skin(b, 6, 6), /^ow_mtn_edge_tr_/)      // floor W and S
-    assert.match(skin(b, 5, 5), /^ow_mtn_edge_h_/)       // floor S only
+    stampMountainRim(b, rng, { apron: true })
+    assert.equal(ground(b, 5, 8), MTN.shade[0])
+    assert.equal(ground(b, 5, 2), MTN.ground[0])
+    assert.equal(ground(b, 2, 5), MTN.ground[0])
+    assert.equal(ground(b, 9, 8), MTN.ground[0])   // diagonal only
+    clearMountain(b, rng, 5, 7, 0)
+    stampMountainRim(b, rng, { apron: true })
+    assert.match(ground(b, 5, 8), /^ow_mtn_ground_/)
+    assert.match(ground(b, 5, 7), /^ow_mtn_shade_/)
   })
 
-  it('an isolated mass cell becomes a scree boulder and stays blocked', () => {
-    const b = new MapBuilder('t', 'forest', 't', 8, 8)
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) b.g(x, y, 'ow_grass_0')
+  it('by default the ground is not shaded', () => {
+    const b = block()
+    stampMountainRim(b, rng)
+    assert.equal(ground(b, 5, 8), MTN.ground[0])
+  })
+
+  it('leaves grass alone', () => {
+    const b = block()
+    b.g(5, 8, 'ow_grass_0')
+    stampMountainRim(b, rng)
+    assert.equal(ground(b, 5, 8), 'ow_grass_0')
+  })
+
+  it('an island becomes a keyed cluster, still blocked; rocks are blocked props that clear to ground', () => {
+    const b = fresh(8, 8)
     stampMass(b, rng, 4, 4)
+    stampRock(b, rng, 1, 1)
     stampMountainRim(b, rng)
-    assert.match(skin(b, 4, 4), /^ow_mtn_scree_/)
+    assert.match(prop(b, 4, 4), /^ow_mtn_cluster_/)
     assert.equal(b.walkable(4, 4), false)
-    assert.equal(isMass(b, 4, 4), false)
+    assert.equal(b.walkable(1, 1), false)
+    clearMountain(b, rng, 1, 1, 0)
+    assert.equal(b.walkable(1, 1), true)
+    assert.equal(b.prop[1][1], -1)
   })
 
-  it('mass running off the map shows no rim against the edge', () => {
-    const b = new MapBuilder('t', 'forest', 't', 8, 8)
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) b.g(x, y, 'ow_grass_0')
+  it('mass running off the map shows no face against the edge', () => {
+    const b = fresh(8, 8)
     for (let y = 0; y < 8; y++) for (let x = 0; x <= 3; x++) stampMass(b, rng, x, y)
     stampMountainRim(b, rng)
-    assert.match(skin(b, 0, 4), /^ow_mtn_peak_/)
-    assert.match(skin(b, 3, 4), /^ow_mtn_edge_v_/)
+    assert.equal(prop(b, 0, 4), latAt(0, 0, 4))
+    assert.equal(prop(b, 3, 4), latAt(2, 3, 4))
   })
 
   it('is idempotent over a finished map', () => {
     const b = block()
     stampMountainRim(b, rng)
-    const once = b.ground.map(r => r.map(i => b.palette[i]))
+    const once = JSON.stringify(b.toJSON())
     stampMountainRim(b, rng)
-    assert.deepEqual(b.ground.map(r => r.map(i => b.palette[i])), once)
+    assert.equal(JSON.stringify(b.toJSON()), once)
   })
 })
 
 describe('Mountain Pass (depth 12)', () => {
   const m = OPEN_MAPS[12]
-  const g = (x, y) => m.palette[m.ground[y][x]]
-  const mass = (x, y) => x < 0 || y < 0 || x >= m.w || y >= m.h || isMassSkin(g(x, y))
+  const propAt = (x, y) => m.prop[y][x] >= 0 ? m.palette[m.prop[y][x]] : null
+  const mass = (x, y) => x < 0 || y < 0 || x >= m.w || y >= m.h || isMassSkin(propAt(x, y))
 
   it('keeps its name, title and story POIs', () => {
     assert.equal(m.name, 'forest-3-autumn')
@@ -136,20 +160,19 @@ describe('Mountain Pass (depth 12)', () => {
     for (const l of ['stone circle', 'hermit hut', 'old mine 1', 'old mine 2']) assert.ok(labels.includes(l), l)
   })
 
-  it('has no rock props left and wears the mountain tileset', () => {
+  it('has no rock props from the old set left and wears the mountain tileset', () => {
     assert.deepEqual(m.palette.filter(n => n.startsWith('ow_rock')), [])
-    assert.ok(m.palette.some(n => n.startsWith('ow_mtn_peak')))
-    assert.ok(m.palette.some(n => n.startsWith('ow_mtn_edge')))
+    assert.ok(m.palette.some(n => n.startsWith('ow_mtn_lat_')))
   })
 
-  it('every mountain cell is blocked, and every mass face wears a rim tile', () => {
-    for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
-      const n = g(x, y)
-      if (isMassSkin(n) || n.startsWith('ow_mtn_scree')) assert.equal(m.walk[y][x], '0', `${x},${y} ${n}`)
-      if (!n.startsWith('ow_mtn_peak')) continue
-      let floorSides = 0
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!mass(x + dx, y + dy)) floorSides++
-      assert.equal(floorSides, 0, `peak at ${x},${y} touches floor`)
+  it('every mountain cell is blocked and wears the lattice tile for its open sides', () => {
+    for (let y = 1; y < m.h - 1; y++) for (let x = 1; x < m.w - 1; x++) {
+      const p = propAt(x, y)
+      if (!p?.startsWith('ow_mtn_')) continue
+      assert.equal(m.walk[y][x], '0', `${x},${y} ${p}`)
+      if (!p.startsWith('ow_mtn_lat_')) continue
+      const want = (mass(x, y - 1) ? 0 : 1) | (mass(x + 1, y) ? 0 : 2) | (mass(x, y + 1) ? 0 : 4) | (mass(x - 1, y) ? 0 : 8)
+      assert.equal(p, MTN.lat[want][(x % LAT_PX) + LAT_PX * (y % LAT_PY)], `${x},${y}`)
     }
   })
 
@@ -157,6 +180,13 @@ describe('Mountain Pass (depth 12)', () => {
     let trees = 0
     for (const row of m.prop) for (const i of row) if (i >= 0 && m.palette[i].startsWith('ow_tree')) trees++
     assert.ok(trees > 1500, `only ${trees} trees`)
+  })
+
+  it('mountain masses are not mineable; the boulders are, like the rocks they replaced', () => {
+    for (const n of m.palette) {
+      if (n.startsWith('ow_mtn_rock_')) assert.equal(HARVEST[n]?.tool, 'mine', n)
+      else if (n.startsWith('ow_mtn_')) assert.equal(HARVEST[n], undefined, n)
+    }
   })
 })
 
@@ -169,10 +199,10 @@ describe('line of sight through mountains (losTall)', () => {
   it('a mountain behind a mountain is seen, the ground behind it is not', () => {
     const map = open()
     for (let x = 7; x <= 12; x++) { map[5][x].tile = TILE.WALL; map[5][x].losTall = true }
-    assert.equal(hasLineOfSight(map, 5, 5, 5, 7), true)    // the near face
-    assert.equal(hasLineOfSight(map, 5, 5, 5, 10), true)   // a peak deep inside
-    assert.equal(hasLineOfSight(map, 5, 5, 5, 12), true)   // the far face
-    assert.equal(hasLineOfSight(map, 5, 5, 5, 14), false)  // floor beyond the range
+    assert.equal(hasLineOfSight(map, 5, 5, 5, 7), true)
+    assert.equal(hasLineOfSight(map, 5, 5, 5, 10), true)
+    assert.equal(hasLineOfSight(map, 5, 5, 5, 12), true)
+    assert.equal(hasLineOfSight(map, 5, 5, 5, 14), false)
   })
   it('a plain wall still hides what is behind it, mountain or not', () => {
     const map = open()
@@ -180,20 +210,19 @@ describe('line of sight through mountains (losTall)', () => {
     map[5][9].tile = TILE.WALL; map[5][9].losTall = true
     assert.equal(hasLineOfSight(map, 5, 5, 5, 9), false)
   })
-  it('buildOpenMap stamps losTall on Mountain Pass peaks and rims, not on scree or floor', () => {
+  it('buildOpenMap stamps losTall on Mountain Pass masses, not on rocks or ground', () => {
     const { map } = buildOpenMap(OPEN_MAPS[12], { depth: 12 })
     const m = OPEN_MAPS[12]
     let tall = 0
     for (let y = 1; y < m.h - 1; y++) for (let x = 1; x < m.w - 1; x++) {
-      if (m.prop[y][x] >= 0) continue   // a prop is the blocker the player sees
-      const n = m.palette[m.ground[y][x]]
-      const expect = n.startsWith('ow_mtn_peak') || n.startsWith('ow_mtn_edge')
-      assert.equal(!!map[y][x].losTall, expect, `${x},${y} ${n}`)
+      const p = m.prop[y][x] >= 0 ? m.palette[m.prop[y][x]] : null
+      const expect = isMassSkin(p)
+      assert.equal(!!map[y][x].losTall, expect, `${x},${y} ${p}`)
       if (expect) tall++
     }
     assert.ok(tall > 1000)
   })
-  it('the FOV lights a whole mountain face from the pass, rims and interior alike', () => {
+  it('the FOV lights a whole mountain face from the pass', () => {
     const { map } = buildOpenMap(OPEN_MAPS[12], { depth: 12 })
     const player = makePlayer(84, 24)
     computePlayerFOV(map, player, 8)

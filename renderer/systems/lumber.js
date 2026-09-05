@@ -43,6 +43,8 @@ const ROCKS = {
   ow_rock_brown_moss_0:  { hp: 3, yield: 0, cells: 1, tool: 'mine' },
   ow_rock_brown_moss_1:  { hp: 3, yield: 0, cells: 1, tool: 'mine' },
   ow_rock_brown_moss_2:  { hp: 3, yield: 0, cells: 1, tool: 'mine' },
+  // the Mountain Pass boulders (ow_mtn_rock_N) mine the same way
+  ...Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`ow_mtn_rock_${i}`, { hp: 3, yield: 0, cells: 1, tool: 'mine' }])),
 }
 
 // The full harvestable table: every tree tagged `tool: 'chop'`, plus rocks.

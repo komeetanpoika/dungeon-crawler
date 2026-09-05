@@ -1,19 +1,36 @@
-// Turn the mountain-pass concept sheet (assets/mountain pass.png — an opaque
-// RGB mockup on a near-black backdrop: two rows of cliff-edge tiles, two rows
-// of mountain-peak / scree fills, one row of floor tiles, then an example
-// strip) into the game's 16x16 overworld tiles under renderer/assets/tiles/
-// with an ow_mtn_ prefix. The sheet is drawn at ~106 px per cell and is not
-// true pixel art (single-pixel noise, no block grid), so every cell is
-// area-averaged down to 16x16 rather than sampled.
+// Turn the mountain-pass concept sheet (assets/mountainpass2.png — an opaque
+// RGB mockup on a near-black backdrop: three rows of ridge/cluster pieces,
+// three rows of peak cones and rock scatters, one row of floor tiles, then
+// example strips) into the game's 16x16 overworld tiles under
+// renderer/assets/tiles/ with an ow_mtn_ prefix. The sheet is drawn at ~73 px
+// per cell and is not true pixel art (single-pixel noise, no block grid), so
+// every cell is tight-cropped, inset past its drawn frame and area-averaged
+// down to 16x16 rather than sampled.
 //
-// The cliff-edge tiles are organic ridge lines, not a blob autotile. They are
-// sorted here by hand into the ridge shapes the map generator's rim pass
-// (tools/static-overworld/mountain.mjs) needs: a ridge running left-right
-// (h), top-bottom (v), and the four turns named by the two sides the ridge
-// leaves through (tl, tr, lb, br). Turns the sheet lacks are mirrored from
-// the ones it has — the peaks are lit from above, so a horizontal flip keeps
-// the light right. The remaining cells (two diagonals each way and a narrow
-// two-ridge pass) come out as spares for the editor.
+// What comes out (see tools/static-overworld/mountain.mjs for how it is laid):
+//   ow_mtn_ground_N / shade_N             opaque floor, and the same floor with
+//                                          a shadow gradient down from its top
+//                                          edge (the ground just south of a mass)
+//   ow_mtn_lat_M_Q                         the mass itself: one cell of a global
+//                                          jittered half-offset cone lattice
+//                                          (period 64x48 game px, Q = cell
+//                                          position 0..11 = x%4 + 4*(y%3)), with
+//                                          the sides named by the 4-bit mask M
+//                                          (1 N, 2 E, 4 S, 8 W) open: no cone
+//                                          crosses an open side and everything
+//                                          beyond the cone silhouette on that
+//                                          side is transparent, so the ground
+//                                          shows between the tips
+//   ow_mtn_ridge_{dr|dl|lb|br|v}_N         keyed (transparent backdrop) ridge
+//                                          lines for one-cell-thick walls:
+//                                          "/" (dr), "\" (dl), hooks, steep
+//   ow_mtn_cluster_N                       keyed standalone peak clumps (islands)
+//   ow_mtn_rock_N                          keyed rock scatters (boulders)
+// (mask 15 — an island — is drawn with a cluster, so it is not emitted; the
+// sheet's V-dip tips and single cones are only used as lattice sources)
+// Nothing is mirrored: the art is lit from the top-left, and a flipped copy
+// is lit from the wrong side. The one exception is `br`, the mirror of the
+// only hook the sheet has (lb), because a corner needs both hands.
 // Usage: node tools/extract-mountain-tiles.mjs
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -22,32 +39,38 @@ import { readPng } from './png-read.mjs'
 import { writePng } from './png-write.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const SRC = path.join(HERE, '../assets/mountain pass.png')
+const SRC = path.join(HERE, '../assets/mountainpass2.png')
 const OUT_DIR = path.join(HERE, '../renderer/assets/tiles')
 const T = 16
-const BG = [24, 25, 30]      // backdrop
-const BG_TOL = 40            // |dr|+|dg|+|db| below this is backdrop
-const MIN_CELL = 60          // a run of art shorter than this is a label, not a cell
+const BG = [21, 24, 29]      // sheet backdrop between cells
+const BG_TOL = 40            // |dr|+|dg|+|db| below this is sheet backdrop
+const MIN_CELL = 40          // a run of art shorter than this is a label, not a cell
+const INSET = 2              // source px shaved off every cell side: the drawn frame + bevel
+const KEY_TOL = 26           // |dr|+|dg|+|db| to the cell's own backdrop that keys out
+const COLS = 15
 
-// Sheet layout: cell index = row * 10 + column for the five tile rows.
-// Edge rows are 0-1, peak/scree rows 2-3, the floor row 4.
-export const EDGE_SHAPES = {
-  h: [2, 7, 8, 15, 16, 17],
-  v: [6, 11, 13, 14],
-  tl: [19], tr: [5, 12], lb: [4, 18],
+// Cell index = row * 15 + column over the six tile rows: ridge rows 0-2,
+// cone rows 3-5 (the last seven of row 5 are rock scatters); row 6 is floor.
+// Classified by hand (loop-1 audit): what each ridge line actually does.
+export const RIDGE = {
+  dr: [0, 1, 4, 6, 7, 9, 17, 18, 20, 23, 25, 27, 34],    // "/" bottom-left to top-right (20, 23 bowed)
+  dl: [3, 5, 8, 10, 11, 15, 16, 19, 21, 22, 24, 26, 35], // "\" top-left to bottom-right
+  lb: [2, 12],                                           // hook leaving left and bottom
+  v: [33],                                               // steep, bottom to top
 }
-// Mirrored turns: a horizontal flip swaps left and right in the ridge exits.
-const FLIPS = { tl: ['tr'], tr: ['tl'], br: ['lb'] }
-const SPARES = { diag: [0, 3, 9, 10], pass: [1] }
+export const TIP = [31, 36, 37]                          // V dips: a spur tip pointing south
+export const CLUSTER = [13, 14, 28, 29, 30, 32, 38, 39, 40, 41, 42, 43, 44]
+export const CONE = [...Array.from({ length: 30 }, (_, i) => 45 + i), 75, 76, 77, 78, 79, 80, 81, 82]
+export const ROCK = [84, 85, 86, 87, 88, 89]             // 83 is a dark hollow, not a scatter
+const FLOOR_ROW = 6
+const SHADE_TOP = 0.7, SHADE_RAMP = 0.8   // shade tile: rows 0-1 at SHADE_TOP, rows 2-7 ramp SHADE_RAMP -> 1
 
 if (!fs.existsSync(SRC)) { console.log(`mountain sheet not found at ${SRC}`); process.exit(0) }
 const src = readPng(SRC)
-const isArt = (x, y) => {
-  const i = (y * src.width + x) * 4
-  return Math.abs(src.pixels[i] - BG[0]) + Math.abs(src.pixels[i + 1] - BG[1]) + Math.abs(src.pixels[i + 2] - BG[2]) > BG_TOL
-}
+const at = (x, y) => (y * src.width + x) * 4
+const dist = (i, c) => Math.abs(src.pixels[i] - c[0]) + Math.abs(src.pixels[i + 1] - c[1]) + Math.abs(src.pixels[i + 2] - c[2])
+const isArt = (x, y) => dist(at(x, y), BG) > BG_TOL
 
-// Runs of indices where `on(i)` holds, keeping those at least MIN_CELL long.
 function runs(n, on) {
   const out = []
   let start = -1
@@ -59,45 +82,301 @@ function runs(n, on) {
   return out
 }
 
-// Row bands come from a strip down the first column of cells; each band's
-// column runs then give the cells. The example strip is one wide run and is
-// skipped by taking the first five bands only.
-const rowBands = runs(src.height, y => { for (let x = 30; x < 120; x += 3) if (isArt(x, y)) return true; return false }).slice(0, 5)
-export const cells = rowBands.flatMap(([y0, y1]) =>
-  runs(src.width, x => { for (let y = y0; y <= y1; y += 4) if (isArt(x, y)) return true; return false })
+// Row bands from a strip down the first column; then per band the column
+// runs; then each cell is tightened to its own bounding box and inset.
+const rowBands = runs(src.height, y => { for (let x = 30; x < 95; x += 3) if (isArt(x, y)) return true; return false }).slice(0, 7)
+function tight(x0, y0, x1, y1) {
+  let ax = x1, ay = y1, bx = x0, by = y0
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (isArt(x, y)) { ax = Math.min(ax, x); ay = Math.min(ay, y); bx = Math.max(bx, x); by = Math.max(by, y) }
+  // centred square so a narrow cell is not stretched
+  const s = Math.min(bx - ax, by - ay) + 1 - 2 * INSET
+  const cx = (ax + bx) / 2, cy = (ay + by) / 2
+  return { x0: Math.round(cx - s / 2), y0: Math.round(cy - s / 2), x1: Math.round(cx - s / 2) + s - 1, y1: Math.round(cy - s / 2) + s - 1 }
+}
+const rawRows = rowBands.map(([y0, y1]) =>
+  runs(src.width, x => { for (let y = y0; y <= y1; y += 3) if (isArt(x, y)) return true; return false })
     .map(([x0, x1]) => ({ x0, y0, x1, y1 })))
-if (cells.length !== 50) throw new Error(`expected 50 cells, found ${cells.length}`)
+for (let r = 0; r < 6; r++) if (rawRows[r].length !== COLS) throw new Error(`row ${r}: expected ${COLS} cells, found ${rawRows[r].length}`)
+const rows = rawRows.map(row => row.map(c => tight(c.x0, c.y0, c.x1, c.y1)))
+export const cells = rows.slice(0, 6).flat()
+// the cell's full drawn box less its one-pixel frame (art bbox, inset 1)
+const frameBox = rawRows.slice(0, 6).flat().map(({ x0, y0, x1, y1 }) => {
+  let ax = x1, ay = y1, bx = x0, by = y0
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (isArt(x, y)) { ax = Math.min(ax, x); ay = Math.min(ay, y); bx = Math.max(bx, x); by = Math.max(by, y) }
+  return { x0: ax + 1, y0: ay + 1, x1: bx - 1, y1: by - 1 }
+})
+const floorCells = rows[FLOOR_ROW]
 
-// Area-average a source box down to TxT: each output pixel averages every
-// source pixel whose centre falls inside its (fractional) box.
-function resample({ x0, y0, x1, y1 }, flip = false) {
+// The cell's own backdrop: the median colour of its border ring.
+function cellBackdrop({ x0, y0, x1, y1 }) {
+  const ch = [[], [], []]
+  for (let x = x0; x <= x1; x++) for (const y of [y0, y1]) for (let c = 0; c < 3; c++) ch[c].push(src.pixels[at(x, y) + c])
+  for (let y = y0; y <= y1; y++) for (const x of [x0, x1]) for (let c = 0; c < 3; c++) ch[c].push(src.pixels[at(x, y) + c])
+  return ch.map(a => a.sort((p, q) => p - q)[a.length >> 1])
+}
+
+// Crop a cell as RGBA; with `key`, flood-fill the backdrop transparent from
+// the border so dark pixels inside the art survive.
+function crop(box, key) {
+  const { x0, y0, x1, y1 } = box
   const w = x1 - x0 + 1, h = y1 - y0 + 1
-  const out = new Uint8Array(T * T * 4)
-  for (let Y = 0; Y < T; Y++) for (let X = 0; X < T; X++) {
-    const sx0 = x0 + Math.floor(X * w / T), sx1 = x0 + Math.floor((X + 1) * w / T)
-    const sy0 = y0 + Math.floor(Y * h / T), sy1 = y0 + Math.floor((Y + 1) * h / T)
-    let r = 0, g = 0, b = 0, n = 0
-    for (let y = sy0; y < sy1; y++) for (let x = sx0; x < sx1; x++) {
-      const i = (y * src.width + x) * 4
-      r += src.pixels[i]; g += src.pixels[i + 1]; b += src.pixels[i + 2]; n++
+  const out = new Uint8Array(w * h * 4)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = at(x0 + x, y0 + y), o = (y * w + x) * 4
+    out[o] = src.pixels[i]; out[o + 1] = src.pixels[i + 1]; out[o + 2] = src.pixels[i + 2]; out[o + 3] = 255
+  }
+  if (key) {
+    const bd = cellBackdrop(box)
+    const isBd = i => Math.abs(out[i] - bd[0]) + Math.abs(out[i + 1] - bd[1]) + Math.abs(out[i + 2] - bd[2]) < KEY_TOL
+    const seen = new Uint8Array(w * h)
+    const stack = []
+    for (let x = 0; x < w; x++) stack.push(x, (h - 1) * w + x)
+    for (let y = 0; y < h; y++) stack.push(y * w, y * w + w - 1)
+    while (stack.length) {
+      const p = stack.pop()
+      if (seen[p] || !isBd(p * 4)) continue
+      seen[p] = 1
+      out[p * 4 + 3] = 0
+      const x = p % w, y = (p - x) / w
+      if (x > 0) stack.push(p - 1)
+      if (x < w - 1) stack.push(p + 1)
+      if (y > 0) stack.push(p - w)
+      if (y < h - 1) stack.push(p + w)
     }
-    const o = (Y * T + (flip ? T - 1 - X : X)) * 4
-    out[o] = Math.round(r / n); out[o + 1] = Math.round(g / n); out[o + 2] = Math.round(b / n); out[o + 3] = 255
+  }
+  return { w, h, rgba: out }
+}
+
+// Area-average an RGBA frame to WxH with alpha-weighted colour.
+function resample(f, W = T, H = T) {
+  const out = new Uint8Array(W * H * 4)
+  for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+    const sx0 = Math.floor(X * f.w / W), sx1 = Math.max(sx0 + 1, Math.floor((X + 1) * f.w / W))
+    const sy0 = Math.floor(Y * f.h / H), sy1 = Math.max(sy0 + 1, Math.floor((Y + 1) * f.h / H))
+    let r = 0, g = 0, b = 0, a = 0, n = 0
+    for (let y = sy0; y < sy1; y++) for (let x = sx0; x < sx1; x++) {
+      const i = (y * f.w + x) * 4, al = f.rgba[i + 3] / 255
+      r += f.rgba[i] * al; g += f.rgba[i + 1] * al; b += f.rgba[i + 2] * al; a += al; n++
+    }
+    const o = (Y * W + X) * 4
+    if (a > 0) { out[o] = Math.round(r / a); out[o + 1] = Math.round(g / a); out[o + 2] = Math.round(b / a) }
+    out[o + 3] = Math.round(255 * a / n)
+  }
+  return { w: W, h: H, rgba: out }
+}
+const hardenAlpha = f => { for (let i = 3; i < f.rgba.length; i += 4) f.rgba[i] = f.rgba[i] < 96 ? 0 : 255; return f }
+
+const hash = (a, b, c) => { let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15; return h >>> 0 }
+const written = []
+const emit = (name, f) => { writePng(path.join(OUT_DIR, `${name}.png`), f.w, f.h, f.rgba); written.push(name) }
+// Pad a frame to a square of its longer side with transparent margins, so a
+// narrow cell is neither cut nor stretched when it becomes a square tile.
+function padSquare(f) {
+  const s = Math.max(f.w, f.h)
+  if (s === f.w && s === f.h) return f
+  const out = new Uint8Array(s * s * 4)
+  const ox = (s - f.w) >> 1, oy = (s - f.h) >> 1
+  for (let y = 0; y < f.h; y++) out.set(f.rgba.subarray(y * f.w * 4, (y + 1) * f.w * 4), ((oy + y) * s + ox) * 4)
+  return { w: s, h: s, rgba: out }
+}
+// The bounding box of a keyed frame's opaque pixels.
+function alphaBox(f) {
+  let ax = f.w, ay = f.h, bx = -1, by = -1
+  for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) if (f.rgba[(y * f.w + x) * 4 + 3]) { ax = Math.min(ax, x); ay = Math.min(ay, y); bx = Math.max(bx, x); by = Math.max(by, y) }
+  const w = bx - ax + 1, h = by - ay + 1
+  const out = new Uint8Array(w * h * 4)
+  for (let y = 0; y < h; y++) out.set(f.rgba.subarray(((ay + y) * f.w + ax) * 4, ((ay + y) * f.w + ax + w) * 4), y * w * 4)
+  return { w, h, rgba: out }
+}
+// keyed pieces keep the artist's registration (they are drawn to meet at the
+// cell edges), so they use the full cell box inset by one frame pixel,
+// padded square rather than squashed
+const series = (prefix, idx, key) => idx.forEach((c, i) => emit(`${prefix}_${i}`, hardenAlpha(resample(padSquare(crop(frameBox[c], key))))))
+const flipX = f => { const o = new Uint8Array(f.rgba.length); for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) o.set(f.rgba.subarray((y * f.w + x) * 4, (y * f.w + x) * 4 + 4), (y * f.w + f.w - 1 - x) * 4); return { w: f.w, h: f.h, rgba: o } }
+
+// --- floor: equalise every tile's mean luminance to the first so open
+// ground shows no tile grid; shaded copies for the ring round a mass ---
+const floors = floorCells.map(c => resample(crop(c, false)))
+const lum = f => { let s = 0; for (let i = 0; i < f.rgba.length; i += 4) s += 0.299 * f.rgba[i] + 0.587 * f.rgba[i + 1] + 0.114 * f.rgba[i + 2]; return s / (f.rgba.length / 4) }
+const scale = (f, k) => ({ w: f.w, h: f.h, rgba: f.rgba.map((v, i) => i % 4 === 3 ? v : Math.max(0, Math.min(255, Math.round(v * k)))) })
+const L0 = 102   // the example strips' ground luminance: every tile is normalised to it
+const speckle = (f, i) => ({ w: f.w, h: f.h, rgba: f.rgba.map((v, j) => {
+  if (j % 4 === 3) return v
+  return hash(i + 1, j >> 2, 9) % 33 === 0 ? Math.round(v * 0.55) : v   // ~3% dark gravel specks
+}) })
+const shadeRows = f => ({ w: f.w, h: f.h, rgba: f.rgba.map((v, i) => {
+  if (i % 4 === 3) return v
+  const y = Math.floor(i / 4 / f.w)
+  const k = y < 2 ? SHADE_TOP : y < 8 ? SHADE_RAMP + (1 - SHADE_RAMP) * (y - 2) / 6 : 1
+  return Math.max(0, Math.min(255, Math.round(v * k)))
+}) })
+floors.forEach((f, i) => {
+  const eq = speckle(scale(f, L0 / lum(f)), i)
+  emit(`ow_mtn_ground_${i}`, eq)
+  emit(`ow_mtn_shade_${i}`, shadeRows(eq))
+})
+
+// --- keyed pieces ---
+series('ow_mtn_ridge_dr', RIDGE.dr, true)
+series('ow_mtn_ridge_dl', RIDGE.dl, true)
+series('ow_mtn_ridge_lb', RIDGE.lb, true)
+RIDGE.lb.forEach((c, i) => emit(`ow_mtn_ridge_br_${i}`, flipX(hardenAlpha(resample(padSquare(crop(frameBox[c], true)))))))
+series('ow_mtn_ridge_v', RIDGE.v, true)
+series('ow_mtn_cluster', CLUSTER, true)
+series('ow_mtn_rock', ROCK, true)
+
+// --- the mass: one global cone lattice, rendered cell by cell ---
+// Cones sit on a half-offset grid (pitch 8 across, 6 down — measured off the
+// sheet's own example strip), each jittered a little and drawn a little
+// bigger or smaller, and the lattice repeats every 64x48 game px, so a cell
+// at lattice position (qx, qy) always draws the same cones as its
+// neighbours and the picture is seamless across cells. Rows are drawn back
+// to front, each cone with a one-pixel dark base line, and the dark rock
+// between cones fills what is left. A cell whose side is open (mask bit:
+// 1 N, 2 E, 4 S, 8 W) draws no cone that would cross that side, and leaves
+// everything beyond the cone silhouette on that side transparent.
+const PX = 64, PY = 48, PITCH = 8, ROW = 6
+const DARK = [48, 44, 46]       // the rock between cones: mid-dark, not black
+const BASE = [30, 27, 29]       // a cone's one-pixel base line
+const CONTRAST = 1.15
+const coneCache = new Map()
+const coneAt = (idx, w, h) => {
+  const key = `${idx}:${w}:${h}`
+  if (!coneCache.has(key)) {
+    const f = hardenAlpha(resample(padSquare(alphaBox(crop(frameBox[CONE[idx]], true))), w, h))
+    for (let i = 0; i < f.rgba.length; i += 4) for (let c = 0; c < 3; c++) f.rgba[i + c] = Math.max(0, Math.min(255, Math.round((f.rgba[i + c] - 110) * CONTRAST + 110)))
+    coneCache.set(key, f)
+  }
+  return coneCache.get(key)
+}
+// every cone of one lattice period, in draw order (back to front, left to right)
+// No cone may straddle a cell corner (a point (16i, 16j)): a cell open on
+// one side excludes the cones crossing that side, so a cone over a corner
+// would be drawn whole by one neighbour and cut flat by the two others at
+// every concave corner. A jitter that lands on a corner is re-rolled, and
+// failing that the cone shrinks; the corner then sits in the dark gap.
+const straddlesCorner = (x, y, w, h) => {
+  for (let cx = Math.ceil((x + 1) / T) * T; cx < x + w; cx += T)
+    for (let cy = Math.ceil((y + 1) / T) * T; cy < y + h; cy += T) return true
+  return false
+}
+const CONES = []
+for (let r = 0; r < PY / ROW; r++) for (let i = 0; i < PX / PITCH; i++) {
+  // 7-12 px wide, 10-13 tall; one in six is a big 13-14 px cone that breaks
+  // the diagonal gap chains of an exact lattice
+  const big = hash(r, i, 6) % 6 === 0
+  let w = big ? 13 + hash(r, i, 1) % 2 : 7 + hash(r, i, 1) % 6, h = big ? 13 + hash(r, i, 2) % 2 : 10 + hash(r, i, 2) % 4
+  const base = i * PITCH + (r & 1 ? PITCH / 2 : 0)
+  let placed = null
+  for (let attempt = 0; attempt < 40 && !placed; attempt++) {
+    const jx = (hash(r, i, 3 + attempt) % 5) - 2, jy = (hash(r, i, 40 + attempt) % 3) - 1
+    const x = Math.round(base + jx - w / 2), y = r * ROW + jy
+    if (!straddlesCorner(x, y, w, h)) placed = { x, y }
+    else if (attempt % 8 === 7 && w > 6) { w--; h-- }
+  }
+  if (!placed) { w = 6; h = 8; placed = { x: Math.round(base - w / 2), y: r * ROW } }
+  CONES.push({ ...placed, w, h, idx: hash(r, i, 5) % CONE.length })
+}
+// The rim: on every open side a chain of round-topped boulder lumps (squat
+// cones, 5-8 px, overlapping, each with its own one-pixel dark underside)
+// runs along that side in a band BAND px deep, in front of the cones, which
+// stop short of the band. Nothing is filled behind the lumps, so the
+// contour wobbles lump by lump and the ground shows in the notches. Lump
+// positions are global along each side line of the lattice period, so two
+// cells sharing an open side draw the same lumps and a lump may straddle
+// their boundary.
+const BAND = 6
+const lumpsAlong = (line, salt) => {
+  const out = []
+  for (let k = 0; k < PX / 5; k++) {
+    const w = 5 + hash(line, k, salt) % 4, h = w - (hash(line, k, salt + 1) % 2)
+    const along = k * 5 + (hash(line, k, salt + 2) % 3) - 1
+    const across = hash(line, k, salt + 3) % 3
+    out.push({ along, across, w, h, idx: hash(line, k, salt + 4) % CONE.length })
   }
   return out
 }
+const LUMPS = { N: [], S: [], E: [], W: [] }
+for (let q = 0; q < PY / T; q++) { LUMPS.N.push(lumpsAlong(q, 11)); LUMPS.S.push(lumpsAlong(q, 23)) }
+for (let q = 0; q < PX / T; q++) { LUMPS.E.push(lumpsAlong(q, 37)); LUMPS.W.push(lumpsAlong(q, 53)) }
 
-const written = []
-const emit = (name, cell, flip) => { writePng(path.join(OUT_DIR, `${name}.png`), T, T, resample(cells[cell], flip)); written.push(name) }
-
-for (const [shape, idx] of Object.entries(EDGE_SHAPES)) idx.forEach((cell, i) => emit(`ow_mtn_edge_${shape}_${i}`, cell, false))
-for (const [shape, from] of Object.entries(FLIPS)) {
-  let i = EDGE_SHAPES[shape]?.length ?? 0
-  for (const f of from) for (const cell of EDGE_SHAPES[f]) emit(`ow_mtn_edge_${shape}_${i++}`, cell, true)
+function latticeCell(mask, qx, qy) {
+  const L = qx * T, Tp = qy * T, R = L + T, B = Tp + T
+  const out = new Uint8Array(T * T * 4)
+  const openN = mask & 1, openE = mask & 2, openS = mask & 4, openW = mask & 8
+  // cones are clipped at an open side (never crossing it); the rim lumps
+  // are drawn over them, and the rock fill stays out of the rim band so the
+  // notches between lumps show ground
+  const iT = Tp, iB = B, iL = L, iR = R
+  const fT = openN ? Tp + BAND : Tp, fB = openS ? B - BAND : B, fL = openW ? L + BAND : L, fR = openE ? R - BAND : R
+  // cones from this period and the eight around it, in draw order
+  const list = []
+  for (let py = -1; py <= 1; py++) for (let px = -1; px <= 1; px++) for (const c of CONES) list.push({ ...c, x: c.x + px * PX, y: c.y + py * PY })
+  list.sort((a, b) => a.y - b.y || a.x - b.x)
+  const stampCone = (c, f) => {
+    const base = new Array(c.w).fill(-1)
+    for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
+      const i = (y * c.w + x) * 4
+      if (f.rgba[i + 3] === 0) continue
+      base[x] = y
+      const gx = c.x + x - L, gy = c.y + y - Tp
+      if (gx < 0 || gx >= T || gy < 0 || gy >= T) continue
+      const o = (gy * T + gx) * 4
+      out[o] = f.rgba[i]; out[o + 1] = f.rgba[i + 1]; out[o + 2] = f.rgba[i + 2]; out[o + 3] = 255
+    }
+    for (let x = 0; x < c.w; x++) {
+      if (base[x] < 0) continue
+      const gx = c.x + x - L, gy = c.y + base[x] + 1 - Tp
+      if (gx < 0 || gx >= T || gy < 0 || gy >= T) continue
+      const o = (gy * T + gx) * 4
+      out[o] = BASE[0]; out[o + 1] = BASE[1]; out[o + 2] = BASE[2]; out[o + 3] = 255
+    }
+  }
+  for (const c of list) {
+    if (c.x + c.w <= L || c.x >= R || c.y + c.h <= Tp || c.y >= B) continue
+    if (openN && c.y < iT) continue
+    if (openS && c.y + c.h > iB) continue
+    if (openW && c.x < iL) continue
+    if (openE && c.x + c.w > iR) continue
+    stampCone(c, coneAt(c.idx, c.w, c.h))
+  }
+  // the rim lumps, in front, along the open sides; a lump list repeats with
+  // the lattice period along its line, so the copies touching this cell are drawn
+  const rim = []
+  const px0 = L - (L % PX), py0 = Tp - (Tp % PY)
+  const pushH = (l, y) => { for (const sh of [-PX, 0, PX]) rim.push({ x: px0 + sh + l.along - (l.w >> 1), y, w: l.w, h: l.h, idx: l.idx }) }
+  const pushV = (l, x) => { for (const sh of [-PY, 0, PY]) rim.push({ x, y: py0 + sh + l.along - (l.h >> 1), w: l.w, h: l.h, idx: l.idx }) }
+  if (openN) for (const l of LUMPS.N[qy]) pushH(l, Tp + l.across)
+  if (openS) for (const l of LUMPS.S[qy]) pushH(l, B - l.h - l.across)
+  if (openW) for (const l of LUMPS.W[qx]) pushV(l, L + l.across)
+  if (openE) for (const l of LUMPS.E[qx]) pushV(l, R - l.w - l.across)
+  rim.sort((a, b) => a.y - b.y || a.x - b.x)
+  for (const c of rim) {
+    if (c.x + c.w <= L || c.x >= R || c.y + c.h <= Tp || c.y >= B) continue
+    stampCone(c, coneAt(c.idx, c.w, c.h))
+  }
+  // beyond the silhouette on an open side stays transparent; the rest is rock
+  const opaque = (x, y) => out[(y * T + x) * 4 + 3] === 255
+  const outside = new Uint8Array(T * T)
+  if (openN) for (let x = 0; x < T; x++) for (let y = 0; y < T && !opaque(x, y); y++) outside[y * T + x] = 1
+  if (openS) for (let x = 0; x < T; x++) for (let y = T - 1; y >= 0 && !opaque(x, y); y--) outside[y * T + x] = 1
+  if (openW) for (let y = 0; y < T; y++) for (let x = 0; x < T && !opaque(x, y); x++) outside[y * T + x] = 1
+  if (openE) for (let y = 0; y < T; y++) for (let x = T - 1; x >= 0 && !opaque(x, y); x--) outside[y * T + x] = 1
+  // the rock between cones fills the cone region only; the rim band stays
+  // open between its lumps
+  for (let i = 0; i < T * T; i++) {
+    const x = L + (i % T), y = Tp + Math.floor(i / T)
+    const inner = x >= fL && x < fR && y >= fT && y < fB
+    if (inner && !outside[i] && out[i * 4 + 3] === 0) { out[i * 4] = DARK[0]; out[i * 4 + 1] = DARK[1]; out[i * 4 + 2] = DARK[2]; out[i * 4 + 3] = 255 }
+  }
+  return { w: T, h: T, rgba: out }
 }
-for (const [shape, idx] of Object.entries(SPARES)) idx.forEach((cell, i) => emit(`ow_mtn_edge_${shape}_${i}`, cell, false))
-for (let i = 0; i < 17; i++) emit(`ow_mtn_peak_${i}`, 20 + i, false)
-for (let i = 0; i < 3; i++) emit(`ow_mtn_scree_${i}`, 37 + i, false)
-for (let i = 0; i < 10; i++) emit(`ow_mtn_floor_${i}`, 40 + i, false)
+for (let mask = 0; mask < 15; mask++) for (let qy = 0; qy < PY / T; qy++) for (let qx = 0; qx < PX / T; qx++)
+  emit(`ow_mtn_lat_${mask}_${qx + (PX / T) * qy}`, latticeCell(mask, qx, qy))
 
-console.log(`wrote ${written.length} tiles -> ${OUT_DIR}`)
+// sweep stale tiles from earlier sheets / classifications
+for (const f of fs.readdirSync(OUT_DIR)) {
+  const n = f.slice(0, -4)
+  if (n.startsWith('ow_mtn_') && !written.includes(n)) fs.unlinkSync(path.join(OUT_DIR, f))
+}
+console.log(`wrote ${written.length} tiles -> ${OUT_DIR} (floor row had ${floorCells.length} cells)`)

@@ -24,7 +24,7 @@ const LOS_SOFT_PREFIXES = ['ow_tree_', 'ow_deadtree_', 'ow_bush_', 'ow_shrub_', 
 // Mountains (peak fill and cliff rims): a sight line to one may cross other
 // mountain cells — the range is seen whole from a distance — but nothing
 // beyond it is.
-export const LOS_TALL_PREFIXES = ['ow_mtn_peak', 'ow_mtn_edge']
+export const LOS_TALL_PREFIXES = ['ow_mtn_lat_', 'ow_mtn_ridge_', 'ow_mtn_cluster_']
 const startsWithAny = (s, prefixes) => prefixes.some(p => s?.startsWith(p))
 
 export const WILD_MIN_FROM_VILLAGE = 12

@@ -4,7 +4,7 @@
 //   3 autumn    — autumn woods below a mountain pass (ow_mtn_ tiles), stone circle, hermit hut
 import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
 import { GRASS, PINES, AUTUMN, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
-import { MTN, MTN_FLOOR_WEIGHTED, isMass, stampMass, clearMountain, clearMountainRect, stampMountainRim } from './mountain.mjs'
+import { MTN, MTN_GROUND_WEIGHTED, isMass, isMountainSkin, stampMass, clearMountain, clearMountainRect, stampMountainRim } from './mountain.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -148,12 +148,14 @@ function autumn() {
   const elev = (x, y) => noise(x, y, { freq: 0.05, octaves: 3 }) * 0.7 + (x / b.w) * 0.15 + ((b.h - y) / b.h) * 0.25
   const isPass = (x, y) => Math.abs(noise(x + 700, y + 700, { freq: 0.06, octaves: 2 }) - 0.5) < 0.045
   const high = (x, y) => elev(x, y) > 0.58
-  const mtnFloor = (x, y) => high(x, y) ? pick(rng, MTN_FLOOR_WEIGHTED) : 'ow_dirt_0'
+  const mtnFloor = (x, y) => high(x, y) ? pick(rng, MTN_GROUND_WEIGHTED) : 'ow_dirt_0'
   // Where the old generator put a rock (or would have planted a tree that
   // is now a mountain), remembered so the tree planter can ask "was the cell
   // above free?" of the OLD map, not this one — same draws, same trees.
   const oldProp = Array.from({ length: b.h }, () => new Array(b.w).fill(false))
-  const oldFree = (x, y) => b.in(x, y) && !b.isBorder(x, y) && !oldProp[y][x] && b.prop[y][x] === -1
+  // mountain props (mass, rocks) did not exist in the old map: ignore them
+  const mtnProp = (x, y) => isMountainSkin(b.palette[b.prop[y]?.[x]])
+  const oldFree = (x, y) => b.in(x, y) && !b.isBorder(x, y) && !oldProp[y][x] && (b.prop[y][x] === -1 || mtnProp(x, y))
   // plantTree with the old map's tall-or-small decision; a tree that would
   // stand on a mountain is remembered instead of planted, a tall pair whose
   // top would land on one becomes a small tree.
@@ -175,18 +177,18 @@ function autumn() {
     if (e > 0.62) {
       const r0 = rng(), r1 = rng(), r2 = r1 < 0.72 ? rng() : r1
       oldProp[y][x] = r1 < 0.72
-      b.g(x, y, at(MTN_FLOOR_WEIGHTED, r0))
-      if (e > 0.64 && !isPass(x, y)) stampMass(b, rng, x, y, at(MTN.peak, r2))
-      else if (r0 < 0.08) { b.g(x, y, at(MTN.scree, r2)); b.block(x, y) }
+      b.g(x, y, at(MTN_GROUND_WEIGHTED, r0))
+      if (e > 0.64 && !isPass(x, y)) stampMass(b, rng, x, y)
+      else if (r0 < 0.08) b.p(x, y, at(MTN.rock, r2))
     } else {
       // the fringe band (0.58-0.62) rolled for a loose rock and, missing,
       // fell through to the woods — so it grows trees, now on mountain floor
       const band = e > 0.58
-      if (band) b.g(x, y, MTN_FLOOR_WEIGHTED[(x * 31 + y * 17) % MTN_FLOOR_WEIGHTED.length])
+      if (band) b.g(x, y, MTN_GROUND_WEIGHTED[(x * 31 + y * 17) % MTN_GROUND_WEIGHTED.length])
       const r0 = band ? rng() : 1
       if (r0 < 0.3) {
         const r1 = rng()
-        if (r0 < 0.06) { b.g(x, y, at(MTN.scree, r1)); b.block(x, y) }
+        if (r0 < 0.06) b.p(x, y, at(MTN.rock, r1))
         oldProp[y][x] = true
       } else {
         const d = noise(x + 300, y, { freq: 0.08, octaves: 3 })
@@ -197,13 +199,13 @@ function autumn() {
   // the peaks run off the map: border cells on high ground join the mass
   // (they are blocked anyway) so the range shows no rim against the edge
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++)
-    if (b.isBorder(x, y) && elev(x, y) > 0.64 && !isPass(x, y)) stampMass(b, rng, x, y, MTN.peak[(x * 7 + y * 13) % MTN.peak.length])
+    if (b.isBorder(x, y) && elev(x, y) > 0.64 && !isPass(x, y)) stampMass(b, rng, x, y)
   // the edge band stays autumn trees (stampEdgeBand, with the old map's
   // draws: a cell that held a rock never drew), except where the mountains
   // already reach the edge — the peaks are their own visible border
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
     const dist = Math.min(x, y, b.w - 1 - x, b.h - 1 - y)
-    if (dist > 2 || b.prop[y][x] !== -1 || oldProp[y][x]) continue
+    if (dist > 2 || (b.prop[y][x] !== -1 && !mtnProp(x, y)) || oldProp[y][x]) continue
     if (dist <= 1 || rng() < 0.5) plantAsBefore(x, y, AUTUMN)
   }
   // stone circle on a knoll
@@ -249,7 +251,7 @@ function autumn() {
       else b.p(x, y, pick(rng, AUTUMN.small))
     },
     groundSkin: mtnFloor,
-    avoid: (x, y) => b.prop[y][x] !== -1,
+    avoid: (x, y) => b.prop[y][x] !== -1 && !isMountainSkin(b.palette[b.prop[y][x]]),
   })
   b.ensureReachable(mtnFloor)
   pruneBrokenTrees(b)
