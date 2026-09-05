@@ -190,6 +190,40 @@ describe('Mountain Pass (depth 12)', () => {
   })
 })
 
+describe('Wadi Canyon (depth 14)', () => {
+  const m = OPEN_MAPS[14]
+  const propAt = (x, y) => m.prop[y][x] >= 0 ? m.palette[m.prop[y][x]] : null
+  const mass = (x, y) => x < 0 || y < 0 || x >= m.w || y >= m.h || isMassSkin(propAt(x, y))
+
+  it('keeps its title, POIs and spawn', () => {
+    assert.equal(m.title, 'Wadi Canyon')
+    const labels = m.pois.map(p => p.label)
+    for (const l of ['hidden oasis', 'buried temple', 'deep cave', 'wadi camp']) assert.ok(labels.includes(l), l)
+    assert.deepEqual(m.playerSpawn, { x: 10, y: 42 })
+    assert.equal(m.walk[42][10], '1')
+  })
+
+  it('its massif is mountain, not brown boulders, and every mass cell wears the lattice for its open sides', () => {
+    assert.deepEqual(m.palette.filter(n => n.startsWith('ow_rock_brown')), [])
+    let cells = 0
+    for (let y = 1; y < m.h - 1; y++) for (let x = 1; x < m.w - 1; x++) {
+      const p = propAt(x, y)
+      if (!p?.startsWith('ow_mtn_lat_')) continue
+      cells++
+      assert.equal(m.walk[y][x], '0', `${x},${y}`)
+      const want = (mass(x, y - 1) ? 0 : 1) | (mass(x + 1, y) ? 0 : 2) | (mass(x, y + 1) ? 0 : 4) | (mass(x - 1, y) ? 0 : 8)
+      assert.equal(p, MTN.lat[want][(x % LAT_PX) + LAT_PX * (y % LAT_PY)], `${x},${y}`)
+    }
+    assert.ok(cells > 5000, `only ${cells} mass cells`)
+  })
+
+  it('keeps its hardpan wadis walkable', () => {
+    let hardpan = 0
+    for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.palette[m.ground[y][x]].startsWith('ow_hardpan') && m.walk[y][x] === '1') hardpan++
+    assert.ok(hardpan > 800, `only ${hardpan} walkable hardpan cells`)
+  })
+})
+
 describe('line of sight through mountains (losTall)', () => {
   const open = () => {
     const map = createMap(20, 20)

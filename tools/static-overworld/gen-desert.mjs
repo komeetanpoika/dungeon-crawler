@@ -1,8 +1,9 @@
 // Three desert overworld attempts, one technique each:
 //   1 dunes-and-oasis — noise-layered open erg
-//   2 canyon          — carved wadi network through solid rock
+//   2 canyon          — carved wadi network through solid rock (the mountain tileset)
 //   3 lost-city       — ruined sandstone city half-buried in sand
 import { MapBuilder, mulberry32, makeNoise, validate, stampEdgeBand } from './lib.mjs'
+import { stampMass, stampMountainRim } from './mountain.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -100,12 +101,14 @@ function canyon() {
   const rng = mulberry32(202)
   const noise = makeNoise(rng)
   const b = new MapBuilder('desert-2-canyon', 'desert', 'carved wadi network in solid rock', 120, 80)
-  b.notes = 'Everything rock except carved canyons. Chambers hold an oasis, a buried temple, caves.'
-  // solid rock massif: stony ground with boulders, all blocked
+  b.notes = 'Everything mountain except carved canyons. Chambers hold an oasis, a buried temple, caves.'
+  // solid rock massif: a mountain mass everywhere (mountain.mjs), carved
+  // below. The draws the old boulder scatter made are kept so the wadis
+  // walk exactly where they did.
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
     b.g(x, y, rng() < 0.15 ? 'ow_stone_ground_0' : 'ow_sand_0')
-    if (rng() < 0.65) b.p(x, y, pick(rng, rng() < 0.85 ? ROCKS_B : ['ow_rock_brown_moss_0']))
-    else b.block(x, y)
+    if (rng() < 0.65) { rng(); rng() }
+    stampMass(b, rng, x, y)
   }
   const carve = (x, y) => { b.clearProp(x, y); b.g(x, y, rng() < 0.75 ? 'ow_hardpan_0' : 'ow_hardpan_1') }
   const chamber = (cx, cy, r) => {
@@ -153,6 +156,7 @@ function canyon() {
   b.playerSpawn = { x: spots[0].x + 2, y: spots[0].y + 2 }
   desertEdge(b, rng)
   b.ensureReachable('ow_hardpan_0')
+  stampMountainRim(b, rng)
   return b
 }
 
