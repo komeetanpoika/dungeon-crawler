@@ -23,7 +23,8 @@ function primaryAction(item) {
 
 function detailText(player, item) {
   if (!item) return ' '
-  const stats = item.payload?.damage != null ? ` (${item.payload.damage} dmg)` : ''
+  const ammo = item.kind === 'ranged' ? ` ×${item.payload?.ammo ?? 0}` : ''
+  const stats = item.payload?.damage != null ? `${ammo} (${item.payload.damage} dmg)` : ammo
   const gate = (item.kind === 'weapon' || item.kind === 'ranged') ? canEquip(player, item) : { ok: true }
   const warn = gate.ok ? '' : ` — <span class="warn">${EQUIP_FAIL_MESSAGES[gate.reason]}</span>`
   return `${item.name}${stats}${warn}`
@@ -63,7 +64,7 @@ export function refreshInventory(state) {
       const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: player.ranged.weaponType } })
       if (src) html += `<img class="inv-icon" src="${src}" alt="${player.ranged.name}">`
     }
-    html += `🏹 ${player.ranged ? player.ranged.name : 'Empty'}`
+    html += `🏹 ${player.ranged ? `${player.ranged.name} ×${player.ranged.ammo ?? 0}` : 'Empty'}`
     h.innerHTML = html
     hands.appendChild(h)
   }

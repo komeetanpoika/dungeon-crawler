@@ -36,6 +36,21 @@ export function updateHUD(state) {
     consumableEl.innerHTML = emptySrc ? `<img class="hud-icon hud-icon-empty" src="${emptySrc}" alt="">` : ''
   }
   consumableEl.dataset.quickEmoji = quick?.emoji ?? ''
+  // Ammo slot: visible whenever a ranged weapon is in hand, brightest while
+  // the ranged stance is active, icon dimmed once the weapon runs dry.
+  const ammoEl = el('hud-ammo')
+  const ranged = player.ranged
+  ammoEl.hidden = !ranged
+  if (ranged) {
+    const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: ranged.weaponType } })
+    const ammo = ranged.ammo ?? 0
+    const cls = ammo > 0 ? 'hud-icon' : 'hud-icon hud-icon-empty'
+    ammoEl.innerHTML = (src ? `<img class="${cls}" src="${src}" alt="${ranged.name ?? ''}">` : '🏹')
+      + `<span class="hud-count">×${ammo}</span>`
+  } else {
+    ammoEl.innerHTML = ''
+  }
+  ammoEl.dataset.active = player.attackMode === 'ranged' ? '1' : ''
   const staminaEl = el('hud-stamina')
   el('hud-stamina-fill').style.width =
     `${Math.round(100 * (player.stamina ?? 0) / (player.maxStamina ?? 100))}%`

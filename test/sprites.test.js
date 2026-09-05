@@ -107,6 +107,11 @@ describe('room decoration props', () => {
 describe('ranged weapons', () => {
   it('weapon_sparkwand = tile_0130 (cyan-tipped wand)',   () => assert.equal(SPRITES.weapon_sparkwand, 'tile_0130'))
   it('weapon_stormwand = tile_0129 (purple-tipped wand)', () => assert.equal(SPRITES.weapon_stormwand, 'tile_0129'))
+  it('weapon_firewand uses its own recoloured tile (orange tip)', () => assert.equal(SPRITES.weapon_firewand, 'weapon_firewand'))
+  it('every wand has a distinct tile', () => {
+    const wands = [SPRITES.weapon_sparkwand, SPRITES.weapon_stormwand, SPRITES.weapon_firewand]
+    assert.equal(new Set(wands).size, wands.length)
+  })
   it('bows use custom art (no bow in the tileset)', () => {
     assert.equal(SPRITES.weapon_shortbow, 'weapon_shortbow')
     assert.equal(SPRITES.weapon_longbow, 'weapon_longbow')
