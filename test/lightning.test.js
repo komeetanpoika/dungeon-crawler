@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { TILE } from '../renderer/systems/entities.js'
 import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
+import { makeNakki } from '../renderer/systems/monsters/nakki.js'
 import { LIGHTNING, STRIKE_LIFE, castLightning, isWaterCell, connectedWater, tickLightning }
   from '../renderer/systems/spells/lightning.js'
 
@@ -10,9 +11,12 @@ const FAKE_RIG = {
   drawMonster: () => {},
 }
 // The Näkki is a registry monster whose hook module owns its update
-// (behavior.driver 'hook') — the shape isStoryCreature looks for.
+// (behavior.driver 'hook', passive) — the shape isStoryCreature and the
+// faction predicates look for. Registered with a fake rig so no canvas is
+// needed; the creature itself comes from the real makeNakki.
 const registerStoryCreature = name => registerMonsters(
-  [{ name, rig: 'fakerig', stats: { hp: 24, dmg: 2, speed: 70, half: 20 }, behavior: { driver: 'hook' } }],
+  [{ name, rig: 'fakerig', stats: { hp: 24, dmg: 2, speed: 70, half: 20 },
+     behavior: { driver: 'hook', passive: true } }],
   { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
 
 // Build a map from ASCII rows:
@@ -224,8 +228,8 @@ describe('tickLightning', () => {
     assert.equal(hooks.calls.length, 0)
   })
 
-  it('skips a corpse', () => {
-    const dead = enemy(4, 4, { hp: 0 })
+  it('skips something already dying — its death pose is playing out', () => {
+    const dead = enemy(4, 4, { hp: 0, dying: 0.5 })
     const state = { map: pondMap(), entities: [dead], lightning: [mark(4, 4)] }
     assert.deepEqual(tickLightning(state, LIGHTNING.delay, recorder()), { struck: 0 })
   })
@@ -254,15 +258,40 @@ describe('tickLightning', () => {
     assert.equal(hooks.calls.length, 1)
   })
 
-  it('passes a story creature to the hook — hurtCreature decides absorption — but never stuns it', async () => {
+  // The real Näkki, not a stand-in: ensureNakki deletes hp/maxHp, so any
+  // target predicate that asks for a positive hp would make the one creature
+  // the spec's conduction clause exists to reach permanently unstrikeable.
+  it('conducts into the real Näkki, which carries no hp at all', async () => {
     await registerStoryCreature('nakki')
-    const nakki = enemy(8, 1, { type: 'nakki' })
-    const state = { map: pondMap(), entities: [nakki], lightning: [mark(2, 2)] }
+    try {
+      const nakki = makeNakki(8, 1)
+      assert.equal('hp' in nakki, false, 'guarding the premise of this test')
+      const state = { map: pondMap(), entities: [nakki], lightning: [mark(2, 2)] }
+      const hooks = recorder()
+      assert.deepEqual(tickLightning(state, LIGHTNING.delay, hooks), { struck: 1 })
+      assert.deepEqual(hooks.calls[0].opts, { source: 'lightning' })
+      assert.equal(hooks.calls[0].e, nakki)
+      assert.equal(nakki.stunTimer, undefined, 'the Näkki keeps driving its own state machine')
+    } finally { clearMonsters() }
+  })
+
+  it('spares a story creature the plain 3×3 on dry land', async () => {
+    await registerStoryCreature('nakki')
+    try {
+      const nakki = makeNakki(0, 4)
+      const state = { map: pondMap(), entities: [nakki], lightning: [mark(1, 4)] }
+      assert.deepEqual(tickLightning(state, LIGHTNING.delay, recorder()), { struck: 0 })
+    } finally { clearMonsters() }
+  })
+
+  it('strikes a hostile villager but spares a peaceful one', () => {
+    const angry = enemy(3, 4, { type: 'npc', hostile: true })
+    const calm = enemy(5, 4, { type: 'npc' })
+    const state = { map: pondMap(), entities: [angry, calm], lightning: [mark(4, 4)] }
     const hooks = recorder()
     assert.deepEqual(tickLightning(state, LIGHTNING.delay, hooks), { struck: 1 })
-    assert.deepEqual(hooks.calls[0].opts, { source: 'lightning' })
-    assert.equal(nakki.stunTimer, undefined, 'the Näkki keeps driving its own state machine')
-    clearMonsters()
+    assert.deepEqual(hooks.calls.map(c => c.e), [angry])
+    assert.equal(calm.hp, 9)
   })
 
   it('shrugs the stun off a boss but still hurts it', () => {
@@ -305,6 +334,17 @@ describe('tickLightning', () => {
     assert.ok(Math.abs(state.strikes[0].t - 0.1) < 1e-9)
     tickLightning(state, 0.06, recorder())
     assert.deepEqual(state.strikes, [])
+  })
+
+  it('keeps counting the strike light down after the last mark is spent', () => {
+    const state = { map: pondMap(), entities: [], lightning: [mark(4, 4)], weather: { lightningT: 0 } }
+    tickLightning(state, LIGHTNING.delay, recorder())
+    assert.deepEqual(state.lightning, [], 'nothing left in flight')
+    assert.equal(state.weather.lightningT, LIGHTNING.lit)
+    // game.js calls this every frame, marks or not — the light is its job too.
+    tickLightning(state, 0.2, {})
+    tickLightning(state, 0.2, {})
+    assert.equal(state.weather.lightningT, 0)
   })
 
   it('is a no-op with nothing marked and no hooks', () => {

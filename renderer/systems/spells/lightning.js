@@ -8,8 +8,15 @@
 // `castLightning` into the spell dispatcher (systems/spells.js never imports
 // this file), calls `tickLightning` every frame with a `hurt` hook, decays
 // `state.flash`, and canvas.js draws `state.lightning` / `state.strikes`.
+//
+// `tickLightning` must be called UNCONDITIONALLY every frame, not only while
+// marks are in flight: it also counts the weather layer's strike-light down,
+// and skipping it would leave a night map lit as day for good. It early-outs
+// on its own when there is genuinely nothing left to do, so the unconditional
+// call is cheap.
 import { isWalkable } from '../entities.js'
 import { isStoryCreature } from '../monsters.js'
+import { isHittable } from '../factions.js'
 import { sfx } from '../sfx.js'
 import { LOS_CLEAR_PREFIXES } from '../openmap.js'
 
@@ -57,8 +64,9 @@ export function connectedWater(map, x, y, cap = LIGHTNING.waterCap) {
   if (!isWaterCell(cellAt(map, x, y))) return seen
   seen.add(key(x, y))
   const queue = [{ x, y }]
-  while (queue.length && seen.size < cap) {
-    const c = queue.shift()
+  let head = 0                        // index, not shift() — a 400-cell lake is
+  while (head < queue.length && seen.size < cap) {   // no place for O(n²) splicing
+    const c = queue[head++]
     for (const [dx, dy] of Object.values(DIRS)) {
       const nx = c.x + dx, ny = c.y + dy
       const k = key(nx, ny)
@@ -107,11 +115,14 @@ export function castLightning(state, tier = 'tap') {
   return { marks }
 }
 
-// Who the sky can hit. The player is never caught in their own storm, the
-// Echo is a ghost, and villagers are left out of an area effect the way the
-// gust leaves them out — nothing here should turn a rescue into a massacre.
-const isTarget = e => e && e.type !== 'player' && e.type !== 'echo' && e.type !== 'npc'
-  && Number.isFinite(e.hp) && e.hp > 0
+// Who the sky can hit: the repo's one "the player's weapons reach this"
+// predicate, minus peaceful villagers — an area effect must not turn a rescue
+// into a massacre, but a villager who has turned on the player is fair game.
+// isHittable also excludes the player, the Echo and anything already dying,
+// and it deliberately never tests hp: the Näkki carries no hp field at all
+// (ensureNakki strips it), and it is the very creature the spec's conduction
+// clause exists to reach.
+const isTarget = e => isHittable(e) && !(e.type === 'npc' && !e.hostile)
 
 // Bosses shrug the stun off (as they do the gust's), and a story creature
 // runs its own state machine — a stunTimer on the Näkki would freeze a
@@ -150,9 +161,12 @@ function strike(state, mark, hooks) {
 // Per-frame: age the marks, fire the ones that have waited out their delay,
 // and age the strike records the renderer draws from. The lightning light on
 // the weather layer counts down here too — weather.js is pure look-building
-// with no tick of its own, and this is the system that lit it.
+// with no tick of its own, and this is the system that lit it. Hence the
+// early-out below covers all three timers: the frames after the last mark has
+// struck still have the light to put out, so "no marks" is not "nothing to do".
 export function tickLightning(state, delta, hooks = {}) {
   const w = state.weather
+  if (!state.lightning?.length && !state.strikes?.length && !(w?.lightningT > 0)) return { struck: 0 }
   if (w?.lightningT > 0) w.lightningT = Math.max(0, w.lightningT - delta)
 
   if (state.strikes?.length) {
