@@ -12,7 +12,8 @@ function state(playerOver = {}) {
   return {
     level: 1, log: ['hi'],
     player: {
-      hp: 10, maxHp: 10, stamina: 100, maxStamina: 100, inventory: [], weapon: null, ranged: null, attackMode: 'melee',
+      hp: 10, maxHp: 10, stamina: 100, maxStamina: 100, inventory: [], weapon: null, ranged: null, wand: null,
+      ammo: { arrow: 0, bolt: 0, stone: 0 }, attackMode: 'melee',
       talents: ['ranged_stance', 'magic_stance'],
       ...playerOver,
     },
@@ -53,29 +54,56 @@ describe('updateHUD consumable slot', () => {
   })
 })
 
-describe('updateHUD ammo slot', () => {
-  const wand = { weaponType: 'sparkwand', name: 'Spark Wand', ammo: 9, maxAmmo: 16, kind: 'wand' }
-  it('stays hidden with nothing in the ranged hand', () => {
+describe('updateHUD tool slot', () => {
+  // #hud-ammo is the shared "tool" slot: which hand it shows follows the
+  // stance (magic -> wand, ranged/melee -> bow), not merely what's carried.
+  const bow = { weaponType: 'shortbow', name: 'Shortbow', ammoKind: 'arrow' }
+  const wand = { weaponType: 'sparkwand', name: 'Spark Wand' }
+
+  it('stays hidden in ranged/melee stance with no bow in hand', () => {
     const nodes = fakeDom()
-    updateHUD(state())
+    updateHUD(state({ attackMode: 'melee' }))
+    assert.equal(nodes['hud-ammo'].hidden, true)
+    updateHUD(state({ attackMode: 'ranged' }))
     assert.equal(nodes['hud-ammo'].hidden, true)
   })
-  it('shows the equipped weapon icon with its ammo count', () => {
+  it('stays hidden in magic stance with no wand in hand', () => {
     const nodes = fakeDom()
-    updateHUD(state({ ranged: wand }))
+    updateHUD(state({ attackMode: 'magic', wand: null }))
+    assert.equal(nodes['hud-ammo'].hidden, true)
+  })
+  it('shows the bow with the pooled ammo count in ranged stance', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ ranged: bow, ammo: { arrow: 9, bolt: 0, stone: 0 }, attackMode: 'ranged' }))
     assert.equal(nodes['hud-ammo'].hidden, false)
-    assert.match(nodes['hud-ammo'].innerHTML, /assets\/tiles\/tile_0130\.png/)
+    assert.match(nodes['hud-ammo'].innerHTML, /assets\/tiles\/weapon_shortbow\.png/)
     assert.match(nodes['hud-ammo'].innerHTML, /×9/)
     assert.doesNotMatch(nodes['hud-ammo'].innerHTML, /hud-icon-empty/)
+    assert.equal(nodes['hud-ammo'].dataset.active, '1')
   })
-  it('dims the icon when the weapon is out of ammo and flags the ranged stance', () => {
+  it('dims the bow icon when its ammo pool is empty', () => {
     const nodes = fakeDom()
-    updateHUD(state({ ranged: { ...wand, ammo: 0 }, attackMode: 'ranged' }))
+    updateHUD(state({ ranged: bow, ammo: { arrow: 0, bolt: 0, stone: 0 }, attackMode: 'ranged' }))
     assert.match(nodes['hud-ammo'].innerHTML, /hud-icon-empty/)
     assert.match(nodes['hud-ammo'].innerHTML, /×0/)
-    assert.equal(nodes['hud-ammo'].dataset.active, '1')
-    updateHUD(state({ ranged: wand, attackMode: 'melee' }))
+  })
+  it('still shows the bow in melee stance, but not flagged active', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ ranged: bow, ammo: { arrow: 9, bolt: 0, stone: 0 }, attackMode: 'melee' }))
+    assert.equal(nodes['hud-ammo'].hidden, false)
     assert.equal(nodes['hud-ammo'].dataset.active, '')
+  })
+  it('shows the wand with no count in magic stance, active, dimmed below the tap cost', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ wand, stamina: 100, attackMode: 'magic' }))
+    assert.equal(nodes['hud-ammo'].hidden, false)
+    assert.match(nodes['hud-ammo'].innerHTML, /assets\/tiles\/tile_0130\.png/)
+    assert.doesNotMatch(nodes['hud-ammo'].innerHTML, /hud-count/)
+    assert.doesNotMatch(nodes['hud-ammo'].innerHTML, /hud-icon-empty/)
+    assert.equal(nodes['hud-ammo'].dataset.active, '1')
+    // Spark Wand taps at 8 stamina (SPELLS.spark.cost.tap) — below that, dim.
+    updateHUD(state({ wand, stamina: 1, attackMode: 'magic' }))
+    assert.match(nodes['hud-ammo'].innerHTML, /hud-icon-empty/)
   })
 })
 
@@ -108,7 +136,8 @@ describe('updateHUD DOM churn', () => {
   it('writes each slot once for an unchanged state', () => {
     const { writes } = countingDom()
     const s = state({ hp: 7, inventory: [{ kind: 'potion', emoji: '🧪', stackable: true, count: 3 }],
-      ranged: { weaponType: 'sparkwand', name: 'Spark Wand', ammo: 9, maxAmmo: 16, kind: 'wand' } })
+      ranged: { weaponType: 'shortbow', name: 'Shortbow', ammoKind: 'arrow' },
+      ammo: { arrow: 9, bolt: 0, stone: 0 }, attackMode: 'ranged' })
     updateHUD(s); updateHUD(s); updateHUD(s)
     assert.deepEqual(writes, { 'hud-hearts': 1, 'hud-consumable': 1, 'hud-ammo': 1 })
   })

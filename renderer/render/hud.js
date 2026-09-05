@@ -1,5 +1,6 @@
 import { quickUseSummary, findQuickUseIndex } from '../systems/inventory.js'
 import { iconSrcFor } from './icons.js'
+import { spellFor } from '../systems/spells.js'
 
 function el(id) { return document.getElementById(id) }
 
@@ -45,21 +46,39 @@ export function updateHUD(state) {
     setHTML(consumableEl, emptySrc ? `<img class="hud-icon hud-icon-empty" src="${emptySrc}" alt="">` : '')
   }
   consumableEl.dataset.quickEmoji = quick?.emoji ?? ''
-  // Ammo slot: visible whenever a ranged weapon is in hand, brightest while
-  // the ranged stance is active, icon dimmed once the weapon runs dry.
+  // Tool slot: which hand it shows follows the stance, not what's merely
+  // carried — magic stance shows the wand hand, ranged/melee show the bow
+  // hand. Hidden when that hand is empty; dimmed by its own rule per hand
+  // (wand: stamina below the spell's tap cost; bow: ammo pool at 0).
   const ammoEl = el('hud-ammo')
-  const ranged = player.ranged
-  ammoEl.hidden = !ranged
-  if (ranged) {
-    const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: ranged.weaponType } })
-    const ammo = ranged.ammo ?? 0
-    const cls = ammo > 0 ? 'hud-icon' : 'hud-icon hud-icon-empty'
-    setHTML(ammoEl, (src ? `<img class="${cls}" src="${src}" alt="${ranged.name ?? ''}">` : '🏹')
-      + `<span class="hud-count">×${ammo}</span>`)
+  if (player.attackMode === 'magic') {
+    const wand = player.wand
+    ammoEl.hidden = !wand
+    if (wand) {
+      const src = iconSrcFor({ kind: 'wand', payload: { weaponType: wand.weaponType } })
+      const spell = spellFor(player)
+      const dim = (player.stamina ?? 0) < spell.cost.tap
+      const cls = dim ? 'hud-icon hud-icon-empty' : 'hud-icon'
+      // No count badge for the wand — it draws on stamina, not a pool.
+      setHTML(ammoEl, src ? `<img class="${cls}" src="${src}" alt="${wand.name ?? ''}">` : '🪄')
+    } else {
+      setHTML(ammoEl, '')
+    }
+    ammoEl.dataset.active = '1'
   } else {
-    setHTML(ammoEl, '')
+    const ranged = player.ranged
+    ammoEl.hidden = !ranged
+    if (ranged) {
+      const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: ranged.weaponType } })
+      const count = player.ammo?.[ranged.ammoKind] ?? 0
+      const cls = count > 0 ? 'hud-icon' : 'hud-icon hud-icon-empty'
+      setHTML(ammoEl, (src ? `<img class="${cls}" src="${src}" alt="${ranged.name ?? ''}">` : '🏹')
+        + `<span class="hud-count">×${count}</span>`)
+    } else {
+      setHTML(ammoEl, '')
+    }
+    ammoEl.dataset.active = player.attackMode === 'ranged' ? '1' : ''
   }
-  ammoEl.dataset.active = player.attackMode === 'ranged' ? '1' : ''
   const staminaEl = el('hud-stamina')
   el('hud-stamina-fill').style.width =
     `${Math.round(100 * (player.stamina ?? 0) / (player.maxStamina ?? 100))}%`
