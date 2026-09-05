@@ -10,8 +10,9 @@ export const TALENTS = {
   heavy_weapons: { name: 'Might',        desc: 'Wield heavy weapons.' },
 }
 
-// Dungeon Rush: per-run talents taught by the depth ladder's boss kills.
-export const RUSH_TALENT_LADDER = { 1: 'ranged_stance', 2: 'magic_stance', 3: 'heavy_weapons' }
+// Dungeon Rush: every talent from the first step — the run is about the
+// descent, not the unlocks. Assigned silently at spawn (no toasts).
+export const RUSH_START_TALENTS = Object.keys(TALENTS)
 
 // Adventure interim sources: first dungeon cleared on the named map.
 // (magic_stance comes from the mushroom-circle rite instead — see rites.js.)
