@@ -218,6 +218,75 @@ describe('shield and boss immunity', () => {
   })
 })
 
+describe('fireball direct-impact detonation', () => {
+  it('detonates exactly once on a direct enemy hit', () => {
+    const entities = [{ id: 'a', type: 'monster', px: 5, py: 0, hp: 10 }]
+    const p = { px: 0, py: 0, dx: 100, dy: 0, damage: 5, friendly: true, explodes: true, blastTiles: 16 }
+    const { hooks, detonations } = makeHooks()
+    const state = baseState(entities, [p])
+
+    stepProjectiles(state, 0.1, hooks) // px -> 10, dist to enemy(5,0) = 5 < 8: hit
+    assert.equal(detonations.length, 1)
+    assert.deepEqual(detonations[0], { px: 10, py: 0, blastTiles: 16 })
+  })
+
+  it('a shielded wizard absorbs the hit but the fireball still detonates once', () => {
+    const entities = [{ id: 'w', type: 'wizard', px: 5, py: 0, hp: 10, shieldTimer: 3 }]
+    const p = { px: 0, py: 0, dx: 100, dy: 0, damage: 5, friendly: true, explodes: true, blastTiles: 16 }
+    const { hooks, detonations, hitLog } = makeHooks()
+    const state = baseState(entities, [p])
+
+    stepProjectiles(state, 0.1, hooks)
+    assert.equal(hitLog.length, 0)            // no damage — the shield absorbed it
+    assert.equal(state.entities[0].hp, 10)
+    assert.equal(detonations.length, 1)       // but the direct-impact blast still fires
+    assert.deepEqual(detonations[0], { px: 10, py: 0, blastTiles: 16 })
+  })
+
+  it('an exploding, piercing projectile detonates once on impact and once at maxDist — never twice for either event', () => {
+    const entities = [{ id: 'a', type: 'monster', px: 30, py: 0, hp: 10 }]
+    const p = { px: 0, py: 0, dx: 100, dy: 0, damage: 5, friendly: true,
+      explodes: true, blastTiles: 16, pierce: 1, maxDist: 80 }
+    const { hooks, detonations, hitLog } = makeHooks()
+    const state = baseState(entities, [p])
+
+    for (let i = 0; i < 30 && state.projectiles.length; i++) stepProjectiles(state, 0.05, hooks)
+
+    assert.equal(hitLog.length, 1)                     // pierced through the one enemy
+    assert.equal(state.entities[0].hp, 5)
+    assert.equal(detonations.length, 2)                // one impact blast, one end-of-range blast — not 1, not 3+
+    assert.ok(detonations[0].px < detonations[1].px)    // impact happened before the projectile ran out of range
+  })
+})
+
+describe('corpse culling (hooks.cull)', () => {
+  it('culls a killed entity before a second same-frame projectile can target its corpse', () => {
+    const entities = [{ id: 'a', type: 'monster', px: 5, py: 0, hp: 3 }]
+    const first = { px: 0, py: 0, dx: 100, dy: 0, damage: 5, friendly: true }
+    const second = { px: 0, py: 0, dx: 100, dy: 0, damage: 5, friendly: true }
+    const cull = entities => entities.filter(e => e.hp === undefined || e.hp > 0)
+    const { hooks, hitLog } = makeHooks({ cull })
+    const state = baseState(entities, [first, second])
+
+    const { hits } = stepProjectiles(state, 0.1, hooks) // both reach px=10 this frame
+    assert.equal(hits, 1)
+    assert.equal(hitLog.length, 1)             // second found no target — the corpse was already culled
+    assert.equal(state.entities.length, 0)
+    assert.equal(state.projectiles.length, 1)  // second survives (no hit, non-piercing default has nothing to consume it)
+  })
+
+  it('defaults to identity when no cull hook is supplied — corpses linger (hp<=0 stays isHittable via dying)', () => {
+    const entities = [{ id: 'a', type: 'monster', px: 5, py: 0, hp: 3 }]
+    const p = { px: 0, py: 0, dx: 100, dy: 0, damage: 5, friendly: true }
+    const { hooks } = makeHooks() // no cull override — default identity
+    const state = baseState(entities, [p])
+
+    stepProjectiles(state, 0.1, hooks)
+    assert.equal(state.entities.length, 1) // still present, just at negative hp
+    assert.equal(state.entities[0].hp, -2)
+  })
+})
+
 describe('enemy projectiles vs the player', () => {
   it('an enemy bolt damages the player at radius 10 and is consumed', () => {
     const p = { px: 0, py: 0, dx: 100, dy: 0, damage: 4, friendly: false }

@@ -48,11 +48,12 @@ export function makeForks(p) {
 // helper with no rules knowledge of its own. Returns the target entity, or
 // null if nothing qualifies — the caller ends the chain in that case.
 export function retargetChain(p, entities) {
+  const hitIds = p.hitIds ?? new Set() // tolerate a bare call with no hitIds yet
   const speed = Math.hypot(p.dx, p.dy)
   let best = null
   let bestDist = Infinity
   for (const e of entities) {
-    if (p.hitIds.has(idOf(e))) continue
+    if (hitIds.has(idOf(e))) continue
     const dist = Math.hypot(e.px - p.px, e.py - p.py)
     if (dist <= p.chain.range && dist < bestDist) { best = e; bestDist = dist }
   }
@@ -75,11 +76,16 @@ function applyOnHit(p, target) {
 
 // Advance every projectile one frame. Mutates state.projectiles (replaced
 // with the survivors) and state.entities (via hooks.hurt's replacement
-// entity); returns { hits } for callers that want a count (e.g. combo/sfx
-// bookkeeping upstream). hooks: { hurt(e, damage, p) -> entity, detonate(px,
-// py, blastTiles), damagePlayer(damage), isHittable(e) }.
+// entity, and hooks.cull's culling); returns { hits } for callers that want
+// a count (e.g. combo/sfx bookkeeping upstream). hooks: { hurt(e, damage, p)
+// -> entity, detonate(px, py, blastTiles), damagePlayer(damage),
+// isHittable(e), cull(entities) -> entities (optional, defaults to identity
+// — game.js passes its real cullDead with the keep predicate it uses
+// elsewhere, since a corpse can sit at 0 hp without isHittable/dying saying
+// so, and would otherwise soak a second projectile arriving the same frame) }.
 export function stepProjectiles(state, delta, hooks) {
   const { player, map } = state
+  const cull = hooks.cull ?? (entities => entities)
   let hits = 0
   const live = []
 
@@ -106,7 +112,9 @@ export function stepProjectiles(state, delta, hooks) {
 
     // Fork before the hit-test: past `after` px the original is replaced by
     // its fanned copies, which fly on (and can themselves hit) next frame.
-    if (p.fork && !p.forked && p.distTraveled >= p.fork.after) {
+    // (No `!p.forked` guard needed: makeForks clears `fork` on every copy,
+    // so `p.fork` is already falsy on anything that has already forked.)
+    if (p.fork && p.distTraveled >= p.fork.after) {
       live.push(...makeForks(p))
       continue
     }
@@ -133,6 +141,8 @@ export function stepProjectiles(state, delta, hooks) {
           if (p.onHit) applyOnHit(p, struck)
 
           if (p.chain && p.chain.left > 0) {
+            // Chain wins over pierce when a projectile somehow carries both
+            // (deliberate: a chaining shot retargets instead of piercing).
             const candidates = state.entities.filter(e => hooks.isHittable(e) && e.type !== 'dragon_boss')
             const next = retargetChain(p, candidates)
             if (next) p.chain.left--
@@ -143,6 +153,16 @@ export function stepProjectiles(state, delta, hooks) {
             consumed = true // single-target hit: projectile spent
           }
         }
+        // Direct-impact blast: fires on ANY resolved hit, including one a
+        // shield absorbed (mirrors the original game.js `hit = true` before
+        // the shield fallthrough) — at the projectile's current position,
+        // not lastPx/lastPy (that pair is only for the wall/maxDist stop).
+        if (p.explodes) hooks.detonate(p.px, p.py, p.blastTiles)
+        // A hit can drop an entity to 0 hp without removing it — isHittable
+        // only checks `dying`, not hp — so cull now, after the replacement
+        // above has landed in state.entities, or a second projectile later
+        // in this same frame could still find the corpse as a target.
+        state.entities = cull(state.entities)
       }
     } else if (Math.hypot(player.px - p.px, player.py - p.py) < PLAYER_HIT_RADIUS) {
       hooks.damagePlayer(p.damage)
