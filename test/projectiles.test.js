@@ -155,6 +155,38 @@ describe('retargetChain', () => {
     assert.deepEqual(hitLog.map(e => e.id).sort(), ['a', 'b'])
     assert.equal(state.projectiles.length, 0) // no third target -> chain ends
   })
+
+  it('a chain skips the peaceful villager standing nearest and ends there', () => {
+    // A spark arcing through a village must not find the baker: isSpellTarget
+    // filters peaceful npcs out of the candidate set even though isHittable
+    // (the player's own weapons) still reaches them.
+    const entities = [
+      { id: 'a', type: 'monster', px: 8, py: 0, hp: 10 },
+      { id: 'baker', type: 'npc', hostile: false, px: 8, py: 10, hp: 10 },
+    ]
+    const p = { px: 0, py: 0, dx: 400, dy: 0, damage: 4, friendly: true, chain: { left: 1, range: 40 } }
+    const { hooks, hitLog } = makeHooks()
+    const state = baseState(entities, [p])
+
+    for (let i = 0; i < 50 && state.projectiles.length; i++) stepProjectiles(state, 0.02, hooks)
+
+    assert.deepEqual(hitLog.map(e => e.id), ['a'])
+    assert.equal(entities[1].hp, 10)
+  })
+
+  it('a hostile villager is still a valid chain target', () => {
+    const entities = [
+      { id: 'a', type: 'monster', px: 8, py: 0, hp: 10 },
+      { id: 'angry', type: 'npc', hostile: true, px: 8, py: 10, hp: 10 },
+    ]
+    const p = { px: 0, py: 0, dx: 400, dy: 0, damage: 4, friendly: true, chain: { left: 1, range: 40 } }
+    const { hooks, hitLog } = makeHooks()
+    const state = baseState(entities, [p])
+
+    for (let i = 0; i < 50 && state.projectiles.length; i++) stepProjectiles(state, 0.02, hooks)
+
+    assert.deepEqual(hitLog.map(e => e.id).sort(), ['a', 'angry'])
+  })
 })
 
 describe('onHit', () => {

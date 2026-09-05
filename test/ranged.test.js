@@ -62,6 +62,23 @@ describe('stance switching', () => {
     assert.equal(p.stanceSwitch, undefined)
   })
 
+  it('starting a switch drops any charge in progress', () => {
+    // A draw or spell charge belongs to the stance that started it: left
+    // standing it would keep the move-speed penalty and the charge ring
+    // forever, since the release branch for that stance no longer runs.
+    const p = learned()
+    p.charging = { t: 0.5, kind: 'draw' }
+    assert.equal(startStanceSwitch(p), 'ranged')
+    assert.equal(p.charging, null)
+  })
+
+  it('a refused switch leaves the charge alone', () => {
+    const p = { ...makePlayer(1, 1), talents: [] }
+    p.charging = { t: 0.5, kind: 'draw' }
+    assert.equal(startStanceSwitch(p), null)
+    assert.deepEqual(p.charging, { t: 0.5, kind: 'draw' })
+  })
+
   it('ignores Shift while a switch is already running', () => {
     const p = learned()
     startStanceSwitch(p)

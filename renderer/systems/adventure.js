@@ -6,6 +6,7 @@ import { OPEN_MAPS } from '../data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../data/levels.js'
 import { DAY_START } from '../data/weather.js'
 import { WAND_TYPES, RANGED_WEAPON_TYPES, makeWandContents, makeRangedContents, emptyAmmo } from './entities.js'
+import { itemFromContents } from './inventory.js'
 
 // The traveling body's wands-and-bows redesign (Task 1): the ranged hand
 // gains a `wand` sibling and ammo moves off the weapon into a shared
@@ -32,15 +33,18 @@ export function normalizeBody(body) {
       out.ranged = null   // unknown weapon type — drop rather than crash
     }
   }
+  // Sack bows get the same treatment as the held one: a legacy payload kept
+  // as-is would carry `ammo`/`maxAmmo` and no `ammoKind`, so equipping it
+  // would leave tryFire reading player.ammo[undefined] forever. Rebuild the
+  // payload from the table (via itemFromContents, the one place every pickup
+  // is normalised) and bank the old on-weapon count into the pool once.
   out.inventory = (out.inventory ?? []).map(item => {
     if (item.kind !== 'ranged') return item
     const wt = item.payload?.weaponType
-    if (WAND_TYPES[wt]) {
-      const { type, ...payload } = makeWandContents(wt)
-      return { kind: 'wand', name: payload.name, emoji: '🪄', stackable: false, payload }
-    }
+    if (WAND_TYPES[wt]) return itemFromContents(makeWandContents(wt))
     if (!RANGED_WEAPON_TYPES[wt]) return null   // unknown weapon type — drop
-    return item
+    out.ammo[RANGED_WEAPON_TYPES[wt].ammoKind] += item.payload.ammo ?? 0
+    return itemFromContents(makeRangedContents(wt))
   }).filter(Boolean)
   return out
 }

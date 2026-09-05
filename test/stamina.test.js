@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   STAMINA_MAX, meleeCost, GUST_COSTS, canAfford, spendStamina, tickStamina,
-  sprintProfile, makeSprintDetector,
+  sprintProfile, makeSprintDetector, affordableTier,
 } from '../renderer/systems/stamina.js'
 
 const mkPlayer = (over = {}) =>
@@ -91,5 +91,27 @@ describe('double-tap sprint detector', () => {
     d.press('a', 1.0); d.press('a', 1.2)
     d.release('d')
     assert.equal(d.sprinting(), true)
+  })
+})
+
+describe('affordableTier', () => {
+  const cost = { tap: 14, full: 22, over: 40 }
+
+  it('degrades a hold to the best tier the tank can actually pay for', () => {
+    assert.equal(affordableTier(100, cost, 'over'), 'over')
+    assert.equal(affordableTier(30, cost, 'over'), 'full')
+    assert.equal(affordableTier(15, cost, 'over'), 'tap')
+    assert.equal(affordableTier(5, cost, 'over'), null)
+  })
+
+  it('never upgrades: a tap stays a tap however full the tank is', () => {
+    assert.equal(affordableTier(100, cost, 'tap'), 'tap')
+    assert.equal(affordableTier(100, cost, 'full'), 'full')
+  })
+
+  it('an unknown tier falls back to tap, not to the overcharge', () => {
+    assert.equal(affordableTier(100, cost, 'wibble'), 'tap')
+    assert.equal(affordableTier(100, cost, undefined), 'tap')
+    assert.equal(affordableTier(5, cost, 'wibble'), null)
   })
 })

@@ -1,4 +1,4 @@
-import { TILE } from '../systems/entities.js'
+import { TILE, FACING_ANGLE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
@@ -435,12 +435,7 @@ function drawFlash(ctx, flash, W, H) {
   ctx.restore()
 }
 
-// Fallbacks for shots that carry no colour of their own: steel quarrels and
-// grey stones, matching the crossbow's and sling's table colours. Arrows keep
-// the old yellow default.
-const PROJECTILE_COLORS = { quarrel: '#e5e7eb', stone: '#a8a29e' }
-
-// How long a blink trail lives; systems/spells.js decays state.blinkTrail.t on it.
+// How long a blink trail lives; game.js decays state.blinkTrail.t on it.
 export const BLINK_DUR = 0.2
 
 // Blink: three silhouettes strung between where the wizard was and where he is,
@@ -575,7 +570,7 @@ function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
 export function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   if (!(player.attackTimer > 0) || !(player.attackDuration > 0)) return
   const t = 1 - player.attackTimer / player.attackDuration
-  const base = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.attackFacing] ?? 0
+  const base = FACING_ANGLE[player.attackFacing] ?? 0
   const ws = sprites[`weapon_${player.weapon?.weaponType}`]
   const reach = getSwingArc(player.attackStyle).reach * (player.attackReachMul ?? 1)
   drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base, reach })
@@ -1108,7 +1103,7 @@ export class Renderer {
       const bpx = Math.round(p.px - camX)
       const bpy = Math.round(p.py - camY)
       const flat = Math.abs(p.dx) >= Math.abs(p.dy)   // travelling more across than down
-      ctx.fillStyle = p.color ?? PROJECTILE_COLORS[p.shape] ?? '#facc15'
+      ctx.fillStyle = p.color ?? '#facc15'   // every spawner sets a colour; this is belt-and-braces
       if (p.shape === 'arrow') {
         if (flat) ctx.fillRect(bpx - 4, bpy - 1, 8, 2)
         else ctx.fillRect(bpx - 1, bpy - 4, 2, 8)

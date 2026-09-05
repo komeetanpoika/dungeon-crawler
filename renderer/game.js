@@ -1,7 +1,7 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, TILE, isWalkable } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, TILE, isWalkable, DIRS, FACING_ANGLE } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -158,9 +158,11 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keydown', e => {
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
+  // startStanceSwitch drops any charge in progress itself (it belongs to the
+  // stance being left); `false` back means a switch was already running and
+  // this Shift is ignored outright.
   const target = startStanceSwitch(state.player)
-  if (target === null) { think(state, 'I know no other ways to fight.'); return }
-  if (target) state.player.charging = null    // false = switch already running
+  if (target === null) think(state, 'I know no other ways to fight.')
 })
 
 // In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
@@ -393,7 +395,6 @@ const CAST_LINES = {
   lightning: 'You call the sky down!',
 }
 
-const FACING_ANGLE = { east: 0, south: Math.PI / 2, west: Math.PI, north: -Math.PI / 2 }
 const BACKWARDS = { north: 'south', south: 'north', east: 'west', west: 'east' }
 // The cone ring's colour per spell — the gust's pale cyan, rime's frost blue.
 const CONE_COLOR = { rime: '#bfdbfe' }
@@ -605,6 +606,19 @@ function applyLoadout(player, po) {
   }
 }
 
+// A hand slot holds a *Contents() object minus its `type` tag — that field
+// only exists to tell a floating pickup's contents apart, and equipItem /
+// autoEquipOnPickup strip it the same way.
+const handPayload = contents => { const { type, ...payload } = contents; return payload }
+
+// Which stance owns each kind of charge. startStanceSwitch already drops a
+// charge on the way out of its stance; the update loop re-checks against this
+// as the backstop for any other path that could move attackMode under a live
+// charge, so the move-speed penalty and the charge ring can never outlive the
+// stance that can release them. A melee wind-up carries no `kind` and is
+// governed by its own branch instead.
+const CHARGE_STANCE = { draw: 'ranged', spell: 'magic' }
+
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
@@ -631,17 +645,23 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (OPEN_MAPS[depth]) {
     player.talents = [...activeSave.talents]
     if (activeSave.body) {
-      // Melee payloads are re-derived from the weapon table rather than
-      // copied: saves written before lumber landed carry no `chop`, and a
-      // hatchet or axe out of one of those must still fell trees. Ranged
-      // payloads are copied as-is — their `ammo` is run state, not table data.
+      // Hand payloads are re-derived from their tables rather than copied.
+      // For melee: saves written before lumber landed carry no `chop`, and a
+      // hatchet or axe out of one of those must still fell trees. For ranged
+      // and wands the same now holds — since ammo moved off the weapon into
+      // the shared pool, a bow's payload is pure table data with no run state
+      // left on it, so re-deriving repairs a stale one instead of preserving
+      // it. (normalizeBody has already done this once on load; doing it here
+      // too keeps the seam honest for any body that reaches us another way.)
       player.weapon = activeSave.body.weapon ? weaponContents(activeSave.body.weapon.weaponType) : null
-      player.ranged = activeSave.body.ranged ? { ...activeSave.body.ranged } : null
-      player.wand = activeSave.body.wand ? { ...activeSave.body.wand } : null
+      player.ranged = activeSave.body.ranged ? handPayload(makeRangedContents(activeSave.body.ranged.weaponType)) : null
+      player.wand = activeSave.body.wand ? handPayload(makeWandContents(activeSave.body.wand.weaponType)) : null
       player.ammo = { ...emptyAmmo(), ...(activeSave.body.ammo ?? {}) }
       player.inventory = activeSave.body.inventory.map(i => {
         if (!i.payload) return { ...i }
         if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
+        if (i.kind === 'ranged') return { ...i, payload: handPayload(makeRangedContents(i.payload.weaponType)) }
+        if (i.kind === 'wand') return { ...i, payload: handPayload(makeWandContents(i.payload.weaponType)) }
         return { ...i, payload: { ...i.payload } }
       })
     }
@@ -1206,7 +1226,7 @@ function update(delta) {
     sfx(state, 'melee-swing', { px: player.px, py: player.py })
     player.attackReachMul = mods.reachMul
     const dmg = Math.max(1, Math.round((player.weapon?.damage ?? 1) * mods.dmgMul))
-    const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
+    const fa = FACING_ANGLE[player.facing] ?? 0
     const arc = getSwingArc(atk.style)
     const hitAt = (dx, dy) => inSwing(arc.reach * mods.reachMul, arc.halfAngle, fa, dx, dy)
     const miekka = meleeWT === 'maunonmiekka'
@@ -1296,6 +1316,8 @@ function update(delta) {
       }
     }
   }
+  if (player.charging?.kind && CHARGE_STANCE[player.charging.kind] !== player.attackMode)
+    player.charging = null
   if (player.attackMode === 'melee' && !player.weapon) {
     // Truly unarmed: no swing at all — like the empty ranged slot, the fix
     // is finding a weapon, and the game says so instead of doing nothing.
@@ -1359,13 +1381,16 @@ function update(delta) {
   const loose = (tier = 'tap') => {
     const shot = tryFire(player, tier)
     if (!shot.ok) {
+      // A no_ammo failure never carries an ammoKind of its own (tryFire only
+      // sets one on a successful shot), so the held weapon's kind names the
+      // noun — and noAmmoMessage falls back to "ammo" if there is no weapon.
       const msg = shot.reason === 'no_ammo'
-        ? noAmmoMessage(shot.ammoKind ?? player.ranged?.ammoKind)
+        ? noAmmoMessage(player.ranged?.ammoKind)
         : FIRE_FAIL_MESSAGES[shot.reason]
       if (msg && state.fireMsgCooldown <= 0) { think(state, msg); state.fireMsgCooldown = 1.5 }
       return
     }
-    const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
+    const dir = DIRS[player.facing] ?? DIRS.east
     const proj = { px: player.px, py: player.py,
       dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED,
       damage: shot.damage, color: shot.color, shape: shot.shape, friendly: true }

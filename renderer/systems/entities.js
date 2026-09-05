@@ -104,6 +104,14 @@ export function emptyAmmo() {
   return { arrow: 0, bolt: 0, stone: 0 }
 }
 
+// The two facing tables, shared rather than re-declared: DIRS is the unit
+// tile step per facing (walk, blink, bramble placement, arrows), FACING_ANGLE
+// the same direction in radians (cone sweeps and the rings that draw them).
+// Screen space, so `south` is +y and its angle is +PI/2. Callers still guard
+// an unknown facing themselves (`DIRS[f] ?? DIRS.east`).
+export const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }
+export const FACING_ANGLE = { east: 0, south: Math.PI / 2, west: Math.PI, north: -Math.PI / 2 }
+
 export function isWalkable(tileId, tileObj = null) {
   if (tileObj?.voidZone) return false
   return tileId !== TILE.WALL && tileId !== TILE.COLUMN

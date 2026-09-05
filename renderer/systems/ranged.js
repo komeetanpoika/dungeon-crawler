@@ -29,6 +29,10 @@ export function startStanceSwitch(player) {
   const to = nextStance(player)
   if (!to) return null
   player.stanceSwitch = { from: player.attackMode, to, t: 0, dur: STANCE_SWITCH_DURATION }
+  // A charge belongs to the stance that began it: the draw's and the gust's
+  // release branches only run in their own stance, so a charge left standing
+  // here would keep the move-speed penalty and the charge ring for good.
+  player.charging = null
   return to
 }
 

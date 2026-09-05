@@ -9,7 +9,7 @@
 // zone, the blink trail) and nothing more. Call Lightning is injected as
 // `modules.lightning` rather than imported, so this file never depends on
 // the one spell that reaches into the weather layer.
-import { WAND_TYPES, isWalkable } from './entities.js'
+import { WAND_TYPES, isWalkable, DIRS } from './entities.js'
 import { castCone, GUST, GUST_TIERS } from './magic.js'
 import { FIREBALL_RANGE_TILES } from './fire.js'
 import { hasTalent } from './talents.js'
@@ -17,7 +17,6 @@ import { affordableTier, GUST_COSTS, spendStamina } from './stamina.js'
 import { makeBrambleZone } from './zones.js'
 
 const TILE_SIZE = 32
-const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }
 
 export const CHAIN_RANGE = 96          // 3 tiles: how far a spark arcs onward
 const BRAMBLE_AHEAD = 3                // tiles in front of the caster

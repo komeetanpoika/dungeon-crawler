@@ -29,6 +29,19 @@ export function isHittable(e) {
   return isEnemy(e) || e.type === 'npc' || !!getMonsterDef(e.type)
 }
 
+// Who a spell or an arcing shot is allowed to *seek out*: every hittable
+// thing minus peaceful villagers. Spells never seek out peaceful villagers —
+// an area effect or a chaining bolt must not turn a rescue into a massacre —
+// but a villager who has turned on the player keeps type 'npc' with
+// `hostile` set and is caught like any other enemy. Deliberately wider than
+// isEnemy: passive story creatures (the Näkki) stay reachable, which is the
+// whole point of Call Lightning's conduction clause. The player's own aimed
+// weapons keep using isHittable — hitting the baker with a swing is the
+// player's choice to make; a spell fanning out is not.
+export function isSpellTarget(e) {
+  return isHittable(e) && !(e.type === 'npc' && !e.hostile)
+}
+
 // The frame's death cull predicate. hp is `undefined` for creatures like the
 // nakki that carry no hp field — Number.isFinite keeps those alive here so a
 // plain `e.hp > 0` check (which would evaluate `undefined > 0` to false and

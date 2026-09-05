@@ -14,9 +14,9 @@
 // and skipping it would leave a night map lit as day for good. It early-outs
 // on its own when there is genuinely nothing left to do, so the unconditional
 // call is cheap.
-import { isWalkable } from '../entities.js'
+import { isWalkable, DIRS } from '../entities.js'
 import { isStoryCreature } from '../monsters.js'
-import { isHittable } from '../factions.js'
+import { isSpellTarget } from '../factions.js'
 import { sfx } from '../sfx.js'
 import { LOS_CLEAR_PREFIXES } from '../openmap.js'
 
@@ -38,8 +38,6 @@ export const LIGHTNING = {
 // 3×3. Not a tuning knob of the spell itself — purely how long the flash of
 // geometry hangs around.
 export const STRIKE_LIFE = 0.15
-
-const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }
 
 const cellAt = (map, x, y) => map?.[y]?.[x] ?? null
 const key = (x, y) => `${x},${y}`
@@ -115,14 +113,12 @@ export function castLightning(state, tier = 'tap') {
   return { marks }
 }
 
-// Who the sky can hit: the repo's one "the player's weapons reach this"
-// predicate, minus peaceful villagers — an area effect must not turn a rescue
-// into a massacre, but a villager who has turned on the player is fair game.
-// isHittable also excludes the player, the Echo and anything already dying,
-// and it deliberately never tests hp: the Näkki carries no hp field at all
+// Who the sky can hit: the repo's one spell-target predicate. It excludes the
+// player, the Echo, anything already dying and peaceful villagers, and it
+// deliberately never tests hp — the Näkki carries no hp field at all
 // (ensureNakki strips it), and it is the very creature the spec's conduction
 // clause exists to reach.
-const isTarget = e => isHittable(e) && !(e.type === 'npc' && !e.hostile)
+const isTarget = isSpellTarget
 
 // Bosses shrug the stun off (as they do the gust's), and a story creature
 // runs its own state machine — a stunTimer on the Näkki would freeze a

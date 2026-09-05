@@ -4,6 +4,7 @@
 // without a DOM/canvas — game.js supplies hurt/detonate/damagePlayer/
 // isHittable as hooks, and this module touches nothing else of its own.
 import { isWalkable } from './entities.js'
+import { isSpellTarget } from './factions.js'
 import { startKnockback } from './knockback.js'
 
 const TILE_SIZE = 32
@@ -144,7 +145,11 @@ export function stepProjectiles(state, delta, hooks) {
           if (p.chain && p.chain.left > 0) {
             // Chain wins over pierce when a projectile somehow carries both
             // (deliberate: a chaining shot retargets instead of piercing).
-            const candidates = state.entities.filter(e => hooks.isHittable(e) && e.type !== 'dragon_boss')
+            // A chain *seeks* its next victim, so it obeys isSpellTarget on
+            // top of the caller's hittable hook: a spark arcing through a
+            // village must never pick out the baker.
+            const candidates = state.entities.filter(e =>
+              hooks.isHittable(e) && isSpellTarget(e) && e.type !== 'dragon_boss')
             const next = retargetChain(p, candidates)
             if (next) p.chain.left--
             else consumed = true // nothing left in range: chain ends

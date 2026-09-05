@@ -3,6 +3,7 @@
 // Minibosses shrug the stun and are only shoved lightly; the dragon boss is
 // too massive to care. Gust is priced in stamina, not mana, and can be held
 // to charge a bigger tier — mirroring melee's heavy-weapon charge.
+import { FACING_ANGLE } from './entities.js'
 import { inSwing } from './melee.js'
 import { startKnockback } from './knockback.js'
 import { hasTalent } from './talents.js'
@@ -52,7 +53,7 @@ export function castCone(state, t) {
   const p = state.player
   const reach = t.reach ?? GUST.reach * t.mul
   const halfAngle = t.halfAngle ?? GUST.halfAngle * t.mul
-  const fa = { east: 0, south: Math.PI / 2, west: Math.PI, north: -Math.PI / 2 }[p.facing] ?? 0
+  const fa = FACING_ANGLE[p.facing] ?? 0
   const slamOpts = t.slam ? { slam: { damage: SLAM_DAMAGE } } : undefined
   let caught = 0
   for (const e of state.entities) {
@@ -75,6 +76,10 @@ export function castCone(state, t) {
 // Cast the gust from the player's position along their facing. Spends
 // stamina and starts the cooldown on success; refusals name their reason so
 // the caller can surface it.
+// Gust of Wind on its own. spells.js's tryCast is the live dispatcher (it
+// routes the wandless gust through castCone like any other cone), but this
+// stays as the standalone, directly-tested entry point for the one spell
+// that needs no wand — gating, pricing and cone in a single call.
 export function tryGust(state, tier = 'tap') {
   const p = state.player
   if (!hasTalent(p, 'magic_stance')) return { ok: false, reason: 'not_learned' }

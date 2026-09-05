@@ -2,7 +2,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure, computePlayerFOV, maybeComputeFOV, makePlayer,
-  RANGED_WEAPON_TYPES, makeRangedContents, WAND_TYPES, makeWandContents, AMMO_KINDS, AMMO_CAPS, emptyAmmo } from '../renderer/systems/entities.js'
+  RANGED_WEAPON_TYPES, makeRangedContents, WAND_TYPES, makeWandContents, AMMO_KINDS, AMMO_CAPS, emptyAmmo, DIRS, FACING_ANGLE } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
 function openMap(w = 20, h = 20) {
@@ -283,5 +283,19 @@ describe('ammo pool', () => {
 
   it('emptyAmmo starts every kind at zero', () => {
     assert.deepEqual(emptyAmmo(), { arrow: 0, bolt: 0, stone: 0 })
+  })
+})
+
+describe('facing tables', () => {
+  it('DIRS gives the unit step for each facing', () => {
+    assert.deepEqual(DIRS, { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] })
+  })
+
+  it('FACING_ANGLE agrees with DIRS, so cones and steps point the same way', () => {
+    for (const [facing, [dx, dy]] of Object.entries(DIRS)) {
+      const a = FACING_ANGLE[facing]
+      assert.equal(Math.round(Math.cos(a)), dx, `cos for ${facing}`)
+      assert.equal(Math.round(Math.sin(a)), dy, `sin for ${facing}`)
+    }
   })
 })

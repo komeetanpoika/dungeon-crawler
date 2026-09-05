@@ -131,7 +131,12 @@ function tryDeliverFleece(ctx, delta) {
   if (!delivered) return
   setVillageHostile(state, false)
   if (spot) dropGiftAt(state, delivered.gives, spot)
-  else autoEquipOnPickup(state.player, itemFromContents(delivered.gives))
+  else {
+    // itemFromContents returns null for contents it cannot build (an unknown
+    // weaponType); nothing to hand over then, but the beat still resolves.
+    const item = itemFromContents(delivered.gives)
+    if (item) autoEquipOnPickup(state.player, item)
+  }
   sfx(state, 'pickup', { px: state.player.px, py: state.player.py })
   sfx(state, 'talent-learned', { px: state.player.px, py: state.player.py })
   ctx.refreshInventory()

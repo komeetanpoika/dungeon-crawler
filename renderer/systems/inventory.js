@@ -3,7 +3,10 @@
 // player.wand) and the shared ammo pool (player.ammo). Pure player-state
 // logic — game.js owns pickups, drops, and messages.
 
-import { AMMO_CAPS, emptyAmmo } from './entities.js'
+import {
+  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES,
+  makeRangedContents, makeWandContents,
+} from './entities.js'
 
 const STACKABLE_KINDS = {
   potion:      { name: 'Potion',      emoji: '🧪', extra: { amount: 4 } },
@@ -29,8 +32,30 @@ const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄' }
 // goes straight into the pool (see autoEquipOnPickup) — so this returns the
 // bare { kind: 'ammo', ammoKind, count } shape rather than a stackable slot.
 // Unknown types return null.
+//
+// Ranged and wand payloads are re-derived from their tables rather than
+// copied, exactly as game.js re-derives melee payloads on load. Every pickup
+// passes through here, so a pre-redesign floating item persisted in an old
+// caveInstances entry (a bow carrying its own `ammo`/`maxAmmo` and no
+// `ammoKind`) is normalised at this one place instead of reaching tryFire as
+// player.ammo[undefined]. Two consequences, both deliberate:
+//   - an unknown weaponType yields null (the pickup is dropped) rather than
+//     silently becoming a Shortbow the player never found. Callers must
+//     tolerate null — they already had to, for unknown `type`s.
+//   - a legacy `contents.ammo` count is discarded here; the pool is topped up
+//     once, by the table's `bundle`, in autoEquipOnPickup. Crediting both
+//     would pay a stale magazine out twice.
+const REBUILD = { ranged: [RANGED_WEAPON_TYPES, makeRangedContents], wand: [WAND_TYPES, makeWandContents] }
+
 export function itemFromContents(contents) {
-  if (contents.type === 'weapon' || contents.type === 'ranged' || contents.type === 'wand') {
+  const rebuild = REBUILD[contents.type]
+  if (rebuild) {
+    const [table, make] = rebuild
+    if (!table[contents.weaponType]) return null
+    const { type, ...payload } = make(contents.weaponType)
+    return { kind: type, name: payload.name, emoji: HAND_EMOJI[type], stackable: false, payload }
+  }
+  if (contents.type === 'weapon') {
     const { type, ...payload } = contents
     return { kind: type, name: contents.name, emoji: HAND_EMOJI[type], stackable: false, payload }
   }
@@ -118,8 +143,13 @@ export function equipItem(player, index) {
 // need to seed player.ammo themselves.
 export function addAmmo(player, ammoKind, count) {
   if (!player.ammo) player.ammo = emptyAmmo()
+  // An unknown (or missing) kind adds nothing rather than writing
+  // `undefined: NaN` into the pool — Math.min(undefined, n) is NaN, and a NaN
+  // slot would poison every later add and read for that kind.
+  const cap = AMMO_CAPS[ammoKind]
+  if (cap === undefined) return 0
   const before = player.ammo[ammoKind] ?? 0
-  const after = Math.min(AMMO_CAPS[ammoKind], before + count)
+  const after = Math.min(cap, before + count)
   player.ammo[ammoKind] = after
   return after - before
 }
@@ -153,12 +183,14 @@ export function autoEquipOnPickup(player, item) {
       return { ok: true, equipped: false, merged: 'hand', ammo: added, ammoKind }
     if (player.inventory.some(i => i.kind === 'ranged' && i.payload.weaponType === wt))
       return { ok: true, equipped: false, merged: 'sack', ammo: added, ammoKind }
+    // The bundle rides on every successful ranged outcome, merged or not, so
+    // game.js can float "+n" for a first bow just as it does for a duplicate.
     if (!player.ranged && canEquip(player, item).ok) {
       player.ranged = { ...item.payload }
-      return { ok: true, equipped: true }
+      return { ok: true, equipped: true, ammo: added, ammoKind }
     }
     const r = addItem(player, item)
-    return r.ok ? { ok: true, equipped: false } : r
+    return r.ok ? { ok: true, equipped: false, ammo: added, ammoKind } : r
   }
   if (item.kind === 'wand') {
     if (!player.wand && canEquip(player, item).ok) {

@@ -171,13 +171,15 @@ describe('pickup auto-equip', () => {
   it('a bow pickup without ranged_stance goes to the sack, hand stays empty; with the talent it equips', () => {
     const untrained = mkPlayer()
     const r1 = autoEquipOnPickup(untrained, itemFromContents(bowContents()))
-    assert.deepEqual(r1, { ok: true, equipped: false })
+    // The bundle rides on every ranged outcome, so game.js floats "+12" for a
+    // first bow exactly as it does for a merged duplicate.
+    assert.deepEqual(r1, { ok: true, equipped: false, ammo: 12, ammoKind: 'arrow' })
     assert.equal(untrained.ranged, null)
     assert.equal(untrained.inventory.length, 1)
 
     const trained = mkPlayer({ talents: ['ranged_stance'] })
     const r2 = autoEquipOnPickup(trained, itemFromContents(bowContents()))
-    assert.deepEqual(r2, { ok: true, equipped: true })
+    assert.deepEqual(r2, { ok: true, equipped: true, ammo: 12, ammoKind: 'arrow' })
     assert.equal(trained.ranged.weaponType, 'shortbow')
     assert.equal(trained.inventory.length, 0)
   })
@@ -332,11 +334,50 @@ describe('ammo pool', () => {
     assert.equal(p.ammo.arrow, 2)
   })
 
+  it('an unknown ammo kind is refused outright, never written into the pool', () => {
+    // A legacy pickup with no ammoKind would otherwise write `undefined: NaN`.
+    const p = mkPlayer({ ammo: emptyAmmo() })
+    assert.equal(addAmmo(p, 'pebble', 5), 0)
+    assert.equal(addAmmo(p, undefined, 5), 0)
+    assert.deepEqual(p.ammo, emptyAmmo())
+  })
+
   it('spendAmmo creates the pool via emptyAmmo() and fails against zero', () => {
     const p = mkPlayer()
     delete p.ammo
     assert.equal(spendAmmo(p, 'stone'), false)
     assert.deepEqual(p.ammo, emptyAmmo())
+  })
+})
+
+describe('legacy contents normalization', () => {
+  it('a pre-redesign ranged contents is rebuilt from the weapon table', () => {
+    const item = itemFromContents({ type: 'ranged', weaponType: 'shortbow', name: 'Bow',
+      damage: 1, ammo: 7, maxAmmo: 12 })
+    const { type: _t, ...fresh } = makeRangedContents('shortbow')
+    assert.deepEqual(item.payload, fresh)
+    assert.equal(item.payload.ammo, undefined)
+    assert.equal(item.payload.maxAmmo, undefined)
+    assert.equal(item.payload.damage, 2)       // table damage, not the stale 1
+  })
+
+  it('a wand contents is rebuilt from the wand table too', () => {
+    const item = itemFromContents({ type: 'wand', weaponType: 'frostwand', name: 'Old Name' })
+    const { type: _t, ...fresh } = makeWandContents('frostwand')
+    assert.deepEqual(item.payload, fresh)
+    assert.equal(item.name, fresh.name)
+  })
+
+  it('an unknown ranged or wand type yields no item at all', () => {
+    assert.equal(itemFromContents({ type: 'ranged', weaponType: 'raygun', ammo: 3 }), null)
+    assert.equal(itemFromContents({ type: 'wand', weaponType: 'noodle' }), null)
+  })
+
+  it("a legacy contents' own ammo count is dropped; only the table bundle is credited", () => {
+    const p = mkPlayer({ talents: ['ranged_stance'] })
+    const r = autoEquipOnPickup(p, itemFromContents({ type: 'ranged', weaponType: 'shortbow', ammo: 7 }))
+    assert.equal(r.ammo, 12)          // the bundle, once — not 12 + 7
+    assert.equal(p.ammo.arrow, 12)
   })
 })
 

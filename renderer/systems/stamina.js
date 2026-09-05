@@ -30,9 +30,13 @@ export const GUST_COSTS = { tap: 14, full: 22, over: 40 }
 // they *can* afford (over -> full -> tap) rather than refusing outright, so
 // a long hold is never wasted just because it overshot the tank. Returns
 // null when even tap is unaffordable, so the caller still refuses.
+// An unrecognised tier starts at the *cheapest* rung, not the dearest: a
+// caller that lost track of the hold must never be charged for an overcharge
+// it did not ask for.
 const TIER_ORDER = ['over', 'full', 'tap']
 export function affordableTier(stamina, cost, tier) {
-  const start = Math.max(0, TIER_ORDER.indexOf(tier))
+  const known = TIER_ORDER.indexOf(tier)
+  const start = known >= 0 ? known : TIER_ORDER.indexOf('tap')
   for (let i = start; i < TIER_ORDER.length; i++) {
     if (stamina >= cost[TIER_ORDER[i]]) return TIER_ORDER[i]
   }

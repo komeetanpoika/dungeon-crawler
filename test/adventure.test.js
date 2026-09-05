@@ -8,6 +8,7 @@ import {
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../renderer/data/levels.js'
 import { DAY_START } from '../renderer/data/weather.js'
+import { makeRangedContents, emptyAmmo } from '../renderer/systems/entities.js'
 
 describe('the adventure map chain', () => {
   it('exports the adventure chain at depths 7..18 (leap maps at 8-10)', () => {
@@ -132,10 +133,11 @@ describe('v3 save shape', () => {
     assert.deepEqual(normalizeAdventureSave(null).felled, {})
   })
 
-  it('body inventory items with nested payload are preserved', () => {
-    // weaponType must be a real bow so normalizeBody's migration doesn't drop
-    // this sack item as an unrecognised legacy weapon.
-    const payload = { weaponType: 'shortbow', ammo: 5, type: 'ranged' }
+  it('a legacy sack bow is rebuilt from the weapon table and its ammo joins the pool', () => {
+    // Pre-redesign sack bows carried their own ammo/maxAmmo and no ammoKind.
+    // Keeping that payload would leave tryFire reading player.ammo[undefined]
+    // forever, so the payload is re-derived and the old count banked once.
+    const payload = { weaponType: 'shortbow', ammo: 5, maxAmmo: 12, type: 'ranged' }
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: [], body: {
         weapon: null, ranged: null,
@@ -144,9 +146,26 @@ describe('v3 save shape', () => {
         ],
       } }
     const s = normalizeAdventureSave(v3)
-    // After normalization, the payload should still exist and be the same data
-    assert.ok(s.body.inventory[0].payload, 'payload preserved')
-    assert.deepEqual(s.body.inventory[0].payload, payload, 'payload data matches')
+    const item = s.body.inventory[0]
+    assert.equal(item.kind, 'ranged')
+    const { type: _t, ...fresh } = makeRangedContents('shortbow')
+    assert.deepEqual(item.payload, fresh, 'payload rebuilt from the table')
+    assert.equal(item.payload.ammoKind, 'arrow')
+    assert.equal(item.payload.ammo, undefined, 'no stale per-weapon ammo')
+    assert.equal(item.payload.maxAmmo, undefined)
+    assert.equal(s.body.ammo.arrow, 5, 'the old on-weapon count credited to the pool once')
+  })
+
+  it('a legacy sack bow of an unknown type is dropped, not left unusable', () => {
+    const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
+      talents: [], body: {
+        weapon: null, ranged: null,
+        inventory: [{ kind: 'ranged', name: 'Raygun', emoji: '🏹', stackable: false,
+          payload: { weaponType: 'raygun', ammo: 3 } }],
+      } }
+    const s = normalizeAdventureSave(v3)
+    assert.deepEqual(s.body.inventory, [])
+    assert.deepEqual(s.body.ammo, emptyAmmo())
   })
 })
 
