@@ -279,9 +279,9 @@ describe('pickup auto-equip', () => {
     assert.deepEqual(autoEquipOnPickup(p, itemFromContents(swordContents())), { ok: false, reason: 'full' })
   })
 
-  it('round-trips contents for dropping', () => {
+  it('round-trips contents for dropping (minus the spent bundle)', () => {
     const item = itemFromContents(bowContents())
-    assert.deepEqual(contentsFromItem(item), bowContents())
+    assert.deepEqual(contentsFromItem(item), { ...bowContents(), bundle: 0 })
   })
 
   it('wand contents round-trip through the sack too', () => {
@@ -378,6 +378,51 @@ describe('legacy contents normalization', () => {
     const r = autoEquipOnPickup(p, itemFromContents({ type: 'ranged', weaponType: 'shortbow', ammo: 7 }))
     assert.equal(r.ammo, 12)          // the bundle, once — not 12 + 7
     assert.equal(p.ammo.arrow, 12)
+  })
+})
+
+describe('a dropped bow brings no fresh quiver', () => {
+  it('contentsFromItem strips the bundle off a ranged sack item', () => {
+    const item = itemFromContents(bowContents())
+    assert.equal(item.payload.bundle, 12)            // the table bundle, as looted
+    assert.equal(contentsFromItem(item).bundle, 0)   // ...but not a second time on the floor
+  })
+
+  it('itemFromContents keeps an explicit bundle instead of re-reading the table', () => {
+    const item = itemFromContents({ type: 'ranged', weaponType: 'shortbow', bundle: 0 })
+    assert.equal(item.payload.bundle, 0)
+    assert.equal(item.payload.damage, 2)             // everything else still comes from the table
+    assert.equal(item.payload.ammoKind, 'arrow')
+  })
+
+  it('picking a bundle-0 bow up credits no ammo and still equips', () => {
+    const p = mkPlayer({ talents: ['ranged_stance'] })
+    const r = autoEquipOnPickup(p, itemFromContents({ type: 'ranged', weaponType: 'shortbow', bundle: 0 }))
+    assert.deepEqual(r, { ok: true, equipped: true, ammo: 0, ammoKind: 'arrow' })
+    assert.equal(p.ammo.arrow, 0)
+  })
+
+  it('chest loot (no bundle field) still credits the table bundle once', () => {
+    const p = mkPlayer({ talents: ['ranged_stance'] })
+    const r = autoEquipOnPickup(p, itemFromContents({ type: 'ranged', weaponType: 'shortbow' }))
+    assert.equal(r.ammo, 12)
+    assert.equal(p.ammo.arrow, 12)
+  })
+
+  it('drop-and-repickup is not an infinite quiver', () => {
+    const p = mkPlayer({ talents: ['ranged_stance'] })
+    autoEquipOnPickup(p, itemFromContents(bowContents()))
+    assert.equal(p.ammo.arrow, 12)
+    // unequip into the sack, drop it, walk back onto it — three times over
+    for (let i = 0; i < 3; i++) {
+      p.inventory.push({ kind: 'ranged', name: p.ranged.name, emoji: '\u{1F3F9}', stackable: false, payload: { ...p.ranged } })
+      p.ranged = null
+      const dropped = contentsFromItem(removeItem(p, p.inventory.length - 1))
+      const r = autoEquipOnPickup(p, itemFromContents(dropped))
+      assert.equal(r.ammo, 0, `pickup ${i + 1} credited ammo`)
+    }
+    assert.equal(p.ammo.arrow, 12)
+    assert.equal(p.ranged.weaponType, 'shortbow')
   })
 })
 

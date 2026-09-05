@@ -2,7 +2,8 @@
 // hit resolution (pierce, fork, chain, onHit status effects, shield
 // absorption, boss immunity). Lifted out of game.js so it is unit-testable
 // without a DOM/canvas — game.js supplies hurt/detonate/damagePlayer/
-// isHittable as hooks, and this module touches nothing else of its own.
+// isHittable/cull as hooks; the only thing this module reaches for on its own
+// is the faction rule chaining obeys (isSpellTarget).
 import { isWalkable } from './entities.js'
 import { isSpellTarget } from './factions.js'
 import { startKnockback } from './knockback.js'
@@ -145,11 +146,12 @@ export function stepProjectiles(state, delta, hooks) {
           if (p.chain && p.chain.left > 0) {
             // Chain wins over pierce when a projectile somehow carries both
             // (deliberate: a chaining shot retargets instead of piercing).
-            // A chain *seeks* its next victim, so it obeys isSpellTarget on
-            // top of the caller's hittable hook: a spark arcing through a
-            // village must never pick out the baker.
+            // A chain *seeks* its next victim, so it obeys isSpellTarget
+            // rather than the caller's plain hittable test: a spark arcing
+            // through a village must never pick out the baker. (isSpellTarget
+            // is isHittable minus peaceful villagers, so it stands alone.)
             const candidates = state.entities.filter(e =>
-              hooks.isHittable(e) && isSpellTarget(e) && e.type !== 'dragon_boss')
+              isSpellTarget(e) && e.type !== 'dragon_boss')
             const next = retargetChain(p, candidates)
             if (next) p.chain.left--
             else consumed = true // nothing left in range: chain ends

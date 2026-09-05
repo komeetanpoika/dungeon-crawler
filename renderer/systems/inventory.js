@@ -45,6 +45,12 @@ const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄' }
 //   - a legacy `contents.ammo` count is discarded here; the pool is topped up
 //     once, by the table's `bundle`, in autoEquipOnPickup. Crediting both
 //     would pay a stale magazine out twice.
+//
+// The one field that is *not* re-derived is a ranged contents' `bundle`: the
+// quiver top-up rides on the contents so it can be spent. Chest loot and
+// legacy contents carry no `bundle` field and so get the table's, once; a bow
+// the player dropped carries an explicit `bundle: 0` (see contentsFromItem)
+// and re-credits nothing, or drop-and-repickup would be a free arrow mine.
 const REBUILD = { ranged: [RANGED_WEAPON_TYPES, makeRangedContents], wand: [WAND_TYPES, makeWandContents] }
 
 export function itemFromContents(contents) {
@@ -53,6 +59,7 @@ export function itemFromContents(contents) {
     const [table, make] = rebuild
     if (!table[contents.weaponType]) return null
     const { type, ...payload } = make(contents.weaponType)
+    if (type === 'ranged' && Number.isFinite(contents.bundle)) payload.bundle = contents.bundle
     return { kind: type, name: payload.name, emoji: HAND_EMOJI[type], stackable: false, payload }
   }
   if (contents.type === 'weapon') {
@@ -65,7 +72,11 @@ export function itemFromContents(contents) {
 }
 
 export function contentsFromItem(item) {
-  if (item.kind === 'weapon' || item.kind === 'ranged' || item.kind === 'wand')
+  // A dropped bow's arrows are already in the quiver, so what hits the floor
+  // is an empty weapon: bundle 0 travels with the contents and survives the
+  // rebuild in itemFromContents.
+  if (item.kind === 'ranged') return { ...item.payload, type: 'ranged', bundle: 0 }
+  if (item.kind === 'weapon' || item.kind === 'wand')
     return { ...item.payload, type: item.kind }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
   return { type: item.kind, count: item.count ?? 1 }
@@ -165,7 +176,8 @@ export function spendAmmo(player, ammoKind, n = 1) {
 // Walk-onto pickup policy:
 // - ammo bundles (mined stone, dropped ammo) go straight into the pool —
 //   never a sack slot.
-// - a ranged pickup's bundle always tops the pool up first; a carried twin
+// - a ranged pickup's bundle tops the pool up first (0 for a bow the player
+//   dropped, so nothing is credited and game.js floats nothing); a carried twin
 //   (hand or sack) then absorbs the weapon itself (discarded, ammo-only);
 //   otherwise an empty allowed hand equips it, else it goes to the sack.
 // - a wand: empty allowed hand -> equip; otherwise -> sack (no merging —
@@ -177,7 +189,7 @@ export function autoEquipOnPickup(player, item) {
   }
   if (item.kind === 'ranged') {
     const ammoKind = item.payload.ammoKind
-    const added = addAmmo(player, ammoKind, item.payload.bundle)
+    const added = addAmmo(player, ammoKind, item.payload.bundle ?? 0)
     const wt = item.payload.weaponType
     if (player.ranged?.weaponType === wt)
       return { ok: true, equipped: false, merged: 'hand', ammo: added, ammoKind }

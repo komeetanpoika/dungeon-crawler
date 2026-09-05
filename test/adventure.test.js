@@ -326,6 +326,26 @@ describe('normalizeBody', () => {
     assert.deepEqual(b.inventory, [])
   })
 
+  it('drops a sack wand with an unknown weapon type rather than swapping in a sparkwand', () => {
+    const b = normalizeBody({
+      weapon: null, ranged: null,
+      inventory: [{ kind: 'wand', name: 'Noodle Wand', emoji: '\u{1FA84}', stackable: false, payload: { weaponType: 'noodlewand' } }],
+    })
+    assert.deepEqual(b.inventory, [])
+  })
+
+  it('rebuilds a known sack wand from the wand table', () => {
+    const b = normalizeBody({
+      weapon: null, ranged: null,
+      inventory: [{ kind: 'wand', name: 'Old Name', emoji: '\u{1FA84}', stackable: false, payload: { weaponType: 'stormwand', ammo: 4 } }],
+    })
+    assert.equal(b.inventory.length, 1)
+    assert.equal(b.inventory[0].kind, 'wand')
+    assert.equal(b.inventory[0].payload.weaponType, 'stormwand')
+    assert.equal(b.inventory[0].payload.spell, 'lightning')
+    assert.ok(!('ammo' in b.inventory[0].payload), 'wand payload has no ammo field')
+  })
+
   it('is idempotent', () => {
     const once = normalizeBody({ weapon: null, ranged: { weaponType: 'longbow', ammo: 7, maxAmmo: 10 }, inventory: [
       { kind: 'ranged', name: 'x', emoji: '🏹', stackable: false, payload: { weaponType: 'stormwand' } },

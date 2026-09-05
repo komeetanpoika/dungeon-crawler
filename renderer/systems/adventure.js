@@ -39,6 +39,14 @@ export function normalizeBody(body) {
   // payload from the table (via itemFromContents, the one place every pickup
   // is normalised) and bank the old on-weapon count into the pool once.
   out.inventory = (out.inventory ?? []).map(item => {
+    // Sack wands are rebuilt from the table too, and an unrecognised one is
+    // dropped rather than handed to makeWandContents — its `weaponType ?
+    // weaponType : 'sparkwand'` fallback would silently mint a Spark Wand the
+    // player never found, which is exactly what the ranged branch refuses to do.
+    if (item.kind === 'wand') {
+      const wt = item.payload?.weaponType
+      return WAND_TYPES[wt] ? itemFromContents(makeWandContents(wt)) : null
+    }
     if (item.kind !== 'ranged') return item
     const wt = item.payload?.weaponType
     if (WAND_TYPES[wt]) return itemFromContents(makeWandContents(wt))
