@@ -7,6 +7,7 @@ import { PIXEL_SKIN } from '../systems/dragonboss.js'
 import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc, CHARGE } from '../systems/melee.js'
 import { GUST_CHARGE } from '../systems/magic.js'
+import { DRAW_CHARGE } from '../systems/ranged.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { NPC_SPECIES } from '../data/npcs.js'
@@ -165,11 +166,15 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'floating_item') {
     const c = entity.contents
-    if (c.type === 'weapon' || c.type === 'ranged') {
+    if (c.type === 'weapon' || c.type === 'ranged' || c.type === 'wand') {
       const s = sprites[`weapon_${c.weaponType}`]
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
+    } else if (c.type === 'ammo') {
+      // A dropped bundle shows its ammo kind, not the bow it came from.
+      const s = sprites[{ arrow: 'item_arrows', bolt: 'item_bolts', stone: 'item_stones' }[c.ammoKind]]
+      if (s) ctx.drawImage(s, px, py, S, S)
     } else {
       const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
                     clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
@@ -594,9 +599,12 @@ function drawStunStars(ctx, cx, cy, t) {
 // release tier — white (tap), gold (full swing), red (overcharged).
 export function drawChargeRing(ctx, player, camX, camY) {
   if (!player.charging) return
-  // Gust charges use their own thresholds regardless of the equipped
-  // weapon — a melee charge weapon may still be holstered in magic stance.
-  const c = player.charging.kind === 'gust' ? GUST_CHARGE : CHARGE[player.weapon?.weaponType]
+  // A spell wind-up and a bow draw use their own thresholds regardless of the
+  // equipped weapon — a melee charge weapon may still be holstered in the
+  // magic or ranged stance.
+  const c = player.charging.kind === 'spell' ? GUST_CHARGE
+    : player.charging.kind === 'draw' ? DRAW_CHARGE
+    : CHARGE[player.weapon?.weaponType]
   if (!c) return
   const t = player.charging.t
   const frac = Math.min(1, t / c.over)

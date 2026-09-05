@@ -85,8 +85,7 @@ describe('iconSrcFor', () => {
       `./assets/tiles/${SPRITES.item_arrows ?? 'item_arrows'}.png`)
     assert.equal(iconSrcFor({ kind: 'wand', payload: { weaponType: 'stormwand' } }),
       `./assets/tiles/${SPRITES.weapon_stormwand}.png`)
-    // frostwand has no sprite yet (that's Task 5's job) — falls back to sparkwand's tile.
     assert.equal(iconSrcFor({ kind: 'wand', payload: { weaponType: 'frostwand' } }),
-      `./assets/tiles/${SPRITES.weapon_sparkwand}.png`)
+      `./assets/tiles/${SPRITES.weapon_frostwand}.png`)
   })
 })

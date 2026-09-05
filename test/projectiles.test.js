@@ -85,7 +85,7 @@ describe('stepProjectiles — pierce and hitIds', () => {
 describe('makeForks', () => {
   it('spawns three copies after the fork distance, middle on the original heading', () => {
     const p = { px: 0, py: 0, dx: 100, dy: 0, distTraveled: 40,
-      fork: { after: 32, count: 3, spread: 15 }, hitIds: new Set(['x']) }
+      fork: { after: 32, count: 3, spread: Math.PI / 12 }, hitIds: new Set(['x']) }
     const forks = makeForks(p)
 
     assert.equal(forks.length, 3)
@@ -107,7 +107,7 @@ describe('makeForks', () => {
 
   it('integrates with stepProjectiles: one projectile becomes three after 32px', () => {
     const p = { px: 0, py: 0, dx: 320, dy: 0, damage: 1, friendly: true,
-      fork: { after: 32, count: 3, spread: 20 } }
+      fork: { after: 32, count: 3, spread: Math.PI / 9 } }
     const { hooks } = makeHooks()
     const state = baseState([], [p])
 

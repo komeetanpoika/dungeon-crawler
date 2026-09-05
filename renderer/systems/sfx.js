@@ -17,6 +17,8 @@ export const CUE_NAMES = [
   'npc-chicken', 'npc-deer', 'npc-mouse', 'npc-hurt', 'npc-death', 'npc-wrath',
   // lumber & campfire
   'chop', 'tree-fall', 'campfire-light', 'campfire-out', 'sizzle', 'grey-fire',
+  // spells
+  'thunder', 'crackle',
   // leap episodes
   'leap', 'echo', 'bell', 'drag', 'sink', 'erupt', 'wraith-touch', 'wraith-burn',
 ]

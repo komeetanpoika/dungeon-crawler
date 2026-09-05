@@ -1,14 +1,14 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, makeRangedContents, weaponContents, TILE, isWalkable } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, TILE, isWalkable } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
 import { makeDragonBoss, updateDragonBoss, PIXEL_SKIN } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta, firstTime } from './systems/meta.js'
 import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/decorate.js'
-import { Renderer } from './render/canvas.js'
+import { Renderer, BLINK_DUR } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
 import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG, OVERWORLD_DEPTH, ADVENTURE_DEPTH } from './data/levels.js'
@@ -26,7 +26,7 @@ import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToas
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
-import { itemFromContents, contentsFromItem, autoEquipOnPickup, addItem, removeItem, equipItem, canEquip, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, addItem, removeItem, equipItem, canEquip, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
@@ -46,8 +46,13 @@ import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose,
 import { cullDead, tickDying } from './systems/dying.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
-import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
-import { tryGust, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, affordableGustTier } from './systems/magic.js'
+import { startStanceSwitch, tickStanceSwitch, tryFire, DRAW_CHARGE, resolveDrawTier, shouldAutoReleaseDraw, FIRE_FAIL_MESSAGES, noAmmoMessage } from './systems/ranged.js'
+import { castCone, GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust } from './systems/magic.js'
+import { spellFor, tryCast } from './systems/spells.js'
+import { tickZones } from './systems/zones.js'
+import { castLightning, tickLightning } from './systems/spells/lightning.js'
+import { stepProjectiles } from './systems/projectiles.js'
+import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
 import { TALENTS, grantTalent, hasTalent, RUSH_START_TALENTS, MAP_CLEAR_TALENTS } from './systems/talents.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
@@ -55,7 +60,7 @@ import { signNearby } from './systems/signs.js'
 import { showSign, hideSign } from './ui/sign-panel.js'
 import { showToast, hideToast } from './ui/toast.js'
 import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor, shouldAutoRelease, tierMods } from './systems/melee.js'
-import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE, FIREBALL_RANGE_TILES } from './systems/fire.js'
+import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
 import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
 
@@ -68,6 +73,7 @@ const TILE_SIZE = 32
 const PLAYER_SPEED = 120
 const MELEE_COOLDOWN = 0.4
 const PROJECTILE_SPEED = 280
+const STONES_PER_ROCK = 3      // sling ammo from a rock cracked with a pick
 const CONTACT_RANGE = 20
 const PLAYER_HALF = 6
 const ENEMY_HALF = 4
@@ -216,6 +222,9 @@ function persistRun() {
     activeSave.body = {
       weapon: state.player.weapon ? { ...state.player.weapon } : null,
       ranged: state.player.ranged ? { ...state.player.ranged } : null,
+      wand: state.player.wand ? { ...state.player.wand } : null,
+      // The quiver travels with the body, not with any one bow.
+      ammo: { ...emptyAmmo(), ...(state.player.ammo ?? {}) },
       inventory: state.player.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i }),
     }
   }
@@ -308,9 +317,9 @@ function npcsStruckSince(snap) {
 
 // Fireball detonation: flood-fill the blast, burst everyone standing in it
 // (player included — full friendly fire), light the tiles, flash a ring.
-function detonateFireball(px, py) {
+function detonateFireball(px, py, blastTiles) {
   const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE)
-  const tiles = computeBlastTiles(state.map, tx, ty)
+  const tiles = computeBlastTiles(state.map, tx, ty, blastTiles)
   if (!tiles.length) return
   sfx(state, 'fire-burst', { px, py })
   const before = state.entities
@@ -336,8 +345,102 @@ function detonateFireball(px, py) {
   state.log = [...state.log, 'The fireball erupts!'].slice(-5)
 }
 
-// Walk-onto item grant: hand if free, else sack. Returns false when the sack
-// is full so the caller can leave the item in the world.
+// The one hit path shared by projectiles, ground zones and lightning: a
+// registry creature decides for itself what a hit does (hurtCreature owns the
+// cue, the thought and the absorb rule), everything else takes the damage in
+// place with its float, cue and npc reaction. Mutates rather than replacing,
+// because the zone and lightning tickers ignore the return value — only
+// stepProjectiles uses it, and there `struck === target` is a no-op swap.
+// `meta` is whatever the caller had to hand (a projectile, or lightning's
+// `{ source }`); only `source` is read from it.
+function hurtEntity(e, damage, meta) {
+  const source = meta?.source ?? 'player'
+  if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
+    const r = hurtCreature(state, e, damage, { source })
+    if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
+    if (r.think) think(state, r.think)
+    if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${damage}`, kind: 'dealt' })
+    return e
+  }
+  addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${damage}`, kind: 'dealt' })
+  e.hp -= damage
+  e.inCombat = true
+  npcStruck(e)
+  sfx(state, e.hp <= 0 ? deathCue(e) : 'projectile-hit', { px: e.px, py: e.py })
+  return e
+}
+
+// Everything the projectile stepper needs from game.js, and nothing more.
+const projectileHooks = {
+  isHittable,
+  hurt: hurtEntity,
+  detonate: (px, py, blastTiles) => detonateFireball(px, py, blastTiles),
+  damagePlayer: damage => damagePlayer(state, damage, 'hit', `Hit for ${damage} damage!`),
+  // A corpse sits at 0 hp until it is culled, and would otherwise soak a
+  // second projectile arriving the same frame.
+  cull: entities => cullDead(entities, e => !!getMonsterDef(e.type)),
+}
+
+// One log line per spell; the gust keeps the three tiered lines it has
+// always had, since that copy is what the wandless caster knows.
+const CAST_LINES = {
+  gust:      { tap: 'A gust of wind!', full: 'A strong gust!', over: 'A raging gale!' },
+  spark:     'A spark leaps out!',
+  rime:      'A breath of rime!',
+  fireball:  'The fireball flies!',
+  bramble:   'Thorns burst from the ground!',
+  blink:     'You slip through the air!',
+  lightning: 'You call the sky down!',
+}
+
+const FACING_ANGLE = { east: 0, south: Math.PI / 2, west: Math.PI, north: -Math.PI / 2 }
+const BACKWARDS = { north: 'south', south: 'north', east: 'west', west: 'east' }
+// The cone ring's colour per spell — the gust's pale cyan, rime's frost blue.
+const CONE_COLOR = { rime: '#bfdbfe' }
+const GUST_RING = 44   // px: the ring radius a tap-tier cone draws
+
+// Show a successful cast: spawn what it made, ring what it swept, trail what
+// it moved. tryCast has already paid for it — this is feedback only.
+function showCast(cast) {
+  const player = state.player
+  const line = CAST_LINES[cast.spell.id] ?? CAST_LINES.gust
+  sfx(state, 'magic-cast', { px: player.px, py: player.py })
+  if (cast.projectiles) state.projectiles.push(...cast.projectiles)
+  if (cast.caught !== undefined) {
+    // A cone tier states its reach either as a multiplier of the gust's
+    // (gust) or in pixels (rime) — normalise so one ring serves both.
+    const t = cast.spell.tiers[cast.tier] ?? {}
+    const mul = t.mul ?? (t.reach ?? GUST.reach) / GUST.reach
+    const fa = FACING_ANGLE[player.facing] ?? 0
+    state.shockwaves.push({
+      px: player.px + Math.cos(fa) * GUST_RING * mul, py: player.py + Math.sin(fa) * GUST_RING * mul,
+      t: 0, dur: 0.3, maxRadius: GUST_RING * mul, color: CONE_COLOR[cast.spell.id] ?? '#a5f3fc',
+    })
+  }
+  if (cast.from) {
+    state.blinkTrail = { from: cast.from, to: cast.to, t: 0 }
+    // Blink's over tier leaves a parting gust at the origin, blowing back the
+    // way the player came. castCone reads the caster's own position and
+    // facing, so stand them back there for the one call and put them back.
+    if (cast.gustBack) {
+      const { px, py, facing } = player
+      player.px = cast.from.px; player.py = cast.from.py
+      player.facing = BACKWARDS[facing] ?? facing
+      castCone(state, GUST_TIERS.tap)
+      const fa = FACING_ANGLE[player.facing] ?? 0
+      state.shockwaves.push({
+        px: player.px + Math.cos(fa) * GUST_RING, py: player.py + Math.sin(fa) * GUST_RING,
+        t: 0, dur: 0.3, maxRadius: GUST_RING, color: '#a5f3fc',
+      })
+      player.px = px; player.py = py; player.facing = facing
+    }
+  }
+  state.log = [...state.log, typeof line === 'string' ? line : line[cast.tier] ?? line.tap].slice(-5)
+}
+
+// Walk-onto item grant: ammo straight into the quiver, otherwise hand if
+// free, else sack. Returns false when the sack is full so the caller can
+// leave the item in the world.
 function grantContents(contents) {
   const item = itemFromContents(contents)
   if (!item) return true
@@ -347,6 +450,9 @@ function grantContents(contents) {
     if (state.packMsgCooldown <= 0) { think(state, 'My pack is full.'); state.packMsgCooldown = 2 }
     return false
   }
+  // An ammo bundle (or the quiver top-up a bow pickup brings) never reaches a
+  // sack slot, so the count is all the feedback there is — float it.
+  if (r.ammo > 0) addFloat(state.feedback, { px: state.player.px, py: state.player.py - 10, text: `+${r.ammo}`, kind: 'heal' })
   sfx(state, 'pickup')
   return true
 }
@@ -482,6 +588,11 @@ function applyLoadout(player, po) {
   const rdef = RANGED_WEAPON_TYPES[po.rangedType]
   if (rdef) player.ranged = makeRangedContents(po.rangedType)
   else if (po.rangedType !== undefined) console.warn(`loadout: unknown player rangedType "${po.rangedType}" — no ranged weapon`)
+  const wdef = WAND_TYPES[po.wandType]
+  if (wdef) player.wand = makeWandContents(po.wandType)
+  else if (po.wandType !== undefined) console.warn(`loadout: unknown player wandType "${po.wandType}" — no wand`)
+  // A kit's `ammo` tops up the pool it names; kinds it leaves out stay empty.
+  if (po.ammo) player.ammo = { ...emptyAmmo(), ...player.ammo, ...po.ammo }
   if (Number.isFinite(po.hp) && po.hp >= 1) {
     player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
     player.hp = Math.round(po.hp)
@@ -526,6 +637,8 @@ function startNewRun(depth = 1, arenaCfg = null) {
       // payloads are copied as-is — their `ammo` is run state, not table data.
       player.weapon = activeSave.body.weapon ? weaponContents(activeSave.body.weapon.weaponType) : null
       player.ranged = activeSave.body.ranged ? { ...activeSave.body.ranged } : null
+      player.wand = activeSave.body.wand ? { ...activeSave.body.wand } : null
+      player.ammo = { ...emptyAmmo(), ...(activeSave.body.ammo ?? {}) }
       player.inventory = activeSave.body.inventory.map(i => {
         if (!i.payload) return { ...i }
         if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
@@ -547,6 +660,13 @@ function startNewRun(depth = 1, arenaCfg = null) {
     entities: buildEntities(entitySpawns, map, depth),
     projectiles: [],
     fireZones: [],
+    // Ground zones (bramble), lightning marks, the strikes they became and
+    // the white flash of the last one — per-map like every other effect list.
+    zones: [],
+    lightning: [],
+    strikes: [],
+    flash: 0,
+    blinkTrail: null,
     shockwaves: [],
     log: [],
     feedback: makeFeedback(),
@@ -824,8 +944,9 @@ function update(delta) {
   const sprinting = moving && !player.charging && player.stamina > 0 && !wasGrabbed &&
     (keys['sprint'] || sprintDetector.sprinting())
   const chargeFactor = player.charging
-    ? (player.charging.kind === 'gust' ? GUST_CHARGE.moveFactor
-                                       : chargeMoveFactor(player.weapon?.weaponType))
+    ? (player.charging.kind === 'spell' ? GUST_CHARGE.moveFactor
+      : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor
+                                        : chargeMoveFactor(player.weapon?.weaponType))
     : 1
   const speed = PLAYER_SPEED * chargeFactor * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
@@ -1113,9 +1234,12 @@ function update(delta) {
           if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
           return e
         }
-        const hitEnemy = { ...e, hp: e.hp - dmg, inCombat: true }
+        // Shatter: a rimed-over enemy takes +2 and thaws on the blow. Read
+        // before the copy is taken, so the cleared `frozen` rides along.
+        const total = dmg + shatterBonus(e)
+        const hitEnemy = { ...e, hp: e.hp - total, inCombat: true }
         npcStruck(hitEnemy)
-        addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
+        addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${total}`, kind: 'dealt' })
         sfx(state, hitEnemy.hp <= 0 ? deathCue(hitEnemy) : 'melee-hit', { px: e.px, py: e.py })
         startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback * mods.kbMul)
         if (miekka) struck.push(hitEnemy)
@@ -1153,6 +1277,12 @@ function update(delta) {
         const spx = spot.x * TILE_SIZE + TILE_SIZE / 2, spy = spot.y * TILE_SIZE + TILE_SIZE / 2
         const cue = res.kind === 'rock' ? 'wall-slam' : res.felled ? 'tree-fall' : 'chop'
         sfx(state, cue, { px: spx, py: spy })
+        // A cracked rock is where sling stones come from — straight into the
+        // pouch, never a sack slot.
+        if (res.felled && res.kind === 'rock') {
+          const got = addAmmo(player, 'stone', STONES_PER_ROCK)
+          if (got > 0) addFloat(state.feedback, { px: player.px, py: player.py - 10, text: `+${got}`, kind: 'heal' })
+        }
         if (res.felled) {
           if (res.yield > 0) {
             state.entities.push({
@@ -1187,43 +1317,31 @@ function update(delta) {
       }
     } else if (attacking && player.meleeCooldown <= 0) player.charging = { t: 0 }
   } else {
-    if (player.charging && player.charging.kind !== 'gust') player.charging = null   // weapon swapped mid-wind-up
+    if (player.charging && !player.charging.kind) player.charging = null   // weapon swapped mid-wind-up
     if (attacking && player.attackMode === 'melee' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
   }
 
-  // Ranged (Space while in ranged stance). tryFire gates on weapon presence,
-  // ammo, and the per-weapon cooldown; failures (except cooldown) get a
-  // throttled HUD message so holding Space doesn't spam the log.
+  // Ranged and magic message throttles — holding Space must not spam the log.
   state.fireMsgCooldown = Math.max(0, (state.fireMsgCooldown ?? 0) - delta)
   state.packMsgCooldown = Math.max(0, (state.packMsgCooldown ?? 0) - delta)
-  // Magic (Space in magic stance): hold to charge the gust; release casts
-  // at the reached tier. Overlong holds auto-release.
+  state.magicMsgCooldown = Math.max(0, (state.magicMsgCooldown ?? 0) - delta)
+
+  // Magic (Space in the magic stance): hold to charge, release to cast the
+  // held wand's spell — or Gust of Wind with an empty wand hand. Overlong
+  // holds auto-release, and tryCast degrades the tier to what the tank can
+  // cover rather than refusing the cast outright.
   if (player.attackMode === 'magic') {
-    if (player.charging?.kind === 'gust') {
+    if (player.charging?.kind === 'spell') {
       if (keys[' '] && !shouldAutoReleaseGust(player.charging.t)) {
         player.charging.t += delta
       } else {
         const reached = resolveGustTier(player.charging.t)
-        // A reached tier the tank can't cover degrades to the highest
-        // affordable one instead of refusing the whole cast outright.
-        const tier = affordableGustTier(player.stamina, reached) ?? 'tap'
         player.charging = null
         keys[' '] = false
-        const cast = tryGust(state, tier)
-        if (cast.ok) {
-          const mul = GUST_TIERS[tier].mul
-          const fa = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.facing] ?? 0
-          state.shockwaves.push({
-            px: player.px + Math.cos(fa) * 44 * mul, py: player.py + Math.sin(fa) * 44 * mul,
-            t: 0, dur: 0.3, maxRadius: 44 * mul, color: '#a5f3fc',
-          })
-          sfx(state, 'magic-cast', { px: player.px, py: player.py })
-          state.log = [...state.log,
-            tier === 'over' ? 'A raging gale!' : tier === 'full' ? 'A strong gust!' : 'A gust of wind!',
-          ].slice(-5)
-        } else if (cast.reason === 'stamina') {
+        const cast = tryCast(state, spellFor(player).id, reached, { modules: { lightning: castLightning } })
+        if (cast.ok) showCast(cast)
+        else if (cast.reason === 'stamina') {
           player.staminaRefusedT = 0.4
-          state.magicMsgCooldown = Math.max(0, (state.magicMsgCooldown ?? 0) - delta)
           if (state.magicMsgCooldown <= 0) {
             think(state, 'Too winded to shape the wind.')
             state.magicMsgCooldown = 2
@@ -1231,85 +1349,58 @@ function update(delta) {
         }
       }
     } else if (attacking && (player.magicCooldown ?? 0) <= 0 && hasTalent(player, 'magic_stance')) {
-      player.charging = { t: 0, kind: 'gust' }
+      player.charging = { t: 0, kind: 'spell' }
     }
   }
 
-  if (attacking && player.attackMode === 'ranged') {
-    const shot = tryFire(player)
-    if (shot.ok) {
-      const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
-      const proj = { px: player.px, py: player.py,
-        dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED,
-        damage: shot.damage, color: shot.color, shape: shot.shape, friendly: true }
-      if (shot.explodes) {
-        proj.explodes = true
-        proj.maxDist = FIREBALL_RANGE_TILES * TILE_SIZE
-        proj.distTraveled = 0
-        proj.lastPx = player.px; proj.lastPy = player.py   // last walkable spot, for wall detonations
+  // Ranged (Space in the ranged stance). tryFire gates on the weapon, the
+  // shared quiver and the per-weapon cooldown; failures (except cooldown)
+  // get a throttled thought.
+  const loose = (tier = 'tap') => {
+    const shot = tryFire(player, tier)
+    if (!shot.ok) {
+      const msg = shot.reason === 'no_ammo'
+        ? noAmmoMessage(shot.ammoKind ?? player.ranged?.ammoKind)
+        : FIRE_FAIL_MESSAGES[shot.reason]
+      if (msg && state.fireMsgCooldown <= 0) { think(state, msg); state.fireMsgCooldown = 1.5 }
+      return
+    }
+    const dir = { north: [0,-1], south: [0,1], east: [1,0], west: [-1,0] }[player.facing]
+    const proj = { px: player.px, py: player.py,
+      dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED,
+      damage: shot.damage, color: shot.color, shape: shot.shape, friendly: true }
+    // Only the flags the shot actually carries — projectiles.js reads their
+    // presence, not their value, for pierce/fork/chain decisions.
+    if (shot.pierce !== undefined) proj.pierce = shot.pierce
+    if (shot.fork) proj.fork = { ...shot.fork }
+    if (shot.onHit) proj.onHit = { ...shot.onHit }
+    if (shot.piercesShield) proj.piercesShield = true
+    state.projectiles.push(proj)
+    sfx(state, 'ranged-shot', { px: player.px, py: player.py })
+  }
+
+  // A `draw` bow (the longbow) winds up while Space is held and looses on
+  // release, tiered by hold time; every other bow fires on its cooldown, so
+  // holding Space streams shots as it always did.
+  if (player.attackMode === 'ranged') {
+    if (player.charging?.kind === 'draw') {
+      if (keys[' '] && !shouldAutoReleaseDraw(player.charging.t)) {
+        player.charging.t += delta
+      } else {
+        const held = player.charging.t
+        player.charging = null
+        keys[' '] = false     // an auto-release must not instantly re-draw
+        loose(resolveDrawTier(held))
       }
-      state.projectiles.push(proj)
-      sfx(state, 'ranged-shot', { px: player.px, py: player.py })
-    } else if (FIRE_FAIL_MESSAGES[shot.reason] && state.fireMsgCooldown <= 0) {
-      think(state, FIRE_FAIL_MESSAGES[shot.reason])
-      state.fireMsgCooldown = 1.5
+    } else if (attacking) {
+      if (player.ranged?.draw) { if (player.rangedCooldown <= 0) player.charging = { t: 0, kind: 'draw' } }
+      else loose()
     }
   }
 
-  // Update projectiles
-  const liveProjectiles = []
-  for (const p of state.projectiles) {
-    const stepDist = Math.hypot(p.dx, p.dy) * delta
-    p.px += p.dx * delta
-    p.py += p.dy * delta
-    if (p.maxDist !== undefined) {
-      p.distTraveled = (p.distTraveled ?? 0) + stepDist
-      if (p.distTraveled >= p.maxDist) {
-        if (p.explodes) detonateFireball(p.lastPx ?? p.px, p.lastPy ?? p.py)
-        continue
-      }
-    }
-    const tile = map[Math.floor(p.py / TILE_SIZE)]?.[Math.floor(p.px / TILE_SIZE)]
-    if (!tile || !isWalkable(tile.tile, tile)) {
-      if (p.explodes) detonateFireball(p.lastPx ?? p.px, p.lastPy ?? p.py)
-      continue
-    }
-    if (p.explodes) { p.lastPx = p.px; p.lastPy = p.py }
-    let hit = false
-    if (p.friendly) {
-      state.entities = state.entities.map(e => {
-        if (!isHittable(e) || hit) return e
-        if (e.type === 'dragon_boss') return e          // immune to ranged; projectile passes over
-        const hitR = 8
-        if (Math.hypot(e.px - p.px, e.py - p.py) < hitR) {
-          if (e.type === 'wizard' && e.shieldTimer > 0) { hit = true; return e }
-          hit = true
-          if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
-            const r = hurtCreature(state, e, p.damage, { source: 'player' })
-            if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
-            if (r.think) think(state, r.think)
-            if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
-            return e
-          }
-          addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${p.damage}`, kind: 'dealt' })
-          const struck = { ...e, hp: e.hp - p.damage, inCombat: true }
-          npcStruck(struck)
-          sfx(state, struck.hp <= 0 ? deathCue(struck) : 'projectile-hit', { px: e.px, py: e.py })
-          return struck
-        }
-        return e
-      })
-      state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
-      if (hit && p.explodes) detonateFireball(p.px, p.py)
-    } else {
-      if (Math.hypot(player.px - p.px, player.py - p.py) < 10) {
-        damagePlayer(state, p.damage, 'hit', `Hit for ${p.damage} damage!`)
-        hit = true
-      }
-    }
-    if (!hit) liveProjectiles.push(p)
-  }
-  state.projectiles = liveProjectiles
+  // Projectiles: movement, walls, pierce/fork/chain, shields and every hit
+  // resolve in systems/projectiles.js — game.js only lends it the hooks.
+  stepProjectiles(state, delta, projectileHooks)
 
   // Lingering fireball flames — tick everyone standing in them
   if (state.fireZones?.length) {
@@ -1321,9 +1412,32 @@ function update(delta) {
     if (fz.playerDamage > 0) damagePlayer(state, fz.playerDamage, 'dot', "You're burning! (-1 HP)")
   }
 
+  // Bramble patches: root what walks in, bleed what stays. Same hit path as
+  // the projectiles, so a kill here culls like any other.
+  if (state.zones?.length) {
+    tickZones(state, delta, { hurt: hurtEntity })
+    state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
+  }
+
+  // Call Lightning: unconditional by contract — the tick also counts the
+  // weather layer's strike-light down, so skipping it on a quiet frame would
+  // leave a night map lit as day. It early-outs on its own when idle.
+  const sky = tickLightning(state, delta, { hurt: hurtEntity })
+  if (sky.struck) state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
+  state.flash = Math.max(0, (state.flash ?? 0) - delta)
+
+  // Blink's afterimages fade over BLINK_DUR and then stop being drawn.
+  if (state.blinkTrail) {
+    state.blinkTrail.t += delta
+    if (state.blinkTrail.t >= BLINK_DUR) state.blinkTrail = null
+  }
+
   // Enemy AI — iterate a snapshot so wizard summons don't re-enter this frame
   state.entities = tickDying(state.entities, delta)
   for (const e of [...state.entities]) {
+    // Slow/root/freeze count down for everything a spell can catch — hostile
+    // villagers included, whose brain runs inside updateNpc below.
+    tickStatus(e, delta)
     // updateNpc drives peaceful AND hostile NPCs (the hostile ones run the
     // enemy brain inside their attack_hostile goal) — never both paths.
     if (e.type === 'npc') { updateNpc(e, state, delta); continue }
@@ -1676,7 +1790,8 @@ function travelToMap(depth) {
     ...state,
     level: depth, map, theme,
     entities: buildEntities(entitySpawns, map, depth),
-    projectiles: [], fireZones: [], shockwaves: [], hitEffects: [],
+    projectiles: [], fireZones: [], zones: [], lightning: [], strikes: [], flash: 0,
+    shockwaves: [], hitEffects: [], blinkTrail: null,
     log: [], feedback: makeFeedback(),
     player: {
       ...state.player,
@@ -1721,6 +1836,13 @@ function descendLevel() {
     entities: buildEntities(entitySpawns, map, next),
     projectiles: [],
     fireZones: [],
+    // Ground zones (bramble), lightning marks, the strikes they became and
+    // the white flash of the last one — per-map like every other effect list.
+    zones: [],
+    lightning: [],
+    strikes: [],
+    flash: 0,
+    blinkTrail: null,
     shockwaves: [],
     player: {
       ...state.player,

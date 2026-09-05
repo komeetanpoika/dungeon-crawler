@@ -19,8 +19,9 @@ function idOf(e) {
 }
 
 // Split a forking projectile into `count` copies fanned around its current
-// heading by `spread` degrees each. The middle copy (for an odd count) keeps
-// the exact original dx/dy — no trig round-trip — so "straight ahead" is
+// heading by `spread` radians each (the unit the weapon tables use — the
+// splitbow's Math.PI / 9 is 20° between neighbours). The middle copy (for an
+// odd count) keeps the exact original dx/dy — no trig round-trip — so "straight ahead" is
 // really straight ahead; the rest are rotated by their offset from centre.
 export function makeForks(p) {
   const { count, spread } = p.fork
@@ -34,7 +35,7 @@ export function makeForks(p) {
     if (offset === 0) {
       forks.push(base)
     } else {
-      const angle = baseAngle + offset * spread * Math.PI / 180
+      const angle = baseAngle + offset * spread
       forks.push({ ...base, dx: Math.cos(angle) * speed, dy: Math.sin(angle) * speed })
     }
   }

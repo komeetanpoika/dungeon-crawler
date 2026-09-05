@@ -199,7 +199,10 @@ export function makePlayer(x, y, bonuses = []) {
     hp: 10, maxHp: 10,
     inventory: [], maxInventory: 10 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
-    bonuses, weapon: null, ranged: null, attackMode: 'melee', talents: [],
+    // Three hands (melee / bow / wand) and one shared quiver — a run can be
+    // swordsman, archer and wizard at once.
+    bonuses, weapon: null, ranged: null, wand: null, ammo: emptyAmmo(),
+    attackMode: 'melee', talents: [],
     stamina: 100, maxStamina: 100, staminaRegenT: 0,
     magicCooldown: 0,   // gust unlocks via the magic_stance talent
   }
