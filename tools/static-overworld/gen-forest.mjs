@@ -1,9 +1,10 @@
 // Three forest overworld attempts, one technique each:
 //   1 clearings — noise-density woods with carved clearings, village, paths
 //   2 river     — a river splits dense woods; bridges, lumber camp
-//   3 autumn    — autumn highland: rock outcrops, stone circle, hermit hut
+//   3 autumn    — autumn woods below a mountain pass (ow_mtn_ tiles), stone circle, hermit hut
 import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
-import { GRASS, PINES, AUTUMN, DIRT, ROCKS_MOSS, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
+import { GRASS, PINES, AUTUMN, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
+import { MTN, MTN_FLOOR_WEIGHTED, isMass, stampMass, clearMountain, clearMountainRect, stampMountainRim } from './mountain.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -129,30 +130,86 @@ function river() {
   return b
 }
 
-// ---------- attempt 3: autumn highlands ----------
+// ---------- attempt 3: autumn highlands -> mountain pass ----------
+// The high ground wears the mountain-pass tileset (mountain.mjs): solid peak
+// masses with cliff-edge rims, winding floor passes between them, scree
+// boulders on the approaches. The woods below are untouched — the rng draws
+// the old rock passes made are kept (unused) so every tree lands exactly
+// where it did before the rocks became mountains.
 function autumn() {
   const rng = mulberry32(606)
   const noise = makeNoise(rng)
-  const b = new MapBuilder('forest-3-autumn', 'forest', 'autumn highland, rock outcrops', 120, 80)
-  b.notes = 'Autumn woods climbing to a rocky ridge; stone circle, hermit hut, two mine mouths.'
+  const b = new MapBuilder('forest-3-autumn', 'forest', 'autumn woods below a mountain pass', 120, 80)
+  b.notes = 'Autumn woods climbing to a mountain pass; stone circle, hermit hut, two mine mouths in the peaks.'
   grassBase(b, rng)
-  // elevation: north-east high. Ridge cells become mossy rock bands.
+  // elevation: north-east high. High ground is mountain floor; the highest
+  // cells become peak masses, threaded by passes where a second noise sits
+  // near its middle value.
   const elev = (x, y) => noise(x, y, { freq: 0.05, octaves: 3 }) * 0.7 + (x / b.w) * 0.15 + ((b.h - y) / b.h) * 0.25
-  for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
-    const e = elev(x, y)
-    if (e > 0.62) {
-      b.g(x, y, rng() < 0.2 ? 'ow_stone_ground_0' : 'ow_grass_0')
-      if (rng() < 0.72) b.p(x, y, pick(rng, ROCKS_MOSS))
-    } else if (e > 0.58 && rng() < 0.3) b.p(x, y, pick(rng, ['ow_rock_gray_0', 'ow_rock_gray_1']))
-    else {
-      const d = noise(x + 300, y, { freq: 0.08, octaves: 3 })
-      if (d > 0.48 && rng() < (d - 0.48) * 2.5) plantTree(b, rng, x, y, rng() < 0.75 ? AUTUMN : PINES)
+  const isPass = (x, y) => Math.abs(noise(x + 700, y + 700, { freq: 0.06, octaves: 2 }) - 0.5) < 0.045
+  const high = (x, y) => elev(x, y) > 0.58
+  const mtnFloor = (x, y) => high(x, y) ? pick(rng, MTN_FLOOR_WEIGHTED) : 'ow_dirt_0'
+  // Where the old generator put a rock (or would have planted a tree that
+  // is now a mountain), remembered so the tree planter can ask "was the cell
+  // above free?" of the OLD map, not this one — same draws, same trees.
+  const oldProp = Array.from({ length: b.h }, () => new Array(b.w).fill(false))
+  const oldFree = (x, y) => b.in(x, y) && !b.isBorder(x, y) && !oldProp[y][x] && b.prop[y][x] === -1
+  // plantTree with the old map's tall-or-small decision; a tree that would
+  // stand on a mountain is remembered instead of planted, a tall pair whose
+  // top would land on one becomes a small tree.
+  const plantAsBefore = (x, y, kit) => {
+    if (oldFree(x, y - 1) && rng() < 0.6) {
+      const [top, trunk] = pick(rng, kit.tall)
+      if (isMass(b, x, y)) oldProp[y - 1][x] = oldProp[y][x] = true
+      else if (isMass(b, x, y - 1)) b.p(x, y, kit.small[0])
+      else { b.p(x, y - 1, top); b.p(x, y, trunk) }
+    } else {
+      const small = pick(rng, kit.small)
+      if (isMass(b, x, y)) oldProp[y][x] = true
+      else b.p(x, y, small)
     }
   }
-  forestEdge(b, rng, AUTUMN)
+  for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
+    const e = elev(x, y)
+    const at = (a, r) => a[Math.floor(r * a.length)]
+    if (e > 0.62) {
+      const r0 = rng(), r1 = rng(), r2 = r1 < 0.72 ? rng() : r1
+      oldProp[y][x] = r1 < 0.72
+      b.g(x, y, at(MTN_FLOOR_WEIGHTED, r0))
+      if (e > 0.64 && !isPass(x, y)) stampMass(b, rng, x, y, at(MTN.peak, r2))
+      else if (r0 < 0.08) { b.g(x, y, at(MTN.scree, r2)); b.block(x, y) }
+    } else {
+      // the fringe band (0.58-0.62) rolled for a loose rock and, missing,
+      // fell through to the woods — so it grows trees, now on mountain floor
+      const band = e > 0.58
+      if (band) b.g(x, y, MTN_FLOOR_WEIGHTED[(x * 31 + y * 17) % MTN_FLOOR_WEIGHTED.length])
+      const r0 = band ? rng() : 1
+      if (r0 < 0.3) {
+        const r1 = rng()
+        if (r0 < 0.06) { b.g(x, y, at(MTN.scree, r1)); b.block(x, y) }
+        oldProp[y][x] = true
+      } else {
+        const d = noise(x + 300, y, { freq: 0.08, octaves: 3 })
+        if (d > 0.48 && rng() < (d - 0.48) * 2.5) plantAsBefore(x, y, rng() < 0.75 ? AUTUMN : PINES)
+      }
+    }
+  }
+  // the peaks run off the map: border cells on high ground join the mass
+  // (they are blocked anyway) so the range shows no rim against the edge
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++)
+    if (b.isBorder(x, y) && elev(x, y) > 0.64 && !isPass(x, y)) stampMass(b, rng, x, y, MTN.peak[(x * 7 + y * 13) % MTN.peak.length])
+  // the edge band stays autumn trees (stampEdgeBand, with the old map's
+  // draws: a cell that held a rock never drew), except where the mountains
+  // already reach the edge — the peaks are their own visible border
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    const dist = Math.min(x, y, b.w - 1 - x, b.h - 1 - y)
+    if (dist > 2 || b.prop[y][x] !== -1 || oldProp[y][x]) continue
+    if (dist <= 1 || rng() < 0.5) plantAsBefore(x, y, AUTUMN)
+  }
   // stone circle on a knoll
   const circ = { x: 84, y: 22 }
   for (let y = -5; y <= 5; y++) for (let x = -5; x <= 5; x++) if (x * x + y * y <= 25) b.clearProp(circ.x + x, circ.y + y)
+  clearMountain(b, rng, circ.x, circ.y, 5)
   for (let i = 0; i < 9; i++) {
     const a = i / 9 * Math.PI * 2
     b.p(circ.x + Math.round(Math.cos(a) * 4), circ.y + Math.round(Math.sin(a) * 4), 'ow_ruin_pillar_2')
@@ -161,13 +218,16 @@ function autumn() {
   // hermit hut in the south-west woods
   const hut = { x: 22, y: 58 }
   for (let y = -4; y <= 4; y++) for (let x = -5; x <= 5; x++) b.clearProp(hut.x + x, hut.y + y)
+  clearMountainRect(b, rng, hut.x - 5, hut.y - 4, hut.x + 5, hut.y + 4)
   stampHouse3(b, rng, hut.x, hut.y, 'brown')
   b.p(hut.x - 2, hut.y + 2, 'ow_beehive')
   b.p(hut.x + 3, hut.y + 1, 'ow_sign', { walkable: false })
   b.poi('village', hut.x + 1, hut.y + 2, 'hermit hut')
-  // two mine mouths in the high rocks
+  // two mine mouths in the peaks: a pocket of floor opened in the mass with
+  // the gate pair at its top, so the arch reads as cut into the mountain
   for (const [i, m] of [{ x: 102, y: 12 }, { x: 74, y: 8 }].entries()) {
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 2; dx++) b.clearProp(m.x + dx, m.y + dy)
+    clearMountain(b, rng, m.x + 1, m.y + 1, 2)
     // abandoned mines wear the gated arch pair — enterable: walking in is
     // pushing the gate open
     b.clearProp(m.x, m.y); b.clearProp(m.x + 1, m.y)
@@ -176,16 +236,37 @@ function autumn() {
   }
   for (const c of b.scatter(rng, 4, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: hut.x + 1, y: hut.y + 3 }
-  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: 'ow_dirt_0' })
-  b.ensureReachable('ow_dirt_0')
+  // pockets inside the mountains fill with peaks, pockets in the woods with
+  // a scree boulder; bridges are mountain floor up high, dirt below
+  // bridges cut through the mountains, never the woods (unless a pocket is
+  // walled in by trees alone); a mine's pocket is small but must be bridged,
+  // not filled. Pockets inside the mountains fill with peaks, pockets in
+  // the woods with a tree.
+  b.healFragmentation({
+    minKeep: 8,
+    fill: (x, y) => {
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => isMass(b, x + dx, y + dy))) stampMass(b, rng, x, y)
+      else b.p(x, y, pick(rng, AUTUMN.small))
+    },
+    groundSkin: mtnFloor,
+    avoid: (x, y) => b.prop[y][x] !== -1,
+  })
+  b.ensureReachable(mtnFloor)
   pruneBrokenTrees(b)
+  stampMountainRim(b, rng)
   return b
 }
 
+// forest-2-river was hand-painted in the editor after generation (its
+// shoreline and log bridges); regenerating it would throw that away, so it
+// is only rewritten with --all.
+const HAND_FINISHED = new Set(['forest-2-river'])
+const writeAll = process.argv.includes('--all')
 for (const make of [clearings, river, autumn]) {
   const b = make()
   shoreline(b)
   const problems = validate(b)
-  console.log(`${b.name}: ${problems.length ? 'PROBLEMS ' + problems.join('; ') : 'ok'}`)
-  fs.writeFileSync(path.join(OUT, b.name + '.json'), JSON.stringify(b.toJSON()))
+  const skip = HAND_FINISHED.has(b.name) && !writeAll
+  console.log(`${b.name}: ${problems.length ? 'PROBLEMS ' + problems.join('; ') : 'ok'}${skip ? ' (hand-finished, not written; pass --all to overwrite)' : ''}`)
+  if (!skip) fs.writeFileSync(path.join(OUT, b.name + '.json'), JSON.stringify(b.toJSON()))
 }

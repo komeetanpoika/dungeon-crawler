@@ -30,7 +30,7 @@ const EXPORTS = [
             at: { 'hermit hut': ['hermit'] } } },
   { depth: 11, file: 'forest-2-river.json',        title: 'River Split',     caveDepths: [2],    exitPoi: 'river shrine',
     npcs: { village: ['villager', 'villager', 'chicken', 'goat'], wild: ['deer', 'deer', 'deer', 'mouse', 'mouse', 'wolf', 'wolf', 'boar'] } },
-  { depth: 12, file: 'forest-3-autumn.json',       title: 'Autumn Highland', caveDepths: [2, 3], exitPoi: 'stone circle',
+  { depth: 12, file: 'forest-3-autumn.json',       title: 'Mountain Pass',   caveDepths: [2, 3], exitPoi: 'stone circle',
     npcs: { village: ['villager', 'elder', 'sheep', 'goat'], wild: ['deer', 'deer', 'mouse', 'mouse', 'mouse', 'bear', 'boar', 'wolf'] } },
   { depth: 13, file: 'desert-1-dunes.json',        title: 'Open Erg',        caveDepths: [3, 3], exitPoi: 'toppled shrine' },
   { depth: 14, file: 'desert-2-canyon.json',       title: 'Wadi Canyon',     caveDepths: [4],    exitPoi: 'buried temple' },

@@ -73,8 +73,10 @@ export function isWalkable(tileId, tileObj = null) {
 export const occupiesCell = e => e.type !== 'echo'
 
 // A sight line may pass through this many foliage cells (losSoft) before it
-// is blocked; cells flagged losClear (open water) never block. Both flags are
-// stamped by buildOpenMap — dungeon tiles carry neither, so dungeon LOS is
+// is blocked; cells flagged losClear (open water) never block; a line whose
+// target is itself losTall (a mountain) may cross other losTall cells — the
+// peaks behind peaks are seen, the ground behind them is not. All three flags
+// are stamped by buildOpenMap — dungeon tiles carry none, so dungeon LOS is
 // unchanged.
 export const LOS_TREE_BUDGET = 2
 
@@ -82,6 +84,7 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
   const dy = y2 - y1, dx = x2 - x1
   const steps = Math.max(Math.abs(dy), Math.abs(dx))
   if (steps === 0) return true
+  const toTall = !!map[y2]?.[x2]?.losTall
   let soft = 0
   for (let i = 1; i <= steps; i++) {
     const y = Math.round(y1 + (dy * i) / steps)
@@ -92,6 +95,7 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
     if (isWalkable(t.tile, t)) continue
     if (t.losClear) continue                            // open water: see across
     if (t.losSoft && ++soft <= LOS_TREE_BUDGET) continue // foliage: shallow only
+    if (t.losTall && toTall) continue                   // mountain: seen through mountain
     return false
   }
   return true

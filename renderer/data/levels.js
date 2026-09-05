@@ -219,7 +219,7 @@ export const DEPTH_THEMES = [
   },
   // Adventure maps carry their own art (no ruleset, decorateMap no-ops);
   // backgrounds follow the biome: forest 7-12 (Clearings, the three leap
-  // maps, River Split, Autumn Highland), desert 13-15, sea 16-18.
+  // maps, River Split, Mountain Pass), desert 13-15, sea 16-18.
   {
     depths: [7, 8, 9, 10, 11, 12],
     floorTile: 'floor',

@@ -21,6 +21,10 @@ import { monstersForOpenMap } from './monsters.js'
 // ruins stay fully opaque. See hasLineOfSight in entities.js.
 export const LOS_CLEAR_PREFIXES = ['ow_water_', 'ow_pond_']
 const LOS_SOFT_PREFIXES = ['ow_tree_', 'ow_deadtree_', 'ow_bush_', 'ow_shrub_', 'ow_mushroom', 'ow_cactus']
+// Mountains (peak fill and cliff rims): a sight line to one may cross other
+// mountain cells — the range is seen whole from a distance — but nothing
+// beyond it is.
+export const LOS_TALL_PREFIXES = ['ow_mtn_peak', 'ow_mtn_edge']
 const startsWithAny = (s, prefixes) => prefixes.some(p => s?.startsWith(p))
 
 export const WILD_MIN_FROM_VILLAGE = 12
@@ -164,6 +168,7 @@ export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.rand
       const blocker = pi >= 0 ? data.palette[pi] : c.skin
       if (startsWithAny(blocker, LOS_CLEAR_PREFIXES)) c.losClear = true
       else if (startsWithAny(blocker, LOS_SOFT_PREFIXES)) c.losSoft = true
+      else if (startsWithAny(blocker, LOS_TALL_PREFIXES)) c.losTall = true
     }
     c.locked = true
   }

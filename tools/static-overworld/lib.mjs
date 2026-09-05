@@ -277,7 +277,10 @@ export class MapBuilder {
   // NEAREST other component — not the largest, which could sit across the
   // whole map and turn "shortest crossing" into a wall-to-wall causeway.
   // Pairwise nearest joins repeat until one component remains.
-  healFragmentation({ minKeep = 30, fill = null, groundSkin = null } = {}) {
+  // `avoid(x, y)` names blocked cells a bridge should not cut through (the
+  // woods beside a mountain: carve the mountain, keep the trees); it is only
+  // overridden when no other crossing exists.
+  healFragmentation({ minKeep = 30, fill = null, groundSkin = null, avoid = null } = {}) {
     for (let guard = 0; guard < 500; guard++) {
       const comps = this.components()
       if (comps.length <= 1) return
@@ -287,7 +290,7 @@ export class MapBuilder {
       } else {
         const other = Array.from({ length: this.h }, () => new Array(this.w).fill(false))
         for (const comp of comps) if (comp !== pocket) for (const [cx, cy] of comp) other[cy][cx] = true
-        this.bridgeToMain(other, pocket, groundSkin)
+        if (!avoid || !this.bridgeToMain(other, pocket, groundSkin, avoid)) this.bridgeToMain(other, pocket, groundSkin)
       }
     }
   }
@@ -297,7 +300,9 @@ export class MapBuilder {
   // backtracked path are opened (skinned as causeway/bridge). groundSkin may
   // be a string (always repaint) or (x, y) => skin|null (e.g. pier over water
   // only, so a bridge through a tree pocket doesn't pave the forest floor).
-  bridgeToMain(main, pocketCells, groundSkin) {
+  // Returns whether a crossing was found (false only when `avoid` walls off
+  // every route).
+  bridgeToMain(main, pocketCells, groundSkin, avoid = null) {
     const key = (x, y) => y * this.w + x
     const prev = new Map()
     let queue = []
@@ -309,6 +314,7 @@ export class MapBuilder {
           const nx = cx + dx, ny = cy + dy
           // never bridge through the border: those cells cannot be opened
           if (!this.in(nx, ny) || this.isBorder(nx, ny) || prev.has(key(nx, ny))) continue
+          if (avoid && !this.walkG[ny][nx] && avoid(nx, ny)) continue
           prev.set(key(nx, ny), [cx, cy])
           if (main[ny][nx]) {
             let at = [cx, cy]
@@ -322,13 +328,14 @@ export class MapBuilder {
               }
               at = prev.get(key(ax, ay))
             }
-            return
+            return true
           }
           next.push([nx, ny])
         }
       }
       queue = next
     }
+    return false
   }
 
   // Largest connected walkable component; returns a same-shape boolean grid.

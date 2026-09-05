@@ -17,7 +17,7 @@ const POI_NAMES = {
 }
 const BIOME = { forest: 'forest', desert: 'desert', seaside: 'sea' }
 const TITLES = {
-  'forest-1-clearings': 'Clearings', 'forest-2-river': 'River Split', 'forest-3-autumn': 'Autumn Highland',
+  'forest-1-clearings': 'Clearings', 'forest-2-river': 'River Split', 'forest-3-autumn': 'Mountain Pass',
   'desert-1-dunes': 'Open Erg', 'desert-2-canyon': 'Wadi Canyon', 'desert-3-lost-city': 'Lost City',
   'sea-1-suomenlinna': 'Suomenlinna', 'sea-2-fishing-village': 'Seagrave Coast', 'sea-3-archipelago': 'Archipelago',
 }
