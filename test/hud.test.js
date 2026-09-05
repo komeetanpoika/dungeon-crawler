@@ -93,3 +93,33 @@ describe('updateHUD stamina bar', () => {
     assert.equal(nodes['hud-stamina'].dataset.refused, '')
   })
 })
+
+describe('updateHUD DOM churn', () => {
+  // innerHTML setters counted per element: the HUD runs every frame, and a
+  // rewrite re-parses markup and re-lays out the overlay even when identical.
+  function countingDom() {
+    const nodes = {}, writes = {}
+    globalThis.document = { getElementById: (id) => (nodes[id] ??= {
+      textContent: '', style: {}, dataset: {}, _html: '',
+      get innerHTML() { return this._html }, set innerHTML(v) { this._html = v; writes[id] = (writes[id] ?? 0) + 1 },
+    }) }
+    return { nodes, writes }
+  }
+  it('writes each slot once for an unchanged state', () => {
+    const { writes } = countingDom()
+    const s = state({ hp: 7, inventory: [{ kind: 'potion', emoji: '🧪', stackable: true, count: 3 }],
+      ranged: { weaponType: 'sparkwand', name: 'Spark Wand', ammo: 9, maxAmmo: 16, kind: 'wand' } })
+    updateHUD(s); updateHUD(s); updateHUD(s)
+    assert.deepEqual(writes, { 'hud-hearts': 1, 'hud-consumable': 1, 'hud-ammo': 1 })
+  })
+  it('rewrites only the slot whose state changed', () => {
+    const { writes, nodes } = countingDom()
+    const s = state({ hp: 7 })
+    updateHUD(s)
+    s.player.hp = 5
+    updateHUD(s)
+    assert.equal(writes['hud-hearts'], 2)
+    assert.equal(writes['hud-consumable'], 1)
+    assert.match(nodes['hud-hearts'].innerHTML, /half/)
+  })
+})

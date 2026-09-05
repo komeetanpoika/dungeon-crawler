@@ -535,7 +535,7 @@ describe('Renderer.render weather layers', () => {
     const { ops, ctx } = renderScene({ dayCycle: true, t: 0, fog, look }, { entities: [crab], sprites: { crab: 'CRAB' } })
     const entityDraw = ops.findIndex(o => o.name === 'drawImage' && o.img === 'CRAB')
     assert.ok(entityDraw >= 0, 'entity sprite drawn')
-    const wash = ops.findIndex(o => o.name === 'drawImage' && o.img.id === 'LAYER' && o.gco === 'multiply')
+    const wash = ops.findIndex(o => o.name === 'fillRect' && o.gco === 'multiply')
     assert.ok(wash >= 0, 'wash drawn')
     assert.ok(wash < flameIdx(ops), 'wash before flames')
     assert.ok(wash > entityDraw, 'wash after the entity sprite')

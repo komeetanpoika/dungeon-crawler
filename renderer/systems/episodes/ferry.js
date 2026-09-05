@@ -6,6 +6,7 @@ import { feedNakki, sinkNakki } from '../monsters/nakki.js'
 import { sfx } from '../sfx.js'
 import { think } from '../feedback.js'
 import { TILE } from '../entities.js'
+import { markTileDirty } from '../tile-dirty.js'
 
 export const DELIVERIES = [{ item: 'clapper', to: { poi: 'bell' }, sets: 'bell_hung' }]
 
@@ -27,6 +28,7 @@ function openGaps(ctx) {
     cell.tile = TILE.FLOOR
     cell.overlay = 'ow_pier_log'
     delete cell.losClear
+    markTileDirty(state.map, spot.x, spot.y)
   }
 }
 

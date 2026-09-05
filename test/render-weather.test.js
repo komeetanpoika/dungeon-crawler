@@ -79,9 +79,24 @@ describe('drawNight', () => {
     assert.deepEqual(layer.ctx.ops, [])
   })
 
-  it('fills the layer with the ambient colour and blits it with multiply at the dark alpha, smoothed', () => {
+  it('with no light in view, washes the frame with one multiply fill and leaves the layer untouched', () => {
     const ctx = recordingCtx(), layer = layerWith()
     drawNight(ctx, layer, look(), cam, view, S)
+    assert.deepEqual(layer.ctx.ops, [])
+    const wash = ctx.ops.filter(o => o.name === 'fillRect')
+    assert.equal(wash.length, 1)
+    assert.equal(wash[0].fillStyle, 'rgb(40,60,120)')
+    assert.equal(wash[0].gco, 'multiply')
+    assert.equal(wash[0].alpha, 0.85)
+    assert.deepEqual(wash[0].a, [0, 0, 400, 300])
+    assert.equal(ctx.ops.some(o => o.name === 'drawImage'), false)
+    assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
+    assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
+  })
+
+  it('with a light in view, fills the layer with the ambient colour and blits it with multiply at the dark alpha, smoothed', () => {
+    const ctx = recordingCtx(), layer = layerWith()
+    drawNight(ctx, layer, look({ lights: [{ px: 100, py: 100, r: 4.5, strength: 1, grey: false }] }), cam, view, S)
     const fill = layer.ctx.ops.find(o => o.name === 'fillRect')
     assert.equal(fill.fillStyle, 'rgb(40,60,120)')
     assert.deepEqual(fill.a, [0, 0, 100, 75])
