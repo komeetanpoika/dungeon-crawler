@@ -1,65 +1,26 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { RANGED_WEAPON_TYPES, makeRangedContents, makePlayer } from '../renderer/systems/entities.js'
-import { nextStance, startStanceSwitch, tickStanceSwitch, STANCE_SWITCH_DURATION,
-  tryFire, FIRE_FAIL_MESSAGES } from '../renderer/systems/ranged.js'
+import { makeRangedContents, makePlayer } from '../renderer/systems/entities.js'
+import {
+  nextStance, startStanceSwitch, tickStanceSwitch, STANCE_SWITCH_DURATION,
+  tryFire, FIRE_FAIL_MESSAGES, noAmmoMessage,
+  DRAW_CHARGE, resolveDrawTier, shouldAutoReleaseDraw,
+} from '../renderer/systems/ranged.js'
 
-describe('RANGED_WEAPON_TYPES', () => {
-  it('defines the five-weapon roster with full stat blocks', () => {
-    assert.deepEqual(Object.keys(RANGED_WEAPON_TYPES), ['shortbow', 'longbow', 'sparkwand', 'stormwand', 'firewand'])
-    for (const [wt, def] of Object.entries(RANGED_WEAPON_TYPES)) {
-      assert.equal(typeof def.name, 'string', wt)
-      assert.ok(def.damage > 0 && def.maxAmmo > 0 && def.cooldown > 0, wt)
-      assert.match(def.color, /^#[0-9a-f]{6}$/, wt)
-      assert.ok(def.kind === 'bow' || def.kind === 'wand', wt)
-    }
-  })
+// Full ammo pool — plenty for every test so only the assertion under test
+// drives it to zero (tests that need 0 ammo set it explicitly).
+function fullAmmo() {
+  return { arrow: 10, bolt: 10, stone: 10 }
+}
 
-  it('bows are bows and wands are wands', () => {
-    assert.equal(RANGED_WEAPON_TYPES.shortbow.kind, 'bow')
-    assert.equal(RANGED_WEAPON_TYPES.longbow.kind, 'bow')
-    assert.equal(RANGED_WEAPON_TYPES.sparkwand.kind, 'wand')
-    assert.equal(RANGED_WEAPON_TYPES.stormwand.kind, 'wand')
-    assert.equal(RANGED_WEAPON_TYPES.firewand.kind, 'wand')
-  })
-})
-
-describe('makeRangedContents', () => {
-  it('builds full-ammo chest contents from a weapon type', () => {
-    const c = makeRangedContents('stormwand')
-    assert.deepEqual(c, {
-      type: 'ranged', weaponType: 'stormwand', name: 'Storm Wand',
-      damage: 5, ammo: 6, maxAmmo: 6, cooldown: 0.8, color: '#a78bfa', kind: 'wand',
-    })
-  })
-
-  it('falls back to shortbow for unknown types', () => {
-    assert.equal(makeRangedContents('bazooka').weaponType, 'shortbow')
-    assert.equal(makeRangedContents().weaponType, 'shortbow')
-  })
-
-  it('firewand carries the explodes flag; others stay flag-free', () => {
-    const c = makeRangedContents('firewand')
-    assert.equal(c.explodes, true)
-    assert.deepEqual(
-      { name: c.name, damage: c.damage, ammo: c.ammo, cooldown: c.cooldown },
-      { name: 'Fireball Wand', damage: 4, ammo: 5, cooldown: 1.0 })
-    assert.ok(!('explodes' in makeRangedContents('stormwand')))
-  })
-})
-
-describe('makePlayer ranged fields', () => {
-  it('starts with no ranged weapon, in melee stance', () => {
-    const p = makePlayer(1, 1)
-    assert.equal(p.ranged, null)
-    assert.equal(p.attackMode, 'melee')
-  })
-})
-
-function armedPlayer(over = {}) {
+function armedPlayer(weaponType, over = {}) {
   return {
-    ...makePlayer(1, 1), rangedCooldown: 0, ranged: makeRangedContents('shortbow'),
-    talents: ['ranged_stance'], ...over,
+    ...makePlayer(1, 1),
+    talents: ['ranged_stance'],
+    ranged: makeRangedContents(weaponType),
+    ammo: fullAmmo(),
+    rangedCooldown: 0,
+    ...over,
   }
 }
 
@@ -79,10 +40,9 @@ describe('nextStance', () => {
     assert.equal(nextStance({ attackMode: 'melee', talents: [] }), null)
   })
 
-  it('cycles even with no ranged weapon or empty ammo', () => {
-    const empty = armedPlayer()
-    empty.ranged.ammo = 0
-    assert.equal(nextStance(empty), 'ranged')
+  it('cycles even with no ranged weapon or empty ammo pool', () => {
+    const p = armedPlayer('shortbow', { ammo: { arrow: 0, bolt: 0, stone: 0 } })
+    assert.equal(nextStance(p), 'ranged')
   })
 })
 
@@ -100,6 +60,23 @@ describe('stance switching', () => {
     const p = { ...makePlayer(1, 1), talents: [] }
     assert.equal(startStanceSwitch(p), null)
     assert.equal(p.stanceSwitch, undefined)
+  })
+
+  it('starting a switch drops any charge in progress', () => {
+    // A draw or spell charge belongs to the stance that started it: left
+    // standing it would keep the move-speed penalty and the charge ring
+    // forever, since the release branch for that stance no longer runs.
+    const p = learned()
+    p.charging = { t: 0.5, kind: 'draw' }
+    assert.equal(startStanceSwitch(p), 'ranged')
+    assert.equal(p.charging, null)
+  })
+
+  it('a refused switch leaves the charge alone', () => {
+    const p = { ...makePlayer(1, 1), talents: [] }
+    p.charging = { t: 0.5, kind: 'draw' }
+    assert.equal(startStanceSwitch(p), null)
+    assert.deepEqual(p.charging, { t: 0.5, kind: 'draw' })
   })
 
   it('ignores Shift while a switch is already running', () => {
@@ -132,57 +109,140 @@ describe('stance switching', () => {
   })
 })
 
-describe('tryFire', () => {
-  it('fires: returns projectile stats, spends 1 ammo, starts the weapon cooldown', () => {
-    const p = armedPlayer()
-    const res = tryFire(p)
-    assert.deepEqual(res, { ok: true, damage: 2, color: '#facc15', shape: 'arrow' })
-    assert.equal(p.ranged.ammo, 11)
-    assert.equal(p.rangedCooldown, 0.6)
+describe('DRAW_CHARGE / resolveDrawTier / shouldAutoReleaseDraw', () => {
+  it('matches the spec thresholds', () => {
+    assert.deepEqual(DRAW_CHARGE, { full: 0.4, over: 0.9, moveFactor: 0.6 })
   })
 
-  it('wands fire square bolts', () => {
-    const p = armedPlayer({ ranged: makeRangedContents('sparkwand') })
-    assert.equal(tryFire(p).shape, 'bolt')
+  it('resolves tap below full, full between full and over, over at/above over', () => {
+    assert.equal(resolveDrawTier(0), 'tap')
+    assert.equal(resolveDrawTier(0.39), 'tap')
+    assert.equal(resolveDrawTier(0.4), 'full')
+    assert.equal(resolveDrawTier(0.89), 'full')
+    assert.equal(resolveDrawTier(0.9), 'over')
+    assert.equal(resolveDrawTier(5), 'over')
   })
 
-  it('refuses without a weapon and spends nothing', () => {
-    const p = armedPlayer({ ranged: null })
+  it('auto-releases only once held exceeds over + 0.5s', () => {
+    assert.equal(shouldAutoReleaseDraw(1.4), false)   // exactly over + 0.5
+    assert.equal(shouldAutoReleaseDraw(1.41), true)
+    assert.equal(shouldAutoReleaseDraw(0.9), false)
+  })
+})
+
+describe('tryFire — gating', () => {
+  it('refuses without the ranged_stance talent and spends nothing', () => {
+    const p = armedPlayer('shortbow', { talents: [] })
+    assert.deepEqual(tryFire(p), { ok: false, reason: 'not_learned' })
+    assert.equal(p.ammo.arrow, 10)
+  })
+
+  it('refuses without a weapon', () => {
+    const p = armedPlayer('shortbow', { ranged: null })
     assert.deepEqual(tryFire(p), { ok: false, reason: 'no_weapon' })
-    assert.equal(p.rangedCooldown, 0)
   })
 
-  it('refuses at 0 ammo', () => {
-    const p = armedPlayer()
-    p.ranged.ammo = 0
+  it('refuses when the shared ammo pool for this weapon\'s kind is at 0', () => {
+    const p = armedPlayer('shortbow', { ammo: { arrow: 0, bolt: 10, stone: 10 } })
     assert.deepEqual(tryFire(p), { ok: false, reason: 'no_ammo' })
+    assert.equal(p.rangedCooldown, 0)   // cooldown never started
   })
 
   it('refuses during cooldown without spending ammo', () => {
-    const p = armedPlayer({ rangedCooldown: 0.3 })
+    const p = armedPlayer('shortbow', { rangedCooldown: 0.3 })
     assert.deepEqual(tryFire(p), { ok: false, reason: 'cooldown' })
-    assert.equal(p.ranged.ammo, 12)
+    assert.equal(p.ammo.arrow, 10)
   })
 
-  it('projectile damage comes from the ranged weapon, never the melee weapon', () => {
-    const p = armedPlayer({ weapon: { weaponType: 'maunonmiekka', name: 'Maunonmiekka', damage: 10 } })
-    assert.equal(tryFire(p).damage, 2)
+  it('gates on the pooled ammo kind, not weapon identity: crossbow with bolts empty', () => {
+    const p = armedPlayer('crossbow', { ammo: { arrow: 10, bolt: 0, stone: 10 } })
+    assert.deepEqual(tryFire(p), { ok: false, reason: 'no_ammo' })
+  })
+})
+
+describe('tryFire — success shapes and flags per weapon', () => {
+  it('shortbow: plain arrow, spends 1 arrow, starts cooldown, damage from the bow not melee', () => {
+    const p = armedPlayer('shortbow', { weapon: { weaponType: 'sword', name: 'Sword', damage: 99 } })
+    const res = tryFire(p)
+    assert.deepEqual(res, { ok: true, damage: 2, color: '#facc15', shape: 'arrow', ammoKind: 'arrow' })
+    assert.equal(p.ammo.arrow, 9)
+    assert.equal(p.rangedCooldown, 0.6)
   })
 
-  it('has HUD messages for weaponless and empty fails, none for cooldown', () => {
+  it('hunterbow: plain arrow, its own (short) cooldown', () => {
+    const p = armedPlayer('hunterbow')
+    const res = tryFire(p)
+    assert.deepEqual(res, { ok: true, damage: 1, color: '#facc15', shape: 'arrow', ammoKind: 'arrow' })
+    assert.equal(p.rangedCooldown, 0.3)
+  })
+
+  it('longbow tap: no bonus, no pierce', () => {
+    const p = armedPlayer('longbow')
+    assert.deepEqual(tryFire(p, 'tap'), { ok: true, damage: 3, color: '#facc15', shape: 'arrow', ammoKind: 'arrow' })
+  })
+
+  it('longbow defaults to tap when no tier is given', () => {
+    const p = armedPlayer('longbow')
+    assert.deepEqual(tryFire(p), { ok: true, damage: 3, color: '#facc15', shape: 'arrow', ammoKind: 'arrow' })
+  })
+
+  it('longbow full: +1 damage, pierce 1', () => {
+    const p = armedPlayer('longbow')
+    assert.deepEqual(tryFire(p, 'full'), { ok: true, damage: 4, color: '#facc15', shape: 'arrow', ammoKind: 'arrow', pierce: 1 })
+  })
+
+  it('longbow over: +2 damage, infinite pierce', () => {
+    const p = armedPlayer('longbow')
+    assert.deepEqual(tryFire(p, 'over'), { ok: true, damage: 5, color: '#facc15', shape: 'arrow', ammoKind: 'arrow', pierce: Infinity })
+  })
+
+  it('a non-draw bow ignores the tier argument entirely', () => {
+    const p = armedPlayer('shortbow')
+    assert.deepEqual(tryFire(p, 'over'), { ok: true, damage: 2, color: '#facc15', shape: 'arrow', ammoKind: 'arrow' })
+  })
+
+  it('splitbow: carries its fork spec', () => {
+    const p = armedPlayer('splitbow')
+    const res = tryFire(p)
+    assert.deepEqual(res.fork, { after: 32, count: 3, spread: Math.PI / 9 })
+    assert.equal(res.shape, 'arrow')
+  })
+
+  it('crossbow: quarrel shape, knockback onHit, piercesShield, spends a bolt', () => {
+    const p = armedPlayer('crossbow')
+    const res = tryFire(p)
+    assert.deepEqual(res, {
+      ok: true, damage: 5, color: '#e5e7eb', shape: 'quarrel', ammoKind: 'bolt',
+      onHit: { knockback: 45 }, piercesShield: true,
+    })
+    assert.equal(p.ammo.bolt, 9)
+  })
+
+  it('sling: stone shape, stun onHit, spends a stone', () => {
+    const p = armedPlayer('sling')
+    const res = tryFire(p)
+    assert.deepEqual(res, {
+      ok: true, damage: 1, color: '#a8a29e', shape: 'stone', ammoKind: 'stone',
+      onHit: { stun: 0.5 },
+    })
+    assert.equal(p.ammo.stone, 9)
+  })
+})
+
+describe('FIRE_FAIL_MESSAGES / noAmmoMessage', () => {
+  it('keeps the weaponless and not-learned lines; cooldown stays silent', () => {
     assert.equal(typeof FIRE_FAIL_MESSAGES.no_weapon, 'string')
-    assert.equal(typeof FIRE_FAIL_MESSAGES.no_ammo, 'string')
+    assert.equal(typeof FIRE_FAIL_MESSAGES.not_learned, 'string')
     assert.equal(FIRE_FAIL_MESSAGES.cooldown, undefined)
   })
 
-  it('firewand shots are exploding bolts', () => {
-    const p = armedPlayer({ ranged: makeRangedContents('firewand') })
-    assert.deepEqual(tryFire(p), { ok: true, damage: 4, color: '#f97316', shape: 'bolt', explodes: true })
+  it('no longer carries a single generic no_ammo line — that is per ammo kind now', () => {
+    assert.equal(FIRE_FAIL_MESSAGES.no_ammo, undefined)
   })
 
-  it('refuses without the ranged_stance talent', () => {
-    const p = { talents: [], ranged: { ammo: 5, cooldown: 0.5, damage: 2, color: '#fff', kind: 'bow' }, rangedCooldown: 0 }
-    assert.deepEqual(tryFire(p), { ok: false, reason: 'not_learned' })
-    assert.equal(p.ranged.ammo, 5)
+  it('names the ammo kind that ran out', () => {
+    assert.equal(noAmmoMessage('arrow'), 'Out of arrows!')
+    assert.equal(noAmmoMessage('bolt'), 'Out of bolts!')
+    assert.equal(noAmmoMessage('stone'), 'Out of stones!')
   })
 })

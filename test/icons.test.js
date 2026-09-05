@@ -37,6 +37,21 @@ describe('iconSpriteFor', () => {
   })
 })
 
+describe('iconSpriteFor (wand and ammo kinds)', () => {
+  it('maps wands by payload weaponType', () => {
+    assert.equal(iconSpriteFor({ kind: 'wand', payload: { weaponType: 'stormwand' } }), 'weapon_stormwand')
+  })
+  it('falls back to sparkwand for unknown wand types', () => {
+    assert.equal(iconSpriteFor({ kind: 'wand', payload: {} }), 'weapon_sparkwand')
+    assert.equal(iconSpriteFor({ kind: 'wand', payload: { weaponType: 'nonsense' } }), 'weapon_sparkwand')
+  })
+  it('maps ammo by ammoKind', () => {
+    assert.equal(iconSpriteFor({ kind: 'ammo', ammoKind: 'arrow' }), 'item_arrows')
+    assert.equal(iconSpriteFor({ kind: 'ammo', ammoKind: 'bolt' }), 'item_bolts')
+    assert.equal(iconSpriteFor({ kind: 'ammo', ammoKind: 'stone' }), 'item_stones')
+  })
+})
+
 describe('fire wand tile', () => {
   // Built by tools/make-firewand-tile.mjs: the straight wand's shape with an
   // orange tip, so the three wands read as three colours at a glance.
@@ -64,5 +79,13 @@ describe('iconSrcFor', () => {
   })
   it('returns null when there is no icon', () => {
     assert.equal(iconSrcFor({ kind: 'key' }), null)
+  })
+  it('builds ammo and wand paths through the SPRITES file map', () => {
+    assert.equal(iconSrcFor({ kind: 'ammo', ammoKind: 'arrow' }),
+      `./assets/tiles/${SPRITES.item_arrows ?? 'item_arrows'}.png`)
+    assert.equal(iconSrcFor({ kind: 'wand', payload: { weaponType: 'stormwand' } }),
+      `./assets/tiles/${SPRITES.weapon_stormwand}.png`)
+    assert.equal(iconSrcFor({ kind: 'wand', payload: { weaponType: 'frostwand' } }),
+      `./assets/tiles/${SPRITES.weapon_frostwand}.png`)
   })
 })

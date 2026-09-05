@@ -39,27 +39,78 @@ export function weaponContents(weaponType) {
     ...(def.heavy && { heavy: true }), ...(def.chop && { chop: def.chop }), ...(def.mine && { mine: def.mine }) }
 }
 
-// Projectile weapons — looted from chests, never a starting item. `ammo`
-// depletes per shot and is only refilled by picking up a new weapon.
-// `kind` drives projectile rendering (arrows are elongated, wand bolts square).
+// Bows, the crossbow and the sling — looted from chests, never a starting
+// item. They no longer carry their own ammo: every bow draws from the
+// shared `player.ammo` pool by `ammoKind` (see AMMO_KINDS/AMMO_CAPS below),
+// and a pickup's `bundle` is how much of that ammo kind it brings along.
+// `kind` drives projectile rendering (bow arrows vs. the crossbow bolt vs.
+// the sling stone).
 export const RANGED_WEAPON_TYPES = {
-  shortbow:  { name: 'Shortbow',   damage: 2, maxAmmo: 12, cooldown: 0.6,  color: '#facc15', kind: 'bow' },
-  longbow:   { name: 'Longbow',    damage: 3, maxAmmo: 10, cooldown: 0.7,  color: '#facc15', kind: 'bow' },
-  sparkwand: { name: 'Spark Wand', damage: 2, maxAmmo: 16, cooldown: 0.45, color: '#22d3ee', kind: 'wand' },
-  stormwand: { name: 'Storm Wand', damage: 5, maxAmmo: 6,  cooldown: 0.8,  color: '#a78bfa', kind: 'wand' },
-  firewand:  { name: 'Fireball Wand', damage: 4, maxAmmo: 5,  cooldown: 1.0,  color: '#f97316', kind: 'wand', explodes: true },
+  shortbow:  { name: 'Shortbow',    damage: 2, cooldown: 0.6, color: '#facc15', kind: 'bow',      ammoKind: 'arrow', bundle: 12 },
+  // Fast and weak — the short cooldown, not the ammo, is the point: hold
+  // Space and it streams.
+  hunterbow: { name: "Hunter's Bow", damage: 1, cooldown: 0.3, color: '#facc15', kind: 'bow',      ammoKind: 'arrow', bundle: 20 },
+  // Hold-to-draw tiers live in ranged.js (DRAW_CHARGE/resolveDrawTier); this
+  // flag just marks the weapon as chargeable.
+  longbow:   { name: 'Longbow',     damage: 3, cooldown: 0.7, color: '#facc15', kind: 'bow',      ammoKind: 'arrow', bundle: 10, draw: true },
+  splitbow:  { name: 'Splitbow',    damage: 2, cooldown: 0.8, color: '#facc15', kind: 'bow',      ammoKind: 'arrow', bundle: 10,
+    fork: { after: 32, count: 3, spread: Math.PI / 9 } },
+  crossbow:  { name: 'Crossbow',    damage: 5, cooldown: 1.2, color: '#e5e7eb', kind: 'crossbow', ammoKind: 'bolt',  bundle: 8,
+    heavy: true, knockback: 45, piercesShield: true },
+  sling:     { name: 'Sling',       damage: 1, cooldown: 0.5, color: '#a8a29e', kind: 'sling',    ammoKind: 'stone', bundle: 20, stun: 0.5 },
 }
+
+// Flags that ride through unchanged from a RANGED_WEAPON_TYPES row onto the
+// contents object, only when the row actually sets them.
+const RANGED_FLAG_KEYS = ['draw', 'fork', 'heavy', 'knockback', 'piercesShield', 'stun']
 
 export function makeRangedContents(weaponType = 'shortbow') {
   const wt = RANGED_WEAPON_TYPES[weaponType] ? weaponType : 'shortbow'
   const def = RANGED_WEAPON_TYPES[wt]
+  const flags = {}
+  for (const key of RANGED_FLAG_KEYS) if (def[key] !== undefined) flags[key] = def[key]
   return {
     type: 'ranged', weaponType: wt, name: def.name, damage: def.damage,
-    ammo: def.maxAmmo, maxAmmo: def.maxAmmo, cooldown: def.cooldown,
-    color: def.color, kind: def.kind,
-    ...(def.explodes ? { explodes: true } : {}),
+    cooldown: def.cooldown, color: def.color, kind: def.kind,
+    ammoKind: def.ammoKind, bundle: def.bundle,
+    ...flags,
   }
 }
+
+// Wands — the magic-stance hand slot. A wand has no ammo of its own; it
+// gates its spell on stamina (systems/spells.js, Task 3+) rather than a
+// depleting count.
+export const WAND_TYPES = {
+  sparkwand:   { name: 'Spark Wand',   spell: 'spark',     color: '#22d3ee' },
+  frostwand:   { name: 'Frost Wand',   spell: 'rime',      color: '#93c5fd' },
+  firewand:    { name: 'Fireball Wand', spell: 'fireball', color: '#f97316' },
+  bramblewand: { name: 'Bramble Wand', spell: 'bramble',   color: '#65a30d' },
+  blinkwand:   { name: 'Blink Wand',   spell: 'blink',     color: '#c084fc' },
+  stormwand:   { name: 'Storm Wand',   spell: 'lightning', color: '#a78bfa' },
+}
+
+export function makeWandContents(weaponType = 'sparkwand') {
+  const wt = WAND_TYPES[weaponType] ? weaponType : 'sparkwand'
+  const def = WAND_TYPES[wt]
+  return { type: 'wand', weaponType: wt, name: def.name, spell: def.spell, color: def.color }
+}
+
+// The quiver/pouch: one shared pool per ammo kind, independent of which bow
+// is currently held. Caps match the spec (arrow 40 / bolt 24 / stone 60).
+export const AMMO_KINDS = ['arrow', 'bolt', 'stone']
+export const AMMO_CAPS = { arrow: 40, bolt: 24, stone: 60 }
+
+export function emptyAmmo() {
+  return { arrow: 0, bolt: 0, stone: 0 }
+}
+
+// The two facing tables, shared rather than re-declared: DIRS is the unit
+// tile step per facing (walk, blink, bramble placement, arrows), FACING_ANGLE
+// the same direction in radians (cone sweeps and the rings that draw them).
+// Screen space, so `south` is +y and its angle is +PI/2. Callers still guard
+// an unknown facing themselves (`DIRS[f] ?? DIRS.east`).
+export const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }
+export const FACING_ANGLE = { east: 0, south: Math.PI / 2, west: Math.PI, north: -Math.PI / 2 }
 
 export function isWalkable(tileId, tileObj = null) {
   if (tileObj?.voidZone) return false
@@ -156,7 +207,10 @@ export function makePlayer(x, y, bonuses = []) {
     hp: 10, maxHp: 10,
     inventory: [], maxInventory: 10 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
-    bonuses, weapon: null, ranged: null, attackMode: 'melee', talents: [],
+    // Three hands (melee / bow / wand) and one shared quiver — a run can be
+    // swordsman, archer and wizard at once.
+    bonuses, weapon: null, ranged: null, wand: null, ammo: emptyAmmo(),
+    attackMode: 'melee', talents: [],
     stamina: 100, maxStamina: 100, staminaRegenT: 0,
     magicCooldown: 0,   // gust unlocks via the magic_stance talent
   }

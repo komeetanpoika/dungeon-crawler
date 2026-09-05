@@ -1,6 +1,12 @@
 // The loot sack: slot-capped inventory with stacking, plus the equip rules
-// between sack and the two hand slots (player.weapon / player.ranged).
-// Pure player-state logic — game.js owns pickups, drops, and messages.
+// between the sack and the three hand slots (player.weapon / player.ranged /
+// player.wand) and the shared ammo pool (player.ammo). Pure player-state
+// logic — game.js owns pickups, drops, and messages.
+
+import {
+  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES,
+  makeRangedContents, makeWandContents,
+} from './entities.js'
 
 const STACKABLE_KINDS = {
   potion:      { name: 'Potion',      emoji: '🧪', extra: { amount: 4 } },
@@ -20,19 +26,58 @@ export function makeItem(kind, count = 1) {
   return { kind, name: def.name, emoji: def.emoji, stackable: true, count, ...def.extra }
 }
 
-// Chest/floating `contents` -> sack item. Unknown types return null.
+const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄' }
+
+// Chest/floating `contents` -> sack item. Ammo is never a sack item — it
+// goes straight into the pool (see autoEquipOnPickup) — so this returns the
+// bare { kind: 'ammo', ammoKind, count } shape rather than a stackable slot.
+// Unknown types return null.
+//
+// Ranged and wand payloads are re-derived from their tables rather than
+// copied, exactly as game.js re-derives melee payloads on load. Every pickup
+// passes through here, so a pre-redesign floating item persisted in an old
+// caveInstances entry (a bow carrying its own `ammo`/`maxAmmo` and no
+// `ammoKind`) is normalised at this one place instead of reaching tryFire as
+// player.ammo[undefined]. Two consequences, both deliberate:
+//   - an unknown weaponType yields null (the pickup is dropped) rather than
+//     silently becoming a Shortbow the player never found. Callers must
+//     tolerate null — they already had to, for unknown `type`s.
+//   - a legacy `contents.ammo` count is discarded here; the pool is topped up
+//     once, by the table's `bundle`, in autoEquipOnPickup. Crediting both
+//     would pay a stale magazine out twice.
+//
+// The one field that is *not* re-derived is a ranged contents' `bundle`: the
+// quiver top-up rides on the contents so it can be spent. Chest loot and
+// legacy contents carry no `bundle` field and so get the table's, once; a bow
+// the player dropped carries an explicit `bundle: 0` (see contentsFromItem)
+// and re-credits nothing, or drop-and-repickup would be a free arrow mine.
+const REBUILD = { ranged: [RANGED_WEAPON_TYPES, makeRangedContents], wand: [WAND_TYPES, makeWandContents] }
+
 export function itemFromContents(contents) {
-  if (contents.type === 'weapon' || contents.type === 'ranged') {
-    const { type, ...payload } = contents
-    return { kind: type, name: contents.name, emoji: type === 'weapon' ? '⚔' : '🏹', stackable: false, payload }
+  const rebuild = REBUILD[contents.type]
+  if (rebuild) {
+    const [table, make] = rebuild
+    if (!table[contents.weaponType]) return null
+    const { type, ...payload } = make(contents.weaponType)
+    if (type === 'ranged' && Number.isFinite(contents.bundle)) payload.bundle = contents.bundle
+    return { kind: type, name: payload.name, emoji: HAND_EMOJI[type], stackable: false, payload }
   }
+  if (contents.type === 'weapon') {
+    const { type, ...payload } = contents
+    return { kind: type, name: contents.name, emoji: HAND_EMOJI[type], stackable: false, payload }
+  }
+  if (contents.type === 'ammo') return { kind: 'ammo', ammoKind: contents.ammoKind, count: contents.count ?? 1 }
   if (STACKABLE_KINDS[contents.type]) return makeItem(contents.type, contents.count ?? 1)
   return null
 }
 
 export function contentsFromItem(item) {
-  if (item.kind === 'weapon') return { ...item.payload, type: 'weapon' }
-  if (item.kind === 'ranged') return { ...item.payload, type: 'ranged' }
+  // A dropped bow's arrows are already in the quiver, so what hits the floor
+  // is an empty weapon: bundle 0 travels with the contents and survives the
+  // rebuild in itemFromContents.
+  if (item.kind === 'ranged') return { ...item.payload, type: 'ranged', bundle: 0 }
+  if (item.kind === 'weapon' || item.kind === 'wand')
+    return { ...item.payload, type: item.kind }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
   return { type: item.kind, count: item.count ?? 1 }
 }
@@ -75,6 +120,8 @@ export function removeItem(player, index) {
 }
 
 export function canEquip(player, item) {
+  if (item.kind === 'wand')
+    return (player.talents ?? []).includes('magic_stance') ? { ok: true } : { ok: false, reason: 'not_learned' }
   if (item.kind !== 'weapon' && item.kind !== 'ranged') return { ok: false, reason: 'not_equippable' }
   if (item.kind === 'ranged' && !(player.talents ?? []).includes('ranged_stance'))
     return { ok: false, reason: 'not_learned' }
@@ -83,54 +130,89 @@ export function canEquip(player, item) {
   return { ok: true }
 }
 
+const HAND_OF_KIND = { weapon: 'weapon', ranged: 'ranged', wand: 'wand' }
+
 // Equip the sack slot at `index` into its hand; a held item swaps back in.
 export function equipItem(player, index) {
   const item = player.inventory[index]
   if (!item) return { ok: false, reason: 'not_equippable' }
   const gate = canEquip(player, item)
   if (!gate.ok) return gate
-  const hand = item.kind === 'weapon' ? 'weapon' : 'ranged'
+  const hand = HAND_OF_KIND[item.kind]
   const held = player[hand]
   player[hand] = { ...item.payload }
   player.inventory.splice(index, 1)
   if (held) {
-    const kind = hand
-    player.inventory.push({ kind, name: held.name, emoji: kind === 'weapon' ? '⚔' : '🏹',
+    player.inventory.push({ kind: hand, name: held.name, emoji: HAND_EMOJI[hand],
       stackable: false, payload: { ...held } })
   }
   return { ok: true, equipped: item }
 }
 
-// Merged ammo tops out at this many times the weapon's starting ammo.
-export const AMMO_CAP_MULT = 2
-
-// A ranged weapon the player already carries (in hand, else in the sack)
-// takes the pickup's ammo instead of a second slot, up to AMMO_CAP_MULT x
-// its starting ammo; `ammo` in the result is what was actually added. Null
-// when nothing matches.
-function mergeRangedAmmo(player, item) {
-  if (item.kind !== 'ranged') return null
-  const wt = item.payload.weaponType
-  const ammo = item.payload.ammo ?? 0
-  let target = null, merged = null
-  if (player.ranged?.weaponType === wt) { target = player.ranged; merged = 'hand' }
-  else {
-    const slot = player.inventory.find(i => i.kind === 'ranged' && i.payload.weaponType === wt)
-    if (slot) { target = slot.payload; merged = 'sack' }
-  }
-  if (!target) return null
-  const cap = (target.maxAmmo ?? item.payload.maxAmmo ?? ammo) * AMMO_CAP_MULT
-  const before = target.ammo ?? 0
-  target.ammo = Math.min(cap, before + ammo)
-  return { ok: true, equipped: false, merged, ammo: target.ammo - before }
+// The quiver/pouch pool (player.ammo, see entities.js AMMO_KINDS/AMMO_CAPS).
+// Lazily created so a plain `{}` player object still works — callers never
+// need to seed player.ammo themselves.
+export function addAmmo(player, ammoKind, count) {
+  if (!player.ammo) player.ammo = emptyAmmo()
+  // An unknown (or missing) kind adds nothing rather than writing
+  // `undefined: NaN` into the pool — Math.min(undefined, n) is NaN, and a NaN
+  // slot would poison every later add and read for that kind.
+  const cap = AMMO_CAPS[ammoKind]
+  if (cap === undefined) return 0
+  const before = player.ammo[ammoKind] ?? 0
+  const after = Math.min(cap, before + count)
+  player.ammo[ammoKind] = after
+  return after - before
 }
 
-// Walk-onto pickup policy: a carried ranged twin absorbs the ammo; else an
-// empty allowed hand -> equip; otherwise -> sack.
+export function spendAmmo(player, ammoKind, n = 1) {
+  if (!player.ammo) player.ammo = emptyAmmo()
+  const have = player.ammo[ammoKind] ?? 0
+  if (have < n) return false
+  player.ammo[ammoKind] = have - n
+  return true
+}
+
+// Walk-onto pickup policy:
+// - ammo bundles (mined stone, dropped ammo) go straight into the pool —
+//   never a sack slot.
+// - a ranged pickup's bundle tops the pool up first (0 for a bow the player
+//   dropped, so nothing is credited and game.js floats nothing); a carried twin
+//   (hand or sack) then absorbs the weapon itself (discarded, ammo-only);
+//   otherwise an empty allowed hand equips it, else it goes to the sack.
+// - a wand: empty allowed hand -> equip; otherwise -> sack (no merging —
+//   wands have no ammo to pool, so a duplicate is just a spare).
 export function autoEquipOnPickup(player, item) {
-  const merged = mergeRangedAmmo(player, item)
-  if (merged) return merged
-  const hand = item.kind === 'weapon' ? 'weapon' : item.kind === 'ranged' ? 'ranged' : null
+  if (item.kind === 'ammo') {
+    const added = addAmmo(player, item.ammoKind, item.count)
+    return { ok: true, equipped: false, ammo: added, ammoKind: item.ammoKind }
+  }
+  if (item.kind === 'ranged') {
+    const ammoKind = item.payload.ammoKind
+    const added = addAmmo(player, ammoKind, item.payload.bundle ?? 0)
+    const wt = item.payload.weaponType
+    if (player.ranged?.weaponType === wt)
+      return { ok: true, equipped: false, merged: 'hand', ammo: added, ammoKind }
+    if (player.inventory.some(i => i.kind === 'ranged' && i.payload.weaponType === wt))
+      return { ok: true, equipped: false, merged: 'sack', ammo: added, ammoKind }
+    // The bundle rides on every successful ranged outcome, merged or not, so
+    // game.js can float "+n" for a first bow just as it does for a duplicate.
+    if (!player.ranged && canEquip(player, item).ok) {
+      player.ranged = { ...item.payload }
+      return { ok: true, equipped: true, ammo: added, ammoKind }
+    }
+    const r = addItem(player, item)
+    return r.ok ? { ok: true, equipped: false, ammo: added, ammoKind } : r
+  }
+  if (item.kind === 'wand') {
+    if (!player.wand && canEquip(player, item).ok) {
+      player.wand = { ...item.payload }
+      return { ok: true, equipped: true }
+    }
+    const r = addItem(player, item)
+    return r.ok ? { ok: true, equipped: false } : r
+  }
+  const hand = item.kind === 'weapon' ? 'weapon' : null
   if (hand && !player[hand] && canEquip(player, item).ok) {
     player[hand] = { ...item.payload }
     return { ok: true, equipped: true }

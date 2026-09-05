@@ -5,8 +5,8 @@ import { queueToast } from './feedback.js'
 import { sfx } from './sfx.js'
 
 export const TALENTS = {
-  ranged_stance: { name: 'Marksmanship', desc: 'Use bows and wands in the ranged stance.' },
-  magic_stance:  { name: 'Gust of Wind', desc: 'Shape the wind in the magic stance — gusts cost stamina.' },
+  ranged_stance: { name: 'Marksmanship', desc: 'Use bows, crossbows and slings in the ranged stance.' },
+  magic_stance:  { name: 'Gust of Wind', desc: 'Shape spells in the magic stance — wands give new ones.' },
   heavy_weapons: { name: 'Might',        desc: 'Wield heavy weapons.' },
 }
 

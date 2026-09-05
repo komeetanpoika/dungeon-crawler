@@ -87,9 +87,23 @@ export const SPRITES = {
   weapon_maunonmiekka: 'weapon_maunonmiekka',   // 24px custom art (from the miekka drawing)
   weapon_shortbow:  'weapon_shortbow',    // custom art — tileset has no bow
   weapon_longbow:   'weapon_longbow',     // custom art — tileset has no bow
+  // The rest of the ranged roster and the ammo icons (tools/make-ranged-tiles.mjs):
+  // the two extra bows recolour the shortbow/longbow art, the crossbow, sling
+  // and pouches are drawn from pixel maps.
+  weapon_hunterbow: 'weapon_hunterbow',
+  weapon_splitbow:  'weapon_splitbow',
+  weapon_crossbow:  'weapon_crossbow',
+  weapon_sling:     'weapon_sling',
   weapon_sparkwand: 'tile_0130',
   weapon_stormwand: 'tile_0129',
   weapon_firewand:  'weapon_firewand',    // tile_0129 recoloured with an orange tip (tools/make-firewand-tile.mjs)
+  // One wand shape per silhouette, told apart by the tip colour, like the firewand.
+  weapon_frostwand:   'weapon_frostwand',
+  weapon_bramblewand: 'weapon_bramblewand',
+  weapon_blinkwand:   'weapon_blinkwand',
+  item_arrows:      'item_arrows',        // ammo icons — the pool floats and the HUD tool slot
+  item_bolts:       'item_bolts',
+  item_stones:      'item_stones',
   potion:           'tile_0116',
   // door animation frames (0 = closed … 3 = open)
   door_0: 'tile_0009',

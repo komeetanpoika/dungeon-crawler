@@ -178,6 +178,48 @@ describe('act approach with a wide body (clearance 2)', () => {
   })
 })
 
+describe('act status effects', () => {
+  it('a slowed enemy covers slowMul of the distance a normal enemy covers in one tick', () => {
+    const map = columnMap()
+    const e = enemyAt(3, 4)
+    e.slowTimer = 1
+    e.slowMul = 0.4
+    const state = makeState(map, { x: 9, y: 4 }, [e])
+    const start = { px: e.px, py: e.py }
+    act(e, state, 1 / 60, { mode: 'approach', speed: 60 })
+    const slowedDist = Math.hypot(e.px - start.px, e.py - start.py)
+
+    const full = enemyAt(3, 4)
+    const state2 = makeState(map, { x: 9, y: 4 }, [full])
+    act(full, state2, 1 / 60, { mode: 'approach', speed: 60 })
+    const fullDist = Math.hypot(full.px - start.px, full.py - start.py)
+
+    assert.ok(fullDist > 0, 'sanity: unslowed enemy actually moved')
+    assert.ok(Math.abs(slowedDist / fullDist - 0.4) < 0.01,
+      `slowed enemy should cover ~40% of the distance, got ${slowedDist / fullDist}`)
+  })
+
+  it('a rooted enemy does not move', () => {
+    const map = columnMap()
+    const e = enemyAt(3, 4)
+    e.rootTimer = 1
+    const state = makeState(map, { x: 9, y: 4 }, [e])
+    const start = { px: e.px, py: e.py }
+    const moved = act(e, state, 1 / 60, { mode: 'approach', speed: 80 })
+    assert.equal(moved, false)
+    assert.equal(e.px, start.px)
+    assert.equal(e.py, start.py)
+  })
+
+  it('an enemy with no status fields set moves at full speed (behaviour unchanged)', () => {
+    const map = columnMap()
+    const e = enemyAt(3, 4)
+    const state = makeState(map, { x: 9, y: 4 }, [e])
+    const moved = act(e, state, 1 / 60, { mode: 'approach', speed: 60 })
+    assert.equal(moved, true)
+  })
+})
+
 describe('act charge', () => {
   it('dashes in a straight line and reports a wall hit as false', () => {
     const map = columnMap()

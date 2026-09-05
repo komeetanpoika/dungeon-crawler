@@ -116,7 +116,8 @@ function followField(e, state, delta, speed, dir) {
 export function act(e, state, delta, intent) {
   if (!e.ai) e.ai = {}
   const { player, map } = state
-  const speed = intent.speed ?? 60
+  if (e.rootTimer > 0) return false // rooted: no movement, but may still attack
+  const speed = (intent.speed ?? 60) * (e.slowTimer > 0 ? e.slowMul : 1)
   const dist = Math.hypot(player.px - e.px, player.py - e.py)
   switch (intent.mode) {
     case 'hold':

@@ -48,6 +48,19 @@ describe('normalizeTimewarpSave', () => {
     const tw = normalizeTimewarpSave(null, legacy, npcs)
     assert.deepEqual(tw.episodes['highland-2-fold'].save.npcs['highland-2-fold'], npcs['highland-2-fold'])
   })
+  it('migrates a legacy wand-in-ranged body carried in a stored mini-save', () => {
+    const rec = {
+      resolved: false,
+      save: {
+        caves: {}, progress: { mapDepth: 8, cleared: {} }, talents: [],
+        body: { weapon: null, ranged: { weaponType: 'stormwand', ammo: 2 }, inventory: [] },
+      },
+    }
+    const tw = normalizeTimewarpSave({ episodes: { 'lake-1-ferry': rec } })
+    const body = tw.episodes['lake-1-ferry'].save.body
+    assert.equal(body.wand.weaponType, 'stormwand')
+    assert.equal(body.ranged, null)
+  })
 })
 
 describe('enterEpisode', () => {

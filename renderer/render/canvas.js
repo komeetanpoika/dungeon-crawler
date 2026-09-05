@@ -1,4 +1,4 @@
-import { TILE } from '../systems/entities.js'
+import { TILE, FACING_ANGLE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
@@ -7,6 +7,7 @@ import { PIXEL_SKIN } from '../systems/dragonboss.js'
 import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc, CHARGE } from '../systems/melee.js'
 import { GUST_CHARGE } from '../systems/magic.js'
+import { DRAW_CHARGE } from '../systems/ranged.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { NPC_SPECIES } from '../data/npcs.js'
@@ -14,6 +15,7 @@ import { campfireAlpha } from '../systems/campfire.js'
 import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
 import { getMonsterDef, drawGeneratedMonster, isStoryCreature } from '../systems/monsters.js'
+import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
 import { makeWeatherLayer, drawNight, drawFog } from './weather.js'
 import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer } from './tile-layer.js'
@@ -164,11 +166,15 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'floating_item') {
     const c = entity.contents
-    if (c.type === 'weapon' || c.type === 'ranged') {
+    if (c.type === 'weapon' || c.type === 'ranged' || c.type === 'wand') {
       const s = sprites[`weapon_${c.weaponType}`]
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
+    } else if (c.type === 'ammo') {
+      // A dropped bundle shows its ammo kind, not the bow it came from.
+      const s = sprites[{ arrow: 'item_arrows', bolt: 'item_bolts', stone: 'item_stones' }[c.ammoKind]]
+      if (s) ctx.drawImage(s, px, py, S, S)
     } else {
       const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
                     clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
@@ -278,9 +284,10 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, -S / 2, -S, S, S)
     }
     if (!(entity.attackTimer > 0)) {   // the swing animation draws the melee weapon instead
-      // Magic stance: wands channel, blades don't — barehanded without one.
+      // One hand per stance: the bow in ranged, the wand hand in magic (a bow
+      // stays slung there), the blade in melee.
       const held = entity.attackMode === 'ranged' ? entity.ranged
-        : entity.attackMode === 'magic' ? (entity.ranged?.kind === 'wand' ? entity.ranged : null)
+        : entity.attackMode === 'magic' ? entity.wand
         : entity.weapon
       const ws = held && sprites[`weapon_${held.weaponType}`]
       if (ws) drawHeldWeapon(ctx, ws, S)
@@ -322,6 +329,132 @@ function drawHitEffect(ctx, x, y, camX, camY, S) {
   ctx.moveTo(px + 5, py + 5); ctx.lineTo(px + S - 5, py + S - 5)
   ctx.moveTo(px + S - 5, py + 5); ctx.lineTo(px + 5, py + S - 5)
   ctx.stroke()
+}
+
+// The icy tint a frozen enemy wears: desaturated and lifted, then a pale sheen
+// over the cell so the freeze reads even on an already-pale sprite.
+const FROZEN_FILTER = 'saturate(0.4) brightness(1.3)'
+
+function drawFrozenSheen(ctx, px, py, S) {
+  ctx.save()
+  ctx.globalAlpha = 0.35
+  ctx.fillStyle = '#bfdbfe'
+  ctx.fillRect(px, py, S, S)
+  ctx.restore()
+}
+
+const ZONE_FADE = 1   // seconds a patch spends fading out at the end of its life
+
+// Ground zones (systems/spells.js's `zone` primitive). Only bramble exists so
+// far; the switch is here so a second kind is a case, not a rewrite. Three
+// thorn strokes per cell, seeded by the cell coords rather than the wall clock
+// so the scribble sits still for the patch's whole life.
+function drawZones(ctx, zones, camX, camY, S) {
+  for (const z of zones ?? []) {
+    if (z.kind !== 'bramble') continue
+    const fade = Math.max(0, Math.min(1, (z.dur - (z.age ?? 0)) / ZONE_FADE))
+    ctx.save()
+    ctx.globalAlpha = 0.6 * fade
+    ctx.strokeStyle = '#365314'
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    for (const t of z.tiles ?? []) {
+      const tx = Math.round(t.x * S - camX), ty = Math.round(t.y * S - camY)
+      for (let i = 0; i < 3; i++) {
+        const lean = (t.x * 7 + t.y * 13 + i * 5) % 5
+        ctx.beginPath()
+        ctx.moveTo(tx + 3 + lean * 2, ty + S - 3)
+        ctx.lineTo(tx + S - 4 - i * 4, ty + 3 + lean)
+        ctx.stroke()
+      }
+    }
+    ctx.restore()
+  }
+}
+
+// Call Lightning, before the strike: a dashed ring spinning over the marked
+// cell, drawn as six arc segments so no setLineDash support is assumed. The
+// alpha crackles off the mark's own age — again, no wall clock.
+function drawLightningMarks(ctx, marks, camX, camY, S) {
+  for (const m of marks ?? []) {
+    if (m.struck) continue
+    const t = m.t ?? 0
+    const cx = Math.round(m.x * S - camX) + S / 2
+    const cy = Math.round(m.y * S - camY) + S / 2
+    ctx.save()
+    ctx.strokeStyle = '#a78bfa'
+    ctx.lineWidth = 2
+    ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 30)
+    for (let i = 0; i < 6; i++) {
+      const a0 = t * 6 + i * (Math.PI / 3)
+      ctx.beginPath()
+      ctx.arc(cx, cy, S * 0.38, a0, a0 + Math.PI / 5)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+}
+
+// Call Lightning, the strike itself: the 3×3 lit pale violet and a jagged bolt
+// down from the top of the screen. The zig is seeded by the tile so a strike
+// does not shimmer between frames of its 0.15 s.
+function drawLightningBolts(ctx, strikes, camX, camY, S) {
+  for (const s of strikes ?? []) {
+    const k = Math.max(0, 1 - (s.t ?? 0) / STRIKE_LIFE)
+    if (k <= 0) continue
+    const cx = Math.round(s.x * S - camX) + S / 2
+    const cy = Math.round(s.y * S - camY) + S / 2
+    ctx.save()
+    ctx.globalAlpha = 0.5 * k
+    ctx.fillStyle = '#e9d5ff'
+    ctx.fillRect(Math.round((s.x - 1) * S - camX), Math.round((s.y - 1) * S - camY), S * 3, S * 3)
+    ctx.globalAlpha = k
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 3
+    ctx.lineJoin = 'round'
+    ctx.beginPath()
+    ctx.moveTo(cx, 0)
+    const steps = 6
+    for (let i = 1; i <= steps; i++) {
+      const zig = i === steps ? 0 : Math.sin(s.x * 3 + s.y * 5 + i * 2.7) * S * 0.45
+      ctx.lineTo(cx + zig, (cy * i) / steps)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+}
+
+// The white-out a strike leaves behind. Drawn over the night wash on purpose —
+// the whole point of Call Lightning at night is that it lights the map.
+function drawFlash(ctx, flash, W, H) {
+  if (!(flash > 0)) return
+  const a = Math.min(1, flash / LIGHTNING.flash) * 0.85
+  ctx.save()
+  ctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`
+  ctx.fillRect(0, 0, W, H)
+  ctx.restore()
+}
+
+// How long a blink trail lives; game.js decays state.blinkTrail.t on it.
+export const BLINK_DUR = 0.2
+
+// Blink: three silhouettes strung between where the wizard was and where he is,
+// fading out over the trail's fifth of a second.
+function drawBlinkTrail(ctx, trail, player, sprites, camX, camY, S) {
+  if (!trail?.from || !trail?.to) return
+  const s = sprites[playerSpriteKey(player, player.attackMode)]
+  if (!s) return
+  const fade = Math.max(0, 1 - (trail.t ?? 0) / BLINK_DUR)
+  if (fade <= 0) return
+  ctx.save()
+  for (let i = 1; i <= 3; i++) {
+    const f = i / 4
+    ctx.globalAlpha = fade * 0.4 * (1 - f * 0.5)
+    const px = Math.round(trail.from.px + (trail.to.px - trail.from.px) * f - S / 2 - camX)
+    const py = Math.round(trail.from.py + (trail.to.py - trail.from.py) * f - S / 2 - camY)
+    ctx.drawImage(s, px, py, S, S)
+  }
+  ctx.restore()
 }
 
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3) }
@@ -437,7 +570,7 @@ function drawSwing(ctx, cx, cy, ws, style, t, S, opts = {}) {
 export function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   if (!(player.attackTimer > 0) || !(player.attackDuration > 0)) return
   const t = 1 - player.attackTimer / player.attackDuration
-  const base = { east: 0, south: Math.PI/2, west: Math.PI, north: -Math.PI/2 }[player.attackFacing] ?? 0
+  const base = FACING_ANGLE[player.attackFacing] ?? 0
   const ws = sprites[`weapon_${player.weapon?.weaponType}`]
   const reach = getSwingArc(player.attackStyle).reach * (player.attackReachMul ?? 1)
   drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base, reach })
@@ -461,9 +594,12 @@ function drawStunStars(ctx, cx, cy, t) {
 // release tier — white (tap), gold (full swing), red (overcharged).
 export function drawChargeRing(ctx, player, camX, camY) {
   if (!player.charging) return
-  // Gust charges use their own thresholds regardless of the equipped
-  // weapon — a melee charge weapon may still be holstered in magic stance.
-  const c = player.charging.kind === 'gust' ? GUST_CHARGE : CHARGE[player.weapon?.weaponType]
+  // A spell wind-up and a bow draw use their own thresholds regardless of the
+  // equipped weapon — a melee charge weapon may still be holstered in the
+  // magic or ranged stance.
+  const c = player.charging.kind === 'spell' ? GUST_CHARGE
+    : player.charging.kind === 'draw' ? DRAW_CHARGE
+    : CHARGE[player.weapon?.weaponType]
   if (!c) return
   const t = player.charging.t
   const frac = Math.min(1, t / c.over)
@@ -901,18 +1037,28 @@ export class Renderer {
       ctx.fillRect(0, 0, W, H)
     }
 
+    // Ground effects lie on the floor, so they go on with the tiles: bramble
+    // patches and the sigils of lightning marks that have not struck yet.
+    drawZones(ctx, state.zones, camX, camY, S)
+    drawLightningMarks(ctx, state.lightning, camX, camY, S)
+
     for (const e of entities) {
       const margin = getMonsterDef(e.type) ? 3 : e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0
       if (e.x + margin < c0 || e.x - margin >= c1 || e.y + margin < r0 || e.y - margin >= r1) continue
       if (!map[e.y]?.[e.x]?.visible) continue
       const epx = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
+      // Rime's freeze tints whatever the enemy is drawn by, so it wraps the
+      // whole draw rather than living inside drawEntity.
+      const prevFilter = e.frozen ? ctx.filter : null
+      if (e.frozen) ctx.filter = FROZEN_FILTER
       if (getMonsterDef(e.type)) {
         drawGeneratedMonster(ctx, e, epx + S / 2, epy + S / 2, S, state)
         if (e.state === 'erupting') drawEruptRing(ctx, e, camX, camY)
       }
       else if (e.type === 'dragon_boss') drawBossBySkin(ctx, e, camX, camY, S, sprites)
       else drawEntity(ctx, e, epx, epy, S, sprites)
+      if (e.frozen) { ctx.filter = prevFilter; drawFrozenSheen(ctx, epx, epy, S) }
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
     }
@@ -925,6 +1071,8 @@ export class Renderer {
         py: player.py ?? player.y * S + S / 2,
       })
     }
+    // The blink ghosts belong with the player: behind him, in front of the floor.
+    drawBlinkTrail(ctx, state.blinkTrail, player, sprites, camX, camY, S)
     if (isFlickerVisible(player.invulnTimer)) drawEntity(ctx, player, ppx, ppy, S, sprites)
     if (player.grabbed) {
       ctx.save()
@@ -948,16 +1096,35 @@ export class Renderer {
     if (cyclops) drawCyclopsEffects(ctx, cyclops, camX, camY)
     drawHealthBars(ctx, entities, map, camX, camY, S, state)
 
-    // Draw projectiles. Arrows are elongated along their travel axis;
-    // wand bolts and enemy shots stay 4x4 squares.
+    // Draw projectiles. Arrows and crossbow quarrels are elongated along their
+    // travel axis (the quarrel shorter and fatter); sparks trail; stones, wand
+    // bolts, fireballs and enemy shots stay 4x4 squares.
     for (const p of state.projectiles ?? []) {
       const bpx = Math.round(p.px - camX)
       const bpy = Math.round(p.py - camY)
-      ctx.fillStyle = p.color ?? '#facc15'
+      const flat = Math.abs(p.dx) >= Math.abs(p.dy)   // travelling more across than down
+      ctx.fillStyle = p.color ?? '#facc15'   // every spawner sets a colour; this is belt-and-braces
       if (p.shape === 'arrow') {
-        if (Math.abs(p.dx) >= Math.abs(p.dy)) ctx.fillRect(bpx - 4, bpy - 1, 8, 2)
+        if (flat) ctx.fillRect(bpx - 4, bpy - 1, 8, 2)
         else ctx.fillRect(bpx - 1, bpy - 4, 2, 8)
+      } else if (p.shape === 'quarrel') {
+        if (flat) ctx.fillRect(bpx - 4, bpy - 2, 8, 3)
+        else ctx.fillRect(bpx - 2, bpy - 4, 3, 8)
       } else {
+        if (p.shape === 'spark') {
+          // A short tail behind the head, in the wand's colour — the spark is
+          // the fastest thing on screen and reads as a smear without it.
+          const len = Math.hypot(p.dx, p.dy) || 1
+          ctx.save()
+          ctx.globalAlpha = 0.5
+          ctx.strokeStyle = p.color ?? '#facc15'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.moveTo(bpx - (p.dx / len) * 7, bpy - (p.dy / len) * 7)
+          ctx.lineTo(bpx, bpy)
+          ctx.stroke()
+          ctx.restore()
+        }
         ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
       }
     }
@@ -1027,6 +1194,13 @@ export class Renderer {
         drawHitEffect(ctx, x, y, camX, camY, S)
       }
     }
+
+    // Call Lightning's strike lands after the night wash so the bolt, the lit
+    // 3×3 and the white-out show at full strength in the dark — that flash
+    // through the weather layer is the spell's whole signature. Still under the
+    // mist and the feedback layer.
+    drawLightningBolts(ctx, state.strikes, camX, camY, S)
+    drawFlash(ctx, state.flash, W, H)
 
     // Weather, pass two: mist over the water, planks, creatures and player —
     // under floats, bubbles and banners.

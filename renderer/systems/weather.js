@@ -81,7 +81,9 @@ function fogCells(data, { at, radius }) {
 export function makeWeather(mapData) {
   const cfg = weatherFor(mapData)
   if (!cfg) return null
-  return { dayCycle: !!cfg.dayCycle, t: 0, fog: cfg.fog ? fogCells(mapData, cfg.fog) : null }
+  // lightningT: seconds left of a lightning strike's daylight. Set and counted
+  // down by systems/spells/lightning.js — this module only reads it.
+  return { dayCycle: !!cfg.dayCycle, t: 0, lightningT: 0, fog: cfg.fog ? fogCells(mapData, cfg.fog) : null }
 }
 
 // Everything that punches a hole in the night: campfires (the hermit's
@@ -109,5 +111,11 @@ export function weatherLook(state, save) {
   const w = state.weather
   if (!w) return null
   const ph = w.dayCycle ? dayPhase(save.clock ?? DAY_START) : DAYLIGHT
-  return { dark: ph.dark, ambient: ph.ambient, fog: ph.fog, t: w.t, lights: ph.dark > 0 ? lightSources(state) : [] }
+  // A lightning strike lights the map as day for its quarter-second: the
+  // night wash comes off entirely (and with it the lamp scan, since nothing
+  // is dark to punch a hole in). The keyframe colour and the fog stay — only
+  // the darkness blinks. lightning.js counts w.lightningT down, because this
+  // module builds a look and never ticks anything itself.
+  const dark = w.lightningT > 0 ? 0 : ph.dark
+  return { dark, ambient: ph.ambient, fog: ph.fog, t: w.t, lights: dark > 0 ? lightSources(state) : [] }
 }

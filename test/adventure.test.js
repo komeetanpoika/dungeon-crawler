@@ -2,12 +2,13 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   dungeonLabels, markCleared, isMapComplete, nextMapDepth,
-  normalizeAdventureSave, freshProgress, npcRecordFor, recordNpcState, resetNpcs,
+  normalizeAdventureSave, normalizeBody, freshProgress, npcRecordFor, recordNpcState, resetNpcs,
   recordVisit, waystoneDestinations,
 } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../renderer/data/levels.js'
 import { DAY_START } from '../renderer/data/weather.js'
+import { makeRangedContents, emptyAmmo } from '../renderer/systems/entities.js'
 
 describe('the adventure map chain', () => {
   it('exports the adventure chain at depths 7..18 (leap maps at 8-10)', () => {
@@ -116,7 +117,10 @@ describe('v3 save shape', () => {
   it('v3 saves pass through untouched, gaining only the empty gates, npcs and felled maps', () => {
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
-    assert.deepEqual(normalizeAdventureSave(v3), { ...v3, gates: {}, npcs: {}, felled: {}, leaps: {}, clock: DAY_START, v6: true, v7: true })
+    assert.deepEqual(normalizeAdventureSave(v3), {
+      ...v3, body: { ...v3.body, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 } },
+      gates: {}, npcs: {}, felled: {}, leaps: {}, clock: DAY_START, v6: true, v7: true,
+    })
   })
 
   it('v4 saves keep their npcs and gain an empty felled map', () => {
@@ -129,8 +133,11 @@ describe('v3 save shape', () => {
     assert.deepEqual(normalizeAdventureSave(null).felled, {})
   })
 
-  it('body inventory items with nested payload are preserved', () => {
-    const payload = { ammo: 5, type: 'ranged' }
+  it('a legacy sack bow is rebuilt from the weapon table and its ammo joins the pool', () => {
+    // Pre-redesign sack bows carried their own ammo/maxAmmo and no ammoKind.
+    // Keeping that payload would leave tryFire reading player.ammo[undefined]
+    // forever, so the payload is re-derived and the old count banked once.
+    const payload = { weaponType: 'shortbow', ammo: 5, maxAmmo: 12, type: 'ranged' }
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: [], body: {
         weapon: null, ranged: null,
@@ -139,9 +146,26 @@ describe('v3 save shape', () => {
         ],
       } }
     const s = normalizeAdventureSave(v3)
-    // After normalization, the payload should still exist and be the same data
-    assert.ok(s.body.inventory[0].payload, 'payload preserved')
-    assert.deepEqual(s.body.inventory[0].payload, payload, 'payload data matches')
+    const item = s.body.inventory[0]
+    assert.equal(item.kind, 'ranged')
+    const { type: _t, ...fresh } = makeRangedContents('shortbow')
+    assert.deepEqual(item.payload, fresh, 'payload rebuilt from the table')
+    assert.equal(item.payload.ammoKind, 'arrow')
+    assert.equal(item.payload.ammo, undefined, 'no stale per-weapon ammo')
+    assert.equal(item.payload.maxAmmo, undefined)
+    assert.equal(s.body.ammo.arrow, 5, 'the old on-weapon count credited to the pool once')
+  })
+
+  it('a legacy sack bow of an unknown type is dropped, not left unusable', () => {
+    const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
+      talents: [], body: {
+        weapon: null, ranged: null,
+        inventory: [{ kind: 'ranged', name: 'Raygun', emoji: '🏹', stackable: false,
+          payload: { weaponType: 'raygun', ammo: 3 } }],
+      } }
+    const s = normalizeAdventureSave(v3)
+    assert.deepEqual(s.body.inventory, [])
+    assert.deepEqual(s.body.ammo, emptyAmmo())
   })
 })
 
@@ -255,5 +279,78 @@ describe('waystoneDestinations', () => {
     for (const d of [11, 12, 13, 14, 15, 16, 17, 18]) recordVisit(s.progress, OPEN_MAPS[d].name)
     for (const label of dungeonLabels(OPEN_MAPS[18])) markCleared(s.progress, OPEN_MAPS[18].name, label)
     assert.deepEqual(waystoneDestinations(s).map(d => d.depth), [7, 11, 12, 13, 14, 15, 16, 17, 18])
+  })
+})
+
+describe('normalizeBody', () => {
+  it('passes null through untouched', () => {
+    assert.equal(normalizeBody(null), null)
+  })
+
+  it('defaults wand and ammo on an otherwise-current body', () => {
+    const b = normalizeBody({ weapon: null, ranged: null, inventory: [] })
+    assert.equal(b.wand, null)
+    assert.deepEqual(b.ammo, { arrow: 0, bolt: 0, stone: 0 })
+  })
+
+  it('moves a legacy ranged wand to the wand slot', () => {
+    const b = normalizeBody({ weapon: null, ranged: { weaponType: 'sparkwand', ammo: 5 }, inventory: [] })
+    assert.equal(b.wand.weaponType, 'sparkwand')
+    assert.equal(b.ranged, null)
+  })
+
+  it('folds a legacy bow\'s own ammo into the pool and drops ammo/maxAmmo from the weapon', () => {
+    const b = normalizeBody({ weapon: null, ranged: { weaponType: 'longbow', ammo: 7, maxAmmo: 10 }, inventory: [] })
+    assert.equal(b.ammo.arrow, 7)
+    assert.equal(b.ranged.weaponType, 'longbow')
+    assert.ok(!('ammo' in b.ranged), 'ammo dropped from the weapon')
+    assert.ok(!('maxAmmo' in b.ranged), 'maxAmmo dropped from the weapon')
+  })
+
+  it('converts a sack ranged item with a wand payload to kind wand', () => {
+    const b = normalizeBody({
+      weapon: null, ranged: null,
+      inventory: [{ kind: 'ranged', name: 'x', emoji: '🏹', stackable: false, payload: { weaponType: 'firewand', ammo: 3 } }],
+    })
+    assert.equal(b.inventory[0].kind, 'wand')
+    assert.equal(b.inventory[0].payload.weaponType, 'firewand')
+    assert.ok(!('ammo' in b.inventory[0].payload), 'wand payload has no ammo field')
+  })
+
+  it('drops unknown weapon types rather than crashing', () => {
+    const b = normalizeBody({
+      weapon: null, ranged: { weaponType: 'made-up-gun', ammo: 1 },
+      inventory: [{ kind: 'ranged', name: 'x', emoji: '🏹', stackable: false, payload: { weaponType: 'made-up-gun' } }],
+    })
+    assert.equal(b.ranged, null)
+    assert.deepEqual(b.inventory, [])
+  })
+
+  it('drops a sack wand with an unknown weapon type rather than swapping in a sparkwand', () => {
+    const b = normalizeBody({
+      weapon: null, ranged: null,
+      inventory: [{ kind: 'wand', name: 'Noodle Wand', emoji: '\u{1FA84}', stackable: false, payload: { weaponType: 'noodlewand' } }],
+    })
+    assert.deepEqual(b.inventory, [])
+  })
+
+  it('rebuilds a known sack wand from the wand table', () => {
+    const b = normalizeBody({
+      weapon: null, ranged: null,
+      inventory: [{ kind: 'wand', name: 'Old Name', emoji: '\u{1FA84}', stackable: false, payload: { weaponType: 'stormwand', ammo: 4 } }],
+    })
+    assert.equal(b.inventory.length, 1)
+    assert.equal(b.inventory[0].kind, 'wand')
+    assert.equal(b.inventory[0].payload.weaponType, 'stormwand')
+    assert.equal(b.inventory[0].payload.spell, 'lightning')
+    assert.ok(!('ammo' in b.inventory[0].payload), 'wand payload has no ammo field')
+  })
+
+  it('is idempotent', () => {
+    const once = normalizeBody({ weapon: null, ranged: { weaponType: 'longbow', ammo: 7, maxAmmo: 10 }, inventory: [
+      { kind: 'ranged', name: 'x', emoji: '🏹', stackable: false, payload: { weaponType: 'stormwand' } },
+    ] })
+    const twice = normalizeBody(once)
+    assert.deepEqual(twice, once)
   })
 })

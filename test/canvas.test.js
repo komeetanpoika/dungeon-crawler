@@ -4,6 +4,8 @@ import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, dr
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
 import { createMap } from '../renderer/systems/map.js'
+import { SPRITES } from '../renderer/render/sprites.js'
+import { readPng } from '../tools/png-read.mjs'
 
 // Minimal ctx that records drawImage calls by the sprite passed in. `ops`
 // records any other method call (name + args) via the Proxy fallback below,
@@ -376,7 +378,7 @@ describe('drawEntity — magic stance held weapon', () => {
 
   it('carries a wand in magic stance', () => {
     const ctx = swingCtx()
-    drawEntity(ctx, mage({ ranged: { weaponType: 'sparkwand', kind: 'wand' } }), 0, 0, 32, psprites)
+    drawEntity(ctx, mage({ wand: { weaponType: 'sparkwand' } }), 0, 0, 32, psprites)
     assert.deepEqual(ctx.images, ['MAGIC', 'WAND'])
   })
 
@@ -460,62 +462,64 @@ describe('drawEntity — grey campfire', () => {
   })
 })
 
+// Records draws with the composite op in force so the two weather blits
+// (multiply wash, fog) can be told apart from everything else. Shared with
+// the wand/bow effect-layer tests further down, which need the same ordering.
+function orderCtx() {
+  const ops = []
+  let gco = 'source-over', alpha = 1, fs = '', filter = 'none', smooth = false
+  const stack = []
+  const base = {
+    ops,
+    drawImage: (img) => ops.push({ name: 'drawImage', img, gco, filter, alpha }),
+    fillRect: (...a) => ops.push({ name: 'fillRect', a, gco, fs, alpha }),
+    clearRect: () => {},
+    createRadialGradient: () => ({ addColorStop() {} }),
+    setTransform() {},
+    save: () => stack.push({ gco, alpha, filter, smooth }),
+    restore: () => { const s = stack.pop(); if (s) ({ gco, alpha, filter, smooth } = s) },
+    get fillStyle() { return fs }, set fillStyle(v) { fs = v },
+    get globalAlpha() { return alpha }, set globalAlpha(v) { alpha = v },
+    get globalCompositeOperation() { return gco }, set globalCompositeOperation(v) { gco = v },
+    get filter() { return filter }, set filter(v) { filter = v },
+    get imageSmoothingEnabled() { return smooth }, set imageSmoothingEnabled(v) { smooth = v },
+  }
+  return new Proxy(base, {
+    get(t, p, r) { if (p in t) return Reflect.get(t, p, r); return (...args) => { ops.push({ name: p, args, alpha }) } },
+  })
+}
+
+function stubLayer() {
+  const canvas = { id: 'LAYER', width: 0, height: 0 }, mask = { id: 'MASK', width: 0, height: 0 }
+  const layer = { canvas, ctx: orderCtx(), mask, maskCtx: orderCtx(), w: 32, h: 24, k: 0.25, resized: [],
+    resize(w, h) { layer.resized.push([w, h]) } }
+  return layer
+}
+
+function scene(weather, entities = [], extra = {}) {
+  const map = createMap(4, 3)
+  for (const row of map) for (const c of row) { c.tile = TILE.FLOOR; c.explored = true; c.visible = true }
+  const player = { x: 1, y: 1, px: 48, py: 48, facing: 'south', invulnTimer: 0, hp: 5, maxHp: 5, inventory: [] }
+  return { map, player, entities, projectiles: [], shockwaves: [], hitEffects: [],
+    fireZones: [{ tiles: [{ x: 0, y: 0 }], age: 0 }],
+    feedback: { floats: [{ px: 48, py: 40, text: '1', kind: 'damage', t: 0 }], bubble: null, banner: null, toasts: [] },
+    weather, ...extra }
+}
+
+function renderScene(weather, { entities = [], sprites = {}, ...extra } = {}) {
+  const ctx = orderCtx()
+  const canvas = { width: 128, height: 96, offsetWidth: 128, offsetHeight: 96, getContext: () => ctx }
+  const layer = stubLayer()
+  const r = new Renderer(canvas, { weatherLayer: layer })
+  r.viewW = 128; r.viewH = 96
+  r.sprites = { ...r.sprites, ...sprites }
+  const state = scene(weather, entities, extra)
+  r.updateCamera(state.player, 0)
+  r.render(state, null)
+  return { ops: ctx.ops, layer, ctx }
+}
+
 describe('Renderer.render weather layers', () => {
-  // Records draws with the composite op in force so the two weather blits
-  // (multiply wash, fog) can be told apart from everything else.
-  function orderCtx() {
-    const ops = []
-    let gco = 'source-over', alpha = 1, fs = '', filter = 'none', smooth = false
-    const stack = []
-    const base = {
-      ops,
-      drawImage: (img) => ops.push({ name: 'drawImage', img, gco, filter }),
-      fillRect: (...a) => ops.push({ name: 'fillRect', a, gco, fs }),
-      clearRect: () => {},
-      createRadialGradient: () => ({ addColorStop() {} }),
-      setTransform() {},
-      save: () => stack.push({ gco, alpha, filter, smooth }),
-      restore: () => { const s = stack.pop(); if (s) ({ gco, alpha, filter, smooth } = s) },
-      get fillStyle() { return fs }, set fillStyle(v) { fs = v },
-      get globalAlpha() { return alpha }, set globalAlpha(v) { alpha = v },
-      get globalCompositeOperation() { return gco }, set globalCompositeOperation(v) { gco = v },
-      get filter() { return filter }, set filter(v) { filter = v },
-      get imageSmoothingEnabled() { return smooth }, set imageSmoothingEnabled(v) { smooth = v },
-    }
-    return new Proxy(base, {
-      get(t, p, r) { if (p in t) return Reflect.get(t, p, r); return (...args) => { ops.push({ name: p, args }) } },
-    })
-  }
-
-  function stubLayer() {
-    const canvas = { id: 'LAYER', width: 0, height: 0 }, mask = { id: 'MASK', width: 0, height: 0 }
-    const layer = { canvas, ctx: orderCtx(), mask, maskCtx: orderCtx(), w: 32, h: 24, k: 0.25, resized: [],
-      resize(w, h) { layer.resized.push([w, h]) } }
-    return layer
-  }
-
-  function scene(weather, entities = []) {
-    const map = createMap(4, 3)
-    for (const row of map) for (const c of row) { c.tile = TILE.FLOOR; c.explored = true; c.visible = true }
-    const player = { x: 1, y: 1, px: 48, py: 48, facing: 'south', invulnTimer: 0, hp: 5, maxHp: 5, inventory: [] }
-    return { map, player, entities, projectiles: [], shockwaves: [], hitEffects: [],
-      fireZones: [{ tiles: [{ x: 0, y: 0 }], age: 0 }],
-      feedback: { floats: [{ px: 48, py: 40, text: '1', kind: 'damage', t: 0 }], bubble: null, banner: null, toasts: [] },
-      weather }
-  }
-
-  function renderScene(weather, { entities = [], sprites = {} } = {}) {
-    const ctx = orderCtx()
-    const canvas = { width: 128, height: 96, offsetWidth: 128, offsetHeight: 96, getContext: () => ctx }
-    const layer = stubLayer()
-    const r = new Renderer(canvas, { weatherLayer: layer })
-    r.viewW = 128; r.viewH = 96
-    r.sprites = { ...r.sprites, ...sprites }
-    const state = scene(weather, entities)
-    r.updateCamera(state.player, 0)
-    r.render(state, null)
-    return { ops: ctx.ops, layer, ctx }
-  }
 
   // The first flame rect is the fire-zone loop's red '#ef4444' fill.
   const flameIdx = ops => ops.findIndex(o => o.name === 'fillRect' && o.fs === '#ef4444')
@@ -581,5 +585,161 @@ describe('Renderer.render weather layers', () => {
     const r = new Renderer(canvas)
     assert.equal(r.weatherLayer, null)
     assert.doesNotThrow(() => r.resize())
+  })
+})
+
+describe('drawEntity — the wand hand', () => {
+  const psprites = { player_base: 'BASE', player_magic: 'MAGIC', player_ranged: 'RANGED',
+                     weapon_sword: 'SWORD', weapon_frostwand: 'WAND', weapon_hunterbow: 'BOW' }
+  const mage = over => ({ type: 'player', facing: 'east', walkPhase: 0, swayAmp: 0, attackMode: 'magic',
+    weapon: { weaponType: 'sword' }, ranged: null, wand: null, ...over })
+
+  it('carries the wand-hand wand in magic stance', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, mage({ wand: { weaponType: 'frostwand' } }), 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['MAGIC', 'WAND'])
+  })
+
+  it('is barehanded in magic stance with an empty wand hand', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, mage({ ranged: { weaponType: 'hunterbow', kind: 'bow' } }), 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['MAGIC'])
+  })
+
+  it('still carries the bow in ranged stance while a wand is in the other hand', () => {
+    const ctx = swingCtx()
+    drawEntity(ctx, mage({ attackMode: 'ranged', ranged: { weaponType: 'hunterbow', kind: 'bow' },
+      wand: { weaponType: 'frostwand' } }), 0, 0, 32, psprites)
+    assert.deepEqual(ctx.images, ['RANGED', 'BOW'])
+  })
+})
+
+describe('Renderer.render — ranged and wand effect layers', () => {
+  const NIGHT = { dark: 0.85, ambient: [40, 60, 120], fog: 0, t: 0, lights: [] }
+  const night = () => ({ dayCycle: true, t: 0, fog: { cx: 1, cy: 1, radius: 2, cells: [] }, look: NIGHT })
+  const rectOf = (ops, fs) => ops.find(o => o.name === 'fillRect' && o.fs === fs)
+  const idx = (ops, pred) => ops.findIndex(pred)
+  const crab = { type: 'crab', x: 2, y: 1 }
+  const CRAB = { crab: 'CRAB' }
+  const crabIdx = ops => idx(ops, o => o.name === 'drawImage' && o.img === 'CRAB')
+  const washIdx = ops => idx(ops, o => o.name === 'fillRect' && o.gco === 'multiply')
+
+  it('draws a sling stone as a 4x4 square', () => {
+    const { ops } = renderScene(null, {
+      projectiles: [{ px: 48, py: 48, dx: 1, dy: 0, shape: 'stone', color: '#a8a29e' }] })
+    const r = rectOf(ops, '#a8a29e')
+    assert.ok(r, 'stone drawn in its own colour')
+    assert.deepEqual(r.a.slice(2), [4, 4])
+  })
+
+  it('draws a crossbow quarrel as a 3x8 dart along its travel axis', () => {
+    const across = renderScene(null, {
+      projectiles: [{ px: 48, py: 48, dx: 1, dy: 0, shape: 'quarrel', color: '#e5e7eb' }] })
+    assert.deepEqual(rectOf(across.ops, '#e5e7eb').a.slice(2), [8, 3])
+    const down = renderScene(null, {
+      projectiles: [{ px: 48, py: 48, dx: 0, dy: 1, shape: 'quarrel', color: '#e5e7eb' }] })
+    assert.deepEqual(rectOf(down.ops, '#e5e7eb').a.slice(2), [3, 8])
+  })
+
+  it("keeps a wand bolt a 4x4 square — only the crossbow's quarrel is a dart", () => {
+    // spells.js tags every fireball tier shape:'bolt' too, so the dart must not
+    // key on it: an orange stick where a fireball should be is the regression.
+    const { ops } = renderScene(null, {
+      projectiles: [{ px: 48, py: 48, dx: 1, dy: 0, shape: 'bolt', color: '#f97316' }] })
+    assert.deepEqual(rectOf(ops, '#f97316').a.slice(2), [4, 4])
+  })
+
+  it('gives a spark a trail behind its 4x4 head', () => {
+    const { ops } = renderScene(null, {
+      projectiles: [{ px: 48, py: 48, dx: 1, dy: 0, shape: 'spark', color: '#22d3ee' }] })
+    assert.deepEqual(rectOf(ops, '#22d3ee').a.slice(2), [4, 4])
+    assert.ok(ops.some(o => o.name === 'lineTo'), 'trail stroked behind the head')
+  })
+
+  it('tints a frozen enemy and settles the filter afterwards', () => {
+    const { ops, ctx } = renderScene(null, { entities: [{ ...crab, frozen: true }], sprites: CRAB })
+    const draw = ops.find(o => o.name === 'drawImage' && o.img === 'CRAB')
+    assert.match(draw.filter, /saturate\(0\.4\)/)
+    assert.ok(rectOf(ops, '#bfdbfe'), 'pale-blue sheen over the frozen enemy')
+    assert.equal(ctx.filter, 'none')
+  })
+
+  it('leaves an unfrozen enemy untinted', () => {
+    const { ops } = renderScene(null, { entities: [crab], sprites: CRAB })
+    assert.equal(ops.find(o => o.name === 'drawImage' && o.img === 'CRAB').filter, 'none')
+    assert.equal(rectOf(ops, '#bfdbfe'), undefined)
+  })
+
+  it('scribbles bramble thorns under the entities', () => {
+    const { ops } = renderScene(null, { entities: [crab], sprites: CRAB,
+      zones: [{ kind: 'bramble', tiles: [{ x: 0, y: 0 }], age: 0, dur: 6 }] })
+    const strokes = ops.filter(o => o.name === 'stroke')
+    assert.equal(strokes.length, 3, 'three thorn strokes per cell')
+    assert.ok(idx(ops, o => o.name === 'stroke') < crabIdx(ops), 'thorns under the entities')
+  })
+
+  it('fades a bramble patch out over its final second', () => {
+    const zone = age => renderScene(null, { zones: [{ kind: 'bramble', tiles: [{ x: 0, y: 0 }], age, dur: 6 }] })
+    const alphaAt = age => zone(age).ops.find(o => o.name === 'stroke').alpha
+    assert.equal(alphaAt(0), 0.6)
+    assert.ok(alphaAt(5.5) < 0.6 && alphaAt(5.5) > 0)
+    assert.equal(alphaAt(6), 0)
+  })
+
+  it('crackles a sigil ring on a pending lightning mark, with the zones', () => {
+    const { ops } = renderScene(null, { entities: [crab], sprites: CRAB,
+      lightning: [{ x: 1, y: 1, t: 0.2, delay: 0.6 }] })
+    const arc = idx(ops, o => o.name === 'arc')
+    assert.ok(arc >= 0, 'sigil ring drawn')
+    assert.ok(arc < crabIdx(ops), 'sigil under the entities')
+  })
+
+  it('lights the 3x3 and forks a bolt down after the night wash', () => {
+    const { ops } = renderScene(night(), { strikes: [{ x: 1, y: 1, t: 0 }] })
+    const lit = idx(ops, o => o.name === 'fillRect' && o.fs === '#e9d5ff')
+    assert.ok(lit >= 0, 'struck cells lit')
+    assert.ok(lit > washIdx(ops), 'the strike shows through the night wash')
+    assert.ok(ops.some(o => o.name === 'lineTo'), 'jagged bolt stroked')
+  })
+
+  it('whites the screen out while state.flash runs, over the night wash', () => {
+    const { ops } = renderScene(night(), { flash: 0.12 })
+    const flash = idx(ops, o => o.name === 'fillRect' && String(o.fs).startsWith('rgba(255,255,255,'))
+    assert.ok(flash >= 0, 'flash drawn')
+    assert.ok(flash > washIdx(ops), 'flash after the night wash')
+    assert.deepEqual(ops[flash].a, [0, 0, 128, 96], 'full screen')
+  })
+
+  it('draws no flash when state.flash is spent', () => {
+    const { ops } = renderScene(night(), { flash: 0 })
+    assert.equal(ops.some(o => o.name === 'fillRect' && String(o.fs).startsWith('rgba(255,255,255,')), false)
+  })
+
+  it('trails three fading silhouettes behind a blink', () => {
+    const { ops } = renderScene(null, { sprites: { player_base: 'BASE' },
+      blinkTrail: { from: { px: 16, py: 48 }, to: { px: 144, py: 48 }, t: 0.05 } })
+    // scene()'s player stub has no `type`, so the only silhouettes here are
+    // the ghosts — all faded, and fainter the closer they sit to the arrival.
+    const draws = ops.filter(o => o.name === 'drawImage' && o.img === 'BASE')
+    assert.equal(draws.length, 3)
+    assert.ok(draws.every(o => o.alpha > 0 && o.alpha < 1))
+    assert.ok(draws[0].alpha > draws[2].alpha)
+  })
+})
+
+describe('the ranged/wand tiles (tools/make-ranged-tiles.mjs)', () => {
+  // Cheap guard that the art the new roster names actually shipped: a wand or
+  // bow whose PNG is missing renders as nothing at all in the hand, which is
+  // easy to miss and hard to trace back to a rename.
+  const NAMES = ['weapon_hunterbow', 'weapon_splitbow', 'weapon_crossbow', 'weapon_sling',
+    'weapon_frostwand', 'weapon_bramblewand', 'weapon_blinkwand',
+    'item_arrows', 'item_bolts', 'item_stones']
+
+  for (const name of NAMES) it(`${name} is a registered 16x16 tile`, () => {
+    assert.equal(SPRITES[name], name, 'registered in render/sprites.js')
+    const file = new URL(`../renderer/assets/tiles/${name}.png`, import.meta.url).pathname
+    const { width, height, pixels } = readPng(file)
+    assert.equal(width, 16); assert.equal(height, 16)
+    assert.ok(pixels.some((_, i) => i % 4 === 3 && pixels[i] === 255), 'has opaque pixels')
   })
 })

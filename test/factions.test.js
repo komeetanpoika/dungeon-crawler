@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { isEnemy, isHittable, isDead } from '../renderer/systems/factions.js'
+import { isEnemy, isHittable, isDead, isSpellTarget } from '../renderer/systems/factions.js'
 import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
 
 const FAKE_RIG = {
@@ -83,5 +83,20 @@ describe('isDead', () => {
   })
   it('a non-hittable entity is never dead, even with no hp', () => {
     assert.equal(isDead({ type: 'echo' }), false)
+  })
+})
+
+describe('isSpellTarget', () => {
+  it('spells never seek out a peaceful villager', () => {
+    assert.equal(isSpellTarget({ type: 'npc', species: 'baker', hostile: false }), false)
+    assert.equal(isHittable({ type: 'npc', species: 'baker', hostile: false }), true)
+  })
+  it('a villager who has turned on the player is fair game', () => {
+    assert.equal(isSpellTarget({ type: 'npc', species: 'baker', hostile: true }), true)
+  })
+  it('ordinary enemies are targets, dying and non-hittable things are not', () => {
+    assert.equal(isSpellTarget({ type: 'monster', hp: 5 }), true)
+    assert.equal(isSpellTarget({ type: 'monster', hp: 5, dying: 0.2 }), false)
+    assert.equal(isSpellTarget({ type: 'player' }), false)
   })
 })

@@ -14,7 +14,7 @@ const el = () => document.getElementById('inv-overlay')
 function primaryAction(item) {
   if (!item) return null
   if (item.quest) return null   // clapper, fleece, ... — carry-only; Drop stays available
-  if (item.kind === 'weapon' || item.kind === 'ranged') return { label: 'Equip', fn: 'onEquip' }
+  if (item.kind === 'weapon' || item.kind === 'ranged' || item.kind === 'wand') return { label: 'Equip', fn: 'onEquip' }
   if (item.kind === 'potion') return { label: 'Drink', fn: 'onUse' }
   if (item.kind === 'mushroom' || item.kind === 'meat' || item.kind === 'cooked_meat') return { label: 'Eat', fn: 'onUse' }
   if (item.kind === 'lumber' || item.kind === 'deadwood') return { label: 'Build fire', fn: 'onBuild' }
@@ -23,9 +23,10 @@ function primaryAction(item) {
 
 function detailText(player, item) {
   if (!item) return ' '
-  const ammo = item.kind === 'ranged' ? ` ×${item.payload?.ammo ?? 0}` : ''
-  const stats = item.payload?.damage != null ? `${ammo} (${item.payload.damage} dmg)` : ammo
-  const gate = (item.kind === 'weapon' || item.kind === 'ranged') ? canEquip(player, item) : { ok: true }
+  // Ammo is a shared pool, not a per-item count (Wands and Bows redesign) —
+  // a sacked bow shows its damage only, never a stale per-item ammo figure.
+  const stats = item.payload?.damage != null ? ` (${item.payload.damage} dmg)` : ''
+  const gate = (item.kind === 'weapon' || item.kind === 'ranged' || item.kind === 'wand') ? canEquip(player, item) : { ok: true }
   const warn = gate.ok ? '' : ` — <span class="warn">${EQUIP_FAIL_MESSAGES[gate.reason]}</span>`
   return `${item.name}${stats}${warn}`
 }
@@ -55,7 +56,8 @@ export function refreshInventory(state) {
     h.innerHTML = html
     hands.appendChild(h)
   }
-  // Ranged hand (if unlocked)
+  // Ranged hand (if unlocked) — ammo is the shared pool for the bow's kind,
+  // not a per-item count.
   if ((player.talents ?? []).includes('ranged_stance') || player.ranged) {
     const h = document.createElement('div')
     h.className = 'inv-hand'
@@ -64,7 +66,21 @@ export function refreshInventory(state) {
       const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: player.ranged.weaponType } })
       if (src) html += `<img class="inv-icon" src="${src}" alt="${player.ranged.name}">`
     }
-    html += `🏹 ${player.ranged ? `${player.ranged.name} ×${player.ranged.ammo ?? 0}` : 'Empty'}`
+    const pool = player.ranged ? (player.ammo?.[player.ranged.ammoKind] ?? 0) : 0
+    html += `🏹 ${player.ranged ? `${player.ranged.name} ×${pool}` : 'Empty'}`
+    h.innerHTML = html
+    hands.appendChild(h)
+  }
+  // Wand hand (if unlocked) — no count: the spell draws on stamina, not a pool.
+  if ((player.talents ?? []).includes('magic_stance') || player.wand) {
+    const h = document.createElement('div')
+    h.className = 'inv-hand'
+    let html = ''
+    if (player.wand) {
+      const src = iconSrcFor({ kind: 'wand', payload: { weaponType: player.wand.weaponType } })
+      if (src) html += `<img class="inv-icon" src="${src}" alt="${player.wand.name}">`
+    }
+    html += `🪄 ${player.wand ? player.wand.name : 'Empty'}`
     h.innerHTML = html
     hands.appendChild(h)
   }
