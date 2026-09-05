@@ -213,6 +213,13 @@ describe('cone primitive (rime)', () => {
     assert.equal(tryCast(mkState({}, [{ ...far }]), 'rime', 'over').caught, 1)
   })
 
+  it('chills without shoving — rime is not a gust', () => {
+    const g = guardAt(T, 0)
+    tryCast(mkState({}, [g]), 'rime')
+    assert.equal(g.knockback, undefined)
+    assert.equal(g.stunTimer, undefined)
+  })
+
   it('leaves the player and enemies behind the caster alone', () => {
     const behind = guardAt(-T, 0)
     const s = mkState({}, [behind])

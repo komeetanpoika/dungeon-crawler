@@ -4,7 +4,7 @@
 // injected hurt hook so this module never reaches into game.js's entity
 // bookkeeping. state.fireZones stays its own thing (see systems/fire.js).
 import { isWalkable } from './entities.js'
-import { isStoryCreature } from './monsters.js'
+import { isHittable } from './factions.js'
 import { applyRoot } from './status.js'
 
 const TILE_SIZE = 32
@@ -29,8 +29,14 @@ export function makeBrambleZone(map, cx, cy, radius, dur, root, dps) {
 let nextId = 1
 const idOf = e => (e.id ??= `zt${nextId++}`)
 
-const affected = e =>
-  e.hp > 0 && e.type !== 'player' && e.px !== undefined && !isStoryCreature(e)
+// Who the thorns catch: the same faction predicate the player's weapons use,
+// minus peaceful villagers — a patch thrown in a village must not root the
+// baker or push damage through hooks.hurt, which is what turns the village
+// hostile. A villager who has already gone hostile keeps type 'npc' with
+// `hostile` set, and is caught like any other enemy. Story creatures are
+// whatever isHittable says (it lets them through); game.js's hurt hook is
+// the one that routes their damage via hurtCreature.
+const affected = e => isHittable(e) && !(e.type === 'npc' && !e.hostile)
 
 const tileOf = e => ({ x: Math.floor(e.px / TILE_SIZE), y: Math.floor(e.py / TILE_SIZE) })
 

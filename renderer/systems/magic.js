@@ -27,12 +27,7 @@ const AUTO_RELEASE_GRACE = 0.5
 export const resolveGustTier = held =>
   held >= GUST_CHARGE.over ? 'over' : held >= GUST_CHARGE.full ? 'full' : 'tap'
 
-// A release at a tier the player can't afford degrades to the highest tier
-// they *can* afford (over -> full -> tap) rather than refusing outright —
-// the charge isn't wasted just because the reached tier overshoots the
-// tank. Returns null when even tap is unaffordable, so the caller can fall
-// through to tryGust's own refusal path. The generic degrade lives in stamina.js (where the price tables are), so
-// spells.js can reuse it for every wand without importing this module.
+// Gust's charge-tier degrade; the generic version lives in stamina.js.
 export const affordableGustTier = (stamina, tier) => affordableTier(stamina, GUST_COSTS, tier)
 
 export const shouldAutoReleaseGust = held =>

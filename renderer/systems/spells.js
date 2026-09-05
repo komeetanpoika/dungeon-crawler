@@ -20,7 +20,6 @@ const TILE_SIZE = 32
 const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }
 
 export const CHAIN_RANGE = 96          // 3 tiles: how far a spark arcs onward
-const RIME_HALF_ANGLE = Math.PI * 55 / 180
 const BRAMBLE_AHEAD = 3                // tiles in front of the caster
 const BLINK_TILES = 4
 const BLINK_INVULN = 0.5
@@ -51,9 +50,9 @@ export const SPELLS = {
   rime: { id: 'rime', name: 'Rime', primitive: 'cone', cooldown: 3,
     cost: { tap: 12, full: 18, over: 30 },
     tiers: {
-      tap:  { mul: 1,    reach: 80,  halfAngle: RIME_HALF_ANGLE, slow: { mul: 0.4, dur: 3 } },
-      full: { mul: 1.25, reach: 100, halfAngle: RIME_HALF_ANGLE, slow: { mul: 0.4, dur: 4 } },
-      over: { mul: 1.5,  reach: 120, halfAngle: RIME_HALF_ANGLE, freeze: 2 },
+      tap:  { reach: 80,  halfAngle: GUST.halfAngle, slow: { mul: 0.4, dur: 3 } },
+      full: { reach: 100, halfAngle: GUST.halfAngle, slow: { mul: 0.4, dur: 4 } },
+      over: { reach: 120, halfAngle: GUST.halfAngle, freeze: 2 },
     } },
 
   // The old fireball, unchanged in flight; the tiers widen the blast the
@@ -85,14 +84,12 @@ export const SPELLS = {
     } },
 
   // Bespoke: marks, the strike, water conduction and the weather flash all
-  // live in systems/lightning.js, injected as modules.lightning.
+  // live in systems/lightning.js, injected as modules.lightning. The tiers
+  // are empty on purpose — the module owns the mark distances and gets the
+  // tier name, not a table this file would have to keep in step with it.
   lightning: { id: 'lightning', name: 'Call Lightning', primitive: 'module', cooldown: 4,
     cost: { tap: 20, full: 30, over: 50 },
-    tiers: {
-      tap:  { marks: [3] },
-      full: { marks: [6] },
-      over: { marks: [4, 6, 8] },
-    } },
+    tiers: { tap: {}, full: {}, over: {} } },
 }
 
 // Which spell the player casts right now: the held wand's, or the wandless

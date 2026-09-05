@@ -115,17 +115,51 @@ describe('tickZones', () => {
     assert.equal(hurt.length, 2)
   })
 
-  it('leaves the player and story creatures out of it', async () => {
-    await registerStoryCreature('maahinen')
-    const creature = at('maahinen', 8, 5, { hp: 24, maxHp: 24 })
+  it('leaves the player out of it', () => {
     const player = at('player', 8, 5)
-    const s = { player, entities: [player, creature], zones: [makeBrambleZone(mkMap(), 8, 5, 1, 6, 2, 1)], map: mkMap() }
+    const s = { player, entities: [player], zones: [makeBrambleZone(mkMap(), 8, 5, 1, 6, 2, 1)], map: mkMap() }
     const { hooks, hurt } = mkHooks()
     tickZones(s, 1.0, hooks)
     assert.equal(player.rootTimer, undefined)
-    assert.equal(creature.rootTimer, undefined)
     assert.equal(hurt.length, 0)
+  })
+
+  it('spares peaceful villagers — thorns must never start a village brawl', () => {
+    const villager = at('npc', 8, 5, { species: 'villager', hostile: false })
+    const s = mkState([villager], [makeBrambleZone(mkMap(), 8, 5, 1, 6, 2, 1)])
+    const { hooks, hurt } = mkHooks()
+    tickZones(s, 1.0, hooks)
+    assert.equal(villager.rootTimer, undefined)
+    assert.equal(hurt.length, 0)
+  })
+
+  it('catches a villager who has turned hostile, like any other enemy', () => {
+    const thug = at('npc', 8, 5, { species: 'villager', hostile: true })
+    const s = mkState([thug], [makeBrambleZone(mkMap(), 8, 5, 1, 6, 2, 1)])
+    const { hooks, hurt } = mkHooks()
+    tickZones(s, 1.0, hooks)
+    assert.equal(thug.rootTimer, 2)
+    assert.deepEqual(hurt.map(([e, d]) => [e.type, d]), [['npc', 1]])
+  })
+
+  it('follows isHittable for story creatures — game.js routes their damage', async () => {
+    await registerStoryCreature('maahinen')
+    const creature = at('maahinen', 8, 5, { hp: 24, maxHp: 24 })
+    const s = mkState([creature], [makeBrambleZone(mkMap(), 8, 5, 1, 6, 2, 1)])
+    const { hooks, hurt } = mkHooks()
+    tickZones(s, 1.0, hooks)
+    assert.equal(creature.rootTimer, 2)
+    assert.equal(hurt.length, 1, 'the hurt hook (hurtCreature upstream) decides what a creature takes')
     clearMonsters()
+  })
+
+  it('ignores an entity already dying', () => {
+    const g = at('guard', 8, 5, { dying: 0.2 })
+    const s = mkState([g], [makeBrambleZone(mkMap(), 8, 5, 1, 6, 2, 1)])
+    const { hooks, hurt } = mkHooks()
+    tickZones(s, 1.0, hooks)
+    assert.equal(g.rootTimer, undefined)
+    assert.equal(hurt.length, 0)
   })
 
   it('ages zones and drops them when their time is up', () => {
