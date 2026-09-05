@@ -234,3 +234,40 @@ describe('day cycle on every open map', () => {
     assert.equal(Object.keys(WEATHER).length, Object.keys(OPEN_MAPS).length)
   })
 })
+
+describe('lightning light', () => {
+  it('makeWeather starts with no strike light', () => {
+    assert.equal(makeWeather(lakeMapData()).lightningT, 0)
+  })
+
+  it('turns the night wash off (and skips the lights) while a strike lasts', () => {
+    const state = { weather: makeWeather(lakeMapData()), entities: [makeCampfire(1, 1)], fireZones: [] }
+    const night = { clock: 0 }
+    assert.equal(weatherLook(state, night).dark, 0.85)
+
+    state.weather.lightningT = 0.25
+    const lit = weatherLook(state, night)
+    assert.equal(lit.dark, 0, 'the strike reads as daylight')
+    assert.deepEqual(lit.lights, [], 'nothing to light when nothing is dark')
+    assert.deepEqual(lit.ambient, [40, 60, 120], 'the night colour and fog are untouched')
+    assert.equal(lit.fog, 1)
+
+    state.weather.lightningT = 0
+    assert.equal(weatherLook(state, night).dark, 0.85, 'and the night comes straight back')
+  })
+
+  it('is inert on a weather record that predates the field', () => {
+    const w = makeWeather(lakeMapData())
+    delete w.lightningT
+    assert.equal(weatherLook({ weather: w, entities: [], fireZones: [] }, { clock: 0 }).dark, 0.85)
+  })
+
+  it('is what tickLightning counts down', async () => {
+    const { tickLightning, LIGHTNING } = await import('../renderer/systems/spells/lightning.js')
+    const state = { weather: makeWeather(lakeMapData()), entities: [], fireZones: [], map: [] }
+    state.weather.lightningT = LIGHTNING.lit
+    tickLightning(state, 0.3, {})
+    assert.equal(state.weather.lightningT, 0)
+    assert.equal(weatherLook(state, { clock: 0 }).dark, 0.85)
+  })
+})
