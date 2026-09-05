@@ -21,7 +21,23 @@ export function meleeCost(weaponType, tier) {
   return table[tier] ?? table.full
 }
 
+// Gust is the wandless cast, so its prices live here with the other tank
+// costs; systems/spells.js hands this very table back as SPELLS.gust.cost
+// (the dependency runs one way — nothing here knows about spells).
 export const GUST_COSTS = { tap: 14, full: 22, over: 40 }
+
+// A release at a tier the caster can't afford degrades to the highest tier
+// they *can* afford (over -> full -> tap) rather than refusing outright, so
+// a long hold is never wasted just because it overshot the tank. Returns
+// null when even tap is unaffordable, so the caller still refuses.
+const TIER_ORDER = ['over', 'full', 'tap']
+export function affordableTier(stamina, cost, tier) {
+  const start = Math.max(0, TIER_ORDER.indexOf(tier))
+  for (let i = start; i < TIER_ORDER.length; i++) {
+    if (stamina >= cost[TIER_ORDER[i]]) return TIER_ORDER[i]
+  }
+  return null
+}
 
 export const canAfford = (player, cost) => (player.stamina ?? 0) >= cost
 
