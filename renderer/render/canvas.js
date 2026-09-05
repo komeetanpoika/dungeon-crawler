@@ -14,6 +14,7 @@ import { campfireAlpha } from '../systems/campfire.js'
 import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
 import { getMonsterDef, drawGeneratedMonster, isStoryCreature } from '../systems/monsters.js'
+import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
 import { makeWeatherLayer, drawNight, drawFog } from './weather.js'
 import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer } from './tile-layer.js'
@@ -279,11 +280,9 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     }
     if (!(entity.attackTimer > 0)) {   // the swing animation draws the melee weapon instead
       // One hand per stance: the bow in ranged, the wand hand in magic (a bow
-      // stays slung there), the blade in melee. `ranged` is still checked for a
-      // wand so pre-redesign bodies, whose wand sat in the ranged hand, still
-      // show it until they are migrated.
+      // stays slung there), the blade in melee.
       const held = entity.attackMode === 'ranged' ? entity.ranged
-        : entity.attackMode === 'magic' ? (entity.wand ?? (entity.ranged?.kind === 'wand' ? entity.ranged : null))
+        : entity.attackMode === 'magic' ? entity.wand
         : entity.weapon
       const ws = held && sprites[`weapon_${held.weaponType}`]
       if (ws) drawHeldWeapon(ctx, ws, S)
@@ -339,15 +338,16 @@ function drawFrozenSheen(ctx, px, py, S) {
   ctx.restore()
 }
 
+const ZONE_FADE = 1   // seconds a patch spends fading out at the end of its life
+
 // Ground zones (systems/spells.js's `zone` primitive). Only bramble exists so
 // far; the switch is here so a second kind is a case, not a rewrite. Three
 // thorn strokes per cell, seeded by the cell coords rather than the wall clock
-// so the scribble sits still for the patch's whole life and fades over its
-// final second.
+// so the scribble sits still for the patch's whole life.
 function drawZones(ctx, zones, camX, camY, S) {
   for (const z of zones ?? []) {
     if (z.kind !== 'bramble') continue
-    const fade = Math.max(0, Math.min(1, (z.dur - (z.age ?? 0)) / 1))
+    const fade = Math.max(0, Math.min(1, (z.dur - (z.age ?? 0)) / ZONE_FADE))
     ctx.save()
     ctx.globalAlpha = 0.6 * fade
     ctx.strokeStyle = '#365314'
@@ -390,14 +390,12 @@ function drawLightningMarks(ctx, marks, camX, camY, S) {
   }
 }
 
-const STRIKE_DUR = 0.15
-
 // Call Lightning, the strike itself: the 3×3 lit pale violet and a jagged bolt
 // down from the top of the screen. The zig is seeded by the tile so a strike
 // does not shimmer between frames of its 0.15 s.
 function drawLightningBolts(ctx, strikes, camX, camY, S) {
   for (const s of strikes ?? []) {
-    const k = Math.max(0, 1 - (s.t ?? 0) / STRIKE_DUR)
+    const k = Math.max(0, 1 - (s.t ?? 0) / STRIKE_LIFE)
     if (k <= 0) continue
     const cx = Math.round(s.x * S - camX) + S / 2
     const cy = Math.round(s.y * S - camY) + S / 2
@@ -421,25 +419,24 @@ function drawLightningBolts(ctx, strikes, camX, camY, S) {
   }
 }
 
-const FLASH_DUR = 0.12
-
 // The white-out a strike leaves behind. Drawn over the night wash on purpose —
 // the whole point of Call Lightning at night is that it lights the map.
 function drawFlash(ctx, flash, W, H) {
   if (!(flash > 0)) return
-  const a = Math.min(1, flash / FLASH_DUR) * 0.85
+  const a = Math.min(1, flash / LIGHTNING.flash) * 0.85
   ctx.save()
   ctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`
   ctx.fillRect(0, 0, W, H)
   ctx.restore()
 }
 
-// Fallbacks for shots that carry no colour of their own: steel bolts and grey
-// stones, matching the crossbow's and sling's table colours. Arrows keep the
-// old yellow default.
-const PROJECTILE_COLORS = { bolt: '#e5e7eb', stone: '#a8a29e' }
+// Fallbacks for shots that carry no colour of their own: steel quarrels and
+// grey stones, matching the crossbow's and sling's table colours. Arrows keep
+// the old yellow default.
+const PROJECTILE_COLORS = { quarrel: '#e5e7eb', stone: '#a8a29e' }
 
-const BLINK_DUR = 0.2
+// How long a blink trail lives; systems/spells.js decays state.blinkTrail.t on it.
+export const BLINK_DUR = 0.2
 
 // Blink: three silhouettes strung between where the wizard was and where he is,
 // fading out over the trail's fifth of a second.
@@ -1096,9 +1093,9 @@ export class Renderer {
     if (cyclops) drawCyclopsEffects(ctx, cyclops, camX, camY)
     drawHealthBars(ctx, entities, map, camX, camY, S, state)
 
-    // Draw projectiles. Arrows and crossbow bolts are elongated along their
-    // travel axis (the bolt shorter and fatter); sparks trail; stones, fireballs
-    // and enemy shots stay 4x4 squares.
+    // Draw projectiles. Arrows and crossbow quarrels are elongated along their
+    // travel axis (the quarrel shorter and fatter); sparks trail; stones, wand
+    // bolts, fireballs and enemy shots stay 4x4 squares.
     for (const p of state.projectiles ?? []) {
       const bpx = Math.round(p.px - camX)
       const bpy = Math.round(p.py - camY)
@@ -1107,7 +1104,7 @@ export class Renderer {
       if (p.shape === 'arrow') {
         if (flat) ctx.fillRect(bpx - 4, bpy - 1, 8, 2)
         else ctx.fillRect(bpx - 1, bpy - 4, 2, 8)
-      } else if (p.shape === 'bolt') {
+      } else if (p.shape === 'quarrel') {
         if (flat) ctx.fillRect(bpx - 4, bpy - 2, 8, 3)
         else ctx.fillRect(bpx - 2, bpy - 4, 3, 8)
       } else {

@@ -191,11 +191,11 @@ describe('tryFire — success shapes and flags per weapon', () => {
     assert.equal(res.shape, 'arrow')
   })
 
-  it('crossbow: bolt shape, knockback onHit, piercesShield, spends a bolt', () => {
+  it('crossbow: quarrel shape, knockback onHit, piercesShield, spends a bolt', () => {
     const p = armedPlayer('crossbow')
     const res = tryFire(p)
     assert.deepEqual(res, {
-      ok: true, damage: 5, color: '#e5e7eb', shape: 'bolt', ammoKind: 'bolt',
+      ok: true, damage: 5, color: '#e5e7eb', shape: 'quarrel', ammoKind: 'bolt',
       onHit: { knockback: 45 }, piercesShield: true,
     })
     assert.equal(p.ammo.bolt, 9)

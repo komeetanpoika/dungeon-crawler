@@ -378,7 +378,7 @@ describe('drawEntity — magic stance held weapon', () => {
 
   it('carries a wand in magic stance', () => {
     const ctx = swingCtx()
-    drawEntity(ctx, mage({ ranged: { weaponType: 'sparkwand', kind: 'wand' } }), 0, 0, 32, psprites)
+    drawEntity(ctx, mage({ wand: { weaponType: 'sparkwand' } }), 0, 0, 32, psprites)
     assert.deepEqual(ctx.images, ['MAGIC', 'WAND'])
   })
 
@@ -632,13 +632,21 @@ describe('Renderer.render — ranged and wand effect layers', () => {
     assert.deepEqual(r.a.slice(2), [4, 4])
   })
 
-  it('draws a crossbow bolt as a 3x8 dart along its travel axis', () => {
+  it('draws a crossbow quarrel as a 3x8 dart along its travel axis', () => {
     const across = renderScene(null, {
-      projectiles: [{ px: 48, py: 48, dx: 1, dy: 0, shape: 'bolt', color: '#e5e7eb' }] })
+      projectiles: [{ px: 48, py: 48, dx: 1, dy: 0, shape: 'quarrel', color: '#e5e7eb' }] })
     assert.deepEqual(rectOf(across.ops, '#e5e7eb').a.slice(2), [8, 3])
     const down = renderScene(null, {
-      projectiles: [{ px: 48, py: 48, dx: 0, dy: 1, shape: 'bolt', color: '#e5e7eb' }] })
+      projectiles: [{ px: 48, py: 48, dx: 0, dy: 1, shape: 'quarrel', color: '#e5e7eb' }] })
     assert.deepEqual(rectOf(down.ops, '#e5e7eb').a.slice(2), [3, 8])
+  })
+
+  it("keeps a wand bolt a 4x4 square — only the crossbow's quarrel is a dart", () => {
+    // spells.js tags every fireball tier shape:'bolt' too, so the dart must not
+    // key on it: an orange stick where a fireball should be is the regression.
+    const { ops } = renderScene(null, {
+      projectiles: [{ px: 48, py: 48, dx: 1, dy: 0, shape: 'bolt', color: '#f97316' }] })
+    assert.deepEqual(rectOf(ops, '#f97316').a.slice(2), [4, 4])
   })
 
   it('gives a spark a trail behind its 4x4 head', () => {

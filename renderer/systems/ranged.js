@@ -63,7 +63,10 @@ const DRAW_BONUS = {
   over: { damage: 2, pierce: Infinity },
 }
 
-const SHAPE_BY_KIND = { bow: 'arrow', crossbow: 'bolt', sling: 'stone' }
+// Projectile shapes, which are a rendering concern and not the ammo kind: a
+// crossbow spends a 'bolt' from the pool but flies a 'quarrel', because the
+// renderer already spends 'bolt' on wand bolts and fireballs.
+const SHAPE_BY_KIND = { bow: 'arrow', crossbow: 'quarrel', sling: 'stone' }
 
 // Attempt to fire the equipped ranged weapon. On success spends 1 ammo from
 // the shared pool (player.ammo[ammoKind]), starts the weapon's cooldown, and
