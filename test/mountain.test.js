@@ -21,7 +21,7 @@ const alphaAt = (p, x, y) => p.pixels[(y * p.width + x) * 4 + 3]
 
 describe('mountain tiles on disk', () => {
   it('every tile the rules can pick exists as a 16x16 PNG, and no name is used twice', () => {
-    const names = [...MTN.ground, ...MTN.shade, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.cluster, ...MTN.rock]
+    const names = [...MTN.ground, ...MTN.shade, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock]
     assert.equal(new Set(names).size, names.length)
     for (const n of names) { const p = png(n); assert.equal(`${p.width}x${p.height}`, '16x16', n) }
   })
@@ -37,7 +37,7 @@ describe('mountain tiles on disk', () => {
   it('an interior lattice cell is fully opaque; a keyed piece has both transparent and opaque pixels', () => {
     const p = png(MTN.lat[0][5])
     for (let i = 3; i < p.pixels.length; i += 4) assert.equal(p.pixels[i], 255)
-    for (const n of [MTN.cluster[0], MTN.rock[0], MTN.ridge.dr[0]]) {
+    for (const n of [MTN.lat[15][0], MTN.rock[0], MTN.ridge.dr[0]]) {
       const q = png(n)
       const a = new Set(); for (let i = 3; i < q.pixels.length; i += 4) a.add(q.pixels[i])
       assert.deepEqual([...a].sort(), [0, 255], n)
@@ -59,10 +59,10 @@ describe('rimShape', () => {
     assert.equal(rimShape(f('S'), d()), 4)
     assert.equal(rimShape(f('W'), d()), 8)
     assert.equal(rimShape(f('NE'), d()), 3)
-    assert.equal(rimShape(f('ESW'), d()), 'cluster')
+    assert.equal(rimShape(f('ESW'), d()), 14)
   })
-  it('an island is a cluster; a one-cell wall is a lattice unless ridge walls are asked for', () => {
-    assert.equal(rimShape(f('NESW'), d()), 'cluster')
+  it('an island is a lattice cell open on all sides; a one-cell wall is a ridge wall unless a thin lattice is asked for', () => {
+    assert.equal(rimShape(f('NESW'), d()), 15)
     assert.equal(rimShape(f('NS'), d(), { walls: 'lattice' }), 5)
     assert.equal(rimShape(f('NS'), d()), 'wall')
     assert.equal(rimShape(f('EW'), d()), 'wall')
@@ -118,12 +118,12 @@ describe('stampMountainRim', () => {
     assert.equal(ground(b, 5, 8), 'ow_grass_0')
   })
 
-  it('an island becomes a keyed cluster, still blocked; rocks are blocked props that clear to ground', () => {
+  it('an island is the all-sides-open lattice cell, still blocked; rocks are blocked props that clear to ground', () => {
     const b = fresh(8, 8)
     stampMass(b, rng, 4, 4)
     stampRock(b, rng, 1, 1)
     stampMountainRim(b, rng)
-    assert.match(prop(b, 4, 4), /^ow_mtn_cluster_/)
+    assert.equal(prop(b, 4, 4), latAt(15, 4, 4))
     assert.equal(b.walkable(4, 4), false)
     assert.equal(b.walkable(1, 1), false)
     clearMountain(b, rng, 1, 1, 0)

@@ -24,10 +24,9 @@
 //   ow_mtn_ridge_{dr|dl|lb|br|v}_N         keyed (transparent backdrop) ridge
 //                                          lines for one-cell-thick walls:
 //                                          "/" (dr), "\" (dl), hooks, steep
-//   ow_mtn_cluster_N                       keyed standalone peak clumps (islands)
 //   ow_mtn_rock_N                          keyed rock scatters (boulders)
-// (mask 15 — an island — is drawn with a cluster, so it is not emitted; the
-// sheet's V-dip tips and single cones are only used as lattice sources)
+// (the sheet's standalone peak clusters, V-dip tips and single cones are only
+// used as lattice sources: spur tips and islands are lattice cells too)
 // Nothing is mirrored: the art is lit from the top-left, and a flipped copy
 // is lit from the wrong side. The one exception is `br`, the mirror of the
 // only hook the sheet has (lb), because a corner needs both hands.
@@ -222,7 +221,6 @@ series('ow_mtn_ridge_dl', RIDGE.dl, true)
 series('ow_mtn_ridge_lb', RIDGE.lb, true)
 RIDGE.lb.forEach((c, i) => emit(`ow_mtn_ridge_br_${i}`, flipX(hardenAlpha(resample(padSquare(crop(frameBox[c], true)))))))
 series('ow_mtn_ridge_v', RIDGE.v, true)
-series('ow_mtn_cluster', CLUSTER, true)
 series('ow_mtn_rock', ROCK, true)
 
 // --- the mass: one global cone lattice, rendered cell by cell ---
@@ -277,28 +275,23 @@ for (let r = 0; r < PY / ROW; r++) for (let i = 0; i < PX / PITCH; i++) {
   if (!placed) { w = 6; h = 8; placed = { x: Math.round(base - w / 2), y: r * ROW } }
   CONES.push({ ...placed, w, h, idx: hash(r, i, 5) % CONE.length })
 }
-// The rim: on every open side a chain of round-topped boulder lumps (squat
-// cones, 5-8 px, overlapping, each with its own one-pixel dark underside)
-// runs along that side in a band BAND px deep, in front of the cones, which
-// stop short of the band. Nothing is filled behind the lumps, so the
-// contour wobbles lump by lump and the ground shows in the notches. Lump
-// positions are global along each side line of the lattice period, so two
-// cells sharing an open side draw the same lumps and a lump may straddle
-// their boundary.
+// The rim: on every open side a chain of three round-topped boulder lumps
+// (squat cones, 5-7 px, overlapping, each with its own one-pixel dark
+// underside) runs along that side in a band BAND px deep, in front of the
+// cones. Nothing is filled behind the lumps, so the contour wobbles lump by
+// lump and the ground shows in the notches. A chain always spans its own
+// cell exactly — first lump on the left boundary, last on the right — and
+// never crosses into a neighbour, so it abuts the next cell's chain on a
+// straight face and ends cleanly at a concave corner.
 const BAND = 6
-const lumpsAlong = (line, salt) => {
-  const out = []
-  for (let k = 0; k < PX / 5; k++) {
-    const w = 5 + hash(line, k, salt) % 4, h = w - (hash(line, k, salt + 1) % 2)
-    const along = k * 5 + (hash(line, k, salt + 2) % 3) - 1
-    const across = hash(line, k, salt + 3) % 3
-    out.push({ along, across, w, h, idx: hash(line, k, salt + 4) % CONE.length })
-  }
-  return out
+function lumpsFor(side, qx, qy) {
+  const salt = { N: 11, S: 23, E: 37, W: 53 }[side]
+  const w0 = 5 + hash(qx, qy, salt) % 3, w1 = 5 + hash(qx, qy, salt + 1) % 3, w2 = 5 + hash(qx, qy, salt + 2) % 3
+  const mid = Math.round((w0 + (T - w2)) / 2 - w1 / 2) + (hash(qx, qy, salt + 3) % 3) - 1
+  return [[0, w0], [mid, w1], [T - w2, w2]].map(([along, w], k) => ({
+    along, w, h: w - (hash(qx, qy, salt + 4 + k) % 2), across: hash(qx, qy, salt + 7 + k) % 3, idx: hash(qx, qy, salt + 10 + k) % CONE.length,
+  }))
 }
-const LUMPS = { N: [], S: [], E: [], W: [] }
-for (let q = 0; q < PY / T; q++) { LUMPS.N.push(lumpsAlong(q, 11)); LUMPS.S.push(lumpsAlong(q, 23)) }
-for (let q = 0; q < PX / T; q++) { LUMPS.E.push(lumpsAlong(q, 37)); LUMPS.W.push(lumpsAlong(q, 53)) }
 
 function latticeCell(mask, qx, qy) {
   const L = qx * T, Tp = qy * T, R = L + T, B = Tp + T
@@ -340,21 +333,14 @@ function latticeCell(mask, qx, qy) {
     if (openE && c.x + c.w > iR) continue
     stampCone(c, coneAt(c.idx, c.w, c.h))
   }
-  // the rim lumps, in front, along the open sides; a lump list repeats with
-  // the lattice period along its line, so the copies touching this cell are drawn
+  // the rim lumps, in front, along the open sides
   const rim = []
-  const px0 = L - (L % PX), py0 = Tp - (Tp % PY)
-  const pushH = (l, y) => { for (const sh of [-PX, 0, PX]) rim.push({ x: px0 + sh + l.along - (l.w >> 1), y, w: l.w, h: l.h, idx: l.idx }) }
-  const pushV = (l, x) => { for (const sh of [-PY, 0, PY]) rim.push({ x, y: py0 + sh + l.along - (l.h >> 1), w: l.w, h: l.h, idx: l.idx }) }
-  if (openN) for (const l of LUMPS.N[qy]) pushH(l, Tp + l.across)
-  if (openS) for (const l of LUMPS.S[qy]) pushH(l, B - l.h - l.across)
-  if (openW) for (const l of LUMPS.W[qx]) pushV(l, L + l.across)
-  if (openE) for (const l of LUMPS.E[qx]) pushV(l, R - l.w - l.across)
+  if (openN) for (const l of lumpsFor('N', qx, qy)) rim.push({ x: L + l.along, y: Tp + l.across, w: l.w, h: l.h, idx: l.idx })
+  if (openS) for (const l of lumpsFor('S', qx, qy)) rim.push({ x: L + l.along, y: B - l.h - l.across, w: l.w, h: l.h, idx: l.idx })
+  if (openW) for (const l of lumpsFor('W', qx, qy)) rim.push({ x: L + l.across, y: Tp + l.along, w: l.w, h: l.h, idx: l.idx })
+  if (openE) for (const l of lumpsFor('E', qx, qy)) rim.push({ x: R - l.w - l.across, y: Tp + l.along, w: l.w, h: l.h, idx: l.idx })
   rim.sort((a, b) => a.y - b.y || a.x - b.x)
-  for (const c of rim) {
-    if (c.x + c.w <= L || c.x >= R || c.y + c.h <= Tp || c.y >= B) continue
-    stampCone(c, coneAt(c.idx, c.w, c.h))
-  }
+  for (const c of rim) stampCone(c, coneAt(c.idx, c.w, c.h))
   // beyond the silhouette on an open side stays transparent; the rest is rock
   const opaque = (x, y) => out[(y * T + x) * 4 + 3] === 255
   const outside = new Uint8Array(T * T)
@@ -371,7 +357,7 @@ function latticeCell(mask, qx, qy) {
   }
   return { w: T, h: T, rgba: out }
 }
-for (let mask = 0; mask < 15; mask++) for (let qy = 0; qy < PY / T; qy++) for (let qx = 0; qx < PX / T; qx++)
+for (let mask = 0; mask < 16; mask++) for (let qy = 0; qy < PY / T; qy++) for (let qx = 0; qx < PX / T; qx++)
   emit(`ow_mtn_lat_${mask}_${qx + (PX / T) * qy}`, latticeCell(mask, qx, qy))
 
 // sweep stale tiles from earlier sheets / classifications

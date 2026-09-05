@@ -6,8 +6,8 @@
 // a global jittered cone lattice (`ow_mtn_lat_M_Q`: Q = the cell's position
 // in the 4x3 lattice period, M = which of its four sides are open to the
 // ground, so the lattice stops in a ragged cone silhouette on those sides
-// and the ground shows between the tips). Islands are the artist's keyed
-// peak clusters. The ground just south of a mass wears a shadow gradient
+// and the ground shows between the tips), with a chain of boulder lumps
+// along every open side. The ground just south of a mass wears a shadow gradient
 // (`ow_mtn_shade_N`), as in the sheet's example strips; rocks are keyed
 // scatters on the prop layer.
 const hash = (a, b, c = 0) => { let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15; return h >>> 0 }
@@ -16,15 +16,14 @@ export const LAT_PX = 4, LAT_PY = 3   // lattice period in cells
 export const MTN = {
   ground: seq('ow_mtn_ground', 14),
   shade: seq('ow_mtn_shade', 14),
-  lat: Array.from({ length: 15 }, (_, m) => seq(`ow_mtn_lat_${m}`, LAT_PX * LAT_PY)),   // mask 15 is an island: a cluster
+  lat: Array.from({ length: 16 }, (_, m) => seq(`ow_mtn_lat_${m}`, LAT_PX * LAT_PY)),
   ridge: { dr: seq('ow_mtn_ridge_dr', 13), dl: seq('ow_mtn_ridge_dl', 13), lb: seq('ow_mtn_ridge_lb', 2), br: seq('ow_mtn_ridge_br', 2), v: seq('ow_mtn_ridge_v', 1) },
-  cluster: seq('ow_mtn_cluster', 13),
   rock: seq('ow_mtn_rock', 6),
 }
 // Plain ground dominates; the pebbled variants (7-13) are accents.
 export const MTN_GROUND_WEIGHTED = [...MTN.ground.slice(0, 7).flatMap(n => [n, n, n, n, n]), ...MTN.ground.slice(7)]
 
-const MASS_PREFIXES = ['ow_mtn_lat_', 'ow_mtn_ridge_', 'ow_mtn_cluster_']
+const MASS_PREFIXES = ['ow_mtn_lat_', 'ow_mtn_ridge_']
 export const isMassSkin = n => !!n && MASS_PREFIXES.some(p => n.startsWith(p))
 export const isMountainSkin = n => !!n && n.startsWith('ow_mtn_')
 export const isMountainGround = n => !!n && (n.startsWith('ow_mtn_ground') || n.startsWith('ow_mtn_shade'))
@@ -68,14 +67,12 @@ export function clearMountainRect(b, rng, x0, y0, x1, y1, skin = MTN_GROUND_WEIG
 
 // Shape for a mass cell from its neighbourhood: f = which of the four sides
 // are floor. Returns the open-side mask (1 N, 2 E, 4 S, 8 W) for a lattice
-// cell, 'cluster' for an island or a spur tip (three or four sides open),
-// or 'wall' for a cell
-// open on both N and S or both E and W (one cell thick) when walls are
-// drawn with ridge pieces (see stampMountainRim's `walls` option).
+// cell — spur tips and islands included — or 'wall' for a cell open on both
+// N and S or both E and W but not more (one cell thick, part of a line) when
+// walls are drawn with ridge pieces (see stampMountainRim's `walls` option).
 export function rimShape(f, d, { walls = 'ridge' } = {}) {
   const n = f.N + f.E + f.S + f.W
-  if (n >= 3) return 'cluster'
-  if (walls === 'ridge' && ((f.N && f.S) || (f.E && f.W))) return 'wall'
+  if (walls === 'ridge' && n === 2 && ((f.N && f.S) || (f.E && f.W))) return 'wall'
   return (f.N ? 1 : 0) | (f.E ? 2 : 0) | (f.S ? 4 : 0) | (f.W ? 8 : 0)
 }
 
@@ -118,8 +115,7 @@ export function stampMountainRim(b, rng, { apron = false, walls = 'ridge' } = {}
   }
   const zig = (x, y) => ((x + y) & 1) === 0 ? MTN.ridge.dr : MTN.ridge.dl
   for (const [x, y, shape] of paint) {
-    const skin = shape === 'cluster' ? pickFresh(MTN.cluster, x, y)
-      : shape === 'wall' ? pickFresh(zig(x, y), x, y)
+    const skin = shape === 'wall' ? pickFresh(zig(x, y), x, y)
       : MTN.lat[shape][((x % LAT_PX) + LAT_PX) % LAT_PX + LAT_PX * (((y % LAT_PY) + LAT_PY) % LAT_PY)]
     b.p(x, y, skin)
   }
