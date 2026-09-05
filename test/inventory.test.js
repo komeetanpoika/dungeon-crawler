@@ -142,6 +142,41 @@ describe('pickup auto-equip', () => {
     assert.equal(trained.inventory.length, 0)
   })
 
+  it('a second copy of the held ranged weapon tops up its ammo instead of taking a slot', () => {
+    const p = mkPlayer({ talents: ['ranged_stance'], ranged: { ...bowContents(), ammo: 3 } })
+    const r = autoEquipOnPickup(p, itemFromContents({ ...bowContents(), ammo: 12 }))
+    assert.deepEqual(r, { ok: true, equipped: false, merged: 'hand', ammo: 12 })
+    assert.equal(p.ranged.ammo, 15)
+    assert.equal(p.inventory.length, 0)
+  })
+
+  it('a copy of a ranged weapon already in the sack merges into that slot, even untrained', () => {
+    const p = mkPlayer({ inventory: [itemFromContents({ ...bowContents(), ammo: 5 })] })
+    const r = autoEquipOnPickup(p, itemFromContents({ ...bowContents(), ammo: 4 }))
+    assert.deepEqual(r, { ok: true, equipped: false, merged: 'sack', ammo: 4 })
+    assert.equal(p.inventory.length, 1)
+    assert.equal(p.inventory[0].payload.ammo, 9)
+  })
+
+  it('merging works even when the sack is full, and only for the same weapon type', () => {
+    const full = mkPlayer({ maxInventory: 1, inventory: [itemFromContents({ ...bowContents(), ammo: 5 })] })
+    assert.equal(autoEquipOnPickup(full, itemFromContents(bowContents())).ok, true)
+    assert.equal(full.inventory[0].payload.ammo, 17)
+    const other = itemFromContents({ ...bowContents(), weaponType: 'longbow', name: 'Longbow', ammo: 10 })
+    assert.deepEqual(autoEquipOnPickup(full, other), { ok: false, reason: 'full' })
+    assert.equal(full.inventory[0].payload.ammo, 17)
+  })
+
+  it('merged ammo caps at twice the weapon\'s starting ammo, reporting only what was added', () => {
+    const p = mkPlayer({ ranged: { ...bowContents(), ammo: 20 } })   // maxAmmo 12 -> cap 24
+    const r = autoEquipOnPickup(p, itemFromContents(bowContents()))
+    assert.deepEqual(r, { ok: true, equipped: false, merged: 'hand', ammo: 4 })
+    assert.equal(p.ranged.ammo, 24)
+    const again = autoEquipOnPickup(p, itemFromContents(bowContents()))
+    assert.deepEqual(again, { ok: true, equipped: false, merged: 'hand', ammo: 0 })
+    assert.equal(p.ranged.ammo, 24)
+  })
+
   it('reports full when neither hand nor sack can take it', () => {
     const p = mkPlayer({ maxInventory: 0, weapon: { weaponType: 'dagger', name: 'Dagger', damage: 1 } })
     assert.deepEqual(autoEquipOnPickup(p, itemFromContents(swordContents())), { ok: false, reason: 'full' })

@@ -57,6 +57,17 @@
       display: flex; align-items: flex-end; gap: 2px;
       filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9));
     }
+    /* Ammo slot for the equipped ranged weapon, stacked under the consumable */
+    #hud-ammo {
+      position: absolute;
+      right: max(14px, env(safe-area-inset-right));
+      top: calc(max(10px, env(safe-area-inset-top)) + 56px);
+      display: flex; align-items: flex-end; gap: 2px;
+      opacity: 0.6; transition: opacity 0.15s;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9));
+    }
+    #hud-ammo[hidden] { display: none; }
+    #hud-ammo[data-active="1"] { opacity: 1; }
     .hud-icon { width: 48px; height: 48px; image-rendering: pixelated; }
     .hud-icon-empty { opacity: 0.3; filter: grayscale(1); }
     .hud-count { font-size: 13px; color: #ccc; font-family: monospace; }
@@ -208,6 +219,7 @@
       <span id="hud-stamina"><span id="hud-stamina-fill"></span></span>
     </div>
     <div id="hud-consumable"></div>
+    <div id="hud-ammo" hidden></div>
   </div>
   <div id="touch-controls">
     <div id="joystick-zone">

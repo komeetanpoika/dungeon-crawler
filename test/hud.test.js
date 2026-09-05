@@ -53,6 +53,32 @@ describe('updateHUD consumable slot', () => {
   })
 })
 
+describe('updateHUD ammo slot', () => {
+  const wand = { weaponType: 'sparkwand', name: 'Spark Wand', ammo: 9, maxAmmo: 16, kind: 'wand' }
+  it('stays hidden with nothing in the ranged hand', () => {
+    const nodes = fakeDom()
+    updateHUD(state())
+    assert.equal(nodes['hud-ammo'].hidden, true)
+  })
+  it('shows the equipped weapon icon with its ammo count', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ ranged: wand }))
+    assert.equal(nodes['hud-ammo'].hidden, false)
+    assert.match(nodes['hud-ammo'].innerHTML, /assets\/tiles\/tile_0130\.png/)
+    assert.match(nodes['hud-ammo'].innerHTML, /×9/)
+    assert.doesNotMatch(nodes['hud-ammo'].innerHTML, /hud-icon-empty/)
+  })
+  it('dims the icon when the weapon is out of ammo and flags the ranged stance', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ ranged: { ...wand, ammo: 0 }, attackMode: 'ranged' }))
+    assert.match(nodes['hud-ammo'].innerHTML, /hud-icon-empty/)
+    assert.match(nodes['hud-ammo'].innerHTML, /×0/)
+    assert.equal(nodes['hud-ammo'].dataset.active, '1')
+    updateHUD(state({ ranged: wand, attackMode: 'melee' }))
+    assert.equal(nodes['hud-ammo'].dataset.active, '')
+  })
+})
+
 describe('updateHUD stamina bar', () => {
   it('fills proportionally', () => {
     const nodes = fakeDom()

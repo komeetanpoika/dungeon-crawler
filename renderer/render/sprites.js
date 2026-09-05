@@ -89,6 +89,7 @@ export const SPRITES = {
   weapon_longbow:   'weapon_longbow',     // custom art — tileset has no bow
   weapon_sparkwand: 'tile_0130',
   weapon_stormwand: 'tile_0129',
+  weapon_firewand:  'weapon_firewand',    // tile_0129 recoloured with an orange tip (tools/make-firewand-tile.mjs)
   potion:           'tile_0116',
   // door animation frames (0 = closed … 3 = open)
   door_0: 'tile_0009',

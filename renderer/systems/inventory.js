@@ -101,8 +101,35 @@ export function equipItem(player, index) {
   return { ok: true, equipped: item }
 }
 
-// Walk-onto pickup policy: empty allowed hand -> equip; otherwise -> sack.
+// Merged ammo tops out at this many times the weapon's starting ammo.
+export const AMMO_CAP_MULT = 2
+
+// A ranged weapon the player already carries (in hand, else in the sack)
+// takes the pickup's ammo instead of a second slot, up to AMMO_CAP_MULT x
+// its starting ammo; `ammo` in the result is what was actually added. Null
+// when nothing matches.
+function mergeRangedAmmo(player, item) {
+  if (item.kind !== 'ranged') return null
+  const wt = item.payload.weaponType
+  const ammo = item.payload.ammo ?? 0
+  let target = null, merged = null
+  if (player.ranged?.weaponType === wt) { target = player.ranged; merged = 'hand' }
+  else {
+    const slot = player.inventory.find(i => i.kind === 'ranged' && i.payload.weaponType === wt)
+    if (slot) { target = slot.payload; merged = 'sack' }
+  }
+  if (!target) return null
+  const cap = (target.maxAmmo ?? item.payload.maxAmmo ?? ammo) * AMMO_CAP_MULT
+  const before = target.ammo ?? 0
+  target.ammo = Math.min(cap, before + ammo)
+  return { ok: true, equipped: false, merged, ammo: target.ammo - before }
+}
+
+// Walk-onto pickup policy: a carried ranged twin absorbs the ammo; else an
+// empty allowed hand -> equip; otherwise -> sack.
 export function autoEquipOnPickup(player, item) {
+  const merged = mergeRangedAmmo(player, item)
+  if (merged) return merged
   const hand = item.kind === 'weapon' ? 'weapon' : item.kind === 'ranged' ? 'ranged' : null
   if (hand && !player[hand] && canEquip(player, item).ok) {
     player[hand] = { ...item.payload }
