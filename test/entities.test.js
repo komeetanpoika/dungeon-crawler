@@ -1,7 +1,8 @@
 // test/entities.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure, computePlayerFOV, maybeComputeFOV, makePlayer } from '../renderer/systems/entities.js'
+import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure, computePlayerFOV, maybeComputeFOV, makePlayer,
+  RANGED_WEAPON_TYPES, makeRangedContents, WAND_TYPES, makeWandContents, AMMO_KINDS, AMMO_CAPS, emptyAmmo } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
 function openMap(w = 20, h = 20) {
@@ -214,5 +215,73 @@ describe('makePlayer', () => {
     assert.equal(p.mana, undefined)
     assert.equal(p.manaRegenT, undefined)
     assert.equal(p.magicCooldown, 0)
+  })
+})
+
+describe('RANGED_WEAPON_TYPES (bows only)', () => {
+  it('every row draws from a shared ammo pool with a positive bundle size', () => {
+    for (const [type, def] of Object.entries(RANGED_WEAPON_TYPES)) {
+      assert.ok(AMMO_KINDS.includes(def.ammoKind), `${type}.ammoKind must be one of ${AMMO_KINDS}`)
+      assert.ok(Number.isFinite(def.bundle) && def.bundle > 0, `${type}.bundle must be positive`)
+      assert.equal(def.maxAmmo, undefined, `${type} must not carry a per-weapon maxAmmo any more`)
+    }
+  })
+
+  it('has exactly the six spec rows', () => {
+    assert.deepEqual(Object.keys(RANGED_WEAPON_TYPES).sort(),
+      ['crossbow', 'hunterbow', 'longbow', 'shortbow', 'sling', 'splitbow'])
+  })
+
+  it('makeRangedContents("crossbow") carries its heavy/knockback/pierce flags and no ammo fields', () => {
+    const c = makeRangedContents('crossbow')
+    assert.equal(c.type, 'ranged')
+    assert.equal(c.weaponType, 'crossbow')
+    assert.equal(c.ammoKind, 'bolt')
+    assert.equal(c.bundle, 8)
+    assert.equal(c.heavy, true)
+    assert.equal(c.knockback, 45)
+    assert.equal(c.piercesShield, true)
+    assert.equal('ammo' in c, false)
+    assert.equal('maxAmmo' in c, false)
+  })
+
+  it('makeRangedContents falls back to shortbow for an unknown type', () => {
+    assert.equal(makeRangedContents('nope').weaponType, 'shortbow')
+  })
+
+  it('longbow carries the draw flag, splitbow the fork spec, sling the stun', () => {
+    assert.equal(makeRangedContents('longbow').draw, true)
+    assert.deepEqual(makeRangedContents('splitbow').fork, { after: 32, count: 3, spread: Math.PI / 9 })
+    assert.equal(makeRangedContents('sling').stun, 0.5)
+  })
+})
+
+describe('WAND_TYPES', () => {
+  it('has exactly the six spec rows', () => {
+    assert.deepEqual(Object.keys(WAND_TYPES).sort(),
+      ['blinkwand', 'bramblewand', 'firewand', 'frostwand', 'sparkwand', 'stormwand'])
+  })
+
+  it('makeWandContents("stormwand") carries the lightning spell', () => {
+    const w = makeWandContents('stormwand')
+    assert.equal(w.type, 'wand')
+    assert.equal(w.weaponType, 'stormwand')
+    assert.equal(w.spell, 'lightning')
+    assert.equal(w.color, '#a78bfa')
+  })
+
+  it('makeWandContents falls back to sparkwand for an unknown type', () => {
+    assert.equal(makeWandContents('nope').weaponType, 'sparkwand')
+  })
+})
+
+describe('ammo pool', () => {
+  it('AMMO_KINDS and AMMO_CAPS match the spec', () => {
+    assert.deepEqual(AMMO_KINDS, ['arrow', 'bolt', 'stone'])
+    assert.deepEqual(AMMO_CAPS, { arrow: 40, bolt: 24, stone: 60 })
+  })
+
+  it('emptyAmmo starts every kind at zero', () => {
+    assert.deepEqual(emptyAmmo(), { arrow: 0, bolt: 0, stone: 0 })
   })
 })
