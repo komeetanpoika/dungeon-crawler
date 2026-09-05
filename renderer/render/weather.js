@@ -64,24 +64,39 @@ function blit(ctx, layer, gco, alpha, W, H) {
 
 export function drawNight(ctx, layer, look, { camX, camY }, { W, H }, S) {
   if (!(look.dark > 0)) return
-  const L = layer.ctx, k = layer.k
-  prep(L, layer.w, layer.h)
+  const k = layer.k
   const [r, g, b] = look.ambient
-  L.fillStyle = `rgb(${r},${g},${b})`
-  L.fillRect(0, 0, layer.w, layer.h)
-  L.globalCompositeOperation = 'destination-out'
+  const ambient = `rgb(${r},${g},${b})`
   const visible = []
   for (const l of look.lights) {
+    if (onLayer((l.px - camX) * k, (l.py - camY) * k, l.r * S * k, layer)) visible.push(l)
+  }
+  // No light in view (the usual case): the layer would hold one flat
+  // colour, so the scaled blit is exactly a multiply fill of the frame —
+  // and the fill skips the layer clear, fill and smoothed upscale, which
+  // together cost a good share of a software-rendered frame.
+  if (!visible.length) {
+    ctx.save()
+    ctx.globalCompositeOperation = 'multiply'
+    ctx.globalAlpha = look.dark
+    ctx.fillStyle = ambient
+    ctx.fillRect(0, 0, W, H)
+    ctx.restore()
+    return
+  }
+  const L = layer.ctx
+  prep(L, layer.w, layer.h)
+  L.fillStyle = ambient
+  L.fillRect(0, 0, layer.w, layer.h)
+  L.globalCompositeOperation = 'destination-out'
+  for (const l of visible) {
     const x = (l.px - camX) * k, y = (l.py - camY) * k, rad = l.r * S * k
-    if (!onLayer(x, y, rad, layer)) continue
-    visible.push(l)
     L.fillStyle = radial(L, x, y, rad, `rgba(0,0,0,${l.strength})`, 'rgba(0,0,0,0)')
     L.fillRect(x - rad, y - rad, 2 * rad, 2 * rad)
   }
   L.globalCompositeOperation = 'source-over'
   blit(ctx, layer, 'multiply', look.dark, W, H)
 
-  if (!visible.length) return
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const l of visible) {

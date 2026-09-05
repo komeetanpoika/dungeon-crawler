@@ -15,68 +15,12 @@ import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
 import { getMonsterDef, drawGeneratedMonster, isStoryCreature } from '../systems/monsters.js'
 import { makeWeatherLayer, drawNight, drawFog } from './weather.js'
+import { drawTile } from './tiles.js'
+import { makeTileLayer, makeDirectTileLayer } from './tile-layer.js'
 
 const TILE_SIZE = 32
 
-function drawOverlay(ctx, tileObj, px, py, S, sprites) {
-  if (tileObj?.overlay && sprites[tileObj.overlay]) {
-    ctx.drawImage(sprites[tileObj.overlay], px, py, S, S)
-  }
-}
-
-export function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
-  if (tileId === TILE.STAIR) {
-    const w   = tileObj?.stairWidth ?? 1
-    const col = tileObj?.stairCol   ?? 0
-    let s
-    if (w === 3) {
-      s = col === 0 ? sprites.stair_left : col === 1 ? sprites.stair_mid : sprites.stair_right
-    }
-    s = s ?? sprites.stair
-    if (s) ctx.drawImage(s, px, py, S, S)
-    else { ctx.fillStyle = '#111'; ctx.fillRect(px, py, S, S) }
-    const depth = tileObj?.stairDepth
-    if (depth > 0) {
-      ctx.fillStyle = `rgba(0,0,0,${Math.min(depth / 7, 1) * 0.85})`
-      ctx.fillRect(px, py, S, S)
-    }
-    return
-  }
-  if (tileId === TILE.SNARE) {
-    if (sprites.floor) ctx.drawImage(sprites.floor, px, py, S, S)
-    ctx.fillStyle = 'rgba(0, 200, 200, 0.35)'
-    ctx.fillRect(px, py, S, S)
-    return
-  }
-  // Decoration-pass skin (only ever set on floor/wall cells)
-  if (tileObj?.skin && sprites[tileObj.skin]) {
-    ctx.drawImage(sprites[tileObj.skin], px, py, S, S)
-    drawOverlay(ctx, tileObj, px, py, S, sprites)
-    return
-  }
-  const s = (() => {
-    switch (tileId) {
-      case TILE.WALL:        return sprites.wall
-      case TILE.FLOOR:       return sprites.floor
-      case TILE.FLOOR_WOOD:  return sprites.floor_wood
-      case TILE.COLUMN:      return sprites.column
-      case TILE.DOOR:        return sprites.door
-      case TILE.STAIRS_DOWN: return sprites.stairs_dn
-      case TILE.STAIRS_UP:   return sprites.stairs_up
-      case TILE.TREASURE:    return sprites.treasure
-      case TILE.SHRINE:      return sprites.shrine
-      case TILE.SAND:        return sprites.sand
-      default: return null
-    }
-  })()
-  if (s) ctx.drawImage(s, px, py, S, S)
-  else { ctx.fillStyle = '#111'; ctx.fillRect(px, py, S, S) }
-  if (tileId === TILE.STAIRS_DOWN && tileObj?.stairDepth > 0) {
-    ctx.fillStyle = `rgba(0,0,0,${Math.min(tileObj.stairDepth / 7, 1) * 0.85})`
-    ctx.fillRect(px, py, S, S)
-  }
-  drawOverlay(ctx, tileObj, px, py, S, sprites)
-}
+export { drawTile }
 
 function drawWeapon(ctx, weaponType, px, py, S, sprites) {
   const key = `weapon_${weaponType}`
@@ -864,7 +808,9 @@ export function drawBossBySkin(ctx, e, camX, camY, S, sprites,
 export class Renderer {
   // `weatherLayer` is injectable for tests; in the app it is the pair of
   // quarter-resolution offscreen canvases the weather passes paint through.
-  constructor(canvas, { weatherLayer } = {}) {
+  // `tileLayer` likewise: the chunk cache in the app, the direct per-cell
+  // path where there is no document to make offscreen canvases from.
+  constructor(canvas, { weatherLayer, tileLayer } = {}) {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')
     this.ctx.imageSmoothingEnabled = false
@@ -877,6 +823,8 @@ export class Renderer {
     this.sprites = {}
     this.weatherLayer = weatherLayer
       ?? (typeof document !== 'undefined' ? makeWeatherLayer(() => document.createElement('canvas')) : null)
+    this.tileLayer = tileLayer
+      ?? (typeof document !== 'undefined' ? makeTileLayer(() => document.createElement('canvas')) : makeDirectTileLayer())
   }
 
   async loadSprites(extraNames = []) {
@@ -945,20 +893,7 @@ export class Renderer {
     const r0 = Math.max(0, Math.floor(camY / S))
     const r1 = Math.min(map.length, Math.ceil((camY + H) / S))
 
-    for (let row = r0; row < r1; row++) {
-      for (let col = c0; col < c1; col++) {
-        const px = Math.round(col * S - camX)
-        const py = Math.round(row * S - camY)
-        const t = map[row][col]
-        const isStair = t.tile === TILE.STAIR || t.tile === TILE.STAIRS_UP || t.tile === TILE.STAIRS_DOWN
-        if (!t.explored && !isStair) continue
-        drawTile(ctx, t.tile, px, py, S, sprites, t)
-        if (!t.visible && !isStair) {
-          ctx.fillStyle = `rgba(0,0,0,${theme.fogAlpha})`
-          ctx.fillRect(px, py, S, S)
-        }
-      }
-    }
+    this.tileLayer.draw(ctx, map, sprites, S, camX, camY, W, H, theme.fogAlpha)
 
     // Depth tint overlay (after tiles, before entities)
     if (theme.tint) {

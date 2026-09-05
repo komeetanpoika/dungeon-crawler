@@ -3,6 +3,15 @@ import { iconSrcFor } from './icons.js'
 
 function el(id) { return document.getElementById(id) }
 
+// updateHUD runs every frame; setting innerHTML re-parses the markup and
+// re-lays out the overlay even when nothing changed, so each slot remembers
+// the markup it last wrote and only touches the DOM on a difference.
+function setHTML(node, html) {
+  if (node._hudHtml === html) return
+  node._hudHtml = html
+  node.innerHTML = html
+}
+
 // One pixel heart as inline SVG; state maps to which halves are filled.
 const HEART_PATH = 'M1 1h2v1h1V1h2v3h-1v1h-1v1h-1V5H2V4H1z'   // 7x7 blocky heart
 function heart(state) {
@@ -18,22 +27,22 @@ export function updateHUD(state) {
   const { player } = state
   if (!player) return
   const hearts = Math.ceil((player.maxHp ?? 10) / 2)
-  el('hud-hearts').innerHTML = Array.from({ length: hearts }, (_, i) => {
+  setHTML(el('hud-hearts'), Array.from({ length: hearts }, (_, i) => {
     const hpForHeart = Math.max(0, Math.min(2, player.hp - i * 2))
     return heart(hpForHeart === 2 ? 'full' : hpForHeart === 1 ? 'half' : 'empty')
-  }).join('')
+  }).join(''))
   const quick = quickUseSummary(player.inventory)
   const consumableEl = el('hud-consumable')
   if (quick) {
     const item = player.inventory[findQuickUseIndex(player.inventory)]
     const src = iconSrcFor(item)
-    consumableEl.innerHTML = (src ? `<img class="hud-icon" src="${src}" alt="">` : item.emoji)
-      + `<span class="hud-count">×${quick.count}</span>`
+    setHTML(consumableEl, (src ? `<img class="hud-icon" src="${src}" alt="">` : item.emoji)
+      + `<span class="hud-count">×${quick.count}</span>`)
   } else {
     // No consumables in the sack: keep the icon visible but dimmed rather
     // than vanishing the slot (spec §3), still with no count badge.
     const emptySrc = iconSrcFor({ kind: 'potion' })
-    consumableEl.innerHTML = emptySrc ? `<img class="hud-icon hud-icon-empty" src="${emptySrc}" alt="">` : ''
+    setHTML(consumableEl, emptySrc ? `<img class="hud-icon hud-icon-empty" src="${emptySrc}" alt="">` : '')
   }
   consumableEl.dataset.quickEmoji = quick?.emoji ?? ''
   // Ammo slot: visible whenever a ranged weapon is in hand, brightest while
@@ -45,10 +54,10 @@ export function updateHUD(state) {
     const src = iconSrcFor({ kind: 'ranged', payload: { weaponType: ranged.weaponType } })
     const ammo = ranged.ammo ?? 0
     const cls = ammo > 0 ? 'hud-icon' : 'hud-icon hud-icon-empty'
-    ammoEl.innerHTML = (src ? `<img class="${cls}" src="${src}" alt="${ranged.name ?? ''}">` : '🏹')
-      + `<span class="hud-count">×${ammo}</span>`
+    setHTML(ammoEl, (src ? `<img class="${cls}" src="${src}" alt="${ranged.name ?? ''}">` : '🏹')
+      + `<span class="hud-count">×${ammo}</span>`)
   } else {
-    ammoEl.innerHTML = ''
+    setHTML(ammoEl, '')
   }
   ammoEl.dataset.active = player.attackMode === 'ranged' ? '1' : ''
   const staminaEl = el('hud-stamina')

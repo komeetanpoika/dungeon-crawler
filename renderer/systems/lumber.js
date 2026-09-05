@@ -7,6 +7,7 @@
 // overlay stays the plain tree/rock until the cell is cleared (no bar, no
 // number). Per-damage art may come later.
 import { TILE } from './entities.js'
+import { markTileDirty } from './tile-dirty.js'
 
 export const STUMP = 'ow_stump'
 const TILE_SIZE = 32
@@ -115,12 +116,14 @@ function fell(map, x, y, def) {
   cell.overlay = STUMP
   delete cell.losSoft
   delete cell.chopHp
+  markTileDirty(map, x, y)
   if (def.cells === 2) {
     const top = map[y - 1]?.[x]
     if (top && isTop(top.overlay)) {
       top.tile = TILE.FLOOR
       top.overlay = null
       delete top.losSoft
+      markTileDirty(map, x, y - 1)
     }
   }
 }
@@ -132,6 +135,7 @@ function clearRock(map, x, y) {
   cell.cleared = 'rock'
   delete cell.losSoft
   delete cell.chopHp
+  markTileDirty(map, x, y)
 }
 
 // Deal `weapon[def.tool]` to the harvestable addressed at (x, y). Felled
