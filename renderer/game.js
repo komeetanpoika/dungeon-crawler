@@ -49,7 +49,7 @@ import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
 import { startStanceSwitch, tickStanceSwitch, tryFire, FIRE_FAIL_MESSAGES } from './systems/ranged.js'
 import { tryGust, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, affordableGustTier } from './systems/magic.js'
 import { rollChestLoot } from './systems/loot.js'
-import { TALENTS, grantTalent, hasTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from './systems/talents.js'
+import { TALENTS, grantTalent, hasTalent, RUSH_START_TALENTS, MAP_CLEAR_TALENTS } from './systems/talents.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
 import { signNearby } from './systems/signs.js'
 import { showSign, hideSign } from './ui/sign-panel.js'
@@ -516,6 +516,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
   if (runMode !== 'timewarp') player.inventory.push(...getStartingItems(meta))
+  if (runMode === 'rush') player.talents = [...RUSH_START_TALENTS]
   if (OPEN_MAPS[depth]) {
     player.talents = [...activeSave.talents]
     if (activeSave.body) {
@@ -1527,9 +1528,6 @@ function update(delta) {
       queueToast(state, { title: isFinal ? 'The dragon falls!' : 'The boss falls!', lines: [isFinal ? 'Treasure gleams…' : 'It drops a key.'] })
     } else {
       announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
-    }
-    if (!state.cave && runMode === 'rush' && RUSH_TALENT_LADDER[state.level]) {
-      grantTalent(state, RUSH_TALENT_LADDER[state.level])
     }
     if (state.cave) {
       const mapData = OPEN_MAPS[state.cave.surface.level]

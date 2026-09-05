@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { TALENTS, hasTalent, grantTalent, RUSH_TALENT_LADDER, MAP_CLEAR_TALENTS } from '../renderer/systems/talents.js'
+import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS, MAP_CLEAR_TALENTS } from '../renderer/systems/talents.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 
@@ -13,9 +13,12 @@ describe('talent registry', () => {
     }
   })
 
-  it('rush ladder and map rewards reference real talents', () => {
-    for (const id of [...Object.values(RUSH_TALENT_LADDER), ...Object.values(MAP_CLEAR_TALENTS)])
-      assert.ok(TALENTS[id], id)
+  it('map rewards reference real talents', () => {
+    for (const id of Object.values(MAP_CLEAR_TALENTS)) assert.ok(TALENTS[id], id)
+  })
+
+  it('a rush run starts with every talent', () => {
+    assert.deepEqual([...RUSH_START_TALENTS].sort(), Object.keys(TALENTS).sort())
   })
 })
 
