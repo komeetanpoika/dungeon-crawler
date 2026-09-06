@@ -30,7 +30,7 @@ function makePlayer(x = 0, y = 0, overrides = {}) {
 // extra entities (e.g. fires) without re-listing the sammunut itself.
 function makeState(sammunut, player, extraEntities, map = openMap()) {
   const entities = extraEntities ?? [sammunut]
-  return { player, map, entities, projectiles: [], log: [], sfx: makeSfx() }
+  return { player, map, entities, projectiles: [], sfx: makeSfx() }
 }
 
 describe('makeSammunut', () => {

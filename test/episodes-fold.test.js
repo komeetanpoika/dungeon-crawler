@@ -7,6 +7,7 @@ import { createMap } from '../renderer/systems/map.js'
 import { TILE, weaponContents } from '../renderer/systems/entities.js'
 import { makeItem } from '../renderer/systems/inventory.js'
 import { makeNpc } from '../renderer/systems/npc.js'
+import { makeFeedback } from '../renderer/systems/feedback.js'
 import { harvest } from '../renderer/systems/lumber.js'
 import { buildOpenMap, npcSpawnIndex } from '../renderer/systems/openmap.js'
 import { makeMaahinen, updateMaahinen } from '../renderer/systems/monsters/maahinen.js'
@@ -107,7 +108,7 @@ beforeEach(() => {
   mapData = makeMapData()
   save = normalizeAdventureSave(null)
   spies = makeSpies()
-  state = { player: makePlayer(), map: makeMap(), entities: [], log: [], sfx: { cues: [] } }
+  state = { player: makePlayer(), map: makeMap(), entities: [], feedback: makeFeedback(), sfx: { cues: [] } }
   ctx = makeEpCtx({
     getState: () => state, save, mapData,
     persist: spies.persist, resolve: spies.resolve, refreshInventory: spies.refreshInventory,
@@ -226,7 +227,7 @@ describe('tick — village wrath at stage 4', () => {
     assert.equal(state.npcWrath, true)
     assert.ok(villagers(state).every(v => v.hostile === true))
     assert.equal(elderIn(state).hostile, false)
-    assert.ok(state.log.includes('The village turns on you!'))
+    assert.equal(state.feedback.banner.text, 'The village turns on you!')
   })
 })
 
@@ -383,7 +384,7 @@ describe('Maahinen on the real fold map', () => {
     const st = {
       player: { ...makePlayer(), x: playerSpawn.x, y: playerSpawn.y,
         px: playerSpawn.x * S + 16, py: playerSpawn.y * S + 16 },
-      map, entities: [], log: [], sfx: { cues: [] },
+      map, entities: [], feedback: makeFeedback(), sfx: { cues: [] },
     }
     const realSave = normalizeAdventureSave(null)
     const realSpies = makeSpies()
@@ -479,16 +480,16 @@ describe('tick — delivering the fleece without a free ground tile', () => {
     assert.equal(spies.calls.persist, 0)
     assert.equal(spies.calls.refreshInventory, 0)
     const msg = 'The elder holds the pick for you.'
-    assert.ok(state.log.includes(msg))
+    assert.equal(state.feedback.bubble.text, msg)
 
-    // throttled: an immediate re-tick does not log it again
-    const before = state.log.filter(l => l === msg).length
+    // throttled: an immediate re-tick does not think it again
+    state.feedback.bubble = null
     tick(ctx, 0)
-    assert.equal(state.log.filter(l => l === msg).length, before, 'still cooling down')
+    assert.equal(state.feedback.bubble, null, 'still cooling down')
 
     // past the cooldown it fires again
     tick(ctx, 10)
-    assert.equal(state.log.filter(l => l === msg).length, before + 1)
+    assert.equal(state.feedback.bubble.text, msg)
 
     // once the player frees a sack slot, a later tick completes the delivery
     state.player.maxInventory = 5

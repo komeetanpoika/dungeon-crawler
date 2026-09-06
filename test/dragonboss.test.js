@@ -11,7 +11,7 @@ function openMap(w = 40, h = 40) {
   return map
 }
 function mkPlayer(px, py) { return { type: 'player', x: Math.floor(px/T), y: Math.floor(py/T), px, py, hp: 30, maxHp: 30 } }
-function mkState(boss, player) { return { player, map: openMap(), projectiles: [], entities: [boss], log: [] } }
+function mkState(boss, player) { return { player, map: openMap(), projectiles: [], entities: [boss] } }
 
 describe('pointInCone', () => {
   it('true for a point inside the half-angle and within length', () => {

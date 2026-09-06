@@ -21,7 +21,7 @@ const mkPlayer = () => ({
   stamina: 100, maxStamina: 100, staminaRegenT: 99, magicCooldown: 0,
   talents: ['magic_stance'],
 })
-const mkState = (entities = []) => ({ player: mkPlayer(), entities, feedback: makeFeedback(), log: [] })
+const mkState = (entities = []) => ({ player: mkPlayer(), entities, feedback: makeFeedback() })
 const guardAt = (dx, dy) => ({ type: 'guard', px: 100 + dx, py: 100 + dy, x: 0, y: 0, hp: 4, maxHp: 4 })
 
 describe('stance cycle', () => {

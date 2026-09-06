@@ -4,7 +4,7 @@ import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS, MAP_CLEAR_TALENTS 
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 
-const mkState = () => ({ player: { talents: [] }, feedback: makeFeedback(), log: [] })
+const mkState = () => ({ player: { talents: [] }, feedback: makeFeedback() })
 
 describe('talent registry', () => {
   it('defines the three launch talents', () => {
@@ -38,14 +38,14 @@ describe('grantTalent', () => {
   })
 
   it('tolerates a player without a talents array', () => {
-    const state = { player: {}, feedback: makeFeedback(), log: [] }
+    const state = { player: {}, feedback: makeFeedback() }
     assert.equal(grantTalent(state, 'ranged_stance'), true)
     assert.ok(hasTalent(state.player, 'ranged_stance'))
     assert.equal(hasTalent({ }, 'ranged_stance'), false)
   })
 
   it('queues a talent-learned cue only when newly learned', () => {
-    const state = { player: {}, log: [], feedback: makeFeedback(), sfx: makeSfx() }
+    const state = { player: {}, feedback: makeFeedback(), sfx: makeSfx() }
     grantTalent(state, 'ranged_stance')
     assert.deepEqual(state.sfx.cues.map(c => c.name), ['talent-learned'])
     grantTalent(state, 'ranged_stance')          // already known — no new cue

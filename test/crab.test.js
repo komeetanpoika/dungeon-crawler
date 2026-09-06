@@ -15,7 +15,7 @@ function openMap(w = 20, h = 20) {
 }
 
 function makeState(crab, player) {
-  return { player, map: openMap(), projectiles: [], entities: [crab], log: [] }
+  return { player, map: openMap(), projectiles: [], entities: [crab] }
 }
 
 describe('makeCrab', () => {
@@ -94,11 +94,10 @@ describe('updateCrab — contact melee via weapon framework', () => {
     e.px = 5 * 32 + 16; e.py = 5 * 32 + 16
     e.grabCooldown = 99   // keep the grab from triggering first
     const player = { x: 5, y: 5, px: e.px + 10, py: e.py, hp: 10, grabbed: false }
-    const state = { player, map: openMap(), projectiles: [], entities: [e], log: [] }
+    const state = { player, map: openMap(), projectiles: [], entities: [e] }
     updateCrab(e, state, 0.016)
     assert.equal(player.hp, 9, 'pincer deals 1')
     assert.equal(e.attack.weaponId, 'pincer')
     assert.equal(e.attack.phase, 'swing')
-    assert.deepEqual(state.log, ['Crab pinches! (-1 HP)'])
   })
 })

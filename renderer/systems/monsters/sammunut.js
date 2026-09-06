@@ -64,9 +64,6 @@ export function nearestFire(entities, e) {
 export function inFirelight(entities, px, py) {
   return entities.some(f => f.type === 'campfire' && Math.hypot(f.px - px, f.py - py) <= FIRELIGHT)
 }
-export function inDeadwoodLight(entities, px, py) {
-  return entities.some(f => isDeadwoodFire(f) && Math.hypot(f.px - px, f.py - py) <= FIRELIGHT)
-}
 // Closest deadwood fire currently lighting this wraith (ignores `shun` — it
 // gates seeking a target, not whether standing in the light still burns).
 const nearestDeadwoodInLight = (entities, e) =>

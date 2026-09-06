@@ -3,7 +3,6 @@ import { tryStartEnemyAttack } from './enemy-attack.js'
 import { updateBrain } from './brain.js'
 import { act } from './act.js'
 
-const S = 32
 const GRAB_RANGE       = 25
 const GRAB_DURATION    = 2.0
 const GRAB_DMG_INTERVAL = 0.3
@@ -39,7 +38,7 @@ export function updateCrab(e, state, delta) {
     state.player.grabbed = true
 
     if (e.grabDamageTimer <= 0) {
-      damagePlayer(state, 1, 'dot', 'Crab pincer! (-1 HP)')
+      damagePlayer(state, 1, 'dot')
       e.grabDamageTimer = GRAB_DMG_INTERVAL
       e.inCombat = true
     }
@@ -63,5 +62,5 @@ export function updateCrab(e, state, delta) {
   }
 
   // Contact melee — pincer via the weapon framework
-  tryStartEnemyAttack(e, state, 'Crab pinches! (-1 HP)')
+  tryStartEnemyAttack(e, state)
 }

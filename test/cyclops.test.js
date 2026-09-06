@@ -15,7 +15,7 @@ function openMap(w = 20, h = 20) {
 }
 
 function makeState(cyclops, player) {
-  return { player, map: openMap(), projectiles: [], entities: [cyclops], log: [] }
+  return { player, map: openMap(), projectiles: [], entities: [cyclops] }
 }
 
 describe('makeCyclops', () => {
@@ -102,7 +102,7 @@ describe('updateCyclops — charge hit', () => {
     c.chargeAngle = 0                       // charging east, toward the player
     c.px = 5 * S + 16; c.py = 5 * S + 16
     const player = { x: 5, y: 5, px: c.px + 10, py: c.py, hp: 20, grabbed: false }
-    const state = { player, map: [], log: [] }
+    const state = { player, map: [] }
 
     updateCyclops(c, state, 0.016)
 

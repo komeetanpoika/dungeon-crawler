@@ -85,7 +85,7 @@ export function updateDragonBoss(e, state, delta) {
   // passive body contact only while NOT mid-attack — during an attack the attack itself
   // is the damage source, and sharing the i-frame window would eat its knockback.
   if (e.state === 'idle' && e.damageCooldown <= 0 && playerTouchesBody(e, player)) {
-    if (damagePlayer(state, CONTACT_DMG, 'hit', `Hit for ${CONTACT_DMG} damage!`)) {
+    if (damagePlayer(state, CONTACT_DMG, 'hit')) {
       e.damageCooldown = CONTACT_CD
     }
   }
@@ -137,7 +137,7 @@ export function updateDragonBoss(e, state, delta) {
       e.tailSwing = -0.6 + 1.6 * k
       if (k > 0.3 && k < 0.8 && e.dmgAcc === 0 && inTailArc(e, player)) {
         e.dmgAcc = 1
-        if (damagePlayer(state, TAIL_DMG, 'hit', `Tail sweep! (-${TAIL_DMG})`)) {
+        if (damagePlayer(state, TAIL_DMG, 'hit')) {
           startKnockback(player, player.px - e.px, player.py - e.py, KNOCKBACK)
         }
       }
@@ -156,7 +156,7 @@ export function updateDragonBoss(e, state, delta) {
       // crush: if the core now overlaps the player, shove + damage (once per step)
       if (!e.crushDone && coreHitsPlayer(e, player)) {
         e.crushDone = true
-        if (damagePlayer(state, CRUSH_DMG, 'hit', `Crushed! (-${CRUSH_DMG})`)) {
+        if (damagePlayer(state, CRUSH_DMG, 'hit')) {
           startKnockback(player, player.px - e.px, player.py - e.py, CRUSH_KNOCK)
         }
       }
@@ -197,7 +197,7 @@ function coneDamage(e, state, aim, delta) {
   if (pointInCone(player.px, player.py, m.x, m.y, aim, CONE_HALF, CONE_LEN)) {
     e.dmgAcc += CONE_DPS * delta
     while (e.dmgAcc >= 1) {
-      damagePlayer(state, 1, 'dot', 'Dragon fire! (-1 HP)')
+      damagePlayer(state, 1, 'dot')
       e.dmgAcc -= 1
     }
   }

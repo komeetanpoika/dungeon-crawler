@@ -8,6 +8,7 @@ import { TILE } from '../renderer/systems/entities.js'
 import { makeCampfire, tickCampfires } from '../renderer/systems/campfire.js'
 import { makeSammunut } from '../renderer/systems/monsters/sammunut.js'
 import { EPISODES } from '../renderer/data/leaps.js'
+import { makeFeedback } from '../renderer/systems/feedback.js'
 
 const S = 32
 const N = 40
@@ -68,7 +69,7 @@ beforeEach(() => {
   mapData = makeMapData()
   save = normalizeAdventureSave(null)
   spies = makeSpies()
-  state = { player: makePlayer(), map: makeMap(), entities: [], log: [], sfx: { cues: [] } }
+  state = { player: makePlayer(), map: makeMap(), entities: [], feedback: makeFeedback(), sfx: { cues: [] } }
   ctx = makeEpCtx({
     getState: () => state, save, mapData,
     persist: spies.persist, resolve: spies.resolve, refreshInventory: spies.refreshInventory,
@@ -165,7 +166,7 @@ describe('tick — hearth detection', () => {
     assert.equal(fire.px, HEARTH.x * S + S / 2)
     assert.equal(fire.py, HEARTH.y * S + S / 2)
     assert.ok(cue(state, 'campfire-light'))
-    assert.ok(state.log.includes('His wood. It holds.'))
+    assert.equal(state.feedback.bubble.text, 'His wood. It holds.')
     assert.equal(spies.calls.persist, 1)
   })
 
@@ -191,9 +192,12 @@ describe('tick — hearth detection', () => {
   it('a lumber fire on the hearth gutters: no hearth_lit, one thought per fire', () => {
     const fire = makeCampfire(HEARTH.x, HEARTH.y)
     state.entities.push(fire)
-    tick(ctx, 0.1); tick(ctx, 0.1)
+    tick(ctx, 0.1)
+    assert.match(state.feedback.bubble.text, /gutters/)
+    state.feedback.bubble = null
+    tick(ctx, 0.1)
     assert.equal(ctx.flags.hearth_lit, undefined)
-    assert.equal(state.log.filter(l => /gutters/.test(l.text ?? l)).length, 1)
+    assert.equal(state.feedback.bubble, null, 'one thought per fire')
   })
 
   it('a deadwood fire on the hearth lights it and becomes eternal', () => {

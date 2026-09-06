@@ -26,7 +26,7 @@ function makePlayer(x, y, overrides = {}) {
 }
 
 function makeState(maahinen, player, map = openMap()) {
-  return { player, map, entities: [maahinen], projectiles: [], log: [], sfx: makeSfx(), feedback: makeFeedback() }
+  return { player, map, entities: [maahinen], projectiles: [], sfx: makeSfx(), feedback: makeFeedback() }
 }
 
 describe('makeMaahinen', () => {

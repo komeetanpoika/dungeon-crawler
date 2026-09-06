@@ -9,8 +9,6 @@ export const CAMPFIRE_COST = 3        // lumber per fire
 export const CAMPFIRE_DURATION = 60   // seconds a fire burns
 export const CAMPFIRE_FADE = 10       // last seconds, during which the flame dims
 
-// Two fuels build a fire: plain lumber, or a dead tree's grey wood.
-export const FUELS = ['lumber', 'deadwood']
 
 const fuelCount = (player, fuel) => player.inventory.filter(i => i.kind === fuel).reduce((n, i) => n + (i.count ?? 1), 0)
 

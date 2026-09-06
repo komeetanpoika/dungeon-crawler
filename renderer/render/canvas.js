@@ -1,4 +1,4 @@
-import { TILE, FACING_ANGLE } from '../systems/entities.js'
+import { FACING_ANGLE } from '../systems/entities.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
