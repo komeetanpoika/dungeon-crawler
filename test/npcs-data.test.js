@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { WEAPONS } from '../renderer/systems/enemy-attack.js'
+import { NPC_SHEETS } from '../renderer/render/npc-sheets.js'
 
 const GOAL_NAMES = new Set(['flee_hurt', 'hunt_prey', 'attack_hostile', 'startle', 'go_to', 'wander'])
 
@@ -17,7 +18,9 @@ describe('NPC_SPECIES', () => {
       assert.ok(['fight', 'flee'].includes(s.onHit), `${name} onHit`)
       assert.ok(s.hp >= 1 && s.speed > 0 && s.wanderSpeed > 0 && s.roam >= 1, `${name} numbers`)
       assert.ok(s.fleeHp >= 0 && s.fleeHp <= 1, `${name} fleeHp`)
-      assert.ok(typeof s.sprite === 'string', `${name} sprite`)
+      // Art is a 16x16 tile or a frame sheet, never both.
+      if (s.sheet) assert.ok(NPC_SHEETS[s.sheet] && s.sprite === undefined, `${name} sheet`)
+      else assert.ok(typeof s.sprite === 'string', `${name} sprite`)
       assert.ok(s.priorities.length && s.priorities.at(-1) === 'wander', `${name} ends in wander`)
       for (const g of s.priorities) assert.ok(GOAL_NAMES.has(g), `${name} goal ${g}`)
     }
