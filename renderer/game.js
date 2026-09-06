@@ -234,6 +234,30 @@ function persistRun() {
   else window.saveAPI.saveCaves?.(savedAdventure)
 }
 
+// Progress only persists on the open maps (Adventure/Timewarp) — a
+// Dungeon Rush level, or a cave under one, saves nothing mid-run.
+function persistIfSurface() {
+  if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
+}
+
+// One thought per key per `secs`, so a held key or a stood-on tile can't
+// spam the bubble. Returns whether it spoke; tickMsgCooldowns runs the
+// clocks down every frame.
+function throttledThink(key, text, secs = 2) {
+  const cd = state.msgCooldown ??= {}
+  if ((cd[key] ?? 0) > 0) return false
+  think(state, text)
+  cd[key] = secs
+  return true
+}
+function tickMsgCooldowns(delta) {
+  const cd = state.msgCooldown
+  for (const k in cd) cd[k] = Math.max(0, cd[k] - delta)
+}
+
+const isRegistryMonster = e => !!getMonsterDef(e.type)
+function cullEntities() { state.entities = cullDead(state.entities, isRegistryMonster) }
+
 // Every distinct skin/overlay used by any structure, so the renderer can draw them
 // even when the active ruleset doesn't reference those tiles.
 function structureTileNames(structs) {
@@ -379,7 +403,7 @@ const projectileHooks = {
   damagePlayer: damage => damagePlayer(state, damage, 'hit'),
   // A corpse sits at 0 hp until it is culled, and would otherwise soak a
   // second projectile arriving the same frame.
-  cull: entities => cullDead(entities, e => !!getMonsterDef(e.type)),
+  cull: entities => cullDead(entities, isRegistryMonster),
 }
 
 const BACKWARDS = { north: 'south', south: 'north', east: 'west', west: 'east' }
@@ -432,8 +456,7 @@ function grantContents(contents) {
   if (!item) return true
   const r = autoEquipOnPickup(state.player, item)
   if (!r.ok) {
-    state.packMsgCooldown = state.packMsgCooldown ?? 0
-    if (state.packMsgCooldown <= 0) { think(state, 'My pack is full.'); state.packMsgCooldown = 2 }
+    throttledThink('pack', 'My pack is full.')
     return false
   }
   // An ammo bundle (or the quiver top-up a bow pickup brings) never reaches a
@@ -681,15 +704,11 @@ function startNewRun(depth = 1, arenaCfg = null) {
     hasKey: false,
     dropSpawned: false,
     lastBossTile: null,
-    lockedMsgCooldown: 0,
-    fireMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
     houseDoors: houseDoors ?? [],
     caveInstances: OPEN_MAPS[depth] ? { ...activeSave.caves[OPEN_MAPS[depth].name] } : {},
     gates: gates ?? {},
-    gateMsgCooldown: 0,
     mapExit: mapExit ?? null,
-    exitMsgCooldown: 0,
     entranceHold: false,
     signs: signs ?? [],
     npcWrath: !!npcRecord?.hostile,
@@ -844,7 +863,7 @@ function closeToast() {
 function afterInventoryChange() {
   refreshInventory(state)
   updateHUD(state)
-  if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
+  persistIfSurface()
 }
 
 function useInventoryItem(i) {
@@ -925,13 +944,14 @@ function update(delta) {
       state.player.trance = 0
       // Talent-less anchors (e.g. the marsh's mushroom ring) still play the
       // trance and ceremony but grant nothing — skip grantTalent entirely.
-      if (talent && grantTalent(state, talent) && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
+      if (talent && grantTalent(state, talent)) persistIfSurface()
     }
     tickFeedback(state.feedback, delta)
     return
   }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
+  tickMsgCooldowns(delta)
 
   // Player movement — skip if grabbed by a crab this frame
   const wasGrabbed = player.grabbed ?? false
@@ -970,7 +990,7 @@ function update(delta) {
     // re-triggerable rather than silently destroying the contents.
     const directGrant = !adj && grantContents(chest.contents)
     const granted = adj || directGrant
-    if (directGrant && OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
+    if (directGrant) persistIfSurface()
     if (adj) {
       state.entities.push({
         type: 'floating_item',
@@ -995,7 +1015,7 @@ function update(delta) {
     const item = state.entities[floatIdx]
     if (grantContents(item.contents)) {
       state.entities = state.entities.filter((_, i) => i !== floatIdx)
-      if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
+      persistIfSurface()
     }
   }
 
@@ -1041,11 +1061,7 @@ function update(delta) {
     const gate = state.gates?.[arch.label]
     if (gate && !gate.open) {
       // Sealed: stay on the cell and explain on a cooldown, like the waystone.
-      state.gateMsgCooldown = (state.gateMsgCooldown ?? 0) - delta
-      if (state.gateMsgCooldown <= 0) {
-        think(state, 'The vined gate is sealed. The gargoyles beside it are dry…')
-        state.gateMsgCooldown = 2
-      }
+      throttledThink('gate', 'The vined gate is sealed. The gargoyles beside it are dry…')
     } else { enterCave(arch); return }
   }
   // House doors — same walk-onto/hold pattern as arches, no gate to check.
@@ -1067,22 +1083,14 @@ function update(delta) {
     const mapData = OPEN_MAPS[state.level]
     if (mapData && runMode === 'timewarp') {
       if (isMapUnlocked(activeSave, mapData)) { persistRun(); goEpisodeSelect(); return }
-      state.exitMsgCooldown = (state.exitMsgCooldown ?? 0) - delta
-      if (state.exitMsgCooldown <= 0) {
-        think(state, 'The runestone is dark. Something here is still wrong.')
-        state.exitMsgCooldown = 2
-      }
+      throttledThink('exit', 'The runestone is dark. Something here is still wrong.')
     } else if (mapData) {
       const dests = waystoneDestinations(activeSave).filter(d => d.depth !== state.level)
       if (dests.length && !state.exitMenuHold) { openWaystoneMenu(dests); return }
       if (!dests.length) {
-        state.exitMsgCooldown = (state.exitMsgCooldown ?? 0) - delta
-        if (state.exitMsgCooldown <= 0) {
-          const done = activeSave.progress.cleared[mapData.name] ?? []
-          const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
-          think(state, `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
-          state.exitMsgCooldown = 2
-        }
+        const done = activeSave.progress.cleared[mapData.name] ?? []
+        const remain = dungeonLabels(mapData).filter(l => !done.includes(l)).length
+        throttledThink('exit', `The waystone is silent — ${remain} dungeon${remain === 1 ? '' : 's'} remain${remain === 1 ? 's' : ''}.`)
       }
     }
   } else state.exitMenuHold = false
@@ -1100,7 +1108,7 @@ function update(delta) {
   const shroomIdx = state.entities.findIndex(e => e.type === 'wild_mushroom' && e.x === player.x && e.y === player.y)
   if (shroomIdx !== -1 && grantContents({ type: 'mushroom' })) {
     state.entities = state.entities.filter((_, i) => i !== shroomIdx)
-    if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
+    persistIfSurface()
   }
 
   // Rite triggers: silent unless the rite's condition holds
@@ -1121,12 +1129,7 @@ function update(delta) {
       else descendLevel()
       return
     }
-    state.lockedMsgCooldown = Math.max(0, (state.lockedMsgCooldown ?? 0) - delta)
-    if (state.lockedMsgCooldown <= 0) {
-      think(state, 'The door is locked — defeat the boss for its key.')
-      sfx(state, 'door-locked')
-      state.lockedMsgCooldown = 2
-    }
+    if (throttledThink('locked', 'The door is locked — defeat the boss for its key.')) sfx(state, 'door-locked')
   }
 
   // Victory: walk onto the treasure the final boss dropped
@@ -1249,7 +1252,7 @@ function update(delta) {
         if (miekka) struck.push(hitEnemy)
         return hitEnemy
       })
-    state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
+    cullEntities()
     // Maunonmiekka magic: a crimson shockwave bursts from every struck enemy,
     // splashing damage + knockback onto its neighbours.
     if (struck.length) {
@@ -1292,7 +1295,7 @@ function update(delta) {
               px: spx, py: spy - TILE_SIZE, progress: 0, duration: 0.35,
             })
           }
-          if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
+          persistIfSurface()
         }
       }
     }
@@ -1303,11 +1306,7 @@ function update(delta) {
     // Truly unarmed: no swing at all — like the empty ranged slot, the fix
     // is finding a weapon, and the game says so instead of doing nothing.
     player.charging = null
-    state.meleeMsgCooldown = Math.max(0, (state.meleeMsgCooldown ?? 0) - delta)
-    if (attacking && state.meleeMsgCooldown <= 0) {
-      think(state, 'Unarmed — you need a weapon.')
-      state.meleeMsgCooldown = 2
-    }
+    if (attacking) throttledThink('melee', 'Unarmed — you need a weapon.')
   } else if (player.attackMode === 'melee' && isChargeWeapon(meleeWT)) {
     if (player.charging) {
       if (keys[' '] && !shouldAutoRelease(meleeWT, player.charging.t)) {
@@ -1323,11 +1322,6 @@ function update(delta) {
     if (player.charging && !player.charging.kind) player.charging = null   // weapon swapped mid-wind-up
     if (attacking && player.attackMode === 'melee' && player.meleeCooldown <= 0) swing(resolveCharge(meleeWT, 0))
   }
-
-  // Ranged and magic message throttles — holding Space must not spam the log.
-  state.fireMsgCooldown = Math.max(0, (state.fireMsgCooldown ?? 0) - delta)
-  state.packMsgCooldown = Math.max(0, (state.packMsgCooldown ?? 0) - delta)
-  state.magicMsgCooldown = Math.max(0, (state.magicMsgCooldown ?? 0) - delta)
 
   // Magic (Space in the magic stance): hold to charge, release to cast the
   // held wand's spell — or Gust of Wind with an empty wand hand. Overlong
@@ -1345,10 +1339,7 @@ function update(delta) {
         if (cast.ok) showCast(cast)
         else if (cast.reason === 'stamina') {
           player.staminaRefusedT = 0.4
-          if (state.magicMsgCooldown <= 0) {
-            think(state, 'Too winded to shape the wind.')
-            state.magicMsgCooldown = 2
-          }
+          throttledThink('magic', 'Too winded to shape the wind.')
         }
       }
     } else if (attacking && (player.magicCooldown ?? 0) <= 0 && hasTalent(player, 'magic_stance')) {
@@ -1368,7 +1359,7 @@ function update(delta) {
       const msg = shot.reason === 'no_ammo'
         ? noAmmoMessage(player.ranged?.ammoKind)
         : FIRE_FAIL_MESSAGES[shot.reason]
-      if (msg && state.fireMsgCooldown <= 0) { think(state, msg); state.fireMsgCooldown = 1.5 }
+      if (msg) throttledThink('fire', msg, 1.5)
       return
     }
     const dir = DIRS[player.facing] ?? DIRS.east
@@ -1422,14 +1413,14 @@ function update(delta) {
   // the projectiles, so a kill here culls like any other.
   if (state.zones?.length) {
     tickZones(state, delta, { hurt: hurtEntity })
-    state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
+    cullEntities()
   }
 
   // Call Lightning: unconditional by contract — the tick also counts the
   // weather layer's strike-light down, so skipping it on a quiet frame would
   // leave a night map lit as day. It early-outs on its own when idle.
   const sky = tickLightning(state, delta, { hurt: hurtEntity })
-  if (sky.struck) state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
+  if (sky.struck) cullEntities()
   state.flash = Math.max(0, (state.flash ?? 0) - delta)
 
   // Blink's afterimages fade over BLINK_DUR and then stop being drawn.
@@ -1676,7 +1667,7 @@ function update(delta) {
       sfx(state, e.hp <= 0 ? deathCue(e) : 'wall-slam', { px: e.px, py: e.py })
     }
   }
-  state.entities = cullDead(state.entities, e => !!getMonsterDef(e.type))
+  cullEntities()
   stepKnockback(player, delta, (px, py) => canMoveTo(map, px, py, PLAYER_HALF))
 
   // Flush NPC deaths and wrath. It has to sit after the cull above, because
@@ -1805,7 +1796,6 @@ function travelToMap(depth) {
       py: playerSpawn.y * TILE_SIZE + TILE_SIZE / 2,
     },
     hasKey: false, dropSpawned: false, lastBossTile: null,
-    lockedMsgCooldown: 0, fireMsgCooldown: 0, exitMsgCooldown: 0,
     caveEntrances: caveEntrances ?? [],
     houseDoors: houseDoors ?? [],
     caveInstances: { ...activeSave.caves[mapName] },
@@ -1861,8 +1851,6 @@ function descendLevel() {
     hasKey: false,
     dropSpawned: false,
     lastBossTile: null,
-    lockedMsgCooldown: 0,
-    fireMsgCooldown: 0,
     run: { ...state.run, deepestLevel: Math.max(state.run.deepestLevel, next) },
     weather: weatherForDepth(next),
   }

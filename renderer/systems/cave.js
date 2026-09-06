@@ -43,8 +43,6 @@ export function buildCaveState(surface, entrance, dungeon) {
     hasKey: dungeon.hasKey ?? false,
     dropSpawned: dungeon.dropSpawned ?? false,
     lastBossTile: dungeon.lastBossTile ?? null,
-    lockedMsgCooldown: 0,
-    fireMsgCooldown: 0,
     entranceHold: false,
     caveEntrances: [],
     cave: {
