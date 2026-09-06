@@ -2,7 +2,6 @@ import { hasLineOfSight, makeMonster } from './entities.js'
 import { updateBrain } from './brain.js'
 import { act } from './act.js'
 
-const S = 32
 const BOLT_SPEED    = 300
 const SPREAD_SPEED  = 200
 const SPELL_COOLDOWN = 2.0

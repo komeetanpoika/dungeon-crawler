@@ -86,7 +86,6 @@ export function panFor(dxPx) {
 export function makeAudio() {
   const audio = {
     ctx: null, master: null, noiseBuf: null,
-    files: {},          // name -> AudioBuffer (registered overrides)
     lastPlayed: {},     // name -> ctx.currentTime of last play
     voices: [],         // active { stop } handles, oldest first
     warned: {},         // name -> true (one warning per unknown cue)
@@ -121,16 +120,6 @@ function ensureCtx(audio) {
   }
 }
 
-export async function registerFile(audio, name, arrayBuffer) {
-  ensureCtx(audio)
-  if (audio.disabled) return
-  try {
-    audio.files[name] = await audio.ctx.decodeAudioData(arrayBuffer)
-  } catch (err) {
-    console.warn('sfx: failed to decode file for "' + name + '":', err)
-  }
-}
-
 export function playCues(audio, cues, player, muted = false) {
   if (audio.disabled) return
   if (muted !== audio.muted) {
@@ -153,7 +142,7 @@ export function playCues(audio, cues, player, muted = false) {
 
 function playCue(audio, cue, player) {
   const recipe = RECIPES[cue.name]
-  if (!audio.files[cue.name] && !recipe) {
+  if (!recipe) {
     if (!audio.warned[cue.name]) {
       console.warn(`sfx: no recipe for cue "${cue.name}"`)
       audio.warned[cue.name] = true
@@ -179,26 +168,12 @@ function playCue(audio, cue, player) {
   out.connect(panner)
   panner.connect(audio.master)
 
-  const file = audio.files[cue.name]
-  const stop = file
-    ? playFile(audio, file, out, gain)
-    : playRecipe(audio, recipe, out, gain)
-  const handle = { stop }
+  const handle = { stop: playRecipe(audio, recipe, out, gain) }
   audio.voices.push(handle)
-  const dur = file ? file.duration : recipe.dur
   setTimeout(() => {
     const i = audio.voices.indexOf(handle)
     if (i !== -1) audio.voices.splice(i, 1)
-  }, dur * 1000 + 100)
-}
-
-function playFile(audio, buffer, out, gain) {
-  const src = audio.ctx.createBufferSource()
-  src.buffer = buffer
-  out.gain.value = gain
-  src.connect(out)
-  src.start()
-  return () => { try { src.stop() } catch {} }
+  }, recipe.dur * 1000 + 100)
 }
 
 const jitter = () => 0.95 + Math.random() * 0.1   // ±5 % pitch variance

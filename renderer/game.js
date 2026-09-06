@@ -1,7 +1,7 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, TILE, isWalkable, DIRS, FACING_ANGLE } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -26,7 +26,7 @@ import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToas
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
-import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, addItem, removeItem, equipItem, canEquip, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
@@ -60,7 +60,7 @@ import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals }
 import { signNearby } from './systems/signs.js'
 import { showSign, hideSign } from './ui/sign-panel.js'
 import { showToast, hideToast } from './ui/toast.js'
-import { getAttack, meleeHit, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor, shouldAutoRelease, tierMods } from './systems/melee.js'
+import { getAttack, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor, shouldAutoRelease, tierMods } from './systems/melee.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
 import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
@@ -72,7 +72,6 @@ const weatherForDepth = depth => OPEN_MAPS[depth] ? makeWeather(OPEN_MAPS[depth]
 
 const TILE_SIZE = 32
 const PLAYER_SPEED = 120
-const MELEE_COOLDOWN = 0.4
 const PROJECTILE_SPEED = 280
 const STONES_PER_ROCK = 3      // sling ammo from a rock cracked with a pick
 const CONTACT_RANGE = 20

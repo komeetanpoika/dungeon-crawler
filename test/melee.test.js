@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { ATTACK_STYLES, getAttack, getSwingArc, meleeHit, SWING_ARCS, shouldAutoRelease, tierMods, resolveCharge, isChargeWeapon } from '../renderer/systems/melee.js'
-import { WEAPON_TYPES, weaponContents, makeWeapon } from '../renderer/systems/entities.js'
+import { WEAPON_TYPES, weaponContents } from '../renderer/systems/entities.js'
 import { drawEnemySwing, drawMeleeSwing, swingPose } from '../renderer/render/canvas.js'
 import { WEAPONS, weaponWedge } from '../renderer/systems/enemy-attack.js'
 
@@ -317,7 +317,6 @@ describe('hatchet', () => {
     assert.deepEqual(weaponContents('hatchet'), { weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 })
     assert.deepEqual(weaponContents('axe'), { weaponType: 'axe', name: 'Axe', damage: 4, heavy: true, chop: 2 })
     assert.deepEqual(weaponContents('dagger'), { weaponType: 'dagger', name: 'Dagger', damage: 1 })
-    assert.equal(makeWeapon(0, 0, 'hatchet').chop, 1)
   })
   it('re-deriving a pre-branch payload only adds chop (how old saves regain it)', () => {
     const oldV4AxePayload = { weaponType: 'axe', name: 'Axe', damage: 4, heavy: true }

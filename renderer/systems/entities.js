@@ -13,8 +13,6 @@ export const TILE = {
   STAIR: 11,
 }
 
-export const DRAGON_STATE = { SLEEPING: 'sleeping', STIRRING: 'stirring', AWAKE: 'awake' }
-
 export const WEAPON_TYPES = {
   // `chop` is the damage a swing deals a tree (systems/lumber.js); blades
   // without it can't fell anything.
@@ -242,14 +240,6 @@ export function makePuzzle(x, y) {
 
 export function makeDragon(x, y, roomId) {
   return { type: 'dragon', x, y, roomId, hp: 12, maxHp: 12, inCombat: false }
-}
-
-export function makeWeapon(x, y, weaponType = 'dagger') {
-  return { type: 'weapon', x, y, ...weaponContents(weaponType) }
-}
-
-export function makePotion(x, y, amount = 4) {
-  return { type: 'potion', x, y, amount }
 }
 
 export function makeChest(x, y, contents) {

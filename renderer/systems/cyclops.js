@@ -5,7 +5,6 @@ import { tryStartEnemyAttack } from './enemy-attack.js'
 import { updateBrain } from './brain.js'
 import { act } from './act.js'
 
-const S = 32
 const CYCLOPS_CHARGE_SPEED = 300
 const CHARGE_WINDUP        = 1.5
 const CHARGE_DURATION      = 3.0

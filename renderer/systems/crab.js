@@ -3,7 +3,6 @@ import { tryStartEnemyAttack } from './enemy-attack.js'
 import { updateBrain } from './brain.js'
 import { act } from './act.js'
 
-const S = 32
 const GRAB_RANGE       = 25
 const GRAB_DURATION    = 2.0
 const GRAB_DMG_INTERVAL = 0.3

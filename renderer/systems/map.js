@@ -132,57 +132,6 @@ function carveEntrancePassage(map, rooms) {
   return { x: col, y: 1 }
 }
 
-function carveExitPassage(map, width, rooms) {
-  const WALKABLE_LEN = 4
-  const VOID_LEN    = 3
-  const half       = Math.floor((width - 1) / 2)
-  const centerCol  = map[0].length - 3          // 77 for MAP_W=80
-  const startRow   = map.length - 9             // 41 for MAP_H=50
-  const endRow     = map.length - 2             // 48 for MAP_H=50
-
-  // Connect passage to nearest room. Target is startRow so the vertical leg writes
-  // floor at startRow-1 (row 40) — carveCorridor stops before y2, so row 40 gets carved
-  // but row 41+ is left for the passage tiles below to fill.
-  const connRow = startRow                      // row 41 — corridor writes up to row 40
-  const nearest = rooms.reduce((best, r) => {
-    const c = center(r), d = Math.abs(c.x - centerCol) + Math.abs(c.y - connRow)
-    return d < best.d ? { d, r } : best
-  }, { d: Infinity, r: rooms[0] })
-  carveCorridor(map, center(nearest.r).x, center(nearest.r).y, centerCol, connRow)
-
-  // Carve passage tiles after the corridor so they are never overwritten
-  for (let row = startRow; row <= endRow; row++) {
-    const depth       = row - startRow          // 0 at row 41, 7 at row 48
-    const isStairsDown = depth === WALKABLE_LEN // depth 4 → row 45
-    const isVoid       = depth >  WALKABLE_LEN  // depths 5–7
-
-    for (let i = 0; i < width; i++) {
-      const col = centerCol - half + i
-      if (!map[row]?.[col]) continue
-
-      if (isStairsDown && i === Math.floor((width - 1) / 2)) {
-        map[row][col].tile       = TILE.STAIRS_DOWN
-        map[row][col].stairDepth = depth
-        map[row][col].stairCol   = i
-        map[row][col].stairWidth = width
-        map[row][col].voidZone   = false
-      } else if (isVoid) {
-        map[row][col].tile       = TILE.STAIR
-        map[row][col].stairDepth = depth
-        map[row][col].stairCol   = i
-        map[row][col].stairWidth = width
-        map[row][col].voidZone   = true
-      } else {
-        map[row][col].tile       = TILE.STAIR
-        map[row][col].stairDepth = depth
-        map[row][col].stairCol   = i
-        map[row][col].stairWidth = width
-        map[row][col].voidZone   = false
-      }
-    }
-  }
-}
-
 export function carveRoomShaped(map, room) {
   switch (room.shape) {
     case 'lshape': room.center = carveRoomL(map, room);      break
