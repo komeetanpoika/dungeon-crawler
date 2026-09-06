@@ -30,6 +30,7 @@ import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, addItem
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
+import { generateInterior } from './systems/interior.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { normalizeTimewarpSave, enterEpisode, episodeEntries } from './systems/timewarp.js'
@@ -1751,8 +1752,8 @@ function enterCave(entrance) {
 
 // House doors reuse the cave transition wholesale — a stored instance means
 // killed vermin stay dead and taken pickups stay taken; missing here means
-// generate a fresh interior (generic BSP layout, or the story house's
-// prefab + pickups when the door resolves to one).
+// generate a fresh interior (one of the five house plans, with the story
+// house's prefab + pickups laid in when the door resolves to one).
 function enterHouse(door) {
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
   const inst = state.caveInstances?.[door.label]
@@ -1765,8 +1766,7 @@ function enterHouse(door) {
     const cfg = INTERIOR_CONFIG[door.tier]
     const theme = DEPTH_THEMES.find(t => t.depths.includes(INTERIOR_DEPTH)) ?? DEPTH_THEMES[0]
     const structs = storyStructures(structures, state.episode, door.story)
-    const { map, entitySpawns, playerSpawn } =
-      generateLevel(INTERIOR_DEPTH, cfg.mapW, cfg.mapH, { config: cfg, structures: structs })
+    const { map, entitySpawns, playerSpawn } = generateInterior(cfg, { structures: structs })
     const spawns = attachPickups(entitySpawns, state.episode?.houses?.[door.story]?.pickups ?? [])
     state = buildCaveState(state, entrance, {
       map, entities: buildEntities(spawns, map, INTERIOR_DEPTH), playerSpawn, theme,
@@ -1796,7 +1796,7 @@ function travelToMap(depth) {
   // The map being left still owns its npc record — write it before `state`
   // becomes the new map and the departing kills/wrath are out of reach. Its
   // cleared instances go too: nothing ages them once we are elsewhere, so
-  // they would pile up in the save one 44x28 interior per door opened.
+  // they would pile up in the save one interior per door opened.
   if (OPEN_MAPS[state.level]) {
     npcDirty = false
     state.caveInstances = pruneClearedInstances(state.caveInstances)

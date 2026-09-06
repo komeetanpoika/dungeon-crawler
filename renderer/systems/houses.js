@@ -58,24 +58,23 @@ export function houseDoorsForMap(data, episode) {
   return doors
 }
 
-// Interior generation: house doors transition into a BSP level at this fixed
-// depth (generateLevel's LEVEL_CONFIG lookup is bypassed via the `config`
-// option, so this depth never needs its own LEVEL_CONFIG entry).
+// Interior generation: house doors transition into one of the five hand-drawn
+// plans in data/house-layouts.js (systems/interior.js) at this fixed depth,
+// which never needs a LEVEL_CONFIG entry of its own. Each tier gives count
+// ranges [min, max] rolled per house — a plan has 60-300 floor cells, so
+// per-tile densities would round to nothing.
 export const INTERIOR_DEPTH = 19
-const base = { depth: INTERIOR_DEPTH, mapW: 44, mapH: 28, staircaseWidth: 1, guardCount: 0, trapDensity: 0, puzzleDensity: 0, landmark: null, weapons: ['dagger'] }
-// `guaranteed`: variants generateLevel must place at least one of each,
-// counted toward (not added on top of) the density roll — spec "a ruin has
-// spiders + 1 strong" needs a deterministic strong (and, so the interior test
-// can assert per-generation, a deterministic medium too) rather than leaving
-// both to chance against a 3-monster sample. Empty/absent elsewhere.
-// `weaponDensity` counts FLOOR weapons, not chests (generateLevel's `config`
-// path lays floating pickups — a house has no chests to open). Only a ruin
-// arms you, and only from `weaponPool`: the two humblest melee weapons, so a
-// derelict cottage never out-gifts a dungeon.
+// `guaranteed`: variants every house of the tier must hold, counted toward
+// (not on top of) the monster roll — spec "a ruin has spiders + 1 strong"
+// needs a deterministic strong (and a deterministic medium, so the interior
+// test can assert per-generation). `weapons` counts FLOOR weapons — a house
+// has no chests to open — and only a ruin arms you, only from `weaponPool`:
+// the two humblest melee weapons, so a derelict cottage never out-gifts a
+// dungeon.
 export const INTERIOR_CONFIG = {
-  safe: { ...base, monsterDensity: 0,     variantPool: [],                             weaponDensity: 0,     potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel'] },
-  hut:  { ...base, monsterDensity: 0.006, variantPool: ['weak'],                       weaponDensity: 0,     potionDensity: 0.006, props: ['prop_table', 'prop_chair', 'prop_barrel', 'prop_anvil'] },
-  ruin: { ...base, monsterDensity: 0.010, variantPool: ['medium', 'medium', 'strong'], weaponDensity: 0.008, potionDensity: 0.008, weaponPool: ['dagger', 'sword'], props: ['prop_gravestone', 'prop_barrel'], guaranteed: ['strong', 'medium'] },
+  safe: { depth: INTERIOR_DEPTH, monsters: [0, 0], variantPool: [],                             weapons: [0, 0], potions: [0, 1], props: ['prop_table', 'prop_chair', 'prop_barrel'] },
+  hut:  { depth: INTERIOR_DEPTH, monsters: [1, 2], variantPool: ['weak'],                       weapons: [0, 0], potions: [0, 1], props: ['prop_table', 'prop_chair', 'prop_barrel', 'prop_anvil'] },
+  ruin: { depth: INTERIOR_DEPTH, monsters: [3, 4], variantPool: ['medium', 'medium', 'strong'], weapons: [1, 1], potions: [1, 2], weaponPool: ['dagger', 'sword'], props: ['prop_gravestone', 'prop_barrel'], guaranteed: ['strong', 'medium'] },
 }
 
 // Prefab pickup slots -> the story house's items, laid on the floor. A
