@@ -57,25 +57,31 @@ Signposts that share the `ow_sign` art are unaffected (different prefix).
 `enterHouse(door)` reuses the cave transition (`buildCaveState`,
 `restoreSurface`, `caveInstances[label]`) with an interior in place of a cave:
 
-- **Generator**: `generateLevel(INTERIOR_DEPTH, cfg.mapW, cfg.mapH, …)` with
-  `INTERIOR_DEPTH = 19` and `INTERIOR_CONFIG[tier]` supplying the level config
-  (grid 44×28, `staircaseWidth 1`, `landmark: null`, `weapons: ['dagger']`):
+- **Generator** (revised 2026-09-06, superseding the BSP grid): `generateInterior(cfg,
+  { structures })` in `systems/interior.js` stamps one of the **five hand-drawn
+  plans** in `data/house-layouts.js` — cottage 15×11, longhouse 23×9, farmhouse
+  19×15 (L-shaped), hall 22×11, manor 26×17 — chosen at random per house, every
+  plan at most 40×40. Each plan carries a fixed 9×7 **story slot** drawn as the
+  prefab silhouette, so a story prefab lands there without breaking
+  connectivity. `INTERIOR_CONFIG[tier]` gives count ranges `[min, max]` rolled
+  per house (a plan has 60–300 floor cells, so per-tile densities round to
+  nothing):
 
   | tier | monsters | loot | props |
   |---|---|---|---|
-  | safe | none | `potionDensity 0.006` | tables, chairs, barrels, crates |
-  | hut  | `monsterDensity 0.006`, weak (rats) | potions 0.006, `weaponDensity 0.004` | + anvil |
-  | ruin | `monsterDensity 0.010`, medium (spiders) + 1 strong | potions 0.008, weapons 0.008 | gravestones, rubble |
+  | safe | none | potions 0–1 | tables, chairs, barrels |
+  | hut  | 1–2 weak (rats) | potions 0–1 | + anvil |
+  | ruin | 3–4: medium (spiders) + 1 guaranteed strong | potions 1–2, 1 dagger/sword | gravestones, barrels |
 
-  Monster variant selection at `INTERIOR_DEPTH` follows the tier, not the
-  depth (a `variantPool` in the config).
+  Props scatter one per 14 floor cells (1–6), never on a story prefab cell.
+  Monster variant selection follows the tier, not the depth (`variantPool`).
 - **Theme**: a new `DEPTH_THEMES` entry for depth 19: `floorTile: 'floor_wood'`
   (the wooden-plank tile — chosen from the tileset contact sheet; the current
   `floor_wood` alias points at a crate and is corrected), `bgColor '#120c06'`,
   `fogAlpha 0.55`, `props.room` per the table, no ruleset (the BSP walls keep
   the dungeon wall art — cellars).
-- **Spawn/exit**: the BSP spawn room's centre is the entry tile
-  (`TILE.STAIRS_UP`), the way back out.
+- **Spawn/exit**: the plan's `@` cell is the entry tile (`TILE.STAIRS_UP`),
+  the way back out.
 - **Persistence and reset**: the instance is stored under the door label in
   `caveInstances` on exit, so killed vermin stay dead and pickups stay taken;
   `cleared` is always true (no boss), so the instance is dropped after

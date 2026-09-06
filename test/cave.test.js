@@ -5,7 +5,7 @@ import { buildOpenMap } from '../renderer/systems/openmap.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
-import { generateLevel } from '../renderer/systems/map.js'
+import { generateInterior } from '../renderer/systems/interior.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG } from '../renderer/systems/houses.js'
 
 const T = 32
@@ -238,8 +238,7 @@ describe('house doors round-trip through the cave transition', () => {
 
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
   const surface = { ...surfaceState(), houseDoors: surfaceMap.houseDoors, caveInstances: {} }
-  const interior = generateLevel(INTERIOR_DEPTH, INTERIOR_CONFIG.safe.mapW, INTERIOR_CONFIG.safe.mapH,
-    { config: INTERIOR_CONFIG.safe, structures: {} })
+  const interior = generateInterior(INTERIOR_CONFIG.safe, { structures: {} })
 
   it('buildCaveState labels the cave with the door label, at the interior depth, spawn as up-stairs', () => {
     const state = buildCaveState(surface, entrance, {
