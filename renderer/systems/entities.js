@@ -150,7 +150,10 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
   return true
 }
 
-export function computePlayerFOV(map, player, radius = 8) {
+// `los: false` lights the whole radius with no ray test — the open maps
+// (Adventure, Timewarp) show everything around the player; dungeons, caves
+// and interiors keep line of sight.
+export function computePlayerFOV(map, player, radius = 8, { los = true } = {}) {
   // Reset visibility before recomputing. Clearing the *whole* map is O(W×H),
   // which is fine for a dungeon room but dominates on large / open-world maps.
   // So on a repeat call for the SAME map we clear only the tiles we lit last
@@ -171,7 +174,7 @@ export function computePlayerFOV(map, player, radius = 8) {
       const tx = px + dx, ty = py + dy
       const t = map[ty]?.[tx]
       if (!t) continue
-      if (hasLineOfSight(map, py, px, ty, tx)) {
+      if (!los || hasLineOfSight(map, py, px, ty, tx)) {
         t.visible = true
         t.explored = true
         lit.push(t)
@@ -186,14 +189,16 @@ export function computePlayerFOV(map, player, radius = 8) {
 // not on every sub-tile pixel of movement. Cache the last inputs on the player
 // and skip the full-map clear + raycast when nothing relevant has moved.
 // Returns true if it recomputed, false if it reused the cached visibility.
-export function maybeComputeFOV(map, player, radius = 8) {
-  if (player._fovMap === map && player._fovX === player.x && player._fovY === player.y) {
+export function maybeComputeFOV(map, player, radius = 8, opts = {}) {
+  const los = opts.los ?? true
+  if (player._fovMap === map && player._fovX === player.x && player._fovY === player.y && player._fovLos === los) {
     return false
   }
-  computePlayerFOV(map, player, radius)
+  computePlayerFOV(map, player, radius, { los })
   player._fovMap = map
   player._fovX = player.x
   player._fovY = player.y
+  player._fovLos = los
   return true
 }
 

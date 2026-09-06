@@ -1686,7 +1686,10 @@ function update(delta) {
 function render() {
   // Open country sees almost twice as far as a dungeon or cave — 14 tiles
   // matches the audio falloff edge, so what you hear you can usually see.
-  maybeComputeFOV(state.map, state.player, !state.cave && OPEN_MAPS[state.level] ? 14 : 8)
+  // Open-map surfaces see the whole radius; dungeons, caves and interiors
+  // keep line of sight.
+  const surface = !state.cave && !!OPEN_MAPS[state.level]
+  maybeComputeFOV(state.map, state.player, surface ? 14 : 8, { los: !surface })
   const fx = riteVisuals(state)
   if (state.weather) state.weather.look = state.cave ? null : weatherLook(state, activeSave)
   renderer.updateCamera(state.player, state.shake ?? 0, fx)

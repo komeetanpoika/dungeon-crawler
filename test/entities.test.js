@@ -131,6 +131,36 @@ describe('maybeComputeFOV (cached FOV)', () => {
   })
 })
 
+describe('computePlayerFOV without line of sight (open maps)', () => {
+  const walled = () => { const map = openMap(); for (let y = 0; y < 20; y++) map[y][7].tile = TILE.WALL; return map }
+
+  it('lights every cell in the radius, walls and what lies behind them included', () => {
+    const map = walled()
+    const player = { x: 5, y: 5 }
+    computePlayerFOV(map, player, 8, { los: false })
+    assert.equal(map[5][7].visible, true, 'the wall itself')
+    assert.equal(map[5][10].visible, true, 'the cell behind it')
+    assert.equal(map[5][10].explored, true)
+    assert.equal(map[5][14].visible, false, 'still radius-bounded')
+  })
+
+  it('the default keeps line of sight, so the same cell stays dark', () => {
+    const map = walled()
+    computePlayerFOV(map, { x: 5, y: 5 }, 8)
+    assert.equal(map[5][10].visible, false)
+  })
+
+  it('maybeComputeFOV recomputes when only the los mode changes', () => {
+    const map = walled()
+    const player = { x: 5, y: 5 }
+    maybeComputeFOV(map, player, 8, { los: true })
+    assert.equal(map[5][10].visible, false)
+    assert.equal(maybeComputeFOV(map, player, 8, { los: false }), true)
+    assert.equal(map[5][10].visible, true)
+    assert.equal(maybeComputeFOV(map, player, 8, { los: false }), false, 'then cached again')
+  })
+})
+
 describe('computePlayerFOV (radius-bounded clear)', () => {
   it('does not touch far-off tiles when recomputing on the same map', () => {
     // The clear must cost O(radius²), not O(map area): a recompute on the same
