@@ -22,7 +22,7 @@ function field() {
 function makeState(map, playerTile, entities = []) {
   const player = { type: 'player', x: playerTile.x, y: playerTile.y,
     px: playerTile.x * S + S / 2, py: playerTile.y * S + S / 2, maxHp: 10, hp: 10 }
-  return { map, player, entities, feedback: null, log: [], sfx: { cues: [], muted: false } }
+  return { map, player, entities, feedback: null, sfx: { cues: [], muted: false } }
 }
 // No `hostile` default here: an explicit `false` (as makeNpc's own default
 // used to be) would now pin the NPC non-hostile even for a hostile-on-sight

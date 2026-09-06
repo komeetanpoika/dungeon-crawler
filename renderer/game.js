@@ -340,11 +340,10 @@ function detonateFireball(px, py, blastTiles) {
   }
   state.entities = burst.entities
   npcsStruckSince(npcSnap)
-  if (burst.playerBurned) damagePlayer(state, BURST_DAMAGE, 'hit', `The blast engulfs you! (-${BURST_DAMAGE} HP)`)
+  if (burst.playerBurned) damagePlayer(state, BURST_DAMAGE, 'hit')
   state.fireZones.push(makeFireZone(tiles))
   state.shockwaves.push({ px: tx * TILE_SIZE + TILE_SIZE / 2, py: ty * TILE_SIZE + TILE_SIZE / 2,
     t: 0, dur: 0.35, maxRadius: TILE_SIZE * 2.5, color: '#f97316' })
-  state.log = [...state.log, 'The fireball erupts!'].slice(-5)
 }
 
 // The one hit path shared by projectiles, ground zones and lightning: a
@@ -377,22 +376,10 @@ const projectileHooks = {
   isHittable,
   hurt: hurtEntity,
   detonate: (px, py, blastTiles) => detonateFireball(px, py, blastTiles),
-  damagePlayer: damage => damagePlayer(state, damage, 'hit', `Hit for ${damage} damage!`),
+  damagePlayer: damage => damagePlayer(state, damage, 'hit'),
   // A corpse sits at 0 hp until it is culled, and would otherwise soak a
   // second projectile arriving the same frame.
   cull: entities => cullDead(entities, e => !!getMonsterDef(e.type)),
-}
-
-// One log line per spell; the gust keeps the three tiered lines it has
-// always had, since that copy is what the wandless caster knows.
-const CAST_LINES = {
-  gust:      { tap: 'A gust of wind!', full: 'A strong gust!', over: 'A raging gale!' },
-  spark:     'A spark leaps out!',
-  rime:      'A breath of rime!',
-  fireball:  'The fireball flies!',
-  bramble:   'Thorns burst from the ground!',
-  blink:     'You slip through the air!',
-  lightning: 'You call the sky down!',
 }
 
 const BACKWARDS = { north: 'south', south: 'north', east: 'west', west: 'east' }
@@ -404,7 +391,6 @@ const GUST_RING = 44   // px: the ring radius a tap-tier cone draws
 // it moved. tryCast has already paid for it — this is feedback only.
 function showCast(cast) {
   const player = state.player
-  const line = CAST_LINES[cast.spell.id] ?? CAST_LINES.gust
   sfx(state, 'magic-cast', { px: player.px, py: player.py })
   if (cast.projectiles) state.projectiles.push(...cast.projectiles)
   if (cast.caught !== undefined) {
@@ -436,7 +422,6 @@ function showCast(cast) {
       player.px = px; player.py = py; player.facing = facing
     }
   }
-  state.log = [...state.log, typeof line === 'string' ? line : line[cast.tier] ?? line.tap].slice(-5)
 }
 
 // Walk-onto item grant: ammo straight into the quiver, otherwise hand if
@@ -688,7 +673,6 @@ function startNewRun(depth = 1, arenaCfg = null) {
     flash: 0,
     blinkTrail: null,
     shockwaves: [],
-    log: [],
     feedback: makeFeedback(),
     hitEffects: [],
     shake: 0,
@@ -1270,7 +1254,6 @@ function update(delta) {
     // splashing damage + knockback onto its neighbours.
     if (struck.length) {
       const exclude = new Set(struck)
-      let pulsed = false
       for (const s of struck) {
         const snap = npcSnapshot()
         const res = applyShockwave(state.entities, s.px, s.py, exclude)
@@ -1278,9 +1261,7 @@ function update(delta) {
         npcsStruckSince(snap)
         state.shockwaves.push({ px: s.px, py: s.py, t: 0, dur: 0.35, maxRadius: SHOCK_RADIUS })
         sfx(state, 'shockwave', { px: s.px, py: s.py })
-        pulsed = pulsed || res.hitCount > 0
       }
-      if (pulsed) state.log = [...state.log, 'The Maunonmiekka pulses!'].slice(-5)
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
     // Harvesting: a hatchet/axe swing lands on the nearest tree in the
@@ -1434,7 +1415,7 @@ function update(delta) {
     state.fireZones = fz.zones
     state.entities = fz.entities
     npcsStruckSince(snap)
-    if (fz.playerDamage > 0) damagePlayer(state, fz.playerDamage, 'dot', "You're burning! (-1 HP)")
+    if (fz.playerDamage > 0) damagePlayer(state, fz.playerDamage, 'dot')
   }
 
   // Bramble patches: root what walks in, bleed what stays. Same hit path as
@@ -1521,7 +1502,7 @@ function update(delta) {
           if (Math.abs(angleDiff) < DRAGON_CONE_HALF) {
             e.breathDamageAcc += 3 * delta
             while (e.breathDamageAcc >= 1) {
-              damagePlayer(state, 1, 'dot', 'Dragon fire! (-1 HP)')
+              damagePlayer(state, 1, 'dot')
               e.breathDamageAcc -= 1
             }
           }
@@ -1816,7 +1797,7 @@ function travelToMap(depth) {
     entities: buildEntities(entitySpawns, map, depth),
     projectiles: [], fireZones: [], zones: [], lightning: [], strikes: [], flash: 0,
     shockwaves: [], hitEffects: [], blinkTrail: null,
-    log: [], feedback: makeFeedback(),
+    feedback: makeFeedback(),
     player: {
       ...state.player,
       x: playerSpawn.x, y: playerSpawn.y,
@@ -1874,7 +1855,6 @@ function descendLevel() {
       px: playerSpawn.x * TILE_SIZE + TILE_SIZE / 2,
       py: playerSpawn.y * TILE_SIZE + TILE_SIZE / 2,
     },
-    log: [],
     feedback: makeFeedback(),
     hitEffects: [],
     shake: 0,

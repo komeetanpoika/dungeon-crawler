@@ -15,7 +15,7 @@ function openMap(w = 20, h = 20) {
 }
 
 function makeState(wizard, player) {
-  return { player, map: openMap(), projectiles: [], entities: [wizard], log: [] }
+  return { player, map: openMap(), projectiles: [], entities: [wizard] }
 }
 
 describe('makeWizard', () => {
@@ -117,7 +117,7 @@ describe('updateWizard — summoning', () => {
       type: 'monster', variant: 'weak', hp: 1, maxHp: 1, summonedBy: w.id,
       x: 5, y: 5, px: (5 + i) * S, py: 5 * S,
     }))
-    const state = { player, map: openMap(), projectiles: [], entities: [w, ...minions], log: [] }
+    const state = { player, map: openMap(), projectiles: [], entities: [w, ...minions] }
     updateWizard(w, state, 0.02)
     const after = state.entities.filter(e => e.summonedBy === w.id)
     assert.equal(after.length, 4)  // cap not exceeded

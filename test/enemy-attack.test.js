@@ -6,7 +6,7 @@ import {
 } from '../renderer/systems/enemy-attack.js'
 
 function makeState(player) {
-  return { player, log: [] }
+  return { player }
 }
 
 function makeEnemy(type, px = 100, py = 100) {
@@ -74,20 +74,6 @@ describe('tryStartEnemyAttack — windup 0 (seeded behavior)', () => {
       tryStartEnemyAttack(e, state)
       assert.equal(state.player.hp, 10 - dmg, `${type} deals ${dmg}`)
     }
-  })
-
-  it('uses the default log message with the weapon damage', () => {
-    const e = makeEnemy('dragon', 100, 100)
-    const state = makeState({ px: 110, py: 100, hp: 10 })
-    tryStartEnemyAttack(e, state)
-    assert.deepEqual(state.log, ['Hit for 2 damage!'])
-  })
-
-  it('uses a custom message when provided', () => {
-    const e = makeEnemy('crab', 100, 100)
-    const state = makeState({ px: 110, py: 100, hp: 10 })
-    tryStartEnemyAttack(e, state, 'Crab pinches! (-1 HP)')
-    assert.deepEqual(state.log, ['Crab pinches! (-1 HP)'])
   })
 
   it('does not start out of reach — the guard sword bites to 34px', () => {

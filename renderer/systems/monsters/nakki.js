@@ -64,7 +64,7 @@ export function updateNakki(e, state, delta) {
   if (!e.pierEnd || player.x !== e.pierEnd.x || player.y !== e.pierEnd.y) return
   e.dragCooldown -= delta
   if (e.dragCooldown <= 0) {
-    if (damagePlayer(state, 1, 'hit', 'The lake pulls at you!')) {
+    if (damagePlayer(state, 1, 'hit')) {
       sfx(state, 'drag', { px: player.px, py: player.py })
       startKnockback(player, player.px - e.px, player.py - e.py, DRAG_DISTANCE)
     }

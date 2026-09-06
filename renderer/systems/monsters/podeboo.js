@@ -77,14 +77,14 @@ export function update(e, state, delta) {
     if (!l.dealt) {
       l.dealt = true
       if (l.beams.some(b => beamHitsPlayer(e, player, b.ang)))
-        damagePlayer(state, LASER.burstDmg, 'hit', 'Searing light rakes you!')
+        damagePlayer(state, LASER.burstDmg, 'hit')
     }
     if (l.t >= LASER.burstFlash) end(e, l)
   } else {
     const prog = Math.min(1, l.t / LASER.sweepTime)
     l.beams = [{ ang: l.aim - LASER.sweepArc / 2 + LASER.sweepArc * prog }]
     if (beamHitsPlayer(e, player, l.beams[0].ang))
-      damagePlayer(state, LASER.sweepDmg, 'hit', 'The beam sears across you!')
+      damagePlayer(state, LASER.sweepDmg, 'hit')
     if (l.t >= LASER.sweepTime) end(e, l)
   }
 }

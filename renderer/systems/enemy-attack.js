@@ -46,7 +46,7 @@ export function getEnemyWeapon(e) {
   return { id, ...WEAPONS[id], ...(e.weaponOverrides ?? {}) }
 }
 
-export function tryStartEnemyAttack(e, state, message) {
+export function tryStartEnemyAttack(e, state) {
   if (e.attack) return false
   if ((e.damageCooldown ?? 0) > 0) return false
   const w = getEnemyWeapon(e)
@@ -61,7 +61,6 @@ export function tryStartEnemyAttack(e, state, message) {
     timer: w.windup,
     duration: w.windup,
     angle: Math.atan2(player.py - e.py, player.px - e.px),
-    message: message ?? `Hit for ${w.damage} damage!`,
   }
   if (w.windup <= 0) strike(e, state)
   return true
@@ -76,7 +75,7 @@ function strike(e, state) {
   // during a telegraph is missed even at point-blank range.
   const { reach, halfAngle } = weaponWedge(w)
   const connects = inSwing(reach, halfAngle, a.angle, player.px - e.px, player.py - e.py)
-  if (connects && !damagePlayer(state, w.damage, 'hit', a.message)) {
+  if (connects && !damagePlayer(state, w.damage, 'hit')) {
     e.attack = null   // i-framed: no cooldown, no animation — retries next frame
     return
   }

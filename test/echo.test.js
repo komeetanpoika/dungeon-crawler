@@ -11,7 +11,7 @@ const episode = { echoSpots: [
 ] }
 const player = (x, y, facing = 'east') => ({ x, y, px: x * S + 16, py: y * S + 16, facing })
 const echo = () => ({ type: 'echo', id: 'echo', x: 0, y: 0, px: 16, py: 16, fadeA: 0, t: 0, trail: [], said: null })
-const stateWith = p => ({ player: p, entities: [], log: [], sfx: makeSfx(), feedback: { bubble: null } })
+const stateWith = p => ({ player: p, entities: [], sfx: makeSfx(), feedback: { bubble: null } })
 const ep = flags => ({ episode, mapData, flags, ctx: {} })
 
 describe('echo follow', () => {

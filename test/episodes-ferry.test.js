@@ -82,7 +82,7 @@ beforeEach(() => {
   mapData = makeMapData()
   save = normalizeAdventureSave(null)
   spies = makeSpies()
-  state = { player: makePlayer(), map: makeMap(), entities: [], log: [], sfx: { cues: [] } }
+  state = { player: makePlayer(), map: makeMap(), entities: [], sfx: { cues: [] } }
   ctx = makeEpCtx({
     getState: () => state, save, mapData,
     persist: spies.persist, resolve: spies.resolve, refreshInventory: spies.refreshInventory,

@@ -9,7 +9,6 @@ import { damagePlayer } from '../renderer/systems/player-damage.js'
 
 const freshState = () => ({
   player: { px: 100, py: 200, hp: 10, invulnTimer: 0 },
-  log: [],
   feedback: makeFeedback(),
 })
 
@@ -32,12 +31,11 @@ describe('floats', () => {
 })
 
 describe('bubbles', () => {
-  it('speak sets a speech bubble and logs the text', () => {
+  it('speak sets a speech bubble', () => {
     const state = freshState()
     speak(state, 'Found Longsword!')
     assert.equal(state.feedback.bubble.kind, 'speech')
     assert.equal(state.feedback.bubble.text, 'Found Longsword!')
-    assert.deepEqual(state.log, ['Found Longsword!'])
   })
 
   it('think sets a thought bubble', () => {
@@ -61,53 +59,44 @@ describe('bubbles', () => {
     tickFeedback(state.feedback, BUBBLE_DUR + 0.01)
     assert.equal(state.feedback.bubble, null)
   })
-
-  it('log history is capped at five entries', () => {
-    const state = freshState()
-    for (let i = 0; i < 7; i++) speak(state, `msg ${i}`)
-    assert.equal(state.log.length, 5)
-    assert.equal(state.log.at(-1), 'msg 6')
-  })
 })
 
 describe('banner', () => {
-  it('announce sets the banner and logs; expires after BANNER_DUR', () => {
+  it('announce sets the banner; expires after BANNER_DUR', () => {
     const state = freshState()
     announce(state, 'You step out into the open…')
     assert.equal(state.feedback.banner.text, 'You step out into the open…')
-    assert.deepEqual(state.log, ['You step out into the open…'])
     tickFeedback(state.feedback, BANNER_DUR + 0.01)
     assert.equal(state.feedback.banner, null)
   })
 })
 
 describe('damagePlayer emits a taken-float', () => {
-  it('floats the amount over the player and still logs the message', () => {
+  it('floats the amount over the player', () => {
     const state = freshState()
-    damagePlayer(state, 3, 'hit', 'Ouch! (-3 HP)')
+    damagePlayer(state, 3, 'hit')
     assert.equal(state.feedback.floats.length, 1)
     assert.deepEqual(state.feedback.floats[0], { px: 100, py: 200, text: '-3', kind: 'taken', t: 0 })
-    assert.deepEqual(state.log, ['Ouch! (-3 HP)'])
   })
 
   it('emits nothing while i-frames block the hit', () => {
     const state = freshState()
     state.player.invulnTimer = 0.5
-    damagePlayer(state, 3, 'hit', 'blocked')
+    damagePlayer(state, 3, 'hit')
     assert.equal(state.feedback.floats.length, 0)
     assert.equal(state.player.hp, 10)
   })
 
   it('tolerates states without feedback (arena tests build bare states)', () => {
-    const state = { player: { px: 0, py: 0, hp: 5, invulnTimer: 0 }, log: [] }
-    assert.equal(damagePlayer(state, 2, 'hit', 'msg'), true)
+    const state = { player: { px: 0, py: 0, hp: 5, invulnTimer: 0 } }
+    assert.equal(damagePlayer(state, 2, 'hit'), true)
     assert.equal(state.player.hp, 3)
   })
 })
 
 describe('toast queue', () => {
   it('queues and drains toasts in order', () => {
-    const state = { log: [], feedback: makeFeedback() }
+    const state = { feedback: makeFeedback() }
     queueToast(state, { title: 'Talent learned', lines: ['Gust'] })
     queueToast(state, { title: 'Second', lines: [] })
     const drained = drainToasts(state)
@@ -115,21 +104,15 @@ describe('toast queue', () => {
     assert.equal(drained[0].title, 'Talent learned')
     assert.deepEqual(drainToasts(state), [])
   })
-  it('logs the toast title so state.log history stays complete', () => {
-    const state = { log: [], feedback: makeFeedback() }
-    queueToast(state, { title: 'You awaken back in Aspengrove…', lines: [] })
-    assert.equal(state.log.at(-1), 'You awaken back in Aspengrove…')
-  })
   it('is a no-op without feedback state', () => {
-    assert.doesNotThrow(() => queueToast({ log: [] }, { title: 'x', lines: [] }))
+    assert.doesNotThrow(() => queueToast({}, { title: 'x', lines: [] }))
   })
 })
 
 describe('speakFrom', () => {
-  it('anchors the bubble to the speaker and logs the line', () => {
-    const state = { log: [], feedback: makeFeedback() }
+  it('anchors the bubble to the speaker', () => {
+    const state = { feedback: makeFeedback() }
     speakFrom(state, { id: 'npc:x:1' }, 'Hello.')
     assert.deepEqual(state.feedback.bubble, { text: 'Hello.', kind: 'speech', t: 0, anchorId: 'npc:x:1' })
-    assert.deepEqual(state.log, ['Hello.'])
   })
 })

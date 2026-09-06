@@ -13,7 +13,7 @@ function makePlayer(overrides = {}) {
 }
 
 function makeState(nakki, player) {
-  return { player, map: [], entities: [nakki], log: [], sfx: makeSfx() }
+  return { player, map: [], entities: [nakki], sfx: makeSfx() }
 }
 
 describe('makeNakki', () => {

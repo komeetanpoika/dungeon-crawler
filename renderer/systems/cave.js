@@ -34,7 +34,6 @@ export function buildCaveState(surface, entrance, dungeon) {
     blinkTrail: null,
     shockwaves: [],
     hitEffects: [],
-    log: [],
     feedback: makeFeedback(),
     player: {
       ...surface.player,

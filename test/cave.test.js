@@ -45,7 +45,6 @@ describe('buildCaveState', () => {
 
   it('runs at the cave depth with fresh combat/message state', () => {
     assert.equal(cave.level, 1)
-    assert.deepEqual(cave.log, [])
     assert.deepEqual(cave.projectiles, [])
     assert.equal(cave.hasKey, false)
     assert.deepEqual(cave.caveEntrances, [])

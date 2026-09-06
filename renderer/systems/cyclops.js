@@ -53,7 +53,7 @@ export function updateCyclops(e, state, delta) {
 
     // Contact melee — club via the weapon framework (reach/damage/cooldown
     // live on the club in enemy-attack.js)
-    tryStartEnemyAttack(e, state, 'Cyclops hits! (-3 HP)')
+    tryStartEnemyAttack(e, state)
 
   } else if (e.state === 'charge_windup') {
     if (e.stateTimer <= 0) {
@@ -64,7 +64,7 @@ export function updateCyclops(e, state, delta) {
 
   } else if (e.state === 'charging') {
     if (Math.hypot(e.px - player.px, e.py - player.py) < 50) {
-      if (damagePlayer(state, 5, 'hit', 'Cyclops charges! (-5 HP)')) {
+      if (damagePlayer(state, 5, 'hit')) {
         startKnockback(player, player.px - e.px, player.py - e.py, KNOCKBACK_DIST)
         e.inCombat = true
       }
@@ -93,7 +93,7 @@ export function updateCyclops(e, state, delta) {
       e.stateTimer = SLAM_RING_DURATION
       e.slamRing = { radius: 0, maxRadius: SLAM_RADIUS }
       if (dist < SLAM_RADIUS) {
-        if (damagePlayer(state, SLAM_DAMAGE, 'hit', `Ground slam! (-${SLAM_DAMAGE} HP)`)) {
+        if (damagePlayer(state, SLAM_DAMAGE, 'hit')) {
           e.inCombat = true
         }
       }

@@ -19,7 +19,7 @@ function mkPlayer(tx, ty) {
 function mkPodeboo(tx, ty, hp = 10) {
   return { type: 'podeboo', x: tx, y: ty, px: tx * T + T / 2, py: ty * T + T / 2, hp, maxHp: 10, damage: 3 }
 }
-function mkState(e, player) { return { player, map: openMap(), entities: [e], log: [] } }
+function mkState(e, player) { return { player, map: openMap(), entities: [e] } }
 // One game-loop step as game.js runs it: pose bookkeeping, then the hook.
 function step(e, state, dt = 0.016) { updateMonsterPose(e, dt); update(e, state, dt) }
 
