@@ -38,7 +38,6 @@ export const SPRITES = {
   npc_sheep:      'npc_sheep',
   npc_goat:       'npc_goat',
   npc_boar:       'npc_boar',
-  npc_wolf:       'npc_wolf',
   npc_bear:       'npc_bear',
   item_meat:      'item_meat',     // drawn by tools/npc-placeholders.mjs
   item_lumber:      'item_lumber',       // placeholders drawn by tools/npc-placeholders.mjs

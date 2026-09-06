@@ -21,7 +21,8 @@ const PITCH = 17      // 16 px cell + 1 px spacing
 
 // Tile numbers from the pack's Preview.png / Tilesheet.txt (row-major, 1-based).
 // Animals live in rows 16–18: 151 chicken, 152 cow, 153 goat, 154 sheep,
-// 161 boar, 162 doe, 163 stag, 164 bear, 166 wolf, 170 fox — pick here.
+// 161 boar, 162 doe, 163 stag, 164 bear, 166 wolf, 170 fox — pick here
+// (the wolf draws from its own sheet now: tools/extract-wolf-sheet.mjs).
 const PICKS = {
   npc_chicken: 151,
   npc_goat:    153,
@@ -29,7 +30,6 @@ const PICKS = {
   npc_boar:    161,
   npc_deer:    162,
   npc_bear:    164,
-  npc_wolf:    166,
 }
 
 if (!fs.existsSync(SHEET)) {

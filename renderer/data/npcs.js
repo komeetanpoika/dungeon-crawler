@@ -7,6 +7,8 @@
 //   startle     px radius at which a wild animal bolts even if untouched.
 //   react       what the interact button does to an animal (villagers speak).
 //   walker      draw through drawWalker + tickWalk (humanoids).
+//   sheet       draw from renderer/assets/npcs/<sheet>.png via render/npc-sheets.js
+//               (frames picked by systems/npc-anim.js) instead of a `sprite` tile.
 //   hostile     true = hostile on sight: spawns as an enemy (wolf, bear).
 //   weapon      enemy-attack.js WEAPONS id used once hostile (npc default: fists).
 //   drop        chance an animal leaves meat when it dies (villagers: none).
@@ -69,7 +71,7 @@ export const NPC_SPECIES = {
   // the fold episode (data/leaps.js), it hunts the Maahinen instead — see
   // `prey` and hunt_prey ahead of attack_hostile in the priority list.
   wolf: {
-    faction: 'wild', sprite: 'npc_wolf', hostile: true, weapon: 'claw',
+    faction: 'wild', sheet: 'wolf', hostile: true, weapon: 'claw',
     hp: 3, onHit: 'fight', fleeHp: 0.25, drop: 0.4,
     speed: 110, wanderSpeed: 40, roam: 7, prey: ['maahinen'],
     priorities: ['flee_hurt', 'hunt_prey', 'attack_hostile', 'go_to', 'wander'],

@@ -13,6 +13,7 @@ import { tryStartEnemyAttack, WEAPONS } from './enemy-attack.js'
 import { speakFrom } from './feedback.js'
 import { sfx } from './sfx.js'
 import { hurtCreature } from './creatures.js'
+import { tickNpcAnim } from './npc-anim.js'
 
 const S = 32
 export const FLEE_TIME = 3          // s a hit `flee` species keeps running
@@ -223,10 +224,11 @@ export function updateNpc(e, state, delta) {
   const ctx = buildCtx(e, state, delta)
   const name = selectGoal(e, ctx)
   const intent = GOALS[name].run(e, ctx, delta)
-  const prevPx = e.px
+  const prevPx = e.px, prevPy = e.py
   if (intent) act(e, state, delta, intent)
   const movedX = e.px - prevPx
   if (Math.abs(movedX) > 0.1) e.facing = movedX > 0 ? 'east' : 'west'
+  tickNpcAnim(e, Math.hypot(movedX, e.py - prevPy), delta)
 }
 
 // Called by every damage site right after an NPC's hp drops. Flee species run;

@@ -10,6 +10,7 @@ import { GUST_CHARGE } from '../systems/magic.js'
 import { DRAW_CHARGE } from '../systems/ranged.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
+import { drawNpcSheet } from './npc-sheets.js'
 import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha } from '../systems/campfire.js'
 import { creatureAlpha } from '../systems/creatures.js'
@@ -248,10 +249,11 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'npc') {
     const def = NPC_SPECIES[entity.species]
+    const flip = entity.facing === 'west'
+    if (def?.sheet) { drawNpcSheet(ctx, entity, def.sheet, px, py, S, flip); return }
     const key = spriteKeyFor(entity)
     const s = (entity.hostile && def?.walker ? sprites.guard_alert : null) ?? sprites[key]
     if (!s) return
-    const flip = entity.facing === 'west'
     if (def?.walker) { drawWalker(ctx, s, px, py, S, flip, walkTilt(entity)); return }
     const rt = entity.ai?.reactTimer ?? 0
     const hop = rt > 0 ? Math.round(6 * Math.sin(Math.PI * (1 - rt / REACT_TIME))) : 0
