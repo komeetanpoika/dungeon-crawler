@@ -182,9 +182,10 @@ export function shoreline(b) {
 // the same tile as a prop where it lies in the water (a water skin on any
 // side), and the neighbouring land's own ground under it on the banks (sand
 // stays sand, grass stays grass; the commonest land skin around it). A run
-// of logs that only continues north and south takes the upright tile
+// of logs that only continues north and south — or a lone cell bridging a
+// strait between a bank to its north and south — takes the upright tile
 // (ow_pier_log_v) so a causeway reads as planks along its length, not as
-// ladder rungs; corners, junctions and lone cells keep the rails. A pier
+// ladder rungs; corners, junctions and posts keep the rails. A pier
 // component with no water beside any of its cells was a puddle a carve
 // filled: it becomes plain land with no logs at all. Collision is untouched.
 // Run before shoreline() so the bank cells under the logs take their rim.
@@ -221,7 +222,11 @@ export function layPiersOverWater(b, { grass = 'ow_grass_0' } = {}) {
     const tile = at(x, y)
     const ground = near.some(isWaterSkin) ? WATER_SKINS[(x + y) & 1] : commonest(near.filter(n => n && !isPierSkin(n))) ?? grass
     if (puddle.has(key(x, y))) return { ground, prop: null }
-    const alongY = (pierAt(x, y - 1) || pierAt(x, y + 1)) && !pierAt(x - 1, y) && !pierAt(x + 1, y)
+    // a bollard is not part of the run
+    const logAt = (x, y) => pierAt(x, y) && at(x, y) !== 'ow_pier_post'
+    const landAt = (x, y) => b.in(x, y) && !isWaterSkin(at(x, y)) && !pierAt(x, y)
+    const runNS = logAt(x, y - 1) || logAt(x, y + 1), runEW = logAt(x - 1, y) || logAt(x + 1, y)
+    const alongY = runNS ? !runEW : !runEW && (landAt(x, y - 1) || landAt(x, y + 1)) && !landAt(x - 1, y) && !landAt(x + 1, y)
     return { ground, prop: tile === 'ow_pier_post' ? tile : alongY ? 'ow_pier_log_v' : 'ow_pier_log' }
   })
   cells.forEach(([x, y], i) => { b.g(x, y, plan[i].ground); if (plan[i].prop) b.p(x, y, plan[i].prop, { walkable: true }) })

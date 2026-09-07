@@ -81,6 +81,13 @@ describe('layPiersOverWater', () => {
     assert.equal(ground(b, 3, 2), 'ow_grass_0'); assert.equal(ground(b, 3, 6), 'ow_grass_0')
     assert.equal(b.walkable(3, 4), true)
   })
+  it('a lone log cell bridging a strait between a north and a south bank stands upright too', () => {
+    const b = new MapBuilder('t', 'forest', 't', 5, 5)
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) { b.g(x, y, y === 2 ? 'ow_water_0' : 'ow_grass_0'); if (y === 2) b.block(x, y) }
+    b.g(2, 2, 'ow_pier_log'); b.unblock(2, 2)
+    layPiersOverWater(b)
+    assert.equal(prop(b, 2, 2), 'ow_pier_log_v')
+  })
   it('a filled puddle of any size is land with no logs: the whole pier component must touch water', () => {
     const b = new MapBuilder('t', 'forest', 't', 7, 5)
     for (let y = 0; y < 5; y++) for (let x = 0; x < 7; x++) b.g(x, y, 'ow_sand_0')
@@ -400,13 +407,14 @@ describe('shipped River Split, Mountain Pass and the three sea maps', () => {
         `${m.name}: pier at ${x},${y} over ${skin(m, 'ground', x, y)} with no water or pier beside it`)
     }
   })
-  it('a north-south run of logs wears the upright tile, everything else the rails', () => {
+  it('a north-south run of logs, or a lone cell bridging a strait north to south, wears the upright tile; everything else the rails', () => {
     for (const m of maps) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
       const p = skin(m, 'prop', x, y)
-      if (p !== 'ow_pier_log' && p !== 'ow_pier_log_v') continue
-      const pier = (dx, dy) => isPierSkin(skin(m, 'prop', x + dx, y + dy)) && m.walk[y + dy]?.[x + dx] === '1'
-      const alongY = (pier(0, -1) || pier(0, 1)) && !pier(-1, 0) && !pier(1, 0)
-      if (m.walk[y][x] !== '1') continue
+      if ((p !== 'ow_pier_log' && p !== 'ow_pier_log_v') || m.walk[y][x] !== '1') continue
+      const log = (dx, dy) => ['ow_pier_log', 'ow_pier_log_v'].includes(skin(m, 'prop', x + dx, y + dy))
+      const land = (dx, dy) => { const g = skin(m, 'ground', x + dx, y + dy); return g != null && !isWaterSkin(g) && !isPierSkin(skin(m, 'prop', x + dx, y + dy)) }
+      const runNS = log(0, -1) || log(0, 1), runEW = log(-1, 0) || log(1, 0)
+      const alongY = runNS ? !runEW : !runEW && (land(0, -1) || land(0, 1)) && !land(-1, 0) && !land(1, 0)
       assert.equal(p, alongY ? 'ow_pier_log_v' : 'ow_pier_log', `${m.name}: ${x},${y}`)
     }
   })
