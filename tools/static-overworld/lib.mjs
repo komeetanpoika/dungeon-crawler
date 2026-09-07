@@ -168,21 +168,36 @@ export function shoreline(b) {
 // the void, which is how River Split's north bridge shipped. Every ground
 // pier cell becomes water under a pier prop where it lies in the river (a
 // water skin on any side) and grass under the same prop on the banks; the
-// cell stays walkable. Run before shoreline() so the bank cells under the
-// logs take their rim. Returns how many cells changed.
-export function pierOverWater(b, { grass = 'ow_grass_0' } = {}) {
+// cell keeps its collision. Run before shoreline() so the bank cells under
+// the logs take their rim. Returns how many cells changed.
+export function layPiersOverWater(b, { grass = 'ow_grass_0' } = {}) {
   const wasWater = (x, y) => b.in(x, y) && isWaterSkin(b.palette[b.ground[y][x]])
   const cells = []
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++)
     if (b.palette[b.ground[y][x]] === 'ow_pier_log') cells.push([x, y])
   const skins = cells.map(([x, y]) =>
     [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => wasWater(x + dx, y + dy)) ? WATER_SKINS[(x + y) & 1] : grass)
-  cells.forEach(([x, y], i) => {
-    const walk = b.walkG[y][x]
-    b.g(x, y, skins[i])
-    b.p(x, y, 'ow_pier_log', { walkable: true })
-    b.walkG[y][x] = walk
-  })
+  cells.forEach(([x, y], i) => { b.g(x, y, skins[i]); b.p(x, y, 'ow_pier_log', { walkable: true }) })
+  return cells.length
+}
+
+// A reachability carve straight across a river leaves a dirt causeway that
+// cuts the water in two (River Split's row 30). A dirt cell with water on
+// both opposite sides is such a crossing: it goes back to water with a
+// walkable stone on it, so the river runs on and the player crosses a ford
+// of stepping stones. Collision is untouched (the cell stays open). Returns
+// how many cells changed.
+export function fordToStones(b) {
+  const wet = (x, y) => b.in(x, y) && isWaterSkin(b.palette[b.ground[y][x]])
+  const cells = []
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!b.palette[b.ground[y][x]]?.startsWith('ow_dirt') || b.prop[y][x] !== -1 || !b.walkG[y][x]) continue
+    if ((wet(x, y - 1) && wet(x, y + 1)) || (wet(x - 1, y) && wet(x + 1, y))) cells.push([x, y])
+  }
+  for (const [x, y] of cells) {
+    b.g(x, y, WATER_SKINS[(x + y) & 1])
+    b.p(x, y, `ow_rock_water_gray_${(x + y) & 1}`, { walkable: true })
+  }
   return cells.length
 }
 

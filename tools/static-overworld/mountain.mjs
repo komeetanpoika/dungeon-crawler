@@ -13,9 +13,19 @@
 const hash = (a, b, c = 0) => { let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15; return h >>> 0 }
 const seq = (p, n) => Array.from({ length: n }, (_, i) => `${p}_${i}`)
 export const LAT_PX = 4, LAT_PY = 3   // lattice period in cells
+// Grass-to-rock edge tiles (tools/synth-mountain-edges.mjs): a ground tile
+// frayed into grass on the sides in M (1 N / 2 E / 4 S / 8 W) with a nibble
+// at the concave corners in D (1 NE / 2 SE / 4 SW / 8 NW — only corners whose
+// two flanking sides are closed), V picking the gravel underneath.
+export const EDGE_VARIANTS = 3
+export const edgeName = (M, D, V) => `ow_mtn_edge_${M}_${D}_${V}`
+const freeCorners = M => (!(M & 3) ? 1 : 0) | (!(M & 6) ? 2 : 0) | (!(M & 12) ? 4 : 0) | (!(M & 9) ? 8 : 0)
+export const EDGE_SHAPES = []
+for (let M = 0; M < 16; M++) for (let D = 0; D < 16; D++) if ((M || D) && (D & ~freeCorners(M)) === 0) EDGE_SHAPES.push([M, D])
 export const MTN = {
   ground: seq('ow_mtn_ground', 14),
   shade: seq('ow_mtn_shade', 14),
+  edge: EDGE_SHAPES.flatMap(([M, D]) => Array.from({ length: EDGE_VARIANTS }, (_, V) => edgeName(M, D, V))),
   lat: Array.from({ length: 16 }, (_, m) => seq(`ow_mtn_lat_${m}`, LAT_PX * LAT_PY)),
   ridge: { dr: seq('ow_mtn_ridge_dr', 13), dl: seq('ow_mtn_ridge_dl', 13), lb: seq('ow_mtn_ridge_lb', 2), br: seq('ow_mtn_ridge_br', 2), v: seq('ow_mtn_ridge_v', 1) },
   rock: seq('ow_mtn_rock', 6),
@@ -26,7 +36,7 @@ export const MTN_GROUND_WEIGHTED = [...MTN.ground.slice(0, 7).flatMap(n => [n, n
 const MASS_PREFIXES = ['ow_mtn_lat_', 'ow_mtn_ridge_']
 export const isMassSkin = n => !!n && MASS_PREFIXES.some(p => n.startsWith(p))
 export const isMountainSkin = n => !!n && n.startsWith('ow_mtn_')
-export const isMountainGround = n => !!n && (n.startsWith('ow_mtn_ground') || n.startsWith('ow_mtn_shade'))
+export const isMountainGround = n => !!n && (n.startsWith('ow_mtn_ground') || n.startsWith('ow_mtn_shade') || n.startsWith('ow_mtn_edge'))
 // Off the map counts as mass, so a range running off the edge shows no face
 // on that side.
 export const isMass = (b, x, y) => !b.in(x, y) || isMassSkin(b.palette[b.prop[y][x]])
@@ -37,8 +47,11 @@ export function stampMass(b, rng, x, y) {
   if (!b.in(x, y)) return
   b.p(x, y, MTN.lat[0][0])
   // a face open to the ground shows the ground between its tips: never grass
-  if (!isMountainGround(b.palette[b.ground[y][x]])) b.g(x, y, MTN.ground[hash(x, y, 3) % 7])
+  if (!isMountainGround(b.palette[b.ground[y][x]])) stampFloor(b, x, y)
 }
+// Plain mountain floor picked by position — no rng draw, so passes that run
+// after the tree planter can lay it without moving a tree.
+export function stampFloor(b, x, y) { if (b.in(x, y)) b.g(x, y, MTN.ground[hash(x, y, 3) % 7]) }
 // A boulder: a keyed rock scatter on the prop layer, blocked.
 export function stampRock(b, rng, x, y) {
   if (!b.in(x, y)) return
@@ -65,15 +78,17 @@ export function clearMountainRect(b, rng, x0, y0, x1, y1, skin = MTN_GROUND_WEIG
   }
 }
 
-// Mountain ground belongs at the foot of a mass or in a yard. The elevation
-// fringe band also painted it under lone trees far from any peak, and a
-// carve can leave a strip of it adrift in the grass: those patches read as
-// grey holes in the woods. Every 4-connected patch of mountain ground that
-// holds neither a mass cell nor a building goes back to grass; props and
-// collision stay. Run after the rim pass. Returns how many cells changed.
+// Mountain ground belongs at the foot of a mass or around a built thing —
+// a house, a ruin, a mine mouth. The elevation fringe band also painted it
+// under lone trees far from any peak, and a carve can leave a strip of it
+// adrift in the grass: those patches read as grey holes in the woods. Every
+// 4-connected patch of mountain ground that holds neither a mass cell nor a
+// building goes back to grass; props and collision stay. Run after the rim
+// pass. Returns how many cells changed.
+const ANCHOR_PREFIXES = ['ow_house', 'ow_roof', 'ow_ruin_', 'ow_cave_']
 export function pruneStrayGround(b, { grass = 'ow_grass_0' } = {}) {
   const isGround = (x, y) => b.in(x, y) && isMountainGround(b.palette[b.ground[y][x]])
-  const anchors = (x, y) => { const p = b.palette[b.prop[y][x]] ?? ''; return isMassSkin(p) || p.startsWith('ow_house') || p.startsWith('ow_roof') }
+  const anchors = (x, y) => { const p = b.palette[b.prop[y][x]] ?? ''; return isMassSkin(p) || ANCHOR_PREFIXES.some(a => p.startsWith(a)) }
   const seen = new Set()
   let n = 0
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
@@ -94,6 +109,34 @@ export function pruneStrayGround(b, { grass = 'ow_grass_0' } = {}) {
     n += comp.length
   }
   return n
+}
+
+// Fray the mountain floor into the grass. Every mountain-ground cell with
+// non-mountain ground on a side wears the edge tile for that open-side mask,
+// with a nibble for each concave corner (non-mountain ground on a diagonal
+// whose two flanking sides are still rock). Off the map counts as rock, so
+// nothing frays against the border. Ground only — props, collision and the
+// lattice are untouched; the variant is hash-picked, no rng draw. Run last.
+// Idempotent: an edge tile is mountain ground and rereads the same
+// neighbourhood; a cell that no longer needs one gets plain floor back.
+// Returns how many cells changed.
+export function stampGroundEdge(b) {
+  const rocky = (x, y) => !b.in(x, y) || isMountainGround(b.palette[b.ground[y][x]])
+  const writes = []
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    const g = b.palette[b.ground[y][x]]
+    if (!isMountainGround(g)) continue
+    const M = (rocky(x, y - 1) ? 0 : 1) | (rocky(x + 1, y) ? 0 : 2) | (rocky(x, y + 1) ? 0 : 4) | (rocky(x - 1, y) ? 0 : 8)
+    let D = 0
+    if (!(M & 3) && !rocky(x + 1, y - 1)) D |= 1
+    if (!(M & 6) && !rocky(x + 1, y + 1)) D |= 2
+    if (!(M & 12) && !rocky(x - 1, y + 1)) D |= 4
+    if (!(M & 9) && !rocky(x - 1, y - 1)) D |= 8
+    const want = M || D ? edgeName(M, D, hash(x, y, 5) % EDGE_VARIANTS) : g.startsWith('ow_mtn_edge') ? MTN.ground[hash(x, y, 3) % 7] : g
+    if (want !== g) writes.push([x, y, want])
+  }
+  for (const [x, y, skin] of writes) b.g(x, y, skin)
+  return writes.length
 }
 
 // Shape for a mass cell from its neighbourhood: f = which of the four sides

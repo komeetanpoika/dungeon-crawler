@@ -57,6 +57,10 @@ for (const cy of ys) for (const cx of xs) {
   await sleep(400)
   await page.evaluate(() => { for (const row of window.__dc.state.map) for (const t of row) { t.explored = true; t.visible = true } })
   await sleep(500)
+  // enemies respawn while the frame settles: clear them once more, let one
+  // frame draw, then blit
+  await page.evaluate(() => { const s = window.__dc.state; s.enemies = []; if (s.npcs) s.npcs = [] })
+  await sleep(100)
   await page.evaluate(() => {
     const s = window.__dc.state, c = document.getElementById('game-canvas')
     window.__shots.getContext('2d').drawImage(c, Math.round(s.player.px - c.width / 2), Math.round(s.player.py - c.height / 2))
