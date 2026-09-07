@@ -119,7 +119,10 @@ export function pruneBrokenTrees(b) {
 // Kenney's shore-corner tiles (a sand wedge in one corner) — painting them
 // at random put beaches in the middle of every lake.
 export const WATER_SKINS = ['ow_water_0', 'ow_water_1']
-export const isWaterSkin = n => !!n && (n.startsWith('ow_water') || n.startsWith('ow_pond_'))
+export const isWaterSkin = n => !!n && (n.startsWith('ow_water') || n.startsWith('ow_pond_') || n.startsWith('ow_shore_'))
+// Sand and what sits on the beach with it: stone ground (a lighthouse islet)
+// fringes in sand, not grass. shoreline() keys its rim colour on this.
+export const isSandySkin = n => !!n && (n.startsWith('ow_sand') || n.startsWith('ow_stone_ground'))
 
 // Dress every water cell that touches land with the 3x3 pond autotile's
 // rim, so lakes, rivers and coasts read as shores: land to the N/S/E/W
@@ -146,20 +149,143 @@ export function reshore(b) {
   return n
 }
 
-const RIM = { N: 'ow_pond_10', S: 'ow_pond_12', W: 'ow_pond_01', E: 'ow_pond_21', NW: 'ow_pond_00', NE: 'ow_pond_20', SW: 'ow_pond_02', SE: 'ow_pond_22' }
+// A beach takes the sand-coloured rim (ow_shore_*, beach.mjs) where every
+// land side is sandy; anywhere grass touches the water the bank is green.
+const RIM_KEYS = { N: '10', S: '12', W: '01', E: '21', NW: '00', NE: '20', SW: '02', SE: '22' }
+const RIM = Object.fromEntries(Object.entries(RIM_KEYS).map(([k, v]) => [k, `ow_pond_${v}`]))
+const SHORE_RIM = Object.fromEntries(Object.entries(RIM_KEYS).map(([k, v]) => [k, `ow_shore_${v}`]))
 export function shoreline(b) {
   const wet = (x, y) => {
     if (!b.in(x, y)) return true
     const n = b.palette[b.ground[y][x]]
-    return isWaterSkin(n) || n === 'ow_pier_log'
+    return isWaterSkin(n) || isPierSkin(n)
   }
   const repaint = []
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
     if (!b.palette[b.ground[y][x]]?.startsWith('ow_water')) continue
-    const key = (!wet(x, y - 1) ? 'N' : !wet(x, y + 1) ? 'S' : '') + (!wet(x - 1, y) ? 'W' : !wet(x + 1, y) ? 'E' : '')
-    if (key) repaint.push([x, y, RIM[key]])
+    const ns = !wet(x, y - 1) ? 'N' : !wet(x, y + 1) ? 'S' : ''
+    const ew = !wet(x - 1, y) ? 'W' : !wet(x + 1, y) ? 'E' : ''
+    const key = ns + ew
+    if (!key) continue
+    const land = [ns === 'N' ? [x, y - 1] : ns === 'S' ? [x, y + 1] : null, ew === 'W' ? [x - 1, y] : ew === 'E' ? [x + 1, y] : null].filter(Boolean)
+    const sandy = land.every(([lx, ly]) => isSandySkin(b.palette[b.ground[ly][lx]]))
+    repaint.push([x, y, (sandy ? SHORE_RIM : RIM)[key]])
   }
   for (const [x, y, skin] of repaint) b.g(x, y, skin)
+}
+
+// A log bridge is a pier OVERLAY: the logs on the prop layer, the river
+// still flowing beneath them (the ferry pier, lake-1-ferry, is the model).
+// Painted as GROUND the log tile — two rails, transparent between — shows
+// the void, which is how River Split's north bridge and every sea-map
+// causeway shipped. Every ground pier cell (log or post) becomes water under
+// the same tile as a prop where it lies in the water (a water skin on any
+// side), and the neighbouring land's own ground under it on the banks (sand
+// stays sand, grass stays grass; the commonest land skin around it). A run
+// of logs that only continues north and south — or a lone cell bridging a
+// strait between a bank to its north and south — takes the upright tile
+// (ow_pier_log_v) so a causeway reads as planks along its length, not as
+// ladder rungs; corners, junctions and posts keep the rails. A pier
+// component with no water beside any of its cells was a puddle a carve
+// filled: it becomes plain land with no logs at all. Collision is untouched.
+// Run before shoreline() so the bank cells under the logs take their rim.
+// Returns how many cells changed.
+const PIER_SKINS = ['ow_pier_log', 'ow_pier_log_v', 'ow_pier_post']
+export const isPierSkin = n => PIER_SKINS.includes(n)
+export function layPiersOverWater(b, { grass = 'ow_grass_0' } = {}) {
+  const at = (x, y) => b.in(x, y) ? b.palette[b.ground[y][x]] : null
+  const pierAt = (x, y) => isPierSkin(at(x, y))
+  const key = (x, y) => y * b.w + x
+  const cells = []
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if (pierAt(x, y)) cells.push([x, y])
+  // puddles: 4-connected pier components without a drop of water beside them
+  const puddle = new Set()
+  const seen = new Set()
+  for (const [x0, y0] of cells) {
+    if (seen.has(key(x0, y0))) continue
+    const comp = [], stack = [[x0, y0]]
+    seen.add(key(x0, y0))
+    let wet = false
+    while (stack.length) {
+      const [x, y] = stack.pop()
+      comp.push([x, y])
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = at(x + dx, y + dy)
+        if (isWaterSkin(n)) wet = true
+        if (isPierSkin(n) && !seen.has(key(x + dx, y + dy))) { seen.add(key(x + dx, y + dy)); stack.push([x + dx, y + dy]) }
+      }
+    }
+    if (!wet) for (const [x, y] of comp) puddle.add(key(x, y))
+  }
+  const plan = cells.map(([x, y]) => {
+    const near = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => at(x + dx, y + dy))
+    const tile = at(x, y)
+    const ground = near.some(isWaterSkin) ? WATER_SKINS[(x + y) & 1] : commonest(near.filter(n => n && !isPierSkin(n))) ?? grass
+    if (puddle.has(key(x, y))) return { ground, prop: null }
+    // a bollard is not part of the run
+    const logAt = (x, y) => pierAt(x, y) && at(x, y) !== 'ow_pier_post'
+    const landAt = (x, y) => b.in(x, y) && !isWaterSkin(at(x, y)) && !pierAt(x, y)
+    const runNS = logAt(x, y - 1) || logAt(x, y + 1), runEW = logAt(x - 1, y) || logAt(x + 1, y)
+    const alongY = runNS ? !runEW : !runEW && (landAt(x, y - 1) || landAt(x, y + 1)) && !landAt(x - 1, y) && !landAt(x + 1, y)
+    return { ground, prop: tile === 'ow_pier_post' ? tile : alongY ? 'ow_pier_log_v' : 'ow_pier_log' }
+  })
+  cells.forEach(([x, y], i) => { b.g(x, y, plan[i].ground); if (plan[i].prop) b.p(x, y, plan[i].prop, { walkable: true }) })
+  return cells.length
+}
+const commonest = a => {
+  let best = null, n = 0
+  for (const v of a) { const c = a.filter(w => w === v).length; if (c > n) { best = v; n = c } }
+  return best
+}
+
+// A reachability carve straight across a river leaves a dirt causeway that
+// cuts the water in two (River Split's row 30). A dirt cell with water on
+// both opposite sides is such a crossing: it goes back to water with a
+// walkable stone on it, so the river runs on and the player crosses a ford
+// of stepping stones. Collision is untouched (the cell stays open). Returns
+// how many cells changed.
+export function fordToStones(b) {
+  const wet = (x, y) => b.in(x, y) && isWaterSkin(b.palette[b.ground[y][x]])
+  const cells = []
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!b.palette[b.ground[y][x]]?.startsWith('ow_dirt') || b.prop[y][x] !== -1 || !b.walkG[y][x]) continue
+    if ((wet(x, y - 1) && wet(x, y + 1)) || (wet(x - 1, y) && wet(x + 1, y))) cells.push([x, y])
+  }
+  for (const [x, y] of cells) {
+    b.g(x, y, WATER_SKINS[(x + y) & 1])
+    b.p(x, y, `ow_rock_water_gray_${(x + y) & 1}`, { walkable: true })
+  }
+  return cells.length
+}
+
+// The reachability passes (healFragmentation, ensureReachable) stamp the
+// cells they open with a dirt skin. Where a generator lays real dirt trails
+// (forest-1's winding paths) those stamps merge into them; everywhere else
+// they are lone peach squares in the grass — one felled tree, one carve.
+// Any dirt patch smaller than a trail goes back to grass; the props and
+// collision the carve set are untouched. Returns how many cells changed.
+export function carveDirtToGrass(b, { maxSize = 7, grass = 'ow_grass_0' } = {}) {
+  const isDirt = (x, y) => b.in(x, y) && !!b.palette[b.ground[y][x]]?.startsWith('ow_dirt')
+  const seen = new Set()
+  let n = 0
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!isDirt(x, y) || seen.has(y * b.w + x)) continue
+    const comp = [], stack = [[x, y]]
+    seen.add(y * b.w + x)
+    while (stack.length) {
+      const [cx, cy] = stack.pop()
+      comp.push([cx, cy])
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy
+        if (!isDirt(nx, ny) || seen.has(ny * b.w + nx)) continue
+        seen.add(ny * b.w + nx); stack.push([nx, ny])
+      }
+    }
+    if (comp.length > maxSize) continue
+    for (const [cx, cy] of comp) b.g(cx, cy, grass)
+    n += comp.length
+  }
+  return n
 }
 
 export class MapBuilder {

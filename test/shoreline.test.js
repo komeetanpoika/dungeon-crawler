@@ -70,7 +70,7 @@ describe('shipped open maps', () => {
   it('rim every water cell that touches land', () => {
     for (const m of Object.values(OPEN_MAPS)) {
       const skin = (x, y) => m.palette[m.ground[y]?.[x]]
-      const wet = (x, y) => { const n = skin(x, y); return n === undefined || n.startsWith('ow_water') || n.startsWith('ow_pond_') || n === 'ow_pier_log' }
+      const wet = (x, y) => { const n = skin(x, y); return n === undefined || n.startsWith('ow_water') || n.startsWith('ow_pond_') || n.startsWith('ow_shore_') || n === 'ow_pier_log' }
       for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
         if (!skin(x, y)?.startsWith('ow_water')) continue
         const touchesLand = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !wet(x + dx, y + dy))

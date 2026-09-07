@@ -2,7 +2,8 @@
 //   1 suomenlinna — derived from an aerial photo of the Helsinki sea fortress
 //   2 fishing village — noise coastline, piers, lighthouse islet
 //   3 archipelago — island chain linked by causeways, ruined monastery
-import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3, stampEdgeBand } from './lib.mjs'
+import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3, stampEdgeBand, layPiersOverWater, carveDirtToGrass } from './lib.mjs'
+import { stampSandEdge } from './beach.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +19,8 @@ const ROCKS_G = ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']
 const SKERRY = ['ow_rock_water_gray_0', 'ow_rock_water_gray_1', 'ow_rock_water_gray_2']
 const pick = (rng, a) => a[Math.floor(rng() * a.length)]
 const isOpen = b => (x, y) => b.walkable(x, y) && b.prop[y][x] === -1
+// a cache never sits on a causeway: the logs get lifted onto the prop layer later
+const onLand = b => (x, y) => !b.palette[b.ground[y][x]]?.startsWith('ow_pier_')
 // land edges get forest, sand edges get shore rocks, water is left alone —
 // it already reads as impassable
 function seaEdge(b, rng) {
@@ -29,7 +32,11 @@ function seaEdge(b, rng) {
   })
 }
 
-// pier logs belong on water; a bridge crossing a tree pocket just fells the trees
+// pier logs belong on water; a bridge crossing a tree pocket just fells the
+// trees. The healer can only paint ground, so the logs land there and
+// layPiersOverWater lifts them onto the prop layer with the sea beneath
+// once every carve is in (the pier tile is two rails with nothing between:
+// as ground it shows the void)
 const pierOverWater = b => (x, y) => b.palette[b.ground[y][x]]?.startsWith('ow_water') ? 'ow_pier_log' : null
 
 function water(b, rng, x, y) {
@@ -61,6 +68,14 @@ function suomenlinna() {
       case 'trees': b.g(x, y, 'ow_grass_0'); plantTree(b, rng, x, y, PINES); break
       default: b.g(x, y, rng() < 0.94 ? 'ow_grass_0' : pick(rng, GRASS))
     }
+  }
+  // a brick pixel with no brick or stone beside it is not a building: a
+  // lone red roof on the grass reads as a dropped crate, so it is rubble
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    if (b.palette[b.prop[y][x]] !== 'ow_roof_red_m') continue
+    const built = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+      .some(([dx, dy]) => ['ow_roof_red_m', 'ow_house_wall_stone'].includes(b.palette[b.prop[y + dy]?.[x + dx]]))
+    if (!built) b.p(x, y, 'ow_house_wall_stone')
   }
   // rocky shoreline: land cells touching water sometimes get shore rocks
   for (let y = 1; y < gh - 1; y++) for (let x = 1; x < gw - 1; x++) {
@@ -100,7 +115,7 @@ function suomenlinna() {
     b.p(c.x, c.y, 'ow_cave_arch_0', { walkable: true }); b.p(c.x + 1, c.y, 'ow_cave_arch_1', { walkable: true })
     b.poi('dungeon_entrance', c.x, c.y, `casemate ${i + 1}`)
   }
-  for (const c of b.scatter(rng, 3, 25, (x, y) => main[y][x] && b.prop[y][x] === -1)) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
+  for (const c of b.scatter(rng, 3, 25, (x, y) => main[y][x] && b.prop[y][x] === -1 && onLand(b)(x, y))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = snap(58, 32)
   b.ensureReachable(pierOverWater(b))
   pruneBrokenTrees(b)
@@ -165,7 +180,7 @@ function fishingVillage() {
   }
   // dunes: sand ridge with shrubs on the beach
   for (let y = 2; y < b.h - 2; y++) if (rng() < 0.3) b.p(coastX(y) - 3, y, 'ow_shrub_1')
-  for (const c of b.scatter(rng, 4, 26, (x, y) => isOpen(b)(x, y) && x < coastX(y) - 5)) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
+  for (const c of b.scatter(rng, 4, 26, (x, y) => isOpen(b)(x, y) && onLand(b)(x, y) && x < coastX(y) - 5)) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   b.playerSpawn = { x: vx, y: vy + 1 }
   b.healFragmentation({ minKeep: 30, fill: (x, y) => { if (b.prop[y][x] === -1) b.p(x, y, pick(rng, ROCKS_G)) }, groundSkin: pierOverWater(b) })
   b.ensureReachable(pierOverWater(b))
@@ -234,7 +249,7 @@ function archipelago() {
   // so nothing lands on a pocket the healer would seal
   b.healFragmentation({ minKeep: 25, fill: (x, y) => { if (b.prop[y][x] === -1) b.p(x, y, pick(rng, ROCKS_G)) }, groundSkin: pierOverWater(b) })
   const main = b.largestComponent()
-  for (const c of b.scatter(rng, 4, 22, (x, y) => main[y][x] && b.prop[y][x] === -1)) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
+  for (const c of b.scatter(rng, 4, 22, (x, y) => main[y][x] && b.prop[y][x] === -1 && onLand(b)(x, y))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   const home = comps[1] ? centroid(comps[1]) : { x: 20, y: 20 }
   b.playerSpawn = { x: home.x, y: home.y + 2 }
   b.ensureReachable(pierOverWater(b))
@@ -244,6 +259,11 @@ function archipelago() {
 
 for (const make of [suomenlinna, fishingVillage, archipelago]) {
   const b = make()
+  layPiersOverWater(b)
+  // the photo's "path" pixels classify as dirt a cell or two at a time —
+  // specks, never a trail — and no sea map lays a real path: all of it goes
+  carveDirtToGrass(b, { maxSize: Infinity })
+  stampSandEdge(b)        // the beach frays into the grass; the shoreline then reads it as sand
   shoreline(b)
   const problems = validate(b)
   console.log(`${b.name}: ${problems.length ? 'PROBLEMS ' + problems.join('; ') : 'ok'}`)

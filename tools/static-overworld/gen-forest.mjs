@@ -4,7 +4,7 @@
 //   3 autumn    — autumn woods below a mountain pass (ow_mtn_ tiles), stone circle, hermit hut
 import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
 import { GRASS, PINES, AUTUMN, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
-import { MTN, MTN_GROUND_WEIGHTED, isMass, isMountainSkin, stampMass, clearMountain, clearMountainRect, stampMountainRim } from './mountain.mjs'
+import { MTN, MTN_GROUND_WEIGHTED, isMass, isMountainSkin, stampMass, stampFloor, clearMountain, clearMountainRect, stampMountainRim, pruneStrayGround, fillGrassPockets, stampGroundEdge } from './mountain.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -93,12 +93,13 @@ function river() {
     }
   }
   forestEdge(b, rng, PINES)
-  // two log bridges
+  // two log bridges: the logs are a walkable prop over the river (the pier
+  // tile is two rails with nothing between — as ground it shows the void)
   for (const by of [22, 58]) {
     const cx = riverX(by)
     for (let x = cx - 3; x <= cx + 3; x++) {
       b.clearProp(x, by)
-      b.g(x, by, 'ow_pier_log')
+      b.p(x, by, 'ow_pier_log', { walkable: true })
       b.unblock(x, by)
     }
     b.poi('landmark', cx, by, by === 22 ? 'north bridge' : 'south bridge')
@@ -148,7 +149,9 @@ function autumn() {
   const elev = (x, y) => noise(x, y, { freq: 0.05, octaves: 3 }) * 0.7 + (x / b.w) * 0.15 + ((b.h - y) / b.h) * 0.25
   const isPass = (x, y) => Math.abs(noise(x + 700, y + 700, { freq: 0.06, octaves: 2 }) - 0.5) < 0.045
   const high = (x, y) => elev(x, y) > 0.58
-  const mtnFloor = (x, y) => high(x, y) ? pick(rng, MTN_GROUND_WEIGHTED) : 'ow_dirt_0'
+  // carves up high are mountain floor; down in the woods they keep the
+  // grass (a dirt stamp is a lone peach square between the trees)
+  const mtnFloor = (x, y) => high(x, y) ? pick(rng, MTN_GROUND_WEIGHTED) : null
   // Where the old generator put a rock (or would have planted a tree that
   // is now a mountain), remembered so the tree planter can ask "was the cell
   // above free?" of the OLD map, not this one — same draws, same trees.
@@ -197,9 +200,14 @@ function autumn() {
     }
   }
   // the peaks run off the map: border cells on high ground join the mass
-  // (they are blocked anyway) so the range shows no rim against the edge
-  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++)
-    if (b.isBorder(x, y) && elev(x, y) > 0.64 && !isPass(x, y)) stampMass(b, rng, x, y)
+  // (they are blocked anyway) so the range shows no rim against the edge;
+  // where a pass runs off the map its border cell is mountain floor like the
+  // corridor behind it, not a grass square between two peaks
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!b.isBorder(x, y)) continue
+    if (elev(x, y) > 0.64 && !isPass(x, y)) stampMass(b, rng, x, y)
+    else if (high(x, y)) stampFloor(b, x, y)
+  }
   // the edge band stays autumn trees (stampEdgeBand, with the old map's
   // draws: a cell that held a rock never drew), except where the mountains
   // already reach the edge — the peaks are their own visible border
@@ -256,6 +264,9 @@ function autumn() {
   b.ensureReachable(mtnFloor)
   pruneBrokenTrees(b)
   stampMountainRim(b, rng)
+  pruneStrayGround(b)
+  fillGrassPockets(b)
+  stampGroundEdge(b)
   return b
 }
 

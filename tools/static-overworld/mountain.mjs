@@ -10,12 +10,19 @@
 // along every open side. The ground just south of a mass wears a shadow gradient
 // (`ow_mtn_shade_N`), as in the sheet's example strips; rocks are keyed
 // scatters on the prop layer.
-const hash = (a, b, c = 0) => { let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15; return h >>> 0 }
+import { hash, EDGE_SHAPES, edgeTileName, edgeTileNames, stampEdges } from './edges.mjs'
+export { EDGE_SHAPES }
 const seq = (p, n) => Array.from({ length: n }, (_, i) => `${p}_${i}`)
 export const LAT_PX = 4, LAT_PY = 3   // lattice period in cells
+// Grass-to-rock edge tiles (tools/synth-ground-edges.mjs, shapes in
+// edges.mjs): a ground tile frayed into grass on its open sides with the
+// concave corners nibbled, V picking the gravel underneath.
+export const EDGE_VARIANTS = 4
+export const edgeName = (M, D, V) => edgeTileName('ow_mtn_edge', M, D, V)
 export const MTN = {
   ground: seq('ow_mtn_ground', 14),
   shade: seq('ow_mtn_shade', 14),
+  edge: edgeTileNames('ow_mtn_edge', EDGE_VARIANTS),
   lat: Array.from({ length: 16 }, (_, m) => seq(`ow_mtn_lat_${m}`, LAT_PX * LAT_PY)),
   ridge: { dr: seq('ow_mtn_ridge_dr', 13), dl: seq('ow_mtn_ridge_dl', 13), lb: seq('ow_mtn_ridge_lb', 2), br: seq('ow_mtn_ridge_br', 2), v: seq('ow_mtn_ridge_v', 1) },
   rock: seq('ow_mtn_rock', 6),
@@ -26,7 +33,7 @@ export const MTN_GROUND_WEIGHTED = [...MTN.ground.slice(0, 7).flatMap(n => [n, n
 const MASS_PREFIXES = ['ow_mtn_lat_', 'ow_mtn_ridge_']
 export const isMassSkin = n => !!n && MASS_PREFIXES.some(p => n.startsWith(p))
 export const isMountainSkin = n => !!n && n.startsWith('ow_mtn_')
-export const isMountainGround = n => !!n && (n.startsWith('ow_mtn_ground') || n.startsWith('ow_mtn_shade'))
+export const isMountainGround = n => !!n && (n.startsWith('ow_mtn_ground') || n.startsWith('ow_mtn_shade') || n.startsWith('ow_mtn_edge'))
 // Off the map counts as mass, so a range running off the edge shows no face
 // on that side.
 export const isMass = (b, x, y) => !b.in(x, y) || isMassSkin(b.palette[b.prop[y][x]])
@@ -37,8 +44,11 @@ export function stampMass(b, rng, x, y) {
   if (!b.in(x, y)) return
   b.p(x, y, MTN.lat[0][0])
   // a face open to the ground shows the ground between its tips: never grass
-  if (!isMountainGround(b.palette[b.ground[y][x]])) b.g(x, y, MTN.ground[hash(x, y, 3) % 7])
+  if (!isMountainGround(b.palette[b.ground[y][x]])) stampFloor(b, x, y)
 }
+// Plain mountain floor picked by position — no rng draw, so passes that run
+// after the tree planter can lay it without moving a tree.
+export function stampFloor(b, x, y) { if (b.in(x, y)) b.g(x, y, MTN.ground[hash(x, y, 3) % 7]) }
 // A boulder: a keyed rock scatter on the prop layer, blocked.
 export function stampRock(b, rng, x, y) {
   if (!b.in(x, y)) return
@@ -63,6 +73,79 @@ export function clearMountainRect(b, rng, x0, y0, x1, y1, skin = MTN_GROUND_WEIG
     b.clearProp(x, y)
     b.g(x, y, skin[Math.floor(rng() * skin.length)])
   }
+}
+
+// Mountain ground belongs at the foot of a mass or around a built thing —
+// a house, a ruin, a mine mouth. The elevation fringe band also painted it
+// under lone trees far from any peak, and a carve can leave a strip of it
+// adrift in the grass: those patches read as grey holes in the woods. Every
+// 4-connected patch of mountain ground that holds neither a mass cell nor a
+// building goes back to grass; props and collision stay. Run after the rim
+// pass. Returns how many cells changed.
+export const ANCHOR_PREFIXES = ['ow_house', 'ow_roof', 'ow_ruin_', 'ow_cave_']
+export const isAnchorSkin = n => !!n && (isMassSkin(n) || ANCHOR_PREFIXES.some(a => n.startsWith(a)))
+export function pruneStrayGround(b, { grass = 'ow_grass_0' } = {}) {
+  const isGround = (x, y) => b.in(x, y) && isMountainGround(b.palette[b.ground[y][x]])
+  const anchors = (x, y) => isAnchorSkin(b.palette[b.prop[y][x]])
+  const seen = new Set()
+  let n = 0
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!isGround(x, y) || seen.has(y * b.w + x)) continue
+    const comp = [], stack = [[x, y]]
+    seen.add(y * b.w + x)
+    while (stack.length) {
+      const [cx, cy] = stack.pop()
+      comp.push([cx, cy])
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy
+        if (!isGround(nx, ny) || seen.has(ny * b.w + nx)) continue
+        seen.add(ny * b.w + nx); stack.push([nx, ny])
+      }
+    }
+    if (comp.some(([cx, cy]) => anchors(cx, cy))) continue
+    for (const [cx, cy] of comp) b.g(cx, cy, grass)
+    n += comp.length
+  }
+  return n
+}
+
+// The inverse of pruneStrayGround: a few cells of grass walled in by
+// mountain floor, mass or the map edge (a low-elevation noise finger that
+// the woods never reached) read as a green tongue between gravel. Every
+// 4-connected patch of non-mountain ground up to maxSize cells whose every
+// neighbour is mountain becomes plain floor (hash-picked, no rng draw);
+// props and collision stay. Returns how many cells changed.
+export function fillGrassPockets(b, { maxSize = 12 } = {}) {
+  const rocky = (x, y) => !b.in(x, y) || isMountainGround(b.palette[b.ground[y][x]])
+  const seen = new Set()
+  let n = 0
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (rocky(x, y) || seen.has(y * b.w + x)) continue
+    const comp = [], stack = [[x, y]]
+    seen.add(y * b.w + x)
+    let enclosed = true
+    while (stack.length) {
+      const [cx, cy] = stack.pop()
+      comp.push([cx, cy])
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy
+        if (rocky(nx, ny) || seen.has(ny * b.w + nx)) continue
+        seen.add(ny * b.w + nx); stack.push([nx, ny])
+      }
+      if (comp.length > maxSize) enclosed = false
+    }
+    if (!enclosed || comp.length > maxSize) continue
+    for (const [cx, cy] of comp) stampFloor(b, cx, cy)
+    n += comp.length
+  }
+  return n
+}
+
+// Fray the mountain floor into the grass (edges.mjs): every mountain-ground
+// cell with other ground on a side wears the edge tile for that open-side
+// mask, nibbled at the concave corners; off the map counts as rock. Run last.
+export function stampGroundEdge(b) {
+  return stampEdges(b, { base: isMountainGround, inside: isMountainGround, prefix: 'ow_mtn_edge', variants: EDGE_VARIANTS, plain: (x, y) => MTN.ground[hash(x, y, 3) % 7] })
 }
 
 // Shape for a mass cell from its neighbourhood: f = which of the four sides
@@ -126,6 +209,7 @@ export function stampMountainRim(b, rng, { apron = false, walls = 'ridge' } = {}
     const g = b.palette[b.ground[y][x]]
     if (!isMountainGround(g)) continue
     const i = Math.max(MTN.ground.indexOf(g), MTN.shade.indexOf(g))
+    if (i < 0) continue   // an edge tile (stampGroundEdge ran already): leave it
     const under = apron && b.in(x, y - 1) && isMass(b, x, y - 1)
     b.g(x, y, under ? MTN.shade[i] : MTN.ground[i])
   }
