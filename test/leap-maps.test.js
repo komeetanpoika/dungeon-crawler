@@ -8,9 +8,9 @@ import { isHouseDoorArt, houseDoorsForMap } from '../renderer/systems/houses.js'
 import { EPISODES } from '../renderer/data/leaps.js'
 
 const REQUIRED = {
-  'lake-1-ferry':     ['runestone', 'village', 'bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'islet cache'],
-  'highland-2-fold':  ['runestone', 'village', 'fold', 'den', 'burrow', 'lair', 'fleece cache', 'burn 1', 'burn 2', 'burn 3', 'burn 4'],
-  'marsh-3-hermit':   ['runestone', 'village', 'hearth', 'hermit hut', 'mushroom ring', 'hearth 1', 'hearth 2', 'hearth 3'],
+  'lake-1-ferry':     ['runestone', 'village', 'bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'islet cache', 'orchard stone'],
+  'highland-2-fold':  ['runestone', 'village', 'fold', 'den', 'burrow', 'lair', 'fleece cache', 'burn 1', 'burn 2', 'burn 3', 'burn 4', 'ridge stone'],
+  'marsh-3-hermit':   ['runestone', 'village', 'hearth', 'hermit hut', 'mushroom ring', 'hearth 1', 'hearth 2', 'hearth 3', 'knoll stone'],
 }
 const byName = Object.fromEntries(Object.values(OPEN_MAPS).map(m => [m.name, m]))
 

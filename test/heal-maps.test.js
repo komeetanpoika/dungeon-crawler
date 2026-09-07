@@ -372,7 +372,7 @@ describe('shipped River Split, Mountain Pass, the three sea maps and the three l
       if (!leap(m)) assert.equal(fordToStones(b), 0, `${m.name}: ford`)   // a marsh keeps its mud necks between pools
       assert.equal(dryWalkableWater(b), 0, `${m.name}: walkable water`)
       assert.equal(layPiersOverWater(b), 0, `${m.name}: piers`)
-      assert.equal(carveDirtToGrass(b, { maxSize: dirtPatchMin(m) - 1, diagonal: m.name !== 'marsh-3-hermit' }), 0, `${m.name}: dirt`)
+      assert.equal(carveDirtToGrass(b, { maxSize: dirtPatchMin(m) - 1 }), 0, `${m.name}: dirt`)
       assert.equal(pruneStrayGround(b), 0, `${m.name}: stray ground`)
       assert.equal(fillGrassPockets(b), 0, `${m.name}: grass pockets`)
       assert.equal(stampGroundEdge(b), 0, `${m.name}: ground edge`)
@@ -456,9 +456,9 @@ describe('shipped River Split, Mountain Pass, the three sea maps and the three l
     }
   })
   it('carry no dirt carve stamps: every dirt patch is a trail (or, on the marsh, a mud patch) of the map\'s minimum size', () => {
-    // a trail may step diagonally (the fold's crosses its pen's fence corner); the marsh's mud is read 4-connected like its pass
+    // 8-connected like the pass: a trail may step diagonally (the fold's crosses its pen's fence corner) and a mud band hugs a pool in diagonal chains
     for (const m of maps)
-      for (const comp of components(m, (x, y) => skin(m, 'ground', x, y)?.startsWith('ow_dirt'), m.name !== 'marsh-3-hermit'))
+      for (const comp of components(m, (x, y) => skin(m, 'ground', x, y)?.startsWith('ow_dirt'), true))
         assert.ok(comp.length >= dirtPatchMin(m), `${m.name}: ${comp.length}-cell dirt patch at ${comp[0]}`)
   })
   it('keep mountain ground at the foot of a mass or in a yard, never adrift in the woods', () => {

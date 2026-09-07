@@ -287,7 +287,8 @@ function fold() {
   for (const [x, y] of trailCells) {
     const prop = b.palette[b.prop[y][x]] ?? ''
     if (ringR2(x, y) > 16 && ringR2(x, y) <= 25) continue
-    if (ROCKS_MOSS.includes(prop) || (prop === 'ow_tree_pine_top' && b.palette[b.prop[y + 1]?.[x]] !== 'ow_tree_pine_trunk')) b.clearProp(x, y)
+    if (ROCKS_MOSS.includes(prop) || prop === 'ow_tree_pine_top') b.clearProp(x, y)   // a whole pine on the path goes with its trunk
+    if (prop === 'ow_tree_pine_top' && b.palette[b.prop[y + 1]?.[x]] === 'ow_tree_pine_trunk') b.clearProp(x, y + 1)
   }
   pruneBrokenTrees(b)
   // the trail's last cells lie inside the burrow ring, cut off when the
@@ -370,8 +371,10 @@ function marsh() {
   }
   pruneBrokenTrees(b)
   // the mud band's noise leaves lone mud cells in the grass: a marsh is
-  // mud around its pools, not peach specks — one- and two-cell patches go
-  carveDirtToGrass(b, { maxSize: 2, diagonal: false })
+  // mud around its pools, not peach specks — one- and two-cell patches go.
+  // Read 8-connected: the band hugs a pool in diagonal chains of single
+  // cells, and those are the band, not specks
+  carveDirtToGrass(b, { maxSize: 2 })
   return b
 }
 
