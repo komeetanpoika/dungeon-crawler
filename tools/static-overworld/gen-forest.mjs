@@ -4,7 +4,7 @@
 //   3 autumn    — autumn woods below a mountain pass (ow_mtn_ tiles), stone circle, hermit hut
 import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
 import { GRASS, PINES, AUTUMN, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
-import { MTN, MTN_GROUND_WEIGHTED, isMass, isMountainSkin, stampMass, clearMountain, clearMountainRect, stampMountainRim } from './mountain.mjs'
+import { MTN, MTN_GROUND_WEIGHTED, isMass, isMountainSkin, stampMass, clearMountain, clearMountainRect, stampMountainRim, pruneStrayGround } from './mountain.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -148,7 +148,9 @@ function autumn() {
   const elev = (x, y) => noise(x, y, { freq: 0.05, octaves: 3 }) * 0.7 + (x / b.w) * 0.15 + ((b.h - y) / b.h) * 0.25
   const isPass = (x, y) => Math.abs(noise(x + 700, y + 700, { freq: 0.06, octaves: 2 }) - 0.5) < 0.045
   const high = (x, y) => elev(x, y) > 0.58
-  const mtnFloor = (x, y) => high(x, y) ? pick(rng, MTN_GROUND_WEIGHTED) : 'ow_dirt_0'
+  // carves up high are mountain floor; down in the woods they keep the
+  // grass (a dirt stamp is a lone peach square between the trees)
+  const mtnFloor = (x, y) => high(x, y) ? pick(rng, MTN_GROUND_WEIGHTED) : null
   // Where the old generator put a rock (or would have planted a tree that
   // is now a mountain), remembered so the tree planter can ask "was the cell
   // above free?" of the OLD map, not this one — same draws, same trees.
@@ -256,6 +258,7 @@ function autumn() {
   b.ensureReachable(mtnFloor)
   pruneBrokenTrees(b)
   stampMountainRim(b, rng)
+  pruneStrayGround(b)
   return b
 }
 

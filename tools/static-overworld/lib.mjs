@@ -162,6 +162,60 @@ export function shoreline(b) {
   for (const [x, y, skin] of repaint) b.g(x, y, skin)
 }
 
+// A log bridge is a pier OVERLAY: the logs on the prop layer, the river
+// still flowing beneath them (the ferry pier, lake-1-ferry, is the model).
+// Painted as GROUND the log tile — two rails, transparent between — shows
+// the void, which is how River Split's north bridge shipped. Every ground
+// pier cell becomes water under a pier prop where it lies in the river (a
+// water skin on any side) and grass under the same prop on the banks; the
+// cell stays walkable. Run before shoreline() so the bank cells under the
+// logs take their rim. Returns how many cells changed.
+export function pierOverWater(b, { grass = 'ow_grass_0' } = {}) {
+  const wasWater = (x, y) => b.in(x, y) && isWaterSkin(b.palette[b.ground[y][x]])
+  const cells = []
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++)
+    if (b.palette[b.ground[y][x]] === 'ow_pier_log') cells.push([x, y])
+  const skins = cells.map(([x, y]) =>
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => wasWater(x + dx, y + dy)) ? WATER_SKINS[(x + y) & 1] : grass)
+  cells.forEach(([x, y], i) => {
+    const walk = b.walkG[y][x]
+    b.g(x, y, skins[i])
+    b.p(x, y, 'ow_pier_log', { walkable: true })
+    b.walkG[y][x] = walk
+  })
+  return cells.length
+}
+
+// The reachability passes (healFragmentation, ensureReachable) stamp the
+// cells they open with a dirt skin. Where a generator lays real dirt trails
+// (forest-1's winding paths) those stamps merge into them; everywhere else
+// they are lone peach squares in the grass — one felled tree, one carve.
+// Any dirt patch smaller than a trail goes back to grass; the props and
+// collision the carve set are untouched. Returns how many cells changed.
+export function carveDirtToGrass(b, { maxSize = 7, grass = 'ow_grass_0' } = {}) {
+  const isDirt = (x, y) => b.in(x, y) && !!b.palette[b.ground[y][x]]?.startsWith('ow_dirt')
+  const seen = new Set()
+  let n = 0
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!isDirt(x, y) || seen.has(y * b.w + x)) continue
+    const comp = [], stack = [[x, y]]
+    seen.add(y * b.w + x)
+    while (stack.length) {
+      const [cx, cy] = stack.pop()
+      comp.push([cx, cy])
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy
+        if (!isDirt(nx, ny) || seen.has(ny * b.w + nx)) continue
+        seen.add(ny * b.w + nx); stack.push([nx, ny])
+      }
+    }
+    if (comp.length > maxSize) continue
+    for (const [cx, cy] of comp) b.g(cx, cy, grass)
+    n += comp.length
+  }
+  return n
+}
+
 export class MapBuilder {
   constructor(name, biome, technique, w, h) {
     Object.assign(this, { name, biome, technique, w, h, notes: '' })

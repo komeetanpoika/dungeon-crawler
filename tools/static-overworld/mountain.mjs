@@ -65,6 +65,37 @@ export function clearMountainRect(b, rng, x0, y0, x1, y1, skin = MTN_GROUND_WEIG
   }
 }
 
+// Mountain ground belongs at the foot of a mass or in a yard. The elevation
+// fringe band also painted it under lone trees far from any peak, and a
+// carve can leave a strip of it adrift in the grass: those patches read as
+// grey holes in the woods. Every 4-connected patch of mountain ground that
+// holds neither a mass cell nor a building goes back to grass; props and
+// collision stay. Run after the rim pass. Returns how many cells changed.
+export function pruneStrayGround(b, { grass = 'ow_grass_0' } = {}) {
+  const isGround = (x, y) => b.in(x, y) && isMountainGround(b.palette[b.ground[y][x]])
+  const anchors = (x, y) => { const p = b.palette[b.prop[y][x]] ?? ''; return isMassSkin(p) || p.startsWith('ow_house') || p.startsWith('ow_roof') }
+  const seen = new Set()
+  let n = 0
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!isGround(x, y) || seen.has(y * b.w + x)) continue
+    const comp = [], stack = [[x, y]]
+    seen.add(y * b.w + x)
+    while (stack.length) {
+      const [cx, cy] = stack.pop()
+      comp.push([cx, cy])
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy
+        if (!isGround(nx, ny) || seen.has(ny * b.w + nx)) continue
+        seen.add(ny * b.w + nx); stack.push([nx, ny])
+      }
+    }
+    if (comp.some(([cx, cy]) => anchors(cx, cy))) continue
+    for (const [cx, cy] of comp) b.g(cx, cy, grass)
+    n += comp.length
+  }
+  return n
+}
+
 // Shape for a mass cell from its neighbourhood: f = which of the four sides
 // are floor. Returns the open-side mask (1 N, 2 E, 4 S, 8 W) for a lattice
 // cell — spur tips and islands included — or 'wall' for a cell open on both
