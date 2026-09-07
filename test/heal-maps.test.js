@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { MapBuilder, shoreline, reshore, validate, layPiersOverWater, isPierSkin, fordToStones, carveDirtToGrass, isWaterSkin, WATER_SKINS } from '../tools/static-overworld/lib.mjs'
+import { MapBuilder, shoreline, reshore, validate, layPiersOverWater, isPierSkin, fordToStones, carveDirtToGrass, dryWalkableWater, isWaterSkin, isSandySkin, isMuddySkin, RIM_TILES, WATER_SKINS } from '../tools/static-overworld/lib.mjs'
 import { buildOpenMap } from '../renderer/systems/openmap.js'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -142,6 +142,23 @@ describe('fordToStones', () => {
     assert.equal(fordToStones(b), 1)
     assert.equal(ground(b, 4, 4)?.startsWith('ow_water'), true)
     assert.equal(ground(b, 4, 3), 'ow_dirt_0'); assert.equal(ground(b, 4, 2), 'ow_dirt_0')
+  })
+})
+
+describe('dryWalkableWater', () => {
+  it('turns an opened pool cell into the land beside it, and leaves piers, stones and blocked water alone', () => {
+    const b = new MapBuilder('t', 'forest', 't', 7, 7)
+    for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) b.g(x, y, x < 3 ? 'ow_dirt_1' : 'ow_grass_0')
+    for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) { b.g(x, y, 'ow_water_0'); b.block(x, y) }
+    b.unblock(2, 3)                                            // a stamp opened the pool's west cell: mud beside it
+    b.unblock(4, 3); b.p(4, 3, 'ow_cave_arch_0', { walkable: true })   // an arch over the east cell: grass beside it
+    b.unblock(3, 2); b.p(3, 2, 'ow_pier_log', { walkable: true })      // a pier stays a pier
+    b.unblock(3, 4); b.p(3, 4, 'ow_rock_water_gray_0', { walkable: true })
+    assert.equal(dryWalkableWater(b), 2)
+    assert.equal(ground(b, 2, 3), 'ow_dirt_1')
+    assert.equal(ground(b, 4, 3), 'ow_grass_0'); assert.equal(prop(b, 4, 3), 'ow_cave_arch_0')
+    assert.equal(ground(b, 3, 2), 'ow_water_0'); assert.equal(ground(b, 3, 4), 'ow_water_0'); assert.equal(ground(b, 3, 3), 'ow_water_0')
+    assert.equal(dryWalkableWater(b), 0)
   })
 })
 
@@ -316,7 +333,7 @@ describe('beach', () => {
     assert.equal(stampSandEdge(b), 1); assert.equal(ground(b, 4, 3), 'ow_sand_0')
   })
   it('every sand edge and shore tile is on disk', () => {
-    for (const n of [...SAND_EDGES, ...SHORE, 'ow_pier_log_v']) assert.ok(fs.existsSync(path.join(TILES, `${n}.png`)), n)
+    for (const n of [...SAND_EDGES, ...SHORE, ...RIM_TILES.mud, 'ow_pier_log_v']) assert.ok(fs.existsSync(path.join(TILES, `${n}.png`)), n)
   })
 })
 
@@ -324,17 +341,22 @@ describe('beach', () => {
 // Mountain Pass (12) and the three sea maps (16-18). Guards on the shipped
 // data so the defects cannot creep back through a regeneration or an editor
 // round-trip.
-describe('shipped River Split, Mountain Pass and the three sea maps', () => {
-  const maps = [11, 12, 16, 17, 18].map(d => OPEN_MAPS[d])
+describe('shipped River Split, Mountain Pass, the three sea maps and the three leap maps', () => {
+  const maps = [8, 9, 10, 11, 12, 16, 17, 18].map(d => OPEN_MAPS[d])
+  const leap = m => !!m.leap
+  // the marsh keeps its mud band (noise terrain, patches of three cells and
+  // up); every other map's dirt is a trail of eight or more
+  const dirtPatchMin = m => m.name === 'marsh-3-hermit' ? 3 : 8
   const skin = (m, l, x, y) => (m[l][y]?.[x] >= 0 ? m.palette[m[l][y][x]] : null)
-  const components = (m, pred) => {
+  const components = (m, pred, diagonal = false) => {
     const seen = new Set(), out = []
+    const steps = diagonal ? [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] : [[1, 0], [-1, 0], [0, 1], [0, -1]]
     for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
       if (!pred(x, y) || seen.has(y * m.w + x)) continue
       const comp = [], stack = [[x, y]]; seen.add(y * m.w + x)
       while (stack.length) {
         const [cx, cy] = stack.pop(); comp.push([cx, cy])
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        for (const [dx, dy] of steps) {
           const nx = cx + dx, ny = cy + dy
           if (nx < 0 || ny < 0 || nx >= m.w || ny >= m.h || seen.has(ny * m.w + nx) || !pred(nx, ny)) continue
           seen.add(ny * m.w + nx); stack.push([nx, ny])
@@ -347,17 +369,18 @@ describe('shipped River Split, Mountain Pass and the three sea maps', () => {
   it('are at the fixed point of every heal pass: rerunning them changes nothing', () => {
     for (const m of maps) {
       const b = MapBuilder.fromJSON(m)
-      assert.equal(fordToStones(b), 0, `${m.name}: ford`)
+      if (!leap(m)) assert.equal(fordToStones(b), 0, `${m.name}: ford`)   // a marsh keeps its mud necks between pools
+      assert.equal(dryWalkableWater(b), 0, `${m.name}: walkable water`)
       assert.equal(layPiersOverWater(b), 0, `${m.name}: piers`)
-      assert.equal(carveDirtToGrass(b), 0, `${m.name}: dirt`)
+      assert.equal(carveDirtToGrass(b, { maxSize: dirtPatchMin(m) - 1 }), 0, `${m.name}: dirt`)
       assert.equal(pruneStrayGround(b), 0, `${m.name}: stray ground`)
       assert.equal(fillGrassPockets(b), 0, `${m.name}: grass pockets`)
       assert.equal(stampGroundEdge(b), 0, `${m.name}: ground edge`)
       assert.equal(stampSandEdge(b), 0, `${m.name}: sand edge`)
     }
   })
-  it('still validate: spawn and every POI reachable', () => {
-    for (const m of maps) assert.deepEqual(validate(MapBuilder.fromJSON(m)), [], m.name)
+  it('still validate: spawn and every POI reachable (the leap maps seal theirs on purpose)', () => {
+    for (const m of maps) if (!leap(m)) assert.deepEqual(validate(MapBuilder.fromJSON(m)), [], m.name)
   })
   it('no open cell cuts the river: water on opposite sides means a pier or a stepping stone (river maps; the sea maps have real one-cell necks)', () => {
     for (const m of [OPEN_MAPS[11], OPEN_MAPS[12]]) for (let y = 1; y < m.h - 1; y++) for (let x = 1; x < m.w - 1; x++) {
@@ -369,18 +392,24 @@ describe('shipped River Split, Mountain Pass and the three sea maps', () => {
       assert.ok(wet(x, y), `${m.name}: crossing at ${x},${y} over ${skin(m, 'ground', x, y)}`)
     }
   })
-  it('beaches take the sand shoreline, grass banks the green one', () => {
+  it('beaches take the sand shoreline, mud bands the mud one, grass banks the green one', () => {
     for (const m of maps) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
       const g = skin(m, 'ground', x, y)
-      if (!g?.startsWith('ow_pond_') && !g?.startsWith('ow_shore_')) continue
+      if (!g?.startsWith('ow_pond_') && !g?.startsWith('ow_shore_') && !g?.startsWith('ow_mud_')) continue
       const land = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => skin(m, 'ground', x + dx, y + dy))
-        .filter(n => n && !n.startsWith('ow_water') && !n.startsWith('ow_pond_') && !n.startsWith('ow_shore_') && n !== 'ow_pier_log')
+        .filter(n => n && !isWaterSkin(n) && !isPierSkin(n))
       if (!land.length) continue
-      const sandy = land.every(n => n.startsWith('ow_sand') || n.startsWith('ow_stone_ground'))
       // a rim keyed on one side may touch other land on a side it does not face; only an all-or-nothing neighbourhood is decisive
-      const grassy = land.every(n => !n.startsWith('ow_sand') && !n.startsWith('ow_stone_ground'))
-      if (sandy) assert.ok(g.startsWith('ow_shore_'), `${m.name}: green bank on the beach at ${x},${y}`)
-      if (grassy) assert.ok(g.startsWith('ow_pond_'), `${m.name}: sand bank beside grass at ${x},${y}`)
+      if (land.every(isSandySkin)) assert.ok(g.startsWith('ow_shore_'), `${m.name}: ${g} on the beach at ${x},${y}`)
+      else if (land.every(isMuddySkin)) assert.ok(g.startsWith('ow_mud_'), `${m.name}: ${g} on the mud at ${x},${y}`)
+      else if (land.every(n => !isSandySkin(n) && !isMuddySkin(n))) assert.ok(g.startsWith('ow_pond_'), `${m.name}: ${g} beside grass at ${x},${y}`)
+    }
+  })
+  it('nobody walks on water: an open water cell carries a pier or a stepping stone', () => {
+    for (const m of maps) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+      if (m.walk[y][x] !== '1' || !isWaterSkin(skin(m, 'ground', x, y))) continue
+      const p = skin(m, 'prop', x, y) ?? ''
+      assert.ok(isPierSkin(p) || p.startsWith('ow_rock_water'), `${m.name}: open water at ${x},${y}`)
     }
   })
   it('lay every log bridge as a pier overlay over water — never as bare pier ground', () => {
@@ -418,10 +447,10 @@ describe('shipped River Split, Mountain Pass and the three sea maps', () => {
       assert.equal(p, alongY ? 'ow_pier_log_v' : 'ow_pier_log', `${m.name}: ${x},${y}`)
     }
   })
-  it('carry no dirt carve stamps: every dirt patch is a trail of eight cells or more', () => {
+  it('carry no dirt carve stamps: every dirt patch is a trail (or, on the marsh, a mud patch) of the map\'s minimum size', () => {
     for (const m of maps)
-      for (const comp of components(m, (x, y) => skin(m, 'ground', x, y)?.startsWith('ow_dirt')))
-        assert.ok(comp.length >= 8, `${m.name}: ${comp.length}-cell dirt patch at ${comp[0]}`)
+      for (const comp of components(m, (x, y) => skin(m, 'ground', x, y)?.startsWith('ow_dirt'), true))
+        assert.ok(comp.length >= dirtPatchMin(m), `${m.name}: ${comp.length}-cell dirt patch at ${comp[0]}`)
   })
   it('keep mountain ground at the foot of a mass or in a yard, never adrift in the woods', () => {
     const m = OPEN_MAPS[12]

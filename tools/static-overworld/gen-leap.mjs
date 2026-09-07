@@ -4,7 +4,8 @@
 //   marsh-3-hermit   — Lauri's cold village, the hermit's hearth, the Sammunut
 // Every episode POI the game reads is declared here by label; test/leap-maps.test.js
 // lists them.
-import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
+import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3, carveDirtToGrass, dryWalkableWater } from './lib.mjs'
+import { hash } from './edges.mjs'
 import { PINES, AUTUMN, ROCKS_MOSS, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -74,9 +75,11 @@ function lake() {
   // the pier resumes after the gap and runs to the east bank
   let x1 = bellX + 1 + PIER_GAP
   while (isWater(b, x1, py)) { layPier(x1); x1++ }
-  // orchard on the east bank — apple trees on a cleared lawn
+  // orchard on the east bank — apple trees on a cleared lawn; the clearing
+  // reaches the pier's last cells, so the pier is laid again after it
   const orchard = { x: x1 + 6, y: py }
   clearing(b, orchard.x, orchard.y, 7)
+  for (let x = bellX + 1 + PIER_GAP; x < x1; x++) layPier(x)
   for (let y = -5; y <= 5; y += 2) for (let x = -5; x <= 5; x += 2) b.p(orchard.x + x, orchard.y + y, 'ow_tree_apple')
   b.poi('landmark', orchard.x, orchard.y, 'orchard')
   // the east bank must only be reachable across the pier: a solid tree wall
@@ -146,8 +149,9 @@ function lake() {
     snapshot.prop.push(b.prop[y].slice(EAST_FROM))
     snapshot.walk.push(b.walkG[y].slice(EAST_FROM))
   }
-  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: 'ow_dirt_0' })
-  b.ensureReachable('ow_dirt_0')
+  // carves keep the ground they open (a dirt stamp is a lone peach square)
+  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: null })
+  b.ensureReachable(null)
   for (let y = 0; y < b.h; y++) for (let i = 0; i < snapshot.ground[y].length; i++) {
     b.ground[y][EAST_FROM + i] = snapshot.ground[y][i]
     b.prop[y][EAST_FROM + i] = snapshot.prop[y][i]
@@ -232,8 +236,9 @@ function fold() {
   for (const c of b.scatter(rng, 3, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   stampRunestone(b, village.x - 14, village.y)
   b.p(burrow.x - 14, burrow.y + 8, 'ow_house_arch_stone', { walkable: true }); b.poi('landmark', burrow.x - 14, burrow.y + 8, 'ridge stone')
-  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: 'ow_dirt_0' })
-  b.ensureReachable('ow_dirt_0')
+  // carves keep the ground they open (a dirt stamp is a lone peach square)
+  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: null })
+  b.ensureReachable(null)
   // healFragmentation/ensureReachable must not have breached the burrow:
   // 'lair' is a POI, so ensureReachable carves the nearest path to it —
   // not necessarily through the mouth. Re-stamp the whole ring (undoing any
@@ -251,6 +256,37 @@ function fold() {
   b.p(mouth.x, mouth.y + 1, 'tile_0089', { walkable: true })
   b.unblock(mouth.x, mouth.y + 1)
   pruneBrokenTrees(b)
+  // The trail's diagonal steps only touch at the corners, so it read as a
+  // dotted line. Fill each step's missing orthogonal cell — hash-picked
+  // dirt, no rng draw, after every draw is made — so it reads as one path.
+  const trailCells = []
+  for (let i = 1; i < trail.length; i++) {
+    const [ax, ay] = trail[i - 1], [bx, by] = trail[i]
+    const n = Math.max(Math.abs(bx - ax), Math.abs(by - ay))
+    for (let k = 0; k <= n; k++) trailCells.push([Math.round(ax + (bx - ax) * k / n), Math.round(ay + (by - ay) * k / n)])
+  }
+  for (let i = 1; i < trailCells.length; i++) {
+    const [ax, ay] = trailCells[i - 1], [bx, by] = trailCells[i]
+    if (ax === bx || ay === by) continue
+    const x = bx, y = ay   // the corner cell that joins a diagonal step
+    if (b.isBorder(x, y) || DIRT.includes(b.palette[b.ground[y][x]])) continue
+    const r2 = (x - burrow.x) ** 2 + (y - burrow.y) ** 2
+    if (r2 > 16 && r2 <= 25) continue                       // never breach the burrow ring
+    const prop = b.palette[b.prop[y][x]] ?? ''
+    if (/^(ow_house|ow_fence|ow_cave|ow_ruin|tile_)/.test(prop)) continue   // built things and caches stay
+    b.clearProp(x, y); b.g(x, y, DIRT[hash(x, y, 7) % DIRT.length])
+  }
+  pruneBrokenTrees(b)
+  // a stone-ground cell with no rock on it and no stone beside it is a flat
+  // grey square in the grass: back to grass (props and collision untouched)
+  for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
+    if (b.palette[b.ground[y][x]] !== 'ow_stone_ground_0' || b.prop[y][x] !== -1) continue
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => b.palette[b.ground[y + dy][x + dx]] === 'ow_stone_ground_0')) continue
+    b.g(x, y, 'ow_grass_0')
+  }
+  // the trail's last cell lies inside the burrow ring, cut off when the
+  // ring is re-stamped over it: a lone dirt cell in the lair is no trail
+  carveDirtToGrass(b, { maxSize: 1 })
   return b
 }
 
@@ -304,15 +340,31 @@ function marsh() {
   for (const c of b.scatter(rng, 3, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   stampRunestone(b, village.x - 16, village.y + 4)
   b.p(hut.x + 14, hut.y + 2, 'ow_house_arch_stone', { walkable: true }); b.poi('landmark', hut.x + 14, hut.y + 2, 'knoll stone')
-  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: 'ow_dirt_0' })
-  b.ensureReachable('ow_dirt_0')
+  // carves keep the ground they open (a dirt stamp is a lone peach square);
+  // a carve straight across a pool keeps the pool too and crosses it on
+  // stepping stones instead of a mud causeway
+  // (the village plot, the bog cave and the runestone clearing opened pool
+  // cells without draining them: the player walked on water — dry those)
+  dryWalkableWater(b)
+  const pools = new Set()
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if (isWater(b, x, y) && !b.walkable(x, y)) pools.add(y * b.w + x)
+  b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: null })
+  b.ensureReachable(null)
+  for (const k of pools) {
+    const x = k % b.w, y = (k - x) / b.w
+    if (b.walkable(x, y)) b.p(x, y, `ow_rock_water_gray_${(x + y) & 1}`, { walkable: true })
+  }
   pruneBrokenTrees(b)
+  // the mud band's noise leaves lone mud cells in the grass: a marsh is
+  // mud around its pools, not peach specks — one- and two-cell patches go
+  carveDirtToGrass(b, { maxSize: 2 })
   return b
 }
 
 export const LEAP_MAPS = [lake, fold, marsh]
 for (const make of LEAP_MAPS) {
   const b = make()
+  dryWalkableWater(b)     // no stamp leaves the player walking on a pool
   shoreline(b)
   const problems = validate(b)
   // the orchard is deliberately unreachable until the Näkki is fed, and the

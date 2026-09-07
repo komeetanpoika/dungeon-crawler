@@ -119,10 +119,12 @@ export function pruneBrokenTrees(b) {
 // Kenney's shore-corner tiles (a sand wedge in one corner) — painting them
 // at random put beaches in the middle of every lake.
 export const WATER_SKINS = ['ow_water_0', 'ow_water_1']
-export const isWaterSkin = n => !!n && (n.startsWith('ow_water') || n.startsWith('ow_pond_') || n.startsWith('ow_shore_'))
+export const isWaterSkin = n => !!n && (n.startsWith('ow_water') || n.startsWith('ow_pond_') || n.startsWith('ow_shore_') || n.startsWith('ow_mud_'))
 // Sand and what sits on the beach with it: stone ground (a lighthouse islet)
 // fringes in sand, not grass. shoreline() keys its rim colour on this.
 export const isSandySkin = n => !!n && (n.startsWith('ow_sand') || n.startsWith('ow_stone_ground'))
+// A marsh pool's mud band takes the mud-coloured rim (ow_mud_*).
+export const isMuddySkin = n => !!n && n.startsWith('ow_dirt')
 
 // Dress every water cell that touches land with the 3x3 pond autotile's
 // rim, so lakes, rivers and coasts read as shores: land to the N/S/E/W
@@ -150,10 +152,12 @@ export function reshore(b) {
 }
 
 // A beach takes the sand-coloured rim (ow_shore_*, beach.mjs) where every
-// land side is sandy; anywhere grass touches the water the bank is green.
+// land side is sandy, a marsh pool's mud band the mud-coloured one
+// (ow_mud_*); anywhere grass touches the water the bank is green.
 const RIM_KEYS = { N: '10', S: '12', W: '01', E: '21', NW: '00', NE: '20', SW: '02', SE: '22' }
-const RIM = Object.fromEntries(Object.entries(RIM_KEYS).map(([k, v]) => [k, `ow_pond_${v}`]))
-const SHORE_RIM = Object.fromEntries(Object.entries(RIM_KEYS).map(([k, v]) => [k, `ow_shore_${v}`]))
+const rimSet = prefix => Object.fromEntries(Object.entries(RIM_KEYS).map(([k, v]) => [k, `${prefix}_${v}`]))
+const RIM = rimSet('ow_pond'), SHORE_RIM = rimSet('ow_shore'), MUD_RIM = rimSet('ow_mud')
+export const RIM_TILES = { pond: Object.values(RIM), shore: Object.values(SHORE_RIM), mud: Object.values(MUD_RIM) }
 export function shoreline(b) {
   const wet = (x, y) => {
     if (!b.in(x, y)) return true
@@ -168,8 +172,9 @@ export function shoreline(b) {
     const key = ns + ew
     if (!key) continue
     const land = [ns === 'N' ? [x, y - 1] : ns === 'S' ? [x, y + 1] : null, ew === 'W' ? [x - 1, y] : ew === 'E' ? [x + 1, y] : null].filter(Boolean)
-    const sandy = land.every(([lx, ly]) => isSandySkin(b.palette[b.ground[ly][lx]]))
-    repaint.push([x, y, (sandy ? SHORE_RIM : RIM)[key]])
+    const skins = land.map(([lx, ly]) => b.palette[b.ground[ly][lx]])
+    const set = skins.every(isSandySkin) ? SHORE_RIM : skins.every(isMuddySkin) ? MUD_RIM : RIM
+    repaint.push([x, y, set[key]])
   }
   for (const [x, y, skin] of repaint) b.g(x, y, skin)
 }
@@ -238,6 +243,27 @@ const commonest = a => {
   return best
 }
 
+// A stamp laid over a pool — a village plot, a cave mouth, a runestone's
+// clearing — clears the props and opens the cells but leaves the water skin,
+// so the player walks on water. Every walkable water cell that carries
+// neither a pier nor a stepping stone (a cave arch over a pool included)
+// becomes the land beside it — the commonest land skin around it, so a
+// marsh pool dries to mud and a lawn to grass; run before shoreline() so
+// the pool's rim moves with it. Returns how many cells changed.
+export function dryWalkableWater(b, { grass = 'ow_grass_0' } = {}) {
+  const at = (x, y) => b.in(x, y) ? b.palette[b.ground[y][x]] : null
+  const cells = []
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!b.walkG[y][x] || !isWaterSkin(at(x, y))) continue
+    const prop = b.palette[b.prop[y][x]] ?? ''
+    if (isPierSkin(prop) || prop.startsWith('ow_rock_water')) continue
+    const land = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => at(x + dx, y + dy)).filter(n => n && !isWaterSkin(n) && !isPierSkin(n))
+    cells.push([x, y, commonest(land) ?? grass])
+  }
+  for (const [x, y, skin] of cells) b.g(x, y, skin)
+  return cells.length
+}
+
 // A reachability carve straight across a river leaves a dirt causeway that
 // cuts the water in two (River Split's row 30). A dirt cell with water on
 // both opposite sides is such a crossing: it goes back to water with a
@@ -263,7 +289,8 @@ export function fordToStones(b) {
 // (forest-1's winding paths) those stamps merge into them; everywhere else
 // they are lone peach squares in the grass — one felled tree, one carve.
 // Any dirt patch smaller than a trail goes back to grass; the props and
-// collision the carve set are untouched. Returns how many cells changed.
+// collision the carve set are untouched. A trail may step diagonally, so
+// patches are 8-connected. Returns how many cells changed.
 export function carveDirtToGrass(b, { maxSize = 7, grass = 'ow_grass_0' } = {}) {
   const isDirt = (x, y) => b.in(x, y) && !!b.palette[b.ground[y][x]]?.startsWith('ow_dirt')
   const seen = new Set()
@@ -275,7 +302,7 @@ export function carveDirtToGrass(b, { maxSize = 7, grass = 'ow_grass_0' } = {}) 
     while (stack.length) {
       const [cx, cy] = stack.pop()
       comp.push([cx, cy])
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
         const nx = cx + dx, ny = cy + dy
         if (!isDirt(nx, ny) || seen.has(ny * b.w + nx)) continue
         seen.add(ny * b.w + nx); stack.push([nx, ny])
