@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { MapBuilder, shoreline, reshore, validate, layPiersOverWater, fordToStones, carveDirtToGrass, WATER_SKINS } from '../tools/static-overworld/lib.mjs'
+import { MapBuilder, shoreline, reshore, validate, layPiersOverWater, isPierSkin, fordToStones, carveDirtToGrass, isWaterSkin, WATER_SKINS } from '../tools/static-overworld/lib.mjs'
+import { buildOpenMap } from '../renderer/systems/openmap.js'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -66,18 +67,26 @@ describe('layPiersOverWater', () => {
     assert.equal(ground(b, 1, 1), 'ow_grass_0')
     assert.equal(layPiersOverWater(b), 0)
   })
-  it('lays a north-south pier over an east-west river the same way, and a jetty off the map edge ends in grass', () => {
-    const b = new MapBuilder('t', 'forest', 't', 7, 9)
-    for (let y = 0; y < 9; y++) for (let x = 0; x < 7; x++) b.g(x, y, 'ow_grass_0')
-    for (let y = 3; y <= 5; y++) for (let x = 0; x < 7; x++) { b.g(x, y, 'ow_water_1'); b.block(x, y) }
-    for (let y = 2; y <= 6; y++) { b.g(3, y, 'ow_pier_log'); b.unblock(3, y) }   // across the river
-    for (let x = 4; x <= 6; x++) b.g(x, 8, 'ow_pier_log')                       // a jetty on dry land running off the east edge
+  it('a run of logs that only continues north and south takes the upright tile; corners and lone cells keep the rails', () => {
+    const b = new MapBuilder('t', 'forest', 't', 9, 9)
+    for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) b.g(x, y, 'ow_grass_0')
+    for (let y = 3; y <= 5; y++) for (let x = 0; x < 9; x++) { b.g(x, y, 'ow_water_1'); b.block(x, y) }
+    for (let y = 2; y <= 6; y++) { b.g(3, y, 'ow_pier_log'); b.unblock(3, y) }     // straight across the river
+    for (let x = 3; x <= 6; x++) { b.g(x, 6, 'ow_pier_log'); b.unblock(x, 6) }     // then east along the far bank: (3,6) is the corner
     assert.equal(layPiersOverWater(b), 8)
+    for (let y = 2; y <= 5; y++) assert.equal(prop(b, 3, y), 'ow_pier_log_v', `${y}`)
+    assert.equal(prop(b, 3, 6), 'ow_pier_log')
+    for (let x = 4; x <= 6; x++) assert.equal(prop(b, x, 6), 'ow_pier_log')
     for (let y = 3; y <= 5; y++) assert.ok(WATER_SKINS.includes(ground(b, 3, y)))
     assert.equal(ground(b, 3, 2), 'ow_grass_0'); assert.equal(ground(b, 3, 6), 'ow_grass_0')
-    for (let x = 4; x <= 6; x++) { assert.equal(ground(b, x, 8), 'ow_grass_0'); assert.equal(prop(b, x, 8), 'ow_pier_log') }
     assert.equal(b.walkable(3, 4), true)
-    assert.equal(b.walkable(6, 8), false)   // the border stays blocked
+  })
+  it('a filled puddle of any size is land with no logs: the whole pier component must touch water', () => {
+    const b = new MapBuilder('t', 'forest', 't', 7, 5)
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 7; x++) b.g(x, y, 'ow_sand_0')
+    b.g(2, 2, 'ow_pier_log'); b.g(3, 2, 'ow_pier_log')      // a two-cell puddle a carve filled, sand all round
+    assert.equal(layPiersOverWater(b), 2)
+    for (const x of [2, 3]) { assert.equal(ground(b, x, 2), 'ow_sand_0'); assert.equal(prop(b, x, 2), null) }
   })
   it('shoreline then rims the bank cells under the logs like any other water', () => {
     const b = riverWithGroundBridge()
@@ -300,7 +309,7 @@ describe('beach', () => {
     assert.equal(stampSandEdge(b), 1); assert.equal(ground(b, 4, 3), 'ow_sand_0')
   })
   it('every sand edge and shore tile is on disk', () => {
-    for (const n of [...SAND_EDGES, ...SHORE]) assert.ok(fs.existsSync(path.join(TILES, `${n}.png`)), n)
+    for (const n of [...SAND_EDGES, ...SHORE, 'ow_pier_log_v']) assert.ok(fs.existsSync(path.join(TILES, `${n}.png`)), n)
   })
 })
 
@@ -369,17 +378,36 @@ describe('shipped River Split, Mountain Pass and the three sea maps', () => {
   })
   it('lay every log bridge as a pier overlay over water — never as bare pier ground', () => {
     for (const m of maps) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++)
-      assert.notEqual(skin(m, 'ground', x, y), 'ow_pier_log', `${m.name}: pier ground at ${x},${y}`)
+      assert.ok(!skin(m, 'ground', x, y)?.startsWith('ow_pier_'), `${m.name}: pier ground at ${x},${y}`)
   })
-  it('a pier stands over water, or on a bank with water or more pier beside it', () => {
-    const wet = (m, x, y) => { const g = skin(m, 'ground', x, y) ?? ''; return g.startsWith('ow_water') || g.startsWith('ow_pond_') }
+  it('the game sees every water skin as clear to sight (a shore rim included)', () => {
+    for (const m of Object.values(OPEN_MAPS)) {
+      const { map } = buildOpenMap(m, { depth: 1 })
+      for (let y = 1; y < m.h - 1; y++) for (let x = 1; x < m.w - 1; x++) {
+        if (m.walk[y][x] === '1' || m.prop[y][x] >= 0 || !isWaterSkin(skin(m, 'ground', x, y))) continue
+        assert.equal(map[y][x].losClear, true, `${m.name}: ${skin(m, 'ground', x, y)} at ${x},${y} blocks sight`)
+      }
+    }
+  })
+  it('a pier stands over water, or on a bank with water or more pier beside it — never on dry land alone', () => {
+    const wet = (m, x, y) => isWaterSkin(skin(m, 'ground', x, y))
     for (const m of maps) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
-      const p = skin(m, 'prop', x, y)
-      if (p !== 'ow_pier_log' && p !== 'ow_pier_post') continue
+      if (!isPierSkin(skin(m, 'prop', x, y))) continue
       if (m.walk[y][x] !== '1') continue   // a log pile or a bollard, not a walkway
       if (wet(m, x, y)) continue
-      const beside = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => wet(m, x + dx, y + dy) || ['ow_pier_log', 'ow_pier_post'].includes(skin(m, 'prop', x + dx, y + dy)))
-      assert.ok(beside, `${m.name}: pier at ${x},${y} over ${skin(m, 'ground', x, y)} with no water or pier beside it`)
+      const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      assert.ok(sides.some(([dx, dy]) => wet(m, x + dx, y + dy) || isPierSkin(skin(m, 'prop', x + dx, y + dy))),
+        `${m.name}: pier at ${x},${y} over ${skin(m, 'ground', x, y)} with no water or pier beside it`)
+    }
+  })
+  it('a north-south run of logs wears the upright tile, everything else the rails', () => {
+    for (const m of maps) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+      const p = skin(m, 'prop', x, y)
+      if (p !== 'ow_pier_log' && p !== 'ow_pier_log_v') continue
+      const pier = (dx, dy) => isPierSkin(skin(m, 'prop', x + dx, y + dy)) && m.walk[y + dy]?.[x + dx] === '1'
+      const alongY = (pier(0, -1) || pier(0, 1)) && !pier(-1, 0) && !pier(1, 0)
+      if (m.walk[y][x] !== '1') continue
+      assert.equal(p, alongY ? 'ow_pier_log_v' : 'ow_pier_log', `${m.name}: ${x},${y}`)
     }
   })
   it('carry no dirt carve stamps: every dirt patch is a trail of eight cells or more', () => {

@@ -2,7 +2,10 @@
 // their grass-green bank recoloured to the beach sand (the two greens map to
 // ow_sand_0's light and dark grains; the brown waterline stays), emitted as
 // ow_shore_<k>. shoreline() in lib.mjs lays them where every land side of a
-// water cell is sandy (beach.mjs). Deterministic; run from anywhere:
+// water cell is sandy (beach.mjs). Also ow_pier_log_v: the pier tile turned
+// upright (transposed), so a causeway running north-south shows planks along
+// its length instead of ladder rungs (layPiersOverWater picks it).
+// Deterministic; run from anywhere:
 //   node tools/synth-shore-tiles.mjs
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,4 +32,9 @@ for (const name of SHORE) {
     if (out[i + 3] && isGreen(out[i], out[i + 1], out[i + 2])) out.set(out[i + 1] > 170 ? light : dark, i)
   writePng(path.join(TILES, `${name}.png`), src.width, src.height, out)
 }
-console.log(`wrote ${SHORE.length} shore tiles to ${path.relative(process.cwd(), TILES)}`)
+const log = readPng(path.join(TILES, 'ow_pier_log.png'))
+const upright = new Uint8Array(log.pixels.length)
+for (let y = 0; y < log.height; y++) for (let x = 0; x < log.width; x++)
+  upright.set(log.pixels.subarray((y * log.width + x) * 4, (y * log.width + x) * 4 + 4), (x * log.height + y) * 4)
+writePng(path.join(TILES, 'ow_pier_log_v.png'), log.height, log.width, upright)
+console.log(`wrote ${SHORE.length} shore tiles and ow_pier_log_v to ${path.relative(process.cwd(), TILES)}`)

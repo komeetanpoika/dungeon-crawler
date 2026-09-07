@@ -69,6 +69,14 @@ function suomenlinna() {
       default: b.g(x, y, rng() < 0.94 ? 'ow_grass_0' : pick(rng, GRASS))
     }
   }
+  // a brick pixel with no brick or stone beside it is not a building: a
+  // lone red roof on the grass reads as a dropped crate, so it is rubble
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    if (b.palette[b.prop[y][x]] !== 'ow_roof_red_m') continue
+    const built = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+      .some(([dx, dy]) => ['ow_roof_red_m', 'ow_house_wall_stone'].includes(b.palette[b.prop[y + dy]?.[x + dx]]))
+    if (!built) b.p(x, y, 'ow_house_wall_stone')
+  }
   // rocky shoreline: land cells touching water sometimes get shore rocks
   for (let y = 1; y < gh - 1; y++) for (let x = 1; x < gw - 1; x++) {
     if (!b.walkable(x, y) || b.prop[y][x] !== -1) continue
@@ -252,9 +260,9 @@ function archipelago() {
 for (const make of [suomenlinna, fishingVillage, archipelago]) {
   const b = make()
   layPiersOverWater(b)
-  // the photo's "path" pixels classify as dirt one cell at a time: specks,
-  // not paths — the few that made a patch stay
-  carveDirtToGrass(b)
+  // the photo's "path" pixels classify as dirt a cell or two at a time —
+  // specks, never a trail — and no sea map lays a real path: all of it goes
+  carveDirtToGrass(b, { maxSize: Infinity })
   stampSandEdge(b)        // the beach frays into the grass; the shoreline then reads it as sand
   shoreline(b)
   const problems = validate(b)
