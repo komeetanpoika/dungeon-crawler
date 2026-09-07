@@ -205,7 +205,7 @@ describe('LOS terrain classification', () => {
     const pi = data.prop[y][x]
     return pi >= 0 ? data.palette[pi] : data.palette[data.ground[y][x]]
   }
-  const CLEAR = ['ow_water_', 'ow_pond_', 'ow_shore_']
+  const CLEAR = ['ow_water_', 'ow_pond_', 'ow_shore_', 'ow_mud_']
   const SOFT = ['ow_tree_', 'ow_deadtree_', 'ow_bush_', 'ow_shrub_', 'ow_mushroom', 'ow_cactus']
   const startsWithAny = (s, prefixes) => prefixes.some(p => s?.startsWith(p))
 

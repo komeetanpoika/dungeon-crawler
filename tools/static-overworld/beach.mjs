@@ -8,13 +8,13 @@
 // ow_sand_edge_M_D_V fray the beach into the grass like the mountain floor's
 // ow_mtn_edge tiles (tools/synth-ground-edges.mjs, edges.mjs).
 import { edgeTileName, edgeTileNames, stampEdges } from './edges.mjs'
-import { isSandySkin } from './lib.mjs'
+import { isSandySkin, RIM_TILES } from './lib.mjs'
 export { isSandySkin }
 
 export const SAND_EDGE_VARIANTS = 3
 export const sandEdgeName = (M, D, V) => edgeTileName('ow_sand_edge', M, D, V)
 export const SAND_EDGES = edgeTileNames('ow_sand_edge', SAND_EDGE_VARIANTS)
-export const SHORE = ['00', '01', '02', '10', '12', '20', '21', '22'].map(k => `ow_shore_${k}`)
+export const SHORE = RIM_TILES.shore
 
 const isSand = n => !!n && n.startsWith('ow_sand')
 

@@ -29,7 +29,9 @@ describe('the adventure map chain', () => {
       if (Number(depth) === 18) { assert.equal(m.exit, null); continue }
       assert.ok(m.exit, `${m.name} needs an exit`)
       assert.equal(m.walk[m.exit.y][m.exit.x], '1', `${m.name} exit walkable`)
-      assert.ok(m.prop[m.exit.y][m.exit.x] < 0, `${m.name} exit unpropped`)
+      // the exit cell carries nothing the arch overlay would hide — or is the walkable arch itself (the leap runestones)
+      const prop = m.prop[m.exit.y][m.exit.x] < 0 ? null : m.palette[m.prop[m.exit.y][m.exit.x]]
+      assert.ok(prop === null || prop === 'ow_house_arch_stone', `${m.name} exit unpropped (${prop})`)
     }
   })
 

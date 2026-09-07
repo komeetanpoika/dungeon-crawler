@@ -63,7 +63,10 @@ for (const e of EXPORTS) {
   if (e.exitPoi) {
     const poi = m.pois.find(p => p.label === e.exitPoi)
     if (!poi) throw new Error(`${m.name}: no POI labeled '${e.exitPoi}'`)
-    exit = nearestOpen(m, poi.x, poi.y)
+    // a walkable stone arch is the waystone itself: the exit is that cell,
+    // not the cell beside it (where the game would draw a second arch)
+    const arch = m.palette[m.prop[poi.y][poi.x]] === 'ow_house_arch_stone' && m.walk[poi.y][poi.x] === '1'
+    exit = arch ? { x: poi.x, y: poi.y } : nearestOpen(m, poi.x, poi.y)
   }
   maps[e.depth] = {
     name: m.name, title: e.title, w: m.w, h: m.h,
