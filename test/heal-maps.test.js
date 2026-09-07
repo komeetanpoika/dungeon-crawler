@@ -1,7 +1,12 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { MapBuilder, shoreline, reshore, validate, layPiersOverWater, fordToStones, carveDirtToGrass, WATER_SKINS } from '../tools/static-overworld/lib.mjs'
-import { MTN, EDGE_SHAPES, EDGE_VARIANTS, edgeName, stampMass, stampGroundEdge, pruneStrayGround, isMassSkin } from '../tools/static-overworld/mountain.mjs'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { MTN, EDGE_SHAPES, EDGE_VARIANTS, edgeName, stampMass, stampMountainRim, stampGroundEdge, pruneStrayGround, fillGrassPockets, isMassSkin, isAnchorSkin } from '../tools/static-overworld/mountain.mjs'
+
+const TILES = path.join(path.dirname(fileURLToPath(import.meta.url)), '../renderer/assets/tiles')
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 
 const ground = (b, x, y) => b.palette[b.ground[y][x]]
@@ -213,7 +218,32 @@ describe('stampGroundEdge', () => {
   it('every shape it can name is a tile on disk, in every variant', () => {
     assert.equal(EDGE_SHAPES.length, 46)
     assert.equal(MTN.edge.length, 46 * EDGE_VARIANTS)
-    for (const [M, D] of EDGE_SHAPES) assert.ok(EDGE_SHAPES.every(([m, d]) => !(d & ((m & 3 ? 1 : 0) | (m & 6 ? 2 : 0) | (m & 12 ? 4 : 0) | (m & 9 ? 8 : 0)))), `${M},${D}`)
+    for (const n of MTN.edge) assert.ok(fs.existsSync(path.join(TILES, `${n}.png`)), n)
+  })
+  it('survives a later rim pass: stampMountainRim leaves edge tiles alone and pushes nothing undefined', () => {
+    const b = block()
+    stampMass(b, () => 0.5, 4, 4)
+    stampMountainRim(b, () => 0.5)
+    stampGroundEdge(b)
+    const before = b.ground.map(r => [...r])
+    stampMountainRim(b, () => 0.5)
+    assert.deepEqual(b.ground, before)
+    assert.ok(b.palette.every(n => typeof n === 'string'))
+  })
+})
+
+describe('fillGrassPockets', () => {
+  it('turns a few grass cells walled in by mountain floor into floor, leaves the open woods and big clearings', () => {
+    const b = new MapBuilder('t', 'forest', 't', 14, 10)
+    for (let y = 0; y < 10; y++) for (let x = 0; x < 14; x++) b.g(x, y, 'ow_mtn_ground_0')
+    b.g(3, 0, 'ow_grass_0'); b.g(3, 1, 'ow_grass_0'); b.p(3, 1, 'ow_tree_small_autumn')   // a finger from the map edge
+    for (let y = 3; y <= 6; y++) for (let x = 8; x <= 11; x++) b.g(x, y, 'ow_grass_1')    // a 16-cell clearing: stays
+    for (let y = 8; y < 10; y++) for (let x = 0; x < 14; x++) b.g(x, y, 'ow_grass_0')     // the woods, open to the edge... and enclosed by off-map
+    assert.equal(fillGrassPockets(b), 2)
+    assert.ok(ground(b, 3, 0).startsWith('ow_mtn_ground_')); assert.ok(ground(b, 3, 1).startsWith('ow_mtn_ground_'))
+    assert.equal(prop(b, 3, 1), 'ow_tree_small_autumn')
+    assert.equal(ground(b, 9, 5), 'ow_grass_1')
+    assert.equal(ground(b, 5, 9), 'ow_grass_0')
   })
 })
 
@@ -247,6 +277,7 @@ describe('shipped River Split and Mountain Pass', () => {
       assert.equal(layPiersOverWater(b), 0, `${m.name}: piers`)
       assert.equal(carveDirtToGrass(b), 0, `${m.name}: dirt`)
       assert.equal(pruneStrayGround(b), 0, `${m.name}: stray ground`)
+      assert.equal(fillGrassPockets(b), 0, `${m.name}: grass pockets`)
       assert.equal(stampGroundEdge(b), 0, `${m.name}: ground edge`)
     }
   })
@@ -281,8 +312,10 @@ describe('shipped River Split and Mountain Pass', () => {
   })
   it('keep mountain ground at the foot of a mass or in a yard, never adrift in the woods', () => {
     const m = OPEN_MAPS[12]
-    const anchored = (x, y) => { const p = skin(m, 'prop', x, y) ?? ''; return isMassSkin(p) || p.startsWith('ow_house') || p.startsWith('ow_roof') }
     for (const comp of components(m, (x, y) => skin(m, 'ground', x, y)?.startsWith('ow_mtn_')))
-      assert.ok(comp.some(([x, y]) => anchored(x, y)), `${m.name}: ${comp.length} stray mountain ground cells at ${comp[0]}`)
+      assert.ok(comp.some(([x, y]) => isAnchorSkin(skin(m, 'prop', x, y))), `${m.name}: ${comp.length} stray mountain ground cells at ${comp[0]}`)
+  })
+  it('every ground and prop name in the palette is a tile on disk', () => {
+    for (const m of maps) for (const n of m.palette) assert.ok(fs.existsSync(path.join(TILES, `${n}.png`)), `${m.name}: ${n}`)
   })
 })

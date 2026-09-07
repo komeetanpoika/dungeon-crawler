@@ -17,7 +17,7 @@ export const LAT_PX = 4, LAT_PY = 3   // lattice period in cells
 // frayed into grass on the sides in M (1 N / 2 E / 4 S / 8 W) with a nibble
 // at the concave corners in D (1 NE / 2 SE / 4 SW / 8 NW — only corners whose
 // two flanking sides are closed), V picking the gravel underneath.
-export const EDGE_VARIANTS = 3
+export const EDGE_VARIANTS = 4
 export const edgeName = (M, D, V) => `ow_mtn_edge_${M}_${D}_${V}`
 const freeCorners = M => (!(M & 3) ? 1 : 0) | (!(M & 6) ? 2 : 0) | (!(M & 12) ? 4 : 0) | (!(M & 9) ? 8 : 0)
 export const EDGE_SHAPES = []
@@ -85,10 +85,11 @@ export function clearMountainRect(b, rng, x0, y0, x1, y1, skin = MTN_GROUND_WEIG
 // 4-connected patch of mountain ground that holds neither a mass cell nor a
 // building goes back to grass; props and collision stay. Run after the rim
 // pass. Returns how many cells changed.
-const ANCHOR_PREFIXES = ['ow_house', 'ow_roof', 'ow_ruin_', 'ow_cave_']
+export const ANCHOR_PREFIXES = ['ow_house', 'ow_roof', 'ow_ruin_', 'ow_cave_']
+export const isAnchorSkin = n => !!n && (isMassSkin(n) || ANCHOR_PREFIXES.some(a => n.startsWith(a)))
 export function pruneStrayGround(b, { grass = 'ow_grass_0' } = {}) {
   const isGround = (x, y) => b.in(x, y) && isMountainGround(b.palette[b.ground[y][x]])
-  const anchors = (x, y) => { const p = b.palette[b.prop[y][x]] ?? ''; return isMassSkin(p) || ANCHOR_PREFIXES.some(a => p.startsWith(a)) }
+  const anchors = (x, y) => isAnchorSkin(b.palette[b.prop[y][x]])
   const seen = new Set()
   let n = 0
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
@@ -106,6 +107,38 @@ export function pruneStrayGround(b, { grass = 'ow_grass_0' } = {}) {
     }
     if (comp.some(([cx, cy]) => anchors(cx, cy))) continue
     for (const [cx, cy] of comp) b.g(cx, cy, grass)
+    n += comp.length
+  }
+  return n
+}
+
+// The inverse of pruneStrayGround: a few cells of grass walled in by
+// mountain floor, mass or the map edge (a low-elevation noise finger that
+// the woods never reached) read as a green tongue between gravel. Every
+// 4-connected patch of non-mountain ground up to maxSize cells whose every
+// neighbour is mountain becomes plain floor (hash-picked, no rng draw);
+// props and collision stay. Returns how many cells changed.
+export function fillGrassPockets(b, { maxSize = 12 } = {}) {
+  const rocky = (x, y) => !b.in(x, y) || isMountainGround(b.palette[b.ground[y][x]])
+  const seen = new Set()
+  let n = 0
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (rocky(x, y) || seen.has(y * b.w + x)) continue
+    const comp = [], stack = [[x, y]]
+    seen.add(y * b.w + x)
+    let enclosed = true
+    while (stack.length) {
+      const [cx, cy] = stack.pop()
+      comp.push([cx, cy])
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy
+        if (rocky(nx, ny) || seen.has(ny * b.w + nx)) continue
+        seen.add(ny * b.w + nx); stack.push([nx, ny])
+      }
+      if (comp.length > maxSize) enclosed = false
+    }
+    if (!enclosed || comp.length > maxSize) continue
+    for (const [cx, cy] of comp) stampFloor(b, cx, cy)
     n += comp.length
   }
   return n
@@ -200,6 +233,7 @@ export function stampMountainRim(b, rng, { apron = false, walls = 'ridge' } = {}
     const g = b.palette[b.ground[y][x]]
     if (!isMountainGround(g)) continue
     const i = Math.max(MTN.ground.indexOf(g), MTN.shade.indexOf(g))
+    if (i < 0) continue   // an edge tile (stampGroundEdge ran already): leave it
     const under = apron && b.in(x, y - 1) && isMass(b, x, y - 1)
     b.g(x, y, under ? MTN.shade[i] : MTN.ground[i])
   }

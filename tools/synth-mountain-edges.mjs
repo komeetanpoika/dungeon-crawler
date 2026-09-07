@@ -11,7 +11,7 @@
 //   ow_mtn_edge_<M>_<D>_<V>   M = open-side mask 1 N / 2 E / 4 S / 8 W,
 //                             D = concave-corner mask 1 NE / 2 SE / 4 SW / 8 NW
 //                             (only corners whose flanking sides are closed),
-//                             V = 0..2 picks the ground tile underneath.
+//                             V = 0..3 picks the ground tile underneath.
 //
 // Deterministic (hash noise, no Math.random) so a rerun rewrites identical
 // PNGs. Run from anywhere: node tools/synth-mountain-edges.mjs
@@ -25,15 +25,15 @@ import { EDGE_SHAPES, EDGE_VARIANTS, edgeName } from './static-overworld/mountai
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TILES = path.join(HERE, '../renderer/assets/tiles')
 const T = 16
-const DEPTH = 3.5       // mean fray depth in pixels along an open side
+const DEPTH = 4         // mean fray depth in pixels along an open side
 const NIBBLE = 3.5      // mean concave-corner nibble, in pixels of x+y
 const SPECK = 0.22      // chance a grass pixel touching the fray turns to gravel
 const SPECK_RGB = [112, 102, 92]
 
 const hash = (a, b, c = 0) => { let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15; return h >>> 0 }
 const unit = (...k) => hash(...k) / 4294967296
-// roughly normal: the mean of three uniforms, spread to the wanted sigma
-const gauss = (mean, sigma, ...k) => mean + ((unit(...k, 1) + unit(...k, 2) + unit(...k, 3)) / 3 - 0.5) * sigma * Math.sqrt(12 / 3)
+// roughly normal: the mean of three uniforms (sd 1/6) scaled to sigma
+const gauss = (mean, sigma, ...k) => mean + ((unit(...k, 1) + unit(...k, 2) + unit(...k, 3)) / 3 - 0.5) * sigma * 6
 
 const grass = readPng(path.join(TILES, 'ow_grass_0.png'))
 const px = (f, x, y) => f.pixels.subarray((y * f.width + x) * 4, (y * f.width + x) * 4 + 4)
@@ -63,7 +63,8 @@ function edgeTile(base, M, D, seed) {
   }
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
     if (rock[y * T + x]) continue
-    const touches = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => rock[(y + dy) * T + (x + dx)] && x + dx >= 0 && x + dx < T && y + dy >= 0 && y + dy < T)
+    const touches = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) =>
+      x + dx >= 0 && x + dx < T && y + dy >= 0 && y + dy < T && rock[(y + dy) * T + (x + dx)])
     if (touches && unit(seed, x, y) < SPECK) out.set([...SPECK_RGB, 255], (y * T + x) * 4)
   }
   return out

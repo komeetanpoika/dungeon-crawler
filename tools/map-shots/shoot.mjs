@@ -2,8 +2,9 @@
 // this WSLg display, enter a depth with the level<N> cheat, set the clock
 // to noon, reveal every cell, and walk the camera over the map in viewport
 // steps, stitching the canvas captures into one PNG at the game's 32 px
-// cells. Enemies and NPCs are cleared so the tiles read unobstructed; the
-// player sprite and HUD bars remain where each capture centred.
+// cells. Every actor but the chests is cleared so the tiles read
+// unobstructed; the player sprite and HUD bars remain where each capture
+// centred.
 //
 //   node tools/map-shots/shoot.mjs <depth> <out.png>
 //
@@ -36,6 +37,12 @@ await sleep(3000)
 
 const info = await page.evaluate(() => {
   const s = window.__dc.state, c = document.getElementById('game-canvas')
+  // everything that moves or flashes goes; chests stay (they are map dressing)
+  window.__clearActors = () => {
+    const s = window.__dc.state
+    s.entities = (s.entities ?? []).filter(e => e.type === 'chest')
+    for (const k of ['npcs', 'projectiles', 'fireZones', 'zones', 'lightning', 'strikes', 'shockwaves', 'hitEffects']) if (Array.isArray(s[k])) s[k] = []
+  }
   window.__shots = document.createElement('canvas')
   window.__shots.width = s.map[0].length * 32; window.__shots.height = s.map.length * 32
   return { w: s.map[0].length, h: s.map.length, cw: c.width, ch: c.height, depth: s.depth, mapName: s.mapData?.name }
@@ -52,14 +59,14 @@ for (const cy of ys) for (const cx of xs) {
     const s = window.__dc.state
     if (window.__dc.save) window.__dc.save.clock = 180
     s.player.x = Math.floor(cx); s.player.y = Math.floor(cy); s.player.px = cx * 32; s.player.py = cy * 32
-    s.enemies = []; if (s.npcs) s.npcs = []
+    window.__clearActors()
   }, [cx, cy])
   await sleep(400)
   await page.evaluate(() => { for (const row of window.__dc.state.map) for (const t of row) { t.explored = true; t.visible = true } })
   await sleep(500)
   // enemies respawn while the frame settles: clear them once more, let one
   // frame draw, then blit
-  await page.evaluate(() => { const s = window.__dc.state; s.enemies = []; if (s.npcs) s.npcs = [] })
+  await page.evaluate(() => window.__clearActors())
   await sleep(100)
   await page.evaluate(() => {
     const s = window.__dc.state, c = document.getElementById('game-canvas')

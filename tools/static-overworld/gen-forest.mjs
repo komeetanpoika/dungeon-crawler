@@ -4,7 +4,7 @@
 //   3 autumn    — autumn woods below a mountain pass (ow_mtn_ tiles), stone circle, hermit hut
 import { MapBuilder, WATER_SKINS, shoreline, mulberry32, makeNoise, validate, plantTree, pruneBrokenTrees, stampHouse3 } from './lib.mjs'
 import { GRASS, PINES, AUTUMN, DIRT, pick, isOpen, clearing, forestEdge, grassBase, stampVillage, stampCaveInRocks } from './kit.mjs'
-import { MTN, MTN_GROUND_WEIGHTED, isMass, isMountainSkin, stampMass, stampFloor, clearMountain, clearMountainRect, stampMountainRim, pruneStrayGround, stampGroundEdge } from './mountain.mjs'
+import { MTN, MTN_GROUND_WEIGHTED, isMass, isMountainSkin, stampMass, stampFloor, clearMountain, clearMountainRect, stampMountainRim, pruneStrayGround, fillGrassPockets, stampGroundEdge } from './mountain.mjs'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -265,6 +265,7 @@ function autumn() {
   pruneBrokenTrees(b)
   stampMountainRim(b, rng)
   pruneStrayGround(b)
+  fillGrassPockets(b)
   stampGroundEdge(b)
   return b
 }
