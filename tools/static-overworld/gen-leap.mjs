@@ -130,7 +130,8 @@ function lake() {
   }
   // arrival runestone west of the village, exit runestone by the orchard
   stampRunestone(b, 12, 40)
-  b.p(orchard.x + 6, orchard.y, 'ow_house_arch_stone', { walkable: true }); b.poi('landmark', orchard.x + 6, orchard.y, 'orchard stone')
+  b.p(orchard.x + 6, orchard.y, 'ow_house_arch_stone', { walkable: true }); b.unblock(orchard.x + 6, orchard.y)
+  b.poi('landmark', orchard.x + 6, orchard.y, 'orchard stone')
   // Everything from the pier gap eastward (the gap itself, the resumed
   // pier, the wall, the orchard) must stay genuinely cut off pre-episode
   // (fed by the Näkki, a later task) — but healFragmentation treats any
@@ -235,7 +236,9 @@ function fold() {
   clearing(b, mine.x, mine.y, 3); stampCaveInRocks(b, rng, mine.x, mine.y); b.poi('dungeon_entrance', mine.x, mine.y, 'old mine')
   for (const c of b.scatter(rng, 3, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   stampRunestone(b, village.x - 14, village.y)
-  b.p(burrow.x - 14, burrow.y + 8, 'ow_house_arch_stone', { walkable: true }); b.poi('landmark', burrow.x - 14, burrow.y + 8, 'ridge stone')
+  // (walkable: true never unblocks a cell a tree already blocked — unblock)
+  b.p(burrow.x - 14, burrow.y + 8, 'ow_house_arch_stone', { walkable: true }); b.unblock(burrow.x - 14, burrow.y + 8)
+  b.poi('landmark', burrow.x - 14, burrow.y + 8, 'ridge stone')
   // carves keep the ground they open (a dirt stamp is a lone peach square)
   b.healFragmentation({ fill: (x, y) => b.p(x, y, pick(rng, ROCKS_MOSS)), groundSkin: null })
   b.ensureReachable(null)
@@ -276,17 +279,25 @@ function fold() {
     if (/^(ow_house|ow_fence|ow_cave|ow_ruin|tile_)/.test(prop)) continue   // built things and caches stay
     b.clearProp(x, y); b.g(x, y, DIRT[hash(x, y, 7) % DIRT.length])
   }
-  pruneBrokenTrees(b)
-  // a stone-ground cell with no rock on it and no stone beside it is a flat
-  // grey square in the grass: back to grass (props and collision untouched)
-  for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++) {
-    if (b.palette[b.ground[y][x]] !== 'ow_stone_ground_0' || b.prop[y][x] !== -1) continue
-    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => b.palette[b.ground[y + dy][x + dx]] === 'ow_stone_ground_0')) continue
-    b.g(x, y, 'ow_grass_0')
+  // The trail's diagonal steps made every forest cell on it a pocket of its
+  // own, which healFragmentation filled with moss rocks (and pruneBrokenTrees
+  // left trunk-less tops): a rockfall along the path. Clear them — never on
+  // the burrow ring.
+  const ringR2 = (x, y) => (x - burrow.x) ** 2 + (y - burrow.y) ** 2
+  for (const [x, y] of trailCells) {
+    const prop = b.palette[b.prop[y][x]] ?? ''
+    if (ringR2(x, y) > 16 && ringR2(x, y) <= 25) continue
+    if (ROCKS_MOSS.includes(prop) || (prop === 'ow_tree_pine_top' && b.palette[b.prop[y + 1]?.[x]] !== 'ow_tree_pine_trunk')) b.clearProp(x, y)
   }
-  // the trail's last cell lies inside the burrow ring, cut off when the
-  // ring is re-stamped over it: a lone dirt cell in the lair is no trail
-  carveDirtToGrass(b, { maxSize: 1 })
+  pruneBrokenTrees(b)
+  // the trail's last cells lie inside the burrow ring, cut off when the
+  // ring is re-stamped over them: no dirt inside the ring or under it
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++)
+    if (ringR2(x, y) <= 25 && DIRT.includes(b.palette[b.ground[y][x]])) b.g(x, y, 'ow_grass_0')
+  // a stone-ground cell with no rock on it is a flat grey square in the
+  // highland grass: back to grass (props and collision untouched)
+  for (let y = 1; y < b.h - 1; y++) for (let x = 1; x < b.w - 1; x++)
+    if (b.palette[b.ground[y][x]] === 'ow_stone_ground_0' && b.prop[y][x] === -1) b.g(x, y, 'ow_grass_0')
   return b
 }
 
@@ -339,7 +350,10 @@ function marsh() {
   clearing(b, cave.x, cave.y, 3); stampCaveInRocks(b, rng, cave.x, cave.y); b.poi('dungeon_entrance', cave.x, cave.y, 'bog cave')
   for (const c of b.scatter(rng, 3, 26, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
   stampRunestone(b, village.x - 16, village.y + 4)
-  b.p(hut.x + 14, hut.y + 2, 'ow_house_arch_stone', { walkable: true }); b.poi('landmark', hut.x + 14, hut.y + 2, 'knoll stone')
+  // the knoll stone stands on the pool's east bank (three cells further
+  // east it stood in the pool, and the reachability carve wiped the arch)
+  b.p(hut.x + 17, hut.y + 2, 'ow_house_arch_stone', { walkable: true }); b.unblock(hut.x + 17, hut.y + 2)
+  b.poi('landmark', hut.x + 17, hut.y + 2, 'knoll stone')
   // carves keep the ground they open (a dirt stamp is a lone peach square);
   // a carve straight across a pool keeps the pool too and crosses it on
   // stepping stones instead of a mud causeway
@@ -357,7 +371,7 @@ function marsh() {
   pruneBrokenTrees(b)
   // the mud band's noise leaves lone mud cells in the grass: a marsh is
   // mud around its pools, not peach specks — one- and two-cell patches go
-  carveDirtToGrass(b, { maxSize: 2 })
+  carveDirtToGrass(b, { maxSize: 2, diagonal: false })
   return b
 }
 

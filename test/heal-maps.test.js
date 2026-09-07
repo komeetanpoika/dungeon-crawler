@@ -372,15 +372,23 @@ describe('shipped River Split, Mountain Pass, the three sea maps and the three l
       if (!leap(m)) assert.equal(fordToStones(b), 0, `${m.name}: ford`)   // a marsh keeps its mud necks between pools
       assert.equal(dryWalkableWater(b), 0, `${m.name}: walkable water`)
       assert.equal(layPiersOverWater(b), 0, `${m.name}: piers`)
-      assert.equal(carveDirtToGrass(b, { maxSize: dirtPatchMin(m) - 1 }), 0, `${m.name}: dirt`)
+      assert.equal(carveDirtToGrass(b, { maxSize: dirtPatchMin(m) - 1, diagonal: m.name !== 'marsh-3-hermit' }), 0, `${m.name}: dirt`)
       assert.equal(pruneStrayGround(b), 0, `${m.name}: stray ground`)
       assert.equal(fillGrassPockets(b), 0, `${m.name}: grass pockets`)
       assert.equal(stampGroundEdge(b), 0, `${m.name}: ground edge`)
       assert.equal(stampSandEdge(b), 0, `${m.name}: sand edge`)
     }
   })
-  it('still validate: spawn and every POI reachable (the leap maps seal theirs on purpose)', () => {
-    for (const m of maps) if (!leap(m)) assert.deepEqual(validate(MapBuilder.fromJSON(m)), [], m.name)
+  it('still validate: spawn and every POI reachable (the leap maps seal a few on purpose — those only)', () => {
+    const sealed = /orchard|pier gap|nakki|islet|lair/   // gen-leap.mjs's own list
+    for (const m of maps) assert.deepEqual(validate(MapBuilder.fromJSON(m)).filter(p => !(leap(m) && sealed.test(p))), [], m.name)
+  })
+  it('a leap map\'s exit is the runestone arch itself', () => {
+    for (const m of maps) {
+      if (!leap(m)) continue
+      assert.equal(skin(m, 'prop', m.exit.x, m.exit.y), 'ow_house_arch_stone', `${m.name}: exit at ${m.exit.x},${m.exit.y}`)
+      assert.equal(m.walk[m.exit.y][m.exit.x], '1', `${m.name}: exit not walkable`)
+    }
   })
   it('no open cell cuts the river: water on opposite sides means a pier or a stepping stone (river maps; the sea maps have real one-cell necks)', () => {
     for (const m of [OPEN_MAPS[11], OPEN_MAPS[12]]) for (let y = 1; y < m.h - 1; y++) for (let x = 1; x < m.w - 1; x++) {
@@ -448,8 +456,9 @@ describe('shipped River Split, Mountain Pass, the three sea maps and the three l
     }
   })
   it('carry no dirt carve stamps: every dirt patch is a trail (or, on the marsh, a mud patch) of the map\'s minimum size', () => {
+    // a trail may step diagonally (the fold's crosses its pen's fence corner); the marsh's mud is read 4-connected like its pass
     for (const m of maps)
-      for (const comp of components(m, (x, y) => skin(m, 'ground', x, y)?.startsWith('ow_dirt'), true))
+      for (const comp of components(m, (x, y) => skin(m, 'ground', x, y)?.startsWith('ow_dirt'), m.name !== 'marsh-3-hermit'))
         assert.ok(comp.length >= dirtPatchMin(m), `${m.name}: ${comp.length}-cell dirt patch at ${comp[0]}`)
   })
   it('keep mountain ground at the foot of a mass or in a yard, never adrift in the woods', () => {

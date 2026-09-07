@@ -247,9 +247,10 @@ const commonest = a => {
 // clearing — clears the props and opens the cells but leaves the water skin,
 // so the player walks on water. Every walkable water cell that carries
 // neither a pier nor a stepping stone (a cave arch over a pool included)
-// becomes the land beside it — the commonest land skin around it, so a
-// marsh pool dries to mud and a lawn to grass; run before shoreline() so
-// the pool's rim moves with it. Returns how many cells changed.
+// becomes the land beside it — the commonest land skin among its eight
+// neighbours, so a marsh pool dries to mud and a lawn to grass; run before
+// shoreline() so the pool's rim moves with it. Returns how many cells
+// changed.
 export function dryWalkableWater(b, { grass = 'ow_grass_0' } = {}) {
   const at = (x, y) => b.in(x, y) ? b.palette[b.ground[y][x]] : null
   const cells = []
@@ -257,7 +258,7 @@ export function dryWalkableWater(b, { grass = 'ow_grass_0' } = {}) {
     if (!b.walkG[y][x] || !isWaterSkin(at(x, y))) continue
     const prop = b.palette[b.prop[y][x]] ?? ''
     if (isPierSkin(prop) || prop.startsWith('ow_rock_water')) continue
-    const land = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => at(x + dx, y + dy)).filter(n => n && !isWaterSkin(n) && !isPierSkin(n))
+    const land = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]].map(([dx, dy]) => at(x + dx, y + dy)).filter(n => n && !isWaterSkin(n) && !isPierSkin(n))
     cells.push([x, y, commonest(land) ?? grass])
   }
   for (const [x, y, skin] of cells) b.g(x, y, skin)
@@ -290,8 +291,10 @@ export function fordToStones(b) {
 // they are lone peach squares in the grass — one felled tree, one carve.
 // Any dirt patch smaller than a trail goes back to grass; the props and
 // collision the carve set are untouched. A trail may step diagonally, so
-// patches are 8-connected. Returns how many cells changed.
-export function carveDirtToGrass(b, { maxSize = 7, grass = 'ow_grass_0' } = {}) {
+// patches are 8-connected unless `diagonal` is off (a marsh's mud specks
+// touching at the corners are still specks). Returns how many cells changed.
+export function carveDirtToGrass(b, { maxSize = 7, grass = 'ow_grass_0', diagonal = true } = {}) {
+  const steps = diagonal ? [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] : [[1, 0], [-1, 0], [0, 1], [0, -1]]
   const isDirt = (x, y) => b.in(x, y) && !!b.palette[b.ground[y][x]]?.startsWith('ow_dirt')
   const seen = new Set()
   let n = 0
@@ -302,7 +305,7 @@ export function carveDirtToGrass(b, { maxSize = 7, grass = 'ow_grass_0' } = {}) 
     while (stack.length) {
       const [cx, cy] = stack.pop()
       comp.push([cx, cy])
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      for (const [dx, dy] of steps) {
         const nx = cx + dx, ny = cy + dy
         if (!isDirt(nx, ny) || seen.has(ny * b.w + nx)) continue
         seen.add(ny * b.w + nx); stack.push([nx, ny])
