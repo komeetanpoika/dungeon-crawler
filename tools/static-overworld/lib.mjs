@@ -10,6 +10,7 @@
 //   playerSpawn: {x, y},
 // }
 
+import { isSandySkin } from './beach.mjs'
 export function mulberry32(seed) {
   let a = seed >>> 0
   return function () {
@@ -119,7 +120,7 @@ export function pruneBrokenTrees(b) {
 // Kenney's shore-corner tiles (a sand wedge in one corner) — painting them
 // at random put beaches in the middle of every lake.
 export const WATER_SKINS = ['ow_water_0', 'ow_water_1']
-export const isWaterSkin = n => !!n && (n.startsWith('ow_water') || n.startsWith('ow_pond_'))
+export const isWaterSkin = n => !!n && (n.startsWith('ow_water') || n.startsWith('ow_pond_') || n.startsWith('ow_shore_'))
 
 // Dress every water cell that touches land with the 3x3 pond autotile's
 // rim, so lakes, rivers and coasts read as shores: land to the N/S/E/W
@@ -146,7 +147,11 @@ export function reshore(b) {
   return n
 }
 
-const RIM = { N: 'ow_pond_10', S: 'ow_pond_12', W: 'ow_pond_01', E: 'ow_pond_21', NW: 'ow_pond_00', NE: 'ow_pond_20', SW: 'ow_pond_02', SE: 'ow_pond_22' }
+// A beach takes the sand-coloured rim (ow_shore_*, beach.mjs) where every
+// land side is sandy; anywhere grass touches the water the bank is green.
+const RIM_KEYS = { N: '10', S: '12', W: '01', E: '21', NW: '00', NE: '20', SW: '02', SE: '22' }
+const RIM = Object.fromEntries(Object.entries(RIM_KEYS).map(([k, v]) => [k, `ow_pond_${v}`]))
+const SHORE_RIM = Object.fromEntries(Object.entries(RIM_KEYS).map(([k, v]) => [k, `ow_shore_${v}`]))
 export function shoreline(b) {
   const wet = (x, y) => {
     if (!b.in(x, y)) return true
@@ -156,8 +161,13 @@ export function shoreline(b) {
   const repaint = []
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
     if (!b.palette[b.ground[y][x]]?.startsWith('ow_water')) continue
-    const key = (!wet(x, y - 1) ? 'N' : !wet(x, y + 1) ? 'S' : '') + (!wet(x - 1, y) ? 'W' : !wet(x + 1, y) ? 'E' : '')
-    if (key) repaint.push([x, y, RIM[key]])
+    const ns = !wet(x, y - 1) ? 'N' : !wet(x, y + 1) ? 'S' : ''
+    const ew = !wet(x - 1, y) ? 'W' : !wet(x + 1, y) ? 'E' : ''
+    const key = ns + ew
+    if (!key) continue
+    const land = [ns === 'N' ? [x, y - 1] : ns === 'S' ? [x, y + 1] : null, ew === 'W' ? [x - 1, y] : ew === 'E' ? [x + 1, y] : null].filter(Boolean)
+    const sandy = land.every(([lx, ly]) => isSandySkin(b.palette[b.ground[ly][lx]]))
+    repaint.push([x, y, (sandy ? SHORE_RIM : RIM)[key]])
   }
   for (const [x, y, skin] of repaint) b.g(x, y, skin)
 }
@@ -165,19 +175,27 @@ export function shoreline(b) {
 // A log bridge is a pier OVERLAY: the logs on the prop layer, the river
 // still flowing beneath them (the ferry pier, lake-1-ferry, is the model).
 // Painted as GROUND the log tile — two rails, transparent between — shows
-// the void, which is how River Split's north bridge shipped. Every ground
-// pier cell becomes water under a pier prop where it lies in the river (a
-// water skin on any side) and grass under the same prop on the banks; the
-// cell keeps its collision. Run before shoreline() so the bank cells under
-// the logs take their rim. Returns how many cells changed.
+// the void, which is how River Split's north bridge and every sea-map
+// causeway shipped. Every ground pier cell (log or post) becomes water under
+// the same tile as a prop where it lies in the water (a water skin on any
+// side), and the neighbouring land's own ground under it on the banks (sand
+// stays sand, grass stays grass). A pier cell with neither water nor another
+// pier beside it was a one-cell puddle a carve filled: it becomes plain land
+// with no logs at all. The cell keeps its collision. Run before shoreline()
+// so the bank cells under the logs take their rim. Returns how many cells
+// changed.
+const PIER_SKINS = ['ow_pier_log', 'ow_pier_post']
 export function layPiersOverWater(b, { grass = 'ow_grass_0' } = {}) {
-  const wasWater = (x, y) => b.in(x, y) && isWaterSkin(b.palette[b.ground[y][x]])
+  const around = (x, y) => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => b.in(x + dx, y + dy) ? b.palette[b.ground[y + dy][x + dx]] : null)
   const cells = []
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++)
-    if (b.palette[b.ground[y][x]] === 'ow_pier_log') cells.push([x, y])
-  const skins = cells.map(([x, y]) =>
-    [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => wasWater(x + dx, y + dy)) ? WATER_SKINS[(x + y) & 1] : grass)
-  cells.forEach(([x, y], i) => { b.g(x, y, skins[i]); b.p(x, y, 'ow_pier_log', { walkable: true }) })
+    if (PIER_SKINS.includes(b.palette[b.ground[y][x]])) cells.push([x, y, b.palette[b.ground[y][x]]])
+  const plan = cells.map(([x, y]) => {
+    const near = around(x, y)
+    if (near.some(isWaterSkin)) return { ground: WATER_SKINS[(x + y) & 1], logs: true }
+    return { ground: near.find(n => n && !PIER_SKINS.includes(n)) ?? grass, logs: near.some(n => PIER_SKINS.includes(n)) }
+  })
+  cells.forEach(([x, y, tile], i) => { b.g(x, y, plan[i].ground); if (plan[i].logs) b.p(x, y, tile, { walkable: true }) })
   return cells.length
 }
 
