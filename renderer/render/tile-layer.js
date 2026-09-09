@@ -17,6 +17,17 @@ import { drawTile } from './tiles.js'
 
 export const CHUNK = 16   // cells per chunk side; 512 px at S = 32
 
+// A mushroom trip recolours the world itself. The bakes stay in their own
+// colours — they outlive the trip — and each chunk keeps a hue-rotated copy
+// beside it, rebuilt a couple of chunks a frame so the software canvas never
+// stalls on a wall of filtered blits. The whole world turns as one: giving
+// chunks their own hues drew a hard 512-px seam across the ground, which reads
+// as a broken renderer rather than as a trip. Colour varies across the view
+// through the rainbow layer instead, which is smooth.
+const HUE_STEPS = 12
+const STEP_DEG = 360 / HUE_STEPS
+export const HUE_BUDGET = 2   // chunks recoloured per frame
+
 // Stairs render even before they are explored and are never fogged: the
 // descent is always something the player can see coming.
 const isStair = id => id === TILE.STAIR || id === TILE.STAIRS_UP || id === TILE.STAIRS_DOWN
@@ -65,6 +76,7 @@ function bake(chunk, map, cx, cy, S, sprites) {
     }
   }
   chunk.explored = explored
+  chunk.huedAt = -1   // any trip colour over this bake is now stale
 }
 
 function countExplored(map, cx, cy) {
@@ -81,11 +93,43 @@ function countExplored(map, cx, cy) {
   return n
 }
 
+// The recoloured copy of one chunk, rebuilt only when its own hue step moves
+// or the bake underneath it changed. Over budget, the copy it already has is
+// blitted at its slightly stale colour — far better than a pop back to green.
+function tripColour(chunk, hue, sat, CS, createCanvas, budget) {
+  const step = Math.round(hue / STEP_DEG) % HUE_STEPS
+  if (chunk.hued && chunk.hueStep === step && chunk.huedAt === chunk.explored) return chunk.hued
+  if (budget.left <= 0) return chunk.hued ?? chunk.canvas
+  budget.left--
+  if (!chunk.hued) {
+    const c = createCanvas()
+    c.width = CS
+    c.height = CS
+    chunk.hued = c
+    chunk.huedCtx = c.getContext('2d')
+  }
+  const hx = chunk.huedCtx
+  hx.setTransform(1, 0, 0, 1, 0, 0)
+  hx.clearRect(0, 0, CS, CS)
+  hx.imageSmoothingEnabled = false
+  hx.filter = `hue-rotate(${step * STEP_DEG}deg) saturate(${sat.toFixed(2)})`
+  hx.drawImage(chunk.canvas, 0, 0)
+  hx.filter = 'none'
+  chunk.hueStep = step
+  chunk.huedAt = chunk.explored
+  return chunk.hued
+}
+
+function dropColour(chunk) {
+  if (chunk.hued) { chunk.hued = null; chunk.huedCtx = null; chunk.hueStep = -1 }
+  return chunk.canvas
+}
+
 export function makeTileLayer(createCanvas) {
   const layer = {
     map: null,
     chunks: new Map(),   // "cx,cy" -> { canvas, ctx, explored }
-    draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha) {
+    draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
       if (map !== layer.map) { layer.map = map; layer.chunks.clear() }
       const dirty = takeDirtyTiles(map)
       if (dirty) {
@@ -94,6 +138,7 @@ export function makeTileLayer(createCanvas) {
           if (chunk) chunk.explored = -1   // keep the canvas, force a rebake
         }
       }
+      const budget = { left: HUE_BUDGET }
       const CS = CHUNK * S
       const cx0 = Math.max(0, Math.floor(camX / CS))
       const cx1 = Math.min(Math.ceil(map[0].length / CHUNK), Math.ceil((camX + W) / CS))
@@ -111,7 +156,10 @@ export function makeTileLayer(createCanvas) {
             layer.chunks.set(key, chunk)
           }
           if (chunk.explored !== countExplored(map, cx, cy)) bake(chunk, map, cx, cy, S, sprites)
-          ctx.drawImage(chunk.canvas, Math.round(cx * CS - camX), Math.round(cy * CS - camY))
+          const img = hue > 0
+            ? tripColour(chunk, hue, sat, CS, createCanvas, budget)
+            : dropColour(chunk)
+          ctx.drawImage(img, Math.round(cx * CS - camX), Math.round(cy * CS - camY))
         }
       }
       drawFogRuns(ctx, map, S, camX, camY, viewCells(map, S, camX, camY, W, H), fogAlpha)
@@ -125,7 +173,7 @@ export function makeTileLayer(createCanvas) {
 // kept as the reference the cached layer must match.
 export function makeDirectTileLayer() {
   return {
-    draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha) {
+    draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
       const cells = viewCells(map, S, camX, camY, W, H)
       for (let row = cells.r0; row < cells.r1; row++) {
         for (let col = cells.c0; col < cells.c1; col++) {

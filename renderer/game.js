@@ -56,7 +56,8 @@ import { stepProjectiles } from './systems/projectiles.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
 import { TALENTS, grantTalent, hasTalent, RUSH_START_TALENTS, MAP_CLEAR_TALENTS } from './systems/talents.js'
-import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals } from './systems/rites.js'
+import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
+  TRANCE_FADE, PULL_DURATION, PULL_TELEPORT_AT, pullTarget } from './systems/rites.js'
 import { signNearby } from './systems/signs.js'
 import { showSign, hideSign } from './ui/sign-panel.js'
 import { showToast, hideToast } from './ui/toast.js'
@@ -932,19 +933,72 @@ function gameLoop(timestamp) {
   rafId = requestAnimationFrame(gameLoop)
 }
 
+// Both ways into the ceremony — walking onto the ring mid-trance, and the call
+// that carries you there. Either way the trip drains away over the ceremony's
+// first seconds as the wizards take over.
+function beginRite(talent) {
+  const { player } = state
+  state.rite = { t: 0, dur: RITE_DURATION, talent, cx: player.px, cy: player.py }
+  player.trance = 0
+  player.tranceFade = TRANCE_FADE
+  sfx(state, 'rite', { px: player.px, py: player.py })
+}
+
+function placePlayerAt(x, y) {
+  const { player } = state
+  player.x = x
+  player.y = y
+  player.px = x * TILE_SIZE + TILE_SIZE / 2
+  player.py = y * TILE_SIZE + TILE_SIZE / 2
+}
+
+// The minute is up and the rite reaches for the player. A ring on this map
+// answers by pulling them into it; underground or on a map without one, or
+// once the talent is already learned, the call simply fades unanswered.
+function answerTheCall() {
+  const target = pullTarget(state)
+  if (!target) {
+    think(state, state.cave ? 'Something called. You were too deep.' : 'Something called. Nothing here answers.')
+    return
+  }
+  state.tripPull = { t: 0, dur: PULL_DURATION, x: target.x, y: target.y, talent: target.talent }
+  sfx(state, 'rite', { px: state.player.px, py: state.player.py })
+}
+
 function update(delta) {
   if (!state) return
   if (!state.sfx) state.sfx = makeSfx(loadMutedPref())
   // A running rite is a short cutscene: the world holds its breath.
   if (state.rite) {
     state.rite.t += delta
+    tickTrance(state.player, delta)   // the trip drains away under the ceremony
     if (state.rite.t >= state.rite.dur) {
       const talent = state.rite.talent
       state.rite = null
       state.player.trance = 0
+      state.player.tranceFade = 0
       // Talent-less anchors (e.g. the marsh's mushroom ring) still play the
       // trance and ceremony but grant nothing — skip grantTalent entirely.
       if (talent && grantTalent(state, talent)) persistIfSurface()
+    }
+    tickFeedback(state.feedback, delta)
+    return
+  }
+  // The call answered: a wash carries the player across to the mushroom ring
+  // and the ceremony begins there. A cutscene too — nothing else moves.
+  if (state.tripPull) {
+    const pull = state.tripPull
+    const handOver = pull.dur * PULL_TELEPORT_AT
+    const before = pull.t
+    pull.t += delta
+    tickTrance(state.player, delta)
+    if (before < handOver && pull.t >= handOver) {
+      placePlayerAt(pull.x, pull.y)
+      sfx(state, 'leap', { px: state.player.px, py: state.player.py })
+    }
+    if (pull.t >= pull.dur) {
+      state.tripPull = null
+      beginRite(pull.talent)
     }
     tickFeedback(state.feedback, delta)
     return
@@ -1111,12 +1165,12 @@ function update(delta) {
     persistIfSurface()
   }
 
-  // Rite triggers: silent unless the rite's condition holds
-  tickTrance(player, delta)
+  // Rite triggers: walking onto the ring mid-trance starts the ceremony there
+  // and then. Otherwise the call comes on its own once the minute is up.
+  if (tickTrance(player, delta) === 'call') answerTheCall()
   const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
   if (trigger && (!trigger.talent || !hasTalent(player, trigger.talent)) && riteConditionMet(trigger.rite, state)) {
-    state.rite = { t: 0, dur: RITE_DURATION, talent: trigger.talent, cx: player.px, cy: player.py }
-    sfx(state, 'rite', { px: player.px, py: player.py })
+    beginRite(trigger.talent)
   }
 
   // Exit door — open and descend with the key, otherwise it stays locked
