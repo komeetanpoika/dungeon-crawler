@@ -35,13 +35,16 @@ export function buildSpot(map, entities, player) {
     .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !entities.some(e => occupiesCell(e) && e.x === t.x && e.y === t.y)) ?? null
 }
 
-// `eternal` fires (the hermit's hearth) never burn out and are always
-// vulnerability/alpha 1 — only stamped onto the object when true, so the
-// default fire's shape is unchanged. Likewise `fuel` is only stamped when
-// it's the grey deadwood fuel, so a plain lumber fire's shape is unchanged.
-export function makeCampfire(x, y, { eternal = false, fuel = 'lumber' } = {}) {
+// `eternal` fires (the blue village hearths) never burn out, are always
+// alpha 1 and cannot be snuffed. `hearth` fires (the villagers' ordinary
+// evening fires) never burn out either, but the wraith can still put them
+// out. Both are only stamped onto the object when true, so the default
+// fire's shape is unchanged. Likewise `fuel` is only stamped when it's the
+// grey deadwood fuel, so a plain lumber fire's shape is unchanged.
+export function makeCampfire(x, y, { eternal = false, hearth = false, fuel = 'lumber' } = {}) {
   const fire = { type: 'campfire', x, y, px: x * TILE_SIZE + TILE_SIZE / 2, py: y * TILE_SIZE + TILE_SIZE / 2, t: 0 }
   if (eternal) fire.eternal = true
+  if (hearth) fire.hearth = true
   if (fuel === 'deadwood') fire.fuel = 'deadwood'   // grey fire: the wraith cannot snuff it and burns in its light
   return fire
 }
@@ -51,13 +54,14 @@ export function makeCampfire(x, y, { eternal = false, fuel = 'lumber' } = {}) {
 export const isDeadwoodFire = e => e?.type === 'campfire' && e.fuel === 'deadwood'
 
 // Age every fire; those past their duration are dropped and returned. Eternal
-// fires still age (so campfireAlpha's t-based math stays sane) but never expire.
+// and hearth fires still age (so campfireAlpha's t-based math stays sane)
+// but never expire.
 export function tickCampfires(entities, delta) {
   const expired = []
   const kept = entities.filter(e => {
     if (e.type !== 'campfire') return true
     e.t += delta
-    if (e.eternal || e.t < CAMPFIRE_DURATION) return true
+    if (e.eternal || e.hearth || e.t < CAMPFIRE_DURATION) return true
     expired.push(e)
     return false
   })
@@ -65,9 +69,9 @@ export function tickCampfires(entities, delta) {
 }
 
 // 1 while burning well; eases down to 0.3 over the final CAMPFIRE_FADE seconds.
-// Eternal fires never dim.
+// Eternal and hearth fires never dim.
 export function campfireAlpha(fire) {
-  if (fire.eternal) return 1
+  if (fire.eternal || fire.hearth) return 1
   const left = CAMPFIRE_DURATION - fire.t
   if (left >= CAMPFIRE_FADE) return 1
   return 0.3 + 0.7 * Math.max(0, left) / CAMPFIRE_FADE

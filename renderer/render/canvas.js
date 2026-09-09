@@ -137,7 +137,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     if (!s) return
     const prev = ctx.globalAlpha, prevF = ctx.filter
     ctx.globalAlpha = prev * campfireAlpha(entity)
-    if (entity.fuel === 'deadwood') ctx.filter = 'hue-rotate(185deg) saturate(0.45) brightness(1.25)'
+    // Deadwood burns blue: the orange flame swung round the hue wheel, kept saturated.
+    if (entity.fuel === 'deadwood') ctx.filter = 'hue-rotate(195deg) saturate(1.1) brightness(1.15)'
     ctx.drawImage(s, px, py, S, S)
     ctx.filter = prevF; ctx.globalAlpha = prev
     return
@@ -178,7 +179,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, px, py, S, S)
     } else {
       const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
-                    clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
+                    deadwood: 'item_deadwood', clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
       const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
       else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }

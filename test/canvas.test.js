@@ -400,8 +400,8 @@ describe('trees never show damage', () => {
 })
 
 describe('floating consumables use atlas sprites', () => {
-  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['mushroom', 'ow_mushroom'],
-                            ['clapper', 'item_clapper'], ['fleece', 'item_fleece']])
+  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['deadwood', 'item_deadwood'],
+                            ['mushroom', 'ow_mushroom'], ['clapper', 'item_clapper'], ['fleece', 'item_fleece']])
     it(`${type} draws ${key}`, () => {
       const ctx = recordingCtx()
       ctx.fillText = () => {}
@@ -453,11 +453,15 @@ describe('drawEntity — echo', () => {
   })
 })
 
-describe('drawEntity — grey campfire', () => {
-  it('applies a filter for deadwood fires and restores it', () => {
+describe('drawEntity — blue campfire', () => {
+  it('applies a blue-hue filter for deadwood fires and restores it', () => {
     const ctx = recordingCtx(); ctx.filter = 'none'
+    let seen = null
+    const origDraw = ctx.drawImage
+    ctx.drawImage = function (...a) { seen = this.filter; return origDraw.apply(this, a) }
     drawEntity(ctx, { type: 'campfire', t: 0, fuel: 'deadwood' }, 0, 0, 32, { prop_campfire: 'F' })
     assert.deepEqual(ctx.calls, ['F'])
+    assert.match(seen, /hue-rotate\(19\ddeg\)/)
     assert.equal(ctx.filter, 'none')
   })
 })

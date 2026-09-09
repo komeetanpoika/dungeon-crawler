@@ -48,8 +48,9 @@ const LUMBER_ROWS = [
 ]
 const LUMBER = paint(LUMBER_ROWS, { b: [139, 90, 43, 255], c: [222, 184, 135, 255], r: [200, 160, 110, 255] })
 
-// Grey wood — the same log, ash-grey: the hermit's dead-tree fuel.
-const DEADWOOD = paint(LUMBER_ROWS, { b: [112, 112, 106, 255], c: [176, 176, 168, 255], r: [140, 140, 134, 255] })
+// Grey wood — the same log in cold blue-grey: the hermit's dead-tree fuel,
+// the one wood that burns blue on the Coldhearth Marsh hearths.
+const DEADWOOD = paint(LUMBER_ROWS, { b: [92, 108, 130, 255], c: [178, 198, 222, 255], r: [132, 156, 186, 255] })
 
 // Cooked meat — the drumstick, browned with a char line.
 const MEAT_COOKED = paint([

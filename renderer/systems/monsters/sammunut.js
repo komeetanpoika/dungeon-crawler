@@ -9,7 +9,10 @@
 // deadwood fire cannot be snuffed; the wraith hovers at HOVER px, takes
 // BURN_DPS while inside its light, and crosses BURN_STAGES hp thresholds
 // that force it to flee and shun deadwood fires until it snuffs an ordinary
-// one. Pure — no browser/Electron imports.
+// one. A `doomed` wraith (the hermit episode stamps it once every village
+// hearth burns blue) has nowhere left to hide: it never shuns, never flees,
+// and burns to nothing in the light it is drawn to. Pure — no browser/Electron
+// imports.
 
 import { spendStamina } from '../stamina.js'
 import { sfx } from '../sfx.js'
@@ -130,7 +133,7 @@ function burnTick(e, state, delta) {
   if (e.pose) e.pose.hpSeen = e.hp          // a slow burn is not a hit flash
   e.burnCue = (e.burnCue ?? 0) - delta
   if (e.burnCue <= 0) { sfx(state, 'wraith-burn', { px: e.px, py: e.py }); e.burnCue = 0.6 }
-  if (e.burnStage < BURN_STAGES.length && e.hp <= BURN_STAGES[e.burnStage]) {
+  if (!e.doomed && e.burnStage < BURN_STAGES.length && e.hp <= BURN_STAGES[e.burnStage]) {
     e.burnStage++
     startFlee(e, fire.px, fire.py)
   }
@@ -140,6 +143,7 @@ export function updateSammunut(e, state, delta) {
   ensureSammunut(e)
   const { entities, map, player } = state
   const prevPx = e.px, prevPy = e.py
+  if (e.doomed) { e.shun = false; e.state = 'drift' }
 
   if (e.state === 'fleeing') {
     e.target = null
@@ -200,7 +204,7 @@ CREATURE_HIT.sammunut = (e, state, dmg, { source = 'player' } = {}) => {
   const fire = nearestDeadwoodInLight(state.entities ?? [], e)
   if (!fire) return { entity: e, absorbed: true, cue: 'chop', think: 'Your blade passes through it.' }
   const entity = { ...e, hp: e.hp - 1, inCombat: true, touchT: TOUCH_TIME }
-  startFlee(entity, fire.px, fire.py)
+  if (!entity.doomed) startFlee(entity, fire.px, fire.py)
   return { entity, absorbed: false, cue: 'melee-hit' }
 }
 

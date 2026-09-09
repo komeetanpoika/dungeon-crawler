@@ -20,6 +20,14 @@ export const KEYFRAMES = [
   { at: 1.00, dark: 0.85, ambient: [40, 60, 120],   fog: 1.0 },
 ]
 
+// The night window: from dusk (0.70) through midnight until dawn breaks
+// (0.20) — the hours the hermit episode's villagers keep their hearths lit.
+export const DUSK_AT = 0.70, DAWN_AT = 0.20
+export function isNight(clock) {
+  const frac = (((clock % DAY_LENGTH) + DAY_LENGTH) % DAY_LENGTH) / DAY_LENGTH
+  return frac >= DUSK_AT || frac < DAWN_AT
+}
+
 export function dayPhase(clock) {
   const frac = (((clock % DAY_LENGTH) + DAY_LENGTH) % DAY_LENGTH) / DAY_LENGTH
   let i = 0
