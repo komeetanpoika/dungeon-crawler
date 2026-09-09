@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EPISODES } from '../renderer/data/leaps.js'
-import { episodeFor, leapFlags, setFlag, wolvesAlive, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn, echoSpawns, checkDeliveries, makeEpCtx } from '../renderer/systems/leap.js'
+import { episodeFor, leapFlags, setFlag, wolvesAlive, ruleCtx, isMapUnlocked, isResolved, echoLine, poiCell, missingSpawn, echoSpawns, checkDeliveries, makeEpCtx } from '../renderer/systems/leap.js'
 import { normalizeAdventureSave, markCleared } from '../renderer/systems/adventure.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { npcSpawnsForMap, npcSpawnIndex } from '../renderer/systems/openmap.js'
@@ -70,6 +70,12 @@ describe('rules', () => {
     assert.deepEqual(ids, [v + w, v + w + 1, v + w + 2].map(i => `npc:${fold.name}:${i}`))
     save.npcs[fold.name] = { dead: ids.slice(0, 2), hostile: false }
     assert.equal(wolvesAlive(save, fold), 1)
+  })
+  it('ruleCtx says whether it is night on the save clock, for the Echo lines', () => {
+    const save = normalizeAdventureSave(null)
+    assert.equal(ruleCtx(save, fold).night, false)
+    save.clock = 0.85 * 360
+    assert.equal(ruleCtx(save, fold).night, true)
   })
   it('the fold needs the Maahinen dead and a wolf alive', () => {
     const save = normalizeAdventureSave(null)

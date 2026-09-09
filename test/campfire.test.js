@@ -117,3 +117,16 @@ describe('deadwood fuel', () => {
     assert.equal(isDeadwoodFire(makeCampfire(2, 3)), false)
   })
 })
+
+describe('hearth fires', () => {
+  it("a hearth fire never burns out but is not eternal, so the wraith can still snuff it", () => {
+    const f = makeCampfire(1, 1, { hearth: true })
+    assert.equal(f.hearth, true)
+    assert.equal('eternal' in f, false)
+    const r = tickCampfires([f], 61)
+    assert.equal(r.entities.length, 1)
+    assert.deepEqual(r.expired, [])
+    assert.equal(campfireAlpha({ t: 61, hearth: true }), 1)
+    assert.equal('hearth' in makeCampfire(1, 1), false)
+  })
+})

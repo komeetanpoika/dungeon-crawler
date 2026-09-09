@@ -129,6 +129,18 @@ describe('drawNight', () => {
     assert.equal(ctx.filter, 'none', 'ctx filter settled')
   })
 
+  it('a grey (deadwood) light glows blue, an ordinary one orange', () => {
+    const ctx = recordingCtx(), layer = layerWith()
+    const lights = [{ px: 100, py: 100, r: 4.5, strength: 1, grey: true }, { px: 200, py: 100, r: 4.5, strength: 1, grey: false }]
+    drawNight(ctx, layer, look({ lights }), cam, view, S)
+    const glow = ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'lighter').map(o => o.fillStyle.stops[0][1])
+    assert.equal(glow.length, 2)
+    const [br, bg, bb] = glow[0].match(/rgba\((\d+),(\d+),(\d+)/).slice(1).map(Number)
+    assert.ok(bb > br + 80 && bb > bg, `blue glow, got ${glow[0]}`)
+    const [or, og, ob] = glow[1].match(/rgba\((\d+),(\d+),(\d+)/).slice(1).map(Number)
+    assert.ok(or > ob && og > ob, `orange glow, got ${glow[1]}`)
+  })
+
   it('skips lights that are off the layer', () => {
     const ctx = recordingCtx(), layer = layerWith()
     const far = { px: 5000, py: 5000, r: 2, strength: 1, grey: false }

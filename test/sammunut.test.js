@@ -363,3 +363,25 @@ describe('sammunut visibility fade', () => {
     assert.ok(w.flicker > 0)
   })
 })
+
+describe('a doomed wraith (every hearth burns blue)', () => {
+  it('seeks the deadwood fire despite shunning, and burns without fleeing', () => {
+    const w = { ...makeSammunut(10, 10), shun: true, doomed: true, hp: 12.1 }
+    const fire = fireAt(10, 11, 'deadwood')
+    const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [fire])
+    updateSammunut(w, state, 0.1)
+    assert.equal(w.target, fire)
+    assert.equal(w.state, 'drift')
+    assert.equal(w.shun, false)
+    assert.ok(w.hp < 12)
+  })
+  it('a doomed wraith mid-flee gives up the flee', () => {
+    const w = { ...makeSammunut(10, 10), doomed: true }
+    w.state = 'fleeing'; w.fleeT = 3; w.fleeDir = { x: 1, y: 0 }; w.shun = true
+    const fire = fireAt(10, 11, 'deadwood')
+    const state = makeState(w, makePlayer({ x: 1, y: 1, px: 48, py: 48 }), [fire])
+    updateSammunut(w, state, 0.1)
+    assert.equal(w.state, 'drift')
+    assert.equal(w.target, fire)
+  })
+})

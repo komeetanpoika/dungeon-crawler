@@ -400,8 +400,8 @@ describe('trees never show damage', () => {
 })
 
 describe('floating consumables use atlas sprites', () => {
-  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['mushroom', 'ow_mushroom'],
-                            ['clapper', 'item_clapper'], ['fleece', 'item_fleece']])
+  for (const [type, key] of [['meat', 'item_meat'], ['cooked_meat', 'item_meat_cooked'], ['lumber', 'item_lumber'], ['deadwood', 'item_deadwood'],
+                            ['mushroom', 'ow_mushroom'], ['clapper', 'item_clapper'], ['fleece', 'item_fleece']])
     it(`${type} draws ${key}`, () => {
       const ctx = recordingCtx()
       ctx.fillText = () => {}
@@ -453,11 +453,15 @@ describe('drawEntity — echo', () => {
   })
 })
 
-describe('drawEntity — grey campfire', () => {
-  it('applies a filter for deadwood fires and restores it', () => {
+describe('drawEntity — blue campfire', () => {
+  it('applies a blue-hue filter for deadwood fires and restores it', () => {
     const ctx = recordingCtx(); ctx.filter = 'none'
+    let seen = null
+    const origDraw = ctx.drawImage
+    ctx.drawImage = function (...a) { seen = this.filter; return origDraw.apply(this, a) }
     drawEntity(ctx, { type: 'campfire', t: 0, fuel: 'deadwood' }, 0, 0, 32, { prop_campfire: 'F' })
     assert.deepEqual(ctx.calls, ['F'])
+    assert.match(seen, /hue-rotate\(19\ddeg\)/)
     assert.equal(ctx.filter, 'none')
   })
 })
@@ -741,5 +745,155 @@ describe('the ranged/wand tiles (tools/make-ranged-tiles.mjs)', () => {
     const { width, height, pixels } = readPng(file)
     assert.equal(width, 16); assert.equal(height, 16)
     assert.ok(pixels.some((_, i) => i % 4 === 3 && pixels[i] === 255), 'has opaque pixels')
+  })
+})
+
+// ── The mushroom trip ──────────────────────────────────────────────────────
+// The rainbow washes over the finished world; the sprites drawn individually
+// are looked up through a wheel of hue-rotated copies, while the chunk-baked
+// tile layer keeps the plain ones — a chunk baked in rainbow would stay that
+// colour long after the trip ended.
+
+function stubTranceLayer() {
+  const canvas = { id: 'TRANCE', width: 0, height: 0 }
+  const layer = { canvas, ctx: orderCtx(), w: 32, h: 24, k: 0.25, resized: [],
+    resize(w, h) { layer.resized.push([w, h]) } }
+  return layer
+}
+
+function stubTileLayer() {
+  const seen = []
+  return { seen, draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
+    seen.push(sprites); seen.at(-1).__trip = { hue, sat }
+  } }
+}
+
+function stubHueWheel() {
+  const asked = []
+  let frames = 0
+  return { asked, built: 0, get frames() { return frames },
+    beginFrame() { frames++ }, clear() {},
+    variant(key, img, hue) { asked.push({ key, hue }); return { id: `HUE:${key}` } } }
+}
+
+function renderTrip(fx, { entities = [], sprites = {}, player = {} } = {}) {
+  const ctx = orderCtx()
+  const canvas = { width: 128, height: 96, offsetWidth: 128, offsetHeight: 96, getContext: () => ctx }
+  const tranceLayer = stubTranceLayer(), tileLayer = stubTileLayer(), hueWheel = stubHueWheel()
+  const r = new Renderer(canvas, { weatherLayer: stubLayer(), tranceLayer, tileLayer, hueWheel })
+  r.viewW = 128; r.viewH = 96
+  r.sprites = { ...r.sprites, ...sprites }
+  const state = scene(null, entities)
+  Object.assign(state.player, player)
+  r.updateCamera(state.player, 0)
+  r.render(state, fx)
+  return { ops: ctx.ops, ctx, tranceLayer, tileLayer, hueWheel, renderer: r }
+}
+
+const noTrip = { wobbleX: 0, wobbleY: 0, blur: 0, greenAlpha: 0, tintAlpha: 0, wash: 0,
+  level: 0, colour: 0, rainbow: { alpha: 0, blobs: [] }, lift: 0, wizards: [], glyphs: [] }
+const tripping = {
+  ...noTrip, tintAlpha: 0.18, level: 1, colour: 1,
+  rainbow: { alpha: 1, blobs: [{ x: 0.5, y: 0.5, r: 0.3, hue: 200 }] },
+}
+
+describe('Renderer.render — the trip', () => {
+  const feedbackIdx = ops => ops.findIndex(o => o.name === 'fillText' || o.name === 'strokeText' || o.name === 'font')
+
+  it('leaves the frame alone when nobody has eaten a mushroom', () => {
+    const { ops, tileLayer } = renderTrip(noTrip)
+    assert.equal(ops.some(o => o.name === 'drawImage' && o.img.id === 'TRANCE'), false)
+    assert.deepEqual(tileLayer.seen[0].__trip, { hue: 0, sat: 1 }, 'the world keeps its own colours')
+  })
+
+  it('turns the world with the trip clock and saturates it with the colour ramp', () => {
+    const trip = (colour, tranceHue) => renderTrip(
+      { ...tripping, level: 1, colour, rainbow: { alpha: colour, blobs: [] } },
+      { player: { tranceHue } }).tileLayer.seen[0].__trip
+    assert.ok(trip(0.5, 3).hue > trip(0.5, 0.2).hue, 'further round the wheel as the clock runs')
+    assert.equal(trip(0.5, 0).hue, 0, 'the world starts in its own colours')
+    assert.ok(trip(1, 1).sat > trip(0.1, 1).sat, 'and takes more colour as the ramp climbs')
+  })
+
+  it('leaves the world its own colours while only the sway has arrived', () => {
+    const { tileLayer, hueWheel } = renderTrip(
+      { ...tripping, level: 0.4, colour: 0, tintAlpha: 0, rainbow: { alpha: 0, blobs: [] } },
+      { entities: [{ type: 'crab', x: 2, y: 1 }],
+        sprites: { crab: { width: 32, height: 32, id: 'CRAB' } }, player: { tranceHue: 3 } })
+    assert.deepEqual(tileLayer.seen[0].__trip, { hue: 0, sat: 1 }, 'the ground is untouched')
+    assert.equal(hueWheel.asked.length, 0, 'and no sprite is asked for a colour')
+  })
+
+  it('blits the rainbow over the world, under the speech bubbles', () => {
+    const { ops } = renderTrip(tripping)
+    const blit = ops.findIndex(o => o.name === 'drawImage' && o.img.id === 'TRANCE')
+    assert.ok(blit >= 0, 'rainbow reaches the frame')
+    assert.ok(blit < feedbackIdx(ops), 'text stays readable above it')
+  })
+
+  it('recolours the sprites drawn one by one but not the baked tile layer', () => {
+    const crab = { type: 'crab', x: 2, y: 1 }
+    const { ops, tileLayer, hueWheel } = renderTrip(tripping, {
+      entities: [crab], sprites: { crab: { width: 32, height: 32, id: 'CRAB' } },
+      player: { tranceHue: 3 },
+    })
+    assert.equal(tileLayer.seen[0].crab.id, 'CRAB', 'the tile layer bakes plain sprites')
+    assert.ok(tileLayer.seen[0].__trip.hue > 0, 'but is asked to blit them recoloured')
+    assert.ok(ops.some(o => o.name === 'drawImage' && o.img?.id === 'HUE:crab'), 'the crab is recoloured')
+    assert.equal(hueWheel.frames, 1, 'the per-frame build budget is reset once a frame')
+  })
+
+  it('gives two kinds of thing different colours at the same moment', () => {
+    const img = { width: 32, height: 32 }
+    const { hueWheel } = renderTrip(tripping, {
+      entities: [{ type: 'crab', x: 2, y: 1 }, { type: 'monster', variant: 'weak', x: 0, y: 1 }],
+      sprites: { crab: { ...img, id: 'CRAB' }, monster_weak: { ...img, id: 'MONSTER' } },
+      player: { tranceHue: 3 },
+    })
+    const hueOf = key => hueWheel.asked.find(a => a.key === key)?.hue
+    assert.ok(hueOf('crab') !== undefined && hueOf('monster_weak') !== undefined, 'both asked for a colour')
+    assert.notEqual(hueOf('crab'), hueOf('monster_weak'))
+  })
+
+  it('hands the sprites back untouched once the trip is over', () => {
+    const crab = { type: 'crab', x: 2, y: 1 }
+    const { ops } = renderTrip(noTrip, {
+      entities: [crab], sprites: { crab: { width: 32, height: 32, id: 'CRAB' } },
+    })
+    assert.ok(ops.some(o => o.name === 'drawImage' && o.img?.id === 'CRAB'), 'plain crab again')
+  })
+
+  it('holds a sprite in its own colour until the trip clock has run', () => {
+    const img = { width: 32, height: 32 }
+    const hueAt = tranceHue => {
+      const { hueWheel } = renderTrip(tripping,
+        { entities: [{ type: 'crab', x: 2, y: 1 }], sprites: { crab: { ...img, id: 'CRAB' } },
+          player: { tranceHue } })
+      return hueWheel.asked.find(a => a.key === 'crab').hue
+    }
+    assert.equal(hueAt(0), 0, 'its own colour before the clock has run')
+    assert.ok(hueAt(3) > 30, 'right round the wheel once it has')
+  })
+
+  it('washes the whole frame out while the call carries the player', () => {
+    const { ops } = renderTrip({ ...noTrip, wash: 1 })
+    const fill = ops.find(o => o.name === 'fillRect' && o.a?.[2] === 128 && o.a?.[3] === 96 && o.alpha === 1 && o.fs === '#eafff0')
+    assert.ok(fill, 'the view is covered')
+  })
+
+  it('settles the context after the trip is painted', () => {
+    const { ctx } = renderTrip({ ...tripping, wash: 0.5 })
+    assert.equal(ctx.globalCompositeOperation, 'source-over')
+    assert.equal(ctx.globalAlpha, 1)
+    assert.equal(ctx.filter, 'none')
+  })
+
+  it('resizes the trance layer with the view', () => {
+    const ctx = orderCtx()
+    const canvas = { width: 0, height: 0, offsetWidth: 200, offsetHeight: 100, getContext: () => ctx }
+    const tranceLayer = stubTranceLayer()
+    const r = new Renderer(canvas, { weatherLayer: stubLayer(), tranceLayer })
+    r.resize()
+    assert.deepEqual(tranceLayer.resized.at(-1), [200, 100])
   })
 })

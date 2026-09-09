@@ -18,6 +18,8 @@ import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
 import { getMonsterDef, drawGeneratedMonster, isStoryCreature } from '../systems/monsters.js'
 import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
 import { makeWeatherLayer, drawNight, drawFog } from './weather.js'
+import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.js'
+import { spriteHue } from '../systems/rites.js'
 import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer } from './tile-layer.js'
 
@@ -137,7 +139,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     if (!s) return
     const prev = ctx.globalAlpha, prevF = ctx.filter
     ctx.globalAlpha = prev * campfireAlpha(entity)
-    if (entity.fuel === 'deadwood') ctx.filter = 'hue-rotate(185deg) saturate(0.45) brightness(1.25)'
+    // Deadwood burns blue: the orange flame swung round the hue wheel, kept saturated.
+    if (entity.fuel === 'deadwood') ctx.filter = 'hue-rotate(195deg) saturate(1.1) brightness(1.15)'
     ctx.drawImage(s, px, py, S, S)
     ctx.filter = prevF; ctx.globalAlpha = prev
     return
@@ -178,7 +181,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, px, py, S, S)
     } else {
       const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
-                    clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
+                    deadwood: 'item_deadwood', clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
       const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
       else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }
@@ -948,7 +951,7 @@ export class Renderer {
   // quarter-resolution offscreen canvases the weather passes paint through.
   // `tileLayer` likewise: the chunk cache in the app, the direct per-cell
   // path where there is no document to make offscreen canvases from.
-  constructor(canvas, { weatherLayer, tileLayer } = {}) {
+  constructor(canvas, { weatherLayer, tileLayer, tranceLayer, hueWheel } = {}) {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')
     this.ctx.imageSmoothingEnabled = false
@@ -963,6 +966,11 @@ export class Renderer {
       ?? (typeof document !== 'undefined' ? makeWeatherLayer(() => document.createElement('canvas')) : null)
     this.tileLayer = tileLayer
       ?? (typeof document !== 'undefined' ? makeTileLayer(() => document.createElement('canvas')) : makeDirectTileLayer())
+    // The mushroom trip's two pieces, injectable like the layers above.
+    this.tranceLayer = tranceLayer
+      ?? (typeof document !== 'undefined' ? makeTranceLayer(() => document.createElement('canvas')) : null)
+    this.hueWheel = hueWheel
+      ?? (typeof document !== 'undefined' ? makeHueWheel(() => document.createElement('canvas')) : null)
   }
 
   async loadSprites(extraNames = []) {
@@ -1001,6 +1009,7 @@ export class Renderer {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     this.ctx.imageSmoothingEnabled = false
     this.weatherLayer?.resize(this.viewW, this.viewH)
+    this.tranceLayer?.resize(this.viewW, this.viewH)
   }
 
   updateCamera(player, shake = 0, fx = null) {
@@ -1012,8 +1021,31 @@ export class Renderer {
     if (fx) { this.camX += fx.wobbleX; this.camY += fx.wobbleY }
   }
 
+  // Once the trip's colours arrive, every sprite looked up here comes back
+  // hue-rotated: each kind of thing on its own colour, cycling at its own rate
+  // off the trip's colour clock. The wheel builds a couple of images per frame,
+  // so anything not recoloured yet is drawn plain that frame and picked up on a
+  // later one.
+  _tripSprites(base, fx, player) {
+    const wheel = this.hueWheel
+    const colour = fx?.colour ?? 0
+    if (!wheel || !(colour > 0)) {
+      if (wheel?.built) wheel.clear()
+      return base
+    }
+    wheel.beginFrame()
+    const t = player.tranceHue ?? 0
+    return new Proxy(base, {
+      get(target, key) {
+        const img = target[key]
+        if (!img || typeof key !== 'string') return img
+        return wheel.variant(key, img, spriteHue(key, t))
+      },
+    })
+  }
+
   render(state, fx = null) {
-    const { ctx, S, camX, camY, sprites } = this
+    const { ctx, S, camX, camY } = this
     const { map, entities: rawEntities, player } = state
     const entities = rawEntities ?? []
 
@@ -1021,6 +1053,11 @@ export class Renderer {
     if (!player) return
     const W = this.viewW, H = this.viewH
     if (W === 0 || H === 0) return
+
+    // The chunk-baked tile layer keeps the plain sprites — a chunk baked mid-trip
+    // would hold that colour long after the trip ended.
+    const baseSprites = this.sprites
+    const sprites = this._tripSprites(baseSprites, fx, player)
 
     const theme = state.theme ?? { bgColor: '#000', tint: null, fogAlpha: 0.65 }
     ctx.fillStyle = theme.bgColor
@@ -1031,7 +1068,13 @@ export class Renderer {
     const r0 = Math.max(0, Math.floor(camY / S))
     const r1 = Math.min(map.length, Math.ceil((camY + H) / S))
 
-    this.tileLayer.draw(ctx, map, sprites, S, camX, camY, W, H, theme.fogAlpha)
+    // The world turns colour too: one hue for the whole ground and saturation
+    // lifted so the shift reads at all against the forest's muted greens. Both
+    // ride the colour ramp, which arrives long after the sway.
+    const colour = fx?.colour ?? 0
+    const worldHue = colour > 0 ? spriteHue('world', player.tranceHue ?? 0) : 0
+    this.tileLayer.draw(ctx, map, baseSprites, S, camX, camY, W, H, theme.fogAlpha,
+      worldHue, 1 + 0.6 * colour)
 
     // Depth tint overlay (after tiles, before entities)
     if (theme.tint) {
@@ -1209,6 +1252,18 @@ export class Renderer {
     if (look && this.weatherLayer) {
       drawFog(ctx, this.weatherLayer, look, state.weather.fog, { camX, camY }, { W, H }, S, map)
     }
+
+    // The trip goes over the finished world — weather and all — but under the
+    // floats, bubbles and banners, which have to stay readable.
+    if (fx?.tintAlpha > 0) {
+      ctx.save()
+      ctx.globalAlpha = fx.tintAlpha
+      ctx.fillStyle = '#4ade80'
+      ctx.fillRect(0, 0, W, H)
+      ctx.restore()
+    }
+    drawRainbow(ctx, this.tranceLayer, fx?.rainbow, { W, H })
+    drawWash(ctx, fx?.wash ?? 0, { W, H })
 
     this._drawFeedback(state)
 

@@ -5,6 +5,8 @@ import { EPISODES } from '../data/leaps.js'
 import { isMapComplete } from './adventure.js'
 import { removeItem } from './inventory.js'
 import { npcSpawnIndex } from './openmap.js'
+import { isNight } from './weather.js'
+import { DAY_START } from '../data/weather.js'
 
 export function episodeFor(mapData) { return (mapData?.leap && EPISODES[mapData.name]) || null }
 
@@ -28,7 +30,7 @@ export function wolvesAlive(save, mapData) {
   return npcSpawnIndex(mapData).filter(e => e.species === 'wolf' && !dead.has(`npc:${mapData.name}:${e.i}`)).length
 }
 
-export const ruleCtx = (save, mapData) => ({ wolvesAlive: wolvesAlive(save, mapData) })
+export const ruleCtx = (save, mapData) => ({ wolvesAlive: wolvesAlive(save, mapData), night: isNight(save.clock ?? DAY_START) })
 
 export function isResolved(save, mapData) {
   const ep = episodeFor(mapData)

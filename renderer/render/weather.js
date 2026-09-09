@@ -103,7 +103,7 @@ export function drawNight(ctx, layer, look, { camX, camY }, { W, H }, S) {
     const x = l.px - camX, y = l.py - camY, rad = l.r * S * GLOW_RADIUS
     const flick = 1 + 0.08 * Math.sin(look.t * 9 + l.px)
     const a = GLOW_ALPHA * l.strength * look.dark * flick
-    const c = l.grey ? '170,190,220' : '255,160,60'
+    const c = l.grey ? '110,170,255' : '255,160,60'   // deadwood burns blue
     ctx.fillStyle = radial(ctx, x, y, rad, `rgba(${c},${a})`, `rgba(${c},0)`)
     ctx.fillRect(x - rad, y - rad, 2 * rad, 2 * rad)
   }

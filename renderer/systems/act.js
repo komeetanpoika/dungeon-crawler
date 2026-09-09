@@ -92,15 +92,30 @@ function followPath(e, state, delta, target, speed) {
          Math.hypot(ai.path[0].x * S + S / 2 - e.px, ai.path[0].y * S + S / 2 - e.py) < WAYPOINT_REACHED) {
     ai.path.shift()
   }
-  // smooth: skip a waypoint when the one after it is directly visible.
+  // smooth: skip a waypoint when the body can walk straight to the one after
+  // it. Checked along the actual pixel segment, not tile-centre sight: a body
+  // straddling a tile edge beside a wall can "see" the next waypoint while
+  // the diagonal to it clips the wall, and per-axis movement then stalls.
   // Small entities only — a wide body could clip the corner the skip cuts.
   while (clearance === 1 && ai.path.length >= 2 &&
-         hasLineOfSight(state.map, e.y, e.x, ai.path[1].y, ai.path[1].x)) {
+         segmentWalkable(state.map, e.px, e.py, ai.path[1].x * S + S / 2, ai.path[1].y * S + S / 2, e.aiHalf ?? 4)) {
     ai.path.shift()
   }
   if (!ai.path.length) return false
   const wp = ai.path[0]
   return moveDir(e, state, delta, wp.x * S + S / 2 - e.px, wp.y * S + S / 2 - e.py, speed)
+}
+
+// Whether a body of half-size `half` can slide straight from (x1,y1) to
+// (x2,y2): canMoveTo sampled every half-body along the segment, end included.
+function segmentWalkable(map, x1, y1, x2, y2, half) {
+  const len = Math.hypot(x2 - x1, y2 - y1)
+  const steps = Math.max(1, Math.ceil(len / Math.max(1, half)))
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps
+    if (!canMoveTo(map, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, half)) return false
+  }
+  return true
 }
 
 // One flow-field step: move toward the best downhill/uphill neighbour tile.

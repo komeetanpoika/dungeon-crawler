@@ -235,3 +235,24 @@ describe('act charge', () => {
     assert.ok(blocked, 'charge reported the wall')
   })
 })
+
+describe('act patrol past a corner', () => {
+  // The village well: a 2-tall blocker. A walker whose body straddles the
+  // tile boundary beside it must not be talked into a "visible" diagonal
+  // that clips the well — that deadlocked the hermit episode's villagers.
+  it('a walker straddling a tile edge beside a 2-tall wall still gets round it to a tile below', () => {
+    const map = createMap(12, 9)
+    for (let y = 1; y < 8; y++) for (let x = 1; x < 11; x++) map[y][x].tile = TILE.FLOOR
+    map[4][6].tile = TILE.WALL; map[5][6].tile = TILE.WALL
+    const e = enemyAt(6, 3)
+    e.px = 6 * S + 31
+    const state = makeState(map, { x: 1, y: 1 }, [e])
+    const target = { x: 6, y: 7 }
+    for (let i = 0; i < 600; i++) {
+      act(e, state, 1 / 60, { mode: 'patrol', target, speed: 80 })
+      if (Math.hypot(e.px - (target.x * S + S / 2), e.py - (target.y * S + S / 2)) <= S * 0.6) break
+    }
+    assert.ok(Math.hypot(e.px - (target.x * S + S / 2), e.py - (target.y * S + S / 2)) <= S * 0.6,
+      `walker should reach the tile below the wall, ended at (${e.px},${e.py})`)
+  })
+})

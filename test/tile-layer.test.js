@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeTileLayer, CHUNK } from '../renderer/render/tile-layer.js'
+import { makeTileLayer, CHUNK, HUE_BUDGET } from '../renderer/render/tile-layer.js'
 import { markTileDirty } from '../renderer/systems/tile-dirty.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
@@ -146,5 +146,83 @@ describe('tile layer fog', () => {
     const ctx = recordingCtx()
     layer.draw(ctx, map, SPR, S, 10.4, 20.6, 640, 480, 0.65)
     assert.deepEqual(fogs(ctx)[0].a, [Math.round(3 * S - 10.4), Math.round(2 * S - 20.6), 3 * S, S])
+  })
+})
+
+// ── The mushroom trip ──────────────────────────────────────────────────────
+// A trip recolours the world itself. The baked chunks stay in their own
+// colours — they outlive the trip — and a hue-rotated copy of each is blitted
+// instead, rebuilt one chunk a frame so the software canvas never stalls. Each
+// chunk carries its own offset, so the world shifts in patches rather than as
+// one flat sheet.
+
+const hueBuilds = layer => [...layer.chunks.values()].filter(c => c.hued).length
+
+describe('tile layer under a trip', () => {
+  const setup = () => {
+    const layer = makeTileLayer(fakeCanvas)
+    const map = floorMap()
+    explore(map, 0, 0, 40, 20)
+    return { layer, map }
+  }
+
+  it('blits the plain chunks when nobody is tripping', () => {
+    const { layer, map } = setup()
+    const ctx = recordingCtx()
+    layer.draw(ctx, map, SPR, S, 0, 0, 640, 480, 0.65, 0)
+    assert.equal(hueBuilds(layer), 0)
+    for (const b of blits(ctx)) assert.ok([...layer.chunks.values()].some(c => c.canvas === b.img))
+  })
+
+  it('builds a recoloured copy and blits that instead', () => {
+    const { layer, map } = setup()
+    const ctx = recordingCtx()
+    // A view wide enough to hold more chunks than one frame's budget.
+    layer.draw(ctx, map, SPR, S, 0, 0, 1600, 1100, 0.65, 90)
+    assert.equal(hueBuilds(layer), HUE_BUDGET, 'only a couple of chunks recoloured per frame')
+    const hued = [...layer.chunks.values()].find(c => c.hued)
+    assert.ok(blits(ctx).some(b => b.img === hued.hued), 'the recoloured copy is what reaches the screen')
+    assert.ok(hued.hued.ctx.calls.some(c => c.name === 'drawImage' && c.img === hued.canvas),
+      'recoloured from the bake, not from the tiles again')
+  })
+
+  it('recolours the rest over the following frames', () => {
+    const { layer, map } = setup()
+    for (let i = 0; i < 4; i++) layer.draw(recordingCtx(), map, SPR, S, 0, 0, 640, 480, 0.65, 90)
+    assert.equal(hueBuilds(layer), 2, 'both visible chunks recoloured, one per frame')
+  })
+
+  it('holds a copy steady until the hue has moved a step', () => {
+    const { layer, map } = setup()
+    for (let i = 0; i < 6; i++) layer.draw(recordingCtx(), map, SPR, S, 0, 0, 640, 480, 0.65, 90)
+    const before = [...layer.chunks.values()].map(c => c.hued?.ctx.calls.length)
+    layer.draw(recordingCtx(), map, SPR, S, 0, 0, 640, 480, 0.65, 92)
+    assert.deepEqual([...layer.chunks.values()].map(c => c.hued?.ctx.calls.length), before, 'no rebuild for 2°')
+  })
+
+  it('turns the whole world as one, so no seam shows between chunks', () => {
+    const { layer, map } = setup()
+    for (let i = 0; i < 4; i++) layer.draw(recordingCtx(), map, SPR, S, 0, 0, 640, 480, 0.65, 90)
+    const steps = [...layer.chunks.values()].filter(c => c.hued).map(c => c.hueStep)
+    assert.ok(steps.length > 1, 'more than one chunk in view')
+    assert.equal(new Set(steps).size, 1, 'all at the same colour')
+  })
+
+  it('drops the recoloured copies when the trip ends', () => {
+    const { layer, map } = setup()
+    for (let i = 0; i < 4; i++) layer.draw(recordingCtx(), map, SPR, S, 0, 0, 640, 480, 0.65, 90)
+    assert.ok(hueBuilds(layer) > 0)
+    layer.draw(recordingCtx(), map, SPR, S, 0, 0, 640, 480, 0.65, 0)
+    assert.equal(hueBuilds(layer), 0, 'the memory goes back with the colours')
+  })
+
+  it('re-bakes and re-colours a chunk whose tiles changed mid-trip', () => {
+    const { layer, map } = setup()
+    for (let i = 0; i < 4; i++) layer.draw(recordingCtx(), map, SPR, S, 0, 0, 640, 480, 0.65, 90)
+    const chunk = layer.chunks.get('0,0')
+    const before = chunk.hued.ctx.calls.length
+    markTileDirty(map, 2, 2)
+    layer.draw(recordingCtx(), map, SPR, S, 0, 0, 640, 480, 0.65, 90)
+    assert.ok(chunk.hued.ctx.calls.length > before, 'the felled tree shows in its new colour too')
   })
 })

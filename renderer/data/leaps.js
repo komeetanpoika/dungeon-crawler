@@ -81,22 +81,32 @@ export const EPISODES = {
       { type: 'deadwood', count: 3 },
     ] } },
     villagerLines: {
-      villager: ['Lauri. So you came back after all.', 'Every hearth went cold the night you two quarrelled.', 'The old man sits up on the knoll and says nothing.'],
-      elder:    ['Fires light and something puts them out again, Lauri. Something that walks.', 'Only his own wood ever burned on that hearth.'],
+      villager: ['Lauri. So you came back after all.', 'We light the hearths at dusk. By midnight they’re cold again.', 'Something walks in when the flames go out. Nobody has seen it.'],
+      elder:    ['Fires light and something puts them out again, Lauri. Something that walks.', 'Only his own wood ever held. Grey stuff, off the knoll. Burned blue.'],
       hermit:   ['…'],
     },
     // Set as state.villagerLines once wraith_dead resolves the episode (see
     // resolveEpisode/arriveOnMap in game.js, and hermit.js's own onArrive) —
     // the silent hermit finally has something to say.
-    resolvedLines: { hermit: ['You came back.', 'The fire held. I was wrong, Lauri.'] },
+    resolvedLines: {
+      hermit: ['You came back.', 'The fire held. I was wrong, Lauri.'],
+      villager: ['Blue on every hearth. It won’t walk in again.', 'The old man came down to see them burn.'],
+      elder: ['His wood, our hearths. That’s how it should have been.'],
+    },
     echoSpots: [
       { fromPoi: 'runestone', lines: [
         { when: f => f.wraith_dead, text: 'Hearths are lit. The old man is talking again. Oh boy.' },
-        { when: f => f.hearth_lit, text: "That fire it can't put out. It hates it, and it can't leave a flame alone." },
-        { when: () => true, text: "Oh boy. You're Lauri. Something walks through here and eats the fires. Ziggy says only his own wood ever burned on that hearth." },
+        { when: f => f.wood_1, text: 'Blue flame in the village. Ziggy says it can’t put that one out, and it can’t leave it alone either.' },
+        { when: f => f.seen_snuff, text: 'You saw it. It eats fires. Ziggy says the one wood it ever failed on came off that knoll.' },
+        { when: () => true, text: "Oh boy. You're Lauri. They light the hearths every dusk and something puts them out. Ziggy says wait for dark." },
+      ] },
+      { fromPoi: 'village', lines: [
+        { when: f => f.wraith_dead, text: 'Three blue fires. The village keeps its own light now.' },
+        { when: (f, c) => !!c?.night && !f.seen_snuff, text: 'Look at them, lighting up like nothing’s wrong. Watch the fires.' },
+        { when: () => true, text: 'Three hearths, and they build them up again every evening. Stubborn.' },
       ] },
       { fromPoi: 'hearth', lines: [
-        { when: f => f.hearth_lit, text: "Stay in the light. Out there you can't touch it, and it drains you." },
+        { when: f => f.wood_1, text: 'The villagers wanted his wood all along. Pride, on both sides.' },
         { when: () => true, text: 'His hearth. The grey trees on the knoll were his woodpile.' },
       ] },
       { fromPoi: 'mushroom ring', lines: [
