@@ -121,14 +121,14 @@ describe('v3 save shape', () => {
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
     assert.deepEqual(normalizeAdventureSave(v3), {
       ...v3, body: { ...v3.body, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 } },
-      gates: {}, npcs: {}, felled: {}, leaps: {}, clock: DAY_START, v6: true, v7: true,
+      gates: {}, npcs: {}, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true,
     })
   })
 
   it('v4 saves keep their npcs and gain an empty felled map', () => {
     const v4 = { caves: {}, progress: { mapDepth: 7, cleared: {} }, talents: [], body: null,
       gates: {}, npcs: { 'forest-1-clearings': { dead: ['npc:forest-1-clearings:0'], hostile: false } } }
-    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, clock: DAY_START, v6: true, v7: true })
+    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true })
   })
 
   it('a fresh save has no felled trees', () => {

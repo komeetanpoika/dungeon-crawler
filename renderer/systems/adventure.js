@@ -95,6 +95,8 @@ export function nextMapDepth(depth) {
 // the non-leap maps at or below mapDepth), and the leaps record is only kept
 // for seeding the separate timewarp save.
 // The weather clock (`clock`, seconds into the day) is additive with a default.
+// `quests` ({ [mapName]: { flags } }) is additive with a default, like the
+// weather clock — permanent, and untouched by the death wipe (resetNpcs).
 // Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
   const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
@@ -106,6 +108,7 @@ export function normalizeAdventureSave(raw) {
   base.npcs ??= {}
   base.felled ??= {}
   base.leaps ??= {}
+  base.quests ??= {}   // { [mapName]: { flags } } — Adventure quest story flags
   base.clock ??= DAY_START   // seconds into the in-game day (systems/weather.js)
   if (!base.v6) {
     if (base.progress.mapDepth >= 8) base.progress.mapDepth += 3
