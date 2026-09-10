@@ -1023,7 +1023,7 @@ function update(delta) {
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
   const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
   const moving = vx !== 0 || vy !== 0
-  const profile = sprintProfile(player.attackMode)
+  const profile = sprintProfile(player.attackMode, { skiLegs: hasTalent(player, 'ski_legs') })
   const sprinting = moving && !player.charging && player.stamina > 0 && !wasGrabbed &&
     (keys['sprint'] || sprintDetector.sprinting())
   const chargeFactor = player.charging

@@ -502,3 +502,15 @@ describe('lumber and cooked meat', () => {
 describe('deadwood', () => {
   it('deadwood is a stackable kind', () => assert.equal(makeItem('deadwood', 2).count, 2))
 })
+
+describe('elk hide', () => {
+  it('is a carry-only stackable', () => {
+    const hide = makeItem('elk_hide')
+    assert.equal(hide.kind, 'elk_hide')
+    assert.equal(hide.stackable, true)
+    assert.equal(hide.quest, true)
+  })
+  it('round-trips through contents', () => {
+    assert.equal(itemFromContents({ type: 'elk_hide' })?.kind, 'elk_hide')
+  })
+})

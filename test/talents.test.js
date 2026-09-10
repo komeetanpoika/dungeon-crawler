@@ -52,3 +52,16 @@ describe('grantTalent', () => {
     assert.equal(state.sfx.cues.length, 1)
   })
 })
+
+describe('ski-legs', () => {
+  it('is a real talent with a name and a description', () => {
+    assert.ok(TALENTS.ski_legs?.name)
+    assert.ok(TALENTS.ski_legs?.desc)
+  })
+  it('grants once and reports only the first time', () => {
+    const state = mkState()
+    assert.equal(grantTalent(state, 'ski_legs'), true)
+    assert.equal(grantTalent(state, 'ski_legs'), false)
+    assert.equal(hasTalent(state.player, 'ski_legs'), true)
+  })
+})

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   STAMINA_MAX, meleeCost, GUST_COSTS, canAfford, spendStamina, tickStamina,
-  sprintProfile, makeSprintDetector, affordableTier,
+  sprintProfile, makeSprintDetector, affordableTier, SKI_LEGS_DRAIN,
 } from '../renderer/systems/stamina.js'
 
 const mkPlayer = (over = {}) =>
@@ -113,5 +113,22 @@ describe('affordableTier', () => {
     assert.equal(affordableTier(100, cost, 'wibble'), 'tap')
     assert.equal(affordableTier(100, cost, undefined), 'tap')
     assert.equal(affordableTier(5, cost, 'wibble'), null)
+  })
+})
+
+describe('ski-legs sprint', () => {
+  it('leaves the plain profiles untouched', () => {
+    assert.deepEqual(sprintProfile('melee'), { speedMul: 1.55, drain: 22 })
+    assert.deepEqual(sprintProfile('melee', {}), { speedMul: 1.55, drain: 22 })
+  })
+  it('scales only the drain, never the speed', () => {
+    const plain = sprintProfile('melee')
+    const skied = sprintProfile('melee', { skiLegs: true })
+    assert.equal(skied.speedMul, plain.speedMul)
+    assert.equal(skied.drain, plain.drain * SKI_LEGS_DRAIN)
+  })
+  it('applies to the mage jog too, and to an unknown mode via the melee fallback', () => {
+    assert.equal(sprintProfile('magic', { skiLegs: true }).drain, 8 * SKI_LEGS_DRAIN)
+    assert.equal(sprintProfile('nonsense', { skiLegs: true }).drain, 22 * SKI_LEGS_DRAIN)
   })
 })

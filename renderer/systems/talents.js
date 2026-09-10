@@ -8,6 +8,7 @@ export const TALENTS = {
   ranged_stance: { name: 'Marksmanship', desc: 'Use bows, crossbows and slings in the ranged stance.' },
   magic_stance:  { name: 'Gust of Wind', desc: 'Shape spells in the magic stance — wands give new ones.' },
   heavy_weapons: { name: 'Might',        desc: 'Wield heavy weapons.' },
+  ski_legs:      { name: 'Ski-legs',    desc: 'Sprinting costs far less stamina.' },
 }
 
 // Dungeon Rush: every talent from the first step — the run is about the
