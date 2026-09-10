@@ -733,14 +733,14 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       entitySpawns.push({ kind: 'puzzle', ...farTiles[idx] })
     }
     // Procedural chests roll the loot table when opened (systems/loot.js:
-    // potion / melee / ranged, depth-tiered) instead of carrying fixed
-    // contents. The two density knobs still control total chest supply;
-    // cfg.weapons remains the boss-drop pool.
+    // potion / melee / ranged / wand / ammo, tiered by the level's lootTier)
+    // instead of carrying fixed contents. The two density knobs still control
+    // total chest supply; cfg.weapons remains the boss-drop pool.
     //
-    // House interiors (a `config` override) get NO chests: a chest rolls the
-    // depth-19 "deep" loot tier, which would hand out endgame gear in a
-    // villager's kitchen. Their loot lies on the floor instead — potions of 4
-    // and, in a ruin only, a plain weapon from cfg.weaponPool.
+    // House interiors (a `config` override) get NO chests — a treasure chest
+    // in a villager's kitchen reads wrong however tame its contents. Their
+    // loot lies on the floor instead: potions of 4 and, in a ruin only, a
+    // plain weapon from cfg.weaponPool.
     if (config) {
       for (let i = 0; i < potionCount && idx < farTiles.length; i++, idx++) {
         entitySpawns.push({ kind: 'floating_pickup', ...farTiles[idx], contents: { type: 'potion', amount: 4 } })
