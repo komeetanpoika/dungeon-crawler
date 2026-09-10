@@ -1,0 +1,36 @@
+name: tests
+
+# Direct pushes to main, and every pull request. Deliberately not every push
+# on every branch: a PR branch would otherwise run the suite twice per push.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same ref makes the older run's answer irrelevant.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # Report both versions rather than hiding one behind the other's failure.
+      fail-fast: false
+      matrix:
+        # 18 is what the game is developed against; 22 is current LTS, and
+        # catches anything that would break on an upgrade.
+        node: ['18', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      # --ignore-scripts skips Electron's ~100 MB binary download. The suite is
+      # pure node:test over the renderer modules — it imports nothing but node:
+      # builtins and never launches the app — so the binary is dead weight here.
+      - run: npm ci --ignore-scripts
+      - run: npm test
