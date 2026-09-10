@@ -167,9 +167,9 @@ it to a standstill *is* the quest, and the reward is the legs to do it next time
 
 **Flow.**
 
-1. **Arrival.** Villagers and the elder speak of the trampling. The module
-   stamps a patch of trampled dirt overlays around the forest shrine and lays a
-   track trail from there to `wallow 1`.
+1. **Arrival.** Villagers and the elder speak of the trampling. The module lays
+   a track trail from the forest shrine to `wallow 1` — the trail's own first
+   cells are the trampled ground at the shrine, so there is no separate patch.
 2. **Tracks.** A trail is a line of `ow_dirt_*` overlays on every second cell of
    the BFS path between two sites — art only, walkability untouched, each cell
    `markTileDirty`'d. A cell that already carries an overlay (a bush, a flower,
@@ -180,8 +180,9 @@ it to a standstill *is* the quest, and the reward is the legs to do it next time
    tiles) it bolts: `leaving = true`, it runs a few tiles, despawns; the module
    increments `flush`, stamps the trail to the next wallow, and re-homes the elk
    there. A pausing toast marks each flush.
-4. **Stand.** At `wallow 3` (`flush === 3`) it does not flee. It turns hostile
+4. **Stand.** At `wallow 3` (`flush === 2`) it does not flee. It turns hostile
    and fights: hp 30, dmg 2, fast, with a charge that knocks the player back.
+   Three wallows means two flushes and a stand at the third.
 5. **Hide.** Death sets `hirvi_dead` and drops an `elk_hide` floating pickup.
 6. **Delivery.** `checkDeliveries` with `{ item: 'elk_hide', to: { species:
    'elder' }, sets: 'hide_given' }` — stand beside Aspengrove's elder carrying
@@ -190,7 +191,8 @@ it to a standstill *is* the quest, and the reward is the legs to do it next time
 **Reward:** the new talent **Ski-legs** — sprint drains 40 % less stamina, for
 the rest of the game, on every map and in every mode that persists talents.
 
-**Flags:** `hunt_seen`, `flush` (0–3), `hirvi_dead`, `hide_given`.
+**Flags:** `hunt_seen`, `flush` (0–2, the index of the wallow it beds at),
+`hirvi_dead`, `hide_given`.
 **Rule:** `f => !!f.hide_given`.
 
 **Failure modes.**
@@ -199,10 +201,13 @@ the rest of the game, on every map and in every mode that persists talents.
   whenever `hirvi_dead && !hide_given`. The quest cannot dead-end.
 - *Player leaves mid-chase.* `flush` is on the save; `onArrive` re-homes the elk
   at the wallow that flag names and re-stamps the current trail.
-- *Elk killed early.* It cannot be: while `flush < 3` it is a story creature
+- *Elk killed early.* It cannot be: while `flush < 2` it is a story creature
   (`driver: 'hook'`) that flees on approach and takes no damage — `CREATURE_HIT`
   absorbs everything until it makes its stand. This is deliberate: the hunt is
-  the content, and a lucky longbow shot at wallow 1 would delete it.
+  the content, and a lucky longbow shot at wallow 1 would delete it. The stand
+  hands the entity to the ordinary brain (`brainDriven`, a new entity-level
+  opt-out in `isStoryCreature`), which is also what lets spells reach it — a
+  permanent story creature would be spared by the gust and by lightning's 3×3.
 - *Total chase length* is ~170 steps plus a 36-step walk back. Sprint makes that
   brisk; if it plays long in a live check, move `wallow 2` in (leg 2 is the
   longest at 70).
@@ -436,7 +441,7 @@ unaffected.
   declaration; `questLines` picks the first matching stage; `isQuestDone`
   matches each map's rule; `normalizeAdventureSave` defaults `quests` and
   `resetNpcs` leaves it alone.
-- `test/quest-clearings.test.js` — flush progression 0→3, the elk absorbs all
+- `test/quest-clearings.test.js` — flush progression 0→2, the elk absorbs all
   damage before its stand and none after, trail cells are stamped and marked
   dirty, `onArrive` re-homes from any flag state, hide re-spawn when lost.
 - `test/quest-river.test.js` — gaps break and re-plank from flags, the pit needs
