@@ -1,7 +1,7 @@
 // test/map.test.js
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateLevel, generateFallback, isFullyConnected, createMap, carveRoomShaped, carveCorridor, placeTemplate } from '../renderer/systems/map.js'
+import { generateLevel, generateFallback, isFullyConnected, healConnectivity, createMap, carveRoomShaped, carveCorridor, placeTemplate } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 import { TEMPLATE_LEGEND } from '../renderer/data/levels.js'
 
@@ -22,6 +22,33 @@ describe('isFullyConnected', () => {
   })
 })
 
+describe('healConnectivity', () => {
+  // Scattered single cells with a wall between each pair: n isolated regions,
+  // needing n-1 corridors to join. A big walled template (DRAGON_LAIR stamped
+  // over carved corridors) fragments a real map about this badly.
+  function scatter(n) {
+    const map = createMap(40, 40)
+    for (let i = 0; i < n; i++) map[2 + (i % 8) * 4][2 + Math.floor(i / 8) * 4].tile = TILE.FLOOR
+    return map
+  }
+
+  it('joins a handful of isolated pockets', () => {
+    const map = scatter(5)
+    healConnectivity(map)
+    assert.equal(isFullyConnected(map), true)
+  })
+
+  it('joins more pockets than the old fixed ten-pass budget could', () => {
+    // The budget has to follow the damage: one pass merges one region, so
+    // sixteen regions need fifteen corridors. Capped at ten, healConnectivity
+    // used to return a map still in pieces — which generateLevel then threw
+    // away, and five throwaways in a row fall back to an empty room.
+    const map = scatter(16)
+    healConnectivity(map)
+    assert.equal(isFullyConnected(map), true)
+  })
+})
+
 describe('generateLevel', () => {
   it('produces a connected map for each depth 1–5', () => {
     for (let depth = 1; depth <= 5; depth++) {
@@ -39,6 +66,21 @@ describe('generateLevel', () => {
   it('returns entitySpawns as an array', () => {
     const { entitySpawns } = generateLevel(1)
     assert.ok(Array.isArray(entitySpawns))
+  })
+
+  it('never falls back to the empty single room, depth 4 included', () => {
+    // Depth 4 stamps DRAGON_LAIR, whose mostly-wall 24x20 box breaks the
+    // carved map into as many as fifteen pieces. Left unhealed the attempt is
+    // discarded, and five discarded attempts drop through to generateFallback:
+    // one room, an exit door, no monsters and no chests.
+    for (let depth = 1; depth <= 5; depth++) {
+      for (let i = 0; i < 40; i++) {
+        const { rooms, entitySpawns } = generateLevel(depth)
+        assert.ok(rooms.length > 1, `depth ${depth} fell back to a single room`)
+        assert.ok(entitySpawns.some(s => s.kind === 'chest'),
+          `depth ${depth} generated no chests`)
+      }
+    }
   })
 
   it('procedural item placement emits loot-roll chests, not fixed weapon/potion chests', () => {
