@@ -156,6 +156,22 @@ export const TEMPLATES = {
   },
 }
 
+// Loot tier (1-4) per depth: the difficulty rung systems/loot.js rolls chest
+// contents on. Two unrelated depth scales feed that roll — dungeon and cave
+// levels 1-5, and the Adventure open maps 7-18 — and a bare depth comparison
+// cannot tell them apart, which is how the Clearings (depth 7, the first map
+// of a run) came to roll the same pools as the last one. This table is what
+// puts both scales on one ladder, chosen so a map's caves land on the same
+// rung as its surface: the Clearings' caves are depths 1-2, and all three are
+// tier 1. Depths with no row here (19, house interiors) fall back to tier 1.
+const LOOT_TIERS = {
+  0: 1,                                             // debug arena
+  1: 1, 2: 1, 3: 2, 4: 3, 5: 4,                     // Dungeon Rush / the caves
+  6: 2,                                             // castle sandbox
+  7: 1, 8: 1, 9: 1, 10: 2,                          // Clearings + the leap maps
+  11: 1, 12: 2, 13: 2, 14: 3, 15: 3, 16: 3, 17: 4, 18: 4,   // the Adventure chain
+}
+
 export const LEVEL_CONFIG = [
   { depth: 0, mapW: 26, mapH: 18, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] },
   { depth: 1, mapW: 50, mapH: 32, staircaseWidth: 1, guardCount: 2, monsterDensity: 0,     trapDensity: 0.03, puzzleDensity: 0.01, weaponDensity: 0.012, potionDensity: 0.008, landmark: 'CRAB_LAIR',      weapons: ['dagger'] },
@@ -172,7 +188,7 @@ export const LEVEL_CONFIG = [
   ...Array.from({ length: 12 }, (_, i) => (
     { depth: 7 + i, mapW: 120, mapH: 80, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] }
   )),
-]
+].map(c => ({ ...c, lootTier: LOOT_TIERS[c.depth] ?? 1 }))
 
 export const DEPTH_THEMES = [
   {

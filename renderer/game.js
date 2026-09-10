@@ -467,7 +467,12 @@ function grantContents(contents) {
   return true
 }
 
-function buildEntities(spawns, map, depth) {
+// `player` is who the loot roll is for: rollChestLoot suppresses categories
+// this body has no talent for (systems/loot.js). Every caller but the initial
+// build is placing entities around the player already in `state`, so that is
+// the default; startNewRun passes its freshly-assembled body explicitly, since
+// `state` there is still the previous run's (or nothing at all).
+function buildEntities(spawns, map, depth, player = state?.player ?? null) {
   return spawns.flatMap(s => {
     const cx = s.x * TILE_SIZE + TILE_SIZE / 2
     const cy = s.y * TILE_SIZE + TILE_SIZE / 2
@@ -494,7 +499,7 @@ function buildEntities(spawns, map, depth) {
       case 'potion': return [makeChest(s.x, s.y, { type: 'potion', amount: 4 })]
       case 'door':    return [makeDoor(s.x, s.y)]
       case 'exit_door': return [makeExitDoor(s.x, s.y)]
-      case 'chest':   return [makeChest(s.x, s.y, s.contents ?? rollChestLoot(depth))]
+      case 'chest':   return [makeChest(s.x, s.y, s.contents ?? rollChestLoot(depth, Math.random, player))]
       case 'cyclops': return [hpOverride({ ...makeCyclops(s.x, s.y), px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'wizard':  return [hpOverride({ ...makeWizard(s.x, s.y),  px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
       case 'crab':    return [hpOverride({ ...makeCrab(s.x, s.y),    px: cx, py: cy, ...(s.isBoss && { isBoss: true }) })]
@@ -686,7 +691,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     map,
     player,
     theme,
-    entities: buildEntities(entitySpawns, map, depth),
+    entities: buildEntities(entitySpawns, map, depth, player),
     projectiles: [],
     fireZones: [],
     // Ground zones (bramble), lightning marks, the strikes they became and

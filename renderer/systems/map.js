@@ -268,6 +268,32 @@ export function placeStructure(map, structure, ox, oy, roomId) {
   return spawns
 }
 
+// How many separate walkable regions the map is in — healConnectivity derives
+// its pass budget from this. Deliberately not folded together with
+// isFullyConnected: that one only asks whether there is a single region and
+// stops once it has flooded it, which is the cheaper question and the one
+// asked far more often (every heal pass, then again per generation attempt).
+function regionCount(map) {
+  const seen = new Set()
+  let regions = 0
+  for (let y = 0; y < map.length; y++) for (let x = 0; x < map[y].length; x++) {
+    if (!isWalkable(map[y][x].tile) || seen.has(`${x},${y}`)) continue
+    regions++
+    const queue = [{ x, y }]
+    seen.add(`${x},${y}`)
+    while (queue.length) {
+      const c = queue.shift()
+      for (const [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+        const nx = c.x + dx, ny = c.y + dy, key = `${nx},${ny}`
+        if (!seen.has(key) && map[ny]?.[nx] && isWalkable(map[ny][nx].tile)) {
+          seen.add(key); queue.push({ x: nx, y: ny })
+        }
+      }
+    }
+  }
+  return regions
+}
+
 export function isFullyConnected(map) {
   const floors = []
   for (let y = 0; y < map.length; y++)
@@ -329,7 +355,18 @@ function chooseShape(leaf, depth) {
 }
 
 export function healConnectivity(map) {
-  for (let pass = 0; pass < 10; pass++) {
+  // Each pass carves a corridor from the reachable region to one isolated
+  // tile, merging at least two regions — so n regions always heal in n-1
+  // passes, and the budget has to follow the damage rather than sit at a fixed
+  // number. It used to be 10, which covered depth 5's thin-walled GREAT_LAIR
+  // (2-8 regions) but not depth 4: DRAGON_LAIR's mostly-wall 24x20 box,
+  // stamped over already-carved corridors, leaves as many as 15. Over budget,
+  // this returned a map still in pieces; generateLevel discards such a map,
+  // and five discards in a row drop through to generateFallback — a single
+  // empty room with a door, no monsters and no chests, which is what roughly
+  // one depth-4 level in fifteen used to be.
+  const budget = regionCount(map) - 1
+  for (let pass = 0; pass < budget; pass++) {
     if (isFullyConnected(map)) return
     const floors = []
     for (let y = 0; y < map.length; y++)
@@ -623,8 +660,6 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       carveCorridor(map, center(nearest.r).x, center(nearest.r).y, lc.x, lc.y)
     }
 
-    healConnectivity(map)
-
     // Ensure every room center remains walkable after template / arena placement
     rooms.forEach(r => {
       const c = r.center ?? { x: Math.floor(r.x + r.w / 2), y: Math.floor(r.y + r.h / 2) }
@@ -682,6 +717,14 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     // every walkable cell stays a plain carved floor.
     const entranceSpawn = config ? null : carveEntrancePassage(map, rooms)
 
+    // Heal last, not right after the landmark: the room-centre repair, the
+    // cyclops arena, the exit door and the entrance passage all stamp floor
+    // after that point, and a repaired room centre buried in a template's wall
+    // mass is a brand-new one-cell island. Healing before them left those
+    // islands behind, the check below threw the whole attempt away, and five
+    // thrown-away attempts fall through to the empty generateFallback room.
+    healConnectivity(map)
+
     if (!isFullyConnected(map)) continue
 
     // Apply sand floor on the sand-themed depth
@@ -733,14 +776,14 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       entitySpawns.push({ kind: 'puzzle', ...farTiles[idx] })
     }
     // Procedural chests roll the loot table when opened (systems/loot.js:
-    // potion / melee / ranged, depth-tiered) instead of carrying fixed
-    // contents. The two density knobs still control total chest supply;
-    // cfg.weapons remains the boss-drop pool.
+    // potion / melee / ranged / wand / ammo, tiered by the level's lootTier)
+    // instead of carrying fixed contents. The two density knobs still control
+    // total chest supply; cfg.weapons remains the boss-drop pool.
     //
-    // House interiors (a `config` override) get NO chests: a chest rolls the
-    // depth-19 "deep" loot tier, which would hand out endgame gear in a
-    // villager's kitchen. Their loot lies on the floor instead — potions of 4
-    // and, in a ruin only, a plain weapon from cfg.weaponPool.
+    // House interiors (a `config` override) get NO chests — a treasure chest
+    // in a villager's kitchen reads wrong however tame its contents. Their
+    // loot lies on the floor instead: potions of 4 and, in a ruin only, a
+    // plain weapon from cfg.weaponPool.
     if (config) {
       for (let i = 0; i < potionCount && idx < farTiles.length; i++, idx++) {
         entitySpawns.push({ kind: 'floating_pickup', ...farTiles[idx], contents: { type: 'potion', amount: 4 } })
