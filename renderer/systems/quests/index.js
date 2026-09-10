@@ -2,4 +2,8 @@
 // exposes onArrive(ctx) — called once from game.js arriveOnMap — and
 // tick(ctx, delta) — called once per surface frame. game.js guards every
 // lookup with `?.`, so a declared quest with no module here is inert.
-export const QUEST_MODULES = {}
+import { onArrive as clearingsArrive, tick as clearingsTick } from './clearings.js'
+
+export const QUEST_MODULES = {
+  'forest-1-clearings': { onArrive: clearingsArrive, tick: clearingsTick },
+}
