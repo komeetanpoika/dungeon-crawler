@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>Dungeon Crawler</title>
   <link rel="manifest" href="manifest.webmanifest">
+  <!-- Without this the browser falls back to requesting /favicon.ico, which
+       nothing serves — a 404 on every page load. The manifest icons cover
+       installed apps, not the browser tab. -->
+  <link rel="icon" type="image/png" href="assets/icon-192.png">
   <meta name="theme-color" content="#0d0d0d">
   <!-- iPhone Safari has no element-fullscreen API; installed home-screen
        apps are the fullscreen path there. -->
