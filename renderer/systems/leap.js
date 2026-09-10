@@ -3,24 +3,20 @@
 // episode modules (systems/episodes/*) do the world mutation.
 import { EPISODES } from '../data/leaps.js'
 import { isMapComplete } from './adventure.js'
-import { removeItem } from './inventory.js'
 import { npcSpawnIndex } from './openmap.js'
 import { isNight } from './weather.js'
 import { DAY_START } from '../data/weather.js'
+import { storyFlags, setStoryFlag, makeCtx, poiCell, checkDeliveries } from './story.js'
+
+// Re-exported so the episode modules and their tests keep importing these
+// from leap.js — the engine moved, the episode-facing surface did not.
+export { poiCell, checkDeliveries }
 
 export function episodeFor(mapData) { return (mapData?.leap && EPISODES[mapData.name]) || null }
 
-export function leapFlags(save, mapName) {
-  const rec = save.leaps[mapName] ??= { flags: {} }
-  return rec.flags
-}
+export function leapFlags(save, mapName) { return storyFlags(save.leaps, mapName) }
 
-export function setFlag(save, mapName, flag, value = true) { leapFlags(save, mapName)[flag] = value }
-
-export function poiCell(mapData, label) {
-  const p = mapData.pois.find(q => q.label === label)
-  return p ? { x: p.x, y: p.y } : null
-}
+export function setFlag(save, mapName, flag, value = true) { setStoryFlag(save.leaps, mapName, flag, value) }
 
 // Declared wolves whose spawn id is not in the dead record — wherever they
 // are declared. The fold homes its wolves at the den (npcs.at), so the ids
@@ -70,40 +66,12 @@ export function echoSpawns(mapData, at) {
   return episodeFor(mapData) ? [{ kind: 'echo', x: at.x, y: at.y }] : []
 }
 
-// The per-map episode ctx handed to onArrive/tick. `state` is a live getter
-// (not a captured value) so it always reflects the current module-level
-// state object even after game.js swaps it wholesale on a cave dive/return
-// (buildCaveState / restoreSurface) — a captured reference would go stale
-// the moment `state` is reassigned, silently mutating a stashed surface
-// object underground and reading a stale player afterward.
+// The per-map episode ctx. Everything but `episode` comes from the shared
+// engine (systems/story.js); the leap record is the sub-record it writes.
 export function makeEpCtx({ getState, save, mapData, persist, resolve, refreshInventory, spawn }) {
-  return {
-    get state() { return getState() },
-    save, mapData, episode: episodeFor(mapData), flags: leapFlags(save, mapData.name),
-    set: (f, v = true) => setFlag(save, mapData.name, f, v),
+  return makeCtx({
+    getState, save, record: save.leaps, mapData,
     persist, resolve, refreshInventory, spawn,
-  }
-}
-
-const carries = (player, kind) => player.inventory.findIndex(i => i.kind === kind)
-const onCell = (player, c) => c && player.x === c.x && player.y === c.y
-const besideNpc = (entities, player, species) => entities.some(e => e.type === 'npc' && e.species === species && !e.hostile
-  && Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 1)
-
-// One delivery per call: the first whose item is carried and whose target the
-// player stands on (POI) or beside (NPC of the species). Removes one item,
-// sets the flag, returns the delivery for game.js to cue and drop `gives`.
-export function checkDeliveries(ctx, deliveries) {
-  const { state, mapData, flags } = ctx
-  for (const d of deliveries) {
-    if (flags[d.sets]) continue
-    const i = carries(state.player, d.item)
-    if (i === -1) continue
-    const here = d.to.poi ? onCell(state.player, poiCell(mapData, d.to.poi)) : besideNpc(state.entities, state.player, d.to.species)
-    if (!here) continue
-    removeItem(state.player, i)
-    ctx.set(d.sets)
-    return d
-  }
-  return null
+    extra: { episode: episodeFor(mapData) },
+  })
 }
