@@ -230,3 +230,12 @@ describe('isStoryCreature', () => {
     assert.equal(isStoryCreature({ type: 'guard' }), false)
   })
 })
+
+describe('brainDriven opt-out', () => {
+  beforeEach(clearMonsters)
+  it('a story creature that hands control back is no longer story-driven', async () => {
+    await load([{ ...DEF, name: 'testhook', behavior: { driver: 'hook' } }])
+    assert.equal(isStoryCreature({ type: 'testhook' }), true)
+    assert.equal(isStoryCreature({ type: 'testhook', brainDriven: true }), false)
+  })
+})

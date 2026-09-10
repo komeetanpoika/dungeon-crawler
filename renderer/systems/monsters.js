@@ -78,8 +78,13 @@ export function getMonsterDef(name) { return REGISTRY[name] ?? null }
 
 // A registry monster whose hook module owns its movement (behavior.driver
 // 'hook'): the enemy loop skips brain/act for it, gust/slam ignore it, and
-// it is updated even when it is not an enemy (the passive Näkki).
-export function isStoryCreature(e) { return getMonsterDef(e.type)?.behavior?.driver === 'hook' }
+// it is updated even when it is not an enemy (the passive Näkki) — unless
+// the entity itself hands control back with `brainDriven`, which is how the
+// Elk of Hiisi's final stand becomes an ordinary fight: the brain moves it,
+// the enemy-attack pass reaches it, and spells stop sparing it.
+export function isStoryCreature(e) {
+  return !e.brainDriven && getMonsterDef(e.type)?.behavior?.driver === 'hook'
+}
 export function monsterNames() { return Object.keys(REGISTRY) }
 
 export function monstersForDepth(depth) {
