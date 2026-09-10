@@ -112,6 +112,21 @@ describe('arrival rebuilds the world from the flags', () => {
     assert.equal(state.entities.length, 0)
     assert.equal(stainedCells(state), 0)
   })
+  it('does not duplicate the bedded elk on a repeat arrival', () => {
+    const { ctx, state } = build()
+    onArrive(ctx)
+    onArrive(ctx)
+    assert.equal(state.entities.filter(e => e.type === 'hirvi').length, 1)
+    assert.equal(elkOf(state).mood, 'bedded')
+  })
+  it('does not duplicate the standing elk on a repeat arrival', () => {
+    const { ctx, state } = build({ flags: { flush: 2 } })
+    onArrive(ctx)
+    onArrive(ctx)
+    assert.equal(state.entities.filter(e => e.type === 'hirvi').length, 1)
+    assert.equal(elkOf(state).mood, 'standing')
+    assert.equal(elkOf(state).brainDriven, true)
+  })
 })
 
 describe('the chase', () => {

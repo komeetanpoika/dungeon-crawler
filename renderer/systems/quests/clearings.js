@@ -35,12 +35,17 @@ function layTrail(ctx, i) {
   if (from && to) stampTrail(ctx.state.map, from, to)
 }
 
+// Idempotent like dropHide: a repeat arrival must not spawn a second elk
+// on top of the one already bedded or standing here.
 function bedElk(ctx, i) {
   const at = wallowCell(ctx, i)
   if (!at) return null
-  ctx.spawn([{ kind: 'hirvi', x: at.x, y: at.y }])
-  const elk = elkOf(ctx.state)
-  if (!elk) return null
+  let elk = elkOf(ctx.state)
+  if (!elk) {
+    ctx.spawn([{ kind: 'hirvi', x: at.x, y: at.y }])
+    elk = elkOf(ctx.state)
+    if (!elk) return null
+  }
   ensureHirvi(elk)
   if (i >= LAST) makeStand(elk)   // nowhere left to run
   return elk
