@@ -20,9 +20,15 @@ jobs:
       # Report both versions rather than hiding one behind the other's failure.
       fail-fast: false
       matrix:
-        # 18 is what the game is developed against; 22 is current LTS, and
-        # catches anything that would break on an upgrade.
-        node: ['18', '22']
+        # Kept as a matrix with one entry on purpose: it keeps the check name
+        # "test (22)" stable for main's branch protection, and adding a version
+        # later is a one-line change rather than a rename that silently stops
+        # the required check from ever reporting.
+        #
+        # 18 was dropped once local development moved to 22: it went EOL in
+        # April 2025, and `node --test test/` never worked on anything newer,
+        # so nothing was being developed against it any more.
+        node: ['22']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
