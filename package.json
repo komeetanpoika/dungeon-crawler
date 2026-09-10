@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "editor": "electron . --editor",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.js",
     "web": "node tools/web-server.mjs",
     "bake": "node tools/bake-dragon-parts.mjs",
     "monster-lab": "node tools/monster-lab/server.mjs"
