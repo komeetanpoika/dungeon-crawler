@@ -39,6 +39,8 @@ import { npcSpawnsForMap } from './systems/openmap.js'
 import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, ruleCtx, makeEpCtx } from './systems/leap.js'
 import { updateEcho } from './systems/echo.js'
 import { EPISODE_MODULES } from './systems/episodes/index.js'
+import { questFor, questFlags, questLines, makeQuestCtx } from './systems/quests.js'
+import { QUEST_MODULES } from './systems/quests/index.js'
 import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable } from './systems/factions.js'
@@ -560,6 +562,23 @@ function arriveOnMap() {
   state.villagerLines = null
   state.episodeResolved = false
   state.epCtx = null
+  state.quest = questFor(mapData)
+  state.qCtx = null
+
+  // Adventure quests: the same story engine as the episodes, on the maps that
+  // have no episode. A map never has both (questFor skips leap maps).
+  if (state.quest) {
+    state.qCtx = makeQuestCtx({
+      getState: () => state, save: activeSave, mapData,
+      persist: persistRun, refreshInventory: afterInventoryChange,
+      spawn: spawns => state.entities.push(...buildEntities(spawns, state.map, state.level)),
+      // The villagers are the quest log: every flag write restages their lines.
+      onFlag: () => { state.villagerLines = questLines(state.quest, state.qCtx.flags) },
+    })
+    state.villagerLines = questLines(state.quest, questFlags(activeSave, mapData.name))
+    QUEST_MODULES[mapData.name]?.onArrive?.(state.qCtx)
+  }
+
   if (!ep) return
   state.epCtx = makeEpCtx({
     getState: () => state, save: activeSave, mapData,
@@ -1092,6 +1111,10 @@ function update(delta) {
     // episodeResolved/isResolved, so this is a no-op once resolved.
     resolveEpisode()
   }
+
+  // Adventure quests tick on the surface only — qCtx/mapData describe the
+  // surface, not the cave.
+  if (state.qCtx && !state.cave) QUEST_MODULES[state.qCtx.mapData.name]?.tick(state.qCtx, delta)
 
   // Weather runs on the surface only: the animation timer always, the day
   // clock when the map has a cycle. Underground both hold.
