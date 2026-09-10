@@ -709,6 +709,21 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
       entitySpawns.push({ kind: 'exit_door', x: ec.x, y: ec.y })
     }
 
+    // Heal once every repair that can strand a cell has run — the room-centre
+    // repair, the cyclops arena and the exit door all stamp floor into whatever
+    // the landmark walled over, and a repaired room centre buried in a
+    // template's wall mass is a brand-new one-cell island. Healing before them
+    // (where this used to sit) left those islands behind, the check below threw
+    // the whole attempt away, and five thrown-away attempts fall through to the
+    // empty generateFallback room.
+    //
+    // Still before carveEntrancePassage, though: that stamps TILE.STAIRS_UP at
+    // the player spawn, and healing afterwards can run a corridor straight
+    // through it — carveCorridor writes TILE.FLOOR — leaving the level with no
+    // way back up. Carving only ever adds connected floor, so nothing after
+    // this point can break connectivity again.
+    healConnectivity(map)
+
     // Entrance passage going up from spawn room — returns player spawn position.
     // House interiors (generateLevel called with a `config` override) have no
     // "level above" to connect to: the door back out is just the spawn room's
@@ -716,14 +731,6 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
     // systems/cave.js), so the dungeon-descent passage is skipped entirely and
     // every walkable cell stays a plain carved floor.
     const entranceSpawn = config ? null : carveEntrancePassage(map, rooms)
-
-    // Heal last, not right after the landmark: the room-centre repair, the
-    // cyclops arena, the exit door and the entrance passage all stamp floor
-    // after that point, and a repaired room centre buried in a template's wall
-    // mass is a brand-new one-cell island. Healing before them left those
-    // islands behind, the check below threw the whole attempt away, and five
-    // thrown-away attempts fall through to the empty generateFallback room.
-    healConnectivity(map)
 
     if (!isFullyConnected(map)) continue
 

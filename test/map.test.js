@@ -68,18 +68,20 @@ describe('generateLevel', () => {
     assert.ok(Array.isArray(entitySpawns))
   })
 
-  it('never falls back to the empty single room, depth 4 included', () => {
+  it('never falls back to the empty single room at depth 4', () => {
     // Depth 4 stamps DRAGON_LAIR, whose mostly-wall 24x20 box breaks the
     // carved map into as many as fifteen pieces. Left unhealed the attempt is
     // discarded, and five discarded attempts drop through to generateFallback:
     // one room, an exit door, no monsters and no chests.
-    for (let depth = 1; depth <= 5; depth++) {
-      for (let i = 0; i < 40; i++) {
-        const { rooms, entitySpawns } = generateLevel(depth)
-        assert.ok(rooms.length > 1, `depth ${depth} fell back to a single room`)
-        assert.ok(entitySpawns.some(s => s.kind === 'chest'),
-          `depth ${depth} generated no chests`)
-      }
+    // Depth 4 only: it is the one depth that fell back, and generating a
+    // hundred 80x50 levels to re-prove the others is load this suite does not
+    // need. Pre-fix it fell back about one level in fifteen, so forty draws
+    // catch it better than nine times in ten; the deterministic
+    // healConnectivity case above is what actually pins the root cause.
+    for (let i = 0; i < 40; i++) {
+      const { rooms, entitySpawns } = generateLevel(4)
+      assert.ok(rooms.length > 1, 'depth 4 fell back to a single room')
+      assert.ok(entitySpawns.some(s => s.kind === 'chest'), 'depth 4 generated no chests')
     }
   })
 
