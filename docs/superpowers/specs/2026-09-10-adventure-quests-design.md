@@ -146,8 +146,12 @@ there, so the episode branch still owns it.
   and immediately written to a flag. `state.creatureKills` is per-visit;
   the flag is the durable record.
 - Every module's `onArrive` must be **idempotent and resumable**: it runs on a
-  fresh load, on a waystone arrival, and after every cave return. Each one
-  rebuilds the world to match its flags rather than replaying beats.
+  fresh load and on a waystone arrival. It does NOT run after a cave return —
+  `exitCave` restores the stashed surface state whole instead of rebuilding
+  it — which is exactly why game.js gates each module's `tick` on
+  `!state.cave`: that guard is what keeps a quest inert while underground,
+  rather than `onArrive` needing to cover cave re-entry too. Each module
+  still rebuilds the world to match its flags rather than replaying beats.
 
 ## 2. Quest 1 — *Hiiden hirvi*, the Elk of Hiisi (depth 7, Clearings) — the hunt
 
@@ -181,8 +185,14 @@ it to a standstill *is* the quest, and the reward is the legs to do it next time
    increments `flush`, stamps the trail to the next wallow, and re-homes the elk
    there. A pausing toast marks each flush.
 4. **Stand.** At `wallow 3` (`flush === 2`) it does not flee. It turns hostile
-   and fights: hp 30, dmg 2, fast, with a charge that knocks the player back.
-   Three wallows means two flushes and a stand at the third.
+   and fights: hp 30, dmg 2, fast, a plain brain fight armed with `maul`
+   (reach 34, the same weapon the Maahinen carries). Three wallows means two
+   flushes and a stand at the third. An earlier draft of this step called for
+   a charge that knocks the player back on top of that; it was dropped at the
+   planning stage (never implemented, so nothing regressed) and is deliberately
+   deferred to a later tuning pass — enemy weapons carry no knockback field at
+   all today, so delivering it means new weapon-flag and shared-combat work,
+   not a small addition to this quest.
 5. **Hide.** Death sets `hirvi_dead` and drops an `elk_hide` floating pickup.
 6. **Delivery.** `checkDeliveries` with `{ item: 'elk_hide', to: { species:
    'elder' }, sets: 'hide_given' }` — stand beside Aspengrove's elder carrying
@@ -199,6 +209,10 @@ the rest of the game, on every map and in every mode that persists talents.
 
 - *Hide dropped or lost.* The pickup is re-spawned at `wallow 3` by `onArrive`
   whenever `hirvi_dead && !hide_given`. The quest cannot dead-end.
+  (Strictly it can stall, not from anything this quest does: `checkDeliveries`'s
+  `besideNpc` requires a non-hostile NPC, so a player who has angered the
+  village cannot hand over the hide until death resets the villagers back to
+  peaceful — inherited engine semantics, not a bug in this quest.)
 - *Player leaves mid-chase.* `flush` is on the save; `onArrive` re-homes the elk
   at the wallow that flag names and re-stamps the current trail.
 - *Elk killed early.* It cannot be: while `flush < 2` it is a story creature

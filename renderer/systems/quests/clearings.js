@@ -5,8 +5,13 @@
 // it is spooked, and what the elder does with the hide.
 //
 // onArrive is idempotent and rebuilds the world from the flags — it runs on a
-// fresh load, on a waystone arrival and after every cave return. Pure — no
-// browser/Electron imports; game.js wires onArrive/tick through the quest ctx.
+// fresh load and on a waystone arrival. It does NOT run after a cave return:
+// exitCave (game.js) restores the stashed surface state object whole instead
+// of rebuilding it, which is exactly why game.js gates the quest tick on
+// `!state.cave` — that guard is what keeps the quest inert while underground,
+// rather than this module needing a second idempotence path of its own.
+// Pure — no browser/Electron imports; game.js wires onArrive/tick through
+// the quest ctx.
 import { poiCell, checkDeliveries } from '../quests.js'
 import { stampTrail } from './trail.js'
 import { ensureHirvi, startBolt, makeStand, FLUSH_TILES } from '../monsters/hirvi.js'
@@ -103,6 +108,7 @@ export function tick(ctx, delta) {
     ctx.set('flush', next)
     layTrail(ctx, next)
     bedElk(ctx, next)
+    sfx(state, 'npc-deer', { px: elk.px, py: elk.py })
     think(state, next >= LAST ? 'It is blowing hard. It will not run again.' : 'Fresh tracks, and deep.')
     ctx.persist()
     return
@@ -116,5 +122,6 @@ export function tick(ctx, delta) {
   if (!flags.hunt_seen) {
     ctx.set('hunt_seen')
     think(state, 'Hooves the size of plates.')
+    ctx.persist()
   }
 }

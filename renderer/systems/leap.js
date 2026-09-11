@@ -1,6 +1,10 @@
-// Leap episodes: per-map story flags, the runestone's unlock rule, the Echo's
-// line choice and the missing person's return. Pure — game.js and the
-// episode modules (systems/episodes/*) do the world mutation.
+// Leap episodes: the runestone's unlock rule, the Echo's line choice and the
+// missing person's return. The map-agnostic flags/POI/delivery engine this
+// used to own has moved to story.js (shared with the Adventure quests in
+// systems/quests.js); this module now just supplies the `save.leaps` binding
+// (leapFlags/setFlag) that engine rides for the leap episodes, plus the
+// episode-specific rules above it. Pure — game.js and the episode modules
+// (systems/episodes/*) do the world mutation.
 import { EPISODES } from '../data/leaps.js'
 import { isMapComplete } from './adventure.js'
 import { npcSpawnIndex } from './openmap.js'

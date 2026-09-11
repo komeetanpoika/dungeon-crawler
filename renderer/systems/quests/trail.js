@@ -25,9 +25,10 @@ export function isStampable(cell) {
 export function stampTrail(map, from, to, { every = TRACK_EVERY } = {}) {
   const path = findPath(buildNavGrid(map), from.x, from.y, to.x, to.y, 1)
   if (!path?.length) return 0
+  const step = Math.max(1, every)   // every: 0 would make i % every NaN (falsy), staining every cell
   let n = 0
   path.forEach((c, i) => {
-    if (i % every) return
+    if (i % step) return
     const cell = map[c.y]?.[c.x]
     if (!isStampable(cell)) return
     cell.skin = TRACK_SKINS[(c.x * 7 + c.y * 13) % TRACK_SKINS.length]
