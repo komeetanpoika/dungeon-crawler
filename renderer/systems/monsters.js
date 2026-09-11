@@ -105,6 +105,13 @@ export function monstersForOpenMap(depth) {
     .map(d => ({ name: d.name, count: d.spawn.openMaps.count ?? 1 }))
 }
 
+// Contract this def does NOT enforce: melee needs a weaponId, from either
+// ENEMY_MELEE[type] (enemy-attack.js) or an entity-level e.weaponId a hook
+// stamps on later (e.g. maahinen.js's ensureMaahinen, hirvi.js's makeStand).
+// Neither is guaranteed — a registry monster with no ENEMY_MELEE row whose
+// hook never sets weaponId cannot land a melee hit; tryStartEnemyAttack just
+// bails silently on it. boarhound and rappeluu have this same gap today
+// (out of scope here, and may be deliberate — they may only ever be shot).
 export function makeMonsterFromDef(name, x, y) {
   const d = REGISTRY[name]
   if (!d) return null

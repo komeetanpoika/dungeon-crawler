@@ -1,10 +1,18 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import { registerMonsters, clearMonsters, getMonsterDef, monsterNames, monstersForDepth,
          makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster, monstersForOpenMap,
          isStoryCreature } from '../renderer/systems/monsters.js'
 import { getAIConfig } from '../renderer/data/enemy-ai.js'
 import { isEnemy } from '../renderer/systems/factions.js'
+import { createMap } from '../renderer/systems/map.js'
+import { TILE } from '../renderer/systems/entities.js'
+import { makeFeedback } from '../renderer/systems/feedback.js'
+import { makeSfx } from '../renderer/systems/sfx.js'
+import { hurtCreature } from '../renderer/systems/creatures.js'
+import { tryStartEnemyAttack } from '../renderer/systems/enemy-attack.js'
+import { ensureHirvi, startBolt, updateHirvi, makeStand } from '../renderer/systems/monsters/hirvi.js'
 
 const FAKE_RIG = {
   RIG_ID: 'fakerig',
@@ -237,5 +245,82 @@ describe('brainDriven opt-out', () => {
     await load([{ ...DEF, name: 'testhook', behavior: { driver: 'hook' } }])
     assert.equal(isStoryCreature({ type: 'testhook' }), true)
     assert.equal(isStoryCreature({ type: 'testhook', brainDriven: true }), false)
+  })
+})
+
+// The real spawn path: the game builds the elk through buildEntities's
+// default case into makeMonsterFromDef, never through hirvi.js's own
+// makeHirvi — every other hirvi suite drives makeHirvi or a hand-rolled
+// literal instead, which is how Finding 1 (a standing elk with no weaponId)
+// survived six task reviews. This registers the actual on-disk def against
+// its actual rig and hook module (registerMonsters' defaults resolve both
+// relative to systems/monsters.js, the same way the game's own boot does)
+// and drives the entity makeMonsterFromDef hands back through the real
+// lifecycle.
+describe('the real hirvi def — the actual spawn path', () => {
+  beforeEach(clearMonsters)
+
+  const S = 32
+  function makeState(elk, playerAt) {
+    const N = 20
+    const map = createMap(N, N)
+    for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) map[y][x].tile = TILE.FLOOR
+    return {
+      map, entities: [elk], feedback: makeFeedback(), sfx: makeSfx(),
+      player: { x: playerAt.x, y: playerAt.y, px: playerAt.x * S + 16, py: playerAt.y * S + 16, hp: 10 },
+    }
+  }
+
+  it('loads against the real quadruped rig and hook module with no warnings', async () => {
+    const def = JSON.parse(fs.readFileSync('renderer/data/monsters/hirvi.json', 'utf8'))
+    const n = await registerMonsters([def], { warn: m => { throw new Error(m) } })
+    assert.equal(n, 1)
+    assert.ok(getMonsterDef('hirvi'))
+  })
+
+  it('the rig derives the real hitbox half — the JSON def carries no fallback for it', async () => {
+    const def = JSON.parse(fs.readFileSync('renderer/data/monsters/hirvi.json', 'utf8'))
+    assert.equal('half' in def.stats, false, 'dropped from the JSON — the rig always overrides it')
+    await registerMonsters([def], { warn: () => {} })
+    assert.equal(getMonsterDef('hirvi').stats.half, 23)
+  })
+
+  it('drives ensureHirvi -> startBolt -> updateHirvi -> makeStand -> hurtCreature through the registry-built entity', async () => {
+    const def = JSON.parse(fs.readFileSync('renderer/data/monsters/hirvi.json', 'utf8'))
+    await registerMonsters([def], { warn: () => {} })
+
+    const e = makeMonsterFromDef('hirvi', 8, 5)
+    assert.equal(e.hp, 30)
+    e.px = 8 * S + 16
+    e.py = 5 * S + 16
+    const state = makeState(e, { x: 4, y: 5 })
+
+    // Bedded: an enemy by faction (it has a def and isn't passive), but the
+    // hook still owns it — untouchable and unarmed.
+    ensureHirvi(e)
+    assert.equal(isEnemy(e), true)
+    assert.equal(isStoryCreature(e), true)
+    assert.equal(tryStartEnemyAttack(e, state), false)
+    const before = e.hp
+    const absorbed = hurtCreature(state, e, 99)
+    assert.equal(absorbed.absorbed, true)
+    assert.equal(e.hp, before)
+
+    // Bolting: still a story creature, still unarmed.
+    assert.equal(startBolt(e), true)
+    updateHirvi(e, state, 0.1)
+    assert.equal(isStoryCreature(e), true)
+    assert.equal(tryStartEnemyAttack(e, state), false)
+
+    // The stand: brain-driven, armed, and a real enemy fight from here on.
+    makeStand(e)
+    assert.equal(isStoryCreature(e), false)
+    assert.equal(e.weaponId, 'maul')
+    state.player.px = e.px + 10; state.player.py = e.py   // inside maul's 34px reach
+    assert.equal(tryStartEnemyAttack(e, state), true)
+
+    const kill = hurtCreature(state, e, 99)
+    assert.equal(kill.killed, true)
+    assert.equal(state.creatureKills.hirvi, true)
   })
 })

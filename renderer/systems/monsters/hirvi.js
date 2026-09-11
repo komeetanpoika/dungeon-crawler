@@ -16,7 +16,11 @@ const S = 32
 export const FLUSH_TILES = 6     // Chebyshev tiles: how close spooks it
 export const BOLT_TIME = 1.6     // s it runs before it is gone from the map
 export const BOLT_SPEED = 150    // px/s — faster than a walking player
-export const HALF = 10           // matches stats.half in hirvi.json
+// The bolt's own (forgiving) collision box for canMoveTo below — not the
+// entity's hitbox. The rig derives that one (23, from quadruped's hitHalf)
+// and monsters.js overwrites stats.half with it at registration, so this
+// constant and the JSON's stats.half are both just fallbacks nothing reads.
+export const HALF = 10
 
 // A registry spawn arrives with only type/x/y/px/py/hp, so the first touch
 // stamps the chase state. Idempotent — an already-bedded elk is left alone.
@@ -38,11 +42,17 @@ export function startBolt(e) {
   return true
 }
 
-// The last wallow: it stops being a story creature and becomes an enemy.
+// The last wallow: it stops being a story creature and becomes an enemy —
+// weaponId is what actually arms it (enemy-attack.js's getEnemyWeapon falls
+// back to ENEMY_MELEE[e.type], which has no 'hirvi' row), the same way
+// maahinen.js's ensureMaahinen stamps 'maul' for its own fight. maul's reach
+// (34) clears the def's stopRange (26), so the brain walks into its own
+// swing.
 export function makeStand(e) {
   ensureHirvi(e)
   e.mood = 'standing'
   e.brainDriven = true
+  e.weaponId = 'maul'
   e.fadeA = 1
 }
 

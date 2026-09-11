@@ -9,6 +9,7 @@ import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
+import { tryStartEnemyAttack } from '../renderer/systems/enemy-attack.js'
 
 const S = 32
 const N = 20
@@ -109,5 +110,30 @@ describe('damage', () => {
     const px = e.px
     updateHirvi(e, state, 0.5)
     assert.equal(e.px, px)
+  })
+})
+
+// Regression for the finding that a standing elk had a mood/brainDriven flip
+// but no weapon: getEnemyWeapon falls back to ENEMY_MELEE[e.type], which has
+// no 'hirvi' row, so without makeStand stamping e.weaponId tryStartEnemyAttack
+// bails at `if (!w) return false` forever — a 30-hp target that cannot hit
+// back.
+describe('melee attack', () => {
+  it('a bedded elk cannot start a melee attack — it has no weapon', () => {
+    const e = makeHirvi(8, 5)
+    const state = makeState(e, { x: 8, y: 5 })
+    state.player.px = e.px + 10; state.player.py = e.py   // point-blank
+    assert.equal(tryStartEnemyAttack(e, state), false)
+  })
+  it('a standing elk lands a melee attack at contact range', () => {
+    const e = makeHirvi(8, 5)
+    const state = makeState(e, { x: 8, y: 5 })
+    makeStand(e)
+    assert.equal(e.weaponId, 'maul')
+    state.player.px = e.px + 10; state.player.py = e.py   // inside maul's 34px reach
+    const hpBefore = state.player.hp
+    assert.equal(tryStartEnemyAttack(e, state), true)
+    assert.ok(e.attack, 'the attack lifecycle started')
+    assert.ok(state.player.hp < hpBefore, 'the swing (windup 0) resolved immediately and hit')
   })
 })

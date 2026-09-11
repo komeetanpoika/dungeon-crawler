@@ -6,7 +6,7 @@
               "tailLength": 0.25, "tailTaper": 0.4,
               "hideColor": "#6b5136", "bellyColor": "#a08561", "eyeColor": "#1a1208", "scales": false,
               "gaitFreq": 6, "bob": 0.1 },
-  "stats": { "hp": 30, "dmg": 2, "speed": 95, "half": 10 },
+  "stats": { "hp": 30, "dmg": 2, "speed": 95 },
   "behavior": { "taxon": "beast", "driver": "hook", "sightRange": 320, "stopRange": 26, "fleeHp": 0, "wanderSpeed": 0 },
   "spawn": null,
   "hooks": true
