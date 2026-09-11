@@ -199,7 +199,10 @@ it to a standstill *is* the quest, and the reward is the legs to do it next time
    deferred to a later tuning pass — enemy weapons carry no knockback field at
    all today, so delivering it means new weapon-flag and shared-combat work,
    not a small addition to this quest.
-5. **Hide.** Death sets `hirvi_dead` and drops an `elk_hide` floating pickup.
+5. **Hide.** Death sets `hirvi_dead` and drops an `elk_hide` floating pickup
+   **where the elk fell** — the standing elk chases without a leash, so a
+   kited kill can be far from the wallow. The wallow is only the fallback
+   cell for the loss-recovery re-drop on arrival.
 6. **Delivery.** `checkDeliveries` with `{ item: 'elk_hide', to: { species:
    'elder' }, sets: 'hide_given' }` — stand beside Aspengrove's elder carrying
    the hide. He cuts it into Hiisi-hide boots.
@@ -219,6 +222,17 @@ the rest of the game, on every map and in every mode that persists talents.
   `besideNpc` requires a non-hostile NPC, so a player who has angered the
   village cannot hand over the hide until death resets the villagers back to
   peaceful — inherited engine semantics, not a bug in this quest.)
+- *Elder killed.* He has 2 hp, is hittable, and a killed NPC is tombstoned in
+  `save.npcs` and skipped on every rebuild — which would strand the hide for
+  good. While the hide is still owed (`!hide_given`), `onArrive` and the
+  post-kill tick both `ensureElder`: if no elder stands, the module spawns
+  one at the nearest walkable cell to the village anchor under its own id
+  (`npc:quest:elder`, outside `npcSpawnIds`, so `recordNpcState` never
+  tombstones it — the same rule the missing villager uses).
+- *Elk killed by a Gust slam.* The knockback path in `game.js` subtracts hp
+  directly; only `hurtCreature` records `creatureKills`. Registry creatures
+  now route slam damage through `hurtEntity`, so a slam kill still fires the
+  `hirvi_dead` beat.
 - *Player leaves mid-chase.* `flush` is on the save; `onArrive` re-homes the elk
   at the wallow that flag names and re-stamps the current trail.
 - *Elk killed early.* It cannot be: while `flush < 2` it is a story creature

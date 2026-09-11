@@ -18,6 +18,7 @@ import { ensureHirvi, startBolt, makeStand, FLUSH_TILES } from '../monsters/hirv
 import { grantTalent } from '../talents.js'
 import { queueToast, think } from '../feedback.js'
 import { sfx } from '../sfx.js'
+import { isWalkable } from '../entities.js'
 
 export const SHRINE = 'forest shrine'
 export const WALLOWS = ['wallow 1', 'wallow 2', 'wallow 3']
@@ -30,6 +31,11 @@ const elkOf = state => state.entities.find(e => e.type === 'hirvi') ?? null
 const hideOnGround = state => state.entities.some(e => e.type === 'floating_item' && e.contents?.type === 'elk_hide')
 const carriesHide = player => player.inventory.some(i => i.kind === 'elk_hide')
 const flushOf = flags => Math.min(flags.flush ?? 0, LAST)
+
+const ELDER_ID = 'npc:quest:elder'
+const hasElder = state => state.entities.some(e => e.type === 'npc' && e.species === 'elder')
+// The village anchor, by openmap.js's own rule.
+const villageCell = mapData => { const p = mapData.pois.find(q => q.kind === 'village' || q.kind === 'camp'); return p ? { x: p.x, y: p.y } : null }
 
 const wallowCell = (ctx, i) => poiCell(ctx.mapData, WALLOWS[Math.min(i, LAST)])
 const centreOf = c => c && { px: c.x * S + S / 2, py: c.y * S + S / 2 }
@@ -58,18 +64,43 @@ function bedElk(ctx, i) {
   return elk
 }
 
-// The hide waits at the last wallow until it is picked up. Re-dropped on
-// arrival if it was lost, never duplicated.
-function dropHide(ctx) {
+// The hide falls where the elk fell (`at`); the last wallow is only the
+// fallback for a re-drop on arrival after it was lost. Never duplicated.
+function dropHide(ctx, at = null) {
   const { state } = ctx
   if (carriesHide(state.player) || hideOnGround(state)) return
-  const at = wallowCell(ctx, LAST)
+  at ??= wallowCell(ctx, LAST)
   if (at) ctx.spawn([{ kind: 'floating_pickup', contents: { type: 'elk_hide' }, x: at.x, y: at.y }])
+}
+
+// Nearest walkable cell to `at`, ring by ring.
+function walkableNear(map, at, radius = 4) {
+  for (let r = 0; r <= radius; r++)
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+      const c = map[at.y + dy]?.[at.x + dx]
+      if (c && isWalkable(c.tile, c)) return { x: at.x + dx, y: at.y + dy }
+    }
+  return null
+}
+
+// The elder is the only hand the hide can go to, and he has 2 hp. A killed
+// elder is tombstoned in save.npcs and skipped on every rebuild, so while
+// the hide is still owed the quest stands its own in — under an id outside
+// npcSpawnIds, which is what keeps recordNpcState from tombstoning him too
+// (the same rule game.js uses for the missing villager).
+function ensureElder(ctx) {
+  const { state, mapData } = ctx
+  if (hasElder(state)) return
+  const anchor = villageCell(mapData)
+  const at = anchor && walkableNear(state.map, anchor)
+  if (at) ctx.spawn([{ kind: 'npc', species: 'elder', x: at.x, y: at.y, id: ELDER_ID }])
 }
 
 export function onArrive(ctx) {
   const { flags } = ctx
   if (flags.hide_given) return
+  ensureElder(ctx)
   if (flags.hirvi_dead) { dropHide(ctx); return }
   const i = flushOf(flags)
   layTrail(ctx, i)
@@ -82,6 +113,7 @@ export function tick(ctx, delta) {
   // The elder's side of it: the hide for a pair of boots.
   if (flags.hide_given) return
   if (flags.hirvi_dead) {
+    ensureElder(ctx)   // cheap, and a same-visit kill of the elder must not strand the hide
     if (!checkDeliveries(ctx, DELIVERIES)) return
     grantTalent(state, 'ski_legs')   // queues its own toast and cue
     ctx.refreshInventory()
@@ -92,7 +124,8 @@ export function tick(ctx, delta) {
   // creatureKills is per-visit; the flag is the durable record.
   if (state.creatureKills?.hirvi) {
     ctx.set('hirvi_dead')
-    dropHide(ctx)
+    const corpse = elkOf(state)   // still here this frame, dying; the hide falls where it fell
+    dropHide(ctx, corpse && { x: corpse.x, y: corpse.y })
     queueToast(state, { title: 'The elk is down', lines: ['Hiisi keeps his herd.', 'Take the hide to the elder.'] })
     ctx.persist()
     return

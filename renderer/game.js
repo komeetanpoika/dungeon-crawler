@@ -1114,7 +1114,7 @@ function update(delta) {
 
   // Adventure quests tick on the surface only — qCtx/mapData describe the
   // surface, not the cave.
-  if (state.qCtx && !state.cave) QUEST_MODULES[state.qCtx.mapData.name]?.tick(state.qCtx, delta)
+  if (state.qCtx && !state.cave) QUEST_MODULES[state.qCtx.mapData.name]?.tick?.(state.qCtx, delta)
 
   // Weather runs on the surface only: the animation timer always, the day
   // clock when the map has a cycle. Underground both hold.
@@ -1742,6 +1742,10 @@ function update(delta) {
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
     if (slam && isHittable(e) && !isStoryCreature(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
+      // A registry creature's damage goes through its hook (hurtEntity), so a
+      // slam that kills it still records the kill the way a blow would —
+      // otherwise a Gust could delete the standing elk and stall its quest.
+      if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) { hurtEntity(e, slam.damage, { source: 'slam' }); continue }
       e.hp -= slam.damage
       e.inCombat = true
       npcStruck(e)

@@ -5,6 +5,7 @@ import { makeQuestCtx, questFlags } from '../renderer/systems/quests.js'
 import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
 import { makeHirvi, ensureHirvi, updateHirvi, BOLT_TIME } from '../renderer/systems/monsters/hirvi.js'
 import { hurtCreature } from '../renderer/systems/creatures.js'
+import { makeNpc } from '../renderer/systems/npc.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeItem } from '../renderer/systems/inventory.js'
@@ -16,10 +17,14 @@ const S = 32
 const N = 40
 
 const CELLS = { [SHRINE]: { x: 5, y: 5 }, 'wallow 1': { x: 20, y: 5 }, 'wallow 2': { x: 20, y: 20 }, 'wallow 3': { x: 5, y: 20 } }
+const VILLAGE = { x: 10, y: 10 }
 
 const mapData = {
   name: 'forest-1-clearings', w: N, h: N,
-  pois: Object.entries(CELLS).map(([label, c]) => ({ kind: 'landmark', x: c.x, y: c.y, label })),
+  pois: [
+    { kind: 'village', x: VILLAGE.x, y: VILLAGE.y, label: 'Aspengrove' },
+    ...Object.entries(CELLS).map(([label, c]) => ({ kind: 'landmark', x: c.x, y: c.y, label })),
+  ],
   npcs: { village: ['villager', 'elder'], wild: [] },
 }
 
@@ -38,6 +43,7 @@ function spawnInto(state) {
   return spawns => {
     for (const s of spawns) {
       if (s.kind === 'hirvi') state.entities.push(makeHirvi(s.x, s.y))
+      else if (s.kind === 'npc') { const n = makeNpc(s); if (n) state.entities.push(n) }
       else if (s.kind === 'floating_pickup') state.entities.push({ type: 'floating_item', contents: s.contents, x: s.x, y: s.y, px: s.x * S + 16, py: s.y * S + 16, progress: 1 })
     }
   }
@@ -63,6 +69,7 @@ function build({ flags = {}, at = CELLS[SHRINE], inventory = [], entities = [] }
 
 const elkOf = state => state.entities.find(e => e.type === 'hirvi') ?? null
 const hideOf = state => state.entities.find(e => e.type === 'floating_item' && e.contents?.type === 'elk_hide') ?? null
+const elders = state => state.entities.filter(e => e.type === 'npc' && e.species === 'elder')
 const stainedCells = state => {
   let n = 0
   for (const row of state.map) for (const c of row) if (String(c.skin).startsWith('ow_dirt')) n++
@@ -215,6 +222,16 @@ describe('the kill and the hide', () => {
     tick(ctx, 0.1)
     assert.equal(calls.persist, persists, 'no second kill beat')
   })
+  it('the hide drops where the elk died, not back at the wallow', () => {
+    const { ctx, state } = build({ flags: { flush: 2 } })
+    onArrive(ctx)
+    const elk = elkOf(state)
+    elk.x = 12; elk.y = 30; elk.px = 12 * S + 16; elk.py = 30 * S + 16   // kited off the wallow
+    elk.hp = 0; elk.dying = 0.7                                          // the corpse is still there this frame
+    state.creatureKills = { hirvi: true }
+    tick(ctx, 0.1)
+    assert.deepEqual({ x: hideOf(state).x, y: hideOf(state).y }, { x: 12, y: 30 })
+  })
   it('handing the hide to the elder grants Ski-legs and finishes the quest', () => {
     const elder = { type: 'npc', species: 'elder', x: 10, y: 10, hostile: false }
     const { ctx, state, save, calls } = build({
@@ -247,6 +264,39 @@ describe('the kill and the hide', () => {
   })
   it('declares one delivery: the hide, to the elder', () => {
     assert.deepEqual(DELIVERIES, [{ item: 'elk_hide', to: { species: 'elder' }, sets: 'hide_given' }])
+  })
+})
+
+describe('the elder', () => {
+  it('a dead elder is replaced on arrival while the hide is still owed', () => {
+    const { ctx, state } = build({ flags: { flush: 2, hirvi_dead: true }, entities: [] })
+    onArrive(ctx)
+    const [elder] = elders(state)
+    assert.ok(elder, 'an elder stands in the village again')
+    assert.ok(Math.abs(elder.x - VILLAGE.x) <= 4 && Math.abs(elder.y - VILLAGE.y) <= 4, 'near the village anchor')
+  })
+  it('a living elder is not doubled', () => {
+    const elder = makeNpc({ species: 'elder', id: 'npc:forest-1-clearings:0', x: 11, y: 10 })
+    const { ctx, state } = build({ flags: { hirvi_dead: true }, entities: [elder] })
+    onArrive(ctx)
+    onArrive(ctx)
+    assert.equal(elders(state).length, 1)
+  })
+  it('the replacement steps in mid-visit, so a same-visit delivery can land', () => {
+    const { ctx, state, save } = build({
+      flags: { flush: 2, hirvi_dead: true }, at: VILLAGE, inventory: [makeItem('elk_hide')], entities: [],
+    })
+    tick(ctx, 0.1)
+    const [elder] = elders(state)
+    assert.ok(elder, 'the tick put an elder back')
+    state.player.x = elder.x + 1; state.player.y = elder.y
+    tick(ctx, 0.1)
+    assert.equal(questFlags(save, mapData.name).hide_given, true)
+  })
+  it('a finished quest leaves a dead elder dead', () => {
+    const { ctx, state } = build({ flags: { hirvi_dead: true, hide_given: true }, entities: [] })
+    onArrive(ctx)
+    assert.equal(elders(state).length, 0)
   })
 })
 
