@@ -1,0 +1,13 @@
+{
+  "name": "hirvi",
+  "rig": "quadruped",
+  "params": { "bodyLength": 2.2, "bodyWidth": 1, "bulge": 0.1, "legLength": 1.5, "legThick": 0.22,
+              "headSize": 0.7, "snout": 0.55, "eyeSize": 0.09, "horns": true,
+              "tailLength": 0.25, "tailTaper": 0.4,
+              "hideColor": "#6b5136", "bellyColor": "#a08561", "eyeColor": "#1a1208", "scales": false,
+              "gaitFreq": 6, "bob": 0.1 },
+  "stats": { "hp": 30, "dmg": 2, "speed": 95 },
+  "behavior": { "taxon": "beast", "driver": "hook", "sightRange": 320, "stopRange": 26, "fleeHp": 0, "wanderSpeed": 0 },
+  "spawn": null,
+  "hooks": true
+}

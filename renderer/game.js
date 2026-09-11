@@ -39,6 +39,8 @@ import { npcSpawnsForMap } from './systems/openmap.js'
 import { episodeFor, isMapUnlocked, isResolved, missingSpawn, echoSpawns, ruleCtx, makeEpCtx } from './systems/leap.js'
 import { updateEcho } from './systems/echo.js'
 import { EPISODE_MODULES } from './systems/episodes/index.js'
+import { questFor, questFlags, questLines, makeQuestCtx } from './systems/quests.js'
+import { QUEST_MODULES } from './systems/quests/index.js'
 import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable } from './systems/factions.js'
@@ -560,6 +562,23 @@ function arriveOnMap() {
   state.villagerLines = null
   state.episodeResolved = false
   state.epCtx = null
+  state.quest = questFor(mapData)
+  state.qCtx = null
+
+  // Adventure quests: the same story engine as the episodes, on the maps that
+  // have no episode. A map never has both (questFor skips leap maps).
+  if (state.quest) {
+    state.qCtx = makeQuestCtx({
+      getState: () => state, save: activeSave, mapData,
+      persist: persistRun, refreshInventory: afterInventoryChange,
+      spawn: spawns => state.entities.push(...buildEntities(spawns, state.map, state.level)),
+      // The villagers are the quest log: every flag write restages their lines.
+      onFlag: () => { state.villagerLines = questLines(state.quest, state.qCtx.flags) },
+    })
+    state.villagerLines = questLines(state.quest, questFlags(activeSave, mapData.name))
+    QUEST_MODULES[mapData.name]?.onArrive?.(state.qCtx)
+  }
+
   if (!ep) return
   state.epCtx = makeEpCtx({
     getState: () => state, save: activeSave, mapData,
@@ -1023,7 +1042,7 @@ function update(delta) {
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
   const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
   const moving = vx !== 0 || vy !== 0
-  const profile = sprintProfile(player.attackMode)
+  const profile = sprintProfile(player.attackMode, { skiLegs: hasTalent(player, 'ski_legs') })
   const sprinting = moving && !player.charging && player.stamina > 0 && !wasGrabbed &&
     (keys['sprint'] || sprintDetector.sprinting())
   const chargeFactor = player.charging
@@ -1092,6 +1111,10 @@ function update(delta) {
     // episodeResolved/isResolved, so this is a no-op once resolved.
     resolveEpisode()
   }
+
+  // Adventure quests tick on the surface only — qCtx/mapData describe the
+  // surface, not the cave.
+  if (state.qCtx && !state.cave) QUEST_MODULES[state.qCtx.mapData.name]?.tick?.(state.qCtx, delta)
 
   // Weather runs on the surface only: the animation timer always, the day
   // clock when the map has a cycle. Underground both hold.
@@ -1719,6 +1742,10 @@ function update(delta) {
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
     if (slam && isHittable(e) && !isStoryCreature(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
+      // A registry creature's damage goes through its hook (hurtEntity), so a
+      // slam that kills it still records the kill the way a blow would —
+      // otherwise a Gust could delete the standing elk and stall its quest.
+      if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) { hurtEntity(e, slam.damage, { source: 'slam' }); continue }
       e.hp -= slam.damage
       e.inCombat = true
       npcStruck(e)

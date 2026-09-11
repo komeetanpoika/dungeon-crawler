@@ -1,0 +1,109 @@
+import { describe, it } from 'node:test'
+import assert from 'node:assert/strict'
+import { QUESTS } from '../renderer/data/quests.js'
+import { questFor, questFlags, isQuestDone, questLines, makeQuestCtx } from '../renderer/systems/quests.js'
+import { QUEST_MODULES } from '../renderer/systems/quests/index.js'
+import { normalizeAdventureSave, resetNpcs } from '../renderer/systems/adventure.js'
+import { OPEN_MAPS } from '../renderer/data/open-maps.js'
+
+const clearings = OPEN_MAPS[7]
+const lake = OPEN_MAPS[8]
+const river = OPEN_MAPS[11]
+
+describe('quest declarations', () => {
+  it('every declared quest names a real non-leap map', () => {
+    for (const name of Object.keys(QUESTS)) {
+      const map = Object.values(OPEN_MAPS).find(m => m.name === name)
+      assert.ok(map, name)
+      assert.equal(!!map.leap, false, name)
+    }
+  })
+  it('each quest declares a title, staged villager lines and a rule', () => {
+    for (const [name, q] of Object.entries(QUESTS)) {
+      assert.ok(q.title, name)
+      assert.equal(typeof q.rule, 'function', name)
+      assert.ok(q.villagerLines.length >= 2, name)
+      // the last stage must be the catch-all
+      assert.equal(q.villagerLines.at(-1).when({}), true, name)
+      for (const s of q.villagerLines) assert.ok(Object.keys(s.by).length, `${name} stage`)
+    }
+  })
+  it('every line stage speaks only to species the map actually rosters', () => {
+    for (const [name, q] of Object.entries(QUESTS)) {
+      const map = Object.values(OPEN_MAPS).find(m => m.name === name)
+      const rostered = new Set([...(map.npcs?.village ?? []), ...(map.npcs?.wild ?? [])])
+      for (const s of q.villagerLines) for (const species of Object.keys(s.by))
+        assert.ok(rostered.has(species), `${name}: ${species}`)
+    }
+  })
+  it('every module in the registry has a declaration', () => {
+    for (const name of Object.keys(QUEST_MODULES)) assert.ok(QUESTS[name], name)
+  })
+})
+
+describe('questFor', () => {
+  it('resolves a declared Adventure map', () => {
+    assert.equal(questFor(clearings), QUESTS['forest-1-clearings'])
+  })
+  it('is null on a leap map, an undeclared map and nothing at all', () => {
+    assert.equal(questFor(lake), null)
+    assert.equal(questFor(river), null)
+    assert.equal(questFor(null), null)
+    assert.equal(questFor(undefined), null)
+  })
+})
+
+describe('save field', () => {
+  it('normalizeAdventureSave defaults quests and keeps an existing record', () => {
+    assert.deepEqual(normalizeAdventureSave(null).quests, {})
+    const carried = normalizeAdventureSave({ progress: { mapDepth: 7, cleared: {} }, caves: {},
+      quests: { 'forest-1-clearings': { flags: { flush: 2 } } } })
+    assert.equal(carried.quests['forest-1-clearings'].flags.flush, 2)
+  })
+  it('quest flags survive the death wipe', () => {
+    const save = normalizeAdventureSave(null)
+    questFlags(save, 'forest-1-clearings').hirvi_dead = true
+    resetNpcs(save)
+    assert.equal(questFlags(save, 'forest-1-clearings').hirvi_dead, true)
+  })
+  it('questFlags creates the record on demand', () => {
+    const save = normalizeAdventureSave(null)
+    assert.deepEqual(questFlags(save, 'forest-1-clearings'), {})
+    assert.deepEqual(save.quests['forest-1-clearings'], { flags: {} })
+  })
+})
+
+describe('isQuestDone', () => {
+  it('follows the map rule and is false for a map with no quest', () => {
+    const save = normalizeAdventureSave(null)
+    assert.equal(isQuestDone(save, clearings), false)
+    questFlags(save, clearings.name).hide_given = true
+    assert.equal(isQuestDone(save, clearings), true)
+    assert.equal(isQuestDone(save, river), false)
+  })
+})
+
+describe('questLines', () => {
+  const quest = QUESTS['forest-1-clearings']
+  it('picks the first matching stage, and the catch-all when nothing matches', () => {
+    const open = questLines(quest, {})
+    const done = questLines(quest, { hide_given: true })
+    assert.ok(open.villager.length)
+    assert.ok(done.villager.length)
+    assert.notDeepEqual(open, done)
+  })
+  it('returns null when handed no quest', () => {
+    assert.equal(questLines(null, {}), null)
+  })
+})
+
+describe('makeQuestCtx', () => {
+  it('writes into save.quests and nowhere else', () => {
+    const save = normalizeAdventureSave(null)
+    const ctx = makeQuestCtx({ getState: () => ({}), save, mapData: clearings,
+      persist: () => {}, refreshInventory: () => {}, spawn: () => {} })
+    ctx.set('hunt_seen')
+    assert.equal(save.quests[clearings.name].flags.hunt_seen, true)
+    assert.deepEqual(save.leaps, {})
+  })
+})

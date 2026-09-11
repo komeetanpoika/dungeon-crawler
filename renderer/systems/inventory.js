@@ -19,6 +19,8 @@ const STACKABLE_KINDS = {
   // (Drop stays available — see ui/inventory-panel.js primaryAction).
   clapper:     { name: 'Bell Clapper', emoji: '🔔', extra: { quest: true } },
   fleece:      { name: "Lamb's Fleece", emoji: '🐑', extra: { quest: true } },
+  // Adventure quest items: same carry-only rule as the leap ones.
+  elk_hide:    { name: 'Elk Hide',    emoji: '🦌', extra: { quest: true } },
 }
 
 export function makeItem(kind, count = 1) {

@@ -58,6 +58,9 @@ function clearings() {
   caves.forEach((c, i) => { clearing(b, c.x, c.y, 3); stampCaveInRocks(b, rng, c.x, c.y); b.poi('dungeon_entrance', c.x, c.y, `cave ${i + 1}`) })
   b.p(village.x - 9, village.y - 7, 'ow_beehive')
   for (const c of b.scatter(rng, 4, 28, isOpen(b))) { b.p(c.x, c.y, 'tile_0089', { walkable: true }); b.poi('chest', c.x, c.y, 'cache') }
+  // The Elk of Hiisi's three wallows (renderer/systems/quests/clearings.js):
+  // fixed, verified-walkable cells, POIs only — they change no terrain.
+  b.poi('landmark', 112, 8, 'wallow 1'); b.poi('landmark', 54, 6, 'wallow 2'); b.poi('landmark', 57, 41, 'wallow 3')
   b.playerSpawn = { x: village.x, y: village.y + 2 }
   b.ensureReachable('ow_dirt_0')
   pruneBrokenTrees(b)

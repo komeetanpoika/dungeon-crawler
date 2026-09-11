@@ -73,7 +73,15 @@ const SPRINT_PROFILES = {
   ranged: { speedMul: 1.55, drain: 22 },
   magic:  { speedMul: 1.25, drain: 8 },
 }
-export const sprintProfile = mode => SPRINT_PROFILES[mode] ?? SPRINT_PROFILES.melee
+
+// Ski-legs (systems/talents.js): Hiisi-hide boots off the Elk of Hiisi. It
+// buys stamina, never speed — the sprint feels the same and lasts longer.
+export const SKI_LEGS_DRAIN = 0.6
+
+export function sprintProfile(mode, { skiLegs = false } = {}) {
+  const p = SPRINT_PROFILES[mode] ?? SPRINT_PROFILES.melee
+  return skiLegs ? { ...p, drain: p.drain * SKI_LEGS_DRAIN } : p
+}
 
 // Desktop sprint intent: double-tap a direction and hold. Timestamps are
 // injected (seconds) so this stays clock-free and unit-testable.
