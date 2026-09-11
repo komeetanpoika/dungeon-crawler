@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { onArrive, tick, WALLOWS, SHRINE, DELIVERIES } from '../renderer/systems/quests/clearings.js'
 import { makeQuestCtx, questFlags } from '../renderer/systems/quests.js'
 import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
-import { makeHirvi, ensureHirvi, BOLT_TIME } from '../renderer/systems/monsters/hirvi.js'
+import { makeHirvi, ensureHirvi, updateHirvi, BOLT_TIME } from '../renderer/systems/monsters/hirvi.js'
+import { hurtCreature } from '../renderer/systems/creatures.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeItem } from '../renderer/systems/inventory.js'
@@ -141,6 +142,27 @@ describe('the chase', () => {
     assert.equal(questFlags(save, mapData.name).hunt_seen, true)
     assert.ok(calls.flags.includes('hunt_seen'))
     assert.ok(state.sfx.cues.some(c => c.name === 'npc-deer'), 'played the bolt cue')
+  })
+  it('an arrow from beyond flush range spooks it just the same', () => {
+    const { ctx, state, save } = build()
+    onArrive(ctx)
+    const elk = elkOf(state)
+    hurtCreature(state, elk, 1)          // the player is at the shrine, 15 tiles off
+    tick(ctx, 0.1)
+    assert.equal(elk.mood, 'bolting')
+    assert.equal(questFlags(save, mapData.name).hunt_seen, true)
+  })
+  it('a flushed elk runs toward the next wallow, not away from the player', () => {
+    const { ctx, state } = build()
+    onArrive(ctx)
+    const elk = elkOf(state)              // wallow 1 (20,5); wallow 2 is due south at (20,20)
+    state.player.x = elk.x - 2; state.player.y = elk.y   // player due west
+    state.player.px = state.player.x * S + 16; state.player.py = state.player.y * S + 16
+    tick(ctx, 0.1)
+    const { px, py } = elk
+    updateHirvi(elk, state, 0.1)
+    assert.ok(elk.py > py, 'moved south, toward wallow 2')
+    assert.ok(Math.abs(elk.px - px) < 1, 'did not run east, away from the player')
   })
   it('leaves it alone from far off', () => {
     const { ctx, state } = build()

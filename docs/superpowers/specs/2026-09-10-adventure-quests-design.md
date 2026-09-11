@@ -180,10 +180,16 @@ it to a standstill *is* the quest, and the reward is the legs to do it next time
    a rock) is skipped rather than overwritten, so a trail thins out through
    clutter instead of erasing the map's decoration. Trails are cosmetic and re-stamped from flags on arrival,
    so they survive reload without a save record of their own.
-3. **Flush.** The elk stands at the current wallow. Inside `FLUSH_RANGE` (6
-   tiles) it bolts: `leaving = true`, it runs a few tiles, despawns; the module
-   increments `flush`, stamps the trail to the next wallow, and re-homes the elk
-   there. A pausing toast marks each flush.
+3. **Flush.** The elk beds at the current wallow. Inside `FLUSH_TILES` (6
+   tiles) it bolts — and so it does when a shot bounces off it from farther
+   out (`CREATURE_HIT` absorbs the hit but marks it `spooked`, which the tick
+   reads as a flush). Either way it runs **for the next wallow** (`startBolt`
+   takes the target; the fallback with no target is to run from the player),
+   so the direction it vanishes in agrees with where the fresh trail leads.
+   It runs 1.6 s, fades, despawns; the module increments `flush`, stamps the
+   trail to the next wallow, and re-homes the elk there. Each flush lands as
+   a thought bubble, not a pausing toast — a pause mid-chase would kill the
+   momentum a hunt lives on.
 4. **Stand.** At `wallow 3` (`flush === 2`) it does not flee. It turns hostile
    and fights: hp 30, dmg 2, fast, a plain brain fight armed with `maul`
    (reach 34, the same weapon the Maahinen carries). Three wallows means two

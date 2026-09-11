@@ -59,6 +59,14 @@ describe('bolting', () => {
     for (let t = 0; t < BOLT_TIME + 0.2; t += 0.1) updateHirvi(e, state, 0.1)
     assert.equal(e.bolted, true)
   })
+  it('runs toward its bolt target when it has one, even with the player that way', () => {
+    const e = makeHirvi(8, 5)
+    const state = makeState(e, { x: 4, y: 5 })          // player is west
+    startBolt(e, { px: 2 * S + 16, py: 5 * S + 16 })   // and so is the target
+    const startPx = e.px
+    updateHirvi(e, state, 0.1)
+    assert.ok(e.px < startPx, 'moved toward the target, into the player, not away')
+  })
   it('keeps its tile coordinates in step with its pixels', () => {
     const e = makeHirvi(8, 5)
     const state = makeState(e, { x: 4, y: 5 })
@@ -90,6 +98,14 @@ describe('damage', () => {
     assert.equal(r.absorbed, true)
     assert.equal(e.hp, before)
     assert.equal(state.creatureKills?.hirvi, undefined)
+  })
+  it('a hit on a bedded elk spooks it — absorbed, but no longer at rest', () => {
+    const e = makeHirvi(8, 5)
+    const state = makeState(e)
+    const r = hurtCreature(state, e, 1)
+    assert.equal(r.absorbed, true)
+    assert.equal(e.hp, 30)
+    assert.equal(e.spooked, true)
   })
   it('takes damage once it stands, and records the kill', () => {
     const e = makeHirvi(8, 5)

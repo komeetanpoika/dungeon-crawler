@@ -23,6 +23,7 @@ export const SHRINE = 'forest shrine'
 export const WALLOWS = ['wallow 1', 'wallow 2', 'wallow 3']
 export const DELIVERIES = [{ item: 'elk_hide', to: { species: 'elder' }, sets: 'hide_given' }]
 
+const S = 32
 const LAST = WALLOWS.length - 1
 
 const elkOf = state => state.entities.find(e => e.type === 'hirvi') ?? null
@@ -31,6 +32,7 @@ const carriesHide = player => player.inventory.some(i => i.kind === 'elk_hide')
 const flushOf = flags => Math.min(flags.flush ?? 0, LAST)
 
 const wallowCell = (ctx, i) => poiCell(ctx.mapData, WALLOWS[Math.min(i, LAST)])
+const centreOf = c => c && { px: c.x * S + S / 2, py: c.y * S + S / 2 }
 
 // The trail into wallow `i`: from the shrine for the first, from the previous
 // wallow after that. A blocked path simply lays no trail (stampTrail returns 0).
@@ -116,8 +118,10 @@ export function tick(ctx, delta) {
 
   if (i >= LAST) return            // standing: the brain drives the fight
 
+  // Walking up spooks it; so does a hit that bounced off (hirvi.js marks
+  // `spooked`). Either way it runs for the next wallow, where the trail leads.
   const near = Math.max(Math.abs(elk.x - state.player.x), Math.abs(elk.y - state.player.y)) <= FLUSH_TILES
-  if (!near || !startBolt(elk)) return
+  if (!(near || elk.spooked) || !startBolt(elk, centreOf(wallowCell(ctx, i + 1)))) return
   sfx(state, 'npc-deer', { px: elk.px, py: elk.py })
   if (!flags.hunt_seen) {
     ctx.set('hunt_seen')

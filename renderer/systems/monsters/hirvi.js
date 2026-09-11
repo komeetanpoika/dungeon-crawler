@@ -1,7 +1,7 @@
 // Hiiden hirvi, the Elk of Hiisi — the Clearings quest's quarry
 // (docs/superpowers/specs/2026-09-10-adventure-quests-design.md §2). It beds
-// at a wallow, bolts when the player gets close, and on the last wallow turns
-// and fights. The fight is not this module's business: makeStand hands the
+// at a wallow, bolts for the next one when the player gets close or a shot
+// bounces off it, and on the last wallow turns and fights. The fight is not this module's business: makeStand hands the
 // entity to the ordinary enemy brain (`brainDriven`, see
 // systems/monsters.js isStoryCreature), which is also what lets spells reach
 // it. Until then it is untouchable — a lucky longbow shot at the first wallow
@@ -34,11 +34,16 @@ export function makeHirvi(x, y) {
   return ensureHirvi({ type: 'hirvi', x, y, px: x * S + S / 2, py: y * S + S / 2, hp: 30, maxHp: 30, damage: 2 })
 }
 
-export function startBolt(e) {
+// `toward` is a pixel centre to run for — the next wallow, so the direction
+// it vanishes in agrees with where the fresh trail leads. Without one it
+// simply runs from the player.
+export function startBolt(e, toward = null) {
   ensureHirvi(e)
   if (e.mood !== 'bedded') return false
   e.mood = 'bolting'
   e.boltT = BOLT_TIME
+  e.boltTo = toward
+  e.spooked = false
   return true
 }
 
@@ -61,7 +66,8 @@ export function updateHirvi(e, state, delta) {
   if (e.mood !== 'bolting') return   // bedded: it waits. standing: the brain has it.
 
   e.boltT = Math.max(0, e.boltT - delta)
-  const dx = e.px - state.player.px, dy = e.py - state.player.py
+  const dx = e.boltTo ? e.boltTo.px - e.px : e.px - state.player.px
+  const dy = e.boltTo ? e.boltTo.py - e.py : e.py - state.player.py
   const len = Math.hypot(dx, dy) || 1
   const step = BOLT_SPEED * delta
   // Per-axis so it slides along a tree line instead of stopping dead against it.
@@ -78,11 +84,13 @@ export function updateHirvi(e, state, delta) {
 
 CREATURE_UPDATE.hirvi = updateHirvi
 // Absorbed until the stand; an ordinary hit afterward, so death runs the
-// standard pipeline and hurtCreature records the kill.
+// standard pipeline and hurtCreature records the kill. An absorbed hit still
+// spooks it: the quest tick reads `spooked` as a flush, the same as walking
+// up — an arrow that clangs off a resting elk and changes nothing reads wrong.
 CREATURE_HIT.hirvi = (e, state, dmg) => {
   ensureHirvi(e)
-  return e.mood === 'standing'
-    ? { entity: { ...e, hp: e.hp - dmg, inCombat: true }, absorbed: false, cue: 'melee-hit' }
-    : { entity: e, absorbed: true, cue: 'wall-slam' }
+  if (e.mood === 'standing') return { entity: { ...e, hp: e.hp - dmg, inCombat: true }, absorbed: false, cue: 'melee-hit' }
+  if (e.mood === 'bedded') e.spooked = true
+  return { entity: e, absorbed: true, cue: 'wall-slam' }
 }
 CREATURE_ALPHA.hirvi = e => e.fadeA ?? 1
