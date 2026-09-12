@@ -291,6 +291,25 @@ describe('fireball direct-impact detonation', () => {
   })
 })
 
+describe('fire-only detonation', () => {
+  it('hands fireOnly to the detonate hook on a direct hit', () => {
+    const entities = [{ id: 'a', type: 'monster', px: 5, py: 0, hp: 10 }]
+    const p = { px: 0, py: 0, dx: 100, dy: 0, damage: 3, friendly: true, explodes: true, blastTiles: 3, fireOnly: true }
+    const calls = []
+    const { hooks } = makeHooks({ detonate: (px, py, blastTiles, opts) => calls.push({ blastTiles, opts }) })
+    stepProjectiles(baseState(entities, [p]), 0.1, hooks)
+    assert.deepEqual(calls, [{ blastTiles: 3, opts: { fireOnly: true } }])
+  })
+  it('an ordinary fireball detonates with fireOnly false', () => {
+    const entities = [{ id: 'a', type: 'monster', px: 5, py: 0, hp: 10 }]
+    const p = { px: 0, py: 0, dx: 100, dy: 0, damage: 5, friendly: true, explodes: true, blastTiles: 16 }
+    const calls = []
+    const { hooks } = makeHooks({ detonate: (px, py, blastTiles, opts) => calls.push(opts) })
+    stepProjectiles(baseState(entities, [p]), 0.1, hooks)
+    assert.deepEqual(calls, [{ fireOnly: false }])
+  })
+})
+
 describe('corpse culling (hooks.cull)', () => {
   it('culls a killed entity before a second same-frame projectile can target its corpse', () => {
     const entities = [{ id: 'a', type: 'monster', px: 5, py: 0, hp: 3 }]

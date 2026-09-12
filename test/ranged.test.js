@@ -229,6 +229,22 @@ describe('tryFire — success shapes and flags per weapon', () => {
   })
 })
 
+describe('tervajousi', () => {
+  it('a shot carries the fire-arrow detonation fields, and fire only', () => {
+    const shot = tryFire(armedPlayer('tervajousi'))
+    assert.equal(shot.ok, true)
+    assert.equal(shot.explodes, true)
+    assert.equal(shot.blastTiles, 3)
+    assert.equal(shot.fireOnly, true)
+  })
+  it('an ordinary bow shot carries none of them', () => {
+    const shot = tryFire(armedPlayer('shortbow'))
+    assert.equal(shot.ok, true)
+    assert.equal(shot.explodes, undefined)
+    assert.equal(shot.fireOnly, undefined)
+  })
+})
+
 describe('FIRE_FAIL_MESSAGES / noAmmoMessage', () => {
   it('keeps the weaponless and not-learned lines; cooldown stays silent', () => {
     assert.equal(typeof FIRE_FAIL_MESSAGES.no_weapon, 'string')
