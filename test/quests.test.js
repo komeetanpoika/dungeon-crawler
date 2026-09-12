@@ -46,8 +46,9 @@ describe('questFor', () => {
     assert.equal(questFor(clearings), QUESTS['forest-1-clearings'])
   })
   it('is null on a leap map, an undeclared map and nothing at all', () => {
+    const undeclared = OPEN_MAPS[12]
     assert.equal(questFor(lake), null)
-    assert.equal(questFor(river), null)
+    assert.equal(questFor(undeclared), null)
     assert.equal(questFor(null), null)
     assert.equal(questFor(undefined), null)
   })
@@ -105,5 +106,25 @@ describe('makeQuestCtx', () => {
     ctx.set('hunt_seen')
     assert.equal(save.quests[clearings.name].flags.hunt_seen, true)
     assert.deepEqual(save.leaps, {})
+  })
+})
+
+describe('the River Split declaration', () => {
+  const river = OPEN_MAPS[11]
+  const quest = QUESTS['forest-2-river']
+  it('is found for depth 11 and is done only on bridge_done', () => {
+    assert.equal(questFor(river), quest)
+    assert.equal(quest.title, 'Tervahauta')
+    assert.equal(quest.rule({}), false)
+    assert.equal(quest.rule({ pit_lit: true, plank_1: true, plank_2: true, plank_3: true }), false)
+    assert.equal(quest.rule({ bridge_done: true }), true)
+  })
+  it('stages the crew\'s lines: opening, once the pit is lit, and when the deck is whole', () => {
+    const open = questLines(quest, {})
+    const lit = questLines(quest, { pit_lit: true })
+    const done = questLines(quest, { bridge_done: true })
+    for (const s of [open, lit, done]) assert.ok(s.villager?.length, 'the camp is villagers')
+    assert.notDeepEqual(open, lit)
+    assert.notDeepEqual(lit, done)
   })
 })
