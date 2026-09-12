@@ -53,3 +53,43 @@ describe('the Clearings wallows', () => {
     for (const label of WALLOWS) assert.equal(riteLabels.has(label), false, label)
   })
 })
+
+describe('the River Split tar pit and bridge gaps', () => {
+  const river = OPEN_MAPS[11]
+  const rp = label => river.pois.find(p => p.label === label)
+  const skinAt = (x, y) => river.palette[river.ground[y][x]]
+  it('declares the pit and three gaps as landmarks', () => {
+    for (const label of ['tar pit', 'bridge gap 1', 'bridge gap 2', 'bridge gap 3']) {
+      const p = rp(label)
+      assert.ok(p, `missing ${label}`)
+      assert.equal(p.kind, 'landmark', label)
+    }
+  })
+  it('the pit is walkable ground four cells east of the camp', () => {
+    const pit = rp('tar pit'), camp = rp('lumber camp')
+    assert.ok(camp && camp.kind === 'camp')
+    assert.deepEqual({ x: pit.x, y: pit.y }, { x: camp.x + 4, y: camp.y })
+    assert.equal(river.walk[pit.y][pit.x], '1')
+  })
+  it('the gaps are the south bridge deck: baked walkable planks over water, in one east-west row', () => {
+    const gaps = ['bridge gap 1', 'bridge gap 2', 'bridge gap 3'].map(rp)
+    for (const g of gaps) {
+      assert.equal(river.walk[g.y][g.x], '1', 'baked as planks')
+      assert.ok(skinAt(g.x, g.y).startsWith('ow_water'), `${g.x},${g.y} is over water`)
+    }
+    assert.deepEqual(gaps.map(g => g.x), [48, 49, 50])
+    assert.ok(gaps.every(g => g.y === 58))
+    assert.equal(river.walk[58][47], '1', 'the west end of the deck is walkable')
+    assert.equal(river.walk[58][51], '1', 'the east end of the deck is walkable')
+  })
+  it("leaves the north bridge, the bear cave and the shrine alone", () => {
+    assert.deepEqual({ x: rp('north bridge').x, y: rp('north bridge').y }, { x: 67, y: 22 })
+    assert.equal(river.pois.filter(p => p.kind === 'dungeon_entrance').length, 1)
+    assert.ok(rp('river shrine'))
+    assert.equal(river.pois.filter(p => p.kind === 'village' || p.kind === 'camp').length, 1)
+  })
+  it('takes no label a rite already claims', () => {
+    const riteLabels = new Set((MAP_RITES[river.name] ?? []).map(r => r.fromPoi))
+    for (const label of ['tar pit', 'bridge gap 1', 'bridge gap 2', 'bridge gap 3']) assert.equal(riteLabels.has(label), false, label)
+  })
+})
