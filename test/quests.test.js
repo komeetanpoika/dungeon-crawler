@@ -136,3 +136,23 @@ describe('the River Split declaration', () => {
     assert.equal(typeof m?.tick, 'function')
   })
 })
+
+describe('the Mountain Pass declaration', () => {
+  const pass = OPEN_MAPS[12]
+  const quest = QUESTS['forest-3-autumn']
+  it('is found for depth 12 and is done only on hiisi_dead', () => {
+    assert.equal(questFor(pass), quest)
+    assert.equal(quest.title, 'Kivihiisi')
+    assert.equal(quest.rule({ hiisi_woken: true, stones: 0 }), false)
+    assert.equal(quest.rule({ hiisi_dead: true }), true)
+  })
+  it('stages the hut\'s lines: opening, woken, dead', () => {
+    const open = questLines(quest, {})
+    const woken = questLines(quest, { hiisi_woken: true })
+    const dead = questLines(quest, { hiisi_dead: true })
+    for (const s of [open, woken, dead]) { assert.ok(s.villager?.length); assert.ok(s.elder?.length) }
+    assert.notDeepEqual(open, woken)
+    assert.notDeepEqual(woken, dead)
+    assert.match(open.elder.join(' '), /pick/i, 'the opening line says a pick opens the capstone')
+  })
+})
