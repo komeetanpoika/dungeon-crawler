@@ -90,4 +90,51 @@ export function onArrive(ctx) {
   if (flags.hiisi_woken) spawnHiisi(ctx)
 }
 
-export function tick(ctx, delta) {}
+export function tick(ctx, delta) {
+  const { state, flags } = ctx
+  if (flags.hiisi_dead) return
+  const kiuas = poiCell(ctx.mapData, KIUAS)
+  if (!kiuas) return
+
+  // creatureKills is per-visit; the flag is the durable record.
+  if (state.creatureKills?.kivihiisi) {
+    ctx.set('hiisi_dead')
+    const corpse = hiisiOf(state)   // still here this frame, dying; the hammer falls where it fell
+    dropHammer(ctx, corpse && { x: corpse.x, y: corpse.y })
+    queueToast(state, { title: 'The Hiisi is down', lines: ["Ukko's own hammer lay under the oven.", 'Take it.'] })
+    ctx.persist()
+    return
+  }
+
+  if (!flags.hiisi_woken) {
+    const near = Math.max(Math.abs(kiuas.x - state.player.x), Math.abs(kiuas.y - state.player.y)) <= FOUND_TILES
+    if (near && !flags.kiuas_found) {
+      ctx.set('kiuas_found')
+      think(state, "A giant's oven. Something breathes under the capstone.")
+      ctx.persist()
+    }
+    if (state.map[kiuas.y]?.[kiuas.x]?.cleared !== 'rock') return
+    ctx.set('hiisi_woken')
+    spawnHiisi(ctx)
+    sfx(state, 'erupt', centre(kiuas))
+    queueToast(state, { title: 'Kivihiisi', lines: ['The oven was its bed.', 'Its skin is the stones around you.'] })
+    ctx.persist()
+    return
+  }
+
+  // Standing boulders: a mined ring cell comes off the count, once per cell
+  // per visit. The stamped indices are this visit's, not `stones` (which
+  // shrinks as they fall).
+  ctx.ringCounted ??= new Set()
+  for (let i = 0; i < (ctx.ringStamped ?? 0); i++) {
+    if (ctx.ringCounted.has(i)) continue
+    if (state.map[ringCell(kiuas, i).y]?.[ringCell(kiuas, i).x]?.cleared !== 'rock') continue
+    ctx.ringCounted.add(i)
+    ctx.set('stones', Math.max(0, stonesOf(flags) - 1))
+    think(state, flags.stones === 0 ? 'Nothing left for it to hide in.' : 'One less stone for its skin.')
+    ctx.persist()
+  }
+
+  const h = hiisiOf(state)
+  if (h && tickClad(h, delta, stonesOf(flags))) sfx(state, 'wall-slam', { px: h.px, py: h.py })
+}
