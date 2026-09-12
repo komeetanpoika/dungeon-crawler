@@ -24,6 +24,10 @@ export const WEAPON_TYPES = {
   // The most powerful sword in the game (cheat-only for now: type "mauno" in
   // a run). On-hit crimson shockwave lives in systems/shockwave.js.
   maunonmiekka: { name: 'Maunonmiekka', damage: 10 },
+  // Kivihiisi's reward (systems/quests/pass.js): Ukko's hammer. On hit,
+  // game.js marks a lightning strike on the struck cell, `lightning.cooldown`
+  // seconds apart (spells/lightning.js markStrike).
+  ukonvasara:   { name: 'Ukonvasara',   damage: 5, heavy: true, lightning: { cooldown: 4 } },
   // Leap-episode tool: chops like a hatchet and mines rock (systems/leap.js
   // episode modules, Tasks 12-14).
   pick:      { name: 'Pick',      damage: 2, chop: 1, mine: 1 },
@@ -34,7 +38,8 @@ export function weaponContents(weaponType) {
   const wt = WEAPON_TYPES[weaponType] ? weaponType : 'dagger'
   const def = WEAPON_TYPES[wt]
   return { weaponType: wt, name: def.name, damage: def.damage,
-    ...(def.heavy && { heavy: true }), ...(def.chop && { chop: def.chop }), ...(def.mine && { mine: def.mine }) }
+    ...(def.heavy && { heavy: true }), ...(def.chop && { chop: def.chop }), ...(def.mine && { mine: def.mine }),
+    ...(def.lightning && { lightning: def.lightning }) }
 }
 
 // Bows, the crossbow and the sling — looted from chests, never a starting

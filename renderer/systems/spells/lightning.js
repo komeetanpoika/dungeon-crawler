@@ -93,6 +93,17 @@ function clampAlong(map, x0, y0, [dx, dy], dist) {
   return last
 }
 
+// One strike mark at a cell: the mark-push castLightning does, callable at
+// an arbitrary tile — Ukonvasara marks the enemy it struck. tickLightning
+// resolves it after LIGHTNING.delay like any other mark. No dedupe: a caller
+// that must not stack marks (the hammer) keeps its own cooldown.
+export function markStrike(state, x, y) {
+  const mark = { x, y, t: 0, delay: LIGHTNING.delay, struck: false }
+  state.lightning = [...(state.lightning ?? []), mark]
+  sfx(state, 'crackle', tileCentre({ x, y }))
+  return mark
+}
+
 // Place this tier's marks ahead of the player. Duplicates are collapsed:
 // three over-tier distances that all clamp against the same wall are one
 // strike, not triple damage on one tile. Returns the marks it added.
@@ -102,14 +113,13 @@ export function castLightning(state, tier = 'tap') {
   const from = tileOf(p)
   const marks = []
   const taken = new Set()
+  state.lightning = state.lightning ?? []
   for (const dist of LIGHTNING.dists[tier] ?? LIGHTNING.dists.tap) {
     const hit = clampAlong(state.map, from.x, from.y, step, dist)
     if (!hit || taken.has(key(hit.x, hit.y))) continue
     taken.add(key(hit.x, hit.y))
-    marks.push({ x: hit.x, y: hit.y, t: 0, delay: LIGHTNING.delay, struck: false })
-    sfx(state, 'crackle', tileCentre(hit))
+    marks.push(markStrike(state, hit.x, hit.y))
   }
-  state.lightning = [...(state.lightning ?? []), ...marks]
   return { marks }
 }
 

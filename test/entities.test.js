@@ -2,7 +2,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeGuard, makeMonster, makeDragon, TILE, hasLineOfSight, isWalkable, makeKey, makeExitDoor, makeTreasure, computePlayerFOV, maybeComputeFOV, makePlayer,
-  RANGED_WEAPON_TYPES, makeRangedContents, WAND_TYPES, makeWandContents, AMMO_KINDS, AMMO_CAPS, emptyAmmo, DIRS, FACING_ANGLE } from '../renderer/systems/entities.js'
+  RANGED_WEAPON_TYPES, makeRangedContents, WAND_TYPES, makeWandContents, AMMO_KINDS, AMMO_CAPS, emptyAmmo, DIRS, FACING_ANGLE,
+  WEAPON_TYPES, weaponContents } from '../renderer/systems/entities.js'
 import { createMap } from '../renderer/systems/map.js'
 
 function openMap(w = 20, h = 20) {
@@ -334,5 +335,19 @@ describe('facing tables', () => {
       assert.equal(Math.round(Math.cos(a)), dx, `cos for ${facing}`)
       assert.equal(Math.round(Math.sin(a)), dy, `sin for ${facing}`)
     }
+  })
+})
+
+describe('ukonvasara', () => {
+  it('is a heavy weapon that calls lightning on a 4 s cooldown', () => {
+    const d = WEAPON_TYPES.ukonvasara
+    assert.equal(d.name, 'Ukonvasara')
+    assert.equal(d.damage, 5)
+    assert.equal(d.heavy, true)
+    assert.deepEqual(d.lightning, { cooldown: 4 })
+  })
+  it('weaponContents carries the lightning field, and an ordinary sword has none', () => {
+    assert.deepEqual(weaponContents('ukonvasara').lightning, { cooldown: 4 })
+    assert.equal(weaponContents('sword').lightning, undefined)
   })
 })
