@@ -155,4 +155,9 @@ describe('the Mountain Pass declaration', () => {
     assert.notDeepEqual(woken, dead)
     assert.match(open.elder.join(' '), /pick/i, 'the opening line says a pick opens the capstone')
   })
+  it('the Mountain Pass has a registered module with onArrive and tick', () => {
+    const m = QUEST_MODULES['forest-3-autumn']
+    assert.equal(typeof m?.onArrive, 'function')
+    assert.equal(typeof m?.tick, 'function')
+  })
 })
