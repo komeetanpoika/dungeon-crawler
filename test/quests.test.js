@@ -127,4 +127,9 @@ describe('the River Split declaration', () => {
     assert.notDeepEqual(open, lit)
     assert.notDeepEqual(lit, done)
   })
+  it('the River Split has a registered module with onArrive and tick', () => {
+    const m = QUEST_MODULES['forest-2-river']
+    assert.equal(typeof m?.onArrive, 'function')
+    assert.equal(typeof m?.tick, 'function')
+  })
 })
