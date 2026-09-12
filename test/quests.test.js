@@ -8,7 +8,11 @@ import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 
 const clearings = OPEN_MAPS[7]
 const lake = OPEN_MAPS[8]
-const river = OPEN_MAPS[11]
+// A map no slice has declared a quest for. Deliberately synthetic rather
+// than a real OPEN_MAPS entry so a future slice declaring a quest for it
+// can't silently flip these "undeclared" assertions to pass for the wrong
+// reason (or force another edit here).
+const UNDECLARED = { name: 'nope', leap: false, pois: [] }
 
 describe('quest declarations', () => {
   it('every declared quest names a real non-leap map', () => {
@@ -46,9 +50,8 @@ describe('questFor', () => {
     assert.equal(questFor(clearings), QUESTS['forest-1-clearings'])
   })
   it('is null on a leap map, an undeclared map and nothing at all', () => {
-    const undeclared = OPEN_MAPS[12]
     assert.equal(questFor(lake), null)
-    assert.equal(questFor(undeclared), null)
+    assert.equal(questFor(UNDECLARED), null)
     assert.equal(questFor(null), null)
     assert.equal(questFor(undefined), null)
   })
@@ -80,7 +83,7 @@ describe('isQuestDone', () => {
     assert.equal(isQuestDone(save, clearings), false)
     questFlags(save, clearings.name).hide_given = true
     assert.equal(isQuestDone(save, clearings), true)
-    assert.equal(isQuestDone(save, river), false)
+    assert.equal(isQuestDone(save, UNDECLARED), false)
   })
 })
 
