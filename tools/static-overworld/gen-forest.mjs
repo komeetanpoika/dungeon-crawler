@@ -236,6 +236,9 @@ function autumn() {
   b.p(hut.x - 2, hut.y + 2, 'ow_beehive')
   b.p(hut.x + 3, hut.y + 1, 'ow_sign', { walkable: false })
   b.poi('village', hut.x + 1, hut.y + 2, 'hermit hut')
+  // The Kivihiisi's hiidenkiuas (renderer/systems/quests/pass.js): a fixed,
+  // verified-walkable bowl west of the pass, POI only — no terrain.
+  b.poi('landmark', 38, 30, 'hiidenkiuas')
   // two mine mouths in the peaks: a pocket of floor opened in the mass with
   // the gate pair at its top, so the arch reads as cut into the mountain
   for (const [i, m] of [{ x: 102, y: 12 }, { x: 74, y: 8 }].entries()) {

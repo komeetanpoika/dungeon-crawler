@@ -95,3 +95,29 @@ describe('the River Split tar pit and bridge gaps', () => {
     for (const label of [PIT, ...GAPS]) assert.equal(riteLabels.has(label), false, label)
   })
 })
+
+describe('the Mountain Pass hiidenkiuas', () => {
+  const pass = OPEN_MAPS[12]
+  const pp = label => pass.pois.find(p => p.label === label)
+  const w = (x, y) => pass.walk[y]?.[x] === '1'
+  it('is a landmark on walkable ground', () => {
+    const k = pp('hiidenkiuas')
+    assert.ok(k, 'missing hiidenkiuas')
+    assert.equal(k.kind, 'landmark')
+    assert.deepEqual({ x: k.x, y: k.y }, { x: 38, y: 30 })
+    assert.ok(w(k.x, k.y))
+  })
+  it('its six ring cells are all walkable, so every boulder can be stamped and mined', () => {
+    const k = pp('hiidenkiuas')
+    for (const [dx, dy] of [[3, 0], [-3, 0], [0, 3], [3, 3], [-3, -3], [3, -3]]) assert.ok(w(k.x + dx, k.y + dy), `${dx},${dy}`)
+  })
+  it('is not the stone circle, and leaves the mines and the hut alone', () => {
+    assert.deepEqual({ x: pp('stone circle').x, y: pp('stone circle').y }, { x: 84, y: 22 })
+    assert.equal(pass.pois.filter(p => p.kind === 'dungeon_entrance').length, 2)
+    assert.equal(pass.pois.filter(p => p.kind === 'village' || p.kind === 'camp').length, 1)
+  })
+  it('takes no label a rite already claims', () => {
+    const riteLabels = new Set((MAP_RITES[pass.name] ?? []).map(r => r.fromPoi))
+    assert.equal(riteLabels.has('hiidenkiuas'), false)
+  })
+})
