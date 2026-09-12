@@ -85,7 +85,10 @@ export function tick(ctx, delta) {
   const { state, flags } = ctx
   const { player } = state
 
-  if (flags.bridge_done) return   // Task 7 adds the bow beat here
+  if (flags.bridge_done) {
+    if (!flags.bow_given && hasBow(player)) { ctx.set('bow_given'); ctx.persist() }
+    return
+  }
 
   if (!flags.bridge_seen) {
     ctx.set('bridge_seen')
@@ -107,6 +110,31 @@ export function tick(ctx, delta) {
       queueToast(state, { title: 'The pit is burning', lines: ['Pine tar, three pots of it.', 'Now the deck.'] })
     } else {
       think(state, 'Three more pots of tar.')
+    }
+    ctx.refreshInventory()
+    ctx.persist()
+    return
+  }
+
+  // Plank: stand beside a broken gap with tar in the sack. A broken gap is
+  // water — it cannot be stood on — so the deck is laid from its end, one
+  // cell per tick, walking out onto each plank as it goes down.
+  const ti = player.inventory.findIndex(i => i.kind === 'tar')
+  if (ti === -1) return
+  for (let i = 0; i < GAPS.length; i++) {
+    if (flags[plankFlag(i)]) continue
+    const c = poiCell(ctx.mapData, GAPS[i])
+    if (!beside(player, c)) continue
+    removeItem(player, ti)
+    plankGap(state.map, c)
+    ctx.set(plankFlag(i))
+    sfx(state, 'drop', { px: c.x * 32 + 16, py: c.y * 32 + 16 })
+    if (GAPS.every((_, j) => flags[plankFlag(j)])) {
+      ctx.set('bridge_done')
+      dropBow(ctx)
+      queueToast(state, { title: 'The deck is whole', lines: ['Tarred, and it will hold.', 'The crew left something at the camp.'] })
+    } else {
+      think(state, 'One plank down.')
     }
     ctx.refreshInventory()
     ctx.persist()
