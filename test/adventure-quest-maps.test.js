@@ -77,6 +77,7 @@ describe('the River Split tar pit and bridge gaps', () => {
     for (const g of gaps) {
       assert.equal(river.walk[g.y][g.x], '1', 'baked as planks')
       assert.ok(skinAt(g.x, g.y).startsWith('ow_water'), `${g.x},${g.y} is over water`)
+      assert.equal(river.palette[river.prop[g.y][g.x]], 'ow_pier_log', `${g.x},${g.y} has the plank prop`)
     }
     assert.deepEqual(gaps.map(g => g.x), [48, 49, 50])
     assert.ok(gaps.every(g => g.y === 58))

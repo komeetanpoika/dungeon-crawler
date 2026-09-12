@@ -8,6 +8,7 @@ import { TILE, makeRangedContents } from '../renderer/systems/entities.js'
 import { makeItem, itemFromContents } from '../renderer/systems/inventory.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
+import { takeDirtyTiles } from '../renderer/systems/tile-dirty.js'
 
 const S = 32
 const N = 40
@@ -72,6 +73,7 @@ describe('the gap cells', () => {
     breakGap(state.map, CELLS[GAPS[0]])
     assert.ok(isBroken(gapCell(state, 0)))
     assert.equal(gapCell(state, 0).skin, 'ow_water_0', 'the water skin is untouched')
+    assert.deepEqual(takeDirtyTiles(state.map), [CELLS[GAPS[0]].x, CELLS[GAPS[0]].y])
   })
   it('plankGap puts the log back over the water and clears losClear', () => {
     const { state } = build()
