@@ -34,7 +34,7 @@ export const QUESTS = {
         villager: ['Tarred and true. That deck will outlast the both of us.', 'A tarred bow. Mind where you loose it — it burns what it lands in.'],
       } },
       { when: f => f.pit_lit, by: {
-        villager: ['Smell that? Pine tar. The deck wants three pots of it.', 'Stand at a gap with a pot in your sack and the planks go down.'],
+        villager: ['Smell that? Pine tar. The deck wants three pots of it.', 'Stand at the broken end with a pot in your sack and the planks go down.'],
       } },
       { when: () => true, by: {
         villager: ['The middle of the south bridge went in the spring flood. We will not lay planks that rot by autumn.', 'No bridge on this river ever held without tar. Six logs into the pit east of camp — it burns down to tar.'],
