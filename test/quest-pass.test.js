@@ -88,6 +88,15 @@ describe('arrival stamps the arena from the flags', () => {
     onArrive(ctx); onArrive(ctx)
     assert.equal(boulders(state), RING_STONES)
   })
+  it('the ring never reuses the capstone skin, on any ring cell', () => {
+    const { ctx, state } = build()
+    onArrive(ctx)
+    for (let i = 0; i < RING_STONES; i++) {
+      const overlay = cellAt(state, ringCell(i)).overlay
+      assert.notEqual(overlay, CAPSTONE)
+      assert.match(overlay, /^ow_mtn_rock_[1-5]$/)
+    }
+  })
   it('honours stones: only that many ring boulders come back', () => {
     const { ctx, state } = build({ flags: { hiisi_woken: true, stones: 2 } })
     onArrive(ctx)
