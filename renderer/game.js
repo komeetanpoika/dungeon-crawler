@@ -346,6 +346,8 @@ function npcsStruckSince(snap) {
 
 // Fireball detonation: flood-fill the blast, burst everyone standing in it
 // (player included — full friendly fire), light the tiles, flash a ring.
+// `fireOnly` (a tarred arrow) skips the burst and shockwave and only lays
+// the burning patch.
 function detonateFireball(px, py, blastTiles, { fireOnly = false } = {}) {
   const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE)
   const tiles = computeBlastTiles(state.map, tx, ty, blastTiles)

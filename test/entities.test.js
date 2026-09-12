@@ -257,7 +257,7 @@ describe('RANGED_WEAPON_TYPES (bows only)', () => {
     }
   })
 
-  it('has exactly the six spec rows', () => {
+  it('has exactly the spec rows', () => {
     assert.deepEqual(Object.keys(RANGED_WEAPON_TYPES).sort(),
       ['crossbow', 'hunterbow', 'longbow', 'shortbow', 'sling', 'splitbow', 'tervajousi'])
   })

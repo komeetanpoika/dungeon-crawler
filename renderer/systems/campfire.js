@@ -25,8 +25,8 @@ export function spendLumber(player, fuel = 'lumber', count = CAMPFIRE_COST) {
     if (i.kind !== fuel || left <= 0) return [i]
     const take = Math.min(left, i.count ?? 1)
     left -= take
-    const count = (i.count ?? 1) - take
-    return count > 0 ? [{ ...i, count }] : []
+    const remaining = (i.count ?? 1) - take
+    return remaining > 0 ? [{ ...i, count: remaining }] : []
   })
 }
 
