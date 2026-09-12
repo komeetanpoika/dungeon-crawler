@@ -81,4 +81,35 @@ export function onArrive(ctx) {
   if (flags.bridge_done && !flags.bow_given) dropBow(ctx)
 }
 
-export function tick(ctx, delta) {}
+export function tick(ctx, delta) {
+  const { state, flags } = ctx
+  const { player } = state
+
+  if (flags.bridge_done) return   // Task 7 adds the bow beat here
+
+  if (!flags.bridge_seen) {
+    ctx.set('bridge_seen')
+    think(state, 'The middle planks are gone. No bridge holds without tar.')
+    ctx.persist()
+  }
+
+  // Burn: stand on the pit with the lumber. It re-fires for more tar while
+  // the deck is unfinished; the cost is paid every time.
+  const pit = poiCell(ctx.mapData, PIT)
+  if (onCell(player, pit) && count(player, 'lumber') >= TAR_PIT_COST) {
+    spendLumber(player, 'lumber', TAR_PIT_COST)
+    if (!addItem(player, makeItem('tar', TAR_YIELD)).ok)
+      ctx.spawn([{ kind: 'floating_pickup', contents: { type: 'tar', count: TAR_YIELD }, x: pit.x, y: pit.y }])
+    sfx(state, 'campfire-light', { px: pit.x * 32 + 16, py: pit.y * 32 + 16 })
+    if (!flags.pit_lit) {
+      ctx.set('pit_lit')
+      lightPit(ctx)
+      queueToast(state, { title: 'The pit is burning', lines: ['Pine tar, three pots of it.', 'Now the deck.'] })
+    } else {
+      think(state, 'Three more pots of tar.')
+    }
+    ctx.refreshInventory()
+    ctx.persist()
+    return
+  }
+}
