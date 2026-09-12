@@ -1,8 +1,9 @@
-// Builds the ten tiles the wands-and-bows redesign needs, in the same
-// pixel-map style as tools/make-firewand-tile.mjs:
+// Builds the tiles the wands-and-bows redesign (plus Tervahauta's reward bow)
+// needs, in the same pixel-map style as tools/make-firewand-tile.mjs:
 //
 //   weapon_hunterbow  weapon_splitbow  weapon_crossbow  weapon_sling
 //   weapon_frostwand  weapon_bramblewand  weapon_blinkwand
+//   weapon_tervajousi
 //   item_arrows  item_bolts  item_stones
 //
 // The two new bows are recolours of the hand-drawn weapon_shortbow /
@@ -269,6 +270,15 @@ const OUTPUTS = [
     [WOOD.light]: [0x4d, 0x7c, 0x0f],
     [WOOD.dark]:  [0x36, 0x53, 0x14],
   }), STRING, [0xa8, 0xa2, 0x9e])],
+
+  // Tervahauta's reward (Tervajousi): the longbow shape recoloured tar-brown
+  // — RANGED_WEAPON_TYPES.tervajousi's own colour (#b45309) as the main
+  // body, with a lighter sheen and a darker shadow either side of it.
+  ['weapon_tervajousi', () => recolour('weapon_longbow', {
+    [WOOD.gold]:  [0xd9, 0x8a, 0x2e],
+    [WOOD.light]: [0xb4, 0x53, 0x09],
+    [WOOD.dark]:  [0x78, 0x37, 0x06],
+  })],
 
   ['weapon_crossbow', () => paint(CROSSBOW, CROSSBOW_PALETTE, 'crossbow')],
   ['weapon_sling',    () => paint(SLING, SLING_PALETTE, 'sling')],

@@ -407,8 +407,12 @@ in `renderer/systems/monsters/`. Tuning happens in `npm run monster-lab`.
   it, on a cooldown stored on the player. `tickLightning` already runs every
   frame, so the delayed strike, the flash and the thunder all come for free.
 - **Icons.** `iconSpriteFor` falls back to `weapon_sword` / `weapon_shortbow`
-  for an unknown `weaponType`, so both weapons show sensible art on day one; a
-  proper atlas sprite for each can follow.
+  for an unknown `weaponType`, so the HUD/sack icon shows sensible art on day
+  one — but that fallback is DOM-icon only. `canvas.js`'s floating-item and
+  held-weapon draws index `SPRITES` directly with no such fallback, so a new
+  weapon with no `SPRITES` entry renders as nothing on the ground and an
+  empty hand when equipped. Every new weapon must ship its own `SPRITES`
+  entry (and tile) before it reaches canvas.
 
 ### Talent (`renderer/systems/talents.js`)
 
