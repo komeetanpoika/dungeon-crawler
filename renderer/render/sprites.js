@@ -91,6 +91,7 @@ export const SPRITES = {
   // and pouches are drawn from pixel maps.
   weapon_hunterbow: 'weapon_hunterbow',
   weapon_splitbow:  'weapon_splitbow',
+  weapon_tervajousi: 'weapon_tervajousi',   // Tervahauta's reward — longbow shape recoloured tar-brown
   weapon_crossbow:  'weapon_crossbow',
   weapon_sling:     'weapon_sling',
   weapon_sparkwand: 'tile_0130',

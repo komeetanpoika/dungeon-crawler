@@ -56,11 +56,14 @@ export const RANGED_WEAPON_TYPES = {
   crossbow:  { name: 'Crossbow',    damage: 5, cooldown: 1.2, color: '#e5e7eb', kind: 'crossbow', ammoKind: 'bolt',  bundle: 8,
     heavy: true, knockback: 45, piercesShield: true },
   sling:     { name: 'Sling',       damage: 1, cooldown: 0.5, color: '#a8a29e', kind: 'sling',    ammoKind: 'stone', bundle: 20, stun: 0.5 },
+  // Tervahauta's reward (systems/quests/river.js): a longbow whose arrow
+  // leaves a burning patch — `fire.tiles` is the fire zone's flood size.
+  tervajousi: { name: 'Tervajousi', damage: 3, cooldown: 0.7, color: '#b45309', kind: 'bow', ammoKind: 'arrow', bundle: 10, draw: true, fire: { tiles: 3 } },
 }
 
 // Flags that ride through unchanged from a RANGED_WEAPON_TYPES row onto the
 // contents object, only when the row actually sets them.
-const RANGED_FLAG_KEYS = ['draw', 'fork', 'heavy', 'knockback', 'piercesShield', 'stun']
+const RANGED_FLAG_KEYS = ['draw', 'fork', 'heavy', 'knockback', 'piercesShield', 'stun', 'fire']
 
 export function makeRangedContents(weaponType = 'shortbow') {
   const wt = RANGED_WEAPON_TYPES[weaponType] ? weaponType : 'shortbow'

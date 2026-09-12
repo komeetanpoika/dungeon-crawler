@@ -21,6 +21,7 @@ const STACKABLE_KINDS = {
   fleece:      { name: "Lamb's Fleece", emoji: '🐑', extra: { quest: true } },
   // Adventure quest items: same carry-only rule as the leap ones.
   elk_hide:    { name: 'Elk Hide',    emoji: '🦌', extra: { quest: true } },
+  tar:         { name: 'Pine Tar',    emoji: '🛢', extra: { quest: true } },
 }
 
 export function makeItem(kind, count = 1) {

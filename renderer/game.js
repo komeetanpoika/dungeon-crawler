@@ -346,11 +346,15 @@ function npcsStruckSince(snap) {
 
 // Fireball detonation: flood-fill the blast, burst everyone standing in it
 // (player included — full friendly fire), light the tiles, flash a ring.
-function detonateFireball(px, py, blastTiles) {
+// `fireOnly` (a tarred arrow) skips the burst and shockwave and only lays
+// the burning patch.
+function detonateFireball(px, py, blastTiles, { fireOnly = false } = {}) {
   const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE)
   const tiles = computeBlastTiles(state.map, tx, ty, blastTiles)
   if (!tiles.length) return
   sfx(state, 'fire-burst', { px, py })
+  // A tarred arrow only burns: the patch, no burst damage, no shockwave.
+  if (fireOnly) { state.fireZones.push(makeFireZone(tiles)); return }
   const before = state.entities
   const npcSnap = npcSnapshot()
   const burst = applyBurst(state.entities, state.player, tiles)
@@ -402,7 +406,7 @@ function hurtEntity(e, damage, meta) {
 const projectileHooks = {
   isHittable,
   hurt: hurtEntity,
-  detonate: (px, py, blastTiles) => detonateFireball(px, py, blastTiles),
+  detonate: (px, py, blastTiles, opts) => detonateFireball(px, py, blastTiles, opts),
   damagePlayer: damage => damagePlayer(state, damage, 'hit'),
   // A corpse sits at 0 hp until it is culled, and would otherwise soak a
   // second projectile arriving the same frame.
@@ -1454,6 +1458,7 @@ function update(delta) {
     if (shot.fork) proj.fork = { ...shot.fork }
     if (shot.onHit) proj.onHit = { ...shot.onHit }
     if (shot.piercesShield) proj.piercesShield = true
+    if (shot.explodes) { proj.explodes = true; proj.blastTiles = shot.blastTiles; if (shot.fireOnly) proj.fireOnly = true }
     state.projectiles.push(proj)
     sfx(state, 'ranged-shot', { px: player.px, py: player.py })
   }

@@ -257,9 +257,9 @@ describe('RANGED_WEAPON_TYPES (bows only)', () => {
     }
   })
 
-  it('has exactly the six spec rows', () => {
+  it('has exactly the spec rows', () => {
     assert.deepEqual(Object.keys(RANGED_WEAPON_TYPES).sort(),
-      ['crossbow', 'hunterbow', 'longbow', 'shortbow', 'sling', 'splitbow'])
+      ['crossbow', 'hunterbow', 'longbow', 'shortbow', 'sling', 'splitbow', 'tervajousi'])
   })
 
   it('makeRangedContents("crossbow") carries its heavy/knockback/pierce flags and no ammo fields', () => {
@@ -283,6 +283,13 @@ describe('RANGED_WEAPON_TYPES (bows only)', () => {
     assert.equal(makeRangedContents('longbow').draw, true)
     assert.deepEqual(makeRangedContents('splitbow').fork, { after: 32, count: 3, spread: Math.PI / 9 })
     assert.equal(makeRangedContents('sling').stun, 0.5)
+  })
+
+  it('makeRangedContents("tervajousi") carries the fire flag', () => {
+    const c = makeRangedContents('tervajousi')
+    assert.deepEqual(c.fire, { tiles: 3 })
+    assert.equal(c.draw, true)
+    assert.equal(c.ammoKind, 'arrow')
   })
 })
 

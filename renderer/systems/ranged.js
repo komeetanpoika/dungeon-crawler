@@ -99,6 +99,9 @@ export function tryFire(player, tier = 'tap') {
     if (bonus.pierce !== undefined) result.pierce = bonus.pierce
   }
   if (r.fork) result.fork = r.fork
+  // An incendiary arrow borrows the fireball's detonation fields, flagged
+  // fireOnly so game.js lays the fire zone without the burst damage.
+  if (r.fire) { result.explodes = true; result.blastTiles = r.fire.tiles; result.fireOnly = true }
   // Merged rather than two separate assignments, so a future weapon that
   // sets both stun and knockback wouldn't have one silently clobber the other.
   if (r.stun !== undefined || r.knockback !== undefined) {

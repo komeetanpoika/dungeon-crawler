@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SPRITES } from '../renderer/render/sprites.js'
+import { WEAPON_TYPES, RANGED_WEAPON_TYPES } from '../renderer/systems/entities.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ASSETS = join(__dirname, '../renderer/assets/tiles')
@@ -115,6 +116,17 @@ describe('ranged weapons', () => {
   it('bows use custom art (no bow in the tileset)', () => {
     assert.equal(SPRITES.weapon_shortbow, 'weapon_shortbow')
     assert.equal(SPRITES.weapon_longbow, 'weapon_longbow')
+  })
+})
+
+// Every melee/ranged weapon key must have a canvas sprite — the DOM icon
+// path (icons.js) falls back to a stand-in art, but canvas.js's floating-item
+// and held-weapon draws have no such fallback and render nothing at all.
+describe('every weapon key has a sprite', () => {
+  it('WEAPON_TYPES and RANGED_WEAPON_TYPES each resolve to a SPRITES entry', () => {
+    const missing = [...Object.keys(WEAPON_TYPES), ...Object.keys(RANGED_WEAPON_TYPES)]
+      .filter(key => !SPRITES[`weapon_${key}`])
+    assert.deepEqual(missing, [])
   })
 })
 

@@ -3,7 +3,9 @@
 // tick(ctx, delta) — called once per surface frame. game.js guards every
 // lookup with `?.`, so a declared quest with no module here is inert.
 import { onArrive as clearingsArrive, tick as clearingsTick } from './clearings.js'
+import { onArrive as riverArrive, tick as riverTick } from './river.js'
 
 export const QUEST_MODULES = {
   'forest-1-clearings': { onArrive: clearingsArrive, tick: clearingsTick },
+  'forest-2-river':     { onArrive: riverArrive,     tick: riverTick },
 }

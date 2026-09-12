@@ -8,7 +8,11 @@ import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 
 const clearings = OPEN_MAPS[7]
 const lake = OPEN_MAPS[8]
-const river = OPEN_MAPS[11]
+// A map no slice has declared a quest for. Deliberately synthetic rather
+// than a real OPEN_MAPS entry so a future slice declaring a quest for it
+// can't silently flip these "undeclared" assertions to pass for the wrong
+// reason (or force another edit here).
+const UNDECLARED = { name: 'nope', leap: false, pois: [] }
 
 describe('quest declarations', () => {
   it('every declared quest names a real non-leap map', () => {
@@ -47,7 +51,7 @@ describe('questFor', () => {
   })
   it('is null on a leap map, an undeclared map and nothing at all', () => {
     assert.equal(questFor(lake), null)
-    assert.equal(questFor(river), null)
+    assert.equal(questFor(UNDECLARED), null)
     assert.equal(questFor(null), null)
     assert.equal(questFor(undefined), null)
   })
@@ -79,7 +83,7 @@ describe('isQuestDone', () => {
     assert.equal(isQuestDone(save, clearings), false)
     questFlags(save, clearings.name).hide_given = true
     assert.equal(isQuestDone(save, clearings), true)
-    assert.equal(isQuestDone(save, river), false)
+    assert.equal(isQuestDone(save, UNDECLARED), false)
   })
 })
 
@@ -105,5 +109,30 @@ describe('makeQuestCtx', () => {
     ctx.set('hunt_seen')
     assert.equal(save.quests[clearings.name].flags.hunt_seen, true)
     assert.deepEqual(save.leaps, {})
+  })
+})
+
+describe('the River Split declaration', () => {
+  const river = OPEN_MAPS[11]
+  const quest = QUESTS['forest-2-river']
+  it('is found for depth 11 and is done only on bridge_done', () => {
+    assert.equal(questFor(river), quest)
+    assert.equal(quest.title, 'Tervahauta')
+    assert.equal(quest.rule({}), false)
+    assert.equal(quest.rule({ pit_lit: true, plank_1: true, plank_2: true, plank_3: true }), false)
+    assert.equal(quest.rule({ bridge_done: true }), true)
+  })
+  it('stages the crew\'s lines: opening, once the pit is lit, and when the deck is whole', () => {
+    const open = questLines(quest, {})
+    const lit = questLines(quest, { pit_lit: true })
+    const done = questLines(quest, { bridge_done: true })
+    for (const s of [open, lit, done]) assert.ok(s.villager?.length, 'the camp is villagers')
+    assert.notDeepEqual(open, lit)
+    assert.notDeepEqual(lit, done)
+  })
+  it('the River Split has a registered module with onArrive and tick', () => {
+    const m = QUEST_MODULES['forest-2-river']
+    assert.equal(typeof m?.onArrive, 'function')
+    assert.equal(typeof m?.tick, 'function')
   })
 })

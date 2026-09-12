@@ -280,10 +280,11 @@ tar. Fell the trees, burn the pit, tar the deck.
    and a self-advanced counter would need persisting every frame. The chore is
    already six trees' worth of chopping and three carries; the timer bought
    nothing and is cut.
-4. **Plank.** Walk onto a broken gap carrying tar: one tar is spent, the log
-   overlay returns, the cell goes walkable, `markTileDirty`. Three tar, three
-   cells, and the bridge stands — permanently, from the flag, on every future
-   arrival.
+4. **Plank.** Stand **beside** a broken gap (a broken gap is water and cannot be
+   stood on) carrying tar: one tar is spent, the log overlay returns, the cell
+   goes walkable, `markTileDirty`. The deck is laid from its end, walking out
+   onto each plank as it goes down. Three tar, three cells, and the bridge stands
+   — permanently, from the flag, on every future arrival.
 
 **Reward:** the **Tervajousi** (Tarred Bow) from the crew when the deck is
 whole. The permanent cookfire arrives earlier, the moment the pit is lit — a
@@ -301,7 +302,9 @@ cookfire are the reward.
 hard-block progression. Never target it.
 
 **Flags:** `bridge_seen`, `pit_lit`, `plank_1`, `plank_2`, `plank_3`,
-`bridge_done`.
+`bridge_done`, `bow_given`. The `bow_given` flag is set the first tick the player
+is seen holding or carrying the bow; the re-drop on arrival stops there, so a
+deliberately discarded bow is not a free bundle of arrows every visit.
 **Rule:** `f => !!f.bridge_done`.
 
 **Failure modes.**
@@ -404,8 +407,12 @@ in `renderer/systems/monsters/`. Tuning happens in `npm run monster-lab`.
   it, on a cooldown stored on the player. `tickLightning` already runs every
   frame, so the delayed strike, the flash and the thunder all come for free.
 - **Icons.** `iconSpriteFor` falls back to `weapon_sword` / `weapon_shortbow`
-  for an unknown `weaponType`, so both weapons show sensible art on day one; a
-  proper atlas sprite for each can follow.
+  for an unknown `weaponType`, so the HUD/sack icon shows sensible art on day
+  one — but that fallback is DOM-icon only. `canvas.js`'s floating-item and
+  held-weapon draws index `SPRITES` directly with no such fallback, so a new
+  weapon with no `SPRITES` entry renders as nothing on the ground and an
+  empty hand when equipped. Every new weapon must ship its own `SPRITES`
+  entry (and tile) before it reaches canvas.
 
 ### Talent (`renderer/systems/talents.js`)
 

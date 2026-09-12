@@ -514,3 +514,16 @@ describe('elk hide', () => {
     assert.equal(itemFromContents({ type: 'elk_hide' })?.kind, 'elk_hide')
   })
 })
+
+describe('pine tar', () => {
+  it('is a carry-only stackable', () => {
+    const tar = makeItem('tar', 3)
+    assert.equal(tar.kind, 'tar')
+    assert.equal(tar.stackable, true)
+    assert.equal(tar.quest, true)
+    assert.equal(tar.count, 3)
+  })
+  it('round-trips through contents', () => {
+    assert.equal(itemFromContents({ type: 'tar', count: 2 })?.count, 2)
+  })
+})
