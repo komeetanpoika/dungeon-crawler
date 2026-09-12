@@ -28,6 +28,13 @@ describe('building', () => {
     const q = mkPlayer([makeItem('lumber', 3)]); spendLumber(q)
     assert.deepEqual(q.inventory, [])
   })
+  it('spendLumber takes an explicit count, leaving CAMPFIRE_COST as the default', () => {
+    const p = mkPlayer([makeItem('lumber', 8)])
+    spendLumber(p, 'lumber', 6)
+    assert.equal(p.inventory[0].count, 2)
+    const q = mkPlayer([makeItem('lumber', 4)]); spendLumber(q)
+    assert.equal(q.inventory[0].count, 4 - CAMPFIRE_COST)
+  })
   it('buildSpot picks the first free orthogonal walkable tile, skipping occupied ones', () => {
     const m = grass(); const p = mkPlayer()
     assert.deepEqual(buildSpot(m, [], p), { x: 2, y: 3 })

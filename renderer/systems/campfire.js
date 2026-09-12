@@ -16,9 +16,11 @@ export function canBuildCampfire(player, fuel = 'lumber') {
   return fuelCount(player, fuel) >= CAMPFIRE_COST ? { ok: true } : { ok: false, reason: 'lumber' }
 }
 
-// Remove CAMPFIRE_COST of the given fuel, emptied stacks vanish.
-export function spendLumber(player, fuel = 'lumber') {
-  let left = CAMPFIRE_COST
+// Remove `count` of the given fuel (the campfire's cost by default); emptied
+// stacks vanish. The tar pit passes its own count — it never touches
+// CAMPFIRE_COST.
+export function spendLumber(player, fuel = 'lumber', count = CAMPFIRE_COST) {
+  let left = count
   player.inventory = player.inventory.flatMap(i => {
     if (i.kind !== fuel || left <= 0) return [i]
     const take = Math.min(left, i.count ?? 1)
