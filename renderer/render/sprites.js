@@ -84,7 +84,7 @@ export const SPRITES = {
   weapon_club:      'tile_0107',
   weapon_pick:      'tile_0117',
   weapon_maunonmiekka: 'weapon_maunonmiekka',   // 24px custom art (from the miekka drawing)
-  weapon_ukonvasara: 'tile_0107',   // placeholder — reuses the unused club tile; no hammer/maul tile in the atlas yet, a proper sprite can follow
+  weapon_ukonvasara: 'weapon_ukonvasara',   // Ukko's hammer — its own tile (tools/make-ukonvasara-tile.mjs)
   weapon_shortbow:  'weapon_shortbow',    // custom art — tileset has no bow
   weapon_longbow:   'weapon_longbow',     // custom art — tileset has no bow
   // The rest of the ranged roster and the ammo icons (tools/make-ranged-tiles.mjs):

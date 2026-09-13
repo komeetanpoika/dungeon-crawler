@@ -11,10 +11,10 @@ const mk = () => ({ type: 'kivihiisi', x: 8, y: 5, px: 8 * S + 16, py: 5 * S + 1
 const mkState = e => ({ entities: [e], feedback: makeFeedback(), sfx: makeSfx(), player: { x: 4, y: 5, px: 4 * S + 16, py: 5 * S + 16, hp: 10 } })
 
 describe('lazy init', () => {
-  it('stamps full cladding capped by the standing stones, and arms it', () => {
+  it('stamps full cladding capped by the standing stones, and does not arm it', () => {
     const e = ensureKivihiisi(mk(), 6)
     assert.equal(e.clad, CLAD_MAX)
-    assert.equal(e.weaponId, 'maul')
+    assert.equal('weaponId' in e, false, 'the weapon is the def\'s (behavior.weapon), not the hook\'s')
     const two = ensureKivihiisi(mk(), 2)
     assert.equal(two.clad, 2)
   })

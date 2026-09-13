@@ -47,17 +47,14 @@ export function startBolt(e, toward = null) {
   return true
 }
 
-// The last wallow: it stops being a story creature and becomes an enemy —
-// weaponId is what actually arms it (enemy-attack.js's getEnemyWeapon falls
-// back to ENEMY_MELEE[e.type], which has no 'hirvi' row), the same way
-// maahinen.js's ensureMaahinen stamps 'maul' for its own fight. maul's reach
-// (34) clears the def's stopRange (26), so the brain walks into its own
-// swing.
+// The last wallow: it stops being a story creature and becomes an enemy.
+// The brain does the rest with the maul the def gave it at spawn
+// (behavior.weapon → makeMonsterFromDef); maul's reach (34) clears the
+// def's stopRange (26), so the brain walks into its own swing.
 export function makeStand(e) {
   ensureHirvi(e)
   e.mood = 'standing'
   e.brainDriven = true
-  e.weaponId = 'maul'
   e.fadeA = 1
 }
 

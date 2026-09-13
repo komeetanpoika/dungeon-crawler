@@ -105,17 +105,19 @@ export function monstersForOpenMap(depth) {
     .map(d => ({ name: d.name, count: d.spawn.openMaps.count ?? 1 }))
 }
 
-// Contract this def does NOT enforce: melee needs a weaponId, from either
-// ENEMY_MELEE[type] (enemy-attack.js) or an entity-level e.weaponId a hook
-// stamps on later (e.g. maahinen.js's ensureMaahinen, hirvi.js's makeStand).
-// Neither is guaranteed — a registry monster with no ENEMY_MELEE row whose
-// hook never sets weaponId cannot land a melee hit; tryStartEnemyAttack just
-// bails silently on it. boarhound and rappeluu have this same gap today
-// (out of scope here, and may be deliberate — they may only ever be shot).
+// A melee-capable registry monster names its weapon on the def as
+// behavior.weapon (an enemy-attack.js WEAPONS id — 'maul' for the hook
+// beasts); makeMonsterFromDef stamps it as the entity's weaponId, the same
+// rule npc.js applies to a species' `weapon`, so no hook module has to
+// remember to arm what it drives. A def without one cannot melee at all
+// (enemy-attack.js's getEnemyWeapon falls back to ENEMY_MELEE[type], which
+// has no registry rows) — boarhound and rappeluu are in that state today,
+// deliberately unarmed until someone decides they bite.
 export function makeMonsterFromDef(name, x, y) {
   const d = REGISTRY[name]
   if (!d) return null
-  return { type: name, x, y, hp: d.stats.hp, maxHp: d.stats.hp, damage: d.stats.dmg, inCombat: false }
+  return { type: name, x, y, hp: d.stats.hp, maxHp: d.stats.hp, damage: d.stats.dmg, inCombat: false,
+    ...(d.behavior?.weapon ? { weaponId: d.behavior.weapon } : {}) }
 }
 
 // Per-frame pose bookkeeping, stored on the entity. Called from the enemy

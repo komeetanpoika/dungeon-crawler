@@ -7,7 +7,7 @@
               "hideColor": "#6e6a63", "bellyColor": "#8f8a80", "eyeColor": "#e0b040", "scales": false,
               "gaitFreq": 4, "bob": 0.03 },
   "stats": { "hp": 40, "dmg": 3, "speed": 45 },
-  "behavior": { "taxon": "beast", "sightRange": 320, "stopRange": 26, "fleeHp": 0, "wanderSpeed": 0 },
+  "behavior": { "taxon": "beast", "weapon": "maul", "sightRange": 320, "stopRange": 26, "fleeHp": 0, "wanderSpeed": 0 },
   "spawn": null,
   "hooks": true
 }

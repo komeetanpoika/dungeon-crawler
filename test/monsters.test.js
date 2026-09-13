@@ -257,6 +257,26 @@ describe('brainDriven opt-out', () => {
 // relative to systems/monsters.js, the same way the game's own boot does)
 // and drives the entity makeMonsterFromDef hands back through the real
 // lifecycle.
+// behavior.weapon is the def-level arm: makeMonsterFromDef stamps it as the
+// entity's weaponId (the same rule npc.js applies to a species' `weapon`), so
+// no hook module has to remember to — the class of bug behind Finding 1.
+describe('behavior.weapon', () => {
+  beforeEach(clearMonsters)
+  it('makeMonsterFromDef stamps weaponId from the def, and nothing without one', async () => {
+    await load([{ ...DEF, behavior: { ...DEF.behavior, weapon: 'claw' } }])
+    assert.equal(makeMonsterFromDef('boarhound', 1, 1).weaponId, 'claw')
+    clearMonsters()
+    await load([DEF])
+    assert.equal('weaponId' in makeMonsterFromDef('boarhound', 1, 1), false)
+  })
+  it('every hook monster that fights carries its weapon on the def', () => {
+    for (const name of ['hirvi', 'maahinen', 'kivihiisi']) {
+      const def = JSON.parse(fs.readFileSync(`renderer/data/monsters/${name}.json`, 'utf8'))
+      assert.equal(def.behavior.weapon, 'maul', name)
+    }
+  })
+})
+
 describe('the real hirvi def — the actual spawn path', () => {
   beforeEach(clearMonsters)
 
@@ -295,24 +315,27 @@ describe('the real hirvi def — the actual spawn path', () => {
     e.py = 5 * S + 16
     const state = makeState(e, { x: 4, y: 5 })
 
+    // Armed from the def at spawn — before any hook has touched it.
+    assert.equal(e.weaponId, 'maul')
+
     // Bedded: an enemy by faction (it has a def and isn't passive), but the
-    // hook still owns it — untouchable and unarmed.
+    // hook still owns it — the enemy loop skips story creatures before it
+    // ever reaches tryStartEnemyAttack, so the weapon it carries is inert.
     ensureHirvi(e)
     assert.equal(isEnemy(e), true)
     assert.equal(isStoryCreature(e), true)
-    assert.equal(tryStartEnemyAttack(e, state), false)
     const before = e.hp
     const absorbed = hurtCreature(state, e, 99)
     assert.equal(absorbed.absorbed, true)
     assert.equal(e.hp, before)
 
-    // Bolting: still a story creature, still unarmed.
+    // Bolting: still a story creature.
     assert.equal(startBolt(e), true)
     updateHirvi(e, state, 0.1)
     assert.equal(isStoryCreature(e), true)
-    assert.equal(tryStartEnemyAttack(e, state), false)
 
-    // The stand: brain-driven, armed, and a real enemy fight from here on.
+    // The stand: brain-driven, and a real enemy fight from here on with the
+    // weapon the def gave it — makeStand stamps nothing.
     makeStand(e)
     assert.equal(isStoryCreature(e), false)
     assert.equal(e.weaponId, 'maul')
