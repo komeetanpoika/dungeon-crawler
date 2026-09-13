@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import { TILE } from '../renderer/systems/entities.js'
 import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
 import { makeNakki } from '../renderer/systems/monsters/nakki.js'
-import { LIGHTNING, STRIKE_LIFE, castLightning, isWaterCell, connectedWater, tickLightning }
+import { LIGHTNING, STRIKE_LIFE, castLightning, isWaterCell, connectedWater, tickLightning, markStrike }
   from '../renderer/systems/spells/lightning.js'
+import { makeSfx } from '../renderer/systems/sfx.js'
 
 const FAKE_RIG = {
   PARAM_SCHEMA: [{ key: 'size', label: 'Size', group: 'body', type: 'range', min: 0, max: 2, step: 0.1, default: 1 }],
@@ -48,6 +49,14 @@ function recorder() {
 
 const markKeys = state => (state.lightning ?? []).map(m => `${m.x},${m.y}`)
 
+// Lifted to file scope so both castLightning's and markStrike's describes
+// can build state with it.
+const openState = (facing = 'east') => ({
+  map: grid([row(12), row(12), row(12), row(12), row(12)]),
+  player: player(1, 2, facing),
+  entities: [],
+})
+
 describe('LIGHTNING constants', () => {
   it('holds the spec numbers', () => {
     assert.deepEqual(LIGHTNING, {
@@ -59,12 +68,6 @@ describe('LIGHTNING constants', () => {
 })
 
 describe('castLightning', () => {
-  const openState = (facing = 'east') => ({
-    map: grid([row(12), row(12), row(12), row(12), row(12)]),
-    player: player(1, 2, facing),
-    entities: [],
-  })
-
   it('marks the tap distance ahead, creating state.lightning', () => {
     const state = openState()
     const { marks } = castLightning(state, 'tap')
@@ -130,6 +133,23 @@ describe('castLightning', () => {
     const state = { map: grid(['............', '.===========', '............']), player: player(0, 1), entities: [] }
     castLightning(state, 'tap')
     assert.deepEqual(markKeys(state), ['3,1'])
+  })
+})
+
+describe('markStrike', () => {
+  const withSfx = () => ({ ...openState(), sfx: makeSfx() })
+  it('places one mark at the named cell with the standard delay, and plays the crackle', () => {
+    const state = withSfx()
+    const mark = markStrike(state, 4, 5)
+    assert.deepEqual(state.lightning, [{ x: 4, y: 5, t: 0, delay: LIGHTNING.delay, struck: false }])
+    assert.equal(mark, state.lightning[0])
+    assert.ok(state.sfx.cues.some(c => c.name === 'crackle'))
+  })
+  it('stacks: two calls are two marks — the caller owns any cooldown', () => {
+    const state = withSfx()
+    markStrike(state, 4, 5)
+    markStrike(state, 4, 5)
+    assert.equal(state.lightning.length, 2)
   })
 })
 

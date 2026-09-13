@@ -748,7 +748,7 @@ export const FOUND_TILES = 6     // Chebyshev tiles: how close reads the oven
 
 const S = 32
 const centre = c => ({ px: c.x * S + S / 2, py: c.y * S + S / 2 })
-const boulderSkin = i => `ow_mtn_rock_${(i + 1) % 6}`   // the ring never reuses the capstone's skin
+const boulderSkin = i => `ow_mtn_rock_${1 + (i % 5)}`   // the ring never reuses the capstone's skin
 const stonesOf = flags => flags.stones ?? RING_STONES
 const ringCell = (kiuas, i) => ({ x: kiuas.x + RING[i][0], y: kiuas.y + RING[i][1] })
 const isBoulder = cell => typeof cell?.overlay === 'string' && cell.overlay.startsWith('ow_mtn_rock_')

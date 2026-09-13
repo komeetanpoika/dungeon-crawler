@@ -42,4 +42,22 @@ export const QUESTS = {
     ],
     rule: f => !!f.bridge_done,
   },
+  'forest-3-autumn': {
+    title: 'Kivihiisi',
+    villagerLines: [
+      { when: f => f.hiisi_dead, by: {
+        villager: ['The goats came back on their own. They know.'],
+        elder:    ["Ukko's own hammer. Do not swing it near the hut."],
+      } },
+      { when: f => f.hiisi_woken, by: {
+        villager: ['You woke it? Then break its stones. It wears them.'],
+        elder:    ['Every boulder standing round that oven is a skin it can put back on.'],
+      } },
+      { when: () => true, by: {
+        villager: ["The goats are gone and the door is boarded. There is a hiidenkiuas west of the pass — a giant's oven."],
+        elder:    ['Nothing but a pick opens that capstone. The old mines hand them out.'],
+      } },
+    ],
+    rule: f => !!f.hiisi_dead,
+  },
 }

@@ -53,7 +53,7 @@ import { startStanceSwitch, tickStanceSwitch, tryFire, DRAW_CHARGE, resolveDrawT
 import { castCone, GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust } from './systems/magic.js'
 import { spellFor, tryCast } from './systems/spells.js'
 import { tickZones } from './systems/zones.js'
-import { castLightning, tickLightning } from './systems/spells/lightning.js'
+import { castLightning, tickLightning, markStrike } from './systems/spells/lightning.js'
 import { stepProjectiles } from './systems/projectiles.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
@@ -1266,6 +1266,7 @@ function update(delta) {
   // Combat cooldowns
   player.meleeCooldown  = Math.max(0, player.meleeCooldown  - delta)
   player.rangedCooldown = Math.max(0, player.rangedCooldown - delta)
+  player.hammerT = Math.max(0, (player.hammerT ?? 0) - delta)
   player.attackTimer    = Math.max(0, player.attackTimer    - delta)
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
@@ -1303,6 +1304,8 @@ function update(delta) {
     const arc = getSwingArc(atk.style)
     const hitAt = (dx, dy) => inSwing(arc.reach * mods.reachMul, arc.halfAngle, fa, dx, dy)
     const miekka = meleeWT === 'maunonmiekka'
+    const hammer = player.weapon?.lightning ?? null   // Ukonvasara: a strike on the struck cell
+    const collect = miekka || (hammer && (player.hammerT ?? 0) <= 0)
     const struck = []   // enemies hit this swing (for the Maunonmiekka's shockwave)
     state.entities = state.entities
       .map(e => {
@@ -1315,7 +1318,7 @@ function update(delta) {
           const bossHit = { ...e, hp: e.hp - bossDmg, inCombat: true }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${bossDmg}`, kind: 'dealt' })
           sfx(state, 'melee-hit', { px: e.px, py: e.py })
-          if (miekka) struck.push(bossHit)
+          if (collect) struck.push(bossHit)
           return bossHit
         }
         if (!hitAt(e.px - player.px, e.py - player.py)) return e
@@ -1325,6 +1328,11 @@ function update(delta) {
           if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
           if (r.think) think(state, r.think)
           if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
+          // Only the hammer collects registry creatures: the Maunonmiekka's
+          // shockwave never bursts from these (hirvi, boarhound, kivihiisi,
+          // etc.) — miekka and hammer never coexist on one weapon, so this
+          // doesn't change anything for the miekka.
+          if (hammer) struck.push(e)
           return e
         }
         // Shatter: a rimed-over enemy takes +2 and thaws on the blow. Read
@@ -1335,13 +1343,13 @@ function update(delta) {
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${total}`, kind: 'dealt' })
         sfx(state, hitEnemy.hp <= 0 ? deathCue(hitEnemy) : 'melee-hit', { px: e.px, py: e.py })
         startKnockback(hitEnemy, hitEnemy.px - player.px, hitEnemy.py - player.py, atk.knockback * mods.kbMul)
-        if (miekka) struck.push(hitEnemy)
+        if (collect) struck.push(hitEnemy)
         return hitEnemy
       })
     cullEntities()
     // Maunonmiekka magic: a crimson shockwave bursts from every struck enemy,
     // splashing damage + knockback onto its neighbours.
-    if (struck.length) {
+    if (miekka && struck.length) {
       const exclude = new Set(struck)
       for (const s of struck) {
         const snap = npcSnapshot()
@@ -1351,6 +1359,14 @@ function update(delta) {
         state.shockwaves.push({ px: s.px, py: s.py, t: 0, dur: 0.35, maxRadius: SHOCK_RADIUS })
         sfx(state, 'shockwave', { px: s.px, py: s.py })
       }
+    }
+    // Ukonvasara: one strike on the first struck enemy's cell, then the
+    // hammer rests. tickLightning already runs every frame, so the delayed
+    // strike, the flash and the thunder all come for free.
+    if (hammer && struck.length && (player.hammerT ?? 0) <= 0) {
+      const s = struck[0]
+      markStrike(state, Math.floor(s.px / TILE_SIZE), Math.floor(s.py / TILE_SIZE))
+      player.hammerT = hammer.cooldown
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
     // Harvesting: a hatchet/axe swing lands on the nearest tree in the

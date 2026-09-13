@@ -1,0 +1,13 @@
+{
+  "name": "kivihiisi",
+  "rig": "quadruped",
+  "params": { "bodyLength": 1.6, "bodyWidth": 1.8, "bulge": 0.5, "legLength": 0.3, "legThick": 0.45,
+              "headSize": 0.9, "snout": 0.5, "eyeSize": 0.07, "horns": true,
+              "tailLength": 0.1, "tailTaper": 0.3,
+              "hideColor": "#6e6a63", "bellyColor": "#8f8a80", "eyeColor": "#e0b040", "scales": false,
+              "gaitFreq": 4, "bob": 0.03 },
+  "stats": { "hp": 40, "dmg": 3, "speed": 45 },
+  "behavior": { "taxon": "beast", "sightRange": 320, "stopRange": 26, "fleeHp": 0, "wanderSpeed": 0 },
+  "spawn": null,
+  "hooks": true
+}

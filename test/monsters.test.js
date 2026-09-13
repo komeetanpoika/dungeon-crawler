@@ -324,3 +324,19 @@ describe('the real hirvi def — the actual spawn path', () => {
     assert.equal(state.creatureKills.hirvi, true)
   })
 })
+
+describe('kivihiisi def', () => {
+  const def = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/kivihiisi.json', import.meta.url), 'utf8'))
+  const index = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/index.json', import.meta.url), 'utf8'))
+  it('is a brain-driven quadruped with hooks, never a random spawn', () => {
+    assert.match(def.name, /^[a-z0-9_]+$/)
+    assert.equal(def.rig, 'quadruped')
+    assert.equal(def.params.horns, true)
+    assert.deepEqual(def.stats, { hp: 40, dmg: 3, speed: 45 })
+    assert.notEqual(def.behavior.driver, 'hook', 'the ordinary brain chases and attacks')
+    assert.equal(def.behavior.fleeHp, 0)
+    assert.equal(def.spawn, null)
+    assert.equal(def.hooks, true)
+  })
+  it('is listed in the index', () => { assert.ok(index.includes('kivihiisi')) })
+})
