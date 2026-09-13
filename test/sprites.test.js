@@ -109,6 +109,7 @@ describe('ranged weapons', () => {
   it('weapon_sparkwand = tile_0130 (cyan-tipped wand)',   () => assert.equal(SPRITES.weapon_sparkwand, 'tile_0130'))
   it('weapon_stormwand = tile_0129 (purple-tipped wand)', () => assert.equal(SPRITES.weapon_stormwand, 'tile_0129'))
   it('weapon_firewand uses its own recoloured tile (orange tip)', () => assert.equal(SPRITES.weapon_firewand, 'weapon_firewand'))
+  it('weapon_ukonvasara uses its own tile, not the club\'s', () => assert.equal(SPRITES.weapon_ukonvasara, 'weapon_ukonvasara'))
   it('every wand has a distinct tile', () => {
     const wands = [SPRITES.weapon_sparkwand, SPRITES.weapon_stormwand, SPRITES.weapon_firewand]
     assert.equal(new Set(wands).size, wands.length)
