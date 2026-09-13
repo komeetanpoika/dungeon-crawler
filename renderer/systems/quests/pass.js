@@ -13,7 +13,7 @@
 // tick on !state.cave). Pure — no browser/Electron imports.
 import { poiCell } from '../quests.js'
 import { markTileDirty } from '../tile-dirty.js'
-import { TILE, weaponContents } from '../entities.js'
+import { TILE, isWalkable, weaponContents } from '../entities.js'
 import { ensureKivihiisi, tickClad } from '../monsters/kivihiisi.js'
 import { queueToast, think } from '../feedback.js'
 import { sfx } from '../sfx.js'
@@ -25,6 +25,7 @@ export const RING = [[3, 0], [-3, 0], [0, 3], [3, 3], [-3, -3], [3, -3]]
 export const RING_STONES = RING.length
 export const CAPSTONE = 'ow_mtn_rock_0'
 export const HAMMER = 'ukonvasara'
+export const PICK = 'pick'
 export const FOUND_TILES = 6     // Chebyshev tiles: how close reads the oven
 
 const S = 32
@@ -36,6 +37,38 @@ const isBoulder = cell => typeof cell?.overlay === 'string' && cell.overlay.star
 const hiisiOf = state => state.entities.find(e => e.type === 'kivihiisi') ?? null
 const hasHammer = player => player.weapon?.weaponType === HAMMER || player.inventory.some(i => i.kind === 'weapon' && i.payload?.weaponType === HAMMER)
 const hammerOnGround = state => state.entities.some(e => e.type === 'floating_item' && e.contents?.weaponType === HAMMER)
+const hasPick = player => player.weapon?.weaponType === PICK || player.inventory.some(i => i.kind === 'weapon' && i.payload?.weaponType === PICK)
+const pickOnGround = state => state.entities.some(e => e.type === 'floating_item' && e.contents?.weaponType === PICK)
+// The hut's anchor, by openmap.js's own rule (the first village/camp POI).
+const villageCell = mapData => { const p = mapData.pois.find(q => q.kind === 'village' || q.kind === 'camp'); return p ? { x: p.x, y: p.y } : null }
+
+// Nearest walkable cell BESIDE `at`, ring by ring from radius 1: never the
+// anchor itself (a village POI's cell is its house door — a step onto it
+// enters the house) and never `avoid` (the player's own cell — a pickup
+// under a freshly spawned player waits for a step off and back).
+function walkableNear(map, at, avoid, radius = 3) {
+  for (let r = 1; r <= radius; r++)
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+      const x = at.x + dx, y = at.y + dy
+      if (avoid && x === avoid.x && y === avoid.y) continue
+      const c = map[y]?.[x]
+      if (c && isWalkable(c.tile, c)) return { x, y }
+    }
+  return null
+}
+
+// Adventure rolls no pick in any loot pool, so the quest's first step is
+// only reachable because the hermit left his by the door. Re-dropped on
+// every arrival while the Hiisi lives (the ring wants mining after the
+// wake too), unless one is already carried or lying there.
+function dropPick(ctx) {
+  const { state, mapData } = ctx
+  if (hasPick(state.player) || pickOnGround(state)) return
+  const hut = villageCell(mapData)
+  const at = hut && walkableNear(state.map, hut, { x: state.player.x, y: state.player.y })
+  if (at) ctx.spawn([{ kind: 'floating_pickup', contents: { type: 'weapon', ...weaponContents(PICK) }, x: at.x, y: at.y }])
+}
 
 // An ordinary Mountain Pass boulder: blocked, mineable by HARVEST (tool
 // 'mine'), cleared by clearRock. Any leftover `cleared`/`chopHp` from an
@@ -86,6 +119,7 @@ function dropHammer(ctx, at = null) {
 export function onArrive(ctx) {
   const { flags } = ctx
   if (flags.hiisi_dead) { dropHammer(ctx); return }
+  dropPick(ctx)
   stampArena(ctx)
   if (flags.hiisi_woken) spawnHiisi(ctx)
 }

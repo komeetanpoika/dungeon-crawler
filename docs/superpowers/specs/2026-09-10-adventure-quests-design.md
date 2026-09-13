@@ -367,8 +367,14 @@ a lightning strike on the struck cell (4 s cooldown).
 
 **Failure modes.**
 
-- *No pick.* The capstone needs `mine`; a player without one simply hasn't
-  started the quest. The hermit's line says so ("nothing but a pick opens that").
+- *No pick.* Adventure rolls no pick in any loot pool (the only other pick in
+  the game is a Timewarp reward, and Timewarp saves are separate), so the
+  module leaves **the hermit's pick by the hut door** on every arrival while
+  the Hiisi lives — on the nearest walkable cell to the hut that is not the
+  player's own — unless one is carried or already lying there. The elder's
+  opening line points at it. (Shipped 2026-09-13 without this: the quest was
+  unreachable without the debug hook. Every quest's first step needs an
+  obtainability check against the loot pools and fixed placements.)
 - *Player flees mid-fight.* `hiisi_woken` persists; `onArrive` re-spawns the
   Hiisi at the kiuas with cladding capped by `stones`, and re-stamps only that
   many boulders — the mined ones stay mined.

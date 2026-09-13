@@ -55,7 +55,7 @@ export const QUESTS = {
       } },
       { when: () => true, by: {
         villager: ["The goats are gone and the door is boarded. There is a hiidenkiuas west of the pass — a giant's oven."],
-        elder:    ['Nothing but a pick opens that capstone. The old mines hand them out.'],
+        elder:    ['The hermit left his pick by the door. Nothing else opens that capstone.'],
       } },
     ],
     rule: f => !!f.hiisi_dead,
