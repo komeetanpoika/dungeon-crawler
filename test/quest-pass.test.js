@@ -1,7 +1,7 @@
 import { describe, it, before } from 'node:test'
 import fs from 'node:fs'
 import assert from 'node:assert/strict'
-import { onArrive, tick, KIUAS, RING, RING_STONES, CAPSTONE, HAMMER, stampBoulder } from '../renderer/systems/quests/pass.js'
+import { onArrive, tick, KIUAS, RING, RING_STONES, CAPSTONE, HAMMER, PICK as PICK_TYPE, stampBoulder } from '../renderer/systems/quests/pass.js'
 import { makeQuestCtx, questFlags } from '../renderer/systems/quests.js'
 import { registerMonsters, clearMonsters, makeMonsterFromDef } from '../renderer/systems/monsters.js'
 import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
@@ -68,6 +68,7 @@ const isBoulder = cell => cell.tile === TILE.WALL && String(cell.overlay).starts
 const boulders = state => RING.map((_, i) => isBoulder(cellAt(state, ringCell(i)))).filter(Boolean).length
 const hiisiOf = state => state.entities.find(e => e.type === 'kivihiisi') ?? null
 const hammerOf = state => state.entities.find(e => e.type === 'floating_item' && e.contents?.weaponType === HAMMER) ?? null
+const pickOf = state => state.entities.find(e => e.type === 'floating_item' && e.contents?.weaponType === PICK_TYPE) ?? null
 // Mines a cell to the ground the way game.js does: repeated harvest() swings with a pick.
 const mineOut = (state, c) => { for (let i = 0; i < 5; i++) harvest(state.map, c.x, c.y, PICK) }
 
@@ -136,6 +137,50 @@ describe('arrival stamps the arena from the flags', () => {
 })
 
 const moveTo = (state, c) => { state.player.x = c.x; state.player.y = c.y; state.player.px = c.x * S + 16; state.player.py = c.y * S + 16 }
+
+// Adventure has no other pick — no loot pool rolls one — so the quest's
+// first step is only reachable because the hermit left his by the door.
+describe("the hermit's pick", () => {
+  it('a fresh arrival leaves the pick by the hut — on a walkable cell, not under the player', () => {
+    const { ctx, state } = build()                        // the player stands at the hut cell itself
+    onArrive(ctx)
+    const pick = pickOf(state)
+    assert.ok(pick, 'a pick lies by the hut')
+    assert.ok(Math.abs(pick.x - HUT.x) <= 2 && Math.abs(pick.y - HUT.y) <= 2, 'within two cells of the hut')
+    assert.notDeepEqual({ x: pick.x, y: pick.y }, { x: state.player.x, y: state.player.y }, 'never under the player')
+    assert.equal(state.map[pick.y][pick.x].tile, TILE.FLOOR)
+    assert.equal(itemFromContents(pick.contents)?.payload?.weaponType, PICK_TYPE, 'rebuilds into a pick')
+  })
+  it("is never laid on the hut's own cell — that is its door, and a step onto it enters the house", () => {
+    const { ctx, state } = build({ at: { x: 12, y: 12 } })   // the player elsewhere, so the door is the nearest walkable cell
+    onArrive(ctx)
+    const pick = pickOf(state)
+    assert.ok(pick)
+    assert.notDeepEqual({ x: pick.x, y: pick.y }, HUT, 'beside the door, not on it')
+    assert.ok(Math.abs(pick.x - HUT.x) <= 1 && Math.abs(pick.y - HUT.y) <= 1, 'one cell off the door')
+  })
+  it('is never doubled on a repeat arrival', () => {
+    const { ctx, state } = build()
+    onArrive(ctx); onArrive(ctx)
+    assert.equal(state.entities.filter(e => e.contents?.weaponType === PICK_TYPE).length, 1)
+  })
+  it('is not dropped when the player already has one, in hand or in the sack', () => {
+    const inHand = build({ weapon: weaponContents(PICK_TYPE) })
+    onArrive(inHand.ctx)
+    assert.equal(pickOf(inHand.state), null)
+    const inSack = build({ inventory: [itemFromContents({ type: 'weapon', ...weaponContents(PICK_TYPE) })] })
+    onArrive(inSack.ctx)
+    assert.equal(pickOf(inSack.state), null)
+  })
+  it('keeps coming back while the Hiisi lives, and stops once it is dead', () => {
+    const woken = build({ flags: { hiisi_woken: true, stones: 3 } })
+    onArrive(woken.ctx)
+    assert.ok(pickOf(woken.state), 'the ring still needs mining after the wake')
+    const dead = build({ flags: { hiisi_dead: true } })
+    onArrive(dead.ctx)
+    assert.equal(pickOf(dead.state), null)
+  })
+})
 
 describe('the wake', () => {
   it('coming near the oven marks it found, once', () => {
