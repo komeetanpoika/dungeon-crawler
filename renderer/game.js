@@ -1328,7 +1328,11 @@ function update(delta) {
           if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
           if (r.think) think(state, r.think)
           if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
-          if (collect) struck.push(e)
+          // Only the hammer collects registry creatures: the Maunonmiekka's
+          // shockwave never bursts from these (hirvi, boarhound, kivihiisi,
+          // etc.) — miekka and hammer never coexist on one weapon, so this
+          // doesn't change anything for the miekka.
+          if (hammer) struck.push(e)
           return e
         }
         // Shatter: a rimed-over enemy takes +2 and thaws on the blow. Read
