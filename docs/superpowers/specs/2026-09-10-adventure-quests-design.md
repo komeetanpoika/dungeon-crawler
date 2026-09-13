@@ -356,7 +356,8 @@ escape hatch at worst. The kiuas gets its own site.
    out and it cannot re-clad; then it is a fair, hard fight (hp 40, dmg 3,
    slow, heavy hits). A frozen Hiisi loses all cladding on the next hit, which
    is the magic build's route in (`systems/status.js`'s shatter rule).
-4. **Death.** Sets `hiisi_dead` and drops the reward at the kiuas.
+4. **Death.** Sets `hiisi_dead` and drops the reward where the Hiisi fell,
+   with the kiuas as the fallback for the loss-recovery re-drop on arrival.
 
 **Reward:** **Ukonvasara**, Ukko's hammer — heavy, damage 5, and on hit it calls
 a lightning strike on the struck cell (4 s cooldown).
@@ -381,7 +382,10 @@ a lightning strike on the struck cell (4 s cooldown).
 | Name | Rig params | Stats | Behaviour |
 |---|---|---|---|
 | `hirvi` | long body, long legs, `horns: true`, grey-brown hide | hp 30, dmg 2, speed 95 | `driver: 'hook'`, `taxon: 'beast'` — the module owns its whole per-frame update (flee / stand), like the Näkki |
-| `kivihiisi` | squat, huge, thick short legs, stone-grey, `horns: true` | hp 40, dmg 3, speed 45, half 12 | ordinary brain (chase/attack) plus a `CREATURE_HIT` hook for the cladding, like the Podeboo |
+| `kivihiisi` | squat, huge, thick short legs, stone-grey, `horns: true` | hp 40, dmg 3, speed 45 | ordinary brain (chase/attack) plus a `CREATURE_HIT` hook for the cladding, like the Podeboo |
+
+The `kivihiisi` def omits `half`: the quadruped rig's `hitHalf` overrides
+`stats.half`, so a def-level value would be dead weight.
 
 Both names pass `^[a-z0-9_]+$` and collide with nothing in `RESERVED_NAMES`.
 Both need an entry in `renderer/data/monsters/index.json`. Both hook modules go
@@ -393,6 +397,9 @@ in `renderer/systems/monsters/`. Tuning happens in `npm run monster-lab`.
 |---|---|---|
 | `tervajousi` | `RANGED_WEAPON_TYPES` | Tarred Bow — damage 3, cooldown 0.7, `draw: true`, `fire: { tiles: 3 }` |
 | `ukonvasara` | `WEAPON_TYPES` | Ukonvasara — damage 5, `heavy: true`, `lightning: { cooldown: 4 }` |
+
+Ukonvasara ships with the club's atlas tile (`tile_0107`) as a placeholder;
+its own tile is a follow-up.
 
 - **Incendiary arrows.** `RANGED_FLAG_KEYS` gains `'fire'`. `ranged.js` stamps
   the arrow with the fireball's own detonation fields (`explodes`,
@@ -449,10 +456,14 @@ campfire render.
 ## 7. Map data changes
 
 POIs are added to `tools/static-overworld/out/maps/*.json` and the game module
-re-exported with `node tools/static-overworld/export-game-maps.mjs`. **No
-terrain regeneration**: `forest-2-river` is hand-painted and `gen-forest.mjs`
-would overwrite it, and `mountain.mjs` owns depth 12's terrain. Only the `pois`
-arrays change.
+re-exported with `node tools/static-overworld/export-game-maps.mjs` —
+`forest-2-river` is the JSON-edited exception, since it's hand-painted and
+`gen-forest.mjs` would overwrite it. Depths 7 and 12 instead go through their
+builders: depth 7's POIs come from `gen-forest.mjs`'s `clearings()` builder and
+depth 12's from its `autumn()` builder, each regenerated (the builder is the
+source of truth; the generator is byte-reproducible for that map), not
+hand-added to the JSON. **No terrain regeneration** either way: `mountain.mjs`
+owns depth 12's terrain. Only the `pois` arrays change.
 
 | Map | POIs added |
 |---|---|
