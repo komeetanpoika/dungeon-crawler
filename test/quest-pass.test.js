@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { onArrive, tick, KIUAS, RING, RING_STONES, CAPSTONE, HAMMER, stampBoulder } from '../renderer/systems/quests/pass.js'
 import { makeQuestCtx, questFlags } from '../renderer/systems/quests.js'
 import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
-import { ensureKivihiisi, CLAD_MAX } from '../renderer/systems/monsters/kivihiisi.js'
+import { CLAD_MAX } from '../renderer/systems/monsters/kivihiisi.js'
 import { harvest } from '../renderer/systems/lumber.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE, weaponContents } from '../renderer/systems/entities.js'
@@ -185,6 +185,21 @@ describe('the standing stones', () => {
     assert.equal(h.clad, 0)
     for (let t = 0; t < 30; t += 0.5) tick(ctx, 0.5)
     assert.equal(h.clad, 0, 'no re-clad with nothing standing')
+  })
+  it('boulders mined before the wake come off the count', () => {
+    const { ctx, state, save, calls } = build()
+    onArrive(ctx)
+    mineOut(state, ringCell(0))
+    mineOut(state, ringCell(1))
+    const n = calls.persist
+    tick(ctx, 0.1)
+    assert.equal(questFlags(save, mapData.name).stones, 4)
+    assert.equal(questFlags(save, mapData.name).hiisi_woken, undefined)
+    assert.equal(calls.persist, n + 1, 'one persist for both stones mined this tick')
+    mineOut(state, KC)
+    tick(ctx, 0.1)
+    assert.equal(questFlags(save, mapData.name).hiisi_woken, true)
+    assert.equal(hiisiOf(state).clad, 3)
   })
   it('re-clads a layer every six seconds while stones stand', () => {
     const { ctx, state } = build({ flags: { hiisi_woken: true } })

@@ -106,6 +106,25 @@ export function tick(ctx, delta) {
     return
   }
 
+  // Standing boulders: a mined ring cell comes off the count, once per cell
+  // per visit. The stamped indices are this visit's, not `stones` (which
+  // shrinks as they fall). This runs whether or not the Hiisi is awake yet —
+  // the ring can be mined out first, per the elder's own advice.
+  ctx.ringCounted ??= new Set()
+  const newlyCounted = []
+  for (let i = 0; i < (ctx.ringStamped ?? 0); i++) {
+    if (ctx.ringCounted.has(i)) continue
+    const c = ringCell(kiuas, i)
+    if (state.map[c.y]?.[c.x]?.cleared !== 'rock') continue
+    ctx.ringCounted.add(i)
+    newlyCounted.push(i)
+  }
+  if (newlyCounted.length) {
+    ctx.set('stones', Math.max(0, stonesOf(flags) - newlyCounted.length))
+    think(state, flags.stones === 0 ? 'Nothing left for it to hide in.' : 'One less stone for its skin.')
+    ctx.persist()
+  }
+
   if (!flags.hiisi_woken) {
     const near = Math.max(Math.abs(kiuas.x - state.player.x), Math.abs(kiuas.y - state.player.y)) <= FOUND_TILES
     if (near && !flags.kiuas_found) {
@@ -120,19 +139,6 @@ export function tick(ctx, delta) {
     queueToast(state, { title: 'Kivihiisi', lines: ['The oven was its bed.', 'Its skin is the stones around you.'] })
     ctx.persist()
     return
-  }
-
-  // Standing boulders: a mined ring cell comes off the count, once per cell
-  // per visit. The stamped indices are this visit's, not `stones` (which
-  // shrinks as they fall).
-  ctx.ringCounted ??= new Set()
-  for (let i = 0; i < (ctx.ringStamped ?? 0); i++) {
-    if (ctx.ringCounted.has(i)) continue
-    if (state.map[ringCell(kiuas, i).y]?.[ringCell(kiuas, i).x]?.cleared !== 'rock') continue
-    ctx.ringCounted.add(i)
-    ctx.set('stones', Math.max(0, stonesOf(flags) - 1))
-    think(state, flags.stones === 0 ? 'Nothing left for it to hide in.' : 'One less stone for its skin.')
-    ctx.persist()
   }
 
   const h = hiisiOf(state)
