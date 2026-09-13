@@ -40,7 +40,7 @@ export function ensureMaahinen(e) {
   if (e.burrow) return e
   const surfaced = e.state != null && e.state !== 'submerged'
   Object.assign(e, {
-    burrow: true, state: e.state ?? 'submerged', timer: 0, weaponId: 'maul',
+    burrow: true, state: e.state ?? 'submerged', timer: 0,   // the maul is the def's (behavior.weapon)
     damageCooldown: 0, inCombat: false, facing: 'east', home: { x: e.x, y: e.y },
     hp: e.hp ?? 36, maxHp: e.maxHp ?? 36,
     // Spawns submerged and invisible: fully sunk, fully faded — unless

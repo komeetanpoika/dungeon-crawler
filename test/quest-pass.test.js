@@ -1,7 +1,9 @@
-import { describe, it } from 'node:test'
+import { describe, it, before } from 'node:test'
+import fs from 'node:fs'
 import assert from 'node:assert/strict'
 import { onArrive, tick, KIUAS, RING, RING_STONES, CAPSTONE, HAMMER, stampBoulder } from '../renderer/systems/quests/pass.js'
 import { makeQuestCtx, questFlags } from '../renderer/systems/quests.js'
+import { registerMonsters, clearMonsters, makeMonsterFromDef } from '../renderer/systems/monsters.js'
 import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
 import { CLAD_MAX } from '../renderer/systems/monsters/kivihiisi.js'
 import { harvest } from '../renderer/systems/lumber.js'
@@ -13,6 +15,12 @@ import { makeSfx } from '../renderer/systems/sfx.js'
 
 const S = 32
 const N = 40
+
+// The Hiisi is registry-built here as the game builds it (buildEntities →
+// makeMonsterFromDef), so what the module spawns carries the def's weapon.
+const KIVIHIISI_DEF = JSON.parse(fs.readFileSync('renderer/data/monsters/kivihiisi.json', 'utf8'))
+const FAKE_RIG = { PARAM_SCHEMA: [], drawMonster: () => {}, hitHalf: () => 12 }
+before(async () => { clearMonsters(); await registerMonsters([KIVIHIISI_DEF], { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} }) })
 const KC = { x: 20, y: 20 }
 const HUT = { x: 5, y: 5 }
 const PICK = { weaponType: 'pick', name: 'Pick', damage: 2, mine: 3 }
@@ -32,7 +40,7 @@ function makeMap() {
 function spawnInto(state) {
   return spawns => {
     for (const s of spawns) {
-      if (s.kind === 'kivihiisi') state.entities.push({ type: 'kivihiisi', x: s.x, y: s.y, px: s.x * S + 16, py: s.y * S + 16, hp: 40, maxHp: 40, damage: 3 })
+      if (s.kind === 'kivihiisi') { const e = makeMonsterFromDef('kivihiisi', s.x, s.y); e.px = s.x * S + 16; e.py = s.y * S + 16; state.entities.push(e) }
       else if (s.kind === 'floating_pickup') state.entities.push({ type: 'floating_item', contents: s.contents, x: s.x, y: s.y, px: s.x * S + 16, py: s.y * S + 16, progress: 1 })
     }
   }

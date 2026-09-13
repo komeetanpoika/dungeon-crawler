@@ -39,7 +39,7 @@ describe('makeMaahinen', () => {
     assert.equal(m.maxHp, 36)
     assert.equal(m.state, 'submerged')
     assert.equal(m.timer, 0)
-    assert.equal(m.weaponId, 'maul')
+    assert.equal('weaponId' in m, false, 'the weapon is the def\'s (behavior.weapon), not the hook\'s')
     assert.equal(m.damageCooldown, 0)
     assert.equal(m.inCombat, false)
     assert.equal(m.facing, 'east')
@@ -248,6 +248,7 @@ describe('updateMaahinen — surfaced', () => {
 
   it('damageCooldown ticks down each surfaced update, so the maul lands repeatedly (not just once)', () => {
     const m = makeMaahinen(5, 5)
+    m.weaponId = 'maul'   // the def's weapon (behavior.weapon), which makeMonsterFromDef stamps at spawn
     m.px = 5 * S + 16; m.py = 5 * S + 16
     m.state = 'surfaced'
     m.sink = 0

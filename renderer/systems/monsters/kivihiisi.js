@@ -12,12 +12,12 @@ import { shatterBonus } from '../status.js'
 export const CLAD_MAX = 3
 export const RECLAD_EVERY = 6   // s between layers
 
-// A registry spawn arrives with only type/x/y/px/py/hp, so the first touch
-// stamps the cladding and — the contract makeMonsterFromDef does not enforce
-// — the weapon, without which enemy-attack.js could never land a hit.
+// A registry spawn arrives with type/x/y/px/py/hp and the def's weapon
+// (behavior.weapon → makeMonsterFromDef), so the first touch stamps only
+// the cladding.
 export function ensureKivihiisi(e, stones = CLAD_MAX) {
   if (e.clad !== undefined) return e
-  Object.assign(e, { clad: Math.min(CLAD_MAX, stones), recladT: 0, weaponId: 'maul' })
+  Object.assign(e, { clad: Math.min(CLAD_MAX, stones), recladT: 0 })
   return e
 }
 
