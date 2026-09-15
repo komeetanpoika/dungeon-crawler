@@ -10,8 +10,9 @@
 //           to the nearest un-chained enemy within `chain.range` tiles of the
 //           current node. When no enemy is left in reach the next node is the
 //           hero, who takes that node's damage and ends the chain — one enemy
-//           means 4 to it and 3 to the hero; a whiff with nothing in reach
-//           puts the whole first node on the hero.
+//           means 4 to it and 3 to the hero. A whiff with nothing in reach
+//           deals nothing: the chain is empty and the hero wears a personal
+//           rain cloud for `rain.dur` seconds that slows the walk.
 //
 // Every stroke and every node carries `{ source: 'lightning' }`, the damage
 // type hurtCreature already keys on (the Näkki's one vulnerability).
@@ -28,6 +29,7 @@ export const HAMMER = {
   chain: { damage: [4, 3, 2, 1], range: 3 },        // range in tiles, node to node
   clap:  { radius: 80, knockback: 30, slow: { mul: 0.4, dur: 3 } },   // px; the slow is Gust's
   arcLife: 0.2,                                      // seconds an arc stays drawn
+  rain:  { dur: 4, slowMul: 0.5 },                   // the whiff's cloud over the hero
 }
 
 export const lightningMods = player => ({
@@ -80,7 +82,8 @@ const nearest = (from, candidates, taken, rangePx) => {
 // is the struck enemy nearest the player); `candidates` is everything the
 // bolt may seek (game.js passes state.entities — isSpellTarget filters here).
 // Returns [{ e, damage }...], the last node `{ player: true, damage }` when
-// the enemies ran out before the chain did.
+// the enemies ran out before the chain did — or [] when there was no first
+// node at all (a whiff: nothing struck, nothing in reach of the player).
 export function chainNodes(player, struck, candidates, mods = lightningMods(player)) {
   const rangePx = (mods.range ?? HAMMER.chain.range) * TILE
   const bonus = mods.damage ?? 0
@@ -92,7 +95,7 @@ export function chainNodes(player, struck, candidates, mods = lightningMods(play
     const e = nodes.length === 0 && struck.length
       ? [...struck].filter(isSpellTarget).sort((a, b) => dist(player, a) - dist(player, b))[0] ?? null
       : nearest(from, candidates, taken, rangePx)
-    if (!e) { nodes.push({ player: true, damage }); break }
+    if (!e) { if (nodes.length) nodes.push({ player: true, damage }); break }
     taken.add(e)
     nodes.push({ e, damage })
     from = e
@@ -135,6 +138,23 @@ export function thunderclap(player, entities) {
   }
   return n
 }
+
+// --- rain: the whiff's cloud --------------------------------------------------
+
+// A whiffed overcharge hangs a cloud over the hero: no damage, just a slowed
+// walk and rain for `rain.dur` seconds. Re-whiffing restarts the timer.
+export function applyRain(player) {
+  player.rain = { t: 0, dur: HAMMER.rain.dur }
+}
+
+export function tickRain(player, delta) {
+  if (!player.rain) return
+  player.rain.t += delta
+  if (player.rain.t >= player.rain.dur) player.rain = undefined
+}
+
+// The walk-speed multiplier the cloud imposes; 1 when dry.
+export const rainSlow = player => player.rain ? HAMMER.rain.slowMul : 1
 
 // Age the drawn arcs; drop the spent ones.
 export function tickArcs(state, delta) {
