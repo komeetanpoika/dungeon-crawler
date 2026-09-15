@@ -43,7 +43,7 @@ import { questFor, questFlags, questLines, makeQuestCtx } from './systems/quests
 import { QUEST_MODULES } from './systems/quests/index.js'
 import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
-import { isEnemy, isHittable } from './systems/factions.js'
+import { isEnemy, isHittable, isSpellTarget } from './systems/factions.js'
 import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
 import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature } from './systems/monsters.js'
 import { cullDead, tickDying } from './systems/dying.js'
@@ -53,7 +53,8 @@ import { startStanceSwitch, tickStanceSwitch, tryFire, DRAW_CHARGE, resolveDrawT
 import { castCone, GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust } from './systems/magic.js'
 import { spellFor, tryCast } from './systems/spells.js'
 import { tickZones } from './systems/zones.js'
-import { castLightning, tickLightning, markStrike } from './systems/spells/lightning.js'
+import { castLightning, tickLightning } from './systems/spells/lightning.js'
+import { HAMMER, applyShock, tickShock, chainNodes, applyChain, thunderclap, tickArcs, lightningMods } from './systems/hammer.js'
 import { stepProjectiles } from './systems/projectiles.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
@@ -725,6 +726,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     flash: 0,
     blinkTrail: null,
     shockwaves: [],
+    arcs: [],
     feedback: makeFeedback(),
     hitEffects: [],
     shake: 0,
@@ -1266,7 +1268,6 @@ function update(delta) {
   // Combat cooldowns
   player.meleeCooldown  = Math.max(0, player.meleeCooldown  - delta)
   player.rangedCooldown = Math.max(0, player.rangedCooldown - delta)
-  player.hammerT = Math.max(0, (player.hammerT ?? 0) - delta)
   player.attackTimer    = Math.max(0, player.attackTimer    - delta)
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
@@ -1285,7 +1286,7 @@ function update(delta) {
   const swing = (mods) => {
     const cost = meleeCost(meleeWT, mods.tier)
     if (!canAfford(player, cost)) {
-      mods = tierMods('tap')                     // starved: weak swing
+      mods = tierMods('tap', meleeWT)            // starved: weak swing
       player.staminaRefusedT = 0.4
       spendStamina(player, player.stamina)        // starved swing drains all remaining stamina
     } else {
@@ -1304,12 +1305,19 @@ function update(delta) {
     const arc = getSwingArc(atk.style)
     const hitAt = (dx, dy) => inSwing(arc.reach * mods.reachMul, arc.halfAngle, fa, dx, dy)
     const miekka = meleeWT === 'maunonmiekka'
-    const hammer = player.weapon?.lightning ?? null   // Ukonvasara: a strike on the struck cell
-    const collect = miekka || (hammer && (player.hammerT ?? 0) <= 0)
+    const hammer = !!player.weapon?.lightning          // Ukonvasara (systems/hammer.js)
+    // An overcharged hammer lands no blow of its own: the wedge only decides
+    // where the chain starts, and every point of damage is lightning.
+    const zap = hammer && mods.tier === 'over'
+    const collect = miekka || hammer
     const struck = []   // enemies hit this swing (for the Maunonmiekka's shockwave)
     state.entities = state.entities
       .map(e => {
         if (!isHittable(e)) return e
+        if (zap) {
+          if (hitAt(e.px - player.px, e.py - player.py)) struck.push(e)
+          return e
+        }
         if (e.type === 'dragon_boss') {
           const swingHit = (cx, cy) => hitAt(cx - player.px, cy - player.py)
           const raw = meleeDamageToDragon(player, e, swingHit)
@@ -1360,13 +1368,26 @@ function update(delta) {
         sfx(state, 'shockwave', { px: s.px, py: s.py })
       }
     }
-    // Ukonvasara: one strike on the first struck enemy's cell, then the
-    // hammer rests. tickLightning already runs every frame, so the delayed
-    // strike, the flash and the thunder all come for free.
-    if (hammer && struck.length && (player.hammerT ?? 0) <= 0) {
-      const s = struck[0]
-      markStrike(state, Math.floor(s.px / TILE_SIZE), Math.floor(s.py / TILE_SIZE))
-      player.hammerT = hammer.cooldown
+    // Ukonvasara: a full swing shocks what it struck (three strokes over
+    // three seconds); an overcharge is the thunderclap and the chain. The
+    // hero is the chain's last node when the enemies run out, so a lone foe
+    // costs 3 hp and a whiff costs 4 — Ukko's bolt always lands somewhere.
+    if (hammer && mods.tier === 'full') {
+      for (const s of struck) if (isSpellTarget(s)) applyShock(s)
+    }
+    if (zap) {
+      thunderclap(player, state.entities)
+      state.shockwaves.push({ px: player.px, py: player.py, t: 0, dur: 0.35, maxRadius: HAMMER.clap.radius, color: '#e9d5ff' })
+      sfx(state, 'thunder', { px: player.px, py: player.py })
+      const nodes = chainNodes(player, struck, state.entities, lightningMods(player))
+      const snap = npcSnapshot()
+      applyChain(state, nodes, {
+        hurt: hurtEntity,
+        damagePlayer: d => damagePlayer(state, d, 'lightning'),
+      })
+      npcsStruckSince(snap)
+      sfx(state, 'crackle', { px: player.px, py: player.py })
+      cullEntities()
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
     // Harvesting: a hatchet/axe swing lands on the nearest tree in the
@@ -1538,6 +1559,15 @@ function update(delta) {
     // Slow/root/freeze count down for everything a spell can catch — hostile
     // villagers included, whose brain runs inside updateNpc below.
     tickStatus(e, delta)
+    // Ukonvasara's shock: a stroke a second, drawn as a short bolt onto the
+    // enemy. Kills are culled with the rest of the frame's dead below.
+    if (e.shock) {
+      const { strokes } = tickShock(e, delta, { hurt: hurtEntity })
+      if (strokes) {
+        state.arcs.push({ x0: e.px, y0: e.py - 28, x1: e.px, y1: e.py, t: 0, dur: HAMMER.arcLife })
+        sfx(state, 'crackle', { px: e.px, py: e.py })
+      }
+    }
     // updateNpc drives peaceful AND hostile NPCs (the hostile ones run the
     // enemy brain inside their attack_hostile goal) — never both paths.
     if (e.type === 'npc') { updateNpc(e, state, delta); continue }
@@ -1671,6 +1701,7 @@ function update(delta) {
     if (e.type === 'wild_mushroom') e.hueT = (e.hueT ?? 0) + delta
   }
 
+  tickArcs(state, delta)
   // Advance Maunonmiekka shockwave rings
   if (state.shockwaves?.length) {
     state.shockwaves = state.shockwaves
@@ -1897,7 +1928,7 @@ function travelToMap(depth) {
     level: depth, map, theme,
     entities: buildEntities(entitySpawns, map, depth),
     projectiles: [], fireZones: [], zones: [], lightning: [], strikes: [], flash: 0,
-    shockwaves: [], hitEffects: [], blinkTrail: null,
+    shockwaves: [], arcs: [], hitEffects: [], blinkTrail: null,
     feedback: makeFeedback(),
     player: {
       ...state.player,
@@ -1949,6 +1980,7 @@ function descendLevel() {
     flash: 0,
     blinkTrail: null,
     shockwaves: [],
+    arcs: [],
     player: {
       ...state.player,
       x: playerSpawn.x, y: playerSpawn.y,

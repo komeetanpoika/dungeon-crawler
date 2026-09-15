@@ -429,6 +429,59 @@ function drawLightningBolts(ctx, strikes, camX, camY, S) {
   }
 }
 
+// Ukonvasara's lightning (systems/hammer.js): a jagged arc between two
+// points — chain hops enemy to enemy, and the shock's short stroke down onto
+// the enemy. Zig seeded by the endpoints so an arc holds still for its life.
+function drawArcs(ctx, arcs, camX, camY, S) {
+  for (const a of arcs ?? []) {
+    const k = Math.max(0, 1 - (a.t ?? 0) / (a.dur || 1))
+    if (k <= 0) continue
+    const x0 = a.x0 - camX, y0 = a.y0 - camY, x1 = a.x1 - camX, y1 = a.y1 - camY
+    const dx = x1 - x0, dy = y1 - y0
+    const len = Math.hypot(dx, dy) || 1
+    const nx = -dy / len, ny = dx / len          // normal, for the zig
+    const steps = Math.max(3, Math.min(8, Math.round(len / (S * 0.5))))
+    ctx.save()
+    ctx.lineJoin = 'round'
+    for (const [width, colour, alpha] of [[5, '#a78bfa', 0.45], [2, '#ffffff', 1]]) {
+      ctx.globalAlpha = alpha * k
+      ctx.strokeStyle = colour
+      ctx.lineWidth = width
+      ctx.beginPath()
+      ctx.moveTo(x0, y0)
+      for (let i = 1; i <= steps; i++) {
+        const f = i / steps
+        const zig = i === steps ? 0 : Math.sin(a.x0 * 0.7 + a.y1 * 1.3 + i * 2.9) * S * 0.3
+        ctx.lineTo(x0 + dx * f + nx * zig, y0 + dy * f + ny * zig)
+      }
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+}
+
+// The storm cloud a shocked enemy wears (systems/hammer.js applyShock): a
+// puff of three lumps with a darker belly, bobbing gently, sitting where the
+// shock's strokes come down from. Exported for the unit test's fake ctx.
+export function drawShockCloud(ctx, cx, cy, S, t = 0) {
+  const bob = Math.sin(t * 4) * S * 0.04
+  const y = cy + bob
+  const r = S * 0.16
+  const lumps = [[-r * 1.1, 0, r * 0.85], [0, -r * 0.55, r], [r * 1.1, 0, r * 0.85]]
+  ctx.save()
+  ctx.globalAlpha = 0.95
+  for (const [fill, dy] of [['#6b7280', r * 0.35], ['#e5e7eb', 0]]) {   // belly, then body
+    ctx.fillStyle = fill
+    ctx.beginPath()
+    for (const [lx, ly, lr] of lumps) {
+      ctx.moveTo(cx + lx + lr, y + ly + dy)
+      ctx.arc(cx + lx, y + ly + dy, lr, 0, Math.PI * 2)
+    }
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 // The white-out a strike leaves behind. Drawn over the night wash on purpose —
 // the whole point of Call Lightning at night is that it lights the map.
 function drawFlash(ctx, flash, W, H) {
@@ -1106,6 +1159,7 @@ export class Renderer {
       if (e.frozen) { ctx.filter = prevFilter; drawFrozenSheen(ctx, epx, epy, S) }
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
+      if (e.shock) drawShockCloud(ctx, epx + S / 2, epy - 14, S, e.shock.tickT + e.shock.left)
     }
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const lift = Math.round(fx?.lift ?? 0)
@@ -1245,6 +1299,7 @@ export class Renderer {
     // through the weather layer is the spell's whole signature. Still under the
     // mist and the feedback layer.
     drawLightningBolts(ctx, state.strikes, camX, camY, S)
+    drawArcs(ctx, state.arcs, camX, camY, S)
     drawFlash(ctx, state.flash, W, H)
 
     // Weather, pass two: mist over the water, planks, creatures and player —
