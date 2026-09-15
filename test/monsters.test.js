@@ -222,6 +222,19 @@ describe('tentacle rendering', () => {
     const far = lashing.ops.filter(x => x[0] === 'fillRect' && x[1] > 64)   // two tiles out, well past any body
     assert.ok(far.length > 10, `the tentacle runs out past the body along the aim (${far.length} far rects)`)
   })
+  it('varies the shade from segment to segment, so the flesh is mottled rather than flat', async () => {
+    await registerMonsters([DEF], { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
+    const e = { ...makeMonsterFromDef('boarhound', 2, 3), px: 80, py: 112 }
+    updateMonsterPose(e, 0.016)
+    e.stones = 6; e.lash = { state: 'extend', aim: 0, len: 160, t: 0.3 }
+    const fills = new Set()
+    const ctx = new Proxy({ ops: [] }, {
+      get(o, k) { if (k in o) return o[k]; return (...a) => { if (k === 'fillRect') fills.add(o.fillStyle); o.ops.push([k, ...a]) } },
+      set(o, k, v) { o[k] = v; return true },
+    })
+    drawGeneratedMonster(ctx, e, 100, 100, 32, {})
+    assert.ok(fills.size >= 5, `expected outline, tip and at least three flesh shades, got ${fills.size}: ${[...fills].join(' ')}`)
+  })
 })
 
 describe('monstersForOpenMap', () => {

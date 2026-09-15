@@ -179,22 +179,47 @@ export function drawGeneratedMonster(ctx, e, cx, cy, S, state) {
 // the tip lands where the hook tests. Screen space, like the lasers; a few
 // dozen small rects. ctx is already at the entity centre.
 const STUBS = 4
+// The look, in one place so a lab page can try variants: colour (null = the
+// def's hide colour), widths in art px, wobble amplitude/wavelength/speed,
+// a bulge that swells the segments along the length (flesh, not chain), and
+// pale suckers on the underside.
+// `variation` is how far the per-segment shade strays from the base toward
+// the outline or the highlight — a fixed pattern along the length, not a
+// per-frame roll, so the mottling rides the tentacle instead of flickering.
+export const TENTACLE_STYLE = {
+  color: '#4a3140', baseW: 6, tipW: 2, amp: 6, wave: 10, speed: 9, tipWobble: 0.35, bulge: 0.35, suckers: true, variation: 0.35,
+}
+const mix = (a, b, f) => {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16)
+  const ch = sh => Math.round(((pa >> sh) & 255) * (1 - f) + ((pb >> sh) & 255) * f)
+  return '#' + ((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')
+}
+function fleshShades(pal, variation) {
+  return [mix(pal.base, pal.outline, variation), pal.base, mix(pal.base, pal.light, variation * 0.6), mix(pal.base, pal.outline, variation * 0.5)]
+}
 function tentacle(ctx, pal, k, x0, y0, ang, len, t, phase, taper = 1) {
+  const st = TENTACLE_STYLE
   const step = 3 * k
   const dx = Math.cos(ang), dy = Math.sin(ang)
   const nx = -dy, ny = dx
-  for (let s = step; s <= len; s += step) {
+  const shades = st.variation > 0 ? fleshShades(pal, st.variation) : [pal.base]
+  const suckers = []
+  let i = 0
+  for (let s = step; s <= len; s += step, i++) {
     const f = s / len
-    const wob = Math.sin(s / (14 * k) - t * 6 + phase) * 3 * k * (1 - f) * taper
-    const w = Math.max(2, Math.round((4 - 2 * f) * k))
+    const wob = Math.sin(s / (st.wave * k) - t * st.speed + phase) * st.amp * k * (1 - f * (1 - st.tipWobble)) * taper
+    const swell = 1 + st.bulge * Math.max(0, Math.sin(s / (5 * k) + t * 4 + phase))
+    const w = Math.max(2, Math.round((st.baseW - (st.baseW - st.tipW) * f) * k * swell))
     const x = x0 + dx * s + nx * wob, y = y0 + dy * s + ny * wob
     ctx.fillStyle = pal.outline
     ctx.fillRect(Math.round(x - w / 2 - k), Math.round(y - w / 2 - k), w + 2 * k, w + 2 * k)
-    ctx.fillStyle = pal.base
+    ctx.fillStyle = shades[((i * 7 + Math.round(phase * 3)) * 2654435761 >>> 0) % shades.length]
     ctx.fillRect(Math.round(x - w / 2), Math.round(y - w / 2), w, w)
+    if (st.suckers && Math.round(s / step) % 3 === 0 && w >= 3 * k) suckers.push([x + nx * (w / 2 - k), y + ny * (w / 2 - k)])
   }
-  const tw = Math.max(2, Math.round(3 * k))
   ctx.fillStyle = pal.light
+  for (const [x, y] of suckers) ctx.fillRect(Math.round(x - k / 2), Math.round(y - k / 2), Math.max(1, Math.round(k)), Math.max(1, Math.round(k)))
+  const tw = Math.max(2, Math.round(3 * k))
   ctx.fillRect(Math.round(x0 + dx * len - tw / 2), Math.round(y0 + dy * len - tw / 2), tw, tw)
 }
 function drawTentacles(ctx, e, d, S) {
@@ -202,7 +227,7 @@ function drawTentacles(ctx, e, d, S) {
   if (!l || !(e.stones > 0)) return
   const k = S / TILE_ART_PX
   const pose = entityPose(e)
-  const pal = palette(d.params.hideColor ?? '#6e6a63')
+  const pal = palette(TENTACLE_STYLE.color ?? d.params.hideColor ?? '#6e6a63')
   const t = pose.t
   const charge = l.state === 'windup' ? (pose.eyeGlow ?? 0) : 0
   const r0 = 5 * k
