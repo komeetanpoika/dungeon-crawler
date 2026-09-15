@@ -201,6 +201,29 @@ describe('laser beam rendering', () => {
   })
 })
 
+describe('tentacle rendering', () => {
+  beforeEach(clearMonsters)
+  const proxy = t => new Proxy(t, {
+    get(o, k) { if (k in o) return o[k]; return (...a) => { o.ops.push([k, ...a]) } },
+    set(o, k, v) { o[k] = v; return true },
+  })
+  const rects = o => o.ops.filter(x => x[0] === 'fillRect').length
+  it('draws writhing stubs on a rooted lasher, and a long tentacle while it lashes', async () => {
+    await registerMonsters([DEF], { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
+    const mk = () => { const e = { ...makeMonsterFromDef('boarhound', 2, 3), px: 80, py: 112 }; updateMonsterPose(e, 0.016); return e }
+    const quiet = { ops: [] }, rooted = { ops: [] }, lashing = { ops: [] }
+    drawGeneratedMonster(proxy(quiet), mk(), 100, 100, 32, {})
+    const b = mk(); b.stones = 6; b.lash = { state: 'idle', len: 0, t: 0 }
+    drawGeneratedMonster(proxy(rooted), b, 100, 100, 32, {})
+    const c = mk(); c.stones = 6; c.lash = { state: 'extend', aim: 0, len: 128, t: 0.3 }
+    drawGeneratedMonster(proxy(lashing), c, 100, 100, 32, {})
+    assert.ok(rects(rooted) > rects(quiet) + 8, `stubs: ${rects(rooted)} vs ${rects(quiet)}`)
+    assert.ok(rects(lashing) > rects(rooted) + 20, `lash: ${rects(lashing)} vs ${rects(rooted)}`)
+    const far = lashing.ops.filter(x => x[0] === 'fillRect' && x[1] > 64)   // two tiles out, well past any body
+    assert.ok(far.length > 10, `the tentacle runs out past the body along the aim (${far.length} far rects)`)
+  })
+})
+
 describe('monstersForOpenMap', () => {
   beforeEach(clearMonsters)
   const om = (name, depths, count) => ({ ...DEF, name, spawn: { ...DEF.spawn, openMaps: { depths, count } } })

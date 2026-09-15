@@ -50,8 +50,8 @@ export const QUESTS = {
         elder:    ["Ukko's own hammer. Do not swing it near the hut."],
       } },
       { when: f => f.hiisi_woken, by: {
-        villager: ['You woke it? Then break its stones. It wears them.'],
-        elder:    ['Every boulder standing round that oven is a skin it can put back on.'],
+        villager: ['You woke it? It cannot leave the oven while its stones stand. Break them.'],
+        elder:    ['It reaches with what it has for arms, and it sees through its own stones. Mine each one with it squarely at your back — a step to the side and it will drag you in.'],
       } },
       { when: () => true, by: {
         villager: ["The goats are gone and the door is boarded. There is a hiidenkiuas west of the pass — a giant's oven."],

@@ -323,9 +323,12 @@ deliberately discarded bow is not a free bundle of arrows every visit.
 the pass. The hermit has boarded his door and his goats are gone. Break the
 capstone and the thing under it gets up.
 
-**Site.** New POI `hiidenkiuas` at **38,30** (`kind: 'landmark'`): a wide-open
-walkable bowl, 50 steps from the hermit hut, 60 from the stone circle, 42 from
-the nearest existing POI.
+**Site.** POI `hiidenkiuas` at **38,30** (`kind: 'landmark'`), 50 steps from
+the hermit hut, 60 from the stone circle, 42 from the nearest existing POI. The
+generator carves an open bowl of radius `ARENA_RADIUS` (6) around it — no
+trees, no rocks, no mountain spur — so the only cover in the fight is the ring
+the quest raises. (Revised 2026-09-15: the fight became a siege, below; the
+original chase-and-clad fight is in git history.)
 
 **Not the stone circle.** `stone circle` (84,22) is this map's `exitPoi` — the
 waystone stands there. A boss camped on the exit is a nuisance at best and an
@@ -334,10 +337,12 @@ escape hatch at worst. The kiuas gets its own site.
 **Flow.**
 
 1. **Arrival.** While `hiisi_dead` is false the module stamps its own arena:
-   the first `stones` cells of a fixed six-cell ring at radius 3 around the
-   kiuas get an `ow_mtn_rock_*` boulder, plus a capstone prop at the centre.
-   Stamping the ring rather than relying on the generator's incidental rock
-   scatter makes the fight's mechanic terrain-independent and testable.
+   until the wake, only the capstone prop at the centre; from the wake on, the
+   first `stones` cells of a fixed six-cell ring at radius 3 around the kiuas
+   get an `ow_mtn_rock_*` boulder. The ring rises *with* the Hiisi, so it can
+   never be mined out beforehand and the siege cannot be skipped. Stamping the
+   ring rather than relying on the generator's incidental rock scatter makes
+   the fight's mechanic terrain-independent and testable.
 
    `stones` (a flag, 6 down to 0) is the standing-boulder count, decremented
    when the player mines one. Counting rather than reading the map is
@@ -347,17 +352,40 @@ escape hatch at worst. The kiuas gets its own site.
    the felled record alone would regrow the ring. The count is the truth; the
    stray `cleared: 'rock'` the mine leaves in `save.felled` is harmless.
 2. **Wake.** Mining the capstone (`systems/lumber.js` `HARVEST`, `tool: 'mine'`,
-   so a pick is needed — the Mountain Pass mines already hand them out) sets
-   `hiisi_woken` and spawns the Kivihiisi.
-3. **The stone cladding.** The Hiisi carries `clad` (0–3). While `clad > 0`,
-   `CREATURE_HIT.kivihiisi` absorbs the damage and strips one layer per hit
-   (`absorbed: true`, a stone cue). Every 6 s it re-clads by one — but never
-   above `stones`, **the number of boulders still standing in the ring**. Mine the ring
-   out and it cannot re-clad; then it is a fair, hard fight (hp 40, dmg 3,
-   slow, heavy hits). A frozen Hiisi loses all cladding on the next hit, which
-   is the magic build's route in (`systems/status.js`'s shatter rule).
-4. **Death.** Sets `hiisi_dead` and drops the reward where the Hiisi fell,
-   with the kiuas as the fallback for the loss-recovery re-drop on arrival.
+   so a pick is needed) sets `hiisi_woken`, sets `stones` to 6, raises the ring
+   and spawns the Kivihiisi on the oven cell.
+3. **The siege.** The ring is its life. While any stone stands
+   (`systems/monsters/kivihiisi.js`, a `CREATURE_UPDATE` supplement that runs
+   after brain+act):
+   - it is **rooted** on the oven — the frame's movement is undone and
+     `rootTimer` topped up — though the brain still turns it and it still
+     swings its maul at anyone who walks up to it;
+   - every weapon hit is **absorbed** (`CREATURE_HIT`, stone cue) — the only
+     hit that lands is the ring's own fall (`source: 'ring'`);
+   - it **lashes tentacles**: a player within `LASH.range` (9 tiles) gets a
+     0.4 s eye-glow windup with the aim locking at its end, then one tentacle
+     extends along that aim at 300 px/s. Each frame the tip is tested: a
+     **wall cell stops it dead** (a stamped boulder is one) and it retracts; the
+     player's centre within `LASH.reach` is a **grab** — 2 damage and the player
+     is reeled `LASH.pull` (3 tiles) toward the oven through the ordinary
+     player knockback (which stops at walls), out of cover and into maul range.
+     Then it retracts at double speed and waits 1.5 s. There is **no
+     line-of-sight test** — it sees through its own ring — so the mining
+     position is *squarely behind a boulder, on its far side from the oven*:
+     the tentacle thuds into the rock; a step to either side and it drags you
+     in. That is the danger while mining. Four short stubs writhe around the
+     rooted body (bunching as the eyes charge) so it reads as tentacled before
+     it ever reaches; `drawTentacles` in `systems/monsters.js` draws stubs and
+     lash off `e.lash`, screen-space like the Podeboo's beams.
+   - its **hp bar reads the ring**: `syncStones` (called by the quest tick
+     every frame) sets `hp = maxHp × stones / 6`, so each mined stone flashes
+     it as hit and takes a sixth off the bar.
+4. **Death.** The fall of the sixth stone is the kill: the quest tick lands a
+   `source: 'ring'` hit for its remaining hp through `hurtCreature`, so the
+   death pose, the kill record, the toast and the hammer drop all run the
+   ordinary way. It dies where it sat, so the hammer falls on the oven. With no
+   stone standing it is neither rooted, nor absorbing, nor lashing — the
+   ordinary fallback if anything ever reaches that state alive.
 
 **Reward:** **Ukonvasara**, Ukko's hammer — heavy, damage 5, and on hit it calls
 a lightning strike on the struck cell (4 s cooldown).
@@ -376,8 +404,8 @@ a lightning strike on the struck cell (4 s cooldown).
   unreachable without the debug hook. Every quest's first step needs an
   obtainability check against the loot pools and fixed placements.)
 - *Player flees mid-fight.* `hiisi_woken` persists; `onArrive` re-spawns the
-  Hiisi at the kiuas with cladding capped by `stones`, and re-stamps only that
-  many boulders — the mined ones stay mined.
+  Hiisi at the kiuas wearing `stones`, and re-stamps only that many boulders —
+  the mined ones stay mined.
 - *Reward lost.* Re-spawned by `onArrive` while `hiisi_dead` and the hammer is
   neither carried nor in the sack.
 
@@ -388,7 +416,7 @@ a lightning strike on the struck cell (4 s cooldown).
 | Name | Rig params | Stats | Behaviour |
 |---|---|---|---|
 | `hirvi` | long body, long legs, `horns: true`, grey-brown hide | hp 30, dmg 2, speed 95 | `driver: 'hook'`, `taxon: 'beast'` — the module owns its whole per-frame update (flee / stand), like the Näkki |
-| `kivihiisi` | squat, huge, thick short legs, stone-grey, `horns: true` | hp 40, dmg 3, speed 45 | ordinary brain (chase/attack) plus a `CREATURE_HIT` hook for the cladding, like the Podeboo |
+| `kivihiisi` | squat, huge, thick short legs, stone-grey, `horns: true` | hp 40 (the bar mirrors the ring), dmg 3, speed 45 | ordinary brain plus `CREATURE_HIT`/`CREATURE_UPDATE` hooks for the siege (root, absorb, lash), like the Podeboo |
 
 The `kivihiisi` def omits `half`: the quadruped rig's `hitHalf` overrides
 `stats.half`, so a def-level value would be dead weight.
@@ -506,9 +534,16 @@ unaffected.
   6 lumber and yields 3 tar, lighting it leaves an eternal fire that `onArrive`
   restores, each plank spends exactly one tar, `bridge_done` only at three
   planks, re-firing works while unfinished.
-- `test/quest-pass.test.js` — ring stamping is idempotent and honours `stones`,
-  cladding absorbs and strips, re-clad is capped by `stones`, zero boulders
-  means no re-clad, frozen loses all cladding, death sets the flag once.
+- `test/quest-pass.test.js` — only the capstone before the wake, the ring
+  rises with the wake, re-stamping is idempotent and honours `stones`, a mined
+  stone comes off the count and the Hiisi's bar, the last stone's fall is the
+  kill with the hammer on the oven, death sets the flag once.
+- `test/kivihiisi.test.js` — hits absorbed while a stone stands, the ring's own
+  fall lands, pinned to the oven, windup then a lash in range at `LASH.speed`,
+  a boulder squarely between stops the tentacle short, a player a step off the
+  line is grabbed and reeled toward the oven, one grab per lash, cooldown,
+  range cap, nothing once no stone stands. `test/monsters.test.js` — stubs on
+  a rooted lasher, a long tentacle past the body while it lashes.
 - Extensions to existing suites: `sprintProfile` with and without `ski_legs`;
   `markStrike` places one mark at the named cell; a `fireOnly` projectile lays a
   fire zone and deals no burst damage.
@@ -527,7 +562,7 @@ Three slices, each shippable on its own:
    field, `game.js` wiring, `hirvi`, tracks, Ski-legs, the Clearings module.
 2. **The build.** Tar, the pit, the gap cells, `tervajousi` and its incendiary
    arrow, the River Split module.
-3. **The beast.** `kivihiisi`, the cladding hook, the boulder ring,
+3. **The beast.** `kivihiisi`, the siege hook, the boulder ring,
    `markStrike`, `ukonvasara`, the Mountain Pass module.
 
 Slice 1 carries the shared engine, so it lands first. Slices 2 and 3 are
