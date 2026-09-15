@@ -153,14 +153,39 @@ describe('applyChain', () => {
 })
 
 describe('thunderclap', () => {
-  it('shoves every spell target inside the radius away from the player, no damage', () => {
+  it('shoves and slows every spell target inside the radius, no damage', () => {
     const p = player(3, 3)
     const near = enemy(4, 3), far = enemy(9, 3), villager = { type: 'npc', px: p.px + 20, py: p.py, hp: 3 }
     const n = thunderclap(p, [near, far, villager])
     assert.equal(n, 1)
     assert.ok(near.knockback && near.knockback.vx > 0)
     assert.equal(near.hp, 20)
+    assert.equal(near.slowTimer, HAMMER.clap.slow.dur)
+    assert.equal(near.slowMul, HAMMER.clap.slow.mul)
     assert.equal(far.knockback, undefined)
+    assert.equal(far.slowTimer, undefined)
     assert.equal(villager.knockback, undefined, 'peaceful villagers are spared')
+  })
+})
+
+describe('drawShockCloud', () => {
+  it('paints a belly and a body of three lumps above the enemy, bobbing with time', async () => {
+    const { drawShockCloud } = await import('../renderer/render/canvas.js')
+    const fake = () => {
+      const log = { arcs: [], fills: [] }
+      const ctx = {
+        save() {}, restore() {}, beginPath() {}, moveTo() {},
+        arc: (x, y, r) => log.arcs.push([x, y, r]),
+        fill() { log.fills.push(ctx.fillStyle) },
+      }
+      return { ctx, log }
+    }
+    const a = fake(), b = fake()
+    drawShockCloud(a.ctx, 100, 50, 32, 0)
+    drawShockCloud(b.ctx, 100, 50, 32, 0.4)
+    assert.equal(a.log.arcs.length, 6, 'three lumps, twice: belly then body')
+    assert.deepEqual(a.log.fills, ['#6b7280', '#e5e7eb'])
+    assert.ok(a.log.arcs.every(([, y]) => y < 60), 'sits above the anchor')
+    assert.notEqual(a.log.arcs[0][1], b.log.arcs[0][1], 'bobs over time')
   })
 })

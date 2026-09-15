@@ -5,7 +5,7 @@
 // Three release tiers (melee.js CHARGE.ukonvasara), each a flat 3 on the blow:
 //   tap   — the blow alone.
 //   full  — the blow plus a *shock*: three 1-damage strokes a second apart.
-//   over  — no blow at all. A thunderclap shoves everything near the player,
+//   over  — no blow at all. A thunderclap shoves and slows everything near the player,
 //           and a chain of lightning walks 4 / 3 / 2 / 1 from the struck enemy
 //           to the nearest un-chained enemy within `chain.range` tiles of the
 //           current node. When no enemy is left in reach the next node is the
@@ -19,13 +19,14 @@
 // and extra damage per node ride `player.lightningBonus`.
 import { isSpellTarget } from './factions.js'
 import { startKnockback } from './knockback.js'
+import { applySlow } from './status.js'
 
 const TILE = 32
 
 export const HAMMER = {
   shock: { strokes: 3, interval: 1.0, damage: 1 },
   chain: { damage: [4, 3, 2, 1], range: 3 },        // range in tiles, node to node
-  clap:  { radius: 80, knockback: 30 },              // px, like the Maunonmiekka's wave
+  clap:  { radius: 80, knockback: 30, slow: { mul: 0.4, dur: 3 } },   // px; the slow is Gust's
   arcLife: 0.2,                                      // seconds an arc stays drawn
 }
 
@@ -121,14 +122,15 @@ export function applyChain(state, nodes, hooks = {}) {
   return { enemies, hero }
 }
 
-// The over-tier clap: knockback only, on every spell target within the
-// radius of the player. Returns how many were shoved.
+// The over-tier clap: no damage — a shove and a three-second slow on every
+// spell target within the radius of the player. Returns how many were caught.
 export function thunderclap(player, entities) {
   let n = 0
   for (const e of entities) {
     if (!isSpellTarget(e) || !Number.isFinite(e.px)) continue
     if (dist(player, e) > HAMMER.clap.radius) continue
     startKnockback(e, e.px - player.px, e.py - player.py, HAMMER.clap.knockback)
+    applySlow(e, HAMMER.clap.slow.mul, HAMMER.clap.slow.dur)
     n++
   }
   return n

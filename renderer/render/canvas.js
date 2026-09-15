@@ -460,6 +460,28 @@ function drawArcs(ctx, arcs, camX, camY, S) {
   }
 }
 
+// The storm cloud a shocked enemy wears (systems/hammer.js applyShock): a
+// puff of three lumps with a darker belly, bobbing gently, sitting where the
+// shock's strokes come down from. Exported for the unit test's fake ctx.
+export function drawShockCloud(ctx, cx, cy, S, t = 0) {
+  const bob = Math.sin(t * 4) * S * 0.04
+  const y = cy + bob
+  const r = S * 0.16
+  const lumps = [[-r * 1.1, 0, r * 0.85], [0, -r * 0.55, r], [r * 1.1, 0, r * 0.85]]
+  ctx.save()
+  ctx.globalAlpha = 0.95
+  for (const [fill, dy] of [['#6b7280', r * 0.35], ['#e5e7eb', 0]]) {   // belly, then body
+    ctx.fillStyle = fill
+    ctx.beginPath()
+    for (const [lx, ly, lr] of lumps) {
+      ctx.moveTo(cx + lx + lr, y + ly + dy)
+      ctx.arc(cx + lx, y + ly + dy, lr, 0, Math.PI * 2)
+    }
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 // The white-out a strike leaves behind. Drawn over the night wash on purpose —
 // the whole point of Call Lightning at night is that it lights the map.
 function drawFlash(ctx, flash, W, H) {
@@ -1137,6 +1159,7 @@ export class Renderer {
       if (e.frozen) { ctx.filter = prevFilter; drawFrozenSheen(ctx, epx, epy, S) }
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
+      if (e.shock) drawShockCloud(ctx, epx + S / 2, epy - 14, S, e.shock.tickT + e.shock.left)
     }
     const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const lift = Math.round(fx?.lift ?? 0)
