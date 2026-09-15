@@ -5,7 +5,7 @@ import { onArrive, tick, KIUAS, RING, RING_STONES, CAPSTONE, HAMMER, PICK as PIC
 import { makeQuestCtx, questFlags } from '../renderer/systems/quests.js'
 import { registerMonsters, clearMonsters, makeMonsterFromDef } from '../renderer/systems/monsters.js'
 import { normalizeAdventureSave } from '../renderer/systems/adventure.js'
-import { CLAD_MAX } from '../renderer/systems/monsters/kivihiisi.js'
+import { LASH, update as hiisiUpdate } from '../renderer/systems/monsters/kivihiisi.js'
 import { harvest } from '../renderer/systems/lumber.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE, weaponContents } from '../renderer/systems/entities.js'
@@ -50,7 +50,7 @@ function build({ flags = {}, at = HUT, inventory = [], entities = [], weapon = n
   const save = normalizeAdventureSave(null)
   Object.assign(questFlags(save, mapData.name), flags)
   const state = {
-    map: makeMap(), entities: [...entities], feedback: makeFeedback(), sfx: makeSfx(),
+    map: makeMap(), entities: [...entities], projectiles: [], feedback: makeFeedback(), sfx: makeSfx(),
     player: { x: at.x, y: at.y, px: at.x * S + 16, py: at.y * S + 16, hp: 10, talents: [], inventory, maxInventory: 10, weapon },
   }
   const calls = { persist: 0, refreshInventory: 0, flags: [] }
@@ -84,21 +84,21 @@ describe('stampBoulder', () => {
 })
 
 describe('arrival stamps the arena from the flags', () => {
-  it('a fresh map: the capstone on the kiuas and all six ring boulders, no Hiisi', () => {
+  it('a fresh map: the capstone on the kiuas, no ring yet, no Hiisi', () => {
     const { ctx, state } = build()
     onArrive(ctx)
     assert.equal(cellAt(state, KC).overlay, CAPSTONE)
     assert.equal(cellAt(state, KC).tile, TILE.WALL)
-    assert.equal(boulders(state), RING_STONES)
+    assert.equal(boulders(state), 0, 'the ring rises with the Hiisi')
     assert.equal(hiisiOf(state), null)
   })
   it('is idempotent', () => {
-    const { ctx, state } = build()
+    const { ctx, state } = build({ flags: { hiisi_woken: true, stones: 6 } })
     onArrive(ctx); onArrive(ctx)
     assert.equal(boulders(state), RING_STONES)
   })
   it('the ring never reuses the capstone skin, on any ring cell', () => {
-    const { ctx, state } = build()
+    const { ctx, state } = build({ flags: { hiisi_woken: true, stones: 6 } })
     onArrive(ctx)
     for (let i = 0; i < RING_STONES; i++) {
       const overlay = cellAt(state, ringCell(i)).overlay
@@ -112,12 +112,12 @@ describe('arrival stamps the arena from the flags', () => {
     assert.equal(boulders(state), 2)
     assert.notEqual(cellAt(state, KC).overlay, CAPSTONE, 'no capstone once woken')
   })
-  it('a woken Hiisi is re-spawned at the kiuas with cladding capped by stones, armed', () => {
+  it('a woken Hiisi is re-spawned at the kiuas wearing the standing count, armed', () => {
     const { ctx, state } = build({ flags: { hiisi_woken: true, stones: 1 } })
     onArrive(ctx)
     const h = hiisiOf(state)
     assert.deepEqual({ x: h.x, y: h.y }, KC)
-    assert.equal(h.clad, 1)
+    assert.equal(h.stones, 1)
     assert.equal(h.weaponId, 'maul')
     onArrive(ctx)
     assert.equal(state.entities.filter(e => e.type === 'kivihiisi').length, 1, 'never doubled')
@@ -193,15 +193,18 @@ describe('the wake', () => {
     tick(ctx, 0.1)
     assert.equal(calls.persist, n)
   })
-  it('mining the capstone wakes the Hiisi at the kiuas, armed and fully clad, with a toast', () => {
+  it('mining the capstone wakes the Hiisi at the kiuas, armed, and raises the six stones round it, with a toast', () => {
     const { ctx, state, save } = build()
     onArrive(ctx)
     mineOut(state, KC)
     tick(ctx, 0.1)
     assert.equal(questFlags(save, mapData.name).hiisi_woken, true)
+    assert.equal(questFlags(save, mapData.name).stones, RING_STONES)
+    assert.equal(boulders(state), RING_STONES, 'the ring erupts with it')
     const h = hiisiOf(state)
     assert.deepEqual({ x: h.x, y: h.y }, KC)
-    assert.equal(h.clad, CLAD_MAX)
+    assert.equal(h.stones, RING_STONES)
+    assert.equal(h.hp, h.maxHp)
     assert.equal(h.weaponId, 'maul')
     assert.equal(state.feedback.toasts.length, 1)
     assert.ok(state.sfx.cues.some(c => c.name === 'erupt'))
@@ -216,69 +219,58 @@ describe('the wake', () => {
 })
 
 describe('the standing stones', () => {
-  it('a mined ring boulder comes off the count, once', () => {
-    const { ctx, state, save, calls } = build({ flags: { hiisi_woken: true } })
+  it('a mined ring boulder comes off the count, once, and the Hiisi wears one less', () => {
+    const { ctx, state, save, calls } = build({ flags: { hiisi_woken: true, stones: 6 } })
     onArrive(ctx)
     mineOut(state, ringCell(2))
     tick(ctx, 0.1)
     assert.equal(questFlags(save, mapData.name).stones, 5)
+    assert.equal(hiisiOf(state).stones, 5)
+    assert.ok(hiisiOf(state).hp < hiisiOf(state).maxHp, 'the bar reads the ring')
     const n = calls.persist
     tick(ctx, 0.1)
     assert.equal(questFlags(save, mapData.name).stones, 5)
     assert.equal(calls.persist, n)
   })
-  it('the Hiisi cannot wear more stone than stands; mine the ring out and it wears none', () => {
-    const { ctx, state, save } = build({ flags: { hiisi_woken: true } })
+  it('while a stone stands the Hiisi sits on the oven, unhurt by the pick, and lashes', () => {
+    const { ctx, state } = build({ flags: { hiisi_woken: true, stones: 6 }, at: { x: KC.x + 4, y: KC.y }, weapon: PICK })
     onArrive(ctx)
     const h = hiisiOf(state)
-    assert.equal(h.clad, 3)
-    for (let i = 0; i < RING_STONES; i++) mineOut(state, ringCell(i))
+    // game.js runs the creature hook after the quest tick each frame; the
+    // brain's push off the oven is undone by it.
+    for (let t = 0; t < LASH.windup + 0.2; t += 0.1) { h.px += 30; h.x += 1; tick(ctx, 0.1); hiisiUpdate(h, state, 0.1) }
+    assert.deepEqual({ x: h.x, y: h.y }, KC, 'pinned')
+    assert.equal(h.lash.state, 'extend', 'a tentacle out')
+  })
+  it('the fall of the last stone is the kill: flag, hammer at the oven, toast — once', () => {
+    const { ctx, state, save, calls } = build({ flags: { hiisi_woken: true, stones: 1 } })
+    onArrive(ctx)
+    const h = hiisiOf(state)
+    mineOut(state, ringCell(0))
     tick(ctx, 0.1)
     assert.equal(questFlags(save, mapData.name).stones, 0)
-    assert.equal(h.clad, 0)
-    for (let t = 0; t < 30; t += 0.5) tick(ctx, 0.5)
-    assert.equal(h.clad, 0, 'no re-clad with nothing standing')
-  })
-  it('boulders mined before the wake come off the count', () => {
-    const { ctx, state, save, calls } = build()
-    onArrive(ctx)
-    mineOut(state, ringCell(0))
-    mineOut(state, ringCell(1))
+    assert.ok(h.hp <= 0, 'dead where it sat')
+    assert.equal(state.creatureKills.kivihiisi, true)
+    assert.equal(questFlags(save, mapData.name).hiisi_dead, true)
+    assert.deepEqual({ x: hammerOf(state).x, y: hammerOf(state).y }, KC)
+    assert.equal(state.feedback.toasts.length, 1)
     const n = calls.persist
     tick(ctx, 0.1)
-    assert.equal(questFlags(save, mapData.name).stones, 4)
-    assert.equal(questFlags(save, mapData.name).hiisi_woken, undefined)
-    assert.equal(calls.persist, n + 1, 'one persist for both stones mined this tick')
-    mineOut(state, KC)
-    tick(ctx, 0.1)
-    assert.equal(questFlags(save, mapData.name).hiisi_woken, true)
-    assert.equal(hiisiOf(state).clad, 3)
-  })
-  it('re-clads a layer every six seconds while stones stand', () => {
-    const { ctx, state } = build({ flags: { hiisi_woken: true } })
-    onArrive(ctx)
-    const h = hiisiOf(state)
-    h.clad = 0
-    for (let t = 0; t < 6.5; t += 0.5) tick(ctx, 0.5)
-    assert.equal(h.clad, 1)
+    assert.equal(calls.persist, n)
   })
 })
 
 describe('the kill and the hammer', () => {
-  it('a recorded kill sets the flag, drops the hammer where the Hiisi fell, and toasts — once', () => {
-    const { ctx, state, save, calls } = build({ flags: { hiisi_woken: true, stones: 0 } })
+  it('a recorded kill by any other means sets the flag and drops the hammer where the Hiisi fell', () => {
+    const { ctx, state, save } = build({ flags: { hiisi_woken: true, stones: 0 } })
     onArrive(ctx)
     const h = hiisiOf(state)
-    h.x = KC.x + 5; h.y = KC.y + 1; h.px = h.x * S + 16; h.py = h.y * S + 16   // kited off the oven
+    h.x = KC.x + 5; h.y = KC.y + 1; h.px = h.x * S + 16; h.py = h.y * S + 16   // freed and kited off the oven
     h.hp = 0; h.dying = 0.7
     state.creatureKills = { kivihiisi: true }
     tick(ctx, 0.1)
     assert.equal(questFlags(save, mapData.name).hiisi_dead, true)
     assert.deepEqual({ x: hammerOf(state).x, y: hammerOf(state).y }, { x: KC.x + 5, y: KC.y + 1 })
-    assert.equal(state.feedback.toasts.length, 1)
-    const n = calls.persist
-    tick(ctx, 0.1)
-    assert.equal(calls.persist, n)
   })
   it('a finished quest ticks quietly', () => {
     const { ctx, calls } = build({ flags: { hiisi_dead: true } })

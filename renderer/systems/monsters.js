@@ -167,7 +167,52 @@ export function drawGeneratedMonster(ctx, e, cx, cy, S, state) {
   ctx.translate(cx, cy)
   d.rig.drawMonster(ctx, d.params, entityPose(e), S)
   drawLasers(ctx, e, d, S)
+  drawTentacles(ctx, e, d, S)
   ctx.restore()
+}
+
+// The Kivihiisi's tentacles (systems/monsters/kivihiisi.js writes `e.lash`):
+// four short stubs writhe around a rooted body (bunching up as the eyes
+// charge), and the lashing tentacle runs out along the locked aim to the
+// hook's tip — a chunky segmented line in the hide colour over a dark
+// outline, a slow sine wobble that dies out toward the pale gripping tip so
+// the tip lands where the hook tests. Screen space, like the lasers; a few
+// dozen small rects. ctx is already at the entity centre.
+const STUBS = 4
+function tentacle(ctx, pal, k, x0, y0, ang, len, t, phase, taper = 1) {
+  const step = 3 * k
+  const dx = Math.cos(ang), dy = Math.sin(ang)
+  const nx = -dy, ny = dx
+  for (let s = step; s <= len; s += step) {
+    const f = s / len
+    const wob = Math.sin(s / (14 * k) - t * 6 + phase) * 3 * k * (1 - f) * taper
+    const w = Math.max(2, Math.round((4 - 2 * f) * k))
+    const x = x0 + dx * s + nx * wob, y = y0 + dy * s + ny * wob
+    ctx.fillStyle = pal.outline
+    ctx.fillRect(Math.round(x - w / 2 - k), Math.round(y - w / 2 - k), w + 2 * k, w + 2 * k)
+    ctx.fillStyle = pal.base
+    ctx.fillRect(Math.round(x - w / 2), Math.round(y - w / 2), w, w)
+  }
+  const tw = Math.max(2, Math.round(3 * k))
+  ctx.fillStyle = pal.light
+  ctx.fillRect(Math.round(x0 + dx * len - tw / 2), Math.round(y0 + dy * len - tw / 2), tw, tw)
+}
+function drawTentacles(ctx, e, d, S) {
+  const l = e.lash
+  if (!l || !(e.stones > 0)) return
+  const k = S / TILE_ART_PX
+  const pose = entityPose(e)
+  const pal = palette(d.params.hideColor ?? '#6e6a63')
+  const t = pose.t
+  const charge = l.state === 'windup' ? (pose.eyeGlow ?? 0) : 0
+  const r0 = 5 * k
+  for (let i = 0; i < STUBS; i++) {
+    const ang = (i + 0.5) * (Math.PI * 2 / STUBS) + Math.sin(t * 1.7 + i) * 0.4
+    const len = (9 + 3 * Math.sin(t * 2.3 + i * 2)) * k * (1 - 0.5 * charge)
+    tentacle(ctx, pal, k, Math.cos(ang) * r0, Math.sin(ang) * r0, ang, len, t, i * 1.9)
+  }
+  if ((l.state === 'extend' || l.state === 'retract') && l.len > 0)
+    tentacle(ctx, pal, k, 0, 0, l.aim, l.len * (S / 32), t, 0, 0.6)
 }
 
 // Beams live outside the rig's pixel stage (they run far past it), so they

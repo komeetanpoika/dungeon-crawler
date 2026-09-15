@@ -4,7 +4,7 @@ import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { MAP_RITES } from '../renderer/data/rites.js'
 import { WALLOWS, SHRINE } from '../renderer/systems/quests/clearings.js'
 import { PIT, GAPS, CAMP } from '../renderer/systems/quests/river.js'
-import { KIUAS, RING } from '../renderer/systems/quests/pass.js'
+import { KIUAS, RING, ARENA_RADIUS } from '../renderer/systems/quests/pass.js'
 
 const clearings = OPEN_MAPS[7]
 const poi = label => clearings.pois.find(p => p.label === label)
@@ -111,6 +111,14 @@ describe('the Mountain Pass hiidenkiuas', () => {
   it('its six ring cells are all walkable, so every boulder can be stamped and mined', () => {
     const k = pp(KIUAS)
     for (const [dx, dy] of RING) assert.ok(w(k.x + dx, k.y + dy), `${dx},${dy}`)
+  })
+  it('sits in an open bowl: every cell within ARENA_RADIUS is walkable, so the only cover is the ring', () => {
+    const k = pp(KIUAS)
+    const r = ARENA_RADIUS
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy > r * r) continue
+      assert.ok(w(k.x + dx, k.y + dy), `${k.x + dx},${k.y + dy} is blocked`)
+    }
   })
   it('is not the stone circle, and leaves the mines and the hut alone', () => {
     assert.deepEqual({ x: pp('stone circle').x, y: pp('stone circle').y }, { x: 84, y: 22 })

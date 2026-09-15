@@ -236,9 +236,15 @@ function autumn() {
   b.p(hut.x - 2, hut.y + 2, 'ow_beehive')
   b.p(hut.x + 3, hut.y + 1, 'ow_sign', { walkable: false })
   b.poi('village', hut.x + 1, hut.y + 2, 'hermit hut')
-  // The Kivihiisi's hiidenkiuas (renderer/systems/quests/pass.js): a fixed,
-  // verified-walkable bowl west of the pass, POI only — no terrain.
-  b.poi('landmark', 38, 30, 'hiidenkiuas')
+  // The Kivihiisi's hiidenkiuas (renderer/systems/quests/pass.js): an open
+  // bowl west of the pass. The quest stamps the ring itself; the bowl is
+  // carved bare (radius = pass.js ARENA_RADIUS) so the only cover from the
+  // Hiisi's thrown stones is the ring. clearProp draws no rng, so the rest
+  // of the map keeps its rolls; the odd mass cell at the bowl's rim is
+  // re-rimmed by stampMountainRim below.
+  const kiuas = { x: 38, y: 30 }
+  for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) if (x * x + y * y <= 36) b.clearProp(kiuas.x + x, kiuas.y + y)
+  b.poi('landmark', kiuas.x, kiuas.y, 'hiidenkiuas')
   // two mine mouths in the peaks: a pocket of floor opened in the mass with
   // the gate pair at its top, so the arch reads as cut into the mountain
   for (const [i, m] of [{ x: 102, y: 12 }, { x: 74, y: 8 }].entries()) {
