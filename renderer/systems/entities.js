@@ -24,10 +24,10 @@ export const WEAPON_TYPES = {
   // The most powerful sword in the game (cheat-only for now: type "mauno" in
   // a run). On-hit crimson shockwave lives in systems/shockwave.js.
   maunonmiekka: { name: 'Maunonmiekka', damage: 10 },
-  // Kivihiisi's reward (systems/quests/pass.js): Ukko's hammer. On hit,
-  // game.js marks a lightning strike on the struck cell, `lightning.cooldown`
-  // seconds apart (spells/lightning.js markStrike).
-  ukonvasara:   { name: 'Ukonvasara',   damage: 5, heavy: true, lightning: { cooldown: 4 } },
+  // Kivihiisi's reward (systems/quests/pass.js): Ukko's hammer. A charge
+  // weapon whose tiers deal lightning — a shock DoT on a full swing, a
+  // thunderclap and a chain of bolts on an overcharge (systems/hammer.js).
+  ukonvasara:   { name: 'Ukonvasara',   damage: 3, heavy: true, lightning: true },
   // Leap-episode tool: chops like a hatchet and mines rock (systems/leap.js
   // episode modules, Tasks 12-14).
   pick:      { name: 'Pick',      damage: 2, chop: 1, mine: 1 },

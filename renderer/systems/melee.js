@@ -28,6 +28,11 @@ export const CHARGE = {
   longsword:    { full: 0.5, over: 1.1, moveFactor: 0.6 },
   axe:          { full: 0.6, over: 1.2, moveFactor: 0.35 },
   maunonmiekka: { full: 0.5, over: 1.1, moveFactor: 0.5 },
+  // Ukko's hammer hits a flat 3 at every tier: the tiers change what the
+  // lightning does, not the blow (systems/hammer.js). Only the recovery,
+  // reach and shove still scale.
+  ukonvasara:   { full: 0.5, over: 1.1, moveFactor: 0.45,
+                  tiers: { tap: { dmgMul: 1 }, over: { dmgMul: 1 } } },
 }
 
 export const isChargeWeapon = weaponType => weaponType in CHARGE
@@ -50,12 +55,14 @@ export const shouldAutoRelease = (weaponType, heldTime) => {
   return !!c && heldTime > c.over + AUTO_RELEASE_GRACE
 }
 
-export const tierMods = tier => ({ tier, ...TIER_MODS[tier] })
+// A weapon's `tiers` entry overrides individual multipliers of a tier.
+export const tierMods = (tier, weaponType) =>
+  ({ tier, ...TIER_MODS[tier], ...(CHARGE[weaponType]?.tiers?.[tier] ?? {}) })
 
 export function resolveCharge(weaponType, heldTime) {
   const c = CHARGE[weaponType]
   const tier = !c ? 'full' : heldTime >= c.over ? 'over' : heldTime >= c.full ? 'full' : 'tap'
-  return { tier, ...TIER_MODS[tier] }
+  return tierMods(tier, weaponType)
 }
 
 // Swing geometry — the single source of truth for both the hit test and the

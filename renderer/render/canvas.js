@@ -429,6 +429,37 @@ function drawLightningBolts(ctx, strikes, camX, camY, S) {
   }
 }
 
+// Ukonvasara's lightning (systems/hammer.js): a jagged arc between two
+// points — chain hops enemy to enemy, and the shock's short stroke down onto
+// the enemy. Zig seeded by the endpoints so an arc holds still for its life.
+function drawArcs(ctx, arcs, camX, camY, S) {
+  for (const a of arcs ?? []) {
+    const k = Math.max(0, 1 - (a.t ?? 0) / (a.dur || 1))
+    if (k <= 0) continue
+    const x0 = a.x0 - camX, y0 = a.y0 - camY, x1 = a.x1 - camX, y1 = a.y1 - camY
+    const dx = x1 - x0, dy = y1 - y0
+    const len = Math.hypot(dx, dy) || 1
+    const nx = -dy / len, ny = dx / len          // normal, for the zig
+    const steps = Math.max(3, Math.min(8, Math.round(len / (S * 0.5))))
+    ctx.save()
+    ctx.lineJoin = 'round'
+    for (const [width, colour, alpha] of [[5, '#a78bfa', 0.45], [2, '#ffffff', 1]]) {
+      ctx.globalAlpha = alpha * k
+      ctx.strokeStyle = colour
+      ctx.lineWidth = width
+      ctx.beginPath()
+      ctx.moveTo(x0, y0)
+      for (let i = 1; i <= steps; i++) {
+        const f = i / steps
+        const zig = i === steps ? 0 : Math.sin(a.x0 * 0.7 + a.y1 * 1.3 + i * 2.9) * S * 0.3
+        ctx.lineTo(x0 + dx * f + nx * zig, y0 + dy * f + ny * zig)
+      }
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+}
+
 // The white-out a strike leaves behind. Drawn over the night wash on purpose —
 // the whole point of Call Lightning at night is that it lights the map.
 function drawFlash(ctx, flash, W, H) {
@@ -1245,6 +1276,7 @@ export class Renderer {
     // through the weather layer is the spell's whole signature. Still under the
     // mist and the feedback layer.
     drawLightningBolts(ctx, state.strikes, camX, camY, S)
+    drawArcs(ctx, state.arcs, camX, camY, S)
     drawFlash(ctx, state.flash, W, H)
 
     // Weather, pass two: mist over the water, planks, creatures and player —

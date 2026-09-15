@@ -339,15 +339,15 @@ describe('facing tables', () => {
 })
 
 describe('ukonvasara', () => {
-  it('is a heavy weapon that calls lightning on a 4 s cooldown', () => {
+  it('is a heavy lightning weapon hitting a flat 3', () => {
     const d = WEAPON_TYPES.ukonvasara
     assert.equal(d.name, 'Ukonvasara')
-    assert.equal(d.damage, 5)
+    assert.equal(d.damage, 3)
     assert.equal(d.heavy, true)
-    assert.deepEqual(d.lightning, { cooldown: 4 })
+    assert.equal(d.lightning, true)
   })
-  it('weaponContents carries the lightning field, and an ordinary sword has none', () => {
-    assert.deepEqual(weaponContents('ukonvasara').lightning, { cooldown: 4 })
+  it('weaponContents carries the lightning flag, and an ordinary sword has none', () => {
+    assert.equal(weaponContents('ukonvasara').lightning, true)
     assert.equal(weaponContents('sword').lightning, undefined)
   })
 })

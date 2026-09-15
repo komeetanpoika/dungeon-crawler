@@ -162,3 +162,10 @@ Append-only record of arena test runs, managed by `arena-log.mjs` — do not han
 **Config:** (default boss arena)
 **Score:** 5/5
 **Notes:** Every criterion met live on depth 12 via level12 + --dcdebug. Arrival: capstone WALL ow_mtn_rock_0 at (38,30), six ring boulders skinned 1,2,3,4,5,1, no Hiisi, elder names the pick. One held pick swing on the capstone: hiisi_woken, Hiisi at (38,30) clad 3 weaponId maul, toast verbatim. Adjacent held swings: every landed hit absorbed with hp pinned at 40 while clad stepped 3->2->1; after 6.5 s clad back at the cap of 3. Two real mining swings: stones 4, ringCounted [0,1]; reload + level12: stones 4 persisted, exactly four boulders re-stamped, no capstone, Hiisi re-spawned clad 3 armed. Four more mines: stones 0, clad 0 the same tick, still 0 after 10 s; a swing then landed (40->38). hp=1 + swing: hiisi_dead, creatureKills, Ukonvasara at the corpse cell (39,33), toast verbatim. Hammer to the sack (pick in hand), equipped by hand: lightning {cooldown 4}, heavy; a held swing at a guard: 50 ms sampling caught one mark and one strike, hammerT armed to 4; a second swing inside 4 s did not re-arm. Final reload: all four flags, no arena, no Hiisi, hammer in the sack (no duplicate), elder on the resolved line.
+
+## Run 24 — 2026-09-15 — CLOSED
+**Question:** Does an overcharged Ukonvasara with two stunned monsters deal 4 to the nearest, 3 to the second and 2 to the hero, with arcs drawn; and does a full swing deal 3 plus three 1-damage strokes?
+**Criteria:** entity hp deltas 4 and 3, player hp delta 2, state.arcs peaks at 3 after the over swing; after a full swing the struck monster loses 3 then 1/1/1 over ~3 s
+**Config:** monster(medium), monster(medium)
+**Score:** 5/5
+**Notes:** Live in the level-0 arena with two 20-hp stunned monsters east of the player: over swing (held 1.4 s) dealt 4 to the nearest, 3 to the second, 2 to the hero, pushed 3 arcs and 1 clap ring; full swing (0.75 s) dealt 3 then 1/1/1 at 1 s intervals with an arc per stroke and the shock cleared; tap dealt a plain 3 with no shock. Arc renderer confirmed with injected long-lived arcs (screenshot /tmp/shots/arcs.png).
