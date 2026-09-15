@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { HAMMER, lightningMods, applyShock, tickShock, chainNodes, applyChain, thunderclap }
+import { HAMMER, lightningMods, applyShock, tickShock, chainNodes, applyChain, thunderclap, applyRain, tickRain, rainSlow }
   from '../renderer/systems/hammer.js'
 import { CHARGE, resolveCharge, isChargeWeapon } from '../renderer/systems/melee.js'
 import { WEAPON_TYPES, weaponContents } from '../renderer/systems/entities.js'
@@ -113,11 +113,12 @@ describe('chainNodes', () => {
     assert.equal(nodes[0].e, near)
   })
 
-  it('a whiff with nothing struck seeks the nearest target in range of the player, else zaps the hero', () => {
+  it('a whiff with nothing struck seeks the nearest target in range of the player, else plans nothing', () => {
     const p = player(0, 0)
     const b = enemy(2, 0)
     assert.deepEqual(chainNodes(p, [], [b], { range: 3 }).map(n => n.e ?? 'player'), [b, 'player'])
-    assert.deepEqual(chainNodes(p, [], [enemy(8, 8)], { range: 3 }).map(n => [n.e ?? 'player', n.damage]), [['player', 4]])
+    assert.deepEqual(chainNodes(p, [], [enemy(8, 8)], { range: 3 }), [], 'no first node: the hero is never zapped')
+    assert.deepEqual(chainNodes(p, [], [], { range: 3 }), [])
   })
 
   it('bonus damage and range from the player ride every node', () => {
@@ -187,5 +188,61 @@ describe('drawShockCloud', () => {
     assert.deepEqual(a.log.fills, ['#6b7280', '#e5e7eb'])
     assert.ok(a.log.arcs.every(([, y]) => y < 60), 'sits above the anchor')
     assert.notEqual(a.log.arcs[0][1], b.log.arcs[0][1], 'bobs over time')
+  })
+})
+
+describe('rain (the whiff\'s cloud)', () => {
+  it('slows the hero for its duration, no damage, then lifts', () => {
+    const p = player(0, 0)
+    assert.equal(rainSlow(p), 1)
+    applyRain(p)
+    assert.equal(rainSlow(p), HAMMER.rain.slowMul)
+    assert.equal(p.hp, 10)
+    tickRain(p, HAMMER.rain.dur - 0.1)
+    assert.equal(rainSlow(p), HAMMER.rain.slowMul)
+    tickRain(p, 0.2)
+    assert.equal(p.rain, undefined)
+    assert.equal(rainSlow(p), 1)
+    tickRain(p, 1)   // safe when dry
+  })
+
+  it('a second whiff restarts the cloud', () => {
+    const p = player(0, 0)
+    applyRain(p)
+    tickRain(p, 3)
+    applyRain(p)
+    assert.equal(p.rain.t, 0)
+  })
+
+  it('applyChain on an empty plan touches nothing', () => {
+    const p = player(0, 0)
+    const { hits, hooks } = recorder()
+    let heroDmg = 0
+    hooks.damagePlayer = d => { heroDmg += d }
+    const state = { player: p, arcs: [] }
+    const res = applyChain(state, [], hooks)
+    assert.deepEqual([hits.length, heroDmg, state.arcs.length, res.enemies, res.hero], [0, 0, 0, 0, 0])
+  })
+})
+
+describe('drawRainCloud', () => {
+  it('draws the cloud plus rain streaks below it that scroll with time', async () => {
+    const { drawRainCloud } = await import('../renderer/render/canvas.js')
+    const fake = () => {
+      const log = { arcs: 0, moves: [] }
+      const ctx = {
+        save() {}, restore() {}, beginPath() {}, fill() {}, stroke() {}, lineTo() {},
+        arc: () => log.arcs++,
+        moveTo: (x, y) => log.moves.push([x, y]),
+      }
+      return { ctx, log }
+    }
+    const a = fake(), b = fake()
+    drawRainCloud(a.ctx, 100, 50, 32, 0, 0)
+    drawRainCloud(b.ctx, 100, 50, 32, 0.1, 0)
+    assert.equal(a.log.arcs, 6, 'the cloud itself')
+    const streaks = a.log.moves.filter(([, y]) => y >= 50 + 32 * 0.16 * 0.5)   // below the belly's rim
+    assert.equal(streaks.length, 5, 'five streaks under the belly')
+    assert.notDeepEqual(a.log.moves, b.log.moves, 'streaks scroll')
   })
 })

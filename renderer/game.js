@@ -54,7 +54,7 @@ import { castCone, GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoRel
 import { spellFor, tryCast } from './systems/spells.js'
 import { tickZones } from './systems/zones.js'
 import { castLightning, tickLightning } from './systems/spells/lightning.js'
-import { HAMMER, applyShock, tickShock, chainNodes, applyChain, thunderclap, tickArcs, lightningMods } from './systems/hammer.js'
+import { HAMMER, applyShock, tickShock, chainNodes, applyChain, thunderclap, tickArcs, lightningMods, applyRain, tickRain, rainSlow } from './systems/hammer.js'
 import { stepProjectiles } from './systems/projectiles.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
@@ -1056,7 +1056,7 @@ function update(delta) {
       : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor
                                         : chargeMoveFactor(player.weapon?.weaponType))
     : 1
-  const speed = PLAYER_SPEED * chargeFactor * (sprinting ? profile.speedMul : 1)
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
 
@@ -1371,7 +1371,8 @@ function update(delta) {
     // Ukonvasara: a full swing shocks what it struck (three strokes over
     // three seconds); an overcharge is the thunderclap and the chain. The
     // hero is the chain's last node when the enemies run out, so a lone foe
-    // costs 3 hp and a whiff costs 4 — Ukko's bolt always lands somewhere.
+    // costs 3 hp; a whiff with nothing in reach costs no hp at all — just a
+    // rain cloud over the hero that slows the walk for a few seconds.
     if (hammer && mods.tier === 'full') {
       for (const s of struck) if (isSpellTarget(s)) applyShock(s)
     }
@@ -1380,14 +1381,18 @@ function update(delta) {
       state.shockwaves.push({ px: player.px, py: player.py, t: 0, dur: 0.35, maxRadius: HAMMER.clap.radius, color: '#e9d5ff' })
       sfx(state, 'thunder', { px: player.px, py: player.py })
       const nodes = chainNodes(player, struck, state.entities, lightningMods(player))
-      const snap = npcSnapshot()
-      applyChain(state, nodes, {
-        hurt: hurtEntity,
-        damagePlayer: d => damagePlayer(state, d, 'lightning'),
-      })
-      npcsStruckSince(snap)
-      sfx(state, 'crackle', { px: player.px, py: player.py })
-      cullEntities()
+      if (nodes.length) {
+        const snap = npcSnapshot()
+        applyChain(state, nodes, {
+          hurt: hurtEntity,
+          damagePlayer: d => damagePlayer(state, d, 'lightning'),
+        })
+        npcsStruckSince(snap)
+        sfx(state, 'crackle', { px: player.px, py: player.py })
+        cullEntities()
+      } else {
+        applyRain(player)
+      }
     }
     state.hitEffects = [{ x: player.x, y: player.y }]
     // Harvesting: a hatchet/axe swing lands on the nearest tree in the
@@ -1702,6 +1707,7 @@ function update(delta) {
   }
 
   tickArcs(state, delta)
+  tickRain(player, delta)
   // Advance Maunonmiekka shockwave rings
   if (state.shockwaves?.length) {
     state.shockwaves = state.shockwaves

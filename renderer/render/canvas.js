@@ -482,6 +482,30 @@ export function drawShockCloud(ctx, cx, cy, S, t = 0) {
   ctx.restore()
 }
 
+// The whiff's cloud over the hero (systems/hammer.js applyRain): the same
+// puff, with rain streaks falling from its belly onto the player. Streaks
+// scroll with time; `frac` (0→1 over the cloud's life) thins them at the end.
+export function drawRainCloud(ctx, cx, cy, S, t = 0, frac = 0) {
+  drawShockCloud(ctx, cx, cy, S, t)
+  const fade = Math.min(1, (1 - frac) * 3)
+  const r = S * 0.16
+  ctx.save()
+  ctx.strokeStyle = '#93c5fd'
+  ctx.lineWidth = 1
+  ctx.globalAlpha = 0.8 * fade
+  ctx.beginPath()
+  const drops = 5
+  for (let i = 0; i < drops; i++) {
+    const x = cx - r * 1.6 + (i / (drops - 1)) * r * 3.2
+    const phase = (t * 3.2 + i * 0.37) % 1          // each streak on its own beat
+    const top = cy + r * 0.5 + phase * S * 0.9
+    ctx.moveTo(x, top)
+    ctx.lineTo(x - S * 0.02, top + S * 0.14)
+  }
+  ctx.stroke()
+  ctx.restore()
+}
+
 // The white-out a strike leaves behind. Drawn over the night wash on purpose —
 // the whole point of Call Lightning at night is that it lights the map.
 function drawFlash(ctx, flash, W, H) {
@@ -1189,6 +1213,7 @@ export class Renderer {
     }
     drawMeleeSwing(ctx, player, sprites, camX, camY, S)
     drawChargeRing(ctx, player, camX, camY)
+    if (player.rain) drawRainCloud(ctx, ppx + S / 2, ppy - 14, S, player.rain.t, player.rain.t / player.rain.dur)
     const dragon = entities.find(e => e.type === 'dragon')
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     const cyclops = entities.find(e => e.type === 'cyclops')
