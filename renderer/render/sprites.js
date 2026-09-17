@@ -17,6 +17,12 @@ export const SPRITES = {
   player_melee_heavy: 'tile_0097',     // plumed knight — melee once Might is learned
   player_ranged:      'tile_0112',     // hooded ranger
   player_magic:       'tile_0084',     // the purple wizard
+  // Outfit icons: the loadout's own figure stands in for its garb until
+  // dedicated art exists (plan 3).
+  outfit_ranger:  'tile_0112',
+  outfit_robe:    'tile_0084',
+  outfit_plate:   'tile_0097',
+  outfit_leather: 'tile_0098',
   guard:        'tile_0085',
   guard_alert:  'tile_0087',
   monster_weak:   'tile_0120',

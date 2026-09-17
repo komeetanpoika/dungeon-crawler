@@ -37,21 +37,34 @@ describe('updateHUD hearts', () => {
   })
 })
 
-describe('updateHUD consumable slot', () => {
-  it('shows the next-up item icon with count and publishes the badge attribute', () => {
+describe('updateHUD offhand slot', () => {
+  it('shows the pointed consumable with its count and publishes the badge attribute', () => {
     const nodes = fakeDom()
     updateHUD(state({ inventory: [{ kind: 'potion', emoji: '🧪', stackable: true, count: 3 }] }))
-    assert.match(nodes['hud-consumable'].innerHTML, /assets\/tiles\/.*\.png/)
-    assert.match(nodes['hud-consumable'].innerHTML, /×3/)
-    assert.equal(nodes['hud-consumable'].dataset.quickEmoji, '🧪')
+    assert.match(nodes['hud-offhand'].innerHTML, /assets\/tiles\/.*\.png/)
+    assert.match(nodes['hud-offhand'].innerHTML, /×3/)
+    assert.equal(nodes['hud-offhand'].dataset.offhand, 'consumable')
   })
-  it('empty sack renders a dimmed placeholder icon and clears the badge', () => {
+  it('an empty stack renders the pointed kind dimmed, no count, badge cleared', () => {
     const nodes = fakeDom()
     updateHUD(state())
-    assert.match(nodes['hud-consumable'].innerHTML, /assets\/tiles\/.*\.png/)
-    assert.match(nodes['hud-consumable'].innerHTML, /hud-icon-empty/)
-    assert.doesNotMatch(nodes['hud-consumable'].innerHTML, /hud-count/)
-    assert.equal(nodes['hud-consumable'].dataset.quickEmoji, '')
+    assert.match(nodes['hud-offhand'].innerHTML, /hud-icon-empty/)
+    assert.doesNotMatch(nodes['hud-offhand'].innerHTML, /hud-count/)
+    assert.equal(nodes['hud-offhand'].dataset.offhand, '')
+  })
+  it('an empty offhand renders the dimmed potion silhouette', () => {
+    const nodes = fakeDom()
+    const s = state(); s.player.gear.melee.off = null
+    updateHUD(s)
+    assert.match(nodes['hud-offhand'].innerHTML, /hud-icon-empty/)
+    assert.equal(nodes['hud-offhand'].dataset.offhand, '')
+  })
+  it('follows the active loadout', () => {
+    const nodes = fakeDom()
+    const s = state({ inventory: [{ kind: 'mushroom', emoji: '🍄', stackable: true, count: 1 }], attackMode: 'magic' })
+    s.player.gear.magic.off = { kind: 'consumable', item: 'mushroom' }
+    updateHUD(s)
+    assert.match(nodes['hud-offhand'].innerHTML, /ow_mushroom/)
   })
 })
 
@@ -140,7 +153,7 @@ describe('updateHUD DOM churn', () => {
       ranged: { weaponType: 'shortbow', name: 'Shortbow', ammoKind: 'arrow' },
       ammo: { arrow: 9, bolt: 0, stone: 0 }, attackMode: 'ranged' })
     updateHUD(s); updateHUD(s); updateHUD(s)
-    assert.deepEqual(writes, { 'hud-hearts': 1, 'hud-consumable': 1, 'hud-ammo': 1 })
+    assert.deepEqual(writes, { 'hud-hearts': 1, 'hud-offhand': 1, 'hud-ammo': 1 })
   })
   it('rewrites only the slot whose state changed', () => {
     const { writes, nodes } = countingDom()
@@ -149,7 +162,7 @@ describe('updateHUD DOM churn', () => {
     s.player.hp = 5
     updateHUD(s)
     assert.equal(writes['hud-hearts'], 2)
-    assert.equal(writes['hud-consumable'], 1)
+    assert.equal(writes['hud-offhand'], 1)
     assert.match(nodes['hud-hearts'].innerHTML, /half/)
   })
 })

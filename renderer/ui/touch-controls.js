@@ -98,14 +98,14 @@ function initTouchControls() {
   bindHold(document.getElementById('touch-select'), 'i')
   bindHold(document.getElementById('touch-start'), 'Escape')
 
-  // --- The quick-use button mirrors the badge data the HUD publishes on
-  // #hud-consumable rather than reaching into game state: grey when the sack
-  // holds no consumables. ---
-  const consumable = document.getElementById('hud-consumable')
+  // --- The offhand button mirrors the badge the HUD publishes on
+  // #hud-offhand rather than reaching into game state: grey when the active
+  // offhand has nothing usable. ---
+  const offhandEl = document.getElementById('hud-offhand')
   const quickBtn = document.getElementById('touch-quickuse')
   new MutationObserver(() => {
-    quickBtn.classList.toggle('empty', !consumable.dataset.quickEmoji)
-  }).observe(consumable, { attributes: true, attributeFilter: ['data-quick-emoji'] })
+    quickBtn.classList.toggle('empty', !offhandEl.dataset.offhand)
+  }).observe(offhandEl, { attributes: true, attributeFilter: ['data-offhand'] })
 
   // --- Never leave keys stuck when the page loses the pointer/focus ---
   const resetAll = () => {

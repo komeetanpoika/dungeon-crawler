@@ -24,6 +24,7 @@ describe('iconSpriteFor', () => {
     assert.equal(iconSpriteFor({ kind: 'weapon', payload: { weaponType: 'nonsense' } }), 'weapon_sword')
     assert.equal(iconSpriteFor({ kind: 'ranged', payload: {} }), 'weapon_shortbow')
   })
+  it('outfits use their loadout sprite', () => assert.equal(iconSpriteFor({ kind: 'outfit', payload: { outfitType: 'robe' } }), 'outfit_robe'))
   it('returns null for unknown kinds and missing items', () => {
     assert.equal(iconSpriteFor({ kind: 'key' }), null)
     assert.equal(iconSpriteFor(null), null)
