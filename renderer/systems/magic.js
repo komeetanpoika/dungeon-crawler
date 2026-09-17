@@ -6,7 +6,7 @@
 import { FACING_ANGLE } from './entities.js'
 import { inSwing } from './melee.js'
 import { startKnockback } from './knockback.js'
-import { hasTalent } from './talents.js'
+import { loadoutAvailable } from './inventory.js'
 import { GUST_COSTS, affordableTier, canAfford, spendStamina } from './stamina.js'
 import { applyFreeze, applySlow } from './status.js'
 import { isStoryCreature } from './monsters.js'
@@ -82,7 +82,7 @@ export function castCone(state, t) {
 // that needs no wand — gating, pricing and cone in a single call.
 export function tryGust(state, tier = 'tap') {
   const p = state.player
-  if (!hasTalent(p, 'magic_stance')) return { ok: false, reason: 'not_learned' }
+  if (!loadoutAvailable(p, 'magic')) return { ok: false, reason: 'not_learned' }
   if ((p.magicCooldown ?? 0) > 0) return { ok: false, reason: 'cooldown' }
   if (!canAfford(p, GUST_COSTS[tier])) return { ok: false, reason: 'stamina' }
   spendStamina(p, GUST_COSTS[tier])

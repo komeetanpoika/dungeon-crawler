@@ -237,7 +237,7 @@ export function buildOpenMap(data, { npcs = null, felled = null, rng = Math.rand
   // Rite triggers: invisible walk-onto spawns anchored to named landmark POIs.
   for (const rite of MAP_RITES[data.name] ?? []) {
     const poi = data.pois.find(p => p.kind === 'landmark' && p.label === rite.fromPoi)
-    if (poi) entitySpawns.push({ kind: 'talent_trigger', x: poi.x, y: poi.y, talent: rite.talent, rite: rite.rite })
+    if (poi) entitySpawns.push({ kind: 'talent_trigger', x: poi.x, y: poi.y, outfit: rite.outfit, rite: rite.rite })
     else console.warn(`rites: poi "${rite.fromPoi}" not found on ${data.name}`)
   }
   // Wild mushrooms: pickable, colour-shifting. Deterministic — every third

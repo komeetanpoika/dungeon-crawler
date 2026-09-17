@@ -4,6 +4,8 @@ import { GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust, 
 import { nextStance } from '../renderer/systems/ranged.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
+import { defaultGear } from '../renderer/systems/entities.js'
+import { gearWearing } from './helpers/outfits.js'
 
 const FAKE_RIG = {
   PARAM_SCHEMA: [{ key: 'size', label: 'Size', group: 'body', type: 'range', min: 0, max: 2, step: 0.1, default: 1 }],
@@ -19,19 +21,19 @@ const T = 32
 const mkPlayer = () => ({
   px: 100, py: 100, facing: 'east', attackMode: 'magic',
   stamina: 100, maxStamina: 100, staminaRegenT: 99, magicCooldown: 0,
-  talents: ['magic_stance'],
+  gear: gearWearing('robe'),
 })
 const mkState = (entities = []) => ({ player: mkPlayer(), entities, feedback: makeFeedback() })
 const guardAt = (dx, dy) => ({ type: 'guard', px: 100 + dx, py: 100 + dy, x: 0, y: 0, hp: 4, maxHp: 4 })
 
 describe('stance cycle', () => {
   it('magic is reachable in the cycle once learned', () => {
-    const p = { attackMode: 'ranged', talents: ['ranged_stance', 'magic_stance'] }
+    const p = { attackMode: 'ranged', gear: gearWearing('ranger', 'robe') }
     assert.equal(nextStance(p), 'magic')
   })
 
   it('skips magic when unlearned', () => {
-    const p = { attackMode: 'ranged', talents: ['ranged_stance'] }
+    const p = { attackMode: 'ranged', gear: gearWearing('ranger') }
     assert.equal(nextStance(p), 'melee')
   })
 })
@@ -107,9 +109,9 @@ describe('tryGust', () => {
     assert.equal(boss.knockback, undefined)
   })
 
-  it('refuses without the magic_stance talent', () => {
+  it('refuses without the robe', () => {
     const state = mkState([])
-    state.player.talents = []
+    state.player.gear = defaultGear()
     assert.deepEqual(tryGust(state), { ok: false, reason: 'not_learned' })
     assert.equal(state.player.stamina, 100)
   })
@@ -135,7 +137,7 @@ describe('gust charge tiers', () => {
 describe('tryGust with stamina', () => {
   const mkState = (playerOver = {}, entities = []) => {
     const player = { type: 'player', px: 100, py: 100, facing: 'east',
-      talents: ['magic_stance'], magicCooldown: 0,
+      gear: gearWearing('robe'), magicCooldown: 0,
       stamina: 100, maxStamina: 100, staminaRegenT: 99, ...playerOver }
     return { player, entities: [player, ...entities] }
   }
@@ -189,7 +191,7 @@ describe('affordableGustTier', () => {
   it('returns null when even tap is unaffordable, so the caller still refuses', () => {
     assert.equal(affordableGustTier(13, 'over'), null)
     assert.equal(affordableGustTier(13, 'tap'), null)
-    const s = { player: { px: 100, py: 100, facing: 'east', talents: ['magic_stance'],
+    const s = { player: { px: 100, py: 100, facing: 'east', gear: gearWearing('robe'),
       magicCooldown: 0, stamina: 13, maxStamina: 100, staminaRegenT: 99 }, entities: [] }
     assert.deepEqual(tryGust(s, affordableGustTier(s.player.stamina, 'over') ?? 'tap'),
       { ok: false, reason: 'stamina' })

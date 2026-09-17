@@ -169,7 +169,7 @@ describe('rite spawns on open maps', () => {
   it('emits a talent_trigger at the rite poi', () => {
     const { entitySpawns } = buildOpenMap(mkData())
     const trig = entitySpawns.find(s => s.kind === 'talent_trigger')
-    assert.deepEqual(trig, { kind: 'talent_trigger', x: 4, y: 4, talent: 'magic_stance', rite: 'mushroom_circle' })
+    assert.deepEqual(trig, { kind: 'talent_trigger', x: 4, y: 4, outfit: 'robe', rite: 'mushroom_circle' })
   })
 
   it('spawns wild mushrooms beside mushroom props, deterministically', () => {
@@ -186,16 +186,16 @@ describe('rite spawns on open maps', () => {
   })
 })
 
-// The marsh's mushroom ring anchors a talent-less rite: the trance and
-// ceremony still play, but there is nothing to learn (see game.js).
-describe('marsh-3-hermit talent-less rite', () => {
-  it('emits one talent_trigger at the mushroom ring with talent: null', () => {
+// The marsh's mushroom ring anchors an outfit-less rite: the trance and
+// ceremony still play, but there is nothing to give (see game.js).
+describe('marsh-3-hermit outfit-less rite', () => {
+  it('emits one talent_trigger at the mushroom ring with outfit: null', () => {
     const data = OPEN_MAPS[10]
     const { entitySpawns } = buildOpenMap(data)
     const triggers = entitySpawns.filter(s => s.kind === 'talent_trigger')
     assert.equal(triggers.length, 1)
     const ring = data.pois.find(p => p.label === 'mushroom ring')
-    assert.deepEqual(triggers[0], { kind: 'talent_trigger', x: ring.x, y: ring.y, talent: null, rite: 'mushroom_circle' })
+    assert.deepEqual(triggers[0], { kind: 'talent_trigger', x: ring.x, y: ring.y, outfit: null, rite: 'mushroom_circle' })
   })
 })
 

@@ -1,7 +1,7 @@
 // Secret unlock ceremonies. A rite is a named condition + a short screen
 // ceremony; the trigger tiles come from data/rites.js via openmap.js.
 // Pure: no DOM, no canvas — riteVisuals returns numbers for the renderer.
-import { hasTalent } from './talents.js'
+import { ownsOutfit } from './outfits.js'
 
 export const TRANCE_DURATION = 60   // s from the first bite until the rite calls
 export const TRANCE_FADE = 5        // s the peak takes to drain once the call has landed
@@ -121,11 +121,11 @@ function rainbowBlobs(t) {
 }
 
 // The ring the call reaches for: any rite anchor on this map that still has
-// something to give. None in a cave, and none once the talent is learned —
-// both fizzle. A talent-less anchor (the marsh ring) always answers.
+// something to give. None in a cave, and none once the outfit is owned —
+// both fizzle. An outfit-less anchor (the marsh ring) always answers.
 export function pullTarget(state) {
   return (state.entities ?? []).find(e => e.type === 'talent_trigger'
-    && (!e.talent || !hasTalent(state.player, e.talent))) ?? null
+    && (!e.outfit || !ownsOutfit(state.player, e.outfit))) ?? null
 }
 
 // The whiteout that carries the player across: up to full at the hand-over,

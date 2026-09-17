@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { updateHUD } from '../renderer/render/hud.js'
+import { gearWearing } from './helpers/outfits.js'
 
 function fakeDom() {
   const nodes = {}
@@ -14,7 +15,7 @@ function state(playerOver = {}) {
     player: {
       hp: 10, maxHp: 10, stamina: 100, maxStamina: 100, inventory: [], weapon: null, ranged: null, wand: null,
       ammo: { arrow: 0, bolt: 0, stone: 0 }, attackMode: 'melee',
-      talents: ['ranged_stance', 'magic_stance'],
+      gear: gearWearing('ranger', 'robe'),
       ...playerOver,
     },
   }

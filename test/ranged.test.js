@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeRangedContents, makePlayer } from '../renderer/systems/entities.js'
+import { makeRangedContents, makePlayer, defaultGear } from '../renderer/systems/entities.js'
+import { gearWearing } from './helpers/outfits.js'
 import {
   nextStance, startStanceSwitch, tickStanceSwitch, STANCE_SWITCH_DURATION,
   tryFire, FIRE_FAIL_MESSAGES, noAmmoMessage,
@@ -16,7 +17,7 @@ function fullAmmo() {
 function armedPlayer(weaponType, over = {}) {
   return {
     ...makePlayer(1, 1),
-    talents: ['ranged_stance'],
+    gear: gearWearing('ranger'),
     ranged: makeRangedContents(weaponType),
     ammo: fullAmmo(),
     rangedCooldown: 0,
@@ -26,7 +27,7 @@ function armedPlayer(weaponType, over = {}) {
 
 describe('nextStance', () => {
   it('cycles melee -> ranged -> magic -> melee among learned stances without flipping', () => {
-    const p = { ...makePlayer(1, 1), talents: ['ranged_stance', 'magic_stance'] }
+    const p = { ...makePlayer(1, 1), gear: gearWearing('ranger', 'robe') }
     assert.equal(nextStance(p), 'ranged')
     assert.equal(p.attackMode, 'melee')      // pure query, no mutation
     p.attackMode = 'ranged'
@@ -36,8 +37,8 @@ describe('nextStance', () => {
   })
 
   it('skips unlearned stances and returns null with nothing else learned', () => {
-    assert.equal(nextStance({ attackMode: 'melee', talents: ['magic_stance'] }), 'magic')
-    assert.equal(nextStance({ attackMode: 'melee', talents: [] }), null)
+    assert.equal(nextStance({ attackMode: 'melee', gear: gearWearing('robe') }), 'magic')
+    assert.equal(nextStance({ attackMode: 'melee' }), null)
   })
 
   it('cycles even with no ranged weapon or empty ammo pool', () => {
@@ -47,7 +48,7 @@ describe('nextStance', () => {
 })
 
 describe('stance switching', () => {
-  const learned = () => ({ ...makePlayer(1, 1), talents: ['ranged_stance', 'magic_stance'] })
+  const learned = () => ({ ...makePlayer(1, 1), gear: gearWearing('ranger', 'robe') })
 
   it('startStanceSwitch begins a timed transition without flipping the mode yet', () => {
     const p = learned()
@@ -57,7 +58,7 @@ describe('stance switching', () => {
   })
 
   it('returns null when only melee is known and starts nothing', () => {
-    const p = { ...makePlayer(1, 1), talents: [] }
+    const p = { ...makePlayer(1, 1), gear: defaultGear() }
     assert.equal(startStanceSwitch(p), null)
     assert.equal(p.stanceSwitch, undefined)
   })
@@ -73,7 +74,7 @@ describe('stance switching', () => {
   })
 
   it('a refused switch leaves the charge alone', () => {
-    const p = { ...makePlayer(1, 1), talents: [] }
+    const p = { ...makePlayer(1, 1), gear: defaultGear() }
     p.charging = { t: 0.5, kind: 'draw' }
     assert.equal(startStanceSwitch(p), null)
     assert.deepEqual(p.charging, { t: 0.5, kind: 'draw' })
@@ -131,8 +132,8 @@ describe('DRAW_CHARGE / resolveDrawTier / shouldAutoReleaseDraw', () => {
 })
 
 describe('tryFire — gating', () => {
-  it('refuses without the ranged_stance talent and spends nothing', () => {
-    const p = armedPlayer('shortbow', { talents: [] })
+  it('refuses without the ranger outfit and spends nothing', () => {
+    const p = armedPlayer('shortbow', { gear: defaultGear() })
     assert.deepEqual(tryFire(p), { ok: false, reason: 'not_learned' })
     assert.equal(p.ammo.arrow, 10)
   })

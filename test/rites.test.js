@@ -5,6 +5,7 @@ import { TRANCE_DURATION, TRANCE_FADE, RITE_DURATION, RITE_APPEAR_END, RITE_ASCE
   startTrance, tickTrance, tranceLevel, tranceColour, riteConditionMet, riteVisuals,
   spriteHue, pullTarget, pullWash }
   from '../renderer/systems/rites.js'
+import { gearWearing } from './helpers/outfits.js'
 
 describe('trance', () => {
   it('lasts TRANCE_DURATION seconds and then fades', () => {
@@ -375,8 +376,8 @@ describe('spriteHue', () => {
 })
 
 describe('the pull', () => {
-  const ring = { type: 'talent_trigger', x: 66, y: 62, talent: 'magic_stance', rite: 'mushroom_circle' }
-  const player = { talents: [] }
+  const ring = { type: 'talent_trigger', x: 66, y: 62, outfit: 'robe', rite: 'mushroom_circle' }
+  const player = {}
 
   it('finds the ring anywhere on the map, not just underfoot', () => {
     const target = pullTarget({ player, entities: [{ type: 'crab', x: 3, y: 3 }, ring] })
@@ -387,13 +388,13 @@ describe('the pull', () => {
     assert.equal(pullTarget({ player, entities: [{ type: 'crab', x: 3, y: 3 }] }), null)
   })
 
-  it('will not pull a player who already learned the talent', () => {
-    assert.equal(pullTarget({ player: { talents: ['magic_stance'] }, entities: [ring] }), null)
+  it('will not pull a player who already owns the robe', () => {
+    assert.equal(pullTarget({ player: { gear: gearWearing('robe') }, entities: [ring] }), null)
   })
 
   it('still pulls to a ring that grants nothing — the marsh ring replays', () => {
-    const marsh = { ...ring, talent: null }
-    assert.ok(pullTarget({ player: { talents: ['magic_stance'] }, entities: [marsh] }))
+    const marsh = { ...ring, outfit: null }
+    assert.ok(pullTarget({ player: { gear: gearWearing('robe') }, entities: [marsh] }))
   })
 
   it('washes the screen out at the moment the player is carried across', () => {

@@ -4,7 +4,8 @@ import { SPELLS, spellFor, affordableTier, tryCast, CHAIN_RANGE } from '../rende
 import { GUST_COSTS } from '../renderer/systems/stamina.js'
 import { GUST_TIERS } from '../renderer/systems/magic.js'
 import { FIREBALL_RANGE_TILES } from '../renderer/systems/fire.js'
-import { TILE } from '../renderer/systems/entities.js'
+import { TILE, defaultGear } from '../renderer/systems/entities.js'
+import { gearWearing } from './helpers/outfits.js'
 
 const T = 32
 const SPELL_IDS = ['gust', 'spark', 'rime', 'fireball', 'bramble', 'blink', 'lightning']
@@ -16,7 +17,7 @@ const mkMap = (w = 20, h = 20) =>
 
 const mkPlayer = (over = {}) => ({
   type: 'player', px: 5 * T + 16, py: 5 * T + 16, x: 5, y: 5, facing: 'east',
-  attackMode: 'magic', talents: ['magic_stance'], magicCooldown: 0,
+  attackMode: 'magic', gear: gearWearing('robe'), magicCooldown: 0,
   stamina: 100, maxStamina: 100, staminaRegenT: 99, wand: null, ...over,
 })
 const mkState = (playerOver = {}, entities = []) => {
@@ -93,8 +94,8 @@ describe('affordableTier', () => {
 })
 
 describe('tryCast gating', () => {
-  it('refuses without the magic_stance talent, spending nothing', () => {
-    const s = mkState({ talents: [] })
+  it('refuses without the robe, spending nothing', () => {
+    const s = mkState({ gear: defaultGear() })
     assert.deepEqual(tryCast(s, 'spark'), { ok: false, reason: 'not_learned' })
     assert.equal(s.player.stamina, 100)
   })

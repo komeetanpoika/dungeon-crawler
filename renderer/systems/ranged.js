@@ -1,23 +1,21 @@
 // Melee/ranged stance and projectile firing. Pure player-state logic —
 // game.js owns projectile spawning, log messages, and input.
-import { hasTalent } from './talents.js'
-import { spendAmmo } from './inventory.js'
+import { spendAmmo, loadoutAvailable } from './inventory.js'
 
 const STANCE_ORDER = ['melee', 'ranged', 'magic']
-const STANCE_TALENT = { ranged: 'ranged_stance', magic: 'magic_stance' }
 
 // Changing stance is a commitment: the new form takes a moment to settle,
 // and no attack works until it does.
 export const STANCE_SWITCH_DURATION = 0.7
 
-// The next learned stance in the cycle; null when only melee is known. Pure
-// query — flipping attackMode is tickStanceSwitch's job.
+// The next open loadout in the cycle; null when only the Warrior is open.
+// Pure query — flipping attackMode is tickStanceSwitch's job.
 export function nextStance(player) {
   const from = STANCE_ORDER.indexOf(player.attackMode)
   for (let step = 1; step <= STANCE_ORDER.length; step++) {
     const mode = STANCE_ORDER[(from + step) % STANCE_ORDER.length]
     if (mode === player.attackMode) break
-    if (!STANCE_TALENT[mode] || hasTalent(player, STANCE_TALENT[mode])) return mode
+    if (loadoutAvailable(player, mode)) return mode
   }
   return null
 }
@@ -77,7 +75,7 @@ const SHAPE_BY_KIND = { bow: 'arrow', crossbow: 'quarrel', sling: 'stone' }
 // returns the projectile's combat stats. `tier` (from resolveDrawTier) only
 // affects weapons with the `draw` flag (the longbow).
 export function tryFire(player, tier = 'tap') {
-  if (!hasTalent(player, 'ranged_stance')) return { ok: false, reason: 'not_learned' }
+  if (!loadoutAvailable(player, 'ranged')) return { ok: false, reason: 'not_learned' }
   const r = player.ranged
   if (!r) return { ok: false, reason: 'no_weapon' }
   const ammoKind = r.ammoKind
