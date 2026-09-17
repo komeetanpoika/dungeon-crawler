@@ -16,7 +16,7 @@ const STACKABLE_KINDS = {
   lumber:      { name: 'Lumber',      emoji: '🪵', extra: {} },            // felled tree (systems/lumber.js)
   deadwood:    { name: 'Grey Wood',   emoji: '🪵', extra: {} },  // dead-tree wood (systems/lumber.js); the hermit's fuel
   // Leap-episode quest items: never consumable, no default panel action
-  // (Drop stays available — see ui/inventory-panel.js primaryAction).
+  // (Drop stays available — see ui/inventory-panel-model.js sackActions).
   clapper:     { name: 'Bell Clapper', emoji: '🔔', extra: { quest: true } },
   fleece:      { name: "Lamb's Fleece", emoji: '🐑', extra: { quest: true } },
   // Adventure quest items: same carry-only rule as the leap ones.
@@ -198,8 +198,9 @@ export function equipItem(player, index) {
   return { ok: true, equipped: item }
 }
 
-// Hand → sack. The loadout may be locked (coat taken off with a bow still
-// held): the hand keeps its content until the player empties it here.
+// Hand → sack. A locked loadout's hand is always empty — closing a loadout
+// evicts its main hand (see handsToEvict) — so this only ever runs on a hand
+// the player can still reach from the panel.
 export function unequipMain(player, stance) {
   const hand = MAIN_OF[stance]
   const held = player[hand]
@@ -210,17 +211,37 @@ export function unequipMain(player, stance) {
   return { ok: true }
 }
 
-// The Warrior's heavy weapon rides on the plate: whatever removes the plate
-// (swap or unequip) must find the weapon a sack slot first.
-function heavyEviction(player, stance, nextOutfit) {
-  if (stance !== 'melee') return null
-  return player.weapon?.heavy && !nextOutfit?.heavy ? player.weapon : null
+// Which main hands an outfit change leaves nowhere to live, so that whatever
+// removes the outfit (swap or unequip) finds them a sack slot first. Two
+// cases: the Warrior's heavy weapon rides on the plate, and the Archer's and
+// Mage's hands ride on the loadout itself — take the coat off and the bow has
+// no open loadout to be held in, and the panel offers no way to reach it.
+// Returns hand names (MAIN_OF values), in eviction order.
+function handsToEvict(player, stance, nextOutfit) {
+  const hand = MAIN_OF[stance]
+  if (!player[hand]) return []
+  if (stance === 'melee') return player[hand].heavy && !nextOutfit?.heavy ? [hand] : []
+  return nextOutfit?.loadout === stance ? [] : [hand]
+}
+
+// Move the evicted hands into the sack. Callers must have counted them in
+// their own roomFor arithmetic — by here the slots are guaranteed.
+function evictHands(player, hands) {
+  for (const hand of hands) {
+    player.inventory.push(handItem(hand, player[hand]))
+    player[hand] = null
+  }
 }
 
 // A closed loadout cannot stay active: fall back to the Warrior and drop any
 // charge that belonged to the stance being closed.
 function closeIfLocked(player, stance) {
-  if (loadoutAvailable(player, stance) || player.attackMode !== stance) return
+  if (loadoutAvailable(player, stance)) return
+  // A switch *into* the loadout that just closed is abandoned where it stands:
+  // tickStanceSwitch flips attackMode with no availability re-check, so a
+  // switch left running would land the player in a loadout they cannot use.
+  if (player.stanceSwitch?.to === stance) player.stanceSwitch = null
+  if (player.attackMode !== stance) return
   player.attackMode = 'melee'
   player.charging = null
   player.stanceSwitch = null
@@ -234,12 +255,12 @@ export function equipOutfit(player, index, stance) {
   stance ??= item.payload.loadout ?? player.attackMode ?? 'melee'
   if (item.payload.loadout && item.payload.loadout !== stance) return { ok: false, reason: 'wrong_loadout' }
   const g = gearOf(player, stance)
-  const evict = heavyEviction(player, stance, item.payload)
-  // The new outfit frees one slot; the old outfit and an evicted weapon each take one.
-  if (!roomFor(player, (g.outfit ? 1 : 0) + (evict ? 1 : 0) - 1)) return { ok: false, reason: 'full' }
+  const evict = handsToEvict(player, stance, item.payload)
+  // The new outfit frees one slot; the old outfit and each evicted hand take one.
+  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length - 1)) return { ok: false, reason: 'full' }
   player.inventory.splice(index, 1)
   if (g.outfit) player.inventory.push(outfitItem(g.outfit))
-  if (evict) { player.inventory.push(handItem('weapon', evict)); player.weapon = null }
+  evictHands(player, evict)
   g.outfit = { ...item.payload }
   closeIfLocked(player, stance)
   return { ok: true, equipped: item }
@@ -248,10 +269,10 @@ export function equipOutfit(player, index, stance) {
 export function unequipOutfit(player, stance) {
   const g = gearOf(player, stance)
   if (!g.outfit) return { ok: false, reason: 'not_equippable' }
-  const evict = heavyEviction(player, stance, null)
-  if (!roomFor(player, 1 + (evict ? 1 : 0))) return { ok: false, reason: 'full' }
+  const evict = handsToEvict(player, stance, null)
+  if (!roomFor(player, 1 + evict.length)) return { ok: false, reason: 'full' }
   player.inventory.push(outfitItem(g.outfit))
-  if (evict) { player.inventory.push(handItem('weapon', evict)); player.weapon = null }
+  evictHands(player, evict)
   g.outfit = null
   closeIfLocked(player, stance)
   return { ok: true }

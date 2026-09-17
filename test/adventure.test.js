@@ -8,7 +8,7 @@ import {
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../renderer/data/levels.js'
 import { DAY_START } from '../renderer/data/weather.js'
-import { makeRangedContents, emptyAmmo, defaultGear, makeOutfitContents } from '../renderer/systems/entities.js'
+import { makeRangedContents, emptyAmmo, defaultGear, makeOutfitContents, weaponContents } from '../renderer/systems/entities.js'
 import { migrateTalentsToOutfits } from '../renderer/systems/outfits.js'
 
 describe('the adventure map chain', () => {
@@ -396,6 +396,12 @@ describe('v8 save shape — gear and outfits', () => {
     const s = normalizeAdventureSave({ caves: {}, progress: { mapDepth: 7, cleared: {} }, talents: ['magic_stance'], body: null })
     assert.equal(s.body.gear.magic.outfit.outfitType, 'robe')
     assert.deepEqual(s.talents, [])
+  })
+  it('normalizing a v8 body twice changes nothing', () => {
+    const once = normalizeBody({ ...emptyBody(), belt: weaponContents('pick'),
+      gear: { ...defaultGear(), melee: { off: null, outfit: { outfitType: 'plate' } },
+        magic: { off: { kind: 'consumable', item: 'mushroom' }, outfit: null } } })
+    assert.deepEqual(normalizeBody(once), once)
   })
   it('a current save is untouched', () => {
     const s = normalizeAdventureSave(null)

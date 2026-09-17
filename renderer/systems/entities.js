@@ -70,7 +70,7 @@ export const RANGED_WEAPON_TYPES = {
 
 // Flags that ride through unchanged from a RANGED_WEAPON_TYPES row onto the
 // contents object, only when the row actually sets them.
-const RANGED_FLAG_KEYS = ['draw', 'fork', 'heavy', 'knockback', 'piercesShield', 'stun', 'fire']
+const RANGED_FLAG_KEYS = ['draw', 'fork', 'knockback', 'piercesShield', 'stun', 'fire']
 
 export function makeRangedContents(weaponType = 'shortbow') {
   const wt = RANGED_WEAPON_TYPES[weaponType] ? weaponType : 'shortbow'

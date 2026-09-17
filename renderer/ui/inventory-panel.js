@@ -2,7 +2,7 @@
 // outfit) above the sack grid. All mutations happen in game.js via handlers;
 // what to show and where the cursor goes comes from inventory-panel-model.js.
 import { canEquip, EQUIP_FAIL_MESSAGES } from '../systems/inventory.js'
-import { gearStrip, sackActions, gearAction, gearAt, moveSelection, SACK_COLS } from './inventory-panel-model.js'
+import { gearStrip, sackActions, gearAction, gearAt, moveSelection } from './inventory-panel-model.js'
 import { sfx } from '../systems/sfx.js'
 import { iconSrcFor } from '../render/icons.js'
 

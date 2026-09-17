@@ -361,7 +361,7 @@ describe('player stance sprites', () => {
     drawEntity(ctx, player({ gear: gearWearing('plate'), attackMode: 'ranged',
       stanceSwitch: { from: 'ranged', to: 'melee', t: 0.7 * 0.75, dur: 0.7 } }), 0, 0, 32, SPR2)
     const to = ctx.images.find(i => i.img === 'HEAVY')
-    assert.ok(to, 'melee target renders the knight for a Might-trained player')
+    assert.ok(to, 'melee target renders the knight for a plate-wearing player')
     assert.ok(Math.abs(to.alpha - 0.75) < 1e-9)
   })
 })

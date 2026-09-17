@@ -81,6 +81,33 @@ describe('equipOutfit / unequipOutfit', () => {
     assert.equal(equipOutfit(p, 0).ok, true)            // leather out, plate + axe in
     assert.equal(p.inventory.length, 2)
   })
+  it('abandons an in-flight switch into a loadout that just closed', () => {
+    const p = mk({ gear: gearWearing('ranger'), attackMode: 'melee',
+      stanceSwitch: { from: 'melee', to: 'ranged', t: 0.2, dur: 0.7 } })
+    assert.equal(unequipOutfit(p, 'ranged').ok, true)
+    assert.equal(p.stanceSwitch, null, 'the switch is abandoned, not left to land in a locked loadout')
+    assert.equal(p.attackMode, 'melee', 'the player stays where they are')
+  })
+  it('taking the coat off sends the held bow to the sack with it', () => {
+    const p = mk({ gear: gearWearing('ranger'), ranged: makeRangedContents('shortbow') })
+    assert.equal(unequipOutfit(p, 'ranged').ok, true)
+    assert.equal(p.ranged, null)
+    assert.deepEqual(p.inventory.map(i => i.kind).sort(), ['outfit', 'ranged'])
+  })
+  it('refuses to take the coat off when the sack cannot hold coat and bow', () => {
+    const p = mk({ gear: gearWearing('ranger'), ranged: makeRangedContents('shortbow'), maxInventory: 1 })
+    assert.deepEqual(unequipOutfit(p, 'ranged'), { ok: false, reason: 'full' })
+    assert.equal(p.ranged.weaponType, 'shortbow')
+    assert.equal(p.gear.ranged.outfit.outfitType, 'ranger')
+  })
+  it('swapping the robe for a leather coat evicts the held wand too', () => {
+    const p = mk({ gear: gearWearing('robe'), wand: makeWandContents('sparkwand') })
+    addItem(p, outfit('leather'))
+    assert.equal(equipOutfit(p, 0, 'magic').ok, true)
+    assert.equal(p.wand, null)
+    assert.equal(p.gear.magic.outfit.outfitType, 'leather')
+    assert.deepEqual(p.inventory.map(i => i.kind).sort(), ['outfit', 'wand'])
+  })
   it('closing the active loadout drops the stance back to melee', () => {
     const p = mk({ gear: gearWearing('ranger'), attackMode: 'ranged', charging: { kind: 'draw' } })
     assert.equal(unequipOutfit(p, 'ranged').ok, true)

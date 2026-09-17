@@ -13,8 +13,8 @@ export const SPRITES = {
   dragon:       'creature_dragon',
   dragon_parts: 'dragon_boss_parts',
   player:       'tile_0084',           // legacy alias (menu art); stances use the four below
-  player_base:        'tile_0088',     // bare adventurer — melee before Might
-  player_melee_heavy: 'tile_0097',     // plumed knight — melee once Might is learned
+  player_base:        'tile_0088',     // bare adventurer — melee without the plate
+  player_melee_heavy: 'tile_0097',     // plumed knight — melee in the Plated Armor
   player_ranged:      'tile_0112',     // hooded ranger
   player_magic:       'tile_0084',     // the purple wizard
   // Outfit icons: the loadout's own figure stands in for its garb until

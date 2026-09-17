@@ -120,8 +120,12 @@ icon; `test/sprites.test.js` already fails without them.
 ## 3. Loadout availability and the gates
 
 The three stance talents are retired. `TALENTS` keeps `ski_legs` (and future
-non-gear abilities); `RUSH_START_TALENTS`, `MAP_CLEAR_TALENTS` and the
-`talentReward` path are removed with them.
+non-gear abilities); `MAP_CLEAR_TALENTS` and the `talentReward` path are
+removed with them.
+
+> **As built:** `RUSH_START_TALENTS` is kept — it is "every talent, granted at
+> a Rush spawn", and Ski-legs still needs it, so it shrank to that one entry
+> rather than disappearing. Only `MAP_CLEAR_TALENTS` went.
 
 ```js
 loadoutAvailable(player, 'melee')  === true
@@ -278,11 +282,21 @@ design: no spoilers).
   (main before off before outfit before belt). When both main and off are
   legal a second button, **Offhand**, targets the offhand explicitly; for
   tools a **Belt** button appears.
+
+  > **As built:** "first legal slot" would have made Enter on a potion point
+  > the offhand at it instead of drinking it, which is the opposite of what a
+  > player reaching for a potion wants. A consumable keeps its own use action
+  > (**Drink** / **Eat**) as the primary, and **Offhand** is always offered as
+  > an explicit second button (`sackActions` in
+  > `ui/inventory-panel-model.js`). Only kinds with no use action — weapons,
+  > bows, wands, outfits — lead with **Equip**/**Wear**.
 - Enter on a gear tile unequips it to the sack (a consumable pointer simply
   clears). Refusals use `EQUIP_FAIL_MESSAGES`, extended with
   `two_handed: 'I need both hands for that.'`, `wrong_loadout: "That's not
   my garb."`, `full: 'My pack is full.'`.
-- Detail line shows protect / blockCost / spell where relevant.
+- Detail line shows protect / blockCost / spell where relevant. (Plan 1 shows
+  protect; `blockCost` and the wand's spell arrive with plan 2's shields and
+  offhand wand.)
 - Touch: tiles are tappable; the existing stick-to-arrow mapping covers
   navigation.
 
