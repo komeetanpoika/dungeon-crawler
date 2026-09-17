@@ -7,7 +7,7 @@ import { ADVENTURE_DEPTH } from '../data/levels.js'
 import { DAY_START } from '../data/weather.js'
 import { WAND_TYPES, RANGED_WEAPON_TYPES, makeWandContents, makeRangedContents, emptyAmmo,
   OUTFIT_TYPES, makeOutfitContents, defaultGear, WEAPON_TYPES, weaponContents, SHIELD_TYPES, makeShieldContents } from './entities.js'
-import { itemFromContents } from './inventory.js'
+import { itemFromContents, OFFHAND_KINDS, offhandItem } from './inventory.js'
 import { migrateTalentsToOutfits } from './outfits.js'
 
 // Item offhands are table data like the hands: rebuilt by kind, dropped when
@@ -87,7 +87,15 @@ export function normalizeBody(body) {
     const ot = g.outfit?.outfitType
     if (OUTFIT_TYPES[ot]) { const { type, ...payload } = makeOutfitContents(ot); gear[stance].outfit = payload }
     else gear[stance].outfit = null
-    gear[stance].off = normalizeOffhand(g.off)
+    const off = normalizeOffhand(g.off)
+    // Enforce OFFHAND_KINDS on load: if an item offhand's kind is not in
+    // the stance's allowlist, move it to inventory rather than lose it.
+    if (off && off.kind !== 'consumable' && !(OFFHAND_KINDS[stance] ?? []).includes(off.kind)) {
+      out.inventory.push(offhandItem(off))
+      gear[stance].off = null
+    } else {
+      gear[stance].off = off
+    }
   }
   out.gear = gear
   out.belt = WEAPON_TYPES[out.belt?.weaponType] ? weaponContents(out.belt.weaponType) : null
