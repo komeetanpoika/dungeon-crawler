@@ -58,8 +58,10 @@ export const RANGED_WEAPON_TYPES = {
   longbow:   { name: 'Longbow',     damage: 3, cooldown: 0.7, color: '#facc15', kind: 'bow',      ammoKind: 'arrow', bundle: 10, draw: true },
   splitbow:  { name: 'Splitbow',    damage: 2, cooldown: 0.8, color: '#facc15', kind: 'bow',      ammoKind: 'arrow', bundle: 10,
     fork: { after: 32, count: 3, spread: Math.PI / 9 } },
+  // No `heavy` flag: plate belongs to the Warrior now, and the archer can
+  // never wear it — the coat alone is enough to draw the crossbow.
   crossbow:  { name: 'Crossbow',    damage: 5, cooldown: 1.2, color: '#e5e7eb', kind: 'crossbow', ammoKind: 'bolt',  bundle: 8,
-    heavy: true, knockback: 45, piercesShield: true },
+    knockback: 45, piercesShield: true },
   sling:     { name: 'Sling',       damage: 1, cooldown: 0.5, color: '#a8a29e', kind: 'sling',    ammoKind: 'stone', bundle: 20, stun: 0.5 },
   // Tervahauta's reward (systems/quests/river.js): a longbow whose arrow
   // leaves a burning patch — `fire.tiles` is the fire zone's flood size.
@@ -68,7 +70,7 @@ export const RANGED_WEAPON_TYPES = {
 
 // Flags that ride through unchanged from a RANGED_WEAPON_TYPES row onto the
 // contents object, only when the row actually sets them.
-const RANGED_FLAG_KEYS = ['draw', 'fork', 'heavy', 'knockback', 'piercesShield', 'stun', 'fire']
+const RANGED_FLAG_KEYS = ['draw', 'fork', 'knockback', 'piercesShield', 'stun', 'fire']
 
 export function makeRangedContents(weaponType = 'shortbow') {
   const wt = RANGED_WEAPON_TYPES[weaponType] ? weaponType : 'shortbow'
@@ -99,6 +101,33 @@ export function makeWandContents(weaponType = 'sparkwand') {
   const wt = WAND_TYPES[weaponType] ? weaponType : 'sparkwand'
   const def = WAND_TYPES[wt]
   return { type: 'wand', weaponType: wt, name: def.name, spell: def.spell, color: def.color }
+}
+
+// Outfits — one per loadout slot (systems/inventory.js gearOf). Wearing the
+// outfit whose `loadout` names a stance is what opens that stance: the coat
+// is the Archer, the robe is the Mage. `loadout: null` fits any loadout.
+// `heavy` on the Warrior's outfit is the heavy-weapon gate (plate); protect
+// and sprintDrain are read in plan 2/3 (damagePlayer, sprintProfile).
+export const OUTFIT_TYPES = {
+  ranger:  { name: "Ranger's Coat", loadout: 'ranged', protect: 0 },
+  robe:    { name: "Mage's Robe",   loadout: 'magic',  protect: 0 },
+  plate:   { name: 'Plated Armor',  loadout: 'melee',  protect: 2, heavy: true, sprintDrain: 2 },
+  leather: { name: 'Leather Coat',  loadout: null,     protect: 1 },
+}
+
+export function makeOutfitContents(outfitType = 'leather') {
+  const ot = OUTFIT_TYPES[outfitType] ? outfitType : 'leather'
+  const def = OUTFIT_TYPES[ot]
+  return { type: 'outfit', outfitType: ot, name: def.name, loadout: def.loadout, protect: def.protect,
+    ...(def.heavy && { heavy: true }), ...(def.sprintDrain && { sprintDrain: def.sprintDrain }) }
+}
+
+// Per-loadout gear beside the three main hands (see makePlayer). Every
+// offhand starts pointed at the potion stack so Q heals from the first step,
+// exactly as quick-use did before the offhand existed.
+export function defaultGear() {
+  const slot = () => ({ off: { kind: 'consumable', item: 'potion' }, outfit: null })
+  return { melee: slot(), ranged: slot(), magic: slot() }
 }
 
 // The quiver/pouch: one shared pool per ammo kind, independent of which bow
@@ -218,12 +247,16 @@ export function makePlayer(x, y, bonuses = []) {
     hp: 10, maxHp: 10,
     inventory: [], maxInventory: 10 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
-    // Three hands (melee / bow / wand) and one shared quiver — a run can be
-    // swordsman, archer and wizard at once.
+    // Three loadouts of one body: the main hands live here (melee / bow /
+    // wand — combat code reads them directly), each loadout's offhand and
+    // outfit live one level down in `gear`, and `belt` is the one shared tool
+    // slot. The Warrior is always open; the Archer and the Mage open when
+    // their outfit is worn (inventory.js loadoutAvailable).
     bonuses, weapon: null, ranged: null, wand: null, ammo: emptyAmmo(),
+    gear: defaultGear(), belt: null,
     attackMode: 'melee', talents: [],
     stamina: 100, maxStamina: 100, staminaRegenT: 0,
-    magicCooldown: 0,   // gust unlocks via the magic_stance talent
+    magicCooldown: 0,   // gust unlocks with the Mage's Robe (inventory.js loadoutAvailable)
   }
 }
 

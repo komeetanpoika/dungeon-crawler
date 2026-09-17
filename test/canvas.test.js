@@ -6,6 +6,7 @@ import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/sys
 import { createMap } from '../renderer/systems/map.js'
 import { SPRITES } from '../renderer/render/sprites.js'
 import { readPng } from '../tools/png-read.mjs'
+import { gearWearing } from './helpers/outfits.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in. `ops`
 // records any other method call (name + args) via the Proxy fallback below,
@@ -318,11 +319,11 @@ describe('drawRiteCeremony', () => {
 describe('player stance sprites', () => {
   const SPR2 = { player_base: 'BASE', player_melee_heavy: 'HEAVY', player_ranged: 'RANGED', player_magic: 'MAGIC' }
 
-  it('picks the sprite for the stance, gated by the Might talent for melee', () => {
-    assert.equal(playerSpriteKey({ attackMode: 'melee', talents: [] }, 'melee'), 'player_base')
-    assert.equal(playerSpriteKey({ attackMode: 'melee', talents: ['heavy_weapons'] }, 'melee'), 'player_melee_heavy')
-    assert.equal(playerSpriteKey({ attackMode: 'ranged', talents: ['ranged_stance'] }, 'ranged'), 'player_ranged')
-    assert.equal(playerSpriteKey({ attackMode: 'magic', talents: ['magic_stance'] }, 'magic'), 'player_magic')
+  it('picks the sprite for the stance; the plate makes the Warrior a knight', () => {
+    assert.equal(playerSpriteKey({ attackMode: 'melee' }, 'melee'), 'player_base')
+    assert.equal(playerSpriteKey({ attackMode: 'melee', gear: gearWearing('plate') }, 'melee'), 'player_melee_heavy')
+    assert.equal(playerSpriteKey({ attackMode: 'ranged', gear: gearWearing('ranger') }, 'ranged'), 'player_ranged')
+    assert.equal(playerSpriteKey({ attackMode: 'magic', gear: gearWearing('robe') }, 'magic'), 'player_magic')
   })
 
   function playerCtx() {
@@ -337,7 +338,7 @@ describe('player stance sprites', () => {
       set fillStyle(_v) {}, set strokeStyle(_v) {}, set lineWidth(_v) {},
     }
   }
-  const player = over => ({ type: 'player', facing: 'east', attackMode: 'melee', talents: [], attackTimer: 0, ...over })
+  const player = over => ({ type: 'player', facing: 'east', attackMode: 'melee', attackTimer: 0, ...over })
 
   it('draws the stance sprite for a settled player', () => {
     const ctx = playerCtx()
@@ -355,12 +356,12 @@ describe('player stance sprites', () => {
     assert.ok(Math.abs(to.alpha - 0.5) < 1e-9)
   })
 
-  it('the target sprite honors talent gating during the fade', () => {
+  it('the target sprite honors outfit gating during the fade', () => {
     const ctx = playerCtx()
-    drawEntity(ctx, player({ talents: ['heavy_weapons'], attackMode: 'ranged',
+    drawEntity(ctx, player({ gear: gearWearing('plate'), attackMode: 'ranged',
       stanceSwitch: { from: 'ranged', to: 'melee', t: 0.7 * 0.75, dur: 0.7 } }), 0, 0, 32, SPR2)
     const to = ctx.images.find(i => i.img === 'HEAVY')
-    assert.ok(to, 'melee target renders the knight for a Might-trained player')
+    assert.ok(to, 'melee target renders the knight for a plate-wearing player')
     assert.ok(Math.abs(to.alpha - 0.75) < 1e-9)
   })
 })

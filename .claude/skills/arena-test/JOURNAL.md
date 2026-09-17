@@ -2,6 +2,8 @@
 
 Append-only record of arena test runs, managed by `arena-log.mjs` — do not hand-edit entries. Each run saves its key testing question and criteria before the game runs, and the tester's 1–5 assessment of how well the criteria were met after.
 
+Terminology note (2026-09-17, does not touch entries below): earlier runs pre-grant stances/Might by naming them under `talents` in the arena player config (e.g. `talents: ['magic_stance']`); since the loadouts-and-outfits rework that config path now wears the matching outfit (the robe) instead of granting a talent — `applyLoadout` in `game.js` maps retired talent ids to outfits. `outfits: ['robe']` is the direct form for new configs.
+
 ## Run 1 — 2026-07-03 — CLOSED
 **Question:** Does the parametric arena spawn a configured cyclops instead of the dragon boss?
 **Criteria:** level0 with a cyclops config shows exactly one cyclops (with held club), no dragon boss, player spawn honored

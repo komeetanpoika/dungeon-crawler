@@ -38,23 +38,23 @@ for (let run = 0; run < runs; run++) {
       const bows = [p.ranged, ...p.inventory.filter(i => i.kind === 'ranged').map(i => i.payload)]
       return {
         level: s.level,
-        talents: p.talents ?? [],
+        outfits: ['melee', 'ranged', 'magic'].map(s => p.gear?.[s]?.outfit?.outfitType).filter(Boolean),
         ammoKinds: bows.filter(Boolean).map(b => b.ammoKind),
         chests: s.entities.filter(e => e.type === 'chest').map(e => e.contents),
       }
     })
     if (!snap) throw new Error('no game state — did the run start?')
-    if (run === 0) console.log(`depth ${snap.level}  talents [${snap.talents.join(', ') || 'none'}]  bows for [${snap.ammoKinds.join(', ') || 'none'}]\n`)
+    if (run === 0) console.log(`depth ${snap.level}  outfits [${snap.outfits.join(', ') || 'none'}]  bows for [${snap.ammoKinds.join(', ') || 'none'}]\n`)
 
-    const has = t => snap.talents.includes(t)
+    const has = ot => snap.outfits.includes(ot)
     for (const c of snap.chests) {
       chests++
       const name = c.weaponType ?? c.ammoKind ?? c.type
       // Same gates as canEquip, restated here so the tool stays standalone.
       const dead =
-        (c.type === 'ranged' && !has('ranged_stance')) ||
-        (c.type === 'wand' && !has('magic_stance')) ||
-        (c.heavy && !has('heavy_weapons')) ||
+        (c.type === 'ranged' && !has('ranger')) ||
+        (c.type === 'wand' && !has('robe')) ||
+        (c.heavy && !has('plate')) ||
         (c.type === 'ammo' && !snap.ammoKinds.includes(c.ammoKind))
       const stray = (c.weaponType && !TIER_1.has(c.weaponType))
       if (dead) unusable++

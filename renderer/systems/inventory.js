@@ -4,8 +4,8 @@
 // logic — game.js owns pickups, drops, and messages.
 
 import {
-  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES,
-  makeRangedContents, makeWandContents,
+  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES,
+  makeRangedContents, makeWandContents, makeOutfitContents, defaultGear,
 } from './entities.js'
 
 const STACKABLE_KINDS = {
@@ -16,7 +16,7 @@ const STACKABLE_KINDS = {
   lumber:      { name: 'Lumber',      emoji: '🪵', extra: {} },            // felled tree (systems/lumber.js)
   deadwood:    { name: 'Grey Wood',   emoji: '🪵', extra: {} },  // dead-tree wood (systems/lumber.js); the hermit's fuel
   // Leap-episode quest items: never consumable, no default panel action
-  // (Drop stays available — see ui/inventory-panel.js primaryAction).
+  // (Drop stays available — see ui/inventory-panel-model.js sackActions).
   clapper:     { name: 'Bell Clapper', emoji: '🔔', extra: { quest: true } },
   fleece:      { name: "Lamb's Fleece", emoji: '🐑', extra: { quest: true } },
   // Adventure quest items: same carry-only rule as the leap ones.
@@ -29,7 +29,7 @@ export function makeItem(kind, count = 1) {
   return { kind, name: def.name, emoji: def.emoji, stackable: true, count, ...def.extra }
 }
 
-const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄' }
+const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥' }
 
 // Chest/floating `contents` -> sack item. Ammo is never a sack item — it
 // goes straight into the pool (see autoEquipOnPickup) — so this returns the
@@ -54,14 +54,19 @@ const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄' }
 // legacy contents carry no `bundle` field and so get the table's, once; a bow
 // the player dropped carries an explicit `bundle: 0` (see contentsFromItem)
 // and re-credits nothing, or drop-and-repickup would be a free arrow mine.
-const REBUILD = { ranged: [RANGED_WEAPON_TYPES, makeRangedContents], wand: [WAND_TYPES, makeWandContents] }
+const REBUILD = {
+  ranged: [RANGED_WEAPON_TYPES, makeRangedContents],
+  wand:   [WAND_TYPES, makeWandContents],
+  outfit: [OUTFIT_TYPES, makeOutfitContents],
+}
 
 export function itemFromContents(contents) {
   const rebuild = REBUILD[contents.type]
   if (rebuild) {
     const [table, make] = rebuild
-    if (!table[contents.weaponType]) return null
-    const { type, ...payload } = make(contents.weaponType)
+    const key = contents.type === 'outfit' ? contents.outfitType : contents.weaponType
+    if (!table[key]) return null
+    const { type, ...payload } = make(key)
     if (type === 'ranged' && Number.isFinite(contents.bundle)) payload.bundle = contents.bundle
     return { kind: type, name: payload.name, emoji: HAND_EMOJI[type], stackable: false, payload }
   }
@@ -79,28 +84,54 @@ export function contentsFromItem(item) {
   // is an empty weapon: bundle 0 travels with the contents and survives the
   // rebuild in itemFromContents.
   if (item.kind === 'ranged') return { ...item.payload, type: 'ranged', bundle: 0 }
-  if (item.kind === 'weapon' || item.kind === 'wand')
+  if (item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'outfit')
     return { ...item.payload, type: item.kind }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
   return { type: item.kind, count: item.count ?? 1 }
 }
 
-// Quick-use (Q / the green touch button): first potion-or-mushroom slot in
-// sack order. The summary drives the button badge — next-up slot's emoji,
-// combined count across all consumable slots.
-const CONSUMABLE_KINDS = ['potion', 'mushroom', 'meat', 'cooked_meat']
+// ── Loadouts ────────────────────────────────────────────────────────────────
+// The stance name is the loadout key. Main hands stay on the player object;
+// gear[stance] holds the offhand and the outfit (entities.js defaultGear).
+export const STANCES = ['melee', 'ranged', 'magic']
+export const MAIN_OF = { melee: 'weapon', ranged: 'ranged', magic: 'wand' }
+export const LOADOUT_NAMES = { melee: 'Warrior', ranged: 'Archer', magic: 'Mage' }
+// What an offhand may point at (Q uses one). Quest items and wood are not.
+export const CONSUMABLE_KINDS = ['potion', 'mushroom', 'meat', 'cooked_meat']
 
-export function findQuickUseIndex(inventory) {
-  return inventory.findIndex(i => CONSUMABLE_KINDS.includes(i.kind))
+export function gearOf(player, stance) {
+  player.gear ??= defaultGear()
+  return player.gear[stance]
+}
+export function loadout(player, stance = player.attackMode ?? 'melee') {
+  const g = gearOf(player, stance)
+  return { main: player[MAIN_OF[stance]] ?? null, off: g.off, outfit: g.outfit }
+}
+export const offhand = player => gearOf(player, player.attackMode ?? 'melee').off
+export const outfitOf = (player, stance) => gearOf(player, stance).outfit
+
+// Warrior is innate; Archer and Mage exist while their own outfit is worn.
+export function loadoutAvailable(player, stance) {
+  if (stance === 'melee') return true
+  return outfitOf(player, stance)?.loadout === stance
+}
+// Heavy weapons (and, in plan 2, the heavy shield) need the plate on the Warrior.
+export const canWieldHeavy = player => outfitOf(player, 'melee')?.heavy === true
+
+// The active offhand with a consumable pointer resolved against the sack:
+// { kind:'consumable', item, count, index, slot }. Non-pointer contents
+// (plan 2) come back as they are; an empty offhand is null.
+export function resolveOffhand(player) {
+  const off = offhand(player)
+  if (!off) return null
+  if (off.kind !== 'consumable') return off
+  const index = (player.inventory ?? []).findIndex(i => i.kind === off.item)
+  const slot = index === -1 ? null : player.inventory[index]
+  return { kind: 'consumable', item: off.item, count: slot?.count ?? 0, index, slot }
 }
 
-export function quickUseSummary(inventory) {
-  const first = findQuickUseIndex(inventory)
-  if (first === -1) return null
-  const count = inventory
-    .filter(i => CONSUMABLE_KINDS.includes(i.kind))
-    .reduce((sum, i) => sum + (i.count ?? 1), 0)
-  return { emoji: inventory[first].emoji, count }
+export function outfitItem(payload) {
+  return { kind: 'outfit', name: payload.name, emoji: HAND_EMOJI.outfit, stackable: false, payload: { ...payload } }
 }
 
 export function addItem(player, item) {
@@ -122,20 +153,38 @@ export function removeItem(player, index) {
   return { ...slot }
 }
 
-export function canEquip(player, item) {
+// ── Equip rules ─────────────────────────────────────────────────────────────
+// `slot` is where the item is going: 'main' (the loadout's hand), 'off',
+// 'outfit' or 'belt' (plan 3). Talents no longer gate anything here — the
+// worn outfits do (loadoutAvailable / canWieldHeavy).
+export function canEquip(player, item, slot = 'main') {
+  if (!item) return { ok: false, reason: 'not_equippable' }
+  if (slot === 'outfit') return item.kind === 'outfit' ? { ok: true } : { ok: false, reason: 'not_equippable' }
+  if (slot === 'off') return canEquipOffhand(player, item)
   if (item.kind === 'wand')
-    return (player.talents ?? []).includes('magic_stance') ? { ok: true } : { ok: false, reason: 'not_learned' }
+    return loadoutAvailable(player, 'magic') ? { ok: true } : { ok: false, reason: 'not_learned' }
   if (item.kind !== 'weapon' && item.kind !== 'ranged') return { ok: false, reason: 'not_equippable' }
-  if (item.kind === 'ranged' && !(player.talents ?? []).includes('ranged_stance'))
+  if (item.kind === 'ranged' && !loadoutAvailable(player, 'ranged'))
     return { ok: false, reason: 'not_learned' }
-  if (item.payload.heavy && !(player.talents ?? []).includes('heavy_weapons'))
+  if (item.payload.heavy && !canWieldHeavy(player))
     return { ok: false, reason: 'heavy' }
   return { ok: true }
 }
 
+// Plan 1: the offhand only ever points at a consumable stack. Plan 2 adds
+// small blades, shields and wands with the two-handed rule.
+export function canEquipOffhand(player, item) {
+  return CONSUMABLE_KINDS.includes(item?.kind) ? { ok: true } : { ok: false, reason: 'not_equippable' }
+}
+
 const HAND_OF_KIND = { weapon: 'weapon', ranged: 'ranged', wand: 'wand' }
 
-// Equip the sack slot at `index` into its hand; a held item swaps back in.
+const handItem = (hand, payload) =>
+  ({ kind: hand, name: payload.name, emoji: HAND_EMOJI[hand], stackable: false, payload: { ...payload } })
+
+const roomFor = (player, n) => player.inventory.length + n <= player.maxInventory
+
+// Equip the sack slot at `index` into its main hand; a held item swaps back in.
 export function equipItem(player, index) {
   const item = player.inventory[index]
   if (!item) return { ok: false, reason: 'not_equippable' }
@@ -145,11 +194,103 @@ export function equipItem(player, index) {
   const held = player[hand]
   player[hand] = { ...item.payload }
   player.inventory.splice(index, 1)
-  if (held) {
-    player.inventory.push({ kind: hand, name: held.name, emoji: HAND_EMOJI[hand],
-      stackable: false, payload: { ...held } })
-  }
+  if (held) player.inventory.push(handItem(hand, held))
   return { ok: true, equipped: item }
+}
+
+// Hand → sack. A locked loadout's hand is always empty — closing a loadout
+// evicts its main hand (see handsToEvict) — so this only ever runs on a hand
+// the player can still reach from the panel.
+export function unequipMain(player, stance) {
+  const hand = MAIN_OF[stance]
+  const held = player[hand]
+  if (!held) return { ok: false, reason: 'not_equippable' }
+  if (!roomFor(player, 1)) return { ok: false, reason: 'full' }
+  player.inventory.push(handItem(hand, held))
+  player[hand] = null
+  return { ok: true }
+}
+
+// Which main hands an outfit change leaves nowhere to live, so that whatever
+// removes the outfit (swap or unequip) finds them a sack slot first. Two
+// cases: the Warrior's heavy weapon rides on the plate, and the Archer's and
+// Mage's hands ride on the loadout itself — take the coat off and the bow has
+// no open loadout to be held in, and the panel offers no way to reach it.
+// Returns hand names (MAIN_OF values), in eviction order.
+function handsToEvict(player, stance, nextOutfit) {
+  const hand = MAIN_OF[stance]
+  if (!player[hand]) return []
+  if (stance === 'melee') return player[hand].heavy && !nextOutfit?.heavy ? [hand] : []
+  return nextOutfit?.loadout === stance ? [] : [hand]
+}
+
+// Move the evicted hands into the sack. Callers must have counted them in
+// their own roomFor arithmetic — by here the slots are guaranteed.
+function evictHands(player, hands) {
+  for (const hand of hands) {
+    player.inventory.push(handItem(hand, player[hand]))
+    player[hand] = null
+  }
+}
+
+// A closed loadout cannot stay active: fall back to the Warrior and drop any
+// charge that belonged to the stance being closed.
+function closeIfLocked(player, stance) {
+  if (loadoutAvailable(player, stance)) return
+  // A switch *into* the loadout that just closed is abandoned where it stands:
+  // tickStanceSwitch flips attackMode with no availability re-check, so a
+  // switch left running would land the player in a loadout they cannot use.
+  if (player.stanceSwitch?.to === stance) player.stanceSwitch = null
+  if (player.attackMode !== stance) return
+  player.attackMode = 'melee'
+  player.charging = null
+  player.stanceSwitch = null
+}
+
+// Wear the sack outfit at `index` in `stance` (default: the outfit's own
+// loadout, else the active one). A worn outfit swaps back into the sack.
+export function equipOutfit(player, index, stance) {
+  const item = player.inventory[index]
+  if (!item || item.kind !== 'outfit') return { ok: false, reason: 'not_equippable' }
+  stance ??= item.payload.loadout ?? player.attackMode ?? 'melee'
+  if (item.payload.loadout && item.payload.loadout !== stance) return { ok: false, reason: 'wrong_loadout' }
+  const g = gearOf(player, stance)
+  const evict = handsToEvict(player, stance, item.payload)
+  // The new outfit frees one slot; the old outfit and each evicted hand take one.
+  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length - 1)) return { ok: false, reason: 'full' }
+  player.inventory.splice(index, 1)
+  if (g.outfit) player.inventory.push(outfitItem(g.outfit))
+  evictHands(player, evict)
+  g.outfit = { ...item.payload }
+  closeIfLocked(player, stance)
+  return { ok: true, equipped: item }
+}
+
+export function unequipOutfit(player, stance) {
+  const g = gearOf(player, stance)
+  if (!g.outfit) return { ok: false, reason: 'not_equippable' }
+  const evict = handsToEvict(player, stance, null)
+  if (!roomFor(player, 1 + evict.length)) return { ok: false, reason: 'full' }
+  player.inventory.push(outfitItem(g.outfit))
+  evictHands(player, evict)
+  g.outfit = null
+  closeIfLocked(player, stance)
+  return { ok: true }
+}
+
+// Point `stance`'s offhand at the consumable kind in sack slot `index`. The
+// stack stays in the sack — every loadout may point at the same one.
+export function equipOffhand(player, index, stance = player.attackMode ?? 'melee') {
+  const item = player.inventory[index]
+  const gate = canEquipOffhand(player, item)
+  if (!gate.ok) return gate
+  gearOf(player, stance).off = { kind: 'consumable', item: item.kind }
+  return { ok: true, equipped: item }
+}
+
+export function unequipOffhand(player, stance = player.attackMode ?? 'melee') {
+  gearOf(player, stance).off = null
+  return { ok: true }
 }
 
 // The quiver/pouch pool (player.ammo, see entities.js AMMO_KINDS/AMMO_CAPS).
@@ -207,6 +348,19 @@ export function autoEquipOnPickup(player, item) {
     const r = addItem(player, item)
     return r.ok ? { ok: true, equipped: false, ammo: added, ammoKind } : r
   }
+  if (item.kind === 'outfit') {
+    const ot = item.payload.outfitType
+    const owned = STANCES.some(s => gearOf(player, s).outfit?.outfitType === ot)
+      || player.inventory.some(i => i.kind === 'outfit' && i.payload.outfitType === ot)
+    if (owned) return { ok: true, equipped: false, merged: 'outfit' }
+    const stance = item.payload.loadout ?? player.attackMode ?? 'melee'
+    if (!gearOf(player, stance).outfit) {
+      gearOf(player, stance).outfit = { ...item.payload }
+      return { ok: true, equipped: true, outfit: true }
+    }
+    const r = addItem(player, item)
+    return r.ok ? { ok: true, equipped: false } : r
+  }
   if (item.kind === 'wand') {
     if (!player.wand && canEquip(player, item).ok) {
       player.wand = { ...item.payload }
@@ -228,4 +382,7 @@ export const EQUIP_FAIL_MESSAGES = {
   heavy: 'Too heavy — I lack the strength.',
   not_equippable: "I can't wield that.",
   not_learned: "I don't know how to use this.",
+  two_handed: 'I need both hands for that.',
+  wrong_loadout: "That's not my garb.",
+  full: 'My pack is full.',
 }

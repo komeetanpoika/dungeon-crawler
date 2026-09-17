@@ -1,4 +1,4 @@
-import { quickUseSummary, findQuickUseIndex } from '../systems/inventory.js'
+import { resolveOffhand } from '../systems/inventory.js'
 import { iconSrcFor } from './icons.js'
 import { spellFor } from '../systems/spells.js'
 
@@ -32,20 +32,22 @@ export function updateHUD(state) {
     const hpForHeart = Math.max(0, Math.min(2, player.hp - i * 2))
     return heart(hpForHeart === 2 ? 'full' : hpForHeart === 1 ? 'half' : 'empty')
   }).join(''))
-  const quick = quickUseSummary(player.inventory)
-  const consumableEl = el('hud-consumable')
-  if (quick) {
-    const item = player.inventory[findQuickUseIndex(player.inventory)]
-    const src = iconSrcFor(item)
-    setHTML(consumableEl, (src ? `<img class="hud-icon" src="${src}" alt="">` : item.emoji)
-      + `<span class="hud-count">×${quick.count}</span>`)
+  // Offhand slot: what Q acts on in the active loadout. A consumable pointer
+  // shows the kind and the sack count (dimmed at zero); an empty offhand shows
+  // the dimmed potion silhouette so the slot never vanishes.
+  const off = resolveOffhand(player)
+  const offEl = el('hud-offhand')
+  if (off?.kind === 'consumable') {
+    const src = iconSrcFor({ kind: off.item })
+    const cls = off.count > 0 ? 'hud-icon' : 'hud-icon hud-icon-empty'
+    setHTML(offEl, (src ? `<img class="${cls}" src="${src}" alt="">` : (off.slot?.emoji ?? ''))
+      + (off.count > 0 ? `<span class="hud-count">×${off.count}</span>` : ''))
+    offEl.dataset.offhand = off.count > 0 ? 'consumable' : ''
   } else {
-    // No consumables in the sack: keep the icon visible but dimmed rather
-    // than vanishing the slot (spec §3), still with no count badge.
     const emptySrc = iconSrcFor({ kind: 'potion' })
-    setHTML(consumableEl, emptySrc ? `<img class="hud-icon hud-icon-empty" src="${emptySrc}" alt="">` : '')
+    setHTML(offEl, emptySrc ? `<img class="hud-icon hud-icon-empty" src="${emptySrc}" alt="">` : '')
+    offEl.dataset.offhand = ''
   }
-  consumableEl.dataset.quickEmoji = quick?.emoji ?? ''
   // Tool slot: which hand it shows follows the stance, not what's merely
   // carried — magic stance shows the wand hand, ranged/melee show the bow
   // hand. Hidden when that hand is empty; dimmed by its own rule per hand

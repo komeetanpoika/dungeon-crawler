@@ -1,26 +1,17 @@
 // Learned abilities. Everything that unlocks a talent — rite, boss kill,
 // dungeon clear, future NPC — funnels through grantTalent. Persistence is
 // the caller's job (game.js persists for Adventure; Dungeon Rush never does).
+// The stance talents (Marksmanship, Gust of Wind, Might) became outfits on
+// 2026-09-17 — see systems/outfits.js. Ski-legs stays a talent.
 import { queueToast } from './feedback.js'
 import { sfx } from './sfx.js'
 
 export const TALENTS = {
-  ranged_stance: { name: 'Marksmanship', desc: 'Use bows, crossbows and slings in the ranged stance.' },
-  magic_stance:  { name: 'Gust of Wind', desc: 'Shape spells in the magic stance — wands give new ones.' },
-  heavy_weapons: { name: 'Might',        desc: 'Wield heavy weapons.' },
-  ski_legs:      { name: 'Ski-legs',    desc: 'Sprinting costs far less stamina.' },
+  ski_legs: { name: 'Ski-legs', desc: 'Sprinting costs far less stamina.' },
 }
-
-// Dungeon Rush: every talent from the first step — the run is about the
-// descent, not the unlocks. Assigned silently at spawn (no toasts).
+// Dungeon Rush: every talent from the first step (outfits too — see
+// systems/outfits.js RUSH_START_OUTFITS). Assigned silently at spawn.
 export const RUSH_START_TALENTS = Object.keys(TALENTS)
-
-// Adventure interim sources: first dungeon cleared on the named map.
-// (magic_stance comes from the mushroom-circle rite instead — see rites.js.)
-export const MAP_CLEAR_TALENTS = {
-  'forest-1-clearings': 'ranged_stance',
-  'forest-3-autumn':    'heavy_weapons',
-}
 
 export function hasTalent(player, id) {
   return (player?.talents ?? []).includes(id)

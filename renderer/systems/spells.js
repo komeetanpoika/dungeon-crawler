@@ -12,7 +12,7 @@
 import { WAND_TYPES, isWalkable, DIRS } from './entities.js'
 import { castCone, GUST, GUST_TIERS } from './magic.js'
 import { FIREBALL_RANGE_TILES } from './fire.js'
-import { hasTalent } from './talents.js'
+import { loadoutAvailable } from './inventory.js'
 import { affordableTier, GUST_COSTS, spendStamina } from './stamina.js'
 import { makeBrambleZone } from './zones.js'
 
@@ -160,14 +160,14 @@ function castSelf(state, t) {
   return result
 }
 
-// Cast `spellId` at `tier`. Gates in order — talent, cooldown, stamina
+// Cast `spellId` at `tier`. Gates in order — loadout, cooldown, stamina
 // (degrading the tier before refusing) — then spends, starts the cooldown
 // and dispatches on the primitive. `modules` carries the bespoke spells;
 // game.js injects { lightning }.
 export function tryCast(state, spellId, tier = 'tap', { modules } = {}) {
   const p = state.player
   const spell = SPELLS[spellId] ?? SPELLS.gust
-  if (!hasTalent(p, 'magic_stance')) return { ok: false, reason: 'not_learned' }
+  if (!loadoutAvailable(p, 'magic')) return { ok: false, reason: 'not_learned' }
   if ((p.magicCooldown ?? 0) > 0) return { ok: false, reason: 'cooldown' }
   // An un-wired bespoke spell refuses like an unlearned one — better than
   // charging the tank for a cast that would do nothing.

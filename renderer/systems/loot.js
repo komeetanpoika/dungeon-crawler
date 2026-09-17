@@ -1,10 +1,10 @@
 // What a chest holds. Two things shape the roll: the level's difficulty rung
-// (`lootTier`, data/levels.js) picks the pool, and the player's own talents
-// decide whether a category is worth offering at all.
+// (`lootTier`, data/levels.js) picks the pool, and what the player is wearing
+// decides whether a category is worth offering at all.
 //
-// The talent rule exists because the three weapon categories are gated —
-// bows on Marksmanship, wands on Gust of Wind, heavy blades on Might (see
-// canEquip) — and an Adventure run starts with none of them. A chest that
+// The outfit rule exists because the three weapon categories are gated —
+// bows on the Ranger's Coat, wands on the Mage's Robe, heavy blades on the
+// Plated Armor (see canEquip) — and an Adventure run starts in none of them. A chest that
 // rolls a Storm Wand on the first map is not a reward, it is a slot in the
 // sack the player cannot empty. So a category the player cannot use at all
 // keeps only a fifth of its weight and offers the humblest example of its
@@ -16,7 +16,7 @@ import { canEquip, itemFromContents } from './inventory.js'
 import { LEVEL_CONFIG } from '../data/levels.js'
 
 // Four rungs, one per pool. A tier's melee and ranged rows both hold at least
-// one item a player without Might can lift, right up to tier 4 — where the
+// one item a player without the plate can lift, right up to tier 4 — where the
 // melee row cannot, and the teaser rule below takes over.
 const MELEE_POOLS = {
   1: ['dagger', 'sword'],
@@ -56,7 +56,7 @@ export function lootTierFor(depth) {
 }
 
 // A null player means "no run to ask" — treat everything as usable, so a call
-// site with no player to hand behaves as it did before talents entered the roll.
+// site with no player to hand behaves as it did before the gear gate entered the roll.
 function canUse(player, contents) {
   if (!player) return true
   const item = itemFromContents(contents)

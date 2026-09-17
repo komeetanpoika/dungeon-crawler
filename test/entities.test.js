@@ -263,13 +263,13 @@ describe('RANGED_WEAPON_TYPES (bows only)', () => {
       ['crossbow', 'hunterbow', 'longbow', 'shortbow', 'sling', 'splitbow', 'tervajousi'])
   })
 
-  it('makeRangedContents("crossbow") carries its heavy/knockback/pierce flags and no ammo fields', () => {
+  it('makeRangedContents("crossbow") carries its knockback/pierce flags, no heavy flag, and no ammo fields', () => {
     const c = makeRangedContents('crossbow')
     assert.equal(c.type, 'ranged')
     assert.equal(c.weaponType, 'crossbow')
     assert.equal(c.ammoKind, 'bolt')
     assert.equal(c.bundle, 8)
-    assert.equal(c.heavy, true)
+    assert.equal(c.heavy, undefined)
     assert.equal(c.knockback, 45)
     assert.equal(c.piercesShield, true)
     assert.equal('ammo' in c, false)

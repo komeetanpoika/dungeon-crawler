@@ -17,6 +17,7 @@ export function iconSpriteFor(item) {
   if (!item) return null
   if (KIND_ICONS[item.kind]) return KIND_ICONS[item.kind]
   if (item.kind === 'ammo') return AMMO_ICONS[item.ammoKind] ?? null
+  if (item.kind === 'outfit') return SPRITES[`outfit_${item.payload?.outfitType}`] ? `outfit_${item.payload.outfitType}` : 'outfit_leather'
   if (item.kind === 'weapon' || item.kind === 'ranged' || item.kind === 'wand') {
     const key = `weapon_${item.payload?.weaponType}`
     if (SPRITES[key]) return key

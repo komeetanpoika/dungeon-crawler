@@ -3,15 +3,16 @@ import assert from 'node:assert/strict'
 import { rollChestLoot, lootTierFor } from '../renderer/systems/loot.js'
 import { emptyAmmo, makeRangedContents } from '../renderer/systems/entities.js'
 import { itemFromContents } from '../renderer/systems/inventory.js'
+import { gearWearing } from './helpers/outfits.js'
 
 // rng stub that returns the given values in order.
 function seq(...vals) { let i = 0; return () => vals[i++] ?? 0 }
 
-const ALL_TALENTS = ['ranged_stance', 'magic_stance', 'heavy_weapons']
+const ALL_OUTFITS = ['ranger', 'robe', 'plate']
 
-function mkPlayer({ talents = [], ranged = null, sack = [] } = {}) {
+function mkPlayer({ outfits = [], ranged = null, sack = [] } = {}) {
   return {
-    talents: [...talents],
+    gear: gearWearing(...outfits),
     weapon: null,
     ranged: ranged ? makeRangedContents(ranged) : null,
     wand: null,
@@ -20,9 +21,9 @@ function mkPlayer({ talents = [], ranged = null, sack = [] } = {}) {
   }
 }
 
-// A veteran: every talent learned and a bow of each ammo kind carried, so no
+// A veteran: every outfit worn and a bow of each ammo kind carried, so no
 // category is ever suppressed and the base weights show through unchanged.
-const veteran = () => mkPlayer({ talents: ALL_TALENTS, ranged: 'shortbow', sack: ['crossbow', 'sling'] })
+const veteran = () => mkPlayer({ outfits: ALL_OUTFITS, ranged: 'shortbow', sack: ['crossbow', 'sling'] })
 
 describe('lootTierFor', () => {
   it('climbs 1,1,2,3,4 across the dungeon depths', () => {
@@ -139,7 +140,7 @@ describe('a locked category shrinks to a teaser', () => {
   })
 
   it('draws a locked bow teaser from tier 1 even on a tier-4 map', () => {
-    const p = mkPlayer({ talents: ['magic_stance', 'heavy_weapons'] })
+    const p = mkPlayer({ outfits: ['robe', 'plate'] })
     // ranged locked: potion 35 / melee 20 / ranged 3 / wand 15 / ammo 0 = 73.
     const c = rollChestLoot(18, seq(55 / 73 + 0.001, 0.99), p)
     assert.equal(c.type, 'ranged')
@@ -147,7 +148,7 @@ describe('a locked category shrinks to a teaser', () => {
   })
 
   it('draws a locked wand teaser from tier 1 even on a tier-4 map', () => {
-    const p = mkPlayer({ talents: ['ranged_stance', 'heavy_weapons'], ranged: 'shortbow' })
+    const p = mkPlayer({ outfits: ['ranger', 'plate'], ranged: 'shortbow' })
     // wand locked: potion 35 / melee 20 / ranged 15 / wand 3 / ammo 15 = 88.
     const c = rollChestLoot(18, seq(70 / 88 + 0.001, 0.99), p)
     assert.equal(c.type, 'wand')
@@ -156,7 +157,7 @@ describe('a locked category shrinks to a teaser', () => {
 
   it('falls back to a tier-1 melee teaser when the whole tier is too heavy', () => {
     // Tier 4 melee is axe/longsword, both heavy — nothing usable without Might.
-    const p = mkPlayer({ talents: ['ranged_stance', 'magic_stance'], ranged: 'shortbow' })
+    const p = mkPlayer({ outfits: ['ranger', 'robe'], ranged: 'shortbow' })
     // melee locked: potion 35 / melee 4 / ranged 15 / wand 15 / ammo 15 = 84.
     const c = rollChestLoot(18, seq(35 / 84 + 0.001, 0.0), p)
     assert.equal(c.type, 'weapon')
@@ -166,22 +167,14 @@ describe('a locked category shrinks to a teaser', () => {
 
 // A category is only locked when nothing in its tier is usable; where the tier
 // still holds one usable item, the band keeps its full weight and simply skips
-// what the player cannot lift.
+// what the player cannot lift. The crossbow needs only the ranger coat now
+// (Task 3: plate belongs to the Warrior), so every ranged item in every tier
+// is usable once ranged is open at all — melee is the only category left
+// where a tier can be partly locked (longsword/axe need the plate).
 describe('a partly usable tier keeps its full weight', () => {
-  it('drops the crossbow from a tier-4 ranged roll without Might', () => {
-    const p = mkPlayer({ talents: ['ranged_stance', 'magic_stance'], ranged: 'shortbow' })
-    // ranged usable (longbow, splitbow): potion 35 / melee 4 / ranged 15 /
-    // wand 15 / ammo 15 = 84. Ranged band spans 39..54.
-    for (const pick of [0.0, 0.5, 0.99]) {
-      const c = rollChestLoot(18, seq(45 / 84, pick), p)
-      assert.equal(c.type, 'ranged')
-      assert.notEqual(c.weaponType, 'crossbow')
-    }
-  })
-
   it('yields only the sword from a tier-2 melee roll without Might', () => {
     // Tier 2 is sword/longsword; only the sword is liftable.
-    const p = mkPlayer({ talents: ALL_TALENTS.filter(t => t !== 'heavy_weapons'), ranged: 'shortbow' })
+    const p = mkPlayer({ outfits: ['ranger', 'robe'], ranged: 'shortbow' })
     for (const pick of [0.0, 0.99]) {
       assert.equal(rollChestLoot(12, seq(0.4, pick), p).weaponType, 'sword')
     }
@@ -190,14 +183,14 @@ describe('a partly usable tier keeps its full weight', () => {
 
 describe('ammo follows the bows the player carries', () => {
   it('never drops a bundle for a player with no bow at all', () => {
-    const p = mkPlayer({ talents: ALL_TALENTS })
+    const p = mkPlayer({ outfits: ALL_OUTFITS })
     for (let i = 0; i < 400; i++) {
       assert.notEqual(rollChestLoot(18, Math.random, p).type, 'ammo')
     }
   })
 
   it('yields stones for a held sling', () => {
-    const p = mkPlayer({ talents: ALL_TALENTS, ranged: 'sling' })
+    const p = mkPlayer({ outfits: ALL_OUTFITS, ranged: 'sling' })
     // potion 35 / melee 20 / ranged 15 / wand 15 / ammo 15 = 100.
     for (const pick of [0.0, 0.99]) {
       assert.deepEqual(rollChestLoot(18, seq(0.9, pick), p), { type: 'ammo', ammoKind: 'stone', count: 15 })
@@ -205,12 +198,12 @@ describe('ammo follows the bows the player carries', () => {
   })
 
   it('yields bolts for a crossbow left in the sack', () => {
-    const p = mkPlayer({ talents: ALL_TALENTS, sack: ['crossbow'] })
+    const p = mkPlayer({ outfits: ALL_OUTFITS, sack: ['crossbow'] })
     assert.deepEqual(rollChestLoot(18, seq(0.9, 0.0), p), { type: 'ammo', ammoKind: 'bolt', count: 6 })
   })
 
   it('splits the band between the kinds a player has bows for', () => {
-    const p = mkPlayer({ talents: ALL_TALENTS, ranged: 'shortbow', sack: ['sling'] })
+    const p = mkPlayer({ outfits: ALL_OUTFITS, ranged: 'shortbow', sack: ['sling'] })
     assert.equal(rollChestLoot(18, seq(0.9, 0.0), p).ammoKind, 'arrow')
     assert.equal(rollChestLoot(18, seq(0.9, 0.99), p).ammoKind, 'stone')
   })

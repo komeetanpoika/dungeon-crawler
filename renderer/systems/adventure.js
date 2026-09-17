@@ -5,8 +5,10 @@
 import { OPEN_MAPS } from '../data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../data/levels.js'
 import { DAY_START } from '../data/weather.js'
-import { WAND_TYPES, RANGED_WEAPON_TYPES, makeWandContents, makeRangedContents, emptyAmmo } from './entities.js'
+import { WAND_TYPES, RANGED_WEAPON_TYPES, makeWandContents, makeRangedContents, emptyAmmo,
+  OUTFIT_TYPES, makeOutfitContents, defaultGear, WEAPON_TYPES, weaponContents } from './entities.js'
 import { itemFromContents } from './inventory.js'
+import { migrateTalentsToOutfits } from './outfits.js'
 
 // The traveling body's wands-and-bows redesign (Task 1): the ranged hand
 // gains a `wand` sibling and ammo moves off the weapon into a shared
@@ -54,6 +56,21 @@ export function normalizeBody(body) {
     out.ammo[RANGED_WEAPON_TYPES[wt].ammoKind] += item.payload.ammo ?? 0
     return itemFromContents(makeRangedContents(wt))
   }).filter(Boolean)
+  // Per-loadout gear (2026-09-17): outfits are table data and are rebuilt
+  // like the hands; an unknown outfitType is dropped. Offhand pointers are
+  // copied as-is; anything else in an offhand is plan 2's to restore and is
+  // nulled here so a half-migrated save cannot hand the HUD a stray shape.
+  const gear = defaultGear()
+  for (const stance of Object.keys(gear)) {
+    const g = out.gear?.[stance]
+    if (!g) continue
+    const ot = g.outfit?.outfitType
+    if (OUTFIT_TYPES[ot]) { const { type, ...payload } = makeOutfitContents(ot); gear[stance].outfit = payload }
+    else gear[stance].outfit = null
+    gear[stance].off = g.off?.kind === 'consumable' && typeof g.off.item === 'string' ? { kind: 'consumable', item: g.off.item } : null
+  }
+  out.gear = gear
+  out.belt = WEAPON_TYPES[out.belt?.weaponType] ? weaponContents(out.belt.weaponType) : null
   return out
 }
 
@@ -97,6 +114,8 @@ export function nextMapDepth(depth) {
 // The weather clock (`clock`, seconds into the day) is additive with a default.
 // `quests` ({ [mapName]: { flags } }) is additive with a default, like the
 // weather clock — permanent, and untouched by the death wipe (resetNpcs).
+// v8 moves per-loadout gear (`gear`, `belt`) onto the body and migrates the
+// retired stance talents to their worn outfits (systems/outfits.js).
 // Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
   const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
@@ -122,6 +141,14 @@ export function normalizeAdventureSave(raw) {
     .filter(d => !OPEN_MAPS[d].leap && d <= base.progress.mapDepth)
     .sort((a, b) => a - b)
     .map(d => OPEN_MAPS[d].name)
+  // v8: the stance talents became outfits (systems/outfits.js). A body is
+  // conjured if the save had talents but no body yet.
+  if (!base.v8) {
+    const m = migrateTalentsToOutfits(base.body, base.talents)
+    base.body = m.body
+    base.talents = m.talents
+    base.v8 = true
+  }
   return base
 }
 

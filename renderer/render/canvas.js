@@ -1,4 +1,5 @@
 import { FACING_ANGLE } from '../systems/entities.js'
+import { canWieldHeavy } from '../systems/inventory.js'
 import { loadSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
@@ -79,12 +80,12 @@ export function isFlickerVisible(invulnTimer, interval = 0.06) {
   return Math.floor(invulnTimer / interval) % 2 === 0
 }
 
-// The player's look follows the stance: bare adventurer (or the knight once
-// Might is learned) in melee, the ranger in ranged, the wizard in magic.
+// The player's look follows the stance: bare adventurer (or the knight in
+// plate) in melee, the ranger in ranged, the wizard in magic.
 export function playerSpriteKey(player, mode) {
   if (mode === 'ranged') return 'player_ranged'
   if (mode === 'magic') return 'player_magic'
-  return (player.talents ?? []).includes('heavy_weapons') ? 'player_melee_heavy' : 'player_base'
+  return canWieldHeavy(player) ? 'player_melee_heavy' : 'player_base'
 }
 
 export function drawEntity(ctx, entity, px, py, S, sprites) {

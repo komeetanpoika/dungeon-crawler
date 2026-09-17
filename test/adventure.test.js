@@ -8,7 +8,8 @@ import {
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../renderer/data/levels.js'
 import { DAY_START } from '../renderer/data/weather.js'
-import { makeRangedContents, emptyAmmo } from '../renderer/systems/entities.js'
+import { makeRangedContents, emptyAmmo, defaultGear, makeOutfitContents, weaponContents } from '../renderer/systems/entities.js'
+import { migrateTalentsToOutfits } from '../renderer/systems/outfits.js'
 
 describe('the adventure map chain', () => {
   it('exports the adventure chain at depths 7..18 (leap maps at 8-10)', () => {
@@ -119,16 +120,21 @@ describe('v3 save shape', () => {
   it('v3 saves pass through untouched, gaining only the empty gates, npcs and felled maps', () => {
     const v3 = { caves: {}, progress: { mapDepth: 7, cleared: {} },
       talents: ['magic_stance'], body: { weapon: null, ranged: null, inventory: [] } }
+    // magic_stance is a retired talent (systems/outfits.js): the v8 migration
+    // wakes the body up wearing the robe and drops the talent.
+    const g = defaultGear()
+    const { type: _t, ...robe } = makeOutfitContents('robe')
+    g.magic.outfit = robe
     assert.deepEqual(normalizeAdventureSave(v3), {
-      ...v3, body: { ...v3.body, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 } },
-      gates: {}, npcs: {}, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true,
+      ...v3, talents: [], body: { ...v3.body, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 }, gear: g, belt: null },
+      gates: {}, npcs: {}, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true, v8: true,
     })
   })
 
   it('v4 saves keep their npcs and gain an empty felled map', () => {
     const v4 = { caves: {}, progress: { mapDepth: 7, cleared: {} }, talents: [], body: null,
       gates: {}, npcs: { 'forest-1-clearings': { dead: ['npc:forest-1-clearings:0'], hostile: false } } }
-    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true })
+    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true, v8: true })
   })
 
   it('a fresh save has no felled trees', () => {
@@ -354,5 +360,53 @@ describe('normalizeBody', () => {
     ] })
     const twice = normalizeBody(once)
     assert.deepEqual(twice, once)
+  })
+})
+
+describe('v8 save shape — gear and outfits', () => {
+  const emptyBody = () => ({ weapon: null, ranged: null, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 }, inventory: [], gear: defaultGear(), belt: null })
+
+  it('a body without gear gains the default gear and no belt', () => {
+    const b = normalizeBody({ weapon: null, ranged: null, wand: null, inventory: [] })
+    assert.deepEqual(b.gear, defaultGear())
+    assert.equal(b.belt, null)
+  })
+  it('worn outfits are rebuilt from the table; unknown ones are dropped', () => {
+    const stale = { ...emptyBody(), gear: { ...defaultGear(), melee: { off: null, outfit: { outfitType: 'plate', name: 'Old Plate' } },
+      magic: { off: { kind: 'consumable', item: 'mushroom' }, outfit: { outfitType: 'tuxedo' } } } }
+    const b = normalizeBody(stale)
+    assert.equal(b.gear.melee.outfit.name, 'Plated Armor')
+    assert.equal(b.gear.melee.outfit.protect, 2)
+    assert.equal(b.gear.magic.outfit, null)
+    assert.deepEqual(b.gear.magic.off, { kind: 'consumable', item: 'mushroom' })
+    assert.equal(b.gear.melee.off, null)
+  })
+  it('a v7 save with stance talents wakes up wearing the outfits', () => {
+    const v7 = { caves: {}, progress: { mapDepth: 12, cleared: {}, visited: [] }, talents: ['ranged_stance', 'magic_stance', 'heavy_weapons', 'ski_legs'],
+      body: { weapon: null, ranged: null, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 }, inventory: [] },
+      gates: {}, npcs: {}, felled: {}, leaps: {}, quests: {}, clock: 0, v6: true, v7: true }
+    const s = normalizeAdventureSave(v7)
+    assert.deepEqual(s.talents, ['ski_legs'])
+    assert.equal(s.body.gear.ranged.outfit.outfitType, 'ranger')
+    assert.equal(s.body.gear.magic.outfit.outfitType, 'robe')
+    assert.equal(s.body.gear.melee.outfit.outfitType, 'plate')
+    assert.equal(s.v8, true)
+  })
+  it('talents with no body still produce a dressed body', () => {
+    const s = normalizeAdventureSave({ caves: {}, progress: { mapDepth: 7, cleared: {} }, talents: ['magic_stance'], body: null })
+    assert.equal(s.body.gear.magic.outfit.outfitType, 'robe')
+    assert.deepEqual(s.talents, [])
+  })
+  it('normalizing a v8 body twice changes nothing', () => {
+    const once = normalizeBody({ ...emptyBody(), belt: weaponContents('pick'),
+      gear: { ...defaultGear(), melee: { off: null, outfit: { outfitType: 'plate' } },
+        magic: { off: { kind: 'consumable', item: 'mushroom' }, outfit: null } } })
+    assert.deepEqual(normalizeBody(once), once)
+  })
+  it('a current save is untouched', () => {
+    const s = normalizeAdventureSave(null)
+    assert.equal(s.body, null)
+    assert.equal(s.v8, true)
+    assert.deepEqual(normalizeAdventureSave(s), s)
   })
 })
