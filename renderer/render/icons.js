@@ -11,14 +11,14 @@ const KIND_ICONS = { potion: 'potion', mushroom: 'ow_mushroom', meat: 'item_meat
 // The quiver/pouch shows one icon per ammo kind, not per bow.
 const AMMO_ICONS = { arrow: 'item_arrows', bolt: 'item_bolts', stone: 'item_stones' }
 
-const WEAPON_FALLBACK = { weapon: 'weapon_sword', ranged: 'weapon_shortbow', wand: 'weapon_sparkwand' }
+const WEAPON_FALLBACK = { weapon: 'weapon_sword', ranged: 'weapon_shortbow', wand: 'weapon_sparkwand', shield: 'weapon_buckler' }
 
 export function iconSpriteFor(item) {
   if (!item) return null
   if (KIND_ICONS[item.kind]) return KIND_ICONS[item.kind]
   if (item.kind === 'ammo') return AMMO_ICONS[item.ammoKind] ?? null
   if (item.kind === 'outfit') return SPRITES[`outfit_${item.payload?.outfitType}`] ? `outfit_${item.payload.outfitType}` : 'outfit_leather'
-  if (item.kind === 'weapon' || item.kind === 'ranged' || item.kind === 'wand') {
+  if (item.kind === 'weapon' || item.kind === 'ranged' || item.kind === 'wand' || item.kind === 'shield') {
     const key = `weapon_${item.payload?.weaponType}`
     if (SPRITES[key]) return key
     return WEAPON_FALLBACK[item.kind]

@@ -4,8 +4,8 @@
 // logic — game.js owns pickups, drops, and messages.
 
 import {
-  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES,
-  makeRangedContents, makeWandContents, makeOutfitContents, defaultGear,
+  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES, SHIELD_TYPES,
+  makeRangedContents, makeWandContents, makeOutfitContents, makeShieldContents, defaultGear,
 } from './entities.js'
 
 const STACKABLE_KINDS = {
@@ -29,7 +29,7 @@ export function makeItem(kind, count = 1) {
   return { kind, name: def.name, emoji: def.emoji, stackable: true, count, ...def.extra }
 }
 
-const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥' }
+const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥', shield: '🛡' }
 
 // Chest/floating `contents` -> sack item. Ammo is never a sack item — it
 // goes straight into the pool (see autoEquipOnPickup) — so this returns the
@@ -58,6 +58,7 @@ const REBUILD = {
   ranged: [RANGED_WEAPON_TYPES, makeRangedContents],
   wand:   [WAND_TYPES, makeWandContents],
   outfit: [OUTFIT_TYPES, makeOutfitContents],
+  shield: [SHIELD_TYPES, makeShieldContents],
 }
 
 export function itemFromContents(contents) {
@@ -84,7 +85,7 @@ export function contentsFromItem(item) {
   // is an empty weapon: bundle 0 travels with the contents and survives the
   // rebuild in itemFromContents.
   if (item.kind === 'ranged') return { ...item.payload, type: 'ranged', bundle: 0 }
-  if (item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'outfit')
+  if (item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'outfit' || item.kind === 'shield')
     return { ...item.payload, type: item.kind }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
   return { type: item.kind, count: item.count ?? 1 }
@@ -132,6 +133,14 @@ export function resolveOffhand(player) {
 
 export function outfitItem(payload) {
   return { kind: 'outfit', name: payload.name, emoji: HAND_EMOJI.outfit, stackable: false, payload: { ...payload } }
+}
+
+// An item offhand ({ kind:'weapon'|'wand'|'shield', ...payload }) back into a
+// sack item; a consumable pointer or an empty offhand is not an item.
+export function offhandItem(off) {
+  if (!off || off.kind === 'consumable') return null
+  const { kind, ...payload } = off
+  return { kind, name: payload.name, emoji: HAND_EMOJI[kind], stackable: false, payload }
 }
 
 export function addItem(player, item) {
