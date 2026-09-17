@@ -117,9 +117,12 @@ export function findHarvestHit(map, player, hitAt, reachPx, weapon) {
   return best
 }
 
-// Thin wrapper: chop-only, same shape as before.
+// Thin wrapper: chop-only, same shape as before. findHarvestHit resolves the
+// weapon against player.belt (spec §5), so a pick riding the belt would
+// otherwise leak mine:1 into the { chop: 1 } weapon and make this return
+// rocks too — belt: null keeps the resolved tool chop-only for real.
 export function findTreeHit(map, player, hitAt, reachPx) {
-  return findHarvestHit(map, player, hitAt, reachPx, { chop: 1 })
+  return findHarvestHit(map, { ...player, belt: null }, hitAt, reachPx, { chop: 1 })
 }
 
 function fell(map, x, y, def) {

@@ -84,9 +84,19 @@ export function lootTierFor(depth) {
 // site with no player to hand behaves as it did before the gear gate entered the roll.
 function canUse(player, contents) {
   if (!player) return true
+  // Shields keep their own rule rather than routing through canEquip's
+  // 'off' slot: canEquipOffhand also refuses a heavy main hand or a closed
+  // loadout, neither of which should keep a shield out of the loot pool —
+  // the plate gate is the only one that matters here.
   if (contents.type === 'shield') return !contents.heavy || canWieldHeavy(player)
   const item = itemFromContents(contents)
-  return !item || canEquip(player, item).ok
+  if (!item) return true
+  // Outfits route through the 'outfit' slot so canEquip doesn't reject them
+  // under the default 'main' rules. In practice this bypasses canUse today:
+  // canEquip(..., 'outfit') only checks item.kind === 'outfit', and the one
+  // chest outfit (Leather Coat, loadout: null) fits every stance regardless
+  // of what the player already wears.
+  return canEquip(player, item, item.kind === 'outfit' ? 'outfit' : 'main').ok
 }
 
 // The ammo kinds the player actually owns a bow for, hand or sack, in

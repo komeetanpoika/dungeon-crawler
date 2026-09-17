@@ -152,7 +152,7 @@ export function showInventory(state, handlers) {
     const key = ({ d: 'ArrowRight', a: 'ArrowLeft', s: 'ArrowDown', w: 'ArrowUp' })[e.key] ?? e.key
     const player = state.player
     if (key.startsWith('Arrow')) {
-      const next = moveSelection(sel, key, { sack: player.inventory.length, gear: 9 }, player.attackMode ?? 'melee')
+      const next = moveSelection(sel, key, { sack: player.inventory.length }, player.attackMode ?? 'melee')
       if (next.area !== sel.area || next.index !== sel.index) sfx(lastState, 'ui-move')
       sel = next
     } else if (key === 'Enter' || key === ' ') {

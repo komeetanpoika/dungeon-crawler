@@ -1510,7 +1510,7 @@ function update(delta) {
     // The belt lends its chop/mine to whichever blade swings (spec §5).
     const tool = resolveTool(wpn, player.belt)
     if (tool.chop || tool.mine) {
-      const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, tool)
+      const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, wpn)
       if (spot) {
         const res = harvest(state.map, spot.x, spot.y, tool)
         state.hitEffects.push({ x: spot.x, y: spot.y })
