@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import {
   makeItem, itemFromContents, contentsFromItem, addItem, removeItem,
   canEquip, equipItem, autoEquipOnPickup, addAmmo, spendAmmo, EQUIP_FAIL_MESSAGES,
-  findQuickUseIndex, quickUseSummary,
 } from '../renderer/systems/inventory.js'
-import { makeRangedContents, makeWandContents, emptyAmmo } from '../renderer/systems/entities.js'
+import { makeRangedContents, makeWandContents, emptyAmmo, defaultGear } from '../renderer/systems/entities.js'
+import { gearWearing } from './helpers/outfits.js'
 
 const mkPlayer = (over = {}) => ({
-  inventory: [], maxInventory: 10, weapon: null, ranged: null, wand: null, talents: [], ...over,
+  inventory: [], maxInventory: 10, weapon: null, ranged: null, wand: null, talents: [], gear: defaultGear(), ...over,
 })
 const swordContents = () => ({ type: 'weapon', weaponType: 'sword', name: 'Sword', damage: 2 })
 // Bows no longer carry ammo/maxAmmo of their own — makeRangedContents gives the
@@ -84,7 +84,7 @@ describe('equipping', () => {
   })
 
   it('ranged items equip into the ranged hand', () => {
-    const p = mkPlayer({ talents: ['ranged_stance'] })
+    const p = mkPlayer({ gear: gearWearing('ranger') })
     addItem(p, itemFromContents(bowContents()))
     equipItem(p, 0)
     assert.equal(p.ranged.weaponType, 'shortbow')
@@ -96,35 +96,34 @@ describe('equipping', () => {
     assert.deepEqual(equipItem(p, 0), { ok: false, reason: 'not_equippable' })
   })
 
-  it('a heavy weapon refuses without the heavy_weapons talent and equips with it', () => {
+  it('a heavy weapon refuses without the plate and equips with it', () => {
     const heavy = itemFromContents({ type: 'weapon', weaponType: 'axe', name: 'Axe', damage: 4, heavy: true })
     assert.deepEqual(canEquip(mkPlayer(), heavy), { ok: false, reason: 'heavy' })
-    assert.equal(canEquip(mkPlayer({ talents: ['heavy_weapons'] }), heavy).ok, true)
+    assert.equal(canEquip(mkPlayer({ gear: gearWearing('plate') }), heavy).ok, true)
     assert.ok(EQUIP_FAIL_MESSAGES.heavy)
   })
 
-  it('a ranged weapon refuses without ranged_stance and equips with it', () => {
+  it('a ranged weapon refuses without the coat and equips with it', () => {
     const bow = itemFromContents(bowContents())
     assert.deepEqual(canEquip(mkPlayer(), bow), { ok: false, reason: 'not_learned' })
-    assert.equal(canEquip(mkPlayer({ talents: ['ranged_stance'] }), bow).ok, true)
+    assert.equal(canEquip(mkPlayer({ gear: gearWearing('ranger') }), bow).ok, true)
     assert.ok(EQUIP_FAIL_MESSAGES.not_learned)
   })
 
-  it('a crossbow (heavy ranged) needs both ranged_stance and heavy_weapons', () => {
+  it('a crossbow needs only the coat now that plate belongs to the Warrior', () => {
     const crossbow = itemFromContents(crossbowContents())
     assert.deepEqual(canEquip(mkPlayer(), crossbow), { ok: false, reason: 'not_learned' })
-    assert.deepEqual(canEquip(mkPlayer({ talents: ['ranged_stance'] }), crossbow), { ok: false, reason: 'heavy' })
-    assert.equal(canEquip(mkPlayer({ talents: ['ranged_stance', 'heavy_weapons'] }), crossbow).ok, true)
+    assert.equal(canEquip(mkPlayer({ gear: gearWearing('ranger') }), crossbow).ok, true)
   })
 
-  it('a wand refuses without magic_stance and equips with it', () => {
+  it('a wand refuses without the robe and equips with it', () => {
     const wand = itemFromContents(wandContents())
     assert.deepEqual(canEquip(mkPlayer(), wand), { ok: false, reason: 'not_learned' })
-    assert.equal(canEquip(mkPlayer({ talents: ['magic_stance'] }), wand).ok, true)
+    assert.equal(canEquip(mkPlayer({ gear: gearWearing('robe') }), wand).ok, true)
   })
 
   it('equipping a wand from the sack fills the wand hand', () => {
-    const p = mkPlayer({ talents: ['magic_stance'] })
+    const p = mkPlayer({ gear: gearWearing('robe') })
     addItem(p, itemFromContents(wandContents()))
     const r = equipItem(p, 0)
     assert.equal(r.ok, true)
@@ -133,7 +132,7 @@ describe('equipping', () => {
   })
 
   it('equipping a wand over a held one swaps the old wand back into the sack', () => {
-    const p = mkPlayer({ talents: ['magic_stance'], wand: heldWand('frostwand') })
+    const p = mkPlayer({ gear: gearWearing('robe'), wand: heldWand('frostwand') })
     addItem(p, itemFromContents(wandContents()))
     equipItem(p, 0)
     assert.equal(p.wand.weaponType, 'sparkwand')
@@ -168,7 +167,7 @@ describe('pickup auto-equip', () => {
     assert.equal(p.weapon, null)
   })
 
-  it('a bow pickup without ranged_stance goes to the sack, hand stays empty; with the talent it equips', () => {
+  it('a bow pickup without the coat goes to the sack, hand stays empty; with the coat it equips', () => {
     const untrained = mkPlayer()
     const r1 = autoEquipOnPickup(untrained, itemFromContents(bowContents()))
     // The bundle rides on every ranged outcome, so game.js floats "+12" for a
@@ -177,7 +176,7 @@ describe('pickup auto-equip', () => {
     assert.equal(untrained.ranged, null)
     assert.equal(untrained.inventory.length, 1)
 
-    const trained = mkPlayer({ talents: ['ranged_stance'] })
+    const trained = mkPlayer({ gear: gearWearing('ranger') })
     const r2 = autoEquipOnPickup(trained, itemFromContents(bowContents()))
     assert.deepEqual(r2, { ok: true, equipped: true, ammo: 12, ammoKind: 'arrow' })
     assert.equal(trained.ranged.weaponType, 'shortbow')
@@ -190,16 +189,16 @@ describe('pickup auto-equip', () => {
     assert.equal(p.ammo.arrow, 12)
   })
 
-  it('a wand pickup with an empty allowed hand equips regardless of talent (talent only gates casting via canEquip)', () => {
-    // canEquip still gates the *sack* equip path — an untalented player's wand
-    // pickup should behave the same as any other gated item: sack, not hand.
+  it('a wand pickup without the robe goes to the sack, hand stays empty; with the robe it equips', () => {
+    // canEquip still gates the *sack* equip path — a player without the robe's
+    // wand pickup should behave the same as any other gated item: sack, not hand.
     const untrained = mkPlayer()
     const r1 = autoEquipOnPickup(untrained, itemFromContents(wandContents()))
     assert.deepEqual(r1, { ok: true, equipped: false })
     assert.equal(untrained.wand, null)
     assert.equal(untrained.inventory.length, 1)
 
-    const trained = mkPlayer({ talents: ['magic_stance'] })
+    const trained = mkPlayer({ gear: gearWearing('robe') })
     const r2 = autoEquipOnPickup(trained, itemFromContents(wandContents()))
     assert.deepEqual(r2, { ok: true, equipped: true })
     assert.equal(trained.wand.weaponType, 'sparkwand')
@@ -207,7 +206,7 @@ describe('pickup auto-equip', () => {
   })
 
   it('a wand pickup goes to the sack when the wand hand is full', () => {
-    const p = mkPlayer({ talents: ['magic_stance'], wand: heldWand('frostwand') })
+    const p = mkPlayer({ gear: gearWearing('robe'), wand: heldWand('frostwand') })
     const r = autoEquipOnPickup(p, itemFromContents(wandContents()))
     assert.deepEqual(r, { ok: true, equipped: false })
     assert.equal(p.wand.weaponType, 'frostwand')
@@ -216,7 +215,7 @@ describe('pickup auto-equip', () => {
   })
 
   it('a duplicate wand goes to the sack like any item — no merging for wands', () => {
-    const p = mkPlayer({ talents: ['magic_stance'], wand: heldWand('sparkwand') })
+    const p = mkPlayer({ gear: gearWearing('robe'), wand: heldWand('sparkwand') })
     const r = autoEquipOnPickup(p, itemFromContents(wandContents()))
     assert.deepEqual(r, { ok: true, equipped: false })
     assert.equal(p.inventory.length, 1)
@@ -238,7 +237,7 @@ describe('pickup auto-equip', () => {
   })
 
   it('a second copy of the held ranged weapon is discarded; its bundle tops up the pool instead of taking a slot', () => {
-    const p = mkPlayer({ talents: ['ranged_stance'], ranged: makeRangedContents('shortbow') })
+    const p = mkPlayer({ gear: gearWearing('ranger'), ranged: makeRangedContents('shortbow') })
     p.ammo = { arrow: 3, bolt: 0, stone: 0 }
     const r = autoEquipOnPickup(p, itemFromContents(bowContents()))
     assert.deepEqual(r, { ok: true, equipped: false, merged: 'hand', ammo: 12, ammoKind: 'arrow' })
@@ -291,13 +290,13 @@ describe('pickup auto-equip', () => {
     assert.deepEqual(contentsFromItem(item), wandContents())
   })
 
-  it('a looted longsword refuses to equip untrained end-to-end', () => {
+  it('a looted longsword refuses to equip without the plate end-to-end', () => {
     const p = mkPlayer()
     const contents = { type: 'weapon', weaponType: 'longsword', name: 'Longsword', damage: 3, heavy: true }
     autoEquipOnPickup(p, itemFromContents(contents))
     assert.equal(p.weapon, null)
     assert.equal(p.inventory.length, 1)
-    p.talents = ['heavy_weapons']
+    p.gear = gearWearing('plate')
     assert.equal(equipItem(p, 0).ok, true)
     assert.equal(p.weapon.heavy, true)
   })
@@ -374,7 +373,7 @@ describe('legacy contents normalization', () => {
   })
 
   it("a legacy contents' own ammo count is dropped; only the table bundle is credited", () => {
-    const p = mkPlayer({ talents: ['ranged_stance'] })
+    const p = mkPlayer({ gear: gearWearing('ranger') })
     const r = autoEquipOnPickup(p, itemFromContents({ type: 'ranged', weaponType: 'shortbow', ammo: 7 }))
     assert.equal(r.ammo, 12)          // the bundle, once — not 12 + 7
     assert.equal(p.ammo.arrow, 12)
@@ -396,21 +395,21 @@ describe('a dropped bow brings no fresh quiver', () => {
   })
 
   it('picking a bundle-0 bow up credits no ammo and still equips', () => {
-    const p = mkPlayer({ talents: ['ranged_stance'] })
+    const p = mkPlayer({ gear: gearWearing('ranger') })
     const r = autoEquipOnPickup(p, itemFromContents({ type: 'ranged', weaponType: 'shortbow', bundle: 0 }))
     assert.deepEqual(r, { ok: true, equipped: true, ammo: 0, ammoKind: 'arrow' })
     assert.equal(p.ammo.arrow, 0)
   })
 
   it('chest loot (no bundle field) still credits the table bundle once', () => {
-    const p = mkPlayer({ talents: ['ranged_stance'] })
+    const p = mkPlayer({ gear: gearWearing('ranger') })
     const r = autoEquipOnPickup(p, itemFromContents({ type: 'ranged', weaponType: 'shortbow' }))
     assert.equal(r.ammo, 12)
     assert.equal(p.ammo.arrow, 12)
   })
 
   it('drop-and-repickup is not an infinite quiver', () => {
-    const p = mkPlayer({ talents: ['ranged_stance'] })
+    const p = mkPlayer({ gear: gearWearing('ranger') })
     autoEquipOnPickup(p, itemFromContents(bowContents()))
     assert.equal(p.ammo.arrow, 12)
     // unequip into the sack, drop it, walk back onto it — three times over
@@ -426,38 +425,10 @@ describe('a dropped bow brings no fresh quiver', () => {
   })
 })
 
-describe('quick-use consumable', () => {
-  const potion = (count = 1) => ({ ...makeItem('potion'), count })
-  const mushroom = (count = 1) => ({ ...makeItem('mushroom'), count })
-  const sword = () => itemFromContents(swordContents())
-
-  it('finds the first consumable slot in sack order', () => {
-    assert.equal(findQuickUseIndex([sword(), potion()]), 1)
-    assert.equal(findQuickUseIndex([mushroom(), potion()]), 0)
-  })
-
-  it('returns -1 when the sack has no consumables', () => {
-    assert.equal(findQuickUseIndex([]), -1)
-    assert.equal(findQuickUseIndex([sword()]), -1)
-  })
-
-  it('summarizes the next-up emoji with the combined consumable count', () => {
-    assert.deepEqual(quickUseSummary([sword(), potion(2), mushroom(3)]),
-      { emoji: '🧪', count: 5 })
-    assert.deepEqual(quickUseSummary([mushroom()]), { emoji: '🍄', count: 1 })
-  })
-
-  it('summarizes an empty or consumable-free sack as null', () => {
-    assert.equal(quickUseSummary([]), null)
-    assert.equal(quickUseSummary([sword()]), null)
-  })
-})
-
 describe('meat', () => {
   it('is a stackable consumable that heals 1', () => {
     const m = makeItem('meat')
     assert.equal(m.stackable, true); assert.equal(m.heal, 1); assert.equal(m.kind, 'meat')
-    assert.equal(findQuickUseIndex([m]), 0)
     assert.deepEqual(itemFromContents({ type: 'meat' }).kind, 'meat')
     assert.deepEqual(contentsFromItem(m), { type: 'meat', count: 1 })
   })
@@ -480,21 +451,14 @@ describe('lumber and cooked meat', () => {
     assert.equal(itemFromContents({ type: 'lumber' }).count, 1)
     assert.equal(itemFromContents({ type: 'meat' }).count, 1)
   })
-  it('raw meat heals 1, cooked meat heals 4, both are quick-use consumables', () => {
+  it('raw meat heals 1, cooked meat heals 4', () => {
     assert.equal(makeItem('meat').heal, 1)
     assert.equal(makeItem('cooked_meat').heal, 4)
     assert.equal(itemFromContents({ type: 'cooked_meat' }).kind, 'cooked_meat')
     assert.deepEqual(contentsFromItem(makeItem('cooked_meat')), { type: 'cooked_meat', count: 1 })
-    const p = mkPlayer({ inventory: [makeItem('lumber'), makeItem('cooked_meat')] })
-    assert.equal(findQuickUseIndex(p.inventory), 1)
-    assert.equal(quickUseSummary(p.inventory).count, 1)
   })
-  it('lumber is not a consumable', () => {
-    assert.equal(findQuickUseIndex([makeItem('lumber')]), -1)
-  })
-  it('quest items (clapper, fleece) are not consumable and round-trip through contents', () => {
+  it('quest items (clapper, fleece) round-trip through contents', () => {
     assert.equal(makeItem('clapper').quest, true)
-    assert.equal(findQuickUseIndex([makeItem('clapper')]), -1)
     assert.equal(itemFromContents({ type: 'fleece' }).kind, 'fleece')
   })
 })

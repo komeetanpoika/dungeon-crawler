@@ -58,8 +58,10 @@ export const RANGED_WEAPON_TYPES = {
   longbow:   { name: 'Longbow',     damage: 3, cooldown: 0.7, color: '#facc15', kind: 'bow',      ammoKind: 'arrow', bundle: 10, draw: true },
   splitbow:  { name: 'Splitbow',    damage: 2, cooldown: 0.8, color: '#facc15', kind: 'bow',      ammoKind: 'arrow', bundle: 10,
     fork: { after: 32, count: 3, spread: Math.PI / 9 } },
+  // No `heavy` flag: plate belongs to the Warrior now, and the archer can
+  // never wear it — the coat alone is enough to draw the crossbow.
   crossbow:  { name: 'Crossbow',    damage: 5, cooldown: 1.2, color: '#e5e7eb', kind: 'crossbow', ammoKind: 'bolt',  bundle: 8,
-    heavy: true, knockback: 45, piercesShield: true },
+    knockback: 45, piercesShield: true },
   sling:     { name: 'Sling',       damage: 1, cooldown: 0.5, color: '#a8a29e', kind: 'sling',    ammoKind: 'stone', bundle: 20, stun: 0.5 },
   // Tervahauta's reward (systems/quests/river.js): a longbow whose arrow
   // leaves a burning patch — `fire.tiles` is the fire zone's flood size.
