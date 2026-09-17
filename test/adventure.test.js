@@ -381,6 +381,17 @@ describe('v8 save shape — gear and outfits', () => {
     assert.deepEqual(b.gear.magic.off, { kind: 'consumable', item: 'mushroom' })
     assert.equal(b.gear.melee.off, null)
   })
+  it('item offhands are rebuilt from their tables; unknown ones are dropped', () => {
+    const stale = { ...emptyBody(), gear: { ...defaultGear(),
+      melee: { off: { kind: 'shield', weaponType: 'buckler', name: 'Old Buckler', blockCost: 99 }, outfit: null },
+      magic: { off: { kind: 'wand', weaponType: 'frostwand' }, outfit: null },
+      ranged: { off: { kind: 'weapon', weaponType: 'spork' }, outfit: null } } }
+    const b = normalizeBody(stale)
+    assert.deepEqual(b.gear.melee.off, { kind: 'shield', weaponType: 'buckler', name: 'Buckler', blockCost: 8 })
+    assert.equal(b.gear.magic.off.spell, 'rime')
+    assert.equal(b.gear.ranged.off, null)
+    assert.deepEqual(normalizeBody(b), b)
+  })
   it('a v7 save with stance talents wakes up wearing the outfits', () => {
     const v7 = { caves: {}, progress: { mapDepth: 12, cleared: {}, visited: [] }, talents: ['ranged_stance', 'magic_stance', 'heavy_weapons', 'ski_legs'],
       body: { weapon: null, ranged: null, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 }, inventory: [] },
