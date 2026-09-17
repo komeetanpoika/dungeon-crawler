@@ -162,7 +162,9 @@ sack. The rite anchor's "already learned" fizzle (`rites.js` `pullTarget`)
 becomes "the robe already exists anywhere on the body or in the sack".
 
 A `talent_trigger` entity's `talent` field becomes `outfit` in
-`data/rites.js`; the editor dropdown follows.
+`data/rites.js`. There is no editor dropdown for rites — triggers are
+spawned from `data/rites.js` POIs, not placed in the tile editor — so this
+is a data field rename only.
 
 ## 4. The offhand
 
@@ -254,8 +256,8 @@ outfits (ranger, robe, plate) are never chest loot. The talent teaser rule
   `ranged_stance` / `magic_stance` / `heavy_weapons` are removed and become
   worn outfits in `gear.ranged.outfit` / `gear.magic.outfit` /
   `gear.melee.outfit`; missing `gear` / `belt` default empty. The migration
-  is one pure function `migrateTalentsToOutfits(player)` in
-  `systems/inventory.js`, so Timewarp mini-saves (`normalizeTimewarpSave`),
+  is one pure function `migrateTalentsToOutfits(body, talents)` in
+  `systems/outfits.js`, so Timewarp mini-saves (`normalizeTimewarpSave`),
   the episode kits and the arena player-override shape run the same code.
 - Rush: `makePlayer` for `runMode === 'rush'` wears all three story outfits
   (replacing `RUSH_START_TALENTS`).
