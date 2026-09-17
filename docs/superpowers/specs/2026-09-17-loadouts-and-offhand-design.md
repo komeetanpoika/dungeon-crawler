@@ -275,7 +275,8 @@ category's weight (a shield rolls in one of five melee picks); the Leather
 Coat is its own low-weight category (about a twentieth of a chest). Story
 outfits (ranger, robe, plate) are never chest loot. The talent teaser rule
 (a fifth of the weight, humblest example) now keys on `loadoutAvailable` /
-`canWieldHeavy` instead of talents. `tools/verify-loot.mjs` unchanged.
+`canWieldHeavy` instead of talents. `tools/verify-loot.mjs` learns the
+buckler is tier-1 gear and names outfits.
 
 > **As built:** BASE_WEIGHTS = { potion: 30, melee: 16, shield: 4, ranged:
 > 15, wand: 15, ammo: 15, outfit: 5 } — the shield's four came out of
