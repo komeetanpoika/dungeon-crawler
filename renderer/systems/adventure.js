@@ -63,6 +63,13 @@ export function normalizeBody(body) {
       const wt = item.payload?.weaponType
       return WAND_TYPES[wt] ? itemFromContents(makeWandContents(wt)) : null
     }
+    // Sack shields are table data too (blockCost is tuning, not run state), so
+    // a saved one is rebuilt rather than copied and an unknown type dropped —
+    // the same rule the offhand shield already follows in normalizeOffhand.
+    if (item.kind === 'shield') {
+      const wt = item.payload?.weaponType
+      return SHIELD_TYPES[wt] ? itemFromContents(makeShieldContents(wt)) : null
+    }
     if (item.kind !== 'ranged') return item
     const wt = item.payload?.weaponType
     if (WAND_TYPES[wt]) return itemFromContents(makeWandContents(wt))

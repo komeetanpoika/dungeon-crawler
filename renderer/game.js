@@ -752,8 +752,13 @@ function startNewRun(depth = 1, arenaCfg = null) {
         if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
         if (i.kind === 'ranged') return { ...i, payload: handPayload(makeRangedContents(i.payload.weaponType)) }
         if (i.kind === 'wand') return { ...i, payload: handPayload(makeWandContents(i.payload.weaponType)) }
+        // Shields are table data like the hands: rebuilt so a stale blockCost
+        // is retuned, and an unknown type dropped rather than minted as a
+        // buckler by makeShieldContents' fallback.
+        if (i.kind === 'shield')
+          return SHIELD_TYPES[i.payload.weaponType] ? { ...i, payload: handPayload(makeShieldContents(i.payload.weaponType)) } : null
         return { ...i, payload: { ...i.payload } }
-      })
+      }).filter(Boolean)
     }
   }
   if (depth === 0 && arenaCfg?.player) applyLoadout(player, arenaCfg.player)
