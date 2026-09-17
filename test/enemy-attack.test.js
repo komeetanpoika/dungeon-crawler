@@ -235,4 +235,14 @@ describe('a blocked strike', () => {
     while (e.attack?.phase === 'windup') stepEnemyAttack(e, state, 0.05)
     assert.equal(e.attack, null)
   })
+  it('a stale blockedHit from an earlier hit this frame is not misread as this swing landing on the shield', () => {
+    const player = { ...shielded(), blocking: false, invulnTimer: 0.5, blockedHit: true }
+    const e = { type: 'guard', px: 120, py: 100, x: 3, y: 3, hp: 4, damageCooldown: 0 }
+    const state = { player, entities: [e], feedback: makeFeedback(), sfx: makeSfx() }
+    tryStartEnemyAttack(e, state)
+    while (e.attack?.phase === 'windup') stepEnemyAttack(e, state, 0.05)
+    assert.equal(e.attack, null, 'i-framed: retries next frame, not spent as a block')
+    assert.equal(e.damageCooldown, 0)
+    assert.equal(e.knockback ?? null, null, 'no shove — this swing never touched the shield')
+  })
 })

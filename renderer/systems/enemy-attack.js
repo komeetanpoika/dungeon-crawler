@@ -77,6 +77,10 @@ function strike(e, state) {
   // during a telegraph is missed even at point-blank range.
   const { reach, halfAngle } = weaponWedge(w)
   const connects = inSwing(reach, halfAngle, a.angle, player.px - e.px, player.py - e.py)
+  // Reset before the call so a stale flag from an earlier hit this same frame
+  // (blocked, then i-framed elsewhere) can never be misread as this swing's
+  // own outcome — only tryBlock (via damagePlayer, just below) can set it true.
+  player.blockedHit = false
   const landed = connects && damagePlayer(state, w.damage, 'hit', { px: e.px, py: e.py })
   if (connects && !landed) {
     if (player.blockedHit) {
