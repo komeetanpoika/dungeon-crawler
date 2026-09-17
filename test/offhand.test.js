@@ -4,6 +4,7 @@ import { SHIELD_TYPES, makeShieldContents, isSmallBlade, WEAPON_TYPES, weaponCon
 import {
   itemFromContents, contentsFromItem, offhandItem,
   addItem, canEquip, canEquipOffhand, equipItem, equipOffhand, unequipOffhand, equipOutfit, unequipOutfit,
+  autoEquipOnPickup,
   makeItem, OFFHAND_KINDS, resolveOffhand,
 } from '../renderer/systems/inventory.js'
 import { iconSpriteFor } from '../renderer/render/icons.js'
@@ -53,6 +54,7 @@ const mk = (over = {}) => ({ ...makePlayer(1, 1), ...over })
 const weapon = wt => itemFromContents({ type: 'weapon', ...weaponContents(wt) })
 const shield = st => itemFromContents(makeShieldContents(st))
 const wand = wt => itemFromContents(makeWandContents(wt))
+const kite = () => ({ kind: 'shield', ...(({ type, ...s }) => s)(makeShieldContents('kite')) })
 
 describe('offhand legality', () => {
   it('Warrior: small blade, shield, consumable; never a wand', () => {
@@ -90,6 +92,11 @@ describe('offhand legality', () => {
     assert.deepEqual(canEquipOffhand(p, weapon('dagger')), { ok: false, reason: 'two_handed' })
     assert.deepEqual(canEquip(p, shield('buckler'), 'off'), { ok: false, reason: 'two_handed' })
     assert.equal(canEquipOffhand(p, makeItem('potion')).ok, true)
+  })
+  it('a malformed item with no payload is refused rather than thrown on', () => {
+    const p = mk({ gear: gearWearing('plate') })
+    assert.deepEqual(canEquipOffhand(p, { kind: 'weapon', name: 'Ghost Blade' }), { ok: false, reason: 'not_equippable' })
+    assert.deepEqual(canEquipOffhand(p, { kind: 'shield', name: 'Ghost Shield' }), { ok: false, reason: 'not_equippable' })
   })
 })
 
@@ -159,14 +166,62 @@ describe('the two-handed rule on the main hand', () => {
     equipItem(p, 0)
     assert.deepEqual(p.gear.melee.off, { kind: 'consumable', item: 'potion' })
   })
+  it('walking onto an axe sends the offhand dagger back to the sack', () => {
+    const p = mk({ gear: gearWearing('plate') })
+    addItem(p, weapon('dagger')); equipOffhand(p, 0)
+    assert.deepEqual(autoEquipOnPickup(p, weapon('axe')), { ok: true, equipped: true })
+    assert.equal(p.weapon.weaponType, 'axe')
+    assert.equal(p.gear.melee.off, null)
+    assert.deepEqual(p.inventory.map(i => i.payload.weaponType), ['dagger'])
+  })
+  it('a walked-onto axe with nowhere to put the offhand is not equipped', () => {
+    const p = mk({ gear: gearWearing('plate'), maxInventory: 1 })
+    addItem(p, weapon('dagger')); equipOffhand(p, 0)   // the dagger leaves the sack
+    addItem(p, makeItem('potion'))                     // sack 1/1: no slot for the dagger
+    assert.deepEqual(autoEquipOnPickup(p, weapon('axe')), { ok: false, reason: 'full' })
+    assert.equal(p.weapon, null)
+    assert.equal(p.gear.melee.off.weaponType, 'dagger')
+    assert.deepEqual(p.inventory.map(i => i.kind), ['potion'])
+  })
   it('taking the plate off evicts the kite shield with the axe', () => {
     const p = mk({ gear: gearWearing('plate'), weapon: weaponContents('axe') })
-    p.gear.melee.off = { kind: 'shield', ...(({ type, ...s }) => s)(makeShieldContents('kite')) }
+    p.gear.melee.off = kite()
     assert.equal(unequipOutfit(p, 'melee').ok, true)
     assert.equal(p.gear.melee.off, null)
     assert.deepEqual(p.inventory.map(i => i.kind).sort(), ['outfit', 'shield', 'weapon'])
     const q = mk({ gear: gearWearing('plate'), maxInventory: 1 })
-    q.gear.melee.off = { kind: 'shield', ...(({ type, ...s }) => s)(makeShieldContents('kite')) }
+    q.gear.melee.off = kite()
     assert.deepEqual(unequipOutfit(q, 'melee'), { ok: false, reason: 'full' })
+  })
+  it('the plate carries the Mage offhand kite shield too', () => {
+    const p = mk({ gear: gearWearing('plate', 'robe') })
+    p.gear.magic.off = kite()
+    assert.equal(unequipOutfit(p, 'melee').ok, true)
+    assert.equal(p.gear.magic.off, null)
+    assert.deepEqual(p.inventory.map(i => i.kind).sort(), ['outfit', 'shield'])
+  })
+  it('both kite shields are counted when the sack is nearly full', () => {
+    const wearing = () => {
+      const q = mk({ gear: gearWearing('plate', 'robe'), maxInventory: 2 })
+      q.gear.melee.off = kite(); q.gear.magic.off = kite()
+      return q
+    }
+    // plate + two kites need three slots; two is a refusal that moves nothing.
+    const tight = wearing()
+    assert.deepEqual(unequipOutfit(tight, 'melee'), { ok: false, reason: 'full' })
+    assert.equal(tight.gear.melee.off.weaponType, 'kite')
+    assert.equal(tight.gear.magic.off.weaponType, 'kite')
+    const roomy = wearing(); roomy.maxInventory = 3
+    assert.equal(unequipOutfit(roomy, 'melee').ok, true)
+    assert.deepEqual(roomy.inventory.map(i => i.kind).sort(), ['outfit', 'shield', 'shield'])
+  })
+  it('swapping the plate for a lighter outfit evicts every kite shield', () => {
+    const p = mk({ gear: gearWearing('plate', 'robe') })
+    p.gear.melee.off = kite(); p.gear.magic.off = kite()
+    addItem(p, itemFromContents(makeOutfitContents('leather')))
+    assert.equal(equipOutfit(p, 0, 'melee').ok, true)
+    assert.equal(p.gear.melee.off, null)
+    assert.equal(p.gear.magic.off, null)
+    assert.deepEqual(p.inventory.map(i => i.kind).sort(), ['outfit', 'shield', 'shield'])
   })
 })
