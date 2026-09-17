@@ -41,7 +41,7 @@ import { updateEcho } from './systems/echo.js'
 import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { questFor, questFlags, questLines, makeQuestCtx } from './systems/quests.js'
 import { QUEST_MODULES } from './systems/quests/index.js'
-import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
+import { felledCells, findHarvestHit, harvest, resolveTool } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable, isSpellTarget } from './systems/factions.js'
 import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
@@ -1505,7 +1505,8 @@ function update(delta) {
     // bar-less chopHp on the cell; the fall/clear is what you hear and see,
     // and the lumber (trees only) arcs onto the stump for a walk-onto
     // pickup.
-    const tool = { chop: wpn.chop, mine: wpn.mine }
+    // The belt lends its chop/mine to whichever blade swings (spec §5).
+    const tool = resolveTool(wpn, player.belt)
     if (tool.chop || tool.mine) {
       const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, tool)
       if (spot) {

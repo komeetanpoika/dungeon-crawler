@@ -90,3 +90,46 @@ describe('a heavy belt rides on the plate', () => {
     assert.equal(q.belt.weaponType, 'hatchet')
   })
 })
+
+import { resolveTool, findHarvestHit, harvest, TREES } from '../renderer/systems/lumber.js'
+import { TILE } from '../renderer/systems/entities.js'
+import { createMap } from '../renderer/systems/map.js'
+
+const grassMap = () => { const m = createMap(8, 8); for (const row of m) for (const c of row) { c.tile = TILE.FLOOR; c.overlay = 'ow_grass' } return m }
+const plant = (m, x, y, overlay) => { m[y][x].tile = TILE.WALL; m[y][x].overlay = overlay; m[y][x].losSoft = true }
+const at = (x, y, belt = null) => ({ x, y, px: x * 32 + 16, py: y * 32 + 16, belt })
+const anyHit = () => true
+
+describe('resolveTool', () => {
+  it('takes the weapon’s own values first and fills the gaps from the belt', () => {
+    assert.deepEqual(resolveTool({ chop: 2 }, { chop: 1, mine: 1 }), { chop: 2, mine: 1 })
+    assert.deepEqual(resolveTool({ damage: 1 }, { chop: 1 }), { chop: 1 })
+    assert.deepEqual(resolveTool({ damage: 1 }, null), {})
+    assert.deepEqual(resolveTool(null, { mine: 1 }), { mine: 1 })
+    assert.deepEqual(resolveTool({ chop: 1 }, undefined), { chop: 1 })
+  })
+})
+
+describe('a dagger swing with a hatchet on the belt', () => {
+  const tree = Object.keys(TREES).find(k => TREES[k].cells === 1 && !TREES[k].border) ?? Object.keys(TREES)[0]
+  it('finds the tree the dagger alone could not', () => {
+    const m = grassMap(); plant(m, 3, 3, tree)
+    const dagger = weaponContents('dagger')
+    assert.equal(findHarvestHit(m, at(2, 3), anyHit, 46, dagger), null)
+    assert.deepEqual(findHarvestHit(m, at(2, 3, weaponContents('hatchet')), anyHit, 46, dagger), { x: 3, y: 3 })
+  })
+  it('the resolved tool fells it at the belt’s chop, never the weapon’s damage', () => {
+    const m = grassMap(); plant(m, 3, 3, tree)
+    const tool = resolveTool(weaponContents('dagger'), weaponContents('hatchet'))
+    assert.deepEqual(tool, { chop: 1 })
+    const first = harvest(m, 3, 3, tool)
+    assert.equal(first.kind, 'tree')
+    assert.equal(m[3][3].chopHp, TREES[tree].hp - 1)
+  })
+  it('a pick on the belt lets a sword crack rock', () => {
+    const m = grassMap(); m[3][3].overlay = 'ow_rock_gray_0'; m[3][3].tile = TILE.WALL
+    const sword = weaponContents('sword')
+    assert.equal(findHarvestHit(m, at(2, 3), anyHit, 46, sword), null)
+    assert.deepEqual(findHarvestHit(m, at(2, 3, weaponContents('pick')), anyHit, 46, sword), { x: 3, y: 3 })
+  })
+})
