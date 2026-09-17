@@ -1,7 +1,7 @@
 # Loadouts, Offhand, Outfits and Belt — Design
 
 **Date:** 2026-09-17
-**Status:** Approved design, pending implementation plans
+**Status:** Implemented — plans 1–3 merged (PRs #52, #53, and this plan's PR).
 **Supersedes:** the stance-talent parts of `2026-08-22-talents-and-inventory-design.md`
 (Marksmanship, Gust of Wind, Might become outfits; Ski-legs and the talent
 module stay). Builds on `2026-09-05-wands-and-bows-redesign.md` (pooled ammo,
@@ -277,6 +277,12 @@ outfits (ranger, robe, plate) are never chest loot. The talent teaser rule
 (a fifth of the weight, humblest example) now keys on `loadoutAvailable` /
 `canWieldHeavy` instead of talents. `tools/verify-loot.mjs` unchanged.
 
+> **As built:** BASE_WEIGHTS = { potion: 30, melee: 16, shield: 4, ranged:
+> 15, wand: 15, ammo: 15, outfit: 5 } — the shield's four came out of
+> melee's twenty, the coat's five out of potion's thirty-five, so a
+> veteran's roll still totals 100 from tier 2 (95 at tier 1, where no coat
+> rolls).
+
 ## 7. Saves and migration
 
 - Adventure save → v8. `normalizeBody` migrates the player: `talents` entries
@@ -298,6 +304,10 @@ Mage), each with main, offhand and outfit tiles, and a belt tile at the end.
 The active loadout's column is highlighted; a locked loadout's column is
 greyed and its tiles are inert, with no unlock hint (spec §1 of the talents
 design: no spoilers).
+
+> **As built (plan 3):** the belt is a fourth, one-tile column right of the
+> Mage's; gear index 9; **Belt** appears on a sack weapon that can chop or
+> mine.
 
 - Arrow keys move within the grid as today; Up from the top row enters the
   strip, Down leaves it.
