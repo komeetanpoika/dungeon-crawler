@@ -194,15 +194,21 @@
     .inv-panel { background: #1a1a22; border: 1px solid #3a3a44; padding: 16px 20px;
       min-width: 340px; max-width: 90vw; font-size: 14px; }
     .inv-title { color: #e8b84b; font-size: 18px; margin-bottom: 10px; letter-spacing: 2px; }
-    .inv-hands { display: flex; gap: 10px; margin-bottom: 10px; }
-    .inv-hand { border: 1px solid #3a3a44; padding: 6px 10px; color: #f6ad55; }
+    .inv-strip { display: flex; gap: 10px; margin-bottom: 10px; }
+    .inv-col { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid #3a3a44; }
+    .inv-col.active { border-color: #f6ad55; }
+    .inv-col.locked { opacity: 0.35; filter: grayscale(1); }
+    .inv-col-name { color: #f6ad55; font-size: 12px; letter-spacing: 1px; text-align: center; }
+    .inv-tile { width: 44px; height: 44px; border: 1px solid #3a3a44; background: #14141a; position: relative;
+      display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; }
+    .inv-tile.selected { border-color: #e8b84b; background: #2a2a36; }
     .inv-grid { display: grid; grid-template-columns: repeat(5, 52px); gap: 6px; }
     .inv-slot { width: 52px; height: 52px; border: 1px solid #3a3a44; background: #14141a;
       display: flex; align-items: center; justify-content: center; font-size: 22px;
       position: relative; cursor: pointer; }
     .inv-slot.selected { border-color: #e8b84b; background: #2a2a36; }
     .inv-icon { width: 40px; height: 40px; image-rendering: pixelated; }
-    .inv-hand .inv-icon { width: 22px; height: 22px; vertical-align: -4px; margin-right: 4px; }
+    .inv-tile .inv-icon { width: 32px; height: 32px; }
     .inv-count { position: absolute; right: 3px; bottom: 1px; font-size: 11px; color: #ccc; }
     .inv-detail { margin-top: 10px; min-height: 34px; color: #ccc; }
     .inv-detail .warn { color: #f87171; }

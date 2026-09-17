@@ -858,15 +858,16 @@ function openInventory() {
   setPhase(PHASE.PAUSED)
   inventoryOpen = true
   sfx(state, 'ui-open')
+  const report = r => { if (!r.ok) think(state, EQUIP_FAIL_MESSAGES[r.reason] ?? "Can't equip that."); else sfx(state, 'equip'); afterInventoryChange() }
   showInventory(state, {
-    onEquip: (i) => {
-      const r = equipItem(state.player, i)
-      if (!r.ok) think(state, EQUIP_FAIL_MESSAGES[r.reason] ?? "Can't equip that.")
-      else sfx(state, 'equip')
-      afterInventoryChange()
-    },
-    onUse: (i) => useInventoryItem(i),
-    onDrop: (i) => dropInventoryItem(i),
+    onEquip: i => report(state.player.inventory[i]?.kind === 'outfit' ? equipOutfit(state.player, i) : equipItem(state.player, i)),
+    onEquipOff: i => report(equipOffhand(state.player, i)),
+    onUnequip: (stance, slot) => report(
+      slot === 'main' ? unequipMain(state.player, stance)
+      : slot === 'outfit' ? unequipOutfit(state.player, stance)
+      : unequipOffhand(state.player, stance)),
+    onUse: i => useInventoryItem(i),
+    onDrop: i => dropInventoryItem(i),
     onBuild: slot => buildCampfire(state.player.inventory[slot]?.kind ?? 'lumber'),
     onClose: closeInventory,
   })
