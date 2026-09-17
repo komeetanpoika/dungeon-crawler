@@ -102,6 +102,11 @@ function saveMutedPref(m) {
 }
 window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
+// Focus loss never delivers the keyup, so a key held over an Alt-Tab would
+// stay down for good. Q is the one that bites: tickShield would keep the
+// player blocking forever — half speed, no sprint, no attacks, and no way
+// back short of pressing and releasing Q again.
+window.addEventListener('blur', () => { for (const k of Object.keys(keys)) keys[k] = false })
 
 // Desktop sprint: double-tap a direction and hold. Touch sprint arrives as
 // the synthetic 'sprint' key from the stick rim (ui/touch-controls.js).
