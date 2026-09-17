@@ -26,6 +26,7 @@ export const RECIPES = {
   'shockwave':      { kind: 'rumble', freq: 70,  dur: 0.35, vol: 0.9 },
   'wall-slam':      { kind: 'burst',  freq: 180,  q: 0.9,  dur: 0.16, vol: 1.0 },
   'player-hurt':    { kind: 'burst',  freq: 250,  q: 0.8,  dur: 0.15, vol: 1.0 },
+  'shield-block':   { kind: 'burst',  freq: 420,  q: 2.0,  dur: 0.10, vol: 0.8 },
   'player-death':   { kind: 'blip',   wave: 'square',   f0: 440,  f1: 55,   dur: 0.80, vol: 1.0 },
   'enemy-death':    { kind: 'blip',   wave: 'square',   f0: 330,  f1: 90,   dur: 0.25, vol: 0.7 },
   'boss-death':     { kind: 'rumble', freq: 55,  dur: 1.20, vol: 1.0 },
