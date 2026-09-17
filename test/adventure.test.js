@@ -425,6 +425,11 @@ describe('v8 save shape — gear and outfits', () => {
         magic: { off: { kind: 'consumable', item: 'mushroom' }, outfit: null } } })
     assert.deepEqual(normalizeBody(once), once)
   })
+  it('a saved belt is rebuilt from the table; an unknown tool is dropped', () => {
+    const b = normalizeBody({ ...emptyBody(), belt: { weaponType: 'hatchet', name: 'Old Hatchet', damage: 9, chop: 9 } })
+    assert.deepEqual(b.belt, weaponContents('hatchet'))
+    assert.equal(normalizeBody({ ...emptyBody(), belt: { weaponType: 'spork' } }).belt, null)
+  })
   it('a current save is untouched', () => {
     const s = normalizeAdventureSave(null)
     assert.equal(s.body, null)

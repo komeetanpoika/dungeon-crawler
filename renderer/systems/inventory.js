@@ -170,6 +170,7 @@ export function canEquip(player, item, slot = 'main') {
   if (!item) return { ok: false, reason: 'not_equippable' }
   if (slot === 'outfit') return item.kind === 'outfit' ? { ok: true } : { ok: false, reason: 'not_equippable' }
   if (slot === 'off') return canEquipOffhand(player, item)
+  if (slot === 'belt') return canEquipBelt(player, item)
   if (item.kind === 'wand')
     return loadoutAvailable(player, 'magic') ? { ok: true } : { ok: false, reason: 'not_learned' }
   if (item.kind !== 'weapon' && item.kind !== 'ranged') return { ok: false, reason: 'not_equippable' }
@@ -207,6 +208,40 @@ const handItem = (hand, payload) =>
   ({ kind: hand, name: payload.name, emoji: HAND_EMOJI[hand], stackable: false, payload: { ...payload } })
 
 const roomFor = (player, n) => player.inventory.length + n <= player.maxInventory
+
+// ── The belt ──────────────────────────────────────────────────────────────
+// One shared tool the swing borrows chop/mine from (lumber.js resolveTool).
+// Only a melee weapon that can chop or mine fits; the belt never fights and
+// is never drawn in a hand. The heavy axe still needs the plate.
+export const isTool = payload => !!(payload?.chop || payload?.mine)
+
+export function canEquipBelt(player, item) {
+  if (item?.kind !== 'weapon' || !isTool(item.payload)) return { ok: false, reason: 'not_equippable' }
+  if (item.payload.heavy && !canWieldHeavy(player)) return { ok: false, reason: 'heavy' }
+  return { ok: true }
+}
+
+export const beltItem = payload => handItem('weapon', payload)
+
+// Sack slot `index` → belt; a held tool swaps back into the sack (net 0).
+export function equipBelt(player, index) {
+  const item = player.inventory[index]
+  const gate = canEquipBelt(player, item)
+  if (!gate.ok) return gate
+  const held = player.belt
+  player.belt = { ...item.payload }
+  player.inventory.splice(index, 1)
+  if (held) player.inventory.push(beltItem(held))
+  return { ok: true, equipped: item }
+}
+
+export function unequipBelt(player) {
+  if (!player.belt) return { ok: false, reason: 'not_equippable' }
+  if (!roomFor(player, 1)) return { ok: false, reason: 'full' }
+  player.inventory.push(beltItem(player.belt))
+  player.belt = null
+  return { ok: true }
+}
 
 // A heavy blade needs both hands, so an item in the Warrior's offhand goes
 // back to the sack before the blade lands (a consumable pointer stays — it is
@@ -287,6 +322,13 @@ function offsToEvict(player, stance, nextOutfit) {
     .filter(e => e.item?.payload.heavy)
 }
 
+// The axe on the belt rides on the plate like the heavy hand and the kite
+// shields: losing the heavy grant sends it to the sack.
+function beltToEvict(player, stance, nextOutfit) {
+  if (stance !== 'melee' || !player.belt?.heavy || nextOutfit?.heavy) return null
+  return beltItem(player.belt)
+}
+
 // Move the evicted offhands into the sack; like evictHands, the caller has
 // already counted them in its own roomFor arithmetic.
 function evictOffs(player, offs) {
@@ -329,13 +371,16 @@ export function equipOutfit(player, index, stance) {
   const g = gearOf(player, stance)
   const evict = handsToEvict(player, stance, item.payload)
   const offEvict = offsToEvict(player, stance, item.payload)
-  // The new outfit frees one slot; the old outfit, each evicted hand and each
-  // evicted offhand take one.
-  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length + offEvict.length - 1)) return { ok: false, reason: 'full' }
+  const beltEvict = beltToEvict(player, stance, item.payload)
+  // The new outfit frees one slot; the old outfit, each evicted hand, each
+  // evicted offhand and an evicted belt tool take one.
+  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length + offEvict.length + (beltEvict ? 1 : 0) - 1))
+    return { ok: false, reason: 'full' }
   player.inventory.splice(index, 1)
   if (g.outfit) player.inventory.push(outfitItem(g.outfit))
   evictHands(player, evict)
   evictOffs(player, offEvict)
+  if (beltEvict) { player.inventory.push(beltEvict); player.belt = null }
   g.outfit = { ...item.payload }
   closeIfLocked(player, stance)
   return { ok: true, equipped: item }
@@ -346,10 +391,12 @@ export function unequipOutfit(player, stance) {
   if (!g.outfit) return { ok: false, reason: 'not_equippable' }
   const evict = handsToEvict(player, stance, null)
   const offEvict = offsToEvict(player, stance, null)
-  if (!roomFor(player, 1 + evict.length + offEvict.length)) return { ok: false, reason: 'full' }
+  const beltEvict = beltToEvict(player, stance, null)
+  if (!roomFor(player, 1 + evict.length + offEvict.length + (beltEvict ? 1 : 0))) return { ok: false, reason: 'full' }
   player.inventory.push(outfitItem(g.outfit))
   evictHands(player, evict)
   evictOffs(player, offEvict)
+  if (beltEvict) { player.inventory.push(beltEvict); player.belt = null }
   g.outfit = null
   closeIfLocked(player, stance)
   return { ok: true }
