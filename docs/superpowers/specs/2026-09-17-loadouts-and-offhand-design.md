@@ -178,7 +178,7 @@ is a data field rename only.
 |---|---|
 | Warrior | small blade, shield, consumable |
 | Archer | consumable only (every bow and the sling is two-handed) |
-| Mage | wand, small blade, shield, consumable |
+| Mage | wand, shield, consumable |
 
 A heavy main hand (longsword, axe, Ukonvasara) narrows the offhand to
 consumables. Equipping a heavy main hand while a blade, shield or wand sits
@@ -189,6 +189,11 @@ with `two_handed`.
 Consumable pointers are allowed everywhere. `CONSUMABLE_KINDS` (potion,
 mushroom, meat, cooked meat) is the pointable set; quest items and lumber
 are not.
+
+> **As built (plan 3):** the Mage's offhand takes a wand, a shield or a
+> consumable — not a small blade. Melee swings only happen in the Warrior
+> loadout, so a blade in the Mage's offhand could never be swung; offering
+> the slot would promise something the loadout cannot deliver.
 
 ### The offhand key
 

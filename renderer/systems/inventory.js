@@ -182,8 +182,8 @@ export function canEquip(player, item, slot = 'main') {
 }
 
 // Which item kinds each loadout's offhand takes beside a consumable pointer.
-// The Archer's bows are two-handed, so only a belt potion rides with them.
-export const OFFHAND_KINDS = { melee: ['weapon', 'shield'], ranged: [], magic: ['wand', 'weapon', 'shield'] }
+// The Archer's bows are two-handed, so only a belt potion rides with them; the Mage never swings, so a blade in that offhand would be dead weight (plan 3 ruling — spec §4 As built).
+export const OFFHAND_KINDS = { melee: ['weapon', 'shield'], ranged: [], magic: ['wand', 'shield'] }
 
 export function canEquipOffhand(player, item, stance = player.attackMode ?? 'melee') {
   if (!item) return { ok: false, reason: 'not_equippable' }

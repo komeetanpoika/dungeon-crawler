@@ -71,10 +71,12 @@ describe('offhand legality', () => {
     assert.deepEqual(canEquipOffhand(p, shield('buckler'), 'ranged'), { ok: false, reason: 'not_equippable' })
     assert.equal(canEquipOffhand(p, makeItem('potion'), 'ranged').ok, true)
   })
-  it('Mage: wand, small blade, shield, consumable', () => {
+  it('Mage: wand, shield, consumable — never a blade, since only the Warrior swings', () => {
     const p = mk({ gear: gearWearing('robe'), attackMode: 'magic' })
-    for (const item of [wand('frostwand'), weapon('dagger'), shield('buckler'), makeItem('mushroom')])
+    for (const item of [wand('frostwand'), shield('buckler'), makeItem('mushroom')])
       assert.equal(canEquipOffhand(p, item, 'magic').ok, true, item.kind)
+    assert.deepEqual(canEquipOffhand(p, weapon('dagger'), 'magic'), { ok: false, reason: 'not_equippable' })
+    assert.deepEqual(OFFHAND_KINDS.magic, ['wand', 'shield'])
   })
   it('a closed loadout refuses items but not a pointer', () => {
     const p = mk()
