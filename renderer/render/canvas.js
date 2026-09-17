@@ -64,6 +64,18 @@ function drawHeldWeapon(ctx, ws, S) {
   ctx.restore()
 }
 
+// The other hand: the offhand item mirrored across the body. A raised shield
+// comes up in front, larger, so the block reads at a glance.
+function drawOffhandItem(ctx, ws, S, raised) {
+  const hw = Math.round(S * (raised ? 0.9 : 0.7))
+  ctx.save()
+  if (raised) ctx.translate(S * 0.05, -S * 0.5)
+  else { ctx.translate(S * 0.30, -S * 0.34); ctx.rotate(0.35) }
+  ctx.scale(-1, 1)
+  ctx.drawImage(ws, -hw / 2, -hw * 0.85, hw, hw)
+  ctx.restore()
+}
+
 function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg, heldWeapon = null) {
   ctx.save()
   ctx.translate(px + S / 2, py + S)        // pivot at the feet (center-bottom)
@@ -297,6 +309,11 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
         : entity.weapon
       const ws = held && sprites[`weapon_${held.weaponType}`]
       if (ws) drawHeldWeapon(ctx, ws, S)
+      const off = entity.gear?.[entity.attackMode ?? 'melee']?.off
+      if (off && off.kind !== 'consumable') {
+        const os = sprites[`weapon_${off.weaponType}`]
+        if (os) drawOffhandItem(ctx, os, S, !!entity.blocking && off.kind === 'shield')
+      }
     }
     ctx.restore()
     return
@@ -654,7 +671,9 @@ export function drawMeleeSwing(ctx, player, sprites, camX, camY, S) {
   if (!(player.attackTimer > 0) || !(player.attackDuration > 0)) return
   const t = 1 - player.attackTimer / player.attackDuration
   const base = FACING_ANGLE[player.attackFacing] ?? 0
-  const ws = sprites[`weapon_${player.weapon?.weaponType}`]
+  const off = player.gear?.[player.attackMode ?? 'melee']?.off
+  const swung = player.swingHand === 'off' && off?.kind === 'weapon' ? off : player.weapon
+  const ws = sprites[`weapon_${swung?.weaponType}`]
   const reach = getSwingArc(player.attackStyle).reach * (player.attackReachMul ?? 1)
   drawSwing(ctx, player.px - camX, player.py - camY, ws, player.attackStyle, t, S, { baseAngle: base, reach })
 }

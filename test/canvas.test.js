@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawRiteCeremony, playerSpriteKey, Renderer } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawMeleeSwing, drawRiteCeremony, playerSpriteKey, Renderer } from '../renderer/render/canvas.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
 import { createMap } from '../renderer/systems/map.js'
@@ -333,7 +333,7 @@ describe('player stance sprites', () => {
       images,
       save: () => {}, restore: () => {}, translate: () => {}, rotate: () => {}, scale: () => {},
       set globalAlpha(v) { alpha = v }, get globalAlpha() { return alpha },
-      drawImage: (img) => images.push({ img, alpha }),
+      drawImage: (img, dx, dy, dw) => images.push({ img, alpha, dw }),
       fillRect: () => {}, beginPath: () => {}, arc: () => {}, stroke: () => {}, fill: () => {},
       set fillStyle(_v) {}, set strokeStyle(_v) {}, set lineWidth(_v) {},
     }
@@ -343,7 +343,7 @@ describe('player stance sprites', () => {
   it('draws the stance sprite for a settled player', () => {
     const ctx = playerCtx()
     drawEntity(ctx, player({ attackMode: 'magic' }), 0, 0, 32, SPR2)
-    assert.deepEqual(ctx.images, [{ img: 'MAGIC', alpha: 1 }])
+    assert.deepEqual(ctx.images, [{ img: 'MAGIC', alpha: 1, dw: 32 }])
   })
 
   it('crossfades both sprites at complementary alphas mid-switch', () => {
@@ -363,6 +363,31 @@ describe('player stance sprites', () => {
     const to = ctx.images.find(i => i.img === 'HEAVY')
     assert.ok(to, 'melee target renders the knight for a plate-wearing player')
     assert.ok(Math.abs(to.alpha - 0.75) < 1e-9)
+  })
+
+  const SPR3 = { weapon_sword: 'SWORD', weapon_buckler: 'BUCKLER', weapon_dagger: 'DAGGER' }
+
+  it('draws the offhand item beside the main hand, and larger when the shield is raised', () => {
+    const base = playerCtx()
+    drawEntity(base, player({ weapon: { weaponType: 'sword' } }), 0, 0, 32, SPR3)
+    const withOff = playerCtx()
+    drawEntity(withOff, player({ weapon: { weaponType: 'sword' },
+      gear: { melee: { off: { kind: 'shield', weaponType: 'buckler' }, outfit: null } } }), 0, 0, 32, SPR3)
+    assert.equal(withOff.images.length, base.images.length + 1)
+    const raised = playerCtx()
+    drawEntity(raised, player({ weapon: { weaponType: 'sword' }, blocking: true,
+      gear: { melee: { off: { kind: 'shield', weaponType: 'buckler' }, outfit: null } } }), 0, 0, 32, SPR3)
+    const maxDw = imgs => Math.max(...imgs.map(i => i.dw))
+    assert.ok(maxDw(raised.images) > maxDw(withOff.images))
+  })
+
+  it('the swing draws the hand that swung', () => {
+    const p = { px: 50, py: 50, attackTimer: 0.1, attackDuration: 0.2, attackFacing: 'east', attackStyle: 'snap',
+      weapon: { weaponType: 'sword' }, attackMode: 'melee', swingHand: 'off',
+      gear: { melee: { off: { kind: 'weapon', weaponType: 'dagger' }, outfit: null } } }
+    const c = playerCtx()
+    drawMeleeSwing(c, p, { weapon_sword: 'SWORD', weapon_dagger: 'DAGGER' }, 0, 0, 32)
+    assert.ok(c.images.some(i => i.img === 'DAGGER'))
   })
 })
 

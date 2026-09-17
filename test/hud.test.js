@@ -66,6 +66,37 @@ describe('updateHUD offhand slot', () => {
     updateHUD(s)
     assert.match(nodes['hud-offhand'].innerHTML, /ow_mushroom/)
   })
+  it('shows a shield with no count, dimmed when it cannot be raised', () => {
+    const nodes = fakeDom()
+    const s = state({ stamina: 100 })
+    s.player.gear.melee.off = { kind: 'shield', weaponType: 'buckler', name: 'Buckler', blockCost: 8 }
+    updateHUD(s)
+    assert.match(nodes['hud-offhand'].innerHTML, /tile_0102/)
+    assert.doesNotMatch(nodes['hud-offhand'].innerHTML, /hud-count|hud-icon-empty/)
+    assert.equal(nodes['hud-offhand'].dataset.offhand, 'shield')
+    s.player.stamina = 3
+    updateHUD(s)
+    assert.match(nodes['hud-offhand'].innerHTML, /hud-icon-empty/)
+    assert.equal(nodes['hud-offhand'].dataset.offhand, '')
+    s.player.stamina = 100; s.player.shieldDropT = 0.5
+    updateHUD(s)
+    assert.match(nodes['hud-offhand'].innerHTML, /hud-icon-empty/)
+  })
+  it('shows an offhand wand dimmed below its tap cost, and a blade never dimmed', () => {
+    const nodes = fakeDom()
+    const s = state({ attackMode: 'magic', stamina: 5 })
+    s.player.gear.magic.off = { kind: 'wand', weaponType: 'sparkwand', name: 'Spark Wand', spell: 'spark' }
+    updateHUD(s)
+    assert.match(nodes['hud-offhand'].innerHTML, /hud-icon-empty/)
+    assert.equal(nodes['hud-offhand'].dataset.offhand, '')
+    const t = fakeDom()
+    const u = state({ stamina: 0 })
+    u.player.gear.melee.off = { kind: 'weapon', weaponType: 'dagger', name: 'Dagger', damage: 1 }
+    updateHUD(u)
+    assert.match(t['hud-offhand'].innerHTML, /tile_0103/)
+    assert.doesNotMatch(t['hud-offhand'].innerHTML, /hud-icon-empty/)
+    assert.equal(t['hud-offhand'].dataset.offhand, 'weapon')
+  })
 })
 
 describe('updateHUD tool slot', () => {
