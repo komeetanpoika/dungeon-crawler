@@ -43,6 +43,7 @@ export function tryBlock(state, from) {
   const player = state.player
   if (!player.blocking || !inBlockArc(player, from)) return false
   const shield = heldShield(player)
+  if (!shield) return false
   spendStamina(player, shield.blockCost)
   if ((player.stamina ?? 0) <= 0) {
     player.shieldDropT = SHIELD_DROP

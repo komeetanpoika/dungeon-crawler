@@ -74,4 +74,12 @@ describe('tryBlock', () => {
     assert.equal(p.shieldDropT, SHIELD_DROP)
     assert.equal(p.staminaRefusedT, 0.4)
   })
+  it('does nothing when blocking is stale and no shield is currently held', () => {
+    const p = mk({ blocking: true })
+    p.gear.melee.off = { kind: 'consumable', item: 'potion' }
+    const s = state(p)
+    assert.equal(tryBlock(s, { px: 140, py: 100 }), false)
+    assert.equal(p.stamina, 100)
+    assert.deepEqual(s.sfx.cues, [])
+  })
 })
