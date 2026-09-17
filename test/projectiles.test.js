@@ -28,7 +28,7 @@ function makeHooks(overrides = {}) {
     isHittable: e => e.hp === undefined || e.hp > 0,
     hurt: (e, damage, p) => { hitLog.push(e); return { ...e, hp: e.hp - damage } },
     detonate: (px, py, blastTiles) => detonations.push({ px, py, blastTiles }),
-    damagePlayer: damage => playerDamage.push(damage),
+    damagePlayer: (damage, from) => playerDamage.push([damage, from]),
     ...overrides,
   }
   return { hooks, hitLog, detonations, playerDamage }
@@ -346,7 +346,9 @@ describe('enemy projectiles vs the player', () => {
 
     const { hits } = stepProjectiles(state, 0.01, hooks) // px -> 1, dist to player(5,0) = 4 < 10
     assert.equal(hits, 1)
-    assert.deepEqual(playerDamage, [4])
+    assert.equal(playerDamage.length, 1)
+    assert.equal(playerDamage[0][0], 4)
+    assert.deepEqual(playerDamage[0][1], { px: p.px, py: p.py })
     assert.equal(state.projectiles.length, 0)
   })
 })

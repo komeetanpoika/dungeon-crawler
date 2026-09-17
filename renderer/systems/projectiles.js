@@ -81,7 +81,7 @@ function applyOnHit(p, target) {
 // with the survivors) and state.entities (via hooks.hurt's replacement
 // entity, and hooks.cull's culling); returns { hits } for callers that want
 // a count (e.g. combo/sfx bookkeeping upstream). hooks: { hurt(e, damage, p)
-// -> entity, detonate(px, py, blastTiles, { fireOnly }), damagePlayer(damage),
+// -> entity, detonate(px, py, blastTiles, { fireOnly }), damagePlayer(damage, from),
 // isHittable(e), cull(entities) -> entities (optional, defaults to identity
 // — game.js passes its real cullDead with the keep predicate it uses
 // elsewhere, since a corpse can sit at 0 hp without isHittable/dying saying
@@ -173,7 +173,7 @@ export function stepProjectiles(state, delta, hooks) {
         state.entities = cull(state.entities)
       }
     } else if (Math.hypot(player.px - p.px, player.py - p.py) < PLAYER_HIT_RADIUS) {
-      hooks.damagePlayer(p.damage)
+      hooks.damagePlayer(p.damage, { px: p.px, py: p.py })
       hits++
       consumed = true
     }

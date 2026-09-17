@@ -64,7 +64,7 @@ export function updateCyclops(e, state, delta) {
 
   } else if (e.state === 'charging') {
     if (Math.hypot(e.px - player.px, e.py - player.py) < 50) {
-      if (damagePlayer(state, 5, 'hit')) {
+      if (damagePlayer(state, 5, 'hit', { px: e.px, py: e.py })) {
         startKnockback(player, player.px - e.px, player.py - e.py, KNOCKBACK_DIST)
         e.inCombat = true
       }
@@ -93,7 +93,7 @@ export function updateCyclops(e, state, delta) {
       e.stateTimer = SLAM_RING_DURATION
       e.slamRing = { radius: 0, maxRadius: SLAM_RADIUS }
       if (dist < SLAM_RADIUS) {
-        if (damagePlayer(state, SLAM_DAMAGE, 'hit')) {
+        if (damagePlayer(state, SLAM_DAMAGE, 'hit', { px: e.px, py: e.py })) {
           e.inCombat = true
         }
       }

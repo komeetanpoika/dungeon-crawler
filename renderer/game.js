@@ -419,7 +419,7 @@ const projectileHooks = {
   isHittable,
   hurt: hurtEntity,
   detonate: (px, py, blastTiles, opts) => detonateFireball(px, py, blastTiles, opts),
-  damagePlayer: damage => damagePlayer(state, damage, 'hit'),
+  damagePlayer: (damage, from) => damagePlayer(state, damage, 'hit', from),
   // A corpse sits at 0 hp until it is culled, and would otherwise soak a
   // second projectile arriving the same frame.
   cull: entities => cullDead(entities, isRegistryMonster),

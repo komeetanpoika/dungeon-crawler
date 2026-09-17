@@ -4,6 +4,10 @@ import {
   WEAPONS, ENEMY_MELEE, ATTACK_COOLDOWN,
   getEnemyWeapon, tryStartEnemyAttack, stepEnemyAttack,
 } from '../renderer/systems/enemy-attack.js'
+import { makeShieldContents, makePlayer } from '../renderer/systems/entities.js'
+import { makeFeedback } from '../renderer/systems/feedback.js'
+import { makeSfx } from '../renderer/systems/sfx.js'
+import { BLOCK_SHOVE } from '../renderer/systems/shield.js'
 
 function makeState(player) {
   return { player }
@@ -201,5 +205,34 @@ describe('animal weapons', () => {
     assert.equal(WEAPONS.maul.damage, 2)
     assert.equal(getEnemyWeapon({ type: 'npc', weaponId: 'maul' }).id, 'maul')
     assert.equal(getEnemyWeapon({ type: 'npc', weaponId: 'claw' }).id, 'claw')
+  })
+})
+
+describe('a blocked strike', () => {
+  const shielded = () => {
+    const p = { ...makePlayer(1, 1), px: 100, py: 100, hp: 10, facing: 'east', stamina: 100, blocking: true, invulnTimer: 0 }
+    const { type, ...b } = makeShieldContents('buckler'); p.gear.melee.off = { kind: 'shield', ...b }
+    return p
+  }
+  it('is spent on the shield: no damage, cooldown set, attacker shoved back', () => {
+    const player = shielded()
+    const e = { type: 'guard', px: 120, py: 100, x: 3, y: 3, hp: 4, damageCooldown: 0 }
+    const state = { player, entities: [e], feedback: makeFeedback(), sfx: makeSfx() }
+    tryStartEnemyAttack(e, state)
+    while (e.attack?.phase === 'windup') stepEnemyAttack(e, state, 0.05)
+    assert.equal(player.hp, 10)
+    assert.equal(player.blockedHit, false)
+    assert.ok(e.damageCooldown > 0)
+    assert.equal(e.attack?.phase, 'swing')
+    assert.ok(e.knockback || e.kvx !== undefined, 'attacker was shoved')
+    assert.deepEqual(state.sfx.cues.map(c => c.name).filter(n => n === 'shield-block'), ['shield-block'])
+  })
+  it('an i-framed strike still retries next frame', () => {
+    const player = { ...shielded(), blocking: false, invulnTimer: 0.5 }
+    const e = { type: 'guard', px: 120, py: 100, x: 3, y: 3, hp: 4, damageCooldown: 0 }
+    const state = { player, entities: [e], feedback: makeFeedback(), sfx: makeSfx() }
+    tryStartEnemyAttack(e, state)
+    while (e.attack?.phase === 'windup') stepEnemyAttack(e, state, 0.05)
+    assert.equal(e.attack, null)
   })
 })
