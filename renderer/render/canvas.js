@@ -55,8 +55,9 @@ function drawImg(ctx, sprite, px, py, w, h, flip = false) {
 // un-flipped (facing east); the grip (bottom-center of the weapon tile) sits
 // in the palm at mid-body, blade tilted slightly outward. Sized between the
 // old carried icon (0.55S) and the swing animation's weapon (1S).
+const GRIP_SCALE = 0.8
 function drawHeldWeapon(ctx, ws, S) {
-  const hw = Math.round(S * 0.8)
+  const hw = Math.round(S * GRIP_SCALE)
   ctx.save()
   ctx.translate(-S * 0.30, -S * 0.34)
   ctx.rotate(-0.35)
@@ -64,10 +65,11 @@ function drawHeldWeapon(ctx, ws, S) {
   ctx.restore()
 }
 
-// The other hand: the offhand item mirrored across the body. A raised shield
-// comes up in front, larger, so the block reads at a glance.
+// The other hand: the offhand item mirrored across the body at the same grip
+// scale as the main hand. A raised shield comes up in front, larger, so the
+// block reads at a glance.
 function drawOffhandItem(ctx, ws, S, raised) {
-  const hw = Math.round(S * (raised ? 0.9 : 0.7))
+  const hw = Math.round(S * (raised ? 0.9 : GRIP_SCALE))
   ctx.save()
   if (raised) ctx.translate(S * 0.05, -S * 0.5)
   else { ctx.translate(S * 0.30, -S * 0.34); ctx.rotate(0.35) }
