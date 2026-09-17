@@ -256,7 +256,7 @@ export function makePlayer(x, y, bonuses = []) {
     gear: defaultGear(), belt: null,
     attackMode: 'melee', talents: [],
     stamina: 100, maxStamina: 100, staminaRegenT: 0,
-    magicCooldown: 0,   // gust unlocks via the magic_stance talent
+    magicCooldown: 0,   // gust unlocks with the Mage's Robe (inventory.js loadoutAvailable)
   }
 }
 

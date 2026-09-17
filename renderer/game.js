@@ -1,7 +1,7 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE, OUTFIT_TYPES, makeOutfitContents, defaultGear } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -26,7 +26,7 @@ import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToas
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
-import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, findQuickUseIndex, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, resolveOffhand, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
@@ -58,7 +58,8 @@ import { HAMMER, applyShock, tickShock, chainNodes, applyChain, thunderclap, tic
 import { stepProjectiles } from './systems/projectiles.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
-import { TALENTS, grantTalent, hasTalent, RUSH_START_TALENTS, MAP_CLEAR_TALENTS } from './systems/talents.js'
+import { TALENTS, hasTalent, RUSH_START_TALENTS } from './systems/talents.js'
+import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, RUSH_START_OUTFITS, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
   TRANCE_FADE, PULL_DURATION, PULL_TELEPORT_AT, pullTarget } from './systems/rites.js'
 import { signNearby } from './systems/signs.js'
@@ -146,15 +147,22 @@ window.addEventListener('keydown', e => {
   think(state, state.sfx.muted ? 'Sound muted.' : 'Sound on.')
 })
 
-// Q quick-uses the first consumable in the sack (potion or mushroom)
-// without opening the panel — also the green diamond button on touch.
+// Q (and the green touch button): use whatever the active offhand holds.
+// This plan: a consumable pointer. Plan 2 adds hold-to-block and wand casts.
 window.addEventListener('keydown', e => {
   if ((e.key !== 'q' && e.key !== 'Q') || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
-  const i = findQuickUseIndex(state.player.inventory)
-  if (i === -1) { think(state, 'Nothing left to use.'); return }
-  useInventoryItem(i)
+  useOffhand()
 })
+
+function useOffhand() {
+  const off = resolveOffhand(state.player)
+  if (!off) { throttledThink('offhand', 'Nothing in my off hand.'); return }
+  if (off.kind === 'consumable') {
+    if (off.index === -1) { throttledThink('offhand', 'None left.'); return }
+    useInventoryItem(off.index)
+  }
+}
 
 // Shift starts a stance switch. Edge-triggered: e.repeat filters the
 // held-key auto-repeat so holding Shift doesn't flap the mode. The switch
@@ -232,6 +240,9 @@ function persistRun() {
       // The quiver travels with the body, not with any one bow.
       ammo: { ...emptyAmmo(), ...(state.player.ammo ?? {}) },
       inventory: state.player.inventory.map(i => i.payload ? { ...i, payload: { ...i.payload } } : { ...i }),
+      // Per-loadout gear and the shared belt travel with the body too.
+      gear: structuredClone(state.player.gear ?? defaultGear()),
+      belt: state.player.belt ? { ...state.player.belt } : null,
     }
   }
   if (runMode === 'timewarp') window.saveAPI.saveTimewarp?.(savedTimewarp)
@@ -470,6 +481,7 @@ function grantContents(contents) {
   // An ammo bundle (or the quiver top-up a bow pickup brings) never reaches a
   // sack slot, so the count is all the feedback there is — float it.
   if (r.ammo > 0) addFloat(state.feedback, { px: state.player.px, py: state.player.py - 10, text: `+${r.ammo}`, kind: 'heal' })
+  if (r.outfit) outfitToast(state, item.payload)
   sfx(state, 'pickup')
   return true
 }
@@ -521,7 +533,7 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
         isFountainWall: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
       case 'fountain_basin': return [{ type: 'prop', propType: s.propType, x: s.x, y: s.y,
         isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
-      case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, talent: s.talent, rite: s.rite }]
+      case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, outfit: s.outfit, rite: s.rite }]
       case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
       // A story house's prefab pickup slot (attachPickups, systems/houses.js)
       // — lands already-arrived (progress: 1) rather than arcing in.
@@ -618,7 +630,7 @@ function resolveEpisode() {
 }
 
 // Apply a loadout override (arena config's `player`, or a timewarp episode's
-// kit — same shape): weaponType/rangedType/hp/talents, each optional.
+// kit — same shape): weaponType/rangedType/hp/talents/outfits, each optional.
 function applyLoadout(player, po) {
   if (!po) return
   const def = WEAPON_TYPES[po.weaponType]
@@ -636,12 +648,17 @@ function applyLoadout(player, po) {
     player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
     player.hp = Math.round(po.hp)
   }
+  // A kit's `talents` may still name a retired stance talent — it means the
+  // outfit now. `outfits` names outfits directly.
+  const wear = ot => { const { type, ...payload } = makeOutfitContents(ot); if (OUTFIT_TYPES[ot]) wearOutfit(player, payload); else console.warn(`loadout: unknown outfit "${ot}" — skipped`) }
   if (Array.isArray(po.talents)) {
     for (const t of po.talents) {
-      if (TALENTS[t]) player.talents.push(t)
+      if (RETIRED_TALENT_OUTFITS[t]) wear(RETIRED_TALENT_OUTFITS[t])
+      else if (TALENTS[t]) player.talents.push(t)
       else console.warn(`loadout: unknown talent "${t}" — skipped`)
     }
   }
+  if (Array.isArray(po.outfits)) po.outfits.forEach(wear)
 }
 
 // A hand slot holds a *Contents() object minus its `type` tag — that field
@@ -679,7 +696,10 @@ function startNewRun(depth = 1, arenaCfg = null) {
   player.attackStyle = 'arc'
   player.attackFacing = 'south'
   if (runMode !== 'timewarp') player.inventory.push(...getStartingItems(meta))
-  if (runMode === 'rush') player.talents = [...RUSH_START_TALENTS]
+  if (runMode === 'rush') {
+    player.talents = [...RUSH_START_TALENTS]
+    for (const ot of RUSH_START_OUTFITS) { const { type, ...payload } = makeOutfitContents(ot); wearOutfit(player, payload) }
+  }
   if (OPEN_MAPS[depth]) {
     player.talents = [...activeSave.talents]
     if (activeSave.body) {
@@ -695,6 +715,9 @@ function startNewRun(depth = 1, arenaCfg = null) {
       player.ranged = activeSave.body.ranged ? handPayload(makeRangedContents(activeSave.body.ranged.weaponType)) : null
       player.wand = activeSave.body.wand ? handPayload(makeWandContents(activeSave.body.wand.weaponType)) : null
       player.ammo = { ...emptyAmmo(), ...(activeSave.body.ammo ?? {}) }
+      // Gear was normalised (outfits rebuilt from the table) by normalizeBody on load.
+      player.gear = structuredClone(activeSave.body.gear ?? defaultGear())
+      player.belt = activeSave.body.belt ? { ...activeSave.body.belt } : null
       player.inventory = activeSave.body.inventory.map(i => {
         if (!i.payload) return { ...i }
         if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
@@ -918,10 +941,28 @@ function useInventoryItem(i) {
   afterInventoryChange()
 }
 
+// The nearest free walkable neighbour of (x, y), or null.
+function freeAdjacentTile(x, y) {
+  const { map } = state
+  return [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: x+dx, y: y+dy }))
+    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x===t.x && e.y===t.y)) ?? null
+}
+
+// An outfit landing next to a fallen boss (or on the tile itself when nothing
+// is free): a floating item like any drop, so walking onto it self-equips.
+function spawnOutfitDrop(tile, outfitType) {
+  const at = freeAdjacentTile(tile.x, tile.y) ?? tile
+  const px = tile.x * TILE_SIZE + TILE_SIZE / 2, py = tile.y * TILE_SIZE + TILE_SIZE / 2
+  state.entities.push({
+    type: 'floating_item', contents: makeOutfitContents(outfitType), x: at.x, y: at.y,
+    startPx: px, startPy: py, targetPx: at.x * TILE_SIZE + TILE_SIZE / 2, targetPy: at.y * TILE_SIZE + TILE_SIZE / 2,
+    px, py, progress: 0, duration: 0.35,
+  })
+}
+
 function dropInventoryItem(i) {
-  const { player, map } = state
-  const adj = [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: player.x+dx, y: player.y+dy }))
-    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x===t.x && e.y===t.y))
+  const { player } = state
+  const adj = freeAdjacentTile(player.x, player.y)
   if (!adj) { think(state, 'No room to drop here.'); return }
   const item = removeItem(player, i)
   state.entities.push({
@@ -966,9 +1007,9 @@ function gameLoop(timestamp) {
 // Both ways into the ceremony — walking onto the ring mid-trance, and the call
 // that carries you there. Either way the trip drains away over the ceremony's
 // first seconds as the wizards take over.
-function beginRite(talent) {
+function beginRite(outfit) {
   const { player } = state
-  state.rite = { t: 0, dur: RITE_DURATION, talent, cx: player.px, cy: player.py }
+  state.rite = { t: 0, dur: RITE_DURATION, outfit, cx: player.px, cy: player.py }
   player.trance = 0
   player.tranceFade = TRANCE_FADE
   sfx(state, 'rite', { px: player.px, py: player.py })
@@ -984,14 +1025,14 @@ function placePlayerAt(x, y) {
 
 // The minute is up and the rite reaches for the player. A ring on this map
 // answers by pulling them into it; underground or on a map without one, or
-// once the talent is already learned, the call simply fades unanswered.
+// once the outfit is already owned, the call simply fades unanswered.
 function answerTheCall() {
   const target = pullTarget(state)
   if (!target) {
     think(state, state.cave ? 'Something called. You were too deep.' : 'Something called. Nothing here answers.')
     return
   }
-  state.tripPull = { t: 0, dur: PULL_DURATION, x: target.x, y: target.y, talent: target.talent }
+  state.tripPull = { t: 0, dur: PULL_DURATION, x: target.x, y: target.y, outfit: target.outfit }
   sfx(state, 'rite', { px: state.player.px, py: state.player.py })
 }
 
@@ -1003,13 +1044,18 @@ function update(delta) {
     state.rite.t += delta
     tickTrance(state.player, delta)   // the trip drains away under the ceremony
     if (state.rite.t >= state.rite.dur) {
-      const talent = state.rite.talent
+      const outfit = state.rite.outfit
       state.rite = null
       state.player.trance = 0
       state.player.tranceFade = 0
-      // Talent-less anchors (e.g. the marsh's mushroom ring) still play the
-      // trance and ceremony but grant nothing — skip grantTalent entirely.
-      if (talent && grantTalent(state, talent)) persistIfSurface()
+      // Outfit-less anchors (the marsh's ring) play the ceremony and give
+      // nothing. Otherwise the robe is simply there, under the player's feet:
+      // grantContents self-equips it (or sacks it); a full sack leaves it
+      // floating on the ring for the next step.
+      if (outfit) {
+        if (!grantContents(makeOutfitContents(outfit))) spawnOutfitDrop({ x: state.player.x, y: state.player.y }, outfit)
+        persistIfSurface()
+      }
     }
     tickFeedback(state.feedback, delta)
     return
@@ -1028,7 +1074,7 @@ function update(delta) {
     }
     if (pull.t >= pull.dur) {
       state.tripPull = null
-      beginRite(pull.talent)
+      beginRite(pull.outfit)
     }
     tickFeedback(state.feedback, delta)
     return
@@ -1203,8 +1249,8 @@ function update(delta) {
   // and then. Otherwise the call comes on its own once the minute is up.
   if (tickTrance(player, delta) === 'call') answerTheCall()
   const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
-  if (trigger && (!trigger.talent || !hasTalent(player, trigger.talent)) && riteConditionMet(trigger.rite, state)) {
-    beginRite(trigger.talent)
+  if (trigger && (!trigger.outfit || !ownsOutfit(player, trigger.outfit)) && riteConditionMet(trigger.rite, state)) {
+    beginRite(trigger.outfit)
   }
 
   // Exit door — open and descend with the key, otherwise it stays locked
@@ -1470,7 +1516,7 @@ function update(delta) {
           throttledThink('magic', 'Too winded to shape the wind.')
         }
       }
-    } else if (attacking && (player.magicCooldown ?? 0) <= 0 && hasTalent(player, 'magic_stance')) {
+    } else if (attacking && (player.magicCooldown ?? 0) <= 0 && loadoutAvailable(player, 'magic')) {
       player.charging = { t: 0, kind: 'spell' }
     }
   }
@@ -1780,12 +1826,17 @@ function update(delta) {
     } else {
       announce(state, isFinal ? 'The dragon falls — treasure gleams!' : 'The boss drops a key!')
     }
+    // Outfits fall where bosses fall: the cyclops always carries the plate,
+    // and the first dungeon cleared on a map with a MAP_CLEAR_OUTFITS entry
+    // leaves that outfit. Neither drops for a body that already owns it.
+    const drops = [BOSS_DROP_OUTFITS[bossType]]
+    if (state.cave) drops.push(MAP_CLEAR_OUTFITS[OPEN_MAPS[state.cave.surface.level].name])
+    for (const ot of new Set(drops.filter(Boolean)))
+      if (!ownsOutfit(state.player, ot)) spawnOutfitDrop(state.lastBossTile, ot)
     if (state.cave) {
       const mapData = OPEN_MAPS[state.cave.surface.level]
       const before = isMapComplete(activeSave.progress, mapData)
       markCleared(activeSave.progress, mapData.name, state.cave.label)
-      const reward = MAP_CLEAR_TALENTS[mapData.name]
-      if (reward) grantTalent(state, reward)
       if (!before && isMapComplete(activeSave.progress, mapData)) state.cave.mapJustCompleted = true
       persistRun()
     }
