@@ -12,7 +12,7 @@
 import { WAND_TYPES, isWalkable, DIRS } from './entities.js'
 import { castCone, GUST, GUST_TIERS } from './magic.js'
 import { FIREBALL_RANGE_TILES } from './fire.js'
-import { loadoutAvailable } from './inventory.js'
+import { loadoutAvailable, offhand } from './inventory.js'
 import { affordableTier, GUST_COSTS, spendStamina } from './stamina.js'
 import { makeBrambleZone } from './zones.js'
 
@@ -91,10 +91,13 @@ export const SPELLS = {
     tiers: { tap: {}, full: {}, over: {} } },
 }
 
-// Which spell the player casts right now: the held wand's, or the wandless
-// gust when the hand is empty (or holds something the table doesn't know).
-export function spellFor(player) {
-  const spell = SPELLS[WAND_TYPES[player?.wand?.weaponType]?.spell]
+// Which spell a hand casts: the wand it holds, or the wandless gust when the
+// hand is empty (or holds something the table doesn't know — a dagger in the
+// offhand casts nothing, and game.js never asks it to).
+export function spellFor(player, hand = 'main') {
+  const held = hand === 'off' ? offhand(player) : player?.wand
+  const wand = hand === 'off' && held?.kind !== 'wand' ? null : held
+  const spell = SPELLS[WAND_TYPES[wand?.weaponType]?.spell]
   return spell ?? SPELLS.gust
 }
 
@@ -163,12 +166,14 @@ function castSelf(state, t) {
 // Cast `spellId` at `tier`. Gates in order — loadout, cooldown, stamina
 // (degrading the tier before refusing) — then spends, starts the cooldown
 // and dispatches on the primitive. `modules` carries the bespoke spells;
-// game.js injects { lightning }.
-export function tryCast(state, spellId, tier = 'tap', { modules } = {}) {
+// game.js injects { lightning }. Offhand wand keeps its own cooldown, shares
+// the stamina tank.
+export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main' } = {}) {
   const p = state.player
   const spell = SPELLS[spellId] ?? SPELLS.gust
   if (!loadoutAvailable(p, 'magic')) return { ok: false, reason: 'not_learned' }
-  if ((p.magicCooldown ?? 0) > 0) return { ok: false, reason: 'cooldown' }
+  const cd = hand === 'off' ? 'offCooldown' : 'magicCooldown'
+  if ((p[cd] ?? 0) > 0) return { ok: false, reason: 'cooldown' }
   // An un-wired bespoke spell refuses like an unlearned one — better than
   // charging the tank for a cast that would do nothing.
   const module = spell.primitive === 'module' ? modules?.[spell.id] : null
@@ -176,7 +181,7 @@ export function tryCast(state, spellId, tier = 'tap', { modules } = {}) {
   const paid = affordableTier(p.stamina ?? 0, spell.cost, tier)
   if (!paid) return { ok: false, reason: 'stamina' }
   spendStamina(p, spell.cost[paid])
-  p.magicCooldown = spell.cooldown
+  p[cd] = spell.cooldown
   const t = spell.tiers[paid]
   let result
   switch (spell.primitive) {

@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SPRITES } from '../renderer/render/sprites.js'
-import { WEAPON_TYPES, RANGED_WEAPON_TYPES } from '../renderer/systems/entities.js'
+import { WEAPON_TYPES, RANGED_WEAPON_TYPES, SHIELD_TYPES } from '../renderer/systems/entities.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ASSETS = join(__dirname, '../renderer/assets/tiles')
@@ -125,7 +125,7 @@ describe('ranged weapons', () => {
 // and held-weapon draws have no such fallback and render nothing at all.
 describe('every weapon key has a sprite', () => {
   it('WEAPON_TYPES and RANGED_WEAPON_TYPES each resolve to a SPRITES entry', () => {
-    const missing = [...Object.keys(WEAPON_TYPES), ...Object.keys(RANGED_WEAPON_TYPES)]
+    const missing = [...Object.keys(WEAPON_TYPES), ...Object.keys(RANGED_WEAPON_TYPES), ...Object.keys(SHIELD_TYPES)]
       .filter(key => !SPRITES[`weapon_${key}`])
     assert.deepEqual(missing, [])
   })

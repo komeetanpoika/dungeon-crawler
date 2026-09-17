@@ -6,7 +6,7 @@ export const CUE_NAMES = [
   // combat
   'melee-swing', 'melee-hit', 'ranged-shot', 'projectile-hit',
   'magic-cast', 'fire-burst', 'shockwave', 'wall-slam',
-  'player-hurt', 'player-death', 'enemy-death', 'boss-death',
+  'player-hurt', 'player-death', 'enemy-death', 'boss-death', 'shield-block',
   // world & items
   'pickup', 'key-pickup', 'heal', 'equip', 'drop',
   'gate-open', 'door-locked', 'descend', 'emerge', 'door-open',

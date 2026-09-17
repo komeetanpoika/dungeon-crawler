@@ -1,7 +1,7 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE, OUTFIT_TYPES, makeOutfitContents, defaultGear } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE, OUTFIT_TYPES, makeOutfitContents, defaultGear, SHIELD_TYPES, makeShieldContents } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -26,7 +26,7 @@ import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToas
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
-import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, resolveOffhand, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
@@ -65,7 +65,8 @@ import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
 import { signNearby } from './systems/signs.js'
 import { showSign, hideSign } from './ui/sign-panel.js'
 import { showToast, hideToast } from './ui/toast.js'
-import { getAttack, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor, shouldAutoRelease, tierMods } from './systems/melee.js'
+import { getAttack, getSwingArc, inSwing, isChargeWeapon, resolveCharge, chargeMoveFactor, shouldAutoRelease, tierMods, OFFHAND_COOLDOWN_MUL, swingHand, nextHandAfter } from './systems/melee.js'
+import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
 import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
@@ -101,6 +102,11 @@ function saveMutedPref(m) {
 }
 window.addEventListener('keydown', e => { keys[e.key] = true })
 window.addEventListener('keyup',   e => { keys[e.key] = false })
+// Focus loss never delivers the keyup, so a key held over an Alt-Tab would
+// stay down for good. Q is the one that bites: tickShield would keep the
+// player blocking forever — half speed, no sprint, no attacks, and no way
+// back short of pressing and releasing Q again.
+window.addEventListener('blur', () => { for (const k of Object.keys(keys)) keys[k] = false })
 
 // Desktop sprint: double-tap a direction and hold. Touch sprint arrives as
 // the synthetic 'sprint' key from the stick rim (ui/touch-controls.js).
@@ -148,7 +154,9 @@ window.addEventListener('keydown', e => {
 })
 
 // Q (and the green touch button): use whatever the active offhand holds.
-// This plan: a consumable pointer. Plan 2 adds hold-to-block and wand casts.
+// Only the two that act on a press land here — a consumable and the offhand
+// wand. A shield rises while Q is *held* (the update loop's tickShield reads
+// the key itself) and an offhand blade needs no key at all.
 window.addEventListener('keydown', e => {
   if ((e.key !== 'q' && e.key !== 'Q') || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
@@ -161,6 +169,22 @@ function useOffhand() {
   if (off.kind === 'consumable') {
     if (off.index === -1) { throttledThink('offhand', 'None left.'); return }
     useInventoryItem(off.index)
+  } else if (off.kind === 'wand') {
+    castOffhand()
+  }
+  // A shield rises while Q is held (tickShield reads the key each frame);
+  // a blade needs no key — swings alternate on Space.
+}
+
+// The offhand wand: a tap cast on its own cooldown, from the shared tank.
+function castOffhand() {
+  const player = state.player
+  if (player.attackMode !== 'magic' || player.stanceSwitch) return
+  const cast = tryCast(state, spellFor(player, 'off').id, 'tap', { modules: { lightning: castLightning }, hand: 'off' })
+  if (cast.ok) showCast(cast)
+  else if (cast.reason === 'stamina') {
+    player.staminaRefusedT = 0.4
+    throttledThink('magic', 'Too winded to shape the wind.')
   }
 }
 
@@ -419,7 +443,7 @@ const projectileHooks = {
   isHittable,
   hurt: hurtEntity,
   detonate: (px, py, blastTiles, opts) => detonateFireball(px, py, blastTiles, opts),
-  damagePlayer: damage => damagePlayer(state, damage, 'hit'),
+  damagePlayer: (damage, from) => damagePlayer(state, damage, 'hit', from),
   // A corpse sits at 0 hp until it is culled, and would otherwise soak a
   // second projectile arriving the same frame.
   cull: entities => cullDead(entities, isRegistryMonster),
@@ -630,7 +654,8 @@ function resolveEpisode() {
 }
 
 // Apply a loadout override (arena config's `player`, or a timewarp episode's
-// kit — same shape): weaponType/rangedType/hp/talents/outfits, each optional.
+// kit — same shape): weaponType/rangedType/wandType/ammo/hp/talents/outfits/
+// offhand, each optional.
 function applyLoadout(player, po) {
   if (!po) return
   const def = WEAPON_TYPES[po.weaponType]
@@ -659,6 +684,15 @@ function applyLoadout(player, po) {
     }
   }
   if (Array.isArray(po.outfits)) po.outfits.forEach(wear)
+  // A kit's `offhand` ({ type, weaponType }) goes straight into the loadout
+  // that takes it: blades and shields to the Warrior, wands to the Mage.
+  if (po.offhand) {
+    const { type, weaponType } = po.offhand
+    const make = { weapon: wt => WEAPON_TYPES[wt] && weaponContents(wt), wand: wt => WAND_TYPES[wt] && handPayload(makeWandContents(wt)), shield: wt => SHIELD_TYPES[wt] && handPayload(makeShieldContents(wt)) }[type]
+    const payload = make?.(weaponType)
+    if (payload) gearOf(player, type === 'wand' ? 'magic' : 'melee').off = { kind: type, ...payload }
+    else console.warn(`loadout: unknown offhand ${type}/${weaponType} — skipped`)
+  }
 }
 
 // A hand slot holds a *Contents() object minus its `type` tag — that field
@@ -723,8 +757,13 @@ function startNewRun(depth = 1, arenaCfg = null) {
         if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
         if (i.kind === 'ranged') return { ...i, payload: handPayload(makeRangedContents(i.payload.weaponType)) }
         if (i.kind === 'wand') return { ...i, payload: handPayload(makeWandContents(i.payload.weaponType)) }
+        // Shields are table data like the hands: rebuilt so a stale blockCost
+        // is retuned, and an unknown type dropped rather than minted as a
+        // buckler by makeShieldContents' fallback.
+        if (i.kind === 'shield')
+          return SHIELD_TYPES[i.payload.weaponType] ? { ...i, payload: handPayload(makeShieldContents(i.payload.weaponType)) } : null
         return { ...i, payload: { ...i.payload } }
-      })
+      }).filter(Boolean)
     }
   }
   if (depth === 0 && arenaCfg?.player) applyLoadout(player, arenaCfg.player)
@@ -1087,6 +1126,11 @@ function update(delta) {
   // Player movement — skip if grabbed by a crab this frame
   const wasGrabbed = player.grabbed ?? false
   player.grabbed = false
+  // The shield: up while Q is held with a shield in the offhand. Raised, the
+  // player walks at half speed, cannot sprint, and every attack is dead.
+  player.blockedHit = false
+  const blocking = tickShield(player, !!(keys['q'] || keys['Q']), delta)
+  if (blocking) player.charging = null
   let vx = 0, vy = 0
   if (keys['ArrowLeft']  || keys['a']) { vx -= 1; player.facing = 'west'  }
   if (keys['ArrowRight'] || keys['d']) { vx += 1; player.facing = 'east'  }
@@ -1095,15 +1139,15 @@ function update(delta) {
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
   const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
   const moving = vx !== 0 || vy !== 0
-  const profile = sprintProfile(player.attackMode, { skiLegs: hasTalent(player, 'ski_legs') })
-  const sprinting = moving && !player.charging && player.stamina > 0 && !wasGrabbed &&
+  const profile = sprintProfile(player.attackMode, { skiLegs: hasTalent(player, 'ski_legs'), drainMul: outfitOf(player, player.attackMode)?.sprintDrain ?? 1 })
+  const sprinting = moving && !player.charging && !blocking && player.stamina > 0 && !wasGrabbed &&
     (keys['sprint'] || sprintDetector.sprinting())
   const chargeFactor = player.charging
     ? (player.charging.kind === 'spell' ? GUST_CHARGE.moveFactor
       : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor
                                         : chargeMoveFactor(player.weapon?.weaponType))
     : 1
-  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * (sprinting ? profile.speedMul : 1)
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
 
@@ -1318,41 +1362,55 @@ function update(delta) {
   player.attackTimer    = Math.max(0, player.attackTimer    - delta)
   player.invulnTimer = Math.max(0, (player.invulnTimer ?? 0) - delta)
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
+  player.offCooldown = Math.max(0, (player.offCooldown ?? 0) - delta)
   tickStamina(player, delta)
   player.staminaRefusedT = Math.max(0, (player.staminaRefusedT ?? 0) - delta)
   const landedStance = tickStanceSwitch(player, delta)
   if (landedStance) {
     sfx(state, 'stance-switch')
   }
-  // Mid-switch the old stance is still set but every attack is dead.
-  const attacking = keys[' '] && !player.stanceSwitch
+  // Mid-switch the old stance is still set but every attack is dead — and so
+  // is a raised shield: the hand that would swing is holding it up.
+  const attacking = keys[' '] && !player.stanceSwitch && !player.blocking
 
   // Melee (Space): light blades swing the instant the key lands; charge
   // weapons wind up while held and swing on release, tiered by hold time.
+  // The charge path is the main hand's alone, so it keeps reading meleeWT;
+  // inside the swing the hand that actually swings names its own weapon. A
+  // charge weapon in the main hand therefore suspends alternation outright:
+  // its wind-up belongs to that weapon, and handing every second release to
+  // the offhand blade would spend the main hand's charge on the wrong steel.
   const meleeWT = player.weapon?.weaponType
+  const off = offhand(player)
+  const offBlade = off?.kind === 'weapon' && !isChargeWeapon(meleeWT) ? off : null
   const swing = (mods) => {
-    const cost = meleeCost(meleeWT, mods.tier)
+    const hand = swingHand(player, offBlade)
+    const wpn = hand === 'off' ? offBlade : player.weapon
+    const wt = wpn.weaponType
+    const cost = meleeCost(wt, mods.tier)
     if (!canAfford(player, cost)) {
-      mods = tierMods('tap', meleeWT)            // starved: weak swing
+      mods = tierMods('tap', wt)                 // starved: weak swing
       player.staminaRefusedT = 0.4
       spendStamina(player, player.stamina)        // starved swing drains all remaining stamina
     } else {
       spendStamina(player, cost)
     }
-    const atk = getAttack(meleeWT)
-    player.meleeCooldown = atk.cooldown * mods.cooldownMul
+    const atk = getAttack(wt)
+    player.meleeCooldown = atk.cooldown * mods.cooldownMul * (hand === 'off' ? OFFHAND_COOLDOWN_MUL : 1)
+    player.swingHand = hand
+    player.nextHand = nextHandAfter(hand, offBlade)
     player.attackTimer = atk.duration
     player.attackDuration = atk.duration
     player.attackStyle = atk.style
     player.attackFacing = player.facing
     sfx(state, 'melee-swing', { px: player.px, py: player.py })
     player.attackReachMul = mods.reachMul
-    const dmg = Math.max(1, Math.round((player.weapon?.damage ?? 1) * mods.dmgMul))
+    const dmg = Math.max(1, Math.round((wpn.damage ?? 1) * mods.dmgMul))
     const fa = FACING_ANGLE[player.facing] ?? 0
     const arc = getSwingArc(atk.style)
     const hitAt = (dx, dy) => inSwing(arc.reach * mods.reachMul, arc.halfAngle, fa, dx, dy)
-    const miekka = meleeWT === 'maunonmiekka'
-    const hammer = !!player.weapon?.lightning          // Ukonvasara (systems/hammer.js)
+    const miekka = wt === 'maunonmiekka'
+    const hammer = !!wpn.lightning                     // Ukonvasara (systems/hammer.js)
     // An overcharged hammer lands no blow of its own: the wedge only decides
     // where the chain starts, and every point of damage is lightning.
     const zap = hammer && mods.tier === 'over'
@@ -1447,7 +1505,7 @@ function update(delta) {
     // bar-less chopHp on the cell; the fall/clear is what you hear and see,
     // and the lumber (trees only) arcs onto the stump for a walk-onto
     // pickup.
-    const tool = { chop: player.weapon?.chop, mine: player.weapon?.mine }
+    const tool = { chop: wpn.chop, mine: wpn.mine }
     if (tool.chop || tool.mine) {
       const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, tool)
       if (spot) {
@@ -1481,6 +1539,7 @@ function update(delta) {
     // Truly unarmed: no swing at all — like the empty ranged slot, the fix
     // is finding a weapon, and the game says so instead of doing nothing.
     player.charging = null
+    player.nextHand = 'main'
     if (attacking) throttledThink('melee', 'Unarmed — you need a weapon.')
   } else if (player.attackMode === 'melee' && isChargeWeapon(meleeWT)) {
     if (player.charging) {

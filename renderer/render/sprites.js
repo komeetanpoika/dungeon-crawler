@@ -108,6 +108,9 @@ export const SPRITES = {
   weapon_frostwand:   'weapon_frostwand',
   weapon_bramblewand: 'weapon_bramblewand',
   weapon_blinkwand:   'weapon_blinkwand',
+  // Shields (offhand only): the round buckler and the tall kite shield.
+  weapon_buckler: 'tile_0102',
+  weapon_kite:    'tile_0101',
   item_arrows:      'item_arrows',        // ammo icons — the pool floats and the HUD tool slot
   item_bolts:       'item_bolts',
   item_stones:      'item_stones',

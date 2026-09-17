@@ -6,9 +6,23 @@ import { OPEN_MAPS } from '../data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../data/levels.js'
 import { DAY_START } from '../data/weather.js'
 import { WAND_TYPES, RANGED_WEAPON_TYPES, makeWandContents, makeRangedContents, emptyAmmo,
-  OUTFIT_TYPES, makeOutfitContents, defaultGear, WEAPON_TYPES, weaponContents } from './entities.js'
+  OUTFIT_TYPES, makeOutfitContents, defaultGear, WEAPON_TYPES, weaponContents, SHIELD_TYPES, makeShieldContents } from './entities.js'
 import { itemFromContents } from './inventory.js'
 import { migrateTalentsToOutfits } from './outfits.js'
+
+// Item offhands are table data like the hands: rebuilt by kind, dropped when
+// the table has never heard of them. A consumable pointer is copied as-is.
+const OFFHAND_REBUILD = {
+  weapon: wt => WEAPON_TYPES[wt] ? weaponContents(wt) : null,
+  wand:   wt => WAND_TYPES[wt] ? (({ type, ...p }) => p)(makeWandContents(wt)) : null,
+  shield: wt => SHIELD_TYPES[wt] ? (({ type, ...p }) => p)(makeShieldContents(wt)) : null,
+}
+function normalizeOffhand(off) {
+  if (!off) return null
+  if (off.kind === 'consumable') return typeof off.item === 'string' ? { kind: 'consumable', item: off.item } : null
+  const payload = OFFHAND_REBUILD[off.kind]?.(off.weaponType) ?? null
+  return payload ? { kind: off.kind, ...payload } : null
+}
 
 // The traveling body's wands-and-bows redesign (Task 1): the ranged hand
 // gains a `wand` sibling and ammo moves off the weapon into a shared
@@ -49,6 +63,13 @@ export function normalizeBody(body) {
       const wt = item.payload?.weaponType
       return WAND_TYPES[wt] ? itemFromContents(makeWandContents(wt)) : null
     }
+    // Sack shields are table data too (blockCost is tuning, not run state), so
+    // a saved one is rebuilt rather than copied and an unknown type dropped —
+    // the same rule the offhand shield already follows in normalizeOffhand.
+    if (item.kind === 'shield') {
+      const wt = item.payload?.weaponType
+      return SHIELD_TYPES[wt] ? itemFromContents(makeShieldContents(wt)) : null
+    }
     if (item.kind !== 'ranged') return item
     const wt = item.payload?.weaponType
     if (WAND_TYPES[wt]) return itemFromContents(makeWandContents(wt))
@@ -57,9 +78,8 @@ export function normalizeBody(body) {
     return itemFromContents(makeRangedContents(wt))
   }).filter(Boolean)
   // Per-loadout gear (2026-09-17): outfits are table data and are rebuilt
-  // like the hands; an unknown outfitType is dropped. Offhand pointers are
-  // copied as-is; anything else in an offhand is plan 2's to restore and is
-  // nulled here so a half-migrated save cannot hand the HUD a stray shape.
+  // like the hands; an unknown outfitType is dropped. Item offhands are also
+  // rebuilt from their tables; consumable pointers are copied as-is.
   const gear = defaultGear()
   for (const stance of Object.keys(gear)) {
     const g = out.gear?.[stance]
@@ -67,7 +87,7 @@ export function normalizeBody(body) {
     const ot = g.outfit?.outfitType
     if (OUTFIT_TYPES[ot]) { const { type, ...payload } = makeOutfitContents(ot); gear[stance].outfit = payload }
     else gear[stance].outfit = null
-    gear[stance].off = g.off?.kind === 'consumable' && typeof g.off.item === 'string' ? { kind: 'consumable', item: g.off.item } : null
+    gear[stance].off = normalizeOffhand(g.off)
   }
   out.gear = gear
   out.belt = WEAPON_TYPES[out.belt?.weaponType] ? weaponContents(out.belt.weaponType) : null

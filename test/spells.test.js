@@ -335,3 +335,24 @@ describe('module primitive (lightning)', () => {
     assert.equal(s.player.stamina, 100)
   })
 })
+
+import { makeWandContents } from '../renderer/systems/entities.js'
+describe('offhand wand', () => {
+  const withOff = (wt) => { const s = mkState(); const { type, ...w } = makeWandContents(wt); s.player.gear.magic.off = { kind: 'wand', ...w }; return s }
+  it('spellFor reads the offhand wand; a non-wand offhand is the gust', () => {
+    assert.equal(spellFor(withOff('frostwand').player, 'off').id, 'rime')
+    const s = mkState(); s.player.gear.magic.off = { kind: 'consumable', item: 'potion' }
+    assert.equal(spellFor(s.player, 'off').id, 'gust')
+  })
+  it('an offhand cast runs on its own cooldown and the shared tank', () => {
+    const s = withOff('sparkwand')
+    s.player.stamina = 100
+    const r = tryCast(s, 'spark', 'tap', { hand: 'off' })
+    assert.equal(r.ok, true)
+    assert.ok(s.player.offCooldown > 0)
+    assert.equal(s.player.magicCooldown ?? 0, 0)
+    assert.equal(tryCast(s, 'spark', 'tap', { hand: 'off' }).reason, 'cooldown')
+    assert.equal(tryCast(s, 'spark', 'tap').ok, true)      // the main hand is not on cooldown
+    assert.ok(s.player.stamina < 100)
+  })
+})

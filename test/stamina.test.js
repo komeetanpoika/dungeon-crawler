@@ -132,3 +132,12 @@ describe('ski-legs sprint', () => {
     assert.equal(sprintProfile('nonsense', { skiLegs: true }).drain, 22 * SKI_LEGS_DRAIN)
   })
 })
+
+describe('outfit sprint drain', () => {
+  it('multiplies the drain and composes with ski-legs', () => {
+    const base = sprintProfile('melee').drain
+    assert.equal(sprintProfile('melee', { drainMul: 2 }).drain, base * 2)
+    assert.equal(sprintProfile('melee', { skiLegs: true, drainMul: 2 }).drain, base * SKI_LEGS_DRAIN * 2)
+    assert.equal(sprintProfile('melee', { drainMul: 2 }).speedMul, sprintProfile('melee').speedMul)
+  })
+})

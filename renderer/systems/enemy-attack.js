@@ -2,6 +2,8 @@
 // Pure logic — no canvas/DOM imports. The renderer reads e.attack.
 import { damagePlayer } from './player-damage.js'
 import { getSwingArc, inSwing } from './melee.js'
+import { startKnockback } from './knockback.js'
+import { BLOCK_SHOVE } from './shield.js'
 
 export const ATTACK_COOLDOWN = 0.8
 
@@ -75,11 +77,27 @@ function strike(e, state) {
   // during a telegraph is missed even at point-blank range.
   const { reach, halfAngle } = weaponWedge(w)
   const connects = inSwing(reach, halfAngle, a.angle, player.px - e.px, player.py - e.py)
-  if (connects && !damagePlayer(state, w.damage, 'hit')) {
-    e.attack = null   // i-framed: no cooldown, no animation — retries next frame
-    return
+  // Reset before the call so a stale flag from an earlier hit this same frame
+  // (blocked, then i-framed elsewhere) can never be misread as this swing's
+  // own outcome — only tryBlock (via damagePlayer, just below) can set it true.
+  player.blockedHit = false
+  const landed = connects && damagePlayer(state, w.damage, 'hit', { px: e.px, py: e.py })
+  let blocked = false
+  if (connects && !landed) {
+    if (player.blockedHit) {
+      // The shield took it: the swing is spent like a landed one, and the
+      // blade skids off — a short shove away from the player.
+      blocked = true
+      player.blockedHit = false
+      startKnockback(e, e.px - player.px, e.py - player.py, BLOCK_SHOVE)
+    } else {
+      e.attack = null   // i-framed: no cooldown, no animation — retries next frame
+      return
+    }
   }
-  if (connects) e.inCombat = true
+  // A blow the shield ate is still a blow: the attacker is in combat, so a
+  // guard the player is purely blocking shows its HP bar like any other.
+  if (landed || blocked) e.inCombat = true
   e.damageCooldown = ATTACK_COOLDOWN   // landed, or whiffed after a windup: the attack is spent
   a.phase = 'swing'
   a.timer = w.duration

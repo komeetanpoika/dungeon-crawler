@@ -78,9 +78,9 @@ const SPRINT_PROFILES = {
 // buys stamina, never speed — the sprint feels the same and lasts longer.
 export const SKI_LEGS_DRAIN = 0.6
 
-export function sprintProfile(mode, { skiLegs = false } = {}) {
+export function sprintProfile(mode, { skiLegs = false, drainMul = 1 } = {}) {
   const p = SPRINT_PROFILES[mode] ?? SPRINT_PROFILES.melee
-  return skiLegs ? { ...p, drain: p.drain * SKI_LEGS_DRAIN } : p
+  return { ...p, drain: p.drain * (skiLegs ? SKI_LEGS_DRAIN : 1) * drainMul }
 }
 
 // Desktop sprint intent: double-tap a direction and hold. Timestamps are

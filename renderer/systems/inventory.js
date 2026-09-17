@@ -4,8 +4,8 @@
 // logic — game.js owns pickups, drops, and messages.
 
 import {
-  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES,
-  makeRangedContents, makeWandContents, makeOutfitContents, defaultGear,
+  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES, SHIELD_TYPES,
+  makeRangedContents, makeWandContents, makeOutfitContents, makeShieldContents, defaultGear, isSmallBlade,
 } from './entities.js'
 
 const STACKABLE_KINDS = {
@@ -29,7 +29,7 @@ export function makeItem(kind, count = 1) {
   return { kind, name: def.name, emoji: def.emoji, stackable: true, count, ...def.extra }
 }
 
-const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥' }
+const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥', shield: '🛡' }
 
 // Chest/floating `contents` -> sack item. Ammo is never a sack item — it
 // goes straight into the pool (see autoEquipOnPickup) — so this returns the
@@ -58,6 +58,7 @@ const REBUILD = {
   ranged: [RANGED_WEAPON_TYPES, makeRangedContents],
   wand:   [WAND_TYPES, makeWandContents],
   outfit: [OUTFIT_TYPES, makeOutfitContents],
+  shield: [SHIELD_TYPES, makeShieldContents],
 }
 
 export function itemFromContents(contents) {
@@ -84,7 +85,7 @@ export function contentsFromItem(item) {
   // is an empty weapon: bundle 0 travels with the contents and survives the
   // rebuild in itemFromContents.
   if (item.kind === 'ranged') return { ...item.payload, type: 'ranged', bundle: 0 }
-  if (item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'outfit')
+  if (item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'outfit' || item.kind === 'shield')
     return { ...item.payload, type: item.kind }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
   return { type: item.kind, count: item.count ?? 1 }
@@ -134,6 +135,14 @@ export function outfitItem(payload) {
   return { kind: 'outfit', name: payload.name, emoji: HAND_EMOJI.outfit, stackable: false, payload: { ...payload } }
 }
 
+// An item offhand ({ kind:'weapon'|'wand'|'shield', ...payload }) back into a
+// sack item; a consumable pointer or an empty offhand is not an item.
+export function offhandItem(off) {
+  if (!off || off.kind === 'consumable') return null
+  const { kind, ...payload } = off
+  return { kind, name: payload.name, emoji: HAND_EMOJI[kind], stackable: false, payload }
+}
+
 export function addItem(player, item) {
   if (item.stackable) {
     const slot = player.inventory.find(i => i.kind === item.kind)
@@ -171,10 +180,25 @@ export function canEquip(player, item, slot = 'main') {
   return { ok: true }
 }
 
-// Plan 1: the offhand only ever points at a consumable stack. Plan 2 adds
-// small blades, shields and wands with the two-handed rule.
-export function canEquipOffhand(player, item) {
-  return CONSUMABLE_KINDS.includes(item?.kind) ? { ok: true } : { ok: false, reason: 'not_equippable' }
+// Which item kinds each loadout's offhand takes beside a consumable pointer.
+// The Archer's bows are two-handed, so only a belt potion rides with them.
+export const OFFHAND_KINDS = { melee: ['weapon', 'shield'], ranged: [], magic: ['wand', 'weapon', 'shield'] }
+
+export function canEquipOffhand(player, item, stance = player.attackMode ?? 'melee') {
+  if (!item) return { ok: false, reason: 'not_equippable' }
+  if (CONSUMABLE_KINDS.includes(item.kind)) return { ok: true }
+  if (!(OFFHAND_KINDS[stance] ?? []).includes(item.kind)) return { ok: false, reason: 'not_equippable' }
+  // Every non-consumable kind is judged by its payload (small blade? heavy?),
+  // so a malformed item with none is refused here rather than thrown on. A
+  // bare `item.payload?.` would be worse than the crash for a shield: with no
+  // payload to fail either test it would sail through as equippable.
+  if (!item.payload) return { ok: false, reason: 'not_equippable' }
+  if (!loadoutAvailable(player, stance)) return { ok: false, reason: 'not_learned' }
+  if (item.kind === 'weapon' && !isSmallBlade(item.payload.weaponType)) return { ok: false, reason: 'two_handed' }
+  if (item.payload.heavy && !canWieldHeavy(player)) return { ok: false, reason: 'heavy' }
+  // A heavy main hand needs both hands: only a consumable rides with it.
+  if (player[MAIN_OF[stance]]?.heavy) return { ok: false, reason: 'two_handed' }
+  return { ok: true }
 }
 
 const HAND_OF_KIND = { weapon: 'weapon', ranged: 'ranged', wand: 'wand' }
@@ -184,6 +208,30 @@ const handItem = (hand, payload) =>
 
 const roomFor = (player, n) => player.inventory.length + n <= player.maxInventory
 
+// A heavy blade needs both hands, so an item in the Warrior's offhand goes
+// back to the sack before the blade lands (a consumable pointer stays — it is
+// only a pointer). Both ways into the weapon hand run through here: the panel
+// (equipItem) and walking onto one (autoEquipOnPickup).
+//
+// `net` is the caller's own sack accounting for the swap, before this
+// eviction: from the panel the incoming item leaves the sack (−1) and a held
+// weapon returns (+1); a walk-onto pickup was never in the sack and lands in
+// an empty hand, so it is 0. The evicted offhand adds its own +1 on top.
+//
+// Returns null when there is nothing to evict, `{ full: true }` when the sack
+// has no slot for it (nothing is moved — the caller refuses), or
+// `{ item }` with the offhand already cleared and the item left for the
+// caller to push, so it lands in the sack after whatever the swap returns.
+function evictOffhandForHeavy(player, payload, net = 0) {
+  if (!payload?.heavy) return null
+  const g = gearOf(player, 'melee')
+  const item = offhandItem(g.off)
+  if (!item) return null
+  if (!roomFor(player, net + 1)) return { full: true }
+  g.off = null
+  return { item }
+}
+
 // Equip the sack slot at `index` into its main hand; a held item swaps back in.
 export function equipItem(player, index) {
   const item = player.inventory[index]
@@ -192,9 +240,12 @@ export function equipItem(player, index) {
   if (!gate.ok) return gate
   const hand = HAND_OF_KIND[item.kind]
   const held = player[hand]
+  const evict = hand === 'weapon' ? evictOffhandForHeavy(player, item.payload, (held ? 1 : 0) - 1) : null
+  if (evict?.full) return { ok: false, reason: 'two_handed' }
   player[hand] = { ...item.payload }
   player.inventory.splice(index, 1)
   if (held) player.inventory.push(handItem(hand, held))
+  if (evict) player.inventory.push(evict.item)
   return { ok: true, equipped: item }
 }
 
@@ -222,6 +273,27 @@ function handsToEvict(player, stance, nextOutfit) {
   if (!player[hand]) return []
   if (stance === 'melee') return player[hand].heavy && !nextOutfit?.heavy ? [hand] : []
   return nextOutfit?.loadout === stance ? [] : [hand]
+}
+
+// The heavy shield rides on the plate too: an outfit change that drops the
+// heavy grant sends it to the sack with the heavy blade. canWieldHeavy reads
+// only the Warrior's outfit, so the grant it loses is every loadout's — a kite
+// shield in the Mage's offhand is evicted alongside the Warrior's own.
+// Returns [{ stance, item }], in eviction order.
+function offsToEvict(player, stance, nextOutfit) {
+  if (stance !== 'melee' || nextOutfit?.heavy) return []
+  return STANCES
+    .map(s => ({ stance: s, item: offhandItem(gearOf(player, s).off) }))
+    .filter(e => e.item?.payload.heavy)
+}
+
+// Move the evicted offhands into the sack; like evictHands, the caller has
+// already counted them in its own roomFor arithmetic.
+function evictOffs(player, offs) {
+  for (const { stance, item } of offs) {
+    player.inventory.push(item)
+    gearOf(player, stance).off = null
+  }
 }
 
 // Move the evicted hands into the sack. Callers must have counted them in
@@ -256,11 +328,14 @@ export function equipOutfit(player, index, stance) {
   if (item.payload.loadout && item.payload.loadout !== stance) return { ok: false, reason: 'wrong_loadout' }
   const g = gearOf(player, stance)
   const evict = handsToEvict(player, stance, item.payload)
-  // The new outfit frees one slot; the old outfit and each evicted hand take one.
-  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length - 1)) return { ok: false, reason: 'full' }
+  const offEvict = offsToEvict(player, stance, item.payload)
+  // The new outfit frees one slot; the old outfit, each evicted hand and each
+  // evicted offhand take one.
+  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length + offEvict.length - 1)) return { ok: false, reason: 'full' }
   player.inventory.splice(index, 1)
   if (g.outfit) player.inventory.push(outfitItem(g.outfit))
   evictHands(player, evict)
+  evictOffs(player, offEvict)
   g.outfit = { ...item.payload }
   closeIfLocked(player, stance)
   return { ok: true, equipped: item }
@@ -270,26 +345,47 @@ export function unequipOutfit(player, stance) {
   const g = gearOf(player, stance)
   if (!g.outfit) return { ok: false, reason: 'not_equippable' }
   const evict = handsToEvict(player, stance, null)
-  if (!roomFor(player, 1 + evict.length)) return { ok: false, reason: 'full' }
+  const offEvict = offsToEvict(player, stance, null)
+  if (!roomFor(player, 1 + evict.length + offEvict.length)) return { ok: false, reason: 'full' }
   player.inventory.push(outfitItem(g.outfit))
   evictHands(player, evict)
+  evictOffs(player, offEvict)
   g.outfit = null
   closeIfLocked(player, stance)
   return { ok: true }
 }
 
-// Point `stance`'s offhand at the consumable kind in sack slot `index`. The
-// stack stays in the sack — every loadout may point at the same one.
+// Put the sack item at `index` in `stance`'s offhand. A consumable becomes a
+// pointer (the stack stays in the sack; every loadout may point at the same
+// one). Anything else moves out of the sack, and a held item swaps back in.
 export function equipOffhand(player, index, stance = player.attackMode ?? 'melee') {
   const item = player.inventory[index]
-  const gate = canEquipOffhand(player, item)
+  const gate = canEquipOffhand(player, item, stance)
   if (!gate.ok) return gate
-  gearOf(player, stance).off = { kind: 'consumable', item: item.kind }
+  const g = gearOf(player, stance)
+  const held = offhandItem(g.off)
+  if (CONSUMABLE_KINDS.includes(item.kind)) {
+    // Pointing at a consumable while holding an item: the sack already holds
+    // the consumable stack, so the returning item is a net +1.
+    if (held && !roomFor(player, 1)) return { ok: false, reason: 'full' }
+    if (held) player.inventory.push(held)   // the item leaves; the sack gains one, never more
+    g.off = { kind: 'consumable', item: item.kind }
+    return { ok: true, equipped: item }
+  }
+  player.inventory.splice(index, 1)
+  if (held) player.inventory.push(held)
+  g.off = { kind: item.kind, ...item.payload }
   return { ok: true, equipped: item }
 }
 
 export function unequipOffhand(player, stance = player.attackMode ?? 'melee') {
-  gearOf(player, stance).off = null
+  const g = gearOf(player, stance)
+  const held = offhandItem(g.off)
+  if (held) {
+    if (!roomFor(player, 1)) return { ok: false, reason: 'full' }
+    player.inventory.push(held)
+  }
+  g.off = null
   return { ok: true }
 }
 
@@ -371,8 +467,16 @@ export function autoEquipOnPickup(player, item) {
   }
   const hand = item.kind === 'weapon' ? 'weapon' : null
   if (hand && !player[hand] && canEquip(player, item).ok) {
-    player[hand] = { ...item.payload }
-    return { ok: true, equipped: true }
+    // A walked-onto heavy blade frees the offhand exactly as the panel does.
+    // With no sack slot for what the offhand held, nothing moves and the blade
+    // goes to the sack like any other pickup — the alternative would be a
+    // raised shield beside a two-handed weapon.
+    const evict = evictOffhandForHeavy(player, item.payload)
+    if (!evict?.full) {
+      player[hand] = { ...item.payload }
+      if (evict) player.inventory.push(evict.item)
+      return { ok: true, equipped: true }
+    }
   }
   const r = addItem(player, item)
   return r.ok ? { ok: true, equipped: false } : r

@@ -222,6 +222,16 @@ empty offhand Q says *"Nothing in my off hand."* (throttled think).
   (offhand mirrored on the other side at the same grip scale). Charge weapons
   are never small, so the charge path never alternates.
 
+> **As built:** an arena config's `player` block and a Timewarp episode kit
+> both accept `offhand: { type: 'weapon' | 'wand' | 'shield', weaponType }`
+> beside `weaponType` / `rangedType` / `wandType` / `talents` / `outfits`.
+> `applyLoadout` in `game.js` builds the payload from the matching table
+> (`WEAPON_TYPES` / `WAND_TYPES` / `SHIELD_TYPES`) and drops it into the
+> loadout that takes it — a blade or shield into the Warrior's gear, a wand
+> into the Mage's — warning and skipping an unknown `type`/`weaponType`
+> pair. It is the only way to spawn already holding an offhand, and it is
+> what the level-0 arena check drove (arena journal run 25).
+
 ### HUD
 
 `#hud-consumable` is renamed `#hud-offhand` and shows the active loadout's
@@ -235,6 +245,14 @@ switches swap the slot with the existing stance-switch timing.
 
 - `damagePlayer` subtracts the active loadout's `outfit.protect`, floored at
   0, before hp. Order: block check → protect → hp.
+
+  > **As built:** `protect` comes off `'hit'` damage **only**.
+  > `damagePlayer(state, amount, kind, from)` lets `'dot'` (bleed, the
+  > hammer's shock) and `'lightning'` through untouched, exactly as those
+  > kinds already skip i-frames and the block check — armour that soaked a
+  > poison tick or the player's own thunderclap would leave those sources
+  > with nothing to say. Full order for a `'hit'`: i-frames → block →
+  > protect → hp.
 - `sprintProfile` multiplies drain by `outfit.sprintDrain ?? 1` (plate: 2),
   composed with Ski-legs.
 - Belt: `findHarvestHit(map, player, hitAt, reach, weapon)` receives the

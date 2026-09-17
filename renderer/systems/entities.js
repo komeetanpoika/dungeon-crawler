@@ -103,6 +103,27 @@ export function makeWandContents(weaponType = 'sparkwand') {
   return { type: 'wand', weaponType: wt, name: def.name, spell: def.spell, color: def.color }
 }
 
+// Shields — offhand only (inventory.js canEquipOffhand). Raised by holding Q
+// (systems/shield.js); `blockCost` is the stamina each absorbed hit costs.
+// The kite shield is heavy: it rides on the plate like a heavy blade does.
+export const SHIELD_TYPES = {
+  buckler: { name: 'Buckler',     blockCost: 8 },
+  kite:    { name: 'Kite Shield', blockCost: 4, heavy: true },
+}
+
+export function makeShieldContents(weaponType = 'buckler') {
+  const wt = SHIELD_TYPES[weaponType] ? weaponType : 'buckler'
+  const def = SHIELD_TYPES[wt]
+  return { type: 'shield', weaponType: wt, name: def.name, blockCost: def.blockCost, ...(def.heavy && { heavy: true }) }
+}
+
+// What fits in the offhand beside a main weapon: a light blade, damage 2 or
+// less and never heavy. Derived from the table so a new dagger needs no list.
+export const isSmallBlade = weaponType => {
+  const d = WEAPON_TYPES[weaponType]
+  return !!d && !d.heavy && d.damage <= 2
+}
+
 // Outfits — one per loadout slot (systems/inventory.js gearOf). Wearing the
 // outfit whose `loadout` names a stance is what opens that stance: the coat
 // is the Archer, the robe is the Mage. `loadout: null` fits any loadout.

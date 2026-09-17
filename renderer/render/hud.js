@@ -1,4 +1,4 @@
-import { resolveOffhand } from '../systems/inventory.js'
+import { resolveOffhand, offhandItem } from '../systems/inventory.js'
 import { iconSrcFor } from './icons.js'
 import { spellFor } from '../systems/spells.js'
 
@@ -43,6 +43,16 @@ export function updateHUD(state) {
     setHTML(offEl, (src ? `<img class="${cls}" src="${src}" alt="">` : (off.slot?.emoji ?? ''))
       + (off.count > 0 ? `<span class="hud-count">×${off.count}</span>` : ''))
     offEl.dataset.offhand = off.count > 0 ? 'consumable' : ''
+  } else if (off) {
+    // An item in the offhand: shield, wand or blade. No count. Dimmed when it
+    // cannot act — a shield below its block cost or still dropped, a wand
+    // below its tap cost. A blade is always ready.
+    const src = iconSrcFor(offhandItem(off))
+    const dim = off.kind === 'shield' ? ((player.stamina ?? 0) < off.blockCost || (player.shieldDropT ?? 0) > 0)
+      : off.kind === 'wand' ? (player.stamina ?? 0) < spellFor(player, 'off').cost.tap
+      : false
+    setHTML(offEl, src ? `<img class="${dim ? 'hud-icon hud-icon-empty' : 'hud-icon'}" src="${src}" alt="${off.name ?? ''}">` : '')
+    offEl.dataset.offhand = dim ? '' : off.kind
   } else {
     const emptySrc = iconSrcFor({ kind: 'potion' })
     setHTML(offEl, emptySrc ? `<img class="hud-icon hud-icon-empty" src="${emptySrc}" alt="">` : '')

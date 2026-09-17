@@ -381,6 +381,28 @@ describe('v8 save shape — gear and outfits', () => {
     assert.deepEqual(b.gear.magic.off, { kind: 'consumable', item: 'mushroom' })
     assert.equal(b.gear.melee.off, null)
   })
+  it('sack shields are rebuilt from their table; unknown ones are dropped', () => {
+    const b = normalizeBody({ ...emptyBody(), inventory: [
+      { kind: 'shield', name: 'Old Buckler', emoji: '\u{1F6E1}', stackable: false, payload: { weaponType: 'buckler', blockCost: 99 } },
+      { kind: 'shield', name: 'Tower Shield', emoji: '\u{1F6E1}', stackable: false, payload: { weaponType: 'tower' } },
+    ] })
+    assert.equal(b.inventory.length, 1, 'the tower shield is not in the table')
+    assert.equal(b.inventory[0].payload.weaponType, 'buckler')
+    assert.equal(b.inventory[0].payload.blockCost, 8, 'the stale 99 is replaced by the table value')
+    assert.equal(b.inventory[0].name, 'Buckler')
+    assert.deepEqual(normalizeBody(b), b)
+  })
+  it('item offhands are rebuilt from their tables; unknown ones are dropped', () => {
+    const stale = { ...emptyBody(), gear: { ...defaultGear(),
+      melee: { off: { kind: 'shield', weaponType: 'buckler', name: 'Old Buckler', blockCost: 99 }, outfit: null },
+      magic: { off: { kind: 'wand', weaponType: 'frostwand' }, outfit: null },
+      ranged: { off: { kind: 'weapon', weaponType: 'spork' }, outfit: null } } }
+    const b = normalizeBody(stale)
+    assert.deepEqual(b.gear.melee.off, { kind: 'shield', weaponType: 'buckler', name: 'Buckler', blockCost: 8 })
+    assert.equal(b.gear.magic.off.spell, 'rime')
+    assert.equal(b.gear.ranged.off, null)
+    assert.deepEqual(normalizeBody(b), b)
+  })
   it('a v7 save with stance talents wakes up wearing the outfits', () => {
     const v7 = { caves: {}, progress: { mapDepth: 12, cleared: {}, visited: [] }, talents: ['ranged_stance', 'magic_stance', 'heavy_weapons', 'ski_legs'],
       body: { weapon: null, ranged: null, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 }, inventory: [] },
