@@ -105,3 +105,8 @@ export function inSwing(reach, halfAngle, facingAngle, dx, dy) {
   const ry = dx * s + dy * c           // side component
   return Math.abs(Math.atan2(ry, rx)) <= halfAngle
 }
+
+// Two small blades alternate swings; the offhand's swing recovers faster.
+export const OFFHAND_COOLDOWN_MUL = 0.75
+export const swingHand = (player, offBlade) => offBlade && player.nextHand === 'off' ? 'off' : 'main'
+export const nextHandAfter = (hand, offBlade) => offBlade && hand === 'main' ? 'off' : 'main'

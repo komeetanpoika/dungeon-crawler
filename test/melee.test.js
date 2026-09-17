@@ -326,3 +326,19 @@ describe('hatchet', () => {
     assert.deepEqual(weaponContents('pick'), { weaponType: 'pick', name: 'Pick', damage: 2, chop: 1, mine: 1 })
   })
 })
+
+import { OFFHAND_COOLDOWN_MUL, swingHand, nextHandAfter } from '../renderer/systems/melee.js'
+describe('alternating blades', () => {
+  const dagger = { kind: 'weapon', weaponType: 'dagger', damage: 1 }
+  it('the main hand swings first, then hands alternate while an offhand blade is held', () => {
+    assert.equal(swingHand({}, dagger), 'main')
+    assert.equal(nextHandAfter('main', dagger), 'off')
+    assert.equal(swingHand({ nextHand: 'off' }, dagger), 'off')
+    assert.equal(nextHandAfter('off', dagger), 'main')
+  })
+  it('without an offhand blade every swing is the main hand', () => {
+    assert.equal(swingHand({ nextHand: 'off' }, null), 'main')
+    assert.equal(nextHandAfter('main', null), 'main')
+    assert.equal(OFFHAND_COOLDOWN_MUL, 0.75)
+  })
+})
