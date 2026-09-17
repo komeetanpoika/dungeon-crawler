@@ -140,11 +140,14 @@ describe('offhand consumable pointer', () => {
     assert.deepEqual(p.gear.melee.off, { kind: 'consumable', item: 'mushroom' })
     assert.equal(resolveOffhand(p).count, 2)
   })
-  it('a weapon is not an offhand item yet (plan 2)', () => {
+  it('a big blade is two-handed for the offhand; a small one fits', () => {
     const p = mk()
+    addItem(p, weapon('longsword'))
+    assert.deepEqual(equipOffhand(p, 0), { ok: false, reason: 'two_handed' })
+    assert.deepEqual(canEquip(p, p.inventory[0], 'off'), { ok: false, reason: 'two_handed' })
+    p.inventory.splice(0, 1)
     addItem(p, weapon('dagger'))
-    assert.deepEqual(equipOffhand(p, 0), { ok: false, reason: 'not_equippable' })
-    assert.deepEqual(canEquip(p, p.inventory[0], 'off'), { ok: false, reason: 'not_equippable' })
+    assert.equal(canEquip(p, p.inventory[0], 'off').ok, true)
   })
   it('two loadouts may point at the same stack', () => {
     const p = mk({ gear: gearWearing('robe') })

@@ -5,7 +5,7 @@
 
 import {
   AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES, SHIELD_TYPES,
-  makeRangedContents, makeWandContents, makeOutfitContents, makeShieldContents, defaultGear,
+  makeRangedContents, makeWandContents, makeOutfitContents, makeShieldContents, defaultGear, isSmallBlade,
 } from './entities.js'
 
 const STACKABLE_KINDS = {
@@ -180,10 +180,20 @@ export function canEquip(player, item, slot = 'main') {
   return { ok: true }
 }
 
-// Plan 1: the offhand only ever points at a consumable stack. Plan 2 adds
-// small blades, shields and wands with the two-handed rule.
-export function canEquipOffhand(player, item) {
-  return CONSUMABLE_KINDS.includes(item?.kind) ? { ok: true } : { ok: false, reason: 'not_equippable' }
+// Which item kinds each loadout's offhand takes beside a consumable pointer.
+// The Archer's bows are two-handed, so only a belt potion rides with them.
+export const OFFHAND_KINDS = { melee: ['weapon', 'shield'], ranged: [], magic: ['wand', 'weapon', 'shield'] }
+
+export function canEquipOffhand(player, item, stance = player.attackMode ?? 'melee') {
+  if (!item) return { ok: false, reason: 'not_equippable' }
+  if (CONSUMABLE_KINDS.includes(item.kind)) return { ok: true }
+  if (!(OFFHAND_KINDS[stance] ?? []).includes(item.kind)) return { ok: false, reason: 'not_equippable' }
+  if (!loadoutAvailable(player, stance)) return { ok: false, reason: 'not_learned' }
+  if (item.kind === 'weapon' && !isSmallBlade(item.payload.weaponType)) return { ok: false, reason: 'two_handed' }
+  if (item.payload.heavy && !canWieldHeavy(player)) return { ok: false, reason: 'heavy' }
+  // A heavy main hand needs both hands: only a consumable rides with it.
+  if (player[MAIN_OF[stance]]?.heavy) return { ok: false, reason: 'two_handed' }
+  return { ok: true }
 }
 
 const HAND_OF_KIND = { weapon: 'weapon', ranged: 'ranged', wand: 'wand' }
@@ -201,9 +211,14 @@ export function equipItem(player, index) {
   if (!gate.ok) return gate
   const hand = HAND_OF_KIND[item.kind]
   const held = player[hand]
+  // A heavy blade needs both hands: an item in the Warrior's offhand goes back
+  // to the sack first (a consumable pointer stays — it is only a pointer).
+  const evictOff = hand === 'weapon' && item.payload.heavy ? offhandItem(gearOf(player, 'melee').off) : null
+  if (evictOff && !roomFor(player, (held ? 1 : 0) + 1 - 1)) return { ok: false, reason: 'two_handed' }
   player[hand] = { ...item.payload }
   player.inventory.splice(index, 1)
   if (held) player.inventory.push(handItem(hand, held))
+  if (evictOff) { player.inventory.push(evictOff); gearOf(player, 'melee').off = null }
   return { ok: true, equipped: item }
 }
 
@@ -231,6 +246,14 @@ function handsToEvict(player, stance, nextOutfit) {
   if (!player[hand]) return []
   if (stance === 'melee') return player[hand].heavy && !nextOutfit?.heavy ? [hand] : []
   return nextOutfit?.loadout === stance ? [] : [hand]
+}
+
+// The heavy shield rides on the plate too: an outfit change that drops the
+// heavy grant sends it to the sack with the heavy blade.
+function offToEvict(player, stance, nextOutfit) {
+  if (stance !== 'melee') return null
+  const off = gearOf(player, stance).off
+  return off?.heavy && !nextOutfit?.heavy ? offhandItem(off) : null
 }
 
 // Move the evicted hands into the sack. Callers must have counted them in
@@ -265,11 +288,13 @@ export function equipOutfit(player, index, stance) {
   if (item.payload.loadout && item.payload.loadout !== stance) return { ok: false, reason: 'wrong_loadout' }
   const g = gearOf(player, stance)
   const evict = handsToEvict(player, stance, item.payload)
+  const offEvict = offToEvict(player, stance, item.payload)
   // The new outfit frees one slot; the old outfit and each evicted hand take one.
-  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length - 1)) return { ok: false, reason: 'full' }
+  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length + (offEvict ? 1 : 0) - 1)) return { ok: false, reason: 'full' }
   player.inventory.splice(index, 1)
   if (g.outfit) player.inventory.push(outfitItem(g.outfit))
   evictHands(player, evict)
+  if (offEvict) { player.inventory.push(offEvict); g.off = null }
   g.outfit = { ...item.payload }
   closeIfLocked(player, stance)
   return { ok: true, equipped: item }
@@ -279,26 +304,47 @@ export function unequipOutfit(player, stance) {
   const g = gearOf(player, stance)
   if (!g.outfit) return { ok: false, reason: 'not_equippable' }
   const evict = handsToEvict(player, stance, null)
-  if (!roomFor(player, 1 + evict.length)) return { ok: false, reason: 'full' }
+  const offEvict = offToEvict(player, stance, null)
+  if (!roomFor(player, 1 + evict.length + (offEvict ? 1 : 0))) return { ok: false, reason: 'full' }
   player.inventory.push(outfitItem(g.outfit))
   evictHands(player, evict)
+  if (offEvict) { player.inventory.push(offEvict); g.off = null }
   g.outfit = null
   closeIfLocked(player, stance)
   return { ok: true }
 }
 
-// Point `stance`'s offhand at the consumable kind in sack slot `index`. The
-// stack stays in the sack — every loadout may point at the same one.
+// Put the sack item at `index` in `stance`'s offhand. A consumable becomes a
+// pointer (the stack stays in the sack; every loadout may point at the same
+// one). Anything else moves out of the sack, and a held item swaps back in.
 export function equipOffhand(player, index, stance = player.attackMode ?? 'melee') {
   const item = player.inventory[index]
-  const gate = canEquipOffhand(player, item)
+  const gate = canEquipOffhand(player, item, stance)
   if (!gate.ok) return gate
-  gearOf(player, stance).off = { kind: 'consumable', item: item.kind }
+  const g = gearOf(player, stance)
+  const held = offhandItem(g.off)
+  if (CONSUMABLE_KINDS.includes(item.kind)) {
+    // Pointing at a consumable while holding an item: the sack already holds
+    // the consumable stack, so the returning item is a net +1.
+    if (held && !roomFor(player, 1)) return { ok: false, reason: 'full' }
+    if (held) player.inventory.push(held)   // the item leaves; the sack gains one, never more
+    g.off = { kind: 'consumable', item: item.kind }
+    return { ok: true, equipped: item }
+  }
+  player.inventory.splice(index, 1)
+  if (held) player.inventory.push(held)
+  g.off = { kind: item.kind, ...item.payload }
   return { ok: true, equipped: item }
 }
 
 export function unequipOffhand(player, stance = player.attackMode ?? 'melee') {
-  gearOf(player, stance).off = null
+  const g = gearOf(player, stance)
+  const held = offhandItem(g.off)
+  if (held) {
+    if (!roomFor(player, 1)) return { ok: false, reason: 'full' }
+    player.inventory.push(held)
+  }
+  g.off = null
   return { ok: true }
 }
 
