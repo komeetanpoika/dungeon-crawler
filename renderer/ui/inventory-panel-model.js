@@ -47,12 +47,14 @@ export function sackActions(player, item) {
     if (CONSUMABLE_KINDS.includes(item.kind)
       || ((item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'shield') && canEquip(player, item, 'off').ok))
       out.push({ label: 'Offhand', fn: 'onEquipOff' })
+    if (item.kind === 'weapon' && canEquip(player, item, 'belt').ok) out.push({ label: 'Belt', fn: 'onEquipBelt' })
   }
   out.push({ label: 'Drop', fn: 'onDrop' })
   return out
 }
 
 export function gearAction(player, stance, slot) {
+  if (stance === 'belt') return player.belt ? { label: 'Unequip', fn: 'onUnequip' } : null
   if (!loadoutAvailable(player, stance)) return null
   const g = gearOf(player, stance)
   if (slot === 'main') return player[MAIN_OF[stance]] ? { label: 'Unequip', fn: 'onUnequip' } : null
@@ -61,8 +63,16 @@ export function gearAction(player, stance, slot) {
   return null
 }
 
-// Gear index = column * 3 + tile (columns in STANCES order).
-export const gearAt = index => ({ stance: STANCES[Math.floor(index / 3)], slot: GEAR_SLOTS[index % 3] })
+// Gear index = column * 3 + tile (columns in STANCES order). The belt is one
+// tile to the right of the three loadout columns, gear index 9. It has no
+// loadout and is never locked.
+export const BELT_INDEX = STANCES.length * GEAR_SLOTS.length   // 9
+export const gearAt = index =>
+  index === BELT_INDEX ? { stance: 'belt', slot: 'belt' } : { stance: STANCES[Math.floor(index / 3)], slot: GEAR_SLOTS[index % 3] }
+
+export function beltTile(player) {
+  return { slot: 'belt', item: asItem('weapon', player.belt) }
+}
 
 export function moveSelection(sel, key, counts, activeStance = 'melee') {
   const clampSack = i => Math.max(0, Math.min(Math.max(0, counts.sack - 1), i))
@@ -76,8 +86,13 @@ export function moveSelection(sel, key, counts, activeStance = 'melee') {
     }
     return sel
   }
+  if (sel.index === BELT_INDEX) {
+    if (key === 'ArrowLeft') return { area: 'gear', index: (STANCES.length - 1) * 3 }
+    if (key === 'ArrowDown') return { area: 'sack', index: 0 }
+    return sel
+  }
   const col = Math.floor(sel.index / 3), tile = sel.index % 3
-  if (key === 'ArrowRight') return { area: 'gear', index: Math.min(STANCES.length - 1, col + 1) * 3 + tile }
+  if (key === 'ArrowRight') return col === STANCES.length - 1 ? { area: 'gear', index: BELT_INDEX } : { area: 'gear', index: (col + 1) * 3 + tile }
   if (key === 'ArrowLeft') return { area: 'gear', index: Math.max(0, col - 1) * 3 + tile }
   if (key === 'ArrowUp') return { area: 'gear', index: col * 3 + Math.max(0, tile - 1) }
   if (key === 'ArrowDown') return tile < 2 ? { area: 'gear', index: col * 3 + tile + 1 } : { area: 'sack', index: 0 }

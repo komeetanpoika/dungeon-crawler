@@ -1,8 +1,9 @@
 // Pause-overlay loot sack panel: a gear strip (three loadouts × main / off /
-// outfit) above the sack grid. All mutations happen in game.js via handlers;
-// what to show and where the cursor goes comes from inventory-panel-model.js.
+// outfit, plus a fourth narrow belt column) above the sack grid. All
+// mutations happen in game.js via handlers; what to show and where the
+// cursor goes comes from inventory-panel-model.js.
 import { canEquip, EQUIP_FAIL_MESSAGES } from '../systems/inventory.js'
-import { gearStrip, sackActions, gearAction, gearAt, moveSelection } from './inventory-panel-model.js'
+import { gearStrip, sackActions, gearAction, gearAt, moveSelection, beltTile, BELT_INDEX } from './inventory-panel-model.js'
 import { sfx } from '../systems/sfx.js'
 import { iconSrcFor } from '../render/icons.js'
 import { SPELLS } from '../systems/spells.js'
@@ -39,6 +40,7 @@ function iconHtml(item, cls = 'inv-icon') {
 function selectedItem(player) {
   if (sel.area === 'sack') return player.inventory[sel.index] ?? null
   const { stance, slot } = gearAt(sel.index)
+  if (stance === 'belt') return beltTile(player).item
   return gearStrip(player).find(c => c.stance === stance).tiles.find(t => t.slot === slot).item
 }
 
@@ -72,6 +74,20 @@ export function refreshInventory(state) {
     })
     strip.appendChild(colEl)
   })
+
+  // The belt: one shared tool, its own narrow column, never locked.
+  const belt = beltTile(player)
+  const beltCol = document.createElement('div')
+  beltCol.className = 'inv-col'
+  beltCol.innerHTML = `<div class="inv-col-name">Belt</div>`
+  const beltEl = document.createElement('div')
+  beltEl.className = 'inv-tile' + (sel.area === 'gear' && sel.index === BELT_INDEX ? ' selected' : '')
+  beltEl.dataset.slot = 'belt'
+  beltEl.innerHTML = iconHtml(belt.item)
+  beltEl.addEventListener('click', () => { sel = { area: 'gear', index: BELT_INDEX }; refreshInventory(lastState) })
+  beltCol.appendChild(beltEl)
+  strip.appendChild(beltCol)
+
   panel.appendChild(strip)
 
   const grid = document.createElement('div')
