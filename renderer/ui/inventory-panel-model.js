@@ -1,7 +1,7 @@
 // DOM-free model behind ui/inventory-panel.js: what the gear strip shows,
 // which buttons a selection offers, and how the cursor moves between the
 // strip and the sack grid. Rendering stays in inventory-panel.js.
-import { STANCES, LOADOUT_NAMES, MAIN_OF, CONSUMABLE_KINDS, gearOf, loadoutAvailable, makeItem } from '../systems/inventory.js'
+import { STANCES, LOADOUT_NAMES, MAIN_OF, CONSUMABLE_KINDS, gearOf, loadoutAvailable, makeItem, offhandItem, canEquip } from '../systems/inventory.js'
 
 const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥' }
 export const GEAR_SLOTS = ['main', 'off', 'outfit']
@@ -14,7 +14,7 @@ const asItem = (kind, payload) => payload ? { kind, name: payload.name, emoji: H
 // shape: the panel wants a name and an emoji, Q wants the sack slot.
 function offTile(player, off) {
   if (!off) return null
-  if (off.kind !== 'consumable') return off
+  if (off.kind !== 'consumable') return offhandItem(off)
   const slot = (player.inventory ?? []).find(i => i.kind === off.item)
   const proto = makeItem(off.item)
   return { kind: 'consumable', item: off.item, name: proto.name, emoji: proto.emoji, count: slot?.count ?? 0 }
@@ -44,7 +44,9 @@ export function sackActions(player, item) {
     else if (item.kind === 'potion') out.push({ label: 'Drink', fn: 'onUse' })
     else if (item.kind === 'mushroom' || item.kind === 'meat' || item.kind === 'cooked_meat') out.push({ label: 'Eat', fn: 'onUse' })
     else if (item.kind === 'lumber' || item.kind === 'deadwood') out.push({ label: 'Build fire', fn: 'onBuild' })
-    if (CONSUMABLE_KINDS.includes(item.kind)) out.push({ label: 'Offhand', fn: 'onEquipOff' })
+    if (CONSUMABLE_KINDS.includes(item.kind)
+      || ((item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'shield') && canEquip(player, item, 'off').ok))
+      out.push({ label: 'Offhand', fn: 'onEquipOff' })
   }
   out.push({ label: 'Drop', fn: 'onDrop' })
   return out

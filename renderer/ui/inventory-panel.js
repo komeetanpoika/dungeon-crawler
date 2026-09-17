@@ -5,6 +5,7 @@ import { canEquip, EQUIP_FAIL_MESSAGES } from '../systems/inventory.js'
 import { gearStrip, sackActions, gearAction, gearAt, moveSelection } from './inventory-panel-model.js'
 import { sfx } from '../systems/sfx.js'
 import { iconSrcFor } from '../render/icons.js'
+import { SPELLS } from '../systems/spells.js'
 
 let keyHandler = null
 let sel = { area: 'sack', index: 0 }
@@ -18,10 +19,13 @@ function detailText(player, item) {
   if (item.kind === 'consumable') return `${item.name} ×${item.count}`
   // Ammo is a shared pool, not a per-item count (Wands and Bows redesign) —
   // a sacked bow shows its damage only, never a stale per-item ammo figure.
-  const stats = item.payload?.damage != null ? ` (${item.payload.damage} dmg)`
+  const stats = item.payload?.blockCost != null ? ` (block ${item.payload.blockCost} st)`
+    : item.payload?.damage != null ? ` (${item.payload.damage} dmg)`
+    : item.payload?.spell ? ` (${SPELLS[item.payload.spell]?.name ?? item.payload.spell})`
     : item.payload?.protect != null ? ` (protect ${item.payload.protect})` : ''
-  const slot = item.kind === 'outfit' ? 'outfit' : 'main'
-  const gate = (item.kind === 'weapon' || item.kind === 'ranged' || item.kind === 'wand' || item.kind === 'outfit') ? canEquip(player, item, slot) : { ok: true }
+  const slot = item.kind === 'outfit' ? 'outfit' : item.kind === 'shield' ? 'off' : 'main'
+  const gated = ['weapon', 'ranged', 'wand', 'outfit', 'shield'].includes(item.kind)
+  const gate = gated ? canEquip(player, item, slot) : { ok: true }
   const warn = gate.ok ? '' : ` — <span class="warn">${EQUIP_FAIL_MESSAGES[gate.reason]}</span>`
   return `${item.name}${stats}${warn}`
 }

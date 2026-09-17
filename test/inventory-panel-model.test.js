@@ -35,7 +35,7 @@ describe('sackActions', () => {
   })
   it('an outfit wears; a weapon equips; a quest item only drops', () => {
     assert.deepEqual(sackActions(mk(), itemFromContents(makeOutfitContents('ranger'))).map(a => [a.label, a.fn]), [['Wear', 'onEquip'], ['Drop', 'onDrop']])
-    assert.deepEqual(sackActions(mk(), itemFromContents({ type: 'weapon', ...weaponContents('dagger') })).map(a => a.label), ['Equip', 'Drop'])
+    assert.deepEqual(sackActions(mk(), itemFromContents({ type: 'weapon', ...weaponContents('dagger') })).map(a => a.label), ['Equip', 'Offhand', 'Drop'])
     assert.deepEqual(sackActions(mk(), makeItem('clapper')).map(a => a.label), ['Drop'])
   })
 })
@@ -71,5 +71,31 @@ describe('moveSelection', () => {
   })
   it('an empty sack keeps Up/Down between strip and a zero-index sack', () => {
     assert.deepEqual(moveSelection({ area: 'gear', index: 2 }, 'ArrowDown', { sack: 0, gear: 9 }), { area: 'sack', index: 0 })
+  })
+})
+
+import { makeShieldContents } from '../renderer/systems/entities.js'
+describe('offhand items in the strip and the actions', () => {
+  it('an item offhand shows as a sack-shaped tile', () => {
+    const p = mk()
+    p.gear.melee.off = { kind: 'shield', weaponType: 'buckler', name: 'Buckler', blockCost: 8 }
+    const tile = gearStrip(p)[0].tiles[1].item
+    assert.equal(tile.kind, 'shield')
+    assert.equal(tile.payload.weaponType, 'buckler')
+  })
+  it('Offhand appears only where the item may go', () => {
+    const shield = itemFromContents(makeShieldContents('buckler'))
+    assert.deepEqual(sackActions(mk(), shield).map(a => a.label), ['Offhand', 'Drop'])
+    const archer = mk({ gear: gearWearing('ranger'), attackMode: 'ranged' })
+    assert.deepEqual(sackActions(archer, shield).map(a => a.label), ['Drop'])
+    const dagger = itemFromContents({ type: 'weapon', ...weaponContents('dagger') })
+    assert.deepEqual(sackActions(mk(), dagger).map(a => a.label), ['Equip', 'Offhand', 'Drop'])
+    const longsword = itemFromContents({ type: 'weapon', ...weaponContents('longsword') })
+    assert.deepEqual(sackActions(mk({ gear: gearWearing('plate') }), longsword).map(a => a.label), ['Equip', 'Drop'])
+  })
+  it('an item offhand unequips, a pointer clears', () => {
+    const p = mk()
+    p.gear.melee.off = { kind: 'weapon', weaponType: 'dagger', name: 'Dagger', damage: 1 }
+    assert.deepEqual(gearAction(p, 'melee', 'off'), { label: 'Unequip', fn: 'onUnequip' })
   })
 })
