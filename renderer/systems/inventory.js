@@ -4,8 +4,8 @@
 // logic — game.js owns pickups, drops, and messages.
 
 import {
-  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES,
-  makeRangedContents, makeWandContents,
+  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES,
+  makeRangedContents, makeWandContents, makeOutfitContents, defaultGear,
 } from './entities.js'
 
 const STACKABLE_KINDS = {
@@ -29,7 +29,7 @@ export function makeItem(kind, count = 1) {
   return { kind, name: def.name, emoji: def.emoji, stackable: true, count, ...def.extra }
 }
 
-const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄' }
+const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥' }
 
 // Chest/floating `contents` -> sack item. Ammo is never a sack item — it
 // goes straight into the pool (see autoEquipOnPickup) — so this returns the
@@ -54,14 +54,19 @@ const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄' }
 // legacy contents carry no `bundle` field and so get the table's, once; a bow
 // the player dropped carries an explicit `bundle: 0` (see contentsFromItem)
 // and re-credits nothing, or drop-and-repickup would be a free arrow mine.
-const REBUILD = { ranged: [RANGED_WEAPON_TYPES, makeRangedContents], wand: [WAND_TYPES, makeWandContents] }
+const REBUILD = {
+  ranged: [RANGED_WEAPON_TYPES, makeRangedContents],
+  wand:   [WAND_TYPES, makeWandContents],
+  outfit: [OUTFIT_TYPES, makeOutfitContents],
+}
 
 export function itemFromContents(contents) {
   const rebuild = REBUILD[contents.type]
   if (rebuild) {
     const [table, make] = rebuild
-    if (!table[contents.weaponType]) return null
-    const { type, ...payload } = make(contents.weaponType)
+    const key = contents.type === 'outfit' ? contents.outfitType : contents.weaponType
+    if (!table[key]) return null
+    const { type, ...payload } = make(key)
     if (type === 'ranged' && Number.isFinite(contents.bundle)) payload.bundle = contents.bundle
     return { kind: type, name: payload.name, emoji: HAND_EMOJI[type], stackable: false, payload }
   }
@@ -79,7 +84,7 @@ export function contentsFromItem(item) {
   // is an empty weapon: bundle 0 travels with the contents and survives the
   // rebuild in itemFromContents.
   if (item.kind === 'ranged') return { ...item.payload, type: 'ranged', bundle: 0 }
-  if (item.kind === 'weapon' || item.kind === 'wand')
+  if (item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'outfit')
     return { ...item.payload, type: item.kind }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
   return { type: item.kind, count: item.count ?? 1 }
@@ -88,8 +93,6 @@ export function contentsFromItem(item) {
 // Quick-use (Q / the green touch button): first potion-or-mushroom slot in
 // sack order. The summary drives the button badge — next-up slot's emoji,
 // combined count across all consumable slots.
-const CONSUMABLE_KINDS = ['potion', 'mushroom', 'meat', 'cooked_meat']
-
 export function findQuickUseIndex(inventory) {
   return inventory.findIndex(i => CONSUMABLE_KINDS.includes(i.kind))
 }
@@ -101,6 +104,50 @@ export function quickUseSummary(inventory) {
     .filter(i => CONSUMABLE_KINDS.includes(i.kind))
     .reduce((sum, i) => sum + (i.count ?? 1), 0)
   return { emoji: inventory[first].emoji, count }
+}
+
+// ── Loadouts ────────────────────────────────────────────────────────────────
+// The stance name is the loadout key. Main hands stay on the player object;
+// gear[stance] holds the offhand and the outfit (entities.js defaultGear).
+export const STANCES = ['melee', 'ranged', 'magic']
+export const MAIN_OF = { melee: 'weapon', ranged: 'ranged', magic: 'wand' }
+export const LOADOUT_NAMES = { melee: 'Warrior', ranged: 'Archer', magic: 'Mage' }
+// What an offhand may point at (Q uses one). Quest items and wood are not.
+export const CONSUMABLE_KINDS = ['potion', 'mushroom', 'meat', 'cooked_meat']
+
+export function gearOf(player, stance) {
+  player.gear ??= defaultGear()
+  return player.gear[stance]
+}
+export function loadout(player, stance = player.attackMode ?? 'melee') {
+  const g = gearOf(player, stance)
+  return { main: player[MAIN_OF[stance]] ?? null, off: g.off, outfit: g.outfit }
+}
+export const offhand = player => gearOf(player, player.attackMode ?? 'melee').off
+export const outfitOf = (player, stance) => gearOf(player, stance).outfit
+
+// Warrior is innate; Archer and Mage exist while their own outfit is worn.
+export function loadoutAvailable(player, stance) {
+  if (stance === 'melee') return true
+  return outfitOf(player, stance)?.loadout === stance
+}
+// Heavy weapons (and, in plan 2, the heavy shield) need the plate on the Warrior.
+export const canWieldHeavy = player => outfitOf(player, 'melee')?.heavy === true
+
+// The active offhand with a consumable pointer resolved against the sack:
+// { kind:'consumable', item, count, index, slot }. Non-pointer contents
+// (plan 2) come back as they are; an empty offhand is null.
+export function resolveOffhand(player) {
+  const off = offhand(player)
+  if (!off) return null
+  if (off.kind !== 'consumable') return off
+  const index = (player.inventory ?? []).findIndex(i => i.kind === off.item)
+  const slot = index === -1 ? null : player.inventory[index]
+  return { kind: 'consumable', item: off.item, count: slot?.count ?? 0, index, slot }
+}
+
+export function outfitItem(payload) {
+  return { kind: 'outfit', name: payload.name, emoji: HAND_EMOJI.outfit, stackable: false, payload: { ...payload } }
 }
 
 export function addItem(player, item) {

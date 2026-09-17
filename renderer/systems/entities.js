@@ -101,6 +101,33 @@ export function makeWandContents(weaponType = 'sparkwand') {
   return { type: 'wand', weaponType: wt, name: def.name, spell: def.spell, color: def.color }
 }
 
+// Outfits — one per loadout slot (systems/inventory.js gearOf). Wearing the
+// outfit whose `loadout` names a stance is what opens that stance: the coat
+// is the Archer, the robe is the Mage. `loadout: null` fits any loadout.
+// `heavy` on the Warrior's outfit is the heavy-weapon gate (plate); protect
+// and sprintDrain are read in plan 2/3 (damagePlayer, sprintProfile).
+export const OUTFIT_TYPES = {
+  ranger:  { name: "Ranger's Coat", loadout: 'ranged', protect: 0 },
+  robe:    { name: "Mage's Robe",   loadout: 'magic',  protect: 0 },
+  plate:   { name: 'Plated Armor',  loadout: 'melee',  protect: 2, heavy: true, sprintDrain: 2 },
+  leather: { name: 'Leather Coat',  loadout: null,     protect: 1 },
+}
+
+export function makeOutfitContents(outfitType = 'leather') {
+  const ot = OUTFIT_TYPES[outfitType] ? outfitType : 'leather'
+  const def = OUTFIT_TYPES[ot]
+  return { type: 'outfit', outfitType: ot, name: def.name, loadout: def.loadout, protect: def.protect,
+    ...(def.heavy && { heavy: true }), ...(def.sprintDrain && { sprintDrain: def.sprintDrain }) }
+}
+
+// Per-loadout gear beside the three main hands (see makePlayer). Every
+// offhand starts pointed at the potion stack so Q heals from the first step,
+// exactly as quick-use did before the offhand existed.
+export function defaultGear() {
+  const slot = () => ({ off: { kind: 'consumable', item: 'potion' }, outfit: null })
+  return { melee: slot(), ranged: slot(), magic: slot() }
+}
+
 // The quiver/pouch: one shared pool per ammo kind, independent of which bow
 // is currently held. Caps match the spec (arrow 40 / bolt 24 / stone 60).
 export const AMMO_KINDS = ['arrow', 'bolt', 'stone']
@@ -218,9 +245,13 @@ export function makePlayer(x, y, bonuses = []) {
     hp: 10, maxHp: 10,
     inventory: [], maxInventory: 10 + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
-    // Three hands (melee / bow / wand) and one shared quiver — a run can be
-    // swordsman, archer and wizard at once.
+    // Three loadouts of one body: the main hands live here (melee / bow /
+    // wand — combat code reads them directly), each loadout's offhand and
+    // outfit live one level down in `gear`, and `belt` is the one shared tool
+    // slot. The Warrior is always open; the Archer and the Mage open when
+    // their outfit is worn (inventory.js loadoutAvailable).
     bonuses, weapon: null, ranged: null, wand: null, ammo: emptyAmmo(),
+    gear: defaultGear(), belt: null,
     attackMode: 'melee', talents: [],
     stamina: 100, maxStamina: 100, staminaRegenT: 0,
     magicCooldown: 0,   // gust unlocks via the magic_stance talent
