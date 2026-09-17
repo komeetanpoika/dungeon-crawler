@@ -48,34 +48,41 @@ describe('lootTierFor', () => {
   })
 })
 
-// Weights: potion 35 / melee 20 / ranged 15 / wand 15 / ammo 15 = 100, so the
-// cumulative boundaries read straight off the roll.
 describe('bands for a player who can use everything', () => {
-  it('r < 0.35 is a potion', () => {
+  // Tier 1 has no outfit pool: potion 30 / melee 16 / shield 4 / ranged 15 /
+  // wand 15 / ammo 15 = 95. Boundaries .3158 / .4842 / .5263 / .6842 / .8421.
+  it('the first three tenths are a potion', () => {
     assert.deepEqual(rollChestLoot(1, seq(0.0), veteran()), { type: 'potion', amount: 4 })
-    assert.deepEqual(rollChestLoot(1, seq(0.349), veteran()), { type: 'potion', amount: 4 })
+    assert.deepEqual(rollChestLoot(1, seq(0.31), veteran()), { type: 'potion', amount: 4 })
   })
-
-  it('0.35 <= r < 0.55 is a melee weapon with full stats', () => {
-    assert.deepEqual(rollChestLoot(1, seq(0.35, 0.0), veteran()),
+  it('then a melee weapon with full stats', () => {
+    assert.deepEqual(rollChestLoot(1, seq(0.32, 0.0), veteran()),
       { type: 'weapon', weaponType: 'dagger', name: 'Dagger', damage: 1 })
-    assert.equal(rollChestLoot(1, seq(0.549, 0.0), veteran()).type, 'weapon')
+    assert.equal(rollChestLoot(1, seq(0.48, 0.0), veteran()).type, 'weapon')
   })
-
-  it('0.55 <= r < 0.70 is a ranged weapon carrying its bundle but no ammo count', () => {
-    const c = rollChestLoot(1, seq(0.55, 0.0), veteran())
+  it('one melee pick in five is a shield', () => {
+    assert.deepEqual(rollChestLoot(1, seq(0.49, 0.0), veteran()),
+      { type: 'shield', weaponType: 'buckler', name: 'Buckler', blockCost: 8 })
+    assert.equal(rollChestLoot(1, seq(0.525, 0.0), veteran()).type, 'shield')
+  })
+  it('then a ranged weapon carrying its bundle but no ammo count', () => {
+    const c = rollChestLoot(1, seq(0.53, 0.0), veteran())
     assert.equal(c.type, 'ranged')
     assert.equal(c.ammo, undefined)
     assert.equal(c.maxAmmo, undefined)
     assert.ok(c.bundle > 0)
   })
-
-  it('0.70 <= r < 0.85 is a wand', () => {
-    assert.equal(rollChestLoot(1, seq(0.70, 0.0), veteran()).type, 'wand')
-  })
-
-  it('r >= 0.85 is an ammo bundle', () => {
+  it('then a wand, then ammo', () => {
+    assert.equal(rollChestLoot(1, seq(0.69, 0.0), veteran()).type, 'wand')
     assert.equal(rollChestLoot(1, seq(0.85, 0.0), veteran()).type, 'ammo')
+    assert.equal(rollChestLoot(1, seq(0.999, 0.0), veteran()).type, 'ammo')
+  })
+  it('from tier 2 the last twentieth is the Leather Coat', () => {
+    // potion 30 / melee 16 / shield 4 / ranged 15 / wand 15 / ammo 15 / outfit 5 = 100.
+    assert.equal(rollChestLoot(3, seq(0.949, 0.0), veteran()).type, 'ammo')
+    assert.deepEqual(rollChestLoot(3, seq(0.95, 0.0), veteran()),
+      { type: 'outfit', outfitType: 'leather', name: 'Leather Coat', loadout: null, protect: 1 })
+    assert.equal(rollChestLoot(3, seq(0.999, 0.0), veteran()).type, 'outfit')
   })
 })
 
@@ -141,16 +148,16 @@ describe('a locked category shrinks to a teaser', () => {
 
   it('draws a locked bow teaser from tier 1 even on a tier-4 map', () => {
     const p = mkPlayer({ outfits: ['robe', 'plate'] })
-    // ranged locked: potion 35 / melee 20 / ranged 3 / wand 15 / ammo 0 = 73.
-    const c = rollChestLoot(18, seq(55 / 73 + 0.001, 0.99), p)
+    // ranged locked: potion 30 / melee 16 / shield 4 / ranged 3 / wand 15 / ammo 0 / outfit 5 = 73.
+    const c = rollChestLoot(18, seq(50 / 73 + 0.001, 0.99), p)
     assert.equal(c.type, 'ranged')
     assert.equal(c.weaponType, 'shortbow', 'tier-1 pool, not the tier-4 crossbow')
   })
 
   it('draws a locked wand teaser from tier 1 even on a tier-4 map', () => {
     const p = mkPlayer({ outfits: ['ranger', 'plate'], ranged: 'shortbow' })
-    // wand locked: potion 35 / melee 20 / ranged 15 / wand 3 / ammo 15 = 88.
-    const c = rollChestLoot(18, seq(70 / 88 + 0.001, 0.99), p)
+    // wand locked: potion 30 / melee 16 / shield 4 / ranged 15 / wand 3 / ammo 15 / outfit 5 = 88.
+    const c = rollChestLoot(18, seq(65 / 88 + 0.001, 0.99), p)
     assert.equal(c.type, 'wand')
     assert.equal(c.weaponType, 'sparkwand', 'tier-1 pool, not the tier-4 Storm Wand')
   })
@@ -158,10 +165,18 @@ describe('a locked category shrinks to a teaser', () => {
   it('falls back to a tier-1 melee teaser when the whole tier is too heavy', () => {
     // Tier 4 melee is axe/longsword, both heavy — nothing usable without Might.
     const p = mkPlayer({ outfits: ['ranger', 'robe'], ranged: 'shortbow' })
-    // melee locked: potion 35 / melee 4 / ranged 15 / wand 15 / ammo 15 = 84.
-    const c = rollChestLoot(18, seq(35 / 84 + 0.001, 0.0), p)
+    // melee locked: potion 30 / melee 3.2 / shield 0.8 / ranged 15 / wand 15 / ammo 15 / outfit 5 = 84.
+    const c = rollChestLoot(18, seq(30 / 84 + 0.001, 0.0), p)
     assert.equal(c.type, 'weapon')
     assert.equal(c.weaponType, 'dagger')
+  })
+
+  it('a tier-4 kite shield without the plate is a buckler teaser', () => {
+    const p = mkPlayer({ outfits: ['ranger', 'robe'], ranged: 'shortbow' })
+    // shield locked (tier 4 is the kite alone): 0.8 of 84, right after the melee teaser.
+    const c = rollChestLoot(18, seq(33.2 / 84 + 0.001, 0.99), p)
+    assert.equal(c.type, 'shield')
+    assert.equal(c.weaponType, 'buckler')
   })
 })
 
@@ -214,5 +229,32 @@ describe('a missing player', () => {
     assert.equal(rollChestLoot(5, seq(0.55, 0.99)).weaponType, 'crossbow')
     assert.equal(rollChestLoot(5, seq(0.70, 0.99)).weaponType, 'stormwand')
     assert.equal(rollChestLoot(5, seq(0.9, 0.0)).type, 'ammo')
+  })
+})
+
+describe('shield and outfit rungs', () => {
+  it('tier 3 offers both shields, tier 4 the kite', () => {
+    // 0.49 sits inside the shield band [46,50) of both totals: /100 at tiers
+    // 3-4 (0.46-0.50) and /95 at tier 1 (0.4842-0.5263) — 0.47 only clears
+    // the first.
+    const shield = (d, p) => rollChestLoot(d, seq(0.49, p), veteran()).weaponType
+    assert.equal(shield(4, 0.0), 'buckler')   // depth 4 = tier 3
+    assert.equal(shield(4, 0.99), 'kite')
+    assert.equal(shield(5, 0.0), 'kite')      // depth 5 = tier 4
+    assert.equal(shield(1, 0.99), 'buckler')
+  })
+  it('no outfit rolls at tier 1', () => {
+    for (let i = 0; i < 300; i++) assert.notEqual(rollChestLoot(1, Math.random, veteran()).type, 'outfit')
+  })
+  it('story outfits never roll', () => {
+    for (let i = 0; i < 500; i++) {
+      const c = rollChestLoot(18, Math.random, veteran())
+      if (c.type === 'outfit') assert.equal(c.outfitType, 'leather')
+    }
+  })
+  it('a plated player draws the kite; a null player draws everything', () => {
+    assert.equal(rollChestLoot(5, seq(0.47, 0.99), mkPlayer({ outfits: ALL_OUTFITS, ranged: 'shortbow', sack: ['crossbow', 'sling'] })).weaponType, 'kite')
+    assert.equal(rollChestLoot(5, seq(0.47, 0.99)).weaponType, 'kite')
+    assert.equal(rollChestLoot(5, seq(0.96, 0.0)).type, 'outfit')
   })
 })

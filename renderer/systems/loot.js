@@ -11,8 +11,14 @@
 // kind: enough to hint that bows exist, not enough to bury the run in gear.
 // A bow teaser is not wasted even so — a pickup's arrow bundle reaches the
 // pool whether or not the weapon can be equipped (autoEquipOnPickup).
-import { weaponContents, makeRangedContents, makeWandContents, AMMO_KINDS } from './entities.js'
-import { canEquip, itemFromContents } from './inventory.js'
+//
+// Shields ride alongside melee (one pick in five) and the Leather Coat is the
+// one chest outfit (a twentieth of the roll, from tier 2 on); both are in the
+// same tiered-pool/teaser ladder as the weapon bands. The three story
+// outfits (ranger, robe, plate) are never rolled — they come from the world
+// (systems/outfits.js).
+import { weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents, AMMO_KINDS } from './entities.js'
+import { canEquip, itemFromContents, canWieldHeavy } from './inventory.js'
 import { LEVEL_CONFIG } from '../data/levels.js'
 
 // Four rungs, one per pool. A tier's melee and ranged rows both hold at least
@@ -36,6 +42,23 @@ const WAND_POOLS = {
   3: ['frostwand', 'firewand', 'bramblewand'],
   4: ['firewand', 'bramblewand', 'blinkwand', 'stormwand'],
 }
+// Shields ride in the melee category (one pick in five); the tall kite
+// shield needs the plate, so a tier that holds only the kite locks like a
+// heavy melee tier and teases the buckler instead.
+export const SHIELD_POOLS = {
+  1: ['buckler'],
+  2: ['buckler'],
+  3: ['buckler', 'kite'],
+  4: ['kite'],
+}
+// The one chest outfit. Story outfits (ranger, robe, plate) are handed out by
+// the world (systems/outfits.js), never rolled. No rung at tier 1: the first
+// maps are for learning the sack, not filling it.
+export const OUTFIT_POOLS = {
+  2: ['leather'],
+  3: ['leather'],
+  4: ['leather'],
+}
 // Ammo is not tiered: a bundle is only ever worth finding when the player
 // carries a bow that fires it, and that ownership is the better gate.
 const AMMO_COUNTS = { arrow: 10, bolt: 6, stone: 15 }
@@ -43,8 +66,10 @@ const AMMO_COUNTS = { arrow: 10, bolt: 6, stone: 15 }
 // Relative band weights. A locked category keeps TEASER of its own weight and
 // whatever is left is renormalised over the survivors — so on the first map,
 // where bows, wands and ammo are all out of reach, potions and melee split
-// nearly the whole roll between them.
-const BASE_WEIGHTS = { potion: 35, melee: 20, ranged: 15, wand: 15, ammo: 15 }
+// nearly the whole roll between them. Shields take a fifth of the old melee
+// weight; the Leather Coat a twentieth of the chest, out of the potion band,
+// so a veteran's roll still totals 100.
+const BASE_WEIGHTS = { potion: 30, melee: 16, shield: 4, ranged: 15, wand: 15, ammo: 15, outfit: 5 }
 const TEASER = 0.2
 
 function pick(pool, rng) {
@@ -59,6 +84,7 @@ export function lootTierFor(depth) {
 // site with no player to hand behaves as it did before the gear gate entered the roll.
 function canUse(player, contents) {
   if (!player) return true
+  if (contents.type === 'shield') return !contents.heavy || canWieldHeavy(player)
   const item = itemFromContents(contents)
   return !item || canEquip(player, item).ok
 }
@@ -91,10 +117,13 @@ export function rollChestLoot(depth, rng = Math.random, player = null) {
   const bands = [
     { weight: BASE_WEIGHTS.potion, pool: [null], toContents: () => ({ type: 'potion', amount: 4 }) },
     weaponBand('melee',  MELEE_POOLS,  tier, player, meleeContents),
+    weaponBand('shield', SHIELD_POOLS, tier, player, makeShieldContents),
     weaponBand('ranged', RANGED_POOLS, tier, player, makeRangedContents),
     weaponBand('wand',   WAND_POOLS,   tier, player, makeWandContents),
     { weight: ammoKinds.length ? BASE_WEIGHTS.ammo : 0, pool: ammoKinds,
       toContents: k => ({ type: 'ammo', ammoKind: k, count: AMMO_COUNTS[k] }) },
+    { weight: (OUTFIT_POOLS[tier] ?? []).length ? BASE_WEIGHTS.outfit : 0, pool: OUTFIT_POOLS[tier] ?? [],
+      toContents: makeOutfitContents },
   ]
   const total = bands.reduce((sum, b) => sum + b.weight, 0)
   let r = rng() * total
