@@ -82,10 +82,12 @@ function strike(e, state) {
   // own outcome — only tryBlock (via damagePlayer, just below) can set it true.
   player.blockedHit = false
   const landed = connects && damagePlayer(state, w.damage, 'hit', { px: e.px, py: e.py })
+  let blocked = false
   if (connects && !landed) {
     if (player.blockedHit) {
       // The shield took it: the swing is spent like a landed one, and the
       // blade skids off — a short shove away from the player.
+      blocked = true
       player.blockedHit = false
       startKnockback(e, e.px - player.px, e.py - player.py, BLOCK_SHOVE)
     } else {
@@ -93,7 +95,9 @@ function strike(e, state) {
       return
     }
   }
-  if (landed) e.inCombat = true
+  // A blow the shield ate is still a blow: the attacker is in combat, so a
+  // guard the player is purely blocking shows its HP bar like any other.
+  if (landed || blocked) e.inCombat = true
   e.damageCooldown = ATTACK_COOLDOWN   // landed, or whiffed after a windup: the attack is spent
   a.phase = 'swing'
   a.timer = w.duration

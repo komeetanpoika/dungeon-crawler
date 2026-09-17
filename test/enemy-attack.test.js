@@ -225,6 +225,7 @@ describe('a blocked strike', () => {
     assert.ok(e.damageCooldown > 0)
     assert.equal(e.attack?.phase, 'swing')
     assert.ok(e.knockback || e.kvx !== undefined, 'attacker was shoved')
+    assert.equal(e.inCombat, true, 'a guard the player is only blocking still shows its HP bar')
     assert.deepEqual(state.sfx.cues.map(c => c.name).filter(n => n === 'shield-block'), ['shield-block'])
   })
   it('an i-framed strike still retries next frame', () => {
