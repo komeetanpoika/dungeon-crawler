@@ -1365,11 +1365,14 @@ function update(delta) {
 
   // Melee (Space): light blades swing the instant the key lands; charge
   // weapons wind up while held and swing on release, tiered by hold time.
-  // The charge path is always the main hand's (a heavy main never has a blade
-  // beside it), so it keeps reading meleeWT; inside the swing the hand that
-  // actually swings names its own weapon.
+  // The charge path is the main hand's alone, so it keeps reading meleeWT;
+  // inside the swing the hand that actually swings names its own weapon. A
+  // charge weapon in the main hand therefore suspends alternation outright:
+  // its wind-up belongs to that weapon, and handing every second release to
+  // the offhand blade would spend the main hand's charge on the wrong steel.
   const meleeWT = player.weapon?.weaponType
-  const offBlade = offhand(player)?.kind === 'weapon' ? offhand(player) : null
+  const off = offhand(player)
+  const offBlade = off?.kind === 'weapon' && !isChargeWeapon(meleeWT) ? off : null
   const swing = (mods) => {
     const hand = swingHand(player, offBlade)
     const wpn = hand === 'off' ? offBlade : player.weapon
