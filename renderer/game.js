@@ -394,12 +394,14 @@ function detonateFireball(px, py, blastTiles, { fireOnly = false } = {}) {
   if (fireOnly) { state.fireZones.push(makeFireZone(tiles)); return }
   const before = state.entities
   const npcSnap = npcSnapshot()
-  const burst = applyBurst(state.entities, state.player, tiles)
+  const burst = applyBurst(state.entities, state.player, tiles, { hurt: hurtEntity })
   // applyBurst hands back a fresh copy for everything it burned and culls the
   // dead, so positional indices shift the moment one entity dies. Diff by
   // identity instead, the way npcsStruckSince does: an entity from the before
   // list that is no longer in the after list by reference was burned — copied
   // if it survived, dropped if the blast killed it.
+  // A registry monster is burned in place through hurtEntity (its own float
+  // and cue), so it stays identical and this loop leaves it alone.
   const untouched = new Set(burst.entities)
   for (const e of before) {
     if (!isHittable(e) || e.hp <= 0 || untouched.has(e)) continue
@@ -1644,7 +1646,7 @@ function update(delta) {
   // Lingering fireball flames — tick everyone standing in them
   if (state.fireZones?.length) {
     const snap = npcSnapshot()
-    const fz = updateFireZones(state.fireZones, state.entities, player, delta)
+    const fz = updateFireZones(state.fireZones, state.entities, player, delta, { hurt: hurtEntity })
     state.fireZones = fz.zones
     state.entities = fz.entities
     npcsStruckSince(snap)

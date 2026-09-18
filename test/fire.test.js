@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { TILE } from '../renderer/systems/entities.js'
+import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
 import { computeBlastTiles, BLAST_TILES, applyBurst, makeFireZone, updateFireZones,
          BURST_DAMAGE, FIRE_DURATION, FIRE_TICK_INTERVAL } from '../renderer/systems/fire.js'
 
@@ -175,5 +176,59 @@ describe('hit extents (systems/hitbox.js)', () => {
     const { entities } = updateFireZones([makeFireZone(TILES)], [cyclops, guard], at(9, 9), FIRE_TICK_INTERVAL)
     assert.equal(entities.find(e => e.type === 'cyclops').hp, 9)
     assert.equal(entities.find(e => e.type === 'guard').hp, 10)
+  })
+})
+
+describe('registry monsters', () => {
+  const FAKE_RIG = {
+    PARAM_SCHEMA: [{ key: 'size', label: 'Size', group: 'body', type: 'range', min: 0, max: 2, step: 0.1, default: 1 }],
+    drawMonster: () => {},
+  }
+  const register = (name, behavior = {}) => registerMonsters(
+    [{ name, rig: 'fakerig', stats: { hp: 24, dmg: 2, speed: 70, half: 12 }, behavior }],
+    { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
+  const recorder = () => { const hurt = []; return { hurt, hooks: { hurt: (e, d) => hurt.push([e, d]) } } }
+
+  it('a burst hurts a registry monster on a blast tile through the hurt hook, in place', async () => {
+    await register('firebeast')
+    try {
+      const beast = at(1, 1, { type: 'firebeast', hp: 24 })
+      const { hurt, hooks } = recorder()
+      const r = applyBurst([beast], at(9, 9), TILES, hooks)
+      assert.deepEqual(hurt, [[beast, BURST_DAMAGE]])
+      assert.equal(r.hitCount, 1)
+      assert.equal(r.entities[0], beast, 'the live entity is kept, never copied or culled here')
+      assert.equal(beast.hp, 24, 'the hook owns the damage (hurtCreature decides absorbs and death)')
+    } finally { clearMonsters() }
+  })
+
+  it('a fire zone ticks a registry monster through the hurt hook', async () => {
+    await register('firebeast')
+    try {
+      const beast = at(1, 1, { type: 'firebeast', hp: 24 })
+      const { hurt, hooks } = recorder()
+      updateFireZones([makeFireZone(TILES)], [beast], at(9, 9), FIRE_TICK_INTERVAL, hooks)
+      assert.deepEqual(hurt, [[beast, 1]])
+    } finally { clearMonsters() }
+  })
+
+  it('a passive story creature burns too, like the bramble lets it through', async () => {
+    await register('firenakki', { driver: 'hook', passive: true })
+    try {
+      const beast = at(1, 1, { type: 'firenakki', hp: undefined })
+      const { hurt, hooks } = recorder()
+      applyBurst([beast], at(9, 9), TILES, hooks)
+      assert.equal(hurt.length, 1)
+    } finally { clearMonsters() }
+  })
+
+  it('leaves registry monsters alone when no hook is given', async () => {
+    await register('firebeast')
+    try {
+      const beast = at(1, 1, { type: 'firebeast', hp: 24 })
+      const r = applyBurst([beast], at(9, 9), TILES)
+      assert.equal(r.hitCount, 0)
+      assert.equal(beast.hp, 24)
+    } finally { clearMonsters() }
   })
 })

@@ -3,6 +3,8 @@
 // (damagePlayer), and visuals (canvas.js draws state.fireZones).
 import { isWalkable } from './entities.js'
 import { overlapsTiles, PLAYER_SHAPE } from './hitbox.js'
+import { getMonsterDef } from './monsters.js'
+import { isSpellTarget } from './factions.js'
 
 const TILE_SIZE = 32
 
@@ -38,7 +40,13 @@ export function computeBlastTiles(map, tileX, tileY, count = BLAST_TILES) {
 }
 
 // dragon_boss is deliberately absent — it keeps full ranged immunity.
+// These built-in types take the damage in place here (copied, then culled).
+// A registry monster burns through the caller's `hurt` hook instead, the
+// way the bramble does: hurtCreature decides what fire does to it (absorbs,
+// death poses), so this module never touches its hp. Story creatures are
+// let through like the bramble lets them through. No hook, no burn.
 const BURNABLE = new Set(['guard', 'monster', 'dragon', 'cyclops', 'wizard', 'crab', 'npc'])
+const hookBurnable = e => !!getMonsterDef(e.type) && isSpellTarget(e)
 
 const keySet = tiles => new Set(tiles.map(t => `${t.x},${t.y}`))
 // Standing in the fire means the body overlaps a burning tile, not that
@@ -51,11 +59,13 @@ const cullDead = entities => entities.filter(e => !BURNABLE.has(e.type) || e.hp 
 
 // Initial detonation damage to everything standing on a blast tile. The
 // wizard's shield does NOT protect — the fireball is the counter-tool.
-export function applyBurst(entities, player, tiles) {
+export function applyBurst(entities, player, tiles, { hurt } = {}) {
   const keys = keySet(tiles)
   let hitCount = 0
   const updated = entities.map(e => {
-    if (!BURNABLE.has(e.type) || e.px === undefined || !burns(e, keys)) return e
+    if (e.px === undefined || !burns(e, keys)) return e
+    if (hurt && hookBurnable(e)) { hitCount++; hurt(e, BURST_DAMAGE); return e }
+    if (!BURNABLE.has(e.type)) return e
     hitCount++
     return { ...e, hp: e.hp - BURST_DAMAGE, inCombat: true }
   })
@@ -70,7 +80,7 @@ export function makeFireZone(tiles) {
 // FIRE_TICK_INTERVAL, damaging everything standing on its tiles. Returns
 // surviving zones, the updated entity list (tick kills removed), and the
 // total damage the player took (game.js applies it via damagePlayer 'dot').
-export function updateFireZones(zones, entities, player, delta) {
+export function updateFireZones(zones, entities, player, delta, { hurt } = {}) {
   let playerDamage = 0
   let updated = entities
   const live = []
@@ -80,7 +90,9 @@ export function updateFireZones(zones, entities, player, delta) {
       zone.tickTimer += FIRE_TICK_INTERVAL
       const keys = keySet(zone.tiles)
       updated = updated.map(e => {
-        if (!BURNABLE.has(e.type) || e.px === undefined || !burns(e, keys)) return e
+        if (e.px === undefined || !burns(e, keys)) return e
+        if (hurt && hookBurnable(e)) { hurt(e, FIRE_TICK_DAMAGE); return e }
+        if (!BURNABLE.has(e.type)) return e
         return { ...e, hp: e.hp - FIRE_TICK_DAMAGE, inCombat: true }
       })
       if (playerBurns(player, keys)) playerDamage += FIRE_TICK_DAMAGE
