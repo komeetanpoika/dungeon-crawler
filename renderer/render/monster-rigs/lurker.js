@@ -45,6 +45,10 @@ export function hitHalf(p) {
   return Math.max(8, Math.min(28, R(d.headW * 0.6)))
 }
 
+// Hit extent: the art is upright and only flips, so the half-size as a
+// circle (systems/hitbox.js).
+export const hitShape = p => ({ r: hitHalf(p) })
+
 export function drawMonster(ctx, p, pose, S) {
   const d = dims(p)
   const { state } = pose

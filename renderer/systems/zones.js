@@ -6,6 +6,7 @@
 import { isWalkable } from './entities.js'
 import { isSpellTarget } from './factions.js'
 import { applyRoot } from './status.js'
+import { overlapsTiles } from './hitbox.js'
 
 const TILE_SIZE = 32
 const TICK_INTERVAL = 1.0     // seconds between dps ticks, like fire zones
@@ -35,8 +36,6 @@ const idOf = e => (e.id ??= `zt${nextId++}`)
 // game.js's hurt hook is the one that routes their damage via hurtCreature.
 const affected = isSpellTarget
 
-const tileOf = e => ({ x: Math.floor(e.px / TILE_SIZE), y: Math.floor(e.py / TILE_SIZE) })
-
 // Advance every zone by `delta`: root what just walked in, bleed dps once a
 // second into whatever is still standing there, and drop patches past their
 // duration. Returns the surviving zones (also written back to state.zones).
@@ -49,10 +48,9 @@ export function tickZones(state, delta, hooks = {}) {
     zone.age += delta
     zone.tickT += delta
     const keys = new Set(zone.tiles.map(t => `${t.x},${t.y}`))
-    const standing = enemies.filter(e => {
-      const t = tileOf(e)
-      return keys.has(`${t.x},${t.y}`)
-    })
+    // Standing in the thorns means the body overlaps a patch tile
+    // (systems/hitbox.js), so a big beast is caught by the flank it drags in.
+    const standing = enemies.filter(e => overlapsTiles(e, keys))
     const here = new Set()
     for (const e of standing) {
       const id = idOf(e)

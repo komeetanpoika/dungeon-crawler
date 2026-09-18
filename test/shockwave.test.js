@@ -53,3 +53,14 @@ describe('npc splashability', () => {
     assert.ok(entities[0].knockback, 'splash shoves the npc')
   })
 })
+
+describe('hit extents (systems/hitbox.js)', () => {
+  it('splashes a big body whose rim is inside the radius though its centre is not', () => {
+    const cyclops = enemy(100 + SHOCK_RADIUS + 20, 100, { type: 'cyclops' })
+    const small = enemy(100 + SHOCK_RADIUS + 20, 100)
+    const { entities, hitCount } = applyShockwave([cyclops, small], 100, 100, new Set())
+    assert.equal(hitCount, 1)
+    assert.equal(entities.find(e => e.type === 'cyclops').hp, 5 - SHOCK_DAMAGE)
+    assert.equal(entities.find(e => e.type === 'monster').hp, 5)
+  })
+})

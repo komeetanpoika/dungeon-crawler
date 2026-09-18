@@ -244,24 +244,35 @@ function drawTentacles(ctx, e, d, S) {
 // render here in screen space: chunky segmented rects from the rig's eye
 // anchors, flickering white / eye colour. ctx is already at the entity
 // centre. Beam angles are world angles set by the hook (e.laser.beams).
+// Where a rig monster's eyes are drawn: px offsets from the entity centre
+// at tile size S, following the body facing and the head aim exactly as the
+// rig draws them. Empty for a rig without eyeAnchors. Shared by the laser
+// renderer below and by hooks that fire from the eyes (podeboo.js), so the
+// beam is tested along the line it is drawn on.
+export function eyeOffsets(e, d, S = 32) {
+  const anchors = typeof d.rig.eyeAnchors === 'function' ? d.rig.eyeAnchors(d.params) : null
+  if (!anchors) return []
+  const k = S / TILE_ART_PX
+  const pose = entityPose(e)
+  const body = snapFacing(pose.facing + Math.PI / 2)
+  const head = snapFacing(pose.headAim ?? 0)
+  return anchors.eyes.map(eye => {
+    const rx = eye.x * Math.cos(head) - eye.y * Math.sin(head) + anchors.pivot.x
+    const ry = eye.x * Math.sin(head) + eye.y * Math.cos(head) + anchors.pivot.y
+    return { x: (rx * Math.cos(body) - ry * Math.sin(body)) * k,
+             y: (rx * Math.sin(body) + ry * Math.cos(body)) * k }
+  })
+}
+
 function drawLasers(ctx, e, d, S) {
   const l = e.laser
   if (!l || l.state !== 'fire' || !l.beams?.length) return
   const k = S / TILE_ART_PX
   const pose = entityPose(e)
-  const body = snapFacing(pose.facing + Math.PI / 2)
-  const head = snapFacing(pose.headAim ?? 0)
-  const anchors = typeof d.rig.eyeAnchors === 'function' ? d.rig.eyeAnchors(d.params) : null
   const pal = palette(d.params.eyeColor ?? '#ff4040')
   const hot = Math.floor(pose.t * 20) % 2 === 0
-  const origins = anchors
-    ? anchors.eyes.map(eye => {
-        const rx = eye.x * Math.cos(head) - eye.y * Math.sin(head) + anchors.pivot.x
-        const ry = eye.x * Math.sin(head) + eye.y * Math.cos(head) + anchors.pivot.y
-        return { x: (rx * Math.cos(body) - ry * Math.sin(body)) * k,
-                 y: (rx * Math.sin(body) + ry * Math.cos(body)) * k }
-      })
-    : [{ x: 0, y: 0 }]
+  const offs = eyeOffsets(e, d, S)
+  const origins = offs.length ? offs : [{ x: 0, y: 0 }]
   const len = 320 * (S / 32)
   const step = 4 * k
   const w = Math.max(2, Math.round(2 * k))

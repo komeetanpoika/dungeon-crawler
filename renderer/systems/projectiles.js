@@ -1,16 +1,19 @@
 // Projectile stepping: movement, wall/maxDist stop, and friendly-vs-enemy
 // hit resolution (pierce, fork, chain, onHit status effects, shield
-// absorption, boss immunity). Lifted out of game.js so it is unit-testable
+// absorption, boss immunity). A hit is the projectile's point landing on
+// the target's body (systems/hitbox.js), never a fixed radius from its centre. Lifted out of game.js so it is unit-testable
 // without a DOM/canvas — game.js supplies hurt/detonate/damagePlayer/
 // isHittable/cull as hooks; the only thing this module reaches for on its own
 // is the faction rule chaining obeys (isSpellTarget).
 import { isWalkable } from './entities.js'
 import { isSpellTarget } from './factions.js'
 import { startKnockback } from './knockback.js'
+import { pointHits, PLAYER_SHAPE } from './hitbox.js'
 
 const TILE_SIZE = 32
-const HIT_RADIUS = 8          // enemies
-const PLAYER_HIT_RADIUS = 10  // player, hit by enemy projectiles
+// A projectile is a 4x4 square (canvas.js), so its own half-width pads
+// every body it tests against (systems/hitbox.js).
+const PROJECTILE_PAD = 2
 
 // Entities aren't guaranteed an id (most are plain spawned objects); hitIds
 // needs stable identity, so stamp one on first use — same pattern wizard.js
@@ -131,7 +134,7 @@ export function stepProjectiles(state, delta, hooks) {
         if (!hooks.isHittable(e)) continue
         if (e.type === 'dragon_boss') continue // immune to all friendly projectiles
         if (p.hitIds.has(idOf(e))) continue
-        if (Math.hypot(e.px - p.px, e.py - p.py) < HIT_RADIUS) { target = e; break }
+        if (pointHits(e, p.px, p.py, PROJECTILE_PAD)) { target = e; break }
       }
       if (target) {
         if (target.type === 'wizard' && target.shieldTimer > 0 && !p.piercesShield) {
@@ -172,7 +175,7 @@ export function stepProjectiles(state, delta, hooks) {
         // in this same frame could still find the corpse as a target.
         state.entities = cull(state.entities)
       }
-    } else if (Math.hypot(player.px - p.px, player.py - p.py) < PLAYER_HIT_RADIUS) {
+    } else if (pointHits(player, p.px, p.py, PROJECTILE_PAD, PLAYER_SHAPE)) {
       hooks.damagePlayer(p.damage, { px: p.px, py: p.py })
       hits++
       consumed = true

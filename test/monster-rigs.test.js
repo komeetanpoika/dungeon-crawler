@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, eyeAnchors } from '../renderer/render/monster-rigs/quadruped.js'
+import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, hitShape, eyeAnchors } from '../renderer/render/monster-rigs/quadruped.js'
 
 // Recording 2D-context stand-in: every method call is logged, every property
 // set is accepted, gradients are inert. Lets us assert "drew something" and
@@ -161,5 +161,31 @@ describe('quadruped head aim and eye glow', () => {
     drawMonster(a, defaultParams(PARAM_SCHEMA), pose('idle'), 32)
     drawMonster(b, defaultParams(PARAM_SCHEMA), pose('idle', { eyeGlow: 1 }), 32)
     assert.notDeepEqual(a.ops, b.ops)
+  })
+})
+
+describe('quadruped hitShape', () => {
+  const TILE_ART_PX = 16
+  const px = v => v * (32 / TILE_ART_PX)
+  it('is a capsule that grows with the drawn body', () => {
+    const base = hitShape(defaultParams(PARAM_SCHEMA))
+    assert.ok(base.r >= 8 && base.front > 0 && base.back >= 0, 'has a radius and reaches forward')
+    const longer = hitShape({ ...defaultParams(PARAM_SCHEMA), bodyLength: 3.0, tailLength: 2.0 })
+    assert.ok(longer.front > base.front && longer.back > base.back, 'longer body and tail reach further')
+    const wider = hitShape({ ...defaultParams(PARAM_SCHEMA), bodyWidth: 2.0 })
+    assert.ok(wider.r > base.r, 'a wider body is a fatter capsule')
+  })
+  it('stays inside the drawn art: nose-to-tail never exceeds the stage height', () => {
+    for (const which of ['min', 'max', 'default']) {
+      const p = which === 'default' ? defaultParams(PARAM_SCHEMA) : extremes(which)
+      const s = hitShape(p)
+      const bl = 2 * Math.max(3, Math.round(p.bodyLength * 6))
+      const headH = Math.max(3, Math.round(p.headSize * 9))
+      const snout = Math.round(p.snout * 8)
+      const tail = Math.round(p.tailLength * 10)
+      const drawnLen = px(bl + headH + snout + tail)
+      assert.ok(s.front + s.back + 2 * s.r <= drawnLen + 4, `${which}: capsule ${s.front + s.back + 2 * s.r} vs drawn ${drawnLen}`)
+      assert.ok(s.front + s.back + 2 * s.r >= drawnLen * 0.6, `${which}: capsule covers most of the body`)
+    }
   })
 })

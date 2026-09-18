@@ -185,3 +185,17 @@ Terminology note (2026-09-17, does not touch entries below): earlier runs pre-gr
 **Config:** (no enemies)
 **Score:** 5/5
 **Notes:** All criteria met live in the level-0 arena (playwright-core _electron, --dcdebug, DISPLAY=:0, no pageerror and no console.error across the run). Chest at (10,7) opened on the step onto it and flung the hatchet to (9,7); one ArrowLeft hold collected it as {kind:'weapon', name:'Hatchet', payload.weaponType:'hatchet'}. I rendered four .inv-col named Warrior/Archer/Mage/Belt with tile slots main,off,outfit x3 + belt, and a [data-slot="belt"] tile present. Selecting the hatchet listed Equip/Offhand/Belt/Drop; clicking Belt set state.player.belt = {weaponType:'hatchet',name:'Hatchet',damage:1,chop:1}, removed the hatchet from the sack (PACK 1/11, potion only), drew the hatchet icon in the belt tile and offered Unequip on it. git status --short renderer/data/ empty afterwards.
+
+## Run 27 — 2026-09-18 — CLOSED
+**Question:** Do each enemy's hit-test extents (8px projectile disc, centre tile for fireball/zone/lightning, aiHalf clearance) match the sprite/rig the player sees?
+**Criteria:** An overlay of the actual hit disc and centre tile over every spawnable enemy shows the disc covering most of the drawn body, and the drawn body centred on the entity centre
+**Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
+**Score:** 1/5
+**Notes:** Criteria not met, and the overlay answered it unambiguously: every hit test is point-vs-centre (8px disc for projectiles, centre tile for burst/zone/lightning, centre-in-wedge for cones/melee) and no path reads the body size (aiHalf is movement clearance only). The dragon's centre sits at the bottom edge of its 96px sprite, the cyclops' 8px disc covers the eye of a 64px sprite, hirvi/kivihiisi/podeboo discs cover a sliver of 60-150px rigs; even 32px sprites have a disc a quarter of their area.
+
+## Run 28 — 2026-09-18 — CLOSED
+**Question:** With hitbox.js wired in, do the capsules sit on the drawn bodies, and does a fireball that passes beside a big monster's centre now detonate on its body and burn it?
+**Criteria:** Overlay capsules cover the sprites/rigs (dragon body, elk nose-to-tail, cyclops 64px); a fireball aimed 20 px off the elk's centre detonates within its body and the elk loses hp; an arrow 20 px off a cyclops centre hits; the same arrow past a guard misses
+**Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
+**Score:** 4/5
+**Notes:** Overlay capsules sit on every sprite/rig (dragon over its body, elk nose-to-tail, podeboo full height, cyclops whole sprite). Arrow 20 px off the cyclops centre hit (30→29), the same offset past a guard missed. Fireball at x=+20 from the elk detonated at its rim (zone origin tile 19,15 ≈ py 504 = 528-24); at +50 it flew past and burst at the wall. Elk hp stayed 30 because the hirvi hit hook absorbs outside its quest stage, so burst damage on a rig was witnessed on podeboo/boarhound/rappeluu (all burned by an accidental first detonation) rather than the elk — hence 4 not 5.

@@ -21,6 +21,7 @@
 import { isSpellTarget } from './factions.js'
 import { startKnockback } from './knockback.js'
 import { applySlow } from './status.js'
+import { nearestPoint } from './hitbox.js'
 
 const TILE = 32
 
@@ -131,7 +132,8 @@ export function thunderclap(player, entities) {
   let n = 0
   for (const e of entities) {
     if (!isSpellTarget(e) || !Number.isFinite(e.px)) continue
-    if (dist(player, e) > HAMMER.clap.radius) continue
+    const rim = nearestPoint(e, player.px, player.py)   // the clap reaches a body by its rim (systems/hitbox.js)
+    if (Math.hypot(rim.x - player.px, rim.y - player.py) > HAMMER.clap.radius) continue
     startKnockback(e, e.px - player.px, e.py - player.py, HAMMER.clap.knockback)
     applySlow(e, HAMMER.clap.slow.mul, HAMMER.clap.slow.dur)
     n++

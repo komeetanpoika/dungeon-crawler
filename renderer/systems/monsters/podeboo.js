@@ -9,6 +9,8 @@
 import { CREATURE_UPDATE } from '../creatures.js'
 import { hasLineOfSight } from '../entities.js'
 import { damagePlayer } from '../player-damage.js'
+import { getMonsterDef, eyeOffsets } from '../monsters.js'
+import { PLAYER_SHAPE } from '../hitbox.js'
 
 export const LASER = {
   range: 260,          // px: how close the player must be to trigger
@@ -17,17 +19,32 @@ export const LASER = {
   chargeTime: 0.8,     // s of glow telegraph
   burstBeams: 5, burstArc: Math.PI * 0.45, burstFlash: 0.25, burstDmg: 2,
   sweepTime: 1.1, sweepArc: Math.PI * 0.45, sweepDmg: 1,
-  beamHitDist: 10,     // px: perpendicular distance that counts as a hit
+  beamHitDist: 2,      // px: the beam's own half-width (drawn 4 px wide in monsters.js); the player's body adds PLAYER_SHAPE.r
 }
 
 const norm = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a }
 
+// Where the beams leave the body: the midpoint of the drawn eyes (the same
+// offsets the renderer draws them from), or the centre for a def without a
+// rig — so the damage line is the line the player sees.
+export function beamOrigin(e) {
+  const d = getMonsterDef(e.type)
+  const offs = d ? eyeOffsets(e, d) : []
+  if (!offs.length) return { px: e.px, py: e.py }
+  const x = offs.reduce((s, o) => s + o.x, 0) / offs.length
+  const y = offs.reduce((s, o) => s + o.y, 0) / offs.length
+  return { px: e.px + x, py: e.py + y }
+}
+
+// A beam hits when it passes within its own width plus the player's body
+// radius (systems/hitbox.js) of the player's centre.
 function beamHitsPlayer(e, player, ang) {
-  const dx = player.px - e.px, dy = player.py - e.py
+  const o = beamOrigin(e)
+  const dx = player.px - o.px, dy = player.py - o.py
   const dirx = Math.cos(ang), diry = Math.sin(ang)
   const along = dx * dirx + dy * diry
   if (along < 0 || along > LASER.beamLen) return false
-  return Math.abs(dx * diry - dy * dirx) < LASER.beamHitDist
+  return Math.abs(dx * diry - dy * dirx) < LASER.beamHitDist + PLAYER_SHAPE.r
 }
 
 function end(e, l) {
@@ -55,7 +72,8 @@ export function update(e, state, delta) {
 
   if (l.state === 'charge') {
     l.t += delta
-    l.aim = Math.atan2(player.py - e.py, player.px - e.px)   // head keeps tracking
+    const o = beamOrigin(e)
+    l.aim = Math.atan2(player.py - o.py, player.px - o.px)   // head keeps tracking, aimed from the eyes
     e.pose.headAim = norm(l.aim - e.pose.facing)
     e.pose.eyeGlow = Math.min(1, l.t / LASER.chargeTime)
     if (l.t >= LASER.chargeTime) {

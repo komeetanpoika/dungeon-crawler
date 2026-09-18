@@ -10,6 +10,7 @@ import { loadoutAvailable } from './inventory.js'
 import { GUST_COSTS, affordableTier, canAfford, spendStamina } from './stamina.js'
 import { applyFreeze, applySlow } from './status.js'
 import { isStoryCreature } from './monsters.js'
+import { nearestPoint } from './hitbox.js'
 
 export const GUST = {
   cooldown: 3,
@@ -58,7 +59,10 @@ export function castCone(state, t) {
   let caught = 0
   for (const e of state.entities) {
     if (!e.hp || e.type === 'player' || isStoryCreature(e)) continue
-    if (!inSwing(reach, halfAngle, fa, e.px - p.px, e.py - p.py)) continue
+    // The wedge catches a body as soon as its nearest edge is in it
+    // (systems/hitbox.js), so a big beast is not spared by a far-off centre.
+    const n = nearestPoint(e, p.px, p.py)
+    if (!inSwing(reach, halfAngle, fa, n.x - p.px, n.y - p.py)) continue
     if (e.type === 'dragon_boss') continue
     caught++
     // Minibosses shrug the crowd control (stun, freeze) but not the shove.

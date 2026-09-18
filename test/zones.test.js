@@ -195,3 +195,14 @@ describe('tickZones', () => {
     assert.deepEqual(s.zones, [])
   })
 })
+
+describe('hit extents (systems/hitbox.js)', () => {
+  it('roots a big body whose edge stands in the thorns', () => {
+    const cyclops = at('cyclops', 10, 5)   // patch covers 7..9; centre 16 px past the east edge
+    const guard = at('guard', 10, 5)
+    const s = mkState([cyclops, guard], [makeBrambleZone(mkMap(), 8, 5, 1, 6, 2, 1)])
+    tickZones(s, 0.1, mkHooks().hooks)
+    assert.equal(cyclops.rootTimer, 2)
+    assert.equal(guard.rootTimer, undefined)
+  })
+})

@@ -1,8 +1,10 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { update, LASER } from '../renderer/systems/monsters/podeboo.js'
+import { update, LASER, beamOrigin } from '../renderer/systems/monsters/podeboo.js'
 import { CREATURE_UPDATE } from '../renderer/systems/creatures.js'
-import { updateMonsterPose } from '../renderer/systems/monsters.js'
+import { updateMonsterPose, registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
+import { PLAYER_SHAPE } from '../renderer/systems/hitbox.js'
+import { readFileSync } from 'node:fs'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { INVULN_DURATION } from '../renderer/systems/player-damage.js'
@@ -125,5 +127,54 @@ describe('fire phase', () => {
     step(e, state, LASER.cooldown + 0.01)
     step(e, state)
     assert.equal(e.laser.state, 'charge')          // and then it may again
+  })
+})
+
+describe('hit extents (systems/hitbox.js)', () => {
+  it('beamHitDist is the drawn beam\'s half-width (4 px wide in monsters.js), not a body allowance', () => {
+    assert.ok(LASER.beamHitDist <= 2, `beamHitDist ${LASER.beamHitDist}`)
+  })
+
+  it('a locked beam hits the player body, not just a 10 px line through its centre', () => {
+    const e = mkPodeboo(5, 5, 10)
+    const state = mkState(e, mkPlayer(12, 5))        // 7 tiles out: the fan's beams are 77 px apart here
+    step(e, state)
+    step(e, state, LASER.chargeTime + 0.01)          // aim locks, beams set, no damage yet
+    state.player.py += LASER.beamHitDist + PLAYER_SHAPE.r - 2   // sidestep: rim still on the beam
+    step(e, state)                                   // first fire frame
+    assert.equal(state.player.hp, 30 - LASER.burstDmg)
+  })
+
+  it('a sidestep past the body rim is a miss', () => {
+    const e = mkPodeboo(5, 5, 10)
+    const state = mkState(e, mkPlayer(12, 5))
+    step(e, state)
+    step(e, state, LASER.chargeTime + 0.01)
+    state.player.py += LASER.beamHitDist + PLAYER_SHAPE.r + 2
+    step(e, state)
+    assert.equal(state.player.hp, 30)
+  })
+
+  describe('with the real rig registered', () => {
+    beforeEach(async () => {
+      clearMonsters()
+      await registerMonsters([JSON.parse(readFileSync('renderer/data/monsters/podeboo.json', 'utf8'))],
+        { warn: () => {}, loadHooks: async () => {} })
+    })
+    it('the beam starts at the drawn eyes and aims from there', () => {
+      const e = mkPodeboo(5, 5, 10)
+      const state = mkState(e, mkPlayer(12, 5))
+      step(e, state)
+      e.pose.facing = Math.PI / 2                     // body faces south: the head hangs below the centre
+      step(e, state, 0.016)
+      const o = beamOrigin(e)
+      assert.ok(o.py > e.py + 30, `eyes sit well south of the body centre (${o.py - e.py})`)
+      assert.ok(e.laser.aim < -0.05, `aim from the eyes leans north toward the player (${e.laser.aim})`)
+    })
+    it('falls back to the body centre without a rig', () => {
+      clearMonsters()
+      const e = mkPodeboo(5, 5, 10)
+      assert.deepEqual(beamOrigin(e), { px: e.px, py: e.py })
+    })
   })
 })

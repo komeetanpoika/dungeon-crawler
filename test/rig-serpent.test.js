@@ -2,7 +2,7 @@ import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, frameFor, _setSheetImage } from '../renderer/render/monster-rigs/serpent.js'
+import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, hitShape, frameFor, _setSheetImage } from '../renderer/render/monster-rigs/serpent.js'
 import { SHEET } from '../renderer/assets/monsters/serpent-sheet.js'
 import { readPng } from '../tools/png-read.mjs'
 
@@ -98,5 +98,12 @@ describe('serpent rig', () => {
       const h = hitHalf(params)
       assert.ok(h >= 8 && h <= 28, String(h))
     }
+  })
+})
+
+describe('serpent hitShape', () => {
+  it('is the half-size as a circle: the art never rotates with facing', () => {
+    const p = Object.fromEntries(PARAM_SCHEMA.map(s => [s.key, s.default]))
+    assert.deepEqual(hitShape(p), { r: hitHalf(p) })
   })
 })

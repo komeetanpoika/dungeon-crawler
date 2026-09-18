@@ -74,6 +74,19 @@ export function eyeAnchors(p) {
   return { pivot: { x: 0, y: -d.bl / 2 }, eyes: [{ x: -x, y }, { x, y }] }
 }
 
+// Hit extent (systems/hitbox.js): a capsule along the facing from nose to
+// tail, its radius the body half-width plus half a leg, in screen px at
+// 32-px tiles. The caps stand in for the head and tail, so the segment ends
+// are pulled in by the radius; 0.6 of the tail because it is thin.
+export function hitShape(p) {
+  const d = dims(p)
+  const k = 32 / TILE_ART_PX
+  const r = R((d.bw / 2 + d.legLen * 0.5) * k)
+  const front = Math.max(0, R((d.bl / 2 + d.headH + d.snout) * k) - r)
+  const back = Math.max(0, R((d.bl / 2 + d.tailLen * 0.6) * k) - r)
+  return { r, front, back }
+}
+
 export function hitHalf(p) {
   const d = dims(p)
   const halfLen = (d.bl + d.headH + d.snout + 2) / 2
