@@ -26,7 +26,7 @@ import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToas
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { openGate, updateGates } from './systems/gates.js'
-import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
@@ -41,7 +41,7 @@ import { updateEcho } from './systems/echo.js'
 import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { questFor, questFlags, questLines, makeQuestCtx } from './systems/quests.js'
 import { QUEST_MODULES } from './systems/quests/index.js'
-import { felledCells, findHarvestHit, harvest } from './systems/lumber.js'
+import { felledCells, findHarvestHit, harvest, resolveTool } from './systems/lumber.js'
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
 import { isEnemy, isHittable, isSpellTarget } from './systems/factions.js'
 import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
@@ -901,9 +901,11 @@ function openInventory() {
   showInventory(state, {
     onEquip: i => report(state.player.inventory[i]?.kind === 'outfit' ? equipOutfit(state.player, i) : equipItem(state.player, i)),
     onEquipOff: i => report(equipOffhand(state.player, i)),
+    onEquipBelt: i => report(equipBelt(state.player, i)),
     onUnequip: (stance, slot) => report(
       slot === 'main' ? unequipMain(state.player, stance)
       : slot === 'outfit' ? unequipOutfit(state.player, stance)
+      : slot === 'belt' ? unequipBelt(state.player)
       : unequipOffhand(state.player, stance)),
     onUse: i => useInventoryItem(i),
     onDrop: i => dropInventoryItem(i),
@@ -1505,9 +1507,10 @@ function update(delta) {
     // bar-less chopHp on the cell; the fall/clear is what you hear and see,
     // and the lumber (trees only) arcs onto the stump for a walk-onto
     // pickup.
-    const tool = { chop: wpn.chop, mine: wpn.mine }
+    // The belt lends its chop/mine to whichever blade swings (spec §5).
+    const tool = resolveTool(wpn, player.belt)
     if (tool.chop || tool.mine) {
-      const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, tool)
+      const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, wpn)
       if (spot) {
         const res = harvest(state.map, spot.x, spot.y, tool)
         state.hitEffects.push({ x: spot.x, y: spot.y })

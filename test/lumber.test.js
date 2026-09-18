@@ -198,6 +198,11 @@ describe('rocks', () => {
     assert.deepEqual(findHarvestHit(m, player(2, 3), anyHit, 46, { mine: 1 }), { x: 3, y: 3 })
     assert.deepEqual(harvest(m, 4, 3, { chop: 1, mine: 1 }), { felled: false, yield: 0, kind: 'tree', drop: null })
   })
+  it('findTreeHit stays chop-only even with a pick on the belt', () => {
+    const m = grass(); rock(m, 3, 3)
+    const p = { ...player(2, 3), belt: { mine: 1 } }
+    assert.equal(findTreeHit(m, p, anyHit, 46), null)
+  })
 })
 
 describe('deadwood drop', () => {

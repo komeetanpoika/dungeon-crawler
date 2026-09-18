@@ -66,7 +66,7 @@ describe('moveSelection', () => {
   it('within the strip, Left/Right change column and Up/Down change tile', () => {
     assert.deepEqual(moveSelection({ area: 'gear', index: 0 }, 'ArrowRight', counts), { area: 'gear', index: 3 })
     assert.deepEqual(moveSelection({ area: 'gear', index: 3 }, 'ArrowDown', counts), { area: 'gear', index: 4 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 8 }, 'ArrowRight', counts), { area: 'gear', index: 8 })
+    assert.deepEqual(moveSelection({ area: 'gear', index: 8 }, 'ArrowRight', counts), { area: 'gear', index: 9 })
     assert.deepEqual(moveSelection({ area: 'gear', index: 0 }, 'ArrowUp', counts), { area: 'gear', index: 0 })
   })
   it('an empty sack keeps Up/Down between strip and a zero-index sack', () => {
@@ -97,5 +97,37 @@ describe('offhand items in the strip and the actions', () => {
     const p = mk()
     p.gear.melee.off = { kind: 'weapon', weaponType: 'dagger', name: 'Dagger', damage: 1 }
     assert.deepEqual(gearAction(p, 'melee', 'off'), { label: 'Unequip', fn: 'onUnequip' })
+  })
+})
+
+import { beltTile, gearAt } from '../renderer/ui/inventory-panel-model.js'
+describe('the belt in the panel', () => {
+  it('shows the worn tool as a weapon tile, or nothing', () => {
+    assert.equal(beltTile(mk()).item, null)
+    const t = beltTile(mk({ belt: weaponContents('hatchet') }))
+    assert.equal(t.slot, 'belt')
+    assert.equal(t.item.kind, 'weapon')
+    assert.equal(t.item.payload.weaponType, 'hatchet')
+  })
+  it('sits at gear index 9, right of the Mage column', () => {
+    assert.deepEqual(gearAt(9), { stance: 'belt', slot: 'belt' })
+    const counts = { sack: 3, gear: 10 }
+    assert.deepEqual(moveSelection({ area: 'gear', index: 6 }, 'ArrowRight', counts), { area: 'gear', index: 9 })
+    assert.deepEqual(moveSelection({ area: 'gear', index: 8 }, 'ArrowRight', counts), { area: 'gear', index: 9 })
+    assert.deepEqual(moveSelection({ area: 'gear', index: 9 }, 'ArrowLeft', counts), { area: 'gear', index: 6 })
+    assert.deepEqual(moveSelection({ area: 'gear', index: 9 }, 'ArrowDown', counts), { area: 'sack', index: 0 })
+    assert.deepEqual(moveSelection({ area: 'gear', index: 9 }, 'ArrowUp', counts), { area: 'gear', index: 9 })
+    assert.deepEqual(moveSelection({ area: 'gear', index: 9 }, 'ArrowRight', counts), { area: 'gear', index: 9 })
+  })
+  it('offers Belt to tools the player can wear, Unequip on the tile', () => {
+    const hatchet = itemFromContents({ type: 'weapon', ...weaponContents('hatchet') })
+    assert.deepEqual(sackActions(mk(), hatchet).map(a => a.label), ['Equip', 'Offhand', 'Belt', 'Drop'])
+    const axe = itemFromContents({ type: 'weapon', ...weaponContents('axe') })
+    assert.deepEqual(sackActions(mk(), axe).map(a => a.label), ['Equip', 'Drop'])
+    assert.deepEqual(sackActions(mk({ gear: gearWearing('plate') }), axe).map(a => a.label), ['Equip', 'Belt', 'Drop'])
+    const sword = itemFromContents({ type: 'weapon', ...weaponContents('sword') })
+    assert.deepEqual(sackActions(mk(), sword).map(a => a.label), ['Equip', 'Offhand', 'Drop'])
+    assert.equal(gearAction(mk(), 'belt', 'belt'), null)
+    assert.deepEqual(gearAction(mk({ belt: weaponContents('pick') }), 'belt', 'belt'), { label: 'Unequip', fn: 'onUnequip' })
   })
 })

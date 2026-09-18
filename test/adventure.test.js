@@ -403,6 +403,18 @@ describe('v8 save shape — gear and outfits', () => {
     assert.equal(b.gear.ranged.off, null)
     assert.deepEqual(normalizeBody(b), b)
   })
+  it('illegal offhands for a loadout are moved to inventory on load', () => {
+    const stale = { ...emptyBody(), gear: { ...defaultGear(),
+      melee: { off: { kind: 'shield', weaponType: 'buckler' }, outfit: null },
+      magic: { off: { kind: 'weapon', weaponType: 'dagger' }, outfit: null } } }
+    const b = normalizeBody(stale)
+    assert.deepEqual(b.gear.melee.off, { kind: 'shield', weaponType: 'buckler', name: 'Buckler', blockCost: 8 })
+    assert.equal(b.gear.magic.off, null, 'the Mage offhand dagger is removed')
+    assert.equal(b.inventory.length, 1)
+    assert.equal(b.inventory[0].kind, 'weapon')
+    assert.equal(b.inventory[0].payload.weaponType, 'dagger')
+    assert.deepEqual(normalizeBody(b), b)
+  })
   it('a v7 save with stance talents wakes up wearing the outfits', () => {
     const v7 = { caves: {}, progress: { mapDepth: 12, cleared: {}, visited: [] }, talents: ['ranged_stance', 'magic_stance', 'heavy_weapons', 'ski_legs'],
       body: { weapon: null, ranged: null, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 }, inventory: [] },
@@ -424,6 +436,11 @@ describe('v8 save shape — gear and outfits', () => {
       gear: { ...defaultGear(), melee: { off: null, outfit: { outfitType: 'plate' } },
         magic: { off: { kind: 'consumable', item: 'mushroom' }, outfit: null } } })
     assert.deepEqual(normalizeBody(once), once)
+  })
+  it('a saved belt is rebuilt from the table; an unknown tool is dropped', () => {
+    const b = normalizeBody({ ...emptyBody(), belt: { weaponType: 'hatchet', name: 'Old Hatchet', damage: 9, chop: 9 } })
+    assert.deepEqual(b.belt, weaponContents('hatchet'))
+    assert.equal(normalizeBody({ ...emptyBody(), belt: { weaponType: 'spork' } }).belt, null)
   })
   it('a current save is untouched', () => {
     const s = normalizeAdventureSave(null)

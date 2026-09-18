@@ -185,8 +185,11 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   }
   if (entity.type === 'floating_item') {
     const c = entity.contents
-    if (c.type === 'weapon' || c.type === 'ranged' || c.type === 'wand') {
+    if (c.type === 'weapon' || c.type === 'ranged' || c.type === 'wand' || c.type === 'shield') {
       const s = sprites[`weapon_${c.weaponType}`]
+      if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
+    } else if (c.type === 'outfit') {
+      const s = sprites[`outfit_${c.outfitType}`]
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)

@@ -86,15 +86,27 @@ export function resolveTree(map, x, y) {
   return { x: r.x, y: r.y, def: TREES[map[r.y][r.x].overlay] }
 }
 
+// The tool a swing harvests with: the swinging weapon's own chop/mine, and
+// for each the weapon lacks, the belt's (spec §5). The belt never raises a
+// value the weapon already carries, and it never fights — only this
+// resolution reads it.
+export function resolveTool(weapon, belt) {
+  const chop = weapon?.chop || belt?.chop
+  const mine = weapon?.mine || belt?.mine
+  return { ...(chop && { chop }), ...(mine && { mine }) }
+}
+
 // Nearest harvestable trunk/rock whose cell centre lies inside the swing
 // wedge — hitAt(dx, dy) is the same test the entity hit uses. Only defs
-// whose tool the weapon carries are considered. One harvestable per swing.
+// whose tool the weapon — or the belt — carries are considered. One
+// harvestable per swing.
 export function findHarvestHit(map, player, hitAt, reachPx, weapon) {
+  const tool = resolveTool(weapon, player.belt)
   const r = Math.ceil(reachPx / TILE_SIZE) + 1
   let best = null, bestD = Infinity
   for (let y = player.y - r; y <= player.y + r; y++) for (let x = player.x - r; x <= player.x + r; x++) {
     const t = resolveHarvest(map, x, y)
-    if (!t || !weapon?.[t.def.tool]) continue
+    if (!t || !tool[t.def.tool]) continue
     const dx = x * TILE_SIZE + TILE_SIZE / 2 - player.px
     const dy = y * TILE_SIZE + TILE_SIZE / 2 - player.py
     if (Math.hypot(dx, dy) > reachPx + TILE_SIZE / 2) continue
@@ -105,9 +117,12 @@ export function findHarvestHit(map, player, hitAt, reachPx, weapon) {
   return best
 }
 
-// Thin wrapper: chop-only, same shape as before.
+// Thin wrapper: chop-only, same shape as before. findHarvestHit resolves the
+// weapon against player.belt (spec §5), so a pick riding the belt would
+// otherwise leak mine:1 into the { chop: 1 } weapon and make this return
+// rocks too — belt: null keeps the resolved tool chop-only for real.
 export function findTreeHit(map, player, hitAt, reachPx) {
-  return findHarvestHit(map, player, hitAt, reachPx, { chop: 1 })
+  return findHarvestHit(map, { ...player, belt: null }, hitAt, reachPx, { chop: 1 })
 }
 
 function fell(map, x, y, def) {
