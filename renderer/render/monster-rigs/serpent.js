@@ -40,6 +40,10 @@ export function hitHalf(p) {
   return Math.max(8, Math.min(28, R(p.width * 16 * 0.5)))
 }
 
+// Hit extent: the art is upright and only flips, so the half-size as a
+// circle (systems/hitbox.js).
+export const hitShape = p => ({ r: hitHalf(p) })
+
 // Which sheet cell a pose shows: dive row while sinking/rising, swim row
 // while moving, idle row otherwise. Exported for tests.
 export function frameFor(p, pose) {

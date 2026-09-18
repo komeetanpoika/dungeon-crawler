@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf } from '../renderer/render/monster-rigs/lurker.js'
+import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, hitShape } from '../renderer/render/monster-rigs/lurker.js'
 
 function recordingCtx() {
   const target = { ops: [], createLinearGradient: () => ({ addColorStop: () => {} }),
@@ -52,5 +52,12 @@ describe('lurker rig', () => {
       const h = hitHalf(params)
       assert.ok(h >= 8 && h <= 28, String(h))
     }
+  })
+})
+
+describe('lurker hitShape', () => {
+  it('is the half-size as a circle: the art never rotates with facing', () => {
+    const p = Object.fromEntries(PARAM_SCHEMA.map(s => [s.key, s.default]))
+    assert.deepEqual(hitShape(p), { r: hitHalf(p) })
   })
 })

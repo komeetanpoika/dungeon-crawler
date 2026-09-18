@@ -39,6 +39,10 @@ export function hitHalf(p) {
   return Math.max(8, Math.min(28, R(p.height * 16 * 0.35)))
 }
 
+// Hit extent: the art is upright and only flips, so the half-size as a
+// circle (systems/hitbox.js).
+export const hitShape = p => ({ r: hitHalf(p) })
+
 // Which sheet cell a pose shows. Death and a strong flicker both walk the
 // dissolve row (flicker reversed on the way in: a rising fade means a falling
 // flicker, so the eyes appear first and the body gathers under them);
