@@ -19,7 +19,7 @@ export const LASER = {
   chargeTime: 0.8,     // s of glow telegraph
   burstBeams: 5, burstArc: Math.PI * 0.45, burstFlash: 0.25, burstDmg: 2,
   sweepTime: 1.1, sweepArc: Math.PI * 0.45, sweepDmg: 1,
-  beamHitDist: 10,     // px: perpendicular distance that counts as a hit
+  beamHitDist: 2,      // px: the beam's own half-width (drawn 4 px wide in monsters.js); the player's body adds PLAYER_SHAPE.r
 }
 
 const norm = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a }

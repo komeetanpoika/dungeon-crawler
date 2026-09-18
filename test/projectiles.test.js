@@ -68,7 +68,7 @@ describe('stepProjectiles — pierce and hitIds', () => {
 
   it('hitIds stops a lingering projectile from hitting the same enemy twice', () => {
     const entities = [{ id: 'a', type: 'monster', px: 5, py: 0, hp: 10 }]
-    // Very slow projectile: stays within HIT_RADIUS (8px) of the enemy for
+    // Very slow projectile: stays inside the enemy's body (systems/hitbox.js) for
     // more than one frame, so without hitIds it would double-hit.
     const p = { px: 0, py: 0, dx: 1, dy: 0, damage: 3, friendly: true, pierce: 5 }
     const { hooks, hitLog } = makeHooks()

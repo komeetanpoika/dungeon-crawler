@@ -20,6 +20,7 @@
 // drawn off its centre. Pure: no DOM, no game.js.
 import { pointInCapsule } from './capsules.js'
 import { getMonsterDef } from './monsters.js'
+import { snapFacing } from '../render/monster-rigs/pixel.js'
 
 const TILE_SIZE = 32
 
@@ -37,6 +38,9 @@ export const SPRITE_SHAPES = {
   cyclops: { r: 26 },
   dragon:  { r: 36, oy: -32 },
 }
+// The player sprite is 32 px too; 12 keeps it just inside. This is wider
+// than the old 10 px enemy-shot disc on purpose — the hero's hitbox now
+// matches the drawn hero the way every enemy's does.
 export const PLAYER_SHAPE = { r: 12 }
 export const FALLBACK_SHAPE = { r: 8 }
 
@@ -61,7 +65,9 @@ export function hitShape(e, local = null) {
   const cx = e.px + (s.ox ?? 0), cy = e.py + (s.oy ?? 0)
   const front = s.front ?? 0, back = s.back ?? 0
   if (!front && !back) return { ax: cx, ay: cy, bx: cx, by: cy, r: s.r }
-  const f = e.pose?.facing ?? 0
+  // The rigs draw at one of eight headings (snapFacing), so the capsule
+  // follows the drawn body, not the raw heading.
+  const f = snapFacing(e.pose?.facing ?? 0)
   const dx = Math.cos(f), dy = Math.sin(f)
   return { ax: cx + dx * front, ay: cy + dy * front, bx: cx - dx * back, by: cy - dy * back, r: s.r }
 }

@@ -1415,7 +1415,9 @@ function update(delta) {
     const arc = getSwingArc(atk.style)
     const hitAt = (dx, dy) => inSwing(arc.reach * mods.reachMul, arc.halfAngle, fa, dx, dy)
     // The swing bites a body by its nearest edge (systems/hitbox.js), so a
-    // big beast is hit where the blade meets it, not at a centre point.
+    // big beast is hit where the blade meets it, not at a centre point. A
+    // body the player is standing inside is hit whichever way they face —
+    // inSwing treats a target on top of the swinger as caught.
     const bodyHit = e => { const n = nearestPoint(e, player.px, player.py); return hitAt(n.x - player.px, n.y - player.py) }
     const miekka = wt === 'maunonmiekka'
     const hammer = !!wpn.lightning                     // Ukonvasara (systems/hammer.js)

@@ -187,7 +187,7 @@ describe('registry monsters', () => {
   const register = (name, behavior = {}) => registerMonsters(
     [{ name, rig: 'fakerig', stats: { hp: 24, dmg: 2, speed: 70, half: 12 }, behavior }],
     { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} })
-  const recorder = () => { const hurt = []; return { hurt, hooks: { hurt: (e, d) => hurt.push([e, d]) } } }
+  const recorder = () => { const hurt = []; return { hurt, hooks: { hurt: (e, d, meta) => hurt.push([e, d, meta]) } } }
 
   it('a burst hurts a registry monster on a blast tile through the hurt hook, in place', async () => {
     await register('firebeast')
@@ -195,7 +195,7 @@ describe('registry monsters', () => {
       const beast = at(1, 1, { type: 'firebeast', hp: 24 })
       const { hurt, hooks } = recorder()
       const r = applyBurst([beast], at(9, 9), TILES, hooks)
-      assert.deepEqual(hurt, [[beast, BURST_DAMAGE]])
+      assert.deepEqual(hurt, [[beast, BURST_DAMAGE, { source: 'fire' }]], 'the hook is told it is fire, so a creature can answer fire differently from a blade')
       assert.equal(r.hitCount, 1)
       assert.equal(r.entities[0], beast, 'the live entity is kept, never copied or culled here')
       assert.equal(beast.hp, 24, 'the hook owns the damage (hurtCreature decides absorbs and death)')
@@ -208,7 +208,7 @@ describe('registry monsters', () => {
       const beast = at(1, 1, { type: 'firebeast', hp: 24 })
       const { hurt, hooks } = recorder()
       updateFireZones([makeFireZone(TILES)], [beast], at(9, 9), FIRE_TICK_INTERVAL, hooks)
-      assert.deepEqual(hurt, [[beast, 1]])
+      assert.deepEqual(hurt, [[beast, 1, { source: 'fire' }]])
     } finally { clearMonsters() }
   })
 

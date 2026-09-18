@@ -43,7 +43,8 @@ export function computeBlastTiles(map, tileX, tileY, count = BLAST_TILES) {
 // These built-in types take the damage in place here (copied, then culled).
 // A registry monster burns through the caller's `hurt` hook instead, the
 // way the bramble does: hurtCreature decides what fire does to it (absorbs,
-// death poses), so this module never touches its hp. Story creatures are
+// death poses), so this module never touches its hp. The hook is told
+// `source: 'fire'` — the Sammunut answers fire differently from a blade. Story creatures are
 // let through like the bramble lets them through. No hook, no burn.
 const BURNABLE = new Set(['guard', 'monster', 'dragon', 'cyclops', 'wizard', 'crab', 'npc'])
 const hookBurnable = e => !!getMonsterDef(e.type) && isSpellTarget(e)
@@ -64,7 +65,7 @@ export function applyBurst(entities, player, tiles, { hurt } = {}) {
   let hitCount = 0
   const updated = entities.map(e => {
     if (e.px === undefined || !burns(e, keys)) return e
-    if (hurt && hookBurnable(e)) { hitCount++; hurt(e, BURST_DAMAGE); return e }
+    if (hurt && hookBurnable(e)) { hitCount++; hurt(e, BURST_DAMAGE, { source: 'fire' }); return e }
     if (!BURNABLE.has(e.type)) return e
     hitCount++
     return { ...e, hp: e.hp - BURST_DAMAGE, inCombat: true }
@@ -91,7 +92,7 @@ export function updateFireZones(zones, entities, player, delta, { hurt } = {}) {
       const keys = keySet(zone.tiles)
       updated = updated.map(e => {
         if (e.px === undefined || !burns(e, keys)) return e
-        if (hurt && hookBurnable(e)) { hurt(e, FIRE_TICK_DAMAGE); return e }
+        if (hurt && hookBurnable(e)) { hurt(e, FIRE_TICK_DAMAGE, { source: 'fire' }); return e }
         if (!BURNABLE.has(e.type)) return e
         return { ...e, hp: e.hp - FIRE_TICK_DAMAGE, inCombat: true }
       })

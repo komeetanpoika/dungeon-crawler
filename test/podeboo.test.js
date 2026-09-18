@@ -131,6 +131,10 @@ describe('fire phase', () => {
 })
 
 describe('hit extents (systems/hitbox.js)', () => {
+  it('beamHitDist is the drawn beam\'s half-width (4 px wide in monsters.js), not a body allowance', () => {
+    assert.ok(LASER.beamHitDist <= 2, `beamHitDist ${LASER.beamHitDist}`)
+  })
+
   it('a locked beam hits the player body, not just a 10 px line through its centre', () => {
     const e = mkPodeboo(5, 5, 10)
     const state = mkState(e, mkPlayer(12, 5))        // 7 tiles out: the fan's beams are 77 px apart here

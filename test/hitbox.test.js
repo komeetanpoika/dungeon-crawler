@@ -63,6 +63,12 @@ describe('hitShape', () => {
     assert.deepEqual([Math.round(s.bx), Math.round(s.by)], [100, 95], 'back end 5 px north')
   })
 
+  it('snaps a rig capsule to the eight directions the rig draws in', () => {
+    const e = at('capbeast', 100, 100, { pose: { facing: 0.3 } })   // rig draws this as east
+    const s = hitShape(e)
+    assert.deepEqual([s.ax, s.ay], [120, 100])
+  })
+
   it('faces east when a registry monster has no pose yet', () => {
     const s = hitShape(at('capbeast', 100, 100))
     assert.deepEqual([Math.round(s.ax), Math.round(s.ay)], [120, 100])
