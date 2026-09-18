@@ -391,3 +391,31 @@ describe('wall stop and maxDist', () => {
     assert.equal(detonations.length, 1)
   })
 })
+
+describe('hit extents (systems/hitbox.js)', () => {
+  it('a shot passing 20 px from a cyclops centre still hits its 64 px body', () => {
+    const big = { id: 'c', type: 'cyclops', px: 50, py: 20, hp: 10 }
+    const p = { px: 0, py: 0, dx: 1000, dy: 0, damage: 3, friendly: true }
+    const { hooks, hitLog } = makeHooks()
+    const state = baseState([big], [p])
+    for (let i = 0; i < 10 && state.projectiles.length; i++) stepProjectiles(state, 0.01, hooks)
+    assert.equal(hitLog.length, 1, 'the body, not the centre point, takes the shot')
+  })
+
+  it('the same shot misses a one-tile guard whose sprite it does not cross', () => {
+    const small = { id: 'g', type: 'guard', px: 50, py: 20, hp: 10 }
+    const p = { px: 0, py: 0, dx: 1000, dy: 0, damage: 3, friendly: true }
+    const { hooks, hitLog } = makeHooks()
+    const state = baseState([small], [p])
+    for (let i = 0; i < 10 && state.projectiles.length; i++) stepProjectiles(state, 0.01, hooks)
+    assert.equal(hitLog.length, 0)
+  })
+
+  it('an enemy bolt hits the player body 11 px from its centre', () => {
+    const p = { px: 0, py: 0, dx: 100, dy: 0, damage: 4, friendly: false }
+    const { hooks, playerDamage } = makeHooks()
+    const state = baseState([], [p], { player: { px: 12, py: 0 } })
+    stepProjectiles(state, 0.01, hooks) // px -> 1, 11 px short of the centre
+    assert.equal(playerDamage.length, 1)
+  })
+})

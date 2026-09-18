@@ -54,8 +54,10 @@ function localShape(e) {
 
 // The entity's capsule in world px: { ax, ay, bx, by, r }. `a` is the front
 // end (nose), `b` the back (tail); both sit on the centre for a circle.
-export function hitShape(e) {
-  const s = localShape(e)
+// `local` overrides the lookup — the player passes PLAYER_SHAPE explicitly,
+// since state.player does not always carry a type.
+export function hitShape(e, local = null) {
+  const s = local ?? localShape(e)
   const cx = e.px + (s.ox ?? 0), cy = e.py + (s.oy ?? 0)
   const front = s.front ?? 0, back = s.back ?? 0
   if (!front && !back) return { ax: cx, ay: cy, bx: cx, by: cy, r: s.r }
@@ -66,8 +68,8 @@ export function hitShape(e) {
 
 // Does the point (x, y) land on the body? `pad` widens the body by the
 // striker's own size (a projectile's half-width).
-export function pointHits(e, x, y, pad = 0) {
-  const s = hitShape(e)
+export function pointHits(e, x, y, pad = 0, local = null) {
+  const s = hitShape(e, local)
   return pointInCapsule(x, y, s.ax, s.ay, s.bx, s.by, s.r + pad)
 }
 
@@ -82,8 +84,8 @@ function closestOnSegment(x, y, ax, ay, bx, by) {
 // The point of the body nearest to (x, y): the probe itself when it is
 // inside, otherwise the rim point facing it. Wedge and radius tests use
 // this so a big body is "in reach" as soon as its edge is.
-export function nearestPoint(e, x, y) {
-  const s = hitShape(e)
+export function nearestPoint(e, x, y, local = null) {
+  const s = hitShape(e, local)
   const c = closestOnSegment(x, y, s.ax, s.ay, s.bx, s.by)
   const d = Math.hypot(x - c.x, y - c.y)
   if (d <= s.r) return { x, y }
@@ -121,9 +123,9 @@ function segmentRectDist(ax, ay, bx, by, x0, y0, x1, y1) {
 // Does the body overlap any tile in `keys` (a Set of "x,y" tile keys, the
 // shape every zone and blast already carries)? Only the tiles under the
 // body's bounding box are looked at, so a big set costs nothing extra.
-export function overlapsTiles(e, keys) {
+export function overlapsTiles(e, keys, local = null) {
   if (!keys?.size || !Number.isFinite(e.px)) return false
-  const s = hitShape(e)
+  const s = hitShape(e, local)
   const tx0 = Math.floor((Math.min(s.ax, s.bx) - s.r) / TILE_SIZE)
   const tx1 = Math.floor((Math.max(s.ax, s.bx) + s.r) / TILE_SIZE)
   const ty0 = Math.floor((Math.min(s.ay, s.by) - s.r) / TILE_SIZE)

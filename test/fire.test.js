@@ -158,3 +158,22 @@ describe('npc burnability', () => {
     assert.equal(r.entities.length, 0)
   })
 })
+
+describe('hit extents (systems/hitbox.js)', () => {
+  it('a burst burns a big body spilling onto a blast tile from the next tile over', () => {
+    const cyclops = at(3, 1, { type: 'cyclops' })   // centre 16 px past tile (2,1)'s east edge
+    const guard = at(3, 1, { type: 'guard' })        // 32 px sprite: 16 px is past its rim
+    const { entities, hitCount } = applyBurst([cyclops, guard], at(9, 9), TILES)
+    assert.equal(hitCount, 1)
+    assert.equal(entities.find(e => e.type === 'cyclops').hp, 10 - BURST_DAMAGE)
+    assert.equal(entities.find(e => e.type === 'guard').hp, 10)
+  })
+
+  it('a fire zone ticks a big body spilling onto it the same way', () => {
+    const cyclops = at(3, 1, { type: 'cyclops' })
+    const guard = at(3, 1, { type: 'guard' })
+    const { entities } = updateFireZones([makeFireZone(TILES)], [cyclops, guard], at(9, 9), FIRE_TICK_INTERVAL)
+    assert.equal(entities.find(e => e.type === 'cyclops').hp, 9)
+    assert.equal(entities.find(e => e.type === 'guard').hp, 10)
+  })
+})

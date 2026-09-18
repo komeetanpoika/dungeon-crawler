@@ -167,6 +167,15 @@ describe('thunderclap', () => {
     assert.equal(far.slowTimer, undefined)
     assert.equal(villager.knockback, undefined, 'peaceful villagers are spared')
   })
+
+  it('catches a big body whose rim is inside the radius though its centre is not', () => {
+    const p = player(3, 3)
+    const cyclops = { type: 'cyclops', px: p.px + HAMMER.clap.radius + 20, py: p.py, hp: 20 }
+    const small = { type: 'monster', px: p.px + HAMMER.clap.radius + 20, py: p.py, hp: 20 }
+    assert.equal(thunderclap(p, [cyclops, small]), 1)
+    assert.ok(cyclops.knockback)
+    assert.equal(small.knockback, undefined)
+  })
 })
 
 describe('drawShockCloud', () => {

@@ -239,6 +239,14 @@ describe('tickLightning', () => {
     assert.equal(far.hp, 9)
   })
 
+  it('the 3×3 catches a big body spilling into it from the next tile', () => {
+    const cyclops = { ...enemy(6, 4), type: 'cyclops' }   // 16 px past the blast's east edge
+    const state = { map: pondMap(), entities: [cyclops], lightning: [mark(4, 4)] }
+    const hooks = recorder()
+    assert.deepEqual(tickLightning(state, LIGHTNING.delay, hooks), { struck: 1 })
+    assert.equal(cyclops.stunTimer, LIGHTNING.stun)
+  })
+
   it('leaves the player, the Echo and villagers alone', () => {
     const p = player(4, 4), echo = { type: 'echo', px: 4 * 32, py: 4 * 32, hp: 1 }
     const villager = enemy(3, 4, { type: 'npc' })

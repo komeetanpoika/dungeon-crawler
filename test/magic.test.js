@@ -65,11 +65,18 @@ describe('tryGust', () => {
 
   it('misses enemies behind the caster or out of reach', () => {
     const behind = guardAt(-T, 0)
-    const far = guardAt(GUST.reach + 10, 0)
+    const far = guardAt(GUST.reach + 20, 0)   // rim 7 px past the reach
     const state = mkState([behind, far])
     tryGust(state)
     assert.equal(behind.stunTimer, undefined)
     assert.equal(far.stunTimer, undefined)
+  })
+
+  it('reaches a big body whose rim is in the cone though its centre is past it', () => {
+    const cyclops = { type: 'cyclops', px: 100 + GUST.reach + 15, py: 100, x: 0, y: 0, hp: 20, maxHp: 20 }
+    const state = mkState([cyclops])
+    tryGust(state)
+    assert.equal(cyclops.stunTimer, GUST.stun)
   })
 
   it('minibosses shrug the stun but still get shoved lightly', () => {

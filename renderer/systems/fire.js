@@ -2,6 +2,7 @@
 // Pure logic — game.js owns detonation wiring, player damage application
 // (damagePlayer), and visuals (canvas.js draws state.fireZones).
 import { isWalkable } from './entities.js'
+import { overlapsTiles, PLAYER_SHAPE } from './hitbox.js'
 
 const TILE_SIZE = 32
 
@@ -39,8 +40,13 @@ export function computeBlastTiles(map, tileX, tileY, count = BLAST_TILES) {
 // dragon_boss is deliberately absent — it keeps full ranged immunity.
 const BURNABLE = new Set(['guard', 'monster', 'dragon', 'cyclops', 'wizard', 'crab', 'npc'])
 
-const tileKey = e => `${Math.floor(e.px / TILE_SIZE)},${Math.floor(e.py / TILE_SIZE)}`
 const keySet = tiles => new Set(tiles.map(t => `${t.x},${t.y}`))
+// Standing in the fire means the body overlaps a burning tile, not that
+// the centre is on one — a two-tile beast burns from the tile its flank is
+// on (systems/hitbox.js). The player's shape is passed explicitly since
+// state.player carries no type.
+const burns = (e, keys) => overlapsTiles(e, keys)
+const playerBurns = (player, keys) => overlapsTiles(player, keys, PLAYER_SHAPE)
 const cullDead = entities => entities.filter(e => !BURNABLE.has(e.type) || e.hp > 0)
 
 // Initial detonation damage to everything standing on a blast tile. The
@@ -49,11 +55,11 @@ export function applyBurst(entities, player, tiles) {
   const keys = keySet(tiles)
   let hitCount = 0
   const updated = entities.map(e => {
-    if (!BURNABLE.has(e.type) || e.px === undefined || !keys.has(tileKey(e))) return e
+    if (!BURNABLE.has(e.type) || e.px === undefined || !burns(e, keys)) return e
     hitCount++
     return { ...e, hp: e.hp - BURST_DAMAGE, inCombat: true }
   })
-  return { entities: cullDead(updated), playerBurned: keys.has(tileKey(player)), hitCount }
+  return { entities: cullDead(updated), playerBurned: playerBurns(player, keys), hitCount }
 }
 
 export function makeFireZone(tiles) {
@@ -74,10 +80,10 @@ export function updateFireZones(zones, entities, player, delta) {
       zone.tickTimer += FIRE_TICK_INTERVAL
       const keys = keySet(zone.tiles)
       updated = updated.map(e => {
-        if (!BURNABLE.has(e.type) || e.px === undefined || !keys.has(tileKey(e))) return e
+        if (!BURNABLE.has(e.type) || e.px === undefined || !burns(e, keys)) return e
         return { ...e, hp: e.hp - FIRE_TICK_DAMAGE, inCombat: true }
       })
-      if (keys.has(tileKey(player))) playerDamage += FIRE_TICK_DAMAGE
+      if (playerBurns(player, keys)) playerDamage += FIRE_TICK_DAMAGE
     }
     if (zone.age < FIRE_DURATION) live.push(zone)
   }

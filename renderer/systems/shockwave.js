@@ -2,6 +2,7 @@
 // enemy, splashing damage + knockback onto nearby enemies. Pure — game.js
 // owns the visuals (state.shockwaves) and calls this for the gameplay part.
 import { startKnockback } from './knockback.js'
+import { nearestPoint } from './hitbox.js'
 
 export const SHOCK_RADIUS = 80    // px
 export const SHOCK_DAMAGE = 3
@@ -17,7 +18,9 @@ export function applyShockwave(entities, cx, cy, exclude = new Set()) {
   const updated = entities.map(e => {
     if (!SPLASHABLE.has(e.type) || exclude.has(e)) return e
     if (e.type === 'wizard' && e.shieldTimer > 0) return e
-    if (e.px === undefined || Math.hypot(e.px - cx, e.py - cy) > SHOCK_RADIUS) return e
+    if (e.px === undefined) return e
+    const n = nearestPoint(e, cx, cy)   // the wave reaches a body by its rim (systems/hitbox.js)
+    if (Math.hypot(n.x - cx, n.y - cy) > SHOCK_RADIUS) return e
     hitCount++
     const hit = { ...e, hp: e.hp - SHOCK_DAMAGE, inCombat: true }
     startKnockback(hit, hit.px - cx, hit.py - cy, SHOCK_KNOCKBACK)

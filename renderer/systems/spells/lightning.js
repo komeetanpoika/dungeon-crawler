@@ -19,6 +19,7 @@ import { isStoryCreature } from '../monsters.js'
 import { isSpellTarget } from '../factions.js'
 import { sfx } from '../sfx.js'
 import { LOS_CLEAR_PREFIXES } from '../openmap.js'
+import { overlapsTiles } from '../hitbox.js'
 
 const TILE_SIZE = 32
 
@@ -142,11 +143,16 @@ const stunnable = e => !e.isBoss && e.type !== 'dragon_boss' && !isStoryCreature
 // real vulnerability). Returns the number of things hit.
 function strike(state, mark, hooks) {
   const water = connectedWater(state.map, mark.x, mark.y, LIGHTNING.waterCap)
+  // The 3×3 as tile keys: a body overlapping any of them is in the blast
+  // (systems/hitbox.js), so a beast whose flank crosses the edge is struck.
+  const blast = new Set()
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) blast.add(key(mark.x + dx, mark.y + dy))
   let hit = 0
   for (const e of state.entities ?? []) {
     if (!isTarget(e)) continue
     const t = tileOf(e)
-    const inBlast = Math.abs(t.x - mark.x) <= 1 && Math.abs(t.y - mark.y) <= 1
+    const inBlast = Number.isFinite(e.px) ? overlapsTiles(e, blast)
+      : Math.abs(t.x - mark.x) <= 1 && Math.abs(t.y - mark.y) <= 1
     // Story creatures are spared the plain 3×3 the way the gust spares them;
     // the water is the deliberate exception the spec carves out.
     const caught = (inBlast && !isStoryCreature(e)) || water.has(key(t.x, t.y))

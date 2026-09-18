@@ -56,6 +56,7 @@ import { tickZones } from './systems/zones.js'
 import { castLightning, tickLightning } from './systems/spells/lightning.js'
 import { HAMMER, applyShock, tickShock, chainNodes, applyChain, thunderclap, tickArcs, lightningMods, applyRain, tickRain, rainSlow } from './systems/hammer.js'
 import { stepProjectiles } from './systems/projectiles.js'
+import { nearestPoint } from './systems/hitbox.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
 import { TALENTS, hasTalent, RUSH_START_TALENTS } from './systems/talents.js'
@@ -1411,6 +1412,9 @@ function update(delta) {
     const fa = FACING_ANGLE[player.facing] ?? 0
     const arc = getSwingArc(atk.style)
     const hitAt = (dx, dy) => inSwing(arc.reach * mods.reachMul, arc.halfAngle, fa, dx, dy)
+    // The swing bites a body by its nearest edge (systems/hitbox.js), so a
+    // big beast is hit where the blade meets it, not at a centre point.
+    const bodyHit = e => { const n = nearestPoint(e, player.px, player.py); return hitAt(n.x - player.px, n.y - player.py) }
     const miekka = wt === 'maunonmiekka'
     const hammer = !!wpn.lightning                     // Ukonvasara (systems/hammer.js)
     // An overcharged hammer lands no blow of its own: the wedge only decides
@@ -1422,7 +1426,7 @@ function update(delta) {
       .map(e => {
         if (!isHittable(e)) return e
         if (zap) {
-          if (hitAt(e.px - player.px, e.py - player.py)) struck.push(e)
+          if (bodyHit(e)) struck.push(e)
           return e
         }
         if (e.type === 'dragon_boss') {
@@ -1436,7 +1440,7 @@ function update(delta) {
           if (collect) struck.push(bossHit)
           return bossHit
         }
-        if (!hitAt(e.px - player.px, e.py - player.py)) return e
+        if (!bodyHit(e)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
           const r = hurtCreature(state, e, dmg, { source: 'player' })
