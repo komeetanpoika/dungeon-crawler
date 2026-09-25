@@ -6,7 +6,7 @@
 // (Canvas2DLayerBridge::flushRecording — the software replay of every
 // drawImage/fillRect the frame recorded) and DOM style/layout.
 //
-//   node tools/perf/trace.mjs [depth=12] [seconds=5]
+//   node tools/perf/trace.mjs [depth=12|pvp] [seconds=5]
 //
 // Main-thread busy near 100% means dropped frames; the 2026-09-05 tile
 // cache work took the Mountain Pass from ~22 ms to ~8 ms per frame.
@@ -27,7 +27,8 @@ const app = await electron.launch({
 })
 await sleep(4000)
 const page = app.windows().find(w => !w.url().startsWith('devtools://')) ?? await app.firstWindow()
-for (const k of ['l', 'e', 'v', 'e', 'l', ...level.split('')]) { await page.keyboard.press(k); await sleep(120) }
+const cheat = level === 'pvp' ? ['p', 'v', 'p', 'Enter'] : ['l', 'e', 'v', 'e', 'l', ...level.split('')]
+for (const k of cheat) { await page.keyboard.press(k); await sleep(120) }
 await sleep(2500)
 
 const cdp = await app.context().newCDPSession(page)

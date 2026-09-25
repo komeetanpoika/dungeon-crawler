@@ -25,6 +25,9 @@ import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
+import { makeLocalMatch, localInputs, viewOf, LOCAL_ID } from './pvp/local.js'
+import { stepMatch, setClass } from './pvp/sim.js'
+import { pvpHudModel, updatePvpHud, hidePvpHud } from './ui/pvp-hud.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -71,6 +74,8 @@ import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
 import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
+import { canMoveTo, moveEntity, PLAYER_HALF, PLAYER_SPEED } from './systems/movement.js'
+import { applyLoadout, handPayload } from './systems/loadout.js'
 
 // Fresh weather state for a depth's map — rebuilt on every surface-map
 // construction so a departing map's weather (and its fog cells, keyed to
@@ -78,11 +83,9 @@ import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
 const weatherForDepth = depth => OPEN_MAPS[depth] ? makeWeather(OPEN_MAPS[depth]) : null
 
 const TILE_SIZE = 32
-const PLAYER_SPEED = 120
 const PROJECTILE_SPEED = 280
 const STONES_PER_ROCK = 3      // sling ammo from a rock cracked with a pick
 const CONTACT_RANGE = 20
-const PLAYER_HALF = 6
 const ENEMY_HALF = 4
 const SPIDER_SHOOT_RANGE = 130
 const DRAGON_SHOOT_RANGE = 200
@@ -131,6 +134,7 @@ window.addEventListener('keyup', e => {
 
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (pvp) { stopPvp(); return }
     if (inventoryOpen) closeInventory()
     else if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
@@ -140,6 +144,7 @@ window.addEventListener('keydown', e => {
 // I toggles the inventory panel: open while playing, close while it's open.
 window.addEventListener('keydown', e => {
   if ((e.key !== 'i' && e.key !== 'I') || e.repeat) return
+  if (pvp) return
   if (phase === PHASE.PLAYING) openInventory()
   else if (inventoryOpen) closeInventory()
 })
@@ -148,6 +153,7 @@ window.addEventListener('keydown', e => {
 // ramps its master gain when it sees the flag change in playCues.
 window.addEventListener('keydown', e => {
   if ((e.key !== 'm' && e.key !== 'M') || e.repeat) return
+  if (pvp) { pvp.match.sfx.muted = !pvp.match.sfx.muted; saveMutedPref(pvp.match.sfx.muted); return }
   if (!state?.sfx) return
   state.sfx.muted = !state.sfx.muted
   saveMutedPref(state.sfx.muted)
@@ -217,6 +223,9 @@ window.addEventListener('keydown', e => {
 })
 
 let state = null
+// A local PvP match (renderer/pvp/local.js) while one runs. `state` stays
+// null meanwhile, so every single-player key handler that checks it no-ops.
+let pvp = null
 // Tooling hook (verify-npcs.mjs etc.): only wired up when launched with
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
@@ -316,27 +325,6 @@ function rulesetTileNames(rs) {
   for (const set of Object.values(rs))
     for (const name of Object.keys(set.tiles ?? {})) names.add(name)
   return [...names]
-}
-
-function canMoveTo(map, px, py, half = PLAYER_HALF) {
-  const corners = [
-    [px - half, py - half],
-    [px + half, py - half],
-    [px - half, py + half],
-    [px + half, py + half],
-  ]
-  return corners.every(([cx, cy]) => {
-    const tile = map[Math.floor(cy / TILE_SIZE)]?.[Math.floor(cx / TILE_SIZE)]
-    return tile && isWalkable(tile.tile, tile)
-  })
-}
-
-function moveEntity(e, dx, dy, map, half = PLAYER_HALF, boss = null) {
-  const free = (px, py) => canMoveTo(map, px, py, half) && !(boss && coreBlocks(px, py, half, boss))
-  if (dx !== 0 && free(e.px + dx, e.py)) e.px += dx
-  if (dy !== 0 && free(e.px, e.py + dy)) e.py += dy
-  e.x = Math.floor(e.px / TILE_SIZE)
-  e.y = Math.floor(e.py / TILE_SIZE)
 }
 
 // A blow landed on an npc: hurt cue + species reaction + village wrath (once).
@@ -656,53 +644,6 @@ function resolveEpisode() {
   persistRun()
 }
 
-// Apply a loadout override (arena config's `player`, or a timewarp episode's
-// kit — same shape): weaponType/rangedType/wandType/ammo/hp/talents/outfits/
-// offhand, each optional.
-function applyLoadout(player, po) {
-  if (!po) return
-  const def = WEAPON_TYPES[po.weaponType]
-  if (def) player.weapon = weaponContents(po.weaponType)
-  else if (po.weaponType !== undefined) console.warn(`loadout: unknown player weaponType "${po.weaponType}" — keeping current weapon`)
-  const rdef = RANGED_WEAPON_TYPES[po.rangedType]
-  if (rdef) player.ranged = makeRangedContents(po.rangedType)
-  else if (po.rangedType !== undefined) console.warn(`loadout: unknown player rangedType "${po.rangedType}" — no ranged weapon`)
-  const wdef = WAND_TYPES[po.wandType]
-  if (wdef) player.wand = makeWandContents(po.wandType)
-  else if (po.wandType !== undefined) console.warn(`loadout: unknown player wandType "${po.wandType}" — no wand`)
-  // A kit's `ammo` tops up the pool it names; kinds it leaves out stay empty.
-  if (po.ammo) player.ammo = { ...emptyAmmo(), ...player.ammo, ...po.ammo }
-  if (Number.isFinite(po.hp) && po.hp >= 1) {
-    player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
-    player.hp = Math.round(po.hp)
-  }
-  // A kit's `talents` may still name a retired stance talent — it means the
-  // outfit now. `outfits` names outfits directly.
-  const wear = ot => { const { type, ...payload } = makeOutfitContents(ot); if (OUTFIT_TYPES[ot]) wearOutfit(player, payload); else console.warn(`loadout: unknown outfit "${ot}" — skipped`) }
-  if (Array.isArray(po.talents)) {
-    for (const t of po.talents) {
-      if (RETIRED_TALENT_OUTFITS[t]) wear(RETIRED_TALENT_OUTFITS[t])
-      else if (TALENTS[t]) player.talents.push(t)
-      else console.warn(`loadout: unknown talent "${t}" — skipped`)
-    }
-  }
-  if (Array.isArray(po.outfits)) po.outfits.forEach(wear)
-  // A kit's `offhand` ({ type, weaponType }) goes straight into the loadout
-  // that takes it: blades and shields to the Warrior, wands to the Mage.
-  if (po.offhand) {
-    const { type, weaponType } = po.offhand
-    const make = { weapon: wt => WEAPON_TYPES[wt] && weaponContents(wt), wand: wt => WAND_TYPES[wt] && handPayload(makeWandContents(wt)), shield: wt => SHIELD_TYPES[wt] && handPayload(makeShieldContents(wt)) }[type]
-    const payload = make?.(weaponType)
-    if (payload) gearOf(player, type === 'wand' ? 'magic' : 'melee').off = { kind: type, ...payload }
-    else console.warn(`loadout: unknown offhand ${type}/${weaponType} — skipped`)
-  }
-}
-
-// A hand slot holds a *Contents() object minus its `type` tag — that field
-// only exists to tell a floating pickup's contents apart, and equipItem /
-// autoEquipOnPickup strip it the same way.
-const handPayload = contents => { const { type, ...payload } = contents; return payload }
-
 // Which stance owns each kind of charge. startStanceSwitch already drops a
 // charge on the way out of its stance; the update loop re-checks against this
 // as the backstop for any other path that could move attackMode under a live
@@ -847,6 +788,7 @@ function goTitle() {
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
+    onPvp: goPvpPicker,
   })
 }
 
@@ -856,6 +798,56 @@ function goEpisodeSelect() {
     onPick: depth => beginRun(depth, 'timewarp'),
     onBack: goTitle,
   })
+}
+
+function goPvpPicker() {
+  phase = PHASE.TITLE
+  menu.showClassPicker({ onPick: startPvp, onBack: goTitle })
+}
+
+function startPvp(cls) {
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
+  const match = makeLocalMatch({ cls, sfx: makeSfx(loadMutedPref()) })
+  decorateMap(match.map, rulesets[theme.ruleset])
+  pvp = { match, theme, cls, picking: false }
+  state = null
+  setPhase(PHASE.PLAYING)
+  menu.hide()
+  keys[' '] = false
+}
+
+function stopPvp() {
+  pvp = null
+  hidePvpHud()
+  goTitle()
+}
+
+function pvpFrame(delta) {
+  const { match } = pvp
+  for (const ev of stepMatch(match, localInputs(match, keys, sprintDetector.sprinting()), delta)) {
+    if (ev.type === 'kill' && ev.victim === LOCAL_ID) {
+      pvp.picking = true
+      menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life',
+        onPick: cls => { setClass(match, LOCAL_ID, cls); pvp.cls = cls; pvp.picking = false; menu.hide(); keys[' '] = false } })
+    }
+    if (ev.type === 'respawn' && ev.hero === LOCAL_ID && pvp.picking) { pvp.picking = false; menu.hide() }
+    if (ev.type === 'matchEnd') {
+      menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls), onQuit: stopPvp })
+      pvp.done = true
+    }
+  }
+  // Once the results panel is up the match world is frozen (stepMatch stops
+  // advancing it), so one more frame paints its final state under the panel
+  // and every frame after that skips FOV/render/HUD work entirely.
+  if (pvp.done && pvp.rendered) return
+  const view = viewOf(match, pvp.theme)
+  maybeComputeFOV(view.map, view.player, 12, { los: true })
+  renderer.updateCamera(view.player, 0, null)
+  renderer.render(view, null)
+  updateHUD(view)
+  updatePvpHud(pvpHudModel(match, LOCAL_ID))
+  playCues(audio, drainSfx(match), view.player, match.sfx.muted)
+  if (pvp.done) pvp.rendered = true
 }
 
 async function beginRun(depth = 1, mode = modeForDepth(depth)) {
@@ -1041,8 +1033,11 @@ function gameLoop(timestamp) {
   // screens the near-opaque menu overlay covers a frozen frame, so re-rendering
   // it 60×/sec is pure wasted CPU (worse here: rendering is software, GPU off).
   if (phase === PHASE.PLAYING) {
-    update(delta)
-    if (state) render()
+    if (pvp) pvpFrame(delta)
+    else {
+      update(delta)
+      if (state) render()
+    }
   }
   // Drain sound cues every frame — UI cues fire while PAUSED too.
   if (state?.sfx) playCues(audio, drainSfx(state), state.player, state.sfx.muted)

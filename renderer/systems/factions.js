@@ -15,9 +15,11 @@ import { getMonsterDef } from './monsters.js'
 export function isEnemy(e) {
   if (e.dying > 0) return false
   const def = getMonsterDef(e.type)
+  // PvP heroes (renderer/pvp/) are every other hero's enemy.
   return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
       || e.type === 'cyclops' || e.type === 'wizard' || e.type === 'crab'
       || e.type === 'dragon_boss'
+      || e.type === 'hero'
       || (e.type === 'npc' && e.hostile)
       || (!!def && !def.behavior?.passive)
 }

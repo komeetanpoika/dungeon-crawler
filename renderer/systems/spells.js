@@ -107,13 +107,13 @@ export { affordableTier }
 
 // bolt: one projectile from the caster along their facing, shaped for
 // systems/projectiles.js. game.js pushes the specs onto state.projectiles.
-function castBolt(state, t) {
-  const p = state.player
+function castBolt(state, t, p = state.player) {
   const [dx, dy] = DIRS[p.facing] ?? DIRS.east
   const spec = {
     px: p.px, py: p.py, dx: dx * t.speed, dy: dy * t.speed,
     damage: t.damage, color: t.color, shape: t.shape, friendly: true,
   }
+  if (p.id !== undefined) spec.owner = p.id
   if (t.chain) spec.chain = { left: t.chain, range: CHAIN_RANGE }
   if (t.explodes) {
     spec.explodes = true
@@ -126,8 +126,7 @@ function castBolt(state, t) {
 }
 
 // zone: a patch of thorns a few tiles ahead, trimmed to walkable ground.
-function castZone(state, t) {
-  const p = state.player
+function castZone(state, t, p = state.player) {
   const [dx, dy] = DIRS[p.facing] ?? DIRS.east
   const cx = Math.floor(p.px / TILE_SIZE) + dx * BRAMBLE_AHEAD
   const cy = Math.floor(p.py / TILE_SIZE) + dy * BRAMBLE_AHEAD
@@ -140,8 +139,7 @@ function castZone(state, t) {
 // self: the blink. Walks tile by tile along the facing and stops at the last
 // walkable cell — enemies are passed straight over (that's the point), only
 // walls end the hop. Returns the two ends so game.js can draw the trail.
-function castSelf(state, t) {
-  const p = state.player
+function castSelf(state, t, p = state.player) {
   const [dx, dy] = DIRS[p.facing] ?? DIRS.east
   const from = { px: p.px, py: p.py }
   let tx = Math.floor(p.px / TILE_SIZE)
@@ -168,8 +166,9 @@ function castSelf(state, t) {
 // and dispatches on the primitive. `modules` carries the bespoke spells;
 // game.js injects { lightning }. Offhand wand keeps its own cooldown, shares
 // the stamina tank.
-export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main' } = {}) {
-  const p = state.player
+// `caster` defaults to state.player; PvP passes the hero casting.
+export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main', caster = state.player } = {}) {
+  const p = caster
   const spell = SPELLS[spellId] ?? SPELLS.gust
   if (!loadoutAvailable(p, 'magic')) return { ok: false, reason: 'not_learned' }
   const cd = hand === 'off' ? 'offCooldown' : 'magicCooldown'
@@ -185,11 +184,11 @@ export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main' }
   const t = spell.tiers[paid]
   let result
   switch (spell.primitive) {
-    case 'bolt': result = castBolt(state, t); break
-    case 'cone': result = castCone(state, t); break
-    case 'zone': result = castZone(state, t); break
-    case 'self': result = castSelf(state, t); break
-    default:     result = module(state, paid); break
+    case 'bolt': result = castBolt(state, t, p); break
+    case 'cone': result = castCone(state, t, p); break
+    case 'zone': result = castZone(state, t, p); break
+    case 'self': result = castSelf(state, t, p); break
+    default:     result = module(state, paid, p); break
   }
   return { ok: true, spell, tier: paid, ...result }
 }

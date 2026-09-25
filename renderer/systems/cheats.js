@@ -34,3 +34,9 @@ export function cheatDecision(buffer) {
   if (depth === null) return null
   return { depth, wait: couldExtend(depth) }
 }
+
+// Title-screen cheat: typing "pvp" opens the local PvP arena
+// (renderer/pvp/local.js). Suffix-matched like the others.
+export function parsePvpCheat(buffer) {
+  return /pvp$/.test(String(buffer).toLowerCase())
+}

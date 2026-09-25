@@ -132,6 +132,7 @@ export function stepProjectiles(state, delta, hooks) {
       let target = null
       for (const e of state.entities) {
         if (!hooks.isHittable(e)) continue
+        if (p.owner !== undefined && e.id === p.owner) continue // PvP: a shot never hits its shooter
         if (e.type === 'dragon_boss') continue // immune to all friendly projectiles
         if (p.hitIds.has(idOf(e))) continue
         if (pointHits(e, p.px, p.py, PROJECTILE_PAD)) { target = e; break }
@@ -154,7 +155,7 @@ export function stepProjectiles(state, delta, hooks) {
             // through a village must never pick out the baker. (isSpellTarget
             // is isHittable minus peaceful villagers, so it stands alone.)
             const candidates = state.entities.filter(e =>
-              isSpellTarget(e) && e.type !== 'dragon_boss')
+              isSpellTarget(e) && e.type !== 'dragon_boss' && (p.owner === undefined || e.id !== p.owner))
             const next = retargetChain(p, candidates)
             if (next) p.chain.left--
             else consumed = true // nothing left in range: chain ends
