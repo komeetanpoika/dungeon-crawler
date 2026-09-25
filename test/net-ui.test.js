@@ -31,8 +31,10 @@ describe('view helpers', () => {
     assert.equal(validCode(''), false)
   })
   it('errorText has a line for every error code and a fallback', () => {
-    for (const code of ['version', 'no_room', 'room_full', 'bad_name', 'bad_hello', 'server_full'])
+    for (const code of ['version', 'no_room', 'room_full', 'bad_name', 'bad_hello', 'server_full', 'rate_limited', 'idle'])
       assert.ok(errorText(code).length > 3, code)
+    assert.equal(errorText('rate_limited'), 'Too many attempts — wait a minute and try again.')
+    assert.equal(errorText('idle'), 'Removed for inactivity.')
     assert.ok(errorText('???').length > 3)
   })
   it('netViewOf builds a render view: you as player, everyone in heroes, pickups up only', () => {

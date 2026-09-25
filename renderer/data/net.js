@@ -1,7 +1,7 @@
-// Every netcode number (spec docs/superpowers/specs/2026-09-25-pvp-server-netcode-design.md).
+// Every netcode number (specs …-pvp-server-netcode-design.md and …-pvp-public-launch-design.md).
 // Shared by the server (server/) and the browser client (renderer/net/).
 export const NET = {
-  protocolVersion: 1,
+  protocolVersion: 2,
   path: '/pvp',
   snapshotHz: 20,
   interpDelayTicks: 3,     // other heroes are drawn this many sim ticks behind the estimated server tick
@@ -30,4 +30,18 @@ export const NET = {
   maxCues: 16,             // client: sfx cues kept pending between drains, a backgrounded tab piles these up
   maxFloats: 24,           // client: damage/heal floats kept pending between drains, same reason
   maxEvents: 64,           // client: events kept pending between drains (closed/error/welcome are never dropped)
+
+  // Public launch (4a): public rooms, bots, abuse limits.
+  botFill: 4,              // a public room is topped up with bots to this many heroes
+  botNames: ['Ukko', 'Ilmatar', 'Tapio', 'Mielikki', 'Ahti', 'Tuoni', 'Louhi', 'Otso', 'Pellervo', 'Kalma', 'Vellamo', 'Hiisi'],
+  trustProxy: true,        // clientIp: the last X-Forwarded-For entry (Cloud Run's front end appends the caller)
+  maxSockets: 600,         // every open socket on the server
+  perIpSockets: 8,         // open sockets per IP
+  helloBurst: 10,          // hellos per IP: a bucket of 10…
+  helloPerMin: 10,         // …refilling 10 a minute
+  msgBurst: 90,            // messages per connection: a bucket of 90…
+  msgPerSec: 60,           // …refilling 60 a second (a client sends ~31)
+  classPerSec: 2,          // class messages per connection per second; extras are ignored
+  idleKickMs: 60000,       // no real input for this long: error idle, and the seat is freed
+  refusalLogMs: 60000,     // refusal counts are logged this often, when non-zero
 }

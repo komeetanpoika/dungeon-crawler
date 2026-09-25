@@ -20,6 +20,8 @@ const ERROR_TEXT = {
   bad_name: 'Name: 1–12 letters, digits, space, _ or -.',
   bad_hello: 'Could not join — check the code.',
   server_full: 'The server is full — try again soon.',
+  rate_limited: 'Too many attempts — wait a minute and try again.',
+  idle: 'Removed for inactivity.',
 }
 export const errorText = code => ERROR_TEXT[code] ?? 'Could not connect.'
 
