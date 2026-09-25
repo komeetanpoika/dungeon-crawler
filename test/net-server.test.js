@@ -1,5 +1,6 @@
 import { describe, it, after } from 'node:test'
 import assert from 'node:assert/strict'
+import net from 'node:net'
 import { startServer, rawClient, waitFor, sleep } from './net-helpers.js'
 import { heartbeatSweep } from '../server/pvp-server.js'
 import { NET } from '../renderer/data/net.js'
@@ -87,6 +88,64 @@ describe('pvp server', async () => {
     assert.ok(srv.pvp.lobby.rooms.has(room))
     a.ws.close()
     await waitFor(() => !srv.pvp.lobby.rooms.has(room))
+  })
+
+  it('a malformed upgrade request line does not crash the server', async () => {
+    const { port, hostname } = new URL(srv.url.replace('ws:', 'http:'))
+    await new Promise((resolve, reject) => {
+      const sock = net.connect(Number(port), hostname, () => {
+        sock.write(
+          'GET http://[ HTTP/1.1\r\n' +
+          'Host: 127.0.0.1\r\n' +
+          'Connection: Upgrade\r\n' +
+          'Upgrade: websocket\r\n' +
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+          'Sec-WebSocket-Version: 13\r\n\r\n'
+        )
+      })
+      sock.on('error', () => {})     // the socket is expected to be destroyed server-side
+      sock.on('close', resolve)
+      setTimeout(() => { sock.destroy(); resolve() }, 500)
+    })
+    // The process (and this server) must still be alive and able to serve a normal client.
+    const a = await rawClient(srv.url)
+    a.send(hello({ create: true }))
+    const w = await a.next('welcome')
+    assert.match(w.room, /^[A-Z]{4}$/)
+    a.ws.close()
+  })
+
+  it('a crashing room does not take down the server or other rooms', async () => {
+    const a = await rawClient(srv.url)
+    a.send(hello({ create: true }))
+    const { room: codeA } = await a.next('welcome')
+    await a.next('snap')
+
+    const b = await rawClient(srv.url)
+    b.send(hello({ create: true }))
+    const { room: codeB } = await b.next('welcome')
+    await b.next('snap')
+
+    // Break room A's simulation so its next tick throws.
+    srv.pvp.lobby.rooms.get(codeA).match = null
+
+    await waitFor(() => a.closed !== null)
+    assert.ok(!srv.pvp.lobby.rooms.has(codeA))
+
+    // Room B must still be alive and ticking.
+    const before = b.messages.filter(m => m.type === 'snap').length
+    await waitFor(() => b.messages.filter(m => m.type === 'snap').length > before)
+    assert.ok(srv.pvp.lobby.rooms.has(codeB))
+    b.ws.close()
+  })
+})
+
+describe('hello timeout', () => {
+  it('closes a socket that never sends hello', async () => {
+    const srv2 = await startServer({ helloTimeoutMs: 50 })
+    const c = await rawClient(srv2.url)
+    await waitFor(() => c.closed !== null)
+    await srv2.close()
   })
 })
 

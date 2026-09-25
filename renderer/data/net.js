@@ -16,6 +16,7 @@ export const NET = {
   pingMs: 2000,
   heartbeatMs: 5000,
   heartbeatMisses: 2,
+  helloTimeoutMs: 10000, // a socket that never sends hello is closed after this long
   maxRooms: 50,
   maxHeroes: 6,
   maxPayload: 4096,

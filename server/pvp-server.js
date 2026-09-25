@@ -18,13 +18,19 @@ export function heartbeatSweep(clients) {
   }
 }
 
-export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heartbeatMs, ...lobbyOpts } = {}) {
+export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heartbeatMs, helloTimeoutMs = NET.helloTimeoutMs, ...lobbyOpts } = {}) {
   const lobby = makeLobby(lobbyOpts)
   const wss = new WebSocketServer({ noServer: true, maxPayload: NET.maxPayload })
   const loops = new Map()
 
   httpServer.on('upgrade', (req, socket, head) => {
-    if (new URL(req.url, 'http://x').pathname !== path) { socket.destroy(); return }
+    // A malformed request line (e.g. an absolute-form target with an
+    // unterminated IPv6 host) makes `new URL` throw ERR_INVALID_URL; left
+    // unguarded that is an uncaught exception that kills the process.
+    let pathname
+    try { pathname = new URL(req.url, 'http://x').pathname }
+    catch { socket.destroy(); return }
+    if (pathname !== path) { socket.destroy(); return }
     wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req))
   })
 
@@ -32,19 +38,33 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     for (const [id, ws] of room.sockets) send(ws, { ...body, ack: ackOf(room, id) })
   }
 
+  // A tick throwing (a sim bug) must not take the whole process — and every
+  // other room — down with it: log it, stop this room's loop, drop it from
+  // the lobby, and boot its sockets. The sockets' own 'close' handlers check
+  // lobby.rooms before touching the room again, so they don't re-throw on
+  // teardown of a room that is already gone.
+  function crashRoom(room, err) {
+    console.error(`[pvp] room ${room.code} crashed, closing it:`, err)
+    stopLoop(room.code)
+    lobby.rooms.delete(room.code)
+    for (const ws of room.sockets.values()) { try { ws.close(1011) } catch { /* already gone */ } }
+  }
+
   function ensureLoop(room) {
     if (loops.has(room.code)) return
     const tickMs = PVP.tick * 1000
     let last = performance.now(), acc = 0
     loops.set(room.code, setInterval(() => {
-      const now = performance.now()
-      acc += Math.min(now - last, PVP.maxFrame * 1000)
-      last = now
-      while (acc >= tickMs) {
-        acc -= tickMs
-        const body = stepRoom(lobby, room)
-        if (body) broadcast(room, body)
-      }
+      try {
+        const now = performance.now()
+        acc += Math.min(now - last, PVP.maxFrame * 1000)
+        last = now
+        while (acc >= tickMs) {
+          acc -= tickMs
+          const body = stepRoom(lobby, room)
+          if (body) broadcast(room, body)
+        }
+      } catch (err) { crashRoom(room, err) }
     }, tickMs))
   }
 
@@ -60,6 +80,8 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     // not a 'close' — without this handler it is an uncaught exception.
     ws.on('error', () => { try { ws.terminate() } catch { /* already gone */ } })
     let room = null, heroId = null
+    // A socket that never sends hello would otherwise sit open forever.
+    const helloTimer = setTimeout(() => { if (!room) ws.close(1008) }, helloTimeoutMs)
     ws.on('message', (data, isBinary) => {
       const msg = isBinary ? null : decode(data)
       if (!msg) { ws.close(1003); return }
@@ -69,6 +91,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
         const res = hello.error ? hello : hello.create ? createRoom(lobby, hello) : joinRoom(lobby, hello.room, hello)
         if (res.error) { send(ws, { type: MSG.ERROR, code: res.error }); ws.close(1008); return }
         room = res.room; heroId = res.heroId
+        clearTimeout(helloTimer)
         room.sockets ??= new Map()
         room.sockets.set(heroId, ws)
         ensureLoop(room)
@@ -80,8 +103,13 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       else if (msg.type === MSG.PING) { if (Number.isFinite(msg.t)) send(ws, { type: MSG.PONG, t: msg.t }) }
     })
     ws.on('close', () => {
+      clearTimeout(helloTimer)
       if (!room) return
       room.sockets.delete(heroId)
+      // The room may already have been torn down by crashRoom(); its own
+      // sockets are being closed right now, so leaveRoom must not run again
+      // against a room the lobby no longer holds.
+      if (lobby.rooms.get(room.code) !== room) return
       leaveRoom(lobby, room, heroId)
       if (!lobby.rooms.has(room.code)) stopLoop(room.code)
     })

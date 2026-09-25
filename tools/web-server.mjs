@@ -4,38 +4,14 @@
 // this exists so "set up a server" is one command. The same server also
 // carries the PvP WebSocket on /pvp (spec docs/superpowers/specs/2026-09-25-pvp-server-netcode-design.md).
 import * as http from 'node:http'
-import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { attachPvp } from '../server/pvp-server.js'
+import { makeStaticHandler } from '../server/static.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer')
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json',
-  '.webmanifest': 'application/manifest+json',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-}
-
-const server = http.createServer((req, res) => {
-  const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname)
-  const rel = urlPath === '/' ? 'index.html' : urlPath.slice(1)
-  const file = path.normalize(path.join(ROOT, rel))
-  if (!file.startsWith(ROOT + path.sep) && file !== path.join(ROOT, 'index.html')) {
-    res.writeHead(403); res.end('forbidden'); return
-  }
-  fs.readFile(file, (err, body) => {
-    if (err) { res.writeHead(404); res.end('not found'); return }
-    res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' })
-    res.end(body)
-  })
-})
+const server = http.createServer(makeStaticHandler(ROOT))
 attachPvp(server)
 server.listen(PORT, () => console.log(`dungeon-crawler web: http://localhost:${PORT}  (pvp on ws://localhost:${PORT}/pvp)`))
