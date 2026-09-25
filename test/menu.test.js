@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatMetaSummary, navActionFor, showTitle, showClassPicker, showTextEntry } from '../renderer/ui/menu.js'
+import { formatMetaSummary, navActionFor, showTitle, showClassPicker, showTextEntry, showMessage } from '../renderer/ui/menu.js'
 
 describe('formatMetaSummary', () => {
   it('formats a played meta with treasure stolen', () => {
@@ -75,6 +75,37 @@ describe('showEpisodeSelect', () => {
       btns[1].listeners.click()
       btns[2].listeners.click()
       assert.deepEqual(picks, [9, 'back'])
+      hide()
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+})
+
+describe('showMessage', () => {
+  it('defaults the button label to OK', () => {
+    const overlay = stubDom()
+    try {
+      let ok = false
+      showMessage({ title: 'Connecting…', onOk: () => { ok = true } })
+      const btns = buttonsOf(overlay)
+      assert.deepEqual(btns.map(b => b.textContent), ['OK'])
+      btns[0].listeners.click()
+      assert.equal(ok, true)
+      hide()
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+
+  it('accepts a custom button label (e.g. "Leave" on the next-match wait message)', () => {
+    const overlay = stubDom()
+    try {
+      showMessage({ title: 'Next match starting…', onOk: () => {}, okLabel: 'Leave' })
+      const btns = buttonsOf(overlay)
+      assert.deepEqual(btns.map(b => b.textContent), ['Leave'])
       hide()
     } finally {
       delete globalThis.document

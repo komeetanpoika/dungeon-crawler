@@ -31,15 +31,26 @@ export function connect({ url, hello, WebSocketImpl = globalThis.WebSocket, now 
 // A backgrounded tab keeps receiving WebSocket messages while
 // requestAnimationFrame stops, so a busy room's events/cues/floats can pile
 // up (~7 cues/s) for however long the tab was hidden, then all play at once
-// the moment it returns. These three ALWAYS_KEPT event types are the ones a
-// caller still needs after a long gap (session status changes), so trimming
-// never drops them; everything else is capped like cues/floats.
-const ALWAYS_KEPT_EVENTS = new Set(['closed', 'error', 'welcome'])
+// the moment it returns. Same hazard for a slow reader the server skipped a
+// broadcast to. These ALWAYS_KEPT event types are the ones a caller still
+// needs after a long gap (session status changes, and the two match-boundary
+// events that drive the results/wait panel), so trimming never drops them —
+// plus the local hero's own kill/respawn, which drive the death picker and
+// can't be identified by type alone. Everything else is capped like
+// cues/floats.
+const ALWAYS_KEPT_EVENTS = new Set(['closed', 'error', 'welcome', 'matchEnd', 'matchStart'])
+
+function isKeptEvent(s, e) {
+  if (ALWAYS_KEPT_EVENTS.has(e.type)) return true
+  if (e.type === 'kill' && e.victim === s.heroId) return true
+  if (e.type === 'respawn' && e.hero === s.heroId) return true
+  return false
+}
 
 function pushEvent(s, e) {
   s.events.push(e)
   while (s.events.length > NET.maxEvents) {
-    const i = s.events.findIndex(x => !ALWAYS_KEPT_EVENTS.has(x.type))
+    const i = s.events.findIndex(x => !isKeptEvent(s, x))
     if (i === -1) break
     s.events.splice(i, 1)
   }

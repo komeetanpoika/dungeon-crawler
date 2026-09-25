@@ -247,6 +247,6 @@ export function showTextEntry({ title, subtitle, value = '', maxLength = 12, onS
 }
 
 // A message with one button (connection lost, refused, web-only).
-export function showMessage({ title, lines = [], onOk }) {
-  renderScreen({ title, lines, buttons: [{ label: 'OK', onSelect: onOk }] })
+export function showMessage({ title, lines = [], onOk, okLabel = 'OK' }) {
+  renderScreen({ title, lines, buttons: [{ label: okLabel, onSelect: onOk }] })
 }

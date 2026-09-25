@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { connect, frame, sessionView, drainCues } from '../renderer/net/client.js'
+import { connect, frame, sessionView, drainCues, drainEvents } from '../renderer/net/client.js'
 import { heroSnap } from '../renderer/net/protocol.js'
 import { makeMatch } from '../renderer/pvp/sim.js'
 import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
@@ -54,6 +54,26 @@ describe('client backgrounded-tab caps', () => {
     // A tab backgrounded well past PVP.maxFrame, then foregrounded again.
     const v1 = sessionView(s, 1000 + PVP.maxFrame * 1000 + 5000)
     assert.equal(v1.feedback.floats.length, 0, 'stale float must not play on return')
+  })
+
+  it('a matchStart and a local kill/respawn survive 200 more hit events piling up behind them unread', () => {
+    const s = open()
+    welcome(s)
+    const hero = lone()
+    // matchStart plus the local hero's own kill/respawn fire first...
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 0, events: [{ type: 'matchStart' }] })) })
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 1, events: [{ type: 'kill', victim: 'p1', killer: 'other' }] })) })
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 2, events: [{ type: 'respawn', hero: 'p1' }] })) })
+    // ...then 200 more hit events pile up behind them (a backgrounded tab, or
+    // a player who simply never called drainEvents) before anything drains.
+    for (let i = 0; i < 200; i++) {
+      s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 3 + i, events: [{ type: 'hit', target: 'other', amount: 1 }] })) })
+    }
+    const events = drainEvents(s)
+    assert.ok(events.length <= NET.maxEvents, `${events.length} events`)
+    assert.ok(events.some(e => e.type === 'matchStart'), 'matchStart kept')
+    assert.ok(events.some(e => e.type === 'kill' && e.victim === 'p1'), 'local kill kept')
+    assert.ok(events.some(e => e.type === 'respawn' && e.hero === 'p1'), 'local respawn kept')
   })
 })
 

@@ -906,8 +906,9 @@ function startNet({ name, cls, room }) {
   // rejectEntry uses for the pre-connect refusal, kept here for the one that
   // arrives over the wire after connecting. endedShown: whether some
   // "match is over" panel (results, or the plain wait message below) is
-  // already up, so netFrame doesn't stack a second one on top.
-  net = { s, theme, muted: loadMutedPref(), isHost: !room, endedShown: false }
+  // already up, so netFrame doesn't stack a second one on top. pickerShown:
+  // same idea for the "Down!" class picker.
+  net = { s, theme, muted: loadMutedPref(), isHost: !room, endedShown: false, pickerShown: false }
   state = null
   menu.showMessage({ title: 'Connecting…', onOk: stopNet })
   setPhase(PHASE.PLAYING)
@@ -931,20 +932,32 @@ function netFrame() {
     else if (ev.type === 'closed' && ev.status === 'lost') { menu.showMessage({ title: 'Connection lost', onOk: stopNet }); return }
     else if (ev.type === 'kill' && ev.victim === s.heroId) {
       keys[' '] = false
+      net.pickerShown = true
       menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
-        onPick: cls => { sendClass(s, cls); menu.hide(); keys[' '] = false } })
+        onPick: cls => { sendClass(s, cls); menu.hide(); keys[' '] = false; net.pickerShown = false } })
     }
-    else if (ev.type === 'respawn' && ev.hero === s.heroId) menu.hide()
+    else if (ev.type === 'respawn' && ev.hero === s.heroId) { menu.hide(); net.pickerShown = false }
     else if (ev.type === 'matchEnd') { keys[' '] = false; net.endedShown = true; menu.showPvpResults(ev.standings, { onQuit: stopNet }) }
     else if (ev.type === 'matchStart') { net.endedShown = false; menu.hide() }
   }
   const v = sessionView(s, now)
   if (!v) return
+  // The events above are how the results/wait panel and the death picker
+  // normally clear, but a capped/dropped event (a backgrounded tab, or a
+  // slow-reader-skipped snapshot) can lose the matchStart or respawn that
+  // would have done it, leaving the panel stuck over a live match. Drive
+  // both from the snapshot state too, as a backstop.
+  if (!v.ended && net.endedShown) { net.endedShown = false; menu.hide() }
+  if (!v.me.dead && net.pickerShown) { net.pickerShown = false; menu.hide() }
   // A player who joins mid-results (after the matchEnd event already fired
   // for everyone else) never sees that event, so the results panel above
   // never opens for them; without this they would just watch the frozen
   // arena for up to resultsDelay seconds with no explanation.
-  if (v.ended && !net.endedShown) { net.endedShown = true; menu.showMessage({ title: 'Next match starting…', onOk: stopNet }) }
+  if (v.ended && !net.endedShown) {
+    net.endedShown = true
+    keys[' '] = false
+    menu.showMessage({ title: 'Next match starting…', onOk: stopNet, okLabel: 'Leave' })
+  }
   const view = netViewOf(v, net.theme, s.map)
   maybeComputeFOV(view.map, view.player, 12, { los: true })
   renderer.updateCamera(view.player, 0, null)
