@@ -25,6 +25,9 @@ import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
+import { makeLocalMatch, localInputs, viewOf, LOCAL_ID } from './pvp/local.js'
+import { stepMatch, setClass } from './pvp/sim.js'
+import { pvpHudModel, updatePvpHud, hidePvpHud } from './ui/pvp-hud.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -131,6 +134,7 @@ window.addEventListener('keyup', e => {
 
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (pvp) { stopPvp(); return }
     if (inventoryOpen) closeInventory()
     else if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
@@ -140,6 +144,7 @@ window.addEventListener('keydown', e => {
 // I toggles the inventory panel: open while playing, close while it's open.
 window.addEventListener('keydown', e => {
   if ((e.key !== 'i' && e.key !== 'I') || e.repeat) return
+  if (pvp) return
   if (phase === PHASE.PLAYING) openInventory()
   else if (inventoryOpen) closeInventory()
 })
@@ -148,6 +153,7 @@ window.addEventListener('keydown', e => {
 // ramps its master gain when it sees the flag change in playCues.
 window.addEventListener('keydown', e => {
   if ((e.key !== 'm' && e.key !== 'M') || e.repeat) return
+  if (pvp) { pvp.match.sfx.muted = !pvp.match.sfx.muted; saveMutedPref(pvp.match.sfx.muted); return }
   if (!state?.sfx) return
   state.sfx.muted = !state.sfx.muted
   saveMutedPref(state.sfx.muted)
@@ -217,6 +223,9 @@ window.addEventListener('keydown', e => {
 })
 
 let state = null
+// A local PvP match (renderer/pvp/local.js) while one runs. `state` stays
+// null meanwhile, so every single-player key handler that checks it no-ops.
+let pvp = null
 // Tooling hook (verify-npcs.mjs etc.): only wired up when launched with
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
@@ -779,6 +788,7 @@ function goTitle() {
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
+    onPvp: goPvpPicker,
   })
 }
 
@@ -788,6 +798,50 @@ function goEpisodeSelect() {
     onPick: depth => beginRun(depth, 'timewarp'),
     onBack: goTitle,
   })
+}
+
+function goPvpPicker() {
+  phase = PHASE.TITLE
+  menu.showClassPicker({ onPick: startPvp, onBack: goTitle })
+}
+
+function startPvp(cls) {
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
+  const match = makeLocalMatch({ cls, sfx: makeSfx(loadMutedPref()) })
+  decorateMap(match.map, rulesets[theme.ruleset])
+  pvp = { match, theme, cls, picking: false }
+  state = null
+  setPhase(PHASE.PLAYING)
+  menu.hide()
+  keys[' '] = false
+}
+
+function stopPvp() {
+  pvp = null
+  hidePvpHud()
+  goTitle()
+}
+
+function pvpFrame(delta) {
+  const { match } = pvp
+  for (const ev of stepMatch(match, localInputs(match, keys, sprintDetector.sprinting()), delta)) {
+    if (ev.type === 'kill' && ev.victim === LOCAL_ID) {
+      pvp.picking = true
+      menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life',
+        onPick: cls => { setClass(match, LOCAL_ID, cls); pvp.cls = cls; pvp.picking = false; menu.hide(); keys[' '] = false } })
+    }
+    if (ev.type === 'respawn' && ev.hero === LOCAL_ID && pvp.picking) { pvp.picking = false; menu.hide() }
+    if (ev.type === 'matchEnd') {
+      menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls), onQuit: stopPvp })
+    }
+  }
+  const view = viewOf(match, pvp.theme)
+  maybeComputeFOV(view.map, view.player, 12, { los: true })
+  renderer.updateCamera(view.player, 0, null)
+  renderer.render(view, null)
+  updateHUD(view)
+  updatePvpHud(pvpHudModel(match, LOCAL_ID))
+  playCues(audio, drainSfx(match), view.player, match.sfx.muted)
 }
 
 async function beginRun(depth = 1, mode = modeForDepth(depth)) {
@@ -973,8 +1027,11 @@ function gameLoop(timestamp) {
   // screens the near-opaque menu overlay covers a frozen frame, so re-rendering
   // it 60×/sec is pure wasted CPU (worse here: rendering is software, GPU off).
   if (phase === PHASE.PLAYING) {
-    update(delta)
-    if (state) render()
+    if (pvp) pvpFrame(delta)
+    else {
+      update(delta)
+      if (state) render()
+    }
   }
   // Drain sound cues every frame — UI cues fire while PAUSED too.
   if (state?.sfx) playCues(audio, drainSfx(state), state.player, state.sfx.muted)

@@ -1,4 +1,4 @@
-import { cheatDecision, CHEAT_HOLD_MS } from '../systems/cheats.js'
+import { cheatDecision, CHEAT_HOLD_MS, parsePvpCheat } from '../systems/cheats.js'
 
 // Overlay menu screens (title / pause / game over). DOM-only; receives callbacks.
 // Keep all document access inside functions so the pure helper stays importable
@@ -35,7 +35,7 @@ function highlight() {
   currentButtons.forEach((b, i) => b.classList.toggle('selected', i === selectedIndex))
 }
 
-function renderScreen({ title, subtitle, buttons, onCheat }) {
+function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp }) {
   const el = overlayEl()
   el.innerHTML = ''
 
@@ -52,6 +52,13 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
     s.className = 'menu-subtitle'
     s.textContent = subtitle
     panel.appendChild(s)
+  }
+
+  for (const line of lines) {
+    const l = document.createElement('div')
+    l.className = 'menu-subtitle'
+    l.textContent = line
+    panel.appendChild(l)
   }
 
   currentButtons = buttons.map(({ label, onSelect, className }) => {
@@ -81,6 +88,7 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
       buttons[selectedIndex].onSelect(); e.preventDefault()
     } else if (onCheat && e.key.length === 1) {
       cheatBuffer = (cheatBuffer + e.key).toLowerCase().slice(-12)
+      if (onPvp && parsePvpCheat(cheatBuffer)) { clearCheatTimer(); cheatBuffer = ''; onPvp(); return }
       // The cheat is suffix-matched, so "level1" matches while the player may
       // still be typing "level18". A depth a further digit could extend is
       // held for CHEAT_HOLD_MS; only a further match cancels that pending fire
@@ -97,7 +105,7 @@ function renderScreen({ title, subtitle, buttons, onCheat }) {
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor, onQuit, onCheat }) {
+export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor, onQuit, onCheat, onPvp }) {
   // The web release has no tile editor and nothing to quit to. The old
   // procedural overworld left the menu with the mode split; it remains
   // reachable as the level6 cheat.
@@ -115,6 +123,7 @@ export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor,
       ]),
     ],
     onCheat,
+    onPvp,
   })
 }
 
@@ -169,4 +178,29 @@ export function hide() {
   const el = overlayEl()
   el.style.display = 'none'
   el.innerHTML = ''
+}
+
+// PvP: pick a class — before a local match, and while dead (applies at respawn).
+export function showClassPicker({ title = 'Arena', subtitle = 'Pick a class', onPick, onBack }) {
+  renderScreen({
+    title, subtitle,
+    buttons: [
+      { label: 'Warrior', onSelect: () => onPick('warrior') },
+      { label: 'Archer', onSelect: () => onPick('archer') },
+      { label: 'Mage', onSelect: () => onPick('mage') },
+      ...(onBack ? [{ label: 'Back', onSelect: onBack }] : []),
+    ],
+  })
+}
+
+// PvP: the end-of-match table, one line per hero.
+export function showPvpResults(rows, { onNext, onQuit }) {
+  renderScreen({
+    title: 'Match over',
+    lines: rows.map(r => `${r.rank}. ${r.name} — ${r.cls} — ${r.kills} / ${r.deaths}`),
+    buttons: [
+      { label: 'Next match', onSelect: onNext },
+      { label: 'Quit', onSelect: onQuit },
+    ],
+  })
 }
