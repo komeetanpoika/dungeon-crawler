@@ -48,27 +48,34 @@
 // 'sisyphus' forgive false positives on stems that must stay (orgy, huri,
 // sisy — each catches a real word/slur on its own and can't be lengthened
 // without losing that); 'chrysalis'/'dagobah'/'minigames'/'tanigawa' do the
-// same for 'rysa'/'dago'/'niga'. 'hinti', 'rampa', 'perse' and 'thot'
-// collided with real names/words too (Hintikka, Rampage, Perseus/
-// Persephone, Thoth) but were dropped from BLOCKLIST outright instead —
-// 'perse' in particular is exactly the kind of short, generic fragment
-// (bare "ass") the guidance above says to avoid; 'hinti'/'rampa' have
-// longer, unambiguous BLOCKLIST compounds already covering the real insults
-// ('hintari'/'hintuli', 'retardi'); 'thot' could not be allowlisted the same
-// way as the others — "thot" is itself a strict prefix of "thoth", so
-// forgiving "Thoth" also forgives any "thot" immediately followed by an "h"
-// from something else entirely (e.g. "ThotHerapist", caught by the
-// boundary-sharing check below) — so it was dropped instead.
+// same for 'rysa'/'dago'/'niga'. 'perse' and 'thot' collided with real
+// names/words too (Perseus/Persephone, Thoth) and were dropped from
+// BLOCKLIST outright instead — 'perse' is exactly the kind of short,
+// generic fragment (bare "ass") the guidance above says to avoid; 'thot'
+// could not be allowlisted the same way as the others — "thot" is itself a
+// strict prefix of "thoth", so forgiving "Thoth" also forgives any "thot"
+// immediately followed by an "h" from something else entirely (e.g.
+// "ThotHerapist", caught by the boundary-sharing check below) — so it was
+// dropped instead.
+//
+// 2026-09-25 (regression fix, same day): that fix wave also dropped the
+// stems behind Hintikka and Rampage — wrongly: neither collision has a
+// covering BLOCKLIST compound the way 'perse' has 'persreika'. Dropping
+// them re-allowed two bare Finnish slurs (one only after normalizeName
+// collapses a doubled letter). Restored to BLOCKLIST below; Hintikka and
+// Rampage now pass through ALLOWLIST ('hintika', 'rampage') instead.
 export const ALLOWLIST = Object.freeze([
   'chrysalis',
   'dagobah',
   'georgy',
+  'hintika',
   'huricane',
   'minigames',
   'montenegro',
   'negroni',
   'nigeria',
   'nigerian',
+  'rampage',
   'scunthorpe',
   'shuri',
   'sisyphus',
@@ -79,6 +86,7 @@ export const ALLOWLIST = Object.freeze([
 export const BLOCKLIST = Object.freeze([
   // — Finnish: slurs —
   'hintari',
+  'hinti',
   'hintuli',
   'homotelu',
   'hompeli',
@@ -87,6 +95,7 @@ export const BLOCKLIST = Object.freeze([
   'mustalainen',
   'nekeri',
   'rajariko',
+  'rampa',
   'retardi',
   'rysa',
   'tsigani',

@@ -4,8 +4,9 @@
 // timers; server/pvp-server.js calls in with `t` = its clock in ms.
 //
 // Privacy: IP addresses live only in gate.ips, only for these counters, and
-// sweepGate drops an entry once it has no sockets and a full hello bucket.
-// Nothing in this module logs, and sweepGate hands back counts, never keys.
+// sweepGate drops an entry once it has no sockets, no open rooms and a full
+// hello bucket. Nothing in this module logs, and sweepGate hands back
+// counts, never keys.
 import { NET } from '../renderer/data/net.js'
 import { ERR } from '../renderer/net/protocol.js'
 
@@ -86,7 +87,11 @@ export function takeHello(gate, ip, t) {
 export function noteFlood(gate) { gate.refused.flood++ }
 
 export function sweepGate(gate, t) {
-  for (const [ip, e] of gate.ips) if (e.sockets === 0 && bucketFull(e.hello, t)) gate.ips.delete(ip)
+  // A gate entry with rooms > 0 is never dropped, even with no open sockets
+  // and a full hello bucket — otherwise disconnecting and waiting out the
+  // sweep would reset the per-IP room cap (NET.roomsPerIp) for free. Memory
+  // still stays bounded: every counted room is capped by NET.maxRooms.
+  for (const [ip, e] of gate.ips) if (e.sockets === 0 && e.rooms === 0 && bucketFull(e.hello, t)) gate.ips.delete(ip)
   const counts = gate.refused
   gate.refused = noRefusals()
   return counts

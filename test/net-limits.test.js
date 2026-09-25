@@ -76,6 +76,18 @@ describe('the per-IP gate', () => {
     assert.equal(g.ips.has('X'), true)               // still has sockets
     assert.deepEqual(sweepGate(g, 8000), { rate_limited: 0, server_full: 0, flood: 0 })
   })
+  it('never drops an entry with an open room, even with no sockets and a full hello bucket', () => {
+    const g = makeGate()
+    admit(g, 'owner', 0)
+    noteRoomCreated(g, 'owner')
+    release(g, 'owner')
+    sweepGate(g, 1_000_000)                          // hello bucket is long full by now
+    assert.equal(g.ips.has('owner'), true)
+    assert.equal(canCreateRoom(g, 'owner'), NET.roomsPerIp > 1)
+    noteRoomClosed(g, 'owner')
+    sweepGate(g, 1_000_000)
+    assert.equal(g.ips.has('owner'), false)          // now sockets, rooms and hello bucket all clear
+  })
 })
 
 describe('per-connection budgets', () => {

@@ -24,10 +24,12 @@ const INNOCENT = ['Aino', 'Ilmari', 'Vaino', 'Sam', 'Alex', 'Kalle_99', 'Pasi', 
   'Nigel', 'Spencer', 'Pussycat', 'Cockburn', 'xX_Aino_Xx', 'Mage42', 'NoobSlayer', 'Lollipop', 'Lolita',
   'Matsushita',
   // Final-review fix wave (2026-09-25, item 6): real names/handles a
-  // too-short stem used to catch. 'Hintikka' and 'Rampage' pass because
-  // their culprit stems (hinti, rampa) were dropped from BLOCKLIST outright,
-  // so — unlike ALLOWLISTED_PASS below — they belong here, checked raw too.
-  'Hintikka', 'Rampage', 'Perseus', 'Persephone', 'Thoth',
+  // too-short stem used to catch. Perseus/Persephone/Thoth pass because
+  // their culprit stems ('perse', 'thot') were dropped from BLOCKLIST
+  // outright, so — unlike ALLOWLISTED_PASS below — they belong here,
+  // checked raw too. (Hintikka and Rampage moved to ALLOWLISTED_PASS below
+  // in the regression fix the same day — see blocklist.js.)
+  'Perseus', 'Persephone', 'Thoth',
   // Reserved-prefix narrowing: real names/handles starting with "bot"/"mod"
   // that must not be treated as posing as a bot or a moderator.
   'Modest', 'Modric', 'Mode', 'Moderna', 'Bottas', 'Botticelli', 'Botond', 'Bottom', 'Botanist']
@@ -38,7 +40,7 @@ const INNOCENT = ['Aino', 'Ilmari', 'Vaino', 'Sam', 'Alex', 'Kalle_99', 'Pasi', 
 // through acceptableName, never through raw stem containment.
 // Final-review fix wave (2026-09-25, item 6) additions: Georgy/orgy,
 // Sisyphus/sisy, Shuri+Hurricane/huri, Chrysalis/rysa, Minigames+Tanigawa/
-// niga, Dagobah/dago. Unlike the INNOCENT four above, these stems must stay
+// niga, Dagobah/dago. Unlike the INNOCENT three above, these stems must stay
 // in BLOCKLIST (niga alone catches "nigga"; the others are real
 // slurs/profanity too short to lengthen without losing their own bare
 // form), so the false positive is carved out per real name/word via
@@ -46,8 +48,15 @@ const INNOCENT = ['Aino', 'Ilmari', 'Vaino', 'Sam', 'Alex', 'Kalle_99', 'Pasi', 
 // a strict prefix of "thoth", so allowlisting "thoth" would have forgiven
 // any "thot"+"h" from elsewhere too; "thot" was dropped instead, so Thoth
 // is in INNOCENT above.)
+//
+// Regression fix (2026-09-25, same day): the fix-wave commit above dropped
+// the stems behind Hintikka and Rampage outright instead of allowlisting
+// them, which re-allowed two bare Finnish slurs. Both stems are restored to
+// BLOCKLIST; Hintikka and Rampage instead pass via ALLOWLIST ('hintika',
+// 'rampage') here, same as the eight entries above.
 const ALLOWLISTED_PASS = ['Scunthorpe', 'Therapist', 'Nigeria', 'Montenegro', 'Negroni',
-  'Georgy', 'Sisyphus', 'Shuri', 'Hurricane', 'Chrysalis', 'Minigames', 'Tanigawa', 'Dagobah']
+  'Georgy', 'Sisyphus', 'Shuri', 'Hurricane', 'Chrysalis', 'Minigames', 'Tanigawa', 'Dagobah',
+  'Hintikka', 'Rampage']
 
 // Each must be refused: the stems themselves, and the tricks normalisation
 // exists for (look-alike digits, spacing, underscores, stretched letters,
@@ -56,7 +65,11 @@ const REFUSED = ['vittu', 'V1TTU', 'v i t t u', 'Vi_ttu', 'VITTUUU', 'xVittux', 
   'mulkku', 'huora', 'neekeri', 'N33k3ri', 'fuck', 'FUUUCK', 'f_u_c_k', 'Fuck3r', 'motherfucker', 'cunt',
   'nigger', 'N1gg3r', 'nigga', 'faggot', 'whore',
   // item 7: the 6→g / 9→g look-alike bypass ("ni9a" -> "niga", "6imp" -> "gimp")
-  'ni9a', '6imp']
+  'ni9a', '6imp',
+  // Regression fix (2026-09-25): bare words and simple variants for the two
+  // stems restored to BLOCKLIST (see blocklist.js) — a doubled-letter form,
+  // a look-alike-digit form, and a separator form of each.
+  'hintti', 'H1ntt1', 'hin-tti', 'rampa', 'R4mp4', 'ram_pa', 'ramppa']
 
 describe('normalizeName', () => {
   it('lowercases, drops space _ -, maps look-alike digits and collapses runs', () => {
@@ -104,6 +117,18 @@ describe('acceptableName', () => {
   })
   it('a reserved prefix must be the whole name or followed by a separator/digit — a name that only starts the letters passes (item 6)', () => {
     for (const name of ['Modest', 'Modric', 'Mode', 'Moderna', 'Bottas', 'Botticelli', 'Botond', 'Bottom', 'Botanist'])
+      assert.equal(acceptableName(name), true, name)
+  })
+  it('a reserved prefix disguised with look-alike digits is still refused (regression fix)', () => {
+    // Raw text alone isn't literally "bot"/"mod"/"admin" here, so only
+    // testing RESERVED_RE against the raw name (as before) let these
+    // through; the digit-mapped-but-not-separator-stripped check catches
+    // them too.
+    for (const name of ['B0t Ukko', 'B0t_1', 'M0d-x', '4dmin 2', 'M0derator 1'])
+      assert.equal(acceptableName(name), false, name)
+  })
+  it('a look-alike-digit name that only starts the reserved letters still passes', () => {
+    for (const name of ['M0dric', 'B0ttas', 'M0dest', 'B0tanist'])
       assert.equal(acceptableName(name), true, name)
   })
 })

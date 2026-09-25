@@ -30,15 +30,31 @@ const LOOKALIKE = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 6: 'g', 7: 't', 9: '
 export const RESERVED_PREFIXES = Object.freeze(['bot', 'admin', 'mod', 'moderator'])
 // A reserved prefix only refuses a name that IS the word (after
 // normalising) or that, in the name as typed, is immediately followed by a
-// separator or a digit — "Bot Ukko", "bot_1", "mod-x", "4dmin" (the leading
-// "4" is itself look-alike-mapped by normalizeName, not matched here). This
-// is checked against the raw name, not the normalised one, because
+// separator or a digit — "Bot Ukko", "bot_1", "mod-x", "4dmin 2". This is
+// checked against the raw name, not the normalised one, because
 // normalizeName strips spaces/_/- — on the normalised string alone "Bot
 // Ukko" and "Botticelli" would be indistinguishable substring matches.
 // Without this the prefix check used to refuse any name merely *starting*
 // with "mod"/"bot" once normalised, catching real names/handles like
 // Modest, Modric, Bottas or Botticelli.
+//
+// RESERVED_RE alone still misses a look-alike prefix — "B0t Ukko", "B0t_1",
+// "M0d-x", "4dmin 2" — because their raw text isn't literally "bot"/"mod"/
+// "admin". So it's also tested against the raw name with the look-alike
+// digit map applied but separators left in place (lookalikeMapped): "B0t
+// Ukko" -> "bot ukko" (still matches the prefix+separator shape),
+// "Botticelli" -> "botticelli" (still no separator/digit right after
+// "bot", so still passes). Bare "4dmin" alone (no trailing separator) is
+// still caught separately, by normalizeName collapsing it to the exact
+// word "admin".
 const RESERVED_RE = new RegExp(`^(${RESERVED_PREFIXES.join('|')})([\\s_-]|\\d)`, 'i')
+
+// Same look-alike digit substitution as normalizeName, but keeping case-
+// folding only — no separator stripping, no doubled-letter collapsing — so
+// RESERVED_RE can still see where a separator sits relative to the prefix.
+function lookalikeMapped(name) {
+  return String(name).toLowerCase().replace(/[01345679]/g, d => LOOKALIKE[d])
+}
 
 export function normalizeName(name) {
   return String(name).toLowerCase()
@@ -64,7 +80,7 @@ function occurrenceSpans(haystack, needle) {
 export function acceptableName(name) {
   const raw = String(name)
   const n = normalizeName(raw)
-  if (RESERVED_PREFIXES.includes(n) || RESERVED_RE.test(raw)) return false
+  if (RESERVED_PREFIXES.includes(n) || RESERVED_RE.test(raw) || RESERVED_RE.test(lookalikeMapped(raw))) return false
   const allowSpans = ALLOWLIST.flatMap(word => occurrenceSpans(n, word))
   for (const stem of BLOCKLIST) {
     for (const [start, end] of occurrenceSpans(n, stem)) {
