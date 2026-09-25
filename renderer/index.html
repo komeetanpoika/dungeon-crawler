@@ -104,6 +104,9 @@
     canvas { touch-action: none; }
     #touch-controls { display: none; position: relative; z-index: 15; }
     @media (pointer: coarse) { #touch-controls { display: block; } }
+    /* A menu text field is up (menu.js): the touch layer steps aside so a
+       tap reaches the field and brings up the phone keyboard. */
+    body.menu-typing #touch-controls { display: none; }
     /* Left: fixed thumbstick — a stone dial with gold cardinal ticks */
     #joystick-zone {
       position: fixed;

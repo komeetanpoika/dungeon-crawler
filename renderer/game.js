@@ -29,9 +29,11 @@ import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './
 import { stepMatch, setClass } from './pvp/sim.js'
 import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel } from './ui/pvp-hud.js'
 import { connect, frame as netFrameStep, sessionView, sendClass, leave as netLeave, drainEvents, drainCues } from './net/client.js'
-import { netUrl, normalizeCode, validCode, errorText, netViewOf } from './net/view.js'
+import { netUrl, normalizeCode, validCode, errorText, errorTitle, controlHint, netViewOf } from './net/view.js'
 import { validateName } from './net/protocol.js'
 import { NET } from './data/net.js'
+import { NEUTRAL_INPUT } from './pvp/hero.js'
+import { makeNetPanels } from './ui/net-panels.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -139,7 +141,16 @@ window.addEventListener('keyup', e => {
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (pvp) { stopPvp(); return }
-    if (net) { stopNet(); return }
+    if (net) {
+      // In a joined match Escape (and the touch START pill, which sends it)
+      // toggles "Leave the match?" — over the death picker and the results
+      // too. Before the welcome, or over a refusal, it just leaves. A held
+      // key's repeats would flap the confirm open and shut.
+      if (e.repeat) return
+      if (net.s.status === 'open') net.panels.escape()
+      else stopNet()
+      return
+    }
     if (inventoryOpen) closeInventory()
     else if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
@@ -804,6 +815,7 @@ function goTitle() {
     onCheat: (depth) => beginRun(depth),
     onPvp: goPvpPicker,
     onNet: goNet,
+    onOnline: goOnline,
   })
 }
 
@@ -870,26 +882,45 @@ function pvpFrame(delta) {
 const loadName = () => { try { return localStorage.getItem('dc-pvp-name') ?? '' } catch { return '' } }
 const saveName = n => { try { localStorage.setItem('dc-pvp-name', n) } catch {} }
 
+const coarsePointer = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+
 // Checked before ever opening a socket, so a mistyped name/code shows the
 // same one-line refusal the server would give, without a round trip.
 function rejectEntry(kind, code, onOk) {
-  menu.showMessage({ title: kind === 'host' ? 'Could not host' : 'Could not join', lines: [errorText(code)], onOk })
+  menu.showMessage({ title: errorTitle(code, kind), lines: [errorText(code)], onOk })
 }
 
+// The web title's Online button: a public room with bot fill, or friends.
+function goOnline() {
+  phase = PHASE.TITLE
+  menu.showOnline({ onQuick: () => goNet('quick'), onFriends: goFriends, onBack: goTitle })
+}
+
+function goFriends() {
+  phase = PHASE.TITLE
+  menu.showFriends({ onHost: () => goNet('host'), onJoin: () => goNet('join'), onBack: goOnline })
+}
+
+const ENTRY_TITLE = { quick: 'Quick match', host: 'Host a room', join: 'Join with code' }
+
+// kind: 'quick' | 'host' | 'join'. The hidden host/join title cheats land
+// here too. Name (prefilled) → [code] → class → the match.
 function goNet(kind) {
   phase = PHASE.TITLE
   if (!window.saveAPI?.isWeb) {
     menu.showMessage({ title: 'Online play', lines: ['Online play is in the web build.'], onOk: goTitle })
     return
   }
-  menu.showTextEntry({ title: kind === 'host' ? 'Host a room' : 'Join a room', subtitle: 'Your name', value: loadName(),
-    maxLength: NET.nameMax, onBack: goTitle,
+  const title = ENTRY_TITLE[kind]
+  const back = kind === 'quick' ? goOnline : goFriends
+  menu.showTextEntry({ title, subtitle: 'Your name', value: loadName(), maxLength: NET.nameMax, onBack: back,
     onSubmit: name => {
       if (!validateName(name)) { rejectEntry(kind, 'bad_name', () => goNet(kind)); return }
       saveName(name)
-      const pick = room => menu.showClassPicker({ onBack: goTitle, onPick: cls => startNet({ name, cls, room }) })
-      if (kind === 'host') pick(null)
-      else menu.showTextEntry({ title: 'Join a room', subtitle: 'Room code', maxLength: NET.codeLength + 2, onBack: goTitle,
+      const pick = room => menu.showClassPicker({ title, subtitle: controlHint(coarsePointer()), onBack: back,
+        onPick: cls => startNet({ name, cls, kind, room }) })
+      if (kind !== 'join') pick(null)
+      else menu.showTextEntry({ title, subtitle: 'Room code', maxLength: NET.codeLength + 2, autocapitalize: 'characters', onBack: back,
         onSubmit: code => {
           const c = normalizeCode(code)
           if (!validCode(c)) { rejectEntry(kind, 'bad_hello', () => goNet(kind)); return }
@@ -898,19 +929,31 @@ function goNet(kind) {
     } })
 }
 
-function startNet({ name, cls, room }) {
+// menu.js draws what net.panels decides. Every panel drops a held Space, so
+// the press that opened it can neither confirm its first button nor keep the
+// hero swinging once it closes.
+function netPanelUi(s) {
+  const drop = () => { keys[' '] = false }
+  return {
+    hide: () => { drop(); menu.hide() },
+    picker: () => { drop(); menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
+      onPick: cls => { sendClass(s, cls); net?.panels.picked() } }) },
+    results: rows => { drop(); menu.showPvpResults(rows, { onQuit: stopNet, quitLabel: 'Leave' }) },
+    wait: () => { drop(); menu.showMessage({ title: 'Next match starting…', onOk: stopNet, okLabel: 'Leave' }) },
+    confirm: () => { drop(); menu.showLeaveConfirm({ onStay: () => net?.panels.stay(), onLeave: stopNet }) },
+  }
+}
+
+function startNet({ name, cls, kind, room }) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
-  const s = connect({ url: netUrl(location), hello: room ? { name, cls, room } : { name, cls, create: true } })
+  const hello = kind === 'quick' ? { name, cls, quick: true }
+    : kind === 'host' ? { name, cls, create: true }
+    : { name, cls, room }
+  const s = connect({ url: netUrl(location), hello })
   decorateMap(s.map, rulesets[theme.ruleset])
-  // isHost: this session's hello was a create, not a join — same distinction
-  // rejectEntry uses for the pre-connect refusal, kept here for the one that
-  // arrives over the wire after connecting. endedShown: whether some
-  // "match is over" panel (results, or the plain wait message below) is
-  // already up, so netFrame doesn't stack a second one on top. pickerShown:
-  // same idea for the "Down!" class picker.
-  net = { s, theme, muted: loadMutedPref(), isHost: !room, endedShown: false, pickerShown: false }
+  net = { s, theme, muted: loadMutedPref(), kind, panels: makeNetPanels(netPanelUi(s)) }
   state = null
-  menu.showMessage({ title: 'Connecting…', onOk: stopNet })
+  menu.showMessage({ title: kind === 'quick' ? 'Finding a match…' : 'Connecting…', onOk: stopNet })
   setPhase(PHASE.PLAYING)
   keys[' '] = false
 }
@@ -924,40 +967,30 @@ function stopNet() {
 
 function netFrame() {
   const now = performance.now()
-  const { s } = net
-  netFrameStep(s, inputFromKeys(keys, sprintDetector.sprinting()), now)
+  const { s, panels } = net
+  // Under the leave confirm you stand still (4a spec §3); inputs keep
+  // flowing, so the server's stale-input rule never kicks in.
+  netFrameStep(s, panels.confirming ? NEUTRAL_INPUT : inputFromKeys(keys, sprintDetector.sprinting()), now)
   for (const ev of drainEvents(s)) {
     if (ev.type === 'welcome') menu.hide()
-    else if (ev.type === 'error') { menu.showMessage({ title: net.isHost ? 'Could not host' : 'Could not join', lines: [errorText(ev.code)], onOk: stopNet }); return }
+    else if (ev.type === 'error') { menu.showMessage({ title: errorTitle(ev.code, net.kind), lines: [errorText(ev.code)], onOk: stopNet }); return }
     else if (ev.type === 'closed' && ev.status === 'lost') { menu.showMessage({ title: 'Connection lost', onOk: stopNet }); return }
-    else if (ev.type === 'kill' && ev.victim === s.heroId) {
-      keys[' '] = false
-      net.pickerShown = true
-      menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
-        onPick: cls => { sendClass(s, cls); menu.hide(); keys[' '] = false; net.pickerShown = false } })
-    }
-    else if (ev.type === 'respawn' && ev.hero === s.heroId) { menu.hide(); net.pickerShown = false }
-    else if (ev.type === 'matchEnd') { keys[' '] = false; net.endedShown = true; menu.showPvpResults(ev.standings, { onQuit: stopNet }) }
-    else if (ev.type === 'matchStart') { net.endedShown = false; menu.hide() }
+    else if (ev.type === 'kill' && ev.victim === s.heroId) panels.died()
+    else if (ev.type === 'respawn' && ev.hero === s.heroId) panels.picked()
+    else if (ev.type === 'matchEnd') panels.matchEnd(ev.standings)
+    else if (ev.type === 'matchStart') panels.matchStart()
   }
+  // Refused, kicked or lost: the message above stays up and nothing redraws
+  // over it.
+  if (s.status !== 'open') return
   const v = sessionView(s, now)
   if (!v) return
-  // The events above are how the results/wait panel and the death picker
-  // normally clear, but a capped/dropped event (a backgrounded tab, or a
-  // slow-reader-skipped snapshot) can lose the matchStart or respawn that
-  // would have done it, leaving the panel stuck over a live match. Drive
-  // both from the snapshot state too, as a backstop.
-  if (!v.ended && net.endedShown) { net.endedShown = false; menu.hide() }
-  if (!v.me.dead && net.pickerShown) { net.pickerShown = false; menu.hide() }
-  // A player who joins mid-results (after the matchEnd event already fired
-  // for everyone else) never sees that event, so the results panel above
-  // never opens for them; without this they would just watch the frozen
-  // arena for up to resultsDelay seconds with no explanation.
-  if (v.ended && !net.endedShown) {
-    net.endedShown = true
-    keys[' '] = false
-    menu.showMessage({ title: 'Next match starting…', onOk: stopNet, okLabel: 'Leave' })
-  }
+  // The events above are how the panels normally change, but a capped or
+  // dropped event (a backgrounded tab, a slow-reader-skipped snapshot) can
+  // lose the matchStart, matchEnd or respawn that would have done it — and a
+  // player joining mid-results never sees that matchEnd at all. The snapshot
+  // state backs them up.
+  panels.sync({ ended: v.ended, dead: v.me.dead })
   const view = netViewOf(v, net.theme, s.map)
   maybeComputeFOV(view.map, view.player, 12, { los: true })
   renderer.updateCamera(view.player, 0, null)
