@@ -71,6 +71,8 @@ import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
 import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
+import { canMoveTo, moveEntity, PLAYER_HALF, PLAYER_SPEED } from './systems/movement.js'
+import { applyLoadout, handPayload } from './systems/loadout.js'
 
 // Fresh weather state for a depth's map — rebuilt on every surface-map
 // construction so a departing map's weather (and its fog cells, keyed to
@@ -78,11 +80,9 @@ import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
 const weatherForDepth = depth => OPEN_MAPS[depth] ? makeWeather(OPEN_MAPS[depth]) : null
 
 const TILE_SIZE = 32
-const PLAYER_SPEED = 120
 const PROJECTILE_SPEED = 280
 const STONES_PER_ROCK = 3      // sling ammo from a rock cracked with a pick
 const CONTACT_RANGE = 20
-const PLAYER_HALF = 6
 const ENEMY_HALF = 4
 const SPIDER_SHOOT_RANGE = 130
 const DRAGON_SHOOT_RANGE = 200
@@ -316,27 +316,6 @@ function rulesetTileNames(rs) {
   for (const set of Object.values(rs))
     for (const name of Object.keys(set.tiles ?? {})) names.add(name)
   return [...names]
-}
-
-function canMoveTo(map, px, py, half = PLAYER_HALF) {
-  const corners = [
-    [px - half, py - half],
-    [px + half, py - half],
-    [px - half, py + half],
-    [px + half, py + half],
-  ]
-  return corners.every(([cx, cy]) => {
-    const tile = map[Math.floor(cy / TILE_SIZE)]?.[Math.floor(cx / TILE_SIZE)]
-    return tile && isWalkable(tile.tile, tile)
-  })
-}
-
-function moveEntity(e, dx, dy, map, half = PLAYER_HALF, boss = null) {
-  const free = (px, py) => canMoveTo(map, px, py, half) && !(boss && coreBlocks(px, py, half, boss))
-  if (dx !== 0 && free(e.px + dx, e.py)) e.px += dx
-  if (dy !== 0 && free(e.px, e.py + dy)) e.py += dy
-  e.x = Math.floor(e.px / TILE_SIZE)
-  e.y = Math.floor(e.py / TILE_SIZE)
 }
 
 // A blow landed on an npc: hurt cue + species reaction + village wrath (once).
@@ -655,53 +634,6 @@ function resolveEpisode() {
   if (runMode === 'timewarp') savedTimewarp.episodes[mapData.name].resolved = true
   persistRun()
 }
-
-// Apply a loadout override (arena config's `player`, or a timewarp episode's
-// kit — same shape): weaponType/rangedType/wandType/ammo/hp/talents/outfits/
-// offhand, each optional.
-function applyLoadout(player, po) {
-  if (!po) return
-  const def = WEAPON_TYPES[po.weaponType]
-  if (def) player.weapon = weaponContents(po.weaponType)
-  else if (po.weaponType !== undefined) console.warn(`loadout: unknown player weaponType "${po.weaponType}" — keeping current weapon`)
-  const rdef = RANGED_WEAPON_TYPES[po.rangedType]
-  if (rdef) player.ranged = makeRangedContents(po.rangedType)
-  else if (po.rangedType !== undefined) console.warn(`loadout: unknown player rangedType "${po.rangedType}" — no ranged weapon`)
-  const wdef = WAND_TYPES[po.wandType]
-  if (wdef) player.wand = makeWandContents(po.wandType)
-  else if (po.wandType !== undefined) console.warn(`loadout: unknown player wandType "${po.wandType}" — no wand`)
-  // A kit's `ammo` tops up the pool it names; kinds it leaves out stay empty.
-  if (po.ammo) player.ammo = { ...emptyAmmo(), ...player.ammo, ...po.ammo }
-  if (Number.isFinite(po.hp) && po.hp >= 1) {
-    player.maxHp = Math.max(player.maxHp, Math.round(po.hp))
-    player.hp = Math.round(po.hp)
-  }
-  // A kit's `talents` may still name a retired stance talent — it means the
-  // outfit now. `outfits` names outfits directly.
-  const wear = ot => { const { type, ...payload } = makeOutfitContents(ot); if (OUTFIT_TYPES[ot]) wearOutfit(player, payload); else console.warn(`loadout: unknown outfit "${ot}" — skipped`) }
-  if (Array.isArray(po.talents)) {
-    for (const t of po.talents) {
-      if (RETIRED_TALENT_OUTFITS[t]) wear(RETIRED_TALENT_OUTFITS[t])
-      else if (TALENTS[t]) player.talents.push(t)
-      else console.warn(`loadout: unknown talent "${t}" — skipped`)
-    }
-  }
-  if (Array.isArray(po.outfits)) po.outfits.forEach(wear)
-  // A kit's `offhand` ({ type, weaponType }) goes straight into the loadout
-  // that takes it: blades and shields to the Warrior, wands to the Mage.
-  if (po.offhand) {
-    const { type, weaponType } = po.offhand
-    const make = { weapon: wt => WEAPON_TYPES[wt] && weaponContents(wt), wand: wt => WAND_TYPES[wt] && handPayload(makeWandContents(wt)), shield: wt => SHIELD_TYPES[wt] && handPayload(makeShieldContents(wt)) }[type]
-    const payload = make?.(weaponType)
-    if (payload) gearOf(player, type === 'wand' ? 'magic' : 'melee').off = { kind: type, ...payload }
-    else console.warn(`loadout: unknown offhand ${type}/${weaponType} — skipped`)
-  }
-}
-
-// A hand slot holds a *Contents() object minus its `type` tag — that field
-// only exists to tell a floating pickup's contents apart, and equipItem /
-// autoEquipOnPickup strip it the same way.
-const handPayload = contents => { const { type, ...payload } = contents; return payload }
 
 // Which stance owns each kind of charge. startStanceSwitch already drops a
 // charge on the way out of its stance; the update loop re-checks against this

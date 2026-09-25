@@ -11,6 +11,9 @@ import { castLightning, tickLightning, LIGHTNING } from '../renderer/systems/spe
 import { applyChain } from '../renderer/systems/hammer.js'
 import { stepProjectiles } from '../renderer/systems/projectiles.js'
 import { TILE } from '../renderer/systems/entities.js'
+import { canMoveTo, moveEntity, PLAYER_HALF } from '../renderer/systems/movement.js'
+import { applyLoadout } from '../renderer/systems/loadout.js'
+import { makePlayer } from '../renderer/systems/entities.js'
 
 const hero = (over = {}) => ({ type: 'hero', id: 'h', px: 100, py: 100, hp: 10, maxHp: 10, facing: 'east',
   attackMode: 'melee', gear: { melee: { off: null, outfit: null }, ranged: { off: null, outfit: null }, magic: { off: null, outfit: null } },
@@ -152,5 +155,36 @@ describe('seam: projectile owner', () => {
     const hits = []
     for (let i = 0; i < 30 && state.projectiles.length; i++) stepProjectiles(state, 1 / 30, hooks(hits))
     assert.deepEqual(hits, ['b'])
+  })
+})
+
+describe('movement.js', () => {
+  it('canMoveTo refuses a box overlapping a wall', () => {
+    const map = floor(5, 5); map[2][3].tile = TILE.WALL
+    assert.equal(canMoveTo(map, 2 * 32 + 16, 2 * 32 + 16), true)
+    assert.equal(canMoveTo(map, 3 * 32 - PLAYER_HALF + 1, 2 * 32 + 16), false)
+  })
+  it('moveEntity slides per axis and updates the tile', () => {
+    const map = floor(5, 5); map[2][3].tile = TILE.WALL
+    const e = { px: 2 * 32 + 16, py: 2 * 32 + 16 }
+    moveEntity(e, 20, 20, map)
+    assert.equal(e.px, 2 * 32 + 16)          // east blocked by the wall
+    assert.equal(e.py, 2 * 32 + 36)          // south free
+    assert.equal(e.y, 3)
+  })
+})
+
+describe('loadout.js', () => {
+  it('applies weapon, outfit and shield offhand', () => {
+    const p = makePlayer(0, 0)
+    applyLoadout(p, { weaponType: 'sword', outfits: ['plate'], offhand: { type: 'shield', weaponType: 'buckler' } }, () => {})
+    assert.equal(p.weapon.weaponType, 'sword')
+    assert.equal(p.gear.melee.outfit.outfitType, 'plate')
+    assert.equal(p.gear.melee.off.kind, 'shield')
+  })
+  it('warns through the injected warn for an unknown weapon', () => {
+    const warned = []
+    applyLoadout(makePlayer(0, 0), { weaponType: 'nope' }, m => warned.push(m))
+    assert.equal(warned.length, 1)
   })
 })
