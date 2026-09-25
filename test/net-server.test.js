@@ -134,10 +134,15 @@ describe('pvp server', async () => {
     const a = await rawClient(srv.url)
     a.send(hello({ create: true }))
     const { room: code } = await a.next('welcome')
-    // The next joiner would be minted as "p2" (nextId follows p1); planting a
-    // fake hero with that id makes joinRoom's addHero throw a duplicate-id
-    // error, standing in for "a future arena with fewer spawns than maxHeroes".
-    srv.pvp.lobby.rooms.get(code).match.heroes.push({ id: 'p2' })
+    const room = srv.pvp.lobby.rooms.get(code)
+    // Shrink room A's arena to exactly its current hero count — a copy, never
+    // the shared PVP_ARENAS singleton — so the next join's addHero throws
+    // "arena is full", standing in for "a future arena with fewer spawns than
+    // maxHeroes". Unlike planting a malformed hero in match.heroes, this
+    // leaves the match itself untouched, so room A's 30 Hz loop (which keeps
+    // stepping it the whole time this test awaits B's close) has nothing
+    // broken to trip over and crash the room on.
+    room.match.arena = { ...room.match.arena, spawns: room.match.arena.spawns.slice(0, room.match.heroes.length) }
     const b = await rawClient(srv.url)
     b.send(hello({ room: code, name: 'Guest' }))
     await waitFor(() => b.closed !== null)
