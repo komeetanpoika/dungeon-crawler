@@ -1,8 +1,11 @@
 // Client-side prediction for your own hero (spec §2): the same moveHero the
 // server runs, applied at once to every input you send, then corrected
 // against each snapshot by replaying what the server has not acknowledged.
-// Damage is never predicted; the tap swing's animation and the charge
-// wind-up are. Pure.
+// Damage (and every other in-flight effect: projectiles, casts, knockback)
+// is never predicted; the cooldown and stamina a swing/cast pays are, so a
+// replayed tap swing or charge release leaves the tank exactly where the
+// server would, and predictCosmetics's tap-swing animation is purely
+// cosmetic on top. Pure.
 import { moveHero, tickHeroStatus } from '../pvp/hero.js'
 import { hydrateHero } from './protocol.js'
 import { getAttack, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
@@ -53,21 +56,39 @@ function predictCharge(h, input, dt) {
   }
 }
 
+// tickMelee's non-charge branch, effects excluded (no damage/knockback/sfx):
+// a tap weapon swings the instant it is held and off cooldown, paying
+// swingCost's stamina and starting its meleeCooldown right away — mirrored
+// here (not only in predictCosmetics) because reconcile's replay drives
+// predictStep alone, and a replayed tap swing must spend the same stamina
+// the server's did or a later sprint check (stamina > 0) reads a tank the
+// server already emptied.
+function predictSwing(h, attacking) {
+  const wt = h.weapon?.weaponType
+  if (h.attackMode !== 'melee' || !wt || isChargeWeapon(wt)) return
+  if (h.charging && !h.charging.kind) h.charging = null
+  if (!attacking || h.meleeCooldown > 0) return
+  const { stamina, cooldown } = swingCost(h, resolveCharge(wt, 0))
+  spendStamina(h, stamina)
+  h.meleeCooldown = cooldown
+}
+
 export function predictStep(pred, input, dt = PVP.tick) {
   const h = pred.hero
   if (h.dead) return
   tickHeroStatus(h, dt)
-  const { stunned } = moveHero({ map: pred.map }, h, input, dt)
+  const { stunned, blocking } = moveHero({ map: pred.map }, h, input, dt)
   if (stunned) { h.charging = null; return }
   predictCharge(h, input, dt)
+  predictSwing(h, !!input.attack && !h.needRelease && !blocking)
 }
 
 // The tap swing starts drawing the moment the key goes down. Its own
-// cooldown lives on the predictor, so a snapshot that has not seen the swing
-// yet cannot restart it. It also pays the same cooldown/stamina swing() on
-// the server would (resolveCharge(wt, 0) is a tap weapon's baseline tier,
-// same as tickMelee's own non-charge branch), so a predicted sprint that
-// follows a string of swings sees the same tank the server sees.
+// cooldown lives on the predictor (not the hero's meleeCooldown, which
+// predictStep/predictSwing above already owns), so a snapshot that has not
+// seen the swing yet cannot restart it. Animation only — no stamina or
+// cooldown write here; predictStep pays those, on both the live path and
+// reconcile's replay.
 export function predictCosmetics(pred, input, dt = PVP.tick) {
   pred.swingCooldown = Math.max(0, pred.swingCooldown - dt)
   if (pred.swing) { pred.swing.t += dt; if (pred.swing.t >= pred.swing.dur) pred.swing = null }
@@ -76,11 +97,8 @@ export function predictCosmetics(pred, input, dt = PVP.tick) {
   if (h.dead || h.attackMode !== 'melee' || !wt || isChargeWeapon(wt) || h.blocking || h.stunTimer > 0) return
   if (!input.attack || pred.swingCooldown > 0) return
   const atk = getAttack(wt)
-  const { stamina, cooldown } = swingCost(h, resolveCharge(wt, 0))
-  spendStamina(h, stamina)
-  h.meleeCooldown = cooldown
   pred.swing = { t: 0, dur: atk.duration, style: atk.style, facing: h.facing }
-  pred.swingCooldown = cooldown
+  pred.swingCooldown = atk.cooldown * resolveCharge(wt, 0).cooldownMul
 }
 
 export function drawnPos(pred) {

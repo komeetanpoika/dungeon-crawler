@@ -112,4 +112,25 @@ describe('prediction', () => {
     assert.ok(Math.abs(pred.hero.stamina - m.heroes[0].stamina) < 1e-9)
     assert.ok(Math.abs(pred.hero.px - m.heroes[0].px) < 1e-9)
   })
+  it('a tap swing spends stamina under reconcile replay too, so sprint stops exactly when the server stops it', () => {
+    const m = lone('warrior')
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    const sprintAttack = { ...east, sprint: true, attack: true }
+    let seq = 0, snapAt10 = null
+    const step = () => {
+      seq++
+      const input = { ...sprintAttack, seq }
+      stepMatch(m, { p1: input }, PVP.tick)
+      predictStep(pred, input)
+      pred.pending.push({ seq, input })
+      if (seq === 10) snapAt10 = heroSnap(m.heroes[0])
+    }
+    for (let i = 0; i < 30; i++) step()
+    // An ack behind the head: replays ticks 11-30 through predictStep alone,
+    // on top of the tick-10 server state — exactly reconcile's real shape.
+    reconcile(pred, snapAt10, 10)
+    assert.equal(pred.pending.length, 20)
+    assert.ok(Math.abs(pred.hero.stamina - m.heroes[0].stamina) < 1e-9)
+    assert.ok(Math.abs(pred.hero.px - m.heroes[0].px) < 1e-9)
+  })
 })
