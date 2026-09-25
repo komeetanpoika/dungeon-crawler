@@ -4,15 +4,17 @@
 // charge/tap logic of each loadout), ported so it runs headless.
 import { makePlayer, defaultGear, emptyAmmo, DIRS } from '../systems/entities.js'
 import { applyLoadout } from '../systems/loadout.js'
-import { gearOf, outfitOf, STANCES } from '../systems/inventory.js'
+import { gearOf, outfitOf, STANCES, offhand } from '../systems/inventory.js'
 import { moveEntity, PLAYER_HALF, PLAYER_SPEED, TILE_SIZE } from '../systems/movement.js'
 import { tickShield, BLOCK_SPEED_MUL } from '../systems/shield.js'
 import { tickStamina, spendStamina, sprintProfile, STAMINA_MAX } from '../systems/stamina.js'
 import { tickStatus } from '../systems/status.js'
 import { tickRain, rainSlow } from '../systems/hammer.js'
 import { tickWalk } from '../systems/walk.js'
-import { chargeMoveFactor } from '../systems/melee.js'
-import { GUST_CHARGE } from '../systems/magic.js'
+import { chargeMoveFactor, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
+import { GUST_CHARGE, resolveGustTier, shouldAutoReleaseGust } from '../systems/magic.js'
+import { spellFor } from '../systems/spells.js'
+import { swing, castSpell, loose } from './attacks.js'
 import { KITS, OUTFIT_OVERRIDES, PVP } from '../data/pvp.js'
 
 export const NEUTRAL_INPUT = Object.freeze({ move: Object.freeze({ x: 0, y: 0 }), facing: null, attack: false, alt: false, sprint: false })
@@ -119,7 +121,43 @@ export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
   else if (hero.attackMode === 'ranged') tickRanged(match, hero, attacking)
 }
 
-// Attacks land in Task 6 (renderer/pvp/attacks.js).
-function tickMelee() {}
-function tickMagic() {}
-function tickRanged() {}
+// Light blades swing the instant attack lands; charge weapons (the rune's
+// hammer) wind up while it is held and swing on release, tiered by hold.
+function tickMelee(match, hero, input, attacking, dt) {
+  const wt = hero.weapon?.weaponType
+  if (!wt) { hero.charging = null; return }
+  if (isChargeWeapon(wt)) {
+    if (hero.charging) {
+      if (input.attack && !shouldAutoRelease(wt, hero.charging.t)) hero.charging.t += dt
+      else {
+        const held = hero.charging.t
+        hero.charging = null
+        hero.needRelease = true
+        swing(match, hero, resolveCharge(wt, held))
+      }
+    } else if (attacking && hero.meleeCooldown <= 0) hero.charging = { t: 0 }
+  } else {
+    if (hero.charging && !hero.charging.kind) hero.charging = null
+    if (attacking && hero.meleeCooldown <= 0) swing(match, hero, resolveCharge(wt, 0))
+  }
+}
+
+// Hold to charge the main wand, release to cast; an offhand wand casts a
+// tap on each alt press, on its own cooldown.
+function tickMagic(match, hero, input, attacking, altEdge, dt) {
+  if (hero.charging?.kind === 'spell') {
+    if (input.attack && !shouldAutoReleaseGust(hero.charging.t)) hero.charging.t += dt
+    else {
+      const tier = resolveGustTier(hero.charging.t)
+      hero.charging = null
+      hero.needRelease = true
+      castSpell(match, hero, spellFor(hero).id, tier, 'main')
+    }
+  } else if (attacking && hero.magicCooldown <= 0) hero.charging = { t: 0, kind: 'spell' }
+  if (altEdge && offhand(hero)?.kind === 'wand') castSpell(match, hero, spellFor(hero, 'off').id, 'tap', 'off')
+}
+
+// Every PvP bow fires on its cooldown while attack is held.
+function tickRanged(match, hero, attacking) {
+  if (attacking) loose(match, hero)
+}
