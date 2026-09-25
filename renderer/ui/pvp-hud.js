@@ -14,6 +14,21 @@ export function pvpHudModel(match, localId) {
   }
 }
 
+// The online counterpart to pvpHudModel: reads a net/client sessionView
+// instead of a local match, and adds the room code and round-trip ping.
+export function netHudModel(v, heroId) {
+  const all = [v.me, ...v.others]
+  const leader = [...all].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths)[0]
+  const left = Math.max(0, (v.matchLength ?? PVP.matchLength) - v.clock)
+  return {
+    room: v.room,
+    time: v.waiting ? '--:--' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`,
+    kills: v.me.kills, leaderKills: leader.kills, leading: leader.id === heroId,
+    dead: v.me.dead, respawnIn: v.me.dead ? Math.ceil(v.me.respawnT) : 0,
+    ping: v.ping === null || v.ping === undefined ? null : Math.round(v.ping),
+  }
+}
+
 export function updatePvpHud(m) {
   let node = document.getElementById('pvp-hud')
   if (!node) {
@@ -23,10 +38,12 @@ export function updatePvpHud(m) {
       'font:bold 16px monospace;color:#e5e7eb;text-shadow:0 1px 2px #000'
     document.getElementById('hud-overlay').appendChild(node)
   }
-  const html = `<span>${m.time}</span>` +
+  const html = (m.room ? `<span>${m.room}</span>` : '') +
+    `<span>${m.time}</span>` +
     `<span style="color:${m.leading ? '#facc15' : '#e5e7eb'}">${m.kills}</span>` +
     `<span style="opacity:0.6">${m.leaderKills}</span>` +
-    (m.dead ? `<span style="color:#f87171">${m.respawnIn}</span>` : '')
+    (m.dead ? `<span style="color:#f87171">${m.respawnIn}</span>` : '') +
+    (m.ping !== null && m.ping !== undefined ? `<span style="opacity:0.5;font-size:12px">${m.ping}ms</span>` : '')
   if (node._html === html) return
   node._html = html
   node.innerHTML = html

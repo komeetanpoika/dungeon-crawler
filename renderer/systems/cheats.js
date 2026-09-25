@@ -40,3 +40,10 @@ export function cheatDecision(buffer) {
 export function parsePvpCheat(buffer) {
   return /pvp$/.test(String(buffer).toLowerCase())
 }
+
+// Title-screen cheats for online PvP (web build): "host" creates a room,
+// "join" asks for a code. Suffix-matched like the others.
+export function parseNetCheat(buffer) {
+  const m = /(host|join)$/.exec(String(buffer).toLowerCase())
+  return m ? m[1] : null
+}

@@ -1,4 +1,4 @@
-import { cheatDecision, CHEAT_HOLD_MS, parsePvpCheat } from '../systems/cheats.js'
+import { cheatDecision, CHEAT_HOLD_MS, parsePvpCheat, parseNetCheat } from '../systems/cheats.js'
 
 // Overlay menu screens (title / pause / game over). DOM-only; receives callbacks.
 // Keep all document access inside functions so the pure helper stays importable
@@ -6,6 +6,7 @@ import { cheatDecision, CHEAT_HOLD_MS, parsePvpCheat } from '../systems/cheats.j
 
 let keyHandler = null
 let currentButtons = []
+let currentInput = null
 let selectedIndex = 0
 let cheatBuffer = ''
 let cheatTimer = null
@@ -35,9 +36,10 @@ function highlight() {
   currentButtons.forEach((b, i) => b.classList.toggle('selected', i === selectedIndex))
 }
 
-function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp }) {
+function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, onNet, input }) {
   const el = overlayEl()
   el.innerHTML = ''
+  currentInput = null
 
   const panel = document.createElement('div')
   panel.className = 'menu-panel'
@@ -61,6 +63,16 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp }) 
     panel.appendChild(l)
   }
 
+  if (input) {
+    const inp = document.createElement('input')
+    inp.className = 'menu-input'
+    inp.maxLength = input.maxLength ?? 12
+    inp.value = input.value ?? ''
+    inp.autocomplete = 'off'
+    panel.appendChild(inp)
+    currentInput = inp
+  }
+
   currentButtons = buttons.map(({ label, onSelect, className }) => {
     const btn = document.createElement('button')
     btn.className = className ? `menu-btn ${className}` : 'menu-btn'
@@ -76,9 +88,11 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp }) 
   cheatBuffer = ''
   clearCheatTimer()
   highlight()
+  currentInput?.focus()
 
   clearKeyHandler()
   keyHandler = (e) => {
+    if (currentInput && e.target === currentInput && e.key !== 'Enter' && e.key !== 'Escape') return
     const action = navActionFor(e.key)
     if (action === 'down') {
       selectedIndex = (selectedIndex + 1) % buttons.length; highlight(); e.preventDefault()
@@ -89,6 +103,8 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp }) 
     } else if (onCheat && e.key.length === 1) {
       cheatBuffer = (cheatBuffer + e.key).toLowerCase().slice(-12)
       if (onPvp && parsePvpCheat(cheatBuffer)) { clearCheatTimer(); cheatBuffer = ''; onPvp(); return }
+      const net = onNet && parseNetCheat(cheatBuffer)
+      if (net) { clearCheatTimer(); cheatBuffer = ''; onNet(net); return }
       // The cheat is suffix-matched, so "level1" matches while the player may
       // still be typing "level18". A depth a further digit could extend is
       // held for CHEAT_HOLD_MS; only a further match cancels that pending fire
@@ -105,7 +121,7 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp }) 
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor, onQuit, onCheat, onPvp }) {
+export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
   // The web release has no tile editor and nothing to quit to. The old
   // procedural overworld left the menu with the mode split; it remains
   // reachable as the level6 cheat.
@@ -124,6 +140,7 @@ export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor,
     ],
     onCheat,
     onPvp,
+    onNet,
   })
 }
 
@@ -175,6 +192,7 @@ export function showGameOver({ won, deepestLevel }, { onPlayAgain, onQuitToTitle
 
 export function hide() {
   clearKeyHandler()
+  currentInput = null
   const el = overlayEl()
   el.style.display = 'none'
   el.innerHTML = ''
@@ -193,14 +211,31 @@ export function showClassPicker({ title = 'Arena', subtitle = 'Pick a class', on
   })
 }
 
-// PvP: the end-of-match table, one line per hero.
+// PvP: the end-of-match table, one line per hero. onNext is optional — an
+// online match has no local restart, only a quit.
 export function showPvpResults(rows, { onNext, onQuit }) {
   renderScreen({
     title: 'Match over',
     lines: rows.map(r => `${r.rank}. ${r.name} — ${r.cls} — ${r.kills} / ${r.deaths}`),
     buttons: [
-      { label: 'Next match', onSelect: onNext },
+      ...(onNext ? [{ label: 'Next match', onSelect: onNext }] : []),
       { label: 'Quit', onSelect: onQuit },
     ],
   })
+}
+
+// A one-field form (name, room code): Enter or OK submits the text.
+export function showTextEntry({ title, subtitle, value = '', maxLength = 12, onSubmit, onBack }) {
+  renderScreen({
+    title, subtitle, input: { value, maxLength },
+    buttons: [
+      { label: 'OK', onSelect: () => onSubmit(currentInput?.value ?? '') },
+      ...(onBack ? [{ label: 'Back', onSelect: onBack }] : []),
+    ],
+  })
+}
+
+// A message with one button (connection lost, refused, web-only).
+export function showMessage({ title, lines = [], onOk }) {
+  renderScreen({ title, lines, buttons: [{ label: 'OK', onSelect: onOk }] })
 }
