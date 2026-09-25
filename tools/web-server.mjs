@@ -1,11 +1,13 @@
 // Static server for the web release: serves renderer/ as the web root.
 //   npm run web   ->  http://localhost:8080
 // Any static host works equally well (the game is plain files + web-shim.js);
-// this exists so "set up a server" is one command.
+// this exists so "set up a server" is one command. The same server also
+// carries the PvP WebSocket on /pvp (spec docs/superpowers/specs/2026-09-25-pvp-server-netcode-design.md).
 import * as http from 'node:http'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { attachPvp } from '../server/pvp-server.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer')
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
@@ -22,7 +24,7 @@ const MIME = {
   '.ico': 'image/x-icon',
 }
 
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname)
   const rel = urlPath === '/' ? 'index.html' : urlPath.slice(1)
   const file = path.normalize(path.join(ROOT, rel))
@@ -34,4 +36,6 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' })
     res.end(body)
   })
-}).listen(PORT, () => console.log(`dungeon-crawler web: http://localhost:${PORT}`))
+})
+attachPvp(server)
+server.listen(PORT, () => console.log(`dungeon-crawler web: http://localhost:${PORT}  (pvp on ws://localhost:${PORT}/pvp)`))
