@@ -7,13 +7,9 @@ import { isWalkable, hasLineOfSight } from '../systems/entities.js'
 import { foesOf } from './combat.js'
 import { NEUTRAL_INPUT } from './hero.js'
 import { GUST_CHARGE } from '../systems/magic.js'
+import { BOTS } from '../data/pvp.js'
 
 const TILE = 32
-const MELEE_RANGE = 1.3     // tiles
-const SHOOT_RANGE = 9       // tiles
-const KEEP_AWAY = 3         // tiles a caster/archer tries to hold
-const ALIGN_SLACK = 10      // px off-axis that still counts as lined up
-const HURT = 0.4            // hp fraction that sends a bot for a flask
 const STEPS = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 
 const tileDist = (a, b) => Math.hypot(a.px - b.px, a.py - b.py) / TILE
@@ -59,11 +55,11 @@ function steer(match, hero, goal, input) {
 }
 
 // The walkable tile on the foe's row or column nearest the bot, at least
-// KEEP_AWAY from the foe — where a shot along a facing will land.
+// BOTS.keepAway from the foe — where a shot along a facing will land.
 function firingSpot(match, hero, foe) {
   let best = null, bestD = Infinity
   for (const [dx, dy] of STEPS) {
-    for (let r = KEEP_AWAY; r <= SHOOT_RANGE - 2; r++) {
+    for (let r = BOTS.keepAway; r <= BOTS.shootRange - 2; r++) {
       const x = foe.x + dx * r, y = foe.y + dy * r
       if (!walk(match.map, x, y)) break
       if (!hasLineOfSight(match.map, y, x, foe.y, foe.x)) break
@@ -86,7 +82,7 @@ export function botInput(match, hero) {
   const up = kind => match.pickups.filter(p => p.up && p.kind === kind)
   const foe = nearest(hero, foesOf(match, hero))
 
-  if (hero.hp < hero.maxHp * HURT) {
+  if (hero.hp < hero.maxHp * BOTS.hurt) {
     const flask = nearest(hero, up('flask'))
     if (flask) { steer(match, hero, flask, input); return input }
   }
@@ -98,7 +94,7 @@ export function botInput(match, hero) {
   if (hero.cls === 'warrior') {
     const shot = incoming(match, hero)
     if (shot) { input.alt = true; input.facing = faceToward(hero, shot); return input }
-    if (d <= MELEE_RANGE) { input.facing = faceToward(hero, foe); input.attack = true; return input }
+    if (d <= BOTS.meleeRange) { input.facing = faceToward(hero, foe); input.attack = true; return input }
     steer(match, hero, foe, input)
     return input
   }
@@ -108,12 +104,12 @@ export function botInput(match, hero) {
     input.alt = !hero.prevAlt               // one press per two ticks: an edge the blink reads
     return input
   }
-  const aligned = Math.abs(hero.px - foe.px) < ALIGN_SLACK || Math.abs(hero.py - foe.py) < ALIGN_SLACK
-  if (aligned && d <= SHOOT_RANGE && hasLineOfSight(match.map, hero.y, hero.x, foe.y, foe.x)) {
+  const aligned = Math.abs(hero.px - foe.px) < BOTS.alignSlack || Math.abs(hero.py - foe.py) < BOTS.alignSlack
+  if (aligned && d <= BOTS.shootRange && hasLineOfSight(match.map, hero.y, hero.x, foe.y, foe.x)) {
     input.facing = faceToward(hero, foe)
     // A mage releases once the charge reaches the full tier; an archer streams.
     input.attack = hero.cls === 'mage' ? !(hero.charging?.t >= GUST_CHARGE.full) : true
-    if (d < KEEP_AWAY - 1) input.move = { x: 0, y: 0 }
+    if (d < BOTS.keepAway - 1) input.move = { x: 0, y: 0 }
     return input
   }
   const spot = firingSpot(match, hero, foe)

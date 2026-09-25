@@ -39,3 +39,13 @@ export const RUNE_POWER = {
   archer:  { rangedType: 'crossbow', bolts: 10 },
   mage:    { wandType: 'stormwand' },
 }
+
+// Bot AI tuning (renderer/pvp/bots.js). Geometry constants (TILE, STEPS) stay
+// local to bots.js; these are the numbers that shape bot behaviour.
+export const BOTS = {
+  meleeRange: 1.3,  // tiles — a warrior bot faces and swings once a foe is this close
+  shootRange: 9,     // tiles — an archer/mage bot will line up and fire out to this range
+  keepAway: 3,       // tiles — the distance a caster/archer bot tries to hold from its foe
+  alignSlack: 10,    // px — off-axis slop still counted as "lined up" on a row/column
+  hurt: 0.4,         // hp fraction — below this, a bot breaks off to head for a flask
+}
