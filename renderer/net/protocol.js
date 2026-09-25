@@ -64,17 +64,22 @@ export function validateHello(raw) {
 // is not sent: the class kit rebuilds it; only the offhand's kind (the
 // rune parks the Warrior's buckler) and the main hands' types travel.
 //
-// prevAlt and _wpx/_wpy were added on top of the brief's list: moveHero
-// reads hero.prevAlt directly to edge-detect an alt press, and reads
-// hero._wpx/_wpy (via tickWalk, called at the end of moveHero) to advance
-// the walk-sway animation from distance actually moved. Without them a
-// replayed/hydrated hero would misdetect the first alt edge after a
-// reconciliation and hitch its walk sway for one tick — see task-2-report.md.
+// prevAlt was added on top of the brief's list: moveHero reads hero.prevAlt
+// directly to edge-detect an alt press, for the offhand-wand tap cast, and
+// it was missing from the brief's HERO_FIELDS.
+//
+// Walk-sway bookkeeping (_wpx/_wpy/walkPhase/swayAmp) is deliberately never
+// sent. tickWalk measures a frame's movement as px/py minus _wpx/_wpy, so
+// each hydrated hero must keep its own anchor from its own previous tickWalk
+// call; re-pinning it to the snapshot's raw (pre-interpolation) position
+// every hydration produces a spurious, oversized walk delta on every other
+// hero the client draws (interpolated to an older position before its own
+// tickWalk runs). moveHero's replay exactness does not depend on walk sway.
 const HERO_FIELDS = ['id', 'name', 'cls', 'x', 'y', 'px', 'py', 'facing', 'hp', 'maxHp', 'stamina',
   'staminaRegenT', 'dead', 'respawnT', 'spawnProtect', 'invulnTimer', 'kills', 'deaths', 'attackMode',
   'attackTimer', 'attackDuration', 'attackStyle', 'attackFacing', 'attackReachMul', 'blocking',
   'shieldDropT', 'stunTimer', 'slowTimer', 'slowMul', 'rootTimer', 'frozen', 'needRelease',
-  'meleeCooldown', 'rangedCooldown', 'magicCooldown', 'offCooldown', 'prevAlt', '_wpx', '_wpy']
+  'meleeCooldown', 'rangedCooldown', 'magicCooldown', 'offCooldown', 'prevAlt']
 
 export function heroSnap(h) {
   const s = {}

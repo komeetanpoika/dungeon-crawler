@@ -82,6 +82,16 @@ describe('snapshots', () => {
     assert.equal(h.ranged.weaponType, 'shortbow')
     assert.equal(h.gear.melee.outfit, null)
   })
+  it('hydrating leaves walk-sway anchors (_wpx/_wpy) at the hero\'s own value', () => {
+    const m = match()
+    const w = m.heroes[0]
+    const s = heroSnap(w)
+    s.px = 999; s.py = 999   // the snapshot's raw position differs from the hydrated hero's own anchor
+    const h = { ...w, _wpx: 5, _wpy: 7 }
+    hydrateHero(h, s)
+    assert.equal(h.px, 999); assert.equal(h.py, 999)
+    assert.equal(h._wpx, 5); assert.equal(h._wpy, 7)
+  })
   it('snapshotBody is plain JSON with every list the client draws', () => {
     const m = match()
     m.projectiles.push({ px: 1, py: 2, dx: 3, dy: 4, shape: 'arrow', color: '#fff', owner: 'p2', hitIds: new Set() })
