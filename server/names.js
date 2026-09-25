@@ -9,9 +9,21 @@
 // problem: "cunt" in Scunthorpe, "rapist" in therapist, "negro" in
 // Montenegro/Negroni, "niger" in Nigeria/Nigerian) — see server/blocklist.js
 // for the ALLOWLIST and why the bare word "Niger" is deliberately not on it.
-// acceptableName strips every ALLOWLIST entry out of the normalised name,
-// as a substring, before checking for a blocked stem, so the allowlisted
-// word passes but a stem next to it (not part of it) still doesn't.
+//
+// acceptableName forgives a blocked-stem occurrence only when it sits
+// ENTIRELY inside a single occurrence of an allowlisted word in the
+// normalised name — i.e. every character of the stem match is also part of
+// the allowlist-word match, at the same position. It does NOT strip the
+// allowlisted word out of the string first: an earlier version did that
+// (`name.split(word).join('')`), which was bypassable at the boundary — a
+// name like "cunt" + "herapist" contains "therapist" as a substring (using
+// the stem's trailing "t" as the word's leading "t"), so stripping
+// "therapist" silently ate the "t" the "cunt" stem needed and let the name
+// through. Span containment doesn't have this hole: "cunt"'s span [0,4) is
+// not contained by "therapist"'s span [3,12) in "cuntherapist" (it starts
+// before it), so the stem occurrence is still flagged and the name is still
+// refused. A stem occurrence that's a genuine substring of the allowlisted
+// word — "rapist" at [3,9) inside "therapist"'s [0,9) — stays forgiven.
 import { BLOCKLIST, ALLOWLIST } from './blocklist.js'
 
 const LOOKALIKE = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't' }
@@ -24,11 +36,29 @@ export function normalizeName(name) {
     .replace(/(.)\1+/g, '$1')
 }
 
+// Every [start, end) span where `needle` occurs in `haystack`, including
+// overlapping occurrences.
+function occurrenceSpans(haystack, needle) {
+  const spans = []
+  let i = haystack.indexOf(needle)
+  while (i !== -1) {
+    spans.push([i, i + needle.length])
+    i = haystack.indexOf(needle, i + 1)
+  }
+  return spans
+}
+
 // false → the server answers bad_name, exactly as for a malformed name, so
 // the reason is never revealed.
 export function acceptableName(name) {
   const n = normalizeName(name)
   if (RESERVED_PREFIXES.some(p => n.startsWith(p))) return false
-  const stripped = ALLOWLIST.reduce((s, word) => s.split(word).join(''), n)
-  return !BLOCKLIST.some(stem => stripped.includes(stem))
+  const allowSpans = ALLOWLIST.flatMap(word => occurrenceSpans(n, word))
+  for (const stem of BLOCKLIST) {
+    for (const [start, end] of occurrenceSpans(n, stem)) {
+      const forgiven = allowSpans.some(([aStart, aEnd]) => aStart <= start && end <= aEnd)
+      if (!forgiven) return false
+    }
+  }
+  return true
 }

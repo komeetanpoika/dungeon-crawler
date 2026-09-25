@@ -25,10 +25,17 @@
 // real places or words (the Scunthorpe problem in the other direction):
 // "cunt" sits inside Scunthorpe, "rapist" inside therapist, "negro" inside
 // Montenegro/Negroni, "niger" inside Nigeria/Nigerian. acceptableName
-// (server/names.js) removes every ALLOWLIST entry, as a substring, from the
-// normalised name before running the stem check — so "Scunthorpe" passes,
-// but "ScunthorpeVittu" still doesn't, since only the allowlisted substring
-// is stripped. Every ALLOWLIST entry is stored in normalizeName form too.
+// (server/names.js) forgives a stem occurrence only when it sits ENTIRELY
+// inside a single occurrence of an allowlisted word in the normalised name
+// (span containment, not string stripping — stripping the allowlisted word
+// out first is bypassable when a stem's tail overlaps the word's head, e.g.
+// "cunt" + "herapist" contains "therapist" using the stem's own trailing
+// "t", so stripping it would eat the "t" the "cunt" stem needed; see the
+// comment in server/names.js for the full example). So "Scunthorpe" passes,
+// "ScunthorpeVittu" still doesn't (the "vitu" occurrence has no covering
+// allowlist span), and neither does "cuntherapist" (the "cunt" occurrence
+// starts before "therapist" does, so it isn't entirely inside that span).
+// Every ALLOWLIST entry is stored in normalizeName form too.
 //
 // The bare country name "Niger" is deliberately NOT allowlisted:
 // normalizeName collapses doubled letters, so normalizeName('Niger') and

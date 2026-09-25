@@ -24,11 +24,10 @@ const INNOCENT = ['Aino', 'Ilmari', 'Vaino', 'Sam', 'Alex', 'Kalle_99', 'Pasi', 
   'Nigel', 'Spencer', 'Pussycat', 'Cockburn', 'xX_Aino_Xx', 'Mage42', 'NoobSlayer', 'Lollipop', 'Lolita',
   'Matsushita']
 
-// Real places/words that only pass because acceptableName strips these
-// ALLOWLIST entries (server/blocklist.js) before the stem check — each one
-// raw-contains a stem that must stay in BLOCKLIST (cunt, rapist, negro,
-// niger). Checked only through acceptableName, never through raw stem
-// containment.
+// Real places/words that only pass because acceptableName forgives these
+// ALLOWLIST entries (server/blocklist.js) — each one raw-contains a stem
+// that must stay in BLOCKLIST (cunt, rapist, negro, niger). Checked only
+// through acceptableName, never through raw stem containment.
 const ALLOWLISTED_PASS = ['Scunthorpe', 'Therapist', 'Nigeria', 'Montenegro', 'Negroni']
 
 // Each must be refused: the stems themselves, and the tricks normalisation
@@ -102,5 +101,66 @@ describe('ALLOWLIST', () => {
   it('a slur next to (not part of) an allowlisted word still fails', () => {
     for (const name of ['TherapistCunt', 'ScunthorpeVittu', 'MontenegroFuck', 'NigeriaNigger'])
       assert.equal(acceptableName(name), false, name)
+  })
+  it('a stem sharing a boundary letter with an allowlisted word is never forgiven', () => {
+    // Built from the real BLOCKLIST/ALLOWLIST, not hard-coded, so this stays
+    // valid as either list is edited. For every (stem, word) pair, wherever
+    // a suffix of the stem equals a prefix of the word (in either
+    // direction), the merged string shares that boundary letter instead of
+    // repeating it — e.g. "cunt" + "therapist" -> "cuntherapist" — which is
+    // exactly the construction the old strip-then-check implementation let
+    // through (see server/names.js's comment on acceptableName). It must
+    // still be refused under span containment, because the stem's
+    // occurrence starts before the allowlisted word's occurrence does.
+    //
+    // Is [spanStart, spanEnd) inside some occurrence of a DIFFERENT
+    // ALLOWLIST word in `haystack`? Used only to recognise the rare, benign
+    // case where two allowlisted words placed back to back happen to spell
+    // a third one at the join — e.g. "negro" + "nigeria" begins with the
+    // allowlisted word "negroni", which legitimately covers "negro" even
+    // though this pair's own word ("nigeria") doesn't start there. That's a
+    // structural coincidence between real place names, not a bypass: this
+    // helper is used only to skip asserting refusal for such an already-
+    // legitimately-covered span, never to excuse an uncovered one.
+    function coveredByAnAllowlistedWord(haystack, spanStart, spanEnd) {
+      return ALLOWLIST.some(w => {
+        let i = haystack.indexOf(w)
+        while (i !== -1) {
+          if (i <= spanStart && i + w.length >= spanEnd) return true
+          i = haystack.indexOf(w, i + 1)
+        }
+        return false
+      })
+    }
+
+    let checked = 0
+    for (const stem of BLOCKLIST) {
+      for (const word of ALLOWLIST) {
+        const maxOverlap = Math.min(stem.length, word.length) - 1
+        for (let overlap = 1; overlap <= maxOverlap; overlap++) {
+          if (stem.slice(-overlap) === word.slice(0, overlap)) {
+            const stemThenWord = stem + word.slice(overlap)
+            assert.equal(acceptableName(stemThenWord), false, `${stem}+${word} (overlap ${overlap}) -> "${stemThenWord}"`)
+            checked++
+          }
+          if (word.slice(-overlap) === stem.slice(0, overlap)) {
+            const wordThenStem = word + stem.slice(overlap)
+            assert.equal(acceptableName(wordThenStem), false, `${word}+${stem} (overlap ${overlap}) -> "${wordThenStem}"`)
+            checked++
+          }
+        }
+        // Plain concatenations (no shared boundary letter) must also fail —
+        // unless the stem's own span is already, separately covered by some
+        // other allowlisted word's occurrence (see helper above).
+        const stemThenWordPlain = stem + word
+        if (!coveredByAnAllowlistedWord(stemThenWordPlain, 0, stem.length))
+          assert.equal(acceptableName(stemThenWordPlain), false, `${stem}${word}`)
+        const wordThenStemPlain = word + stem
+        if (!coveredByAnAllowlistedWord(wordThenStemPlain, word.length, word.length + stem.length))
+          assert.equal(acceptableName(wordThenStemPlain), false, `${word}${stem}`)
+        checked++
+      }
+    }
+    assert.ok(checked > 0, 'expected at least one real boundary-overlap pair to exist')
   })
 })
