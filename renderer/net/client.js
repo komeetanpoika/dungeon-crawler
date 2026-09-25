@@ -28,14 +28,31 @@ export function connect({ url, hello, WebSocketImpl = globalThis.WebSocket, now 
   return s
 }
 
+// A backgrounded tab keeps receiving WebSocket messages while
+// requestAnimationFrame stops, so a busy room's events/cues/floats can pile
+// up (~7 cues/s) for however long the tab was hidden, then all play at once
+// the moment it returns. These three ALWAYS_KEPT event types are the ones a
+// caller still needs after a long gap (session status changes), so trimming
+// never drops them; everything else is capped like cues/floats.
+const ALWAYS_KEPT_EVENTS = new Set(['closed', 'error', 'welcome'])
+
+function pushEvent(s, e) {
+  s.events.push(e)
+  while (s.events.length > NET.maxEvents) {
+    const i = s.events.findIndex(x => !ALWAYS_KEPT_EVENTS.has(x.type))
+    if (i === -1) break
+    s.events.splice(i, 1)
+  }
+}
+
 function onMessage(s, msg, t) {
   if (!msg) return
   if (msg.type === MSG.WELCOME) {
     s.status = 'open'; s.room = msg.room; s.heroId = msg.heroId
-    s.events.push({ type: 'welcome', room: msg.room, heroId: msg.heroId })
+    pushEvent(s, { type: 'welcome', room: msg.room, heroId: msg.heroId })
   } else if (msg.type === MSG.ERROR) {
     s.status = 'error'; s.error = msg.code
-    s.events.push({ type: 'error', code: msg.code })
+    pushEvent(s, { type: 'error', code: msg.code })
   } else if (msg.type === MSG.PONG) {
     if (Number.isFinite(msg.t)) s.ping = t - msg.t
   } else if (msg.type === MSG.SNAP) {
@@ -51,12 +68,14 @@ function onSnap(s, snap, t) {
     reconcile(s.pred, mine, snap.ack)
   }
   for (const e of snap.events) {
-    s.events.push(e)
+    pushEvent(s, e)
     const at = snap.heroes.find(h => h.id === (e.type === 'hit' ? e.target : e.killer))
     if (e.type === 'hit' && at && e.amount > 0) addFloat(s.feedback, { px: at.px, py: at.py - 10, text: `-${e.amount}`, kind: e.target === s.heroId ? 'taken' : 'dealt' })
     if (e.type === 'kill' && at) addFloat(s.feedback, { px: at.px, py: at.py - 16, text: '+1', kind: 'heal' })
   }
+  if (s.feedback.floats.length > NET.maxFloats) s.feedback.floats = s.feedback.floats.slice(-NET.maxFloats)
   s.cues.push(...snap.cues)
+  if (s.cues.length > NET.maxCues) s.cues = s.cues.slice(-NET.maxCues)
 }
 
 export function frame(s, input, t = s.now()) {
@@ -82,7 +101,13 @@ export function frame(s, input, t = s.now()) {
     }
     s.held = { attack: !!input.attack, alt: !!input.alt }
     s.ws.send(encode(msg))
-    if (s.pred) {
+    // While the newest snapshot shows the match ended (the results screen),
+    // the server has stopped stepping every hero, so predicting further
+    // would just run the hero into the wall on its own and rubber-band back
+    // on the next snapshot. Inputs are still sent — a fresh joiner or a
+    // client that briefly missed the matchEnd event needs its ack to keep
+    // advancing — but nothing is predicted or queued for replay.
+    if (s.pred && !newest(s.interp)?.ended) {
       s.pred.from = { x: s.pred.hero.px, y: s.pred.hero.py }
       predictStep(s.pred, msg)
       predictCosmetics(s.pred, msg)
@@ -100,6 +125,12 @@ const place = (h, px, py) => { h.px = px; h.py = py; h.x = Math.floor(px / TILE)
 export function sessionView(s, t = s.now()) {
   const last = newest(s.interp)
   if (!s.pred || !last) return null
+  // A tab backgrounded past a frame's worth of time (rAF stopped, but the
+  // socket kept receiving) comes back to cues/floats queued for however long
+  // it was hidden. tickFeedback's dt is clamped below like frame()'s, so
+  // those floats would otherwise still be mid-flight and play late; clear
+  // them here instead — stale effects are not worth playing.
+  if (s.lastView !== null && t - s.lastView > PVP.maxFrame * 1000) { s.cues = []; s.feedback.floats = [] }
   const dt = s.lastView === null ? 0 : Math.max(0, Math.min(t - s.lastView, PVP.maxFrame * 1000)) / 1000
   s.lastView = t
   tickFeedback(s.feedback, dt)

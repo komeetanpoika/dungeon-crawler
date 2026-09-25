@@ -902,7 +902,12 @@ function startNet({ name, cls, room }) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
   const s = connect({ url: netUrl(location), hello: room ? { name, cls, room } : { name, cls, create: true } })
   decorateMap(s.map, rulesets[theme.ruleset])
-  net = { s, theme, muted: loadMutedPref() }
+  // isHost: this session's hello was a create, not a join — same distinction
+  // rejectEntry uses for the pre-connect refusal, kept here for the one that
+  // arrives over the wire after connecting. endedShown: whether some
+  // "match is over" panel (results, or the plain wait message below) is
+  // already up, so netFrame doesn't stack a second one on top.
+  net = { s, theme, muted: loadMutedPref(), isHost: !room, endedShown: false }
   state = null
   menu.showMessage({ title: 'Connecting…', onOk: stopNet })
   setPhase(PHASE.PLAYING)
@@ -922,7 +927,7 @@ function netFrame() {
   netFrameStep(s, inputFromKeys(keys, sprintDetector.sprinting()), now)
   for (const ev of drainEvents(s)) {
     if (ev.type === 'welcome') menu.hide()
-    else if (ev.type === 'error') { menu.showMessage({ title: 'Could not join', lines: [errorText(ev.code)], onOk: stopNet }); return }
+    else if (ev.type === 'error') { menu.showMessage({ title: net.isHost ? 'Could not host' : 'Could not join', lines: [errorText(ev.code)], onOk: stopNet }); return }
     else if (ev.type === 'closed' && ev.status === 'lost') { menu.showMessage({ title: 'Connection lost', onOk: stopNet }); return }
     else if (ev.type === 'kill' && ev.victim === s.heroId) {
       keys[' '] = false
@@ -930,11 +935,16 @@ function netFrame() {
         onPick: cls => { sendClass(s, cls); menu.hide(); keys[' '] = false } })
     }
     else if (ev.type === 'respawn' && ev.hero === s.heroId) menu.hide()
-    else if (ev.type === 'matchEnd') { keys[' '] = false; menu.showPvpResults(ev.standings, { onQuit: stopNet }) }
-    else if (ev.type === 'matchStart') menu.hide()
+    else if (ev.type === 'matchEnd') { keys[' '] = false; net.endedShown = true; menu.showPvpResults(ev.standings, { onQuit: stopNet }) }
+    else if (ev.type === 'matchStart') { net.endedShown = false; menu.hide() }
   }
   const v = sessionView(s, now)
   if (!v) return
+  // A player who joins mid-results (after the matchEnd event already fired
+  // for everyone else) never sees that event, so the results panel above
+  // never opens for them; without this they would just watch the frozen
+  // arena for up to resultsDelay seconds with no explanation.
+  if (v.ended && !net.endedShown) { net.endedShown = true; menu.showMessage({ title: 'Next match starting…', onOk: stopNet }) }
   const view = netViewOf(v, net.theme, s.map)
   maybeComputeFOV(view.map, view.player, 12, { los: true })
   renderer.updateCamera(view.player, 0, null)

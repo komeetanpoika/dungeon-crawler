@@ -26,4 +26,8 @@ export const NET = {
   snapPx: 2,               // corrections smaller than this snap silently…
   bigSnapPx: 96,           // …and larger than this snap outright (respawn, blink)
   correctionMs: 100,       // everything between blends away over this long
+  maxBuffered: 65536,      // a socket whose ws.bufferedAmount exceeds this is skipped for a snapshot
+  maxCues: 16,             // client: sfx cues kept pending between drains, a backgrounded tab piles these up
+  maxFloats: 24,           // client: damage/heal floats kept pending between drains, same reason
+  maxEvents: 64,           // client: events kept pending between drains (closed/error/welcome are never dropped)
 }

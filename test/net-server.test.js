@@ -115,6 +115,57 @@ describe('pvp server', async () => {
     a.ws.close()
   })
 
+  it('a close-handler exception crashes the room, closing every other socket in it too', async () => {
+    const a = await rawClient(srv.url)
+    a.send(hello({ create: true }))
+    const { room: code } = await a.next('welcome')
+    const b = await rawClient(srv.url)
+    b.send(hello({ room: code, name: 'Guest' }))
+    await b.next('welcome')
+    // Break leaveRoom's next call for this room (removeHero reads room.match).
+    srv.pvp.lobby.rooms.get(code).match = null
+    a.ws.close()
+    await waitFor(() => b.closed !== null)
+    assert.equal(b.closed, 1011)
+    assert.ok(!srv.pvp.lobby.rooms.has(code))
+  })
+
+  it('an exception during hello handling closes that socket, not the server', async () => {
+    const a = await rawClient(srv.url)
+    a.send(hello({ create: true }))
+    const { room: code } = await a.next('welcome')
+    // The next joiner would be minted as "p2" (nextId follows p1); planting a
+    // fake hero with that id makes joinRoom's addHero throw a duplicate-id
+    // error, standing in for "a future arena with fewer spawns than maxHeroes".
+    srv.pvp.lobby.rooms.get(code).match.heroes.push({ id: 'p2' })
+    const b = await rawClient(srv.url)
+    b.send(hello({ room: code, name: 'Guest' }))
+    await waitFor(() => b.closed !== null)
+    assert.equal(b.closed, 1011)
+    // The server (and room A) must still be serving.
+    const c = await rawClient(srv.url)
+    c.send(hello({ create: true }))
+    const w = await c.next('welcome')
+    assert.match(w.room, /^[A-Z]{4}$/)
+    assert.ok(srv.pvp.lobby.rooms.has(code))
+    a.ws.close(); c.ws.close()
+  })
+
+  it('skips a socket whose bufferedAmount exceeds NET.maxBuffered', async () => {
+    const a = await rawClient(srv.url)
+    a.send(hello({ create: true }))
+    const { room: code } = await a.next('welcome')
+    const room = srv.pvp.lobby.rooms.get(code)
+    const heroId = [...room.sockets.keys()][0]
+    let sent = 0
+    const fake = { readyState: 1, bufferedAmount: NET.maxBuffered + 1, send: () => { sent++ } }
+    room.sockets.set(heroId, fake)
+    await sleep(100)
+    assert.equal(sent, 0, 'a slow reader must not be sent to')
+    room.sockets.delete(heroId)
+    a.ws.close()
+  })
+
   it('a crashing room does not take down the server or other rooms', async () => {
     const a = await rawClient(srv.url)
     a.send(hello({ create: true }))

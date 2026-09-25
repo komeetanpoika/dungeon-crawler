@@ -35,7 +35,13 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
   })
 
   function broadcast(room, body) {
-    for (const [id, ws] of room.sockets) send(ws, { ...body, ack: ackOf(room, id) })
+    for (const [id, ws] of room.sockets) {
+      // A reader that cannot keep up (a stalled/slow connection) piles frames
+      // up in the OS write buffer; skip it rather than let a snapshot queue
+      // grow without bound behind it.
+      if (ws.bufferedAmount > NET.maxBuffered) continue
+      send(ws, { ...body, ack: ackOf(room, id) })
+    }
   }
 
   // A tick throwing (a sim bug) must not take the whole process — and every
@@ -90,29 +96,32 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       // room is still set, so without this it would reach queueInput/
       // setRoomClass on a dead room (e.g. room.match is gone) and throw.
       if (room && lobby.rooms.get(room.code) !== room) return
-      if (!room) {
-        if (msg.type !== MSG.HELLO) { ws.close(1008); return }
-        const hello = validateHello(msg)
-        const res = hello.error ? hello : hello.create ? createRoom(lobby, hello) : joinRoom(lobby, hello.room, hello)
-        if (res.error) { send(ws, { type: MSG.ERROR, code: res.error }); ws.close(1008); return }
-        room = res.room; heroId = res.heroId
-        clearTimeout(helloTimer)
-        room.sockets ??= new Map()
-        room.sockets.set(heroId, ws)
-        ensureLoop(room)
-        send(ws, { type: MSG.WELCOME, v: NET.protocolVersion, room: room.code, heroId, tick: room.match.tick })
-        return
-      }
-      // Belt-and-braces alongside the lobby.rooms check above: a message can
-      // still be in flight (already read off the socket, e.g. sent right
-      // before the crash) when the room it targets comes apart underneath
-      // it, so dispatch never runs unguarded.
+      // Hello handling shares this try with message dispatch below: a future
+      // arena with fewer spawns than NET.maxHeroes (or any other bug in
+      // createRoom/joinRoom) must close just this socket with 1011, not take
+      // the process down. Belt-and-braces alongside the lobby.rooms check
+      // above: a message can still be in flight (already read off the
+      // socket, e.g. sent right before the crash) when the room it targets
+      // comes apart underneath it, so dispatch never runs unguarded either.
       try {
+        if (!room) {
+          if (msg.type !== MSG.HELLO) { ws.close(1008); return }
+          const hello = validateHello(msg)
+          const res = hello.error ? hello : hello.create ? createRoom(lobby, hello) : joinRoom(lobby, hello.room, hello)
+          if (res.error) { send(ws, { type: MSG.ERROR, code: res.error }); ws.close(1008); return }
+          room = res.room; heroId = res.heroId
+          clearTimeout(helloTimer)
+          room.sockets ??= new Map()
+          room.sockets.set(heroId, ws)
+          ensureLoop(room)
+          send(ws, { type: MSG.WELCOME, v: NET.protocolVersion, room: room.code, heroId, tick: room.match.tick })
+          return
+        }
         if (msg.type === MSG.INPUT) { const input = validateInput(msg); if (input) queueInput(room, heroId, input) }
         else if (msg.type === MSG.CLASS) { if (validateClass(msg.cls)) setRoomClass(room, heroId, msg.cls) }
         else if (msg.type === MSG.PING) { if (Number.isFinite(msg.t)) send(ws, { type: MSG.PONG, t: msg.t }) }
       } catch (err) {
-        console.error(`[pvp] message handling failed (room ${room.code}, hero ${heroId}):`, err)
+        console.error(`[pvp] message handling failed (room ${room?.code}, hero ${heroId}):`, err)
         try { ws.close(1011) } catch { /* already gone */ }
       }
     })
@@ -130,10 +139,11 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       } catch (err) {
         // Belt-and-braces: leaveRoom touches room.match too, so if this room
         // is in some other unexpected broken state, don't let tearing down
-        // one departing socket take the process down — drop the room.
-        console.error(`[pvp] leaveRoom failed (room ${room.code}, hero ${heroId}):`, err)
-        lobby.rooms.delete(room.code)
-        stopLoop(room.code)
+        // one departing socket take the process down. Just deleting the room
+        // here would leave its other sockets connected with nothing arriving
+        // (the loop is stopped) — crashRoom logs, stops the loop, drops the
+        // room and closes every socket still in it with 1011.
+        crashRoom(room, err)
       }
     })
   })
