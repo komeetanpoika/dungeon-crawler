@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeBucket, take, bucketFull, makeGate, admit, release, takeHello, noteFlood, sweepGate,
-  makeConnLimits, allowMessage, allowClass, clientIp } from '../server/limits.js'
+  makeConnLimits, allowMessage, allowClass, clientIp, canCreateRoom, noteRoomCreated, noteRoomClosed } from '../server/limits.js'
 import { ERR } from '../renderer/net/protocol.js'
 import { NET } from '../renderer/data/net.js'
 
@@ -79,7 +79,7 @@ describe('the per-IP gate', () => {
 })
 
 describe('per-connection budgets', () => {
-  it('90 messages at once, then about 60 a second', () => {
+  it('NET.msgBurst (320) messages at once, then about 60 a second', () => {
     const c = makeConnLimits(0)
     for (let i = 0; i < NET.msgBurst; i++) assert.equal(allowMessage(c, 0), true)
     assert.equal(allowMessage(c, 0), false)
@@ -87,10 +87,23 @@ describe('per-connection budgets', () => {
     for (let i = 0; i < 100; i++) if (allowMessage(c, 1000)) ok++
     assert.ok(Math.abs(ok - NET.msgPerSec) <= 1, `${ok}`)   // ±1 for float rounding in the refill
   })
-  it('a phone whose link stalled 2.5 s delivers its backlog at once and is not refused', () => {
+  // Item 3: msgBurst was raised from 90 to 320 (~10 s of backlog at ~31
+  // msg/s) so a mobile stall isn't closed as a flood; msgPerSec (60) is
+  // unchanged, so a genuine sustained flood is still caught once the burst
+  // is spent.
+  it('a phone whose link stalled 5 s delivers its ~155-message backlog at once and is not refused', () => {
     const c = makeConnLimits(0)
     for (let t = 0; t < 1000; t += 1000 / 30) assert.equal(allowMessage(c, t), true)   // a second of normal play
-    for (let i = 0; i < 77; i++) assert.equal(allowMessage(c, 3500), true)            // 75 inputs + 2 pings, all at once
+    for (let i = 0; i < 155; i++) assert.equal(allowMessage(c, 5000), true)           // ~5 s at ~31 msg/s, all at once
+  })
+  it('a sustained 200 msg/s flood still exhausts the bucket and gets refused', () => {
+    const c = makeConnLimits(0)
+    let t = 0, refused = false
+    for (let i = 0; i < 1000 && !refused; i++) {
+      t += 1000 / 200
+      if (!allowMessage(c, t)) refused = true
+    }
+    assert.equal(refused, true)
   })
   it('class: 2 at once, extras refused until the bucket refills', () => {
     const c = makeConnLimits(0)
@@ -115,5 +128,48 @@ describe('clientIp', () => {
   })
   it('defaults to NET.trustProxy', () => {
     assert.equal(clientIp(req('198.51.100.7')), '198.51.100.7')
+  })
+  // Item 2a: a household (or a phone rotating its low bits) shares an IPv6
+  // /64, so the gate keys on that prefix, not the full address — otherwise
+  // one /64 could open as many sockets/rooms as it has addresses to spare.
+  it('keys a plain IPv6 address by its /64 prefix', () => {
+    assert.equal(clientIp(req('2001:db8:1234:5678:aaaa:bbbb:cccc:dddd')), '2001:db8:1234:5678')
+    assert.equal(clientIp(req('2001:db8:1234:5678:1111::2')), '2001:db8:1234:5678')
+    assert.equal(clientIp(req('2001:db8:1234:5679::1')), '2001:db8:1234:5679')
+  })
+  it('normalises an IPv4-mapped IPv6 address (::ffff:a.b.c.d) to the plain IPv4 address', () => {
+    assert.equal(clientIp(req('::ffff:203.0.113.9')), '203.0.113.9')
+    assert.equal(clientIp(req('::FFFF:203.0.113.9')), '203.0.113.9')
+  })
+  it('leaves a plain IPv4 address unchanged', () => {
+    assert.equal(clientIp(req('203.0.113.9')), '203.0.113.9')
+  })
+})
+
+describe('rooms per IP (item 2b)', () => {
+  it('allows up to NET.roomsPerIp rooms, then refuses; a release frees a slot', () => {
+    const g = makeGate()
+    admit(g, 'A', 0)
+    for (let i = 0; i < NET.roomsPerIp; i++) {
+      assert.equal(canCreateRoom(g, 'A'), true)
+      noteRoomCreated(g, 'A')
+    }
+    assert.equal(canCreateRoom(g, 'A'), false)
+    noteRoomClosed(g, 'A')
+    assert.equal(canCreateRoom(g, 'A'), true)
+  })
+  it('an IP with no gate entry (never admitted) is never over the cap', () => {
+    const g = makeGate()
+    assert.equal(canCreateRoom(g, 'never-admitted'), true)
+  })
+  it('a second IP is unaffected, and noteRoomClosed on an empty/unknown IP is harmless', () => {
+    const g = makeGate()
+    admit(g, 'A', 0)
+    for (let i = 0; i < NET.roomsPerIp; i++) noteRoomCreated(g, 'A')
+    admit(g, 'B', 0)
+    assert.equal(canCreateRoom(g, 'B'), true)
+    noteRoomClosed(g, 'B')
+    noteRoomClosed(g, 'nobody')
+    assert.equal(canCreateRoom(g, 'B'), true)
   })
 })

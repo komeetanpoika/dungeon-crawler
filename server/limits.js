@@ -42,10 +42,30 @@ export function admit(gate, ip, t) {
   if (gate.total >= NET.maxSockets) { gate.refused.server_full++; return ERR.SERVER_FULL }
   let e = gate.ips.get(ip)
   if (e && e.sockets >= NET.perIpSockets) { gate.refused.rate_limited++; return ERR.RATE_LIMITED }
-  if (!e) gate.ips.set(ip, e = { sockets: 0, hello: helloBucket(t) })
+  if (!e) gate.ips.set(ip, e = { sockets: 0, hello: helloBucket(t), rooms: 0 })
   e.sockets++
   gate.total++
   return null
+}
+
+// Rooms created (not joined) per IP key, at once (spec 4a §2b): a fixed
+// count, not a refilling bucket — incremented when a hello actually makes a
+// NEW room (server/pvp-server.js's seat(), which alone knows that), and
+// decremented when that room closes. An IP with no gate entry (never
+// admitted) is never over the cap.
+export function canCreateRoom(gate, ip) {
+  const e = gate.ips.get(ip)
+  return !e || e.rooms < NET.roomsPerIp
+}
+
+export function noteRoomCreated(gate, ip) {
+  const e = gate.ips.get(ip)
+  if (e) e.rooms++
+}
+
+export function noteRoomClosed(gate, ip) {
+  const e = gate.ips.get(ip)
+  if (e && e.rooms > 0) e.rooms--
 }
 
 export function release(gate, ip) {
@@ -79,6 +99,36 @@ export const makeConnLimits = t => ({
 export const allowMessage = (conn, t) => take(conn.msg, t)
 export const allowClass = (conn, t) => take(conn.cls, t)
 
+const IPV4_MAPPED = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i
+
+// The first 4 of an IPv6 address's 8 groups (its /64 prefix, joined with
+// ':'), handling a '::' run. A whole household (or a phone that rotates its
+// low bits) shares a /64, so keying the gate by the full address would let
+// one /64 open as many sockets/rooms as it has addresses to spare.
+function ipv6Prefix64(ip) {
+  let groups
+  if (ip.includes('::')) {
+    const [head, tail] = ip.split('::')
+    const headParts = head ? head.split(':') : []
+    const tailParts = tail ? tail.split(':') : []
+    const missing = Math.max(0, 8 - headParts.length - tailParts.length)
+    groups = [...headParts, ...Array(missing).fill('0'), ...tailParts]
+  } else {
+    groups = ip.split(':')
+  }
+  return groups.slice(0, 4).join(':')
+}
+
+// The gate's key for a raw address: an IPv4-mapped IPv6 address
+// (`::ffff:a.b.c.d`, as some proxies write it) becomes the plain IPv4
+// address; any other IPv6 address becomes its /64 prefix; an IPv4 address is
+// unchanged.
+function ipKey(addr) {
+  const mapped = addr.match(IPV4_MAPPED)
+  if (mapped) return mapped[1]
+  return addr.includes(':') ? ipv6Prefix64(addr) : addr
+}
+
 // Behind Cloud Run the caller is the last X-Forwarded-For entry (Google's
 // front end appends the address it saw); anything earlier is client-supplied
 // and spoofable. Without the header — or with trustProxy off — the socket's
@@ -87,7 +137,7 @@ export function clientIp(req, trustProxy = NET.trustProxy) {
   if (trustProxy) {
     const xff = req.headers?.['x-forwarded-for']
     const last = typeof xff === 'string' ? xff.split(',').at(-1).trim() : ''
-    if (last) return last
+    if (last) return ipKey(last)
   }
-  return req.socket?.remoteAddress ?? 'unknown'
+  return ipKey(req.socket?.remoteAddress ?? 'unknown')
 }

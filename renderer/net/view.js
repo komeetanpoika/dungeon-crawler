@@ -17,7 +17,7 @@ const ERROR_TEXT = {
   version: 'The game was updated — reload the page.',
   no_room: 'No such room.',
   room_full: 'That room is full.',
-  bad_name: 'Name: 1–12 letters, digits, space, _ or -.',
+  bad_name: 'Pick another name (1–12 letters, digits, space, _ or -).',
   bad_hello: 'Could not join — check the code.',
   server_full: 'The server is full — try again soon.',
   rate_limited: 'Too many attempts — wait a minute and try again.',

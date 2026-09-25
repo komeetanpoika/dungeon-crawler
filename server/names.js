@@ -26,13 +26,24 @@
 // word — "rapist" at [3,9) inside "therapist"'s [0,9) — stays forgiven.
 import { BLOCKLIST, ALLOWLIST } from './blocklist.js'
 
-const LOOKALIKE = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't' }
+const LOOKALIKE = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 6: 'g', 7: 't', 9: 'g' }
 export const RESERVED_PREFIXES = Object.freeze(['bot', 'admin', 'mod', 'moderator'])
+// A reserved prefix only refuses a name that IS the word (after
+// normalising) or that, in the name as typed, is immediately followed by a
+// separator or a digit — "Bot Ukko", "bot_1", "mod-x", "4dmin" (the leading
+// "4" is itself look-alike-mapped by normalizeName, not matched here). This
+// is checked against the raw name, not the normalised one, because
+// normalizeName strips spaces/_/- — on the normalised string alone "Bot
+// Ukko" and "Botticelli" would be indistinguishable substring matches.
+// Without this the prefix check used to refuse any name merely *starting*
+// with "mod"/"bot" once normalised, catching real names/handles like
+// Modest, Modric, Bottas or Botticelli.
+const RESERVED_RE = new RegExp(`^(${RESERVED_PREFIXES.join('|')})([\\s_-]|\\d)`, 'i')
 
 export function normalizeName(name) {
   return String(name).toLowerCase()
     .replace(/[\s_-]/g, '')
-    .replace(/[013457]/g, d => LOOKALIKE[d])
+    .replace(/[01345679]/g, d => LOOKALIKE[d])
     .replace(/(.)\1+/g, '$1')
 }
 
@@ -51,8 +62,9 @@ function occurrenceSpans(haystack, needle) {
 // false → the server answers bad_name, exactly as for a malformed name, so
 // the reason is never revealed.
 export function acceptableName(name) {
-  const n = normalizeName(name)
-  if (RESERVED_PREFIXES.some(p => n.startsWith(p))) return false
+  const raw = String(name)
+  const n = normalizeName(raw)
+  if (RESERVED_PREFIXES.includes(n) || RESERVED_RE.test(raw)) return false
   const allowSpans = ALLOWLIST.flatMap(word => occurrenceSpans(n, word))
   for (const stem of BLOCKLIST) {
     for (const [start, end] of occurrenceSpans(n, stem)) {

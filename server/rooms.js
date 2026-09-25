@@ -12,8 +12,8 @@ import { PVP, CLASSES } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
 
 export function makeLobby({ random = Math.random, rewind = true, matchLength = PVP.matchLength,
-  resultsDelay = NET.resultsDelay, idleKickMs = NET.idleKickMs } = {}) {
-  return { rooms: new Map(), serial: 0, opts: { random, rewind, matchLength, resultsDelay, idleKickMs } }
+  resultsDelay = NET.resultsDelay, idleKickMs = NET.idleKickMs, lonelyHostKickMs = NET.lonelyHostKickMs } = {}) {
+  return { rooms: new Map(), serial: 0, opts: { random, rewind, matchLength, resultsDelay, idleKickMs, lonelyHostKickMs } }
 }
 
 function newCode(lobby) {
@@ -43,7 +43,7 @@ export function createRoom(lobby, { name, cls, public: isPublic = false }) {
   if (lobby.rooms.size >= NET.maxRooms) return { error: ERR.SERVER_FULL }
   const room = { code: newCode(lobby), public: isPublic, serial: lobby.serial++, nextId: 1, nextBot: 1,
     bots: [], kicks: [], tick: 0, match: null, players: new Map(), history: new Map(),
-    pendingEvents: [], pendingCues: [], nextMatchAt: null }
+    pendingEvents: [], pendingCues: [], nextMatchAt: null, aloneSince: null }
   const heroId = `p${room.nextId++}`
   room.match = newMatch(lobby, room, [{ id: heroId, name, cls }])
   room.players.set(heroId, freshPlayer(room))
@@ -173,9 +173,25 @@ function startNextMatch(lobby, room) {
 // A human with no real input for idleKickMs is queued on room.kicks, once;
 // the socket layer sends error idle and frees the seat. The timer is held
 // while the match waits for a second hero (a lone private host) and while
-// the results are up.
+// the results are up — but a lone private host waiting that long gets its
+// own, much longer limit (lonelyHostKickMs), tracked separately from
+// per-player activity since simply sitting there (not idling) is exactly
+// what it is meant to catch.
 function checkIdle(lobby, room) {
   const limit = Math.round(lobby.opts.idleKickMs / 1000 / PVP.tick)
+  const lonelyLimit = Math.round(lobby.opts.lonelyHostKickMs / 1000 / PVP.tick)
+  const alone = !room.public && room.match.waiting
+  if (alone) {
+    // checkIdle runs after this tick's room.tick++ below, so "now" here is
+    // one ahead of the convention freshPlayer uses for activeTick (captured
+    // before any step); subtract 1 so the two limits measure the same way.
+    if (room.aloneSince === null) room.aloneSince = room.tick - 1
+    if (room.tick - room.aloneSince >= lonelyLimit) {
+      for (const [id, p] of room.players) if (!p.kicked) { p.kicked = true; room.kicks.push(id) }
+    }
+  } else {
+    room.aloneSince = null
+  }
   const holding = room.match.waiting || room.match.ended
   for (const [id, p] of room.players) {
     if (holding) p.activeTick = room.tick

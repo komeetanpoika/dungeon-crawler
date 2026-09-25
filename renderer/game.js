@@ -841,11 +841,13 @@ function startPvp(cls) {
   setPhase(PHASE.PLAYING)
   menu.hide()
   keys[' '] = false
+  document.body?.classList.add('net-match')
 }
 
 function stopPvp() {
   pvp = null
   hidePvpHud()
+  document.body?.classList.remove('net-match')
   goTitle()
 }
 
@@ -953,15 +955,17 @@ function startNet({ name, cls, kind, room }) {
   decorateMap(s.map, rulesets[theme.ruleset])
   net = { s, theme, muted: loadMutedPref(), kind, panels: makeNetPanels(netPanelUi(s)) }
   state = null
-  menu.showMessage({ title: kind === 'quick' ? 'Finding a match…' : 'Connecting…', onOk: stopNet })
+  menu.showMessage({ title: kind === 'quick' ? 'Finding a match…' : 'Connecting…', onOk: stopNet, okLabel: 'Cancel' })
   setPhase(PHASE.PLAYING)
   keys[' '] = false
+  document.body?.classList.add('net-match')
 }
 
 function stopNet() {
   if (net) netLeave(net.s)
   net = null
   hidePvpHud()
+  document.body?.classList.remove('net-match')
   goTitle()
 }
 

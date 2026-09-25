@@ -31,7 +31,7 @@ describe('public rooms over sockets', async () => {
     const a = await rawClient(srv.url)
     a.send(hello({ create: true }))
     await a.next('welcome')
-    await sleep(300)
+    await waitFor(() => a.last('snap'))
     assert.equal(a.last('snap').heroes.length, 1)
     a.ws.close()
     await waitFor(() => srv.pvp.lobby.rooms.size === 0)
@@ -91,6 +91,65 @@ describe('public rooms over sockets', async () => {
     await sleep(200)
     assert.equal(c.closed, null)
     c.ws.close()
+  })
+})
+
+describe('rooms per IP (item 2b)', async () => {
+  const srv = await startServer()
+  after(() => srv.close())
+
+  it('a create beyond NET.roomsPerIp is refused with rate_limited; a quick-join into an existing room does not count', async () => {
+    const ip = '198.51.100.13'
+    const a = await rawClient(srv.url, { ip })
+    a.send(hello({ quick: true }))                          // new public room #1 (1/2)
+    await a.next('welcome')
+    const b = await rawClient(srv.url, { ip })
+    b.send(hello({ quick: true, name: 'Ilmari' }))           // joins room #1 — no new room, doesn't count
+    await b.next('welcome')
+    const c = await rawClient(srv.url, { ip })
+    c.send(hello({ create: true, name: 'Kalle' }))           // new private room #2 (2/2)
+    await c.next('welcome')
+    const d = await rawClient(srv.url, { ip })
+    d.send(hello({ create: true, name: 'Essi' }))            // a 3rd new room: over the cap
+    assert.equal((await d.next('error')).code, 'rate_limited')
+    await waitFor(() => d.closed !== null)
+    for (const s of [a, b, c]) s.ws.close()
+  })
+
+  it('closing a room frees its creator\'s slot', async () => {
+    const ip = '198.51.100.14'
+    const rooms = []
+    for (let i = 0; i < NET.roomsPerIp; i++) {
+      const c = await rawClient(srv.url, { ip })
+      c.send(hello({ create: true }))
+      await c.next('welcome')
+      rooms.push(c)
+    }
+    const over = await rawClient(srv.url, { ip })
+    over.send(hello({ create: true }))
+    assert.equal((await over.next('error')).code, 'rate_limited')
+    await waitFor(() => over.closed !== null)
+    rooms[0].ws.close()
+    await waitFor(() => rooms[0].closed !== null)
+    const after1 = await rawClient(srv.url, { ip })
+    after1.send(hello({ create: true }))
+    await after1.next('welcome')
+    for (const s of [rooms[1], after1]) s.ws.close()
+  })
+
+  it('a different IP is unaffected by another IP being at its cap', async () => {
+    const ip = '198.51.100.15'
+    const rooms = []
+    for (let i = 0; i < NET.roomsPerIp; i++) {
+      const c = await rawClient(srv.url, { ip })
+      c.send(hello({ create: true }))
+      await c.next('welcome')
+      rooms.push(c)
+    }
+    const other = await rawClient(srv.url, { ip: '198.51.100.16' })
+    other.send(hello({ create: true }))
+    await other.next('welcome')
+    for (const s of [...rooms, other]) s.ws.close()
   })
 })
 

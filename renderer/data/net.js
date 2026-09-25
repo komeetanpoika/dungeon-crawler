@@ -39,9 +39,11 @@ export const NET = {
   perIpSockets: 8,         // open sockets per IP
   helloBurst: 10,          // hellos per IP: a bucket of 10…
   helloPerMin: 10,         // …refilling 10 a minute
-  msgBurst: 90,            // messages per connection: a bucket of 90…
+  msgBurst: 320,           // messages per connection: a bucket of 320 (~10 s of backlog at ~31 msg/s)…
   msgPerSec: 60,           // …refilling 60 a second (a client sends ~31)
   classPerSec: 2,          // class messages per connection per second; extras are ignored
   idleKickMs: 60000,       // no real input for this long: error idle, and the seat is freed
+  lonelyHostKickMs: 600000, // a private room waiting alone for a friend this long: error idle, closed
+  roomsPerIp: 2,           // rooms created (not joined) per IP key, at once; a create beyond this is rate_limited
   refusalLogMs: 60000,     // refusal counts are logged this often, when non-zero
 }

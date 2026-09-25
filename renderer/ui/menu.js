@@ -91,6 +91,11 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
   // While a text field is up the touch layer steps aside (index.html CSS),
   // so no stick or pill can sit over the field or swallow its taps.
   document.body?.classList.toggle('menu-typing', !!input)
+  // While any menu overlay is visible, the touch SELECT/START pills (which
+  // sit UNDER it, z-index-wise, but at a screen position a panel's own
+  // buttons can cover) are hidden by index.html CSS — a tap meant for a
+  // menu button must not fall through to a pill underneath it.
+  document.body?.classList.toggle('menu-open', true)
   selectedIndex = 0
   cheatBuffer = ''
   clearCheatTimer()
@@ -248,6 +253,7 @@ export function hide() {
   clearKeyHandler()
   currentInput = null
   document.body?.classList.remove('menu-typing')
+  document.body?.classList.remove('menu-open')
   const el = overlayEl()
   el.style.display = 'none'
   el.innerHTML = ''

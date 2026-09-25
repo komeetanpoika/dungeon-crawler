@@ -10,13 +10,28 @@
 // the only log line about refusals is a count per period.
 import { WebSocketServer } from 'ws'
 import { makeLobby, createRoom, joinRoom, quickJoin, leaveRoom, queueInput, setRoomClass, stepRoom, ackOf, drainKicks } from './rooms.js'
-import { makeGate, admit, release, takeHello, noteFlood, sweepGate, makeConnLimits, allowMessage, allowClass, clientIp } from './limits.js'
+import { makeGate, admit, release, takeHello, noteFlood, sweepGate, makeConnLimits, allowMessage, allowClass, clientIp,
+  canCreateRoom, noteRoomCreated, noteRoomClosed } from './limits.js'
 import { acceptableName } from './names.js'
 import { MSG, ERR, encode, decode, validateHello, validateInput, validateClass } from '../renderer/net/protocol.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
 
 const send = (ws, msg) => { if (ws.readyState === 1) ws.send(encode(msg)) }
+
+// A refusal: tell the client why (when there is a code — a flood has none),
+// then close. A peer that ignores the close frame (or never even parses it)
+// would otherwise sit in Cloud Run's connection count for as long as the
+// underlying library waits for the close handshake (~15 s) — long enough for
+// one IP to fill out the concurrency cap. The unref'd fallback forces it
+// closed well before that; a normal peer's own close beats it and clears it.
+function closeAndReap(ws, code) {
+  if (code) send(ws, { type: MSG.ERROR, code })
+  ws.close(1008)
+  const reap = setTimeout(() => { try { ws.terminate() } catch { /* already gone */ } }, 1000)
+  reap.unref?.()
+  ws.once('close', () => clearTimeout(reap))
+}
 
 export function heartbeatSweep(clients) {
   for (const ws of clients) {
@@ -64,7 +79,15 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     console.error(`[pvp] room ${room.code} crashed, closing it:`, err)
     stopLoop(room.code)
     lobby.rooms.delete(room.code)
+    if (room.creatorIp) noteRoomClosed(gate, room.creatorIp)
     for (const ws of room.sockets.values()) { try { ws.close(1011) } catch { /* already gone */ } }
+  }
+
+  // A room the lobby no longer holds: stop its loop and, if it was counted
+  // against its creator's roomsPerIp cap, free that slot.
+  function roomGone(room) {
+    stopLoop(room.code)
+    if (room.creatorIp) noteRoomClosed(gate, room.creatorIp)
   }
 
   // Free a seat from the server side (the idle kick): tell the client why,
@@ -75,18 +98,34 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     const ws = room.sockets.get(heroId)
     room.sockets.delete(heroId)
     leaveRoom(lobby, room, heroId)
-    if (!lobby.rooms.has(room.code)) stopLoop(room.code)
+    if (!lobby.rooms.has(room.code)) roomGone(room)
     if (ws) { send(ws, { type: MSG.ERROR, code }); ws.close(1000) }
   }
 
   // A validated hello → a seat, or { error }. A name that fails the screen
-  // answers bad_name, the same as a malformed one.
-  function seat(hello) {
+  // answers bad_name, the same as a malformed one. `ip` is only ever used
+  // here as a key into the gate's in-memory counters (roomsPerIp) — never
+  // stored on anything sent to a client.
+  function seat(hello, ip) {
     if (hello.error) return hello
     if (!acceptableName(hello.name)) return { error: ERR.BAD_NAME }
-    if (hello.create) return createRoom(lobby, hello)
-    if (hello.quick) return quickJoin(lobby, hello)
-    return joinRoom(lobby, hello.room, hello)
+    const wantsNewRoom = hello.create || hello.quick
+    const underCap = !wantsNewRoom || canCreateRoom(gate, ip)
+    const res = hello.create ? createRoom(lobby, hello)
+      : hello.quick ? quickJoin(lobby, hello)
+      : joinRoom(lobby, hello.room, hello)
+    if (res.error) return res
+    // heroId 'p1' only ever happens for the room's own creator (an existing
+    // room's p1 is already taken), so this is exactly "quickJoin/createRoom
+    // made a brand-new room" without rooms.js needing to know about IPs.
+    const madeNewRoom = wantsNewRoom && res.heroId === 'p1'
+    if (madeNewRoom && !underCap) {
+      leaveRoom(lobby, res.room, res.heroId)   // undo: the only seat in it, so this closes the room too
+      gate.refused.rate_limited++
+      return { error: ERR.RATE_LIMITED }
+    }
+    if (madeNewRoom) { noteRoomCreated(gate, ip); res.room.creatorIp = ip }
+    return res
   }
 
   function ensureLoop(room) {
@@ -124,7 +163,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     // releases it.
     const ip = clientIp(req, trustProxy)
     const refused = admit(gate, ip, now())
-    if (refused) { send(ws, { type: MSG.ERROR, code: refused }); ws.close(1008); return }
+    if (refused) { closeAndReap(ws, refused); return }
     ws.missed = 0
     ws.on('pong', () => { ws.missed = 0 })
     const budget = makeConnLimits(now())
@@ -134,7 +173,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     ws.on('message', (data, isBinary) => {
       // Closing (a kick, a flood): anything still arriving is ignored.
       if (ws.readyState !== 1) return
-      if (!allowMessage(budget, now())) { noteFlood(gate); ws.close(1008); return }
+      if (!allowMessage(budget, now())) { noteFlood(gate); closeAndReap(ws); return }
       const msg = isBinary ? null : decode(data)
       if (!msg) { ws.close(1003); return }
       // A message can arrive from this socket after its room has already
@@ -149,9 +188,9 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       try {
         if (!room) {
           if (msg.type !== MSG.HELLO) { ws.close(1008); return }
-          if (!takeHello(gate, ip, now())) { send(ws, { type: MSG.ERROR, code: ERR.RATE_LIMITED }); ws.close(1008); return }
-          const res = seat(validateHello(msg))
-          if (res.error) { send(ws, { type: MSG.ERROR, code: res.error }); ws.close(1008); return }
+          if (!takeHello(gate, ip, now())) { closeAndReap(ws, ERR.RATE_LIMITED); return }
+          const res = seat(validateHello(msg), ip)
+          if (res.error) { closeAndReap(ws, res.error); return }
           room = res.room; heroId = res.heroId
           clearTimeout(helloTimer)
           room.sockets ??= new Map()
@@ -179,7 +218,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       if (lobby.rooms.get(room.code) !== room) return
       try {
         leaveRoom(lobby, room, heroId)
-        if (!lobby.rooms.has(room.code)) stopLoop(room.code)
+        if (!lobby.rooms.has(room.code)) roomGone(room)
       } catch (err) {
         // Belt-and-braces: leaveRoom touches room.match too, so if this room
         // is in some other unexpected broken state, don't let tearing down

@@ -22,27 +22,52 @@ const INNOCENT = ['Aino', 'Ilmari', 'Vaino', 'Sam', 'Alex', 'Kalle_99', 'Pasi', 
   'Sanna', 'Kimmo', 'Mikko', 'Petteri', 'Anneli', 'Niko', 'Oskari', 'Hessu', 'Nisse', 'Rasmus', 'Pikku',
   'Lassi', 'Masa', 'Mira', 'Nea', 'Scott', 'Dick', 'Cassie', 'Kuntz', 'Assunta', 'Titania', 'Harold',
   'Nigel', 'Spencer', 'Pussycat', 'Cockburn', 'xX_Aino_Xx', 'Mage42', 'NoobSlayer', 'Lollipop', 'Lolita',
-  'Matsushita']
+  'Matsushita',
+  // Final-review fix wave (2026-09-25, item 6): real names/handles a
+  // too-short stem used to catch. 'Hintikka' and 'Rampage' pass because
+  // their culprit stems (hinti, rampa) were dropped from BLOCKLIST outright,
+  // so — unlike ALLOWLISTED_PASS below — they belong here, checked raw too.
+  'Hintikka', 'Rampage', 'Perseus', 'Persephone', 'Thoth',
+  // Reserved-prefix narrowing: real names/handles starting with "bot"/"mod"
+  // that must not be treated as posing as a bot or a moderator.
+  'Modest', 'Modric', 'Mode', 'Moderna', 'Bottas', 'Botticelli', 'Botond', 'Bottom', 'Botanist']
 
 // Real places/words that only pass because acceptableName forgives these
 // ALLOWLIST entries (server/blocklist.js) — each one raw-contains a stem
 // that must stay in BLOCKLIST (cunt, rapist, negro, niger). Checked only
 // through acceptableName, never through raw stem containment.
-const ALLOWLISTED_PASS = ['Scunthorpe', 'Therapist', 'Nigeria', 'Montenegro', 'Negroni']
+// Final-review fix wave (2026-09-25, item 6) additions: Georgy/orgy,
+// Sisyphus/sisy, Shuri+Hurricane/huri, Chrysalis/rysa, Minigames+Tanigawa/
+// niga, Dagobah/dago. Unlike the INNOCENT four above, these stems must stay
+// in BLOCKLIST (niga alone catches "nigga"; the others are real
+// slurs/profanity too short to lengthen without losing their own bare
+// form), so the false positive is carved out per real name/word via
+// ALLOWLIST instead. (Thoth/thot is not here — see blocklist.js: "thot" is
+// a strict prefix of "thoth", so allowlisting "thoth" would have forgiven
+// any "thot"+"h" from elsewhere too; "thot" was dropped instead, so Thoth
+// is in INNOCENT above.)
+const ALLOWLISTED_PASS = ['Scunthorpe', 'Therapist', 'Nigeria', 'Montenegro', 'Negroni',
+  'Georgy', 'Sisyphus', 'Shuri', 'Hurricane', 'Chrysalis', 'Minigames', 'Tanigawa', 'Dagobah']
 
 // Each must be refused: the stems themselves, and the tricks normalisation
 // exists for (look-alike digits, spacing, underscores, stretched letters,
 // a stem inside a longer name).
 const REFUSED = ['vittu', 'V1TTU', 'v i t t u', 'Vi_ttu', 'VITTUUU', 'xVittux', 'paska', 'P4sk4', 'kyrpa',
   'mulkku', 'huora', 'neekeri', 'N33k3ri', 'fuck', 'FUUUCK', 'f_u_c_k', 'Fuck3r', 'motherfucker', 'cunt',
-  'nigger', 'N1gg3r', 'nigga', 'faggot', 'whore']
+  'nigger', 'N1gg3r', 'nigga', 'faggot', 'whore',
+  // item 7: the 6→g / 9→g look-alike bypass ("ni9a" -> "niga", "6imp" -> "gimp")
+  'ni9a', '6imp']
 
 describe('normalizeName', () => {
   it('lowercases, drops space _ -, maps look-alike digits and collapses runs', () => {
     assert.equal(normalizeName('V1_t-T u'), 'vitu')
-    assert.equal(normalizeName('Kalle_99'), 'kale9')
+    assert.equal(normalizeName('Kalle_99'), 'kaleg')
     assert.equal(normalizeName('0137 45'), 'oietas')
     assert.equal(normalizeName('Aino'), 'aino')
+  })
+  it('also maps 6 and 9 to g (item 7: closes the g/6/9 bypass)', () => {
+    assert.equal(normalizeName('669'), 'g')
+    assert.equal(normalizeName('9imp6'), 'gimpg')
   })
 })
 
@@ -76,6 +101,10 @@ describe('acceptableName', () => {
     for (const name of ['Bot', 'Bot Ukko', 'B0t', 'bot_7', 'B o t', 'Admin', '4dmin', 'Mod', 'M0d3rator', 'moderator'])
       assert.equal(acceptableName(name), false, name)
     for (const name of ['Abbot', 'Tabot', 'Ukko']) assert.equal(acceptableName(name), true, name)
+  })
+  it('a reserved prefix must be the whole name or followed by a separator/digit — a name that only starts the letters passes (item 6)', () => {
+    for (const name of ['Modest', 'Modric', 'Mode', 'Moderna', 'Bottas', 'Botticelli', 'Botond', 'Bottom', 'Botanist'])
+      assert.equal(acceptableName(name), true, name)
   })
 })
 

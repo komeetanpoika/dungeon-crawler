@@ -193,4 +193,29 @@ describe('the idle timer', () => {
     steps(lobby, room, 60)                                // 2 s of results, well past 30 ticks
     assert.deepEqual(drainKicks(room), [])
   })
+  // Item 2c: a lone private host still isn't caught by the ordinary idle
+  // timer (idleKickMs stays held the whole time it's waiting — see the test
+  // above), but it does get its own, much longer limit.
+  it('a lone host waiting in a private room past lonelyHostKickMs is kicked, even while moving', () => {
+    const lobby = makeLobby({ idleKickMs: 1000, lonelyHostKickMs: 500 })   // 15 ticks
+    const { room } = createRoom(lobby, who('A'))
+    for (let i = 1; i <= 14; i++) { queueInput(room, 'p1', input(i, { move: { x: 1, y: 0 } })); stepRoom(lobby, room) }
+    assert.deepEqual(drainKicks(room), [])
+    queueInput(room, 'p1', input(15, { move: { x: 1, y: 0 } })); stepRoom(lobby, room)
+    assert.deepEqual(drainKicks(room), ['p1'])
+  })
+  it('a friend joining before lonelyHostKickMs cancels it — the room is no longer "alone"', () => {
+    const lobby = makeLobby({ idleKickMs: 1000, lonelyHostKickMs: 500 })   // 15 ticks
+    const { room } = createRoom(lobby, who('A'))
+    steps(lobby, room, 10)
+    joinRoom(lobby, room.code, who('B'))
+    steps(lobby, room, 10)                                // total 20 ticks, well past 15, but no longer alone
+    assert.deepEqual(drainKicks(room), [])
+  })
+  it('a public room (always at botFill or more) never counts as a lone host', () => {
+    const lobby = makeLobby({ idleKickMs: 1000, lonelyHostKickMs: 500 })
+    const { room } = quickJoin(lobby, who('A'))
+    steps(lobby, room, 20)
+    assert.deepEqual(drainKicks(room), [])
+  })
 })

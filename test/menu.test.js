@@ -393,6 +393,22 @@ describe('text entry on a phone', () => {
   })
 })
 
+describe('the touch pills while a menu is up (item 5)', () => {
+  it('any menu screen sets body.menu-open, and hide() clears it — same pattern as menu-typing', () => {
+    const d = stubDomFull({ isWeb: true })
+    try {
+      assert.equal(d.bodyClasses.has('menu-open'), false)
+      showOnline({ onQuick: () => {}, onFriends: () => {}, onBack: () => {} })
+      assert.equal(d.bodyClasses.has('menu-open'), true)
+      // Switching straight to another screen (no hide() in between) keeps it set.
+      showFriends({ onHost: () => {}, onJoin: () => {}, onBack: () => {} })
+      assert.equal(d.bodyClasses.has('menu-open'), true)
+      hide()
+      assert.equal(d.bodyClasses.has('menu-open'), false)
+    } finally { d.cleanup() }
+  })
+})
+
 describe('online results', () => {
   it('the online table ends in Leave, and has no Next match', () => {
     const d = stubDomFull()

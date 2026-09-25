@@ -44,19 +44,41 @@
 // slur itself wherever it's typed, silently reopening the exact case this
 // file exists to block. "Niger" alone stays refused; only the longer,
 // unambiguous derivatives (Nigeria, Nigerian) are allowlisted.
+// 2026-09-25 (final-review fix wave, item 6): 'georgy', 'huricane' and
+// 'sisyphus' forgive false positives on stems that must stay (orgy, huri,
+// sisy — each catches a real word/slur on its own and can't be lengthened
+// without losing that); 'chrysalis'/'dagobah'/'minigames'/'tanigawa' do the
+// same for 'rysa'/'dago'/'niga'. 'hinti', 'rampa', 'perse' and 'thot'
+// collided with real names/words too (Hintikka, Rampage, Perseus/
+// Persephone, Thoth) but were dropped from BLOCKLIST outright instead —
+// 'perse' in particular is exactly the kind of short, generic fragment
+// (bare "ass") the guidance above says to avoid; 'hinti'/'rampa' have
+// longer, unambiguous BLOCKLIST compounds already covering the real insults
+// ('hintari'/'hintuli', 'retardi'); 'thot' could not be allowlisted the same
+// way as the others — "thot" is itself a strict prefix of "thoth", so
+// forgiving "Thoth" also forgives any "thot" immediately followed by an "h"
+// from something else entirely (e.g. "ThotHerapist", caught by the
+// boundary-sharing check below) — so it was dropped instead.
 export const ALLOWLIST = Object.freeze([
+  'chrysalis',
+  'dagobah',
+  'georgy',
+  'huricane',
+  'minigames',
   'montenegro',
   'negroni',
   'nigeria',
   'nigerian',
   'scunthorpe',
+  'shuri',
+  'sisyphus',
+  'tanigawa',
   'therapist',
 ])
 
 export const BLOCKLIST = Object.freeze([
   // — Finnish: slurs —
   'hintari',
-  'hinti',
   'hintuli',
   'homotelu',
   'hompeli',
@@ -65,7 +87,6 @@ export const BLOCKLIST = Object.freeze([
   'mustalainen',
   'nekeri',
   'rajariko',
-  'rampa',
   'retardi',
   'rysa',
   'tsigani',
@@ -86,7 +107,6 @@ export const BLOCKLIST = Object.freeze([
   'nusia',
   'paska',
   'paskiainen',
-  'perse',
   'persreika',
   'pilu',
   'runkari',
@@ -188,7 +208,6 @@ export const BLOCKLIST = Object.freeze([
   'shity',
   'skank',
   'slut',
-  'thot',
   'toser',
   'twat',
   'wanker',
