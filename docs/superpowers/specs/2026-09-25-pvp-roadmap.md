@@ -1,7 +1,7 @@
 # PvP Arena — Roadmap
 
-Date: 2026-09-25. Status: sub-project 1 designed (see
-`2026-09-25-pvp-multi-hero-core-design.md`); 2–4 not yet designed.
+Date: 2026-09-25. Status: sub-project 1 built and deployed (PR #56, Cloud Run
+rev 00062); sub-project 3 designed; 2 and 4 not yet designed.
 
 ## Goal
 
@@ -38,7 +38,10 @@ Each gets its own spec → plan → implementation cycle, in this order.
 2. **Balance pass.** Tune `renderer/data/pvp.js` (kits, CC multiplier,
    timers, pickup values, plate override) using bot soaks and local play.
    Small; may be folded into playtesting between 1 and 3.
-3. **Server + netcode.** A Node WebSocket server importing `renderer/pvp/sim.js`;
+3. **Server + netcode.** *Spec: `2026-09-25-pvp-server-netcode-design.md` —
+   decided 2026-09-25: room codes (hidden `host`/`join` cheats), drop-in humans
+   only, the WebSocket served from the same Cloud Run service (max-instances=1).*
+   A Node WebSocket server importing `renderer/pvp/sim.js`;
    input and snapshot protocol (with a version number), client-side prediction
    and reconciliation for the local hero, snapshot interpolation for the
    others, lag-compensated hit tests (rewind by the attacker's latency, capped),

@@ -70,8 +70,10 @@ export function tickHeroStatus(hero, dt) {
   tickStatus(hero, dt)
 }
 
-export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
-  if (hero.dead) return
+// The movement half of a hero's tick — timers, shield, facing, the walk —
+// with no attacks. The server runs it inside tickHero; the client's
+// predictor runs the very same code for its own hero.
+export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
   hero.meleeCooldown = Math.max(0, hero.meleeCooldown - dt)
   hero.rangedCooldown = Math.max(0, hero.rangedCooldown - dt)
   hero.attackTimer = Math.max(0, hero.attackTimer - dt)
@@ -113,7 +115,12 @@ export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
   if (sprinting) spendStamina(hero, profile.drain * dt)
   if (!stunned && !(hero.rootTimer > 0)) moveEntity(hero, vx * speed * dt, vy * speed * dt, match.map, PLAYER_HALF)
   tickWalk(hero, dt)
+  return { stunned, blocking, altEdge }
+}
 
+export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
+  if (hero.dead) return
+  const { stunned, blocking, altEdge } = moveHero(match, hero, input, dt)
   if (stunned) return
   const attacking = !!input.attack && !hero.needRelease && !blocking
   if (hero.attackMode === 'melee') tickMelee(match, hero, input, attacking, dt)

@@ -16,5 +16,3 @@ tools/sword-compare/
 /preload.cjs
 /arena-config.json
 /.dc-monitor.mjs
-/package.json
-/package-lock.json

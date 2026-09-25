@@ -25,9 +25,13 @@ import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
-import { makeLocalMatch, localInputs, viewOf, LOCAL_ID } from './pvp/local.js'
+import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './pvp/local.js'
 import { stepMatch, setClass } from './pvp/sim.js'
-import { pvpHudModel, updatePvpHud, hidePvpHud } from './ui/pvp-hud.js'
+import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel } from './ui/pvp-hud.js'
+import { connect, frame as netFrameStep, sessionView, sendClass, leave as netLeave, drainEvents, drainCues } from './net/client.js'
+import { netUrl, normalizeCode, validCode, errorText, netViewOf } from './net/view.js'
+import { validateName } from './net/protocol.js'
+import { NET } from './data/net.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -135,6 +139,7 @@ window.addEventListener('keyup', e => {
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (pvp) { stopPvp(); return }
+    if (net) { stopNet(); return }
     if (inventoryOpen) closeInventory()
     else if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
@@ -143,8 +148,9 @@ window.addEventListener('keydown', e => {
 
 // I toggles the inventory panel: open while playing, close while it's open.
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if ((e.key !== 'i' && e.key !== 'I') || e.repeat) return
-  if (pvp) return
+  if (pvp || net) return
   if (phase === PHASE.PLAYING) openInventory()
   else if (inventoryOpen) closeInventory()
 })
@@ -152,8 +158,10 @@ window.addEventListener('keydown', e => {
 // M toggles sound. The muted flag lives on state.sfx; the audio engine
 // ramps its master gain when it sees the flag change in playCues.
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if ((e.key !== 'm' && e.key !== 'M') || e.repeat) return
   if (pvp) { pvp.match.sfx.muted = !pvp.match.sfx.muted; saveMutedPref(pvp.match.sfx.muted); return }
+  if (net) { net.muted = !net.muted; saveMutedPref(net.muted); return }
   if (!state?.sfx) return
   state.sfx.muted = !state.sfx.muted
   saveMutedPref(state.sfx.muted)
@@ -165,6 +173,7 @@ window.addEventListener('keydown', e => {
 // wand. A shield rises while Q is *held* (the update loop's tickShield reads
 // the key itself) and an offhand blade needs no key at all.
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if ((e.key !== 'q' && e.key !== 'Q') || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
   useOffhand()
@@ -199,6 +208,7 @@ function castOffhand() {
 // held-key auto-repeat so holding Shift doesn't flap the mode. The switch
 // takes a moment (see STANCE_SWITCH_DURATION) — the mode lands in update().
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
   // startStanceSwitch drops any charge in progress itself (it belongs to the
@@ -211,6 +221,7 @@ window.addEventListener('keydown', e => {
 // In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
 let gameCheatBuffer = ''
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if (phase !== PHASE.PLAYING || !state || e.key.length !== 1) return
   gameCheatBuffer = (gameCheatBuffer + e.key).toLowerCase().slice(-12)
   const wt = parseWeaponCheat(gameCheatBuffer)
@@ -226,6 +237,9 @@ let state = null
 // A local PvP match (renderer/pvp/local.js) while one runs. `state` stays
 // null meanwhile, so every single-player key handler that checks it no-ops.
 let pvp = null
+// An online PvP room (renderer/net/) while one is joined. Like `pvp`, it
+// keeps `state` null so every single-player handler no-ops.
+let net = null
 // Tooling hook (verify-npcs.mjs etc.): only wired up when launched with
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
@@ -789,6 +803,7 @@ function goTitle() {
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
     onPvp: goPvpPicker,
+    onNet: goNet,
   })
 }
 
@@ -827,11 +842,13 @@ function pvpFrame(delta) {
   for (const ev of stepMatch(match, localInputs(match, keys, sprintDetector.sprinting()), delta)) {
     if (ev.type === 'kill' && ev.victim === LOCAL_ID) {
       pvp.picking = true
-      menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life',
+      keys[' '] = false
+      menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
         onPick: cls => { setClass(match, LOCAL_ID, cls); pvp.cls = cls; pvp.picking = false; menu.hide(); keys[' '] = false } })
     }
     if (ev.type === 'respawn' && ev.hero === LOCAL_ID && pvp.picking) { pvp.picking = false; menu.hide() }
     if (ev.type === 'matchEnd') {
+      keys[' '] = false
       menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls), onQuit: stopPvp })
       pvp.done = true
     }
@@ -848,6 +865,106 @@ function pvpFrame(delta) {
   updatePvpHud(pvpHudModel(match, LOCAL_ID))
   playCues(audio, drainSfx(match), view.player, match.sfx.muted)
   if (pvp.done) pvp.rendered = true
+}
+
+const loadName = () => { try { return localStorage.getItem('dc-pvp-name') ?? '' } catch { return '' } }
+const saveName = n => { try { localStorage.setItem('dc-pvp-name', n) } catch {} }
+
+// Checked before ever opening a socket, so a mistyped name/code shows the
+// same one-line refusal the server would give, without a round trip.
+function rejectEntry(kind, code, onOk) {
+  menu.showMessage({ title: kind === 'host' ? 'Could not host' : 'Could not join', lines: [errorText(code)], onOk })
+}
+
+function goNet(kind) {
+  phase = PHASE.TITLE
+  if (!window.saveAPI?.isWeb) {
+    menu.showMessage({ title: 'Online play', lines: ['Online play is in the web build.'], onOk: goTitle })
+    return
+  }
+  menu.showTextEntry({ title: kind === 'host' ? 'Host a room' : 'Join a room', subtitle: 'Your name', value: loadName(),
+    maxLength: NET.nameMax, onBack: goTitle,
+    onSubmit: name => {
+      if (!validateName(name)) { rejectEntry(kind, 'bad_name', () => goNet(kind)); return }
+      saveName(name)
+      const pick = room => menu.showClassPicker({ onBack: goTitle, onPick: cls => startNet({ name, cls, room }) })
+      if (kind === 'host') pick(null)
+      else menu.showTextEntry({ title: 'Join a room', subtitle: 'Room code', maxLength: NET.codeLength + 2, onBack: goTitle,
+        onSubmit: code => {
+          const c = normalizeCode(code)
+          if (!validCode(c)) { rejectEntry(kind, 'bad_hello', () => goNet(kind)); return }
+          pick(c)
+        } })
+    } })
+}
+
+function startNet({ name, cls, room }) {
+  const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
+  const s = connect({ url: netUrl(location), hello: room ? { name, cls, room } : { name, cls, create: true } })
+  decorateMap(s.map, rulesets[theme.ruleset])
+  // isHost: this session's hello was a create, not a join — same distinction
+  // rejectEntry uses for the pre-connect refusal, kept here for the one that
+  // arrives over the wire after connecting. endedShown: whether some
+  // "match is over" panel (results, or the plain wait message below) is
+  // already up, so netFrame doesn't stack a second one on top. pickerShown:
+  // same idea for the "Down!" class picker.
+  net = { s, theme, muted: loadMutedPref(), isHost: !room, endedShown: false, pickerShown: false }
+  state = null
+  menu.showMessage({ title: 'Connecting…', onOk: stopNet })
+  setPhase(PHASE.PLAYING)
+  keys[' '] = false
+}
+
+function stopNet() {
+  if (net) netLeave(net.s)
+  net = null
+  hidePvpHud()
+  goTitle()
+}
+
+function netFrame() {
+  const now = performance.now()
+  const { s } = net
+  netFrameStep(s, inputFromKeys(keys, sprintDetector.sprinting()), now)
+  for (const ev of drainEvents(s)) {
+    if (ev.type === 'welcome') menu.hide()
+    else if (ev.type === 'error') { menu.showMessage({ title: net.isHost ? 'Could not host' : 'Could not join', lines: [errorText(ev.code)], onOk: stopNet }); return }
+    else if (ev.type === 'closed' && ev.status === 'lost') { menu.showMessage({ title: 'Connection lost', onOk: stopNet }); return }
+    else if (ev.type === 'kill' && ev.victim === s.heroId) {
+      keys[' '] = false
+      net.pickerShown = true
+      menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
+        onPick: cls => { sendClass(s, cls); menu.hide(); keys[' '] = false; net.pickerShown = false } })
+    }
+    else if (ev.type === 'respawn' && ev.hero === s.heroId) { menu.hide(); net.pickerShown = false }
+    else if (ev.type === 'matchEnd') { keys[' '] = false; net.endedShown = true; menu.showPvpResults(ev.standings, { onQuit: stopNet }) }
+    else if (ev.type === 'matchStart') { net.endedShown = false; menu.hide() }
+  }
+  const v = sessionView(s, now)
+  if (!v) return
+  // The events above are how the results/wait panel and the death picker
+  // normally clear, but a capped/dropped event (a backgrounded tab, or a
+  // slow-reader-skipped snapshot) can lose the matchStart or respawn that
+  // would have done it, leaving the panel stuck over a live match. Drive
+  // both from the snapshot state too, as a backstop.
+  if (!v.ended && net.endedShown) { net.endedShown = false; menu.hide() }
+  if (!v.me.dead && net.pickerShown) { net.pickerShown = false; menu.hide() }
+  // A player who joins mid-results (after the matchEnd event already fired
+  // for everyone else) never sees that event, so the results panel above
+  // never opens for them; without this they would just watch the frozen
+  // arena for up to resultsDelay seconds with no explanation.
+  if (v.ended && !net.endedShown) {
+    net.endedShown = true
+    keys[' '] = false
+    menu.showMessage({ title: 'Next match starting…', onOk: stopNet, okLabel: 'Leave' })
+  }
+  const view = netViewOf(v, net.theme, s.map)
+  maybeComputeFOV(view.map, view.player, 12, { los: true })
+  renderer.updateCamera(view.player, 0, null)
+  renderer.render(view, null)
+  updateHUD(view)
+  updatePvpHud(netHudModel(v, s.heroId))
+  playCues(audio, drainCues(s), view.player, net.muted)
 }
 
 async function beginRun(depth = 1, mode = modeForDepth(depth)) {
@@ -1034,6 +1151,7 @@ function gameLoop(timestamp) {
   // it 60×/sec is pure wasted CPU (worse here: rendering is software, GPU off).
   if (phase === PHASE.PLAYING) {
     if (pvp) pvpFrame(delta)
+    else if (net) netFrame()
     else {
       update(delta)
       if (state) render()

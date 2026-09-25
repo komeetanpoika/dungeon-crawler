@@ -17,15 +17,19 @@ import { makeHero, placeHero, applyKit, tickHero, tickHeroStatus, NEUTRAL_INPUT 
 import { heroById, hurtHero, refreshTargets } from './combat.js'
 import { makePickups, tickPickups, tickRunes, endRune } from './pickups.js'
 
-export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = null } = {}) {
+export function arenaMap(arena = PVP_ARENAS.pillars) {
+  return buildArena({ size: arena.size, columns: arena.columns, enemies: [], chests: [] }, () => {}).map
+}
+
+export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = null, matchLength = PVP.matchLength } = {}) {
   if (!Array.isArray(roster) || roster.length < 1 || roster.length > arena.spawns.length)
     throw new Error(`pvp: roster must hold 1-${arena.spawns.length} heroes`)
   if (new Set(roster.map(r => r.id)).size !== roster.length) throw new Error('pvp: duplicate hero id')
-  const { map } = buildArena({ size: arena.size, columns: arena.columns, enemies: [], chests: [] }, () => {})
   const match = {
-    map, arena, heroes: [], entities: [], projectiles: [], lightning: [], strikes: [], arcs: [],
+    map: arenaMap(arena), arena, heroes: [], entities: [], projectiles: [], lightning: [], strikes: [], arcs: [],
     shockwaves: [], zones: [], fireZones: [], feedback: makeFeedback(), sfx: sfxQueue,
-    pickups: makePickups(arena), clock: 0, acc: 0, ended: false, events: [], inputs: {}, standings: null,
+    pickups: makePickups(arena), clock: 0, tick: 0, acc: 0, ended: false, events: [], inputs: {}, standings: null,
+    matchLength, waiting: roster.length < PVP.minHeroes,
   }
   roster.forEach((r, i) => {
     const h = makeHero(r)
@@ -34,6 +38,34 @@ export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = 
   })
   refreshTargets(match)
   return match
+}
+
+// Drop-in: a hero joining a running match arrives at the spawn farthest from
+// everyone, protected, with kills and deaths at zero.
+export function addHero(match, { id, name, cls }) {
+  if (heroById(match, id)) throw new Error(`pvp: duplicate hero id "${id}"`)
+  if (match.heroes.length >= match.arena.spawns.length) throw new Error('pvp: arena is full')
+  const h = makeHero({ id, name, cls })
+  placeHero(h, farthestSpawn(match))
+  h.spawnProtect = PVP.spawnProtect
+  match.heroes.push(h)
+  refreshTargets(match)
+  match.events.push({ type: 'join', hero: id })
+  return h
+}
+
+// A hero leaving mid-match; a rune it held goes straight back on its pedestal.
+export function removeHero(match, id) {
+  const i = match.heroes.findIndex(h => h.id === id)
+  if (i === -1) return false
+  if (match.heroes[i].rune) {
+    const rune = match.pickups.find(p => p.kind === 'rune')
+    if (rune) { rune.up = true; rune.t = 0 }
+  }
+  match.heroes.splice(i, 1)
+  refreshTargets(match)
+  match.events.push({ type: 'leave', hero: id })
+  return true
 }
 
 export function stepMatch(match, inputs = {}, dt = PVP.tick) {
@@ -110,7 +142,11 @@ function scaleNewCC(h, before) {
 
 function tick(match) {
   const dt = PVP.tick
-  match.clock += dt
+  match.tick++
+  // Fewer than PVP.minHeroes heroes: everything runs but the clock, so a
+  // lone player can warm up and the match never ends on them.
+  match.waiting = match.heroes.length < PVP.minHeroes
+  if (!match.waiting) match.clock += dt
 
   const before = new Map()
   for (const h of match.heroes) {
@@ -147,7 +183,7 @@ function tick(match) {
   tickPickups(match, dt)
   refreshTargets(match)
 
-  if (match.clock >= PVP.matchLength - 1e-9) {
+  if (!match.waiting && match.clock >= match.matchLength - 1e-9) {
     match.ended = true
     match.standings = standings(match)
     match.events.push({ type: 'matchEnd', standings: match.standings })

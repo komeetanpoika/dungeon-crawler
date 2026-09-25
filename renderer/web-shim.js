@@ -55,8 +55,11 @@ if (!window.saveAPI) {
   //   button was focused last (Space on a lingering focused button restarts
   //   the run mid-fight). Menu navigation is unaffected — menu.js drives
   //   selection from its own keydown handler, not from browser defaults.
+  //   Skipped while a menu text field (name/room-code entry) has focus, so
+  //   arrows and a literal space still land in the field.
   const GAME_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '])
   window.addEventListener('keydown', e => {
+    if (e.target instanceof HTMLInputElement) return
     if (GAME_KEYS.has(e.key)) e.preventDefault()
   }, { capture: true })
 

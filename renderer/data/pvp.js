@@ -12,6 +12,7 @@ export const PVP = {
   arrowSpeed: 280,       // px/s, as game.js PROJECTILE_SPEED
   blinkTrailDur: 0.2,    // s, as canvas.js BLINK_DUR
   localBots: 3,
+  minHeroes: 2,   // the match clock runs only with at least this many heroes
 }
 
 export const CLASSES = ['warrior', 'archer', 'mage']
