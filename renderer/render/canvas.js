@@ -285,7 +285,14 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     if (sprites.crab) ctx.drawImage(sprites.crab, px, py, S, S)
     return
   }
-  if (entity.type === 'player') {
+  if (entity.type === 'pvp_pickup') {
+    const key = { flask: 'potion', quiver: 'item_arrows', rune: 'weapon_ukonvasara' }[entity.kind]
+    const s = sprites[key]
+    if (entity.kind === 'rune') drawRuneGlow(ctx, px + S / 2, py + S / 2, S)
+    if (s) ctx.drawImage(s, px, py, S, S)
+    return
+  }
+  if (entity.type === 'player' || entity.type === 'hero') {
     const flip = entity.facing === 'west'
     const tilt = walkTilt(entity)
     ctx.save()
@@ -560,6 +567,69 @@ function drawBlinkTrail(ctx, trail, player, sprites, camX, camY, S) {
     ctx.drawImage(s, px, py, S, S)
   }
   ctx.restore()
+}
+
+// PvP: the heroes the local view should draw besides its own — living, and
+// standing on a cell the local hero can see.
+export function otherHeroes(state) {
+  return (state.heroes ?? []).filter(h => h !== state.player && !h.dead && state.map?.[h.y]?.[h.x]?.visible)
+}
+
+// The power rune's gold halo, on the floating rune and on whoever holds it.
+function drawRuneGlow(ctx, cx, cy, S) {
+  ctx.save()
+  ctx.globalAlpha = 0.55
+  ctx.strokeStyle = '#facc15'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(cx, cy, S * 0.62, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+}
+
+// Another hero's name and a thin hp bar above the sprite.
+function drawHeroTag(ctx, hero, hx, hy, S) {
+  const frac = Math.max(0, Math.min(1, hero.hp / (hero.maxHp || 1)))
+  ctx.save()
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'
+  ctx.fillRect(hx, hy - 6, S, 4)
+  ctx.fillStyle = '#ef4444'
+  ctx.fillRect(hx, hy - 6, Math.round(S * frac), 4)
+  ctx.font = '10px monospace'
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#e5e7eb'
+  ctx.fillText(hero.name ?? '', hx + S / 2, hy - 9)
+  ctx.restore()
+}
+
+// One hero, drawn the way the player always was: blink ghosts, the sprite
+// (flickering through i-frames), the grab and trance washes, the swing, the
+// charge ring and the rain cloud. Returns the sprite's top-left on screen.
+export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = null, greenAlpha = 0 } = {}) {
+  if (hero.dead) return null
+  const hx = hero.px !== undefined ? Math.round(hero.px - S / 2 - camX) : Math.round(hero.x * S - camX)
+  const hy = (hero.py !== undefined ? Math.round(hero.py - S / 2 - camY) : Math.round(hero.y * S - camY)) - lift
+  drawBlinkTrail(ctx, trail, hero, sprites, camX, camY, S)
+  if (hero.rune) drawRuneGlow(ctx, hx + S / 2, hy + S / 2, S)
+  if (isFlickerVisible(hero.invulnTimer)) drawEntity(ctx, hero, hx, hy, S, sprites)
+  if (hero.grabbed) {
+    ctx.save()
+    ctx.globalAlpha = 0.45
+    ctx.fillStyle = '#ef4444'
+    ctx.fillRect(hx, hy, S, S)
+    ctx.restore()
+  }
+  if (greenAlpha > 0) {
+    ctx.save()
+    ctx.globalAlpha = Math.min(0.6, greenAlpha * 1.6)
+    ctx.fillStyle = '#4ade80'
+    ctx.fillRect(hx, hy, S, S)
+    ctx.restore()
+  }
+  drawMeleeSwing(ctx, hero, sprites, camX, camY, S)
+  drawChargeRing(ctx, hero, camX, camY)
+  if (hero.rain) drawRainCloud(ctx, hx + S / 2, hy - 14, S, hero.rain.t, hero.rain.t / hero.rain.dur)
+  return { px: hx, py: hy }
 }
 
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3) }
@@ -1210,35 +1280,26 @@ export class Renderer {
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
       if (e.shock) drawShockCloud(ctx, epx + S / 2, epy - 14, S, e.shock.tickT + e.shock.left)
     }
-    const ppx = player.px !== undefined ? Math.round(player.px - S/2 - camX) : Math.round(player.x * S - camX)
     const lift = Math.round(fx?.lift ?? 0)
-    const ppy = (player.py !== undefined ? Math.round(player.py - S/2 - camY) : Math.round(player.y * S - camY)) - lift
     if (fx?.wizards?.length) {
       drawRiteCeremony(ctx, fx, camX, camY, S, this.whiteWizardSprite(), {
         px: player.px ?? player.x * S + S / 2,
         py: player.py ?? player.y * S + S / 2,
       })
     }
+    // PvP: every other hero first, each with its name and hp; the local hero
+    // is drawn last, on top, exactly as the single-player hero always was.
+    for (const h of otherHeroes(state)) {
+      const at = drawHero(ctx, h, sprites, camX, camY, S, { trail: h.blinkTrail })
+      if (at) {
+        if (h.stunTimer > 0) drawStunStars(ctx, at.px + S / 2, at.py - 4, h.stunTimer)
+        if (h.shock) drawShockCloud(ctx, at.px + S / 2, at.py - 14, S, h.shock.tickT + h.shock.left)
+        drawHeroTag(ctx, h, at.px, at.py, S)
+      }
+    }
     // The blink ghosts belong with the player: behind him, in front of the floor.
-    drawBlinkTrail(ctx, state.blinkTrail, player, sprites, camX, camY, S)
-    if (isFlickerVisible(player.invulnTimer)) drawEntity(ctx, player, ppx, ppy, S, sprites)
-    if (player.grabbed) {
-      ctx.save()
-      ctx.globalAlpha = 0.45
-      ctx.fillStyle = '#ef4444'
-      ctx.fillRect(ppx, ppy, S, S)
-      ctx.restore()
-    }
-    if (fx && fx.greenAlpha > 0) {
-      ctx.save()
-      ctx.globalAlpha = Math.min(0.6, fx.greenAlpha * 1.6)
-      ctx.fillStyle = '#4ade80'
-      ctx.fillRect(ppx, ppy, S, S)
-      ctx.restore()
-    }
-    drawMeleeSwing(ctx, player, sprites, camX, camY, S)
-    drawChargeRing(ctx, player, camX, camY)
-    if (player.rain) drawRainCloud(ctx, ppx + S / 2, ppy - 14, S, player.rain.t, player.rain.t / player.rain.dur)
+    drawHero(ctx, player, sprites, camX, camY, S,
+      { lift, trail: player.blinkTrail ?? state.blinkTrail, greenAlpha: fx?.greenAlpha ?? 0 })
     const dragon = entities.find(e => e.type === 'dragon')
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     const cyclops = entities.find(e => e.type === 'cyclops')
