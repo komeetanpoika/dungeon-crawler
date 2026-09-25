@@ -1,4 +1,4 @@
-import { cheatDecision, CHEAT_HOLD_MS, parsePvpCheat, parseNetCheat } from '../systems/cheats.js'
+import { CHEAT_HOLD_MS, cheatStep } from '../systems/cheats.js'
 
 // Overlay menu screens (title / pause / game over). DOM-only; receives callbacks.
 // Keep all document access inside functions so the pure helper stays importable
@@ -36,7 +36,7 @@ function highlight() {
   currentButtons.forEach((b, i) => b.classList.toggle('selected', i === selectedIndex))
 }
 
-function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, onNet, input }) {
+function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, onNet, input, onEscape }) {
   const el = overlayEl()
   el.innerHTML = ''
   currentInput = null
@@ -93,30 +93,39 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
   clearKeyHandler()
   keyHandler = (e) => {
     if (currentInput && e.target === currentInput && e.key !== 'Enter' && e.key !== 'Escape') return
+    if (e.key === 'Escape') { if (onEscape) onEscape(); e.preventDefault(); return }
     const action = navActionFor(e.key)
+    // A key already held when this screen appeared (typically Space, from an
+    // attack/charge in progress underneath) arrives here only as OS repeats —
+    // the real press happened before this handler existed. Treating repeats
+    // as fresh presses would auto-confirm whatever button is selected.
+    if (action && e.repeat) { e.preventDefault(); return }
     if (action === 'down') {
       selectedIndex = (selectedIndex + 1) % buttons.length; highlight(); e.preventDefault()
     } else if (action === 'up') {
       selectedIndex = (selectedIndex - 1 + buttons.length) % buttons.length; highlight(); e.preventDefault()
     } else if (action === 'confirm') {
       buttons[selectedIndex].onSelect(); e.preventDefault()
-    } else if (onCheat && e.key.length === 1) {
-      cheatBuffer = (cheatBuffer + e.key).toLowerCase().slice(-12)
-      if (onPvp && parsePvpCheat(cheatBuffer)) { clearCheatTimer(); cheatBuffer = ''; onPvp(); return }
-      const net = onNet && parseNetCheat(cheatBuffer)
-      if (net) { clearCheatTimer(); cheatBuffer = ''; onNet(net); return }
-      // The cheat is suffix-matched, so "level1" matches while the player may
-      // still be typing "level18". A depth a further digit could extend is
-      // held for CHEAT_HOLD_MS; only a further match cancels that pending fire
-      // and re-decides on the longer buffer, so a stray keystroke can't eat the
-      // cheat. depth 0 is valid but falsy — never test the depth for truthiness.
-      const decision = cheatDecision(cheatBuffer)
-      if (!decision) return
-      clearCheatTimer()
-      const fire = () => { cheatTimer = null; cheatBuffer = ''; onCheat(decision.depth) }
-      if (decision.wait) cheatTimer = setTimeout(fire, CHEAT_HOLD_MS)
-      else fire()
     }
+    // A cheat letter is folded into the buffer independently of any nav
+    // action above — "host"'s "s" is also the down-nav key, and typing it
+    // must still move toward the cheat as well as move the selection.
+    if (!onCheat || e.key.length !== 1) return
+    const step = cheatStep(cheatBuffer, e.key)
+    cheatBuffer = step.buffer
+    if (onPvp && step.pvp) { e.preventDefault(); clearCheatTimer(); cheatBuffer = ''; onPvp(); return }
+    if (onNet && step.net) { e.preventDefault(); clearCheatTimer(); cheatBuffer = ''; onNet(step.net); return }
+    // The cheat is suffix-matched, so "level1" matches while the player may
+    // still be typing "level18". A depth a further digit could extend is
+    // held for CHEAT_HOLD_MS; only a further match cancels that pending fire
+    // and re-decides on the longer buffer, so a stray keystroke can't eat the
+    // cheat. depth 0 is valid but falsy — never test the depth for truthiness.
+    const decision = step.level
+    if (!decision) return
+    clearCheatTimer()
+    const fire = () => { cheatTimer = null; cheatBuffer = ''; onCheat(decision.depth) }
+    if (decision.wait) cheatTimer = setTimeout(fire, CHEAT_HOLD_MS)
+    else fire()
   }
   window.addEventListener('keydown', keyHandler)
 }
@@ -208,6 +217,7 @@ export function showClassPicker({ title = 'Arena', subtitle = 'Pick a class', on
       { label: 'Mage', onSelect: () => onPick('mage') },
       ...(onBack ? [{ label: 'Back', onSelect: onBack }] : []),
     ],
+    onEscape: onBack,
   })
 }
 
@@ -232,6 +242,7 @@ export function showTextEntry({ title, subtitle, value = '', maxLength = 12, onS
       { label: 'OK', onSelect: () => onSubmit(currentInput?.value ?? '') },
       ...(onBack ? [{ label: 'Back', onSelect: onBack }] : []),
     ],
+    onEscape: onBack,
   })
 }
 

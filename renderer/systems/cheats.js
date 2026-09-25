@@ -47,3 +47,14 @@ export function parseNetCheat(buffer) {
   const m = /(host|join)$/.exec(String(buffer).toLowerCase())
   return m ? m[1] : null
 }
+
+// Folds one typed key into the running cheat buffer and evaluates every
+// cheat against the result in a single, pure step. Some cheat letters (the
+// "s" in "host", the "w" a level cheat never uses but could) double as menu
+// nav keys; the menu's key handler no longer has to choose between moving
+// the selection and feeding the buffer — it does both, and this is the one
+// place that decides what the buffer, so far, adds up to.
+export function cheatStep(buffer, key) {
+  const next = (String(buffer) + key).toLowerCase().slice(-12)
+  return { buffer: next, pvp: parsePvpCheat(next), net: parseNetCheat(next), level: cheatDecision(next) }
+}

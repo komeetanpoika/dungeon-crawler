@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatMetaSummary, navActionFor } from '../renderer/ui/menu.js'
+import { formatMetaSummary, navActionFor, showTitle, showClassPicker, showTextEntry } from '../renderer/ui/menu.js'
 
 describe('formatMetaSummary', () => {
   it('formats a played meta with treasure stolen', () => {
@@ -98,6 +98,115 @@ describe('showDestinations', () => {
       btns[2].listeners.click()
       assert.deepEqual(picks, [7, 'stay'])
       hide()
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+})
+
+// A DOM stub that actually captures the window keydown listener menu.js
+// installs (stubDom's window is a pure no-op, fine for click-driven tests
+// but useless here), so these tests can fire synthetic key events and read
+// back e.defaultPrevented.
+function stubDomWithKeys() {
+  const makeEl = (tag) => {
+    const el = {
+      tag, children: [], className: '', textContent: '', style: {}, innerHTML: '',
+      listeners: {}, value: '', maxLength: 0, autocomplete: '',
+      appendChild(c) { el.children.push(c); return c },
+      addEventListener(ev, fn) { el.listeners[ev] = fn },
+      classList: { toggle() {} },
+      focus() {},
+    }
+    return el
+  }
+  const overlay = makeEl('div')
+  let keydownHandler = null
+  globalThis.document = {
+    getElementById: id => (id === 'menu-overlay' ? overlay : null),
+    createElement: makeEl,
+  }
+  globalThis.window = {
+    addEventListener: (ev, fn) => { if (ev === 'keydown') keydownHandler = fn },
+    removeEventListener: (ev) => { if (ev === 'keydown') keydownHandler = null },
+    saveAPI: undefined,
+  }
+  const press = (key, opts = {}) => {
+    const e = { key, repeat: false, target: null, defaultPrevented: false, preventDefault() { e.defaultPrevented = true }, ...opts }
+    keydownHandler?.(e)
+    return e
+  }
+  return { overlay, press }
+}
+
+describe('menu key handler: held keys, Escape, and cheat/nav interplay', () => {
+  it('a repeated (held) confirm key is ignored — a panel that opens under a still-held Space cannot be pressed by it', () => {
+    const { press } = stubDomWithKeys()
+    try {
+      let picked = null
+      showClassPicker({ onPick: cls => { picked = cls } })
+      const e = press(' ', { repeat: true })
+      assert.equal(picked, null)
+      assert.equal(e.defaultPrevented, true)
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+
+  it('a repeated (held) down-nav key is ignored', () => {
+    const { press } = stubDomWithKeys()
+    try {
+      let picked = null
+      showClassPicker({ onPick: cls => { picked = cls } })
+      press('s', { repeat: true })
+      // Selection must still be index 0 (Warrior) — confirm it directly.
+      press(' ')
+      assert.equal(picked, 'warrior')
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+
+  it('Escape on a class-picker screen calls onBack', () => {
+    const { press } = stubDomWithKeys()
+    try {
+      let back = false
+      showClassPicker({ onPick: () => {}, onBack: () => { back = true } })
+      press('Escape')
+      assert.equal(back, true)
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+
+  it('Escape on a text-entry screen calls onBack', () => {
+    const { press } = stubDomWithKeys()
+    try {
+      let back = false
+      showTextEntry({ title: 'Host a room', onSubmit: () => {}, onBack: () => { back = true } })
+      press('Escape')
+      assert.equal(back, true)
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+
+  it('typing "host" (lowercase, letter by letter) fires onNet even though "s" is also the down-nav key, and prevents default on the firing key', () => {
+    const { press } = stubDomWithKeys()
+    try {
+      let netFired = null
+      showTitle({ deepestReached: 0, runsCompleted: 0, treasureStolen: false },
+        { onCheat: () => {}, onNet: k => { netFired = k } })
+      press('h'); press('o'); press('s')
+      assert.equal(netFired, null)
+      const e = press('t')
+      assert.equal(netFired, 'host')
+      assert.equal(e.defaultPrevented, true)
     } finally {
       delete globalThis.document
       delete globalThis.window

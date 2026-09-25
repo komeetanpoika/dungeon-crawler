@@ -29,7 +29,9 @@ import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './
 import { stepMatch, setClass } from './pvp/sim.js'
 import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel } from './ui/pvp-hud.js'
 import { connect, frame as netFrameStep, sessionView, sendClass, leave as netLeave, drainEvents, drainCues } from './net/client.js'
-import { netUrl, normalizeCode, errorText, netViewOf } from './net/view.js'
+import { netUrl, normalizeCode, validCode, errorText, netViewOf } from './net/view.js'
+import { validateName } from './net/protocol.js'
+import { NET } from './data/net.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -146,6 +148,7 @@ window.addEventListener('keydown', e => {
 
 // I toggles the inventory panel: open while playing, close while it's open.
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if ((e.key !== 'i' && e.key !== 'I') || e.repeat) return
   if (pvp || net) return
   if (phase === PHASE.PLAYING) openInventory()
@@ -155,6 +158,7 @@ window.addEventListener('keydown', e => {
 // M toggles sound. The muted flag lives on state.sfx; the audio engine
 // ramps its master gain when it sees the flag change in playCues.
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if ((e.key !== 'm' && e.key !== 'M') || e.repeat) return
   if (pvp) { pvp.match.sfx.muted = !pvp.match.sfx.muted; saveMutedPref(pvp.match.sfx.muted); return }
   if (net) { net.muted = !net.muted; saveMutedPref(net.muted); return }
@@ -169,6 +173,7 @@ window.addEventListener('keydown', e => {
 // wand. A shield rises while Q is *held* (the update loop's tickShield reads
 // the key itself) and an offhand blade needs no key at all.
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if ((e.key !== 'q' && e.key !== 'Q') || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
   useOffhand()
@@ -203,6 +208,7 @@ function castOffhand() {
 // held-key auto-repeat so holding Shift doesn't flap the mode. The switch
 // takes a moment (see STANCE_SWITCH_DURATION) — the mode lands in update().
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if (e.key !== 'Shift' || e.repeat) return
   if (phase !== PHASE.PLAYING || !state) return
   // startStanceSwitch drops any charge in progress itself (it belongs to the
@@ -215,6 +221,7 @@ window.addEventListener('keydown', e => {
 // In-game weapon cheat: type "mauno" during a run to wield the Maunonmiekka.
 let gameCheatBuffer = ''
 window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT') return
   if (phase !== PHASE.PLAYING || !state || e.key.length !== 1) return
   gameCheatBuffer = (gameCheatBuffer + e.key).toLowerCase().slice(-12)
   const wt = parseWeaponCheat(gameCheatBuffer)
@@ -835,11 +842,13 @@ function pvpFrame(delta) {
   for (const ev of stepMatch(match, localInputs(match, keys, sprintDetector.sprinting()), delta)) {
     if (ev.type === 'kill' && ev.victim === LOCAL_ID) {
       pvp.picking = true
+      keys[' '] = false
       menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
         onPick: cls => { setClass(match, LOCAL_ID, cls); pvp.cls = cls; pvp.picking = false; menu.hide(); keys[' '] = false } })
     }
     if (ev.type === 'respawn' && ev.hero === LOCAL_ID && pvp.picking) { pvp.picking = false; menu.hide() }
     if (ev.type === 'matchEnd') {
+      keys[' '] = false
       menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls), onQuit: stopPvp })
       pvp.done = true
     }
@@ -861,6 +870,12 @@ function pvpFrame(delta) {
 const loadName = () => { try { return localStorage.getItem('dc-pvp-name') ?? '' } catch { return '' } }
 const saveName = n => { try { localStorage.setItem('dc-pvp-name', n) } catch {} }
 
+// Checked before ever opening a socket, so a mistyped name/code shows the
+// same one-line refusal the server would give, without a round trip.
+function rejectEntry(kind, code, onOk) {
+  menu.showMessage({ title: kind === 'host' ? 'Could not host' : 'Could not join', lines: [errorText(code)], onOk })
+}
+
 function goNet(kind) {
   phase = PHASE.TITLE
   if (!window.saveAPI?.isWeb) {
@@ -868,13 +883,18 @@ function goNet(kind) {
     return
   }
   menu.showTextEntry({ title: kind === 'host' ? 'Host a room' : 'Join a room', subtitle: 'Your name', value: loadName(),
-    onBack: goTitle,
+    maxLength: NET.nameMax, onBack: goTitle,
     onSubmit: name => {
+      if (!validateName(name)) { rejectEntry(kind, 'bad_name', () => goNet(kind)); return }
       saveName(name)
       const pick = room => menu.showClassPicker({ onBack: goTitle, onPick: cls => startNet({ name, cls, room }) })
       if (kind === 'host') pick(null)
-      else menu.showTextEntry({ title: 'Join a room', subtitle: 'Room code', maxLength: 6, onBack: goTitle,
-        onSubmit: code => pick(normalizeCode(code)) })
+      else menu.showTextEntry({ title: 'Join a room', subtitle: 'Room code', maxLength: NET.codeLength + 2, onBack: goTitle,
+        onSubmit: code => {
+          const c = normalizeCode(code)
+          if (!validCode(c)) { rejectEntry(kind, 'bad_hello', () => goNet(kind)); return }
+          pick(c)
+        } })
     } })
 }
 
@@ -904,11 +924,13 @@ function netFrame() {
     if (ev.type === 'welcome') menu.hide()
     else if (ev.type === 'error') { menu.showMessage({ title: 'Could not join', lines: [errorText(ev.code)], onOk: stopNet }); return }
     else if (ev.type === 'closed' && ev.status === 'lost') { menu.showMessage({ title: 'Connection lost', onOk: stopNet }); return }
-    else if (ev.type === 'kill' && ev.victim === s.heroId)
+    else if (ev.type === 'kill' && ev.victim === s.heroId) {
+      keys[' '] = false
       menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
         onPick: cls => { sendClass(s, cls); menu.hide(); keys[' '] = false } })
+    }
     else if (ev.type === 'respawn' && ev.hero === s.heroId) menu.hide()
-    else if (ev.type === 'matchEnd') menu.showPvpResults(ev.standings, { onQuit: stopNet })
+    else if (ev.type === 'matchEnd') { keys[' '] = false; menu.showPvpResults(ev.standings, { onQuit: stopNet }) }
     else if (ev.type === 'matchStart') menu.hide()
   }
   const v = sessionView(s, now)

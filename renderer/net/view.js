@@ -6,6 +6,13 @@ export const netUrl = loc => `${loc.protocol === 'https:' ? 'wss:' : 'ws:'}//${l
 
 export const normalizeCode = raw => String(raw ?? '').replace(/\s+/g, '').toUpperCase()
 
+// Whether a normalized code is exactly NET.codeLength letters from the
+// server's code alphabet — checked client-side before ever opening a socket,
+// so a mistyped code shows the same refusal line the server would give
+// without a round trip.
+const CODE_RE = new RegExp(`^[${NET.codeAlphabet}]{${NET.codeLength}}$`)
+export const validCode = code => CODE_RE.test(code)
+
 const ERROR_TEXT = {
   version: 'The game was updated — reload the page.',
   no_room: 'No such room.',

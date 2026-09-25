@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseNetCheat, parsePvpCheat } from '../renderer/systems/cheats.js'
-import { netUrl, normalizeCode, errorText, netViewOf } from '../renderer/net/view.js'
+import { netUrl, normalizeCode, validCode, errorText, netViewOf } from '../renderer/net/view.js'
 import { netHudModel } from '../renderer/ui/pvp-hud.js'
 import { makeHero } from '../renderer/pvp/hero.js'
 
@@ -21,6 +21,14 @@ describe('view helpers', () => {
   })
   it('normalizeCode uppercases and strips spaces', () => {
     assert.equal(normalizeCode(' kx pt '), 'KXPT')
+  })
+  it('validCode accepts exactly 4 letters from the code alphabet, normalized', () => {
+    assert.equal(validCode(normalizeCode(' kx pt ')), true)
+    assert.equal(validCode('KXPT'), true)
+    assert.equal(validCode('KXP'), false)   // too short
+    assert.equal(validCode('KXPTQ'), false) // too long
+    assert.equal(validCode('KX0T'), false)  // digits aren't in the code alphabet (letters only)
+    assert.equal(validCode(''), false)
   })
   it('errorText has a line for every error code and a fallback', () => {
     for (const code of ['version', 'no_room', 'room_full', 'bad_name', 'bad_hello', 'server_full'])

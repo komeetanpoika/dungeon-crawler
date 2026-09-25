@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseLevelCheat, cheatDecision, CHEAT_HOLD_MS } from '../renderer/systems/cheats.js'
+import { parseLevelCheat, cheatDecision, CHEAT_HOLD_MS, cheatStep } from '../renderer/systems/cheats.js'
 
 describe('parseLevelCheat', () => {
   it('matches level1 through level5', () => {
@@ -74,5 +74,37 @@ describe('cheatDecision', () => {
 
   it('declares a hold window the menu can arm a timer with', () => {
     assert.ok(CHEAT_HOLD_MS >= 300 && CHEAT_HOLD_MS <= 1500)
+  })
+})
+
+// cheatStep folds one key at a time, the way the menu's key handler receives
+// them — the point is that "host" still resolves even though its "s" is also
+// the down-nav key, because folding no longer competes with navigating.
+describe('cheatStep', () => {
+  const typeSeq = keys => {
+    let buffer = ''
+    const steps = []
+    for (const key of keys) { const step = cheatStep(buffer, key); buffer = step.buffer; steps.push(step) }
+    return steps
+  }
+
+  it('types "host" letter by letter and fires net:"host" only on the final key', () => {
+    const steps = typeSeq(['h', 'o', 's', 't'])
+    assert.deepEqual(steps.map(s => s.net), [null, null, null, 'host'])
+  })
+
+  it('types "join" letter by letter and fires net:"join" only on the final key', () => {
+    const steps = typeSeq(['j', 'o', 'i', 'n'])
+    assert.deepEqual(steps.map(s => s.net), [null, null, null, 'join'])
+  })
+
+  it('types "pvp" letter by letter and fires pvp:true only on the final key', () => {
+    const steps = typeSeq(['p', 'v', 'p'])
+    assert.deepEqual(steps.map(s => s.pvp), [false, false, true])
+  })
+
+  it('types "level12" and fires the level cheat (unextendable) only on the final key', () => {
+    const steps = typeSeq(['l', 'e', 'v', 'e', 'l', '1', '2'])
+    assert.deepEqual(steps.map(s => s.level), [null, null, null, null, null, { depth: 1, wait: true }, { depth: 12, wait: false }])
   })
 })
