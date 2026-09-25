@@ -45,7 +45,7 @@ export const PLAYER_SHAPE = { r: 12 }
 export const FALLBACK_SHAPE = { r: 8 }
 
 function localShape(e) {
-  if (e.type === 'player') return PLAYER_SHAPE
+  if (e.type === 'player' || e.type === 'hero') return PLAYER_SHAPE
   const def = e.type ? getMonsterDef(e.type) : null
   if (def) {
     def.hit ??= typeof def.rig.hitShape === 'function'

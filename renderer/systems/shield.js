@@ -39,8 +39,7 @@ export function inBlockArc(player, from) {
 // SHIELD_DROP with the stamina bar's refused flash, the same tell the sprint
 // gives. `blockedHit` tells the melee striker (enemy-attack.js) its swing was
 // spent on the shield rather than i-framed.
-export function tryBlock(state, from) {
-  const player = state.player
+export function tryBlock(state, from, player = state.player) {
   if (!player.blocking || !inBlockArc(player, from)) return false
   const shield = heldShield(player)
   if (!shield) return false
