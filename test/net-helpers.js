@@ -24,9 +24,15 @@ export async function waitFor(fn, ms = 2000, step = 10) {
   }
 }
 
+// Each raw client comes from its own made-up address, via X-Forwarded-For,
+// which the server trusts by default, so a test file's many sockets never
+// trip the per-IP limits. Pass { ip } to pin one, or { ip: null } for none.
+let ipSeq = 0
+const nextIp = () => { const n = ipSeq++; return `10.9.${(n >> 8) & 255}.${n & 255}` }
+
 // A bare socket speaking the protocol by hand — for the server tests.
-export async function rawClient(url) {
-  const ws = new WebSocket(url)
+export async function rawClient(url, { ip = nextIp() } = {}) {
+  const ws = new WebSocket(url, ip ? { headers: { 'x-forwarded-for': ip } } : undefined)
   const messages = []
   let closed = null
   ws.on('message', d => { const m = decode(d.toString()); if (m) messages.push(m) })

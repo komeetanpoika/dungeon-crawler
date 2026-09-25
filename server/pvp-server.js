@@ -1,10 +1,18 @@
-// The PvP WebSocket endpoint (spec §1, §3): upgrades /pvp on the web server,
-// turns hello into a room seat, feeds validated inputs to server/rooms.js,
-// runs each room's 30 Hz loop and broadcasts snapshots. Heartbeat pings drop
-// dead sockets.
+// The PvP WebSocket endpoint (spec §1, §3; public launch 4a §1-§2):
+// upgrades /pvp on the web server, screens every socket (limits.js) and
+// every name (names.js), turns hello into a room seat — private, by code, or
+// a quick-joined public room — feeds validated inputs to server/rooms.js,
+// runs each room's 30 Hz loop, broadcasts snapshots and kicks idle humans.
+// Heartbeat pings drop dead sockets.
+//
+// Privacy: a caller's IP is used only as a key into the gate's in-memory
+// counters (server/limits.js). It is never logged and never sent anywhere;
+// the only log line about refusals is a count per period.
 import { WebSocketServer } from 'ws'
-import { makeLobby, createRoom, joinRoom, leaveRoom, queueInput, setRoomClass, stepRoom, ackOf } from './rooms.js'
-import { MSG, encode, decode, validateHello, validateInput, validateClass } from '../renderer/net/protocol.js'
+import { makeLobby, createRoom, joinRoom, quickJoin, leaveRoom, queueInput, setRoomClass, stepRoom, ackOf, drainKicks } from './rooms.js'
+import { makeGate, admit, release, takeHello, noteFlood, sweepGate, makeConnLimits, allowMessage, allowClass, clientIp } from './limits.js'
+import { acceptableName } from './names.js'
+import { MSG, ERR, encode, decode, validateHello, validateInput, validateClass } from '../renderer/net/protocol.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
 
@@ -18,8 +26,11 @@ export function heartbeatSweep(clients) {
   }
 }
 
-export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heartbeatMs, helloTimeoutMs = NET.helloTimeoutMs, ...lobbyOpts } = {}) {
+export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heartbeatMs, helloTimeoutMs = NET.helloTimeoutMs,
+  trustProxy = NET.trustProxy, refusalLogMs = NET.refusalLogMs, log = console.log, now = () => performance.now(),
+  ...lobbyOpts } = {}) {
   const lobby = makeLobby(lobbyOpts)
+  const gate = makeGate()
   const wss = new WebSocketServer({ noServer: true, maxPayload: NET.maxPayload })
   const loops = new Map()
 
@@ -56,6 +67,28 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     for (const ws of room.sockets.values()) { try { ws.close(1011) } catch { /* already gone */ } }
   }
 
+  // Free a seat from the server side (the idle kick): tell the client why,
+  // leave the room now — a public room's bot fill takes the seat — and close.
+  // The socket's own 'close' handler runs later and finds nothing to do:
+  // leaveRoom is idempotent.
+  function kick(room, heroId, code) {
+    const ws = room.sockets.get(heroId)
+    room.sockets.delete(heroId)
+    leaveRoom(lobby, room, heroId)
+    if (!lobby.rooms.has(room.code)) stopLoop(room.code)
+    if (ws) { send(ws, { type: MSG.ERROR, code }); ws.close(1000) }
+  }
+
+  // A validated hello → a seat, or { error }. A name that fails the screen
+  // answers bad_name, the same as a malformed one.
+  function seat(hello) {
+    if (hello.error) return hello
+    if (!acceptableName(hello.name)) return { error: ERR.BAD_NAME }
+    if (hello.create) return createRoom(lobby, hello)
+    if (hello.quick) return quickJoin(lobby, hello)
+    return joinRoom(lobby, hello.room, hello)
+  }
+
   function ensureLoop(room) {
     if (loops.has(room.code)) return
     const tickMs = PVP.tick * 1000
@@ -69,6 +102,8 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
           acc -= tickMs
           const body = stepRoom(lobby, room)
           if (body) broadcast(room, body)
+          for (const id of drainKicks(room)) kick(room, id, ERR.IDLE)
+          if (lobby.rooms.get(room.code) !== room) return
         }
       } catch (err) { crashRoom(room, err) }
     }, tickMs))
@@ -79,16 +114,27 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     loops.delete(code)
   }
 
-  wss.on('connection', ws => {
-    ws.missed = 0
-    ws.on('pong', () => { ws.missed = 0 })
+  wss.on('connection', (ws, req) => {
     // An oversized frame (over maxPayload) surfaces here as a RangeError,
     // not a 'close' — without this handler it is an uncaught exception.
+    // Installed first, before any early return.
     ws.on('error', () => { try { ws.terminate() } catch { /* already gone */ } })
+    // The upgrade is accepted, then a socket over the per-IP or total cap is
+    // told why and closed. A refused socket is never counted, so nothing
+    // releases it.
+    const ip = clientIp(req, trustProxy)
+    const refused = admit(gate, ip, now())
+    if (refused) { send(ws, { type: MSG.ERROR, code: refused }); ws.close(1008); return }
+    ws.missed = 0
+    ws.on('pong', () => { ws.missed = 0 })
+    const budget = makeConnLimits(now())
     let room = null, heroId = null
     // A socket that never sends hello would otherwise sit open forever.
     const helloTimer = setTimeout(() => { if (!room) ws.close(1008) }, helloTimeoutMs)
     ws.on('message', (data, isBinary) => {
+      // Closing (a kick, a flood): anything still arriving is ignored.
+      if (ws.readyState !== 1) return
+      if (!allowMessage(budget, now())) { noteFlood(gate); ws.close(1008); return }
       const msg = isBinary ? null : decode(data)
       if (!msg) { ws.close(1003); return }
       // A message can arrive from this socket after its room has already
@@ -98,16 +144,13 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       if (room && lobby.rooms.get(room.code) !== room) return
       // Hello handling shares this try with message dispatch below: a future
       // arena with fewer spawns than NET.maxHeroes (or any other bug in
-      // createRoom/joinRoom) must close just this socket with 1011, not take
-      // the process down. Belt-and-braces alongside the lobby.rooms check
-      // above: a message can still be in flight (already read off the
-      // socket, e.g. sent right before the crash) when the room it targets
-      // comes apart underneath it, so dispatch never runs unguarded either.
+      // createRoom/joinRoom/quickJoin) must close just this socket with 1011,
+      // not take the process down.
       try {
         if (!room) {
           if (msg.type !== MSG.HELLO) { ws.close(1008); return }
-          const hello = validateHello(msg)
-          const res = hello.error ? hello : hello.create ? createRoom(lobby, hello) : joinRoom(lobby, hello.room, hello)
+          if (!takeHello(gate, ip, now())) { send(ws, { type: MSG.ERROR, code: ERR.RATE_LIMITED }); ws.close(1008); return }
+          const res = seat(validateHello(msg))
           if (res.error) { send(ws, { type: MSG.ERROR, code: res.error }); ws.close(1008); return }
           room = res.room; heroId = res.heroId
           clearTimeout(helloTimer)
@@ -118,7 +161,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
           return
         }
         if (msg.type === MSG.INPUT) { const input = validateInput(msg); if (input) queueInput(room, heroId, input) }
-        else if (msg.type === MSG.CLASS) { if (validateClass(msg.cls)) setRoomClass(room, heroId, msg.cls) }
+        else if (msg.type === MSG.CLASS) { if (validateClass(msg.cls) && allowClass(budget, now())) setRoomClass(room, heroId, msg.cls) }
         else if (msg.type === MSG.PING) { if (Number.isFinite(msg.t)) send(ws, { type: MSG.PONG, t: msg.t }) }
       } catch (err) {
         console.error(`[pvp] message handling failed (room ${room?.code}, hero ${heroId}):`, err)
@@ -126,6 +169,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       }
     })
     ws.on('close', () => {
+      release(gate, ip)
       clearTimeout(helloTimer)
       if (!room) return
       room.sockets.delete(heroId)
@@ -139,21 +183,25 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       } catch (err) {
         // Belt-and-braces: leaveRoom touches room.match too, so if this room
         // is in some other unexpected broken state, don't let tearing down
-        // one departing socket take the process down. Just deleting the room
-        // here would leave its other sockets connected with nothing arriving
-        // (the loop is stopped) — crashRoom logs, stops the loop, drops the
-        // room and closes every socket still in it with 1011.
+        // one departing socket take the process down. crashRoom logs, stops
+        // the loop, drops the room and closes every socket still in it.
         crashRoom(room, err)
       }
     })
   })
 
   const heartbeat = setInterval(() => heartbeatSweep(wss.clients), heartbeatMs)
+  // Refusal counts once a period, only when there were any — never an address.
+  const sweeper = setInterval(() => {
+    const counts = Object.entries(sweepGate(gate, now())).filter(([, n]) => n > 0)
+    if (counts.length) log(`[pvp] refused in the last ${Math.round(refusalLogMs / 1000)} s: ${counts.map(([k, n]) => `${k} ${n}`).join(', ')}`)
+  }, refusalLogMs)
 
   return {
-    lobby, wss,
+    lobby, wss, gate,
     close() {
       clearInterval(heartbeat)
+      clearInterval(sweeper)
       for (const code of [...loops.keys()]) stopLoop(code)
       for (const ws of wss.clients) ws.terminate()
       wss.close()
