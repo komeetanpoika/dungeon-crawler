@@ -126,10 +126,22 @@ describe('pvp server', async () => {
     const { room: codeB } = await b.next('welcome')
     await b.next('snap')
 
-    // Break room A's simulation so its next tick throws.
+    // Break room A's simulation so its next tick throws, then immediately
+    // start flooding that socket with inputs, every event-loop turn, right
+    // through the crash and this socket's close handshake — trying to land
+    // one in the window where `room` is still set on the connection but the
+    // room is no longer valid. setImmediate (not a timer) gives the
+    // tightest cadence available without touching prod code.
     srv.pvp.lobby.rooms.get(codeA).match = null
-
+    let racing = true
+    const raceLoop = () => {
+      if (!racing) return
+      if (a.ws.readyState === 1) { try { a.send(input(99)) } catch { /* already gone */ } }
+      setImmediate(raceLoop)
+    }
+    raceLoop()
     await waitFor(() => a.closed !== null)
+    racing = false
     assert.ok(!srv.pvp.lobby.rooms.has(codeA))
 
     // Room B must still be alive and ticking.

@@ -85,6 +85,11 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     ws.on('message', (data, isBinary) => {
       const msg = isBinary ? null : decode(data)
       if (!msg) { ws.close(1003); return }
+      // A message can arrive from this socket after its room has already
+      // been torn down (crashRoom) but before the close handshake finishes;
+      // room is still set, so without this it would reach queueInput/
+      // setRoomClass on a dead room (e.g. room.match is gone) and throw.
+      if (room && lobby.rooms.get(room.code) !== room) return
       if (!room) {
         if (msg.type !== MSG.HELLO) { ws.close(1008); return }
         const hello = validateHello(msg)
@@ -98,9 +103,18 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
         send(ws, { type: MSG.WELCOME, v: NET.protocolVersion, room: room.code, heroId, tick: room.match.tick })
         return
       }
-      if (msg.type === MSG.INPUT) { const input = validateInput(msg); if (input) queueInput(room, heroId, input) }
-      else if (msg.type === MSG.CLASS) { if (validateClass(msg.cls)) setRoomClass(room, heroId, msg.cls) }
-      else if (msg.type === MSG.PING) { if (Number.isFinite(msg.t)) send(ws, { type: MSG.PONG, t: msg.t }) }
+      // Belt-and-braces alongside the lobby.rooms check above: a message can
+      // still be in flight (already read off the socket, e.g. sent right
+      // before the crash) when the room it targets comes apart underneath
+      // it, so dispatch never runs unguarded.
+      try {
+        if (msg.type === MSG.INPUT) { const input = validateInput(msg); if (input) queueInput(room, heroId, input) }
+        else if (msg.type === MSG.CLASS) { if (validateClass(msg.cls)) setRoomClass(room, heroId, msg.cls) }
+        else if (msg.type === MSG.PING) { if (Number.isFinite(msg.t)) send(ws, { type: MSG.PONG, t: msg.t }) }
+      } catch (err) {
+        console.error(`[pvp] message handling failed (room ${room.code}, hero ${heroId}):`, err)
+        try { ws.close(1011) } catch { /* already gone */ }
+      }
     })
     ws.on('close', () => {
       clearTimeout(helloTimer)
@@ -110,8 +124,17 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       // sockets are being closed right now, so leaveRoom must not run again
       // against a room the lobby no longer holds.
       if (lobby.rooms.get(room.code) !== room) return
-      leaveRoom(lobby, room, heroId)
-      if (!lobby.rooms.has(room.code)) stopLoop(room.code)
+      try {
+        leaveRoom(lobby, room, heroId)
+        if (!lobby.rooms.has(room.code)) stopLoop(room.code)
+      } catch (err) {
+        // Belt-and-braces: leaveRoom touches room.match too, so if this room
+        // is in some other unexpected broken state, don't let tearing down
+        // one departing socket take the process down — drop the room.
+        console.error(`[pvp] leaveRoom failed (room ${room.code}, hero ${heroId}):`, err)
+        lobby.rooms.delete(room.code)
+        stopLoop(room.code)
+      }
     })
   })
 

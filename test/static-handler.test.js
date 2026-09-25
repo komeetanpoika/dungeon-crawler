@@ -43,4 +43,16 @@ describe('makeStaticHandler', () => {
     handler({ url: 'http://[' }, res)
     assert.equal(res.statusCode, 400)
   })
+
+  it('400s a path that decodes to a NUL byte, instead of throwing into fs.readFile', () => {
+    const res = fakeRes()
+    handler({ url: '/%00' }, res)
+    assert.equal(res.statusCode, 400)
+  })
+
+  it('400s a NUL byte embedded further into the path', () => {
+    const res = fakeRes()
+    handler({ url: '/foo/%00bar.js' }, res)
+    assert.equal(res.statusCode, 400)
+  })
 })
