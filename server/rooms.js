@@ -1,16 +1,19 @@
-// PvP rooms (spec §3): codes, the input queue per player, one simulated tick
-// at a time, the position history melee rewinds into, and the next match
-// after the results. Pure — no sockets; server/pvp-server.js drives it.
+// PvP rooms (spec §3; public rooms, bots and the idle timer from the 4a
+// spec §1-§2): codes, the input queue per player, one simulated tick at a
+// time, the position history melee rewinds into, and the next match after
+// the results. Pure — no sockets; server/pvp-server.js drives it.
 import { makeMatch, stepMatch, addHero, removeHero, setClass } from '../renderer/pvp/sim.js'
 import { heroById } from '../renderer/pvp/combat.js'
 import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
+import { botInput } from '../renderer/pvp/bots.js'
 import { makeSfx, drainSfx } from '../renderer/systems/sfx.js'
 import { snapshotBody, ERR } from '../renderer/net/protocol.js'
-import { PVP } from '../renderer/data/pvp.js'
+import { PVP, CLASSES } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
 
-export function makeLobby({ random = Math.random, rewind = true, matchLength = PVP.matchLength, resultsDelay = NET.resultsDelay } = {}) {
-  return { rooms: new Map(), opts: { random, rewind, matchLength, resultsDelay } }
+export function makeLobby({ random = Math.random, rewind = true, matchLength = PVP.matchLength,
+  resultsDelay = NET.resultsDelay, idleKickMs = NET.idleKickMs } = {}) {
+  return { rooms: new Map(), serial: 0, opts: { random, rewind, matchLength, resultsDelay, idleKickMs } }
 }
 
 function newCode(lobby) {
@@ -29,35 +32,96 @@ function newMatch(lobby, room, roster) {
   return match
 }
 
-const freshPlayer = room => ({ queue: [], last: NEUTRAL_INPUT, lastInputTick: room.match.tick, ack: 0 })
+// activeTick: the room tick of this human's last real input (a move,
+// attack, alt or sprint) or class pick — what the idle timer measures.
+const freshPlayer = room => ({ queue: [], last: NEUTRAL_INPUT, lastInputTick: room.match.tick, ack: 0,
+  activeTick: room.tick, kicked: false })
 
-export function createRoom(lobby, { name, cls }) {
+// public: a quick-join room with bot fill; private (the default): humans
+// only, reached by code.
+export function createRoom(lobby, { name, cls, public: isPublic = false }) {
   if (lobby.rooms.size >= NET.maxRooms) return { error: ERR.SERVER_FULL }
-  const room = { code: newCode(lobby), nextId: 1, tick: 0, match: null, players: new Map(),
-    history: new Map(), pendingEvents: [], pendingCues: [], nextMatchAt: null }
+  const room = { code: newCode(lobby), public: isPublic, serial: lobby.serial++, nextId: 1, nextBot: 1,
+    bots: [], kicks: [], tick: 0, match: null, players: new Map(), history: new Map(),
+    pendingEvents: [], pendingCues: [], nextMatchAt: null }
   const heroId = `p${room.nextId++}`
   room.match = newMatch(lobby, room, [{ id: heroId, name, cls }])
   room.players.set(heroId, freshPlayer(room))
   lobby.rooms.set(room.code, room)
+  balanceBots(lobby, room)
   return { room, heroId }
 }
 
+// By code — private or public. In a public room a bot gives up its seat.
+// A public room below NET.botFill humans holds exactly NET.botFill heroes,
+// and one at or above it holds only humans, so the new hero always has a
+// spawn (≤ NET.maxHeroes).
 export function joinRoom(lobby, code, { name, cls }) {
   const room = lobby.rooms.get(code)
   if (!room) return { error: ERR.NO_ROOM }
-  if (room.match.heroes.length >= NET.maxHeroes) return { error: ERR.ROOM_FULL }
+  if (room.players.size >= NET.maxHeroes) return { error: ERR.ROOM_FULL }
   const heroId = `p${room.nextId++}`
   addHero(room.match, { id: heroId, name, cls })
   room.players.set(heroId, freshPlayer(room))
+  balanceBots(lobby, room)
   return { room, heroId }
 }
 
+// The public room with the most humans that still has a seat, the oldest on
+// a tie; with none, a new public room.
+export function quickJoin(lobby, { name, cls }) {
+  let best = null
+  for (const room of lobby.rooms.values()) {
+    if (!room.public || room.players.size >= NET.maxHeroes) continue
+    if (!best || room.players.size > best.players.size ||
+        (room.players.size === best.players.size && room.serial < best.serial)) best = room
+  }
+  return best ? joinRoom(lobby, best.code, { name, cls }) : createRoom(lobby, { name, cls, public: true })
+}
+
+// Idempotent: a socket's close after an idle kick already removed it is a no-op.
 export function leaveRoom(lobby, room, heroId) {
+  if (!room.players.has(heroId)) return
   removeHero(room.match, heroId)
   room.players.delete(heroId)
   room.history.delete(heroId)
-  if (room.players.size === 0) lobby.rooms.delete(room.code)
+  if (room.players.size === 0) lobby.rooms.delete(room.code)   // bots never keep a room alive
+  else balanceBots(lobby, room)
 }
+
+function botName(lobby, room) {
+  const taken = new Set(room.match.heroes.map(h => h.name))
+  const free = NET.botNames.map(n => `Bot ${n}`).filter(n => !taken.has(n))
+  return free.length ? free[Math.floor(lobby.opts.random() * free.length) % free.length] : `Bot ${room.nextBot}`
+}
+
+// The class fewest heroes are playing, ties in CLASSES order.
+function botClass(room) {
+  const count = Object.fromEntries(CLASSES.map(c => [c, 0]))
+  for (const h of room.match.heroes) if (h.cls in count) count[h.cls]++
+  return CLASSES.reduce((best, c) => (count[c] < count[best] ? c : best), CLASSES[0])
+}
+
+// Public rooms only: top the room up to max(NET.botFill, humans) heroes with
+// bots (farthest spawn, spawn protection — addHero), or send the most
+// recently added bots home (removeHero returns a rune they held).
+export function balanceBots(lobby, room) {
+  if (!room.public) return
+  const { match } = room
+  const target = Math.max(NET.botFill, room.players.size)
+  while (match.heroes.length < target && match.heroes.length < match.arena.spawns.length) {
+    const id = `b${room.nextBot++}`
+    addHero(match, { id, name: botName(lobby, room), cls: botClass(room) })
+    room.bots.push(id)
+  }
+  while (match.heroes.length > target && room.bots.length) {
+    const id = room.bots.pop()
+    removeHero(match, id)
+    room.history.delete(id)
+  }
+}
+
+const isActive = input => !!(input.move?.x || input.move?.y || input.attack || input.alt || input.sprint)
 
 export function queueInput(room, heroId, input) {
   const p = room.players.get(heroId)
@@ -65,9 +129,14 @@ export function queueInput(room, heroId, input) {
   p.queue.push(input)
   if (p.queue.length > NET.inputQueueMax) p.queue.shift()
   p.lastInputTick = room.match.tick
+  if (isActive(input)) p.activeTick = room.tick
 }
 
-export const setRoomClass = (room, heroId, cls) => setClass(room.match, heroId, cls)
+export function setRoomClass(room, heroId, cls) {
+  setClass(room.match, heroId, cls)
+  const p = room.players.get(heroId)
+  if (p) p.activeTick = room.tick
+}
 export const ackOf = (room, heroId) => room.players.get(heroId)?.ack ?? 0
 
 // Where `attacker` saw `foe`: its position `k` ticks ago, k = how far behind
@@ -97,7 +166,27 @@ function startNextMatch(lobby, room) {
   room.match.tick = prev.tick
   for (const p of room.players.values()) p.lastInputTick = room.match.tick
   room.nextMatchAt = null
+  balanceBots(lobby, room)
   room.pendingEvents.push({ type: 'matchStart' })
+}
+
+// A human with no real input for idleKickMs is queued on room.kicks, once;
+// the socket layer sends error idle and frees the seat. The timer is held
+// while the match waits for a second hero (a lone private host) and while
+// the results are up.
+function checkIdle(lobby, room) {
+  const limit = Math.round(lobby.opts.idleKickMs / 1000 / PVP.tick)
+  const holding = room.match.waiting || room.match.ended
+  for (const [id, p] of room.players) {
+    if (holding) p.activeTick = room.tick
+    else if (!p.kicked && room.tick - p.activeTick >= limit) { p.kicked = true; room.kicks.push(id) }
+  }
+}
+
+export function drainKicks(room) {
+  const k = room.kicks
+  room.kicks = []
+  return k
 }
 
 // One simulated tick. Returns the snapshot body when one is due (20 Hz of a
@@ -114,6 +203,10 @@ export function stepRoom(lobby, room) {
     if (hero && input.view !== undefined) hero.viewTick = input.view
   }
   if (!match.ended) {
+    for (const id of room.bots) {
+      const hero = heroById(match, id)
+      if (hero) inputs[id] = botInput(match, hero)
+    }
     const events = stepMatch(match, inputs, PVP.tick)
     recordHistory(room)
     room.pendingEvents.push(...events)
@@ -122,6 +215,7 @@ export function stepRoom(lobby, room) {
   room.pendingCues.push(...drainSfx(room.match))
   if (room.match.ended && room.nextMatchAt !== null && room.tick >= room.nextMatchAt) startNextMatch(lobby, room)
   room.tick++
+  checkIdle(lobby, room)
   const due = Math.floor(room.tick * NET.snapshotHz * PVP.tick) !== Math.floor((room.tick - 1) * NET.snapshotHz * PVP.tick)
   if (!due) return null
   const body = snapshotBody(room.match, { events: room.pendingEvents, cues: room.pendingCues })
