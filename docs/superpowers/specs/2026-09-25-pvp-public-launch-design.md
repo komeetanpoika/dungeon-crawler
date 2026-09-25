@@ -137,7 +137,7 @@ others out.
   - a removed bot's rune returns;
   - bot names are prefixed and unique, and classes go to the least represented;
   - private rooms never get bots.
-- **`acceptableName`:** stems, look-alike and spacing tricks, and the reserved prefixes are refused; ordinary Finnish and English names such as Aino, Ilmari, Väinö-like ASCII names, Sam, Alex and Kalle_99 all pass.
+- **`acceptableName`:** stems, look-alike and spacing tricks, and the reserved prefixes are refused; ordinary Finnish and English names such as Aino, Ilmari, Vaino, Sam, Alex and Kalle_99 (names are ASCII only) all pass.
 - **Limiters:** sockets per IP, hellos per IP, messages per connection, class spam, total sockets, the idle kick (clock injected), and `clientIp` with and without `X-Forwarded-For`.
 - **Integration (real sockets):**
   - a lone quick-join gets a running match with 3 "Bot" heroes;
