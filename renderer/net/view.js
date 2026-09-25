@@ -25,6 +25,22 @@ const ERROR_TEXT = {
 }
 export const errorText = code => ERROR_TEXT[code] ?? 'Could not connect.'
 
+// The title over a refusal line: being removed, or slowed down, is not a
+// failed join; otherwise it names the way in ('quick' | 'host' | 'join').
+const KIND_TITLE = { quick: 'Could not join', host: 'Could not host', join: 'Could not join' }
+export function errorTitle(code, kind) {
+  if (code === 'idle') return 'Removed'
+  if (code === 'rate_limited') return 'Slow down'
+  return KIND_TITLE[kind] ?? 'Could not connect'
+}
+
+// The class picker's subtitle before an online match. `coarse` is
+// matchMedia('(pointer: coarse)').matches — the same check that turns the
+// touch controls on (ui/touch-controls.js); the caller evaluates it.
+export const controlHint = coarse => coarse
+  ? 'Stick: move · Red: attack · Green: shield / blink'
+  : 'WASD: move · Space: attack · Q: shield / blink'
+
 // What Renderer.render and updateHUD read: a single-player-shaped state whose
 // player is your (predicted) hero, plus every hero for the multi-hero draw.
 export function netViewOf(v, theme, map) {

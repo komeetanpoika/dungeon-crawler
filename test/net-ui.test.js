@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseNetCheat, parsePvpCheat } from '../renderer/systems/cheats.js'
-import { netUrl, normalizeCode, validCode, errorText, netViewOf } from '../renderer/net/view.js'
+import { netUrl, normalizeCode, validCode, errorText, errorTitle, controlHint, netViewOf } from '../renderer/net/view.js'
 import { netHudModel } from '../renderer/ui/pvp-hud.js'
 import { makeHero } from '../renderer/pvp/hero.js'
 
@@ -47,6 +47,18 @@ describe('view helpers', () => {
     assert.equal(view.player, me)
     assert.deepEqual(view.heroes.map(h => h.id), ['p1', 'p2'])
     assert.deepEqual(view.entities.map(e => [e.type, e.kind]), [['pvp_pickup', 'flask']])
+  })
+  it('errorTitle: removed for idle, slow down for rate_limited, otherwise by the way in', () => {
+    assert.equal(errorTitle('idle', 'quick'), 'Removed')
+    assert.equal(errorTitle('rate_limited', 'join'), 'Slow down')
+    assert.equal(errorTitle('server_full', 'quick'), 'Could not join')
+    assert.equal(errorTitle('bad_name', 'host'), 'Could not host')
+    assert.equal(errorTitle('no_room', 'join'), 'Could not join')
+    assert.equal(errorTitle('version', undefined), 'Could not connect')
+  })
+  it('controlHint: touch or keyboard', () => {
+    assert.equal(controlHint(true), 'Stick: move · Red: attack · Green: shield / blink')
+    assert.equal(controlHint(false), 'WASD: move · Space: attack · Q: shield / blink')
   })
 })
 

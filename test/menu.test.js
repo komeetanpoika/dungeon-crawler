@@ -32,6 +32,7 @@ describe('navActionFor', () => {
 })
 
 import { showEpisodeSelect, showDestinations, hide } from '../renderer/ui/menu.js'
+import { showOnline, showFriends, showLeaveConfirm, showPvpResults } from '../renderer/ui/menu.js'
 
 // Minimal DOM stub: enough for renderScreen (createElement, overlay lookup).
 function stubDom() {
@@ -242,5 +243,165 @@ describe('menu key handler: held keys, Escape, and cheat/nav interplay', () => {
       delete globalThis.document
       delete globalThis.window
     }
+  })
+})
+
+// A DOM stub with a body (for the menu-typing class), setAttribute on
+// elements, a captured keydown listener, and an optional web saveAPI.
+function stubDomFull({ isWeb = false } = {}) {
+  const bodyClasses = new Set()
+  const makeEl = (tag) => {
+    const el = {
+      tag, children: [], className: '', textContent: '', style: {}, innerHTML: '', listeners: {}, attrs: {},
+      value: '', maxLength: 0, autocomplete: '',
+      appendChild(c) { el.children.push(c); return c },
+      addEventListener(ev, fn) { el.listeners[ev] = fn },
+      setAttribute(k, v) { el.attrs[k] = String(v) },
+      classList: { toggle() {} },
+      focus() {},
+    }
+    return el
+  }
+  const overlay = makeEl('div')
+  let keydownHandler = null
+  globalThis.document = {
+    getElementById: id => (id === 'menu-overlay' ? overlay : null),
+    createElement: makeEl,
+    body: { classList: { toggle: (c, on) => (on ? bodyClasses.add(c) : bodyClasses.delete(c)), remove: c => bodyClasses.delete(c) } },
+  }
+  globalThis.window = {
+    addEventListener: (ev, fn) => { if (ev === 'keydown') keydownHandler = fn },
+    removeEventListener: (ev) => { if (ev === 'keydown') keydownHandler = null },
+    saveAPI: isWeb ? { isWeb: true } : undefined,
+  }
+  const press = (key, opts = {}) => {
+    const e = { key, repeat: false, target: null, defaultPrevented: false, preventDefault() { e.defaultPrevented = true }, ...opts }
+    keydownHandler?.(e)
+    return e
+  }
+  const cleanup = () => { hide(); delete globalThis.document; delete globalThis.window }
+  return { overlay, press, bodyClasses, cleanup }
+}
+const labelsOf = overlay => buttonsOf(overlay).map(b => b.textContent)
+const titleOf = overlay => overlay.children[0].children[0].textContent
+const inputOf = overlay => overlay.children[0].children.find(c => c.tag === 'input')
+const META = { deepestReached: 0, runsCompleted: 0, treasureStolen: false }
+
+describe('the Online menu', () => {
+  it('the web title has Online right after Dungeon Rush, and it calls onOnline', () => {
+    const d = stubDomFull({ isWeb: true })
+    try {
+      let online = false
+      showTitle(META, { onOnline: () => { online = true } })
+      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'Timewarp', 'Dungeon Rush', 'Online'])
+      buttonsOf(d.overlay)[3].listeners.click()
+      assert.equal(online, true)
+    } finally { d.cleanup() }
+  })
+  it('the desktop title has no Online button', () => {
+    const d = stubDomFull({ isWeb: false })
+    try {
+      showTitle(META, {})
+      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'Timewarp', 'Dungeon Rush', 'Open Editor', 'Quit'])
+    } finally { d.cleanup() }
+  })
+  it('Online: Quick match, Play with friends, Back — and Escape goes back', () => {
+    const d = stubDomFull({ isWeb: true })
+    try {
+      const got = []
+      showOnline({ onQuick: () => got.push('quick'), onFriends: () => got.push('friends'), onBack: () => got.push('back') })
+      assert.equal(titleOf(d.overlay), 'Online')
+      assert.deepEqual(labelsOf(d.overlay), ['Quick match', 'Play with friends', 'Back'])
+      buttonsOf(d.overlay).forEach(b => b.listeners.click())
+      d.press('Escape')
+      assert.deepEqual(got, ['quick', 'friends', 'back', 'back'])
+    } finally { d.cleanup() }
+  })
+  it('Play with friends: Host a room, Join with code, Back — and Escape goes back', () => {
+    const d = stubDomFull({ isWeb: true })
+    try {
+      const got = []
+      showFriends({ onHost: () => got.push('host'), onJoin: () => got.push('join'), onBack: () => got.push('back') })
+      assert.equal(titleOf(d.overlay), 'Play with friends')
+      assert.deepEqual(labelsOf(d.overlay), ['Host a room', 'Join with code', 'Back'])
+      buttonsOf(d.overlay).forEach(b => b.listeners.click())
+      d.press('Escape')
+      assert.deepEqual(got, ['host', 'join', 'back', 'back'])
+    } finally { d.cleanup() }
+  })
+})
+
+describe('the leave confirm', () => {
+  it('asks "Leave the match?" with Stay then Leave, each calling its handler', () => {
+    const d = stubDomFull()
+    try {
+      const got = []
+      showLeaveConfirm({ onStay: () => got.push('stay'), onLeave: () => got.push('leave') })
+      assert.equal(titleOf(d.overlay), 'Leave the match?')
+      assert.deepEqual(labelsOf(d.overlay), ['Stay', 'Leave'])
+      buttonsOf(d.overlay).forEach(b => b.listeners.click())
+      assert.deepEqual(got, ['stay', 'leave'])
+    } finally { d.cleanup() }
+  })
+  it('Space (the red touch button) confirms the selected Stay, never Leave', () => {
+    const d = stubDomFull()
+    try {
+      const got = []
+      showLeaveConfirm({ onStay: () => got.push('stay'), onLeave: () => got.push('leave') })
+      d.press(' ')
+      assert.deepEqual(got, ['stay'])
+    } finally { d.cleanup() }
+  })
+  it('Escape on it calls neither handler: game.js owns Escape in a match', () => {
+    const d = stubDomFull()
+    try {
+      const got = []
+      showLeaveConfirm({ onStay: () => got.push('stay'), onLeave: () => got.push('leave') })
+      d.press('Escape')
+      assert.deepEqual(got, [])
+    } finally { d.cleanup() }
+  })
+})
+
+describe('text entry on a phone', () => {
+  it('the code field asks for capitals with no autocomplete, and the touch layer is hidden while typing', () => {
+    const d = stubDomFull({ isWeb: true })
+    try {
+      showTextEntry({ title: 'Join with code', subtitle: 'Room code', autocapitalize: 'characters', onSubmit: () => {} })
+      const inp = inputOf(d.overlay)
+      assert.equal(inp.attrs.autocapitalize, 'characters')
+      assert.equal(inp.autocomplete, 'off')
+      assert.equal(d.bodyClasses.has('menu-typing'), true)
+      showMessage({ title: 'Finding a match…', onOk: () => {} })
+      assert.equal(d.bodyClasses.has('menu-typing'), false)
+      showTextEntry({ title: 'Quick match', subtitle: 'Your name', onSubmit: () => {} })
+      assert.equal(d.bodyClasses.has('menu-typing'), true)
+      hide()
+      assert.equal(d.bodyClasses.has('menu-typing'), false)
+    } finally { d.cleanup() }
+  })
+  it("the keyboard's Enter in the field submits its text", () => {
+    const d = stubDomFull({ isWeb: true })
+    try {
+      let got = null
+      showTextEntry({ title: 'Quick match', subtitle: 'Your name', value: 'Aino', onSubmit: v => { got = v } })
+      const inp = inputOf(d.overlay)
+      inp.value = 'Ilmari'
+      d.press('Enter', { target: inp })
+      assert.equal(got, 'Ilmari')
+    } finally { d.cleanup() }
+  })
+})
+
+describe('online results', () => {
+  it('the online table ends in Leave, and has no Next match', () => {
+    const d = stubDomFull()
+    try {
+      let left = false
+      showPvpResults([{ rank: 1, name: 'Bot Ukko', cls: 'mage', kills: 3, deaths: 1 }], { onQuit: () => { left = true }, quitLabel: 'Leave' })
+      assert.deepEqual(labelsOf(d.overlay), ['Leave'])
+      buttonsOf(d.overlay)[0].listeners.click()
+      assert.equal(left, true)
+    } finally { d.cleanup() }
   })
 })
