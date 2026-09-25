@@ -50,15 +50,14 @@ const stunnable = e => !e.isBoss && e.type !== 'dragon_boss'
 // caller (tryGust below, tryCast in spells.js), so the cone is never paid
 // for twice. A tier gives its cone as an explicit reach/halfAngle or lets
 // the gust defaults scale by `mul`.
-export function castCone(state, t) {
-  const p = state.player
+export function castCone(state, t, p = state.player) {
   const reach = t.reach ?? GUST.reach * t.mul
   const halfAngle = t.halfAngle ?? GUST.halfAngle * t.mul
   const fa = FACING_ANGLE[p.facing] ?? 0
   const slamOpts = t.slam ? { slam: { damage: SLAM_DAMAGE } } : undefined
   let caught = 0
   for (const e of state.entities) {
-    if (!e.hp || e.type === 'player' || isStoryCreature(e)) continue
+    if (!e.hp || e.type === 'player' || e === p || isStoryCreature(e)) continue
     // The wedge catches a body as soon as its nearest edge is in it
     // (systems/hitbox.js), so a big beast is not spared by a far-off centre.
     const n = nearestPoint(e, p.px, p.py)

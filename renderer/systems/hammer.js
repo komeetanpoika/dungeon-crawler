@@ -107,8 +107,7 @@ export function chainNodes(player, struck, candidates, mods = lightningMods(play
 // Run a planned chain: hurt each enemy node through hooks.hurt, zap the hero
 // through hooks.damagePlayer, and record one arc per hop on state.arcs for
 // the renderer. Returns { enemies, hero } — nodes hit and damage the hero took.
-export function applyChain(state, nodes, hooks = {}) {
-  const p = state.player
+export function applyChain(state, nodes, hooks = {}, p = state.player) {
   state.arcs = state.arcs ?? []
   let from = p, enemies = 0, hero = 0
   for (const n of nodes) {
