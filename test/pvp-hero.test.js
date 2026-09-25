@@ -30,12 +30,18 @@ describe('makeHero / applyKit', () => {
   it('applyKit fully resets a hero to a new class', () => {
     const h = makeHero({ id: 'x', name: 'X', cls: 'warrior' })
     h.hp = 1; h.stunTimer = 2
+    h.attackTimer = 5; h.attackDuration = 9; h.attackStyle = 'spin'; h.attackFacing = 'west'; h.prevAlt = true
     applyKit(h, 'archer')
     assert.equal(h.cls, 'archer')
     assert.equal(h.weapon, null)
     assert.equal(h.gear.melee.outfit, null)
     assert.equal(h.hp, 10)
     assert.equal(h.stunTimer, 0)
+    assert.equal(h.attackTimer, 0)
+    assert.equal(h.attackDuration, 0.2)
+    assert.equal(h.attackStyle, 'arc')
+    assert.equal(h.attackFacing, 'south')
+    assert.equal(h.prevAlt, false)
   })
   it('rejects an unknown class', () => {
     assert.throws(() => makeHero({ id: 'x', name: 'X', cls: 'bard' }), /unknown class/)

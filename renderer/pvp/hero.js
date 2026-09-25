@@ -50,6 +50,8 @@ export function applyKit(hero, cls) {
   hero.knockback = null; hero.invulnTimer = 0; hero.blocking = false; hero.shieldDropT = 0; hero.blockedHit = false
   hero.meleeCooldown = 0; hero.rangedCooldown = 0; hero.magicCooldown = 0; hero.offCooldown = 0
   hero.needRelease = false; hero.blinkTrail = null
+  hero.attackTimer = 0; hero.attackDuration = 0.2; hero.attackStyle = 'arc'; hero.attackFacing = 'south'
+  hero.prevAlt = false
 }
 
 export function placeHero(hero, { x, y }) {
