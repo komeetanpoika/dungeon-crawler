@@ -20,6 +20,32 @@
 // anal, arse, rape, cock, dick, spic, paki, homo, …) that hide inside
 // harmless words or names — use a longer, specific compound instead (e.g.
 // "cocksucker", "asshole", "rapist").
+//
+// ALLOWLIST — some stems that must stay short/unambiguous still collide with
+// real places or words (the Scunthorpe problem in the other direction):
+// "cunt" sits inside Scunthorpe, "rapist" inside therapist, "negro" inside
+// Montenegro/Negroni, "niger" inside Nigeria/Nigerian. acceptableName
+// (server/names.js) removes every ALLOWLIST entry, as a substring, from the
+// normalised name before running the stem check — so "Scunthorpe" passes,
+// but "ScunthorpeVittu" still doesn't, since only the allowlisted substring
+// is stripped. Every ALLOWLIST entry is stored in normalizeName form too.
+//
+// The bare country name "Niger" is deliberately NOT allowlisted:
+// normalizeName collapses doubled letters, so normalizeName('Niger') and
+// normalizeName('nigger') are both exactly "niger" — identical strings, not
+// merely one containing the other. Allowlisting "niger" would strip the
+// slur itself wherever it's typed, silently reopening the exact case this
+// file exists to block. "Niger" alone stays refused; only the longer,
+// unambiguous derivatives (Nigeria, Nigerian) are allowlisted.
+export const ALLOWLIST = Object.freeze([
+  'montenegro',
+  'negroni',
+  'nigeria',
+  'nigerian',
+  'scunthorpe',
+  'therapist',
+])
+
 export const BLOCKLIST = Object.freeze([
   // — Finnish: slurs —
   'hintari',
@@ -70,6 +96,7 @@ export const BLOCKLIST = Object.freeze([
   'fagot',
   'gimp',
   'goliwog',
+  'hitler',
   'honky',
   'imbecile',
   'injun',
@@ -109,6 +136,7 @@ export const BLOCKLIST = Object.freeze([
   'bitch',
   'blowjob',
   'bolocks',
+  'bulshit',
   'butlicker',
   'butmunch',
   'butplug',
@@ -124,18 +152,20 @@ export const BLOCKLIST = Object.freeze([
   'depthroat',
   'dickhead',
   'dildo',
+  'dipshit',
   'douchebag',
   'fatas',
   'fisting',
   'fuck',
   'gangbang',
   'handjob',
+  'horseshit',
   'incest',
   'jackas',
   'jackof',
   'jerkof',
   'knobhead',
-  'loli',
+  'lolicon',
   'necrophilia',
   'orgy',
   'paedophile',
@@ -144,7 +174,11 @@ export const BLOCKLIST = Object.freeze([
   'rentboy',
   'rimjob',
   'shager',
-  'shit',
+  'shitbag',
+  'shitface',
+  'shithead',
+  'shiter',
+  'shity',
   'skank',
   'slut',
   'thot',

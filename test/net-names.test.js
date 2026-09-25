@@ -1,17 +1,35 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { BLOCKLIST } from '../server/blocklist.js'
+import { BLOCKLIST, ALLOWLIST } from '../server/blocklist.js'
 import { normalizeName, acceptableName, RESERVED_PREFIXES } from '../server/names.js'
 
 // Ordinary names and words a substring filter could trip on (the Scunthorpe
 // problem). Every one must pass: a stem that hits any of these is too short
-// or too generic, so drop it or lengthen it.
+// or too generic, so drop it or lengthen it. This list is checked both raw
+// (BLOCKLIST below) and through acceptableName, so it must NOT contain a
+// name that only passes via ALLOWLIST stripping — those live separately in
+// ALLOWLISTED_PASS.
 const INNOCENT = ['Aino', 'Ilmari', 'Vaino', 'Sam', 'Alex', 'Kalle_99', 'Pasi', 'Kassi', 'Lasse', 'Tassu',
   'Hannu', 'Jussi', 'Matti', 'Pekka', 'Mika', 'Sakari', 'Tuomas', 'Thomas', 'Kasper', 'Sukka', 'Pakila',
   'Vesa', 'Grape', 'Hancock', 'Dickens', 'Spicer', 'Cassandra', 'Essi', 'Titta', 'Kukka', 'Pippa', 'Ninja 7',
   'Shadow', 'Karhu', 'Susi', 'Ahti', 'Ukko', 'Tapio', 'Abbot', 'Tabot', 'Otto', 'Helmi', 'Lumikki', 'Ronja',
   'Peppi', 'Mustikka', 'Kristian', 'Therese', 'Hilkka', 'Raparperi', 'Analyysi', 'Sussex', 'Essex',
-  'Arsenal', 'Kalevala', 'Perkele', 'Saatana']
+  'Arsenal', 'Kalevala', 'Perkele', 'Saatana',
+  // Reviewer's fix-round-1 sample (real Finnish/English given names, common
+  // surnames, and near-miss/leetspeak/decorated names), minus the five
+  // entries that only pass through ALLOWLIST stripping (see
+  // ALLOWLISTED_PASS below).
+  'Sanna', 'Kimmo', 'Mikko', 'Petteri', 'Anneli', 'Niko', 'Oskari', 'Hessu', 'Nisse', 'Rasmus', 'Pikku',
+  'Lassi', 'Masa', 'Mira', 'Nea', 'Scott', 'Dick', 'Cassie', 'Kuntz', 'Assunta', 'Titania', 'Harold',
+  'Nigel', 'Spencer', 'Pussycat', 'Cockburn', 'xX_Aino_Xx', 'Mage42', 'NoobSlayer', 'Lollipop', 'Lolita',
+  'Matsushita']
+
+// Real places/words that only pass because acceptableName strips these
+// ALLOWLIST entries (server/blocklist.js) before the stem check — each one
+// raw-contains a stem that must stay in BLOCKLIST (cunt, rapist, negro,
+// niger). Checked only through acceptableName, never through raw stem
+// containment.
+const ALLOWLISTED_PASS = ['Scunthorpe', 'Therapist', 'Nigeria', 'Montenegro', 'Negroni']
 
 // Each must be refused: the stems themselves, and the tricks normalisation
 // exists for (look-alike digits, spacing, underscores, stretched letters,
@@ -59,5 +77,30 @@ describe('acceptableName', () => {
     for (const name of ['Bot', 'Bot Ukko', 'B0t', 'bot_7', 'B o t', 'Admin', '4dmin', 'Mod', 'M0d3rator', 'moderator'])
       assert.equal(acceptableName(name), false, name)
     for (const name of ['Abbot', 'Tabot', 'Ukko']) assert.equal(acceptableName(name), true, name)
+  })
+})
+
+describe('ALLOWLIST', () => {
+  it('holds normalised, unique words', () => {
+    assert.ok(Object.isFrozen(ALLOWLIST))
+    assert.equal(new Set(ALLOWLIST).size, ALLOWLIST.length)
+    for (const word of ALLOWLIST) assert.equal(normalizeName(word), word, `${word} is not in normalised form`)
+  })
+  it('real places/words that raw-contain a required stem now pass', () => {
+    for (const name of ALLOWLISTED_PASS) assert.equal(acceptableName(name), true, name)
+  })
+  it('a slur alone still fails, even one identical to an allowlisted-adjacent word', () => {
+    // normalizeName collapses doubled letters, so "nigger" and the country
+    // name "Niger" both normalise to the exact string "niger" — not one
+    // merely containing the other. "niger" is therefore deliberately absent
+    // from ALLOWLIST (only "Nigeria"/"Nigerian" are): allowlisting it would
+    // strip the slur itself wherever it appears. The bare country name
+    // stays refused as a result — a known, deliberate trade-off.
+    assert.equal(acceptableName('nigger'), false)
+    assert.equal(acceptableName('Niger'), false)
+  })
+  it('a slur next to (not part of) an allowlisted word still fails', () => {
+    for (const name of ['TherapistCunt', 'ScunthorpeVittu', 'MontenegroFuck', 'NigeriaNigger'])
+      assert.equal(acceptableName(name), false, name)
   })
 })
