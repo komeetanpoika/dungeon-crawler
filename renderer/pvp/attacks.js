@@ -19,20 +19,31 @@ import { PVP } from '../data/pvp.js'
 
 const MODULES = { lightning: castLightning }
 
+// What a melee release at `mods` (a resolveCharge/tierMods result) would
+// cost: the mods it actually swings at — degraded to 'tap' when the tank
+// can't afford the requested tier, same as a starved swing always has — the
+// stamina it spends, and the cooldown that follows. No effects (no damage,
+// no cooldown/stamina write): swing() below applies this and does the rest.
+// predict.js calls this too, so a charge weapon's predicted release pays
+// exactly what the server would.
+export function swingCost(hero, mods) {
+  const wt = hero.weapon.weaponType
+  const cost = meleeCost(wt, mods.tier)
+  if (canAfford(hero, cost)) return { mods, stamina: cost, starved: false, cooldown: getAttack(wt).cooldown * mods.cooldownMul }
+  const starvedMods = tierMods('tap', wt)         // starved: a weak swing that empties the tank
+  return { mods: starvedMods, stamina: hero.stamina, starved: true, cooldown: getAttack(wt).cooldown * starvedMods.cooldownMul }
+}
+
 export function swing(match, hero, mods) {
   hero.spawnProtect = 0
   const wpn = hero.weapon
   const wt = wpn.weaponType
-  const cost = meleeCost(wt, mods.tier)
-  if (!canAfford(hero, cost)) {
-    mods = tierMods('tap', wt)                 // starved: a weak swing that empties the tank
-    hero.staminaRefusedT = 0.4
-    spendStamina(hero, hero.stamina)
-  } else {
-    spendStamina(hero, cost)
-  }
+  const { mods: resolvedMods, stamina, starved, cooldown } = swingCost(hero, mods)
+  mods = resolvedMods
+  if (starved) hero.staminaRefusedT = 0.4
+  spendStamina(hero, stamina)
   const atk = getAttack(wt)
-  hero.meleeCooldown = atk.cooldown * mods.cooldownMul
+  hero.meleeCooldown = cooldown
   hero.swingHand = 'main'
   hero.attackTimer = atk.duration
   hero.attackDuration = atk.duration

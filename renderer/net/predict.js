@@ -4,9 +4,12 @@
 // Damage is never predicted; the tap swing's animation and the charge
 // wind-up are. Pure.
 import { moveHero, tickHeroStatus } from '../pvp/hero.js'
-import { hydrateHero, heroSnap } from './protocol.js'
-import { getAttack, isChargeWeapon, shouldAutoRelease } from '../systems/melee.js'
-import { shouldAutoReleaseGust } from '../systems/magic.js'
+import { hydrateHero } from './protocol.js'
+import { getAttack, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
+import { shouldAutoReleaseGust, resolveGustTier } from '../systems/magic.js'
+import { spellFor, castCost } from '../systems/spells.js'
+import { swingCost } from '../pvp/attacks.js'
+import { spendStamina } from '../systems/stamina.js'
 import { PVP } from '../data/pvp.js'
 import { NET } from '../data/net.js'
 
@@ -19,16 +22,31 @@ export function makePredictor({ map, heroSnap: s }) {
 }
 
 // The charge half of tickMelee/tickMagic without its effects: start, hold,
-// release. It keeps the predicted walk exact (a wind-up slows you) — the
-// cast or blow itself arrives from the server.
+// release. It keeps the predicted walk exact (a wind-up slows you), and a
+// release now pays the same cooldown and stamina the server's swing()/
+// tryCast() would (via the shared swingCost/castCost helpers) — effects
+// excluded (no damage, no projectile, no cast) — so a re-press inside that
+// cooldown is refused locally exactly as the server refuses it, instead of
+// predicting a second wind-up (and its move-speed penalty) the server never
+// grants.
 function predictCharge(h, input, dt) {
   const wt = h.weapon?.weaponType
   const kind = h.attackMode === 'magic' ? 'spell' : h.attackMode === 'melee' && isChargeWeapon(wt) ? 'melee' : null
   if (!kind) return
   if (h.charging) {
     const over = kind === 'spell' ? shouldAutoReleaseGust(h.charging.t) : shouldAutoRelease(wt, h.charging.t)
-    if (input.attack && !over) h.charging.t += dt
-    else { h.charging = null; h.needRelease = true }
+    if (input.attack && !over) { h.charging.t += dt; return }
+    const held = h.charging.t
+    h.charging = null
+    h.needRelease = true
+    if (kind === 'spell') {
+      const resolved = castCost(h, spellFor(h).id, resolveGustTier(held))
+      if (resolved) { spendStamina(h, resolved.stamina); h.magicCooldown = resolved.cooldown }
+    } else {
+      const { stamina, cooldown } = swingCost(h, resolveCharge(wt, held))
+      spendStamina(h, stamina)
+      h.meleeCooldown = cooldown
+    }
   } else if (input.attack && !h.needRelease && !h.blocking &&
              (kind === 'spell' ? h.magicCooldown <= 0 : h.meleeCooldown <= 0)) {
     h.charging = kind === 'spell' ? { t: 0, kind: 'spell' } : { t: 0 }
@@ -46,7 +64,10 @@ export function predictStep(pred, input, dt = PVP.tick) {
 
 // The tap swing starts drawing the moment the key goes down. Its own
 // cooldown lives on the predictor, so a snapshot that has not seen the swing
-// yet cannot restart it.
+// yet cannot restart it. It also pays the same cooldown/stamina swing() on
+// the server would (resolveCharge(wt, 0) is a tap weapon's baseline tier,
+// same as tickMelee's own non-charge branch), so a predicted sprint that
+// follows a string of swings sees the same tank the server sees.
 export function predictCosmetics(pred, input, dt = PVP.tick) {
   pred.swingCooldown = Math.max(0, pred.swingCooldown - dt)
   if (pred.swing) { pred.swing.t += dt; if (pred.swing.t >= pred.swing.dur) pred.swing = null }
@@ -55,8 +76,11 @@ export function predictCosmetics(pred, input, dt = PVP.tick) {
   if (h.dead || h.attackMode !== 'melee' || !wt || isChargeWeapon(wt) || h.blocking || h.stunTimer > 0) return
   if (!input.attack || pred.swingCooldown > 0) return
   const atk = getAttack(wt)
+  const { stamina, cooldown } = swingCost(h, resolveCharge(wt, 0))
+  spendStamina(h, stamina)
+  h.meleeCooldown = cooldown
   pred.swing = { t: 0, dur: atk.duration, style: atk.style, facing: h.facing }
-  pred.swingCooldown = atk.cooldown
+  pred.swingCooldown = cooldown
 }
 
 export function drawnPos(pred) {
@@ -84,5 +108,3 @@ export function reconcile(pred, snapHero, ack) {
   const err = Math.hypot(ex, ey)
   if (err >= NET.snapPx && err <= NET.bigSnapPx) pred.corr = { x: ex, y: ey, age: 0 }
 }
-
-export { heroSnap }

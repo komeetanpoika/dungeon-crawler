@@ -103,6 +103,19 @@ export function spellFor(player, hand = 'main') {
 
 export { affordableTier }
 
+// What a cast at `tier` would cost: the tier actually affordable (degraded
+// as stamina.js's affordableTier does), its stamina price and the cooldown
+// it starts — or null when even the cheapest tier is unaffordable. No
+// effects, no writes: tryCast below applies this and dispatches the
+// primitive. predict.js calls this too, so a charge spell's predicted
+// release pays exactly what the server would.
+export function castCost(hero, spellId, tier) {
+  const spell = SPELLS[spellId] ?? SPELLS.gust
+  const paid = affordableTier(hero.stamina ?? 0, spell.cost, tier)
+  if (!paid) return null
+  return { spell, tier: paid, stamina: spell.cost[paid], cooldown: spell.cooldown }
+}
+
 // --- primitives -------------------------------------------------------
 
 // bolt: one projectile from the caster along their facing, shaped for
@@ -177,18 +190,18 @@ export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main', 
   // charging the tank for a cast that would do nothing.
   const module = spell.primitive === 'module' ? modules?.[spell.id] : null
   if (spell.primitive === 'module' && !module) return { ok: false, reason: 'not_learned' }
-  const paid = affordableTier(p.stamina ?? 0, spell.cost, tier)
-  if (!paid) return { ok: false, reason: 'stamina' }
-  spendStamina(p, spell.cost[paid])
-  p[cd] = spell.cooldown
-  const t = spell.tiers[paid]
+  const resolved = castCost(p, spellId, tier)
+  if (!resolved) return { ok: false, reason: 'stamina' }
+  spendStamina(p, resolved.stamina)
+  p[cd] = resolved.cooldown
+  const t = spell.tiers[resolved.tier]
   let result
   switch (spell.primitive) {
     case 'bolt': result = castBolt(state, t, p); break
     case 'cone': result = castCone(state, t, p); break
     case 'zone': result = castZone(state, t, p); break
     case 'self': result = castSelf(state, t, p); break
-    default:     result = module(state, paid, p); break
+    default:     result = module(state, resolved.tier, p); break
   }
-  return { ok: true, spell, tier: paid, ...result }
+  return { ok: true, spell, tier: resolved.tier, ...result }
 }

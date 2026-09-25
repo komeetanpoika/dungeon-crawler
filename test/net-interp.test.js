@@ -51,4 +51,9 @@ describe('interpolation', () => {
     pushSnap(buf, snap(50, 5), 0); pushSnap(buf, snap(50, 5), 0)
     assert.equal(heroPoses(buf, 50).get('b').px, 5)
   })
+  it('caps the buffer even during a frozen tick (results screen)', () => {
+    const buf = makeInterp()
+    for (let i = 0; i < 100; i++) pushSnap(buf, snap(50, 5), 0)
+    assert.ok(buf.snaps.length <= NET.bufferTicks + 2)
+  })
 })

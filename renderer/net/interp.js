@@ -11,7 +11,10 @@ export function pushSnap(buf, snap, nowMs) {
   buf.snaps.push(snap)
   buf.lastArrival = nowMs
   const oldest = snap.tick - NET.bufferTicks
-  while (buf.snaps.length > 2 && buf.snaps[0].tick < oldest) buf.snaps.shift()
+  // A results screen freezes match.tick, so consecutive snapshots can share
+  // one tick forever — the tick-age trim below never fires on its own, so a
+  // raw count cap backs it up.
+  while (buf.snaps.length > 2 && (buf.snaps[0].tick < oldest || buf.snaps.length > NET.bufferTicks + 2)) buf.snaps.shift()
 }
 
 export const newest = buf => buf.snaps.at(-1) ?? null

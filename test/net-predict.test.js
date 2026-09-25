@@ -4,6 +4,7 @@ import { makePredictor, predictStep, predictCosmetics, reconcile, tickCorrection
 import { heroSnap } from '../renderer/net/protocol.js'
 import { makeMatch, stepMatch } from '../renderer/pvp/sim.js'
 import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
+import { weaponContents } from '../renderer/systems/entities.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
 
@@ -71,5 +72,44 @@ describe('prediction', () => {
     reconcile(pred, heroSnap(m.heroes[0]), 0)          // a snapshot that has not seen the swing yet
     predictCosmetics(pred, swing, PVP.tick)
     assert.equal(pred.swing, first, 'reconcile does not restart the local swing')
+  })
+  it('a predicted spell release pays the cooldown/stamina so a re-press inside it is refused like the server', () => {
+    const m = lone('mage')
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    let seq = 0
+    const step = attack => {
+      seq++
+      const input = { ...east, seq, attack }
+      stepMatch(m, { p1: input }, PVP.tick)
+      predictStep(pred, input)
+      pred.pending.push({ seq, input })
+    }
+    for (let i = 0; i < 20; i++) step(true)   // hold to a full-tier release
+    step(false)                                // release
+    step(false)                                // let go one tick (needRelease clears)
+    for (let i = 0; i < 6; i++) step(true)     // re-press and hold, inside the cooldown
+    assert.equal(pred.hero.charging, m.heroes[0].charging)
+    assert.ok(Math.abs(pred.hero.stamina - m.heroes[0].stamina) < 1e-9)
+    assert.ok(Math.abs(pred.hero.px - m.heroes[0].px) < 1e-9)
+  })
+  it('a predicted charge-weapon release pays the cooldown/stamina too (release, let go, re-press)', () => {
+    const m = lone('warrior')
+    m.heroes[0].weapon = weaponContents('longsword')
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    let seq = 0
+    const step = attack => {
+      seq++
+      const input = { ...east, seq, attack }
+      stepMatch(m, { p1: input }, PVP.tick)
+      predictStep(pred, input)
+      pred.pending.push({ seq, input })
+    }
+    for (let i = 0; i < 20; i++) step(true)   // wind up to a full-tier swing
+    step(false)                                // release
+    step(false)                                // let go one tick
+    for (let i = 0; i < 6; i++) step(true)     // re-press and hold, inside the cooldown
+    assert.equal(pred.hero.charging, m.heroes[0].charging)
+    assert.ok(Math.abs(pred.hero.stamina - m.heroes[0].stamina) < 1e-9)
+    assert.ok(Math.abs(pred.hero.px - m.heroes[0].px) < 1e-9)
   })
 })
