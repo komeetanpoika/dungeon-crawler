@@ -26,12 +26,12 @@ describe('makeMatch', () => {
 
 describe('stepMatch timing', () => {
   it('dt 0.1 runs exactly three ticks', () => {
-    const m = makeMatch({ roster: roster('mage') })
+    const m = makeMatch({ roster: roster('mage', 'archer') })
     stepMatch(m, {}, 0.1)
     assert.ok(Math.abs(m.clock - 0.1) < 1e-9)
   })
   it('a 5 s hitch runs at most 8 ticks', () => {
-    const m = makeMatch({ roster: roster('mage') })
+    const m = makeMatch({ roster: roster('mage', 'archer') })
     stepMatch(m, {}, 5)
     assert.ok(m.clock <= 8 * PVP.tick + 1e-9)
   })

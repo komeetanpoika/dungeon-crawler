@@ -44,8 +44,11 @@ export function swing(match, hero, mods) {
   const dmg = Math.max(1, Math.round((wpn.damage ?? 1) * mods.dmgMul))
   const fa = FACING_ANGLE[hero.facing] ?? 0
   const arc = getSwingArc(atk.style)
+  // The server rewinds foes to where the attacker saw them (spec §2); only the
+  // hit test moves — knockback, blocks and damage use the real hero.
   const bodyHit = e => {
-    const n = nearestPoint(e, hero.px, hero.py)
+    const at = match.hitPos?.(e, hero) ?? e
+    const n = nearestPoint(at, hero.px, hero.py)
     return inSwing(arc.reach * mods.reachMul, arc.halfAngle, fa, n.x - hero.px, n.y - hero.py)
   }
   const hammer = !!wpn.lightning
