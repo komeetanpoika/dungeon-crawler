@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makePickups, tickPickups, grantRune, endRune, tickRunes } from '../renderer/pvp/pickups.js'
 import { makeHero, placeHero } from '../renderer/pvp/hero.js'
+import { gearOf } from '../renderer/systems/inventory.js'
 import { PICKUPS } from '../renderer/data/pvp.js'
 import { testMatch } from './pvp-helpers.js'
 
@@ -69,6 +70,15 @@ describe('rune', () => {
     assert.equal(a.ammo.bolt, 0)
     assert.equal(mg.wand.weaponType, 'sparkwand')
     assert.equal(m.events.filter(e => e.type === 'runeEnd').length, 3)
+  })
+  it('parks the warrior melee offhand for the rune and restores it after', () => {
+    const w = hero('w', 'warrior'); const m = testMatch([w])
+    const buckler = gearOf(w, 'melee').off
+    assert.ok(buckler)
+    grantRune(m, w)
+    assert.equal(gearOf(w, 'melee').off, null)
+    endRune(m, w)
+    assert.equal(gearOf(w, 'melee').off, buckler)
   })
   it('a hero already holding the rune does not take a second', () => {
     const w = hero('w', 'warrior'); const m = testMatch([w])

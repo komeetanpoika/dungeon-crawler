@@ -80,7 +80,11 @@ export function farthestSpawn(match) {
 const projectileHooks = match => ({
   isHittable: e => e.type === 'hero' && !e.dead && !(e.spawnProtect > 0),
   hurt: (target, damage, p) => {
-    hurtHero(match, target, damage, { by: heroById(match, p?.owner), from: { px: p.px, py: p.py } })
+    const landed = hurtHero(match, target, damage, { by: heroById(match, p?.owner), from: { px: p.px, py: p.py } })
+    // A blocked or i-framed hit still consumes the projectile (no pierce/
+    // chain onto it), but must not also apply its onHit (knockback/stun) —
+    // that would push or lock down a hero who took zero damage.
+    if (!landed) delete p.onHit
     return target
   },
   detonate: () => {},        // no PvP kit fires an exploding projectile
@@ -95,7 +99,12 @@ const ccSnapshot = h => CC_FIELDS.map(f => Math.max(0, h[f] ?? 0))
 function scaleNewCC(h, before) {
   CC_FIELDS.forEach((f, i) => {
     const now = h[f] ?? 0
-    if (now > before[i]) h[f] = before[i] + (now - before[i]) * PVP.ccMul
+    // Sources use max/overwrite semantics, not "add an increase" — so any
+    // change this tick (a fresh application, or one that refreshes/shortens
+    // a running timer) is rescaled from scratch: the new application lasts
+    // now * ccMul, floored so it never cuts short what was already running
+    // (bounded above by `now`, the unscaled value).
+    if (now !== before[i]) h[f] = Math.max(now * PVP.ccMul, Math.min(before[i], now))
   })
 }
 
@@ -165,6 +174,7 @@ function resolveDeaths(match) {
   }
   for (const h of dying) {
     h.dead = true
+    h.hp = 0
     h.respawnT = PVP.respawnDelay
     h.lastHitBy = null
     h.charging = null
@@ -184,6 +194,12 @@ function tickRespawns(match, dt) {
     placeHero(h, farthestSpawn(match))
     h.dead = false
     h.spawnProtect = PVP.spawnProtect
+    // applyKit resets needRelease to false; force it back on so a Space held
+    // through death doesn't read as a fresh attack on tick 1 and drop spawn
+    // protection instantly. Game.js clears keys[' '] for the local hero on a
+    // death instead; a bot or a remote hero has no such hook, so the sim
+    // must not assume the input released.
+    h.needRelease = true
     match.events.push({ type: 'respawn', hero: h.id })
   }
 }

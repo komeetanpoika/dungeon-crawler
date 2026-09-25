@@ -7,12 +7,12 @@ import { isWalkable, hasLineOfSight } from '../systems/entities.js'
 import { foesOf } from './combat.js'
 import { NEUTRAL_INPUT } from './hero.js'
 import { GUST_CHARGE } from '../systems/magic.js'
+import { TILE_SIZE } from '../systems/movement.js'
 import { BOTS } from '../data/pvp.js'
 
-const TILE = 32
 const STEPS = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 
-const tileDist = (a, b) => Math.hypot(a.px - b.px, a.py - b.py) / TILE
+const tileDist = (a, b) => Math.hypot(a.px - b.px, a.py - b.py) / TILE_SIZE
 const walk = (map, x, y) => { const c = map[y]?.[x]; return !!c && isWalkable(c.tile, c) }
 const faceToward = (from, to) => {
   const dx = to.px - from.px, dy = to.py - from.py
@@ -48,7 +48,7 @@ const nearest = (hero, list) => list.reduce((best, e) => !best || tileDist(hero,
 function steer(match, hero, goal, input) {
   const step = nextStep(match.map, hero, goal)
   if (!step) return
-  const cx = step.x * TILE + TILE / 2, cy = step.y * TILE + TILE / 2
+  const cx = step.x * TILE_SIZE + TILE_SIZE / 2, cy = step.y * TILE_SIZE + TILE_SIZE / 2
   const dx = cx - hero.px, dy = cy - hero.py
   input.move = { x: Math.abs(dx) > 2 ? Math.sign(dx) : 0, y: Math.abs(dy) > 2 ? Math.sign(dy) : 0 }
   if (input.move.x || input.move.y) input.facing = faceToward(hero, { px: cx, py: cy })
@@ -72,7 +72,7 @@ function firingSpot(match, hero, foe) {
 
 function incoming(match, hero) {
   return match.projectiles.find(p => p.owner !== hero.id &&
-    Math.hypot(p.px - hero.px, p.py - hero.py) < 3 * TILE &&
+    Math.hypot(p.px - hero.px, p.py - hero.py) < 3 * TILE_SIZE &&
     (hero.px - p.px) * p.dx + (hero.py - p.py) * p.dy > 0)
 }
 

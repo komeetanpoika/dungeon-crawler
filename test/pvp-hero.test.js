@@ -108,6 +108,12 @@ describe('combat helpers', () => {
     assert.deepEqual(b.lastHitBy, { id: 'a', t: 7 })
     assert.deepEqual(m.events[0], { type: 'hit', target: 'b', by: 'a', amount: 2 })
   })
+  it('a hit event reports the damage that actually landed, after outfit protect', () => {
+    const a = hero('a', 'archer', { x: 4, y: 5 }), w = hero('w', 'warrior'); const m = testMatch([a, w])
+    assert.equal(hurtHero(m, w, 2, { by: a }), true)
+    assert.equal(w.hp, 9)   // plate's protect 1 reduces the raw 2 to 1
+    assert.deepEqual(m.events[0], { type: 'hit', target: 'w', by: 'a', amount: 1 })
+  })
   it('never hurts the attacker itself, a dead hero or a spawn-protected one', () => {
     const a = hero('a', 'archer'); const m = testMatch([a])
     assert.equal(hurtHero(m, a, 2, { by: a }), false)

@@ -8,7 +8,12 @@ import { BLOCK_SHOVE } from '../systems/shield.js'
 
 export const heroById = (match, id) => id == null ? null : match.heroes.find(h => h.id === id) ?? null
 
-export const isTargetable = h => h?.type === 'hero' && !h.dead && !(h.spawnProtect > 0)
+// hp <= 0 is untargetable even before resolveDeaths sets h.dead: otherwise a
+// hero killed earlier in the same tick (a projectile, say) stays hittable
+// for a later hit in that same tick (lightning, a shock tick) — which both
+// steals kill credit by overwriting lastHitBy and lets the corpse soak a
+// second hit that should have missed.
+export const isTargetable = h => h?.type === 'hero' && !h.dead && h.hp > 0 && !(h.spawnProtect > 0)
 
 export const foesOf = (match, hero) => match.heroes.filter(h => h !== hero && isTargetable(h))
 
@@ -23,6 +28,7 @@ export function hurtHero(match, target, amount, { kind = 'hit', by = null, from 
   if (!isTargetable(target)) return false
   if (by && by === target) return false
   const at = from ?? (by ? { px: by.px, py: by.py } : null)
+  const before = target.hp
   const landed = damagePlayer(match, amount, kind, at, target)
   if (!landed) {
     // A shield took a melee blow: the striker is pushed back, as enemies are.
@@ -30,6 +36,7 @@ export function hurtHero(match, target, amount, { kind = 'hit', by = null, from 
     return false
   }
   if (by) target.lastHitBy = { id: by.id, t: match.clock }
-  match.events.push({ type: 'hit', target: target.id, by: by?.id ?? null, amount })
+  // The damage that actually landed (after outfit protect), not the raw hit amount.
+  match.events.push({ type: 'hit', target: target.id, by: by?.id ?? null, amount: before - target.hp })
   return true
 }

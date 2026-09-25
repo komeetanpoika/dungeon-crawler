@@ -2,16 +2,15 @@
 // rune, each on its own respawn timer; and the rune's swap of a hero's main
 // hand for its class's power weapon. Pure: no DOM.
 import { weaponContents, makeRangedContents, makeWandContents } from '../systems/entities.js'
-import { addAmmo } from '../systems/inventory.js'
+import { addAmmo, gearOf } from '../systems/inventory.js'
 import { addFloat } from '../systems/feedback.js'
 import { sfx } from '../systems/sfx.js'
+import { TILE_SIZE } from '../systems/movement.js'
 import { PICKUPS, RUNE_POWER } from '../data/pvp.js'
-
-const TILE = 32
 
 export function makePickups(arena) {
   return arena.pickups.map(p => ({
-    kind: p.kind, x: p.x, y: p.y, px: p.x * TILE + TILE / 2, py: p.y * TILE + TILE / 2,
+    kind: p.kind, x: p.x, y: p.y, px: p.x * TILE_SIZE + TILE_SIZE / 2, py: p.y * TILE_SIZE + TILE_SIZE / 2,
     up: p.kind !== 'rune', t: p.kind === 'rune' ? PICKUPS.rune.firstSpawn : 0,
   }))
 }
@@ -53,7 +52,14 @@ export function grantRune(match, hero) {
   const power = RUNE_POWER[hero.cls]
   if (!power) return false
   const saved = { weapon: hero.weapon, ranged: hero.ranged, wand: hero.wand }
-  if (power.weaponType) hero.weapon = weaponContents(power.weaponType)
+  if (power.weaponType) {
+    hero.weapon = weaponContents(power.weaponType)
+    // The Warrior's buckler has no business beside a two-handed hammer:
+    // park the melee offhand for the rune's duration so tickShield can't
+    // raise it, and hand it back when the rune ends.
+    saved.off = gearOf(hero, 'melee').off
+    gearOf(hero, 'melee').off = null
+  }
   if (power.rangedType) {
     hero.ranged = makeRangedContents(power.rangedType)
     hero.ammo.bolt = (hero.ammo.bolt ?? 0) + power.bolts
@@ -66,7 +72,9 @@ export function grantRune(match, hero) {
 
 export function endRune(match, hero) {
   if (!hero.rune) return
-  Object.assign(hero, hero.rune.saved)
+  const { off, ...saved } = hero.rune.saved
+  Object.assign(hero, saved)
+  if (off !== undefined) gearOf(hero, 'melee').off = off
   if (RUNE_POWER[hero.cls]?.bolts) hero.ammo.bolt = 0   // unused bolts go with the crossbow
   hero.charging = null
   hero.rune = null

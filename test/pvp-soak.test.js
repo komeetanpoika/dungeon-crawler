@@ -20,7 +20,7 @@ describe('pvp soak', () => {
         if (ev.type === 'matchEnd') ended = true
       }
       for (const h of m.heroes) {
-        assert.ok(h.hp <= h.maxHp, `${h.id} hp ${h.hp} over max`)
+        assert.ok(h.hp >= 0 && h.hp <= h.maxHp, `${h.id} hp ${h.hp} out of [0, ${h.maxHp}]`)
         if (h.dead) continue
         assert.ok(h.hp > 0, `${h.id} alive at ${h.hp} hp`)
         const cell = m.map[h.y]?.[h.x]

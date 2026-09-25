@@ -833,8 +833,13 @@ function pvpFrame(delta) {
     if (ev.type === 'respawn' && ev.hero === LOCAL_ID && pvp.picking) { pvp.picking = false; menu.hide() }
     if (ev.type === 'matchEnd') {
       menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls), onQuit: stopPvp })
+      pvp.done = true
     }
   }
+  // Once the results panel is up the match world is frozen (stepMatch stops
+  // advancing it), so one more frame paints its final state under the panel
+  // and every frame after that skips FOV/render/HUD work entirely.
+  if (pvp.done && pvp.rendered) return
   const view = viewOf(match, pvp.theme)
   maybeComputeFOV(view.map, view.player, 12, { los: true })
   renderer.updateCamera(view.player, 0, null)
@@ -842,6 +847,7 @@ function pvpFrame(delta) {
   updateHUD(view)
   updatePvpHud(pvpHudModel(match, LOCAL_ID))
   playCues(audio, drainSfx(match), view.player, match.sfx.muted)
+  if (pvp.done) pvp.rendered = true
 }
 
 async function beginRun(depth = 1, mode = modeForDepth(depth)) {
