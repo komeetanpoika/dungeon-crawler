@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatMetaSummary, navActionFor, showTitle, showClassPicker, showTextEntry, showMessage } from '../renderer/ui/menu.js'
+import { formatMetaSummary, navActionFor, showTitle, showClassPicker, showTextEntry, showMessage, setSubtitle } from '../renderer/ui/menu.js'
 
 describe('formatMetaSummary', () => {
   it('formats a played meta with treasure stolen', () => {
@@ -146,7 +146,8 @@ function stubDomWithKeys() {
     const el = {
       tag, children: [], className: '', textContent: '', style: {}, innerHTML: '',
       listeners: {}, value: '', maxLength: 0, autocomplete: '',
-      appendChild(c) { el.children.push(c); return c },
+      appendChild(c) { el.children.push(c); c.parent = el; return c },
+      after(n) { const sib = el.parent.children; sib.splice(sib.indexOf(el) + 1, 0, n); n.parent = el.parent },
       addEventListener(ev, fn) { el.listeners[ev] = fn },
       classList: { toggle() {} },
       focus() {},
@@ -419,5 +420,41 @@ describe('online results', () => {
       buttonsOf(d.overlay)[0].listeners.click()
       assert.equal(left, true)
     } finally { d.cleanup() }
+  })
+})
+
+describe('setSubtitle', () => {
+  const texts = overlay => overlay.children[0].children.map(c => `${c.tag}:${c.textContent}`)
+  it('updates the subtitle in place: same buttons, same selection', () => {
+    const { overlay, press } = stubDomWithKeys()
+    try {
+      let picked = null
+      showClassPicker({ title: 'Down!', subtitle: 'Back in 3', lines: ['Class for your next life'], onPick: c => { picked = c } })
+      const before = overlay.children[0].children.filter(c => c.tag === 'button')
+      press('s')                                            // select Archer
+      setSubtitle('Back in 2')
+      assert.deepEqual(texts(overlay).slice(0, 3), ['h1:Down!', 'div:Back in 2', 'div:Class for your next life'])
+      assert.deepEqual(overlay.children[0].children.filter(c => c.tag === 'button'), before)
+      press('Enter')
+      assert.equal(picked, 'archer')
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+  it('a screen without a subtitle gets one right under the title; after hide() it does nothing', () => {
+    const { overlay } = stubDomWithKeys()
+    try {
+      showMessage({ title: 'Reconnecting…', lines: ['a line'] })
+      setSubtitle('x')
+      assert.deepEqual(texts(overlay).slice(0, 3), ['h1:Reconnecting…', 'div:x', 'div:a line'])
+      setSubtitle('y')
+      assert.equal(texts(overlay).filter(t => t === 'div:y').length, 1)
+      hide()
+      assert.doesNotThrow(() => setSubtitle('z'))
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
   })
 })

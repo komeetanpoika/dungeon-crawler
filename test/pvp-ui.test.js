@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { parsePvpCheat, cheatDecision } from '../renderer/systems/cheats.js'
 import { inputFromKeys, makeLocalMatch, localInputs, viewOf, LOCAL_ID } from '../renderer/pvp/local.js'
-import { pvpHudModel } from '../renderer/ui/pvp-hud.js'
+import { pvpHudModel, respawnLine } from '../renderer/ui/pvp-hud.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { nextArenaIndex } from '../renderer/data/pvp-arenas.js'
 
@@ -68,5 +68,15 @@ describe('pvpHudModel', () => {
     assert.equal(model.kills, 0)
     assert.equal(model.leaderKills, 3)
     assert.equal(model.leading, false)
+  })
+})
+
+describe('respawnLine', () => {
+  it('counts the respawn down in whole seconds, rounding up', () => {
+    assert.equal(PVP.respawnDelay, 3)
+    assert.deepEqual([3, 2.01, 2, 1.5, 0.2].map(respawnLine), ['Back in 3', 'Back in 3', 'Back in 2', 'Back in 2', 'Back in 1'])
+  })
+  it('a hero not counting down yet (alive, or its first dead snapshot not in) reads the full delay', () => {
+    for (const t of [0, -0.03, null, undefined]) assert.equal(respawnLine(t), `Back in ${PVP.respawnDelay}`)
   })
 })
