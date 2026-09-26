@@ -51,7 +51,7 @@ export function netViewOf(v, theme, map) {
     heroes: [v.me, ...v.others],
     entities: v.pickups.filter(p => p.up).map(p => ({ ...p, type: 'pvp_pickup' })),
     projectiles: v.projectiles, lightning: v.lightning, strikes: v.strikes,
-    arcs: v.arcs, shockwaves: v.shockwaves, zones: [], fireZones: [],
+    arcs: v.arcs, shockwaves: v.shockwaves, zones: [], fireZones: v.fireZones ?? [],
     feedback: v.feedback, hitEffects: [], flash: 0,
   }
 }

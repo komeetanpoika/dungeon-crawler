@@ -445,3 +445,12 @@ describe('input latch (2a: releases fire)', () => {
     assert.deepEqual(sentInputs(s).map(m => m.alt), [true, true])
   })
 })
+
+describe('fire zones on the wire (protocol v4)', () => {
+  it("sessionView hands on the newest snapshot's fire zones", () => {
+    const s = open(); welcome(s)
+    const hero = lone()
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { fireZones: [{ tiles: [{ x: 2, y: 3 }], age: 1 }] })) })
+    assert.deepEqual(sessionView(s, 0).fireZones, [{ tiles: [{ x: 2, y: 3 }], age: 1 }])
+  })
+})

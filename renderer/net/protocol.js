@@ -1,5 +1,6 @@
-// PvP protocol v3 (v1 in 2026-09-25-pvp-server-netcode-design.md §1; v2 adds hello.quick, 4a spec §1;
-// v3 adds the arena id on welcome and snap, seat tokens, hello.resume and bye, 4b spec §1-§2): message
+// PvP protocol v4 (v1 in 2026-09-25-pvp-server-netcode-design.md §1; v2 adds hello.quick, 4a spec §1;
+// v3 adds the arena id on welcome and snap, seat tokens, hello.resume and bye, 4b spec §1-§2; v4 adds
+// a hero's combo and move and the snapshot's fire zones, 2a spec §5): message
 // names, validation of everything a client sends, and the snapshot a server
 // sends — plus hydrateHero, which turns a snapshot hero back into a hero the
 // renderer and the predictor can use. Shared by server/ and the browser;
@@ -144,11 +145,13 @@ export function snapshotBody(match, { events = [], cues = [] } = {}) {
     type: MSG.SNAP, arena: match.arena.id, tick: match.tick, clock: match.clock, waiting: !!match.waiting, ended: !!match.ended,
     matchLength: match.matchLength,
     heroes: match.heroes.map(heroSnap),
-    projectiles: match.projectiles.map(p => ({ px: p.px, py: p.py, dx: p.dx, dy: p.dy, shape: p.shape, color: p.color })),
+    projectiles: match.projectiles.map(p => ({ px: p.px, py: p.py, dx: p.dx, dy: p.dy, shape: p.shape, color: p.color,
+      ...(p.trail && { trail: true }) })),
     lightning: match.lightning.map(m => ({ x: m.x, y: m.y, t: m.t, delay: m.delay })),
     strikes: match.strikes.map(s => ({ x: s.x, y: s.y, t: s.t })),
     arcs: match.arcs.map(a => ({ ...a })),
     shockwaves: match.shockwaves.map(s => ({ ...s })),
+    fireZones: match.fireZones.map(z => ({ tiles: z.tiles.map(t => ({ x: t.x, y: t.y })), age: z.age })),
     pickups: match.pickups.map(p => ({ kind: p.kind, x: p.x, y: p.y, px: p.px, py: p.py, up: p.up })),
     events, cues,
   }

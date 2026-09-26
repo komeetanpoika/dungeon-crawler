@@ -305,6 +305,7 @@ export function sessionView(s, t = s.now()) {
   return {
     me, others, projectiles: projectilesAt(s.interp, rt),
     lightning: last.lightning, strikes: last.strikes, arcs: last.arcs, shockwaves: last.shockwaves, pickups: last.pickups,
+    fireZones: last.fireZones ?? [],
     clock: last.clock, waiting: last.waiting, ended: last.ended, matchLength: last.matchLength,
     room: s.room, ping: s.ping, feedback: s.feedback,
   }

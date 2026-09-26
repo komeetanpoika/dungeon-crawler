@@ -64,14 +64,14 @@ describe('names, classes and hello', () => {
   it('hello v3: resume is a fourth way in — exactly one of create/room/quick/resume, the token 32 hex characters', () => {
     const v = NET.protocolVersion
     const tok = '0123456789abcdef0123456789abcdef'
-    assert.equal(v, 3)
+    assert.equal(v, 4)
     assert.deepEqual(validateHello({ type: 'hello', v, resume: tok }), { resume: tok })
     assert.deepEqual(validateHello({ type: 'hello', v, resume: tok, name: '<>', cls: 'bard' }), { resume: tok }, 'the seat keeps its own name and class')
     for (const bad of ['a'.repeat(31), 'a'.repeat(33), 'A'.repeat(32), 'g'.repeat(32), '', 42, true, {}])
       assert.deepEqual(validateHello({ type: 'hello', v, resume: bad }), { error: ERR.BAD_HELLO }, JSON.stringify(bad))
     for (const way of [{ create: true }, { quick: true }, { room: 'KXPT' }])
       assert.deepEqual(validateHello({ type: 'hello', v, name: 'Aino', cls: 'mage', resume: tok, ...way }), { error: ERR.BAD_HELLO })
-    assert.deepEqual(validateHello({ type: 'hello', v: 2, resume: tok }), { error: ERR.VERSION })
+    assert.deepEqual(validateHello({ type: 'hello', v: 3, resume: tok }), { error: ERR.VERSION }, 'a 4b client gets the reload line')
   })
   it('bye and resume_failed', () => {
     assert.equal(MSG.BYE, 'bye')
@@ -131,7 +131,29 @@ describe('snapshots', () => {
     assert.equal(body.pickups.length, 5)
     assert.equal(body.matchLength, m.matchLength)
     assert.equal(body.arena, 'pillars')
-    for (const k of ['tick', 'clock', 'waiting', 'ended', 'lightning', 'strikes', 'arcs', 'shockwaves', 'events', 'cues']) assert.ok(k in body, k)
+    for (const k of ['tick', 'clock', 'waiting', 'ended', 'lightning', 'strikes', 'arcs', 'shockwaves', 'fireZones', 'events', 'cues']) assert.ok(k in body, k)
+  })
+  it('v4: a hero carries its combo and move, a double-shot draw rides on charging, and fire zones travel', () => {
+    const m = match()
+    const [w, a] = m.heroes
+    w.combo = { moves: ['e', 'e'], last: 'e', lockDir: { x: 1, y: 0 } }
+    w.move = { kind: 'lunge', dir: 'e', t: 0.1, from: { px: 10, py: 20 }, done: false, dist: 30, fired: 0, group: 'p1#1' }
+    a.charging = { t: 0.9, kind: 'double' }
+    m.fireZones.push({ tiles: [{ x: 3, y: 4 }], age: 0.5, tickTimer: 0.5, owner: 'p1' })
+    const body = JSON.parse(JSON.stringify(snapshotBody(m)))
+    const [ws, as] = body.heroes
+    assert.deepEqual(ws.combo, { moves: ['e', 'e'], lockDir: { x: 1, y: 0 }, last: 'e' })
+    assert.deepEqual(ws.move, { kind: 'lunge', dir: 'e', t: 0.1, from: { px: 10, py: 20 }, done: false })
+    assert.deepEqual(as.charging, { t: 0.9, kind: 'double' })
+    assert.deepEqual(body.fireZones, [{ tiles: [{ x: 3, y: 4 }], age: 0.5 }])
+    m.projectiles.push({ px: 1, py: 2, dx: 3, dy: 0, shape: 'arrow', color: '#facc15', trail: true, owner: 'p2', group: 'p2#1' })
+    assert.deepEqual(snapshotBody(m).projectiles[0], { px: 1, py: 2, dx: 3, dy: 0, shape: 'arrow', color: '#facc15', trail: true })
+    const h = hydrateHero(null, ws)
+    assert.deepEqual(h.combo, w.combo)
+    assert.deepEqual(h.move, { kind: 'lunge', dir: 'e', t: 0.1, from: { px: 10, py: 20 }, done: false })
+    w.combo = null; w.move = null
+    hydrateHero(h, JSON.parse(JSON.stringify(heroSnap(w))))
+    assert.equal(h.combo, null); assert.equal(h.move, null)
   })
 })
 

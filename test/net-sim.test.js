@@ -15,7 +15,7 @@ const east = { ...NEUTRAL_INPUT, move: { x: 1, y: 0 }, facing: 'east' }
 
 describe('NET constants', () => {
   it('carries the spec numbers', () => {
-    assert.equal(NET.protocolVersion, 3)
+    assert.equal(NET.protocolVersion, 4)
     assert.equal(NET.snapshotHz, 20)
     assert.equal(NET.rewindMaxTicks, 9)
     assert.equal(NET.historyTicks, 11)
