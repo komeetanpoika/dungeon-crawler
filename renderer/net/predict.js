@@ -11,10 +11,11 @@ import { hydrateHero } from './protocol.js'
 import { getAttack, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
 import { shouldAutoReleaseGust, resolveGustTier } from '../systems/magic.js'
 import { spellFor, castCost } from '../systems/spells.js'
-import { swingCost, comboCooldown } from '../pvp/attacks.js'
+import { swingCost, comboCooldown, canDrawDouble, payDoubleShot } from '../pvp/attacks.js'
+import { tryFire } from '../systems/ranged.js'
 import { isComboWeapon, beginHold, holdGesture, classify, SECTOR_FACING } from '../pvp/combos.js'
 import { spendStamina } from '../systems/stamina.js'
-import { PVP, WARRIOR_COMBOS } from '../data/pvp.js'
+import { PVP, WARRIOR_COMBOS, DOUBLE_SHOT, drawFrac } from '../data/pvp.js'
 import { NET } from '../data/net.js'
 
 export function makePredictor({ map, heroSnap: s }) {
@@ -102,6 +103,23 @@ function predictCombo(h, input, attacking) {
   return combo
 }
 
+// The Archer's draw, as hero.js's tickRanged runs it, effects excluded: the
+// draw slows the walk, so it must start, hold and end exactly when the
+// server's does — which needs the ammo and ranged cooldown every shot pays
+// (payDoubleShot, and tryFire for a plain shot) mirrored too.
+function predictRanged(h, input, attacking, dt) {
+  if (h.attackMode !== 'ranged') return
+  if (h.charging?.kind === 'double') {
+    if (input.alt) { h.charging.t = Math.min(h.charging.t + dt, DOUBLE_SHOT.full); return }
+    const frac = drawFrac(h.charging.t)
+    h.charging = null
+    payDoubleShot(h, frac)
+    return
+  }
+  if (input.alt && canDrawDouble(h)) { h.charging = { t: 0, kind: 'double' }; return }
+  if (attacking) tryFire(h)
+}
+
 // One predicted tick. Returns { released }: the combo a Warrior's release
 // fired this tick (for predictCosmetics' local swing), else null.
 export function predictStep(pred, input, dt = PVP.tick) {
@@ -114,6 +132,7 @@ export function predictStep(pred, input, dt = PVP.tick) {
   const attacking = !!input.attack && !h.needRelease && !blocking
   const released = predictCombo(h, input, attacking)
   predictSwing(h, attacking)
+  predictRanged(h, input, attacking, dt)
   // A combo effect a snapshot showed runs out on the server's clock, so a
   // replayed lunge stops the walk exactly as long as the server's dash did.
   if (h.move) { h.move.t += dt; if (h.move.t >= WARRIOR_COMBOS.fxDur - 1e-9) h.move = null }

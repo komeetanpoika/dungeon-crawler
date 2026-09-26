@@ -14,9 +14,9 @@ import { tickWalk } from '../systems/walk.js'
 import { chargeMoveFactor, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
 import { GUST_CHARGE, resolveGustTier, shouldAutoReleaseGust } from '../systems/magic.js'
 import { spellFor } from '../systems/spells.js'
-import { swing, castSpell, loose, startCombo, stepCombo } from './attacks.js'
+import { swing, castSpell, loose, startCombo, stepCombo, canDrawDouble, looseDouble } from './attacks.js'
 import { isComboWeapon, beginHold, holdGesture, classify, unitMove, isDashing, SECTOR_FACING } from './combos.js'
-import { KITS, OUTFIT_OVERRIDES, PVP, WARRIOR_COMBOS } from '../data/pvp.js'
+import { KITS, OUTFIT_OVERRIDES, PVP, WARRIOR_COMBOS, DOUBLE_SHOT, drawFrac } from '../data/pvp.js'
 
 export const NEUTRAL_INPUT = Object.freeze({ move: Object.freeze({ x: 0, y: 0 }), facing: null, attack: false, alt: false, sprint: false })
 
@@ -115,7 +115,9 @@ export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
   const sprinting = moving && !!input.sprint && !hero.charging && !hero.combo && !blocking && hero.stamina > 0
   const chargeFactor = hero.combo ? WARRIOR_COMBOS.holdMoveMul
     : hero.charging
-      ? (hero.charging.kind === 'spell' ? GUST_CHARGE.moveFactor : chargeMoveFactor(hero.weapon?.weaponType))
+      ? (hero.charging.kind === 'spell' ? GUST_CHARGE.moveFactor
+        : hero.charging.kind === 'double' ? DOUBLE_SHOT.moveMul
+        : chargeMoveFactor(hero.weapon?.weaponType))
       : 1
   const slow = hero.slowTimer > 0 ? hero.slowMul : 1
   const speed = PLAYER_SPEED * chargeFactor * rainSlow(hero) * slow *
@@ -133,7 +135,7 @@ export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
   const attacking = !!input.attack && !hero.needRelease && !blocking
   if (hero.attackMode === 'melee') tickMelee(match, hero, input, attacking, dt)
   else if (hero.attackMode === 'magic') tickMagic(match, hero, input, attacking, altEdge, dt)
-  else if (hero.attackMode === 'ranged') tickRanged(match, hero, attacking)
+  else if (hero.attackMode === 'ranged') tickRanged(match, hero, input, attacking, dt)
   stepCombo(match, hero, dt)
 }
 
@@ -208,7 +210,18 @@ function tickMagic(match, hero, input, attacking, altEdge, dt) {
   if (altEdge && offhand(hero)?.kind === 'wand') castSpell(match, hero, spellFor(hero, 'off').id, 'tap', 'off')
 }
 
-// Every PvP bow fires on its cooldown while attack is held.
-function tickRanged(match, hero, attacking) {
+// Every PvP bow fires on its cooldown while attack is held. Holding alt (Q)
+// draws the double shot (spec 2a §3): the draw counts up to
+// DOUBLE_SHOT.full and holds there (no auto-release), the attack does
+// nothing meanwhile, and letting go looses both arrows at the draw reached.
+function tickRanged(match, hero, input, attacking, dt) {
+  if (hero.charging?.kind === 'double') {
+    if (input.alt) { hero.charging.t = Math.min(hero.charging.t + dt, DOUBLE_SHOT.full); return }
+    const frac = drawFrac(hero.charging.t)
+    hero.charging = null
+    looseDouble(match, hero, frac)
+    return
+  }
+  if (input.alt && canDrawDouble(hero)) { hero.charging = { t: 0, kind: 'double' }; return }
   if (attacking) loose(match, hero)
 }

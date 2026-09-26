@@ -13,11 +13,12 @@ import { applyShock, thunderclap, chainNodes, applyChain, applyRain, lightningMo
 import { tryCast } from '../systems/spells.js'
 import { castLightning } from '../systems/spells/lightning.js'
 import { tryFire } from '../systems/ranged.js'
+import { spendAmmo } from '../systems/inventory.js'
 import { sfx } from '../systems/sfx.js'
 import { canMoveTo, PLAYER_HALF, TILE_SIZE } from '../systems/movement.js'
 import { hurtHero, foesOf } from './combat.js'
 import { SECTOR_FACING } from './combos.js'
-import { PVP, WARRIOR_COMBOS } from '../data/pvp.js'
+import { PVP, WARRIOR_COMBOS, DOUBLE_SHOT, doubleShotBand } from '../data/pvp.js'
 
 const MODULES = { lightning: castLightning }
 
@@ -234,6 +235,46 @@ export function loose(match, hero) {
   if (shot.fork) proj.fork = { ...shot.fork }
   if (shot.onHit) proj.onHit = { ...shot.onHit }
   match.projectiles.push(proj)
+  sfx(match, 'ranged-shot', { px: hero.px, py: hero.py })
+  return shot
+}
+
+// --- the Archer's double shot (spec 2a §3) -----------------------------
+
+// Q starts a draw only with a bow (not the rune's crossbow), an arrow to
+// shoot and the ranged cooldown ready.
+export const canDrawDouble = hero =>
+  hero.ranged?.kind === 'bow' && (hero.ammo?.arrow ?? 0) > 0 && hero.rangedCooldown <= 0
+
+// Pays for a release at draw fraction `frac`: two arrows (or the one left)
+// and DOUBLE_SHOT.cooldown — or nothing, returning null, below
+// DOUBLE_SHOT.min. predict.js calls this too, for the same ammo and cooldown.
+export function payDoubleShot(hero, frac) {
+  const band = doubleShotBand(frac)
+  const arrows = Math.min(2, hero.ammo?.arrow ?? 0)
+  if (!band || arrows <= 0) return null
+  spendAmmo(hero, 'arrow', arrows)
+  hero.rangedCooldown = DOUBLE_SHOT.cooldown
+  return { band, arrows }
+}
+
+// The release: two arrows straight ahead, DOUBLE_SHOT.gap apart across the
+// facing (one from the centre if only one was left), each dealing the band's
+// damage in the band's colour. Ordinary arrows — a raised buckler blocks
+// them — sharing one hit group, so both can land on one hero.
+export function looseDouble(match, hero, frac) {
+  const shot = payDoubleShot(hero, frac)
+  if (!shot) return null
+  hero.spawnProtect = 0
+  const [dx, dy] = DIRS[hero.facing] ?? DIRS.east
+  match.groupSeq = (match.groupSeq ?? 0) + 1
+  const group = `${hero.id}#${match.groupSeq}`
+  const half = DOUBLE_SHOT.gap / 2
+  for (const k of shot.arrows === 2 ? [-1, 1] : [0]) {
+    match.projectiles.push({ px: hero.px - dy * half * k, py: hero.py + dx * half * k,
+      dx: dx * PVP.arrowSpeed, dy: dy * PVP.arrowSpeed, damage: shot.band.damage, color: shot.band.color,
+      shape: 'arrow', trail: true, friendly: true, owner: hero.id, group })
+  }
   sfx(match, 'ranged-shot', { px: hero.px, py: hero.py })
   return shot
 }

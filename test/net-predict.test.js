@@ -206,6 +206,22 @@ describe('2a prediction parity', () => {
     // divergence between predictCombo and hero.js's releaseCombo would show.
     same(replay('warrior', inputs, 4, undefined, onTick))
   })
+  it("the Archer's slowed draw, its release and a re-press inside the cooldown match the server", () => {
+    const E = { x: 1, y: 0 }
+    const inputs = [
+      { move: E, attack: true }, { move: E, attack: true },                 // a plain shot: cooldown 0.6
+      ...Array(8).fill({ move: E, alt: true }),                             // Q inside that cooldown: no draw yet
+      ...Array(30).fill({ move: E, alt: true }),                            // the draw
+      { move: E }, ...Array(5).fill({ move: E, alt: true }),               // release; Q again inside 0.8 s
+      ...Array(30).fill({ move: E, alt: true }),
+    ]
+    const r = replay('archer', inputs, 20)
+    same(r)
+    assert.deepEqual(r.pred.charging, r.server.charging)
+    assert.equal(r.pred.ammo.arrow, r.server.ammo.arrow)
+    assert.ok(Math.abs(r.pred.rangedCooldown - r.server.rangedCooldown) < 1e-9)
+    assert.equal(r.server.ammo.arrow, 24 - 1 - 2)
+  })
 })
 
 describe('2a prediction: the lunge', () => {
