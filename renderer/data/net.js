@@ -10,8 +10,8 @@ export const NET = {
   bufferTicks: 30,         // snapshots kept (1 s)
   clockSlew: 0.1,          // the interpolation clock runs at most 10 % fast or slow while it catches up (4b)…
   clockSnapTicks: 15,      // …and snaps when it is off by more than this (a stall, a hidden tab, a new match)
-  rewindMaxTicks: 6,       // melee lag compensation cap (200 ms)
-  historyTicks: 8,         // per-hero position ring on the server
+  rewindMaxTicks: 9,       // melee lag compensation cap (300 ms; 4b)
+  historyTicks: 11,        // per-hero position ring on the server (the cap + 2)
   inputQueueMax: 4,
   staleInputTicks: 15,     // no input for this long: the hero stands still
   pendingMax: 90,          // unacknowledged inputs a client keeps (3 s)

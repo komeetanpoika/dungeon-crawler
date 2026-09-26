@@ -65,10 +65,10 @@ describe('play under lag', () => {
     leave(a); leave(b); await srv.close()
   })
 
-  for (const rewind of [true, false]) {
-    it(`melee under 100 ms lag ${rewind ? 'hits with rewind' : 'misses without rewind'}`, async () => {
+  for (const [lag, rewind] of [[100, true], [100, false], [150, true]]) {
+    it(`melee under ${lag} ms lag ${rewind ? 'hits with rewind' : 'misses without rewind'}`, async () => {
       const srv = await startServer({ rewind })
-      const W = laggy({ up: 100, down: 100 })
+      const W = laggy({ up: lag, down: lag })
       const a = await host(srv.url, W, 'warrior')
       const b = await join(srv.url, W, a.room, 'archer')
       const [wa, hb] = [serverHero(srv, a), serverHero(srv, b)]
@@ -77,9 +77,11 @@ describe('play under lag', () => {
       await sleep(400)                                      // both views settle on the new places
       // A swings the moment it sees B step just out of point-blank (36 px,
       // within the sword's 58 px centre reach). At 100 ms each way A's view
-      // is ~10 ticks old, past the 6-tick rewind cap, so the server tests B
-      // 4 ticks (16 px) beyond where A saw it: ~52 px with rewind (a hit),
-      // ~72 px without (a miss). 36 leaves one tick of slack under the reach.
+      // is ~10 ticks old, inside the 9-tick rewind cap but for a tick, so the
+      // server tests B ~4 px beyond where A saw it: ~40 px with rewind (a
+      // hit), ~72 px without (a miss). At 150 ms each way the view is ~13
+      // ticks old, so the capped rewind tests B 4 ticks (16 px) beyond: ~52
+      // px, still a hit. 36 leaves one tick of slack under the reach.
       let swung = false, serverSwung = false
       const bWalk = drive(b, east, 1500)
       await drive(a, () => {

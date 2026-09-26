@@ -17,7 +17,8 @@ describe('NET constants', () => {
   it('carries the spec numbers', () => {
     assert.equal(NET.protocolVersion, 3)
     assert.equal(NET.snapshotHz, 20)
-    assert.equal(NET.rewindMaxTicks, 6)
+    assert.equal(NET.rewindMaxTicks, 9)
+    assert.equal(NET.historyTicks, 11)
     assert.equal(NET.maxPayload, 4096)
     assert.equal(PVP.minHeroes, 2)
   })
