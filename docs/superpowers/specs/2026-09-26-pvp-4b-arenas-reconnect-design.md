@@ -93,7 +93,7 @@ Out of scope: a map vote, new modes, and new tilesets or art.
 - If the token maps to an `away` seat in a live room, the server re-seats it on the new socket:
   - same hero id, name, class, kills and deaths;
   - its input queue reset and its idle clock reset;
-  - a fresh `welcome` with a new token (the old one is deleted);
+  - a fresh `welcome` carrying the **same** token: the token lives as long as the seat and is deleted only when the seat is freed (bye, expiry, kick, a flood or crash close, the room closing) *(changed 2026-09-26 by controller ruling: a single-use token let a slow retry lose the seat)*;
   - then snapshots resume.
 - Otherwise it answers `error: resume_failed`: the token is unknown, expired, already used, or the room is gone.
 - A seat whose original socket still looks open (a phone that switched networks before the server noticed the old link died) is **taken over**: the old socket is closed with code 4001 (`replaced`, not a refusal), and the new socket gets the seat. The token is 128 random bits held only in that tab's sessionStorage, so this is the owner reconnecting, not a hijack. *(Changed 2026-09-26 by controller ruling: refusing here would defeat the mobile network-switch case the feature exists for.)*
