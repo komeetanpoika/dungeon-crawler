@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { makePredictor, predictStep, predictCosmetics, reconcile, tickCorrection, drawnPos } from '../renderer/net/predict.js'
 import { heroSnap } from '../renderer/net/protocol.js'
 import { makeMatch, stepMatch } from '../renderer/pvp/sim.js'
-import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
+import { NEUTRAL_INPUT, placeHero } from '../renderer/pvp/hero.js'
 import { weaponContents } from '../renderer/systems/entities.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
@@ -60,18 +60,30 @@ describe('prediction', () => {
     pred.alpha = 0.5
     assert.ok(Math.abs(drawnPos(pred).x - (x0 + x1) / 2) < 1e-9)
   })
-  it('the tap swing animates locally at once and not again until its cooldown passes', () => {
+  it('the sword swing animates locally on the release that fires it, not on the press, and once', () => {
     const m = makeMatch({ roster: [{ id: 'p1', name: 'A', cls: 'warrior' }] })
     const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
-    const swing = { ...NEUTRAL_INPUT, attack: true, facing: 'east' }
-    predictCosmetics(pred, swing, PVP.tick)
+    const press = { ...NEUTRAL_INPUT, attack: true, facing: 'east' }, let_go = { ...NEUTRAL_INPUT }
+    let r = predictStep(pred, press)
+    assert.equal(r.released, null)
+    predictCosmetics(pred, press, PVP.tick, r.released)
+    assert.equal(pred.swing, null, 'the press only begins the hold')
+    r = predictStep(pred, let_go)
+    assert.deepEqual(r.released, { kind: 'swing', dir: null })
+    predictCosmetics(pred, let_go, PVP.tick, r.released)
     assert.ok(pred.swing)
     const first = pred.swing
-    predictCosmetics(pred, swing, PVP.tick)
+    predictCosmetics(pred, let_go, PVP.tick, predictStep(pred, let_go).released)
     assert.equal(pred.swing, first)
     reconcile(pred, heroSnap(m.heroes[0]), 0)          // a snapshot that has not seen the swing yet
-    predictCosmetics(pred, swing, PVP.tick)
+    predictCosmetics(pred, let_go, PVP.tick, null)
     assert.equal(pred.swing, first, 'reconcile does not restart the local swing')
+  })
+  it('a combo release draws no local swing: the server draws the combo', () => {
+    const m = makeMatch({ roster: [{ id: 'p1', name: 'A', cls: 'warrior' }] })
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    predictCosmetics(pred, NEUTRAL_INPUT, PVP.tick, { kind: 'lunge', dir: 'e' })
+    assert.equal(pred.swing, null)
   })
   it('a predicted spell release pays the cooldown/stamina so a re-press inside it is refused like the server', () => {
     const m = lone('mage')
@@ -115,11 +127,10 @@ describe('prediction', () => {
   it('a tap swing spends stamina under reconcile replay too, so sprint stops exactly when the server stops it', () => {
     const m = lone('warrior')
     const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
-    const sprintAttack = { ...east, sprint: true, attack: true }
     let seq = 0, snapAt10 = null
     const step = () => {
       seq++
-      const input = { ...sprintAttack, seq }
+      const input = { ...east, sprint: true, attack: seq % 2 === 1, seq }   // tap, tap, tap: press and release
       stepMatch(m, { p1: input }, PVP.tick)
       predictStep(pred, input)
       pred.pending.push({ seq, input })
@@ -132,5 +143,44 @@ describe('prediction', () => {
     assert.equal(pred.pending.length, 20)
     assert.ok(Math.abs(pred.hero.stamina - m.heroes[0].stamina) < 1e-9)
     assert.ok(Math.abs(pred.hero.px - m.heroes[0].px) < 1e-9)
+  })
+})
+
+describe('2a prediction parity', () => {
+  // Server and predictor fed the same inputs; `snapAt` takes a snapshot to
+  // reconcile from mid-sequence, exactly reconcile's real shape.
+  const replay = (cls, inputs, snapAt, setup = () => {}) => {
+    const m = lone(cls)
+    setup(m.heroes[0])
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    let snap = null
+    inputs.forEach((over, i) => {
+      const input = { ...NEUTRAL_INPUT, move: { x: 0, y: 0 }, ...over, seq: i + 1 }
+      stepMatch(m, { p1: input }, PVP.tick)
+      predictStep(pred, input)
+      pred.pending.push({ seq: i + 1, input })
+      if (i + 1 === snapAt) snap = heroSnap(m.heroes[0])
+    })
+    reconcile(pred, snap, snapAt)
+    return { server: m.heroes[0], pred: pred.hero }
+  }
+  const same = ({ server, pred }) => {
+    assert.ok(Math.abs(pred.px - server.px) < 1e-9, `px ${pred.px} vs ${server.px}`)
+    assert.ok(Math.abs(pred.py - server.py) < 1e-9, `py ${pred.py} vs ${server.py}`)
+    assert.ok(Math.abs(pred.stamina - server.stamina) < 1e-9, `stamina ${pred.stamina} vs ${server.stamina}`)
+    assert.ok(Math.abs(pred.meleeCooldown - server.meleeCooldown) < 1e-9, 'meleeCooldown')
+    assert.equal(pred.facing, server.facing)
+    assert.deepEqual(pred.combo, server.combo)
+  }
+  const E = { x: 1, y: 0 }, N = { x: 0, y: -1 }, S = { x: 0, y: 1 }, O = { x: 0, y: 0 }
+  it("the Warrior's slide and the gesture's stamina match the server, reconciled mid-hold", () => {
+    const hold = [{ move: E, attack: true }, ...[N, O, N, S, O, S, S, O].map(move => ({ move, attack: true }))]
+    same(replay('warrior', [...hold, { move: E }, { move: E }, { move: E }], 4))
+  })
+  it('a snapshot taken mid-hold carries the gesture, so a direction held across it is not a second move', () => {
+    const inputs = [{ move: O, attack: true }, { move: E, attack: true }, ...Array(8).fill({ move: E, attack: true }), { move: O }]
+    const r = replay('warrior', inputs, 3)
+    same(r)
+    assert.equal(r.server.stamina, 100 - 25 - 12)   // one move, then the plain swing (e alone is no combo)
   })
 })

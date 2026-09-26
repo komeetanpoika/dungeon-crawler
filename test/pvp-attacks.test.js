@@ -12,11 +12,12 @@ const hero = (id, cls, cell) => { const h = makeHero({ id, name: id, cls }); pla
 const dt = PVP.tick
 
 describe('melee', () => {
-  it('a sword tap hits the foe in front for 2, knocks it back and credits the swinger', () => {
+  it('a sword tap (press, release) hits the foe in front for 2, knocks it back and credits the swinger', () => {
     const w = hero('w', 'warrior', { x: 5, y: 5 }), a = hero('a', 'archer', { x: 6, y: 5 })
     w.facing = 'east'
     const m = testMatch([w, a])
     tickHero(m, w, input({ attack: true, facing: 'east' }), dt)
+    tickHero(m, w, input({ attack: false }), dt)
     assert.equal(a.hp, 6)
     assert.equal(a.lastHitBy.id, 'w')
     assert.ok(a.knockback)
@@ -26,11 +27,14 @@ describe('melee', () => {
     const w = hero('w', 'warrior', { x: 5, y: 5 }), a = hero('a', 'archer', { x: 4, y: 5 })
     const m = testMatch([w, a])
     tickHero(m, w, input({ attack: true, facing: 'east' }), dt)
+    tickHero(m, w, input({ attack: false }), dt)
     assert.equal(a.hp, 8)
   })
   it('attacking ends spawn protection', () => {
     const w = hero('w', 'warrior', { x: 5, y: 5 }); w.spawnProtect = 1
-    tickHero(testMatch([w]), w, input({ attack: true, facing: 'east' }), dt)
+    const m = testMatch([w])
+    tickHero(m, w, input({ attack: true, facing: 'east' }), dt)
+    tickHero(m, w, input({ attack: false }), dt)
     assert.equal(w.spawnProtect, 0)
   })
   it('an overcharged hammer chains 4/3 over two foes and never zaps its wielder', () => {

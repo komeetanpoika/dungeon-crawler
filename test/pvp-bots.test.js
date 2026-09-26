@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { botInput, nextStep } from '../renderer/pvp/bots.js'
 import { makeMatch } from '../renderer/pvp/sim.js'
-import { placeHero } from '../renderer/pvp/hero.js'
+import { placeHero, tickHero } from '../renderer/pvp/hero.js'
 import { openMap } from './pvp-helpers.js'
 import { TILE } from '../renderer/systems/entities.js'
 
@@ -61,5 +61,21 @@ describe('botInput', () => {
     placeHero(b, { x: 7, y: 14 }); b.hp = 2          // flask at (7,12)
     placeHero(m.heroes[1], { x: 29, y: 21 })
     assert.deepEqual(botInput(m, b).move, { x: 0, y: -1 })
+  })
+})
+
+describe('the warrior bot taps the sword (2a: it swings on release)', () => {
+  it('presses, lets go, and the swing lands', () => {
+    const m = makeMatch({ roster: roster('warrior', 'archer') })
+    const [w, a] = m.heroes
+    placeHero(w, { x: 10, y: 2 }); placeHero(a, { x: 11, y: 2 }); a.spawnProtect = 0; w.spawnProtect = 0
+    const first = botInput(m, w)
+    assert.equal(first.attack, true)
+    tickHero(m, w, first, 1 / 30)
+    assert.ok(w.combo)
+    const second = botInput(m, w)
+    assert.equal(second.attack, false)
+    tickHero(m, w, second, 1 / 30)
+    assert.ok(a.hp < a.maxHp)
   })
 })

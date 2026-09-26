@@ -76,7 +76,8 @@ describe('play under lag', () => {
       placeHero(wa, { x: 9, y: 7 }); placeHero(hb, { x: 10, y: 7 })
       wa.spawnProtect = 0; hb.spawnProtect = 0; wa.facing = 'east'
       await sleep(400)                                      // both views settle on the new places
-      // A swings the moment it sees B step just out of point-blank (36 px,
+      // A holds the attack and lets go — the sword swings on the release
+      // (2a) — the moment it sees B step just out of point-blank (36 px,
       // within the sword's 58 px centre reach). At 100 ms each way A's view
       // is ~10 ticks old, inside the 9-tick rewind cap but for a tick, so the
       // server tests B ~4 px beyond where A saw it: ~40 px with rewind (a
@@ -88,9 +89,8 @@ describe('play under lag', () => {
       await drive(a, () => {
         const v = sessionView(a, performance.now())
         const seen = v?.others.find(h => h.id === b.heroId)
-        const go = !swung && seen && Math.hypot(seen.px - v.me.px, seen.py - v.me.py) >= 36
-        if (go) swung = true
-        return { ...NEUTRAL_INPUT, facing: 'east', attack: go }
+        if (!swung && seen && Math.hypot(seen.px - v.me.px, seen.py - v.me.py) >= 36) swung = true
+        return { ...NEUTRAL_INPUT, facing: 'east', attack: !swung }
       }, 1500, () => { if (wa.attackTimer > 0) serverSwung = true })
       await bWalk
       assert.ok(swung, 'A swung')

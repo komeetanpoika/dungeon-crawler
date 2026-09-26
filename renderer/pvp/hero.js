@@ -14,8 +14,9 @@ import { tickWalk } from '../systems/walk.js'
 import { chargeMoveFactor, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
 import { GUST_CHARGE, resolveGustTier, shouldAutoReleaseGust } from '../systems/magic.js'
 import { spellFor } from '../systems/spells.js'
-import { swing, castSpell, loose } from './attacks.js'
-import { KITS, OUTFIT_OVERRIDES, PVP } from '../data/pvp.js'
+import { swing, castSpell, loose, comboCooldown } from './attacks.js'
+import { isComboWeapon, beginHold, holdGesture, classify, unitMove, SECTOR_FACING } from './combos.js'
+import { KITS, OUTFIT_OVERRIDES, PVP, WARRIOR_COMBOS } from '../data/pvp.js'
 
 export const NEUTRAL_INPUT = Object.freeze({ move: Object.freeze({ x: 0, y: 0 }), facing: null, attack: false, alt: false, sprint: false })
 
@@ -47,7 +48,7 @@ export function applyKit(hero, cls) {
   }
   hero.maxHp = PVP.hp; hero.hp = PVP.hp
   hero.stamina = STAMINA_MAX; hero.maxStamina = STAMINA_MAX; hero.staminaRegenT = 0; hero.staminaRefusedT = 0
-  hero.charging = null; hero.rune = null; hero.shock = undefined; hero.rain = undefined
+  hero.charging = null; hero.combo = null; hero.rune = null; hero.shock = undefined; hero.rain = undefined
   hero.stunTimer = 0; hero.slowTimer = 0; hero.slowMul = 1; hero.rootTimer = 0; hero.frozen = false
   hero.knockback = null; hero.invulnTimer = 0; hero.blocking = false; hero.shieldDropT = 0; hero.blockedHit = false
   hero.meleeCooldown = 0; hero.rangedCooldown = 0; hero.magicCooldown = 0; hero.offCooldown = 0
@@ -90,25 +91,28 @@ export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
   }
 
   const stunned = hero.stunTimer > 0
-  if (stunned) hero.charging = null
   // After a release the attack must be let go before it can wind up again
   // (game.js does this by clearing keys[' ']).
   if (!input.attack) hero.needRelease = false
+  if (stunned) { hero.charging = null; cancelHold(hero) }
   const altEdge = !!input.alt && !hero.prevAlt
   hero.prevAlt = !!input.alt
   hero.blockedHit = false
   const blocking = tickShield(hero, !!input.alt && !stunned, dt)
-  if (blocking) hero.charging = null
-  if (!stunned && input.facing && DIRS[input.facing]) hero.facing = input.facing
+  if (blocking) { hero.charging = null; cancelHold(hero) }
+  // A held combo locks the facing: the moves aim the strike, not the stick.
+  if (!stunned && !hero.combo && input.facing && DIRS[input.facing]) hero.facing = input.facing
 
-  let vx = Math.sign(input.move?.x ?? 0), vy = Math.sign(input.move?.y ?? 0)
-  if (vx !== 0 && vy !== 0) { vx /= Math.SQRT2; vy /= Math.SQRT2 }
+  // While the attack is held the Warrior slides along the move held at the
+  // press, at half speed, whatever the stick does now (spec 2a §2).
+  const { x: vx, y: vy } = hero.combo ? hero.combo.lockDir : unitMove(input.move)
   const moving = vx !== 0 || vy !== 0
   const profile = sprintProfile(hero.attackMode, { drainMul: outfitOf(hero, hero.attackMode)?.sprintDrain ?? 1 })
-  const sprinting = moving && !!input.sprint && !hero.charging && !blocking && hero.stamina > 0
-  const chargeFactor = hero.charging
-    ? (hero.charging.kind === 'spell' ? GUST_CHARGE.moveFactor : chargeMoveFactor(hero.weapon?.weaponType))
-    : 1
+  const sprinting = moving && !!input.sprint && !hero.charging && !hero.combo && !blocking && hero.stamina > 0
+  const chargeFactor = hero.combo ? WARRIOR_COMBOS.holdMoveMul
+    : hero.charging
+      ? (hero.charging.kind === 'spell' ? GUST_CHARGE.moveFactor : chargeMoveFactor(hero.weapon?.weaponType))
+      : 1
   const slow = hero.slowTimer > 0 ? hero.slowMul : 1
   const speed = PLAYER_SPEED * chargeFactor * rainSlow(hero) * slow *
     (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
@@ -128,11 +132,31 @@ export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
   else if (hero.attackMode === 'ranged') tickRanged(match, hero, attacking)
 }
 
-// Light blades swing the instant attack lands; charge weapons (the rune's
-// hammer) wind up while it is held and swing on release, tiered by hold.
+// A stun or a raised shield ends a hold: no combo fires, the stamina spent
+// stays spent, and the attack must be let go before the next hold.
+function cancelHold(hero) {
+  if (!hero.combo) return
+  hero.combo = null
+  hero.needRelease = true
+}
+
+// The sword is a combo weapon (spec 2a §2): the press begins a hold, moves
+// are entered while it is held, and the release fires what was entered —
+// a plain swing when nothing was. Charge weapons (the rune's hammer) wind up
+// while held and swing on release, tiered by hold; any other light blade
+// swings the instant attack lands.
 function tickMelee(match, hero, input, attacking, dt) {
   const wt = hero.weapon?.weaponType
-  if (!wt) { hero.charging = null; return }
+  if (!wt) { hero.charging = null; hero.combo = null; return }
+  if (isComboWeapon(wt)) {
+    if (hero.charging && !hero.charging.kind) hero.charging = null
+    if (hero.combo) {
+      if (input.attack) holdGesture(hero, input.move)
+      else releaseCombo(match, hero)
+    } else if (attacking && hero.meleeCooldown <= 0) beginHold(hero, input.move)
+    return
+  }
+  hero.combo = null
   if (isChargeWeapon(wt)) {
     if (hero.charging) {
       if (input.attack && !shouldAutoRelease(wt, hero.charging.t)) hero.charging.t += dt
@@ -147,6 +171,20 @@ function tickMelee(match, hero, input, attacking, dt) {
     if (hero.charging && !hero.charging.kind) hero.charging = null
     if (attacking && hero.meleeCooldown <= 0) swing(match, hero, resolveCharge(wt, 0))
   }
+}
+
+// The release: the combo's direction becomes the facing, then the plain
+// swing or the combo's cooldown. Returns the classified combo.
+function releaseCombo(match, hero) {
+  const combo = classify(hero.combo.moves)
+  hero.combo = null
+  if (combo.dir) hero.facing = SECTOR_FACING[combo.dir]
+  if (combo.kind === 'swing') swing(match, hero, resolveCharge(hero.weapon.weaponType, 0))
+  else {
+    hero.spawnProtect = 0
+    hero.meleeCooldown = comboCooldown(hero.weapon.weaponType, combo.kind)
+  }
+  return combo
 }
 
 // Hold to charge the main wand, release to cast; an offhand wand casts a

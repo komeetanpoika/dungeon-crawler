@@ -223,6 +223,7 @@ function resolveDeaths(match) {
     h.respawnT = PVP.respawnDelay
     h.lastHitBy = null
     h.charging = null
+    h.combo = null
     h.knockback = null
     h.shock = undefined
     h.blocking = false

@@ -11,7 +11,8 @@ import { hydrateHero } from './protocol.js'
 import { getAttack, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
 import { shouldAutoReleaseGust, resolveGustTier } from '../systems/magic.js'
 import { spellFor, castCost } from '../systems/spells.js'
-import { swingCost } from '../pvp/attacks.js'
+import { swingCost, comboCooldown } from '../pvp/attacks.js'
+import { isComboWeapon, beginHold, holdGesture, classify, SECTOR_FACING } from '../pvp/combos.js'
 import { spendStamina } from '../systems/stamina.js'
 import { PVP } from '../data/pvp.js'
 import { NET } from '../data/net.js'
@@ -65,7 +66,7 @@ function predictCharge(h, input, dt) {
 // server already emptied.
 function predictSwing(h, attacking) {
   const wt = h.weapon?.weaponType
-  if (h.attackMode !== 'melee' || !wt || isChargeWeapon(wt)) return
+  if (h.attackMode !== 'melee' || !wt || isChargeWeapon(wt) || isComboWeapon(wt)) return
   if (h.charging && !h.charging.kind) h.charging = null
   if (!attacking || h.meleeCooldown > 0) return
   const { stamina, cooldown } = swingCost(h, resolveCharge(wt, 0))
@@ -73,29 +74,64 @@ function predictSwing(h, attacking) {
   h.meleeCooldown = cooldown
 }
 
-export function predictStep(pred, input, dt = PVP.tick) {
-  const h = pred.hero
-  if (h.dead) return
-  tickHeroStatus(h, dt)
-  const { stunned, blocking } = moveHero({ map: pred.map }, h, input, dt)
-  if (stunned) { h.charging = null; return }
-  predictCharge(h, input, dt)
-  predictSwing(h, !!input.attack && !h.needRelease && !blocking)
+// The Warrior's hold, as hero.js's tickMelee runs it for a combo weapon,
+// effects excluded: the press begins the hold, each held tick reads the
+// stick through the same holdGesture (so a move pays the same 25 stamina),
+// and the release turns the hero, pays the swing's stamina and cooldown or
+// the combo's cooldown. The combo effect itself (the lunge's dash, the
+// thrusts, the whirl) is the server's; it reconciles like knockback.
+// Returns the classified combo on the release tick, else null.
+function predictCombo(h, input, attacking) {
+  const wt = h.weapon?.weaponType
+  if (h.attackMode !== 'melee' || !isComboWeapon(wt)) return null
+  if (h.charging && !h.charging.kind) h.charging = null
+  if (!h.combo) {
+    if (attacking && h.meleeCooldown <= 0) beginHold(h, input.move)
+    return null
+  }
+  if (input.attack) { holdGesture(h, input.move); return null }
+  const combo = classify(h.combo.moves)
+  h.combo = null
+  if (combo.dir) h.facing = SECTOR_FACING[combo.dir]
+  if (combo.kind === 'swing') {
+    const { stamina, cooldown } = swingCost(h, resolveCharge(wt, 0))
+    spendStamina(h, stamina)
+    h.meleeCooldown = cooldown
+  } else h.meleeCooldown = comboCooldown(wt, combo.kind)
+  return combo
 }
 
-// The tap swing starts drawing the moment the key goes down. Its own
-// cooldown lives on the predictor (not the hero's meleeCooldown, which
-// predictStep/predictSwing above already owns), so a snapshot that has not
-// seen the swing yet cannot restart it. Animation only — no stamina or
-// cooldown write here; predictStep pays those, on both the live path and
-// reconcile's replay.
-export function predictCosmetics(pred, input, dt = PVP.tick) {
+// One predicted tick. Returns { released }: the combo a Warrior's release
+// fired this tick (for predictCosmetics' local swing), else null.
+export function predictStep(pred, input, dt = PVP.tick) {
+  const h = pred.hero
+  if (h.dead) return { released: null }
+  tickHeroStatus(h, dt)
+  const { stunned, blocking } = moveHero({ map: pred.map }, h, input, dt)
+  if (stunned) { h.charging = null; return { released: null } }
+  predictCharge(h, input, dt)
+  const attacking = !!input.attack && !h.needRelease && !blocking
+  const released = predictCombo(h, input, attacking)
+  predictSwing(h, attacking)
+  return { released }
+}
+
+// The local swing starts drawing at once: for the sword (a combo weapon)
+// on the release that fired a plain swing — `released`, what the live
+// predictStep just returned — and for any other light blade the moment the
+// key goes down. Its own cooldown lives on the predictor (not the hero's
+// meleeCooldown, which predictStep owns), so a snapshot that has not seen
+// the swing yet cannot restart it. Animation only — no stamina or cooldown
+// write here; predictStep pays those, on both the live path and
+// reconcile's replay. Combos draw from the server's hero.move instead.
+export function predictCosmetics(pred, input, dt = PVP.tick, released = null) {
   pred.swingCooldown = Math.max(0, pred.swingCooldown - dt)
   if (pred.swing) { pred.swing.t += dt; if (pred.swing.t >= pred.swing.dur) pred.swing = null }
   const h = pred.hero
   const wt = h.weapon?.weaponType
   if (h.dead || h.attackMode !== 'melee' || !wt || isChargeWeapon(wt) || h.blocking || h.stunTimer > 0) return
-  if (!input.attack || pred.swingCooldown > 0) return
+  const pressed = isComboWeapon(wt) ? released?.kind === 'swing' : !!input.attack
+  if (!pressed || pred.swingCooldown > 0) return
   const atk = getAttack(wt)
   pred.swing = { t: 0, dur: atk.duration, style: atk.style, facing: h.facing }
   pred.swingCooldown = atk.cooldown * resolveCharge(wt, 0).cooldownMul

@@ -15,7 +15,7 @@ import { castLightning } from '../systems/spells/lightning.js'
 import { tryFire } from '../systems/ranged.js'
 import { sfx } from '../systems/sfx.js'
 import { hurtHero, foesOf } from './combat.js'
-import { PVP } from '../data/pvp.js'
+import { PVP, WARRIOR_COMBOS } from '../data/pvp.js'
 
 const MODULES = { lightning: castLightning }
 
@@ -32,6 +32,13 @@ export function swingCost(hero, mods) {
   if (canAfford(hero, cost)) return { mods, stamina: cost, starved: false, cooldown: getAttack(wt).cooldown * mods.cooldownMul }
   const starvedMods = tierMods('tap', wt)         // starved: a weak swing that empties the tank
   return { mods: starvedMods, stamina: hero.stamina, starved: true, cooldown: getAttack(wt).cooldown * starvedMods.cooldownMul }
+}
+
+// The melee cooldown a combo's release starts: the weapon's own, and the
+// whirlwind's 1.5 times it. predict.js calls this too.
+export function comboCooldown(weaponType, kind) {
+  const cd = getAttack(weaponType).cooldown
+  return kind === 'whirl' ? cd * WARRIOR_COMBOS.whirl.cooldownMul : cd
 }
 
 export function swing(match, hero, mods) {

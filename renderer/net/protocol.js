@@ -98,6 +98,10 @@ export function heroSnap(h) {
   for (const f of HERO_FIELDS) s[f] = h[f] ?? null
   s.charging = h.charging ? (h.charging.kind ? { t: h.charging.t, kind: h.charging.kind } : { t: h.charging.t }) : null
   s.rune = h.rune ? { t: h.rune.t } : null
+  // A Warrior's hold (2a): the moves so far, the slide, and the last sector
+  // seen — the predictor's replay needs `last`, or a direction held across a
+  // snapshot would read as a new move.
+  s.combo = h.combo ? { moves: [...h.combo.moves], lockDir: { ...h.combo.lockDir }, last: h.combo.last } : null
   s.shock = h.shock ? { tickT: h.shock.tickT, left: h.shock.left } : null
   s.rain = h.rain ? { t: h.rain.t, dur: h.rain.dur } : null
   s.blinkTrail = h.blinkTrail ? { from: { ...h.blinkTrail.from }, to: { ...h.blinkTrail.to }, t: h.blinkTrail.t } : null
@@ -118,6 +122,7 @@ export function hydrateHero(hero, s) {
   for (const f of ['dead', 'blocking', 'frozen', 'needRelease', 'prevAlt']) h[f] = !!s[f]
   h.charging = s.charging ? { ...s.charging } : null
   h.rune = s.rune ? { t: s.rune.t } : null
+  h.combo = s.combo ? { moves: [...s.combo.moves], lockDir: { ...s.combo.lockDir }, last: s.combo.last ?? null } : null
   h.shock = s.shock ? { ...s.shock } : undefined
   h.rain = s.rain ? { ...s.rain } : undefined
   h.blinkTrail = s.blinkTrail ? { from: { ...s.blinkTrail.from }, to: { ...s.blinkTrail.to }, t: s.blinkTrail.t } : null

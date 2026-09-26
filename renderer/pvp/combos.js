@@ -4,6 +4,7 @@
 // the moves into a combo. Pure: the sim and the client's predictor both run
 // it, so a predicted hold spends exactly the stamina the server's does.
 import { WARRIOR_COMBOS } from '../data/pvp.js'
+import { spendStamina } from '../systems/stamina.js'
 
 const ORDER = ['n', 'e', 's', 'w']
 export const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e' }
@@ -61,4 +62,19 @@ export function classify(moves) {
     if (turns.every(t => t === 1) || turns.every(t => t === 3)) return { kind: 'whirl', dir: moves[3] }
   }
   return { kind: 'swing', dir: null }
+}
+
+export const isComboWeapon = weaponType => weaponType === WARRIOR_COMBOS.weapon
+
+// The press: a hold begins, sliding along the move held at that moment.
+export function beginHold(hero, move) {
+  const { moves, last } = startGesture(move)
+  hero.combo = { moves, last, lockDir: unitMove(move) }
+}
+
+// One held tick: read the stick, pay for a move that registers.
+export function holdGesture(hero, move) {
+  const g = stepGesture(hero.combo, move, hero.stamina ?? 0)
+  hero.combo = { moves: g.moves, last: g.last, lockDir: hero.combo.lockDir }
+  if (g.cost) spendStamina(hero, g.cost)
 }

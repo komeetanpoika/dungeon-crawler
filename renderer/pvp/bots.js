@@ -94,7 +94,8 @@ export function botInput(match, hero) {
   if (hero.cls === 'warrior') {
     const shot = incoming(match, hero)
     if (shot) { input.alt = true; input.facing = faceToward(hero, shot); return input }
-    if (d <= BOTS.meleeRange) { input.facing = faceToward(hero, foe); input.attack = true; return input }
+    // The sword swings on the release (2a): press on one tick, let go the next.
+    if (d <= BOTS.meleeRange) { input.facing = faceToward(hero, foe); input.attack = !hero.combo; return input }
     steer(match, hero, foe, input)
     return input
   }

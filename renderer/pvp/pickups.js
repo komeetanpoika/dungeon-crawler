@@ -66,6 +66,7 @@ export function grantRune(match, hero) {
   }
   if (power.wandType) hero.wand = makeWandContents(power.wandType)
   hero.charging = null
+  hero.combo = null
   hero.rune = { t: PICKUPS.rune.duration, saved }
   return true
 }
@@ -77,6 +78,7 @@ export function endRune(match, hero) {
   if (off !== undefined) gearOf(hero, 'melee').off = off
   if (RUNE_POWER[hero.cls]?.bolts) hero.ammo.bolt = 0   // unused bolts go with the crossbow
   hero.charging = null
+  hero.combo = null
   hero.rune = null
   match.events.push({ type: 'runeEnd', hero: hero.id })
 }
