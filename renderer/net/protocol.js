@@ -10,11 +10,11 @@ import { DIRS, weaponContents, makeRangedContents, makeWandContents } from '../s
 import { gearOf, offhand } from '../systems/inventory.js'
 import { makeHero, applyKit } from '../pvp/hero.js'
 
-export const MSG = { HELLO: 'hello', INPUT: 'input', CLASS: 'class', PING: 'ping',
+export const MSG = { HELLO: 'hello', INPUT: 'input', CLASS: 'class', PING: 'ping', BYE: 'bye',
   WELCOME: 'welcome', SNAP: 'snap', ERROR: 'error', PONG: 'pong' }
 export const ERR = { VERSION: 'version', NO_ROOM: 'no_room', ROOM_FULL: 'room_full',
   BAD_NAME: 'bad_name', BAD_HELLO: 'bad_hello', SERVER_FULL: 'server_full',
-  RATE_LIMITED: 'rate_limited', IDLE: 'idle' }
+  RATE_LIMITED: 'rate_limited', IDLE: 'idle', RESUME_FAILED: 'resume_failed' }
 
 export const encode = msg => JSON.stringify(msg)
 
@@ -50,17 +50,23 @@ export function validateName(raw) {
 export const validateClass = raw => typeof raw === 'string' && Object.hasOwn(KITS, raw)
 
 const CODE_RE = new RegExp(`^[${NET.codeAlphabet}]{${NET.codeLength}}$`)
+// A seat token: 128 random bits, hex (server: crypto.randomBytes(16)).
+export const TOKEN_RE = /^[0-9a-f]{32}$/
 // Exactly one way in: { create: true } a private room, { room: CODE } join
-// by code, { quick: true } a public room with bot fill (protocol v2).
+// by code, { quick: true } a public room with bot fill (protocol v2), or
+// { resume: TOKEN } back into your own seat after a drop (v3) — which needs
+// no name or class: the seat keeps its own.
 export function validateHello(raw) {
   if (raw?.v !== NET.protocolVersion) return { error: ERR.VERSION }
-  const name = validateName(raw.name)
-  if (!name) return { error: ERR.BAD_NAME }
-  if (!validateClass(raw.cls)) return { error: ERR.BAD_HELLO }
   const create = raw.create === true
   const quick = raw.quick === true
   const room = typeof raw.room === 'string' ? raw.room.trim().toUpperCase() : null
-  if (Number(create) + Number(quick) + Number(!!room) !== 1) return { error: ERR.BAD_HELLO }
+  const resume = raw.resume !== undefined && raw.resume !== null
+  if (Number(create) + Number(quick) + Number(!!room) + Number(resume) !== 1) return { error: ERR.BAD_HELLO }
+  if (resume) return typeof raw.resume === 'string' && TOKEN_RE.test(raw.resume) ? { resume: raw.resume } : { error: ERR.BAD_HELLO }
+  const name = validateName(raw.name)
+  if (!name) return { error: ERR.BAD_NAME }
+  if (!validateClass(raw.cls)) return { error: ERR.BAD_HELLO }
   if (create) return { name, cls: raw.cls, create: true }
   if (quick) return { name, cls: raw.cls, quick: true }
   return CODE_RE.test(room) ? { name, cls: raw.cls, room } : { error: ERR.BAD_HELLO }

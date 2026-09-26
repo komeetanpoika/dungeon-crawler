@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeLobby, createRoom, joinRoom, leaveRoom, quickJoin, balanceBots, queueInput, setRoomClass,
-  stepRoom, drainKicks } from '../server/rooms.js'
+  stepRoom, drainKicks, markAway, resumeSeat, drainExpired, ackOf } from '../server/rooms.js'
 import { removeHero } from '../renderer/pvp/sim.js'
 import { grantRune } from '../renderer/pvp/pickups.js'
 import { ERR } from '../renderer/net/protocol.js'
@@ -217,5 +217,98 @@ describe('the idle timer', () => {
     const { room } = quickJoin(lobby, who('A'))
     steps(lobby, room, 20)
     assert.deepEqual(drainKicks(room), [])
+  })
+})
+
+describe('away seats (reconnect grace)', () => {
+  const two = opts => { const lobby = makeLobby(opts); const { room } = quickJoin(lobby, who('A')); quickJoin(lobby, who('B')); return { lobby, room } }
+  const hero = (room, id) => room.match.heroes.find(h => h.id === id)
+  it('carries the spec number', () => {
+    assert.equal(NET.reconnectGraceMs, 20000)
+  })
+  it('an away hero stays in the match on neutral input, and its seat still counts as human', () => {
+    const { lobby, room } = two()
+    for (let i = 1; i <= 3; i++) queueInput(room, 'p1', input(i, { move: { x: 1, y: 0 }, facing: 'east' }))
+    assert.equal(markAway(lobby, room, 'p1'), true)
+    const px = hero(room, 'p1').px
+    steps(lobby, room, 10)
+    assert.equal(hero(room, 'p1').px, px, 'stands still')
+    assert.equal(humansOf(room).length, 2)
+    assert.equal(botsOf(room).length, 2, 'no bot took the seat')
+    assert.equal(room.players.get('p1').away, true)
+  })
+  it('an away hero can still be killed', () => {
+    const { lobby, room } = two()
+    markAway(lobby, room, 'p1')
+    hero(room, 'p1').spawnProtect = 0
+    hero(room, 'p1').hp = 0
+    steps(lobby, room, 1)
+    assert.equal(hero(room, 'p1').dead, true)
+    assert.equal(hero(room, 'p1').deaths, 1)
+  })
+  it('the idle kick is suspended while away', () => {
+    const { lobby, room } = two({ idleKickMs: 1000, reconnectGraceMs: 5000 })   // 30 and 150 ticks
+    markAway(lobby, room, 'p1')
+    for (let i = 1; i <= 100; i++) { queueInput(room, 'p2', input(i, { attack: true })); stepRoom(lobby, room) }
+    assert.deepEqual(drainKicks(room), [])
+    assert.deepEqual(drainExpired(room), [])
+  })
+  it('the grace runs out after reconnectGraceMs of room ticks: expired once; freeing the seat refills it with a bot', () => {
+    const { lobby, room } = two({ reconnectGraceMs: 1000 })                        // 30 ticks
+    markAway(lobby, room, 'p1')
+    steps(lobby, room, 29)
+    assert.deepEqual(drainExpired(room), [])
+    steps(lobby, room, 1)
+    assert.deepEqual(drainExpired(room), ['p1'])
+    steps(lobby, room, 5)
+    assert.deepEqual(drainExpired(room), [], 'queued once')
+    leaveRoom(lobby, room, 'p1')                                                   // what the socket layer does
+    assert.equal(humansOf(room).length, 1)
+    assert.equal(botsOf(room).length, 3)
+  })
+  it('a lone private host who drops keeps the room open while away', () => {
+    const lobby = makeLobby()
+    const { room } = createRoom(lobby, who('A'))
+    markAway(lobby, room, 'p1')
+    steps(lobby, room, 30)
+    assert.ok(lobby.rooms.has(room.code))
+  })
+  it('resumeSeat puts the same hero back: kills, deaths and class kept; queue, ack and idle clock start over', () => {
+    const { lobby, room } = two({ idleKickMs: 1000 })
+    for (let i = 1; i <= 5; i++) { queueInput(room, 'p1', input(500 + i, { move: { x: 1, y: 0 } })); stepRoom(lobby, room) }
+    assert.equal(ackOf(room, 'p1'), 505)
+    Object.assign(hero(room, 'p1'), { kills: 2, deaths: 1 })
+    markAway(lobby, room, 'p1')
+    steps(lobby, room, 40)
+    assert.deepEqual(resumeSeat(room, 'p1'), { room, heroId: 'p1' })
+    const p = room.players.get('p1')
+    assert.equal(p.away, false)
+    assert.deepEqual(p.queue, [])
+    assert.equal(ackOf(room, 'p1'), 0)
+    assert.equal(p.activeTick, room.tick)
+    assert.deepEqual([hero(room, 'p1').kills, hero(room, 'p1').deaths, hero(room, 'p1').cls], [2, 1, 'archer'])
+    // The new client numbers its inputs from 1 again, and they are acked.
+    queueInput(room, 'p1', input(1)); stepRoom(lobby, room)
+    assert.equal(ackOf(room, 'p1'), 1)
+  })
+  // CONTROLLER RULING (2026-09-26, design §2): a resume takes over a seat
+  // whose original socket still looks open, instead of being refused — a
+  // phone that switched networks before the server noticed the old link
+  // died. Only an unknown hero id or one already freed is resume_failed;
+  // closing the superseded socket (4001) is the socket layer's job (Task 6).
+  it('resumeSeat takes over a live (not-away) seat; refuses an unknown one and one already freed', () => {
+    const { lobby, room } = two({ reconnectGraceMs: 1000 })
+    assert.deepEqual(resumeSeat(room, 'p1'), { room, heroId: 'p1' }, 'its socket still looks open, but the new one takes over')
+    const p = room.players.get('p1')
+    assert.equal(p.away, false)
+    assert.equal(p.awayUntil, null)
+    assert.deepEqual(p.queue, [])
+    assert.equal(ackOf(room, 'p1'), 0)
+    assert.equal(p.activeTick, room.tick)
+    assert.deepEqual(resumeSeat(room, 'p9'), { error: ERR.RESUME_FAILED })
+    markAway(lobby, room, 'p2')
+    steps(lobby, room, 30)
+    for (const id of drainExpired(room)) leaveRoom(lobby, room, id)
+    assert.deepEqual(resumeSeat(room, 'p2'), { error: ERR.RESUME_FAILED })
   })
 })

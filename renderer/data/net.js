@@ -49,4 +49,7 @@ export const NET = {
   lonelyHostKickMs: 600000, // a private room waiting alone for a friend this long: error idle, closed
   roomsPerIp: 2,           // rooms created (not joined) per IP key, at once; a create beyond this is rate_limited
   refusalLogMs: 60000,     // refusal counts are logged this often, when non-zero
+
+  // Arenas, reconnect and netcode polish (4b).
+  reconnectGraceMs: 20000, // a dropped human's hero stays in the match this long, waiting for hello.resume
 }

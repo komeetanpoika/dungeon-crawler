@@ -13,8 +13,10 @@ import { NET } from '../renderer/data/net.js'
 import { arenaAt, nextArenaIndex } from '../renderer/data/pvp-arenas.js'
 
 export function makeLobby({ random = Math.random, rewind = true, matchLength = PVP.matchLength,
-  resultsDelay = NET.resultsDelay, idleKickMs = NET.idleKickMs, lonelyHostKickMs = NET.lonelyHostKickMs } = {}) {
-  return { rooms: new Map(), serial: 0, opts: { random, rewind, matchLength, resultsDelay, idleKickMs, lonelyHostKickMs } }
+  resultsDelay = NET.resultsDelay, idleKickMs = NET.idleKickMs, lonelyHostKickMs = NET.lonelyHostKickMs,
+  reconnectGraceMs = NET.reconnectGraceMs } = {}) {
+  return { rooms: new Map(), serial: 0,
+    opts: { random, rewind, matchLength, resultsDelay, idleKickMs, lonelyHostKickMs, reconnectGraceMs } }
 }
 
 function newCode(lobby) {
@@ -36,15 +38,17 @@ function newMatch(lobby, room, roster) {
 
 // activeTick: the room tick of this human's last real input (a move,
 // attack, alt or sprint) or class pick — what the idle timer measures.
+// away / awayUntil: the socket dropped and the seat waits (a room tick) for
+// hello.resume (4b spec §2).
 const freshPlayer = room => ({ queue: [], last: NEUTRAL_INPUT, lastInputTick: room.match.tick, ack: 0,
-  activeTick: room.tick, kicked: false })
+  activeTick: room.tick, kicked: false, away: false, awayUntil: null })
 
 // public: a quick-join room with bot fill; private (the default): humans
 // only, reached by code.
 export function createRoom(lobby, { name, cls, public: isPublic = false }) {
   if (lobby.rooms.size >= NET.maxRooms) return { error: ERR.SERVER_FULL }
   const room = { code: newCode(lobby), public: isPublic, serial: lobby.serial++, nextId: 1, nextBot: 1,
-    bots: [], kicks: [], tick: 0, match: null, players: new Map(), history: new Map(),
+    bots: [], kicks: [], expired: [], tick: 0, match: null, players: new Map(), history: new Map(),
     pendingEvents: [], pendingCues: [], nextMatchAt: null, aloneSince: null, arenaIndex: 0 }
   const heroId = `p${room.nextId++}`
   room.match = newMatch(lobby, room, [{ id: heroId, name, cls }])
@@ -141,6 +145,45 @@ export function setRoomClass(room, heroId, cls) {
 }
 export const ackOf = (room, heroId) => room.players.get(heroId)?.ack ?? 0
 
+// A seated human's socket dropped without a bye (4b spec §2). The hero stays
+// in the match on neutral input — it stands still and can be hit and killed
+// — and the seat still counts as human (no bot takes it, the room stays
+// open), with the idle kick suspended, until reconnectGraceMs of room ticks
+// have passed; then stepRoom queues it on room.expired for the socket layer
+// to free. False when there is no such seat.
+export function markAway(lobby, room, heroId) {
+  const p = room.players.get(heroId)
+  if (!p) return false
+  p.away = true
+  p.awayUntil = room.tick + Math.round(lobby.opts.reconnectGraceMs / 1000 / PVP.tick)
+  p.queue = []
+  p.last = NEUTRAL_INPUT
+  return true
+}
+
+// hello.resume found this seat: back on a new socket as the same hero (id,
+// name, class, kills, deaths untouched). The new client numbers its inputs
+// from 1 again, so the queue and the ack start over; the idle clock restarts.
+// CONTROLLER RULING (2026-09-26, design §2): a resume also takes over a seat
+// that is not away — its original socket may still look open to the server
+// (a phone that switched networks before the old link was noticed dead) —
+// so this is not gated on p.away. Only an unknown hero id or one already
+// freed (removed from room.players) is refused. Closing the superseded
+// socket is the socket layer's job (Task 6), not this one.
+export function resumeSeat(room, heroId) {
+  const p = room.players.get(heroId)
+  if (!p) return { error: ERR.RESUME_FAILED }
+  Object.assign(p, { away: false, awayUntil: null, queue: [], last: NEUTRAL_INPUT, ack: 0,
+    lastInputTick: room.match.tick, activeTick: room.tick })
+  return { room, heroId }
+}
+
+export function drainExpired(room) {
+  const e = room.expired
+  room.expired = []
+  return e
+}
+
 // Where `attacker` saw `foe`: its position `k` ticks ago, k = how far behind
 // the attacker's view was, capped at NET.rewindMaxTicks. Only the melee hit
 // test asks (attacks.js swing via match.hitPos).
@@ -197,8 +240,18 @@ function checkIdle(lobby, room) {
   }
   const holding = room.match.waiting || room.match.ended
   for (const [id, p] of room.players) {
+    if (p.away) continue                    // suspended while the seat waits for its player
     if (holding) p.activeTick = room.tick
     else if (!p.kicked && room.tick - p.activeTick >= limit) { p.kicked = true; room.kicks.push(id) }
+  }
+}
+
+// An away seat whose grace has run out is queued on room.expired, once.
+function checkAway(room) {
+  for (const [id, p] of room.players) {
+    if (!p.away || p.awayUntil === null || room.tick < p.awayUntil) continue
+    p.awayUntil = null
+    room.expired.push(id)
   }
 }
 
@@ -215,7 +268,8 @@ export function stepRoom(lobby, room) {
   const inputs = {}
   for (const [id, p] of room.players) {
     let input
-    if (p.queue.length) { input = p.queue.shift(); p.last = input; p.ack = input.seq }
+    if (p.away) input = NEUTRAL_INPUT
+    else if (p.queue.length) { input = p.queue.shift(); p.last = input; p.ack = input.seq }
     else input = match.tick - p.lastInputTick > NET.staleInputTicks ? NEUTRAL_INPUT : p.last
     inputs[id] = input
     const hero = heroById(match, id)
@@ -235,6 +289,7 @@ export function stepRoom(lobby, room) {
   if (room.match.ended && room.nextMatchAt !== null && room.tick >= room.nextMatchAt) startNextMatch(lobby, room)
   room.tick++
   checkIdle(lobby, room)
+  checkAway(room)
   const due = Math.floor(room.tick * NET.snapshotHz * PVP.tick) !== Math.floor((room.tick - 1) * NET.snapshotHz * PVP.tick)
   if (!due) return null
   const body = snapshotBody(room.match, { events: room.pendingEvents, cues: room.pendingCues })
