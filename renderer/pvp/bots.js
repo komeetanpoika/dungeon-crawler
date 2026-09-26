@@ -155,6 +155,9 @@ export function botInput(match, hero) {
   const d = tileDist(hero, foe)
   if (hero.cls === 'warrior') {
     const shot = incoming(match, hero)
+    // Raising the shield (alt) would cancel a hold in progress (moveHero's
+    // cancelHold), so a warrior mid-hold rides the incoming shot out instead
+    // of blocking it — deliberate, not an oversight.
     if (shot && !hero.combo) { input.alt = true; input.facing = faceToward(hero, shot); return input }
     if (!isComboWeapon(hero.weapon?.weaponType)) {        // the rune's hammer: hold, and it swings itself
       // Gated on needRelease (not just "true"): the auto-release swing sets
@@ -194,7 +197,10 @@ export function botInput(match, hero) {
       // The Storm Wand: charge to the tier that strikes nearest the foe.
       // Any other wand (the rune's fireball) releases at the full tier.
       const hold = hero.wand?.weaponType === 'stormwand' ? TIER_HOLD[lightningTier(d)] : GUST_CHARGE.full
-      input.attack = !(hero.charging && hero.charging.t >= hold)
+      // Gated on needRelease too (fix round 1): every completed cast sets it,
+      // and it only clears on a tick that sends attack:false. Without this a
+      // mage bot casts once and then never again — see the note on enterPlan.
+      input.attack = !hero.needRelease && !(hero.charging && hero.charging.t >= hold)
       return input
     }
     // A foe far off and not closing (a hero walks the way it faces) gets the

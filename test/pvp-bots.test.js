@@ -187,3 +187,47 @@ describe('bots use the signature moves (2a)', () => {
     assert.ok(m.lightning.length + m.strikes.length > 0 || m.heroes[1].hp < m.heroes[1].maxHp)
   })
 })
+
+describe('fix round 1: bots keep acting against a stationary foe, not just once', () => {
+  // A rising edge on a cooldown field means an action just fired (cooldowns
+  // only ever count down otherwise).
+  const countRises = (m, id, ticks, field) => {
+    const bot = m.heroes.find(h => h.id === id)
+    let prev = bot[field], count = 0, maxDraw = 0
+    for (let i = 0; i < ticks; i++) {
+      stepMatch(m, { [id]: botInput(m, bot) }, 1 / 30)
+      if (bot[field] > prev) count++
+      prev = bot[field]
+      if (bot.charging?.kind === 'double') maxDraw = Math.max(maxDraw, bot.charging.t)
+    }
+    return { count, maxDraw }
+  }
+  const setup = (cls, botCell, foes) => {
+    const m = makeMatch({ roster: roster(cls, ...foes.map(f => f.cls)) })
+    placeHero(m.heroes[0], botCell)
+    foes.forEach((f, i) => {
+      const h = m.heroes[i + 1]
+      placeHero(h, f.cell)
+      if (f.facing) h.facing = f.facing
+      h.hp = h.maxHp = 1000                 // never dies mid-run
+    })
+    for (const h of m.heroes) h.spawnProtect = 0
+    return m
+  }
+  it('a mage keeps casting Call Lightning (needRelease must not stick after a cast)', () => {
+    const m = setup('mage', { x: 2, y: 2 }, [{ cls: 'warrior', cell: { x: 8, y: 2 } }])
+    const { count } = countRises(m, 'b0', 180, 'magicCooldown')   // 6 s at 30 Hz
+    assert.ok(count >= 3, `expected at least 3 casts in 6s, got ${count}`)
+  })
+  it('a warrior keeps swinging/lunging at a foe lined up 2-3 tiles away', () => {
+    const m = setup('warrior', { x: 10, y: 2 }, [{ cls: 'archer', cell: { x: 13, y: 2 } }])
+    const { count } = countRises(m, 'b0', 120, 'meleeCooldown')   // 4 s at 30 Hz
+    assert.ok(count > 1, `expected more than one swing/lunge, got ${count}`)
+  })
+  it('an archer keeps firing the double shot, never holding the draw past full + a tick', () => {
+    const m = setup('archer', { x: 2, y: 2 }, [{ cls: 'warrior', cell: { x: 9, y: 2 }, facing: 'east' }])
+    const { count, maxDraw } = countRises(m, 'b0', 150, 'rangedCooldown')   // 5 s at 30 Hz
+    assert.ok(count > 1, `expected more than one double shot, got ${count}`)
+    assert.ok(maxDraw <= DOUBLE_SHOT.full + 1 / 30 + 1e-9, `draw held past full: ${maxDraw}`)
+  })
+})
