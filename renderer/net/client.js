@@ -36,7 +36,7 @@ export function connect({ url, hello, WebSocketImpl = globalThis.WebSocket, now 
 // ignored from then on.
 function openSocket(s, hello) {
   const ws = s.ws = new s.WebSocketImpl(s.url)
-  ws.onopen = () => ws.send(encode({ type: MSG.HELLO, v: NET.protocolVersion, ...hello }))
+  ws.onopen = () => { if (s.ws === ws) ws.send(encode({ type: MSG.HELLO, v: NET.protocolVersion, ...hello })) }
   ws.onmessage = ev => { if (s.ws === ws) onMessage(s, decode(ev.data), s.now()) }
   ws.onclose = ev => { if (s.ws === ws) onClose(s, s.now(), ev?.code) }
 }
@@ -97,7 +97,12 @@ function tickReconnect(s, t) {
 
 // Back in: the old predictor and snapshot buffer describe a connection that
 // is gone, and the server numbers this socket's inputs afresh. The next
-// snapshot rebuilds the view.
+// snapshot rebuilds the view. cues/floats from before the drop are stale —
+// dropped here rather than left to play late — and lastView is reset to
+// null so the first sessionView() call after the resume takes its "first
+// call ever" branch instead of seeing a huge gap since the old (pre-drop)
+// lastView and wiping the floats/cues a snapshot that arrives with (or
+// right after) the resume just queued.
 function resetSession(s) {
   s.pred = null
   s.interp = makeInterp()
@@ -108,6 +113,9 @@ function resetSession(s) {
   s.held = { attack: false, alt: false }
   s.lastFrame = null
   s.lastPingAt = -Infinity
+  s.lastView = null
+  s.cues = []
+  s.feedback.floats = []
 }
 
 function refuse(s, code) {

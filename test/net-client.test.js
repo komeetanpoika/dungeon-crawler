@@ -229,6 +229,35 @@ describe('reconnect', () => {
     frame(s, NEUTRAL_INPUT, t + 40)
     assert.equal(Sock.all[1].sent.find(m => m.type === 'input').seq, 1, 'inputs are numbered afresh')
   })
+  // fix round 1, item 2: pre-drop cues/floats must not play late after the
+  // resume, and the first sessionView() call back must not mistake the gap
+  // since the (pre-drop) lastView for a backgrounded tab and wipe the
+  // float/cue a snapshot arriving with the resume itself just queued.
+  it('a resume clears pre-drop cues/floats; the first view back does not wipe the ones a fresh snapshot just queued', () => {
+    const s = start()
+    Sock.all[0].recv(snapBody(lone(), { tick: 5, events: [{ type: 'hit', target: 'p1', amount: 3 }], cues: ['pre-drop-cue'] }))
+    frame(s, NEUTRAL_INPUT, 0); frame(s, NEUTRAL_INPUT, 100)
+    assert.equal(s.feedback.floats.length, 1, 'pre-drop float queued')
+    assert.deepEqual(s.cues, ['pre-drop-cue'])
+    sessionView(s, 200)                                      // establishes a (soon stale) lastView
+    drop(s)
+    run(s, 1500, sock => { sock.open(); sock.recv(hi(TOK2)) })
+    assert.equal(s.status, 'open')
+    assert.equal(s.cues.length, 0, 'pre-drop cues are gone')
+    assert.equal(s.feedback.floats.length, 0, 'pre-drop floats are gone')
+    assert.equal(s.lastView, null, 'lastView is reset, not left pointing at the pre-drop gap')
+    // A snapshot right after the resume carries its own fresh float/cue.
+    Sock.all[1].recv(snapBody(lone(), { tick: 50, events: [{ type: 'hit', target: 'p1', amount: 5 }], cues: ['post-resume-cue'] }))
+    assert.equal(s.feedback.floats.length, 1, 'the fresh float is queued')
+    assert.deepEqual(s.cues, ['post-resume-cue'])
+    // Far from the old (pre-drop) lastView in wall-clock terms — with
+    // lastView left stale this would look like a long-backgrounded tab and
+    // wipe the float/cue that just arrived with the resume.
+    const v = sessionView(s, t + 5000)
+    assert.ok(v)
+    assert.equal(s.feedback.floats.length, 1, 'the fresh float survives the first post-resume view')
+    assert.deepEqual(s.cues, ['post-resume-cue'], 'the fresh cue survives the first post-resume view')
+  })
   it('resuming into a match that has moved to another arena rebuilds the map', () => {
     const s = drop(start())
     const before = s.map
@@ -277,6 +306,21 @@ describe('reconnect', () => {
     assert.equal(s.ws, opened[1])
     opened[0].recv(hi(TOK2))                                 // a late answer on the abandoned one is ignored
     assert.equal(s.status, 'reconnecting')
+  })
+  // fix round 1, item 1 (verify): the abandoned attempt may in fact have
+  // reached the server and been superseded there once the next attempt's
+  // resume lands (closeSuperseded, server/pvp-server.js) — its own close,
+  // whatever code it carries, must land on a socket that is no longer
+  // `s.ws` and so change nothing about the live session.
+  it('a close (even 4001) arriving late on an already-abandoned attempt changes nothing: s.ws has already moved on', () => {
+    const s = drop(start())
+    const opened = []
+    run(s, 3000, sock => opened.push(sock))                 // never answers
+    assert.equal(opened.length, 2)
+    assert.equal(s.ws, opened[1])
+    opened[0].onclose({ code: 4001 })                        // the server's own close for the superseded attempt
+    assert.equal(s.status, 'reconnecting')
+    assert.equal(s.ws, opened[1])
   })
   it('Leave while reconnecting stops the retries', () => {
     const s = drop(start())

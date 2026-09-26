@@ -56,8 +56,12 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
   const wss = new WebSocketServer({ noServer: true, maxPayload: NET.maxPayload })
   const loops = new Map()
 
-  // Seat token → { roomCode, heroId }. One live token per seat: a resume
-  // spends the old one, and a seat given up takes its token with it.
+  // Seat token → { roomCode, heroId }. One token per seat, stable across
+  // resumes (CONTROLLER RULING 2026-09-26, spec §2: a single-use token let a
+  // slow retry lose the seat — see resume() below): it is deleted only when
+  // the seat itself is freed (bye, expiry, idle kick, a flood/crash close,
+  // the room closing), all of which route through dropTokens via vacate() or
+  // crashRoom().
   const tokens = new Map()
 
   function issueToken(room, heroId) {
@@ -132,18 +136,25 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
   }
 
   // hello.resume: back into an away seat of a live room, or resume_failed —
-  // the token unknown, spent or expired, the room gone, or the seat's own
-  // socket still open (rooms.js's resumeSeat now takes that over instead of
-  // refusing it — CONTROLLER RULING 2026-09-26; see closeSuperseded below for
-  // the socket-layer half of that takeover).
+  // the token unknown, expired or already freed, the room gone, or the
+  // seat's own socket still open (rooms.js's resumeSeat now takes that over
+  // instead of refusing it — CONTROLLER RULING 2026-09-26; see
+  // closeSuperseded below for the socket-layer half of that takeover). The
+  // token itself is NOT spent here: it stays valid for the seat until the
+  // seat is freed (CONTROLLER RULING 2026-09-26, spec §2 amended) — an
+  // attempt the client later abandons for a newer one (tickReconnect) may
+  // still have reached the server and succeeded here; a single-use token
+  // would make that abandoned attempt's success cost the client its only
+  // way back in, and the seat would sit `away` under a token the client
+  // never saw. The welcome carries this same token back out (see the hello
+  // handler below), never a fresh one.
   function resume(token) {
     const at = tokens.get(token)
     const room = at && lobby.rooms.get(at.roomCode)
     if (!room) return { error: ERR.RESUME_FAILED }
     const res = resumeSeat(room, at.heroId)
     if (res.error) return res
-    tokens.delete(token)
-    return res
+    return { ...res, token }
   }
 
   // A resume that lands on a seat whose own socket is still open (a phone
@@ -265,8 +276,10 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
           closeSuperseded(room, heroId, ws)
           room.sockets.set(heroId, ws)
           ensureLoop(room)
+          // A resume's welcome carries its own (unchanged) token back; any
+          // other seating issues a fresh one.
           send(ws, { type: MSG.WELCOME, v: NET.protocolVersion, room: room.code, heroId, tick: room.match.tick,
-            arena: room.match.arena.id, token: issueToken(room, heroId) })
+            arena: room.match.arena.id, token: res.token ?? issueToken(room, heroId) })
           return
         }
         // A deliberate leave: the seat goes now, with no grace. The close

@@ -1,7 +1,7 @@
 import { describe, it, after } from 'node:test'
 import assert from 'node:assert/strict'
 import WebSocket from 'ws'
-import { startServer, rawClient, waitFor, sleep, drive } from './net-helpers.js'
+import { startServer, rawClient, waitFor, sleep, drive, laggy } from './net-helpers.js'
 import { connect, sessionView, drainEvents, leave } from '../renderer/net/client.js'
 import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
 import { NET } from '../renderer/data/net.js'
@@ -25,7 +25,7 @@ describe('seat tokens and resume over sockets', async () => {
     await waitFor(() => !srv.pvp.tokens.has(w.token))
   })
 
-  it('a dropped client resumes within the grace: same hero, kills kept, a new token, snapshots again', async () => {
+  it('a dropped client resumes within the grace: same hero, kills kept, the same token, snapshots again', async () => {
     const a = await rawClient(srv.url)
     a.send(hello({ quick: true }))
     const w = await a.next('welcome')
@@ -39,13 +39,17 @@ describe('seat tokens and resume over sockets', async () => {
     const w2 = await b.next('welcome')
     assert.equal(w2.heroId, w.heroId)
     assert.equal(w2.room, w.room)
-    assert.match(w2.token, /^[0-9a-f]{32}$/)
-    assert.notEqual(w2.token, w.token)
-    assert.equal(srv.pvp.tokens.has(w.token), false, 'the old token is spent')
+    // CONTROLLER RULING (2026-09-26, spec §2 amended): the token is stable
+    // across a resume, not spent — a single-use token let a slow retry lose
+    // the seat (an abandoned attempt whose hello still reached the server
+    // spent the only token the client had).
+    assert.equal(w2.token, w.token)
+    assert.equal(srv.pvp.tokens.has(w.token), true, 'the token is still live, naming the same seat')
     const snap = await b.next('snap')
     assert.equal(snap.heroes.find(h => h.id === w.heroId).kills, 2)
     assert.equal(room.players.get(w.heroId).away, false)
     b.bye()
+    await waitFor(() => !srv.pvp.tokens.has(w.token))
   })
 
   // CONTROLLER RULING (2026-09-26, design §2, amending the brief's original
@@ -72,8 +76,8 @@ describe('seat tokens and resume over sockets', async () => {
     const w2 = await b.next('welcome')
     assert.equal(w2.heroId, w.heroId)
     assert.equal(w2.room, w.room)
-    assert.match(w2.token, /^[0-9a-f]{32}$/)
-    assert.notEqual(w2.token, w.token)
+    // The same, stable token comes back — a takeover is still a resume.
+    assert.equal(w2.token, w.token)
     const snap = await b.next('snap')
     assert.equal(snap.heroes.find(h => h.id === w.heroId).kills, 3, 'the same hero, kills kept')
 
@@ -81,11 +85,17 @@ describe('seat tokens and resume over sockets', async () => {
     assert.equal(a.closed, 4001, 'the superseded socket is closed')
     assert.equal(room.players.get(w.heroId).away, false, 'the seat was never marked away')
     assert.equal(botsIn(other.last('snap')).length, 2, 'no bot replaced it')
-    assert.equal(srv.pvp.tokens.has(w.token), false, 'the old token is spent')
+    assert.equal(srv.pvp.tokens.has(w.token), true, 'the token is still live: a takeover does not spend it either')
     b.bye(); other.bye()
   })
 
-  it('a spent token and a made-up token get resume_failed', async () => {
+  // CONTROLLER RULING (2026-09-26, spec §2 amended, fix round 1): the token
+  // is no longer single-use, so the old "a spent token is refused" test no
+  // longer applies. Replaced with the two behaviours the ruling actually
+  // specifies: the same token resumes again after a second drop, and only a
+  // token whose seat has actually been freed (or one that was never real)
+  // is refused.
+  it('the same token resumes again after another drop: a token is not spent by using it', async () => {
     const a = await rawClient(srv.url)
     a.send(hello({ quick: true }))
     const w = await a.next('welcome')
@@ -93,13 +103,31 @@ describe('seat tokens and resume over sockets', async () => {
     await waitFor(() => roomOf(srv, w.room).players.get(w.heroId)?.away)
     const back = await rawClient(srv.url)
     back.send(resumeHello(w.token))
-    await back.next('welcome')
+    const w2 = await back.next('welcome')
+    assert.equal(w2.token, w.token, 'unchanged by the first resume')
+    back.ws.terminate()                                     // drop again, no bye
+    await waitFor(() => roomOf(srv, w.room).players.get(w.heroId)?.away)
+    const c = await rawClient(srv.url)
+    c.send(resumeHello(w.token))                            // the very same token, a second time
+    const w3 = await c.next('welcome')
+    assert.equal(w3.heroId, w.heroId)
+    assert.equal(w3.token, w.token, 'still unchanged by the second resume')
+    const snap = await c.next('snap')
+    assert.equal(snap.heroes.find(h => h.id === w.heroId).id, w.heroId)
+    c.bye()
+  })
+
+  it('a made-up token, and a token whose seat has since been freed, both get resume_failed', async () => {
+    const a = await rawClient(srv.url)
+    a.send(hello({ quick: true }))
+    const w = await a.next('welcome')
+    a.bye()                                                 // frees the seat and its token at once
+    await waitFor(() => !srv.pvp.tokens.has(w.token))
     for (const token of [w.token, 'f'.repeat(32)]) {
       const c = await rawClient(srv.url)
       c.send(resumeHello(token))
       assert.equal((await c.next('error')).code, 'resume_failed')
     }
-    back.bye()
   })
 
   it('a bye releases the seat at once: a bot takes it and the token is dead', async () => {
@@ -239,6 +267,39 @@ describe('the client gets its seat back over a real socket', async () => {
     assert.ok(!types.includes('reconnecting'), types.join(','))
     assert.ok(types.includes('closed'))
     other.bye()
+    await waitFor(() => srv.pvp.lobby.rooms.size === 0)
+  })
+
+  // CONTROLLER RULING (2026-09-26, spec §2 amended, fix round 1): this is
+  // the exact bug the stable token fixes. The first resume attempt's hello
+  // reaches the server and succeeds there (the seat is re-seated on it)
+  // before its welcome makes it back to the client — slow enough that
+  // tickReconnect abandons that attempt for the next one first. With a
+  // single-use token the second attempt's hello.resume would have carried a
+  // token the server had already deleted, so it would have gotten
+  // resume_failed. With the token stable, the second attempt resumes the
+  // same hero on the very same token.
+  it('an attempt whose welcome is delayed gets abandoned; the next attempt still resumes the same hero', async () => {
+    const s = connect({ url: srv.url, WebSocketImpl: FromIp, now: () => performance.now(), hello: { name: 'Aino', cls: 'mage', quick: true } })
+    await waitFor(() => s.status === 'open' && s.pred, 3000)
+    const heroId = s.heroId
+    const token = s.token
+    s.ws.terminate()
+    await waitFor(() => s.status === 'reconnecting')
+    // From here on every socket this session opens is laggy on the way down
+    // only (hello reaches the server promptly; its own reply is what is
+    // slow) — long enough that the first resume attempt (due at +0.5 s) is
+    // abandoned for the second (due at +1.5 s) before its welcome arrives,
+    // but short enough that the second attempt's own welcome lands before
+    // it, too, would be abandoned (due at +3.5 s).
+    s.WebSocketImpl = laggy({ down: 1300 })
+    await drive(s, () => NEUTRAL_INPUT, 4000)
+    assert.equal(s.status, 'open')
+    assert.equal(s.heroId, heroId)
+    assert.equal(s.token, token, 'the stable token carried the seat through the abandoned attempt')
+    const v = await waitFor(() => sessionView(s, performance.now()), 3000)
+    assert.equal(v.me.id, heroId)
+    leave(s)
     await waitFor(() => srv.pvp.lobby.rooms.size === 0)
   })
 })
