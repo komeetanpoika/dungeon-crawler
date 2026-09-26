@@ -11,14 +11,20 @@ import { PVP_ARENAS } from '../renderer/data/pvp-arenas.js'
 // A properly placed hero (px/py set) — makeMatch does the placeHero a bare
 // makeHero() does not.
 const lone = () => makeMatch({ roster: [{ id: 'p1', name: 'A', cls: 'archer' }] }).heroes[0]
+// Two properly placed heroes, for tests that need another hero to track as
+// "others".
+const pair = () => makeMatch({ roster: [{ id: 'p1', name: 'A', cls: 'archer' }, { id: 'p2', name: 'B', cls: 'warrior' }] }).heroes
 
 // A fake WebSocket driven entirely by hand: connect() wires onopen/onmessage
 // onto it, tests fire onmessage directly with snapshots, never opening a real
 // socket.
 class FakeWS {
-  constructor() { this.sent = [] }
+  // readyState starts at CONNECTING(0), as a real socket's does before its
+  // onopen fires; tests that need an OPEN(1) transport (leave() checks it
+  // directly, per Minor 4) set it explicitly.
+  constructor() { this.sent = []; this.readyState = 0 }
   send(text) { this.sent.push(JSON.parse(text)) }
-  close() {}
+  close() { this.readyState = 3 }
 }
 
 const open = () => connect({ url: 'ws://x', WebSocketImpl: FakeWS, now: () => 0, hello: { name: 'A', cls: 'archer', create: true } })
@@ -132,6 +138,22 @@ describe('the arena on the wire (protocol v3)', () => {
       assert.equal(s.pred, null, 'the refused snapshot is not applied')
     }
   })
+  // Minor 1 (final review): without a reset, the other hero's frozen old-arena
+  // position keeps drawing on top of the new arena for a few ticks, since
+  // startNextMatch continues match.tick from the frozen results tick.
+  it('an arena change at matchStart drops old-arena snapshots and forgets tracked others', () => {
+    const s = open()
+    welcome(s)
+    const [me, other] = pair()
+    s.ws.onmessage({ data: JSON.stringify(snapBody(me, { tick: 0, heroes: [heroSnap(me), heroSnap(other)] })) })
+    const before = sessionView(s, 0)
+    assert.ok(before.others.some(h => h.id === 'p2'), 'other hero tracked before the switch')
+    assert.equal(s.interp.snaps.length, 1)
+    s.ws.onmessage({ data: JSON.stringify(snapBody(me, { tick: 1, arena: 'tunnels', events: [{ type: 'matchStart' }], heroes: [heroSnap(me)] })) })
+    assert.equal(s.interp.snaps.length, 1, 'the old-arena snapshot is gone, not just superseded')
+    assert.equal(s.interp.snaps[0].tick, 1)
+    assert.equal(s.others.size, 0, 'no stale other-hero position survives the switch')
+  })
   it('an unknown arena in the welcome refuses before the session opens', () => {
     const s = open()
     welcome(s, { arena: 'volcano' })
@@ -144,6 +166,7 @@ describe('leaving', () => {
   it('leave() says bye before closing an open session', () => {
     const s = open()
     welcome(s)
+    s.ws.readyState = 1                                       // a welcome could only have arrived on an open socket
     let closed = false
     s.ws.close = () => { closed = true }
     leave(s)
@@ -152,6 +175,26 @@ describe('leaving', () => {
   })
   it('before the welcome there is no seat to give up: no bye', () => {
     const s = open()
+    leave(s)
+    assert.ok(!s.ws.sent.some(m => m.type === 'bye'))
+  })
+  // Minor 4 (final review): the hello may already have reached the server and
+  // been seated even though the client is still 'connecting' — sending bye
+  // whenever the socket is actually OPEN (not gated on session status) frees
+  // the seat at once instead of leaving a statue for the reconnect grace.
+  it('leave() while still connecting sends bye if the underlying socket is already open', () => {
+    const s = open()
+    s.ws.readyState = 1                                       // WebSocket.OPEN, but no welcome received yet
+    let closed = false
+    s.ws.close = () => { closed = true }
+    assert.equal(s.status, 'connecting')
+    leave(s)
+    assert.equal(s.ws.sent.at(-1).type, 'bye')
+    assert.equal(closed, true)
+  })
+  it('leave() while connecting sends no bye if the socket never opened', () => {
+    const s = open()
+    assert.equal(s.ws.readyState, 0)
     leave(s)
     assert.ok(!s.ws.sent.some(m => m.type === 'bye'))
   })

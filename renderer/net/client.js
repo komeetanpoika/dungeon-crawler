@@ -168,6 +168,10 @@ function setArena(s, id) {
     s.arena = id
     s.map = arenaMap(PVP_ARENAS[id])
     if (s.pred) s.pred.map = s.map
+    // Old-arena snapshots and cosmetics must never get drawn over the new
+    // layout (onSnap pushes the new snapshot right after this returns).
+    s.interp = makeInterp()
+    s.others = new Map()
   }
   return true
 }
@@ -305,7 +309,7 @@ export function sendClass(s, cls) { if (s.status === 'open') s.ws.send(encode({ 
 // A deliberate leave says bye first, so the server frees the seat at once
 // instead of holding it for the reconnect grace.
 export function leave(s) {
-  if (s.status === 'open') s.ws.send(encode({ type: MSG.BYE }))
+  if (s.ws && s.ws.readyState === 1) s.ws.send(encode({ type: MSG.BYE }))
   s.closedByUs = true
   // Leave on the Reconnecting… overlay: no further attempts.
   if (s.status === 'reconnecting') end(s, 'left')
