@@ -222,6 +222,15 @@ describe('2a prediction parity', () => {
     assert.ok(Math.abs(r.pred.rangedCooldown - r.server.rangedCooldown) < 1e-9)
     assert.equal(r.server.ammo.arrow, 24 - 1 - 2)
   })
+  it("the Mage's lightning cooldown is the match's 1.5 s: a re-press after 1.7 s charges (and slows) on both", () => {
+    const E = { x: 1, y: 0 }
+    const inputs = [{ move: E, attack: true }, { move: E }, ...Array(50).fill({ move: E }), ...Array(6).fill({ move: E, attack: true })]
+    const r = replay('mage', inputs, 1)            // the release is replayed, not read off a snapshot
+    same(r)
+    assert.ok(r.server.charging, 'the server is charging again')
+    assert.deepEqual(r.pred.charging, r.server.charging)
+    assert.ok(Math.abs(r.pred.magicCooldown - r.server.magicCooldown) < 1e-9)
+  })
 })
 
 describe('2a prediction: the lunge', () => {

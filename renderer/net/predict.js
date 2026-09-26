@@ -15,7 +15,7 @@ import { swingCost, comboCooldown, canDrawDouble, payDoubleShot } from '../pvp/a
 import { tryFire } from '../systems/ranged.js'
 import { isComboWeapon, beginHold, holdGesture, classify, SECTOR_FACING } from '../pvp/combos.js'
 import { spendStamina } from '../systems/stamina.js'
-import { PVP, WARRIOR_COMBOS, DOUBLE_SHOT, drawFrac } from '../data/pvp.js'
+import { PVP, WARRIOR_COMBOS, DOUBLE_SHOT, drawFrac, SPELL_OVERRIDES } from '../data/pvp.js'
 import { NET } from '../data/net.js'
 
 export function makePredictor({ map, heroSnap: s }) {
@@ -45,7 +45,8 @@ function predictCharge(h, input, dt) {
     h.charging = null
     h.needRelease = true
     if (kind === 'spell') {
-      const resolved = castCost(h, spellFor(h).id, resolveGustTier(held))
+      const id = spellFor(h).id
+      const resolved = castCost(h, id, resolveGustTier(held), SPELL_OVERRIDES[id] ?? null)
       if (resolved) { spendStamina(h, resolved.stamina); h.magicCooldown = resolved.cooldown }
     } else {
       const { stamina, cooldown } = swingCost(h, resolveCharge(wt, held))

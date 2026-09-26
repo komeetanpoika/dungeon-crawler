@@ -98,8 +98,11 @@ function clampAlong(map, x0, y0, [dx, dy], dist) {
 // an arbitrary tile — Ukonvasara marks the enemy it struck. tickLightning
 // resolves it after LIGHTNING.delay like any other mark. No dedupe: a caller
 // that must not stack marks (the hammer) keeps its own cooldown.
-export function markStrike(state, x, y, owner) {
-  const mark = { x, y, t: 0, delay: LIGHTNING.delay, struck: false, ...(owner !== undefined && { owner }) }
+// `numbers` ({ delay, damage, stun }, each optional) is PvP's: a mark
+// carries its own, and one without them strikes with LIGHTNING's.
+export function markStrike(state, x, y, owner, numbers = {}) {
+  const mark = { x, y, t: 0, delay: numbers.delay ?? LIGHTNING.delay, struck: false, ...(owner !== undefined && { owner }),
+    ...(numbers.damage !== undefined && { damage: numbers.damage }), ...(numbers.stun !== undefined && { stun: numbers.stun }) }
   state.lightning = [...(state.lightning ?? []), mark]
   sfx(state, 'crackle', tileCentre({ x, y }))
   return mark
@@ -108,7 +111,10 @@ export function markStrike(state, x, y, owner) {
 // Place this tier's marks ahead of the player. Duplicates are collapsed:
 // three over-tier distances that all clamp against the same wall are one
 // strike, not triple damage on one tile. Returns the marks it added.
-export function castLightning(state, tier = 'tap', p = state.player) {
+// `spell` is the row tryCast cast (with PvP's override merged in); its
+// delay/damage/stun, when present, ride on every mark.
+export function castLightning(state, tier = 'tap', p = state.player, spell = null) {
+  const numbers = { delay: spell?.delay, damage: spell?.damage, stun: spell?.stun }
   const step = DIRS[p.facing] ?? DIRS.east
   const from = tileOf(p)
   const marks = []
@@ -118,7 +124,7 @@ export function castLightning(state, tier = 'tap', p = state.player) {
     const hit = clampAlong(state.map, from.x, from.y, step, dist)
     if (!hit || taken.has(key(hit.x, hit.y))) continue
     taken.add(key(hit.x, hit.y))
-    marks.push(markStrike(state, hit.x, hit.y, p?.id))
+    marks.push(markStrike(state, hit.x, hit.y, p?.id, numbers))
   }
   return { marks }
 }
@@ -158,8 +164,8 @@ function strike(state, mark, hooks) {
     const caught = (inBlast && !isStoryCreature(e)) || water.has(key(t.x, t.y))
     if (!caught) continue
     hit++
-    hooks?.hurt?.(e, LIGHTNING.damage, { source: 'lightning', ...(mark.owner !== undefined && { owner: mark.owner }) })
-    if (stunnable(e)) e.stunTimer = Math.max(e.stunTimer ?? 0, LIGHTNING.stun)
+    hooks?.hurt?.(e, mark.damage ?? LIGHTNING.damage, { source: 'lightning', ...(mark.owner !== undefined && { owner: mark.owner }) })
+    if (stunnable(e)) e.stunTimer = Math.max(e.stunTimer ?? 0, mark.stun ?? LIGHTNING.stun)
   }
   state.flash = LIGHTNING.flash
   // The whole map reads as daylight for the quarter-second (weatherLook

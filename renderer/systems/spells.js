@@ -108,9 +108,15 @@ export { affordableTier }
 // it starts — or null when even the cheapest tier is unaffordable. No
 // effects, no writes: tryCast below applies this and dispatches the
 // primitive. predict.js calls this too, so a charge spell's predicted
-// release pays exactly what the server would.
-export function castCost(hero, spellId, tier) {
+// release pays exactly what the server would. `override` (PvP's
+// SPELL_OVERRIDES row) replaces fields of the spell's row, its cooldown here.
+const withOverride = (spellId, override) => {
   const spell = SPELLS[spellId] ?? SPELLS.gust
+  return override ? { ...spell, ...override } : spell
+}
+
+export function castCost(hero, spellId, tier, override = null) {
+  const spell = withOverride(spellId, override)
   const paid = affordableTier(hero.stamina ?? 0, spell.cost, tier)
   if (!paid) return null
   return { spell, tier: paid, stamina: spell.cost[paid], cooldown: spell.cooldown }
@@ -179,10 +185,13 @@ function castSelf(state, t, p = state.player) {
 // and dispatches on the primitive. `modules` carries the bespoke spells;
 // game.js injects { lightning }. Offhand wand keeps its own cooldown, shares
 // the stamina tank.
-// `caster` defaults to state.player; PvP passes the hero casting.
-export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main', caster = state.player } = {}) {
+// `caster` defaults to state.player; PvP passes the hero casting, and its
+// SPELL_OVERRIDES row as `override`: fields that replace the row's own (the
+// cooldown), handed on whole to a bespoke module (Call Lightning reads its
+// delay, damage and stun there). Without one, single-player's numbers.
+export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main', caster = state.player, override = null } = {}) {
   const p = caster
-  const spell = SPELLS[spellId] ?? SPELLS.gust
+  const spell = withOverride(spellId, override)
   if (!loadoutAvailable(p, 'magic')) return { ok: false, reason: 'not_learned' }
   const cd = hand === 'off' ? 'offCooldown' : 'magicCooldown'
   if ((p[cd] ?? 0) > 0) return { ok: false, reason: 'cooldown' }
@@ -190,7 +199,7 @@ export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main', 
   // charging the tank for a cast that would do nothing.
   const module = spell.primitive === 'module' ? modules?.[spell.id] : null
   if (spell.primitive === 'module' && !module) return { ok: false, reason: 'not_learned' }
-  const resolved = castCost(p, spellId, tier)
+  const resolved = castCost(p, spellId, tier, override)
   if (!resolved) return { ok: false, reason: 'stamina' }
   spendStamina(p, resolved.stamina)
   p[cd] = resolved.cooldown
@@ -201,7 +210,7 @@ export function tryCast(state, spellId, tier = 'tap', { modules, hand = 'main', 
     case 'cone': result = castCone(state, t, p); break
     case 'zone': result = castZone(state, t, p); break
     case 'self': result = castSelf(state, t, p); break
-    default:     result = module(state, resolved.tier, p); break
+    default:     result = module(state, resolved.tier, p, spell); break
   }
   return { ok: true, spell, tier: resolved.tier, ...result }
 }

@@ -18,7 +18,7 @@ import { sfx } from '../systems/sfx.js'
 import { canMoveTo, PLAYER_HALF, TILE_SIZE } from '../systems/movement.js'
 import { hurtHero, foesOf } from './combat.js'
 import { SECTOR_FACING } from './combos.js'
-import { PVP, WARRIOR_COMBOS, DOUBLE_SHOT, doubleShotBand } from '../data/pvp.js'
+import { PVP, WARRIOR_COMBOS, DOUBLE_SHOT, doubleShotBand, SPELL_OVERRIDES } from '../data/pvp.js'
 
 const MODULES = { lightning: castLightning }
 
@@ -212,7 +212,8 @@ export function swing(match, hero, mods) {
 }
 
 export function castSpell(match, hero, spellId, tier, hand = 'main') {
-  const cast = tryCast(match, spellId, tier, { modules: MODULES, hand, caster: hero })
+  // A match's numbers for the shared spells (spec 2a §4): SPELL_OVERRIDES.
+  const cast = tryCast(match, spellId, tier, { modules: MODULES, hand, caster: hero, override: SPELL_OVERRIDES[spellId] ?? null })
   if (!cast.ok) {
     if (cast.reason === 'stamina') hero.staminaRefusedT = 0.4
     return cast
