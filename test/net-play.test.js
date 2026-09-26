@@ -4,6 +4,7 @@ import { startServer as bootServer, laggy, drive, waitFor, sleep } from './net-h
 import { connect, frame, sessionView, leave, drainEvents } from '../renderer/net/client.js'
 import { placeHero } from '../renderer/pvp/hero.js'
 import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
+import { NET } from '../renderer/data/net.js'
 
 // Everything a test opens is closed after it, pass or fail — a failed
 // assertion must not leave sockets or room loops holding the runner open.
@@ -114,13 +115,19 @@ describe('play under lag', () => {
     await srv.close()
   })
 
-  it('server close marks the session lost and frame() is a no-op', async () => {
+  it('server close: the session tries to get its seat back, sends no input meanwhile, and is lost past the grace', async () => {
     const srv = await startServer()
     const a = await host(srv.url, WebSocketNoLag())
     await srv.close()
-    await waitFor(() => a.status === 'lost')
+    await waitFor(() => a.status === 'reconnecting')
+    const seq = a.seq
     assert.doesNotThrow(() => frame(a, idle(), performance.now()))
-    assert.ok(drainEvents(a).some(e => e.type === 'closed' && e.status === 'lost'))
+    assert.equal(a.seq, seq, 'no input while reconnecting')
+    frame(a, idle(), a.lostAt + NET.reconnectGraceMs + 1)
+    assert.equal(a.status, 'lost')
+    const events = drainEvents(a)
+    assert.ok(events.some(e => e.type === 'reconnecting'))
+    assert.ok(events.some(e => e.type === 'closed' && e.status === 'lost'))
   })
 
   it('a one-frame press between two input sends is carried by the next input', () => {

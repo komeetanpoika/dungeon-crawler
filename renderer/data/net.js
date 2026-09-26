@@ -52,4 +52,5 @@ export const NET = {
 
   // Arenas, reconnect and netcode polish (4b).
   reconnectGraceMs: 20000, // a dropped human's hero stays in the match this long, waiting for hello.resume
+  reconnectDelaysMs: [500, 1000, 2000, 4000, 8000], // client: hello.resume tries after a drop, each this long after the last
 }

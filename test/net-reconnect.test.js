@@ -1,6 +1,9 @@
 import { describe, it, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { startServer, rawClient, waitFor, sleep } from './net-helpers.js'
+import WebSocket from 'ws'
+import { startServer, rawClient, waitFor, sleep, drive } from './net-helpers.js'
+import { connect, sessionView, drainEvents, leave } from '../renderer/net/client.js'
+import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
 import { NET } from '../renderer/data/net.js'
 
 const hello = (over = {}) => ({ type: 'hello', v: NET.protocolVersion, name: 'Aino', cls: 'archer', ...over })
@@ -188,5 +191,54 @@ describe('the grace period over sockets', async () => {
       await waitFor(() => !lazy.pvp.lobby.rooms.has(w.room))
       assert.equal(lazy.pvp.tokens.size, 0)
     } finally { await lazy.close() }
+  })
+})
+
+describe('the client gets its seat back over a real socket', async () => {
+  const srv = await startServer()
+  after(() => srv.close())
+  // ws's WebSocket, from its own made-up address like rawClient's.
+  class FromIp extends WebSocket { constructor(url) { super(url, { headers: { 'x-forwarded-for': '10.7.0.1' } }) } }
+
+  it('a socket killed mid-match: Reconnecting, then the same hero within a second, and snapshots again', async () => {
+    const s = connect({ url: srv.url, WebSocketImpl: FromIp, now: () => performance.now(), hello: { name: 'Aino', cls: 'mage', quick: true } })
+    await waitFor(() => s.status === 'open' && s.pred, 3000)
+    const heroId = s.heroId
+    srv.pvp.lobby.rooms.get(s.room).match.heroes.find(h => h.id === heroId).kills = 3
+    s.ws.terminate()
+    await waitFor(() => s.status === 'reconnecting')
+    const t0 = performance.now()
+    await drive(s, () => NEUTRAL_INPUT, 1500)
+    assert.equal(s.status, 'open')
+    assert.equal(s.heroId, heroId)
+    assert.ok(performance.now() - t0 < 2000)
+    const v = await waitFor(() => sessionView(s, performance.now()), 2000)
+    assert.equal(v.me.id, heroId)
+    assert.equal(v.me.kills, 3)
+    const types = drainEvents(s).map(e => e.type)
+    assert.ok(types.includes('reconnecting') && types.includes('welcome'), types.join(','))
+    leave(s)
+    await waitFor(() => srv.pvp.lobby.rooms.size === 0)
+  })
+
+  // The server closes a superseded live seat 4001 'replaced' (Task 6). This
+  // socket must not fight the connection that just won the seat by trying
+  // its own hello.resume — it is a final loss, not a drop.
+  it('a live seat resumed elsewhere: the server closes it 4001, a final loss with no reconnect attempts', async () => {
+    const s = connect({ url: srv.url, WebSocketImpl: FromIp, now: () => performance.now(), hello: { name: 'Aino', cls: 'mage', quick: true } })
+    await waitFor(() => s.status === 'open' && s.pred, 3000)
+    const token = s.token
+    const other = await rawClient(srv.url)
+    other.send(resumeHello(token))
+    await other.next('welcome')
+    await waitFor(() => s.status === 'lost')
+    // Drive it a while: no reconnect attempt must ever fire from here.
+    await drive(s, () => NEUTRAL_INPUT, 1000)
+    assert.equal(s.status, 'lost')
+    const types = drainEvents(s).map(e => e.type)
+    assert.ok(!types.includes('reconnecting'), types.join(','))
+    assert.ok(types.includes('closed'))
+    other.bye()
+    await waitFor(() => srv.pvp.lobby.rooms.size === 0)
   })
 })

@@ -156,3 +156,179 @@ describe('leaving', () => {
     assert.ok(!s.ws.sent.some(m => m.type === 'bye'))
   })
 })
+
+describe('reconnect', () => {
+  // A hand-driven socket that remembers every instance: open() and recv()
+  // play the server, close() fires onclose as a real drop would.
+  class Sock {
+    static all = []
+    constructor(url) { this.url = url; this.sent = []; this.closed = false; Sock.all.push(this) }
+    send(text) { this.sent.push(JSON.parse(text)) }
+    close(code) { if (this.closed) return; this.closed = true; this.onclose?.({ code }) }
+    open() { this.onopen?.() }
+    recv(msg) { this.onmessage?.({ data: JSON.stringify(msg) }) }
+  }
+  const TOK = 'a'.repeat(32), TOK2 = 'b'.repeat(32)
+  const hi = (token, over = {}) => ({ type: 'welcome', room: 'ABCD', heroId: 'p1', arena: 'pillars', token, ...over })
+  let t = 0
+  const start = (hello = { name: 'A', cls: 'archer', quick: true }) => {
+    Sock.all = []
+    t = 0
+    const s = connect({ url: 'ws://x', WebSocketImpl: Sock, now: () => t, hello })
+    Sock.all[0].open()
+    Sock.all[0].recv(hi(TOK))
+    drainEvents(s)
+    return s
+  }
+  const drop = s => { t = 1000; Sock.all.at(-1).close(); return s }
+  // Frames every 50 ms from now until `until`; each new socket is handed to onSocket.
+  const run = (s, until, onSocket = () => {}) => {
+    for (; t <= until; t += 50) {
+      const n = Sock.all.length
+      frame(s, NEUTRAL_INPUT, t)
+      if (Sock.all.length > n) onSocket(Sock.all.at(-1), t)
+    }
+  }
+
+  it('carries the spec numbers', () => {
+    assert.deepEqual(NET.reconnectDelaysMs, [500, 1000, 2000, 4000, 8000])
+    assert.equal(NET.reconnectGraceMs, 20000)
+  })
+  it('an unexpected drop after the welcome: Reconnecting, then hello.resume at 0.5, 1.5, 3.5, 7.5 and 15.5 s, then lost', () => {
+    const s = drop(start())
+    assert.equal(s.status, 'reconnecting')
+    assert.deepEqual(drainEvents(s).map(e => e.type), ['reconnecting'])
+    const at = []
+    run(s, 25000, (sock, when) => {
+      at.push(when - 1000)
+      sock.open()
+      assert.deepEqual(sock.sent[0], { type: 'hello', v: NET.protocolVersion, resume: TOK })
+      sock.close()                                           // the attempt fails
+    })
+    assert.deepEqual(at, [500, 1500, 3500, 7500, 15500])
+    assert.equal(s.status, 'lost')
+    assert.deepEqual(drainEvents(s).filter(e => e.type === 'closed'), [{ type: 'closed', status: 'lost' }])
+  })
+  it('a resume that works: open again with a new token, the session reset, and the next snapshot rebuilds the view', () => {
+    const s = start()
+    Sock.all[0].recv(snapBody(lone(), { tick: 5 }))
+    frame(s, NEUTRAL_INPUT, 0); frame(s, NEUTRAL_INPUT, 100)
+    assert.ok(s.pred && s.seq > 0)
+    drop(s)
+    run(s, 1500, sock => { sock.open(); sock.recv(hi(TOK2)) })
+    assert.equal(s.status, 'open')
+    assert.equal(s.token, TOK2)
+    assert.equal(s.heroId, 'p1')
+    assert.equal(s.pred, null)
+    assert.equal(s.seq, 0)
+    assert.equal(Sock.all.length, 2, 'one attempt was enough')
+    assert.deepEqual(drainEvents(s).filter(e => e.type === 'welcome').map(e => [e.resumed, e.token]), [[true, TOK2]])
+    Sock.all[1].recv(snapBody(lone(), { tick: 50 }))
+    assert.ok(sessionView(s, t))
+    frame(s, NEUTRAL_INPUT, t)
+    frame(s, NEUTRAL_INPUT, t + 40)
+    assert.equal(Sock.all[1].sent.find(m => m.type === 'input').seq, 1, 'inputs are numbered afresh')
+  })
+  it('resuming into a match that has moved to another arena rebuilds the map', () => {
+    const s = drop(start())
+    const before = s.map
+    run(s, 1500, sock => { sock.open(); sock.recv(hi(TOK2, { arena: 'glade' })) })
+    assert.equal(s.status, 'open')
+    assert.equal(s.arena, 'glade')
+    assert.notEqual(s.map, before)
+    assert.equal(s.map[0].length, PVP_ARENAS.glade.size.w)
+  })
+  it('resume_failed ends it: Connection lost', () => {
+    const s = drop(start())
+    run(s, 1500, sock => { sock.open(); sock.recv({ type: 'error', code: 'resume_failed' }); sock.close() })
+    assert.equal(s.status, 'lost')
+    assert.equal(Sock.all.length, 2, 'no more attempts')
+    assert.deepEqual(drainEvents(s).filter(e => e.type === 'closed').map(e => e.status), ['lost'])
+  })
+  it('a newer server during a resume: a version error flagged as a reconnect', () => {
+    const s = drop(start())
+    run(s, 1500, sock => { sock.open(); sock.recv({ type: 'error', code: 'version' }); sock.close() })
+    assert.equal(s.status, 'error')
+    assert.deepEqual(drainEvents(s).find(e => e.type === 'error'), { type: 'error', code: 'version', reconnect: true })
+  })
+  it('a rate-limited attempt costs that attempt only: the next one still goes out', () => {
+    const s = drop(start())
+    let n = 0
+    run(s, 3000, sock => {
+      sock.open()
+      if (n++ === 0) { sock.recv({ type: 'error', code: 'rate_limited' }); sock.close() }
+      else sock.recv(hi(TOK2))
+    })
+    assert.equal(n, 2)
+    assert.equal(s.status, 'open')
+  })
+  it('a tab hidden past the grace gives up at its first frame back, opening no socket', () => {
+    const s = drop(start())
+    frame(s, NEUTRAL_INPUT, 1000 + NET.reconnectGraceMs + 5000)
+    assert.equal(s.status, 'lost')
+    assert.equal(Sock.all.length, 1)
+  })
+  it('an attempt still hanging when the next is due is abandoned for it', () => {
+    const s = drop(start())
+    const opened = []
+    run(s, 3000, sock => opened.push(sock))                 // never answers
+    assert.equal(opened.length, 2)
+    assert.equal(opened[0].closed, true)
+    assert.equal(s.ws, opened[1])
+    opened[0].recv(hi(TOK2))                                 // a late answer on the abandoned one is ignored
+    assert.equal(s.status, 'reconnecting')
+  })
+  it('Leave while reconnecting stops the retries', () => {
+    const s = drop(start())
+    drainEvents(s)
+    leave(s)
+    assert.equal(s.status, 'left')
+    run(s, 25000)
+    assert.equal(Sock.all.length, 1)
+    assert.deepEqual(drainEvents(s), [{ type: 'closed', status: 'left' }])
+  })
+  it('a clean leave or a drop before the welcome never reconnects', () => {
+    const a = start()
+    leave(a)
+    assert.equal(a.status, 'left')
+    assert.ok(!drainEvents(a).some(e => e.type === 'reconnecting'))
+    Sock.all = []
+    const b = connect({ url: 'ws://x', WebSocketImpl: Sock, now: () => t, hello: { name: 'A', cls: 'archer', quick: true } })
+    Sock.all[0].open()
+    Sock.all[0].close()
+    assert.equal(b.status, 'lost')
+  })
+  it('hello { resume } from the start (a reloaded tab) sends it and keeps the token for later drops', () => {
+    Sock.all = []
+    const s = connect({ url: 'ws://x', WebSocketImpl: Sock, now: () => t, hello: { resume: TOK } })
+    Sock.all[0].open()
+    assert.deepEqual(Sock.all[0].sent[0], { type: 'hello', v: NET.protocolVersion, resume: TOK })
+    Sock.all[0].recv(hi(TOK2))
+    assert.equal(s.status, 'open')
+    assert.equal(s.token, TOK2)
+  })
+  // Server-side rule (Task 6): another connection resuming into this same
+  // seat's token closes THIS socket 4001 'replaced' while it is still live.
+  it('a 4001 close (another connection took this seat over) is a final loss, not a drop: no reconnect attempt', () => {
+    const s = start()
+    drainEvents(s)
+    Sock.all[0].close(4001)
+    assert.equal(s.status, 'lost')
+    assert.equal(Sock.all.length, 1, 'no resume attempt opened')
+    const events = drainEvents(s)
+    assert.deepEqual(events, [{ type: 'closed', status: 'lost' }])
+    run(s, 25000)
+    assert.equal(Sock.all.length, 1, 'still no attempt, even past the whole retry schedule')
+  })
+  it('a 4001 close while already reconnecting also ends it at once', () => {
+    const s = drop(start())
+    assert.equal(s.status, 'reconnecting')
+    drainEvents(s)
+    frame(s, NEUTRAL_INPUT, 1500)                             // the first resume attempt opens (drop was at t=1000)
+    assert.equal(Sock.all.length, 2)
+    Sock.all[1].close(4001)
+    assert.equal(s.status, 'lost')
+    run(s, 25000)
+    assert.equal(Sock.all.length, 2, 'no further attempt after the 4001')
+  })
+})
