@@ -83,6 +83,7 @@ function predictSwing(h, attacking) {
 // Returns the classified combo on the release tick, else null.
 function predictCombo(h, input, attacking) {
   const wt = h.weapon?.weaponType
+  if (!wt) { h.combo = null; return null }
   if (h.attackMode !== 'melee' || !isComboWeapon(wt)) return null
   if (h.charging && !h.charging.kind) h.charging = null
   if (!h.combo) {

@@ -94,8 +94,13 @@ export function botInput(match, hero) {
   if (hero.cls === 'warrior') {
     const shot = incoming(match, hero)
     if (shot) { input.alt = true; input.facing = faceToward(hero, shot); return input }
-    // The sword swings on the release (2a): press on one tick, let go the next.
-    if (d <= BOTS.meleeRange) { input.facing = faceToward(hero, foe); input.attack = !hero.combo; return input }
+    // The sword swings on the release (2a): press on one tick, let go the
+    // next. Also gated on needRelease: a hold cancelled by a stun or a
+    // shield (or the rune's hammer auto-releasing) must be let go before
+    // asking to hold again, or the bot spams attack:true forever and
+    // needRelease — which only clears on an input that says attack:false —
+    // never does.
+    if (d <= BOTS.meleeRange) { input.facing = faceToward(hero, foe); input.attack = !hero.combo && !hero.needRelease; return input }
     steer(match, hero, foe, input)
     return input
   }

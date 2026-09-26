@@ -236,7 +236,10 @@ export function frame(s, input, t = s.now()) {
   // frame can fall between two sends; it is latched until the next input
   // carries it, and a tap is never lost. A release is not latched: the
   // sword swings and the double shot looses on the release (2a), so the
-  // first input after the key comes up says so.
+  // first input after the key comes up says so. A down-up-down that all
+  // lands inside one send window still reaches the server as one
+  // continuous hold — that's accepted: the intra-frame release is invisible
+  // to the 30 Hz wire either way.
   s.held.attack ||= !!input.attack
   s.held.alt ||= !!input.alt
   while (s.acc >= tickMs) {

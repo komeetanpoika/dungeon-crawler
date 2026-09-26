@@ -65,6 +65,10 @@ export function grantRune(match, hero) {
     hero.ammo.bolt = (hero.ammo.bolt ?? 0) + power.bolts
   }
   if (power.wandType) hero.wand = makeWandContents(power.wandType)
+  // A weapon swap mid-hold or mid-wind-up drops it (Task 3); a key still
+  // held across the swap must be let go before the new weapon's attack
+  // starts, or it fires without ever having been freshly pressed.
+  if (hero.combo || hero.charging) hero.needRelease = true
   hero.charging = null
   hero.combo = null
   hero.rune = { t: PICKUPS.rune.duration, saved }
@@ -77,6 +81,9 @@ export function endRune(match, hero) {
   Object.assign(hero, saved)
   if (off !== undefined) gearOf(hero, 'melee').off = off
   if (RUNE_POWER[hero.cls]?.bolts) hero.ammo.bolt = 0   // unused bolts go with the crossbow
+  // Same as the swap above: a key held through the rune's end must be let
+  // go before the hero's own weapon starts.
+  if (hero.combo || hero.charging) hero.needRelease = true
   hero.charging = null
   hero.combo = null
   hero.rune = null

@@ -100,6 +100,14 @@ describe('moveHero', () => {
     assert.equal(a.py, b.py)
     assert.equal(a.ammo.arrow, 24)          // moveHero never shot
     assert.ok(b.ammo.arrow < 24)            // tickHero did
+    // A Warrior held under moveHero alone never begins a hold either: only
+    // tickMelee (inside tickHero) calls beginHold, so moveHero on its own
+    // never sets combo or fires a swing.
+    const w = makeHero({ id: 'w', name: 'w', cls: 'warrior' }); placeHero(w, { x: 5, y: 5 })
+    const mw = testMatch([w])
+    for (let i = 0; i < 10; i++) moveHero(mw, w, input, PVP.tick)
+    assert.equal(w.combo, null)
+    assert.equal(w.attackTimer, 0)
   })
 })
 

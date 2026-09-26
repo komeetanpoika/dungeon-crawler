@@ -94,12 +94,12 @@ export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
   // After a release the attack must be let go before it can wind up again
   // (game.js does this by clearing keys[' ']).
   if (!input.attack) hero.needRelease = false
-  if (stunned) { hero.charging = null; cancelHold(hero) }
+  if (stunned) { hero.charging = null; cancelHold(hero, input) }
   const altEdge = !!input.alt && !hero.prevAlt
   hero.prevAlt = !!input.alt
   hero.blockedHit = false
   const blocking = tickShield(hero, !!input.alt && !stunned, dt)
-  if (blocking) { hero.charging = null; cancelHold(hero) }
+  if (blocking) { hero.charging = null; cancelHold(hero, input) }
   // A held combo locks the facing: the moves aim the strike, not the stick.
   if (!stunned && !hero.combo && input.facing && DIRS[input.facing]) hero.facing = input.facing
 
@@ -133,11 +133,15 @@ export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
 }
 
 // A stun or a raised shield ends a hold: no combo fires, the stamina spent
-// stays spent, and the attack must be let go before the next hold.
-function cancelHold(hero) {
+// stays spent. A release is required before the next hold only if the key
+// was still down at the moment of the cancel — if it had already come up
+// this tick, `needRelease` is already false and stays that way, so a bot
+// (or a player) that let go exactly on the cancelling tick is not stuck
+// waiting on a release that already happened.
+function cancelHold(hero, input) {
   if (!hero.combo) return
   hero.combo = null
-  hero.needRelease = true
+  hero.needRelease = !!input.attack
 }
 
 // The sword is a combo weapon (spec 2a §2): the press begins a hold, moves

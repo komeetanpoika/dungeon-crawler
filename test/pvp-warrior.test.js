@@ -105,8 +105,36 @@ describe('review focus: the hold meets the rune and the diagonal', () => {
     assert.deepEqual(w.charging, { t: 0 })
     endRune(m, w)
     assert.equal(w.charging, null)
-    tickHero(m, w, input({ attack: true }), dt)
+    tickHero(m, w, input({ attack: true }), dt)      // the key is still down from the charge: needs a release first (fix round 1)
+    assert.equal(w.combo, null, 'no hold on the key still held from before the swap')
+    tickHero(m, w, input({ attack: false }), dt)     // let go
+    tickHero(m, w, input({ attack: true }), dt)      // a fresh press
     assert.ok(w.combo, 'the sword holds again')
+  })
+  it('the rune picked up with the key still held needs a release: the hammer does not wind up on its own (fix round 1)', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }); const m = testMatch([w])
+    tickHero(m, w, input({ attack: true, facing: 'east' }), dt)   // press: the sword holds
+    grantRune(m, w)
+    assert.equal(w.combo, null)
+    tickHero(m, w, input({ attack: true }), dt)     // the key never came up across the swap
+    assert.equal(w.charging, null, 'no wind-up while the key is still down from before the swap')
+    tickHero(m, w, input({ attack: false }), dt)    // finally let go
+    tickHero(m, w, input({ attack: true }), dt)     // a fresh press
+    assert.deepEqual(w.charging, { t: 0 }, 'charges cleanly after the release')
+  })
+  it('the rune ending with the key still held needs a release: the sword does not hold on its own (fix round 1)', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }), a = hero('a', 'archer', { x: 6, y: 5 }); const m = testMatch([w, a])
+    grantRune(m, w)
+    tickHero(m, w, input({ attack: true, facing: 'east' }), dt)   // wind-up begins
+    assert.deepEqual(w.charging, { t: 0 })
+    endRune(m, w)
+    assert.equal(w.charging, null)
+    tickHero(m, w, input({ attack: true }), dt)    // the key never came up across the swap
+    assert.equal(w.combo, null, 'no hold begins while the key is still down from before the swap')
+    tickHero(m, w, input({ attack: false }), dt)   // finally let go
+    assert.equal(a.hp, PVP.hp, 'no stray swing landed')
+    tickHero(m, w, input({ attack: true }), dt)    // a fresh press
+    assert.ok(w.combo, 'the sword holds again after the release')
   })
   it('pressed while walking diagonally: the hold slides that diagonal, and the diagonal held on is not a move', () => {
     const w = hero('w', 'warrior', { x: 5, y: 5 }); const m = testMatch([w])

@@ -149,12 +149,13 @@ describe('prediction', () => {
 describe('2a prediction parity', () => {
   // Server and predictor fed the same inputs; `snapAt` takes a snapshot to
   // reconcile from mid-sequence, exactly reconcile's real shape.
-  const replay = (cls, inputs, snapAt, setup = () => {}) => {
+  const replay = (cls, inputs, snapAt, setup = () => {}, onTick = () => {}) => {
     const m = lone(cls)
     setup(m.heroes[0])
     const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
     let snap = null
     inputs.forEach((over, i) => {
+      onTick(i + 1, m.heroes[0], pred.hero)
       const input = { ...NEUTRAL_INPUT, move: { x: 0, y: 0 }, ...over, seq: i + 1 }
       stepMatch(m, { p1: input }, PVP.tick)
       predictStep(pred, input)
@@ -182,5 +183,27 @@ describe('2a prediction parity', () => {
     const r = replay('warrior', inputs, 3)
     same(r)
     assert.equal(r.server.stamina, 100 - 25 - 12)   // one move, then the plain swing (e alone is no combo)
+  })
+  it('a snapshot taken on the release tick itself reconciles cleanly (fix round 1)', () => {
+    const inputs = [{ move: E, attack: true }, { attack: false }, { attack: false }]
+    same(replay('warrior', inputs, 2))
+  })
+  it('a stun cancelling the hold, then a fresh press and a released combo, match through reconcile (fix round 1)', () => {
+    const inputs = [
+      { move: E, attack: true },    // press: the hold begins
+      { move: N, attack: true },    // a move (n), 25 stamina
+      { attack: true },             // the stun lands this tick: cancelled, key still down
+      { attack: false },            // let go: needRelease clears
+      { move: S, attack: true },    // a fresh press
+      { move: S, attack: true },    // s, s: a lunge
+      { attack: false },            // release: the lunge's cooldown, no swing stamina
+    ]
+    const onTick = (tick, server, pred) => {
+      if (tick === 3) { server.stunTimer = 0.05; pred.stunTimer = 0.05 }
+    }
+    // Snapshot right after the let-go (tick 4): ticks 5-7 — the fresh press,
+    // its combo and its release — replay through predictStep alone, so a
+    // divergence between predictCombo and hero.js's releaseCombo would show.
+    same(replay('warrior', inputs, 4, undefined, onTick))
   })
 })

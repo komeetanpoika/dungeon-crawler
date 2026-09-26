@@ -2,7 +2,8 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { botInput, nextStep } from '../renderer/pvp/bots.js'
 import { makeMatch } from '../renderer/pvp/sim.js'
-import { placeHero, tickHero } from '../renderer/pvp/hero.js'
+import { placeHero, tickHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
+import { grantRune } from '../renderer/pvp/pickups.js'
 import { openMap } from './pvp-helpers.js'
 import { TILE } from '../renderer/systems/entities.js'
 
@@ -77,5 +78,54 @@ describe('the warrior bot taps the sword (2a: it swings on release)', () => {
     assert.equal(second.attack, false)
     tickHero(m, w, second, 1 / 30)
     assert.ok(a.hp < a.maxHp)
+  })
+})
+
+describe('a cancelled hold does not stall the warrior bot forever (fix round 1)', () => {
+  const setup = () => {
+    const m = makeMatch({ roster: roster('warrior', 'archer') })
+    const [w, a] = m.heroes
+    placeHero(w, { x: 10, y: 2 }); placeHero(a, { x: 11, y: 2 }); a.spawnProtect = 0; w.spawnProtect = 0
+    return { m, w, a }
+  }
+  // The bot itself only ever asks to hold with the key already up going in
+  // (it taps); the cancel below stands in for whatever forced the drop
+  // (a shield raised by an incoming shot, a stun from being hit) landing on
+  // a tick the key was still down — the bug case, since bots.js used to
+  // send `!hero.combo` with no regard for needRelease.
+  // beforeCancel/afterCancel mutate hero state directly around the cancel
+  // tick (this test drives tickHero by hand, without tickHeroStatus, so a
+  // stunTimer set here never decays on its own — it is cleared explicitly).
+  const recovers = (m, w, beforeCancel, cancelledInput, afterCancel = () => {}) => {
+    tickHero(m, w, botInput(m, w), 1 / 30)          // press: the bot begins a hold
+    assert.ok(w.combo)
+    beforeCancel(w)
+    tickHero(m, w, cancelledInput, 1 / 30)          // cancelled with the key still down
+    assert.equal(w.combo, null)
+    afterCancel(w)
+    let held = false
+    for (let i = 0; i < 3 && !held; i++) { tickHero(m, w, botInput(m, w), 1 / 30); held = !!w.combo }
+    assert.ok(held, 'the bot lets go and holds again within 3 ticks')
+  }
+  it('cancelled by a shield', () => {
+    const { m, w } = setup()
+    recovers(m, w, () => {}, { ...NEUTRAL_INPUT, attack: true, alt: true, facing: 'east' })
+  })
+  it('cancelled by a stun', () => {
+    const { m, w } = setup()
+    recovers(m, w, w => { w.stunTimer = 0.1 }, { ...NEUTRAL_INPUT, attack: true, facing: 'east' }, w => { w.stunTimer = 0 })
+  })
+  it('a hammer-rune bot keeps swinging over a few seconds (no stall after an auto-release)', () => {
+    const { m, w, a } = setup()
+    grantRune(m, w)
+    a.hp = a.maxHp = 1000                            // never dies mid-run
+    let swings = 0, wasSwinging = false
+    for (let i = 0; i < 300; i++) {                  // 10 s at 30 Hz
+      tickHero(m, w, botInput(m, w), 1 / 30)
+      const swinging = w.attackTimer > 0
+      if (swinging && !wasSwinging) swings++
+      wasSwinging = swinging
+    }
+    assert.ok(swings >= 3, `expected several hammer swings over 10s, got ${swings}`)
   })
 })
