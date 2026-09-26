@@ -1,15 +1,52 @@
 // Snapshot interpolation for everything that is not your own hero (spec §2):
 // drawn NET.interpDelayTicks behind the estimated server tick, lerped
 // between the two snapshots around that moment; a dry buffer extrapolates
-// briefly, then holds. Pure.
+// briefly, then holds. The estimate runs on a smoothed, monotonic clock
+// (4b spec §3), so jittery arrivals no longer drag other heroes backwards.
+// Pure.
 import { PVP } from '../data/pvp.js'
 import { NET } from '../data/net.js'
 
-export function makeInterp() { return { snaps: [], lastArrival: 0 } }
+const TICK_MS = PVP.tick * 1000
+
+// clock: the estimate is tick0 + (now - at0) / TICK_MS + adj — the spec's
+// `now / tickMs + offset`, with offset = tick0 - at0 / TICK_MS + adj, kept as
+// an anchor so the first snapshot's estimate is exact. Each newer arrival
+// sets `target`, the adj it says is right; slew() walks adj toward it by at
+// most NET.clockSlew ticks per tick of local time, applied every call rather
+// than as a step on arrival, so the drawn clock runs at most 10 % fast or
+// slow on every frame. An error past NET.clockSnapTicks re-anchors instead.
+// lastRt / snapped: renderTick never goes back, except right after a snap.
+export function makeInterp() { return { snaps: [], clock: null, lastRt: null, snapped: false } }
+
+function anchor(buf, tick, nowMs) {
+  buf.clock = { tick0: tick, at0: nowMs, adj: 0, target: 0, slewAt: nowMs, lastTick: tick }
+  buf.snapped = true
+}
+
+function slew(c, nowMs) {
+  if (nowMs <= c.slewAt) return
+  const max = NET.clockSlew * (nowMs - c.slewAt) / TICK_MS
+  c.adj += Math.max(-max, Math.min(max, c.target - c.adj))
+  c.slewAt = nowMs
+}
+
+function arrive(buf, tick, nowMs) {
+  const c = buf.clock
+  if (!c) { anchor(buf, tick, nowMs); return }
+  // The results screen repeats one tick; it says nothing new about the clock.
+  if (tick <= c.lastTick) return
+  slew(c, nowMs)
+  const target = tick - c.tick0 - (nowMs - c.at0) / TICK_MS
+  // A stall, a hidden tab, the next match after the results: snap.
+  if (Math.abs(target - c.adj) > NET.clockSnapTicks) { anchor(buf, tick, nowMs); return }
+  c.target = target
+  c.lastTick = tick
+}
 
 export function pushSnap(buf, snap, nowMs) {
   buf.snaps.push(snap)
-  buf.lastArrival = nowMs
+  arrive(buf, snap.tick, nowMs)
   const oldest = snap.tick - NET.bufferTicks
   // A results screen freezes match.tick, so consecutive snapshots can share
   // one tick forever — the tick-age trim below never fires on its own, so a
@@ -21,12 +58,20 @@ export const newest = buf => buf.snaps.at(-1) ?? null
 
 export function estServerTick(buf, nowMs) {
   const last = newest(buf)
-  if (!last) return 0
-  const ahead = (nowMs - buf.lastArrival) / 1000 / PVP.tick
-  return last.tick + Math.min(ahead, NET.extrapolateTicks + NET.interpDelayTicks)
+  if (!last || !buf.clock) return 0
+  const c = buf.clock
+  slew(c, nowMs)
+  const est = c.tick0 + (nowMs - c.at0) / TICK_MS + c.adj
+  return Math.min(est, last.tick + NET.extrapolateTicks + NET.interpDelayTicks)
 }
 
-export const renderTick = (buf, nowMs) => estServerTick(buf, nowMs) - NET.interpDelayTicks
+export function renderTick(buf, nowMs) {
+  let rt = estServerTick(buf, nowMs) - NET.interpDelayTicks
+  if (buf.lastRt !== null && !buf.snapped) rt = Math.max(rt, buf.lastRt)
+  buf.snapped = false
+  buf.lastRt = rt
+  return rt
+}
 
 // a: the newest snapshot at or before rt; b: the first one after it (null on
 // a dry buffer); f: how far between them.

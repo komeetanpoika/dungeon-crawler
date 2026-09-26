@@ -8,6 +8,8 @@ export const NET = {
   interpDelayTicks: 3,     // other heroes are drawn this many sim ticks behind the estimated server tick
   extrapolateTicks: 3,     // how long a hero keeps its last velocity when the snapshot buffer runs dry
   bufferTicks: 30,         // snapshots kept (1 s)
+  clockSlew: 0.1,          // the interpolation clock runs at most 10 % fast or slow while it catches up (4b)…
+  clockSnapTicks: 15,      // …and snaps when it is off by more than this (a stall, a hidden tab, a new match)
   rewindMaxTicks: 6,       // melee lag compensation cap (200 ms)
   historyTicks: 8,         // per-hero position ring on the server
   inputQueueMax: 4,
