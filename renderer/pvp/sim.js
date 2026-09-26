@@ -4,6 +4,7 @@
 // local harness runs it in the page and the server (sub-project 3) will run
 // it under Node. Spec: docs/superpowers/specs/2026-09-25-pvp-multi-hero-core-design.md
 import { buildArena } from '../systems/map.js'
+import { TILE } from '../systems/entities.js'
 import { makeFeedback, tickFeedback, addFloat } from '../systems/feedback.js'
 import { sfx } from '../systems/sfx.js'
 import { stepProjectiles } from '../systems/projectiles.js'
@@ -17,8 +18,16 @@ import { makeHero, placeHero, applyKit, tickHero, tickHeroStatus, NEUTRAL_INPUT 
 import { heroById, hurtHero, refreshTargets } from './combat.js'
 import { makePickups, tickPickups, tickRunes, endRune } from './pickups.js'
 
+// The arena's tiles. The player spawn is pinned to the first hero spawn, a
+// floor cell, so buildArena never skips a column or wall for standing on its
+// default spawn; a sand-floored theme swaps FLOOR for SAND (still walkable),
+// as generateLevel does for the sand depth.
 export function arenaMap(arena = PVP_ARENAS.pillars) {
-  return buildArena({ size: arena.size, columns: arena.columns, enemies: [], chests: [] }, () => {}).map
+  const { map } = buildArena({ size: arena.size, columns: arena.columns, walls: arena.walls, player: arena.spawns[0],
+    enemies: [], chests: [] }, () => {})
+  if (arena.theme?.floorTile === 'sand')
+    for (const row of map) for (const c of row) if (c.tile === TILE.FLOOR) c.tile = TILE.SAND
+  return map
 }
 
 export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = null, matchLength = PVP.matchLength } = {}) {

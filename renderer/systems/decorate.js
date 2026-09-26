@@ -270,3 +270,22 @@ export function decorateMap(map, ruleset, rng = Math.random) {
   if (rulesetHasOverlays(ruleset)) decorateOverlays(map, ruleset, rng)
   return fallbacks
 }
+
+// A theme's own floor art over whatever the ruleset laid: every FLOOR cell
+// takes one of `skins` ([{ skin, weight }]), picked by a hash of its position
+// so the pattern is stable across rebuilds. The PvP glade uses it to lay grass
+// under the outdoors ruleset's walls, whose own floor tile is sand.
+export function skinFloors(map, skins) {
+  if (!skins?.length) return
+  const total = skins.reduce((t, s) => t + s.weight, 0)
+  for (let y = 0; y < map.length; y++) {
+    for (let x = 0; x < map[y].length; x++) {
+      const cell = map[y][x]
+      if (cell.tile !== TILE.FLOOR) continue
+      let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) | 0
+      h = Math.imul(h ^ h >>> 13, 1274126177)
+      let r = ((h ^ h >>> 16) >>> 0) / 4294967296 * total
+      cell.skin = skins.find(s => (r -= s.weight) < 0)?.skin ?? skins[0].skin
+    }
+  }
+}

@@ -51,7 +51,9 @@ Each gets its own spec → plan → implementation cycle, in this order.
    public rooms with server bots filling to 4, name filter, per-IP/per-connection
    limits, idle kick, leave confirm, phones via the touch controls); **4b** later:
    reconnect into your hero, smoothed interpolation clock, longer melee rewind,
-   live respawn countdown, **more arenas**. Quick-join and room lifecycle, bot
+   live respawn countdown, **more arenas**. *4a built + deployed (PR #58, rev 00065); 4b spec:
+   `2026-09-26-pvp-4b-arenas-reconnect-design.md` (glade/tunnels/ruins in rotation,
+   20 s reconnect grace, smoothed clock, 300 ms rewind, live countdown).* Quick-join and room lifecycle, bot
    fill when a room is short of humans, a nickname length/charset filter with
    a blocklist, per-connection rate limits and input validation, reconnect,
    a public menu entry in the web build, and deployment next to the existing

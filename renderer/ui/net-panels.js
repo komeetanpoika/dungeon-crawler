@@ -15,6 +15,12 @@ export function makeNetPanels(ui) {
   const redraw = () => { if (!p.confirming) show() }
   const panels = {
     get confirming() { return p.confirming },
+    // What is up right now: 'confirm', 'results', 'wait', 'picker' or null
+    // (game.js updates the picker's live countdown only while it is shown).
+    get showing() { return p.confirming ? 'confirm' : p.ended ? (p.standings ? 'results' : 'wait') : p.picker ? 'picker' : null },
+    // Draw the current panel again after something else covered it — the
+    // Reconnecting… overlay, once the seat is back (4b spec §2).
+    refresh() { if (p.confirming) ui.confirm(); else show() },
     escape() {
       if (p.confirming) { p.confirming = false; show() }
       else { p.confirming = true; ui.confirm() }

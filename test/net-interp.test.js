@@ -57,3 +57,78 @@ describe('interpolation', () => {
     assert.ok(buf.snaps.length <= NET.bufferTicks + 2)
   })
 })
+
+// A server stepping 30 ticks a second and sending a snapshot whenever its
+// 20 Hz schedule says so (server/rooms.js stepRoom), over a link whose delay
+// is `base` ms plus up to `jitter` ms, order kept (TCP stalls, never
+// reorders). Returns [{ tick, at }] sorted by arrival.
+function link({ seconds, base, jitter, seed = 7 }) {
+  let s = seed
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32)
+  const out = []
+  let at = 0
+  for (let tick = 1; tick <= seconds * 30; tick++) {
+    const due = Math.floor(tick * NET.snapshotHz * PVP.tick) !== Math.floor((tick - 1) * NET.snapshotHz * PVP.tick)
+    if (!due) continue
+    at = Math.max(at, tick * tickMs + base + jitter * rnd())
+    out.push({ tick, at })
+  }
+  return out
+}
+
+describe('the smoothed clock', () => {
+  it('carries the spec numbers', () => {
+    assert.equal(NET.clockSlew, 0.1)
+    assert.equal(NET.clockSnapTicks, 15)
+  })
+  it('jittered arrivals: renderTick never goes back, and each 60 Hz frame advances it within ±10 % of the nominal rate once settled', () => {
+    const buf = makeInterp()
+    const arrivals = link({ seconds: 6, base: 80, jitter: 60 })
+    const frameMs = 1000 / 60, nominal = frameMs / tickMs
+    let next = 0, last = null, worst = 0
+    for (let t = 0; t < 6000; t += frameMs) {
+      while (next < arrivals.length && arrivals[next].at <= t) { pushSnap(buf, snap(arrivals[next].tick, 0), arrivals[next].at); next++ }
+      if (!newest(buf)) continue
+      const rt = renderTick(buf, t)
+      if (last !== null) {
+        assert.ok(rt >= last, `went back at ${t.toFixed(0)} ms: ${last} → ${rt}`)
+        if (t > 1000) worst = Math.max(worst, Math.abs((rt - last) / nominal - 1))
+      }
+      last = rt
+    }
+    assert.ok(worst <= 0.1 + 1e-9, `worst frame off the nominal rate by ${(worst * 100).toFixed(1)} %`)
+  })
+  it('a 1 s stall snaps the clock, which may then step back', () => {
+    const buf = makeInterp()
+    for (let tick = 0; tick <= 60; tick++) pushSnap(buf, snap(tick, 0), tick * tickMs)
+    const before = renderTick(buf, 60 * tickMs)
+    assert.ok(Math.abs(before - 57) < 1e-6, `${before}`)
+    const during = renderTick(buf, 61 * tickMs + 1000)          // nothing for a second: extrapolation cap
+    assert.equal(during, 60 + NET.extrapolateTicks)
+    pushSnap(buf, snap(61, 0), 61 * tickMs + 1000)               // tick 61 arrives a second late
+    assert.equal(buf.clock.tick0, 61, 're-anchored')
+    assert.equal(renderTick(buf, 61 * tickMs + 1000), 61 - NET.interpDelayTicks)
+  })
+  it('equal-tick snapshots (the results screen) leave the clock alone', () => {
+    const buf = makeInterp()
+    pushSnap(buf, snap(50, 5), 0)
+    const clock = { ...buf.clock }
+    let last = renderTick(buf, 0)
+    for (let i = 1; i <= 40; i++) {
+      pushSnap(buf, snap(50, 5), i * 50)
+      const rt = renderTick(buf, i * 50)
+      assert.ok(rt >= last)
+      last = rt
+    }
+    assert.deepEqual({ ...buf.clock, slewAt: 0 }, { ...clock, slewAt: 0 })
+  })
+  it('a small error is walked off, not jumped: a snapshot 3 ticks early moves the clock by at most 10 % of the time since', () => {
+    const buf = makeInterp()
+    pushSnap(buf, snap(30, 0), 1000)
+    pushSnap(buf, snap(36, 0), 1000 + 3 * tickMs)                // 3 ticks ahead of the clock
+    const a = estServerTick(buf, 1000 + 3 * tickMs)
+    const b = estServerTick(buf, 1000 + 8 * tickMs)              // 5 ticks later
+    assert.ok(Math.abs(a - 33) < 1e-9, `${a}`)                  // no jump on arrival
+    assert.ok(Math.abs(b - 38.5) < 1e-9, `${b}`)                // 5 ticks, plus 10 % of 5 caught up
+  })
+})

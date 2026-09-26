@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles, adjacencyCount, adjacencyScore, pickByAdjacency, ADJACENCY_ALPHA, ADJACENCY_EPSILON, rulesetHasOverlays } from '../renderer/systems/decorate.js'
+import { roleOf, tagsOf, pairAllowed, candidatesForRole, pickWeighted, decorateMap, pruneMissingTiles, adjacencyCount, adjacencyScore, pickByAdjacency, ADJACENCY_ALPHA, ADJACENCY_EPSILON, rulesetHasOverlays, skinFloors } from '../renderer/systems/decorate.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 // Deterministic RNG for reproducible decoration tests
@@ -531,3 +531,34 @@ describe('decorateMap — locked cells', () => {
   })
 })
 
+
+describe('skinFloors', () => {
+  const skins = [{ skin: 'g0', weight: 6 }, { skin: 'g1', weight: 3 }, { skin: 'g2', weight: 1 }]
+
+  it('skins every floor cell from the list and leaves walls alone', () => {
+    const map = makeCells(['####', '#..#', '#..#', '####'])
+    map[0][0].skin = 'stone'
+    map[1][1].skin = 'sand'
+    skinFloors(map, skins)
+    for (const row of map) for (const c of row) {
+      if (c.tile === TILE.FLOOR) assert.ok(['g0', 'g1', 'g2'].includes(c.skin))
+    }
+    assert.equal(map[0][0].skin, 'stone')
+  })
+
+  it('is deterministic per cell and follows the weights', () => {
+    const rows = Array.from({ length: 40 }, () => '.'.repeat(40))
+    const a = makeCells(rows), b = makeCells(rows)
+    skinFloors(a, skins); skinFloors(b, skins)
+    assert.deepEqual(a.map(r => r.map(c => c.skin)), b.map(r => r.map(c => c.skin)))
+    const n = { g0: 0, g1: 0, g2: 0 }
+    for (const row of a) for (const c of row) n[c.skin]++
+    assert.ok(n.g0 > n.g1 && n.g1 > n.g2 && n.g2 > 0, JSON.stringify(n))
+  })
+
+  it('does nothing without skins', () => {
+    const map = makeCells(['..'])
+    skinFloors(map, undefined)
+    assert.equal(map[0][0].skin, null)
+  })
+})

@@ -7,7 +7,7 @@ import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
 import { makeDragonBoss, updateDragonBoss, PIXEL_SKIN } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta, firstTime } from './systems/meta.js'
-import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/decorate.js'
+import { decorateMap, pruneMissingTiles, rulesetHasOverlays, skinFloors } from './systems/decorate.js'
 import { Renderer, BLINK_DUR } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
@@ -27,13 +27,14 @@ import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './pvp/local.js'
 import { stepMatch, setClass } from './pvp/sim.js'
-import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel } from './ui/pvp-hud.js'
+import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel, respawnLine } from './ui/pvp-hud.js'
 import { connect, frame as netFrameStep, sessionView, sendClass, leave as netLeave, drainEvents, drainCues } from './net/client.js'
 import { netUrl, normalizeCode, validCode, errorText, errorTitle, controlHint, netViewOf } from './net/view.js'
 import { validateName } from './net/protocol.js'
 import { NET } from './data/net.js'
 import { NEUTRAL_INPUT } from './pvp/hero.js'
 import { makeNetPanels } from './ui/net-panels.js'
+import { PVP_ARENAS, nextArenaIndex } from './data/pvp-arenas.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -832,11 +833,14 @@ function goPvpPicker() {
   menu.showClassPicker({ onPick: startPvp, onBack: goTitle })
 }
 
-function startPvp(cls) {
-  const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
-  const match = makeLocalMatch({ cls, sfx: makeSfx(loadMutedPref()) })
+// arenaIndex: this match's place in PVP_ARENA_ORDER; "Next match" plays the
+// one after it (4b spec §1).
+function startPvp(cls, arenaIndex = 0) {
+  const match = makeLocalMatch({ cls, sfx: makeSfx(loadMutedPref()), arenaIndex })
+  const { theme } = match.arena
   decorateMap(match.map, rulesets[theme.ruleset])
-  pvp = { match, theme, cls, picking: false }
+  skinFloors(match.map, theme.floorSkins)
+  pvp = { match, theme, cls, arenaIndex, picking: false }
   state = null
   setPhase(PHASE.PLAYING)
   menu.hide()
@@ -857,15 +861,21 @@ function pvpFrame(delta) {
     if (ev.type === 'kill' && ev.victim === LOCAL_ID) {
       pvp.picking = true
       keys[' '] = false
-      menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
+      pvp.backLine = respawnLine(match.heroes.find(h => h.id === LOCAL_ID)?.respawnT)
+      menu.showClassPicker({ title: 'Down!', subtitle: pvp.backLine, lines: ['Class for your next life'],
         onPick: cls => { setClass(match, LOCAL_ID, cls); pvp.cls = cls; pvp.picking = false; menu.hide(); keys[' '] = false } })
     }
     if (ev.type === 'respawn' && ev.hero === LOCAL_ID && pvp.picking) { pvp.picking = false; menu.hide() }
     if (ev.type === 'matchEnd') {
       keys[' '] = false
-      menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls), onQuit: stopPvp })
+      menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls, nextArenaIndex(pvp.arenaIndex)), onQuit: stopPvp })
       pvp.done = true
     }
+  }
+  // The death picker counts the respawn down live (4b spec §5).
+  if (pvp.picking) {
+    const line = respawnLine(match.heroes.find(h => h.id === LOCAL_ID)?.respawnT)
+    if (line !== pvp.backLine) { pvp.backLine = line; menu.setSubtitle(line) }
   }
   // Once the results panel is up the match world is frozen (stepMatch stops
   // advancing it), so one more frame paints its final state under the panel
@@ -883,6 +893,13 @@ function pvpFrame(delta) {
 
 const loadName = () => { try { return localStorage.getItem('dc-pvp-name') ?? '' } catch { return '' } }
 const saveName = n => { try { localStorage.setItem('dc-pvp-name', n) } catch {} }
+
+// The seat token of the online match this tab is in (4b spec §2): per tab,
+// gone with the tab, so a reload can take the same hero back.
+const SEAT_KEY = 'dc-pvp-seat'
+const loadSeat = () => { try { return sessionStorage.getItem(SEAT_KEY) } catch { return null } }
+const saveSeat = t => { try { if (t) sessionStorage.setItem(SEAT_KEY, t) } catch {} }
+const clearSeat = () => { try { sessionStorage.removeItem(SEAT_KEY) } catch {} }
 
 const coarsePointer = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 
@@ -938,31 +955,53 @@ function netPanelUi(s) {
   const drop = () => { keys[' '] = false }
   return {
     hide: () => { drop(); menu.hide() },
-    picker: () => { drop(); menu.showClassPicker({ title: 'Down!', subtitle: 'Class for your next life — back in 3 s',
-      onPick: cls => { sendClass(s, cls); net?.panels.picked() } }) },
+    picker: () => {
+      drop()
+      if (net) net.backLine = respawnLine(net.respawnT)
+      menu.showClassPicker({ title: 'Down!', subtitle: net?.backLine ?? respawnLine(0), lines: ['Class for your next life'],
+        onPick: cls => { sendClass(s, cls); net?.panels.picked() } })
+    },
     results: rows => { drop(); menu.showPvpResults(rows, { onQuit: stopNet, quitLabel: 'Leave' }) },
     wait: () => { drop(); menu.showMessage({ title: 'Next match starting…', onOk: stopNet, okLabel: 'Leave' }) },
     confirm: () => { drop(); menu.showLeaveConfirm({ onStay: () => net?.panels.stay(), onLeave: stopNet }) },
   }
 }
 
-function startNet({ name, cls, kind, room }) {
-  const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
-  const hello = kind === 'quick' ? { name, cls, quick: true }
+// resume: a stored seat token — a reloaded tab going back to its hero.
+function startNet({ name, cls, kind, room, resume }) {
+  const hello = resume ? { resume }
+    : kind === 'quick' ? { name, cls, quick: true }
     : kind === 'host' ? { name, cls, create: true }
     : { name, cls, room }
   const s = connect({ url: netUrl(location), hello })
-  decorateMap(s.map, rulesets[theme.ruleset])
-  net = { s, theme, muted: loadMutedPref(), kind, panels: makeNetPanels(netPanelUi(s)) }
+  // net.map: the session map last decorated; netFrame decorates each new one.
+  // respawnT / backLine: the local hero's last respawnT and the death
+  // picker's subtitle as last drawn, for the live countdown.
+  net = { s, theme: PVP_ARENAS.pillars.theme, map: null, muted: loadMutedPref(), kind, panels: makeNetPanels(netPanelUi(s)),
+    respawnT: 0, backLine: null }
   state = null
-  menu.showMessage({ title: kind === 'quick' ? 'Finding a match…' : 'Connecting…', onOk: stopNet, okLabel: 'Cancel' })
+  if (resume) showReconnecting()
+  else menu.showMessage({ title: kind === 'quick' ? 'Finding a match…' : 'Connecting…', onOk: stopNet, okLabel: 'Cancel' })
   setPhase(PHASE.PLAYING)
   keys[' '] = false
   document.body?.classList.add('net-match')
 }
 
+const showReconnecting = () => menu.showMessage({ title: 'Reconnecting…', onOk: stopNet, okLabel: 'Leave' })
+
+// The refusal or loss that ends an online session. A drop that could not be
+// resumed is "Connection lost" — with the reload line when the server turned
+// out to be a newer build.
+function showNetEnd(ev) {
+  clearSeat()
+  const lost = ev.type === 'closed' || ev.reconnect || ev.code === 'resume_failed'
+  const lines = ev.type === 'closed' || ev.code === 'resume_failed' ? [] : [errorText(ev.code)]
+  menu.showMessage({ title: lost ? 'Connection lost' : errorTitle(ev.code, net.kind), lines, onOk: stopNet })
+}
+
 function stopNet() {
   if (net) netLeave(net.s)
+  clearSeat()
   net = null
   hidePvpHud()
   document.body?.classList.remove('net-match')
@@ -976,9 +1015,15 @@ function netFrame() {
   // flowing, so the server's stale-input rule never kicks in.
   netFrameStep(s, panels.confirming ? NEUTRAL_INPUT : inputFromKeys(keys, sprintDetector.sprinting()), now)
   for (const ev of drainEvents(s)) {
-    if (ev.type === 'welcome') menu.hide()
-    else if (ev.type === 'error') { menu.showMessage({ title: errorTitle(ev.code, net.kind), lines: [errorText(ev.code)], onOk: stopNet }); return }
-    else if (ev.type === 'closed' && ev.status === 'lost') { menu.showMessage({ title: 'Connection lost', onOk: stopNet }); return }
+    if (ev.type === 'welcome') {
+      saveSeat(ev.token)
+      // Back from a drop: whatever the overlay covered (the picker, the
+      // results, the leave confirm) comes back.
+      if (ev.resumed) panels.refresh()
+      else menu.hide()
+    }
+    else if (ev.type === 'reconnecting') showReconnecting()
+    else if (ev.type === 'error' || (ev.type === 'closed' && ev.status === 'lost')) { showNetEnd(ev); return }
     else if (ev.type === 'kill' && ev.victim === s.heroId) panels.died()
     else if (ev.type === 'respawn' && ev.hero === s.heroId) panels.picked()
     else if (ev.type === 'matchEnd') panels.matchEnd(ev.standings)
@@ -995,6 +1040,19 @@ function netFrame() {
   // player joining mid-results never sees that matchEnd at all. The snapshot
   // state backs them up.
   panels.sync({ ended: v.ended, dead: v.me.dead })
+  net.respawnT = v.me.respawnT
+  if (panels.showing === 'picker') {
+    const line = respawnLine(v.me.respawnT)
+    if (line !== net.backLine) { net.backLine = line; menu.setSubtitle(line) }
+  }
+  // The session builds a new map object whenever the arena changes (a
+  // welcome, a matchStart); decorate it with that arena's theme once.
+  if (net.map !== s.map) {
+    net.map = s.map
+    net.theme = PVP_ARENAS[s.arena].theme
+    decorateMap(s.map, rulesets[net.theme.ruleset])
+    skinFloors(s.map, net.theme.floorSkins)
+  }
   const view = netViewOf(v, net.theme, s.map)
   maybeComputeFOV(view.map, view.player, 12, { los: true })
   renderer.updateCamera(view.player, 0, null)
@@ -2307,6 +2365,9 @@ async function init() {
   // frame even when not in PLAYING, since the loop no longer renders every frame.
   window.addEventListener('resize', () => { renderer.resize(); if (state) render() })
   goTitle()
+  // A tab reloaded mid-match goes straight back to its hero (4b spec §2).
+  const seat = window.saveAPI?.isWeb ? loadSeat() : null
+  if (seat) startNet({ kind: 'quick', resume: seat })
   lastTime = performance.now()
   rafId = requestAnimationFrame(gameLoop)
 }

@@ -22,6 +22,7 @@ const ERROR_TEXT = {
   server_full: 'The server is full — try again soon.',
   rate_limited: 'Too many attempts — wait a minute and try again.',
   idle: 'Removed for inactivity.',
+  resume_failed: 'Your seat is gone — join a new match.',
 }
 export const errorText = code => ERROR_TEXT[code] ?? 'Could not connect.'
 

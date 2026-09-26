@@ -14,6 +14,11 @@ export function pvpHudModel(match, localId) {
   }
 }
 
+// The death picker's live subtitle, from the local hero's respawnT. A hero
+// not (yet) counting down — the frame the kill event lands, before its
+// first dead snapshot — reads as the full PVP.respawnDelay.
+export const respawnLine = respawnT => `Back in ${Math.ceil(respawnT > 0 ? respawnT : PVP.respawnDelay)}`
+
 // The online counterpart to pvpHudModel: reads a net/client sessionView
 // instead of a local match, and adds the room code and round-trip ping.
 export function netHudModel(v, heroId) {

@@ -73,3 +73,32 @@ describe('makeNetPanels', () => {
     assert.deepEqual(calls, ['wait', 'hide', 'picker', 'hide'])
   })
 })
+
+describe('after a reconnect', () => {
+  it('showing names the panel that is up', () => {
+    const { ui } = fakeUi()
+    const p = makeNetPanels(ui)
+    assert.equal(p.showing, null)
+    p.died(); assert.equal(p.showing, 'picker')
+    p.escape(); assert.equal(p.showing, 'confirm')
+    p.stay(); p.matchEnd(ROWS); assert.equal(p.showing, 'results')
+    p.matchStart(); p.sync({ ended: true, dead: false }); assert.equal(p.showing, 'wait')
+  })
+  it('refresh() draws again whatever the Reconnecting overlay covered: picker, results, wait, the confirm, or nothing', () => {
+    const cases = [
+      [p => p.died(), 'picker'],
+      [p => p.matchEnd(ROWS), ['results', ROWS]],
+      [p => p.sync({ ended: true, dead: false }), 'wait'],
+      [p => { p.died(); p.escape() }, 'confirm'],
+      [() => {}, 'hide'],
+    ]
+    for (const [setup, want] of cases) {
+      const { ui, calls } = fakeUi()
+      const p = makeNetPanels(ui)
+      setup(p)
+      calls.length = 0
+      p.refresh()
+      assert.deepEqual(calls, [want])
+    }
+  })
+})

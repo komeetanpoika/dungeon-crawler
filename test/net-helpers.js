@@ -42,6 +42,8 @@ export async function rawClient(url, { ip = nextIp() } = {}) {
     ws, messages,
     get closed() { return closed },
     send: obj => ws.send(typeof obj === 'string' ? obj : encode(obj)),
+    // A deliberate leave: bye, then close — the seat goes at once.
+    bye: () => { ws.send(encode({ type: 'bye' })); ws.close() },
     next: (type, ms = 2000) => waitFor(() => messages.find(m => m.type === type), ms),
     last: type => messages.filter(m => m.type === type).at(-1),
   }
@@ -76,7 +78,12 @@ export function laggy({ up = 0, down = 0, jitter = 0, stallChance = 0, stallMs =
       const at = this.upAt = Math.max(this.upAt, performance.now() + delay(up))
       setTimeout(() => { if (this.inner.readyState === 1) this.inner.send(text) }, at - performance.now())
     }
-    close() { this.inner.close() }
+    // Queued behind whatever send() is still delaying, as on a real link, so
+    // a bye sent just before close() is not overtaken by the close.
+    close() {
+      const at = Math.max(this.upAt, performance.now())
+      setTimeout(() => this.inner.close(), at - performance.now())
+    }
   }
 }
 
