@@ -9,6 +9,9 @@ const rect = (x, y, w, h) => {
 }
 
 // Today's depth-0 look (DEPTH_THEMES' depths [0, 5] entry): no ruleset.
+// The outdoors ruleset's floor is the sand tile; the glade lays the Adventure
+// maps' grass over it (skinFloors in systems/decorate.js), flowers rarest.
+const GRASS = [{ skin: 'ow_grass_0', weight: 6 }, { skin: 'ow_grass_1', weight: 3 }, { skin: 'ow_grass_2', weight: 1 }]
 const PILLARS_THEME = { floorTile: 'floor', bgColor: '#0a0406', tint: 'rgba(60,10,0,0.35)', fogAlpha: 0.80 }
 
 const PICKUP_KIND = { F: 'flask', Q: 'quiver', R: 'rune' }
@@ -143,7 +146,7 @@ export const PVP_ARENAS = {
     ],
     theme: PILLARS_THEME,
   },
-  glade: parseArena('glade', GLADE, { ruleset: 'outdoors', floorTile: 'floor', bgColor: '#0a1208', tint: null, fogAlpha: 0.65 }),
+  glade: parseArena('glade', GLADE, { ruleset: 'outdoors', floorTile: 'floor', floorSkins: GRASS, bgColor: '#0a1208', tint: null, fogAlpha: 0.65 }),
   tunnels: parseArena('tunnels', TUNNELS, { ruleset: 'catacombs', floorTile: 'floor', bgColor: '#07070f', tint: 'rgba(0,0,20,0.35)', fogAlpha: 0.80 }),
   ruins: parseArena('ruins', RUINS, { floorTile: 'sand', bgColor: '#1a1206', tint: 'rgba(40,20,0,0.2)', fogAlpha: 0.65 }),
 }

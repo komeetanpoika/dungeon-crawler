@@ -7,7 +7,7 @@ import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
 import { makeDragonBoss, updateDragonBoss, PIXEL_SKIN } from './systems/dragonboss.js'
 import { getInitialMeta, applyRunResult, getStartingItems, validateMeta, firstTime } from './systems/meta.js'
-import { decorateMap, pruneMissingTiles, rulesetHasOverlays } from './systems/decorate.js'
+import { decorateMap, pruneMissingTiles, rulesetHasOverlays, skinFloors } from './systems/decorate.js'
 import { Renderer, BLINK_DUR } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
@@ -839,6 +839,7 @@ function startPvp(cls, arenaIndex = 0) {
   const match = makeLocalMatch({ cls, sfx: makeSfx(loadMutedPref()), arenaIndex })
   const { theme } = match.arena
   decorateMap(match.map, rulesets[theme.ruleset])
+  skinFloors(match.map, theme.floorSkins)
   pvp = { match, theme, cls, arenaIndex, picking: false }
   state = null
   setPhase(PHASE.PLAYING)
@@ -1050,6 +1051,7 @@ function netFrame() {
     net.map = s.map
     net.theme = PVP_ARENAS[s.arena].theme
     decorateMap(s.map, rulesets[net.theme.ruleset])
+    skinFloors(s.map, net.theme.floorSkins)
   }
   const view = netViewOf(v, net.theme, s.map)
   maybeComputeFOV(view.map, view.player, 12, { los: true })

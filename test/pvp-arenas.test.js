@@ -133,3 +133,11 @@ describe('pvp data', () => {
     assert.equal(PVP.creditWindow, 5)
   })
 })
+
+describe('glade theme', () => {
+  it('lays grass over the floor, not the outdoors ruleset sand', () => {
+    const skins = PVP_ARENAS.glade.theme.floorSkins
+    assert.ok(Array.isArray(skins) && skins.length > 0)
+    for (const s of skins) assert.match(s.skin, /^ow_grass_/)
+  })
+})
