@@ -1,11 +1,13 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { botInput, nextStep } from '../renderer/pvp/bots.js'
-import { makeMatch } from '../renderer/pvp/sim.js'
+import { botInput, nextStep, lightningTier } from '../renderer/pvp/bots.js'
+import { makeMatch, stepMatch } from '../renderer/pvp/sim.js'
 import { placeHero, tickHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
 import { grantRune } from '../renderer/pvp/pickups.js'
 import { openMap } from './pvp-helpers.js'
 import { TILE } from '../renderer/systems/entities.js'
+import { DOUBLE_SHOT } from '../renderer/data/pvp.js'
+import { GUST_CHARGE } from '../renderer/systems/magic.js'
 
 const roster = (...cls) => cls.map((c, i) => ({ id: `b${i}`, name: `B${i}`, cls: c }))
 const valid = inp => ['x', 'y'].every(k => [-1, 0, 1].includes(inp.move[k])) &&
@@ -46,7 +48,7 @@ describe('botInput', () => {
   })
   it('an archer aligned with a foe in the open shoots along the line', () => {
     const m = makeMatch({ roster: roster('archer', 'warrior') })
-    placeHero(m.heroes[0], { x: 2, y: 2 }); placeHero(m.heroes[1], { x: 8, y: 2 })
+    placeHero(m.heroes[0], { x: 2, y: 2 }); placeHero(m.heroes[1], { x: 6, y: 2 })   // 4 tiles: inside the double shot's 5
     const inp = botInput(m, m.heroes[0])
     assert.equal(inp.facing, 'east'); assert.equal(inp.attack, true)
   })
@@ -127,5 +129,61 @@ describe('a cancelled hold does not stall the warrior bot forever (fix round 1)'
       wasSwinging = swinging
     }
     assert.ok(swings >= 3, `expected several hammer swings over 10s, got ${swings}`)
+  })
+})
+
+describe('bots use the signature moves (2a)', () => {
+  // Bot `id` plays against foes that stand still; returns every tick's value
+  // of `watch(bot)`.
+  const run = (m, id, ticks, watch) => {
+    const bot = m.heroes.find(h => h.id === id)
+    const seen = []
+    for (let i = 0; i < ticks; i++) {
+      stepMatch(m, { [id]: botInput(m, bot) }, 1 / 30)
+      seen.push(watch(bot))
+    }
+    return seen
+  }
+  const setup = (cls, botCell, foes) => {
+    const m = makeMatch({ roster: roster(cls, ...foes.map(f => f.cls)) })
+    placeHero(m.heroes[0], botCell)
+    foes.forEach((f, i) => { placeHero(m.heroes[i + 1], f.cell); if (f.facing) m.heroes[i + 1].facing = f.facing })
+    for (const h of m.heroes) h.spawnProtect = 0
+    return m
+  }
+  it('a warrior lunges at a foe lined up 2-3 tiles away', () => {
+    const m = setup('warrior', { x: 10, y: 2 }, [{ cls: 'archer', cell: { x: 13, y: 2 } }])
+    const kinds = run(m, 'b0', 20, h => h.move?.kind ?? null)
+    assert.ok(kinds.includes('lunge'), kinds.join(','))
+    assert.equal(m.heroes[1].hp, m.heroes[1].maxHp - 3)
+  })
+  it('a warrior with a full tank whirls between two close foes', () => {
+    const m = setup('warrior', { x: 10, y: 2 }, [{ cls: 'archer', cell: { x: 11, y: 2 } }, { cls: 'archer', cell: { x: 9, y: 2 } }])
+    const kinds = run(m, 'b0', 20, h => h.move?.kind ?? null)
+    assert.ok(kinds.includes('whirl'), kinds.join(','))
+    assert.ok(m.heroes[1].hp < m.heroes[1].maxHp && m.heroes[2].hp < m.heroes[2].maxHp)
+  })
+  it('an archer draws the double shot to full at a lined-up foe 5+ tiles off that is not closing', () => {
+    const m = setup('archer', { x: 2, y: 2 }, [{ cls: 'warrior', cell: { x: 9, y: 2 }, facing: 'east' }])
+    const draws = run(m, 'b0', 45, h => h.charging?.kind === 'double' ? h.charging.t : null)
+    assert.ok(draws.some(t => t === DOUBLE_SHOT.full), 'drew to full')
+    const shots = m.projectiles.filter(p => p.owner === 'b0')
+    assert.equal(shots.length, 2)
+    assert.ok(shots.every(p => p.damage === 5))
+  })
+  it('an archer streams at a foe walking toward it', () => {
+    const m = setup('archer', { x: 2, y: 2 }, [{ cls: 'warrior', cell: { x: 9, y: 2 }, facing: 'west' }])
+    const inp = botInput(m, m.heroes[0])
+    assert.equal(inp.alt, false); assert.equal(inp.attack, true)
+  })
+  it('lightningTier: the tier whose strike lands nearest the foe, ties to the cheaper', () => {
+    assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map(lightningTier), ['tap', 'tap', 'tap', 'over', 'full', 'full', 'full', 'over', 'over'])
+  })
+  it('a mage charges to the full tier for a foe 6 tiles off, then lets go', () => {
+    const m = setup('mage', { x: 2, y: 2 }, [{ cls: 'archer', cell: { x: 8, y: 2 } }])
+    const held = run(m, 'b0', 25, h => h.charging?.t ?? null)
+    const peak = Math.max(...held.filter(t => t !== null))
+    assert.ok(peak >= GUST_CHARGE.full - 1e-9 && peak < GUST_CHARGE.over, `peak ${peak}`)
+    assert.ok(m.lightning.length + m.strikes.length > 0 || m.heroes[1].hp < m.heroes[1].maxHp)
   })
 })

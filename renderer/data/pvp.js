@@ -50,6 +50,12 @@ export const BOTS = {
   keepAway: 3,       // tiles — the distance a caster/archer bot tries to hold from its foe
   alignSlack: 10,    // px — off-axis slop still counted as "lined up" on a row/column
   hurt: 0.4,         // hp fraction — below this, a bot breaks off to head for a flask
+  // 2a signature moves
+  lungeMin: 2,       // tiles — a warrior bot lunges at a foe lined up this far…
+  lungeMax: 3,       // …to this far
+  whirlRange: 1.5,   // tiles — foes this close count toward a whirlwind…
+  whirlFoes: 2,      // …and it whirls (with a full tank) at this many
+  doubleMin: 5,      // tiles — an archer bot draws the double shot at a lined-up foe this far or further
 }
 
 // Sub-project 2a (spec 2026-09-26-pvp-2a-class-rework-design.md) — each
