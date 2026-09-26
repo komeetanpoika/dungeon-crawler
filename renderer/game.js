@@ -34,6 +34,7 @@ import { validateName } from './net/protocol.js'
 import { NET } from './data/net.js'
 import { NEUTRAL_INPUT } from './pvp/hero.js'
 import { makeNetPanels } from './ui/net-panels.js'
+import { PVP_ARENAS, nextArenaIndex } from './data/pvp-arenas.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -832,11 +833,13 @@ function goPvpPicker() {
   menu.showClassPicker({ onPick: startPvp, onBack: goTitle })
 }
 
-function startPvp(cls) {
-  const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
-  const match = makeLocalMatch({ cls, sfx: makeSfx(loadMutedPref()) })
+// arenaIndex: this match's place in PVP_ARENA_ORDER; "Next match" plays the
+// one after it (4b spec §1).
+function startPvp(cls, arenaIndex = 0) {
+  const match = makeLocalMatch({ cls, sfx: makeSfx(loadMutedPref()), arenaIndex })
+  const { theme } = match.arena
   decorateMap(match.map, rulesets[theme.ruleset])
-  pvp = { match, theme, cls, picking: false }
+  pvp = { match, theme, cls, arenaIndex, picking: false }
   state = null
   setPhase(PHASE.PLAYING)
   menu.hide()
@@ -863,7 +866,7 @@ function pvpFrame(delta) {
     if (ev.type === 'respawn' && ev.hero === LOCAL_ID && pvp.picking) { pvp.picking = false; menu.hide() }
     if (ev.type === 'matchEnd') {
       keys[' '] = false
-      menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls), onQuit: stopPvp })
+      menu.showPvpResults(ev.standings, { onNext: () => startPvp(pvp.cls, nextArenaIndex(pvp.arenaIndex)), onQuit: stopPvp })
       pvp.done = true
     }
   }
@@ -947,13 +950,12 @@ function netPanelUi(s) {
 }
 
 function startNet({ name, cls, kind, room }) {
-  const theme = DEPTH_THEMES.find(t => t.depths.includes(0)) ?? DEPTH_THEMES[0]
   const hello = kind === 'quick' ? { name, cls, quick: true }
     : kind === 'host' ? { name, cls, create: true }
     : { name, cls, room }
   const s = connect({ url: netUrl(location), hello })
-  decorateMap(s.map, rulesets[theme.ruleset])
-  net = { s, theme, muted: loadMutedPref(), kind, panels: makeNetPanels(netPanelUi(s)) }
+  // net.map: the session map last decorated; netFrame decorates each new one.
+  net = { s, theme: PVP_ARENAS.pillars.theme, map: null, muted: loadMutedPref(), kind, panels: makeNetPanels(netPanelUi(s)) }
   state = null
   menu.showMessage({ title: kind === 'quick' ? 'Finding a match…' : 'Connecting…', onOk: stopNet, okLabel: 'Cancel' })
   setPhase(PHASE.PLAYING)
@@ -995,6 +997,13 @@ function netFrame() {
   // player joining mid-results never sees that matchEnd at all. The snapshot
   // state backs them up.
   panels.sync({ ended: v.ended, dead: v.me.dead })
+  // The session builds a new map object whenever the arena changes (a
+  // welcome, a matchStart); decorate it with that arena's theme once.
+  if (net.map !== s.map) {
+    net.map = s.map
+    net.theme = PVP_ARENAS[s.arena].theme
+    decorateMap(s.map, rulesets[net.theme.ruleset])
+  }
   const view = netViewOf(v, net.theme, s.map)
   maybeComputeFOV(view.map, view.player, 12, { los: true })
   renderer.updateCamera(view.player, 0, null)

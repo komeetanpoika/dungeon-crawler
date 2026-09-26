@@ -196,7 +196,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
           room.sockets ??= new Map()
           room.sockets.set(heroId, ws)
           ensureLoop(room)
-          send(ws, { type: MSG.WELCOME, v: NET.protocolVersion, room: room.code, heroId, tick: room.match.tick })
+          send(ws, { type: MSG.WELCOME, v: NET.protocolVersion, room: room.code, heroId, tick: room.match.tick, arena: room.match.arena.id })
           return
         }
         if (msg.type === MSG.INPUT) { const input = validateInput(msg); if (input) queueInput(room, heroId, input) }

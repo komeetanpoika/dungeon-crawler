@@ -203,3 +203,19 @@ describe('the refusal log', () => {
     }
   })
 })
+
+describe('arena rotation over sockets', async () => {
+  const srv = await startServer({ matchLength: 1, resultsDelay: 0.3 })
+  after(() => srv.close())
+
+  it('welcome names the arena; after matchStart the snapshots name the next one', async () => {
+    const a = await rawClient(srv.url)
+    a.send(hello({ quick: true }))
+    assert.equal((await a.next('welcome')).arena, 'pillars')
+    assert.equal((await a.next('snap')).arena, 'pillars')
+    const glade = await waitFor(() => a.messages.find(m => m.type === 'snap' && m.arena === 'glade'), 4000)
+    const started = a.messages.filter(m => m.type === 'snap' && m.tick <= glade.tick).flatMap(m => m.events)
+    assert.ok(started.some(e => e.type === 'matchStart'), 'the arena changed at a matchStart')
+    a.ws.close()
+  })
+})

@@ -10,6 +10,7 @@ import { makeSfx, drainSfx } from '../renderer/systems/sfx.js'
 import { snapshotBody, ERR } from '../renderer/net/protocol.js'
 import { PVP, CLASSES } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
+import { arenaAt, nextArenaIndex } from '../renderer/data/pvp-arenas.js'
 
 export function makeLobby({ random = Math.random, rewind = true, matchLength = PVP.matchLength,
   resultsDelay = NET.resultsDelay, idleKickMs = NET.idleKickMs, lonelyHostKickMs = NET.lonelyHostKickMs } = {}) {
@@ -25,8 +26,9 @@ function newCode(lobby) {
   }
 }
 
+// Each match is played on the room's current arena (4b spec §1).
 function newMatch(lobby, room, roster) {
-  const match = makeMatch({ roster, sfx: makeSfx(false), matchLength: lobby.opts.matchLength })
+  const match = makeMatch({ roster, arena: arenaAt(room.arenaIndex), sfx: makeSfx(false), matchLength: lobby.opts.matchLength })
   if (lobby.opts.rewind) match.hitPos = (foe, attacker) => rewoundPos(room, foe, attacker)
   room.history = new Map()
   return match
@@ -43,7 +45,7 @@ export function createRoom(lobby, { name, cls, public: isPublic = false }) {
   if (lobby.rooms.size >= NET.maxRooms) return { error: ERR.SERVER_FULL }
   const room = { code: newCode(lobby), public: isPublic, serial: lobby.serial++, nextId: 1, nextBot: 1,
     bots: [], kicks: [], tick: 0, match: null, players: new Map(), history: new Map(),
-    pendingEvents: [], pendingCues: [], nextMatchAt: null, aloneSince: null }
+    pendingEvents: [], pendingCues: [], nextMatchAt: null, aloneSince: null, arenaIndex: 0 }
   const heroId = `p${room.nextId++}`
   room.match = newMatch(lobby, room, [{ id: heroId, name, cls }])
   room.players.set(heroId, freshPlayer(room))
@@ -162,6 +164,7 @@ function recordHistory(room) {
 function startNextMatch(lobby, room) {
   const prev = room.match
   const roster = prev.heroes.map(h => ({ id: h.id, name: h.name, cls: h.pendingCls ?? h.cls }))
+  room.arenaIndex = nextArenaIndex(room.arenaIndex)
   room.match = newMatch(lobby, room, roster)
   room.match.tick = prev.tick
   for (const p of room.players.values()) p.lastInputTick = room.match.tick

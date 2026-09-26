@@ -125,7 +125,7 @@ describe('play under lag', () => {
     const sent = []
     class FakeWS { constructor() { queueMicrotask(() => this.onopen?.()) } send(t) { sent.push(JSON.parse(t)) } close() {} }
     const a = connect({ url: 'ws://x', WebSocketImpl: FakeWS, now: () => 0, hello: { name: 'A', cls: 'warrior', create: true } })
-    a.ws.onmessage({ data: JSON.stringify({ type: 'welcome', room: 'ABCD', heroId: 1 }) })
+    a.ws.onmessage({ data: JSON.stringify({ type: 'welcome', room: 'ABCD', heroId: 1, arena: 'pillars' }) })
     frame(a, idle(), 0)
     frame(a, { ...NEUTRAL_INPUT, attack: true }, 16)     // 16 ms: no input is due yet
     frame(a, idle(), 34)                                  // the next input goes out here

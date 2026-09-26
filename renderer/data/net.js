@@ -1,7 +1,8 @@
-// Every netcode number (specs …-pvp-server-netcode-design.md and …-pvp-public-launch-design.md).
+// Every netcode number (specs …-pvp-server-netcode-design.md, …-pvp-public-launch-design.md and
+// …-pvp-4b-arenas-reconnect-design.md).
 // Shared by the server (server/) and the browser client (renderer/net/).
 export const NET = {
-  protocolVersion: 2,
+  protocolVersion: 3,
   path: '/pvp',
   snapshotHz: 20,
   interpDelayTicks: 3,     // other heroes are drawn this many sim ticks behind the estimated server tick

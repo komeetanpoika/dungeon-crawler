@@ -165,6 +165,31 @@ describe('the next match', () => {
   })
 })
 
+describe('arena rotation', () => {
+  const nextMatch = (lobby, room) => { const m = room.match; const out = []; while (room.match === m) { const b = stepRoom(lobby, room); if (b) out.push(b) } return out }
+  it('a room starts on pillars and each new match takes the next arena, wrapping', () => {
+    const lobby = makeLobby({ matchLength: 1, resultsDelay: 0.5 })
+    const { room } = createRoom(lobby, who('A', 'warrior'))
+    joinRoom(lobby, room.code, who('B', 'archer'))
+    const ids = [room.match.arena.id]
+    for (let i = 0; i < 4; i++) { nextMatch(lobby, room); ids.push(room.match.arena.id) }
+    assert.deepEqual(ids, ['pillars', 'glade', 'tunnels', 'ruins', 'pillars'])
+    assert.equal(room.arenaIndex, 0)
+  })
+  it("the new match puts every hero on the new arena's spawns and its snapshots name it", () => {
+    const lobby = makeLobby({ matchLength: 1, resultsDelay: 0.5 })
+    const { room } = createRoom(lobby, who('A', 'warrior'))
+    joinRoom(lobby, room.code, who('B', 'archer'))
+    nextMatch(lobby, room)
+    const { arena } = room.match
+    assert.equal(arena.id, 'glade')
+    for (const h of room.match.heroes) assert.ok(arena.spawns.some(s => s.x === h.x && s.y === h.y), `${h.id} at ${h.x},${h.y}`)
+    assert.equal(room.match.map[0].length, arena.size.w)
+    const body = steps(lobby, room, 3).at(-1)
+    assert.equal(body.arena, 'glade')
+  })
+})
+
 describe('cost', () => {
   it('a six-hero room steps and encodes in well under 2 ms a tick', () => {
     const lobby = makeLobby()

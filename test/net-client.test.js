@@ -6,6 +6,7 @@ import { makeMatch } from '../renderer/pvp/sim.js'
 import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
+import { PVP_ARENAS } from '../renderer/data/pvp-arenas.js'
 
 // A properly placed hero (px/py set) — makeMatch does the placeHero a bare
 // makeHero() does not.
@@ -21,10 +22,10 @@ class FakeWS {
 }
 
 const open = () => connect({ url: 'ws://x', WebSocketImpl: FakeWS, now: () => 0, hello: { name: 'A', cls: 'archer', create: true } })
-const welcome = s => s.ws.onmessage({ data: JSON.stringify({ type: 'welcome', room: 'ABCD', heroId: 'p1' }) })
+const welcome = (s, over = {}) => s.ws.onmessage({ data: JSON.stringify({ type: 'welcome', room: 'ABCD', heroId: 'p1', arena: 'pillars', ...over }) })
 
 const snapBody = (hero, over = {}) => ({
-  type: 'snap', tick: 0, clock: 0, waiting: false, ended: false, matchLength: 240,
+  type: 'snap', arena: 'pillars', tick: 0, clock: 0, waiting: false, ended: false, matchLength: 240,
   heroes: [heroSnap(hero)], projectiles: [], lightning: [], strikes: [], arcs: [], shockwaves: [],
   pickups: [], events: [], cues: [], ack: 0, ...over,
 })
@@ -94,5 +95,47 @@ describe('client prediction during results', () => {
     assert.equal(s.pred.hero.py, before.y)
     // inputs are still sent to the server
     assert.ok(s.ws.sent.some(m => m.type === 'input'))
+  })
+})
+
+describe('the arena on the wire (protocol v3)', () => {
+  it("welcome builds the named arena's map", () => {
+    const s = open()
+    welcome(s, { arena: 'glade' })
+    assert.equal(s.status, 'open')
+    assert.equal(s.arena, 'glade')
+    assert.equal(s.map.length, PVP_ARENAS.glade.size.h)
+    assert.equal(s.map[0].length, PVP_ARENAS.glade.size.w)
+  })
+  it('a snapshot naming another arena rebuilds the map, and the predictor walks on the new one', () => {
+    const s = open()
+    welcome(s)
+    const hero = lone()
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 0 })) })
+    const first = s.map
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 1 })) })
+    assert.equal(s.map, first, 'the same arena keeps its map object')
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 2, arena: 'tunnels', events: [{ type: 'matchStart' }] })) })
+    assert.notEqual(s.map, first)
+    assert.equal(s.arena, 'tunnels')
+    assert.equal(s.map[0].length, PVP_ARENAS.tunnels.size.w)
+    assert.equal(s.pred.map, s.map)
+  })
+  it('an arena this build does not know is a version refusal', () => {
+    for (const arena of ['volcano', 'toString', undefined]) {
+      const s = open()
+      welcome(s)
+      s.ws.onmessage({ data: JSON.stringify(snapBody(lone(), { tick: 0, arena })) })
+      assert.equal(s.status, 'error', String(arena))
+      assert.equal(s.error, 'version')
+      assert.ok(drainEvents(s).some(e => e.type === 'error' && e.code === 'version'))
+      assert.equal(s.pred, null, 'the refused snapshot is not applied')
+    }
+  })
+  it('an unknown arena in the welcome refuses before the session opens', () => {
+    const s = open()
+    welcome(s, { arena: 'volcano' })
+    assert.equal(s.status, 'error')
+    assert.equal(s.heroId, null)
   })
 })

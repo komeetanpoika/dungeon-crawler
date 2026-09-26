@@ -1,4 +1,5 @@
-// PvP protocol v2 (v1 in 2026-09-25-pvp-server-netcode-design.md §1; v2 adds hello.quick, 4a spec §1): message
+// PvP protocol v3 (v1 in 2026-09-25-pvp-server-netcode-design.md §1; v2 adds hello.quick, 4a spec §1;
+// v3 adds the arena id on welcome and snap, seat tokens, hello.resume and bye, 4b spec §1-§2): message
 // names, validation of everything a client sends, and the snapshot a server
 // sends — plus hydrateHero, which turns a snapshot hero back into a hero the
 // renderer and the predictor can use. Shared by server/ and the browser;
@@ -125,7 +126,7 @@ export function hydrateHero(hero, s) {
 
 export function snapshotBody(match, { events = [], cues = [] } = {}) {
   return {
-    type: MSG.SNAP, tick: match.tick, clock: match.clock, waiting: !!match.waiting, ended: !!match.ended,
+    type: MSG.SNAP, arena: match.arena.id, tick: match.tick, clock: match.clock, waiting: !!match.waiting, ended: !!match.ended,
     matchLength: match.matchLength,
     heroes: match.heroes.map(heroSnap),
     projectiles: match.projectiles.map(p => ({ px: p.px, py: p.py, dx: p.dx, dy: p.dy, shape: p.shape, color: p.color })),

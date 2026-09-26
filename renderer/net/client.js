@@ -2,10 +2,11 @@
 // input loop, your predicted hero, everyone else interpolated, and a
 // ready-to-draw view. The WebSocket constructor and the clock are passed in,
 // so Node tests run the very same code with `ws`. No DOM.
-import { MSG, encode, decode, hydrateHero, heroSnap } from './protocol.js'
+import { MSG, ERR, encode, decode, hydrateHero, heroSnap } from './protocol.js'
 import { makePredictor, predictStep, predictCosmetics, reconcile, tickCorrection, drawnPos } from './predict.js'
 import { makeInterp, pushSnap, renderTick, heroPoses, projectilesAt, newest } from './interp.js'
 import { arenaMap } from '../pvp/sim.js'
+import { PVP_ARENAS } from '../data/pvp-arenas.js'
 import { makeFeedback, addFloat, tickFeedback } from '../systems/feedback.js'
 import { tickWalk } from '../systems/walk.js'
 import { PVP } from '../data/pvp.js'
@@ -13,7 +14,7 @@ import { NET } from '../data/net.js'
 
 export function connect({ url, hello, WebSocketImpl = globalThis.WebSocket, now = () => performance.now() }) {
   const s = {
-    status: 'connecting', error: null, room: null, heroId: null, map: arenaMap(), now,
+    status: 'connecting', error: null, room: null, heroId: null, arena: 'pillars', map: arenaMap(), now,
     pred: null, interp: makeInterp(), others: new Map(), meView: null, seq: 0, acc: 0, held: { attack: false, alt: false },
     lastFrame: null, lastView: null, lastPingAt: -Infinity, ping: null,
     events: [], cues: [], feedback: makeFeedback(), closedByUs: false,
@@ -56,9 +57,31 @@ function pushEvent(s, e) {
   }
 }
 
+// The arena a welcome or snapshot names (protocol v3). A new one gets a new
+// map object — which also drops the renderer's tile-chunk cache and makes
+// game.js decorate it — and the predictor walks on it from then on. An id
+// this build does not know means the server is newer: the same refusal as a
+// version mismatch.
+function setArena(s, id) {
+  if (typeof id !== 'string' || !Object.hasOwn(PVP_ARENAS, id)) {
+    s.status = 'error'; s.error = ERR.VERSION
+    pushEvent(s, { type: 'error', code: ERR.VERSION })
+    s.ws.close()
+    return false
+  }
+  if (id !== s.arena) {
+    s.arena = id
+    s.map = arenaMap(PVP_ARENAS[id])
+    if (s.pred) s.pred.map = s.map
+  }
+  return true
+}
+
 function onMessage(s, msg, t) {
-  if (!msg) return
+  // After a refusal nothing more is read: the socket is closing.
+  if (!msg || s.status === 'error') return
   if (msg.type === MSG.WELCOME) {
+    if (!setArena(s, msg.arena)) return
     s.status = 'open'; s.room = msg.room; s.heroId = msg.heroId
     pushEvent(s, { type: 'welcome', room: msg.room, heroId: msg.heroId })
   } else if (msg.type === MSG.ERROR) {
@@ -72,6 +95,7 @@ function onMessage(s, msg, t) {
 }
 
 function onSnap(s, snap, t) {
+  if (!setArena(s, snap.arena)) return
   pushSnap(s.interp, snap, t)
   const mine = snap.heroes.find(h => h.id === s.heroId)
   if (mine) {
