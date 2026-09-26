@@ -103,6 +103,9 @@ function stepLunge(match, hero, mv, dt) {
 
 function lungeHit(match, hero, mv, dx, dy) {
   const L = WARRIOR_COMBOS.lunge
+  // reachTo (like the swing) tests the foe's rewound position, so under
+  // latency the dash stops where the attacker saw it — cosmetic only:
+  // damage, the stop point's real px/py and blocks all use the real hero.
   const fa = Math.atan2(dy, dx)
   let first = null, best = Infinity
   for (const e of foesOf(match, hero)) {

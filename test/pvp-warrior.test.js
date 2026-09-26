@@ -251,6 +251,7 @@ describe('the lunge', () => {
     for (let i = 0; i < 12; i++) tickHero(m, w, input({}), dt)
     assert.equal(v.hp, PVP.hp)
     assert.ok(v.px - w.px < 64)
+    assert.ok(w.knockback && w.knockback.vx < 0, 'the lunger is shoved back')
   })
 })
 
@@ -330,5 +331,22 @@ describe('combo bookkeeping', () => {
     w.hp = 0
     stepMatch(m, {}, PVP.tick)
     assert.equal(w.combo, null); assert.equal(w.move, null)
+  })
+  it('the rune picked up mid-fence stops the remaining thrusts (fix round 1)', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }), a = hero('a', 'archer', { x: 6, y: 5 }); const m = testMatch([w, a])
+    tickHero(m, w, input({ attack: true }), dt)
+    gesture(m, w, FENCE)                       // release: the first thrust lands
+    assert.equal(a.hp, PVP.hp - 1)
+    grantRune(m, w)
+    assert.equal(w.move, null)
+    for (let i = 0; i < 10; i++) tickHero(m, w, input({}), dt)
+    assert.equal(a.hp, PVP.hp - 1, 'no further thrusts after the rune swap')
+  })
+  it('the rune ending also stops a running combo (fix round 1)', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }); const m = testMatch([w])
+    grantRune(m, w)
+    w.move = { kind: 'fence', dir: 'e', t: 0.05, from: { px: w.px, py: w.py }, done: false, dist: 0, fired: 1, group: 'x' }
+    endRune(m, w)
+    assert.equal(w.move, null)
   })
 })

@@ -71,6 +71,7 @@ export function grantRune(match, hero) {
   if (hero.combo || hero.charging) hero.needRelease = true
   hero.charging = null
   hero.combo = null
+  hero.move = null
   hero.rune = { t: PICKUPS.rune.duration, saved }
   return true
 }
@@ -86,6 +87,7 @@ export function endRune(match, hero) {
   if (hero.combo || hero.charging) hero.needRelease = true
   hero.charging = null
   hero.combo = null
+  hero.move = null
   hero.rune = null
   match.events.push({ type: 'runeEnd', hero: hero.id })
 }
