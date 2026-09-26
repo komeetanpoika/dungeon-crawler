@@ -14,7 +14,7 @@ import { spellFor, castCost } from '../systems/spells.js'
 import { swingCost, comboCooldown } from '../pvp/attacks.js'
 import { isComboWeapon, beginHold, holdGesture, classify, SECTOR_FACING } from '../pvp/combos.js'
 import { spendStamina } from '../systems/stamina.js'
-import { PVP } from '../data/pvp.js'
+import { PVP, WARRIOR_COMBOS } from '../data/pvp.js'
 import { NET } from '../data/net.js'
 
 export function makePredictor({ map, heroSnap: s }) {
@@ -114,6 +114,9 @@ export function predictStep(pred, input, dt = PVP.tick) {
   const attacking = !!input.attack && !h.needRelease && !blocking
   const released = predictCombo(h, input, attacking)
   predictSwing(h, attacking)
+  // A combo effect a snapshot showed runs out on the server's clock, so a
+  // replayed lunge stops the walk exactly as long as the server's dash did.
+  if (h.move) { h.move.t += dt; if (h.move.t >= WARRIOR_COMBOS.fxDur - 1e-9) h.move = null }
   return { released }
 }
 

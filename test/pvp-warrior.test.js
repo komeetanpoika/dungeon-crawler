@@ -2,9 +2,12 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeHero, placeHero, tickHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
+import { makeMatch, stepMatch } from '../renderer/pvp/sim.js'
 import { grantRune, endRune } from '../renderer/pvp/pickups.js'
 import { getAttack } from '../renderer/systems/melee.js'
-import { PLAYER_SPEED } from '../renderer/systems/movement.js'
+import { PLAYER_SPEED, PLAYER_HALF, canMoveTo } from '../renderer/systems/movement.js'
+import { makeSfx } from '../renderer/systems/sfx.js'
+import { TILE } from '../renderer/systems/entities.js'
 import { PVP, WARRIOR_COMBOS } from '../renderer/data/pvp.js'
 import { testMatch } from './pvp-helpers.js'
 
@@ -188,5 +191,144 @@ describe('the release', () => {
     assert.ok(w.spawnProtect > 0)
     tickHero(m, w, input({ attack: false }), dt)
     assert.equal(w.spawnProtect, 0)
+  })
+})
+
+// Press standing still, enter `moves`, let go, then `after` neutral ticks.
+const combo = (m, h, moves, after = 12) => {
+  tickHero(m, h, input({ attack: true }), dt)
+  gesture(m, h, moves)
+  for (let i = 0; i < after; i++) tickHero(m, h, input({}), dt)
+}
+const LUNGE = [E, O, E], FENCE = [E, O, W], WHIRL = [N, E, S, W]
+const hits = m => m.events.filter(e => e.type === 'hit')
+// A 12×12 room with a wall column at x = 5.
+const walledAt5 = () => Array.from({ length: 12 }, (_, y) => Array.from({ length: 12 }, (_, x) =>
+  ({ tile: x === 0 || y === 0 || x === 11 || y === 11 || x === 5 ? TILE.WALL : TILE.FLOOR })))
+
+describe('the lunge', () => {
+  it('dashes 2.5 tiles toward its direction with nobody in the way, and walks no step of its own', () => {
+    const w = hero('w', 'warrior', { x: 3, y: 5 }); const m = testMatch([w])
+    const x0 = w.px, y0 = w.py
+    tickHero(m, w, input({ attack: true }), dt)
+    gesture(m, w, LUNGE)
+    for (let i = 0; i < 12; i++) tickHero(m, w, input({ move: N }), dt)   // pushing north during the dash
+    assert.ok(Math.abs(w.px - x0 - 2.5 * 32) < 1e-9, `moved ${w.px - x0}`)
+    assert.ok(w.py < y0, 'walks again once the dash is over')
+    assert.equal(w.x, Math.floor(w.px / 32))
+  })
+  it('the first foe within reach ahead takes 3, and the dash ends there', () => {
+    const w = hero('w', 'warrior', { x: 3, y: 5 }), a = hero('a', 'archer', { x: 6, y: 5 }), b = hero('b', 'archer', { x: 7, y: 5 })
+    const m = testMatch([w, a, b])
+    combo(m, w, LUNGE)
+    assert.equal(a.hp, PVP.hp - 3)
+    assert.equal(b.hp, PVP.hp)
+    assert.ok(a.px - w.px <= 12 + 20 + 1e-9, 'stopped at the foe')
+    assert.ok(w.px < 3 * 32 + 16 + 80, 'short of the full dash')
+    assert.equal(a.lastHitBy.id, 'w')
+  })
+  it('stops flush against a wall', () => {
+    const map = walledAt5()
+    const w = hero('w', 'warrior', { x: 3, y: 5 }); const m = testMatch([w], map)
+    combo(m, w, LUNGE)
+    assert.equal(w.x, 4)
+    assert.ok(canMoveTo(map, w.px, w.py, PLAYER_HALF))
+    assert.ok(5 * 32 - (w.px + PLAYER_HALF) < 1, `gap ${5 * 32 - (w.px + PLAYER_HALF)}`)
+  })
+  it('flush against a wall the lunge goes nowhere, ends, and does not hang', () => {
+    const map = walledAt5()
+    const w = hero('w', 'warrior', { x: 4, y: 5 }); const m = testMatch([w], map)
+    w.px = 5 * 32 - PLAYER_HALF                          // touching the wall
+    combo(m, w, LUNGE)
+    assert.equal(w.px, 5 * 32 - PLAYER_HALF)
+    assert.equal(w.move, null)
+  })
+  it('a buckler raised toward the lunge blocks it and still ends the dash', () => {
+    const w = hero('w', 'warrior', { x: 3, y: 5 }), v = hero('v', 'warrior', { x: 6, y: 5 }); const m = testMatch([w, v])
+    v.facing = 'west'; v.blocking = true
+    tickHero(m, w, input({ attack: true }), dt)
+    gesture(m, w, LUNGE)
+    for (let i = 0; i < 12; i++) tickHero(m, w, input({}), dt)
+    assert.equal(v.hp, PVP.hp)
+    assert.ok(v.px - w.px < 64)
+  })
+})
+
+describe('the fence', () => {
+  it('three thrusts toward d, 1 each: all three land on one hero', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }), a = hero('a', 'archer', { x: 6, y: 5 }); const m = testMatch([w, a])
+    combo(m, w, FENCE)
+    assert.equal(a.hp, PVP.hp - 3)
+    assert.deepEqual(hits(m).map(e => e.amount), [1, 1, 1])
+    assert.equal(w.facing, 'east')
+  })
+  it('the thrusts come at 0, 0.12 and 0.24 s after the release', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }), a = hero('a', 'archer', { x: 6, y: 5 }); const m = testMatch([w, a])
+    tickHero(m, w, input({ attack: true }), dt)
+    gesture(m, w, FENCE)                                   // the release tick: the first thrust
+    const at = [hits(m).length]
+    for (let i = 1; i <= 8; i++) { tickHero(m, w, input({}), dt); at.push(hits(m).length) }
+    // ticks after the release: 0.12 s falls on tick 4 (0.133 s), 0.24 s on tick 8 (0.267 s)
+    assert.deepEqual(at, [1, 1, 1, 1, 2, 2, 2, 2, 3])
+  })
+  it('reaches 40 px: a foe two tiles off is untouched', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }), a = hero('a', 'archer', { x: 7, y: 5 }); const m = testMatch([w, a])
+    combo(m, w, FENCE)
+    assert.equal(a.hp, PVP.hp)
+  })
+})
+
+describe('the whirlwind', () => {
+  it('needs the full tank, hits every foe all round within 44 px for 2 and throws them 40 px away', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 })
+    const e = hero('e', 'archer', { x: 6, y: 5 }), wv = hero('wv', 'archer', { x: 4, y: 5 }), n = hero('n', 'mage', { x: 5, y: 4 })
+    const far = hero('far', 'archer', { x: 5, y: 7 })
+    const m = testMatch([w, e, wv, n, far]); m.sfx = makeSfx()
+    tickHero(m, w, input({ attack: true }), dt)
+    gesture(m, w, WHIRL)
+    for (const h of [e, wv, n]) assert.equal(h.hp, PVP.hp - 2, h.id)
+    assert.equal(far.hp, PVP.hp)
+    assert.ok(e.knockback.vx > 0 && wv.knockback.vx < 0 && n.knockback.vy < 0)
+    assert.equal(w.stamina, 0)
+    assert.ok(m.sfx.cues.some(c => c.name === 'whirl'))
+  })
+  it('a buckler facing the spinner blocks it, and the spinner is shoved', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }), v = hero('v', 'warrior', { x: 6, y: 5 }); const m = testMatch([w, v])
+    tickHero(m, w, input({ attack: true }), dt)
+    for (const move of WHIRL) tickHero(m, w, input({ attack: true, move }), dt)
+    v.facing = 'west'; v.blocking = true
+    tickHero(m, w, input({ attack: false }), dt)
+    assert.equal(v.hp, PVP.hp)
+    assert.ok(w.knockback && w.knockback.vx < 0)
+  })
+  it('a buckler facing away does not', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }), v = hero('v', 'warrior', { x: 6, y: 5 }); const m = testMatch([w, v])
+    tickHero(m, w, input({ attack: true }), dt)
+    for (const move of WHIRL) tickHero(m, w, input({ attack: true, move }), dt)
+    v.facing = 'east'; v.blocking = true
+    tickHero(m, w, input({ attack: false }), dt)
+    assert.equal(v.hp, PVP.hp - 2)
+  })
+})
+
+describe('combo bookkeeping', () => {
+  it("a combo's hero.move names its kind and direction, and a stun ends it", () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }); const m = testMatch([w])
+    tickHero(m, w, input({ attack: true }), dt)
+    gesture(m, w, FENCE)
+    assert.equal(w.move.kind, 'fence')
+    assert.equal(w.move.dir, 'e')
+    w.stunTimer = 0.2
+    tickHero(m, w, input({}), dt)
+    assert.equal(w.move, null)
+  })
+  it('death clears a hold and a running combo', () => {
+    const m = makeMatch({ roster: [{ id: 'w', name: 'w', cls: 'warrior' }, { id: 'a', name: 'a', cls: 'archer' }] })
+    const w = m.heroes[0]
+    w.combo = { moves: ['e'], last: 'e', lockDir: { x: 0, y: 0 } }
+    w.move = { kind: 'fence', dir: 'e', t: 0, from: { px: w.px, py: w.py }, done: false, dist: 0, fired: 3, group: 'x' }
+    w.hp = 0
+    stepMatch(m, {}, PVP.tick)
+    assert.equal(w.combo, null); assert.equal(w.move, null)
   })
 })

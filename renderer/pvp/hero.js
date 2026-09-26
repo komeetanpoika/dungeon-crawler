@@ -14,8 +14,8 @@ import { tickWalk } from '../systems/walk.js'
 import { chargeMoveFactor, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
 import { GUST_CHARGE, resolveGustTier, shouldAutoReleaseGust } from '../systems/magic.js'
 import { spellFor } from '../systems/spells.js'
-import { swing, castSpell, loose, comboCooldown } from './attacks.js'
-import { isComboWeapon, beginHold, holdGesture, classify, unitMove, SECTOR_FACING } from './combos.js'
+import { swing, castSpell, loose, startCombo, stepCombo } from './attacks.js'
+import { isComboWeapon, beginHold, holdGesture, classify, unitMove, isDashing, SECTOR_FACING } from './combos.js'
 import { KITS, OUTFIT_OVERRIDES, PVP, WARRIOR_COMBOS } from '../data/pvp.js'
 
 export const NEUTRAL_INPUT = Object.freeze({ move: Object.freeze({ x: 0, y: 0 }), facing: null, attack: false, alt: false, sprint: false })
@@ -48,7 +48,7 @@ export function applyKit(hero, cls) {
   }
   hero.maxHp = PVP.hp; hero.hp = PVP.hp
   hero.stamina = STAMINA_MAX; hero.maxStamina = STAMINA_MAX; hero.staminaRegenT = 0; hero.staminaRefusedT = 0
-  hero.charging = null; hero.combo = null; hero.rune = null; hero.shock = undefined; hero.rain = undefined
+  hero.charging = null; hero.combo = null; hero.move = null; hero.invulnGroup = null; hero.rune = null; hero.shock = undefined; hero.rain = undefined
   hero.stunTimer = 0; hero.slowTimer = 0; hero.slowMul = 1; hero.rootTimer = 0; hero.frozen = false
   hero.knockback = null; hero.invulnTimer = 0; hero.blocking = false; hero.shieldDropT = 0; hero.blockedHit = false
   hero.meleeCooldown = 0; hero.rangedCooldown = 0; hero.magicCooldown = 0; hero.offCooldown = 0
@@ -94,18 +94,22 @@ export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
   // After a release the attack must be let go before it can wind up again
   // (game.js does this by clearing keys[' ']).
   if (!input.attack) hero.needRelease = false
-  if (stunned) { hero.charging = null; cancelHold(hero, input) }
+  // A stun also ends a running combo effect (the lunge's dash, the thrusts).
+  if (stunned) { hero.charging = null; hero.move = null; cancelHold(hero, input) }
   const altEdge = !!input.alt && !hero.prevAlt
   hero.prevAlt = !!input.alt
   hero.blockedHit = false
   const blocking = tickShield(hero, !!input.alt && !stunned, dt)
   if (blocking) { hero.charging = null; cancelHold(hero, input) }
-  // A held combo locks the facing: the moves aim the strike, not the stick.
-  if (!stunned && !hero.combo && input.facing && DIRS[input.facing]) hero.facing = input.facing
+  // A held combo locks the facing (the moves aim the strike, not the stick),
+  // and so does the lunge's dash.
+  const dashing = isDashing(hero)
+  if (!stunned && !hero.combo && !dashing && input.facing && DIRS[input.facing]) hero.facing = input.facing
 
   // While the attack is held the Warrior slides along the move held at the
-  // press, at half speed, whatever the stick does now (spec 2a §2).
-  const { x: vx, y: vy } = hero.combo ? hero.combo.lockDir : unitMove(input.move)
+  // press, at half speed, whatever the stick does now (spec 2a §2); during
+  // the lunge's dash the dash alone moves the hero.
+  const { x: vx, y: vy } = hero.combo ? hero.combo.lockDir : dashing ? { x: 0, y: 0 } : unitMove(input.move)
   const moving = vx !== 0 || vy !== 0
   const profile = sprintProfile(hero.attackMode, { drainMul: outfitOf(hero, hero.attackMode)?.sprintDrain ?? 1 })
   const sprinting = moving && !!input.sprint && !hero.charging && !hero.combo && !blocking && hero.stamina > 0
@@ -130,6 +134,7 @@ export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
   if (hero.attackMode === 'melee') tickMelee(match, hero, input, attacking, dt)
   else if (hero.attackMode === 'magic') tickMagic(match, hero, input, attacking, altEdge, dt)
   else if (hero.attackMode === 'ranged') tickRanged(match, hero, attacking)
+  stepCombo(match, hero, dt)
 }
 
 // A stun or a raised shield ends a hold: no combo fires, the stamina spent
@@ -184,10 +189,7 @@ function releaseCombo(match, hero) {
   hero.combo = null
   if (combo.dir) hero.facing = SECTOR_FACING[combo.dir]
   if (combo.kind === 'swing') swing(match, hero, resolveCharge(hero.weapon.weaponType, 0))
-  else {
-    hero.spawnProtect = 0
-    hero.meleeCooldown = comboCooldown(hero.weapon.weaponType, combo.kind)
-  }
+  else startCombo(match, hero, combo)
   return combo
 }
 

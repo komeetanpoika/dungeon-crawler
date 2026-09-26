@@ -14,7 +14,9 @@ import { tryCast } from '../systems/spells.js'
 import { castLightning } from '../systems/spells/lightning.js'
 import { tryFire } from '../systems/ranged.js'
 import { sfx } from '../systems/sfx.js'
+import { canMoveTo, PLAYER_HALF, TILE_SIZE } from '../systems/movement.js'
 import { hurtHero, foesOf } from './combat.js'
+import { SECTOR_FACING } from './combos.js'
 import { PVP, WARRIOR_COMBOS } from '../data/pvp.js'
 
 const MODULES = { lightning: castLightning }
@@ -39,6 +41,114 @@ export function swingCost(hero, mods) {
 export function comboCooldown(weaponType, kind) {
   const cd = getAttack(weaponType).cooldown
   return kind === 'whirl' ? cd * WARRIOR_COMBOS.whirl.cooldownMul : cd
+}
+
+// --- the Warrior's combos (spec 2a §2) --------------------------------
+// A release that classified as a combo starts hero.move = { kind, dir, t,
+// from, done, dist, fired, group }; stepCombo runs it once a tick (the
+// release tick included) until WARRIOR_COMBOS.fxDur, which is also how long
+// the renderer draws it. Every hit is a 'hit' from the attacker's position
+// through hurtHero (melee: a facing buckler blocks it and shoves back), and
+// every hit test asks match.hitPos like the swing does.
+
+// Where the hit test sees `e` (the server's rewind), and the vector from
+// the hero to the nearest point of that body.
+const reachTo = (match, hero, e) => {
+  const n = nearestPoint(match.hitPos?.(e, hero) ?? e, hero.px, hero.py)
+  return { dx: n.x - hero.px, dy: n.y - hero.py }
+}
+
+export function startCombo(match, hero, combo) {
+  hero.spawnProtect = 0
+  hero.meleeCooldown = comboCooldown(hero.weapon.weaponType, combo.kind)
+  match.groupSeq = (match.groupSeq ?? 0) + 1
+  hero.move = { kind: combo.kind, dir: combo.dir, t: 0, from: { px: hero.px, py: hero.py }, done: false,
+    dist: 0, fired: 0, group: `${hero.id}#${match.groupSeq}` }
+  if (combo.kind === 'whirl') whirl(match, hero)
+  else sfx(match, 'melee-swing', { px: hero.px, py: hero.py })
+}
+
+export function stepCombo(match, hero, dt) {
+  const mv = hero.move
+  if (!mv) return
+  if (mv.kind === 'lunge' && !mv.done) stepLunge(match, hero, mv, dt)
+  if (mv.kind === 'fence') {
+    const { times } = WARRIOR_COMBOS.fence
+    while (mv.fired < times.length && mv.t >= times[mv.fired] - 1e-9) { thrust(match, hero, mv); mv.fired++ }
+  }
+  mv.t += dt
+  if (mv.t >= WARRIOR_COMBOS.fxDur - 1e-9) hero.move = null
+}
+
+// The lunge: a dash of lunge.tiles toward dir over lunge.dur. The first foe
+// whose body comes within lunge.reach ahead (the half-plane in front, checked
+// before and after each step) takes lunge.damage, and the dash ends there;
+// a wall ends it too, the hero stopped flush against it.
+function stepLunge(match, hero, mv, dt) {
+  const L = WARRIOR_COMBOS.lunge
+  const [dx, dy] = DIRS[SECTOR_FACING[mv.dir]]
+  if (lungeHit(match, hero, mv, dx, dy)) return
+  const total = L.tiles * TILE_SIZE
+  let step = Math.min(total / L.dur * dt, total - mv.dist)
+  while (step > 0 && !canMoveTo(match.map, hero.px + dx * step, hero.py + dy * step, PLAYER_HALF)) {
+    step = Math.max(0, Math.ceil(step) - 1)       // a wall: close the gap a pixel at a time
+    mv.done = true
+  }
+  hero.px += dx * step; hero.py += dy * step
+  hero.x = Math.floor(hero.px / TILE_SIZE); hero.y = Math.floor(hero.py / TILE_SIZE)
+  mv.dist += step
+  if (mv.dist >= total - 1e-9) mv.done = true
+  lungeHit(match, hero, mv, dx, dy)
+}
+
+function lungeHit(match, hero, mv, dx, dy) {
+  const L = WARRIOR_COMBOS.lunge
+  const fa = Math.atan2(dy, dx)
+  let first = null, best = Infinity
+  for (const e of foesOf(match, hero)) {
+    const v = reachTo(match, hero, e)
+    const d = Math.hypot(v.dx, v.dy)
+    if (d < best && inSwing(L.reach, Math.PI / 2, fa, v.dx, v.dy)) { first = e; best = d }
+  }
+  if (!first) return false
+  mv.done = true
+  if (hurtHero(match, first, L.damage, { by: hero, melee: true })) sfx(match, 'melee-hit', { px: first.px, py: first.py })
+  return true
+}
+
+// One of the fence's three thrusts: a snap-style wedge of fence.reach toward
+// dir. The three share one hit group, so all three can land on one hero.
+function thrust(match, hero, mv) {
+  const F = WARRIOR_COMBOS.fence
+  const arc = getSwingArc('snap')
+  const facing = SECTOR_FACING[mv.dir]
+  const fa = FACING_ANGLE[facing]
+  for (const e of foesOf(match, hero)) {
+    const v = reachTo(match, hero, e)
+    if (!inSwing(F.reach, arc.halfAngle, fa, v.dx, v.dy)) continue
+    if (hurtHero(match, e, F.damage, { by: hero, melee: true, group: mv.group })) sfx(match, 'melee-hit', { px: e.px, py: e.py })
+  }
+  const atk = getAttack('dagger')                // the snap's own quick poke, drawn at the fence's reach
+  Object.assign(hero, { swingHand: 'main', attackTimer: atk.duration, attackDuration: atk.duration, attackStyle: 'snap',
+    attackFacing: facing, attackReachMul: F.reach / arc.reach })
+  sfx(match, 'melee-swing', { px: hero.px, py: hero.py })
+}
+
+// The whirlwind: at the release, every foe within whirl.reach all round takes
+// whirl.damage and is thrown whirl.knockback px away from the spinner.
+function whirl(match, hero) {
+  const Wh = WARRIOR_COMBOS.whirl
+  for (const e of foesOf(match, hero)) {
+    const v = reachTo(match, hero, e)
+    if (Math.hypot(v.dx, v.dy) > Wh.reach) continue
+    if (!hurtHero(match, e, Wh.damage, { by: hero, melee: true })) continue
+    startKnockback(e, e.px - hero.px, e.py - hero.py, Wh.knockback)
+    sfx(match, 'melee-hit', { px: e.px, py: e.py })
+  }
+  const dur = WARRIOR_COMBOS.fxDur
+  Object.assign(hero, { swingHand: 'main', attackTimer: dur, attackDuration: dur, attackStyle: 'spin',
+    attackFacing: hero.facing, attackReachMul: Wh.reach / getSwingArc('spin').reach })
+  sfx(match, 'whirl', { px: hero.px, py: hero.py })
 }
 
 export function swing(match, hero, mods) {

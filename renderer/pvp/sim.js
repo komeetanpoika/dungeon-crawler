@@ -224,6 +224,7 @@ function resolveDeaths(match) {
     h.lastHitBy = null
     h.charging = null
     h.combo = null
+    h.move = null
     h.knockback = null
     h.shock = undefined
     h.blocking = false

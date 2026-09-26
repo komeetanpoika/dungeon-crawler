@@ -66,6 +66,11 @@ export function classify(moves) {
 
 export const isComboWeapon = weaponType => weaponType === WARRIOR_COMBOS.weapon
 
+// The lunge's dash is running: the hero neither walks nor turns. The server
+// ends it early on a hit or a wall (move.done); the predictor, which never
+// sees those, ends it on time.
+export const isDashing = hero => hero.move?.kind === 'lunge' && !hero.move.done && hero.move.t < WARRIOR_COMBOS.lunge.dur
+
 // The press: a hold begins, sliding along the move held at that moment.
 export function beginHold(hero, move) {
   const { moves, last } = startGesture(move)

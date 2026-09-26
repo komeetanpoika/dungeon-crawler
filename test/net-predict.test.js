@@ -207,3 +207,27 @@ describe('2a prediction parity', () => {
     same(replay('warrior', inputs, 4, undefined, onTick))
   })
 })
+
+describe('2a prediction: the lunge', () => {
+  it('a lunge a snapshot shows mid-dash stops the replayed walk as long as the server stopped it; the dash itself is not predicted', () => {
+    const m = lone('warrior')
+    placeHero(m.heroes[0], { x: 8, y: 8 })
+    const E = { x: 1, y: 0 }, N = { x: 0, y: -1 }, O = { x: 0, y: 0 }
+    const inputs = [{ attack: true }, ...[E, O, E].map(move => ({ attack: true, move })), {}, ...Array(10).fill({ move: N })]
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    let snap = null
+    inputs.forEach((over, i) => {
+      const input = { ...NEUTRAL_INPUT, move: O, ...over, seq: i + 1 }
+      stepMatch(m, { p1: input }, PVP.tick)
+      predictStep(pred, input)
+      pred.pending.push({ seq: i + 1, input })
+      if (i + 1 === 6) snap = heroSnap(m.heroes[0])      // the tick after the release: dashing
+    })
+    assert.equal(snap.move.kind, 'lunge')
+    reconcile(pred, snap, 6)
+    const server = m.heroes[0]
+    assert.ok(Math.abs(pred.hero.py - server.py) < 1e-9, `py pred ${pred.hero.py} server ${server.py}`)
+    assert.ok(server.py < snap.py, 'the server walked north after the dash')
+    assert.equal(pred.hero.px, snap.px, 'the rest of the dash comes with the next snapshot')
+  })
+})

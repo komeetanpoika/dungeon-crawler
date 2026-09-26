@@ -102,6 +102,9 @@ export function heroSnap(h) {
   // seen — the predictor's replay needs `last`, or a direction held across a
   // snapshot would read as a new move.
   s.combo = h.combo ? { moves: [...h.combo.moves], lockDir: { ...h.combo.lockDir }, last: h.combo.last } : null
+  // A combo effect while it runs (2a): what it is, where it aims, how far
+  // in, where it started (the lunge's streak) and whether the dash is over.
+  s.move = h.move ? { kind: h.move.kind, dir: h.move.dir, t: h.move.t, from: { ...h.move.from }, done: !!h.move.done } : null
   s.shock = h.shock ? { tickT: h.shock.tickT, left: h.shock.left } : null
   s.rain = h.rain ? { t: h.rain.t, dur: h.rain.dur } : null
   s.blinkTrail = h.blinkTrail ? { from: { ...h.blinkTrail.from }, to: { ...h.blinkTrail.to }, t: h.blinkTrail.t } : null
@@ -123,6 +126,7 @@ export function hydrateHero(hero, s) {
   h.charging = s.charging ? { ...s.charging } : null
   h.rune = s.rune ? { t: s.rune.t } : null
   h.combo = s.combo ? { moves: [...s.combo.moves], lockDir: { ...s.combo.lockDir }, last: s.combo.last ?? null } : null
+  h.move = s.move ? { kind: s.move.kind, dir: s.move.dir, t: s.move.t, from: { ...s.move.from }, done: !!s.move.done } : null
   h.shock = s.shock ? { ...s.shock } : undefined
   h.rain = s.rain ? { ...s.rain } : undefined
   h.blinkTrail = s.blinkTrail ? { from: { ...s.blinkTrail.from }, to: { ...s.blinkTrail.to }, t: s.blinkTrail.t } : null

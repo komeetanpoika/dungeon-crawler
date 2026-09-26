@@ -19,6 +19,8 @@ export const CUE_NAMES = [
   'chop', 'tree-fall', 'campfire-light', 'campfire-out', 'sizzle', 'grey-fire',
   // spells
   'thunder', 'crackle',
+  // PvP
+  'whirl',
   // leap episodes
   'leap', 'echo', 'bell', 'drag', 'sink', 'erupt', 'wraith-touch', 'wraith-burn',
 ]

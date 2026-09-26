@@ -24,13 +24,22 @@ export function refreshTargets(match) {
   match.entities = match.heroes.filter(isTargetable)
 }
 
-export function hurtHero(match, target, amount, { kind = 'hit', by = null, from = null, melee = false } = {}) {
+// group: hits of one attack (a fence's three thrusts, a double shot's two
+// arrows — spec 2a) share a group id; a later hit of the group passes the
+// i-frames the group's own earlier hit granted, so all of them can land.
+// Blocks still apply to each.
+export function hurtHero(match, target, amount, { kind = 'hit', by = null, from = null, melee = false, group = null } = {}) {
   if (!isTargetable(target)) return false
   if (by && by === target) return false
   const at = from ?? (by ? { px: by.px, py: by.py } : null)
   const before = target.hp
+  const reopen = kind === 'hit' && group !== null && target.invulnGroup === group
+  const invuln = target.invulnTimer
+  if (reopen) target.invulnTimer = 0
   const landed = damagePlayer(match, amount, kind, at, target)
+  if (landed && kind === 'hit') target.invulnGroup = group
   if (!landed) {
+    if (reopen) target.invulnTimer = invuln
     // A shield took a melee blow: the striker is pushed back, as enemies are.
     if (melee && by && target.blockedHit) startKnockback(by, by.px - target.px, by.py - target.py, BLOCK_SHOVE)
     return false
