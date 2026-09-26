@@ -69,6 +69,10 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
     inp.maxLength = input.maxLength ?? 12
     inp.value = input.value ?? ''
     inp.autocomplete = 'off'
+    inp.spellcheck = false
+    inp.enterKeyHint = 'go'
+    // A phone keyboard opens in capitals for the room code.
+    if (input.autocapitalize) inp.setAttribute('autocapitalize', input.autocapitalize)
     panel.appendChild(inp)
     currentInput = inp
   }
@@ -84,6 +88,14 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
 
   el.appendChild(panel)
   el.style.display = 'flex'
+  // While a text field is up the touch layer steps aside (index.html CSS),
+  // so no stick or pill can sit over the field or swallow its taps.
+  document.body?.classList.toggle('menu-typing', !!input)
+  // While any menu overlay is visible, the touch SELECT/START pills (which
+  // sit UNDER it, z-index-wise, but at a screen position a panel's own
+  // buttons can cover) are hidden by index.html CSS — a tap meant for a
+  // menu button must not fall through to a pill underneath it.
+  document.body?.classList.toggle('menu-open', true)
   selectedIndex = 0
   cheatBuffer = ''
   clearCheatTimer()
@@ -130,10 +142,10 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
-  // The web release has no tile editor and nothing to quit to. The old
-  // procedural overworld left the menu with the mode split; it remains
-  // reachable as the level6 cheat.
+export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOnline, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
+  // The web release has no tile editor and nothing to quit to, but it has
+  // online play. The old procedural overworld left the menu with the mode
+  // split; it remains reachable as the level6 cheat.
   const isWeb = typeof window !== 'undefined' && window.saveAPI?.isWeb
   renderScreen({
     title: 'DUNGEON CRAWLER',
@@ -142,7 +154,7 @@ export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor,
       { label: 'Adventure', onSelect: onAdventure },
       { label: 'Timewarp', onSelect: onTimewarp },
       { label: 'Dungeon Rush', onSelect: onRush },
-      ...(isWeb ? [] : [
+      ...(isWeb ? [{ label: 'Online', onSelect: onOnline }] : [
         { label: 'Open Editor', onSelect: onOpenEditor },
         { label: 'Quit', onSelect: onQuit },
       ]),
@@ -150,6 +162,44 @@ export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOpenEditor,
     onCheat,
     onPvp,
     onNet,
+  })
+}
+
+// Online (web build): a public room with bot fill, or a private one by code.
+export function showOnline({ onQuick, onFriends, onBack }) {
+  renderScreen({
+    title: 'Online',
+    buttons: [
+      { label: 'Quick match', onSelect: onQuick },
+      { label: 'Play with friends', onSelect: onFriends },
+      { label: 'Back', onSelect: onBack },
+    ],
+    onEscape: onBack,
+  })
+}
+
+export function showFriends({ onHost, onJoin, onBack }) {
+  renderScreen({
+    title: 'Play with friends',
+    buttons: [
+      { label: 'Host a room', onSelect: onHost },
+      { label: 'Join with code', onSelect: onJoin },
+      { label: 'Back', onSelect: onBack },
+    ],
+    onEscape: onBack,
+  })
+}
+
+// Escape / START in an online match. No onEscape here: game.js's own Escape
+// listener toggles this panel (renderer/ui/net-panels.js), so the menu must
+// not act on the same key a second time.
+export function showLeaveConfirm({ onStay, onLeave }) {
+  renderScreen({
+    title: 'Leave the match?',
+    buttons: [
+      { label: 'Stay', onSelect: onStay },
+      { label: 'Leave', onSelect: onLeave },
+    ],
   })
 }
 
@@ -202,6 +252,8 @@ export function showGameOver({ won, deepestLevel }, { onPlayAgain, onQuitToTitle
 export function hide() {
   clearKeyHandler()
   currentInput = null
+  document.body?.classList.remove('menu-typing')
+  document.body?.classList.remove('menu-open')
   const el = overlayEl()
   el.style.display = 'none'
   el.innerHTML = ''
@@ -221,23 +273,24 @@ export function showClassPicker({ title = 'Arena', subtitle = 'Pick a class', on
   })
 }
 
-// PvP: the end-of-match table, one line per hero. onNext is optional — an
-// online match has no local restart, only a quit.
-export function showPvpResults(rows, { onNext, onQuit }) {
+// PvP: the end-of-match table, one line per hero (bots under their names).
+// onNext is optional — an online match has no local restart, only a Leave.
+export function showPvpResults(rows, { onNext, onQuit, quitLabel = 'Quit' }) {
   renderScreen({
     title: 'Match over',
     lines: rows.map(r => `${r.rank}. ${r.name} — ${r.cls} — ${r.kills} / ${r.deaths}`),
     buttons: [
       ...(onNext ? [{ label: 'Next match', onSelect: onNext }] : []),
-      { label: 'Quit', onSelect: onQuit },
+      { label: quitLabel, onSelect: onQuit },
     ],
   })
 }
 
-// A one-field form (name, room code): Enter or OK submits the text.
-export function showTextEntry({ title, subtitle, value = '', maxLength = 12, onSubmit, onBack }) {
+// A one-field form (name, room code): Enter — the phone keyboard's too — or
+// OK submits the text.
+export function showTextEntry({ title, subtitle, value = '', maxLength = 12, autocapitalize, onSubmit, onBack }) {
   renderScreen({
-    title, subtitle, input: { value, maxLength },
+    title, subtitle, input: { value, maxLength, autocapitalize },
     buttons: [
       { label: 'OK', onSelect: () => onSubmit(currentInput?.value ?? '') },
       ...(onBack ? [{ label: 'Back', onSelect: onBack }] : []),

@@ -104,6 +104,9 @@
     canvas { touch-action: none; }
     #touch-controls { display: none; position: relative; z-index: 15; }
     @media (pointer: coarse) { #touch-controls { display: block; } }
+    /* A menu text field is up (menu.js): the touch layer steps aside so a
+       tap reaches the field and brings up the phone keyboard. */
+    body.menu-typing #touch-controls { display: none; }
     /* Left: fixed thumbstick — a stone dial with gold cardinal ticks */
     #joystick-zone {
       position: fixed;
@@ -153,12 +156,20 @@
     #touch-quickuse { --btn-color: rgba(74,222,128,0.7); right: 0; top: 50%; margin-top: -36px; }
     #touch-attack   { --btn-color: rgba(248,113,113,0.75); left: 0; top: 50%; margin-top: -36px; }
     #touch-quickuse.empty { opacity: 0.35; filter: grayscale(1); }
+    /* An online or local PvP match: the offhand slot always holds something
+       usable (shield/blink), so the empty-offhand greying (meant for
+       adventure/dungeon play, where the sack can be genuinely empty) must
+       not apply. */
+    body.net-match #touch-quickuse.empty { opacity: 1; filter: none; }
     /* Bottom center: slanted SELECT / START pills */
     #touch-pills {
       position: fixed; left: 50%; transform: translateX(-50%);
       bottom: max(30px, env(safe-area-inset-bottom));
       display: flex; gap: 18px; z-index: 5;
     }
+    /* A menu overlay is up (menu.js): the pills sit under it and must not
+       take a tap meant for the menu underneath. */
+    body.menu-open #touch-pills { display: none; }
     .touch-pill {
       padding: 7px 18px; border-radius: 14px; transform: skewX(-12deg);
       background: rgba(16,16,22,0.62); border: 1px solid rgba(232,184,75,0.4);

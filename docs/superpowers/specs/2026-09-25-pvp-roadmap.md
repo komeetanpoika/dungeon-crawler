@@ -1,7 +1,7 @@
 # PvP Arena — Roadmap
 
 Date: 2026-09-25. Status: sub-project 1 built and deployed (PR #56, Cloud Run
-rev 00062); sub-project 3 designed; 2 and 4 not yet designed.
+rev 00062); sub-project 3 built and deployed (PR #57, rev 00063); 4a designed; 2 and 4b not yet designed.
 
 ## Goal
 
@@ -46,7 +46,12 @@ Each gets its own spec → plan → implementation cycle, in this order.
    and reconciliation for the local hero, snapshot interpolation for the
    others, lag-compensated hit tests (rewind by the attacker's latency, capped),
    disconnect handling. Tested with simulated latency and packet loss.
-4. **Lobby + public hardening + deploy.** Quick-join and room lifecycle, bot
+4. **Lobby + public hardening + deploy.** *Split 2026-09-25:* **4a** public
+   launch (spec `2026-09-25-pvp-public-launch-design.md`: Online menu, quick-join
+   public rooms with server bots filling to 4, name filter, per-IP/per-connection
+   limits, idle kick, leave confirm, phones via the touch controls); **4b** later:
+   reconnect into your hero, smoothed interpolation clock, longer melee rewind,
+   live respawn countdown, **more arenas**. Quick-join and room lifecycle, bot
    fill when a room is short of humans, a nickname length/charset filter with
    a blocklist, per-connection rate limits and input validation, reconnect,
    a public menu entry in the web build, and deployment next to the existing

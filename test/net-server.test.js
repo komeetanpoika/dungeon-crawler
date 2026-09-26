@@ -115,6 +115,35 @@ describe('pvp server', async () => {
     a.ws.close()
   })
 
+  // Item 1: a refused socket (here, the per-IP cap) is sent an error and a
+  // close frame, but a peer that never answers it — this raw TCP socket does
+  // the WS handshake by hand and then just sits there, never parsing or
+  // acking anything — must still be gone quickly, not linger for the ~15 s+
+  // a normal close handshake timeout would otherwise allow.
+  it('a refused socket whose peer never answers the close frame is terminated within ~1.5 s', async () => {
+    const ip = '198.51.100.201'
+    const open = []
+    for (let i = 0; i < NET.perIpSockets; i++) open.push(await rawClient(srv.url, { ip }))
+    const { port, hostname, pathname } = new URL(srv.url.replace('ws:', 'http:'))
+    const sock = net.connect(Number(port), hostname)
+    await new Promise(r => sock.once('connect', r))
+    const start = performance.now()
+    sock.write(
+      `GET ${pathname} HTTP/1.1\r\n` +
+      `Host: ${hostname}\r\n` +
+      `X-Forwarded-For: ${ip}\r\n` +
+      'Connection: Upgrade\r\n' +
+      'Upgrade: websocket\r\n' +
+      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+      'Sec-WebSocket-Version: 13\r\n\r\n'
+    )
+    sock.on('error', () => {})   // an RST from the server forcing this closed is expected, not a failure
+    sock.resume()   // never reads a byte of the response — a peer that ignores everything, close frame included
+    const elapsed = await new Promise(resolve => sock.on('close', () => resolve(performance.now() - start)))
+    assert.ok(elapsed < 1500, `closed after ${elapsed} ms`)
+    for (const c of open) c.ws.close()
+  })
+
   it('a close-handler exception crashes the room, closing every other socket in it too', async () => {
     const a = await rawClient(srv.url)
     a.send(hello({ create: true }))
@@ -134,10 +163,15 @@ describe('pvp server', async () => {
     const a = await rawClient(srv.url)
     a.send(hello({ create: true }))
     const { room: code } = await a.next('welcome')
-    // The next joiner would be minted as "p2" (nextId follows p1); planting a
-    // fake hero with that id makes joinRoom's addHero throw a duplicate-id
-    // error, standing in for "a future arena with fewer spawns than maxHeroes".
-    srv.pvp.lobby.rooms.get(code).match.heroes.push({ id: 'p2' })
+    const room = srv.pvp.lobby.rooms.get(code)
+    // Shrink room A's arena to exactly its current hero count — a copy, never
+    // the shared PVP_ARENAS singleton — so the next join's addHero throws
+    // "arena is full", standing in for "a future arena with fewer spawns than
+    // maxHeroes". Unlike planting a malformed hero in match.heroes, this
+    // leaves the match itself untouched, so room A's 30 Hz loop (which keeps
+    // stepping it the whole time this test awaits B's close) has nothing
+    // broken to trip over and crash the room on.
+    room.match.arena = { ...room.match.arena, spawns: room.match.arena.spawns.slice(0, room.match.heroes.length) }
     const b = await rawClient(srv.url)
     b.send(hello({ room: code, name: 'Guest' }))
     await waitFor(() => b.closed !== null)

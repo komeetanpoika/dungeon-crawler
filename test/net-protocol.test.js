@@ -52,6 +52,20 @@ describe('names, classes and hello', () => {
     assert.deepEqual(validateHello({ ...base, room: 'KX1' }), { error: ERR.BAD_HELLO })
     assert.deepEqual(validateHello({ ...base, create: true, room: 'KXPT' }), { error: ERR.BAD_HELLO })
   })
+  it('hello v2: quick is a third way in, and exactly one of create/room/quick', () => {
+    const base = { type: 'hello', v: NET.protocolVersion, name: 'Aino', cls: 'mage' }
+    assert.equal(NET.protocolVersion, 2)
+    assert.deepEqual(validateHello({ ...base, quick: true }), { name: 'Aino', cls: 'mage', quick: true })
+    assert.deepEqual(validateHello({ ...base, quick: true, create: true }), { error: ERR.BAD_HELLO })
+    assert.deepEqual(validateHello({ ...base, quick: true, room: 'KXPT' }), { error: ERR.BAD_HELLO })
+    assert.deepEqual(validateHello({ ...base, quick: 'yes' }), { error: ERR.BAD_HELLO })
+    assert.deepEqual(validateHello({ ...base, v: 1, quick: true }), { error: ERR.VERSION })
+    assert.deepEqual(validateHello({ ...base, room: '', quick: true }), { name: 'Aino', cls: 'mage', quick: true })
+  })
+  it('the new error codes', () => {
+    assert.equal(ERR.RATE_LIMITED, 'rate_limited')
+    assert.equal(ERR.IDLE, 'idle')
+  })
 })
 
 describe('snapshots', () => {
@@ -102,5 +116,25 @@ describe('snapshots', () => {
     assert.equal(body.pickups.length, 5)
     assert.equal(body.matchLength, m.matchLength)
     for (const k of ['tick', 'clock', 'waiting', 'ended', 'lightning', 'strikes', 'arcs', 'shockwaves', 'events', 'cues']) assert.ok(k in body, k)
+  })
+})
+
+describe('4a numbers', () => {
+  it('carries the spec numbers', () => {
+    assert.equal(NET.botFill, 4)
+    assert.equal(NET.maxHeroes, 6)
+    assert.deepEqual(NET.botNames, ['Ukko', 'Ilmatar', 'Tapio', 'Mielikki', 'Ahti', 'Tuoni', 'Louhi', 'Otso', 'Pellervo', 'Kalma', 'Vellamo', 'Hiisi'])
+    assert.equal(NET.trustProxy, true)
+    assert.equal(NET.maxSockets, 600)
+    assert.equal(NET.perIpSockets, 8)
+    assert.equal(NET.helloBurst, 10)
+    assert.equal(NET.helloPerMin, 10)
+    assert.equal(NET.msgBurst, 320)
+    assert.equal(NET.msgPerSec, 60)
+    assert.equal(NET.classPerSec, 2)
+    assert.equal(NET.idleKickMs, 60000)
+    assert.equal(NET.lonelyHostKickMs, 600000)
+    assert.equal(NET.roomsPerIp, 2)
+    assert.equal(NET.refusalLogMs, 60000)
   })
 })
