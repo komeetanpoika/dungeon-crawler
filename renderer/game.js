@@ -35,6 +35,7 @@ import { NET } from './data/net.js'
 import { NEUTRAL_INPUT } from './pvp/hero.js'
 import { makeNetPanels } from './ui/net-panels.js'
 import { PVP_ARENAS, nextArenaIndex } from './data/pvp-arenas.js'
+import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
@@ -883,7 +884,7 @@ function pvpFrame(delta) {
   if (pvp.done && pvp.rendered) return
   const view = viewOf(match, pvp.theme)
   maybeComputeFOV(view.map, view.player, 12, { los: true })
-  renderer.updateCamera(view.player, 0, null)
+  renderer.updateCamera(view.player, comboShake(view.player), null)
   renderer.render(view, null)
   updateHUD(view)
   updatePvpHud(pvpHudModel(match, LOCAL_ID))
@@ -1055,7 +1056,7 @@ function netFrame() {
   }
   const view = netViewOf(v, net.theme, s.map)
   maybeComputeFOV(view.map, view.player, 12, { los: true })
-  renderer.updateCamera(view.player, 0, null)
+  renderer.updateCamera(view.player, comboShake(view.player), null)
   renderer.render(view, null)
   updateHUD(view)
   updatePvpHud(netHudModel(v, s.heroId))

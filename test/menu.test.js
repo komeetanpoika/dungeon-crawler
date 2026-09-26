@@ -458,3 +458,21 @@ describe('setSubtitle', () => {
     }
   })
 })
+
+describe('class picker hints (2a)', () => {
+  it("each class button carries its signature move's hint", () => {
+    const overlay = stubDom()
+    try {
+      showClassPicker({ onPick: () => {} })
+      const hints = buttonsOf(overlay).map(b => [b.textContent, b.children[0]?.className, b.children[0]?.textContent])
+      assert.deepEqual(hints, [
+        ['Warrior', 'menu-hint', 'Hold attack + stick: combos'],
+        ['Archer', 'menu-hint', 'Hold Q: double shot'],
+        ['Mage', 'menu-hint', 'Storm Wand · Q: blink'],
+      ])
+    } finally {
+      delete globalThis.document
+      delete globalThis.window
+    }
+  })
+})
