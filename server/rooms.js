@@ -154,6 +154,7 @@ export const ackOf = (room, heroId) => room.players.get(heroId)?.ack ?? 0
 export function markAway(lobby, room, heroId) {
   const p = room.players.get(heroId)
   if (!p) return false
+  if (p.away) return true          // already away: leave its running grace alone
   p.away = true
   p.awayUntil = room.tick + Math.round(lobby.opts.reconnectGraceMs / 1000 / PVP.tick)
   p.queue = []
@@ -233,7 +234,7 @@ function checkIdle(lobby, room) {
     // before any step); subtract 1 so the two limits measure the same way.
     if (room.aloneSince === null) room.aloneSince = room.tick - 1
     if (room.tick - room.aloneSince >= lonelyLimit) {
-      for (const [id, p] of room.players) if (!p.kicked) { p.kicked = true; room.kicks.push(id) }
+      for (const [id, p] of room.players) if (!p.kicked && !p.away) { p.kicked = true; room.kicks.push(id) }
     }
   } else {
     room.aloneSince = null

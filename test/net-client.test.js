@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { connect, frame, sessionView, drainCues, drainEvents } from '../renderer/net/client.js'
+import { connect, frame, sessionView, drainCues, drainEvents, leave } from '../renderer/net/client.js'
 import { heroSnap } from '../renderer/net/protocol.js'
 import { makeMatch } from '../renderer/pvp/sim.js'
 import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
@@ -137,5 +137,22 @@ describe('the arena on the wire (protocol v3)', () => {
     welcome(s, { arena: 'volcano' })
     assert.equal(s.status, 'error')
     assert.equal(s.heroId, null)
+  })
+})
+
+describe('leaving', () => {
+  it('leave() says bye before closing an open session', () => {
+    const s = open()
+    welcome(s)
+    let closed = false
+    s.ws.close = () => { closed = true }
+    leave(s)
+    assert.equal(s.ws.sent.at(-1).type, 'bye')
+    assert.equal(closed, true)
+  })
+  it('before the welcome there is no seat to give up: no bye', () => {
+    const s = open()
+    leave(s)
+    assert.ok(!s.ws.sent.some(m => m.type === 'bye'))
   })
 })

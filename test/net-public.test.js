@@ -23,7 +23,7 @@ describe('public rooms over sockets', async () => {
     b.send(hello({ quick: true, name: 'Ilmari' }))
     assert.equal((await b.next('welcome')).room, w.room)
     await waitFor(() => { const t = a.last('snap'); return t.heroes.length === NET.botFill && botsIn(t).length === 2 })
-    a.ws.close(); b.ws.close()
+    a.bye(); b.bye()
     await waitFor(() => srv.pvp.lobby.rooms.size === 0)
   })
 
@@ -33,7 +33,7 @@ describe('public rooms over sockets', async () => {
     await a.next('welcome')
     await waitFor(() => a.last('snap'))
     assert.equal(a.last('snap').heroes.length, 1)
-    a.ws.close()
+    a.bye()
     await waitFor(() => srv.pvp.lobby.rooms.size === 0)
   })
 
@@ -65,7 +65,7 @@ describe('public rooms over sockets', async () => {
       const c = await rawClient(srv.url, { ip })
       c.send(hello({ create: true }))
       await c.next('welcome')
-      c.ws.close()
+      c.bye()                                               // frees the room, so roomsPerIp never bites
       await waitFor(() => c.closed !== null)
     }
     const late = await rawClient(srv.url, { ip })
@@ -129,7 +129,7 @@ describe('rooms per IP (item 2b)', async () => {
     over.send(hello({ create: true }))
     assert.equal((await over.next('error')).code, 'rate_limited')
     await waitFor(() => over.closed !== null)
-    rooms[0].ws.close()
+    rooms[0].bye()
     await waitFor(() => rooms[0].closed !== null)
     const after1 = await rawClient(srv.url, { ip })
     after1.send(hello({ create: true }))

@@ -196,6 +196,12 @@ export function sessionView(s, t = s.now()) {
 }
 
 export function sendClass(s, cls) { if (s.status === 'open') s.ws.send(encode({ type: MSG.CLASS, cls })) }
-export function leave(s) { s.closedByUs = true; s.ws.close() }
+// A deliberate leave says bye first, so the server frees the seat at once
+// instead of holding it for the reconnect grace.
+export function leave(s) {
+  if (s.status === 'open') s.ws.send(encode({ type: MSG.BYE }))
+  s.closedByUs = true
+  s.ws.close()
+}
 export function drainEvents(s) { const e = s.events; s.events = []; return e }
 export function drainCues(s) { const c = s.cues; s.cues = []; return c }

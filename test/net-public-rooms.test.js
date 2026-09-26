@@ -218,6 +218,15 @@ describe('the idle timer', () => {
     steps(lobby, room, 20)
     assert.deepEqual(drainKicks(room), [])
   })
+  // Task 5 review fix: an away lone host must not be kicked by the lonely-host
+  // timer — its seat is already waiting on hello.resume, not sitting idle.
+  it('an away lone private host is skipped by the lonely-host kick', () => {
+    const lobby = makeLobby({ idleKickMs: 1000, lonelyHostKickMs: 500 })   // 15 ticks
+    const { room } = createRoom(lobby, who('A'))
+    markAway(lobby, room, 'p1')
+    steps(lobby, room, 20)
+    assert.deepEqual(drainKicks(room), [])
+  })
 })
 
 describe('away seats (reconnect grace)', () => {
@@ -265,6 +274,16 @@ describe('away seats (reconnect grace)', () => {
     leaveRoom(lobby, room, 'p1')                                                   // what the socket layer does
     assert.equal(humansOf(room).length, 1)
     assert.equal(botsOf(room).length, 3)
+  })
+  // Task 5 review fix: a second markAway on an already-away seat must not
+  // push awayUntil further out — the grace keeps counting from the first drop.
+  it('markAway on an already-away seat is a no-op: the grace is not restarted', () => {
+    const { lobby, room } = two({ reconnectGraceMs: 1000 })                       // 30 ticks
+    markAway(lobby, room, 'p1')
+    const awayUntil = room.players.get('p1').awayUntil
+    steps(lobby, room, 20)
+    assert.equal(markAway(lobby, room, 'p1'), true)
+    assert.equal(room.players.get('p1').awayUntil, awayUntil, 'grace not restarted')
   })
   it('a lone private host who drops keeps the room open while away', () => {
     const lobby = makeLobby()
