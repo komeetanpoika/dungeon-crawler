@@ -67,8 +67,11 @@ export function grantRune(match, hero) {
   if (power.wandType) hero.wand = makeWandContents(power.wandType)
   // A weapon swap mid-hold or mid-wind-up drops it (Task 3); a key still
   // held across the swap must be let go before the new weapon's attack
-  // starts, or it fires without ever having been freshly pressed.
-  if (hero.combo || hero.charging) hero.needRelease = true
+  // starts, or it fires without ever having been freshly pressed. The
+  // double shot's draw is alt-driven, not attack-driven (fix round 1: task
+  // 5) — attack may never have been held for it, so it must not demand a
+  // release attack never made.
+  if (hero.combo || (hero.charging && hero.charging.kind !== 'double')) hero.needRelease = true
   hero.charging = null
   hero.combo = null
   hero.move = null
@@ -83,8 +86,9 @@ export function endRune(match, hero) {
   if (off !== undefined) gearOf(hero, 'melee').off = off
   if (RUNE_POWER[hero.cls]?.bolts) hero.ammo.bolt = 0   // unused bolts go with the crossbow
   // Same as the swap above: a key held through the rune's end must be let
-  // go before the hero's own weapon starts.
-  if (hero.combo || hero.charging) hero.needRelease = true
+  // go before the hero's own weapon starts — except an alt-driven double
+  // shot draw, which never held attack in the first place (fix round 1).
+  if (hero.combo || (hero.charging && hero.charging.kind !== 'double')) hero.needRelease = true
   hero.charging = null
   hero.combo = null
   hero.move = null
