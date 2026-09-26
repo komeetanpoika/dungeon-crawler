@@ -20,10 +20,10 @@ describe('makePickups', () => {
 
 describe('flask', () => {
   it('heals 4 (capped) and goes down for its respawn time', () => {
-    const h = hero('a', 'archer'); h.hp = 8
+    const h = hero('a', 'archer'); h.hp = 6
     const m = withPickups([h], [{ kind: 'flask', x: 3, y: 3 }])
     tickPickups(m, 0.1)
-    assert.equal(h.hp, 10)
+    assert.equal(h.hp, 8)
     assert.equal(m.pickups[0].up, false)
     assert.equal(m.pickups[0].t, PICKUPS.flask.respawn)
     assert.deepEqual(m.events[0], { type: 'pickup', kind: 'flask', hero: 'a' })
@@ -40,7 +40,7 @@ describe('flask', () => {
     tickPickups(m, 0.1)                       // taken: 6 hp
     tickPickups(m, PICKUPS.flask.respawn)     // back up this tick
     tickPickups(m, 0.1)                       // taken again by the hero still on it
-    assert.equal(h.hp, 10)
+    assert.equal(h.hp, 8)
   })
 })
 
@@ -63,12 +63,12 @@ describe('rune', () => {
     assert.equal(w.weapon.weaponType, 'ukonvasara')
     assert.equal(a.ranged.weaponType, 'crossbow')
     assert.equal(a.ammo.bolt, 10)
-    assert.equal(mg.wand.weaponType, 'stormwand')
+    assert.equal(mg.wand.weaponType, 'firewand')
     for (const h of [w, a, mg]) endRune(m, h)
     assert.equal(w.weapon.weaponType, 'sword')
     assert.equal(a.ranged.weaponType, 'shortbow')
     assert.equal(a.ammo.bolt, 0)
-    assert.equal(mg.wand.weaponType, 'sparkwand')
+    assert.equal(mg.wand.weaponType, 'stormwand')
     assert.equal(m.events.filter(e => e.type === 'runeEnd').length, 3)
   })
   it('parks the warrior melee offhand for the rune and restores it after', () => {

@@ -17,7 +17,7 @@ describe('melee', () => {
     w.facing = 'east'
     const m = testMatch([w, a])
     tickHero(m, w, input({ attack: true, facing: 'east' }), dt)
-    assert.equal(a.hp, 8)
+    assert.equal(a.hp, 6)
     assert.equal(a.lastHitBy.id, 'w')
     assert.ok(a.knockback)
     assert.ok(w.meleeCooldown > 0)
@@ -26,7 +26,7 @@ describe('melee', () => {
     const w = hero('w', 'warrior', { x: 5, y: 5 }), a = hero('a', 'archer', { x: 4, y: 5 })
     const m = testMatch([w, a])
     tickHero(m, w, input({ attack: true, facing: 'east' }), dt)
-    assert.equal(a.hp, 10)
+    assert.equal(a.hp, 8)
   })
   it('attacking ends spawn protection', () => {
     const w = hero('w', 'warrior', { x: 5, y: 5 }); w.spawnProtect = 1
@@ -39,9 +39,9 @@ describe('melee', () => {
     const a = hero('a', 'archer', { x: 6, y: 5 }), b = hero('b', 'archer', { x: 8, y: 5 })
     const m = testMatch([w, a, b])
     swing(m, w, resolveCharge('ukonvasara', 5))
-    assert.equal(a.hp, 6)
-    assert.equal(b.hp, 7)
-    assert.equal(w.hp, 10)
+    assert.equal(a.hp, 4)
+    assert.equal(b.hp, 5)
+    assert.equal(w.hp, 8)
     assert.equal(m.arcs.length, 2)
   })
   it('an overcharged whiff rains on the wielder and hurts nobody', () => {
@@ -50,7 +50,7 @@ describe('melee', () => {
     const m = testMatch([w])
     swing(m, w, resolveCharge('ukonvasara', 5))
     assert.ok(w.rain)
-    assert.equal(w.hp, 10)
+    assert.equal(w.hp, 8)
   })
   it("a full hammer blow shocks the foe with the wielder's name on it", () => {
     const w = hero('w', 'warrior', { x: 5, y: 5 }); w.facing = 'east'
@@ -62,21 +62,21 @@ describe('melee', () => {
 })
 
 describe('magic', () => {
-  it('holding then releasing attack casts a spark bolt owned by the mage', () => {
+  it('holding then releasing attack calls lightning owned by the mage (the Storm Wand is the main hand)', () => {
     const mg = hero('m', 'mage', { x: 5, y: 5 })
     const m = testMatch([mg])
     tickHero(m, mg, input({ attack: true, facing: 'east' }), dt)
     assert.equal(mg.charging?.kind, 'spell')
     tickHero(m, mg, input({ attack: false }), dt)
-    assert.equal(m.projectiles.length, 1)
-    assert.equal(m.projectiles[0].owner, 'm')
+    assert.equal(m.lightning.length, 1)
+    assert.equal(m.lightning[0].owner, 'm')
     assert.equal(mg.charging, null)
   })
   it('a held attack auto-releases once and waits for a let-go before charging again', () => {
     const mg = hero('m', 'mage', { x: 5, y: 5 })
     const m = testMatch([mg])
     for (let i = 0; i < 90; i++) tickHero(m, mg, input({ attack: true, facing: 'east' }), dt)
-    assert.equal(m.projectiles.length, 1)
+    assert.equal(m.lightning.length, 3)   // one overcharge release: three marks on one line
     assert.equal(mg.charging, null)
   })
   it('an alt press blinks the mage four tiles along its facing, once per press', () => {

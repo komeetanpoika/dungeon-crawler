@@ -110,13 +110,13 @@ describe('swing hitPos seam', () => {
   it('without hitPos a foe out of reach is missed', () => {
     const { w, a, m } = pair()
     swing(m, w, resolveCharge('sword', 0))
-    assert.equal(a.hp, 10)
+    assert.equal(a.hp, 8)
   })
   it('hitPos moves only the hit test: the rewound position is hit, damage lands on the real hero', () => {
     const { w, a, m } = pair()
     m.hitPos = foe => ({ type: foe.type, px: w.px + 32, py: w.py })
     swing(m, w, resolveCharge('sword', 0))
-    assert.equal(a.hp, 8)
+    assert.equal(a.hp, 6)
     assert.equal(a.px, 8 * 32 + 16)
   })
 })

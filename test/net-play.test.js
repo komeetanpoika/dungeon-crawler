@@ -95,7 +95,7 @@ describe('play under lag', () => {
       await bWalk
       assert.ok(swung, 'A swung')
       assert.ok(serverSwung, 'the server ran the swing')   // a lost press must not pass as a miss
-      assert.equal(hb.hp < 10, rewind, `B hp ${hb.hp}`)
+      assert.equal(hb.hp < hb.maxHp, rewind, `B hp ${hb.hp}`)
       leave(a); leave(b); await srv.close()
     })
   }
