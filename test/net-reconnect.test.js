@@ -159,6 +159,24 @@ describe('seat tokens and resume over sockets', async () => {
     assert.equal(srv.pvp.tokens.has(w.token), false)
   })
 
+  // Final-review Minor 2: leaveNow=true (flood) used to only take effect
+  // once the close event actually fired; a resume racing in during that
+  // window (before the close handshake completes) could still find the
+  // token live and rescue the seat the flood just refused. The token must
+  // die in the flood handler itself, not wait for 'close'.
+  it('a resume racing a flood refusal does not rescue the seat: the token is already gone', async () => {
+    const c = await rawClient(srv.url)
+    c.send(hello({ create: true }))
+    const w = await c.next('welcome')
+    for (let i = 0; i < NET.msgBurst + 50; i++) c.send({ type: 'ping', t: i })
+    // Sent immediately, racing c's own close handshake.
+    const other = await rawClient(srv.url)
+    other.send(resumeHello(w.token))
+    assert.equal((await other.next('error')).code, 'resume_failed')
+    await waitFor(() => c.closed !== null)
+    assert.equal(c.closed, 1008)
+  })
+
   it('a resume spends a hello like any other', async () => {
     const ip = '198.51.100.40'
     for (let i = 0; i < NET.helloBurst; i++) {
@@ -293,7 +311,7 @@ describe('the client gets its seat back over a real socket', async () => {
     // but short enough that the second attempt's own welcome lands before
     // it, too, would be abandoned (due at +3.5 s).
     s.WebSocketImpl = laggy({ down: 1300 })
-    await drive(s, () => NEUTRAL_INPUT, 4000)
+    await drive(s, () => NEUTRAL_INPUT, 6000)
     assert.equal(s.status, 'open')
     assert.equal(s.heroId, heroId)
     assert.equal(s.token, token, 'the stable token carried the seat through the abandoned attempt')

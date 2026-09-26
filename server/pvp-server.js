@@ -32,12 +32,16 @@ const send = (ws, msg) => { if (ws.readyState === 1) ws.send(encode(msg)) }
 // underlying library waits for the close handshake (~15 s) — long enough for
 // one IP to fill out the concurrency cap. The unref'd fallback forces it
 // closed well before that; a normal peer's own close beats it and clears it.
+function reap(ws) {
+  const timer = setTimeout(() => { try { ws.terminate() } catch { /* already gone */ } }, 1000)
+  timer.unref?.()
+  ws.once('close', () => clearTimeout(timer))
+}
+
 function closeAndReap(ws, code) {
   if (code) send(ws, { type: MSG.ERROR, code })
   ws.close(1008)
-  const reap = setTimeout(() => { try { ws.terminate() } catch { /* already gone */ } }, 1000)
-  reap.unref?.()
-  ws.once('close', () => clearTimeout(reap))
+  reap(ws)
 }
 
 export function heartbeatSweep(clients) {
@@ -169,6 +173,10 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     if (!prev || prev === ws) return
     prev.replaced = true
     try { prev.close(4001, 'replaced') } catch { /* already gone */ }
+    // The old link may already be dead without having noticed (a network
+    // switch): wait for its close handshake no longer than closeAndReap does
+    // for a refused socket, so it doesn't sit holding a gate slot.
+    reap(prev)
   }
 
   // A validated hello → a seat, or { error }. A name that fails the screen
@@ -246,8 +254,19 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     ws.on('message', (data, isBinary) => {
       // Closing (a kick, a flood): anything still arriving is ignored.
       if (ws.readyState !== 1) return
-      if (!allowMessage(budget, now())) { noteFlood(gate); leaveNow = true; closeAndReap(ws); return }
+      if (!allowMessage(budget, now())) {
+        noteFlood(gate); leaveNow = true
+        // A resume racing this close must not rescue the seat a flood just
+        // refused: drop its token now, not only when the close handler runs.
+        if (room) dropTokens(room.code, heroId)
+        closeAndReap(ws)
+        return
+      }
       const msg = isBinary ? null : decode(data)
+      // An undecodable frame from an already-seated socket still just closes
+      // 1003 here, with no leaveNow: the seat is kept for the reconnect grace
+      // on purpose — only a buggy or hostile client sends garbage, and it
+      // only self-harms by losing its own seat early if it doesn't resume.
       if (!msg) { ws.close(1003); return }
       // A message can arrive from this socket after its room has already
       // been torn down (crashRoom) but before the close handshake finishes;
@@ -296,6 +315,9 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
       } catch (err) {
         console.error(`[pvp] message handling failed (room ${room?.code}, hero ${heroId}):`, err)
         leaveNow = true
+        // Same as the flood case above: a crash mid-handler must not leave a
+        // token a resume can still race in on before the close fires.
+        if (room) dropTokens(room.code, heroId)
         try { ws.close(1011) } catch { /* already gone */ }
       }
     })
