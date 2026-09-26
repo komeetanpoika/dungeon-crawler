@@ -1,14 +1,17 @@
-// Every netcode number (specs …-pvp-server-netcode-design.md and …-pvp-public-launch-design.md).
+// Every netcode number (specs …-pvp-server-netcode-design.md, …-pvp-public-launch-design.md and
+// …-pvp-4b-arenas-reconnect-design.md).
 // Shared by the server (server/) and the browser client (renderer/net/).
 export const NET = {
-  protocolVersion: 2,
+  protocolVersion: 3,
   path: '/pvp',
   snapshotHz: 20,
   interpDelayTicks: 3,     // other heroes are drawn this many sim ticks behind the estimated server tick
   extrapolateTicks: 3,     // how long a hero keeps its last velocity when the snapshot buffer runs dry
   bufferTicks: 30,         // snapshots kept (1 s)
-  rewindMaxTicks: 6,       // melee lag compensation cap (200 ms)
-  historyTicks: 8,         // per-hero position ring on the server
+  clockSlew: 0.1,          // the interpolation clock runs at most 10 % fast or slow while it catches up (4b)…
+  clockSnapTicks: 15,      // …and snaps when it is off by more than this (a stall, a hidden tab, a new match)
+  rewindMaxTicks: 9,       // melee lag compensation cap (300 ms; 4b)
+  historyTicks: 11,        // per-hero position ring on the server (the cap + 2)
   inputQueueMax: 4,
   staleInputTicks: 15,     // no input for this long: the hero stands still
   pendingMax: 90,          // unacknowledged inputs a client keeps (3 s)
@@ -46,4 +49,8 @@ export const NET = {
   lonelyHostKickMs: 600000, // a private room waiting alone for a friend this long: error idle, closed
   roomsPerIp: 2,           // rooms created (not joined) per IP key, at once; a create beyond this is rate_limited
   refusalLogMs: 60000,     // refusal counts are logged this often, when non-zero
+
+  // Arenas, reconnect and netcode polish (4b).
+  reconnectGraceMs: 20000, // a dropped human's hero stays in the match this long, waiting for hello.resume
+  reconnectDelaysMs: [500, 1000, 2000, 4000, 8000], // client: hello.resume tries after a drop, each this long after the last
 }

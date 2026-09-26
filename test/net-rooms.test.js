@@ -122,10 +122,24 @@ describe('rewind', () => {
     room.match.tick += 1                                    // simulate being inside tick 10
     w.viewTick = 8
     assert.equal(rewoundPos(room, a, w).px, 10 * 32 + 16)
-    w.viewTick = 0                                          // too old: clamped to 6 ticks back → tick 4
+    w.viewTick = 0                                          // too old: clamped to 9 ticks back → tick 1
     assert.equal(rewoundPos(room, a, w).px, 10 * 32 + 16)
     w.viewTick = 99                                         // the future: clamped to now
     assert.equal(rewoundPos(room, a, w), a)
+    room.match.tick -= 1
+  })
+  it('the cap is 9 ticks (300 ms): a view 11 ticks old is tested 9 ticks back, not 6', () => {
+    const { lobby, room, w, a } = duel()
+    placeHero(a, { x: 10, y: 7 })
+    steps(lobby, room, 5)                                   // history ticks 1..5 at x=10
+    placeHero(a, { x: 14, y: 7 })
+    steps(lobby, room, 8)                                   // ticks 6..13 at x=14
+    room.match.tick += 1                                    // inside tick 14
+    w.viewTick = 3                                          // 11 ticks behind → capped at 9 → tick 5
+    assert.equal(rewoundPos(room, a, w).px, 10 * 32 + 16)
+    w.viewTick = 6                                          // 8 ticks behind → tick 6
+    assert.equal(rewoundPos(room, a, w).px, 14 * 32 + 16)
+    assert.equal(room.history.get(a.id).length, NET.historyTicks)
     room.match.tick -= 1
   })
   it('makeLobby({ rewind: false }) installs no hitPos', () => {
@@ -162,6 +176,31 @@ describe('the next match', () => {
     steps(lobby, room, 20)
     assert.equal(room.match.ended, false)
     assert.ok(room.match.heroes.some(h => h.id === 'p3'))
+  })
+})
+
+describe('arena rotation', () => {
+  const nextMatch = (lobby, room) => { const m = room.match; const out = []; while (room.match === m) { const b = stepRoom(lobby, room); if (b) out.push(b) } return out }
+  it('a room starts on pillars and each new match takes the next arena, wrapping', () => {
+    const lobby = makeLobby({ matchLength: 1, resultsDelay: 0.5 })
+    const { room } = createRoom(lobby, who('A', 'warrior'))
+    joinRoom(lobby, room.code, who('B', 'archer'))
+    const ids = [room.match.arena.id]
+    for (let i = 0; i < 4; i++) { nextMatch(lobby, room); ids.push(room.match.arena.id) }
+    assert.deepEqual(ids, ['pillars', 'glade', 'tunnels', 'ruins', 'pillars'])
+    assert.equal(room.arenaIndex, 0)
+  })
+  it("the new match puts every hero on the new arena's spawns and its snapshots name it", () => {
+    const lobby = makeLobby({ matchLength: 1, resultsDelay: 0.5 })
+    const { room } = createRoom(lobby, who('A', 'warrior'))
+    joinRoom(lobby, room.code, who('B', 'archer'))
+    nextMatch(lobby, room)
+    const { arena } = room.match
+    assert.equal(arena.id, 'glade')
+    for (const h of room.match.heroes) assert.ok(arena.spawns.some(s => s.x === h.x && s.y === h.y), `${h.id} at ${h.x},${h.y}`)
+    assert.equal(room.match.map[0].length, arena.size.w)
+    const body = steps(lobby, room, 3).at(-1)
+    assert.equal(body.arena, 'glade')
   })
 })
 

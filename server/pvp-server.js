@@ -5,11 +5,18 @@
 // runs each room's 30 Hz loop, broadcasts snapshots and kicks idle humans.
 // Heartbeat pings drop dead sockets.
 //
+// A seat outlives a dropped socket by NET.reconnectGraceMs (4b spec §2): the
+// welcome hands out a seat token, and hello.resume with it re-seats the same
+// hero on a new socket; a bye gives the seat up at once.
+//
 // Privacy: a caller's IP is used only as a key into the gate's in-memory
 // counters (server/limits.js). It is never logged and never sent anywhere;
-// the only log line about refusals is a count per period.
+// the only log line about refusals is a count per period. Seat tokens live
+// only in memory, only in `tokens`, and are never logged either.
+import { randomBytes } from 'node:crypto'
 import { WebSocketServer } from 'ws'
-import { makeLobby, createRoom, joinRoom, quickJoin, leaveRoom, queueInput, setRoomClass, stepRoom, ackOf, drainKicks } from './rooms.js'
+import { makeLobby, createRoom, joinRoom, quickJoin, leaveRoom, queueInput, setRoomClass, stepRoom, ackOf, drainKicks,
+  markAway, resumeSeat, drainExpired } from './rooms.js'
 import { makeGate, admit, release, takeHello, noteFlood, sweepGate, makeConnLimits, allowMessage, allowClass, clientIp,
   canCreateRoom, noteRoomCreated, noteRoomClosed } from './limits.js'
 import { acceptableName } from './names.js'
@@ -25,12 +32,16 @@ const send = (ws, msg) => { if (ws.readyState === 1) ws.send(encode(msg)) }
 // underlying library waits for the close handshake (~15 s) — long enough for
 // one IP to fill out the concurrency cap. The unref'd fallback forces it
 // closed well before that; a normal peer's own close beats it and clears it.
+function reap(ws) {
+  const timer = setTimeout(() => { try { ws.terminate() } catch { /* already gone */ } }, 1000)
+  timer.unref?.()
+  ws.once('close', () => clearTimeout(timer))
+}
+
 function closeAndReap(ws, code) {
   if (code) send(ws, { type: MSG.ERROR, code })
   ws.close(1008)
-  const reap = setTimeout(() => { try { ws.terminate() } catch { /* already gone */ } }, 1000)
-  reap.unref?.()
-  ws.once('close', () => clearTimeout(reap))
+  reap(ws)
 }
 
 export function heartbeatSweep(clients) {
@@ -48,6 +59,25 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
   const gate = makeGate()
   const wss = new WebSocketServer({ noServer: true, maxPayload: NET.maxPayload })
   const loops = new Map()
+
+  // Seat token → { roomCode, heroId }. One token per seat, stable across
+  // resumes (CONTROLLER RULING 2026-09-26, spec §2: a single-use token let a
+  // slow retry lose the seat — see resume() below): it is deleted only when
+  // the seat itself is freed (bye, expiry, idle kick, a flood/crash close,
+  // the room closing), all of which route through dropTokens via vacate() or
+  // crashRoom().
+  const tokens = new Map()
+
+  function issueToken(room, heroId) {
+    const token = randomBytes(16).toString('hex')
+    tokens.set(token, { roomCode: room.code, heroId })
+    return token
+  }
+
+  // Every token of one seat, or (heroId null) of a whole room.
+  function dropTokens(code, heroId = null) {
+    for (const [token, at] of tokens) if (at.roomCode === code && (heroId === null || at.heroId === heroId)) tokens.delete(token)
+  }
 
   httpServer.on('upgrade', (req, socket, head) => {
     // A malformed request line (e.g. an absolute-form target with an
@@ -79,6 +109,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     console.error(`[pvp] room ${room.code} crashed, closing it:`, err)
     stopLoop(room.code)
     lobby.rooms.delete(room.code)
+    dropTokens(room.code)
     if (room.creatorIp) noteRoomClosed(gate, room.creatorIp)
     for (const ws of room.sockets.values()) { try { ws.close(1011) } catch { /* already gone */ } }
   }
@@ -90,16 +121,62 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     if (room.creatorIp) noteRoomClosed(gate, room.creatorIp)
   }
 
+  // Give a seat up for good: its token, its hero (a public room's bot fill
+  // takes the seat) and, with the last seat, the room.
+  function vacate(room, heroId) {
+    dropTokens(room.code, heroId)
+    leaveRoom(lobby, room, heroId)
+    if (!lobby.rooms.has(room.code)) roomGone(room)
+  }
+
   // Free a seat from the server side (the idle kick): tell the client why,
-  // leave the room now — a public room's bot fill takes the seat — and close.
-  // The socket's own 'close' handler runs later and finds nothing to do:
-  // leaveRoom is idempotent.
+  // leave the room now and close. The socket's own 'close' handler runs
+  // later and finds the seat no longer its own: nothing to do.
   function kick(room, heroId, code) {
     const ws = room.sockets.get(heroId)
     room.sockets.delete(heroId)
-    leaveRoom(lobby, room, heroId)
-    if (!lobby.rooms.has(room.code)) roomGone(room)
+    vacate(room, heroId)
     if (ws) { send(ws, { type: MSG.ERROR, code }); ws.close(1000) }
+  }
+
+  // hello.resume: back into an away seat of a live room, or resume_failed —
+  // the token unknown, expired or already freed, the room gone, or the
+  // seat's own socket still open (rooms.js's resumeSeat now takes that over
+  // instead of refusing it — CONTROLLER RULING 2026-09-26; see
+  // closeSuperseded below for the socket-layer half of that takeover). The
+  // token itself is NOT spent here: it stays valid for the seat until the
+  // seat is freed (CONTROLLER RULING 2026-09-26, spec §2 amended) — an
+  // attempt the client later abandons for a newer one (tickReconnect) may
+  // still have reached the server and succeeded here; a single-use token
+  // would make that abandoned attempt's success cost the client its only
+  // way back in, and the seat would sit `away` under a token the client
+  // never saw. The welcome carries this same token back out (see the hello
+  // handler below), never a fresh one.
+  function resume(token) {
+    const at = tokens.get(token)
+    const room = at && lobby.rooms.get(at.roomCode)
+    if (!room) return { error: ERR.RESUME_FAILED }
+    const res = resumeSeat(room, at.heroId)
+    if (res.error) return res
+    return { ...res, token }
+  }
+
+  // A resume that lands on a seat whose own socket is still open (a phone
+  // that switched networks before the old link was noticed dead) takes the
+  // seat over rather than being refused. The old socket is told nothing —
+  // there is no message for this — just closed 4001 'replaced', flagged so
+  // its own 'close' handler does nothing to the seat (that seat is already
+  // the new socket's), while the gate release for that socket's own
+  // connection still runs exactly once, same as any other close.
+  function closeSuperseded(room, heroId, ws) {
+    const prev = room.sockets.get(heroId)
+    if (!prev || prev === ws) return
+    prev.replaced = true
+    try { prev.close(4001, 'replaced') } catch { /* already gone */ }
+    // The old link may already be dead without having noticed (a network
+    // switch): wait for its close handshake no longer than closeAndReap does
+    // for a refused socket, so it doesn't sit holding a gate slot.
+    reap(prev)
   }
 
   // A validated hello → a seat, or { error }. A name that fails the screen
@@ -142,6 +219,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
           const body = stepRoom(lobby, room)
           if (body) broadcast(room, body)
           for (const id of drainKicks(room)) kick(room, id, ERR.IDLE)
+          for (const id of drainExpired(room)) vacate(room, id)
           if (lobby.rooms.get(room.code) !== room) return
         }
       } catch (err) { crashRoom(room, err) }
@@ -168,13 +246,27 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
     ws.on('pong', () => { ws.missed = 0 })
     const budget = makeConnLimits(now())
     let room = null, heroId = null
+    // Set when this socket's seat must go the moment it closes, with no
+    // grace: a flood refusal or a message that crashed its handler.
+    let leaveNow = false
     // A socket that never sends hello would otherwise sit open forever.
     const helloTimer = setTimeout(() => { if (!room) ws.close(1008) }, helloTimeoutMs)
     ws.on('message', (data, isBinary) => {
       // Closing (a kick, a flood): anything still arriving is ignored.
       if (ws.readyState !== 1) return
-      if (!allowMessage(budget, now())) { noteFlood(gate); closeAndReap(ws); return }
+      if (!allowMessage(budget, now())) {
+        noteFlood(gate); leaveNow = true
+        // A resume racing this close must not rescue the seat a flood just
+        // refused: drop its token now, not only when the close handler runs.
+        if (room) dropTokens(room.code, heroId)
+        closeAndReap(ws)
+        return
+      }
       const msg = isBinary ? null : decode(data)
+      // An undecodable frame from an already-seated socket still just closes
+      // 1003 here, with no leaveNow: the seat is kept for the reconnect grace
+      // on purpose — only a buggy or hostile client sends garbage, and it
+      // only self-harms by losing its own seat early if it doesn't resume.
       if (!msg) { ws.close(1003); return }
       // A message can arrive from this socket after its room has already
       // been torn down (crashRoom) but before the close handshake finishes;
@@ -189,14 +281,32 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
         if (!room) {
           if (msg.type !== MSG.HELLO) { ws.close(1008); return }
           if (!takeHello(gate, ip, now())) { closeAndReap(ws, ERR.RATE_LIMITED); return }
-          const res = seat(validateHello(msg), ip)
+          const hello = validateHello(msg)
+          const res = hello.resume ? resume(hello.resume) : seat(hello, ip)
           if (res.error) { closeAndReap(ws, res.error); return }
           room = res.room; heroId = res.heroId
           clearTimeout(helloTimer)
           room.sockets ??= new Map()
+          // A resume onto a seat whose own socket is still open takes it
+          // over (CONTROLLER RULING 2026-09-26): the old socket is closed
+          // 4001 here, before this one takes the map entry, so its own
+          // 'close' handler sees room.sockets.get(heroId) already pointing
+          // elsewhere and does nothing to the seat.
+          closeSuperseded(room, heroId, ws)
           room.sockets.set(heroId, ws)
           ensureLoop(room)
-          send(ws, { type: MSG.WELCOME, v: NET.protocolVersion, room: room.code, heroId, tick: room.match.tick })
+          // A resume's welcome carries its own (unchanged) token back; any
+          // other seating issues a fresh one.
+          send(ws, { type: MSG.WELCOME, v: NET.protocolVersion, room: room.code, heroId, tick: room.match.tick,
+            arena: room.match.arena.id, token: res.token ?? issueToken(room, heroId) })
+          return
+        }
+        // A deliberate leave: the seat goes now, with no grace. The close
+        // handler then finds the seat no longer this socket's.
+        if (msg.type === MSG.BYE) {
+          room.sockets.delete(heroId)
+          vacate(room, heroId)
+          ws.close(1000)
           return
         }
         if (msg.type === MSG.INPUT) { const input = validateInput(msg); if (input) queueInput(room, heroId, input) }
@@ -204,26 +314,39 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
         else if (msg.type === MSG.PING) { if (Number.isFinite(msg.t)) send(ws, { type: MSG.PONG, t: msg.t }) }
       } catch (err) {
         console.error(`[pvp] message handling failed (room ${room?.code}, hero ${heroId}):`, err)
+        leaveNow = true
+        // Same as the flood case above: a crash mid-handler must not leave a
+        // token a resume can still race in on before the close fires.
+        if (room) dropTokens(room.code, heroId)
         try { ws.close(1011) } catch { /* already gone */ }
       }
     })
     ws.on('close', () => {
       release(gate, ip)
       clearTimeout(helloTimer)
+      // A resume already took this socket's seat over and closed it 4001:
+      // nothing here is this socket's to free, and the gate release above
+      // already ran (once, like for any other close).
+      if (ws.replaced) return
       if (!room) return
+      // A kick or a bye already freed this seat, or a resume moved it to a
+      // newer socket: this one owns nothing any more.
+      if (room.sockets.get(heroId) !== ws) return
       room.sockets.delete(heroId)
       // The room may already have been torn down by crashRoom(); its own
       // sockets are being closed right now, so leaveRoom must not run again
       // against a room the lobby no longer holds.
       if (lobby.rooms.get(room.code) !== room) return
       try {
-        leaveRoom(lobby, room, heroId)
-        if (!lobby.rooms.has(room.code)) roomGone(room)
+        // An unexpected drop keeps the seat for NET.reconnectGraceMs.
+        if (leaveNow) vacate(room, heroId)
+        else markAway(lobby, room, heroId)
       } catch (err) {
-        // Belt-and-braces: leaveRoom touches room.match too, so if this room
-        // is in some other unexpected broken state, don't let tearing down
-        // one departing socket take the process down. crashRoom logs, stops
-        // the loop, drops the room and closes every socket still in it.
+        // Belt-and-braces: leaveRoom/markAway touch room.match too, so if
+        // this room is in some other unexpected broken state, don't let
+        // tearing down one departing socket take the process down.
+        // crashRoom logs, stops the loop, drops the room and closes every
+        // socket still in it.
         crashRoom(room, err)
       }
     })
@@ -237,7 +360,7 @@ export function attachPvp(httpServer, { path = NET.path, heartbeatMs = NET.heart
   }, refusalLogMs)
 
   return {
-    lobby, wss, gate,
+    lobby, wss, gate, tokens,
     close() {
       clearInterval(heartbeat)
       clearInterval(sweeper)

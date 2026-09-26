@@ -11,6 +11,10 @@ let selectedIndex = 0
 let cheatBuffer = ''
 let cheatTimer = null
 
+// The current screen's title and subtitle nodes, for setSubtitle.
+let currentTitle = null
+let currentSubtitle = null
+
 function overlayEl() { return document.getElementById('menu-overlay') }
 
 // Menu navigation accepts the touch controls' synthetic keys alongside the
@@ -48,12 +52,15 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
   h.className = 'menu-title'
   h.textContent = title
   panel.appendChild(h)
+  currentTitle = h
+  currentSubtitle = null
 
   if (subtitle) {
     const s = document.createElement('div')
     s.className = 'menu-subtitle'
     s.textContent = subtitle
     panel.appendChild(s)
+    currentSubtitle = s
   }
 
   for (const line of lines) {
@@ -249,9 +256,25 @@ export function showGameOver({ won, deepestLevel }, { onPlayAgain, onQuitToTitle
   })
 }
 
+// Change the current screen's subtitle in place (the death picker's live
+// "Back in N"): no re-render, so the buttons, the selection and the key
+// handler stay as they are. A screen without one gets it right under the
+// title. No screen up: nothing to do.
+export function setSubtitle(text) {
+  if (!currentTitle) return
+  if (!currentSubtitle) {
+    currentSubtitle = document.createElement('div')
+    currentSubtitle.className = 'menu-subtitle'
+    currentTitle.after(currentSubtitle)
+  }
+  currentSubtitle.textContent = text
+}
+
 export function hide() {
   clearKeyHandler()
   currentInput = null
+  currentTitle = null
+  currentSubtitle = null
   document.body?.classList.remove('menu-typing')
   document.body?.classList.remove('menu-open')
   const el = overlayEl()
@@ -259,10 +282,11 @@ export function hide() {
   el.innerHTML = ''
 }
 
-// PvP: pick a class — before a local match, and while dead (applies at respawn).
-export function showClassPicker({ title = 'Arena', subtitle = 'Pick a class', onPick, onBack }) {
+// PvP: pick a class — before a local match, and while dead (applies at
+// respawn; the subtitle then counts down, the hint sits in `lines`).
+export function showClassPicker({ title = 'Arena', subtitle = 'Pick a class', lines = [], onPick, onBack }) {
   renderScreen({
-    title, subtitle,
+    title, subtitle, lines,
     buttons: [
       { label: 'Warrior', onSelect: () => onPick('warrior') },
       { label: 'Archer', onSelect: () => onPick('archer') },

@@ -31,8 +31,9 @@ describe('view helpers', () => {
     assert.equal(validCode(''), false)
   })
   it('errorText has a line for every error code and a fallback', () => {
-    for (const code of ['version', 'no_room', 'room_full', 'bad_name', 'bad_hello', 'server_full', 'rate_limited', 'idle'])
+    for (const code of ['version', 'no_room', 'room_full', 'bad_name', 'bad_hello', 'server_full', 'rate_limited', 'idle', 'resume_failed'])
       assert.ok(errorText(code).length > 3, code)
+    assert.equal(errorText('resume_failed'), 'Your seat is gone — join a new match.')
     assert.equal(errorText('rate_limited'), 'Too many attempts — wait a minute and try again.')
     assert.equal(errorText('idle'), 'Removed for inactivity.')
     assert.ok(errorText('???').length > 3)

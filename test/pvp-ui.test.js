@@ -2,8 +2,9 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { parsePvpCheat, cheatDecision } from '../renderer/systems/cheats.js'
 import { inputFromKeys, makeLocalMatch, localInputs, viewOf, LOCAL_ID } from '../renderer/pvp/local.js'
-import { pvpHudModel } from '../renderer/ui/pvp-hud.js'
+import { pvpHudModel, respawnLine } from '../renderer/ui/pvp-hud.js'
 import { PVP } from '../renderer/data/pvp.js'
+import { nextArenaIndex } from '../renderer/data/pvp-arenas.js'
 
 describe('pvp cheat', () => {
   it('matches a buffer ending in pvp, any case', () => {
@@ -27,6 +28,15 @@ describe('makeLocalMatch / localInputs / viewOf', () => {
   it('puts you against three bots of cycling classes', () => {
     const m = makeLocalMatch({ cls: 'mage' })
     assert.deepEqual(m.heroes.map(h => [h.id, h.cls]), [[LOCAL_ID, 'mage'], ['bot1', 'warrior'], ['bot2', 'archer'], ['bot3', 'mage']])
+  })
+  it('plays the arena at arenaIndex in the rotation, pillars by default; "Next match" steps it', () => {
+    assert.equal(makeLocalMatch({ cls: 'mage' }).arena.id, 'pillars')
+    const ids = []
+    for (let i = 0, k = 0; k < 5; k++, i = nextArenaIndex(i)) ids.push(makeLocalMatch({ cls: 'mage', arenaIndex: i }).arena.id)
+    assert.deepEqual(ids, ['pillars', 'glade', 'tunnels', 'ruins', 'pillars'])
+    const m = makeLocalMatch({ cls: 'mage', arenaIndex: 3 })
+    assert.equal(m.map[0].length, m.arena.size.w)
+    for (const h of m.heroes) assert.ok(m.arena.spawns.some(s => s.x === h.x && s.y === h.y), h.id)
   })
   it('clamps the bot count to 1-5', () => {
     assert.equal(makeLocalMatch({ cls: 'mage', bots: 9 }).heroes.length, 6)
@@ -58,5 +68,15 @@ describe('pvpHudModel', () => {
     assert.equal(model.kills, 0)
     assert.equal(model.leaderKills, 3)
     assert.equal(model.leading, false)
+  })
+})
+
+describe('respawnLine', () => {
+  it('counts the respawn down in whole seconds, rounding up', () => {
+    assert.equal(PVP.respawnDelay, 3)
+    assert.deepEqual([3, 2.01, 2, 1.5, 0.2].map(respawnLine), ['Back in 3', 'Back in 3', 'Back in 2', 'Back in 2', 'Back in 1'])
+  })
+  it('a hero not counting down yet (alive, or its first dead snapshot not in) reads the full delay', () => {
+    for (const t of [0, -0.03, null, undefined]) assert.equal(respawnLine(t), `Back in ${PVP.respawnDelay}`)
   })
 })

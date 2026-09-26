@@ -4,6 +4,7 @@ import { startServer as bootServer, laggy, drive, waitFor, sleep } from './net-h
 import { connect, frame, sessionView, leave, drainEvents } from '../renderer/net/client.js'
 import { placeHero } from '../renderer/pvp/hero.js'
 import { NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
+import { NET } from '../renderer/data/net.js'
 
 // Everything a test opens is closed after it, pass or fail — a failed
 // assertion must not leave sockets or room loops holding the runner open.
@@ -65,10 +66,10 @@ describe('play under lag', () => {
     leave(a); leave(b); await srv.close()
   })
 
-  for (const rewind of [true, false]) {
-    it(`melee under 100 ms lag ${rewind ? 'hits with rewind' : 'misses without rewind'}`, async () => {
+  for (const [lag, rewind] of [[100, true], [100, false], [150, true]]) {
+    it(`melee under ${lag} ms lag ${rewind ? 'hits with rewind' : 'misses without rewind'}`, async () => {
       const srv = await startServer({ rewind })
-      const W = laggy({ up: 100, down: 100 })
+      const W = laggy({ up: lag, down: lag })
       const a = await host(srv.url, W, 'warrior')
       const b = await join(srv.url, W, a.room, 'archer')
       const [wa, hb] = [serverHero(srv, a), serverHero(srv, b)]
@@ -77,9 +78,11 @@ describe('play under lag', () => {
       await sleep(400)                                      // both views settle on the new places
       // A swings the moment it sees B step just out of point-blank (36 px,
       // within the sword's 58 px centre reach). At 100 ms each way A's view
-      // is ~10 ticks old, past the 6-tick rewind cap, so the server tests B
-      // 4 ticks (16 px) beyond where A saw it: ~52 px with rewind (a hit),
-      // ~72 px without (a miss). 36 leaves one tick of slack under the reach.
+      // is ~10 ticks old, inside the 9-tick rewind cap but for a tick, so the
+      // server tests B ~4 px beyond where A saw it: ~40 px with rewind (a
+      // hit), ~72 px without (a miss). At 150 ms each way the view is ~13
+      // ticks old, so the capped rewind tests B 4 ticks (16 px) beyond: ~52
+      // px, still a hit. 36 leaves one tick of slack under the reach.
       let swung = false, serverSwung = false
       const bWalk = drive(b, east, 1500)
       await drive(a, () => {
@@ -112,20 +115,26 @@ describe('play under lag', () => {
     await srv.close()
   })
 
-  it('server close marks the session lost and frame() is a no-op', async () => {
+  it('server close: the session tries to get its seat back, sends no input meanwhile, and is lost past the grace', async () => {
     const srv = await startServer()
     const a = await host(srv.url, WebSocketNoLag())
     await srv.close()
-    await waitFor(() => a.status === 'lost')
+    await waitFor(() => a.status === 'reconnecting')
+    const seq = a.seq
     assert.doesNotThrow(() => frame(a, idle(), performance.now()))
-    assert.ok(drainEvents(a).some(e => e.type === 'closed' && e.status === 'lost'))
+    assert.equal(a.seq, seq, 'no input while reconnecting')
+    frame(a, idle(), a.lostAt + NET.reconnectGraceMs + 1)
+    assert.equal(a.status, 'lost')
+    const events = drainEvents(a)
+    assert.ok(events.some(e => e.type === 'reconnecting'))
+    assert.ok(events.some(e => e.type === 'closed' && e.status === 'lost'))
   })
 
   it('a one-frame press between two input sends is carried by the next input', () => {
     const sent = []
     class FakeWS { constructor() { queueMicrotask(() => this.onopen?.()) } send(t) { sent.push(JSON.parse(t)) } close() {} }
     const a = connect({ url: 'ws://x', WebSocketImpl: FakeWS, now: () => 0, hello: { name: 'A', cls: 'warrior', create: true } })
-    a.ws.onmessage({ data: JSON.stringify({ type: 'welcome', room: 'ABCD', heroId: 1 }) })
+    a.ws.onmessage({ data: JSON.stringify({ type: 'welcome', room: 'ABCD', heroId: 1, arena: 'pillars' }) })
     frame(a, idle(), 0)
     frame(a, { ...NEUTRAL_INPUT, attack: true }, 16)     // 16 ms: no input is due yet
     frame(a, idle(), 34)                                  // the next input goes out here

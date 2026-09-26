@@ -154,6 +154,33 @@ describe('buildArena — columns', () => {
   })
 })
 
+describe('buildArena — interior walls', () => {
+  it('places WALL tiles, keeps spawns and chests off them, and warn-skips bad entries', () => {
+    const warns = []
+    const { map, entitySpawns } = buildArena({
+      size: { w: 12, h: 10 },
+      walls: [{ x: 3, y: 3 }, { x: 4, y: 3 }, { x: 11, y: 4 }, { x: 6, y: 8 }, null],
+      enemies: [{ kind: 'guard', x: 3, y: 3 }],                  // on a wall -> skipped
+      chests: Array.from({ length: 30 }, () => ({ kind: 'potion' })),
+      player: { x: 6, y: 8 },                                    // a wall there -> that wall skipped
+    }, w => warns.push(w))
+    assert.equal(map[3][3].tile, TILE.WALL)
+    assert.equal(map[3][4].tile, TILE.WALL)
+    assert.equal(map[8][6].tile, TILE.FLOOR, 'player spawn cell protected')
+    assert.equal(map[4][11].tile, TILE.WALL, 'the border is a wall anyway')
+    for (const s of entitySpawns) assert.notEqual(map[s.y][s.x].tile, TILE.WALL, `${s.kind} at ${s.x},${s.y}`)
+    assert.ok(!entitySpawns.some(s => s.kind === 'guard'), 'enemy overlapping a wall is skipped')
+    assert.ok(warns.some(w => w.includes('wall at (11,4) out of bounds')))
+    assert.ok(warns.some(w => w.includes('wall at (6,8) overlaps player spawn')))
+    assert.ok(warns.some(w => w.includes('wall at (undefined,undefined) invalid')))
+  })
+  it('no walls configured: the arena is unchanged', () => {
+    const a = buildArena({ size: { w: 12, h: 10 }, enemies: [] }, () => {}).map
+    const b = buildArena({ size: { w: 12, h: 10 }, walls: [], enemies: [] }, () => {}).map
+    assert.deepEqual(a.map(r => r.map(c => c.tile)), b.map(r => r.map(c => c.tile)))
+  })
+})
+
 describe('buildArena — enemy hp override', () => {
   it('passes an enemy hp override through to the spawn', () => {
     const { entitySpawns } = buildArena({ enemies: [{ kind: 'guard', x: 5, y: 5, hp: 1 }] }, () => {})

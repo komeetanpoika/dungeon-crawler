@@ -81,12 +81,12 @@ describe('pvp server', async () => {
     a.ws.close()
   })
 
-  it('the last socket out destroys the room', async () => {
+  it('the last socket out with a bye destroys the room at once', async () => {
     const a = await rawClient(srv.url)
     a.send(hello({ create: true }))
     const { room } = await a.next('welcome')
     assert.ok(srv.pvp.lobby.rooms.has(room))
-    a.ws.close()
+    a.bye()
     await waitFor(() => !srv.pvp.lobby.rooms.has(room))
   })
 

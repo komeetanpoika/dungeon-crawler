@@ -1,31 +1,128 @@
 // The browser side of a PvP room (spec §2-§3): the connection, a fixed 30 Hz
 // input loop, your predicted hero, everyone else interpolated, and a
-// ready-to-draw view. The WebSocket constructor and the clock are passed in,
-// so Node tests run the very same code with `ws`. No DOM.
-import { MSG, encode, decode, hydrateHero, heroSnap } from './protocol.js'
+// ready-to-draw view — and, when the socket drops after the welcome, the
+// way back into the same seat (4b spec §2). The WebSocket constructor and
+// the clock are passed in, so Node tests run the very same code with `ws`.
+// No DOM.
+import { MSG, ERR, encode, decode, hydrateHero, heroSnap } from './protocol.js'
 import { makePredictor, predictStep, predictCosmetics, reconcile, tickCorrection, drawnPos } from './predict.js'
 import { makeInterp, pushSnap, renderTick, heroPoses, projectilesAt, newest } from './interp.js'
 import { arenaMap } from '../pvp/sim.js'
+import { PVP_ARENAS } from '../data/pvp-arenas.js'
 import { makeFeedback, addFloat, tickFeedback } from '../systems/feedback.js'
 import { tickWalk } from '../systems/walk.js'
 import { PVP } from '../data/pvp.js'
 import { NET } from '../data/net.js'
 
+// status: 'connecting' → 'open' (welcomed) → 'reconnecting' (dropped, trying
+// hello.resume) → 'open' again, or it ends in 'left' (we closed it), 'lost'
+// or 'error' (a refusal). `hello` may itself be { resume: token } (a
+// reloaded tab going back to its seat). token: the seat token from the
+// latest welcome. lostAt/attempt/retryAt: the reconnect schedule.
 export function connect({ url, hello, WebSocketImpl = globalThis.WebSocket, now = () => performance.now() }) {
   const s = {
-    status: 'connecting', error: null, room: null, heroId: null, map: arenaMap(), now,
+    status: 'connecting', error: null, room: null, heroId: null, arena: 'pillars', map: arenaMap(), now,
+    url, WebSocketImpl, token: hello?.resume ?? null, lostAt: null, attempt: 0, retryAt: null,
     pred: null, interp: makeInterp(), others: new Map(), meView: null, seq: 0, acc: 0, held: { attack: false, alt: false },
     lastFrame: null, lastView: null, lastPingAt: -Infinity, ping: null,
-    events: [], cues: [], feedback: makeFeedback(), closedByUs: false,
+    events: [], cues: [], feedback: makeFeedback(), closedByUs: false, over: false,
   }
-  const ws = s.ws = new WebSocketImpl(url)
-  ws.onopen = () => ws.send(encode({ type: MSG.HELLO, v: NET.protocolVersion, ...hello }))
-  ws.onmessage = ev => onMessage(s, decode(ev.data), s.now())
-  ws.onclose = () => {
-    if (s.status !== 'error') s.status = s.closedByUs ? 'left' : 'lost'
-    s.events.push({ type: 'closed', status: s.status })
-  }
+  openSocket(s, hello)
   return s
+}
+
+// Every socket's handlers check it is still the session's own: an attempt
+// that was abandoned for a newer one, or the socket that dropped, is
+// ignored from then on.
+function openSocket(s, hello) {
+  const ws = s.ws = new s.WebSocketImpl(s.url)
+  ws.onopen = () => { if (s.ws === ws) ws.send(encode({ type: MSG.HELLO, v: NET.protocolVersion, ...hello })) }
+  ws.onmessage = ev => { if (s.ws === ws) onMessage(s, decode(ev.data), s.now()) }
+  ws.onclose = ev => { if (s.ws === ws) onClose(s, s.now(), ev?.code) }
+}
+
+// The session is over for good: one 'closed' event, then nothing more.
+function end(s, status) {
+  if (s.over) return
+  s.over = true
+  if (s.status !== 'error') s.status = status
+  pushEvent(s, { type: 'closed', status: s.status })
+}
+
+// Close code 4001 'replaced' (server/pvp-server.js): another connection sent
+// hello.resume with this same seat's token and took it over while this
+// socket was still live. That seat is no longer ours to reclaim — trying to
+// resume it ourselves would only fight the connection that just won it — so
+// this is a final loss, not a drop, whatever the session's status was.
+function onClose(s, t, code) {
+  if (code === 4001) { end(s, 'lost'); return }
+  // A resume attempt that got no welcome: tickReconnect starts the next one
+  // when its time comes; after the last one there is nothing left to try.
+  if (s.status === 'reconnecting') {
+    if (s.attempt >= NET.reconnectDelaysMs.length) end(s, 'lost')
+    return
+  }
+  // An unexpected drop after the welcome: try to get the seat back.
+  if (s.status === 'open' && !s.closedByUs && s.token) {
+    s.status = 'reconnecting'
+    s.lostAt = t
+    s.attempt = 0
+    s.retryAt = t + NET.reconnectDelaysMs[0]
+    pushEvent(s, { type: 'reconnecting' })
+    return
+  }
+  end(s, s.closedByUs ? 'left' : 'lost')
+}
+
+// Called every frame while reconnecting: the next hello.resume when its
+// time comes — 0.5, 1, 2, 4 and 8 s apart — for as long as the server can
+// still be holding the seat. A tab that comes back after the grace (rAF
+// stops while it is hidden) gives up at once instead of trying a seat that
+// is surely gone.
+function tickReconnect(s, t) {
+  if (t < s.retryAt) return
+  const delays = NET.reconnectDelaysMs
+  if (s.attempt >= delays.length || t - s.lostAt > NET.reconnectGraceMs) {
+    const hanging = s.ws
+    end(s, 'lost')
+    hanging.close()
+    return
+  }
+  const abandoned = s.ws
+  s.attempt++
+  s.retryAt = s.attempt < delays.length ? t + delays[s.attempt] : s.lostAt + NET.reconnectGraceMs
+  openSocket(s, { resume: s.token })
+  abandoned.close()                                    // the dropped socket, or an attempt still hanging
+}
+
+// Back in: the old predictor and snapshot buffer describe a connection that
+// is gone, and the server numbers this socket's inputs afresh. The next
+// snapshot rebuilds the view. cues/floats from before the drop are stale —
+// dropped here rather than left to play late — and lastView is reset to
+// null so the first sessionView() call after the resume takes its "first
+// call ever" branch instead of seeing a huge gap since the old (pre-drop)
+// lastView and wiping the floats/cues a snapshot that arrives with (or
+// right after) the resume just queued.
+function resetSession(s) {
+  s.pred = null
+  s.interp = makeInterp()
+  s.others = new Map()
+  s.meView = null
+  s.seq = 0
+  s.acc = 0
+  s.held = { attack: false, alt: false }
+  s.lastFrame = null
+  s.lastPingAt = -Infinity
+  s.lastView = null
+  s.cues = []
+  s.feedback.floats = []
+}
+
+function refuse(s, code) {
+  const reconnect = s.status === 'reconnecting'
+  s.status = 'error'
+  s.error = code
+  pushEvent(s, { type: 'error', code, ...(reconnect && { reconnect: true }) })
 }
 
 // A backgrounded tab keeps receiving WebSocket messages while
@@ -38,7 +135,7 @@ export function connect({ url, hello, WebSocketImpl = globalThis.WebSocket, now 
 // plus the local hero's own kill/respawn, which drive the death picker and
 // can't be identified by type alone. Everything else is capped like
 // cues/floats.
-const ALWAYS_KEPT_EVENTS = new Set(['closed', 'error', 'welcome', 'matchEnd', 'matchStart'])
+const ALWAYS_KEPT_EVENTS = new Set(['closed', 'error', 'welcome', 'reconnecting', 'matchEnd', 'matchStart'])
 
 function isKeptEvent(s, e) {
   if (ALWAYS_KEPT_EVENTS.has(e.type)) return true
@@ -56,14 +153,49 @@ function pushEvent(s, e) {
   }
 }
 
+// The arena a welcome or snapshot names (protocol v3). A new one gets a new
+// map object — which also drops the renderer's tile-chunk cache and makes
+// game.js decorate it — and the predictor walks on it from then on. An id
+// this build does not know means the server is newer: the same refusal as a
+// version mismatch.
+function setArena(s, id) {
+  if (typeof id !== 'string' || !Object.hasOwn(PVP_ARENAS, id)) {
+    refuse(s, ERR.VERSION)
+    s.ws.close()
+    return false
+  }
+  if (id !== s.arena) {
+    s.arena = id
+    s.map = arenaMap(PVP_ARENAS[id])
+    if (s.pred) s.pred.map = s.map
+    // Old-arena snapshots and cosmetics must never get drawn over the new
+    // layout (onSnap pushes the new snapshot right after this returns).
+    s.interp = makeInterp()
+    s.others = new Map()
+  }
+  return true
+}
+
 function onMessage(s, msg, t) {
-  if (!msg) return
+  // After a refusal nothing more is read: the socket is closing.
+  if (!msg || s.status === 'error') return
   if (msg.type === MSG.WELCOME) {
-    s.status = 'open'; s.room = msg.room; s.heroId = msg.heroId
-    pushEvent(s, { type: 'welcome', room: msg.room, heroId: msg.heroId })
+    if (!setArena(s, msg.arena)) return
+    const resumed = s.status === 'reconnecting'
+    if (resumed) resetSession(s)
+    s.status = 'open'; s.room = msg.room; s.heroId = msg.heroId; s.token = msg.token ?? null
+    s.lostAt = null; s.attempt = 0; s.retryAt = null
+    pushEvent(s, { type: 'welcome', room: msg.room, heroId: msg.heroId, token: s.token, resumed })
   } else if (msg.type === MSG.ERROR) {
-    s.status = 'error'; s.error = msg.code
-    pushEvent(s, { type: 'error', code: msg.code })
+    // While reconnecting, only two refusals are final: the seat is gone, or
+    // the server is a newer build. Anything else (rate_limited, server_full)
+    // costs just that one attempt.
+    if (s.status === 'reconnecting') {
+      if (msg.code === ERR.RESUME_FAILED) end(s, 'lost')
+      else if (msg.code === ERR.VERSION) refuse(s, msg.code)
+      return
+    }
+    refuse(s, msg.code)
   } else if (msg.type === MSG.PONG) {
     if (Number.isFinite(msg.t)) s.ping = t - msg.t
   } else if (msg.type === MSG.SNAP) {
@@ -72,6 +204,7 @@ function onMessage(s, msg, t) {
 }
 
 function onSnap(s, snap, t) {
+  if (!setArena(s, snap.arena)) return
   pushSnap(s.interp, snap, t)
   const mine = snap.heroes.find(h => h.id === s.heroId)
   if (mine) {
@@ -90,6 +223,7 @@ function onSnap(s, snap, t) {
 }
 
 export function frame(s, input, t = s.now()) {
+  if (s.status === 'reconnecting') { tickReconnect(s, t); return }
   if (s.status !== 'open') return
   // Clamped both ways: a hitch never fast-forwards, and a clock that steps
   // back (an injected wall clock) never runs the accumulator negative.
@@ -172,6 +306,14 @@ export function sessionView(s, t = s.now()) {
 }
 
 export function sendClass(s, cls) { if (s.status === 'open') s.ws.send(encode({ type: MSG.CLASS, cls })) }
-export function leave(s) { s.closedByUs = true; s.ws.close() }
+// A deliberate leave says bye first, so the server frees the seat at once
+// instead of holding it for the reconnect grace.
+export function leave(s) {
+  if (s.ws && s.ws.readyState === 1) s.ws.send(encode({ type: MSG.BYE }))
+  s.closedByUs = true
+  // Leave on the Reconnecting… overlay: no further attempts.
+  if (s.status === 'reconnecting') end(s, 'left')
+  s.ws.close()
+}
 export function drainEvents(s) { const e = s.events; s.events = []; return e }
 export function drainCues(s) { const c = s.cues; s.cues = []; return c }

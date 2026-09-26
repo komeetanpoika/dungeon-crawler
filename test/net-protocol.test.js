@@ -54,13 +54,28 @@ describe('names, classes and hello', () => {
   })
   it('hello v2: quick is a third way in, and exactly one of create/room/quick', () => {
     const base = { type: 'hello', v: NET.protocolVersion, name: 'Aino', cls: 'mage' }
-    assert.equal(NET.protocolVersion, 2)
     assert.deepEqual(validateHello({ ...base, quick: true }), { name: 'Aino', cls: 'mage', quick: true })
     assert.deepEqual(validateHello({ ...base, quick: true, create: true }), { error: ERR.BAD_HELLO })
     assert.deepEqual(validateHello({ ...base, quick: true, room: 'KXPT' }), { error: ERR.BAD_HELLO })
     assert.deepEqual(validateHello({ ...base, quick: 'yes' }), { error: ERR.BAD_HELLO })
     assert.deepEqual(validateHello({ ...base, v: 1, quick: true }), { error: ERR.VERSION })
     assert.deepEqual(validateHello({ ...base, room: '', quick: true }), { name: 'Aino', cls: 'mage', quick: true })
+  })
+  it('hello v3: resume is a fourth way in — exactly one of create/room/quick/resume, the token 32 hex characters', () => {
+    const v = NET.protocolVersion
+    const tok = '0123456789abcdef0123456789abcdef'
+    assert.equal(v, 3)
+    assert.deepEqual(validateHello({ type: 'hello', v, resume: tok }), { resume: tok })
+    assert.deepEqual(validateHello({ type: 'hello', v, resume: tok, name: '<>', cls: 'bard' }), { resume: tok }, 'the seat keeps its own name and class')
+    for (const bad of ['a'.repeat(31), 'a'.repeat(33), 'A'.repeat(32), 'g'.repeat(32), '', 42, true, {}])
+      assert.deepEqual(validateHello({ type: 'hello', v, resume: bad }), { error: ERR.BAD_HELLO }, JSON.stringify(bad))
+    for (const way of [{ create: true }, { quick: true }, { room: 'KXPT' }])
+      assert.deepEqual(validateHello({ type: 'hello', v, name: 'Aino', cls: 'mage', resume: tok, ...way }), { error: ERR.BAD_HELLO })
+    assert.deepEqual(validateHello({ type: 'hello', v: 2, resume: tok }), { error: ERR.VERSION })
+  })
+  it('bye and resume_failed', () => {
+    assert.equal(MSG.BYE, 'bye')
+    assert.equal(ERR.RESUME_FAILED, 'resume_failed')
   })
   it('the new error codes', () => {
     assert.equal(ERR.RATE_LIMITED, 'rate_limited')
@@ -115,6 +130,7 @@ describe('snapshots', () => {
     assert.deepEqual(body.projectiles[0], { px: 1, py: 2, dx: 3, dy: 4, shape: 'arrow', color: '#fff' })
     assert.equal(body.pickups.length, 5)
     assert.equal(body.matchLength, m.matchLength)
+    assert.equal(body.arena, 'pillars')
     for (const k of ['tick', 'clock', 'waiting', 'ended', 'lightning', 'strikes', 'arcs', 'shockwaves', 'events', 'cues']) assert.ok(k in body, k)
   })
 })
