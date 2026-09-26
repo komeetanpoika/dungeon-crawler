@@ -97,6 +97,7 @@ Out of scope: a map vote, new modes, and new tilesets or art.
   - then snapshots resume.
 - Otherwise it answers `error: resume_failed`: the token is unknown, expired, already used, or the room is gone.
 - A seat whose original socket still looks open (a phone that switched networks before the server noticed the old link died) is **taken over**: the old socket is closed with code 4001 (`replaced`, not a refusal), and the new socket gets the seat. The token is 128 random bits held only in that tab's sessionStorage, so this is the owner reconnecting, not a hijack. *(Changed 2026-09-26 by controller ruling: refusing here would defeat the mobile network-switch case the feature exists for.)*
+- The browser's "Duplicate tab" copies `sessionStorage`, so a duplicated tab resumes the seat and the original tab gets 4001 (`Connection lost`) — accepted, owner-side only.
 
 **Client:**
 - On an unexpected close after `welcome`, the client shows **"Reconnecting…"** (with *Leave*) instead of "Connection lost".
