@@ -2,11 +2,11 @@
 // fireball rune.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeMatch, stepMatch } from '../renderer/pvp/sim.js'
+import { makeMatch, stepMatch, removeHero } from '../renderer/pvp/sim.js'
 import { placeHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
 import { tryCast, castCost, SPELLS } from '../renderer/systems/spells.js'
 import { castLightning, tickLightning, LIGHTNING } from '../renderer/systems/spells/lightning.js'
-import { makePlayer } from '../renderer/systems/entities.js'
+import { makePlayer, makeWandContents } from '../renderer/systems/entities.js'
 import { applyLoadout } from '../renderer/systems/loadout.js'
 import { PVP, SPELL_OVERRIDES } from '../renderer/data/pvp.js'
 import { openMap } from './pvp-helpers.js'
@@ -69,5 +69,60 @@ describe("single-player's Call Lightning is unchanged", () => {
     tickLightning(state, LIGHTNING.delay, { hurt: (e, d) => hurt.push(d) })
     assert.deepEqual(hurt, [5])
     assert.equal(foe.stunTimer, 1.0)
+  })
+})
+
+describe('the fireball rune', () => {
+  const fireball = (foes, facing = 'east') => {
+    const m = makeMatch({ roster: [{ id: 'm', name: 'm', cls: 'mage' }, ...foes.map((c, i) => ({ id: `f${i}`, name: `f${i}`, cls: 'archer' }))] })
+    const [mg, ...fs] = m.heroes
+    placeHero(mg, { x: 3, y: 8 }); mg.spawnProtect = 0
+    foes.forEach((cell, i) => { placeHero(fs[i], cell); fs[i].spawnProtect = 0 })
+    mg.rune = { t: 30, saved: {} }; mg.wand = makeWandContents('firewand')
+    play(m, i => ({ m: input({ attack: i === 0, facing }) }), 2)         // press, release: a tap
+    return { m, mg, fs }
+  }
+  const untilGone = m => { for (let i = 0; i < 60 && m.projectiles.length; i++) stepMatch(m, {}, PVP.tick) }
+  it("the direct hit is the spell's 4 and no burst; a neighbour takes the 2 burst, credited to the caster", () => {
+    const { m, fs: [direct, near] } = fireball([{ x: 7, y: 8 }, { x: 7, y: 9 }])
+    untilGone(m)
+    assert.equal(direct.hp, PVP.hp - 4)
+    assert.equal(near.hp, PVP.hp - 2)
+    assert.equal(near.lastHitBy.id, 'm')
+    assert.equal(m.fireZones.length, 1)
+    assert.equal(m.fireZones[0].owner, 'm')
+  })
+  it('the patch burns 1 a second for 3 s into whoever stands in it, then goes out', () => {
+    const { m, fs: [direct, near] } = fireball([{ x: 7, y: 8 }, { x: 7, y: 9 }])
+    untilGone(m)
+    for (let i = 0; i < Math.round(3 / PVP.tick); i++) stepMatch(m, {}, PVP.tick)
+    assert.equal(direct.hp, PVP.hp - 4 - 3)
+    assert.equal(near.hp, PVP.hp - 2 - 3)
+    assert.equal(m.fireZones.length, 0)
+  })
+  it('the burst is unblockable: a buckler raised toward the caster still burns', () => {
+    const m = makeMatch({ roster: [{ id: 'm', name: 'm', cls: 'mage' }, { id: 'a', name: 'a', cls: 'archer' }, { id: 'w', name: 'w', cls: 'warrior' }] })
+    const [mg, a, w] = m.heroes
+    placeHero(mg, { x: 3, y: 8 }); placeHero(a, { x: 7, y: 8 }); placeHero(w, { x: 7, y: 9 })
+    for (const h of m.heroes) h.spawnProtect = 0
+    mg.rune = { t: 30, saved: {} }; mg.wand = makeWandContents('firewand')
+    for (let i = 0; i < 40; i++) stepMatch(m, { m: input({ attack: i === 0, facing: 'east' }), w: input({ alt: true, facing: 'west' }) }, PVP.tick)
+    assert.equal(w.hp, PVP.hp - 2)
+  })
+  it('a patch whose caster has left the match burns on, crediting nobody', () => {
+    const { m, fs: [direct] } = fireball([{ x: 7, y: 8 }])
+    untilGone(m)
+    removeHero(m, 'm')
+    for (let i = 0; i < Math.round(1.1 / PVP.tick); i++) stepMatch(m, {}, PVP.tick)
+    assert.equal(direct.hp, PVP.hp - 4 - 1)
+    assert.equal(direct.lastHitBy.id, 'm', 'the last credited hit is still the fireball itself')
+  })
+  it('the caster takes neither the burst nor the patch', () => {
+    const { m, mg } = fireball([{ x: 20, y: 20 }], 'west')      // straight into the wall beside the caster
+    untilGone(m)
+    assert.equal(m.fireZones.length, 1)
+    assert.ok(m.fireZones[0].tiles.some(t => t.x === 3 && t.y === 8), 'the caster stands in the blast')
+    for (let i = 0; i < Math.round(3 / PVP.tick); i++) stepMatch(m, {}, PVP.tick)
+    assert.equal(mg.hp, PVP.hp)
   })
 })

@@ -419,3 +419,19 @@ describe('hit extents (systems/hitbox.js)', () => {
     assert.equal(playerDamage.length, 1)
   })
 })
+
+describe('detonate names the shooter and the entity struck (PvP)', () => {
+  it('a direct hit hands { owner, struck }; a wall stop hands struck null', () => {
+    const target = { id: 'a', type: 'monster', px: 5, py: 0, hp: 10 }
+    const hitCalls = []
+    const { hooks } = makeHooks({ detonate: (px, py, blastTiles, opts, hit) => hitCalls.push(hit) })
+    stepProjectiles(baseState([target], [{ px: 0, py: 0, dx: 100, dy: 0, damage: 4, friendly: true, explodes: true, blastTiles: 16, owner: 'm' }]), 0.1, hooks)
+    assert.equal(hitCalls.length, 1)
+    assert.equal(hitCalls[0].owner, 'm')
+    assert.equal(hitCalls[0].struck.id, 'a')
+    const wallCalls = []
+    const { hooks: h2 } = makeHooks({ detonate: (px, py, blastTiles, opts, hit) => wallCalls.push(hit) })
+    stepProjectiles(baseState([], [{ px: 0, py: 0, dx: 100, dy: 0, damage: 4, friendly: true, explodes: true, blastTiles: 16, owner: 'm', maxDist: 5 }]), 0.1, h2)
+    assert.deepEqual(wallCalls, [{ owner: 'm', struck: null }])
+  })
+})
