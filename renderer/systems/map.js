@@ -462,6 +462,18 @@ export function buildArena(config = {}, warn = console.warn) {
     columnCells.add(`${x},${y}`)
   }
 
+  // Interior walls: config.walls = [{x, y}, ...] become WALL tiles (a PvP
+  // arena's interior `#` cells). Validated like columns; tracked with them,
+  // so nothing is ever placed on one.
+  for (const c of (Array.isArray(config.walls) ? config.walls : [])) {
+    if (!c || !Number.isFinite(c.x) || !Number.isFinite(c.y)) { warn(`arena: wall at (${c?.x},${c?.y}) invalid — skipped`); continue }
+    const x = Math.round(c.x), y = Math.round(c.y)
+    if (x < 1 || x > width - 2 || y < 1 || y > height - 2) { warn(`arena: wall at (${x},${y}) out of bounds — skipped`); continue }
+    if (x === playerSpawn.x && y === playerSpawn.y) { warn(`arena: wall at (${x},${y}) overlaps player spawn — skipped`); continue }
+    map[y][x].tile = TILE.WALL
+    columnCells.add(`${x},${y}`)
+  }
+
   // Ordered ring of interior-perimeter floor cells (clockwise from top-left),
   // minus the player-spawn cell and any column so a chest never lands on either.
   const ring = []
