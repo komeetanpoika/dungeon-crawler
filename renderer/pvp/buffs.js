@@ -57,6 +57,17 @@ export const hasteMul = hero => hero.buffs?.haste ? BUFFS.haste[hero.buffs.haste
 // What Might adds to each of the hero's direct hits (0 without it).
 export const mightBonus = hero => hero.buffs?.might ? BUFFS.might[hero.buffs.might.tier].bonus : 0
 
+// Ward (damagePlayer's `soak`): takes what it can of `amount` from the pool
+// and returns the rest; a pool emptied breaks the ward.
+export function soakWard(hero, amount) {
+  const w = hero.buffs?.ward
+  if (!w || amount <= 0) return amount
+  const soaked = Math.min(w.pool, amount)
+  w.pool -= soaked
+  if (w.pool <= 0) hero.buffs.ward = null
+  return amount - soaked
+}
+
 // A deep copy, for the snapshot and for hydrating one.
 export function copyBuffs(b) {
   const out = emptyBuffs()

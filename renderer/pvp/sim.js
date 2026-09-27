@@ -14,7 +14,7 @@ import { stepKnockback } from '../systems/knockback.js'
 import { computeBlastTiles, makeFireZone, FIRE_DURATION, FIRE_TICK_INTERVAL, FIRE_TICK_DAMAGE } from '../systems/fire.js'
 import { overlapsTiles } from '../systems/hitbox.js'
 import { canMoveTo, PLAYER_HALF, TILE_SIZE } from '../systems/movement.js'
-import { PVP, KITS, SPELL_OVERRIDES } from '../data/pvp.js'
+import { PVP, KITS, SPELL_OVERRIDES, DOTS } from '../data/pvp.js'
 import { PVP_ARENAS } from '../data/pvp-arenas.js'
 import { makeHero, placeHero, applyKit, tickHero, tickHeroStatus, NEUTRAL_INPUT } from './hero.js'
 import { heroById, hurtHero, refreshTargets } from './combat.js'
@@ -128,7 +128,7 @@ export function farthestSpawn(match) {
 const projectileHooks = match => ({
   isHittable: e => e.type === 'hero' && !e.dead && !(e.spawnProtect > 0),
   hurt: (target, damage, p) => {
-    const landed = hurtHero(match, target, damage, { by: heroById(match, p?.owner), from: { px: p.px, py: p.py }, group: p?.group ?? null })
+    const landed = hurtHero(match, target, damage, { by: heroById(match, p?.owner), from: { px: p.px, py: p.py }, group: p?.group ?? null, direct: true })
     // A blocked or i-framed hit still consumes the projectile (no pierce/
     // chain onto it), but must not also apply its onHit (knockback/stun) —
     // that would push or lock down a hero who took zero damage.
@@ -156,7 +156,7 @@ export function detonateFireball(match, px, py, blastTiles, { fireOnly = false }
   if (!fireOnly) {
     const keys = tileKeys(tiles)
     for (const h of match.heroes) {
-      if (h !== struck && overlapsTiles(h, keys)) hurtHero(match, h, SPELL_OVERRIDES.fireball.burst, { kind: 'fire', by })
+      if (h !== struck && overlapsTiles(h, keys)) hurtHero(match, h, SPELL_OVERRIDES.fireball.burst, { kind: 'fire', by, direct: true })
     }
     match.shockwaves.push({ px: tx * TILE_SIZE + TILE_SIZE / 2, py: ty * TILE_SIZE + TILE_SIZE / 2,
       t: 0, dur: 0.35, maxRadius: TILE_SIZE * 2.5, color: '#f97316' })
@@ -180,6 +180,26 @@ export function tickFireZones(match, dt) {
     if (z.age < FIRE_DURATION - 1e-9) live.push(z)
   }
   match.fireZones = live
+}
+
+// Burns and poisons (2b): DOTS[kind].damage every DOTS[kind].interval as
+// unblockable 'dot' damage credited to whoever applied it — nobody, once
+// they have left the match — until the time runs out.
+export function tickDots(match, dt) {
+  for (const h of match.heroes) {
+    if (h.dead) continue
+    for (const kind of ['burn', 'poison']) {
+      const d = h[kind]
+      if (!d) continue
+      d.t -= dt
+      d.next -= dt
+      if (d.next <= 1e-9) {
+        d.next += DOTS[kind].interval
+        hurtHero(match, h, DOTS[kind].damage, { kind: 'dot', by: heroById(match, d.owner) })
+      }
+      if (d.t <= 1e-9) h[kind] = null
+    }
+  }
 }
 
 const CC_FIELDS = ['stunTimer', 'slowTimer', 'rootTimer']
@@ -220,9 +240,10 @@ function tick(match) {
 
   stepProjectiles(match, dt, projectileHooks(match))
   tickLightning(match, dt, {
-    hurt: (e, d, info) => { hurtHero(match, e, d, { kind: 'lightning', by: heroById(match, info?.owner) }) },
+    hurt: (e, d, info) => { hurtHero(match, e, d, { kind: 'lightning', by: heroById(match, info?.owner), direct: true }) },
   })
   tickFireZones(match, dt)
+  tickDots(match, dt)
   for (const h of match.heroes) {
     if (h.dead || !h.shock) continue
     tickShock(h, dt, { hurt: (e, d) => { hurtHero(match, e, d, { kind: 'lightning', by: heroById(match, e.shock?.owner) }) } })
