@@ -1,7 +1,7 @@
 // PvP 2a's visuals: the pure helpers in renderer/render/pvp-fx.js.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { comboShake, holdArrows, fenceGlints, drawGlow, BUFF_ICON, spotLook, heroLooks } from '../renderer/render/pvp-fx.js'
+import { comboShake, holdArrows, fenceGlints, drawGlow, BUFF_ICON, spotLook, heroLooks, drawBuffOver } from '../renderer/render/pvp-fx.js'
 import { WARRIOR_COMBOS, DOUBLE_SHOT, BUFF_KINDS, BUFF_COLORS } from '../renderer/data/pvp.js'
 import { SPRITES } from '../renderer/render/sprites.js'
 import { makeHero } from '../renderer/pvp/hero.js'
@@ -74,5 +74,28 @@ describe('2b looks', () => {
     assert.equal(row[1].src, `./assets/tiles/${SPRITES.buff_venom}.png`)
     h.dead = true
     assert.deepEqual(buffRowModel(h), [])
+  })
+  it("drawBuffOver: the burn flicker's alpha never drops below 0.2 (M2)", () => {
+    // Just enough of a 2D context to run the compositor: no-op drawing calls,
+    // and fillRect logs the globalAlpha in effect when it was called.
+    let alpha = 1
+    const calls = []
+    const ctx = {
+      save() {}, restore() {}, beginPath() {}, arc() {}, fill() {}, stroke() {}, closePath() {}, moveTo() {}, lineTo() {},
+      set globalAlpha(v) { alpha = v }, get globalAlpha() { return alpha },
+      set fillStyle(_v) {}, get fillStyle() { return '' }, set strokeStyle(_v) {}, set lineWidth(_v) {},
+      fillRect(x, y, w, h) { calls.push({ x, y, w, h, alpha }) },
+    }
+    const hero = makeHero({ id: 'a', name: 'A', cls: 'mage' })
+    hero.burn = { owner: 'x', t: 1, next: 1 }
+    let min = Infinity
+    for (let i = 0; i < 200; i++) {
+      calls.length = 0
+      drawBuffOver(ctx, hero, 0, 0, 32, i / 20)
+      const body = calls.find(c => c.w === 32 && c.h === 32)
+      min = Math.min(min, body.alpha)
+    }
+    assert.ok(min >= 0.2 - 1e-9, `min alpha ${min}`)
+    assert.ok(min < 0.35, 'the flicker still varies')
   })
 })

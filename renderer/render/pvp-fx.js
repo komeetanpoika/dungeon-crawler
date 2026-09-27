@@ -263,7 +263,7 @@ export function drawBuffOver(ctx, hero, hx, hy, S, t = performance.now() / 1000)
   const cx = hx + S / 2, cy = hy + S / 2
   ctx.save()
   if (look.burning) {
-    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(t * 18)
+    ctx.globalAlpha = 0.35 + 0.15 * Math.sin(t * 18)   // floor 0.2 (M2): never reads as unburnt
     ctx.fillStyle = '#f97316'
     ctx.fillRect(hx, hy, S, S)
     ctx.fillStyle = '#fde047'                         // two licks of flame at the feet
