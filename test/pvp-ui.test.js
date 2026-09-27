@@ -59,13 +59,16 @@ describe('makeLocalMatch / localInputs / viewOf', () => {
     assert.deepEqual(inputs[LOCAL_ID].move, { x: -1, y: 0 })
     assert.equal(Object.keys(inputs).length, 4)
   })
-  it('the view centres on you and shows only pickups that are up', () => {
+  it('the view centres on you and shows the pickups that are up, and buff spots that are down as ghosts', () => {
     const m = makeLocalMatch({ cls: 'archer' })
     const v = viewOf(m, { bgColor: '#000' })
     assert.equal(v.player.id, LOCAL_ID)
     assert.equal(v.heroes, m.heroes)
     assert.ok(v.entities.every(e => e.type === 'pvp_pickup'))
     assert.equal(v.entities.length, 6)   // 2 flasks, 2 quivers and 2 minor buff spots; the rune is not up yet
+    m.pickups.find(p => p.kind === 'buff').up = false
+    m.pickups.find(p => p.kind === 'flask').up = false
+    assert.equal(viewOf(m, { bgColor: '#000' }).entities.length, 5, 'the down spot stays, as a ghost; the flask goes')
   })
 })
 

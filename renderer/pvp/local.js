@@ -6,6 +6,7 @@ import { botInput } from './bots.js'
 import { PVP, CLASSES } from '../data/pvp.js'
 import { arenaAt, playableIndex } from '../data/pvp-arenas.js'
 import { randomSeed } from './rng.js'
+import { pickupEntities } from '../net/view.js'
 
 export const LOCAL_ID = 'you'
 
@@ -46,7 +47,7 @@ export function viewOf(match, theme) {
     map: match.map, theme, level: 0,
     player: match.heroes.find(h => h.id === LOCAL_ID),
     heroes: match.heroes,
-    entities: match.pickups.filter(p => p.up).map(p => ({ ...p, type: 'pvp_pickup' })),
+    entities: pickupEntities(match.pickups),
     projectiles: match.projectiles, lightning: match.lightning, strikes: match.strikes,
     arcs: match.arcs, shockwaves: match.shockwaves, zones: match.zones, fireZones: match.fireZones,
     feedback: match.feedback, sfx: match.sfx, hitEffects: [], flash: 0,

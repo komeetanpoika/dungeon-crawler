@@ -38,6 +38,16 @@ describe('view helpers', () => {
     assert.equal(errorText('idle'), 'Removed for inactivity.')
     assert.ok(errorText('???').length > 3)
   })
+  it('netViewOf draws every buff spot: one up as itself, one down as the ghost of its next buff (2b)', () => {
+    const me = makeHero({ id: 'p1', name: 'A', cls: 'mage' })
+    const v = { me, others: [], projectiles: [], lightning: [], strikes: [], arcs: [], shockwaves: [], feedback: { floats: [] },
+      pickups: [{ kind: 'buff', tier: 'minor', x: 1, y: 1, px: 48, py: 48, up: true, t: 0, buff: 'ward', next: null },
+        { kind: 'buff', tier: 'major', x: 2, y: 2, px: 80, py: 80, up: false, t: 12, buff: null, next: 'haste' },
+        { kind: 'flask', x: 3, y: 3, px: 112, py: 112, up: false, t: 4 }] }
+    const view = netViewOf(v, { bgColor: '#000' }, [[{}]])
+    assert.deepEqual(view.entities.map(e => [e.type, e.kind, e.up, e.buff, e.next]),
+      [['pvp_pickup', 'buff', true, 'ward', null], ['pvp_pickup', 'buff', false, null, 'haste']])
+  })
   it('netViewOf builds a render view: you as player, everyone in heroes, pickups up only', () => {
     const me = makeHero({ id: 'p1', name: 'A', cls: 'mage' })
     const other = makeHero({ id: 'p2', name: 'B', cls: 'archer' })

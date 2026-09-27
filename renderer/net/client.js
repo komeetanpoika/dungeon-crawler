@@ -216,6 +216,11 @@ function onSnap(s, snap, t) {
     const at = snap.heroes.find(h => h.id === (e.type === 'hit' ? e.target : e.killer))
     if (e.type === 'hit' && at && e.amount > 0) addFloat(s.feedback, { px: at.px, py: at.py - 10, text: `-${e.amount}`, kind: e.target === s.heroId ? 'taken' : 'dealt' })
     if (e.type === 'kill' && at) addFloat(s.feedback, { px: at.px, py: at.py - 16, text: '+1', kind: 'heal' })
+    // A buff taken (2b): a float of the buff's colour over whoever took it.
+    if (e.type === 'pickup' && e.kind === 'buff') {
+      const by = snap.heroes.find(h => h.id === e.hero)
+      if (by) addFloat(s.feedback, { px: by.px, py: by.py - 10, text: '+', kind: e.buff })
+    }
   }
   if (s.feedback.floats.length > NET.maxFloats) s.feedback.floats = s.feedback.floats.slice(-NET.maxFloats)
   s.cues.push(...snap.cues)
