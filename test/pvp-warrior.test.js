@@ -94,6 +94,33 @@ describe('the hold', () => {
     assert.equal(w.combo, null)
     assert.deepEqual(w.charging, { t: 0 })
   })
+  it('a stun mid hammer wind-up needs a release before it winds up again (m1)', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }); const m = testMatch([w])
+    grantRune(m, w)
+    tickHero(m, w, input({ attack: true, facing: 'east' }), dt)    // wind-up begins
+    assert.deepEqual(w.charging, { t: 0 })
+    w.stunTimer = 0.1
+    tickHero(m, w, input({ attack: true }), dt)                    // stun cancels it, key still down
+    assert.equal(w.charging, null)
+    assert.equal(w.needRelease, true)
+    w.stunTimer = 0
+    tickHero(m, w, input({ attack: true }), dt)                    // still held: no new wind-up
+    assert.equal(w.charging, null, 'no new wind-up until the key is let go')
+    tickHero(m, w, input({ attack: false }), dt)                   // let go
+    tickHero(m, w, input({ attack: true }), dt)                    // a fresh press
+    assert.deepEqual(w.charging, { t: 0 }, 'winds up cleanly after the release')
+  })
+  it('a raised shield mid charge needs a release too (m1)', () => {
+    // Synthetic: no live PvP kit pairs a charge weapon with a shield offhand
+    // (the rune parks the Warrior's buckler), so this drives moveHero's
+    // blocking-cancels-charging branch directly, the same branch a stun hits.
+    const w = hero('w', 'warrior', { x: 5, y: 5 }); const m = testMatch([w])
+    w.charging = { t: 0.3 }
+    tickHero(m, w, input({ attack: true, alt: true }), dt)
+    assert.equal(w.blocking, true)
+    assert.equal(w.charging, null)
+    assert.equal(w.needRelease, true)
+  })
 })
 
 describe('review focus: the hold meets the rune and the diagonal', () => {

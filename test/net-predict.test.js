@@ -27,6 +27,29 @@ describe('prediction', () => {
     assert.deepEqual(pred.corr, { x: 0, y: 0, age: 0 })
     assert.ok(Math.abs(drawnPos(pred).x - m.heroes[0].px) < 1e-9)
   })
+  it('a stun mid charge replays in parity: both sides latch needRelease off the same moveHero (m1)', () => {
+    const m = lone('mage')
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    const step = (input, stun) => {
+      if (stun !== undefined) { m.heroes[0].stunTimer = stun; pred.hero.stunTimer = stun }
+      stepMatch(m, { p1: input }, PVP.tick)
+      predictStep(pred, input)
+    }
+    step({ ...east, move: { x: 0, y: 0 }, attack: true })          // wind-up begins
+    assert.deepEqual(pred.hero.charging, m.heroes[0].charging)
+    step({ ...east, move: { x: 0, y: 0 }, attack: true }, 0.1)     // stun cancels it, key still down
+    assert.equal(pred.hero.charging, null)
+    assert.deepEqual(pred.hero.charging, m.heroes[0].charging)
+    assert.equal(pred.hero.needRelease, m.heroes[0].needRelease)
+    assert.equal(pred.hero.needRelease, true)
+    step({ ...east, move: { x: 0, y: 0 }, attack: true }, 0)       // still held: no new charge either side
+    assert.deepEqual(pred.hero.charging, m.heroes[0].charging)
+    assert.equal(pred.hero.charging, null)
+    step({ ...east, move: { x: 0, y: 0 }, attack: false })         // let go
+    step({ ...east, move: { x: 0, y: 0 }, attack: true })          // a fresh press
+    assert.deepEqual(pred.hero.charging, m.heroes[0].charging)
+    assert.deepEqual(pred.hero.charging, { t: 0, kind: 'spell' })
+  })
   it('reconcile replays the unacknowledged inputs on top of the server state', () => {
     const m = lone('archer')
     const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })

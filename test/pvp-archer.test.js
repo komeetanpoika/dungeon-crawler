@@ -61,6 +61,15 @@ describe('the draw', () => {
     assert.equal(m.projectiles.length, 0)
     assert.equal(a.ammo.arrow, 24)
   })
+  it('a stun mid-draw does not demand a release: the draw is alt-driven (m1)', () => {
+    const { a, m } = archer()
+    for (let i = 0; i < 30; i++) tickHero(m, a, input({ alt: true }), dt)
+    a.stunTimer = 0.2
+    // attack happens to be down too, incidentally — kind 'double' is excluded.
+    tickHero(m, a, input({ alt: true, attack: true }), dt)
+    assert.equal(a.charging, null)
+    assert.equal(a.needRelease, false, 'the double shot draw never held attack; it must not latch one')
+  })
   it("Q does nothing while the rune's crossbow is held", () => {
     const { a, m } = archer()
     grantRune(m, a)

@@ -95,12 +95,12 @@ export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
   // (game.js does this by clearing keys[' ']).
   if (!input.attack) hero.needRelease = false
   // A stun also ends a running combo effect (the lunge's dash, the thrusts).
-  if (stunned) { hero.charging = null; hero.move = null; cancelHold(hero, input) }
+  if (stunned) { cancelCharge(hero, input); hero.charging = null; hero.move = null; cancelHold(hero, input) }
   const altEdge = !!input.alt && !hero.prevAlt
   hero.prevAlt = !!input.alt
   hero.blockedHit = false
   const blocking = tickShield(hero, !!input.alt && !stunned, dt)
-  if (blocking) { hero.charging = null; cancelHold(hero, input) }
+  if (blocking) { cancelCharge(hero, input); hero.charging = null; cancelHold(hero, input) }
   // A held combo locks the facing (the moves aim the strike, not the stick),
   // and so does the lunge's dash.
   const dashing = isDashing(hero)
@@ -149,6 +149,16 @@ function cancelHold(hero, input) {
   if (!hero.combo) return
   hero.combo = null
   hero.needRelease = !!input.attack
+}
+
+// A stun or a raised shield also ends a hammer wind-up or a Storm Wand
+// charge (`hero.charging`, kind undefined or 'spell' — not the Archer's
+// alt-driven double-shot draw, which never held attack in the first place).
+// Same rule as cancelHold: a release is demanded only if attack was still
+// down at the cancel, so a key already up by this tick is not stuck latched.
+// Called just before the caller nulls `hero.charging`.
+function cancelCharge(hero, input) {
+  if (hero.charging && hero.charging.kind !== 'double' && input.attack) hero.needRelease = true
 }
 
 // The sword is a combo weapon (spec 2a §2): the press begins a hold, moves

@@ -3,7 +3,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeMatch, stepMatch, removeHero } from '../renderer/pvp/sim.js'
-import { placeHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
+import { placeHero, tickHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
 import { tryCast, castCost, SPELLS } from '../renderer/systems/spells.js'
 import { castLightning, tickLightning, LIGHTNING } from '../renderer/systems/spells/lightning.js'
 import { makePlayer, makeWandContents } from '../renderer/systems/entities.js'
@@ -12,6 +12,7 @@ import { PVP, SPELL_OVERRIDES } from '../renderer/data/pvp.js'
 import { openMap } from './pvp-helpers.js'
 
 const input = over => ({ ...NEUTRAL_INPUT, move: { x: 0, y: 0 }, ...over })
+const dt = PVP.tick
 const play = (m, inputs, ticks) => { const ev = []; for (let i = 0; i < ticks; i++) ev.push(...stepMatch(m, inputs(i), PVP.tick)); return ev }
 const duel = (cls = 'archer', foeCell = { x: 6, y: 8 }) => {
   const m = makeMatch({ roster: [{ id: 'm', name: 'm', cls: 'mage' }, { id: 'f', name: 'f', cls }] })
@@ -50,6 +51,24 @@ describe('Call Lightning in a match', () => {
       assert.equal(castCost(h, 'lightning', tier, SPELL_OVERRIDES.lightning).stamina, cost)
     }
     assert.equal(castCost(h, 'lightning', 'tap', SPELL_OVERRIDES.lightning).cooldown, 1.5)
+  })
+})
+
+describe('the Storm Wand charge and a stun (m1)', () => {
+  it('a stun mid charge needs a release before it charges again', () => {
+    const { m, mg } = duel()
+    tickHero(m, mg, input({ attack: true, facing: 'east' }), dt)   // wind-up begins
+    assert.deepEqual(mg.charging, { t: 0, kind: 'spell' })
+    mg.stunTimer = 0.1
+    tickHero(m, mg, input({ attack: true }), dt)                   // stun cancels it, key still down
+    assert.equal(mg.charging, null)
+    assert.equal(mg.needRelease, true)
+    mg.stunTimer = 0
+    tickHero(m, mg, input({ attack: true }), dt)                   // still held: no new charge
+    assert.equal(mg.charging, null, 'no new charge until the key is let go')
+    tickHero(m, mg, input({ attack: false }), dt)                  // let go
+    tickHero(m, mg, input({ attack: true }), dt)                   // a fresh press
+    assert.deepEqual(mg.charging, { t: 0, kind: 'spell' })
   })
 })
 
