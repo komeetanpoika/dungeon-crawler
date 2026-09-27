@@ -207,7 +207,10 @@ export function botInput(match, hero) {
     // double shot; otherwise the archer streams.
     const closing = foe.facing === faceToward(foe, hero)
     if (d >= BOTS.doubleMin && !closing && canDrawDouble(hero)) { input.alt = true; return input }
-    input.attack = true
+    // Gated on needRelease too (m2), same as the other two bots: a respawn
+    // (tickRespawns) forces it on, and a bot lined up on arrival would else
+    // never send attack:false to clear it.
+    input.attack = !hero.needRelease
     return input
   }
   const spot = firingSpot(match, hero, foe)

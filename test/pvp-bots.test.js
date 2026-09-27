@@ -163,6 +163,14 @@ describe('bots use the signature moves (2a)', () => {
     assert.ok(kinds.includes('whirl'), kinds.join(','))
     assert.ok(m.heroes[1].hp < m.heroes[1].maxHp && m.heroes[2].hp < m.heroes[2].maxHp)
   })
+  it('at the widened whirlRange (2 tiles), a warrior with a full tank still opts to whirl rather than lunge (m5)', () => {
+    // Two tiles is also within lungeMin/lungeMax — before m5's widening, a
+    // warrior bot here would lunge instead, since `close` counted neither
+    // foe (whirlRange was 1.5). BOTS.whirlFoes (a full tank) is unchanged.
+    const m = setup('warrior', { x: 10, y: 2 }, [{ cls: 'archer', cell: { x: 12, y: 2 } }, { cls: 'archer', cell: { x: 8, y: 2 } }])
+    const kinds = run(m, 'b0', 20, h => h.move?.kind ?? null)
+    assert.ok(kinds.includes('whirl'), kinds.join(','))
+  })
   it('an archer draws the double shot to full at a lined-up foe 5+ tiles off that is not closing', () => {
     const m = setup('archer', { x: 2, y: 2 }, [{ cls: 'warrior', cell: { x: 9, y: 2 }, facing: 'east' }])
     const draws = run(m, 'b0', 45, h => h.charging?.kind === 'double' ? h.charging.t : null)
@@ -229,5 +237,18 @@ describe('fix round 1: bots keep acting against a stationary foe, not just once'
     const { count, maxDraw } = countRises(m, 'b0', 150, 'rangedCooldown')   // 5 s at 30 Hz
     assert.ok(count > 1, `expected more than one double shot, got ${count}`)
     assert.ok(maxDraw <= DOUBLE_SHOT.full + 1 / 30 + 1e-9, `draw held past full: ${maxDraw}`)
+  })
+  it('an archer bot that respawns already lined up with a close foe still looses arrows (m2)', () => {
+    // tickRespawns forces needRelease true on every respawn (a real player's
+    // key is known released on death; a bot's input is not) — the
+    // plain-attack input must be gated on it like the other two bots, or a
+    // bot that stays lined up never sends attack:false and never clears it.
+    const m = setup('archer', { x: 2, y: 2 }, [{ cls: 'warrior', cell: { x: 4, y: 2 }, facing: 'east' }])
+    const bot = m.heroes[0]
+    bot.needRelease = true
+    for (let i = 0; i < 30 && m.projectiles.filter(p => p.owner === 'b0').length === 0; i++) {
+      stepMatch(m, { b0: botInput(m, bot) }, 1 / 30)
+    }
+    assert.ok(m.projectiles.some(p => p.owner === 'b0'), 'the bot loosed an arrow after the respawn latch')
   })
 })
