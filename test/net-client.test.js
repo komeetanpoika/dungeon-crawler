@@ -36,6 +36,25 @@ const snapBody = (hero, over = {}) => ({
   pickups: [], events: [], cues: [], ack: 0, ...over,
 })
 
+describe('buff pickups (2b)', () => {
+  it("a buff taken shows a float of the buff's kind over whoever took it", () => {
+    const s = open()
+    welcome(s)
+    const hero = lone()
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 1,
+      events: [{ type: 'pickup', kind: 'buff', hero: 'p1', buff: 'venom', tier: 'major' }, { type: 'pickup', kind: 'flask', hero: 'p1' }] })) })
+    assert.deepEqual(s.feedback.floats.map(f => [f.text, f.kind, f.px, f.py]), [['+', 'venom', hero.px, hero.py - 10]])
+  })
+  it('a buff taken by a hero no longer in the snapshot (left since) draws no float and breaks nothing', () => {
+    const s = open()
+    welcome(s)
+    const hero = lone()
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { tick: 1, events: [{ type: 'pickup', kind: 'buff', hero: 'p9', buff: 'ward', tier: 'minor' }] })) })
+    assert.deepEqual(s.feedback.floats, [])
+    assert.ok(sessionView(s, 100))
+  })
+})
+
 describe('client backgrounded-tab caps', () => {
   it('200 snapshots with cues arrive without any frame: drainCues returns at most 16', () => {
     const s = open()

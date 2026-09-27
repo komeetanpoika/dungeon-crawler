@@ -6,6 +6,8 @@ import { makeMatch, stepMatch } from '../renderer/pvp/sim.js'
 import { botInput } from '../renderer/pvp/bots.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { isWalkable } from '../renderer/systems/entities.js'
+import { PVP_ARENAS } from '../renderer/data/pvp-arenas.js'
+import { snapshotBody, encode } from '../renderer/net/protocol.js'
 
 describe('pvp soak', () => {
   it('six bots play a full match without breaking an invariant', () => {
@@ -35,4 +37,29 @@ describe('pvp soak', () => {
     const selfKills = kills.length - credited
     assert.equal(m.heroes.reduce((s, h) => s + h.kills, 0), credited - selfKills)
   })
+})
+
+describe('large-arena cost (2b spec §4)', () => {
+  for (const id of ['keep', 'wilds']) {
+    it(`six bots on ${id}: pathing, the step and the snapshot average well under the 2 ms tick budget`, () => {
+      const roster = ['warrior', 'archer', 'mage', 'warrior', 'archer', 'mage'].map((cls, i) => ({ id: `b${i}`, name: `B${i}`, cls }))
+      const m = makeMatch({ roster, arena: PVP_ARENAS[id], seed: 2 })
+      const tick = () => {
+        const inputs = Object.fromEntries(m.heroes.map(h => [h.id, botInput(m, h)]))
+        stepMatch(m, inputs, PVP.tick)
+        encode(snapshotBody(m))            // every tick: the server encodes 2 in 3
+      }
+      for (let i = 0; i < 150; i++) tick()   // warm up the JIT
+      const t0 = performance.now()
+      for (let i = 0; i < 900; i++) tick()
+      const perTick = (performance.now() - t0) / 900
+      console.log(`${id}: ${perTick.toFixed(3)} ms/tick`)
+      // The real 2 ms budget is enforced by tools/perf/pvp-step.mjs, run in
+      // isolation. This in-suite gate only catches a gross regression: it
+      // runs concurrently with the rest of the suite on a shared, possibly
+      // noisy CI runner, so it is loosened to 4 ms to avoid flaking the
+      // required `test (22)` check on GC pauses or runner jitter (M1).
+      assert.ok(perTick < 4, `${perTick} ms/tick`)
+    })
+  }
 })

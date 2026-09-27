@@ -42,6 +42,11 @@ export const controlHint = coarse => coarse
   ? 'Stick: move · Red: attack · Green: shield / blink'
   : 'WASD: move · Space: attack · Q: shield / blink'
 
+// The pickups drawn: every one that is up, plus each buff spot that is
+// down, drawn as the ghost of what it brings back (2b). Shared with the
+// local view (pvp/local.js).
+export const pickupEntities = pickups => pickups.filter(p => p.up || p.kind === 'buff').map(p => ({ ...p, type: 'pvp_pickup' }))
+
 // What Renderer.render and updateHUD read: a single-player-shaped state whose
 // player is your (predicted) hero, plus every hero for the multi-hero draw.
 export function netViewOf(v, theme, map) {
@@ -49,7 +54,7 @@ export function netViewOf(v, theme, map) {
     map, theme, level: 0,
     player: v.me,
     heroes: [v.me, ...v.others],
-    entities: v.pickups.filter(p => p.up).map(p => ({ ...p, type: 'pvp_pickup' })),
+    entities: pickupEntities(v.pickups),
     projectiles: v.projectiles, lightning: v.lightning, strikes: v.strikes,
     arcs: v.arcs, shockwaves: v.shockwaves, zones: [], fireZones: v.fireZones ?? [],
     feedback: v.feedback, hitEffects: [], flash: 0,

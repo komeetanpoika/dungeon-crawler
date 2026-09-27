@@ -5,6 +5,9 @@ import { heroSnap } from '../renderer/net/protocol.js'
 import { makeMatch, stepMatch } from '../renderer/pvp/sim.js'
 import { NEUTRAL_INPUT, placeHero } from '../renderer/pvp/hero.js'
 import { weaponContents } from '../renderer/systems/entities.js'
+import { grantBuff } from '../renderer/pvp/buffs.js'
+import { applyEdge } from '../renderer/pvp/dots.js'
+import { makeHero } from '../renderer/pvp/hero.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
 
@@ -277,5 +280,62 @@ describe('2a prediction: the lunge', () => {
     assert.ok(Math.abs(pred.hero.py - server.py) < 1e-9, `py pred ${pred.hero.py} server ${server.py}`)
     assert.ok(server.py < snap.py, 'the server walked north after the dash')
     assert.equal(pred.hero.px, snap.px, 'the rest of the dash comes with the next snapshot')
+  })
+})
+
+describe('2b prediction: Haste', () => {
+  // The server hero takes a Haste at the end of tick `at` (as tickPickups
+  // would); the snapshot of that tick carries it, and the predictor — which
+  // walked those ticks without it — replays the rest with it.
+  const run = (tier, t, total = 40, at = 5) => {
+    const m = lone('archer')
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    let snap = null
+    for (let seq = 1; seq <= total; seq++) {
+      const input = { ...east, seq, sprint: seq > 20 }
+      stepMatch(m, { p1: input }, PVP.tick)
+      predictStep(pred, input)
+      pred.pending.push({ seq, input })
+      if (seq === at) { grantBuff(m.heroes[0], 'haste', tier); m.heroes[0].buffs.haste.t = t; snap = heroSnap(m.heroes[0]) }
+    }
+    reconcile(pred, snap, at)
+    return { server: m.heroes[0], pred: pred.hero }
+  }
+  it('a Haste taken before the snapshot is replayed through moveHero: the walk matches the server', () => {
+    const { server, pred } = run('major', 15)
+    assert.ok(Math.abs(pred.px - server.px) < 1e-9, `px ${pred.px} vs ${server.px}`)
+    assert.ok(Math.abs(pred.stamina - server.stamina) < 1e-9)
+    assert.deepEqual(pred.buffs, server.buffs)
+  })
+  it('a Haste that runs out mid-replay runs out on the same tick on both sides', () => {
+    const { server, pred } = run('minor', 0.4)
+    assert.equal(server.buffs.haste, null)
+    assert.equal(pred.buffs.haste, null)
+    assert.ok(Math.abs(pred.px - server.px) < 1e-9, `px ${pred.px} vs ${server.px}`)
+  })
+})
+
+describe('2b prediction: Venom', () => {
+  it("a Venom slow rides the snapshot's slowTimer/slowMul: the replayed walk slows and recovers with the server's", () => {
+    const m = lone('warrior')
+    const pred = makePredictor({ map: m.map, heroSnap: heroSnap(m.heroes[0]) })
+    const foe = makeHero({ id: 'x', name: 'X', cls: 'archer' })
+    grantBuff(foe, 'venom', 'major')
+    let snap = null
+    for (let seq = 1; seq <= 90; seq++) {
+      const input = { ...east, seq }
+      stepMatch(m, { p1: input }, PVP.tick)
+      predictStep(pred, input)
+      pred.pending.push({ seq, input })
+      if (seq === 5) {
+        applyEdge(m, foe, m.heroes[0])                  // as a landed venom arrow would, halved by ccMul in a match tick
+        m.heroes[0].slowTimer *= PVP.ccMul
+        snap = heroSnap(m.heroes[0])
+      }
+    }
+    reconcile(pred, snap, 5)
+    assert.ok(snap.slowTimer > 0 && snap.slowMul < 1)
+    assert.ok(Math.abs(pred.hero.px - m.heroes[0].px) < 1e-9, `px ${pred.hero.px} vs ${m.heroes[0].px}`)
+    assert.equal(pred.hero.slowTimer <= 0, true, 'worn off by tick 90 on both sides')
   })
 })

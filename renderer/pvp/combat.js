@@ -5,6 +5,8 @@
 import { damagePlayer } from '../systems/player-damage.js'
 import { startKnockback } from '../systems/knockback.js'
 import { BLOCK_SHOVE } from '../systems/shield.js'
+import { mightBonus, soakWard } from './buffs.js'
+import { applyEdge } from './dots.js'
 
 export const heroById = (match, id) => id == null ? null : match.heroes.find(h => h.id === id) ?? null
 
@@ -28,15 +30,23 @@ export function refreshTargets(match) {
 // arrows — spec 2a) share a group id; a later hit of the group passes the
 // i-frames the group's own earlier hit granted, so all of them can land.
 // Blocks still apply to each.
-export function hurtHero(match, target, amount, { kind = 'hit', by = null, from = null, melee = false, group = null } = {}) {
+//
+// direct (2b): a melee blow or combo hit, a projectile, a lightning strike or
+// the fireball's burst — the hits the attacker's Might adds to (before the
+// block and the Ward) and its edge coats. Damage-over-time, fire-patch and
+// shock ticks, and the hammer's chain, are not direct. The target's Ward
+// soaks every kind, after the block; a hit it soaks whole still lands
+// (i-frames, credit) but coats nothing.
+export function hurtHero(match, target, amount, { kind = 'hit', by = null, from = null, melee = false, group = null, direct = false } = {}) {
   if (!isTargetable(target)) return false
   if (by && by === target) return false
+  if (direct && by) amount += mightBonus(by)
   const at = from ?? (by ? { px: by.px, py: by.py } : null)
   const before = target.hp
   const reopen = kind === 'hit' && group !== null && target.invulnGroup === group
   const invuln = target.invulnTimer
   if (reopen) target.invulnTimer = 0
-  const landed = damagePlayer(match, amount, kind, at, target)
+  const landed = damagePlayer(match, amount, kind, at, target, soakWard)
   if (landed && kind === 'hit') target.invulnGroup = group
   if (!landed) {
     if (reopen) target.invulnTimer = invuln
@@ -45,7 +55,14 @@ export function hurtHero(match, target, amount, { kind = 'hit', by = null, from 
     return false
   }
   if (by) target.lastHitBy = { id: by.id, t: match.clock }
-  // The damage that actually landed (after outfit protect), not the raw hit amount.
+  const dealt = target.hp < before
+  // A hit a Ward soaks whole still lands (i-frames above, credit here) but
+  // takes no hp: callers (knockback, a projectile's onHit, the hammer's
+  // shock) must gate on this, not on the true `landed` return alone, or a
+  // hero who lost nothing would still be pushed or locked down.
+  target.tookDamage = dealt
+  // The damage that actually landed (after protect and the Ward), not the raw hit amount.
   match.events.push({ type: 'hit', target: target.id, by: by?.id ?? null, amount: before - target.hp })
+  if (direct && by && dealt) applyEdge(match, by, target)
   return true
 }

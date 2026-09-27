@@ -116,7 +116,7 @@ function lungeHit(match, hero, mv, dx, dy) {
   }
   if (!first) return false
   mv.done = true
-  if (hurtHero(match, first, L.damage, { by: hero, melee: true })) sfx(match, 'melee-hit', { px: first.px, py: first.py })
+  if (hurtHero(match, first, L.damage, { by: hero, melee: true, direct: true })) sfx(match, 'melee-hit', { px: first.px, py: first.py })
   return true
 }
 
@@ -130,7 +130,7 @@ function thrust(match, hero, mv) {
   for (const e of foesOf(match, hero)) {
     const v = reachTo(match, hero, e)
     if (!inSwing(F.reach, arc.halfAngle, fa, v.dx, v.dy)) continue
-    if (hurtHero(match, e, F.damage, { by: hero, melee: true, group: mv.group })) sfx(match, 'melee-hit', { px: e.px, py: e.py })
+    if (hurtHero(match, e, F.damage, { by: hero, melee: true, group: mv.group, direct: true })) sfx(match, 'melee-hit', { px: e.px, py: e.py })
   }
   const atk = getAttack('dagger')                // the snap's own quick poke, drawn at the fence's reach
   Object.assign(hero, { swingHand: 'main', attackTimer: atk.duration, attackDuration: atk.duration, attackStyle: 'snap',
@@ -145,8 +145,10 @@ function whirl(match, hero) {
   for (const e of foesOf(match, hero)) {
     const v = reachTo(match, hero, e)
     if (Math.hypot(v.dx, v.dy) > Wh.reach) continue
-    if (!hurtHero(match, e, Wh.damage, { by: hero, melee: true })) continue
-    startKnockback(e, e.px - hero.px, e.py - hero.py, Wh.knockback)
+    if (!hurtHero(match, e, Wh.damage, { by: hero, melee: true, direct: true })) continue
+    // A Ward that soaked the whole hit still lands (the hit sound plays,
+    // credit is given) but must not throw a hero who took zero damage.
+    if (e.tookDamage) startKnockback(e, e.px - hero.px, e.py - hero.py, Wh.knockback)
     sfx(match, 'melee-hit', { px: e.px, py: e.py })
   }
   const dur = WARRIOR_COMBOS.fxDur
@@ -191,10 +193,14 @@ export function swing(match, hero, mods) {
     if (!bodyHit(e)) continue
     struck.push(e)
     if (zap) continue
-    if (!hurtHero(match, e, dmg + shatterBonus(e), { by: hero, melee: true })) continue
-    startKnockback(e, e.px - hero.px, e.py - hero.py, atk.knockback * mods.kbMul)
+    if (!hurtHero(match, e, dmg + shatterBonus(e), { by: hero, melee: true, direct: true })) continue
     sfx(match, 'melee-hit', { px: e.px, py: e.py })
-    if (hammer && mods.tier === 'full') { applyShock(e); e.shock.owner = hero.id }
+    // A Ward that soaked the whole blow still lands (sound, credit) but must
+    // not knock back or shock a hero who took zero damage.
+    if (e.tookDamage) {
+      startKnockback(e, e.px - hero.px, e.py - hero.py, atk.knockback * mods.kbMul)
+      if (hammer && mods.tier === 'full') { applyShock(e); e.shock.owner = hero.id }
+    }
   }
   if (zap) {
     thunderclap(hero, foes)

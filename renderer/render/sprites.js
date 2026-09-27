@@ -115,6 +115,13 @@ export const SPRITES = {
   item_bolts:       'item_bolts',
   item_stones:      'item_stones',
   potion:           'tile_0116',
+  // PvP 2b buff icons (the spots and the HUD row): Haste a pale draught,
+  // Might a war axe, Ward a kite shield, Ember the fire wand, Venom a green one.
+  buff_haste:       'tile_0113',
+  buff_might:       'tile_0118',
+  buff_ward:        'tile_0101',
+  buff_ember:       'weapon_firewand',
+  buff_venom:       'tile_0114',
   // door animation frames (0 = closed … 3 = open)
   door_0: 'tile_0009',
   door_1: 'tile_0021',

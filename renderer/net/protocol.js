@@ -1,6 +1,7 @@
 // PvP protocol v4 (v1 in 2026-09-25-pvp-server-netcode-design.md §1; v2 adds hello.quick, 4a spec §1;
 // v3 adds the arena id on welcome and snap, seat tokens, hello.resume and bye, 4b spec §1-§2; v4 adds
-// a hero's combo and move and the snapshot's fire zones, 2a spec §5): message
+// a hero's combo and move and the snapshot's fire zones, 2a spec §5; v5 adds a hero's buffs and
+// damage-over-time and the buff spots' tier, buff, ghost and timer, 2b spec §6): message
 // names, validation of everything a client sends, and the snapshot a server
 // sends — plus hydrateHero, which turns a snapshot hero back into a hero the
 // renderer and the predictor can use. Shared by server/ and the browser;
@@ -10,6 +11,7 @@ import { KITS } from '../data/pvp.js'
 import { DIRS, weaponContents, makeRangedContents, makeWandContents } from '../systems/entities.js'
 import { gearOf, offhand } from '../systems/inventory.js'
 import { makeHero, applyKit } from '../pvp/hero.js'
+import { copyBuffs } from '../pvp/buffs.js'
 
 export const MSG = { HELLO: 'hello', INPUT: 'input', CLASS: 'class', PING: 'ping', BYE: 'bye',
   WELCOME: 'welcome', SNAP: 'snap', ERROR: 'error', PONG: 'pong' }
@@ -106,6 +108,10 @@ export function heroSnap(h) {
   // A combo effect while it runs (2a): what it is, where it aims, how far
   // in, where it started (the lunge's streak) and whether the dash is over.
   s.move = h.move ? { kind: h.move.kind, dir: h.move.dir, t: h.move.t, from: { ...h.move.from }, done: !!h.move.done } : null
+  // 2b: the buffs, for the looks, the HUD and the predictor's Haste; the
+  // burn and poison left (s), for the looks only.
+  s.buffs = copyBuffs(h.buffs)
+  s.dots = { burn: h.burn?.t ?? 0, poison: h.poison?.t ?? 0 }
   s.shock = h.shock ? { tickT: h.shock.tickT, left: h.shock.left } : null
   s.rain = h.rain ? { t: h.rain.t, dur: h.rain.dur } : null
   s.blinkTrail = h.blinkTrail ? { from: { ...h.blinkTrail.from }, to: { ...h.blinkTrail.to }, t: h.blinkTrail.t } : null
@@ -128,6 +134,11 @@ export function hydrateHero(hero, s) {
   h.rune = s.rune ? { t: s.rune.t } : null
   h.combo = s.combo ? { moves: [...s.combo.moves], lockDir: { ...s.combo.lockDir }, last: s.combo.last ?? null } : null
   h.move = s.move ? { kind: s.move.kind, dir: s.move.dir, t: s.move.t, from: { ...s.move.from }, done: !!s.move.done } : null
+  h.buffs = copyBuffs(s.buffs)
+  // What a burn or poison looks like client-side: its time left. The client
+  // never ticks one (tickDots is the server's), so owner and next are inert.
+  h.burn = s.dots?.burn > 0 ? { owner: null, t: s.dots.burn, next: 0 } : null
+  h.poison = s.dots?.poison > 0 ? { owner: null, t: s.dots.poison, next: 0 } : null
   h.shock = s.shock ? { ...s.shock } : undefined
   h.rain = s.rain ? { ...s.rain } : undefined
   h.blinkTrail = s.blinkTrail ? { from: { ...s.blinkTrail.from }, to: { ...s.blinkTrail.to }, t: s.blinkTrail.t } : null
@@ -152,7 +163,10 @@ export function snapshotBody(match, { events = [], cues = [] } = {}) {
     arcs: match.arcs.map(a => ({ ...a })),
     shockwaves: match.shockwaves.map(s => ({ ...s })),
     fireZones: match.fireZones.map(z => ({ tiles: z.tiles.map(t => ({ x: t.x, y: t.y })), age: z.age })),
-    pickups: match.pickups.map(p => ({ kind: p.kind, x: p.x, y: p.y, px: p.px, py: p.py, up: p.up })),
+    // t: how long a pickup that is down stays down; a buff spot also sends
+    // its tier, the buff up now and the ghost it brings back (2b).
+    pickups: match.pickups.map(p => ({ kind: p.kind, x: p.x, y: p.y, px: p.px, py: p.py, up: p.up, t: p.t,
+      ...(p.kind === 'buff' && { tier: p.tier, buff: p.buff, next: p.next }) })),
     events, cues,
   }
 }

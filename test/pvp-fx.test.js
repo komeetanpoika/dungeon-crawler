@@ -1,8 +1,12 @@
 // PvP 2a's visuals: the pure helpers in renderer/render/pvp-fx.js.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { comboShake, holdArrows, fenceGlints, drawGlow } from '../renderer/render/pvp-fx.js'
-import { WARRIOR_COMBOS, DOUBLE_SHOT } from '../renderer/data/pvp.js'
+import { comboShake, holdArrows, fenceGlints, drawGlow, BUFF_ICON, spotLook, heroLooks, drawBuffOver } from '../renderer/render/pvp-fx.js'
+import { WARRIOR_COMBOS, DOUBLE_SHOT, BUFF_KINDS, BUFF_COLORS } from '../renderer/data/pvp.js'
+import { SPRITES } from '../renderer/render/sprites.js'
+import { makeHero } from '../renderer/pvp/hero.js'
+import { grantBuff } from '../renderer/pvp/buffs.js'
+import { buffRowModel } from '../renderer/ui/pvp-hud.js'
 
 describe('pvp fx helpers', () => {
   it('comboShake: only a whirl shakes, fading over its life', () => {
@@ -33,5 +37,65 @@ describe('pvp fx helpers', () => {
     const full = drawGlow({ charging: { t: DOUBLE_SHOT.full, kind: 'double' } })
     assert.equal(full.color, DOUBLE_SHOT.bands[0].color)
     assert.equal(full.full, true)
+  })
+})
+
+describe('2b looks', () => {
+  it('every buff has its own atlas icon', () => {
+    assert.deepEqual(Object.keys(BUFF_ICON), BUFF_KINDS)
+    for (const k of BUFF_KINDS) assert.ok(SPRITES[BUFF_ICON[k]], k)
+    assert.equal(new Set(BUFF_KINDS.map(k => SPRITES[BUFF_ICON[k]])).size, 5, 'five different pictures')
+  })
+  it('spotLook: an up spot shows its buff; a down one the ghost of its next at 30 %; a major is larger, rimmed and pulsing', () => {
+    const up = spotLook({ tier: 'minor', up: true, buff: 'ward', next: null })
+    assert.deepEqual(up, { key: 'buff_ward', kind: 'ward', alpha: 1, scale: 1, rim: false, pulse: 0 })
+    const ghost = spotLook({ tier: 'minor', up: false, buff: null, next: 'venom' })
+    assert.equal(ghost.key, 'buff_venom'); assert.equal(ghost.alpha, 0.3)
+    const a = spotLook({ tier: 'major', up: true, buff: 'haste' }, 0), b = spotLook({ tier: 'major', up: true, buff: 'haste' }, 0.6)
+    assert.equal(a.rim, true)
+    assert.ok(a.scale > 1.25 && b.scale > 1.25)
+    assert.notEqual(a.scale, b.scale, 'the pulse moves')
+  })
+  it('heroLooks: each buff, the ward bubble by the pool left, the burn and the poison', () => {
+    const h = makeHero({ id: 'a', name: 'A', cls: 'mage' })
+    assert.deepEqual(heroLooks(h), { haste: false, might: false, ward: 0, edge: null, burning: false, poisoned: false })
+    grantBuff(h, 'haste', 'minor'); grantBuff(h, 'might', 'major'); grantBuff(h, 'ward', 'major'); grantBuff(h, 'ember', 'minor')
+    h.buffs.ward.pool = 1
+    h.burn = { owner: 'x', t: 1, next: 1 }; h.poison = { owner: 'x', t: 0.5, next: 1 }
+    assert.deepEqual(heroLooks(h), { haste: true, might: true, ward: 0.25, edge: 'ember', burning: true, poisoned: true })
+  })
+  it("buffRowModel: one icon per buff held, a countdown fraction, the buff's colour; nothing when dead", () => {
+    const h = makeHero({ id: 'a', name: 'A', cls: 'archer' })
+    assert.deepEqual(buffRowModel(h), [])
+    grantBuff(h, 'venom', 'major'); grantBuff(h, 'haste', 'minor')
+    h.buffs.haste.t = 2
+    const row = buffRowModel(h)
+    assert.deepEqual(row.map(b => [b.kind, b.tier, b.frac, b.color]), [['haste', 'minor', 0.25, BUFF_COLORS.haste], ['venom', 'major', 1, BUFF_COLORS.venom]])
+    assert.equal(row[1].src, `./assets/tiles/${SPRITES.buff_venom}.png`)
+    h.dead = true
+    assert.deepEqual(buffRowModel(h), [])
+  })
+  it("drawBuffOver: the burn flicker's alpha never drops below 0.2 (M2)", () => {
+    // Just enough of a 2D context to run the compositor: no-op drawing calls,
+    // and fillRect logs the globalAlpha in effect when it was called.
+    let alpha = 1
+    const calls = []
+    const ctx = {
+      save() {}, restore() {}, beginPath() {}, arc() {}, fill() {}, stroke() {}, closePath() {}, moveTo() {}, lineTo() {},
+      set globalAlpha(v) { alpha = v }, get globalAlpha() { return alpha },
+      set fillStyle(_v) {}, get fillStyle() { return '' }, set strokeStyle(_v) {}, set lineWidth(_v) {},
+      fillRect(x, y, w, h) { calls.push({ x, y, w, h, alpha }) },
+    }
+    const hero = makeHero({ id: 'a', name: 'A', cls: 'mage' })
+    hero.burn = { owner: 'x', t: 1, next: 1 }
+    let min = Infinity
+    for (let i = 0; i < 200; i++) {
+      calls.length = 0
+      drawBuffOver(ctx, hero, 0, 0, 32, i / 20)
+      const body = calls.find(c => c.w === 32 && c.h === 32)
+      min = Math.min(min, body.alpha)
+    }
+    assert.ok(min >= 0.2 - 1e-9, `min alpha ${min}`)
+    assert.ok(min < 0.35, 'the flicker still varies')
   })
 })

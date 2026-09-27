@@ -1,7 +1,10 @@
 // Hand-authored PvP arenas (4b spec §1). buildArena makes the walled room,
 // its `columns` and interior `walls`; the sim reads `spawns` and `pickups`
 // itself; the client decorates the map with the arena's `theme` (the shape
-// of a DEPTH_THEMES entry). Matches rotate through PVP_ARENA_ORDER.
+// of a DEPTH_THEMES entry). Matches rotate through PVP_ARENA_ORDER; a
+// `large` arena (2b) is skipped for a match of fewer than
+// PVP.largeMinHeroes heroes.
+import { PVP } from './pvp.js'
 const rect = (x, y, w, h) => {
   const cells = []
   for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) cells.push({ x: x + dx, y: y + dy })
@@ -13,12 +16,16 @@ const rect = (x, y, w, h) => {
 // maps' grass over it (skinFloors in systems/decorate.js), flowers rarest.
 const GRASS = [{ skin: 'ow_grass_0', weight: 6 }, { skin: 'ow_grass_1', weight: 3 }, { skin: 'ow_grass_2', weight: 1 }]
 const PILLARS_THEME = { floorTile: 'floor', bgColor: '#0a0406', tint: 'rgba(60,10,0,0.35)', fogAlpha: 0.80 }
+// The glade's grass, shared by the Wilds (2b).
+const GLADE_THEME = { ruleset: 'outdoors', floorTile: 'floor', floorSkins: GRASS, bgColor: '#0a1208', tint: null, fogAlpha: 0.65 }
 
 const PICKUP_KIND = { F: 'flask', Q: 'quiver', R: 'rune' }
+const BUFF_TIER = { b: 'minor', B: 'major' }
 
 // A grid of equal-length strings → the arena shape. Legend: # wall (the
 // border must be walls), o column, . floor, S spawn, F flask, Q quiver,
-// R rune. Spawns and pickups are listed in reading order.
+// R rune, b a minor buff spot, B a major one (2b). Spawns and pickups are
+// listed in reading order.
 export function parseArena(id, rows, theme) {
   const h = rows.length, w = rows[0]?.length ?? 0
   if (!h || rows.some(r => r.length !== w)) throw new Error(`arena ${id}: rows must be equal-length strings`)
@@ -30,6 +37,7 @@ export function parseArena(id, rows, theme) {
     if (ch === 'o') columns.push({ x, y })
     else if (ch === 'S') spawns.push({ x, y })
     else if (PICKUP_KIND[ch]) pickups.push({ kind: PICKUP_KIND[ch], x, y })
+    else if (BUFF_TIER[ch]) pickups.push({ kind: 'buff', tier: BUFF_TIER[ch], x, y })
     else if (ch !== '.') throw new Error(`arena ${id}: unknown cell '${ch}' at ${x},${y}`)
   }))
   return { id, size: { w, h }, columns, walls, spawns, pickups, theme }
@@ -41,7 +49,7 @@ const GLADE = [
   '##############################',
   '#.............##.............#',
   '#.S...........##...........S.#',
-  '#...##..................##...#',
+  '#...##..............b...##...#',
   '#...##..oooo......oooo..##...#',
   '#.............F..............#',
   '#.....o................o.....#',
@@ -56,7 +64,7 @@ const GLADE = [
   '#..............F.............#',
   '#.......oooo......oooo.......#',
   '#...##..................##...#',
-  '#...##..................##...#',
+  '#...##...b..............##...#',
   '#.S...........##...........S.#',
   '#.............##.............#',
   '##############################',
@@ -75,8 +83,8 @@ const TUNNELS = [
   '####..##########..##########..####',
   '####..##########..##########..####',
   '####..#######........#######..####',
-  '####............R............F####',
-  '####F.........................####',
+  '####......b.....R............F####',
+  '####F..................b......####',
   '####..#######........#######..####',
   '####..##########..##########..####',
   '####..##########..##########..####',
@@ -94,7 +102,7 @@ const TUNNELS = [
 const RUINS = [
   '####################################',
   '#..................................#',
-  '#.S..............................S.#',
+  '#.S.....................b........S.#',
   '#.....o..........o......o..........#',
   '#...........o................o.....#',
   '#..................................#',
@@ -115,13 +123,102 @@ const RUINS = [
   '#..................................#',
   '#..........o...................o...#',
   '#...o.............o.....o..........#',
-  '#.S..............................S.#',
+  '#.S........b.....................S.#',
   '#..................................#',
   '####################################',
 ]
 
+// Keep (55×39, 2b): a walled fort in the centre, 2-thick walls with four
+// 3-wide gates into a courtyard holding the major buff spot; around it a
+// ring of broken outer walls and rubble-strewn yards. Mirrored left-right.
+const KEEP = [
+  '#######################################################',
+  '#.....................................................#',
+  '#.S.............o...##...........##...o.............S.#',
+  '#.....................................................#',
+  '#......#####....######...........######....#####......#',
+  '#......#.......................................#......#',
+  '#...##.#.b...................................b.#.##...#',
+  '#......#.............#.....R.....#.............#......#',
+  '#......#...##...........o.....o...........##...#......#',
+  '#..o...............................................o..#',
+  '#.....................................................#',
+  '#................#########...#########................#',
+  '#................#########...#########................#',
+  '#......#.........####.............####.........#......#',
+  '#.#....#...o.....####.............####.....o...#....#.#',
+  '#......#.........##.................##.........#......#',
+  '#......#.........##....o.......o....##.........#......#',
+  '#................##.................##................#',
+  '#............#.......F...........F.......#............#',
+  '#...S.....Q................B................Q.....S...#',
+  '#............#...........................#............#',
+  '#................##..b...........b..##................#',
+  '#......#.........##....o.......o....##.........#......#',
+  '#......#.........##.................##.........#......#',
+  '#.#....#...o.....####.............####.....o...#....#.#',
+  '#......#.........####.............####.........#......#',
+  '#.............b..#########...#########..b.............#',
+  '#................#########...#########................#',
+  '#.....................................................#',
+  '#..o...............................................o..#',
+  '#......#...##...........o.....o...........##...#......#',
+  '#......#.............#.....Q.....#.............#......#',
+  '#...##.#.......................................#.##...#',
+  '#......#.......................................#......#',
+  '#......#####....######...........######....#####......#',
+  '#.....................................................#',
+  '#.S..........F..o....##.........##....o..F..........S.#',
+  '#.....................................................#',
+  '#######################################################',
+]
+// Wilds (55×39, 2b): four corner clearings joined by winding paths 2-3
+// tiles wide through thickets of walls and trees, the major buff spot in
+// the open central meadow. Symmetric under a half turn.
+const WILDS = [
+  '#######################################################',
+  '##########################o####################o#######',
+  '####o##.##o##o###########....###########o#####o.#o#####',
+  '###o.......#....##o##o#....R...#####o#....o#.......o###',
+  '##o.S..............#o.....o#.....##...............S.###',
+  '#o.......o...o#.........#o##o#.........#o............##',
+  '##...........##o##..b.########o#....o#####...........##',
+  '#.............o#####o###########o##o#####....Q........#',
+  '#o...........o############################...........##',
+  '##...o.....F...o#########################............##',
+  '##o............#########################............###',
+  '###............#########################............o##',
+  '###.....#o#....o###########o###########o....#o#.....###',
+  '##o....####....########o##o.#o###########...o##o.b..###',
+  '###....o##o.b..#o#####o.........##o##o#......###....o##',
+  '###o....###.......o##......o.................o#....o###',
+  '####.....##..................................#.....####',
+  '####o....####....F.....o.......o.........##o##....#####',
+  '######....#####o....................o##o#####....######',
+  '#####o.S..#######o.........B.........#o#####o..S.######',
+  '######....o#####o##....................#o####....o#####',
+  '#####....o##o#.........o.......o.....F....o##o....#####',
+  '####.....#..................................o#.....####',
+  '####....##.................o......o##.......##o....####',
+  '###....##o......##o##o#.........#o#####o..b.####....###',
+  '##o..b.####...o########o##o.#o##########....o##o....###',
+  '###.....##o....#########################....##o.....o##',
+  '###............o#######################o............###',
+  '##o............#########################............###',
+  '#o............##########################...F.....o...##',
+  '##...........#############################...........##',
+  '#........Q....o#####o##############o#####.............#',
+  '#o...........o##o##....########o#.b..o####...........##',
+  '##............#o.........#####o.........##...o.......##',
+  '##o.S...............o#.....##.....#o..............S.###',
+  '####.......##....##o##o#...Q....#####o#....o.......####',
+  '######o.#o#####o########o#....o########o##o##o#.o######',
+  '##########################o##o#################o#######',
+  '#######################################################',
+]
+
 // The grids as written, for the invariant tests.
-export const ARENA_ROWS = { glade: GLADE, tunnels: TUNNELS, ruins: RUINS }
+export const ARENA_ROWS = { glade: GLADE, tunnels: TUNNELS, ruins: RUINS, keep: KEEP, wilds: WILDS }
 
 export const PVP_ARENAS = {
   // Four corner pillars, wall segments on each side for cover, four posts
@@ -143,17 +240,33 @@ export const PVP_ARENAS = {
       { kind: 'flask', x: 7, y: 12 }, { kind: 'flask', x: 24, y: 11 },
       { kind: 'quiver', x: 15, y: 6 }, { kind: 'quiver', x: 16, y: 17 },
       { kind: 'rune', x: 16, y: 12 },
+      { kind: 'buff', tier: 'minor', x: 22, y: 5 }, { kind: 'buff', tier: 'minor', x: 9, y: 18 },
     ],
     theme: PILLARS_THEME,
+    large: false,
   },
-  glade: parseArena('glade', GLADE, { ruleset: 'outdoors', floorTile: 'floor', floorSkins: GRASS, bgColor: '#0a1208', tint: null, fogAlpha: 0.65 }),
-  tunnels: parseArena('tunnels', TUNNELS, { ruleset: 'catacombs', floorTile: 'floor', bgColor: '#07070f', tint: 'rgba(0,0,20,0.35)', fogAlpha: 0.80 }),
-  ruins: parseArena('ruins', RUINS, { floorTile: 'sand', bgColor: '#1a1206', tint: 'rgba(40,20,0,0.2)', fogAlpha: 0.65 }),
+  glade: { ...parseArena('glade', GLADE, GLADE_THEME), large: false },
+  tunnels: { ...parseArena('tunnels', TUNNELS, { ruleset: 'catacombs', floorTile: 'floor', bgColor: '#07070f', tint: 'rgba(0,0,20,0.35)', fogAlpha: 0.80 }), large: false },
+  ruins: { ...parseArena('ruins', RUINS, { floorTile: 'sand', bgColor: '#1a1206', tint: 'rgba(40,20,0,0.2)', fogAlpha: 0.65 }), large: false },
+  // The castle ruleset's look (DEPTH_THEMES' depth-6 entry).
+  keep: { ...parseArena('keep', KEEP, { ruleset: 'castle', floorTile: 'floor', bgColor: '#141008', tint: null, fogAlpha: 0.65 }), large: true },
+  wilds: { ...parseArena('wilds', WILDS, GLADE_THEME), large: true },
 }
 
-export const PVP_ARENA_ORDER = ['pillars', 'glade', 'tunnels', 'ruins']
+export const PVP_ARENA_ORDER = ['pillars', 'glade', 'keep', 'tunnels', 'ruins', 'wilds']
 
 // The rotation: the arena at a (wrapping) index, and the index after it.
 const N_ARENAS = PVP_ARENA_ORDER.length
 export const arenaAt = i => PVP_ARENAS[PVP_ARENA_ORDER[((i % N_ARENAS) + N_ARENAS) % N_ARENAS]]
 export const nextArenaIndex = i => (i + 1) % N_ARENAS
+
+// The index a match of `heroes` heroes is played at, from index `i` on: the
+// first arena (wrapping) that is not large, or any once the match has
+// PVP.largeMinHeroes heroes (2b spec §4).
+export function playableIndex(i, heroes) {
+  for (let k = 0; k < N_ARENAS; k++) {
+    const j = (((i + k) % N_ARENAS) + N_ARENAS) % N_ARENAS
+    if (!arenaAt(j).large || heroes >= PVP.largeMinHeroes) return j
+  }
+  return 0
+}

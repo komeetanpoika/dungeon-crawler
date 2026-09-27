@@ -4,6 +4,9 @@ import { MSG, ERR, encode, decode, validateInput, validateName, validateClass, v
   heroSnap, hydrateHero, snapshotBody } from '../renderer/net/protocol.js'
 import { makeMatch } from '../renderer/pvp/sim.js'
 import { grantRune } from '../renderer/pvp/pickups.js'
+import { grantBuff } from '../renderer/pvp/buffs.js'
+import { setDot } from '../renderer/pvp/dots.js'
+import { PVP_ARENAS } from '../renderer/data/pvp-arenas.js'
 import { NET } from '../renderer/data/net.js'
 
 describe('encode / decode', () => {
@@ -64,7 +67,7 @@ describe('names, classes and hello', () => {
   it('hello v3: resume is a fourth way in — exactly one of create/room/quick/resume, the token 32 hex characters', () => {
     const v = NET.protocolVersion
     const tok = '0123456789abcdef0123456789abcdef'
-    assert.equal(v, 4)
+    assert.equal(v, 5)
     assert.deepEqual(validateHello({ type: 'hello', v, resume: tok }), { resume: tok })
     assert.deepEqual(validateHello({ type: 'hello', v, resume: tok, name: '<>', cls: 'bard' }), { resume: tok }, 'the seat keeps its own name and class')
     for (const bad of ['a'.repeat(31), 'a'.repeat(33), 'A'.repeat(32), 'g'.repeat(32), '', 42, true, {}])
@@ -72,6 +75,7 @@ describe('names, classes and hello', () => {
     for (const way of [{ create: true }, { quick: true }, { room: 'KXPT' }])
       assert.deepEqual(validateHello({ type: 'hello', v, name: 'Aino', cls: 'mage', resume: tok, ...way }), { error: ERR.BAD_HELLO })
     assert.deepEqual(validateHello({ type: 'hello', v: 3, resume: tok }), { error: ERR.VERSION }, 'a 4b client gets the reload line')
+    assert.deepEqual(validateHello({ type: 'hello', v: 4, resume: tok }), { error: ERR.VERSION }, 'a 2a client gets the reload line')
   })
   it('bye and resume_failed', () => {
     assert.equal(MSG.BYE, 'bye')
@@ -128,7 +132,7 @@ describe('snapshots', () => {
     assert.equal(body.type, MSG.SNAP)
     assert.equal(body.heroes.length, 2)
     assert.deepEqual(body.projectiles[0], { px: 1, py: 2, dx: 3, dy: 4, shape: 'arrow', color: '#fff' })
-    assert.equal(body.pickups.length, 5)
+    assert.equal(body.pickups.length, 7)   // pillars: 2 flasks, 2 quivers, the rune, 2 minor buff spots (2b)
     assert.equal(body.matchLength, m.matchLength)
     assert.equal(body.arena, 'pillars')
     for (const k of ['tick', 'clock', 'waiting', 'ended', 'lightning', 'strikes', 'arcs', 'shockwaves', 'fireZones', 'events', 'cues']) assert.ok(k in body, k)
@@ -154,6 +158,41 @@ describe('snapshots', () => {
     w.combo = null; w.move = null
     hydrateHero(h, JSON.parse(JSON.stringify(heroSnap(w))))
     assert.equal(h.combo, null); assert.equal(h.move, null)
+  })
+})
+
+describe('protocol v5 (2b)', () => {
+  const match = () => makeMatch({ roster: [{ id: 'p1', name: 'A', cls: 'warrior' }, { id: 'p2', name: 'B', cls: 'archer' }] })
+  it('a hero carries its buffs and the burn and poison it has left; a hydrated hero gets them back', () => {
+    const m = match()
+    const [w, a] = m.heroes
+    grantBuff(w, 'haste', 'major'); grantBuff(w, 'ward', 'minor'); grantBuff(w, 'venom', 'minor')
+    setDot(a, 'burn', 'p1', 2); a.burn.t = 1.25
+    const body = JSON.parse(JSON.stringify(snapshotBody(m)))
+    const [ws, as] = body.heroes
+    assert.deepEqual(ws.buffs, { haste: { tier: 'major', t: 15 }, might: null, ward: { tier: 'minor', t: 15, pool: 2 },
+      edge: { kind: 'venom', tier: 'minor', t: 10 } })
+    assert.deepEqual(ws.dots, { burn: 0, poison: 0 })
+    assert.deepEqual(as.dots, { burn: 1.25, poison: 0 })
+    const h = hydrateHero(null, as)
+    assert.equal(h.burn.t, 1.25); assert.equal(h.poison, null)
+    assert.deepEqual(hydrateHero(null, ws).buffs, w.buffs)
+    a.burn = null
+    hydrateHero(h, JSON.parse(JSON.stringify(heroSnap(a))))
+    assert.equal(h.burn, null, 'a burn that ended is gone on the client too')
+  })
+  it("a buff spot sends its tier, the buff up now, the ghost and its timer; other pickups their timer", () => {
+    const m = makeMatch({ roster: [{ id: 'p1', name: 'A', cls: 'warrior' }], arena: PVP_ARENAS.keep, seed: 9 })
+    const body = JSON.parse(JSON.stringify(snapshotBody(m)))
+    const b = body.pickups.find(p => p.kind === 'buff' && p.tier === 'minor')
+    const B = body.pickups.find(p => p.kind === 'buff' && p.tier === 'major')
+    const rune = body.pickups.find(p => p.kind === 'rune')
+    assert.deepEqual(Object.keys(b).sort(), ['buff', 'kind', 'next', 'px', 'py', 't', 'tier', 'up', 'x', 'y'])
+    assert.equal(b.up, true); assert.equal(b.next, null); assert.equal(b.buff, m.pickups.find(p => p.tier === 'minor').buff)
+    assert.equal(B.up, false); assert.equal(B.buff, null); assert.equal(B.t, 30)
+    assert.equal(B.next, m.pickups.find(p => p.tier === 'major').next)
+    assert.deepEqual(Object.keys(rune).sort(), ['kind', 'px', 'py', 't', 'up', 'x', 'y'])
+    assert.equal(rune.t, 45)
   })
 })
 

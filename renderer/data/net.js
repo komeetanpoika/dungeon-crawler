@@ -2,7 +2,7 @@
 // …-pvp-4b-arenas-reconnect-design.md).
 // Shared by the server (server/) and the browser client (renderer/net/).
 export const NET = {
-  protocolVersion: 4,      // 2a: combo/move on heroes, fire zones on snapshots
+  protocolVersion: 5,      // 2b: buffs/dots on heroes, buff spots on snapshots
   path: '/pvp',
   snapshotHz: 20,
   interpDelayTicks: 3,     // other heroes are drawn this many sim ticks behind the estimated server tick

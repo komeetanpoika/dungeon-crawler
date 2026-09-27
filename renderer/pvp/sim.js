@@ -14,11 +14,13 @@ import { stepKnockback } from '../systems/knockback.js'
 import { computeBlastTiles, makeFireZone, FIRE_DURATION, FIRE_TICK_INTERVAL, FIRE_TICK_DAMAGE } from '../systems/fire.js'
 import { overlapsTiles } from '../systems/hitbox.js'
 import { canMoveTo, PLAYER_HALF, TILE_SIZE } from '../systems/movement.js'
-import { PVP, KITS, SPELL_OVERRIDES } from '../data/pvp.js'
+import { PVP, KITS, SPELL_OVERRIDES, DOTS } from '../data/pvp.js'
 import { PVP_ARENAS } from '../data/pvp-arenas.js'
 import { makeHero, placeHero, applyKit, tickHero, tickHeroStatus, NEUTRAL_INPUT } from './hero.js'
 import { heroById, hurtHero, refreshTargets } from './combat.js'
 import { makePickups, tickPickups, tickRunes, endRune } from './pickups.js'
+import { mulberry32 } from './rng.js'
+import { clearBuffs } from './buffs.js'
 
 // The arena's tiles. The player spawn is pinned to the first hero spawn, a
 // floor cell, so buildArena never skips a column or wall for standing on its
@@ -32,15 +34,18 @@ export function arenaMap(arena = PVP_ARENAS.pillars) {
   return map
 }
 
-export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = null, matchLength = PVP.matchLength } = {}) {
+// seed: the match's PRNG seed (match.rng, 2b spec §2) — the server and the
+// local mode pass a random one, tests a fixed one.
+export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = null, matchLength = PVP.matchLength, seed = 1 } = {}) {
   if (!Array.isArray(roster) || roster.length < 1 || roster.length > arena.spawns.length)
     throw new Error(`pvp: roster must hold 1-${arena.spawns.length} heroes`)
   if (new Set(roster.map(r => r.id)).size !== roster.length) throw new Error('pvp: duplicate hero id')
+  const rng = mulberry32(seed)
   const match = {
     map: arenaMap(arena), arena, heroes: [], entities: [], projectiles: [], lightning: [], strikes: [], arcs: [],
     shockwaves: [], zones: [], fireZones: [], feedback: makeFeedback(), sfx: sfxQueue,
-    pickups: makePickups(arena), clock: 0, tick: 0, acc: 0, ended: false, events: [], inputs: {}, standings: null,
-    matchLength, waiting: roster.length < PVP.minHeroes,
+    pickups: makePickups(arena, rng), clock: 0, tick: 0, acc: 0, ended: false, events: [], inputs: {}, standings: null,
+    matchLength, waiting: roster.length < PVP.minHeroes, seed: seed >>> 0, rng,
   }
   roster.forEach((r, i) => {
     const h = makeHero(r)
@@ -74,6 +79,18 @@ export function removeHero(match, id) {
     if (rune) { rune.up = true; rune.t = 0 }
   }
   match.heroes.splice(i, 1)
+  // A reused bot id (balanceBots can hand a fresh bot the same `b1…` slot)
+  // must never inherit a departed hero's dot or fire-patch credit (M4): a
+  // dot/patch's `owner` is just the id string, so once this id is gone it
+  // has to be nulled here rather than left to a future heroById lookup —
+  // otherwise a same-id newcomer would silently match it. Nulling (not
+  // dropping) keeps the dot ticking and the patch burning, crediting
+  // nobody, per spec reading 8's "an owner who has left credits nobody".
+  for (const h of match.heroes) {
+    if (h.burn?.owner === id) h.burn.owner = null
+    if (h.poison?.owner === id) h.poison.owner = null
+  }
+  for (const z of match.fireZones) if (z.owner === id) z.owner = null
   refreshTargets(match)
   match.events.push({ type: 'leave', hero: id })
   return true
@@ -123,11 +140,12 @@ export function farthestSpawn(match) {
 const projectileHooks = match => ({
   isHittable: e => e.type === 'hero' && !e.dead && !(e.spawnProtect > 0),
   hurt: (target, damage, p) => {
-    const landed = hurtHero(match, target, damage, { by: heroById(match, p?.owner), from: { px: p.px, py: p.py }, group: p?.group ?? null })
+    const landed = hurtHero(match, target, damage, { by: heroById(match, p?.owner), from: { px: p.px, py: p.py }, group: p?.group ?? null, direct: true })
     // A blocked or i-framed hit still consumes the projectile (no pierce/
-    // chain onto it), but must not also apply its onHit (knockback/stun) —
-    // that would push or lock down a hero who took zero damage.
-    if (!landed) delete p.onHit
+    // chain onto it); a Ward that soaked the hit whole also lands but takes
+    // no hp. Either way its onHit (knockback/stun) must not fire — that
+    // would push or lock down a hero who took zero damage.
+    if (!landed || !target.tookDamage) delete p.onHit
     return target
   },
   detonate: (px, py, blastTiles, opts, hit) => detonateFireball(match, px, py, blastTiles, opts, hit),
@@ -151,7 +169,7 @@ export function detonateFireball(match, px, py, blastTiles, { fireOnly = false }
   if (!fireOnly) {
     const keys = tileKeys(tiles)
     for (const h of match.heroes) {
-      if (h !== struck && overlapsTiles(h, keys)) hurtHero(match, h, SPELL_OVERRIDES.fireball.burst, { kind: 'fire', by })
+      if (h !== struck && overlapsTiles(h, keys)) hurtHero(match, h, SPELL_OVERRIDES.fireball.burst, { kind: 'fire', by, direct: true })
     }
     match.shockwaves.push({ px: tx * TILE_SIZE + TILE_SIZE / 2, py: ty * TILE_SIZE + TILE_SIZE / 2,
       t: 0, dur: 0.35, maxRadius: TILE_SIZE * 2.5, color: '#f97316' })
@@ -175,6 +193,26 @@ export function tickFireZones(match, dt) {
     if (z.age < FIRE_DURATION - 1e-9) live.push(z)
   }
   match.fireZones = live
+}
+
+// Burns and poisons (2b): DOTS[kind].damage every DOTS[kind].interval as
+// unblockable 'dot' damage credited to whoever applied it — nobody, once
+// they have left the match — until the time runs out.
+export function tickDots(match, dt) {
+  for (const h of match.heroes) {
+    if (h.dead) continue
+    for (const kind of ['burn', 'poison']) {
+      const d = h[kind]
+      if (!d) continue
+      d.t -= dt
+      d.next -= dt
+      if (d.next <= 1e-9) {
+        d.next += DOTS[kind].interval
+        hurtHero(match, h, DOTS[kind].damage, { kind: 'dot', by: heroById(match, d.owner) })
+      }
+      if (d.t <= 1e-9) h[kind] = null
+    }
+  }
 }
 
 const CC_FIELDS = ['stunTimer', 'slowTimer', 'rootTimer']
@@ -215,9 +253,13 @@ function tick(match) {
 
   stepProjectiles(match, dt, projectileHooks(match))
   tickLightning(match, dt, {
-    hurt: (e, d, info) => { hurtHero(match, e, d, { kind: 'lightning', by: heroById(match, info?.owner) }) },
+    // false when the hit landed but a Ward soaked it whole (or it missed):
+    // strike() reads this to withhold the stun, per the Ward whole-soak
+    // no-CC ruling (I1).
+    hurt: (e, d, info) => hurtHero(match, e, d, { kind: 'lightning', by: heroById(match, info?.owner), direct: true }) && e.tookDamage,
   })
   tickFireZones(match, dt)
+  tickDots(match, dt)
   for (const h of match.heroes) {
     if (h.dead || !h.shock) continue
     tickShock(h, dt, { hurt: (e, d) => { hurtHero(match, e, d, { kind: 'lightning', by: heroById(match, e.shock?.owner) }) } })
@@ -274,6 +316,7 @@ function resolveDeaths(match) {
     h.knockback = null
     h.shock = undefined
     h.blocking = false
+    clearBuffs(h)      // 2b: buffs, burn and poison die with the hero
   }
 }
 

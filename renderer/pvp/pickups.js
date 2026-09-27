@@ -1,19 +1,34 @@
-// Contested pickups: walk-onto flasks, Archer-only quivers and the power
-// rune, each on its own respawn timer; and the rune's swap of a hero's main
-// hand for its class's power weapon. Pure: no DOM.
+// Contested pickups: walk-onto flasks, Archer-only quivers, the power rune
+// and the buff spots (2b), each on its own respawn timer; and the rune's
+// swap of a hero's main hand for its class's power weapon. Pure: no DOM.
 import { weaponContents, makeRangedContents, makeWandContents } from '../systems/entities.js'
 import { addAmmo, gearOf } from '../systems/inventory.js'
 import { addFloat } from '../systems/feedback.js'
 import { sfx } from '../systems/sfx.js'
 import { TILE_SIZE } from '../systems/movement.js'
-import { PICKUPS, RUNE_POWER } from '../data/pvp.js'
+import { PICKUPS, RUNE_POWER, BUFF_SPOTS } from '../data/pvp.js'
+import { grantBuff } from './buffs.js'
+import { mulberry32, rollBuff } from './rng.js'
 
-export function makePickups(arena) {
-  return arena.pickups.map(p => ({
-    kind: p.kind, x: p.x, y: p.y, px: p.x * TILE_SIZE + TILE_SIZE / 2, py: p.y * TILE_SIZE + TILE_SIZE / 2,
-    up: p.kind !== 'rune', t: p.kind === 'rune' ? PICKUPS.rune.firstSpawn : 0,
-  }))
+// A buff spot also carries its tier, `buff` (the kind up now, null while
+// down) and `next` (the kind it will bring back: the ghost drawn while it
+// is down). A minor spot starts up; a major one waits majorFirstSpawn.
+// Every roll draws from `rng` — the match's own (makeMatch passes it).
+export function makePickups(arena, rng = mulberry32(1)) {
+  return arena.pickups.map(p => {
+    const base = { kind: p.kind, x: p.x, y: p.y, px: p.x * TILE_SIZE + TILE_SIZE / 2, py: p.y * TILE_SIZE + TILE_SIZE / 2 }
+    if (p.kind !== 'buff') return { ...base, up: p.kind !== 'rune', t: p.kind === 'rune' ? PICKUPS.rune.firstSpawn : 0 }
+    const major = p.tier === 'major'
+    const kind = rollBuff(rng)
+    return { ...base, tier: p.tier, up: !major, t: major ? BUFF_SPOTS.majorFirstSpawn : 0,
+      buff: major ? null : kind, next: major ? kind : null }
+  })
 }
+
+// How long a taken pickup stays down.
+const respawnOf = p => p.kind === 'buff'
+  ? (p.tier === 'major' ? BUFF_SPOTS.majorRespawn : BUFF_SPOTS.minorRespawn)
+  : PICKUPS[p.kind].respawn
 
 function take(match, hero, p) {
   if (p.kind === 'flask') {
@@ -28,6 +43,12 @@ function take(match, hero, p) {
     return addAmmo(hero, 'arrow', PICKUPS.quiver.arrows) > 0
   }
   if (p.kind === 'rune') return grantRune(match, hero)
+  if (p.kind === 'buff') {
+    // Any class takes any buff, whatever it already holds (buffs.js stacks it).
+    grantBuff(hero, p.buff, p.tier)
+    addFloat(match.feedback, { px: hero.px, py: hero.py - 10, text: '+', kind: p.buff })
+    return true
+  }
   return false
 }
 
@@ -35,14 +56,21 @@ export function tickPickups(match, dt) {
   for (const p of match.pickups) {
     if (!p.up) {
       p.t -= dt
-      if (p.t <= 0) { p.up = true; p.t = 0 }
+      if (p.t <= 0) {
+        p.up = true; p.t = 0
+        if (p.kind === 'buff') { p.buff = p.next; p.next = null }
+      }
       continue
     }
     const taker = match.heroes.find(h => !h.dead && h.x === p.x && h.y === p.y && take(match, h, p))
     if (!taker) continue
     p.up = false
-    p.t = PICKUPS[p.kind].respawn
-    match.events.push({ type: 'pickup', kind: p.kind, hero: taker.id })
+    p.t = respawnOf(p)
+    const taken = p.kind === 'buff' ? { buff: p.buff, tier: p.tier } : {}
+    // A buff spot rolls what it brings back the moment it is taken, so the
+    // ghost shows it for the whole wait.
+    if (p.kind === 'buff') { p.next = rollBuff(match.rng); p.buff = null }
+    match.events.push({ type: 'pickup', kind: p.kind, hero: taker.id, ...taken })
     sfx(match, 'pickup', { px: p.px, py: p.py })
   }
 }

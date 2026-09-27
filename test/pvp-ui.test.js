@@ -32,11 +32,22 @@ describe('makeLocalMatch / localInputs / viewOf', () => {
   it('plays the arena at arenaIndex in the rotation, pillars by default; "Next match" steps it', () => {
     assert.equal(makeLocalMatch({ cls: 'mage' }).arena.id, 'pillars')
     const ids = []
-    for (let i = 0, k = 0; k < 5; k++, i = nextArenaIndex(i)) ids.push(makeLocalMatch({ cls: 'mage', arenaIndex: i }).arena.id)
-    assert.deepEqual(ids, ['pillars', 'glade', 'tunnels', 'ruins', 'pillars'])
+    for (let i = 0, k = 0; k < 7; k++, i = nextArenaIndex(i)) ids.push(makeLocalMatch({ cls: 'mage', arenaIndex: i }).arena.id)
+    assert.deepEqual(ids, ['pillars', 'glade', 'keep', 'tunnels', 'ruins', 'wilds', 'pillars'], 'you and 3 bots: large arenas too')
     const m = makeLocalMatch({ cls: 'mage', arenaIndex: 3 })
     assert.equal(m.map[0].length, m.arena.size.w)
     for (const h of m.heroes) assert.ok(m.arena.spawns.some(s => s.x === h.x && s.y === h.y), h.id)
+  })
+  it('a match of fewer than 4 heroes skips the large arenas, and match.arenaIndex is the one played (2b)', () => {
+    const ids = []
+    for (let i = 0, k = 0; k < 5; k++) {
+      const m = makeLocalMatch({ cls: 'mage', bots: 2, arenaIndex: i })
+      ids.push(m.arena.id)
+      i = nextArenaIndex(m.arenaIndex)
+    }
+    assert.deepEqual(ids, ['pillars', 'glade', 'tunnels', 'ruins', 'pillars'])
+    assert.equal(makeLocalMatch({ cls: 'mage', bots: 2, arenaIndex: 2 }).arenaIndex, 3)
+    assert.equal(makeLocalMatch({ cls: 'mage', arenaIndex: 2 }).arenaIndex, 2)
   })
   it('clamps the bot count to 1-5', () => {
     assert.equal(makeLocalMatch({ cls: 'mage', bots: 9 }).heroes.length, 6)
@@ -48,13 +59,16 @@ describe('makeLocalMatch / localInputs / viewOf', () => {
     assert.deepEqual(inputs[LOCAL_ID].move, { x: -1, y: 0 })
     assert.equal(Object.keys(inputs).length, 4)
   })
-  it('the view centres on you and shows only pickups that are up', () => {
+  it('the view centres on you and shows the pickups that are up, and buff spots that are down as ghosts', () => {
     const m = makeLocalMatch({ cls: 'archer' })
     const v = viewOf(m, { bgColor: '#000' })
     assert.equal(v.player.id, LOCAL_ID)
     assert.equal(v.heroes, m.heroes)
     assert.ok(v.entities.every(e => e.type === 'pvp_pickup'))
-    assert.equal(v.entities.length, 4)   // the rune is not up yet
+    assert.equal(v.entities.length, 6)   // 2 flasks, 2 quivers and 2 minor buff spots; the rune is not up yet
+    m.pickups.find(p => p.kind === 'buff').up = false
+    m.pickups.find(p => p.kind === 'flask').up = false
+    assert.equal(viewOf(m, { bgColor: '#000' }).entities.length, 5, 'the down spot stays, as a ghost; the flask goes')
   })
 })
 
