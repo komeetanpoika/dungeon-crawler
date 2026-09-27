@@ -15,7 +15,7 @@ const east = { ...NEUTRAL_INPUT, move: { x: 1, y: 0 }, facing: 'east' }
 
 describe('NET constants', () => {
   it('carries the spec numbers', () => {
-    assert.equal(NET.protocolVersion, 3)
+    assert.equal(NET.protocolVersion, 4)
     assert.equal(NET.snapshotHz, 20)
     assert.equal(NET.rewindMaxTicks, 9)
     assert.equal(NET.historyTicks, 11)
@@ -89,15 +89,25 @@ describe('arenaMap', () => {
 
 describe('moveHero', () => {
   it('moves exactly as tickHero does but never attacks', () => {
-    const a = makeHero({ id: 'a', name: 'a', cls: 'warrior' }); placeHero(a, { x: 5, y: 5 })
-    const b = makeHero({ id: 'b', name: 'b', cls: 'warrior' }); placeHero(b, { x: 5, y: 5 })
+    // An archer: its shots do not change how it walks (a Warrior's held
+    // attack does — the hold is movement, and runs in moveHero for both).
+    const a = makeHero({ id: 'a', name: 'a', cls: 'archer' }); placeHero(a, { x: 5, y: 5 })
+    const b = makeHero({ id: 'b', name: 'b', cls: 'archer' }); placeHero(b, { x: 5, y: 5 })
     const ma = testMatch([a]), mb = testMatch([b])
     const input = { ...east, attack: true }
     for (let i = 0; i < 10; i++) { moveHero(ma, a, input, PVP.tick); tickHero(mb, b, input, PVP.tick) }
     assert.equal(a.px, b.px)
     assert.equal(a.py, b.py)
-    assert.equal(a.meleeCooldown, 0)        // moveHero never swung
-    assert.ok(b.meleeCooldown > 0)          // tickHero did
+    assert.equal(a.ammo.arrow, 24)          // moveHero never shot
+    assert.ok(b.ammo.arrow < 24)            // tickHero did
+    // A Warrior held under moveHero alone never begins a hold either: only
+    // tickMelee (inside tickHero) calls beginHold, so moveHero on its own
+    // never sets combo or fires a swing.
+    const w = makeHero({ id: 'w', name: 'w', cls: 'warrior' }); placeHero(w, { x: 5, y: 5 })
+    const mw = testMatch([w])
+    for (let i = 0; i < 10; i++) moveHero(mw, w, input, PVP.tick)
+    assert.equal(w.combo, null)
+    assert.equal(w.attackTimer, 0)
   })
 })
 
@@ -110,13 +120,13 @@ describe('swing hitPos seam', () => {
   it('without hitPos a foe out of reach is missed', () => {
     const { w, a, m } = pair()
     swing(m, w, resolveCharge('sword', 0))
-    assert.equal(a.hp, 10)
+    assert.equal(a.hp, 8)
   })
   it('hitPos moves only the hit test: the rewound position is hit, damage lands on the real hero', () => {
     const { w, a, m } = pair()
     m.hitPos = foe => ({ type: foe.type, px: w.px + 32, py: w.py })
     swing(m, w, resolveCharge('sword', 0))
-    assert.equal(a.hp, 8)
+    assert.equal(a.hp, 6)
     assert.equal(a.px, 8 * 32 + 16)
   })
 })

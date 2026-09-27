@@ -1,4 +1,5 @@
 import { CHEAT_HOLD_MS, cheatStep } from '../systems/cheats.js'
+import { CLASS_HINTS } from '../data/pvp.js'
 
 // Overlay menu screens (title / pause / game over). DOM-only; receives callbacks.
 // Keep all document access inside functions so the pure helper stays importable
@@ -84,10 +85,17 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
     currentInput = inp
   }
 
-  currentButtons = buttons.map(({ label, onSelect, className }) => {
+  currentButtons = buttons.map(({ label, onSelect, className, hint }) => {
     const btn = document.createElement('button')
     btn.className = className ? `menu-btn ${className}` : 'menu-btn'
     btn.textContent = label
+    // A second, smaller line inside the button (the class picker's hints).
+    if (hint) {
+      const small = document.createElement('span')
+      small.className = 'menu-hint'
+      small.textContent = hint
+      btn.appendChild(small)
+    }
     btn.addEventListener('click', () => onSelect())
     panel.appendChild(btn)
     return btn
@@ -288,9 +296,9 @@ export function showClassPicker({ title = 'Arena', subtitle = 'Pick a class', li
   renderScreen({
     title, subtitle, lines,
     buttons: [
-      { label: 'Warrior', onSelect: () => onPick('warrior') },
-      { label: 'Archer', onSelect: () => onPick('archer') },
-      { label: 'Mage', onSelect: () => onPick('mage') },
+      { label: 'Warrior', hint: CLASS_HINTS.warrior, onSelect: () => onPick('warrior') },
+      { label: 'Archer', hint: CLASS_HINTS.archer, onSelect: () => onPick('archer') },
+      { label: 'Mage', hint: CLASS_HINTS.mage, onSelect: () => onPick('mage') },
       ...(onBack ? [{ label: 'Back', onSelect: onBack }] : []),
     ],
     onEscape: onBack,

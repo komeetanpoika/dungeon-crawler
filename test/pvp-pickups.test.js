@@ -1,13 +1,14 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makePickups, tickPickups, grantRune, endRune, tickRunes } from '../renderer/pvp/pickups.js'
-import { makeHero, placeHero } from '../renderer/pvp/hero.js'
+import { makeHero, placeHero, tickHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
 import { gearOf } from '../renderer/systems/inventory.js'
-import { PICKUPS } from '../renderer/data/pvp.js'
+import { PICKUPS, PVP } from '../renderer/data/pvp.js'
 import { testMatch } from './pvp-helpers.js'
 
 const hero = (id, cls, cell = { x: 3, y: 3 }) => { const h = makeHero({ id, name: id, cls }); placeHero(h, cell); return h }
 const withPickups = (heroes, list) => { const m = testMatch(heroes); m.pickups = makePickups({ pickups: list }); return m }
+const input = over => ({ ...NEUTRAL_INPUT, move: { x: 0, y: 0 }, ...over })
 
 describe('makePickups', () => {
   it('flasks and quivers start up; the rune waits for its first spawn', () => {
@@ -20,10 +21,10 @@ describe('makePickups', () => {
 
 describe('flask', () => {
   it('heals 4 (capped) and goes down for its respawn time', () => {
-    const h = hero('a', 'archer'); h.hp = 8
+    const h = hero('a', 'archer'); h.hp = 6
     const m = withPickups([h], [{ kind: 'flask', x: 3, y: 3 }])
     tickPickups(m, 0.1)
-    assert.equal(h.hp, 10)
+    assert.equal(h.hp, 8)
     assert.equal(m.pickups[0].up, false)
     assert.equal(m.pickups[0].t, PICKUPS.flask.respawn)
     assert.deepEqual(m.events[0], { type: 'pickup', kind: 'flask', hero: 'a' })
@@ -40,7 +41,7 @@ describe('flask', () => {
     tickPickups(m, 0.1)                       // taken: 6 hp
     tickPickups(m, PICKUPS.flask.respawn)     // back up this tick
     tickPickups(m, 0.1)                       // taken again by the hero still on it
-    assert.equal(h.hp, 10)
+    assert.equal(h.hp, 8)
   })
 })
 
@@ -63,12 +64,12 @@ describe('rune', () => {
     assert.equal(w.weapon.weaponType, 'ukonvasara')
     assert.equal(a.ranged.weaponType, 'crossbow')
     assert.equal(a.ammo.bolt, 10)
-    assert.equal(mg.wand.weaponType, 'stormwand')
+    assert.equal(mg.wand.weaponType, 'firewand')
     for (const h of [w, a, mg]) endRune(m, h)
     assert.equal(w.weapon.weaponType, 'sword')
     assert.equal(a.ranged.weaponType, 'shortbow')
     assert.equal(a.ammo.bolt, 0)
-    assert.equal(mg.wand.weaponType, 'sparkwand')
+    assert.equal(mg.wand.weaponType, 'stormwand')
     assert.equal(m.events.filter(e => e.type === 'runeEnd').length, 3)
   })
   it('parks the warrior melee offhand for the rune and restores it after', () => {
@@ -99,5 +100,24 @@ describe('rune', () => {
     tickPickups(m, 0.1)                       // taken
     assert.ok(w.rune)
     assert.equal(m.pickups[0].t, PICKUPS.rune.respawn)
+  })
+  it("the archer's double-shot draw is alt-driven (attack never held): the rune drops it without demanding a release before the crossbow fires (fix round 1)", () => {
+    const a = hero('a', 'archer'); const m = testMatch([a])
+    for (let i = 0; i < 20; i++) tickHero(m, a, input({ alt: true, facing: 'east' }), PVP.tick)
+    assert.equal(a.charging.kind, 'double')
+    grantRune(m, a)
+    assert.equal(a.charging, null)
+    assert.equal(a.needRelease, false, 'attack was never held for this draw — no release should be demanded')
+    tickHero(m, a, input({ attack: true, facing: 'east' }), PVP.tick)   // a fresh press: fires at once
+    assert.equal(m.projectiles.length, 1)
+    assert.equal(a.ammo.bolt, 9)
+  })
+  it("endRune's same guard: a double-shot charging state (unit case — the crossbow itself can never start one) does not demand a release either (fix round 1)", () => {
+    const a = hero('a', 'archer'); const m = testMatch([a])
+    grantRune(m, a)
+    a.charging = { t: 0, kind: 'double' }
+    endRune(m, a)
+    assert.equal(a.charging, null)
+    assert.equal(a.needRelease, false)
   })
 })

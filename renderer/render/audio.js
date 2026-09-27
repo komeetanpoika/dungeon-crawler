@@ -18,6 +18,7 @@ export const MASTER_VOL = 0.5
 //   rumble — low sine at freq + filtered noise, longer decay
 export const RECIPES = {
   'melee-swing':    { kind: 'swoosh', f0: 900,  f1: 300,  dur: 0.12, vol: 0.5 },
+  'whirl':          { kind: 'swoosh', f0: 300,  f1: 1400, dur: 0.30, vol: 0.7 },
   'melee-hit':      { kind: 'burst',  freq: 700,  q: 1.2,  dur: 0.09, vol: 0.9 },
   'ranged-shot':    { kind: 'swoosh', f0: 1400, f1: 2200, dur: 0.10, vol: 0.5 },
   'projectile-hit': { kind: 'burst',  freq: 900,  q: 1.5,  dur: 0.08, vol: 0.8 },

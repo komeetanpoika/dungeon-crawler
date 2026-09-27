@@ -48,6 +48,9 @@ describe('view helpers', () => {
     assert.equal(view.player, me)
     assert.deepEqual(view.heroes.map(h => h.id), ['p1', 'p2'])
     assert.deepEqual(view.entities.map(e => [e.type, e.kind]), [['pvp_pickup', 'flask']])
+    assert.deepEqual(view.fireZones, [])
+    const burning = netViewOf({ ...v, fireZones: [{ tiles: [{ x: 1, y: 1 }], age: 0.2 }] }, { bgColor: '#000' }, [[{}]])
+    assert.deepEqual(burning.fireZones, [{ tiles: [{ x: 1, y: 1 }], age: 0.2 }])
   })
   it('errorTitle: removed for idle, slow down for rate_limited, otherwise by the way in', () => {
     assert.equal(errorTitle('idle', 'quick'), 'Removed')

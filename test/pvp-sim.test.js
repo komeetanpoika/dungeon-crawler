@@ -100,7 +100,7 @@ describe('death, credit and respawn', () => {
     const ev = run(m, PVP.respawnDelay + 0.1)
     assert.ok(ev.some(e => e.type === 'respawn' && e.hero === 'h1'))
     assert.equal(b.dead, false)
-    assert.equal(b.hp, 10)
+    assert.equal(b.hp, 8)
     assert.equal(b.ammo.arrow, 24)
     assert.ok(b.spawnProtect > 0)
     assert.ok(Math.hypot(b.px - a.px, b.py - a.py) > 20 * 32)   // across the arena from h0 at (2,2)
@@ -109,7 +109,7 @@ describe('death, credit and respawn', () => {
     const { m, b } = duel()
     b.spawnProtect = 1
     run(m, 0.5, { h0: { move: { x: 0, y: 0 }, facing: 'east', attack: true, alt: false, sprint: false } })
-    assert.equal(b.hp, 10)
+    assert.equal(b.hp, 8)
   })
   it('death ends the rune and clears the charge', () => {
     const { m, a } = duel()
@@ -197,7 +197,7 @@ describe('a blocked hit applies no onHit', () => {
       onHit: { knockback: 45 } })
     const held = { h0: { move: { x: 0, y: 0 }, facing: 'east', attack: false, alt: true, sprint: false } }
     run(m, PVP.tick, held)
-    assert.equal(w.hp, 10)
+    assert.equal(w.hp, 8)
     assert.equal(w.knockback, null)
   })
 })

@@ -23,6 +23,7 @@ import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.j
 import { spriteHue } from '../systems/rites.js'
 import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer } from './tile-layer.js'
+import { drawComboFx, drawArrowTrail } from './pvp-fx.js'
 
 const TILE_SIZE = 32
 
@@ -628,6 +629,7 @@ export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = 
   }
   drawMeleeSwing(ctx, hero, sprites, camX, camY, S)
   drawChargeRing(ctx, hero, camX, camY)
+  drawComboFx(ctx, hero, camX, camY)
   if (hero.rain) drawRainCloud(ctx, hx + S / 2, hy - 14, S, hero.rain.t, hero.rain.t / hero.rain.dur)
   return { px: hx, py: hy }
 }
@@ -1315,6 +1317,7 @@ export class Renderer {
       const flat = Math.abs(p.dx) >= Math.abs(p.dy)   // travelling more across than down
       ctx.fillStyle = p.color ?? '#facc15'   // every spawner sets a colour; this is belt-and-braces
       if (p.shape === 'arrow') {
+        if (p.trail) drawArrowTrail(ctx, p, bpx, bpy)   // a double shot's band-tinted tail
         if (flat) ctx.fillRect(bpx - 4, bpy - 1, 8, 2)
         else ctx.fillRect(bpx - 1, bpy - 4, 2, 8)
       } else if (p.shape === 'quarrel') {

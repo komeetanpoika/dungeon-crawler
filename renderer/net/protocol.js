@@ -1,5 +1,6 @@
-// PvP protocol v3 (v1 in 2026-09-25-pvp-server-netcode-design.md §1; v2 adds hello.quick, 4a spec §1;
-// v3 adds the arena id on welcome and snap, seat tokens, hello.resume and bye, 4b spec §1-§2): message
+// PvP protocol v4 (v1 in 2026-09-25-pvp-server-netcode-design.md §1; v2 adds hello.quick, 4a spec §1;
+// v3 adds the arena id on welcome and snap, seat tokens, hello.resume and bye, 4b spec §1-§2; v4 adds
+// a hero's combo and move and the snapshot's fire zones, 2a spec §5): message
 // names, validation of everything a client sends, and the snapshot a server
 // sends — plus hydrateHero, which turns a snapshot hero back into a hero the
 // renderer and the predictor can use. Shared by server/ and the browser;
@@ -98,6 +99,13 @@ export function heroSnap(h) {
   for (const f of HERO_FIELDS) s[f] = h[f] ?? null
   s.charging = h.charging ? (h.charging.kind ? { t: h.charging.t, kind: h.charging.kind } : { t: h.charging.t }) : null
   s.rune = h.rune ? { t: h.rune.t } : null
+  // A Warrior's hold (2a): the moves so far, the slide, and the last sector
+  // seen — the predictor's replay needs `last`, or a direction held across a
+  // snapshot would read as a new move.
+  s.combo = h.combo ? { moves: [...h.combo.moves], lockDir: { ...h.combo.lockDir }, last: h.combo.last } : null
+  // A combo effect while it runs (2a): what it is, where it aims, how far
+  // in, where it started (the lunge's streak) and whether the dash is over.
+  s.move = h.move ? { kind: h.move.kind, dir: h.move.dir, t: h.move.t, from: { ...h.move.from }, done: !!h.move.done } : null
   s.shock = h.shock ? { tickT: h.shock.tickT, left: h.shock.left } : null
   s.rain = h.rain ? { t: h.rain.t, dur: h.rain.dur } : null
   s.blinkTrail = h.blinkTrail ? { from: { ...h.blinkTrail.from }, to: { ...h.blinkTrail.to }, t: h.blinkTrail.t } : null
@@ -118,6 +126,8 @@ export function hydrateHero(hero, s) {
   for (const f of ['dead', 'blocking', 'frozen', 'needRelease', 'prevAlt']) h[f] = !!s[f]
   h.charging = s.charging ? { ...s.charging } : null
   h.rune = s.rune ? { t: s.rune.t } : null
+  h.combo = s.combo ? { moves: [...s.combo.moves], lockDir: { ...s.combo.lockDir }, last: s.combo.last ?? null } : null
+  h.move = s.move ? { kind: s.move.kind, dir: s.move.dir, t: s.move.t, from: { ...s.move.from }, done: !!s.move.done } : null
   h.shock = s.shock ? { ...s.shock } : undefined
   h.rain = s.rain ? { ...s.rain } : undefined
   h.blinkTrail = s.blinkTrail ? { from: { ...s.blinkTrail.from }, to: { ...s.blinkTrail.to }, t: s.blinkTrail.t } : null
@@ -135,11 +145,13 @@ export function snapshotBody(match, { events = [], cues = [] } = {}) {
     type: MSG.SNAP, arena: match.arena.id, tick: match.tick, clock: match.clock, waiting: !!match.waiting, ended: !!match.ended,
     matchLength: match.matchLength,
     heroes: match.heroes.map(heroSnap),
-    projectiles: match.projectiles.map(p => ({ px: p.px, py: p.py, dx: p.dx, dy: p.dy, shape: p.shape, color: p.color })),
+    projectiles: match.projectiles.map(p => ({ px: p.px, py: p.py, dx: p.dx, dy: p.dy, shape: p.shape, color: p.color,
+      ...(p.trail && { trail: true }) })),
     lightning: match.lightning.map(m => ({ x: m.x, y: m.y, t: m.t, delay: m.delay })),
     strikes: match.strikes.map(s => ({ x: s.x, y: s.y, t: s.t })),
     arcs: match.arcs.map(a => ({ ...a })),
     shockwaves: match.shockwaves.map(s => ({ ...s })),
+    fireZones: match.fireZones.map(z => ({ tiles: z.tiles.map(t => ({ x: t.x, y: t.y })), age: z.age })),
     pickups: match.pickups.map(p => ({ kind: p.kind, x: p.x, y: p.y, px: p.px, py: p.py, up: p.up })),
     events, cues,
   }

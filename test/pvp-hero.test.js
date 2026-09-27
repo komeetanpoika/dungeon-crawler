@@ -10,21 +10,21 @@ const hero = (id, cls, cell = { x: 5, y: 5 }) => { const h = makeHero({ id, name
 const dt = PVP.tick
 
 describe('makeHero / applyKit', () => {
-  it('a warrior wears plate at protect 1, holds a sword and a buckler, fights as melee', () => {
+  it('a warrior wears plate at protect 0, holds a sword and a buckler, fights as melee', () => {
     const h = makeHero({ id: 'w', name: 'W', cls: 'warrior' })
     assert.equal(h.type, 'hero')
     assert.equal(h.attackMode, 'melee')
     assert.equal(h.weapon.weaponType, 'sword')
-    assert.equal(h.gear.melee.outfit.protect, 1)
+    assert.equal(h.gear.melee.outfit.protect, 0)
     assert.equal(h.gear.melee.off.kind, 'shield')
-    assert.equal(h.hp, 10)
+    assert.equal(h.hp, 8)
   })
-  it('an archer has a shortbow and 24 arrows; a mage a spark wand and a blink offhand', () => {
+  it('an archer has a shortbow and 24 arrows; a mage a storm wand and a blink offhand', () => {
     const a = makeHero({ id: 'a', name: 'A', cls: 'archer' })
     assert.equal(a.ranged.weaponType, 'shortbow')
     assert.equal(a.ammo.arrow, 24)
     const m = makeHero({ id: 'm', name: 'M', cls: 'mage' })
-    assert.equal(m.wand.weaponType, 'sparkwand')
+    assert.equal(m.wand.weaponType, 'stormwand')
     assert.equal(m.gear.magic.off.weaponType, 'blinkwand')
   })
   it('applyKit fully resets a hero to a new class', () => {
@@ -35,7 +35,7 @@ describe('makeHero / applyKit', () => {
     assert.equal(h.cls, 'archer')
     assert.equal(h.weapon, null)
     assert.equal(h.gear.melee.outfit, null)
-    assert.equal(h.hp, 10)
+    assert.equal(h.hp, 8)
     assert.equal(h.stunTimer, 0)
     assert.equal(h.attackTimer, 0)
     assert.equal(h.attackDuration, 0.2)
@@ -104,14 +104,15 @@ describe('combat helpers', () => {
   it('hurtHero damages, records the attacker and emits a hit event', () => {
     const a = hero('a', 'archer', { x: 4, y: 5 }), b = hero('b', 'archer'); const m = testMatch([a, b]); m.clock = 7
     assert.equal(hurtHero(m, b, 2, { by: a }), true)
-    assert.equal(b.hp, 8)
+    assert.equal(b.hp, 6)
     assert.deepEqual(b.lastHitBy, { id: 'a', t: 7 })
     assert.deepEqual(m.events[0], { type: 'hit', target: 'b', by: 'a', amount: 2 })
   })
   it('a hit event reports the damage that actually landed, after outfit protect', () => {
     const a = hero('a', 'archer', { x: 4, y: 5 }), w = hero('w', 'warrior'); const m = testMatch([a, w])
+    w.gear.melee.outfit.protect = 1   // a match's plate is 0 (2a); any protect still comes off
     assert.equal(hurtHero(m, w, 2, { by: a }), true)
-    assert.equal(w.hp, 9)   // plate's protect 1 reduces the raw 2 to 1
+    assert.equal(w.hp, 7)   // protect 1 reduces the raw 2 to 1
     assert.deepEqual(m.events[0], { type: 'hit', target: 'w', by: 'a', amount: 1 })
   })
   it('never hurts the attacker itself, a dead hero or a spawn-protected one', () => {
@@ -121,7 +122,7 @@ describe('combat helpers', () => {
     assert.equal(hurtHero(m, a, 2, {}), false)
     a.spawnProtect = 0; a.dead = true
     assert.equal(hurtHero(m, a, 2, {}), false)
-    assert.equal(a.hp, 10)
+    assert.equal(a.hp, 8)
   })
   it('a blocked melee hit shoves the attacker back', () => {
     const a = hero('a', 'archer', { x: 6, y: 5 }), w = hero('w', 'warrior'); const m = testMatch([a, w])

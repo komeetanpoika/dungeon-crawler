@@ -84,7 +84,10 @@ function applyOnHit(p, target) {
 // with the survivors) and state.entities (via hooks.hurt's replacement
 // entity, and hooks.cull's culling); returns { hits } for callers that want
 // a count (e.g. combo/sfx bookkeeping upstream). hooks: { hurt(e, damage, p)
-// -> entity, detonate(px, py, blastTiles, { fireOnly }), damagePlayer(damage, from),
+// -> entity, detonate(px, py, blastTiles, { fireOnly }, { owner, struck }) —
+// the fifth argument names the shooter and the entity struck directly (null
+// at a wall or the end of range), for PvP's burst and kill credit —
+// damagePlayer(damage, from),
 // isHittable(e), cull(entities) -> entities (optional, defaults to identity
 // — game.js passes its real cullDead with the keep predicate it uses
 // elsewhere, since a corpse can sit at 0 hp without isHittable/dying saying
@@ -105,13 +108,13 @@ export function stepProjectiles(state, delta, hooks) {
     p.distTraveled = (p.distTraveled ?? 0) + speed * delta
 
     if (p.maxDist !== undefined && p.distTraveled >= p.maxDist) {
-      if (p.explodes) hooks.detonate(p.lastPx ?? p.px, p.lastPy ?? p.py, p.blastTiles, { fireOnly: !!p.fireOnly })
+      if (p.explodes) hooks.detonate(p.lastPx ?? p.px, p.lastPy ?? p.py, p.blastTiles, { fireOnly: !!p.fireOnly }, { owner: p.owner, struck: null })
       continue // culled: ran out of range
     }
 
     const tile = map?.[Math.floor(p.py / TILE_SIZE)]?.[Math.floor(p.px / TILE_SIZE)]
     if (!tile || !isWalkable(tile.tile, tile)) {
-      if (p.explodes) hooks.detonate(p.lastPx ?? p.px, p.lastPy ?? p.py, p.blastTiles, { fireOnly: !!p.fireOnly })
+      if (p.explodes) hooks.detonate(p.lastPx ?? p.px, p.lastPy ?? p.py, p.blastTiles, { fireOnly: !!p.fireOnly }, { owner: p.owner, struck: null })
       continue // culled: hit a wall
     }
     if (p.explodes) { p.lastPx = p.px; p.lastPy = p.py }
@@ -169,7 +172,7 @@ export function stepProjectiles(state, delta, hooks) {
         // shield absorbed (mirrors the original game.js `hit = true` before
         // the shield fallthrough) — at the projectile's current position,
         // not lastPx/lastPy (that pair is only for the wall/maxDist stop).
-        if (p.explodes) hooks.detonate(p.px, p.py, p.blastTiles, { fireOnly: !!p.fireOnly })
+        if (p.explodes) hooks.detonate(p.px, p.py, p.blastTiles, { fireOnly: !!p.fireOnly }, { owner: p.owner, struck: target })
         // A hit can drop an entity to 0 hp without removing it — isHittable
         // only checks `dying`, not hp — so cull now, after the replacement
         // above has landed in state.entities, or a second projectile later

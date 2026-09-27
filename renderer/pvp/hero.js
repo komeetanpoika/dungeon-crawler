@@ -14,8 +14,9 @@ import { tickWalk } from '../systems/walk.js'
 import { chargeMoveFactor, isChargeWeapon, shouldAutoRelease, resolveCharge } from '../systems/melee.js'
 import { GUST_CHARGE, resolveGustTier, shouldAutoReleaseGust } from '../systems/magic.js'
 import { spellFor } from '../systems/spells.js'
-import { swing, castSpell, loose } from './attacks.js'
-import { KITS, OUTFIT_OVERRIDES, PVP } from '../data/pvp.js'
+import { swing, castSpell, loose, startCombo, stepCombo, canDrawDouble, looseDouble } from './attacks.js'
+import { isComboWeapon, beginHold, holdGesture, classify, unitMove, isDashing, SECTOR_FACING } from './combos.js'
+import { KITS, OUTFIT_OVERRIDES, PVP, WARRIOR_COMBOS, DOUBLE_SHOT, drawFrac } from '../data/pvp.js'
 
 export const NEUTRAL_INPUT = Object.freeze({ move: Object.freeze({ x: 0, y: 0 }), facing: null, attack: false, alt: false, sprint: false })
 
@@ -47,7 +48,7 @@ export function applyKit(hero, cls) {
   }
   hero.maxHp = PVP.hp; hero.hp = PVP.hp
   hero.stamina = STAMINA_MAX; hero.maxStamina = STAMINA_MAX; hero.staminaRegenT = 0; hero.staminaRefusedT = 0
-  hero.charging = null; hero.rune = null; hero.shock = undefined; hero.rain = undefined
+  hero.charging = null; hero.combo = null; hero.move = null; hero.invulnGroup = null; hero.rune = null; hero.shock = undefined; hero.rain = undefined
   hero.stunTimer = 0; hero.slowTimer = 0; hero.slowMul = 1; hero.rootTimer = 0; hero.frozen = false
   hero.knockback = null; hero.invulnTimer = 0; hero.blocking = false; hero.shieldDropT = 0; hero.blockedHit = false
   hero.meleeCooldown = 0; hero.rangedCooldown = 0; hero.magicCooldown = 0; hero.offCooldown = 0
@@ -90,25 +91,34 @@ export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
   }
 
   const stunned = hero.stunTimer > 0
-  if (stunned) hero.charging = null
   // After a release the attack must be let go before it can wind up again
   // (game.js does this by clearing keys[' ']).
   if (!input.attack) hero.needRelease = false
+  // A stun also ends a running combo effect (the lunge's dash, the thrusts).
+  if (stunned) { cancelCharge(hero, input); hero.charging = null; hero.move = null; cancelHold(hero, input) }
   const altEdge = !!input.alt && !hero.prevAlt
   hero.prevAlt = !!input.alt
   hero.blockedHit = false
   const blocking = tickShield(hero, !!input.alt && !stunned, dt)
-  if (blocking) hero.charging = null
-  if (!stunned && input.facing && DIRS[input.facing]) hero.facing = input.facing
+  if (blocking) { cancelCharge(hero, input); hero.charging = null; cancelHold(hero, input) }
+  // A held combo locks the facing (the moves aim the strike, not the stick),
+  // and so does the lunge's dash.
+  const dashing = isDashing(hero)
+  if (!stunned && !hero.combo && !dashing && input.facing && DIRS[input.facing]) hero.facing = input.facing
 
-  let vx = Math.sign(input.move?.x ?? 0), vy = Math.sign(input.move?.y ?? 0)
-  if (vx !== 0 && vy !== 0) { vx /= Math.SQRT2; vy /= Math.SQRT2 }
+  // While the attack is held the Warrior slides along the move held at the
+  // press, at half speed, whatever the stick does now (spec 2a §2); during
+  // the lunge's dash the dash alone moves the hero.
+  const { x: vx, y: vy } = hero.combo ? hero.combo.lockDir : dashing ? { x: 0, y: 0 } : unitMove(input.move)
   const moving = vx !== 0 || vy !== 0
   const profile = sprintProfile(hero.attackMode, { drainMul: outfitOf(hero, hero.attackMode)?.sprintDrain ?? 1 })
-  const sprinting = moving && !!input.sprint && !hero.charging && !blocking && hero.stamina > 0
-  const chargeFactor = hero.charging
-    ? (hero.charging.kind === 'spell' ? GUST_CHARGE.moveFactor : chargeMoveFactor(hero.weapon?.weaponType))
-    : 1
+  const sprinting = moving && !!input.sprint && !hero.charging && !hero.combo && !blocking && hero.stamina > 0
+  const chargeFactor = hero.combo ? WARRIOR_COMBOS.holdMoveMul
+    : hero.charging
+      ? (hero.charging.kind === 'spell' ? GUST_CHARGE.moveFactor
+        : hero.charging.kind === 'double' ? DOUBLE_SHOT.moveMul
+        : chargeMoveFactor(hero.weapon?.weaponType))
+      : 1
   const slow = hero.slowTimer > 0 ? hero.slowMul : 1
   const speed = PLAYER_SPEED * chargeFactor * rainSlow(hero) * slow *
     (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
@@ -125,14 +135,49 @@ export function tickHero(match, hero, input = NEUTRAL_INPUT, dt) {
   const attacking = !!input.attack && !hero.needRelease && !blocking
   if (hero.attackMode === 'melee') tickMelee(match, hero, input, attacking, dt)
   else if (hero.attackMode === 'magic') tickMagic(match, hero, input, attacking, altEdge, dt)
-  else if (hero.attackMode === 'ranged') tickRanged(match, hero, attacking)
+  else if (hero.attackMode === 'ranged') tickRanged(match, hero, input, attacking, dt)
+  stepCombo(match, hero, dt)
 }
 
-// Light blades swing the instant attack lands; charge weapons (the rune's
-// hammer) wind up while it is held and swing on release, tiered by hold.
+// A stun or a raised shield ends a hold: no combo fires, the stamina spent
+// stays spent. A release is required before the next hold only if the key
+// was still down at the moment of the cancel — if it had already come up
+// this tick, `needRelease` is already false and stays that way, so a bot
+// (or a player) that let go exactly on the cancelling tick is not stuck
+// waiting on a release that already happened.
+function cancelHold(hero, input) {
+  if (!hero.combo) return
+  hero.combo = null
+  hero.needRelease = !!input.attack
+}
+
+// A stun or a raised shield also ends a hammer wind-up or a Storm Wand
+// charge (`hero.charging`, kind undefined or 'spell' — not the Archer's
+// alt-driven double-shot draw, which never held attack in the first place).
+// Same rule as cancelHold: a release is demanded only if attack was still
+// down at the cancel, so a key already up by this tick is not stuck latched.
+// Called just before the caller nulls `hero.charging`.
+function cancelCharge(hero, input) {
+  if (hero.charging && hero.charging.kind !== 'double' && input.attack) hero.needRelease = true
+}
+
+// The sword is a combo weapon (spec 2a §2): the press begins a hold, moves
+// are entered while it is held, and the release fires what was entered —
+// a plain swing when nothing was. Charge weapons (the rune's hammer) wind up
+// while held and swing on release, tiered by hold; any other light blade
+// swings the instant attack lands.
 function tickMelee(match, hero, input, attacking, dt) {
   const wt = hero.weapon?.weaponType
-  if (!wt) { hero.charging = null; return }
+  if (!wt) { hero.charging = null; hero.combo = null; return }
+  if (isComboWeapon(wt)) {
+    if (hero.charging && !hero.charging.kind) hero.charging = null
+    if (hero.combo) {
+      if (input.attack) holdGesture(hero, input.move)
+      else releaseCombo(match, hero)
+    } else if (attacking && hero.meleeCooldown <= 0) beginHold(hero, input.move)
+    return
+  }
+  hero.combo = null
   if (isChargeWeapon(wt)) {
     if (hero.charging) {
       if (input.attack && !shouldAutoRelease(wt, hero.charging.t)) hero.charging.t += dt
@@ -147,6 +192,17 @@ function tickMelee(match, hero, input, attacking, dt) {
     if (hero.charging && !hero.charging.kind) hero.charging = null
     if (attacking && hero.meleeCooldown <= 0) swing(match, hero, resolveCharge(wt, 0))
   }
+}
+
+// The release: the combo's direction becomes the facing, then the plain
+// swing or the combo's cooldown. Returns the classified combo.
+function releaseCombo(match, hero) {
+  const combo = classify(hero.combo.moves)
+  hero.combo = null
+  if (combo.dir) hero.facing = SECTOR_FACING[combo.dir]
+  if (combo.kind === 'swing') swing(match, hero, resolveCharge(hero.weapon.weaponType, 0))
+  else startCombo(match, hero, combo)
+  return combo
 }
 
 // Hold to charge the main wand, release to cast; an offhand wand casts a
@@ -164,7 +220,18 @@ function tickMagic(match, hero, input, attacking, altEdge, dt) {
   if (altEdge && offhand(hero)?.kind === 'wand') castSpell(match, hero, spellFor(hero, 'off').id, 'tap', 'off')
 }
 
-// Every PvP bow fires on its cooldown while attack is held.
-function tickRanged(match, hero, attacking) {
+// Every PvP bow fires on its cooldown while attack is held. Holding alt (Q)
+// draws the double shot (spec 2a §3): the draw counts up to
+// DOUBLE_SHOT.full and holds there (no auto-release), the attack does
+// nothing meanwhile, and letting go looses both arrows at the draw reached.
+function tickRanged(match, hero, input, attacking, dt) {
+  if (hero.charging?.kind === 'double') {
+    if (input.alt) { hero.charging.t = Math.min(hero.charging.t + dt, DOUBLE_SHOT.full); return }
+    const frac = drawFrac(hero.charging.t)
+    hero.charging = null
+    looseDouble(match, hero, frac)
+    return
+  }
+  if (input.alt && canDrawDouble(hero)) { hero.charging = { t: 0, kind: 'double' }; return }
   if (attacking) loose(match, hero)
 }

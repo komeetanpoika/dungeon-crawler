@@ -419,3 +419,38 @@ describe('reconnect', () => {
     assert.equal(Sock.all.length, 2, 'no further attempt after the 4001')
   })
 })
+
+describe('input latch (2a: releases fire)', () => {
+  const sentInputs = s => s.ws.sent.filter(m => m.type === 'input')
+  it('a one-frame tap between two sends is carried by the next input', () => {
+    const s = open(); welcome(s)
+    frame(s, NEUTRAL_INPUT, 0)
+    frame(s, { ...NEUTRAL_INPUT, attack: true }, 10)      // no send yet: 10 ms < one tick
+    frame(s, NEUTRAL_INPUT, 40)                           // this send carries the tap
+    frame(s, NEUTRAL_INPUT, 80)
+    assert.deepEqual(sentInputs(s).map(m => m.attack), [true, false])
+  })
+  it('a release is sent at once: the input after the key comes up is not a latched press', () => {
+    const s = open(); welcome(s)
+    frame(s, NEUTRAL_INPUT, 0)
+    frame(s, { ...NEUTRAL_INPUT, attack: true }, 34)      // send 1: held
+    frame(s, NEUTRAL_INPUT, 50)                           // let go between sends
+    frame(s, NEUTRAL_INPUT, 68)                           // send 2: released
+    assert.deepEqual(sentInputs(s).map(m => m.attack), [true, false])
+  })
+  it('a key held through a frame that sends two inputs is down in both', () => {
+    const s = open(); welcome(s)
+    frame(s, NEUTRAL_INPUT, 0)
+    frame(s, { ...NEUTRAL_INPUT, alt: true }, 70)         // two ticks' worth in one frame
+    assert.deepEqual(sentInputs(s).map(m => m.alt), [true, true])
+  })
+})
+
+describe('fire zones on the wire (protocol v4)', () => {
+  it("sessionView hands on the newest snapshot's fire zones", () => {
+    const s = open(); welcome(s)
+    const hero = lone()
+    s.ws.onmessage({ data: JSON.stringify(snapBody(hero, { fireZones: [{ tiles: [{ x: 2, y: 3 }], age: 1 }] })) })
+    assert.deepEqual(sessionView(s, 0).fireZones, [{ tiles: [{ x: 2, y: 3 }], age: 1 }])
+  })
+})

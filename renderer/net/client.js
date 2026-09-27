@@ -234,7 +234,12 @@ export function frame(s, input, t = s.now()) {
   const tickMs = PVP.tick * 1000
   // Frames run faster than the 30 Hz input step, so a press that lasts one
   // frame can fall between two sends; it is latched until the next input
-  // carries it, and a tap is never lost.
+  // carries it, and a tap is never lost. A release is not latched: the
+  // sword swings and the double shot looses on the release (2a), so the
+  // first input after the key comes up says so. A down-up-down that all
+  // lands inside one send window still reaches the server as one
+  // continuous hold — that's accepted: the intra-frame release is invisible
+  // to the 30 Hz wire either way.
   s.held.attack ||= !!input.attack
   s.held.alt ||= !!input.alt
   while (s.acc >= tickMs) {
@@ -242,9 +247,9 @@ export function frame(s, input, t = s.now()) {
     const msg = {
       type: MSG.INPUT, seq: ++s.seq, view: Math.max(0, Math.floor(renderTick(s.interp, t))),
       move: { x: input.move?.x ?? 0, y: input.move?.y ?? 0 }, facing: input.facing ?? null,
-      attack: s.held.attack, alt: s.held.alt, sprint: !!input.sprint,
+      attack: s.held.attack || !!input.attack, alt: s.held.alt || !!input.alt, sprint: !!input.sprint,
     }
-    s.held = { attack: !!input.attack, alt: !!input.alt }
+    s.held = { attack: false, alt: false }
     s.ws.send(encode(msg))
     // While the newest snapshot shows the match ended (the results screen),
     // the server has stopped stepping every hero, so predicting further
@@ -254,8 +259,8 @@ export function frame(s, input, t = s.now()) {
     // advancing — but nothing is predicted or queued for replay.
     if (s.pred && !newest(s.interp)?.ended) {
       s.pred.from = { x: s.pred.hero.px, y: s.pred.hero.py }
-      predictStep(s.pred, msg)
-      predictCosmetics(s.pred, msg)
+      const { released } = predictStep(s.pred, msg)
+      predictCosmetics(s.pred, msg, PVP.tick, released)
       s.pred.pending.push({ seq: msg.seq, input: msg })
       if (s.pred.pending.length > NET.pendingMax) s.pred.pending.shift()
     }
@@ -300,6 +305,7 @@ export function sessionView(s, t = s.now()) {
   return {
     me, others, projectiles: projectilesAt(s.interp, rt),
     lightning: last.lightning, strikes: last.strikes, arcs: last.arcs, shockwaves: last.shockwaves, pickups: last.pickups,
+    fireZones: last.fireZones ?? [],
     clock: last.clock, waiting: last.waiting, ended: last.ended, matchLength: last.matchLength,
     room: s.room, ping: s.ping, feedback: s.feedback,
   }
