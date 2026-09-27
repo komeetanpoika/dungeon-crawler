@@ -79,6 +79,18 @@ export function removeHero(match, id) {
     if (rune) { rune.up = true; rune.t = 0 }
   }
   match.heroes.splice(i, 1)
+  // A reused bot id (balanceBots can hand a fresh bot the same `b1…` slot)
+  // must never inherit a departed hero's dot or fire-patch credit (M4): a
+  // dot/patch's `owner` is just the id string, so once this id is gone it
+  // has to be nulled here rather than left to a future heroById lookup —
+  // otherwise a same-id newcomer would silently match it. Nulling (not
+  // dropping) keeps the dot ticking and the patch burning, crediting
+  // nobody, per spec reading 8's "an owner who has left credits nobody".
+  for (const h of match.heroes) {
+    if (h.burn?.owner === id) h.burn.owner = null
+    if (h.poison?.owner === id) h.poison.owner = null
+  }
+  for (const z of match.fireZones) if (z.owner === id) z.owner = null
   refreshTargets(match)
   match.events.push({ type: 'leave', hero: id })
   return true

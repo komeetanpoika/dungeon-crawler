@@ -265,6 +265,22 @@ describe('the edges', () => {
     assert.equal(tiles.length, 5)
     for (const t of tiles) assert.ok(t.x >= 1 && t.y >= 1, `${t.x},${t.y} is a wall`)
   })
+  it("a bot id reused after it left gets no credit for its old fire patch (M4)", () => {
+    const { a, f, m } = pair()
+    grantBuff(a, 'ember', 'major')
+    blow(m, a)
+    assert.equal(m.fireZones[0].owner, 'a')
+    removeHero(m, 'a')
+    assert.equal(m.fireZones[0].owner, null, "nulled the moment 'a' left, not left to a future id match")
+    m.heroes.push(makeHero({ id: 'a', name: 'new a', cls: 'archer' }))   // balanceBots reissues the id
+    placeHero(m.heroes[1], { x: 20, y: 20 })
+    m.events = []                                    // drop blow(m, a)'s own 'hit' credited to 'a'
+    const before = f.hp
+    for (let i = 0; i < 30; i++) tickFireZones(m, dt)
+    const hits = m.events.filter(e => e.type === 'hit')
+    assert.ok(f.hp < before, 'the patch keeps burning')
+    assert.ok(hits.length > 0 && hits.every(e => e.by === null), 'not the newcomer sharing the old id')
+  })
   it("a newer Ember patch replaces the same attacker's older one; another's stays", () => {
     const { a, f, m } = pair()
     grantBuff(a, 'ember', 'major')
@@ -392,6 +408,19 @@ describe('tickDots', () => {
     for (let i = 0; i < 30; i++) ev.push(...stepMatch(m, {}, dt))
     assert.equal(f.hp, PVP.hp - 1)
     assert.deepEqual(ev.filter(e => e.type === 'hit').map(e => e.by), [null])
+    assert.equal(f.lastHitBy, null)
+  })
+  it("a bot id reused after it left gets no credit for its old burn (M4)", () => {
+    const { m, f } = burning('burn', 2)
+    m.heroes.push(makeHero({ id: 'x', name: 'x', cls: 'mage' }))   // a third hero, so the match keeps two
+    placeHero(m.heroes[2], { x: 20, y: 20 })
+    removeHero(m, 'a')
+    m.heroes.push(makeHero({ id: 'a', name: 'new a', cls: 'archer' }))   // balanceBots reissues the id
+    placeHero(m.heroes[2], { x: 20, y: 21 })
+    const ev = []
+    for (let i = 0; i < 30; i++) ev.push(...stepMatch(m, {}, dt))
+    assert.equal(f.hp, PVP.hp - 1)
+    assert.deepEqual(ev.filter(e => e.type === 'hit').map(e => e.by), [null], 'not the newcomer sharing the old id')
     assert.equal(f.lastHitBy, null)
   })
   it('a spawn-protected hero takes no tick, and the dot runs on', () => {
