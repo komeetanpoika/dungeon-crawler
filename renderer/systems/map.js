@@ -432,8 +432,10 @@ export function pickMonsterSpawn(cfg, depth, i, guaranteed, genPool, rand = Math
 export function buildArena(config = {}, warn = console.warn) {
   const clampInt = (v, lo, hi, dflt) =>
     Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : dflt
-  const width  = clampInt(config.size?.w, 8, 40, 26)
-  const height = clampInt(config.size?.h, 8, 30, 18)
+  // 60 × 44 at most (raised from 40 × 30 for PvP 2b's large arenas; only
+  // the maximum moved, so every smaller config builds as before).
+  const width  = clampInt(config.size?.w, 8, 60, 26)
+  const height = clampInt(config.size?.h, 8, 44, 18)
 
   const map = createMap(width, height) // all TILE.WALL
   for (let y = 1; y < height - 1; y++)

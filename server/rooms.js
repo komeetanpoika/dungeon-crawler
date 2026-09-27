@@ -10,7 +10,7 @@ import { makeSfx, drainSfx } from '../renderer/systems/sfx.js'
 import { snapshotBody, ERR } from '../renderer/net/protocol.js'
 import { PVP, CLASSES } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
-import { arenaAt, nextArenaIndex } from '../renderer/data/pvp-arenas.js'
+import { arenaAt, nextArenaIndex, playableIndex } from '../renderer/data/pvp-arenas.js'
 import { randomSeed } from '../renderer/pvp/rng.js'
 
 export function makeLobby({ random = Math.random, rewind = true, matchLength = PVP.matchLength,
@@ -211,7 +211,9 @@ function recordHistory(room) {
 function startNextMatch(lobby, room) {
   const prev = room.match
   const roster = prev.heroes.map(h => ({ id: h.id, name: h.name, cls: h.pendingCls ?? h.cls }))
-  room.arenaIndex = nextArenaIndex(room.arenaIndex)
+  // A large arena needs PVP.largeMinHeroes heroes (2b spec §4); a public
+  // room always has them, bots included.
+  room.arenaIndex = playableIndex(nextArenaIndex(room.arenaIndex), roster.length)
   room.match = newMatch(lobby, room, roster)
   room.match.tick = prev.tick
   for (const p of room.players.values()) p.lastInputTick = room.match.tick

@@ -841,7 +841,7 @@ function startPvp(cls, arenaIndex = 0) {
   const { theme } = match.arena
   decorateMap(match.map, rulesets[theme.ruleset])
   skinFloors(match.map, theme.floorSkins)
-  pvp = { match, theme, cls, arenaIndex, picking: false }
+  pvp = { match, theme, cls, arenaIndex: match.arenaIndex, picking: false }
   state = null
   setPhase(PHASE.PLAYING)
   menu.hide()

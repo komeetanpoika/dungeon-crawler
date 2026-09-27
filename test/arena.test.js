@@ -2,6 +2,8 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildArena, buildBossTestArena, generateLevel } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
+import { PVP_ARENAS } from '../renderer/data/pvp-arenas.js'
+import { createHash } from 'node:crypto'
 
 describe('buildArena — default content', () => {
   it('reproduces the original boss arena when no enemies/chests are configured', () => {
@@ -82,10 +84,26 @@ describe('buildArena — configured content', () => {
     assert.deepEqual(buildArena({ player: { x: -3, y: 99 } }).playerSpawn, { x: 1, y: 16 })
   })
 
-  it('clamps size to 8×8 … 40×30', () => {
+  it('clamps size to 8×8 … 60×44 (2b raised the maximum from 40×30)', () => {
     assert.equal(buildArena({ size: { w: 4, h: 4 }, enemies: [] }).map.length, 8)
-    assert.equal(buildArena({ size: { w: 100, h: 100 }, enemies: [] }).map.length, 30)
-    assert.equal(buildArena({ size: { w: 100, h: 100 }, enemies: [] }).map[0].length, 40)
+    assert.equal(buildArena({ size: { w: 4, h: 4 }, enemies: [] }).map[0].length, 8)
+    assert.equal(buildArena({ size: { w: 100, h: 100 }, enemies: [] }).map.length, 44)
+    assert.equal(buildArena({ size: { w: 100, h: 100 }, enemies: [] }).map[0].length, 60)
+  })
+
+  it('every config inside the old 40×30 clamp builds exactly as before (fingerprints taken before 2b)', () => {
+    const print = o => createHash('sha1').update(JSON.stringify(o)).digest('hex').slice(0, 12)
+    const sizes = { '8x8': 'c02cbf483c53', '26x18': '27645ecded8f', '30x22': '16f64ae34384', '40x30': 'bb0aaeb2f2c5' }
+    for (const [k, want] of Object.entries(sizes)) {
+      const [w, h] = k.split('x').map(Number)
+      assert.equal(print(buildArena({ size: { w, h } }, () => {})), want, k)
+    }
+    const arenas = { pillars: 'e3ae2a1b1243', glade: '6cb87fdfb79f', tunnels: '8103b0001069', ruins: '5168e926bf13' }
+    for (const [id, want] of Object.entries(arenas)) {
+      const a = PVP_ARENAS[id]
+      const { map } = buildArena({ size: a.size, columns: a.columns, walls: a.walls, player: a.spawns[0], enemies: [], chests: [] }, () => {})
+      assert.equal(print(map), want, id)
+    }
   })
 
   it('skips explicit spawns that overlap the player or another spawn', () => {

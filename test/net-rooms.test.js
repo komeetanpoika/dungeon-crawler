@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeLobby, createRoom, joinRoom, leaveRoom, queueInput, setRoomClass, stepRoom, ackOf, rewoundPos } from '../server/rooms.js'
+import { makeLobby, createRoom, joinRoom, leaveRoom, queueInput, setRoomClass, stepRoom, ackOf, rewoundPos, quickJoin } from '../server/rooms.js'
 import { placeHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
 import { encode, ERR } from '../renderer/net/protocol.js'
 import { NET } from '../renderer/data/net.js'
@@ -187,8 +187,19 @@ describe('arena rotation', () => {
     joinRoom(lobby, room.code, who('B', 'archer'))
     const ids = [room.match.arena.id]
     for (let i = 0; i < 4; i++) { nextMatch(lobby, room); ids.push(room.match.arena.id) }
-    assert.deepEqual(ids, ['pillars', 'glade', 'tunnels', 'ruins', 'pillars'])
+    assert.deepEqual(ids, ['pillars', 'glade', 'tunnels', 'ruins', 'pillars'], 'two heroes: keep and wilds are skipped (2b)')
     assert.equal(room.arenaIndex, 0)
+  })
+  it('a room of 4 or more heroes plays the large arenas too: a public room always has, through its bots (2b)', () => {
+    const lobby = makeLobby({ matchLength: 1, resultsDelay: 0.5 })
+    const { room } = quickJoin(lobby, who('A', 'warrior'))
+    assert.equal(room.match.heroes.length, 4)
+    const ids = [room.match.arena.id]
+    for (let i = 0; i < 6; i++) { nextMatch(lobby, room); ids.push(room.match.arena.id) }
+    assert.deepEqual(ids, ['pillars', 'glade', 'keep', 'tunnels', 'ruins', 'wilds', 'pillars'])
+    nextMatch(lobby, room); nextMatch(lobby, room)
+    assert.equal(room.match.arena.id, 'keep')
+    for (const h of room.match.heroes) assert.ok(room.match.arena.spawns.some(s => s.x === h.x && s.y === h.y), h.id)
   })
   it("the new match puts every hero on the new arena's spawns and its snapshots name it", () => {
     const lobby = makeLobby({ matchLength: 1, resultsDelay: 0.5 })
