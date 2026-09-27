@@ -17,6 +17,7 @@ import { spellFor } from '../systems/spells.js'
 import { swing, castSpell, loose, startCombo, stepCombo, canDrawDouble, looseDouble } from './attacks.js'
 import { isComboWeapon, beginHold, holdGesture, classify, unitMove, isDashing, SECTOR_FACING } from './combos.js'
 import { KITS, OUTFIT_OVERRIDES, PVP, WARRIOR_COMBOS, DOUBLE_SHOT, drawFrac } from '../data/pvp.js'
+import { clearBuffs, tickBuffs, hasteMul } from './buffs.js'
 
 export const NEUTRAL_INPUT = Object.freeze({ move: Object.freeze({ x: 0, y: 0 }), facing: null, attack: false, alt: false, sprint: false })
 
@@ -55,6 +56,7 @@ export function applyKit(hero, cls) {
   hero.needRelease = false; hero.blinkTrail = null
   hero.attackTimer = 0; hero.attackDuration = 0.2; hero.attackStyle = 'arc'; hero.attackFacing = 'south'
   hero.prevAlt = false
+  clearBuffs(hero)   // 2b: a new life starts with no buffs, burn or poison
 }
 
 export function placeHero(hero, { x, y }) {
@@ -85,6 +87,7 @@ export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
   hero.spawnProtect = Math.max(0, hero.spawnProtect - dt)
   tickStamina(hero, dt)
   tickRain(hero, dt)
+  tickBuffs(hero, dt)
   if (hero.blinkTrail) {
     hero.blinkTrail.t += dt
     if (hero.blinkTrail.t >= PVP.blinkTrailDur) hero.blinkTrail = null
@@ -120,7 +123,8 @@ export function moveHero(match, hero, input = NEUTRAL_INPUT, dt) {
         : chargeMoveFactor(hero.weapon?.weaponType))
       : 1
   const slow = hero.slowTimer > 0 ? hero.slowMul : 1
-  const speed = PLAYER_SPEED * chargeFactor * rainSlow(hero) * slow *
+  // Haste (2b) multiplies with everything else: sprint, slows, a hold.
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(hero) * slow * hasteMul(hero) *
     (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(hero, profile.drain * dt)
   if (!stunned && !(hero.rootTimer > 0)) moveEntity(hero, vx * speed * dt, vy * speed * dt, match.map, PLAYER_HALF)

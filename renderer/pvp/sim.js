@@ -20,6 +20,7 @@ import { makeHero, placeHero, applyKit, tickHero, tickHeroStatus, NEUTRAL_INPUT 
 import { heroById, hurtHero, refreshTargets } from './combat.js'
 import { makePickups, tickPickups, tickRunes, endRune } from './pickups.js'
 import { mulberry32 } from './rng.js'
+import { clearBuffs } from './buffs.js'
 
 // The arena's tiles. The player spawn is pinned to the first hero spawn, a
 // floor cell, so buildArena never skips a column or wall for standing on its
@@ -278,6 +279,7 @@ function resolveDeaths(match) {
     h.knockback = null
     h.shock = undefined
     h.blocking = false
+    clearBuffs(h)      // 2b: buffs, burn and poison die with the hero
   }
 }
 

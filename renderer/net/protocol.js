@@ -10,6 +10,7 @@ import { KITS } from '../data/pvp.js'
 import { DIRS, weaponContents, makeRangedContents, makeWandContents } from '../systems/entities.js'
 import { gearOf, offhand } from '../systems/inventory.js'
 import { makeHero, applyKit } from '../pvp/hero.js'
+import { copyBuffs } from '../pvp/buffs.js'
 
 export const MSG = { HELLO: 'hello', INPUT: 'input', CLASS: 'class', PING: 'ping', BYE: 'bye',
   WELCOME: 'welcome', SNAP: 'snap', ERROR: 'error', PONG: 'pong' }
@@ -106,6 +107,8 @@ export function heroSnap(h) {
   // A combo effect while it runs (2a): what it is, where it aims, how far
   // in, where it started (the lunge's streak) and whether the dash is over.
   s.move = h.move ? { kind: h.move.kind, dir: h.move.dir, t: h.move.t, from: { ...h.move.from }, done: !!h.move.done } : null
+  // 2b: the buffs, for the looks, the HUD and the predictor's Haste.
+  s.buffs = copyBuffs(h.buffs)
   s.shock = h.shock ? { tickT: h.shock.tickT, left: h.shock.left } : null
   s.rain = h.rain ? { t: h.rain.t, dur: h.rain.dur } : null
   s.blinkTrail = h.blinkTrail ? { from: { ...h.blinkTrail.from }, to: { ...h.blinkTrail.to }, t: h.blinkTrail.t } : null
@@ -128,6 +131,7 @@ export function hydrateHero(hero, s) {
   h.rune = s.rune ? { t: s.rune.t } : null
   h.combo = s.combo ? { moves: [...s.combo.moves], lockDir: { ...s.combo.lockDir }, last: s.combo.last ?? null } : null
   h.move = s.move ? { kind: s.move.kind, dir: s.move.dir, t: s.move.t, from: { ...s.move.from }, done: !!s.move.done } : null
+  h.buffs = copyBuffs(s.buffs)
   h.shock = s.shock ? { ...s.shock } : undefined
   h.rain = s.rain ? { ...s.rain } : undefined
   h.blinkTrail = s.blinkTrail ? { from: { ...s.blinkTrail.from }, to: { ...s.blinkTrail.to }, t: s.blinkTrail.t } : null
