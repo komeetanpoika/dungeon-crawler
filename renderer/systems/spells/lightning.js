@@ -164,8 +164,11 @@ function strike(state, mark, hooks) {
     const caught = (inBlast && !isStoryCreature(e)) || water.has(key(t.x, t.y))
     if (!caught) continue
     hit++
-    hooks?.hurt?.(e, mark.damage ?? LIGHTNING.damage, { source: 'lightning', ...(mark.owner !== undefined && { owner: mark.owner }) })
-    if (stunnable(e)) e.stunTimer = Math.max(e.stunTimer ?? 0, mark.stun ?? LIGHTNING.stun)
+    const r = hooks?.hurt?.(e, mark.damage ?? LIGHTNING.damage, { source: 'lightning', ...(mark.owner !== undefined && { owner: mark.owner }) })
+    // A hit a Ward soaks whole must not stun — the hook returns false for
+    // that case in PvP; single-player hooks return undefined, so they are
+    // unchanged (every non-PvP hurt hook here always stuns as before).
+    if (r !== false && stunnable(e)) e.stunTimer = Math.max(e.stunTimer ?? 0, mark.stun ?? LIGHTNING.stun)
   }
   state.flash = LIGHTNING.flash
   // The whole map reads as daylight for the quarter-second (weatherLook

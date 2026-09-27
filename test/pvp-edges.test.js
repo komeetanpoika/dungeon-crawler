@@ -219,6 +219,22 @@ describe('a Ward-soaked hit applies no crowd control', () => {
     assert.equal(PVP.hp - a.hp, 1)
     assert.equal(a.shock.owner, 'w')
   })
+  it('a lightning strike fully soaked by a Ward stuns nobody (I1)', () => {
+    const { m, a, f } = duel('mage', 'archer')
+    grantBuff(f, 'ward', 'major')
+    m.lightning.push({ x: f.x, y: f.y, t: 0, delay: 0, owner: 'a', damage: 3, stun: 1 })
+    ticks(m, 1)
+    assert.equal(f.hp, PVP.hp)
+    assert.equal(f.stunTimer, 0)
+  })
+  it('a lightning strike only dented by a Ward still stuns', () => {
+    const { m, a, f } = duel('mage', 'archer')
+    grantBuff(f, 'ward', 'minor')
+    m.lightning.push({ x: f.x, y: f.y, t: 0, delay: 0, owner: 'a', damage: 3, stun: 1 })
+    ticks(m, 1)
+    assert.equal(PVP.hp - f.hp, 1)
+    assert.ok(f.stunTimer > 0)
+  })
 })
 
 describe('the edges', () => {

@@ -241,7 +241,10 @@ function tick(match) {
 
   stepProjectiles(match, dt, projectileHooks(match))
   tickLightning(match, dt, {
-    hurt: (e, d, info) => { hurtHero(match, e, d, { kind: 'lightning', by: heroById(match, info?.owner), direct: true }) },
+    // false when the hit landed but a Ward soaked it whole (or it missed):
+    // strike() reads this to withhold the stun, per the Ward whole-soak
+    // no-CC ruling (I1).
+    hurt: (e, d, info) => hurtHero(match, e, d, { kind: 'lightning', by: heroById(match, info?.owner), direct: true }) && e.tookDamage,
   })
   tickFireZones(match, dt)
   tickDots(match, dt)
