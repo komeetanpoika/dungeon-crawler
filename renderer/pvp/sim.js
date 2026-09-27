@@ -130,9 +130,10 @@ const projectileHooks = match => ({
   hurt: (target, damage, p) => {
     const landed = hurtHero(match, target, damage, { by: heroById(match, p?.owner), from: { px: p.px, py: p.py }, group: p?.group ?? null, direct: true })
     // A blocked or i-framed hit still consumes the projectile (no pierce/
-    // chain onto it), but must not also apply its onHit (knockback/stun) —
-    // that would push or lock down a hero who took zero damage.
-    if (!landed) delete p.onHit
+    // chain onto it); a Ward that soaked the hit whole also lands but takes
+    // no hp. Either way its onHit (knockback/stun) must not fire — that
+    // would push or lock down a hero who took zero damage.
+    if (!landed || !target.tookDamage) delete p.onHit
     return target
   },
   detonate: (px, py, blastTiles, opts, hit) => detonateFireball(match, px, py, blastTiles, opts, hit),

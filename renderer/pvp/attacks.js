@@ -146,7 +146,9 @@ function whirl(match, hero) {
     const v = reachTo(match, hero, e)
     if (Math.hypot(v.dx, v.dy) > Wh.reach) continue
     if (!hurtHero(match, e, Wh.damage, { by: hero, melee: true, direct: true })) continue
-    startKnockback(e, e.px - hero.px, e.py - hero.py, Wh.knockback)
+    // A Ward that soaked the whole hit still lands (the hit sound plays,
+    // credit is given) but must not throw a hero who took zero damage.
+    if (e.tookDamage) startKnockback(e, e.px - hero.px, e.py - hero.py, Wh.knockback)
     sfx(match, 'melee-hit', { px: e.px, py: e.py })
   }
   const dur = WARRIOR_COMBOS.fxDur
@@ -192,9 +194,13 @@ export function swing(match, hero, mods) {
     struck.push(e)
     if (zap) continue
     if (!hurtHero(match, e, dmg + shatterBonus(e), { by: hero, melee: true, direct: true })) continue
-    startKnockback(e, e.px - hero.px, e.py - hero.py, atk.knockback * mods.kbMul)
     sfx(match, 'melee-hit', { px: e.px, py: e.py })
-    if (hammer && mods.tier === 'full') { applyShock(e); e.shock.owner = hero.id }
+    // A Ward that soaked the whole blow still lands (sound, credit) but must
+    // not knock back or shock a hero who took zero damage.
+    if (e.tookDamage) {
+      startKnockback(e, e.px - hero.px, e.py - hero.py, atk.knockback * mods.kbMul)
+      if (hammer && mods.tier === 'full') { applyShock(e); e.shock.owner = hero.id }
+    }
   }
   if (zap) {
     thunderclap(hero, foes)

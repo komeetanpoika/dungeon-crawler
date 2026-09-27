@@ -30,6 +30,11 @@ export function applyEdge(match, by, target) {
   setDot(target, 'poison', by.id, def.poison)
   // Venom's slow rides the ordinary slow timer (so PVP.ccMul scales it in a
   // match) for as long as the poison; a stronger slow already running stays.
+  // This leans on scaleNewCC's floor (min(before, now)) to keep the new
+  // ccMul-scaled slow from clipping one already running longer: a
+  // weaker-but-longer slow could in principle let that floor keep its own
+  // unscaled time instead of this one's — unreachable with today's content,
+  // since nothing outlasts Venom's own duration while running a weaker mul.
   const mul = 1 - def.slow
   if (!(target.slowTimer > 0) || target.slowMul >= mul) applySlow(target, mul, def.poison)
 }

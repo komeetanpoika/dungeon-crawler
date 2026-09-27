@@ -13,7 +13,7 @@ import { damagePlayer, INVULN_DURATION } from '../renderer/systems/player-damage
 import { resolveCharge } from '../renderer/systems/melee.js'
 import { applyShock } from '../renderer/systems/hammer.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
-import { makePlayer } from '../renderer/systems/entities.js'
+import { makePlayer, weaponContents } from '../renderer/systems/entities.js'
 import { PVP } from '../renderer/data/pvp.js'
 import { testMatch } from './pvp-helpers.js'
 
@@ -146,6 +146,78 @@ describe('Ward', () => {
     p.hp = 10
     damagePlayer({ player: p, feedback: makeFeedback() }, 3, 'dot')
     assert.equal(p.hp, 7)
+  })
+})
+
+describe('a Ward-soaked hit applies no crowd control', () => {
+  it('a sword swing fully soaked knocks nobody back', () => {
+    const { a, f, m } = pair()
+    grantBuff(f, 'ward', 'major')
+    blow(m, a)
+    assert.equal(f.hp, PVP.hp)
+    assert.equal(f.knockback, null)
+  })
+  it('a sword swing only dented still knocks back', () => {
+    const { a, f, m } = pair()
+    grantBuff(a, 'might', 'minor'); grantBuff(f, 'ward', 'minor')
+    blow(m, a)
+    assert.equal(PVP.hp - f.hp, 1)
+    assert.ok(f.knockback)
+  })
+  it('a whirlwind fully soaked throws nobody', () => {
+    const { a, f, m } = pair()
+    grantBuff(f, 'ward', 'major')
+    startCombo(m, a, { kind: 'whirl', dir: 'e' })
+    for (let i = 0; i < 12; i++) stepCombo(m, a, dt)
+    assert.equal(f.hp, PVP.hp)
+    assert.equal(f.knockback, null)
+  })
+  it('a whirlwind only dented still throws', () => {
+    const { a, f, m } = pair()
+    grantBuff(a, 'might', 'minor'); grantBuff(f, 'ward', 'minor')
+    startCombo(m, a, { kind: 'whirl', dir: 'e' })
+    for (let i = 0; i < 12; i++) stepCombo(m, a, dt)
+    assert.equal(PVP.hp - f.hp, 1, 'whirl 2 + might 1 = 3 against a pool of 2')
+    assert.ok(f.knockback)
+  })
+  it("a projectile's onHit does not fire when a Ward soaks its hit whole", () => {
+    const { m, a, f } = duel('archer', 'mage')
+    grantBuff(f, 'ward', 'major')
+    m.projectiles.push({ px: f.px - 12, py: f.py, dx: 280, dy: 0, damage: 2, friendly: true, owner: 'a',
+      onHit: { knockback: 45, stun: 0.5 } })
+    ticks(m, 1)
+    assert.equal(f.hp, PVP.hp)
+    assert.equal(f.knockback, null)
+    assert.equal(f.stunTimer, 0)
+  })
+  it("a projectile's onHit still fires when a Ward only dents its hit", () => {
+    const { m, a, f } = duel('archer', 'mage')
+    grantBuff(f, 'ward', 'minor')
+    m.projectiles.push({ px: f.px - 12, py: f.py, dx: 280, dy: 0, damage: 3, friendly: true, owner: 'a',
+      onHit: { knockback: 45 } })
+    ticks(m, 1)
+    assert.equal(PVP.hp - f.hp, 1)
+    assert.ok(f.knockback)
+  })
+  it('a full-tier hammer blow fully soaked leaves no shock', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }); w.facing = 'east'
+    w.weapon = weaponContents('ukonvasara')
+    const a = hero('a', 'archer', { x: 6, y: 5 })
+    const m = testMatch([w, a])
+    grantBuff(a, 'ward', 'major')
+    swing(m, w, resolveCharge('ukonvasara', 0.6))
+    assert.equal(a.hp, PVP.hp)
+    assert.equal(a.shock, undefined)
+  })
+  it('a full-tier hammer blow only dented still shocks', () => {
+    const w = hero('w', 'warrior', { x: 5, y: 5 }); w.facing = 'east'
+    w.weapon = weaponContents('ukonvasara')
+    const a = hero('a', 'archer', { x: 6, y: 5 })
+    const m = testMatch([w, a])
+    grantBuff(a, 'ward', 'minor')
+    swing(m, w, resolveCharge('ukonvasara', 0.6))
+    assert.equal(PVP.hp - a.hp, 1)
+    assert.equal(a.shock.owner, 'w')
   })
 })
 

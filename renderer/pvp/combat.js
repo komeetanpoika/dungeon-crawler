@@ -55,8 +55,14 @@ export function hurtHero(match, target, amount, { kind = 'hit', by = null, from 
     return false
   }
   if (by) target.lastHitBy = { id: by.id, t: match.clock }
-  // The damage that actually landed (after outfit protect), not the raw hit amount.
+  const dealt = target.hp < before
+  // A hit a Ward soaks whole still lands (i-frames above, credit here) but
+  // takes no hp: callers (knockback, a projectile's onHit, the hammer's
+  // shock) must gate on this, not on the true `landed` return alone, or a
+  // hero who lost nothing would still be pushed or locked down.
+  target.tookDamage = dealt
+  // The damage that actually landed (after protect and the Ward), not the raw hit amount.
   match.events.push({ type: 'hit', target: target.id, by: by?.id ?? null, amount: before - target.hp })
-  if (direct && by && target.hp < before) applyEdge(match, by, target)
+  if (direct && by && dealt) applyEdge(match, by, target)
   return true
 }
