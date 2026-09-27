@@ -23,7 +23,8 @@ import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.j
 import { spriteHue } from '../systems/rites.js'
 import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer } from './tile-layer.js'
-import { drawComboFx, drawArrowTrail } from './pvp-fx.js'
+import { drawComboFx, drawArrowTrail, drawBuffSpot, drawBuffUnder, drawBuffOver } from './pvp-fx.js'
+import { BUFF_COLORS } from '../data/pvp.js'
 
 const TILE_SIZE = 32
 
@@ -287,6 +288,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     return
   }
   if (entity.type === 'pvp_pickup') {
+    if (entity.kind === 'buff') { drawBuffSpot(ctx, entity, sprites, px, py, S); return }
     const key = { flask: 'potion', quiver: 'item_arrows', rune: 'weapon_ukonvasara' }[entity.kind]
     const s = sprites[key]
     if (entity.kind === 'rune') drawRuneGlow(ctx, px + S / 2, py + S / 2, S)
@@ -612,7 +614,9 @@ export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = 
   const hy = (hero.py !== undefined ? Math.round(hero.py - S / 2 - camY) : Math.round(hero.y * S - camY)) - lift
   drawBlinkTrail(ctx, trail, hero, sprites, camX, camY, S)
   if (hero.rune) drawRuneGlow(ctx, hx + S / 2, hy + S / 2, S)
+  if (hero.buffs) drawBuffUnder(ctx, hero, hx + S / 2, hy + S / 2, S)
   if (isFlickerVisible(hero.invulnTimer)) drawEntity(ctx, hero, hx, hy, S, sprites)
+  if (hero.buffs) drawBuffOver(ctx, hero, hx, hy, S)
   if (hero.grabbed) {
     ctx.save()
     ctx.globalAlpha = 0.45
@@ -1449,7 +1453,7 @@ export class Renderer {
       ctx.save()
       ctx.font = 'bold 13px monospace'
       ctx.textAlign = 'center'
-      const COLORS = { taken: '#ef4444', dealt: '#f8fafc', heal: '#4ade80' }
+      const COLORS = { taken: '#ef4444', dealt: '#f8fafc', heal: '#4ade80', ...BUFF_COLORS }   // a buff float is its buff's colour (2b)
       for (const f of fb.floats) {
         const k = f.t / FLOAT_DUR
         const x = Math.round(f.px - camX), y = Math.round(f.py - camY - 14 - k * 22)

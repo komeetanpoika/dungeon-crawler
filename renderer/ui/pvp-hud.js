@@ -1,7 +1,9 @@
 // The PvP HUD strip: time left, your kills, the leader's kills (gold when
 // the leader is you). The model is pure; the DOM is touched only inside
 // updatePvpHud/hidePvpHud, and only when the markup changes.
-import { PVP } from '../data/pvp.js'
+import { PVP, BUFFS, BUFF_COLORS } from '../data/pvp.js'
+import { SPRITES } from '../render/sprites.js'
+import { BUFF_ICON } from '../render/pvp-fx.js'
 
 export function pvpHudModel(match, localId) {
   const me = match.heroes.find(h => h.id === localId)
@@ -56,4 +58,41 @@ export function updatePvpHud(m) {
 
 export function hidePvpHud() {
   document.getElementById('pvp-hud')?.remove()
+  document.getElementById('pvp-buffs')?.remove()
+}
+
+// The local hero's buff row (2b spec §3): one icon per buff held, in slot
+// order, each with a countdown ring (`frac`: the time left of its tier's
+// full time) — no text. A major is rimmed in gold.
+export function buffRowModel(hero) {
+  const b = hero?.buffs
+  if (!b || hero.dead) return []
+  return ['haste', 'might', 'ward', 'edge'].filter(s => b[s]).map(s => {
+    const kind = s === 'edge' ? b.edge.kind : s
+    const { tier, t } = b[s]
+    return { kind, tier, frac: Math.max(0, Math.min(1, t / BUFFS[kind][tier].dur)), color: BUFF_COLORS[kind],
+      src: `./assets/tiles/${SPRITES[BUFF_ICON[kind]]}.png` }
+  })
+}
+
+// The row sits under the time strip. The ring's angle is rounded to 10°,
+// so the markup (and the DOM) changes a few times a second, not every frame.
+export function updateBuffRow(row) {
+  let node = document.getElementById('pvp-buffs')
+  if (!node) {
+    node = document.createElement('div')
+    node.id = 'pvp-buffs'
+    node.style.cssText = 'position:absolute;top:34px;left:50%;transform:translateX(-50%);display:flex;gap:6px;pointer-events:none'
+    document.getElementById('hud-overlay').appendChild(node)
+  }
+  const html = row.map(b => {
+    const deg = Math.round(b.frac * 36) * 10
+    const rim = b.tier === 'major' ? '#facc15' : 'rgba(0,0,0,0.6)'
+    return `<div style="width:30px;height:30px;border-radius:50%;padding:3px;box-sizing:border-box;border:2px solid ${rim};` +
+      `background:conic-gradient(${b.color} ${deg}deg, rgba(15,23,42,0.75) 0)">` +
+      `<img src="${b.src}" style="width:100%;height:100%;image-rendering:pixelated;display:block"></div>`
+  }).join('')
+  if (node._html === html) return
+  node._html = html
+  node.innerHTML = html
 }

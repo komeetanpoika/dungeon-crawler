@@ -27,7 +27,7 @@ import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './pvp/local.js'
 import { stepMatch, setClass } from './pvp/sim.js'
-import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel, respawnLine } from './ui/pvp-hud.js'
+import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel, respawnLine, buffRowModel, updateBuffRow } from './ui/pvp-hud.js'
 import { connect, frame as netFrameStep, sessionView, sendClass, leave as netLeave, drainEvents, drainCues } from './net/client.js'
 import { netUrl, normalizeCode, validCode, errorText, errorTitle, controlHint, netViewOf } from './net/view.js'
 import { validateName } from './net/protocol.js'
@@ -888,6 +888,7 @@ function pvpFrame(delta) {
   renderer.render(view, null)
   updateHUD(view)
   updatePvpHud(pvpHudModel(match, LOCAL_ID))
+  updateBuffRow(buffRowModel(view.player))
   playCues(audio, drainSfx(match), view.player, match.sfx.muted)
   if (pvp.done) pvp.rendered = true
 }
@@ -1060,6 +1061,7 @@ function netFrame() {
   renderer.render(view, null)
   updateHUD(view)
   updatePvpHud(netHudModel(v, s.heroId))
+  updateBuffRow(buffRowModel(view.player))
   playCues(audio, drainCues(s), view.player, net.muted)
 }
 
