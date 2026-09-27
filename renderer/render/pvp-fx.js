@@ -25,13 +25,15 @@ export function holdArrows(combo) {
   return (combo?.moves ?? []).map((dir, i) => ({ dir, angle: SECTOR_ANGLE[dir], dx: (i - (n - 1) / 2) * 8 }))
 }
 
-// The fence thrusts fired by now, each with its fade (1 fresh → 0 gone after 0.12 s).
+// The fence thrusts fired by now, each with its fade (1 fresh → 0 gone after
+// 0.18 s — widened from 0.12 (m7) so the glint reads clearly before it fades).
+const GLINT_FADE = 0.18
 export function fenceGlints(move) {
   if (move?.kind !== 'fence') return []
   return WARRIOR_COMBOS.fence.times
     .map((at, i) => ({ i, age: move.t - at }))
-    .filter(g => g.age >= -1e-9 && g.age < 0.12)
-    .map(g => ({ i: g.i, alpha: 1 - Math.max(0, g.age) / 0.12 }))
+    .filter(g => g.age >= -1e-9 && g.age < GLINT_FADE)
+    .map(g => ({ i: g.i, alpha: 1 - Math.max(0, g.age) / GLINT_FADE }))
 }
 
 // The draw glow's colour: the band the draw has reached, dim white below it.
@@ -80,7 +82,11 @@ function drawHold(ctx, combo, cx, cy) {
   ctx.restore()
 }
 
-// A bright blade-trail from where the dash began to where the hero is.
+// A bright blade-trail from where the dash began to where the hero is: a
+// wide streak at full alpha, brightest at the leading (hero) end, with a
+// hot white core down the middle (m7: raised from a thin, half-alpha line
+// so the lunge reads clearly). One gradient and two strokes — no
+// shadowBlur, no per-frame allocation beyond that.
 function drawLunge(ctx, mv, cx, cy, camX, camY) {
   const fx = mv.from.px - camX, fy = mv.from.py - camY
   const fade = Math.max(0, 1 - mv.t / WARRIOR_COMBOS.fxDur)
@@ -88,18 +94,23 @@ function drawLunge(ctx, mv, cx, cy, camX, camY) {
   ctx.save()
   const g = ctx.createLinearGradient(fx, fy, cx, cy)
   g.addColorStop(0, 'rgba(186,230,253,0)')
-  g.addColorStop(1, `rgba(255,255,255,${(0.9 * fade).toFixed(3)})`)
+  g.addColorStop(0.4, `rgba(186,230,253,${(0.6 * fade).toFixed(3)})`)
+  g.addColorStop(1, `rgba(255,255,255,${fade.toFixed(3)})`)
   ctx.strokeStyle = g
   ctx.lineCap = 'round'
-  ctx.lineWidth = 8
+  ctx.lineWidth = 12
   ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(cx, cy); ctx.stroke()
-  ctx.strokeStyle = `rgba(125,211,252,${(0.8 * fade).toFixed(3)})`
-  ctx.lineWidth = 2
+  // The bright core running down the middle of the streak.
+  ctx.strokeStyle = `rgba(255,255,255,${fade.toFixed(3)})`
+  ctx.lineWidth = 4
   ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(cx, cy); ctx.stroke()
   ctx.restore()
 }
 
-// Three zig-zag steel glints, one per thrust, ahead along the fence's line.
+// Three zig-zag steel glints, one per thrust, ahead along the fence's line:
+// a wider zig-zag with a bright white core over the steel (m7: the old
+// narrow, thin-lined glint was easy to miss). Re-stroking the same path for
+// the core costs one more stroke call, not a rebuilt path.
 function drawFence(ctx, mv, cx, cy) {
   const a = FACING_ANGLE[SECTOR_FACING[mv.dir]] ?? 0
   const reach = WARRIOR_COMBOS.fence.reach
@@ -110,14 +121,17 @@ function drawFence(ctx, mv, cx, cy) {
   for (const g of fenceGlints(mv)) {
     const side = g.i % 2 === 0 ? 1 : -1               // alternate high and low
     ctx.globalAlpha = g.alpha
-    ctx.strokeStyle = '#f1f5f9'
-    ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(14, 0)
-    ctx.lineTo(22, -5 * side); ctx.lineTo(30, 5 * side); ctx.lineTo(reach, 0)
+    ctx.lineTo(22, -9 * side); ctx.lineTo(30, 9 * side); ctx.lineTo(reach, 0)
+    ctx.strokeStyle = '#f1f5f9'
+    ctx.lineWidth = 3
+    ctx.stroke()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 1.2
     ctx.stroke()
     ctx.fillStyle = '#ffffff'
-    ctx.beginPath(); ctx.arc(reach, 0, 2.5, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(reach, 0, 3, 0, Math.PI * 2); ctx.fill()
   }
   ctx.restore()
 }

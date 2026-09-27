@@ -18,11 +18,14 @@ describe('pvp fx helpers', () => {
     assert.deepEqual(a.map(x => [x.dir, x.dx]), [['e', -4], ['w', 4]])
     assert.equal(a[1].angle, Math.PI)
   })
-  it('fenceGlints: each thrust glints for 0.12 s from its time', () => {
+  it('fenceGlints: each thrust glints for 0.18 s from its time (m7: widened from 0.12 for visibility)', () => {
     assert.deepEqual(fenceGlints({ kind: 'fence', t: 0 }).map(g => g.i), [0])
-    assert.deepEqual(fenceGlints({ kind: 'fence', t: 0.13 }).map(g => g.i), [1])
-    assert.deepEqual(fenceGlints({ kind: 'fence', t: 0.25 }).map(g => g.i), [2])
+    assert.deepEqual(fenceGlints({ kind: 'fence', t: 0.19 }).map(g => g.i), [1])
+    assert.deepEqual(fenceGlints({ kind: 'fence', t: 0.31 }).map(g => g.i), [2])
     assert.deepEqual(fenceGlints({ kind: 'lunge', t: 0 }), [])
+    const mid = fenceGlints({ kind: 'fence', t: 0.09 })[0]
+    assert.equal(mid.i, 0)
+    assert.ok(Math.abs(mid.alpha - 0.5) < 1e-9, `alpha ${mid.alpha}`)
   })
   it('drawGlow: the band colour of the draw reached, dim below 30 %', () => {
     assert.equal(drawGlow({ charging: null }), null)
