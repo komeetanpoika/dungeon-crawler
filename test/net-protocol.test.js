@@ -128,7 +128,7 @@ describe('snapshots', () => {
     assert.equal(body.type, MSG.SNAP)
     assert.equal(body.heroes.length, 2)
     assert.deepEqual(body.projectiles[0], { px: 1, py: 2, dx: 3, dy: 4, shape: 'arrow', color: '#fff' })
-    assert.equal(body.pickups.length, 5)
+    assert.equal(body.pickups.length, 7)   // pillars: 2 flasks, 2 quivers, the rune, 2 minor buff spots (2b)
     assert.equal(body.matchLength, m.matchLength)
     assert.equal(body.arena, 'pillars')
     for (const k of ['tick', 'clock', 'waiting', 'ended', 'lightning', 'strikes', 'arcs', 'shockwaves', 'fireZones', 'events', 'cues']) assert.ok(k in body, k)

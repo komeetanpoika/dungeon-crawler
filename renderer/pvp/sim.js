@@ -44,7 +44,7 @@ export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = 
   const match = {
     map: arenaMap(arena), arena, heroes: [], entities: [], projectiles: [], lightning: [], strikes: [], arcs: [],
     shockwaves: [], zones: [], fireZones: [], feedback: makeFeedback(), sfx: sfxQueue,
-    pickups: makePickups(arena), clock: 0, tick: 0, acc: 0, ended: false, events: [], inputs: {}, standings: null,
+    pickups: makePickups(arena, rng), clock: 0, tick: 0, acc: 0, ended: false, events: [], inputs: {}, standings: null,
     matchLength, waiting: roster.length < PVP.minHeroes, seed: seed >>> 0, rng,
   }
   roster.forEach((r, i) => {

@@ -54,7 +54,7 @@ describe('makeLocalMatch / localInputs / viewOf', () => {
     assert.equal(v.player.id, LOCAL_ID)
     assert.equal(v.heroes, m.heroes)
     assert.ok(v.entities.every(e => e.type === 'pvp_pickup'))
-    assert.equal(v.entities.length, 4)   // the rune is not up yet
+    assert.equal(v.entities.length, 6)   // 2 flasks, 2 quivers and 2 minor buff spots; the rune is not up yet
   })
 })
 

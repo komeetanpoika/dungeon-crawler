@@ -15,10 +15,12 @@ const GRASS = [{ skin: 'ow_grass_0', weight: 6 }, { skin: 'ow_grass_1', weight: 
 const PILLARS_THEME = { floorTile: 'floor', bgColor: '#0a0406', tint: 'rgba(60,10,0,0.35)', fogAlpha: 0.80 }
 
 const PICKUP_KIND = { F: 'flask', Q: 'quiver', R: 'rune' }
+const BUFF_TIER = { b: 'minor', B: 'major' }
 
 // A grid of equal-length strings → the arena shape. Legend: # wall (the
 // border must be walls), o column, . floor, S spawn, F flask, Q quiver,
-// R rune. Spawns and pickups are listed in reading order.
+// R rune, b a minor buff spot, B a major one (2b). Spawns and pickups are
+// listed in reading order.
 export function parseArena(id, rows, theme) {
   const h = rows.length, w = rows[0]?.length ?? 0
   if (!h || rows.some(r => r.length !== w)) throw new Error(`arena ${id}: rows must be equal-length strings`)
@@ -30,6 +32,7 @@ export function parseArena(id, rows, theme) {
     if (ch === 'o') columns.push({ x, y })
     else if (ch === 'S') spawns.push({ x, y })
     else if (PICKUP_KIND[ch]) pickups.push({ kind: PICKUP_KIND[ch], x, y })
+    else if (BUFF_TIER[ch]) pickups.push({ kind: 'buff', tier: BUFF_TIER[ch], x, y })
     else if (ch !== '.') throw new Error(`arena ${id}: unknown cell '${ch}' at ${x},${y}`)
   }))
   return { id, size: { w, h }, columns, walls, spawns, pickups, theme }
@@ -41,7 +44,7 @@ const GLADE = [
   '##############################',
   '#.............##.............#',
   '#.S...........##...........S.#',
-  '#...##..................##...#',
+  '#...##..............b...##...#',
   '#...##..oooo......oooo..##...#',
   '#.............F..............#',
   '#.....o................o.....#',
@@ -56,7 +59,7 @@ const GLADE = [
   '#..............F.............#',
   '#.......oooo......oooo.......#',
   '#...##..................##...#',
-  '#...##..................##...#',
+  '#...##...b..............##...#',
   '#.S...........##...........S.#',
   '#.............##.............#',
   '##############################',
@@ -75,8 +78,8 @@ const TUNNELS = [
   '####..##########..##########..####',
   '####..##########..##########..####',
   '####..#######........#######..####',
-  '####............R............F####',
-  '####F.........................####',
+  '####......b.....R............F####',
+  '####F..................b......####',
   '####..#######........#######..####',
   '####..##########..##########..####',
   '####..##########..##########..####',
@@ -94,7 +97,7 @@ const TUNNELS = [
 const RUINS = [
   '####################################',
   '#..................................#',
-  '#.S..............................S.#',
+  '#.S.....................b........S.#',
   '#.....o..........o......o..........#',
   '#...........o................o.....#',
   '#..................................#',
@@ -115,7 +118,7 @@ const RUINS = [
   '#..................................#',
   '#..........o...................o...#',
   '#...o.............o.....o..........#',
-  '#.S..............................S.#',
+  '#.S........b.....................S.#',
   '#..................................#',
   '####################################',
 ]
@@ -143,6 +146,7 @@ export const PVP_ARENAS = {
       { kind: 'flask', x: 7, y: 12 }, { kind: 'flask', x: 24, y: 11 },
       { kind: 'quiver', x: 15, y: 6 }, { kind: 'quiver', x: 16, y: 17 },
       { kind: 'rune', x: 16, y: 12 },
+      { kind: 'buff', tier: 'minor', x: 22, y: 5 }, { kind: 'buff', tier: 'minor', x: 9, y: 18 },
     ],
     theme: PILLARS_THEME,
   },

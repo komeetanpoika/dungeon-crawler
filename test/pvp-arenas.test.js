@@ -10,6 +10,16 @@ const tiles = d => Math.hypot(d.a.x - d.b.x, d.a.y - d.b.y)
 const pairs = list => list.flatMap((a, i) => list.slice(i + 1).map(b => ({ a, b })))
 
 describe('parseArena', () => {
+  it('b and B are minor and major buff spots, in reading order with the other pickups (2b)', () => {
+    const a = parseArena('t', [
+      '######',
+      '#SbF.#',
+      '#.B.S#',
+      '######',
+    ], { floorTile: 'floor' })
+    assert.deepEqual(a.pickups, [{ kind: 'buff', tier: 'minor', x: 2, y: 1 }, { kind: 'flask', x: 3, y: 1 },
+      { kind: 'buff', tier: 'major', x: 2, y: 2 }])
+  })
   it('turns a grid into the arena shape: interior # walls, o columns, S spawns, F/Q/R pickups in reading order', () => {
     const a = parseArena('t', [
       '#######',
@@ -92,11 +102,12 @@ for (const id of PVP_ARENA_ORDER) {
         assert.equal(map[y][x].tile, want, `${ch} at ${x},${y}`)
       }))
     })
-    it('has exactly 6 spawns, 2 flasks, 2 quivers and 1 rune, all on walkable cells', () => {
+    it('has exactly 6 spawns, 2 flasks, 2 quivers, 1 rune and 2 minor buff spots, all on walkable cells', () => {
       const n = k => arena.pickups.filter(p => p.kind === k).length
+      const spots = tier => arena.pickups.filter(p => p.kind === 'buff' && p.tier === tier).length
       assert.equal(arena.spawns.length, 6)
-      assert.deepEqual([n('flask'), n('quiver'), n('rune')], [2, 2, 1])
-      assert.equal(arena.pickups.length, 5)
+      assert.deepEqual([n('flask'), n('quiver'), n('rune'), spots('minor'), spots('major')], [2, 2, 1, 2, 0])
+      assert.equal(arena.pickups.length, 7)
       for (const c of [...arena.spawns, ...arena.pickups]) assert.ok(walk(c), `${c.kind ?? 'spawn'} ${c.x},${c.y}`)
     })
     it('every spawn and pickup is reachable from spawn 1', () => {
@@ -118,6 +129,12 @@ for (const id of PVP_ARENA_ORDER) {
     it('the rune is at least 5 tiles from every spawn', () => {
       const rune = arena.pickups.find(p => p.kind === 'rune')
       for (const s of arena.spawns) assert.ok(tiles({ a: s, b: rune }) >= 5, `spawn ${s.x},${s.y}`)
+    })
+    it('every minor buff spot is at least 4 tiles from every spawn, and no two pickups share a cell', () => {
+      for (const b of arena.pickups.filter(p => p.kind === 'buff' && p.tier === 'minor'))
+        for (const s of arena.spawns) assert.ok(tiles({ a: s, b }) >= 4, `b ${b.x},${b.y} spawn ${s.x},${s.y}`)
+      const cells = [...arena.spawns, ...arena.pickups].map(c => `${c.x},${c.y}`)
+      assert.equal(new Set(cells).size, cells.length)
     })
   })
 }
