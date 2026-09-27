@@ -138,6 +138,10 @@ function incoming(match, hero) {
     (hero.px - p.px) * p.dx + (hero.py - p.py) * p.dy > 0)
 }
 
+// The up buff spots of a tier within `range` tiles of the hero.
+const spots = (match, hero, tier, range) =>
+  match.pickups.filter(p => p.up && p.kind === 'buff' && p.tier === tier && tileDist(hero, p) <= range)
+
 export function botInput(match, hero) {
   if (hero.dead) return { ...NEUTRAL_INPUT, move: { x: 0, y: 0 } }
   const input = { move: { x: 0, y: 0 }, facing: null, attack: false, alt: false, sprint: false }
@@ -148,8 +152,17 @@ export function botInput(match, hero) {
     const flask = nearest(hero, up('flask'))
     if (flask) { steer(match, hero, flask, input); return input }
   }
+  // Buff spots (2b spec §5): an up major spot within majorSeek is worth a
+  // fight — the bot heads there with foes about; a minor one only draws a
+  // detour when no foe is within buffSeekFoe.
+  const major = nearest(hero, spots(match, hero, 'major', BOTS.majorSeek))
+  if (major) { steer(match, hero, major, input); return input }
   const rune = hero.rune ? null : nearest(hero, up('rune'))
   if (rune && (!foe || tileDist(hero, rune) < tileDist(hero, foe))) { steer(match, hero, rune, input); return input }
+  if (!foe || tileDist(hero, foe) > BOTS.buffSeekFoe) {
+    const minor = nearest(hero, spots(match, hero, 'minor', BOTS.buffSeek))
+    if (minor) { steer(match, hero, minor, input); return input }
+  }
   if (!foe) return input
 
   const d = tileDist(hero, foe)

@@ -3,10 +3,11 @@ import assert from 'node:assert/strict'
 import { botInput, nextStep, lightningTier } from '../renderer/pvp/bots.js'
 import { makeMatch, stepMatch } from '../renderer/pvp/sim.js'
 import { placeHero, tickHero, NEUTRAL_INPUT } from '../renderer/pvp/hero.js'
-import { grantRune } from '../renderer/pvp/pickups.js'
+import { grantRune, makePickups } from '../renderer/pvp/pickups.js'
+import { PVP_ARENAS } from '../renderer/data/pvp-arenas.js'
 import { openMap } from './pvp-helpers.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { DOUBLE_SHOT } from '../renderer/data/pvp.js'
+import { DOUBLE_SHOT, PVP, BOTS } from '../renderer/data/pvp.js'
 import { GUST_CHARGE } from '../renderer/systems/magic.js'
 
 const roster = (...cls) => cls.map((c, i) => ({ id: `b${i}`, name: `B${i}`, cls: c }))
@@ -251,4 +252,84 @@ describe('fix round 1: bots keep acting against a stationary foe, not just once'
     }
     assert.ok(m.projectiles.some(p => p.owner === 'b0'), 'the bot loosed an arrow after the respawn latch')
   })
+})
+
+describe('bots and buff spots (2b)', () => {
+  // A match on pillars whose only pickups are `list` (up unless said), the
+  // bot b0 at `at` and a foe b1 at `foeAt`.
+  const setup = (list, at, foeAt, cls = 'archer') => {
+    const m = makeMatch({ roster: roster(cls, 'warrior'), seed: 4 })
+    m.pickups = makePickups({ pickups: list }, m.rng)
+    for (const p of m.pickups) if (p.kind === 'buff') { p.up = true; p.t = 0; p.buff = 'haste'; p.next = null }
+    placeHero(m.heroes[0], at); placeHero(m.heroes[1], foeAt)
+    return m
+  }
+  const minor = (x, y) => ({ kind: 'buff', tier: 'minor', x, y })
+  const major = (x, y) => ({ kind: 'buff', tier: 'major', x, y })
+  // Steps only the bot (the foe stands still) until it takes a pickup.
+  const takes = (m, ticks = 200) => {
+    for (let i = 0; i < ticks; i++) {
+      for (const e of stepMatch(m, { b0: botInput(m, m.heroes[0]) }, PVP.tick))
+        if (e.type === 'pickup') return e
+    }
+    return null
+  }
+  it('with no foe within 4 tiles, a bot detours to an up minor spot within 6 and takes it', () => {
+    const m = setup([minor(4, 2)], { x: 9, y: 2 }, { x: 29, y: 21 })     // the spot away from the foe
+    assert.deepEqual(botInput(m, m.heroes[0]).move, { x: -1, y: 0 })
+    assert.deepEqual(takes(m), { type: 'pickup', kind: 'buff', hero: 'b0', buff: 'haste', tier: 'minor' })
+    assert.equal(m.heroes[0].buffs.haste.tier, 'minor')
+  })
+  it('a minor spot farther than 6 tiles, or down, draws no detour', () => {
+    const far = setup([minor(2, 2)], { x: 9, y: 2 }, { x: 29, y: 21 })
+    assert.equal(tileDist(far), 7)
+    assert.notDeepEqual(botInput(far, far.heroes[0]).move, { x: -1, y: 0 })
+    assert.equal(takes(far, 20), null)
+    const down = setup([minor(5, 2)], { x: 9, y: 2 }, { x: 29, y: 21 })
+    down.pickups[0].up = false; down.pickups[0].t = 99
+    assert.equal(takes(down, 30), null)
+  })
+  it('a foe within 4 tiles: the bot fights instead of detouring to a minor spot', () => {
+    const m = setup([minor(2, 5)], { x: 2, y: 2 }, { x: 5, y: 2 })
+    const inp = botInput(m, m.heroes[0])
+    assert.equal(inp.facing, 'east')
+    assert.equal(inp.attack, true)
+  })
+  it('a major spot within 10 tiles draws the bot even with a foe beside it', () => {
+    const m = setup([major(11, 2)], { x: 2, y: 2 }, { x: 3, y: 2 }, 'warrior')
+    const inp = botInput(m, m.heroes[0])
+    assert.deepEqual(inp.move, { x: 1, y: 0 })
+    assert.equal(inp.attack, false)
+    const out = setup([major(13, 2)], { x: 2, y: 2 }, { x: 3, y: 2 }, 'warrior')
+    assert.equal(botInput(out, out.heroes[0]).attack, true, 'at 11 tiles it fights')
+  })
+  it('a hurt bot still goes for a flask first', () => {
+    const m = setup([major(2, 8), { kind: 'flask', x: 8, y: 2 }], { x: 2, y: 2 }, { x: 29, y: 21 })
+    m.heroes[0].hp = 1
+    assert.deepEqual(botInput(m, m.heroes[0]).move, { x: 1, y: 0 })
+  })
+  const tileDist = m => Math.hypot(m.heroes[0].x - m.pickups[0].x, m.heroes[0].y - m.pickups[0].y)
+
+  for (const id of ['keep', 'wilds']) {
+    it(`six bots on ${id} for 60 s take buffs of both tiers, never latch the attack, never stand idle`, () => {
+      const m = makeMatch({ roster: roster('warrior', 'archer', 'mage', 'warrior', 'archer', 'mage'), arena: PVP_ARENAS[id], seed: 3 })
+      const taken = new Set(), latch = {}, idle = {}, last = {}
+      let worstLatch = 0, worstIdle = 0
+      for (let i = 0; i < 60 / PVP.tick; i++) {
+        const inputs = Object.fromEntries(m.heroes.map(h => [h.id, botInput(m, h)]))
+        for (const h of m.heroes) {
+          const inp = inputs[h.id]
+          latch[h.id] = !h.dead && h.needRelease && inp.attack ? (latch[h.id] ?? 0) + PVP.tick : 0
+          const moved = last[h.id] && (last[h.id].px !== h.px || last[h.id].py !== h.py)
+          idle[h.id] = !h.dead && !moved && !inp.attack && !inp.alt ? (idle[h.id] ?? 0) + PVP.tick : 0
+          worstLatch = Math.max(worstLatch, latch[h.id]); worstIdle = Math.max(worstIdle, idle[h.id])
+          last[h.id] = { px: h.px, py: h.py }
+        }
+        for (const e of stepMatch(m, inputs, PVP.tick)) if (e.type === 'pickup' && e.kind === 'buff') taken.add(e.tier)
+      }
+      assert.deepEqual([...taken].sort(), ['major', 'minor'])
+      assert.ok(worstLatch < 1, `attack held against needRelease for ${worstLatch.toFixed(2)} s`)
+      assert.ok(worstIdle < 5, `a bot stood idle ${worstIdle.toFixed(2)} s`)
+    })
+  }
 })
