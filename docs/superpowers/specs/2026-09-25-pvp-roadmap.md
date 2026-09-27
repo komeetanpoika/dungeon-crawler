@@ -41,7 +41,9 @@ Each gets its own spec → plan → implementation cycle, in this order.
    from the user's play impressions:* **2a** class rework + time-to-kill (spec
    `2026-09-26-pvp-2a-class-rework-design.md`: Warrior gesture combos, Archer
    double shot, Storm Wand main with a Fireball rune, hp 8, plate 0); **2b**
-   tiered pickups (speed, damage, shielding, fiery/toxic arrows) and bigger arenas.
+   tiered pickups (speed, damage, shielding, fiery/toxic arrows) and bigger arenas
+   (spec `2026-09-27-pvp-2b-pickups-arenas-design.md`: Haste/Might/Ward/Ember/Venom in
+   minor/major tiers at seeded buff spots, Keep and Wilds at ~56×40, protocol v5).
 3. **Server + netcode.** *Spec: `2026-09-25-pvp-server-netcode-design.md` —
    decided 2026-09-25: room codes (hidden `host`/`join` cheats), drop-in humans
    only, the WebSocket served from the same Cloud Run service (max-instances=1).*
