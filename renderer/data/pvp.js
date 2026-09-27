@@ -13,6 +13,7 @@ export const PVP = {
   blinkTrailDur: 0.2,    // s, as canvas.js BLINK_DUR
   localBots: 3,
   minHeroes: 2,   // the match clock runs only with at least this many heroes
+  largeMinHeroes: 4,     // 2b: a large arena is skipped for a match with fewer heroes
 }
 
 export const CLASSES = ['warrior', 'archer', 'mage']
@@ -56,6 +57,10 @@ export const BOTS = {
   whirlRange: 2,     // tiles — foes this close count toward a whirlwind…
   whirlFoes: 2,      // …and it whirls (with a full tank) at this many
   doubleMin: 5,      // tiles — an archer bot draws the double shot at a lined-up foe this far or further
+  // 2b buff spots
+  buffSeekFoe: 4,    // tiles — with no foe this close, a bot detours to a minor spot…
+  buffSeek: 6,       // …that is up and within this many tiles
+  majorSeek: 10,     // tiles — a bot heads for an up major spot this close, foes or not
 }
 
 // Sub-project 2a (spec 2026-09-26-pvp-2a-class-rework-design.md) — each
@@ -107,3 +112,31 @@ export const CLASS_HINTS = {
   archer: 'Hold Q: double shot',
   mage: 'Storm Wand · Q: blink',
 }
+
+// Sub-project 2b (spec 2026-09-27-pvp-2b-pickups-arenas-design.md) — buffs
+// in a minor and a major tier, taken from buff spots (renderer/pvp/buffs.js).
+// dur: s the buff lasts. Haste multiplies walk speed by `mul`; Might adds
+// `bonus` to each direct hit; Ward soaks the next `pool` damage (until used
+// up or `dur`); the two edges coat each landed direct hit: Ember burns the
+// victim for `burn` s (a major also lays a fire patch of `emberPatchTiles`
+// tiles under it), Venom poisons for `poison` s and slows by `slow` for as
+// long.
+export const BUFF_KINDS = ['haste', 'might', 'ward', 'ember', 'venom']
+export const EDGE_KINDS = ['ember', 'venom']
+export const BUFFS = {
+  haste: { minor: { dur: 8, mul: 1.2 }, major: { dur: 15, mul: 1.5 } },
+  might: { minor: { dur: 8, bonus: 1 }, major: { dur: 12, bonus: 2 } },
+  ward:  { minor: { dur: 15, pool: 2 }, major: { dur: 15, pool: 4 } },
+  ember: { minor: { dur: 10, burn: 2 }, major: { dur: 15, burn: 3, emberPatchTiles: 5 } },
+  venom: { minor: { dur: 10, poison: 3, slow: 0.2 }, major: { dur: 15, poison: 4.5, slow: 0.35 } },
+}
+// The damage-over-time the edges leave: `damage` every `interval` s,
+// unblockable 'dot' damage credited to whoever applied it.
+export const DOTS = {
+  burn:   { interval: 1, damage: 1 },
+  poison: { interval: 1.5, damage: 1 },
+}
+// Buff spots: grid letter b (minor) and B (major). s.
+export const BUFF_SPOTS = { minorRespawn: 20, majorRespawn: 45, majorFirstSpawn: 30 }
+// Each buff's colour: its icon's rim, the pickup float, the hero look.
+export const BUFF_COLORS = { haste: '#38bdf8', might: '#ef4444', ward: '#c7d2fe', ember: '#f97316', venom: '#4ade80' }

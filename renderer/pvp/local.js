@@ -5,6 +5,7 @@ import { makeMatch } from './sim.js'
 import { botInput } from './bots.js'
 import { PVP, CLASSES } from '../data/pvp.js'
 import { arenaAt } from '../data/pvp-arenas.js'
+import { randomSeed } from './rng.js'
 
 export const LOCAL_ID = 'you'
 
@@ -18,12 +19,13 @@ export function inputFromKeys(keys, sprinting = false) {
 }
 
 // arenaIndex: where in PVP_ARENA_ORDER this match is played; game.js's
-// "Next match" passes nextArenaIndex of the last one.
-export function makeLocalMatch({ cls, bots = PVP.localBots, sfx = null, arenaIndex = 0 }) {
+// "Next match" passes nextArenaIndex of the last one. seed: the buff rolls'
+// (2b spec §2), Math.random's once per match unless a test fixes it.
+export function makeLocalMatch({ cls, bots = PVP.localBots, sfx = null, arenaIndex = 0, seed = randomSeed() }) {
   const n = Math.max(1, Math.min(5, Math.round(bots)))
   const roster = [{ id: LOCAL_ID, name: 'You', cls }]
   for (let i = 0; i < n; i++) roster.push({ id: `bot${i + 1}`, name: `Bot ${i + 1}`, cls: CLASSES[i % CLASSES.length] })
-  return makeMatch({ roster, sfx, arena: arenaAt(arenaIndex) })
+  return makeMatch({ roster, sfx, arena: arenaAt(arenaIndex), seed })
 }
 
 export function localInputs(match, keys, sprinting) {

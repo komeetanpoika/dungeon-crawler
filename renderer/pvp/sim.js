@@ -19,6 +19,7 @@ import { PVP_ARENAS } from '../data/pvp-arenas.js'
 import { makeHero, placeHero, applyKit, tickHero, tickHeroStatus, NEUTRAL_INPUT } from './hero.js'
 import { heroById, hurtHero, refreshTargets } from './combat.js'
 import { makePickups, tickPickups, tickRunes, endRune } from './pickups.js'
+import { mulberry32 } from './rng.js'
 
 // The arena's tiles. The player spawn is pinned to the first hero spawn, a
 // floor cell, so buildArena never skips a column or wall for standing on its
@@ -32,15 +33,18 @@ export function arenaMap(arena = PVP_ARENAS.pillars) {
   return map
 }
 
-export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = null, matchLength = PVP.matchLength } = {}) {
+// seed: the match's PRNG seed (match.rng, 2b spec §2) — the server and the
+// local mode pass a random one, tests a fixed one.
+export function makeMatch({ arena = PVP_ARENAS.pillars, roster, sfx: sfxQueue = null, matchLength = PVP.matchLength, seed = 1 } = {}) {
   if (!Array.isArray(roster) || roster.length < 1 || roster.length > arena.spawns.length)
     throw new Error(`pvp: roster must hold 1-${arena.spawns.length} heroes`)
   if (new Set(roster.map(r => r.id)).size !== roster.length) throw new Error('pvp: duplicate hero id')
+  const rng = mulberry32(seed)
   const match = {
     map: arenaMap(arena), arena, heroes: [], entities: [], projectiles: [], lightning: [], strikes: [], arcs: [],
     shockwaves: [], zones: [], fireZones: [], feedback: makeFeedback(), sfx: sfxQueue,
     pickups: makePickups(arena), clock: 0, tick: 0, acc: 0, ended: false, events: [], inputs: {}, standings: null,
-    matchLength, waiting: roster.length < PVP.minHeroes,
+    matchLength, waiting: roster.length < PVP.minHeroes, seed: seed >>> 0, rng,
   }
   roster.forEach((r, i) => {
     const h = makeHero(r)

@@ -11,6 +11,7 @@ import { snapshotBody, ERR } from '../renderer/net/protocol.js'
 import { PVP, CLASSES } from '../renderer/data/pvp.js'
 import { NET } from '../renderer/data/net.js'
 import { arenaAt, nextArenaIndex } from '../renderer/data/pvp-arenas.js'
+import { randomSeed } from '../renderer/pvp/rng.js'
 
 export function makeLobby({ random = Math.random, rewind = true, matchLength = PVP.matchLength,
   resultsDelay = NET.resultsDelay, idleKickMs = NET.idleKickMs, lonelyHostKickMs = NET.lonelyHostKickMs,
@@ -28,9 +29,11 @@ function newCode(lobby) {
   }
 }
 
-// Each match is played on the room's current arena (4b spec §1).
+// Each match is played on the room's current arena (4b spec §1), with a
+// fresh seed for its buff rolls (2b spec §2).
 function newMatch(lobby, room, roster) {
-  const match = makeMatch({ roster, arena: arenaAt(room.arenaIndex), sfx: makeSfx(false), matchLength: lobby.opts.matchLength })
+  const match = makeMatch({ roster, arena: arenaAt(room.arenaIndex), sfx: makeSfx(false), matchLength: lobby.opts.matchLength,
+    seed: randomSeed(lobby.opts.random) })
   if (lobby.opts.rewind) match.hitPos = (foe, attacker) => rewoundPos(room, foe, attacker)
   room.history = new Map()
   return match
