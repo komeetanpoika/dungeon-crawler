@@ -69,18 +69,18 @@ describe('respawn', () => {
     const spawned = []
     makeBenchCore(m).respawn({ getState: () => state, spawn: list => spawned.push(...list) }, 'glorp')
     assert.deepEqual(state.entities, [{ type: 'chest' }])
-    assert.deepEqual(spawned, [{ kind: 'glorp', x: 13, y: 4 }, { kind: 'glorp', x: 10, y: 4 }])
+    assert.deepEqual(spawned, [{ kind: 'glorp', x: 13, y: 7 }, { kind: 'glorp', x: 10, y: 7 }])
     assert.equal(getAIConfig({ type: 'glorp' }).speed, 120)
     assert.equal(getMonsterDef('glorp').stats.hp, 33)
   })
 })
 
 describe('arena config', () => {
-  it('puts the monster 11 rows from the hero with the bench kit', () => {
+  it('puts the monster 8 rows from the hero with the bench kit', () => {
     const c = benchArenaConfig('glorp', 1)
     assert.deepEqual(c.size, { w: 26, h: 18 })
-    assert.deepEqual(c.enemies, [{ kind: 'glorp', x: 13, y: 4 }])
-    assert.equal(c.player.y - c.enemies[0].y, 11)
+    assert.deepEqual(c.enemies, [{ kind: 'glorp', x: 13, y: 7 }])
+    assert.equal(c.player.y - c.enemies[0].y, 8)
     assert.equal(c.player.weaponType, 'sword')
     assert.deepEqual(BENCH_KIT.outfits, ['ranger', 'robe'])
   })

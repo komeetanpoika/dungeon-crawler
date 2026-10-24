@@ -10,7 +10,7 @@ export const BENCH_KIT = { weaponType: 'sword', rangedType: 'shortbow', wandType
                            ammo: { arrow: 999 }, outfits: ['ranger', 'robe'] }
 
 const SPOT_XS = [13, 10, 16, 7, 19, 4, 22]
-const SPOT_Y = 4
+const SPOT_Y = 7
 const HERO = { x: 13, y: 15 }
 
 export function respawnSpots(count) {

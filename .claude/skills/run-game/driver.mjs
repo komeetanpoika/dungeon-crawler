@@ -19,7 +19,8 @@ const COMMANDS = {
     if (app) return console.log('already launched');
     app = await electron.launch({
       executablePath: electronBin,
-      args: ['--no-sandbox', APP_DIR],
+      // DC_EXTRA_ARGS: extra launch flags, e.g. "--dcdebug" or "--bench <name>".
+      args: ['--no-sandbox', APP_DIR, ...(process.env.DC_EXTRA_ARGS?.split(/\s+/).filter(Boolean) ?? [])],
       env: { ...process.env, DISPLAY: process.env.DISPLAY || ':99' },
       timeout: 30_000,
     });

@@ -253,6 +253,9 @@ let pvp = null
 // An online PvP room (renderer/net/) while one is joined. Like `pvp`, it
 // keeps `state` null so every single-player handler no-ops.
 let net = null
+// The monster bench (tools/monster-bench/, `npm run bench -- <name>`) while
+// it runs: frame delta, freeze test and overlay hooks; null otherwise.
+let bench = null
 // Tooling hook (verify-npcs.mjs etc.): only wired up when launched with
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
@@ -1065,11 +1068,12 @@ function netFrame() {
   playCues(audio, drainCues(s), view.player, net.muted)
 }
 
-async function beginRun(depth = 1, mode = modeForDepth(depth)) {
+async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = null) {
   runMode = mode
   activeSave = mode === 'timewarp' ? enterEpisode(savedTimewarp, depth).save : savedAdventure
-  let arenaCfg = null
-  if (depth === 0 && window.saveAPI?.loadArenaConfig) {
+  // The bench builds its arena in memory, so a Restart stays on the bench.
+  let arenaCfg = depth === 0 ? arenaOverride ?? bench?.arenaConfig() ?? null : null
+  if (depth === 0 && !arenaCfg && window.saveAPI?.loadArenaConfig) {
     const res = await window.saveAPI.loadArenaConfig()
     if (res?.error) console.warn(res.error)
     arenaCfg = res?.config ?? null
@@ -1251,7 +1255,8 @@ function gameLoop(timestamp) {
     if (pvp) pvpFrame(delta)
     else if (net) netFrame()
     else {
-      update(delta)
+      const d = bench ? bench.frameDelta(delta) : delta
+      if (d !== null) update(d)
       if (state) render()
     }
   }
@@ -1904,6 +1909,7 @@ function update(delta) {
     // updateNpc drives peaceful AND hostile NPCs (the hostile ones run the
     // enemy brain inside their attack_hostile goal) — never both paths.
     if (e.type === 'npc') { updateNpc(e, state, delta); continue }
+    if (bench?.isFrozen(e)) continue
     if (e.dying > 0) { if (getMonsterDef(e.type)) updateMonsterPose(e, delta); continue }
     if (isStoryCreature(e)) { CREATURE_UPDATE[e.type]?.(e, state, delta); updateMonsterPose(e, delta); continue }
     if (!isEnemy(e)) continue
@@ -2166,11 +2172,14 @@ function render() {
   // Open-map surfaces see the whole radius; dungeons, caves and interiors
   // keep line of sight.
   const surface = !state.cave && !!OPEN_MAPS[state.level]
-  maybeComputeFOV(state.map, state.player, surface ? 14 : 8, { los: !surface })
+  // The bench lights its whole arena: the monster spawns 11 tiles out and
+  // its wind-ups must read from across the room.
+  maybeComputeFOV(state.map, state.player, bench ? 40 : surface ? 14 : 8, { los: !surface })
   const fx = riteVisuals(state)
   if (state.weather) state.weather.look = state.cave ? null : weatherLook(state, activeSave)
   renderer.updateCamera(state.player, state.shake ?? 0, fx)
   renderer.render(state, fx)
+  bench?.drawOverlay(renderer.ctx, state, renderer)
   updateHUD(state)
 }
 
@@ -2367,7 +2376,13 @@ async function init() {
   // Resizing reallocates the canvas backing store (blank); repaint the current
   // frame even when not in PLAYING, since the loop no longer renders every frame.
   window.addEventListener('resize', () => { renderer.resize(); if (state) render() })
-  goTitle()
+  const benchName = new URLSearchParams(location.search).get('bench')
+  if (benchName && window.saveAPI?.benchSave) {
+    const { startBench } = await import('../tools/monster-bench/bench.js')
+    bench = startBench({ name: benchName, renderer, goTitle, getState: () => state,
+      startArena: cfg => beginRun(0, 'arena', cfg),
+      spawn: spawns => { state.entities.push(...buildEntities(spawns, state.map, state.level, state.player)) } })
+  } else goTitle()
   // A tab reloaded mid-match goes straight back to its hero (4b spec §2).
   const seat = window.saveAPI?.isWeb ? loadSeat() : null
   if (seat) startNet({ kind: 'quick', resume: seat })

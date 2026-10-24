@@ -9,7 +9,8 @@
     "test": "node --test test/*.test.js",
     "web": "node tools/web-server.mjs",
     "bake": "node tools/bake-dragon-parts.mjs",
-    "monster-lab": "node tools/monster-lab/server.mjs"
+    "monster-lab": "node tools/monster-lab/server.mjs",
+    "bench": "electron . --bench"
   },
   "devDependencies": {
     "electron": "^30.0.0",

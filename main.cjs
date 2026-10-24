@@ -1,7 +1,9 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const { readMonsters } = require('./tools/monster-lab/monster-files.cjs')
+const { readMonsters, updateMonster } = require('./tools/monster-lab/monster-files.cjs')
+const { benchNameFrom, benchQuery } = require('./tools/monster-bench/argv.cjs')
+const { shouldReload } = require('./tools/monster-bench/watch-filter.cjs')
 
 // WSL2/WSLg: the hardware GPU process fails to initialize and can hang the
 // app before any window appears — always use software rendering.
@@ -18,6 +20,10 @@ const STRUCTURES_FILE = path.join(__dirname, 'renderer', 'data', 'structures.jso
 const ARENA_CONFIG_FILE = path.join(__dirname, 'arena-config.json')
 const TILES_DIR = path.join(__dirname, 'renderer', 'assets', 'tiles')
 const MONSTERS_DIR = path.join(__dirname, 'renderer', 'data', 'monsters')
+// `npm run bench -- <name>`: the monster bench (tools/monster-bench/). Its
+// save handler and file watcher exist only in this mode.
+const BENCH = benchNameFrom(process.argv)
+let benchLastWrite = null
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -28,7 +34,23 @@ function createWindow() {
       contextIsolation: true,
     },
   })
-  win.loadFile('renderer/index.html', process.argv.includes('--dcdebug') ? { search: 'dcdebug=1' } : undefined)
+  const search = benchQuery(process.argv)
+  win.loadFile('renderer/index.html', search ? { search } : undefined)
+  if (BENCH) watchForBench(win)
+}
+
+// While the bench runs, a saved change to the game's code or data reloads
+// the page (debounced), which re-enters the bench on the same monster.
+function watchForBench(win) {
+  let timer = null
+  const watcher = fs.watch(path.join(__dirname, 'renderer'), { recursive: true }, (_ev, file) => {
+    if (!file) return
+    const rel = 'renderer/' + String(file).replace(/\\/g, '/')
+    if (!shouldReload(rel, Date.now(), benchLastWrite)) return
+    clearTimeout(timer)
+    timer = setTimeout(() => { if (!win.isDestroyed()) win.webContents.send('bench-files-changed', rel) }, 300)
+  })
+  win.on('closed', () => { clearTimeout(timer); watcher.close() })
 }
 
 function createEditorWindow() {
@@ -89,6 +111,12 @@ ipcMain.handle('load-structures', () => {
 })
 ipcMain.handle('save-structures', (_e, data) =>
   fs.writeFileSync(STRUCTURES_FILE, JSON.stringify(data, null, 2)))
+
+ipcMain.handle('bench-save-monster', (_e, name, patch) => {
+  if (!BENCH || name !== BENCH) throw new Error(`bench: refusing to save "${name}"`)
+  benchLastWrite = { rel: `renderer/data/monsters/${name}.json`, at: Date.now() }
+  return updateMonster(MONSTERS_DIR, name, patch)
+})
 
 ipcMain.handle('load-arena-config', () => {
   if (!fs.existsSync(ARENA_CONFIG_FILE)) return { config: null, error: null }
