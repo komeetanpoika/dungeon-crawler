@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { registerMonsters, clearMonsters, getMonsterDef, monsterNames, monstersForDepth,
          makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster, monstersForOpenMap,
-         isStoryCreature } from '../renderer/systems/monsters.js'
+         isStoryCreature, tuningOf, retuneMonster } from '../renderer/systems/monsters.js'
+import { schemaErrors } from '../renderer/render/monster-rigs/schema.js'
 import { getAIConfig } from '../renderer/data/enemy-ai.js'
 import { isEnemy } from '../renderer/systems/factions.js'
 import { createMap } from '../renderer/systems/map.js'
@@ -398,4 +399,72 @@ describe('kivihiisi def', () => {
     assert.equal(def.hooks, true)
   })
   it('is listed in the index', () => { assert.ok(index.includes('kivihiisi')) })
+})
+
+describe('tuning', () => {
+  beforeEach(clearMonsters)
+  const SCHEMA = [
+    { key: 'cooldown', label: 'Cooldown', group: 'attack', type: 'range', min: 0.5, max: 10, step: 0.1, default: 2, hint: 's between attacks' },
+    { key: 'enraged', label: 'Enraged', group: 'attack', type: 'toggle', default: false },
+  ]
+  const TUNED = { name: 'tuned', rig: 'fakerig', hooks: true, stats: { speed: 70 } }
+  it('clamps def tuning against the hook TUNING_SCHEMA', async () => {
+    const warns = []
+    await load([{ ...TUNED, tuning: { cooldown: 99, bogus: 1 } }],
+      { loadHooks: async () => ({ TUNING_SCHEMA: SCHEMA }), warn: m => warns.push(m) })
+    assert.deepEqual(getMonsterDef('tuned').tuning, { cooldown: 10, enraged: false })
+    assert.deepEqual(getMonsterDef('tuned').tuningSchema, SCHEMA)
+    assert.ok(warns.some(w => /clamped/.test(w)) && warns.some(w => /bogus/.test(w)))
+  })
+  it('tuningOf returns the same live object the def holds', async () => {
+    await load([TUNED], { loadHooks: async () => ({ TUNING_SCHEMA: SCHEMA }) })
+    assert.equal(tuningOf('tuned'), getMonsterDef('tuned').tuning)
+    tuningOf('tuned').cooldown = 4
+    assert.equal(getMonsterDef('tuned').tuning.cooldown, 4)
+  })
+  it('keeps the hook module on the def', async () => {
+    const mod = { TUNING_SCHEMA: SCHEMA, debugState: () => 'x' }
+    await load([TUNED], { loadHooks: async () => mod })
+    assert.equal(getMonsterDef('tuned').hookModule, mod)
+  })
+  it('a hook without TUNING_SCHEMA loads with empty tuning', async () => {
+    await load([TUNED], { loadHooks: async () => ({}) })
+    assert.deepEqual(getMonsterDef('tuned').tuning, {})
+    assert.equal(getMonsterDef('tuned').tuningSchema, null)
+  })
+  it('a legacy loadHooks returning undefined still loads', async () => {
+    assert.equal(await load([TUNED]), 1)
+    assert.deepEqual(getMonsterDef('tuned').tuning, {})
+    assert.equal(getMonsterDef('tuned').hookModule, null)
+  })
+  it('an invalid TUNING_SCHEMA warns and is ignored', async () => {
+    const warns = []
+    await load([{ ...TUNED, tuning: { x: 1 } }],
+      { loadHooks: async () => ({ TUNING_SCHEMA: [{ key: 'x', type: 'range' }] }), warn: m => warns.push(m) })
+    assert.ok(warns.some(w => /TUNING_SCHEMA/.test(w)))
+    assert.equal(getMonsterDef('tuned').tuningSchema, null)
+    assert.deepEqual(getMonsterDef('tuned').tuning, {})
+  })
+  it('a def without hooks has empty tuning', async () => {
+    await load([{ ...DEF }])
+    assert.deepEqual(getMonsterDef('boarhound').tuning, {})
+  })
+  it('accepts a hint field in the schema', () => {
+    assert.deepEqual(schemaErrors(SCHEMA), [])
+  })
+  it('retuneMonster re-registers the AI row with new speed and behaviour', async () => {
+    await load([{ ...TUNED, behavior: { sightRange: 200, taxon: 'beast' } }])
+    assert.equal(retuneMonster('tuned', { stats: { speed: 140, hp: 30 }, behavior: { sightRange: 320 } }), true)
+    assert.equal(getAIConfig({ type: 'tuned' }).speed, 140)
+    assert.equal(getAIConfig({ type: 'tuned' }).sightRange, 320)
+    assert.equal(getMonsterDef('tuned').stats.hp, 30)
+    assert.equal(getMonsterDef('tuned').behavior.taxon, 'beast')
+    assert.equal(makeMonsterFromDef('tuned', 1, 1).hp, 30)
+  })
+  it('retuneMonster on an unknown name is false', () => {
+    assert.equal(retuneMonster('nope', { stats: { hp: 1 } }), false)
+  })
+  it('tuningOf on an unknown type is an empty object', () => {
+    assert.deepEqual(tuningOf('nope'), {})
+  })
 })

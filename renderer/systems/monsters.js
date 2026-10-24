@@ -5,7 +5,7 @@
 // explicitly for registry types. A def with behavior.driver 'hook' (the
 // leap-episode story creatures) hands its whole per-frame update to that
 // module instead — see isStoryCreature below.
-import { clampParams } from '../render/monster-rigs/schema.js'
+import { clampParams, schemaErrors } from '../render/monster-rigs/schema.js'
 import { TILE_ART_PX, snapFacing, palette } from '../render/monster-rigs/pixel.js'
 import { registerMonsterAI } from '../data/enemy-ai.js'
 import { creatureAlpha } from './creatures.js'
@@ -61,12 +61,25 @@ export async function registerMonsters(defs, opts = {}) {
     // clearance track the visuals, and the def's stats.half is a fallback
     // for rigs without hitHalf.
     if (typeof rig.hitHalf === 'function') stats.half = rig.hitHalf(params)
-    REGISTRY[raw.name] = { name: raw.name, rigId: raw.rig, rig, params, stats,
-                          behavior: raw.behavior ?? {}, spawn: raw.spawn ?? null }
+    const def = REGISTRY[raw.name] = { name: raw.name, rigId: raw.rig, rig, params, stats,
+                          behavior: raw.behavior ?? {}, spawn: raw.spawn ?? null,
+                          tuningSchema: null, tuning: {}, hookModule: null }
     registerMonsterAI(raw.name, { speed: stats.speed, half: stats.half, ...(raw.behavior ?? {}) })
     if (raw.hooks) {
-      try { await loadHooks(raw.name) }
+      try { def.hookModule = (await loadHooks(raw.name)) ?? null }
       catch (err) { warn(`monsters: ${raw.name}: hooks failed (${err.message}) — default behavior`) }
+    }
+    // A hook's TUNING_SCHEMA works like a rig's PARAM_SCHEMA: the def's
+    // `tuning` values are clamped against it, and the hook reads the result
+    // through tuningOf every frame — the monster bench edits it in place.
+    const schema = def.hookModule?.TUNING_SCHEMA
+    if (Array.isArray(schema)) {
+      const errs = schemaErrors(schema)
+      if (errs.length) warn(`monsters: ${raw.name}: bad TUNING_SCHEMA (${errs.join('; ')}) — ignored`)
+      else {
+        def.tuningSchema = schema
+        def.tuning = clampParams(schema, raw.tuning ?? {}, m => warn(`monsters: ${raw.name}: tuning ${m}`))
+      }
     }
     loaded++
   }
@@ -75,6 +88,25 @@ export async function registerMonsters(defs, opts = {}) {
 
 export function clearMonsters() { for (const k of Object.keys(REGISTRY)) delete REGISTRY[k] }
 export function getMonsterDef(name) { return REGISTRY[name] ?? null }
+
+// The live tuning object of a monster type (never a copy), so an edit made
+// while the game runs reaches the hook on its next frame.
+const NO_TUNING = Object.freeze({})
+export function tuningOf(type) { return REGISTRY[type]?.tuning ?? NO_TUNING }
+
+// Change a loaded monster's stats and behaviour (the monster bench's
+// respawn). Speed and behaviour reach the brain only through its AI row,
+// so the row is registered again; hp and dmg take effect on the next
+// makeMonsterFromDef.
+export function retuneMonster(name, { stats = {}, behavior = {} } = {}) {
+  const d = REGISTRY[name]
+  if (!d) return false
+  Object.assign(d.stats, stats)
+  if (typeof d.rig.hitHalf === 'function') d.stats.half = d.rig.hitHalf(d.params)
+  d.behavior = { ...d.behavior, ...behavior }
+  registerMonsterAI(name, { speed: d.stats.speed, half: d.stats.half, ...d.behavior })
+  return true
+}
 
 // A registry monster whose hook module owns its movement (behavior.driver
 // 'hook'): the enemy loop skips brain/act for it, gust/slam ignore it, and
