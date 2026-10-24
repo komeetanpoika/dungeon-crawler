@@ -226,6 +226,11 @@ The skill is written and pressure-tested with `superpowers:writing-skills`.
   chests. Obstacles are a later addition if a monster needs line-of-sight
   play.
 
+## Changes after approval (user, 2026-10-24)
+
+- The monster-mechanics skill is postponed to a later session. The bench and the scaffold go first.
+- The first monster is the user's drawing `monsteri.jpg` (repo root), working name `monsteri`. Turning that one drawing into a sprite rig is now in scope; general art tooling is still not.
+
 ## Left to the builder
 
 - Where the bench code lives (`renderer/bench/` or `tools/monster-bench/`),

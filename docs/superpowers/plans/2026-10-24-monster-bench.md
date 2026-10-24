@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `npm run bench -- <name>` opens the Electron game in an arena with one monster and a live tuning panel. Edits apply at once and Save writes them to the monster's JSON. A scaffold creates new monsters, and a `monster-mechanics` skill holds the workflow.
+**Goal:** `npm run bench -- <name>` opens the Electron game in an arena with one monster and a live tuning panel. Edits apply at once and Save writes them to the monster's JSON. A scaffold creates new monsters, and the user's drawing `monsteri.jpg` becomes the first bench monster. The `monster-mechanics` skill is deferred.
 
 **Architecture:** Tuning lives in the monster JSON (`tuning`), validated against a `TUNING_SCHEMA` the hook module exports. This is the rig `PARAM_SCHEMA` pattern again, reusing `schema.js`. All bench runtime code lives in `tools/monster-bench/`. The web root is `renderer/`, so none of it is ever served. `game.js` imports it dynamically, only when `?bench=` is set and the preload offers `benchSave`. `game.js` hands it a small seam object and consults three bench hooks per frame: frame delta, freeze test and overlay draw. Damage goes through a new observer hook in `player-damage.js`. `main.cjs` owns save (read-modify-write through `monster-files.cjs`) and the file watcher that reloads the page.
 
@@ -52,7 +52,8 @@
 | `main.cjs`, `preload.cjs`, `package.json` | modify | `--bench`, IPC, watcher, npm script |
 | `renderer/game.js` | modify | bench boot + seam + three per-frame hook calls + restart keeps bench config |
 | `.claude/skills/run-game/driver.mjs` | modify | `DC_EXTRA_ARGS` |
-| `.claude/skills/monster-mechanics/SKILL.md`, `LESSONS.md` | create | the skill |
+| `tools/extract-monsteri.mjs`, `renderer/render/monster-rigs/monsteri.js` | create | the user's drawing as a sprite rig (Task 10) |
+| `.claude/skills/monster-mechanics/` | deferred | the skill (postponed by the user) |
 | `.claude/skills/arena-test/SKILL.md` | modify | registry kinds, `DC_EXTRA_ARGS` |
 
 ---
@@ -412,22 +413,73 @@ it('the generated hook runs in the real registry', async () => {
 
 ---
 
-### Task 10: The monster-mechanics skill
+### Task 10: Monsteri from the drawing
+
+*Added 2026-10-24 at the user's request; replaces the skill task, which is deferred (see the end).* The user dropped `monsteri.jpg` in the repo root: a phone photo (4000×2252, RGB) of a red crayon creature on white paper, lying sideways with its head to the left. It has four long clawed arms, two clawed legs, two ears or horns, and three yellow orbs on wavy stalks in front of the face. The monster's working name is `monsteri` (from the file name). Mechanics come later from the user's description; this task gives it the drawing's look and the scaffold's placeholder hook.
 
 **Files:**
-- Create: `.claude/skills/monster-mechanics/SKILL.md`, `.claude/skills/monster-mechanics/LESSONS.md`
+- Create: `assets/monsteri.png` (source, converted once), `tools/extract-monsteri.mjs`, `renderer/assets/monsters/monsteri.png`, `renderer/assets/monsters/monsteri-sheet.js` (generated), `renderer/render/monster-rigs/monsteri.js`
+- Create via the scaffold (Task 8): `renderer/data/monsters/monsteri.json`, `renderer/systems/monsters/monsteri.js`, `test/monsteri.test.js`
+- Modify: `renderer/data/monsters/monsteri.json` (rig `monsteri`), `test/monster-rigs.test.js` only if the rig contract tests enumerate rigs explicitly
+- Test: `test/monsteri-rig.test.js`
 
-- [ ] **Step 1:** Invoke `superpowers:writing-skills` and follow it. That includes its baseline-without-skill pressure test and its with-skill test.
-- [ ] **Step 2:** The skill body follows the spec's nine-step outline exactly: lessons, description questions (what it does, how the player sees it coming, how the player beats it), scaffold, test-first build with every number in `TUNING_SCHEMA` plus `debugState`/`debugDraw`, time-boxed self-check in the bench via `DC_EXTRA_ARGS="--bench <name>"` logged with `arena-log.mjs`, handover (`npm run bench -- <name>` + one line per tuning field), tweak loop (read saved JSON first; the bench reloads on edit), wrap-up (`npm test`, `git status`, lesson line), drawing → sprite-sheet pointer. Frontmatter description: "Use when designing, building or tuning a dungeon-crawler monster's mechanics — attacks, movement, telegraphs — with the user describing and tweaking live in the monster bench." It also lists the files the bench touches and the panel's collapse key.
-- [ ] **Step 3:** `LESSONS.md` header (copy arena-test's), seeded with the lessons this build taught: for example the reload-on-edit behaviour and the `tuningOf` read-every-frame rule.
-- [ ] **Step 4: Commit** — `feat(skills): monster-mechanics skill`
+**Interfaces:**
+- Consumes: `writeSheet`/`downsample` from `tools/sprite-sheet-lib.mjs`, `readPng` from `tools/png-read.mjs`, `drawSheetCell`/`snapFacing`/`TILE_ART_PX` from `render/monster-rigs/pixel.js`.
+- Produces: rig `monsteri` with `RIG_ID`, `PARAM_SCHEMA`, `hitHalf(p)`, `hitShape(p)`, `drawMonster(ctx, p, pose, S)`, `_setSheetImage(img)` (test seam, as in `serpent.js`).
+
+- [ ] **Step 1: Convert the photo once.** With PIL: rotate 90° clockwise so the head points up (rigs draw facing north at rotation 0, see `snapFacing(facing + π/2)` in `pixel.js`), downscale by 4 with LANCZOS, and save as `assets/monsteri.png`. Do not commit the `:Zone.Identifier` sidecar. Leave `monsteri.jpg` in place; it is the user's file.
+- [ ] **Step 2: Write `tools/extract-monsteri.mjs`.**
+  - Estimate the paper colour locally: the brightest value in a large neighbourhood, computed per block, because the photo's lighting is uneven.
+  - A pixel is **ink** if its chroma (max−min channel) exceeds the paper's by a margin, or it is darker than the local paper by a margin. Measure both margins from the image and record them as named constants.
+  - Keep ink components above a size floor, so the paper grain and the table and jeans at the photo's edge drop out. Crop to the paper first if the edges leak in.
+  - Close the mask (dilate then erode) and fill enclosed holes, so the crayon hatching reads as a solid body. Pixels inside the mask keep their own colour.
+  - Crop to the mask, `downsample` to **96 px tall** (an integer factor that gets closest), and `writeSheet` with one row `idle` of one frame, `align: 'bottom'`.
+  - Print the output size.
+- [ ] **Step 3: Look at the result.** Open the generated PNG on a mid-grey and a forest-green backdrop at 1× and 3×, with the Read tool on a composited preview in the scratchpad. The body must be solid, the claws, ears and yellow orbs must be readable, and no paper halo may show. Iterate on the constants until all three hold.
+- [ ] **Step 4: Write the failing rig test** in `test/monsteri-rig.test.js`, modelled on the serpent rig tests:
+  - `PARAM_SCHEMA` passes `schemaErrors`.
+  - `hitHalf` stays within 8..28 for every `size` in range.
+  - `drawMonster` with no image draws a silhouette (a fake ctx records ≥1 fill).
+  - With `_setSheetImage(fake)` it calls `drawImage`.
+  - For the `hit` state it routes through the tint path, so `drawImage` is called with a canvas buffer source. Use the `OffscreenCanvas` guard the serpent tests use, or skip that assertion when it is unavailable.
+- [ ] **Step 5: Run** `node --test test/monsteri-rig.test.js`. Expected: FAIL.
+- [ ] **Step 6: Implement `renderer/render/monster-rigs/monsteri.js`.**
+  - Params (`range` unless noted):
+
+    | key | label | group | min | max | step | default | meaning |
+    |---|---|---|---|---|---|---|---|
+    | `size` | Height (tiles) | body | 1.5 | 6 | 0.25 | 3.5 | |
+    | `body` | Body radius | body | 0.2 | 1.5 | 0.05 | 0.5 | tiles; hit circle |
+    | `bob` | Bob | motion | 0 | 1 | 0.05 | 0.4 | |
+    | `wobble` | Walk wobble | motion | 0 | 15 | 1 | 6 | degrees |
+    | `gaitFreq` | Gait speed | motion | 1 | 12 | 0.5 | 6 | |
+    | `lunge` | Attack lunge | motion | 0 | 0.6 | 0.05 | 0.2 | tiles |
+
+  - `hitHalf(p) = clamp(round(p.body * 16), 8, 28)` and `hitShape = p => ({ r: hitHalf(p) })`.
+  - Drawing: rotate the whole sprite to `snapFacing(pose.facing + Math.PI / 2)`. The motion is frame-stepped in 4 steps for the 16-bit feel:
+    - idle: a slow breathing scale of ±2 %;
+    - walk: a step bob plus alternating `wobble` rotation at `gaitFreq`;
+    - attack: a forward `lunge` along the facing;
+    - hit: white flash via `drawSheetCell`'s tint;
+    - death: shrink to 60 % over the dying time (alpha already comes from `dying.js`).
+  - Silhouette fallback: a red body block plus four limb bars, so nothing vanishes before the image loads.
+- [ ] **Step 7: Run** `node --test test/monsteri-rig.test.js test/monster-rigs.test.js`. Expected: PASS. If `monster-rigs.test.js` sweeps all rigs and holds them to shape-rig pixel discipline, exempt the sheet rigs the same way `serpent`/`wraith` are exempted.
+- [ ] **Step 8: Create the monster.** Run `node tools/monster-bench/new-monster.mjs monsteri`, then set the def's `rig` to `monsteri` with `params: {}` (defaults), `stats: { hp: 12, dmg: 2, speed: 60 }`. Leave it unarmed, with no `behavior.weapon`, until the user says how it attacks. Run `node --test test/monsteri.test.js`. Expected: PASS. Change the generated test's `loadRig` to the monsteri rig.
+- [ ] **Step 9: Look in the monster lab.** Run `npm run monster-lab`, take a playwright-core chromium screenshot of the lab on `monsteri` in idle and walk, then stop the server.
+- [ ] **Step 10: Commit** — `feat(monsters): monsteri from the user's drawing`, adding `assets/monsteri.png`, the extractor, the generated sheet, the rig, the three scaffold files and `index.json`.
 
 ---
 
 ### Task 11: Live verification and wrap-up
 
-- [ ] **Step 1:** Open an arena-test journal entry (`arena-log.mjs open`) with the question "Does the bench tune, save and reload a scaffolded monster live?" and the criteria "a panel cooldown edit changes debugState's cd on the next frame; Save writes it to the JSON; editing the hook file reloads the page with the edit kept and the dirty marker gone".
-- [ ] **Step 2:** Scaffold `zz_benchcheck`. Launch the driver with `DC_EXTRA_ARGS="--bench zz_benchcheck"`. Drive the panel with `eval`: set cooldown, read the readout, click Save, `cat` the JSON, then touch the hook file and screenshot after the reload. Time-box to about 10 minutes.
-- [ ] **Step 3:** Close the journal entry with a score and notes. Remove `zz_benchcheck` (three files plus its `index.json` entry). `git status --porcelain renderer/data/` must be clean.
-- [ ] **Step 4:** Add one line to the dungeon-crawler section of `~/CLAUDE.md` (outside the repo, so not committed): "`npm run bench -- <name>` — monster bench (arena + live tuning panel); `node tools/monster-bench/new-monster.mjs <name>` scaffolds; workflow skill `.claude/skills/monster-mechanics/`."
+- [ ] **Step 1:** Open an arena-test journal entry (`arena-log.mjs open`) with the question "Does the bench tune, save and reload monsteri live?" and the criteria "a panel cooldown edit changes debugState's cd on the next frame; Save writes it to the JSON; editing the hook file reloads the page with the saved value shown; monsteri reads clearly in the arena".
+- [ ] **Step 2:** Launch the driver with `DC_EXTRA_ARGS="--bench monsteri"`. Drive the panel with `eval`: set cooldown, read the readout, click Save, then `cat` the JSON. Touch the hook file and screenshot after the reload. Time-box this to about 10 minutes.
+- [ ] **Step 3:** Close the journal entry with a score and notes. Restore `monsteri.json` to its committed tuning (`git checkout -- renderer/data/monsters/monsteri.json`). `git status --porcelain renderer/data/` must be clean.
+- [ ] **Step 4:** Add one line to the dungeon-crawler section of `~/CLAUDE.md` (outside the repo, so not committed): "`npm run bench -- <name>` — monster bench (arena + live tuning panel); `node tools/monster-bench/new-monster.mjs <name>` scaffolds; first bench monster `monsteri` (from the user's drawing)."
 - [ ] **Step 5:** `npm test` green, then use `superpowers:finishing-a-development-branch`.
+
+---
+
+## Deferred: the monster-mechanics skill
+
+Postponed by the user on 2026-10-24. When picked up: invoke `superpowers:writing-skills` (baseline and with-skill pressure tests). Write `.claude/skills/monster-mechanics/SKILL.md` following the spec's nine-step outline. Frontmatter description: "Use when designing, building or tuning a dungeon-crawler monster's mechanics — attacks, movement, telegraphs — with the user describing and tweaking live in the monster bench". Seed `LESSONS.md` from what building and using the bench taught.
