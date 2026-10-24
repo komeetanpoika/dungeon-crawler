@@ -13,13 +13,21 @@ import { outfitOf } from './inventory.js'
 
 export const INVULN_DURATION = 0.8
 
+// The monster bench's seam: (state, player, amount, kind) => the hp the
+// hit actually takes, seen after block, protect and soak. The float still
+// shows what the hit dealt, so an invulnerable bench hero reads the damage.
+// Null outside the bench.
+let observer = null
+export function setDamageObserver(fn) { observer = fn }
+
 export function damagePlayer(state, amount, kind, from = null, hero = state.player, soak = null) {
   const player = hero
   if (kind === 'hit' && (player.invulnTimer ?? 0) > 0) return false
   if (kind === 'hit' && tryBlock(state, from, player)) return false
   if (kind === 'hit') amount = Math.max(0, amount - (outfitOf(player, player.attackMode ?? 'melee')?.protect ?? 0))
   if (soak) amount = soak(player, amount)
-  player.hp -= amount
+  const taken = observer ? observer(state, player, amount, kind) : amount
+  player.hp -= Number.isFinite(taken) ? taken : amount
   if (kind === 'hit') player.invulnTimer = INVULN_DURATION
   addFloat(state.feedback, { px: player.px, py: player.py, text: amount > 0 ? `-${amount}` : '0', kind: 'taken' })
   sfx(state, 'player-hurt', { px: player.px, py: player.py })
