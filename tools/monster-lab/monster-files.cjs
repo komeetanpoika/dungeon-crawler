@@ -50,10 +50,28 @@ function writeMonster(dir, name, data) {
   let names = []
   try { names = JSON.parse(fs.readFileSync(idx, 'utf8')) } catch {}
   if (!Array.isArray(names)) names = []
-  if (!names.includes(name)) names.push(name)
-  names.sort()
-  atomicWrite(idx, JSON.stringify(names, null, 2))
+  // Only a new name touches the index — a save of an existing monster
+  // rewrites that monster's file and nothing else.
+  if (!names.includes(name)) {
+    names.push(name)
+    names.sort()
+    atomicWrite(idx, JSON.stringify(names, null, 2))
+  }
   return { ok: true, name }
 }
 
-module.exports = { readMonsters, writeMonster, NAME_RE }
+// The monster bench's Save: read-modify-write of one existing monster.
+// stats and behavior merge into what is on disk, tuning is replaced whole,
+// and every other field of the def survives.
+function updateMonster(dir, name, patch = {}) {
+  if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
+  let def
+  try { def = JSON.parse(fs.readFileSync(path.join(dir, name + '.json'), 'utf8')) }
+  catch { throw new Error(`no monster "${name}"`) }
+  if (patch.stats) def.stats = { ...(def.stats ?? {}), ...patch.stats }
+  if (patch.behavior) def.behavior = { ...(def.behavior ?? {}), ...patch.behavior }
+  if (patch.tuning) def.tuning = { ...patch.tuning }
+  return writeMonster(dir, name, def)
+}
+
+module.exports = { readMonsters, writeMonster, updateMonster, NAME_RE }
