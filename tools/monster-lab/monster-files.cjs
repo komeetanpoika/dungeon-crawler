@@ -74,4 +74,4 @@ function updateMonster(dir, name, patch = {}) {
   return writeMonster(dir, name, def)
 }
 
-module.exports = { readMonsters, writeMonster, updateMonster, NAME_RE }
+module.exports = { readMonsters, writeMonster, updateMonster, NAME_RE, RESERVED_NAMES }
