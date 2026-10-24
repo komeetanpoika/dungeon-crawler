@@ -109,6 +109,19 @@ describe('gateKeys', () => {
     fire(root, win, new Event('keydown')); fire(root, win, new Event('keyup'))
     assert.deepEqual(seen, [])
   })
+  it('a button that kept focus (pressed and released off itself) is blurred too', () => {
+    const root = new EventTarget(), win = new EventTarget()
+    let blurred = 0
+    const button = { type: 'submit', blur: () => blurred++ }
+    root.contains = n => n === button
+    const doc = { activeElement: button }
+    gateKeys(root, win, doc)
+    const ev = new Event('pointerup'); Object.defineProperty(ev, 'target', { value: { type: undefined } }); root.dispatchEvent(ev)
+    assert.equal(blurred, 1)
+    doc.activeElement = { type: 'number', blur: () => blurred++ }; root.contains = () => true
+    root.dispatchEvent(new Event('pointerup'))
+    assert.equal(blurred, 1, 'a number field keeps focus')
+  })
   it('a button or slider gives the keyboard back after use; a text field keeps it', () => {
     const root = new EventTarget(), win = new EventTarget()
     gateKeys(root, win)

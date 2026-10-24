@@ -19,6 +19,9 @@ export function makeBenchModel(def) {
       stats: Object.fromEntries(STATS.map(k => [k, def.stats?.[k]])),
       behavior: numeric(def.behavior),
     },
+    // without a schema (a hook that failed to load, or none) the panel has
+    // no tuning to offer, and Save must not overwrite what the file holds
+    hasTuning: Array.isArray(def.tuningSchema),
     dirty: new Set(),
     switches: { frozen: false, invulnerable: false, hitboxes: false, timeScale: 1, paused: false, count: 1, collapsed: false },
   }
@@ -31,7 +34,7 @@ export function edit(model, section, key, value) {
 
 export function savePatch(model) {
   const { tuning, stats, behavior } = model.values
-  return { tuning: { ...tuning }, stats: { ...stats }, behavior: { ...behavior } }
+  return { ...(model.hasTuning ? { tuning: { ...tuning } } : {}), stats: { ...stats }, behavior: { ...behavior } }
 }
 
 export function markSaved(model) { model.dirty.clear() }
@@ -67,4 +70,14 @@ export function restore(model, text, schema) {
   }
   for (const [k, v] of Object.entries(snap.switches ?? {}))
     if (k in model.switches && k !== 'paused' && typeof v === typeof model.switches[k]) model.switches[k] = v
+}
+
+// The snapshot rides one reload only: it is removed as it is read, and
+// written again on every page hide (a reload by the watcher or by hand), so
+// a later reload never resurrects an older panel state over newer files.
+export function takeSnapshot(storage, key) {
+  try { const text = storage.getItem(key); storage.removeItem(key); return text } catch { return null }
+}
+export function keepSnapshot(storage, key, model) {
+  try { storage.setItem(key, snapshot(model)) } catch { /* no storage: the values are lost with the page */ }
 }

@@ -6,7 +6,7 @@
 // reload a file change triggers, via sessionStorage.
 import { getMonsterDef, monsterNames, retuneMonster } from '../../renderer/systems/monsters.js'
 import { setDamageObserver } from '../../renderer/systems/player-damage.js'
-import { makeBenchModel, restore, snapshot, storageKey, savePatch, markSaved } from './bench-state.js'
+import { makeBenchModel, restore, storageKey, savePatch, markSaved, takeSnapshot, keepSnapshot } from './bench-state.js'
 import { makeBenchCore, benchArenaConfig } from './bench-core.js'
 import { mountPanel } from './panel.js'
 import { drawOverlay } from './overlay.js'
@@ -42,9 +42,8 @@ export function startBench(seam) {
   }
   const model = makeBenchModel(def)
   const key = storageKey(name)
-  let saved = null
-  try { saved = sessionStorage.getItem(key) } catch { /* storage unavailable: start clean */ }
-  restore(model, saved, def.tuningSchema)
+  const store = (() => { try { return globalThis.sessionStorage } catch { return null } })()
+  restore(model, takeSnapshot(store, key), def.tuningSchema)
   // What the panel shows is what the monster runs on: restored tweaks go
   // into the live tuning object and the AI row before anything spawns.
   Object.assign(def.tuning, model.values.tuning)
@@ -65,10 +64,8 @@ export function startBench(seam) {
   })
   let lastRead = -Infinity
 
-  window.saveAPI.onBenchFilesChanged?.(() => {
-    try { sessionStorage.setItem(key, snapshot(model)) } catch { /* the reload still happens */ }
-    location.reload()
-  })
+  window.addEventListener('pagehide', () => keepSnapshot(store, key, model))
+  window.saveAPI.onBenchFilesChanged?.(() => location.reload())
 
   return {
     arenaConfig: () => benchArenaConfig(name, model.switches.count),

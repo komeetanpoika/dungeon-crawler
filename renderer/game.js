@@ -810,6 +810,10 @@ function setPhase(to) {
 }
 
 function goTitle() {
+  // The bench has no title: its never-die hero, lit map and overlay must
+  // not carry into a real Adventure or Rush, so Quit to Title starts the
+  // bench over (unsaved panel values survive the reload).
+  if (bench) { location.reload(); return }
   phase = PHASE.TITLE
   menu.showTitle(meta, {
     onAdventure: () => beginRun(OPEN_MAPS[savedAdventure.progress.mapDepth] ? savedAdventure.progress.mapDepth : ADVENTURE_DEPTH, 'adventure'),

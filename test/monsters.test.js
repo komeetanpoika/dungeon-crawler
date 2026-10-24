@@ -464,6 +464,14 @@ describe('tuning', () => {
   it('retuneMonster on an unknown name is false', () => {
     assert.equal(retuneMonster('nope', { stats: { hp: 1 } }), false)
   })
+  it('records its own load warnings on the def for the bench to show', async () => {
+    await load([{ ...TUNED, tuning: { cooldown: 99 } }], { loadHooks: async () => ({ TUNING_SCHEMA: SCHEMA }) })
+    assert.ok(getMonsterDef('tuned').warnings.some(w => /clamped/.test(w)))
+    await load([{ ...TUNED, name: 'broken' }], { loadHooks: async () => { throw new Error('Unexpected token') } })
+    assert.ok(getMonsterDef('broken').warnings.some(w => /hooks failed.*Unexpected token/.test(w)))
+    await load([{ ...TUNED, name: 'clean' }], { loadHooks: async () => ({ TUNING_SCHEMA: SCHEMA }) })
+    assert.deepEqual(getMonsterDef('clean').warnings, [])
+  })
   it('tuningOf on an unknown type is an empty object', () => {
     assert.deepEqual(tuningOf('nope'), {})
   })

@@ -4,6 +4,7 @@ const fs = require('fs')
 const { readMonsters, updateMonster } = require('./tools/monster-lab/monster-files.cjs')
 const { benchNameFrom, benchQuery } = require('./tools/monster-bench/argv.cjs')
 const { shouldReload } = require('./tools/monster-bench/watch-filter.cjs')
+const { watchTree } = require('./tools/monster-bench/watcher.cjs')
 
 // WSL2/WSLg: the hardware GPU process fails to initialize and can hang the
 // app before any window appears — always use software rendering.
@@ -43,13 +44,12 @@ function createWindow() {
 // the page (debounced), which re-enters the bench on the same monster.
 function watchForBench(win) {
   let timer = null
-  const watcher = fs.watch(path.join(__dirname, 'renderer'), { recursive: true }, (_ev, file) => {
-    if (!file) return
-    const rel = 'renderer/' + String(file).replace(/\\/g, '/')
+  const watcher = watchTree(path.join(__dirname, 'renderer'), file => {
+    const rel = 'renderer/' + file
     if (!shouldReload(rel, Date.now(), benchLastWrite)) return
     clearTimeout(timer)
     timer = setTimeout(() => { if (!win.isDestroyed()) win.webContents.send('bench-files-changed', rel) }, 300)
-  })
+  }, { onError: err => console.warn(`bench watch: ${err.message}`) })
   win.on('closed', () => { clearTimeout(timer); watcher.close() })
 }
 

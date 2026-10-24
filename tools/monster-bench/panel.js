@@ -28,7 +28,7 @@ const CSS = `
 #bench-panel button.on { background: #2f6f4f; border-color: #4ade80; color: #fff; }
 #bench-panel button.dirty { background: #8a5a12; border-color: #f0c040; color: #fff; }
 #bench-panel .bp-read { white-space: pre-wrap; color: #cfe; background: #15151b; padding: 4px 6px; min-height: 3em; }
-#bench-panel .bp-err { color: #f87171; }
+#bench-panel .bp-err { color: #f87171; white-space: pre-wrap; }
 body.bench-open #hud-offhand, body.bench-open #hud-ammo { right: 294px; }
 `
 
@@ -52,6 +52,8 @@ export function mountPanel(model, core, handlers) {
   const syncDirty = () => save.classList.toggle('dirty', model.dirty.size > 0)
   save.onclick = async () => { await handlers.onSave(); syncDirty() }
   root.append(el('div', { className: 'bp-head' }, fold, el('h2', { textContent: def.name }), save))
+  // a hook that failed to load, a bad schema, clamped values: say so up top
+  if (def.warnings?.length) root.append(el('div', { className: 'bp-err', textContent: def.warnings.join('\n') }))
 
   // tuning: slider + exact number per range, checkbox per toggle, hint below
   if (def.tuningSchema?.length) {

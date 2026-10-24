@@ -63,11 +63,14 @@ export async function registerMonsters(defs, opts = {}) {
     if (typeof rig.hitHalf === 'function') stats.half = rig.hitHalf(params)
     const def = REGISTRY[raw.name] = { name: raw.name, rigId: raw.rig, rig, params, stats,
                           behavior: raw.behavior ?? {}, spawn: raw.spawn ?? null,
-                          tuningSchema: null, tuning: {}, hookModule: null }
+                          tuningSchema: null, tuning: {}, hookModule: null, warnings: [] }
+    // This monster's own load warnings stay on the def, so the monster
+    // bench can show a broken hook instead of quietly running without it.
+    const note = m => { def.warnings.push(m); warn(m) }
     registerMonsterAI(raw.name, { speed: stats.speed, half: stats.half, ...(raw.behavior ?? {}) })
     if (raw.hooks) {
       try { def.hookModule = (await loadHooks(raw.name)) ?? null }
-      catch (err) { warn(`monsters: ${raw.name}: hooks failed (${err.message}) — default behavior`) }
+      catch (err) { note(`monsters: ${raw.name}: hooks failed (${err.message}) — default behavior`) }
     }
     // A hook's TUNING_SCHEMA works like a rig's PARAM_SCHEMA: the def's
     // `tuning` values are clamped against it, and the hook reads the result
@@ -75,10 +78,10 @@ export async function registerMonsters(defs, opts = {}) {
     const schema = def.hookModule?.TUNING_SCHEMA
     if (Array.isArray(schema)) {
       const errs = schemaErrors(schema)
-      if (errs.length) warn(`monsters: ${raw.name}: bad TUNING_SCHEMA (${errs.join('; ')}) — ignored`)
+      if (errs.length) note(`monsters: ${raw.name}: bad TUNING_SCHEMA (${errs.join('; ')}) — ignored`)
       else {
         def.tuningSchema = schema
-        def.tuning = clampParams(schema, raw.tuning ?? {}, m => warn(`monsters: ${raw.name}: tuning ${m}`))
+        def.tuning = clampParams(schema, raw.tuning ?? {}, m => note(`monsters: ${raw.name}: tuning ${m}`))
       }
     }
     loaded++

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeBenchModel, edit, snapshot, restore, savePatch, markSaved, storageKey } from '../tools/monster-bench/bench-state.js'
+import { makeBenchModel, edit, snapshot, restore, savePatch, markSaved, storageKey, takeSnapshot, keepSnapshot } from '../tools/monster-bench/bench-state.js'
 
 const SCHEMA = [
   { key: 'cooldown', label: 'Cooldown', group: 'attack', type: 'range', min: 0.5, max: 10, step: 0.1, default: 2 },
@@ -36,6 +36,15 @@ describe('edit / savePatch / markSaved', () => {
     assert.deepEqual(savePatch(m), { tuning: { cooldown: 4, range: 200 }, stats: { hp: 10, dmg: 2, speed: 60 }, behavior: { sightRange: 300 } })
     markSaved(m)
     assert.equal(m.dirty.size, 0)
+  })
+})
+
+describe('savePatch without a tuning schema', () => {
+  it('leaves tuning out, so Save never wipes saved values when the hook failed to load', () => {
+    const m = makeBenchModel({ ...def(), tuning: {}, tuningSchema: null })
+    edit(m, 'stats', 'hp', 20)
+    assert.equal('tuning' in savePatch(m), false)
+    assert.deepEqual(savePatch(m).stats, { hp: 20, dmg: 2, speed: 60 })
   })
 })
 
@@ -103,4 +112,19 @@ describe('snapshot / restore', () => {
 
 describe('storageKey', () => {
   it('is per monster', () => { assert.equal(storageKey('glorp'), 'dc-bench:glorp') })
+})
+
+describe('takeSnapshot / keepSnapshot', () => {
+  const memory = () => { const m = new Map(); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), m } }
+  it('a snapshot is taken once: a later reload does not bring it back', () => {
+    const st = memory(), m = makeBenchModel(def()); edit(m, 'tuning', 'cooldown', 4)
+    keepSnapshot(st, 'k', m)
+    assert.equal(JSON.parse(takeSnapshot(st, 'k')).values['tuning.cooldown'], 4)
+    assert.equal(takeSnapshot(st, 'k'), null)
+  })
+  it('storage that throws reads as no snapshot and never throws', () => {
+    const bad = { getItem: () => { throw new Error('denied') }, setItem: () => { throw new Error('denied') }, removeItem: () => {} }
+    assert.equal(takeSnapshot(bad, 'k'), null)
+    assert.doesNotThrow(() => keepSnapshot(bad, 'k', makeBenchModel(def())))
+  })
 })
