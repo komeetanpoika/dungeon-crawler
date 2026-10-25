@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawMeleeSwing, drawRiteCeremony, playerSpriteKey, Renderer } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawMeleeSwing, drawRiteCeremony, playerSpriteKey, Renderer, drawHero } from '../renderer/render/canvas.js'
+import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
 import { createMap } from '../renderer/systems/map.js'
@@ -930,5 +931,69 @@ describe('Renderer.render — the trip', () => {
     const r = new Renderer(canvas, { weatherLayer: stubLayer(), tranceLayer })
     r.resize()
     assert.deepEqual(tranceLayer.resized.at(-1), [200, 100])
+  })
+})
+
+describe('a bound hero', () => {
+  function heroCtx() {
+    const ops = []
+    let filter = 'none', alpha = 1, fs = ''
+    const stack = []
+    const base = {
+      ops,
+      drawImage: (img, x, y) => ops.push({ name: 'drawImage', img, x, y, filter }),
+      fillRect: (...a) => ops.push({ name: 'fillRect', a, fs }),
+      translate: (x, y) => ops.push({ name: 'translate', x, y }),
+      save: () => stack.push({ filter, alpha, fs }),
+      restore: () => { ({ filter, alpha, fs } = stack.pop()) },
+      get filter() { return filter }, set filter(v) { filter = v },
+      get globalAlpha() { return alpha }, set globalAlpha(v) { alpha = v },
+      get fillStyle() { return fs }, set fillStyle(v) { fs = v },
+    }
+    return new Proxy(base, { get(t, p, r) { return p in t ? Reflect.get(t, p, r) : () => {} } })
+  }
+  const hero = over => ({ type: 'player', x: 1, y: 1, px: 48, py: 48, facing: 'south', invulnTimer: 0,
+    hp: 5, maxHp: 5, attackMode: 'melee', ...over })
+  const SPR = { player_base: 'PLAYER' }
+  const sprite = ctx => ctx.ops.find(o => o.name === 'drawImage' && o.img === 'PLAYER')
+
+  it('is drawn icy while frozen, the way a frozen enemy is', () => {
+    const ctx = heroCtx()
+    drawHero(ctx, hero({ ice: { t: 1, dur: 1.5 } }), SPR, 0, 0, 32)
+    assert.match(sprite(ctx).filter, /saturate\(0\.4\)/)
+    assert.ok(ctx.ops.some(o => o.name === 'fillRect' && o.fs === '#bfdbfe'), 'pale-blue sheen')
+    assert.equal(ctx.filter, 'none')
+  })
+
+  it('is drawn plainly once the ice is gone', () => {
+    const ctx = heroCtx()
+    drawHero(ctx, hero(), SPR, 0, 0, 32)
+    assert.equal(sprite(ctx).filter, 'none')
+    assert.ok(!ctx.ops.some(o => o.name === 'fillRect' && o.fs === '#bfdbfe'))
+  })
+
+  it('shakes side to side with each struggle in a grip', () => {
+    // the sprite is placed by the translate before it
+    const at = held => {
+      const c = heroCtx(); drawHero(c, hero({ held }), SPR, 0, 0, 32)
+      return c.ops.slice(0, c.ops.indexOf(sprite(c))).filter(o => o.name === 'translate').at(-1).x
+    }
+    const still = at({ presses: 1, jolt: 0, side: 1 })
+    assert.ok(at({ presses: 1, jolt: 1, side: 1 }) > still)
+    assert.ok(at({ presses: 1, jolt: 1, side: -1 }) < still)
+  })
+
+  it('a monster’s effects are drawn over the hero', async () => {
+    clearMonsters()
+    const rig = { RIG_ID: 'r', PARAM_SCHEMA: [], drawMonster: () => {} }
+    const drawFx = ctx => { ctx.fillStyle = '#123456'; ctx.fillRect(0, 0, 4, 4) }
+    await registerMonsters([{ name: 'fxbeast', rig: 'r', hooks: true }],
+      { loadRig: async () => rig, loadHooks: async () => ({ drawFx }), warn: () => {} })
+    const { ops } = renderScene(null, { entities: [{ type: 'fxbeast', x: 2, y: 1, px: 80, py: 48, hp: 3 }],
+      sprites: { player_base: 'PLAYER' }, player: hero() })
+    clearMonsters()
+    const heroAt = ops.findIndex(o => o.name === 'drawImage' && o.img === 'PLAYER')
+    const fxAt = ops.findIndex(o => o.name === 'fillRect' && o.fs === '#123456')
+    assert.ok(heroAt >= 0 && fxAt > heroAt, `fx ${fxAt} after hero ${heroAt}`)
   })
 })

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { registerMonsters, clearMonsters, getMonsterDef, monsterNames, monstersForDepth,
          makeMonsterFromDef, updateMonsterPose, entityPose, drawGeneratedMonster, monstersForOpenMap,
-         isStoryCreature, tuningOf, retuneMonster } from '../renderer/systems/monsters.js'
+         isStoryCreature, tuningOf, retuneMonster, drawMonsterFx } from '../renderer/systems/monsters.js'
 import { schemaErrors } from '../renderer/render/monster-rigs/schema.js'
 import { getAIConfig } from '../renderer/data/enemy-ai.js'
 import { isEnemy } from '../renderer/systems/factions.js'
@@ -474,5 +474,48 @@ describe('tuning', () => {
   })
   it('tuningOf on an unknown type is an empty object', () => {
     assert.deepEqual(tuningOf('nope'), {})
+  })
+})
+
+describe('drawMonsterFx', () => {
+  const S = 32
+  function scene(visible = true) {
+    const map = createMap(6, 6)
+    for (const row of map) for (const c of row) { c.tile = TILE.FLOOR; c.visible = visible }
+    return map
+  }
+  const recorder = () => {
+    const ops = []
+    return { ops, ctx: { save: () => ops.push(['save']), restore: () => ops.push(['restore']),
+                         translate: (x, y) => ops.push(['translate', x, y]) } }
+  }
+  async function withFx(drawFx) {
+    clearMonsters()
+    await load([{ ...DEF, hooks: true }], { loadHooks: async () => ({ drawFx }) })
+  }
+
+  it('hands each visible monster with a drawFx the ctx at its screen centre', async () => {
+    const seen = []
+    await withFx((ctx, e, s) => seen.push([e, s]))
+    const e = { type: 'boarhound', x: 2, y: 3, px: 80, py: 112, hp: 5 }
+    const { ops, ctx } = recorder()
+    drawMonsterFx(ctx, [e, { type: 'chest', x: 1, y: 1, px: 48, py: 48 }], scene(), 10, 20, S)
+    assert.deepEqual(seen, [[e, S]])
+    assert.deepEqual(ops, [['save'], ['translate', 70, 92], ['restore']])
+  })
+
+  it('skips a monster on a cell the hero cannot see', async () => {
+    const seen = []
+    await withFx((ctx, e) => seen.push(e))
+    drawMonsterFx(recorder().ctx, [{ type: 'boarhound', x: 2, y: 3, px: 80, py: 112, hp: 5 }], scene(false), 0, 0, S)
+    assert.equal(seen.length, 0)
+  })
+
+  it('leaves monsters whose hooks draw nothing alone', async () => {
+    clearMonsters()
+    await load([DEF])
+    const { ops, ctx } = recorder()
+    drawMonsterFx(ctx, [{ type: 'boarhound', x: 2, y: 3, px: 80, py: 112, hp: 5 }], scene(), 0, 0, S)
+    assert.deepEqual(ops, [])
   })
 })

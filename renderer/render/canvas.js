@@ -16,7 +16,7 @@ import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha } from '../systems/campfire.js'
 import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
-import { getMonsterDef, drawGeneratedMonster, isStoryCreature } from '../systems/monsters.js'
+import { getMonsterDef, drawGeneratedMonster, isStoryCreature, drawMonsterFx } from '../systems/monsters.js'
 import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
 import { makeWeatherLayer, drawNight, drawFog } from './weather.js'
 import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.js'
@@ -610,12 +610,18 @@ function drawHeroTag(ctx, hero, hx, hy, S) {
 // charge ring and the rain cloud. Returns the sprite's top-left on screen.
 export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = null, greenAlpha = 0 } = {}) {
   if (hero.dead) return null
-  const hx = hero.px !== undefined ? Math.round(hero.px - S / 2 - camX) : Math.round(hero.x * S - camX)
+  // Held in a grip (systems/player-bind.js), each struggle jolts the hero sideways.
+  const jolt = hero.held ? Math.round(hero.held.jolt * 3) * hero.held.side : 0
+  const hx = (hero.px !== undefined ? Math.round(hero.px - S / 2 - camX) : Math.round(hero.x * S - camX)) + jolt
   const hy = (hero.py !== undefined ? Math.round(hero.py - S / 2 - camY) : Math.round(hero.y * S - camY)) - lift
   drawBlinkTrail(ctx, trail, hero, sprites, camX, camY, S)
   if (hero.rune) drawRuneGlow(ctx, hx + S / 2, hy + S / 2, S)
   if (hero.buffs) drawBuffUnder(ctx, hero, hx + S / 2, hy + S / 2, S)
+  // Frozen solid, the hero takes the same icy tint and sheen as a frozen enemy.
+  const prevFilter = hero.ice ? ctx.filter : null
+  if (hero.ice) ctx.filter = FROZEN_FILTER
   if (isFlickerVisible(hero.invulnTimer)) drawEntity(ctx, hero, hx, hy, S, sprites)
+  if (hero.ice) { ctx.filter = prevFilter; drawFrozenSheen(ctx, hx, hy, S) }
   if (hero.buffs) drawBuffOver(ctx, hero, hx, hy, S)
   if (hero.grabbed) {
     ctx.save()
@@ -1306,6 +1312,7 @@ export class Renderer {
     // The blink ghosts belong with the player: behind him, in front of the floor.
     drawHero(ctx, player, sprites, camX, camY, S,
       { lift, trail: player.blinkTrail ?? state.blinkTrail, greenAlpha: fx?.greenAlpha ?? 0 })
+    drawMonsterFx(ctx, entities, map, camX, camY, S)
     const dragon = entities.find(e => e.type === 'dragon')
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     const cyclops = entities.find(e => e.type === 'cyclops')

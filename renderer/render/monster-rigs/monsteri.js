@@ -7,7 +7,11 @@
 // standing creature, so it stays upright and only flips — the tail trails
 // away from where it walks. Feet stand just below the entity's centre; the
 // hit circle sits up on the torso. Without a DOM Image (Node tests) or
-// before the picture loads it draws a plain silhouette.
+// before the picture loads it draws a plain silhouette. While its frost
+// breath charges (pose.eyeGlow, set by systems/monsters/monsteri.js) the
+// three orbs on its stalks light up; `anchor` tells the hook where the head
+// and chest are drawn, so the breath leaves the head and the arms reach out
+// from the chest.
 import { SHEET } from '../../assets/monsters/monsteri-sheet.js'
 import { drawSheetCell } from './pixel.js'
 
@@ -29,6 +33,12 @@ const FOOT = 0.45            // tiles below the entity centre where the feet sta
 const DEATH = 0.7            // s, systems/dying.js DEATH_TIME (not imported: dying → monsters is a cycle)
 const LEAN = [-1, 0, 1, 0]   // walk cycle, one entry per gait step
 const BOB = [0, -1, 0, -1]
+// Points on the drawing, in sheet pixels (72x86): the three orb tips on
+// their stalks, the head the breath comes from, the chest the arms grow from.
+const ORBS = [{ x: 20, y: 6 }, { x: 25.5, y: 3 }, { x: 30.5, y: 3 }]
+const ANCHORS = { head: { x: 29, y: 12 }, chest: { x: 28, y: 24 } }
+const ORB_CORE = '#fffbe6'
+const ORB_HALO = '#bae6fd'
 const SHEET_URL = new URL('../../assets/monsters/monsteri.png', import.meta.url).href
 
 let sheet = null
@@ -45,6 +55,19 @@ export function hitHalf(p) {
 
 export const hitShape = p => ({ r: hitHalf(p), oy: -R(p.lift * 32) })
 
+// Drawn tail-right, it trails behind: facing east mirrors it (straight
+// north/south: as drawn).
+const mirrored = facing => Math.cos(facing ?? 0) > 0.01
+
+// Where a named point of the drawing sits, in px from the entity centre at
+// tile size S, for the pose's facing (the walk's lean and bob left out).
+export function anchor(p, pose, S, name) {
+  const a = ANCHORS[name]
+  const h = p.size * S, w = h * SHEET.cellW / SHEET.cellH
+  const x = -w / 2 + a.x / SHEET.cellW * w
+  return { x: R(mirrored(pose.facing) ? -x : x), y: R(FOOT * S - h + a.y / SHEET.cellH * h) }
+}
+
 export function drawMonster(ctx, p, pose, S) {
   const t = pose.t ?? 0, state = pose.state
   const stepI = Math.floor(t * p.gaitFreq) % 4
@@ -52,7 +75,7 @@ export function drawMonster(ctx, p, pose, S) {
   const dying = state === 'death' ? Math.min(1, (pose.stateT ?? 0) / DEATH) : 0
   const breath = !walking && Math.floor(t * 2) % 4 >= 2 ? 1.02 : 1
   const grow = (state === 'attack' ? 1.08 : 1) * (1 - 0.4 * dying)
-  const flip = Math.cos(pose.facing ?? 0) > 0.01        // drawn tail-right; it trails behind (straight north/south: as drawn)
+  const flip = mirrored(pose.facing)
   const h = R(p.size * S * grow * breath), w = R(h * SHEET.cellW / SHEET.cellH)
   const lean = walking ? LEAN[stepI] * p.wobble * Math.PI / 180 : 0
   const bob = walking ? R(BOB[stepI] * p.bob * S * 0.1) : 0
@@ -67,6 +90,26 @@ export function drawMonster(ctx, p, pose, S) {
   if (!img) drawSilhouette(ctx, w, h, state === 'hit')
   else drawSheetCell(ctx, img, 0, 0, SHEET.cellW, SHEET.cellH, -R(w / 2), -h, w, h,
                      state === 'hit' ? { color: WHITE, alpha: 1 } : null)
+  if (pose.eyeGlow > 0 && state !== 'death') drawOrbGlow(ctx, w, h, pose.eyeGlow, t)
+  ctx.restore()
+}
+
+// A pale halo that swells with the charge and a bright core on each orb,
+// flickering a pixel at the edge. Origin at the feet, inside the flip.
+function drawOrbGlow(ctx, w, h, glow, t) {
+  const k = h / SHEET.cellH
+  const flick = Math.floor(t * 12) % 2
+  ctx.save()
+  for (const o of ORBS) {
+    const x = -w / 2 + o.x * k, y = -h + o.y * k
+    const r = R((1.5 + 2.5 * glow) * k) + flick, c = Math.max(1, R((0.8 + glow) * k))
+    ctx.globalAlpha = 0.45 * glow
+    ctx.fillStyle = ORB_HALO
+    ctx.fillRect(R(x) - r, R(y) - r, 2 * r, 2 * r)
+    ctx.globalAlpha = Math.min(1, 0.4 + glow)
+    ctx.fillStyle = ORB_CORE
+    ctx.fillRect(R(x) - c, R(y) - c, 2 * c, 2 * c)
+  }
   ctx.restore()
 }
 

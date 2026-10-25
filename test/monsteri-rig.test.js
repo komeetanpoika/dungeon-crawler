@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, hitShape, _setSheetImage } from '../renderer/render/monster-rigs/monsteri.js'
+import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, hitShape, anchor, _setSheetImage } from '../renderer/render/monster-rigs/monsteri.js'
 import { SHEET } from '../renderer/assets/monsters/monsteri-sheet.js'
 import { readPng } from '../tools/png-read.mjs'
 
@@ -95,5 +95,30 @@ describe('monsteri rig', () => {
     _setSheetImage(fakeSheet)
     const h = st => { const c = recordingCtx(); drawMonster(c, P, pose('death', { stateT: st }), 32); return blits(c)[0][9] }
     assert.ok(h(0.65) < h(0))
+  })
+
+  it('lights its three orbs while charging, and only then', () => {
+    _setSheetImage(fakeSheet)
+    const rects = glow => { const c = recordingCtx(); drawMonster(c, P, pose('idle', { eyeGlow: glow }), 32); return c.ops.filter(o => o[0] === 'fillRect') }
+    assert.equal(rects(0).length, 0)
+    assert.ok(rects(1).length >= 3, 'a glow on each orb')
+  })
+
+  it('a dying monster lets its orbs go dark', () => {
+    _setSheetImage(fakeSheet)
+    const c = recordingCtx()
+    drawMonster(c, P, pose('death', { eyeGlow: 1 }), 32)
+    assert.equal(c.ops.filter(o => o[0] === 'fillRect').length, 0)
+  })
+
+  it('names where its head and chest are drawn: high on the body, mirrored when it turns', () => {
+    for (const name of ['head', 'chest']) {
+      const west = anchor(P, { facing: Math.PI }, 32, name), east = anchor(P, { facing: 0 }, 32, name)
+      assert.ok(west.y < -32, `${name} well above the tile centre`)
+      assert.equal(east.x, -west.x, `${name} mirrored`)
+    }
+    assert.ok(anchor(P, { facing: 0 }, 32, 'head').y < anchor(P, { facing: 0 }, 32, 'chest').y, 'the head above the chest')
+    const tall = { ...P, size: P.size * 2 }
+    assert.ok(anchor(tall, { facing: 0 }, 32, 'head').y < anchor(P, { facing: 0 }, 32, 'head').y, 'a taller monster has its head higher')
   })
 })

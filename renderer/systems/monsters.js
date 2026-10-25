@@ -206,6 +206,21 @@ export function drawGeneratedMonster(ctx, e, cx, cy, S, state) {
   ctx.restore()
 }
 
+// A hook module's effects that belong over the hero — Monsteri's frost
+// breath and the arms round a held hero — go in its `drawFx(ctx, e, S)`.
+// canvas.js calls this right after drawing the hero; ctx is translated to
+// each visible monster's screen centre, as for the rig.
+export function drawMonsterFx(ctx, entities, map, camX, camY, S) {
+  for (const e of entities) {
+    const drawFx = REGISTRY[e.type]?.hookModule?.drawFx
+    if (typeof drawFx !== 'function' || !map[e.y]?.[e.x]?.visible) continue
+    ctx.save()
+    ctx.translate(Math.round(e.px - camX), Math.round(e.py - camY))
+    drawFx(ctx, e, S)
+    ctx.restore()
+  }
+}
+
 // The Kivihiisi's tentacles (systems/monsters/kivihiisi.js writes `e.lash`):
 // four short stubs writhe around a rooted body (bunching up as the eyes
 // charge), and the lashing tentacle runs out along the locked aim to the
