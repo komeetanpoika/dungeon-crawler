@@ -206,3 +206,10 @@ Terminology note (2026-09-17, does not touch entries below): earlier runs pre-gr
 **Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
 **Score:** 5/5
 **Notes:** All four criteria met on --bench monsteri via a scratch playwright probe: cooldown 6 typed in the panel moved debugState cd from <=2 to 4.83 on the next readout; Save wrote tuning {cooldown:6} to monsteri.json without reloading the page (own-write suppression); an unsaved 3.5 plus a rewrite of the hook file reloaded the page with 3.5 kept, dirty, Hitboxes still on and tuningOf live at 3.5; monsteri renders upright with its hit circle on the torso. Contrast of the pale crayon red on the level-0 dark red floor is lower than on grass.
+
+## Run 30 — 2026-11-08 — CLOSED
+**Question:** As the depth-4 lair boss, does Monsteri claw a hero in reach only while stalking, and does its death drop the exit key (arena + real level4)?
+**Criteria:** Arena: monsteri entity has isBoss and weaponId dragon_claw; an in-page sampler shows e.attack only in mech state stalk (never windup/breath/rush/hold/retreat) and the hero losing 2 hp per claw; killing it leaves a key entity at its tile. Real level4: state.entities holds one monsteri with isBoss and no plain dragon.
+**Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
+**Score:** 5/5
+**Notes:** Second arena run met every criterion: monsteri spawned with isBoss + weaponId dragon_claw; sampler showed freeze -> grab (squeeze 1 hp / 0.5 s) -> mash free -> reel -> 4 claw swings 0.8 s apart for 2 hp each, all 16 swing frames in mech state stalk, none in hold; the kill left a key at its tile with the boss-falls toast. Real level4 (rush mode): exactly one isBoss entity, monsteri with dragon_claw, zero plain dragons, and it breathed frost on the teleported hero. First run idled 15 s because the hero started 7 tiles away, outside the 200 px sightRange.
