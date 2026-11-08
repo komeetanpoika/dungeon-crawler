@@ -32,10 +32,10 @@ export function segment(mask, w, h, pieces) {
     // the anchor of the piece it carves from: the root's seed, else that piece's
     // owned pixel nearest its pivot
     let anchor
-    if (parent.parent === null) anchor = parent.seed[1] * w + parent.seed[0]
-    else {
+    {
       let best = Infinity
-      const [px, py] = parent.pivot
+      // the root's seed may sit off the mask, so it too falls back to the nearest owned pixel
+      const [px, py] = parent.parent === null ? parent.seed : parent.pivot
       for (let i = 0; i < n; i++) {
         if (owner[i] !== pi) continue
         const x = i % w, y = (i - x) / w

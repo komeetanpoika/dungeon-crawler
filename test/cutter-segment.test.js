@@ -20,6 +20,11 @@ const torso = { id: 'torso', role: 'torso', side: null, parent: null, seed: [50,
 const arm = (over = {}) => ({ id: 'arm', role: 'arm', side: 'left', parent: 'torso', seed: [22, 40], cut: [[30, 22], [30, 68]], pivot: [29, 40], z: 1, claims: [], ...over })
 const count = (a, v) => a.reduce((n, x) => n + (x === v ? 1 : 0), 0)
 
+test('a torso seed off the mask does not switch off leak detection', () => {
+  const r = segment(figure(), W, H, [{ ...torso, seed: [5, 5] }, arm({ cut: [[30, 40], [30, 45]] })])
+  assert.deepEqual(r.leaks, ['arm'])
+})
+
 test('an arm cut off at the shoulder owns exactly the protrusion', () => {
   const r = segment(figure(), W, H, [torso, arm()])
   assert.equal(count(r.owner, 1), 10 * 40)
