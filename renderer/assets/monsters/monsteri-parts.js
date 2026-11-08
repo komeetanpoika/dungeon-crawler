@@ -9,9 +9,9 @@ export const PARTS = {
   },
   "pieces": [
     {
-      "id": "tail",
-      "role": "tail",
-      "side": null,
+      "id": "arm_ur",
+      "role": "arm",
+      "side": "right",
       "parent": "torso",
       "z": -2,
       "pivot": [
@@ -70,7 +70,7 @@ export const PARTS = {
       "id": "claw_1",
       "role": "extra",
       "side": null,
-      "parent": "tail",
+      "parent": "arm_ur",
       "z": -2,
       "pivot": [
         64.5,
@@ -92,7 +92,7 @@ export const PARTS = {
       "id": "claw_2",
       "role": "extra",
       "side": null,
-      "parent": "tail",
+      "parent": "arm_ur",
       "z": -2,
       "pivot": [
         66.5,

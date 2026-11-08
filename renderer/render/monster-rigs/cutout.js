@@ -61,7 +61,9 @@ function limbMotion(piece, parts, p, pose) {
   switch (piece.role) {
     case 'arm':
       if (attack) deg = front ? p.attackReach * outward : p.attackReach * forward
-      else if (walking) deg = p.armSwing * SWING[i] * (front ? outward : left ? 1 : -1)
+      // front: a sideways pendulum, both arms turning the same way (one swings
+      // out as the other comes in); side: forward and back in opposite phase
+      else if (walking) deg = p.armSwing * SWING[i] * (front || left ? 1 : -1)
       else deg = p.armSwing / 4 * SWING[j] * outward
       break
     case 'leg':

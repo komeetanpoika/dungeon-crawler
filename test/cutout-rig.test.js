@@ -120,11 +120,22 @@ describe('cutout rig', () => {
       }
   })
 
+  // Front view: a sideways pendulum. Both arms turn the same way, so as one
+  // swings out the other comes in (opposite in outward phase); side view:
+  // forward and back, in opposite phase.
   it('arms swing in opposite phase while walking', () => {
-    const arm = (i, id) => angle(pieceTransforms(PARTS, P, walkAt(P, i)).get(id))
-    near(arm(0, 'arm_l'), P.armSwing); near(arm(2, 'arm_l'), -P.armSwing)
-    near(arm(0, 'arm_r'), -P.armSwing); near(arm(2, 'arm_r'), P.armSwing)
-    near(arm(1, 'arm_l'), 0)
+    const arm = (parts, i, id) => angle(pieceTransforms(parts, P, walkAt(P, i)).get(id))
+    for (const i of [0, 2]) {
+      const l = arm(PARTS, i, 'arm_l'), r = arm(PARTS, i, 'arm_r')
+      assert.ok(Math.abs(l) > 0 && Math.sign(l) === Math.sign(r), `step ${i}: same turn, one out and one in (${l}, ${r})`)
+    }
+    assert.ok(Math.sign(arm(PARTS, 0, 'arm_l')) === -Math.sign(arm(PARTS, 2, 'arm_l')), 'the swing flips between steps 0 and 2')
+    near(arm(PARTS, 0, 'arm_l'), P.armSwing); near(arm(PARTS, 2, 'arm_l'), -P.armSwing)
+    near(arm(PARTS, 0, 'arm_r'), P.armSwing); near(arm(PARTS, 2, 'arm_r'), -P.armSwing)
+    near(arm(PARTS, 1, 'arm_l'), 0)
+    const side = { ...PARTS, view: 'side' }
+    near(arm(side, 0, 'arm_l'), P.armSwing); near(arm(side, 0, 'arm_r'), -P.armSwing)
+    near(arm(side, 2, 'arm_l'), -P.armSwing); near(arm(side, 2, 'arm_r'), P.armSwing)
   })
 
   it('front-view legs lift in turn; side-view legs swing', () => {

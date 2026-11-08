@@ -38,7 +38,7 @@ describe('monsteri rig', () => {
     const opaque = (x, y) => png.pixels[(y * png.width + x) * 4 + 3] === 255
     assert.ok(png.pixels.some((v, i) => i % 4 === 3 && v === 0), 'transparent between the pieces')
     const ids = PARTS.pieces.map(p => p.id)
-    for (const id of ['torso', 'head', 'arm_ul', 'arm_ll', 'arm_lr', 'leg_l', 'leg_r', 'tail', 'stalk_1', 'stalk_2', 'stalk_3'])
+    for (const id of ['torso', 'head', 'arm_ul', 'arm_ll', 'arm_lr', 'arm_ur', 'leg_l', 'leg_r', 'stalk_1', 'stalk_2', 'stalk_3'])
       assert.ok(ids.includes(id), id)
     for (const p of PARTS.pieces) {
       assert.ok(valid(p.rect), `${p.id} has art`)
@@ -153,7 +153,10 @@ describe('monsteri rig', () => {
 
   // The health bar sits just above drawnTop (render/canvas.js drawHealthBars),
   // so it must clear the drawing in every living pose; with the lean and the
-  // nod off it is within a pixel of the tallest one.
+  // nod off it is within a pixel of the tallest one. Tight at monsteri's own
+  // attack reach (20): drawnTop turns each piece's rect corners, and past ~22
+  // degrees the empty top-right corner of the long right arm's rect rises
+  // above the orbs, so at the schema's 35 it is only an upper bound.
   it('drawnTop is the top of the tallest living pose', () => {
     const png = readPng(ATLAS_FILE)
     _setSheetImage({ w: png.width, h: png.height, rgba: png.pixels, width: png.width, height: png.height, naturalWidth: png.width, complete: true })
@@ -164,7 +167,7 @@ describe('monsteri rig', () => {
       for (let y = 0; y < 300; y++) for (let x = 0; x < 300; x++) if (img.rgba[(y * 300 + x) * 4 + 3] > 0) return y - 220
       return Infinity
     }
-    for (const params of [P, { ...P, wobble: 0, headNod: 0 }, extremes('max')]) {
+    for (const params of [P, { ...P, wobble: 0, headNod: 0, attackReach: 20 }, extremes('max')]) {
       const walk = i => pose('walk', { t: (i + 0.5) / params.gaitFreq })
       const poses = [pose('idle', { t: 0.25 }), pose('idle', { t: 1.25 }), ...[0, 1, 2, 3].map(walk),
         pose('attack', { t: 0.25 }), pose('attack', { t: 1.25 }), pose('hit', { t: 0.25 }), pose('hit', { t: 1.25 })]

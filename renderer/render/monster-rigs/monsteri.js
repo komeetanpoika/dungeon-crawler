@@ -1,10 +1,11 @@
 // Monsteri: the user's own crayon drawing, cut into pieces by the monster
 // cutter (assets/cuts/monsteri.json → renderer/assets/monsters/monsteri-
 // parts.png + monsteri-parts.js) and drawn by the shared cut-out engine
-// (cutout.js), so its arms swing, its legs step, its head nods and the long
-// sweep on its right (cut as its tail) sways, while the whole figure keeps
-// the breath, the bob and lean, the lunge, the hit flash, the death shrink
-// and the flip it always had: drawn tail-right, it faces left.
+// (cutout.js), so its four arms swing (the long upper pair riding out wide,
+// the right one carrying its two loose claws), its legs step and its head
+// nods, while the whole figure keeps the breath, the bob and lean, the
+// lunge, the hit flash, the death shrink and the flip it always had: it
+// faces left as drawn and mirrors when it walks east.
 // Hand-written rather than generated because it adds one thing: while its
 // frost breath charges (pose.eyeGlow, set by systems/monsters/monsteri.js)
 // the three orbs on its stalks light up, at the cut's orb points, so the
