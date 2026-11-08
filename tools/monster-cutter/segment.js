@@ -5,6 +5,9 @@ import { supercoverLine } from './raster.js'
 // -> { owner, base, leaks }. owner/base: piece index per pixel, -1 off the mask;
 // base is the owner before claims. leaks: ids of pieces whose flood reached
 // the parent's anchor (a cut that does not close), which get nothing.
+// A detached piece (non-root, cut null) takes its whole connected blob from
+// the pixels the root still owns, whatever its parent (which then only says
+// what it moves with); it leaks if that blob holds the root's seed.
 export function segment(mask, w, h, pieces) {
   const n = w * h
   const owner = new Int16Array(n).fill(-1)
@@ -21,11 +24,13 @@ export function segment(mask, w, h, pieces) {
   }
 
   for (const ci of order.slice(1)) {
-    const child = pieces[ci], pi = index.get(child.parent), parent = pieces[pi]
+    const child = pieces[ci], detached = !child.cut
+    const pi = detached ? root : index.get(child.parent), parent = pieces[pi] // pi: whose pixels it carves
     const [sx, sy] = child.seed
     if (!inside(sx, sy) || owner[sy * w + sx] !== pi) { leaks.push(child.id); continue }
 
-    // the parent's anchor: the root's seed, else its owned pixel nearest its pivot
+    // the anchor of the piece it carves from: the root's seed, else that piece's
+    // owned pixel nearest its pivot
     let anchor
     if (parent.parent === null) anchor = parent.seed[1] * w + parent.seed[0]
     else {

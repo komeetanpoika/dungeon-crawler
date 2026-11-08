@@ -182,6 +182,32 @@ function measureLimb(m, dist, label, id, pixels, core, W, H, deep) {
   return { contact: [cx[0], cy[0]], length: K, cut: cut.ends, pivot: [(x1 + x2) / 2, (y1 + y2) / 2], seed }
 }
 
+// The piece owning the pixel nearest a detached blob: rings out from the blob
+// until one reaches an owned pixel, the closest of that ring winning.
+function nearestOwner(blob, owner, loose, W, H) {
+  const from = new Int32Array(W * H).fill(-1)
+  for (const p of blob) from[p] = p
+  let ring = blob
+  while (ring.length) {
+    const next = []
+    let best = -1, bestD = Infinity
+    for (const p of ring) {
+      const x = p % W, y = (p - x) / W
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy, q = ny * W + nx
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H || from[q] >= 0) continue
+        from[q] = from[p]
+        if (owner[q] < 0 || loose[q]) { next.push(q); continue }
+        const o = from[q], d = (nx - o % W) ** 2 + (ny - ((o / W) | 0)) ** 2
+        if (d < bestD) { bestD = d; best = q }
+      }
+    }
+    if (best >= 0) return owner[best]
+    ring = next
+  }
+  return 0
+}
+
 export function findPieces(mask, w, h, { work = 256 } = {}) {
   const scale = Math.max(1, Math.max(w, h) / work)
   const W = Math.max(1, Math.round(w / scale)), H = Math.max(1, Math.round(h / scale))
@@ -255,9 +281,9 @@ export function findPieces(mask, w, h, { work = 256 } = {}) {
     limbs.push(limb)
   })
 
-  // labels. Every piece hangs on the torso, even the extras the spec puts on
-  // the head or the nearest piece: segment() lets a piece take only pixels its
-  // parent owns, and a detached blob's or a second top limb's are the torso's.
+  // labels. Attached pieces hang on the torso, even a second top limb the spec
+  // puts on the head: segment() lets a cut piece take only pixels its parent
+  // owns, and its are the torso's. Detached blobs hang on the nearest piece.
   const take = (list, pred) => { const out = list.filter(pred); for (const l of out) list.splice(list.indexOf(l), 1); return out }
   const pool = limbs.slice()
   const top = take(pool, l => Math.abs(l.angle) <= HEAD_CONE).sort((a, b) => Math.abs(a.angle) - Math.abs(b.angle))
@@ -271,27 +297,39 @@ export function findPieces(mask, w, h, { work = 256 } = {}) {
   const ids = new Set(['torso'])
   const uid = base => { let id = base, n = 2; while (ids.has(id)) id = `${base}_${n++}`; ids.add(id); return id }
   const pieces = [torso]
+  const at = p => [p % W, (p / W) | 0], round = pt => pt.map(Math.round)
+  const workPieces = [{ id: 'torso', parent: null, seed: at(deep), cut: null, pivot: at(deep), claims: [] }]
   const add = (limb, role, base) => {
     const pivot = toSrc(limb.pivot)
     const side = role === 'arm' || role === 'leg' ? (pivot[0] < torsoSeed[0] ? 'left' : 'right') : null
+    const id = uid(side ? `${base}_${side[0]}` : base)
     pieces.push({
-      id: uid(side ? `${base}_${side[0]}` : base), role, side, parent: 'torso', seed: seedSrc(limb.seed),
+      id, role, side, parent: 'torso', seed: seedSrc(limb.seed),
       cut: limb.cut.map(toSrc), pivot, z: role === 'tail' ? -1 : 1, claims: [],
     })
+    workPieces.push({ id, parent: 'torso', seed: at(limb.seed), cut: limb.cut.map(round), pivot: round(limb.pivot), claims: [] })
   }
   if (head) add(head, 'head', 'head')
   for (const l of arms) add(l, 'arm', 'arm')
   for (const l of legs) add(l, 'leg', 'leg')
   if (tail) add(tail, 'tail', 'tail')
   extras.forEach(l => add(l, 'extra', 'extra'))
-  for (const px of detached) {
-    let deepest = px[0]
-    for (const p of px) if (dist[p] > dist[deepest]) deepest = p
-    const seed = seedSrc(deepest)
-    pieces.push({ id: uid('extra'), role: 'extra', side: null, parent: 'torso', seed, cut: null, pivot: seed.slice(), z: 1, claims: [] })
+  if (detached.length) {
+    const { owner } = segment(m, W, H, workPieces) // the attached pieces at work size
+    const loose = new Uint8Array(W * H)
+    for (const px of detached) for (const p of px) loose[p] = 1
+    for (const px of detached) {
+      let deepest = px[0]
+      for (const p of px) if (dist[p] > dist[deepest]) deepest = p
+      const seed = seedSrc(deepest), parent = workPieces[nearestOwner(px, owner, loose, W, H)].id
+      pieces.push({ id: uid('extra'), role: 'extra', side: null, parent, seed, cut: null, pivot: seed.slice(), z: 1, claims: [] })
+    }
   }
 
-  // a cut that does not hold at full size is dropped: its limb stays with the torso
+  // a cut that does not hold at full size is dropped (its limb stays with the
+  // torso, and anything hung on it moves to the torso)
   const { leaks } = segment(mask, w, h, pieces)
-  return pieces.filter(p => !leaks.includes(p.id))
+  const kept = pieces.filter(p => !leaks.includes(p.id))
+  for (const p of kept) if (leaks.includes(p.parent)) p.parent = 'torso'
+  return kept
 }

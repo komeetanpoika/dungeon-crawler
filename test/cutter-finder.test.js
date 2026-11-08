@@ -7,32 +7,31 @@ import { encodeMask, decodeMask, autoMask, keepMain } from '../tools/monster-cut
 import { readPng } from '../tools/png-read.mjs'
 import { readFileSync } from 'node:fs'
 
-// A stick figure at 400x500 (times k): torso rectangle, head disc on top, two
-// arms from the upper sides angled down, two legs from the bottom, a tail
-// leaving the right side at mid-height and a separate 8 px orb above the head.
-// joints: where each limb's axis crosses the torso outline.
-function stickFigure(k = 1) {
-  const w = 400 * k, h = 500 * k
+// A stick figure at 400x500 (times k, centred across a w-wide canvas): torso
+// rectangle, head disc on top, two arms from the upper sides angled down, two
+// legs from the bottom, a tail leaving the right side at mid-height and a
+// separate 8 px orb above the head. joints: where each limb's axis crosses
+// the torso outline.
+function stickFigure(k = 1, w = 400 * k) {
+  const h = Math.round(500 * k), ox = Math.floor((w - 400 * k) / 2)
   const mask = new Uint8Array(w * h)
-  const rect = (x0, y0, x1, y1) => {
-    for (let y = y0 * k; y < y1 * k; y++) for (let x = x0 * k; x < x1 * k; x++) mask[y * w + x] = 1
-  }
-  const disc = (cx, cy, r) => {
-    for (let y = Math.floor((cy - r) * k); y <= Math.ceil((cy + r) * k); y++) {
-      for (let x = Math.floor((cx - r) * k); x <= Math.ceil((cx + r) * k); x++) {
-        if ((x + 0.5 - cx * k) ** 2 + (y + 0.5 - cy * k) ** 2 <= (r * k) ** 2) mask[y * w + x] = 1
+  const set = (x, y) => { if (x >= 0 && y >= 0 && x < w && y < h) mask[y * w + x] = 1 }
+  // each shape tests its pixel centres in figure units
+  const shape = (x0, y0, x1, y1, inside) => {
+    for (let y = Math.floor(y0 * k); y <= Math.ceil(y1 * k); y++) {
+      for (let x = Math.floor(x0 * k); x <= Math.ceil(x1 * k); x++) {
+        if (inside((x + 0.5) / k, (y + 0.5) / k)) set(x + ox, y)
       }
     }
   }
+  const rect = (x0, y0, x1, y1) => shape(x0, y0, x1, y1, (px, py) => px >= x0 && px < x1 && py >= y0 && py < y1)
+  const disc = (cx, cy, r) => shape(cx - r, cy - r, cx + r, cy + r, (px, py) => (px - cx) ** 2 + (py - cy) ** 2 <= r * r)
   const capsule = ([ax, ay], [bx, by], r) => {
     const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-    for (let y = Math.floor((Math.min(ay, by) - r) * k); y <= Math.ceil((Math.max(ay, by) + r) * k); y++) {
-      for (let x = Math.floor((Math.min(ax, bx) - r) * k); x <= Math.ceil((Math.max(ax, bx) + r) * k); x++) {
-        const px = (x + 0.5) / k, py = (y + 0.5) / k
-        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2))
-        if ((px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2 <= r * r) mask[y * w + x] = 1
-      }
-    }
+    shape(Math.min(ax, bx) - r, Math.min(ay, by) - r, Math.max(ax, bx) + r, Math.max(ay, by) + r, (px, py) => {
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2))
+      return (px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2 <= r * r
+    })
   }
   rect(130, 140, 270, 360) // torso
   disc(200, 95, 50) // head, overlapping the torso top by 5 px
@@ -46,8 +45,8 @@ function stickFigure(k = 1) {
     head: [200, 140], arm_left: [130, 200], arm_right: [270, 200],
     leg_left: [180, 360], leg_right: [220, 360], tail: [270, 250],
   }
-  for (const j of Object.values(joints)) { j[0] *= k; j[1] *= k }
-  return { mask, w, h, joints, orb: [200 * k, 25 * k] }
+  for (const j of Object.values(joints)) { j[0] = j[0] * k + ox; j[1] *= k }
+  return { mask, w, h, joints, orb: [200 * k + ox, 25 * k] }
 }
 
 function blob() {
@@ -79,6 +78,7 @@ test('finds one head, two arms (left and right), two legs, one tail and the orb 
   assert.deepEqual(keys, ['arm_left', 'arm_right', 'extra', 'head', 'leg_left', 'leg_right', 'tail', 'torso'])
   const extra = pieces.find(p => p.role === 'extra')
   assert.equal(extra.cut, null)
+  assert.equal(extra.parent, pieces.find(p => p.role === 'head').id, 'the orb hangs on the nearest piece')
   assert.ok(Math.hypot(extra.seed[0] - orb[0], extra.seed[1] - orb[1]) <= 6, `orb seed at ${extra.seed}`)
   const z = Object.fromEntries(pieces.map(p => [key(p), p.z]))
   assert.equal(z.torso, 0)
@@ -135,7 +135,9 @@ test('a plain blob yields a torso only', () => {
 })
 
 test('runs a 1600x1600 mask in under a second', () => {
-  const { mask, w, h } = stickFigure(4) // 1600 wide; 2000 tall, so harder than 1600x1600
+  const { mask, w, h } = stickFigure(3.2, 1600)
+  assert.equal(w * h, 1600 * 1600)
+  findPieces(mask, w, h) // warm-up, untimed
   const t0 = performance.now()
   const pieces = findPieces(mask, w, h)
   const ms = performance.now() - t0

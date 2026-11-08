@@ -57,6 +57,21 @@ test('a detached blob is a piece without a cut', () => {
   assert.equal(count(r.owner, 1), 25)
 })
 
+test('a detached orb hung on a cut-off arm owns exactly the orb, with no leak', () => {
+  const orb = { id: 'orb', role: 'extra', side: null, parent: 'arm', seed: [42, 12], cut: null, pivot: [42, 12], z: 1, claims: [] }
+  const r = segment(figure({ orb: true }), W, H, [torso, arm(), orb])
+  assert.deepEqual(r.leaks, [])
+  assert.equal(count(r.owner, 2), 25)
+  assert.equal(r.owner[12 * W + 42], 2)
+  assert.equal(count(r.owner, 1), 10 * 40)
+})
+
+test('a piece without a cut that is joined to the torso leaks', () => {
+  const r = segment(figure(), W, H, [torso, arm({ cut: null })])
+  assert.deepEqual(r.leaks, ['arm'])
+  assert.equal(count(r.owner, 1), 0)
+})
+
 test('claims move pixels and keep base', () => {
   const a = arm({ claims: [{ x: 50, y: 40, r: 5 }] })
   const r = segment(figure(), W, H, [torso, a])
