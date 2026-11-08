@@ -314,6 +314,20 @@ describe('behavior.weapon', () => {
   })
 })
 
+// A lair's boss spawn ({ isBoss: true }, map.js placeTemplate) reaches a
+// registry monster through buildEntities's default case, so the flag has to
+// survive makeMonsterFromDef — the boss gate (countBosses) and the key drop
+// read it off the entity.
+describe('a registry monster spawned as a boss', () => {
+  beforeEach(clearMonsters)
+  it('carries isBoss from the spawn, and only from the spawn', async () => {
+    await load([DEF])
+    assert.equal(makeMonsterFromDef('boarhound', 1, 1, { isBoss: true }).isBoss, true)
+    assert.equal('isBoss' in makeMonsterFromDef('boarhound', 1, 1), false)
+    assert.equal('isBoss' in makeMonsterFromDef('boarhound', 1, 1, { isBoss: false }), false)
+  })
+})
+
 describe('the real hirvi def — the actual spawn path', () => {
   beforeEach(clearMonsters)
 

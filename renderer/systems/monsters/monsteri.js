@@ -13,9 +13,14 @@
 //            damage until enough key presses (game.js counts them) break
 //            the grip: the hero is thrown clear and it reels (a stun)
 //
+// Between breaths it fights like the dragon it replaced in the depth-4 lair:
+// the def arms it with the dragon's claw (behavior.weapon), which game.js's
+// contact-melee pass swings at a hero in reach — but only while it stalks.
+//
 // Runs as a CREATURE_UPDATE supplement after the brain and act have moved
 // it this frame (see systems/monsters.js). Everything but the stalk tops up
-// rootTimer, so act() leaves the moving to this hook. Every number worth
+// rootTimer, so act() leaves the moving to this hook, and damageCooldown, so
+// the claw stays still until it is stalking again. Every number worth
 // tweaking lives in TUNING_SCHEMA; the values come from the monster's JSON
 // `tuning` and are read through tuningOf every frame, so a monster-bench
 // edit lands on the next frame. drawFx draws the breath and the arms over
@@ -71,6 +76,9 @@ export const TUNING_SCHEMA = [
 
 const to = (m, state) => { m.state = state; m.t = 0 }
 const root = e => { e.rootTimer = Math.max(e.rootTimer ?? 0, ROOT) }
+// The contact-melee pass runs right after this hook and swings only once
+// damageCooldown is spent, so topping it up keeps the claw still.
+const sheathe = e => { e.damageCooldown = Math.max(e.damageCooldown ?? 0, ROOT) }
 const half = e => getMonsterDef(e.type)?.stats.half ?? 8
 const glow = (e, v) => { if (e.pose) e.pose.eyeGlow = v }
 const face = (e, ang) => { if (e.pose) e.pose.facing = ang }
@@ -198,6 +206,7 @@ export function update(e, state, delta) {
   m.t += delta
   m.dt = delta
   STATES[m.state](e, m, state, T)
+  if (m.state !== 'stalk') sheathe(e)
 }
 
 // Monster-bench readout: one short line on where the state machine is.

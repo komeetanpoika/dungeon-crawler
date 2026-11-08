@@ -2,7 +2,8 @@ import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as hooks from '../renderer/systems/monsters/monsteri.js'
-import { registerMonsters, clearMonsters, tuningOf, updateMonsterPose } from '../renderer/systems/monsters.js'
+import { registerMonsters, clearMonsters, tuningOf, updateMonsterPose, makeMonsterFromDef } from '../renderer/systems/monsters.js'
+import { tryStartEnemyAttack, stepEnemyAttack, WEAPONS } from '../renderer/systems/enemy-attack.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE, makePlayer, makeShieldContents } from '../renderer/systems/entities.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
@@ -220,6 +221,61 @@ describe('monsteri', () => {
       for (let i = 0; i < T().mashNeed - 1; i++) struggle(w.player)
       w.player.held.jolt = 0
       assert.notEqual(JSON.stringify(draws(w)), tight)
+    })
+  })
+
+  // The dragon's claw, from the def (behavior.weapon, stamped by
+  // makeMonsterFromDef). It swipes only while it stalks: the windup, the
+  // breath, the rush, the hold and the back-off keep its claws still, so a
+  // claw never lands on top of the grab.
+  describe('the claw', () => {
+    // One frame in game.js's order for a brain-driven registry enemy: the
+    // attack cooldown runs down before the brain, the hook runs after it,
+    // then the contact-melee pass, then every swing steps.
+    function clawFrame(w) {
+      const { e, player, state } = w
+      tickBinds(player, DT, state.entities)
+      tickStatus(e, DT)
+      if (e.stunTimer > 0) { e.stunTimer -= DT; return }
+      e.damageCooldown = Math.max(0, (e.damageCooldown ?? 0) - DT)
+      updateMonsterPose(e, DT)
+      hooks.update(e, state, DT)
+      tryStartEnemyAttack(e, state)
+      stepEnemyAttack(e, state, DT)
+    }
+    function armed(hero) {
+      const w = setup({ hero })
+      Object.assign(w.e, makeMonsterFromDef('monsteri', w.e.x, w.e.y), { px: w.e.px, py: w.e.py, damageCooldown: 0 })
+      w.state.entities = [w.e]
+      return w
+    }
+
+    it('is the dragon’s claw, armed from the def', () => {
+      assert.equal(makeMonsterFromDef('monsteri', 1, 1).weaponId, 'dragon_claw')
+    })
+
+    it('swipes a hero in reach while it stalks', () => {
+      const w = armed(south(1))
+      w.e.mech = { state: 'stalk', t: 0, cd: 3, aim: 0 }   // the breath is cooling down
+      const hp = w.player.hp
+      clawFrame(w)
+      assert.equal(w.e.attack?.weaponId, 'dragon_claw')
+      assert.equal(w.player.hp, hp - WEAPONS.dragon_claw.damage)
+    })
+
+    it('keeps its claws still from the windup until it holds the hero', () => {
+      const w = armed(south(1))
+      for (let i = 0; i < 6 / DT && w.e.mech?.state !== 'hold'; i++) {
+        clawFrame(w)
+        if (w.e.mech.state !== 'stalk') assert.equal(w.e.attack ?? null, null, `clawed during ${w.e.mech.state}`)
+      }
+      assert.equal(w.e.mech.state, 'hold')
+      const hp = w.player.hp
+      for (let i = 0; i < Math.round((T().squeezeEvery * 2 + DT) / DT); i++) {
+        clawFrame(w)
+        assert.equal(w.e.attack ?? null, null, 'clawed the held hero')
+      }
+      assert.equal(w.player.hp, hp - 2 * T().squeezeDmg, 'only the squeeze hurts')
     })
   })
 

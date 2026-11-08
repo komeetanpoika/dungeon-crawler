@@ -6,7 +6,9 @@
     "dmg": 2,
     "speed": 60
   },
-  "behavior": {},
+  "behavior": {
+    "weapon": "dragon_claw"
+  },
   "hooks": true,
   "spawn": null,
   "tuning": {},
