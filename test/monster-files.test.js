@@ -35,6 +35,16 @@ describe('writeMonster', () => {
   })
 })
 
+describe('writeMonster index name', () => {
+  it('refuses the name index so the index file survives', () => {
+    const dir = tmp()
+    writeMonster(dir, 'a', {})
+    const before = fs.readFileSync(path.join(dir, 'index.json'), 'utf8')
+    assert.throws(() => writeMonster(dir, 'index', {}), /reserved for the index file/)
+    assert.equal(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'), before)
+  })
+})
+
 describe('readMonsters', () => {
   it('round-trips what writeMonster wrote', () => {
     const dir = tmp()
@@ -87,6 +97,13 @@ describe('updateMonster', () => {
     updateMonster(dir, 'm', { stats: { dmg: 4 } })
     assert.deepEqual(read(dir).tuning, { x: 1, y: 2 })
     assert.deepEqual(read(dir).behavior, { taxon: 'beast', sightRange: 200 })
+  })
+  it('updateMonster replaces params whole and keeps the rest', () => {
+    const dir = tmp(); seed(dir)
+    updateMonster(dir, 'm', { params: { b: 2 } })
+    const d = read(dir)
+    assert.deepEqual(d.params, { b: 2 })
+    assert.deepEqual(d.tuning, { x: 1, y: 2 }); assert.deepEqual(d.stats, { hp: 5, dmg: 1 })
   })
   it('refuses a missing monster', () => {
     assert.throws(() => updateMonster(tmp(), 'nope', { tuning: {} }), /no monster "nope"/)

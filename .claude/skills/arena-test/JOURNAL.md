@@ -220,3 +220,10 @@ Terminology note (2026-09-17, does not touch entries below): earlier runs pre-gr
 **Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
 **Score:** 5/5
 **Notes:** Bench shot (monsteri moved beside the hero, rooted, inCombat, hp 7/12): the yellow/black bar is drawn ~10 px above the orb tips, clear of the drawing and centred over it; before, it sat at the tile centre across the belly. The gap is the attack-swell margin drawnTop reserves so a swipe never covers the bar.
+
+## Run 32 — 2026-11-08 — CLOSED
+**Question:** Does monsteri walk in the bench with arms swinging and legs stepping, with no gaps at the joints, while breath, orb glow, grab arms from the chest and the HP bar above its head all still work?
+**Criteria:** arm angle and foot height differ between walk frames; no transparent wedge at shoulder/hip; breath leaves the head; HP bar clears top of head; Look-live Arm swing slider changes next frame
+**Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
+**Score:** 4/5
+**Notes:** Walk frames (walk_sheet.png) show differing arm angles and feet heights; no transparent wedge at shoulders/hips (only ragged torso edge lines); HP bar clears the head once inCombat; breath particles/orb glow at head but the translucent cone's apex sits low on the body (feet/hip), not the head; Arm swing slider moved params.armSwing 20->55 and the next frame visibly changed. Not 5 because of the breath cone apex.

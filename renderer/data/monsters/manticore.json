@@ -1,0 +1,19 @@
+{
+  "rig": "manticore",
+  "params": {
+    "armSwing": 7,
+    "attackReach": 10,
+    "legSwing": 22,
+    "tailSway": 10
+  },
+  "stats": {
+    "hp": 10,
+    "dmg": 1,
+    "speed": 60
+  },
+  "behavior": {},
+  "hooks": false,
+  "spawn": null,
+  "tuning": {},
+  "name": "manticore"
+}

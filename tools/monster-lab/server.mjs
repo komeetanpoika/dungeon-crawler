@@ -8,6 +8,8 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 
+import { handleCutRoute } from '../monster-cutter/cut-routes.js'
+
 const require = createRequire(import.meta.url)
 const { readMonsters, writeMonster, NAME_RE } = require('./monster-files.cjs')
 
@@ -16,20 +18,25 @@ const DEFAULTS = {
   root: path.resolve(HERE, '../..'),
   monstersDir: path.resolve(HERE, '../../renderer/data/monsters'),
   rigsDir: path.resolve(HERE, '../../renderer/render/monster-rigs'),
+  cutsRoot: path.resolve(HERE, '../..'),
 }
+// shared helper modules in the rigs dir, not rigs themselves
+const HELPERS = new Set(['schema.js', 'pixel.js', 'cutout.js'])
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
                '.css': 'text/css', '.json': 'application/json', '.png': 'image/png',
                '.svg': 'image/svg+xml', '.wav': 'audio/wav' }
 
 export function createLabServer(opts = {}) {
-  const { root, monstersDir, rigsDir } = { ...DEFAULTS, ...opts }
+  const { root, monstersDir, rigsDir, cutsRoot } = { ...DEFAULTS, ...opts }
+  // the first PUT creates assets/cuts; watch it from the start
+  try { fs.mkdirSync(path.join(cutsRoot, 'assets/cuts'), { recursive: true }) } catch { /* read-only root */ }
   const sseClients = new Set()
   const watchers = []
   const notify = (dir, file) => {
     const msg = `data: ${JSON.stringify({ dir, file })}\n\n`
     for (const res of sseClients) res.write(msg)
   }
-  for (const [label, watched] of [['rigs', rigsDir], ['monsters', monstersDir]]) {
+  for (const [label, watched] of [['rigs', rigsDir], ['monsters', monstersDir], ['cuts', path.join(cutsRoot, 'assets/cuts')]]) {
     try { watchers.push(fs.watch(watched, (_ev, file) => notify(label, file))) } catch { /* dir may not exist yet */ }
   }
 
@@ -51,9 +58,10 @@ export function createLabServer(opts = {}) {
       return
     }
     if (u.pathname === '/api/rigs' && req.method === 'GET') {
-      const rigs = fs.readdirSync(rigsDir).filter(f => f.endsWith('.js') && f !== 'schema.js').map(f => f.slice(0, -3))
+      const rigs = fs.readdirSync(rigsDir).filter(f => f.endsWith('.js') && !HELPERS.has(f)).map(f => f.slice(0, -3))
       return send(200, JSON.stringify(rigs))
     }
+    if (handleCutRoute({ req, res, u, send, cutsRoot, pageFile: path.join(HERE, '../monster-cutter/index.html') })) return
     if (u.pathname === '/api/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
       res.write(':ok\n\n')

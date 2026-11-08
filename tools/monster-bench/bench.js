@@ -43,10 +43,11 @@ export function startBench(seam) {
   const model = makeBenchModel(def)
   const key = storageKey(name)
   const store = (() => { try { return globalThis.sessionStorage } catch { return null } })()
-  restore(model, takeSnapshot(store, key), def.tuningSchema)
+  restore(model, takeSnapshot(store, key), def.tuningSchema, def.rig?.PARAM_SCHEMA)
   // What the panel shows is what the monster runs on: restored tweaks go
   // into the live tuning object and the AI row before anything spawns.
   Object.assign(def.tuning, model.values.tuning)
+  Object.assign(def.params, model.values.params)
   retuneMonster(name, { stats: model.values.stats, behavior: model.values.behavior })
   const core = makeBenchCore(model)
   setDamageObserver(core.observe)
@@ -55,6 +56,8 @@ export function startBench(seam) {
   const panel = mountPanel(model, core, {
     def,
     onTuning: (k, v) => { def.tuning[k] = v },
+    // the rig reads def.params every frame; retune keeps the hit size in step
+    onParam: (k, v) => { def.params[k] = v; retuneMonster(name) },
     onSave: async () => {
       try { await window.saveAPI.benchSave(name, savePatch(model)); markSaved(model); panel.setError('') }
       catch (err) { panel.setError(`save failed: ${err.message}`) }

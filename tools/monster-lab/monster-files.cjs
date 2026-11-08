@@ -43,6 +43,7 @@ function atomicWrite(file, text) {
 
 function writeMonster(dir, name, data) {
   if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
+  if (name === 'index') throw new Error('monster name "index" is reserved for the index file')
   if (RESERVED_NAMES.has(name)) throw new Error(`monster name "${name}" is reserved for a built-in type`)
   fs.mkdirSync(dir, { recursive: true })
   atomicWrite(path.join(dir, name + '.json'), JSON.stringify({ ...data, name }, null, 2))
@@ -61,7 +62,7 @@ function writeMonster(dir, name, data) {
 }
 
 // The monster bench's Save: read-modify-write of one existing monster.
-// stats and behavior merge into what is on disk, tuning is replaced whole,
+// stats and behavior merge into what is on disk, tuning and params are replaced whole,
 // and every other field of the def survives.
 function updateMonster(dir, name, patch = {}) {
   if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
@@ -71,6 +72,7 @@ function updateMonster(dir, name, patch = {}) {
   if (patch.stats) def.stats = { ...(def.stats ?? {}), ...patch.stats }
   if (patch.behavior) def.behavior = { ...(def.behavior ?? {}), ...patch.behavior }
   if (patch.tuning) def.tuning = { ...patch.tuning }
+  if (patch.params) def.params = { ...patch.params }
   return writeMonster(dir, name, def)
 }
 

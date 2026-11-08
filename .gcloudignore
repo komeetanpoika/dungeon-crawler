@@ -16,3 +16,5 @@ tools/sword-compare/
 /preload.cjs
 /arena-config.json
 /.dc-monitor.mjs
+tools/monster-cutter/fixtures/
+assets/cuts/

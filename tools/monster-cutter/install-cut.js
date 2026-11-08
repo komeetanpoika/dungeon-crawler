@@ -1,0 +1,64 @@
+// Install a built cut into the game: write the cut-out rig module and create
+// (or, on request, switch) the monster def. Never touches a hand-written rig
+// and never rewrites a def that is already on its cut rig.
+import fs from 'node:fs'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+import { rigModuleSource } from './templates.js'
+
+const { writeMonster, RESERVED_NAMES, NAME_RE } = createRequire(import.meta.url)('../monster-lab/monster-files.cjs')
+
+// the generated template's marker line starts with this; a hand-written rig opts in by the same prefix
+const CUTOUT_PREFIX = '// cutout-rig:'
+const rigFile = (root, name) => path.join(root, 'renderer/render/monster-rigs', name + '.js')
+const defDir = root => path.join(root, 'renderer/data/monsters')
+const readDef = (root, name) => {
+  let text
+  try { text = fs.readFileSync(path.join(defDir(root), name + '.json'), 'utf8') } catch (e) {
+    if (e.code === 'ENOENT') return null
+    throw e
+  }
+  try { return JSON.parse(text) } catch { throw new Error(`def ${name}.json is not valid JSON`) }
+}
+
+export function cutStatus({ root, name }) {
+  if (typeof name !== 'string' || !NAME_RE.test(name)) throw Object.assign(new Error(`invalid monster name "${name}"`), { status: 400 })
+  const def = readDef(root, name)
+  const file = rigFile(root, name)
+  const exists = fs.existsSync(file)
+  return {
+    reserved: RESERVED_NAMES.has(name),
+    def: { exists: !!def, rig: def?.rig ?? null },
+    rig: { exists, cutout: exists && fs.readFileSync(file, 'utf8').split('\n')[0].startsWith(CUTOUT_PREFIX) },
+  }
+}
+
+// Every refusal installCut can make, with no writes; returns { status, def }.
+export function checkInstall({ root, name, switchRig = false }) {
+  if (typeof name !== 'string' || !NAME_RE.test(name)) throw Object.assign(new Error(`invalid monster name "${name}"`), { status: 400 })
+  if (name === 'index') throw Object.assign(new Error('monster name "index" is reserved for the index file'), { status: 400 })
+  if (RESERVED_NAMES.has(name)) throw Object.assign(new Error(`monster name "${name}" is reserved for a built-in type`), { status: 400 })
+  const status = cutStatus({ root, name })
+  if (status.rig.exists && !status.rig.cutout) throw Object.assign(new Error(`rig "${name}" is not a cut-out rig`), { status: 409 })
+  const def = readDef(root, name)
+  if (def && def.rig !== name && !switchRig) throw Object.assign(new Error(`def uses rig ${def.rig}`), { needsSwitch: true, status: 409 })
+  return { status, def }
+}
+
+export function installCut({ root, name, switchRig = false }) {
+  const { status, def } = checkInstall({ root, name, switchRig })
+  const out = { createdRig: false, createdDef: false, switched: false }
+  if (!status.rig.exists) {
+    fs.mkdirSync(path.dirname(rigFile(root, name)), { recursive: true })
+    fs.writeFileSync(rigFile(root, name), rigModuleSource(name))
+    out.createdRig = true
+  }
+  if (!def) {
+    writeMonster(defDir(root), name, { rig: name, params: {}, stats: { hp: 10, dmg: 1, speed: 60 }, behavior: {}, hooks: false, spawn: null, tuning: {} })
+    out.createdDef = true
+  } else if (def.rig !== name) {
+    writeMonster(defDir(root), name, { ...def, rig: name, params: {} })
+    out.switched = true
+  }
+  return out
+}

@@ -1,6 +1,6 @@
 // tools/monster-bench/panel.js
 // The bench's tuning panel: a column down the right edge (F2 or the edge
-// button folds it away) over the running arena. Tuning edits apply on the
+// button folds it away) over the running arena. Look and tuning edits apply on the
 // next frame; stats and behaviour wait for a respawn. Buttons show state by
 // colour. Every key event stops at the panel (gateKeys), so typing a number
 // never walks the hero.
@@ -42,7 +42,7 @@ export function mountPanel(model, core, handlers) {
   gateKeys(root)
 
   // header: fold, name, save
-  const save = el('button', { textContent: 'Save', title: 'Write tuning, stats and behaviour to the monster JSON' })
+  const save = el('button', { textContent: 'Save', title: 'Write look, tuning, stats and behaviour to the monster JSON' })
   const fold = el('button', { className: 'bp-fold', title: 'Fold the panel (F2)' })
   // the HUD's right-hand icons step aside while the panel is open
   const syncFold = () => { root.classList.toggle('collapsed', sw.collapsed); document.body.classList.toggle('bench-open', !sw.collapsed)
@@ -55,33 +55,42 @@ export function mountPanel(model, core, handlers) {
   // a hook that failed to load, a bad schema, clamped values: say so up top
   if (def.warnings?.length) root.append(el('div', { className: 'bp-err', textContent: def.warnings.join('\n') }))
 
-  // tuning: slider + exact number per range, checkbox per toggle, hint below
-  if (def.tuningSchema?.length) {
-    root.append(el('h3', { textContent: 'Tuning — live' }))
+  // slider + exact number per range, checkbox per toggle, colour input per
+  // colour, hint below; `section` names the model values the rows edit
+  const schemaRows = (title, schema, section, onChange) => {
+    if (!schema?.length) return
+    root.append(el('h3', { textContent: title }))
     let group = null
-    for (const p of def.tuningSchema) {
+    for (const p of schema) {
       if (p.group !== group) { group = p.group; root.append(el('div', { className: 'bp-note', textContent: group })) }
       const row = el('div', { className: 'bp-row' })
-      const set = v => { edit(model, 'tuning', p.key, v); handlers.onTuning(p.key, v); syncDirty() }
+      const set = v => { edit(model, section, p.key, v); onChange(p.key, v); syncDirty() }
+      const cur = model.values[section][p.key]
       if (p.type === 'range') {
-        const num = el('input', { type: 'number', min: p.min, max: p.max, step: p.step, value: model.values.tuning[p.key] })
-        const slider = el('input', { type: 'range', min: p.min, max: p.max, step: p.step, value: model.values.tuning[p.key] })
+        const num = el('input', { type: 'number', min: p.min, max: p.max, step: p.step, value: cur })
+        const slider = el('input', { type: 'range', min: p.min, max: p.max, step: p.step, value: cur })
         slider.oninput = () => { num.value = slider.value; set(Number(slider.value)) }
         num.onchange = () => {
           const v = Math.max(p.min, Math.min(p.max, Number(num.value)))
-          if (!Number.isFinite(v)) { num.value = model.values.tuning[p.key]; return }
+          if (!Number.isFinite(v)) { num.value = model.values[section][p.key]; return }
           num.value = slider.value = v; set(v)
         }
         row.append(el('label', { textContent: p.label }), num, slider)
       } else if (p.type === 'toggle') {
-        const box = el('input', { type: 'checkbox', checked: !!model.values.tuning[p.key] })
+        const box = el('input', { type: 'checkbox', checked: !!cur })
         box.onchange = () => set(box.checked)
         row.append(el('label', { textContent: p.label }), box)
+      } else if (p.type === 'color') {
+        const pick = el('input', { type: 'color', value: cur })
+        pick.oninput = () => set(pick.value)
+        row.append(el('label', { textContent: p.label }), pick)
       } else continue
       if (p.hint) row.append(el('div', { className: 'bp-hint', textContent: p.hint }))
       root.append(row)
     }
   }
+  schemaRows('Look — live', def.rig?.PARAM_SCHEMA, 'params', handlers.onParam)
+  schemaRows('Tuning — live', def.tuningSchema, 'tuning', handlers.onTuning)
 
   // stats and numeric behaviour: plain numbers, applied by the next respawn
   root.append(el('h3', { textContent: 'Stats and behaviour' }), el('div', { className: 'bp-note', textContent: 'applies on respawn' }))
