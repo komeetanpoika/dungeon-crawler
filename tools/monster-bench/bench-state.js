@@ -6,7 +6,7 @@
 // tweak never vanishes because Claude saved a file. Pure — no DOM.
 import { clampParams } from '../../renderer/render/monster-rigs/schema.js'
 
-const SECTIONS = ['tuning', 'stats', 'behavior']
+const SECTIONS = ['tuning', 'stats', 'behavior', 'params']
 const STATS = ['hp', 'dmg', 'speed']
 
 export const storageKey = name => `dc-bench:${name}`
@@ -18,10 +18,12 @@ export function makeBenchModel(def) {
       tuning: { ...(def.tuning ?? {}) },
       stats: Object.fromEntries(STATS.map(k => [k, def.stats?.[k]])),
       behavior: numeric(def.behavior),
+      params: { ...(def.params ?? {}) },
     },
     // without a schema (a hook that failed to load, or none) the panel has
     // no tuning to offer, and Save must not overwrite what the file holds
     hasTuning: Array.isArray(def.tuningSchema),
+    hasParams: Array.isArray(def.rig?.PARAM_SCHEMA),
     dirty: new Set(),
     switches: { frozen: false, invulnerable: false, hitboxes: false, timeScale: 1, paused: false, count: 1, collapsed: false },
   }
@@ -33,8 +35,8 @@ export function edit(model, section, key, value) {
 }
 
 export function savePatch(model) {
-  const { tuning, stats, behavior } = model.values
-  return { ...(model.hasTuning ? { tuning: { ...tuning } } : {}), stats: { ...stats }, behavior: { ...behavior } }
+  const { tuning, stats, behavior, params } = model.values
+  return { ...(model.hasTuning ? { tuning: { ...tuning } } : {}), ...(model.hasParams ? { params: { ...params } } : {}), stats: { ...stats }, behavior: { ...behavior } }
 }
 
 export function markSaved(model) { model.dirty.clear() }
@@ -50,21 +52,29 @@ export function snapshot(model) {
   return JSON.stringify({ values, switches })
 }
 
+const validParam = (p, v) =>
+  p.type === 'range' ? Number.isFinite(v) : p.type === 'color' ? /^#[0-9a-f]{6}$/i.test(v) : p.type === 'toggle' ? typeof v === 'boolean' : false
+
 // Unsaved values win over what is on disk for keys that still exist (a
-// tuning key still in the schema, re-clamped to its current range; a stat;
+// tuning key still in the schema, re-clamped to its current range; a rig param likewise; a stat;
 // a numeric behaviour field the def still has) and stay unsaved. The rest
 // come from disk.
-export function restore(model, text, schema) {
+export function restore(model, text, schema, paramSchema) {
   let snap
   try { snap = JSON.parse(text ?? 'null') } catch { return }
   if (!snap || typeof snap !== 'object') return
   const bySchemaKey = new Map((schema ?? []).map(p => [p.key, p]))
+  const byParamKey = new Map((paramSchema ?? []).map(p => [p.key, p]))
   for (const [k, v] of Object.entries(snap.values ?? {})) {
     const [section, key] = k.split('.')
     if (!SECTIONS.includes(section)) continue
     if (section === 'tuning') {
       const p = bySchemaKey.get(key)
       if (!p || (p.type === 'range' && !Number.isFinite(v))) continue
+      edit(model, section, key, clampParams([p], { [key]: v })[key])
+    } else if (section === 'params') {
+      const p = byParamKey.get(key)
+      if (!p || !validParam(p, v)) continue
       edit(model, section, key, clampParams([p], { [key]: v })[key])
     } else if (key in model.values[section] && Number.isFinite(v)) edit(model, section, key, v)
   }

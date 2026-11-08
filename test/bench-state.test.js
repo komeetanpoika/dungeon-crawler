@@ -110,6 +110,43 @@ describe('snapshot / restore', () => {
   })
 })
 
+const PSCHEMA = [
+  { key: 'armSwing', label: 'Arm swing', group: 'limbs', type: 'range', min: 0, max: 1, step: 0.05, default: 0.5 },
+  { key: 'tint', label: 'Tint', group: 'colour', type: 'color', default: '#336699' },
+  { key: 'flip', label: 'Flip', group: 'limbs', type: 'toggle', default: false },
+]
+const rigDef = () => ({ ...def(), rig: { PARAM_SCHEMA: PSCHEMA }, params: { armSwing: 0.5, tint: '#336699', flip: false } })
+
+describe('rig params', () => {
+  it('the model carries the rig params and Save sends them', () => {
+    const d = rigDef()
+    const m = makeBenchModel(d)
+    assert.equal(m.hasParams, true)
+    assert.deepEqual(m.values.params, d.params)
+    assert.notEqual(m.values.params, d.params)
+    edit(m, 'params', 'armSwing', 0.9)
+    assert.deepEqual(savePatch(m).params, { armSwing: 0.9, tint: '#336699', flip: false })
+  })
+  it('restore re-clamps params to the rig schema and drops unknown keys', () => {
+    const m1 = makeBenchModel(rigDef())
+    edit(m1, 'params', 'armSwing', 0.9); edit(m1, 'params', 'tint', '#ff0000'); edit(m1, 'params', 'flip', true)
+    edit(m1, 'params', 'gone', 3)
+    const text = JSON.parse(snapshot(m1)); text.values['params.armSwing'] = 7; text.values['params.tint'] = 'red'
+    const m2 = makeBenchModel(rigDef())
+    restore(m2, JSON.stringify(text), SCHEMA, PSCHEMA)
+    assert.equal(m2.values.params.armSwing, 1)
+    assert.equal(m2.values.params.tint, '#336699')
+    assert.equal(m2.values.params.flip, true)
+    assert.equal('gone' in m2.values.params, false)
+    assert.deepEqual([...m2.dirty].sort(), ['params.armSwing', 'params.flip'])
+  })
+  it('a def without a rig schema sends no params', () => {
+    const m = makeBenchModel(def())
+    assert.equal(m.hasParams, false)
+    assert.equal('params' in savePatch(m), false)
+  })
+})
+
 describe('storageKey', () => {
   it('is per monster', () => { assert.equal(storageKey('glorp'), 'dc-bench:glorp') })
 })
