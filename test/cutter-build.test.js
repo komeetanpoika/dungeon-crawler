@@ -108,3 +108,22 @@ test('installCut refuses reserved and invalid names', () => {
   assert.throws(() => installCut({ root, name: 'Bad Name' }), /invalid/)
   assert.equal(cutStatus({ root, name: 'dragon' }).reserved, true)
 })
+
+test('buildCut and cutStatus refuse a name that is not a plain monster name', () => {
+  const { root } = makeRoot()
+  assert.throws(() => buildCut({ root, name: '../x' }), /invalid monster name/)
+  assert.throws(() => cutStatus({ root, name: '../x' }), /invalid monster name/)
+})
+
+test('buildCut leaves no temp files beside the parts', () => {
+  const { root } = makeRoot()
+  buildCut({ root, name: 't' })
+  assert.deepEqual(fs.readdirSync(path.join(root, 'renderer/assets/monsters')).sort(), ['t-parts.js', 't-parts.png'])
+})
+
+test('a def file that does not parse is an error, never overwritten', () => {
+  const { root } = makeRoot()
+  fs.writeFileSync(defPath(root), '{broken')
+  assert.throws(() => installCut({ root, name: 't' }), /def t\.json is not valid JSON/)
+  assert.equal(fs.readFileSync(defPath(root), 'utf8'), '{broken')
+})

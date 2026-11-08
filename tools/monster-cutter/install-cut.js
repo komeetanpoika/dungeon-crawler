@@ -11,10 +11,16 @@ const { writeMonster, RESERVED_NAMES, NAME_RE } = createRequire(import.meta.url)
 const rigFile = (root, name) => path.join(root, 'renderer/render/monster-rigs', name + '.js')
 const defDir = root => path.join(root, 'renderer/data/monsters')
 const readDef = (root, name) => {
-  try { return JSON.parse(fs.readFileSync(path.join(defDir(root), name + '.json'), 'utf8')) } catch { return null }
+  let text
+  try { text = fs.readFileSync(path.join(defDir(root), name + '.json'), 'utf8') } catch (e) {
+    if (e.code === 'ENOENT') return null
+    throw e
+  }
+  try { return JSON.parse(text) } catch { throw new Error(`def ${name}.json is not valid JSON`) }
 }
 
 export function cutStatus({ root, name }) {
+  if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
   const def = readDef(root, name)
   const file = rigFile(root, name)
   const exists = fs.existsSync(file)
