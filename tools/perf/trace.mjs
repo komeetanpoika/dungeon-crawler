@@ -1,12 +1,13 @@
 // Frame-cost tracer for the Electron game on this WSLg machine (software
 // canvas: `app.disableHardwareAcceleration()` in main.cjs). Launches the
-// game, enters a depth with the `level<N>` cheat, walks in a square for a
-// few seconds under a Chromium trace, and prints the per-frame main-thread
+// game, enters a depth with the `level<N>` cheat (or opens the monster
+// bench on one monster with `bench:<name>`), walks in a square for a few
+// seconds under a Chromium trace, and prints the per-frame main-thread
 // cost split into JS (FunctionCall), canvas rasterisation
 // (Canvas2DLayerBridge::flushRecording — the software replay of every
 // drawImage/fillRect the frame recorded) and DOM style/layout.
 //
-//   node tools/perf/trace.mjs [depth=12|pvp] [seconds=5]
+//   node tools/perf/trace.mjs [depth=12|pvp|bench:<name>] [seconds=5]
 //
 // Main-thread busy near 100% means dropped frames; the 2026-09-05 tile
 // cache work took the Mountain Pass from ~22 ms to ~8 ms per frame.
@@ -17,17 +18,20 @@ import { fileURLToPath } from 'node:url'
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const level = process.argv[2] ?? '12'
 const secs = Number(process.argv[3] ?? 5)
+const bench = level.startsWith('bench:') ? level.slice('bench:'.length) : null
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 const app = await electron.launch({
   executablePath: path.join(APP_DIR, 'node_modules/electron/dist/electron'),
   args: ['--no-sandbox', '--user-data-dir=/tmp/dc-perf-profile', '--disable-background-timer-throttling',
-    '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', APP_DIR],
+    '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', APP_DIR,
+    ...(bench ? ['--bench', bench] : [])],
   env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' }, timeout: 45_000,
 })
 await sleep(4000)
 const page = app.windows().find(w => !w.url().startsWith('devtools://')) ?? await app.firstWindow()
-const cheat = level === 'pvp' ? ['p', 'v', 'p', 'Enter'] : ['l', 'e', 'v', 'e', 'l', ...level.split('')]
+// the bench skips the title on its own
+const cheat = bench ? [] : level === 'pvp' ? ['p', 'v', 'p', 'Enter'] : ['l', 'e', 'v', 'e', 'l', ...level.split('')]
 for (const k of cheat) { await page.keyboard.press(k); await sleep(120) }
 await sleep(2500)
 

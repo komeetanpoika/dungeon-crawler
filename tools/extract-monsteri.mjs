@@ -1,9 +1,11 @@
 // Monsteri from the user's crayon drawing (monsteri.jpg, a phone photo of
 // paper on a table). assets/monsteri.png is that photo turned upright and
 // shrunk to a quarter, once, with PIL; this script lifts the drawing off
-// the paper and writes the one-frame sheet renderer/assets/monsters/
-// monsteri.png + monsteri-sheet.js that render/monster-rigs/monsteri.js
-// draws.
+// the paper and writes it, cropped, at full size to assets/cuts/monsteri.png:
+// the monster cutter's source for monsteri. The cut (assets/cuts/
+// monsteri.json) says where the pieces are; `node tools/monster-cutter/
+// build.mjs monsteri` downsamples and outlines them into the parts atlas
+// that render/monster-rigs/monsteri.js draws.
 //
 // Keying: paper is bright and nearly grey; the table and the jeans around
 // it are flood-filled away from the photo's border; everything else on the
@@ -12,16 +14,15 @@
 // closed and its small holes filled to make a solid body, and inside the
 // mask the paper gaps take the crayon colour around them. Crayon on white
 // photographs pale, so every colour's distance from the paper is doubled. Pencil lines are
-// thickened first so the claws and stalks survive the downsample. A dark
-// one-pixel outline keeps it readable on any floor.
+// thickened first so the claws and stalks survive the cutter's downsample
+// (8x, to 84 art px tall).
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { readPng } from './png-read.mjs'
-import { downsample, writeSheet } from './sprite-sheet-lib.mjs'
+import { writePng } from './png-write.mjs'
 
 const SRC = 'assets/monsteri.png'
-const OUT_PNG = 'renderer/assets/monsters/monsteri.png'
-const OUT_META = 'renderer/assets/monsters/monsteri-sheet.js'
+const OUT_CUT = 'assets/cuts/monsteri.png'   // the keyed drawing at full size, for the monster cutter
 
 // Measured on assets/monsteri.png (paper ~ (212,202,191), crayon ~ (205,160,150),
 // pencil ~ (120,110,105), wood ~ (178,140,91), jeans ~ (43,42,38)).
@@ -35,12 +36,9 @@ const PENCIL_GROW = 2        // px a pencil line is thickened by
 const CLOSE_R = 3            // px: closing radius that joins hatching strokes
 const HOLE_MAX = 900         // px: enclosed paper smaller than this becomes body
 const SPECK_MIN = 60         // px: ink components smaller than this are paper grain
-const SCALE = 8              // downsample factor: ~95 px tall
-const ALPHA_CUT = 110        // after downsampling, coverage below this is dropped
 const KEEP_MARGIN = 30       // px: pieces this close to the body's box belong to it (the orbs)
 const PAPER = [212, 202, 191] // the paper's colour, for the crayon boost
 const BOOST = 2              // crayon on paper photographs pale: distance from paper x this
-const OUTLINE = [58, 20, 22]
 
 if (!fs.existsSync(SRC)) { console.log(`monsteri photo not found at ${SRC}`); process.exit(0) }
 const src = readPng(SRC)
@@ -164,32 +162,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   rgba.set([k(0), k(1), k(2), 255], i * 4)
 }
 
-// 5. crop, downsample, harden the edge, outline
+// 5. crop to the drawing and write it out
 let x0 = W, x1 = -1, y0 = H, y1 = -1
 for (let i = 0; i < N; i++) if (mask[i]) { const x = i % W, y = (i / W) | 0; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y) }
 const cw = x1 - x0 + 1, ch = y1 - y0 + 1
 const crop = new Uint8Array(cw * ch * 4)
 for (let y = 0; y < ch; y++) crop.set(rgba.subarray(((y0 + y) * W + x0) * 4, ((y0 + y) * W + x1 + 1) * 4), y * cw * 4)
-const small = downsample({ w: cw, h: ch, rgba: crop }, SCALE)
-const P = 1, fw = small.w + 2 * P, fh = small.h + 2 * P
-const frame = new Uint8Array(fw * fh * 4)
-for (let y = 0; y < small.h; y++) for (let x = 0; x < small.w; x++) {
-  const s = (y * small.w + x) * 4
-  if (small.rgba[s + 3] < ALPHA_CUT) continue
-  frame.set([small.rgba[s], small.rgba[s + 1], small.rgba[s + 2], 255], ((y + P) * fw + x + P) * 4)
-}
-const solid = i => frame[i * 4 + 3] === 255
-const lined = new Uint8Array(frame)
-for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
-  const i = y * fw + x
-  if (solid(i)) continue
-  if ((x > 0 && solid(i - 1)) || (x < fw - 1 && solid(i + 1)) || (y > 0 && solid(i - fw)) || (y < fh - 1 && solid(i + fw)))
-    lined.set([...OUTLINE, 255], i * 4)
-}
-
-const { sheetW, sheetH } = writeSheet({
-  outPng: OUT_PNG, outMeta: OUT_META, rows: [{ name: 'idle', frames: [{ w: fw, h: fh, rgba: lined }] }],
-  align: 'bottom', source: 'tools/extract-monsteri.mjs from assets/monsteri.png',
-  note: 'One frame: the rig animates it whole.',
-})
-console.log(`drawing ${cw}x${ch} px on the photo → ${fw}x${fh} frame; wrote ${path.relative(process.cwd(), OUT_PNG)} ${sheetW}x${sheetH}`)
+fs.mkdirSync(path.dirname(OUT_CUT), { recursive: true })
+writePng(OUT_CUT, cw, ch, crop)
+console.log(`drawing ${cw}x${ch} px on the photo; wrote ${OUT_CUT} (build the parts with: node tools/monster-cutter/build.mjs monsteri)`)

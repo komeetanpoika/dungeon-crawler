@@ -22,7 +22,7 @@ export const CUTOUT_SCHEMA = [
   { key: 'gaitFreq',    label: 'Gait speed',           group: 'motion', type: 'range', min: 1, max: 12, step: 0.5, default: 6 },
   { key: 'lunge',       label: 'Attack lunge (tiles)', group: 'motion', type: 'range', min: 0, max: 0.6, step: 0.05, default: 0.2 },
   { key: 'armSwing',    label: 'Arm swing (deg)',      group: 'limbs',  type: 'range', min: 0, max: 60, step: 1, default: 20 },
-  { key: 'stepHeight',  label: 'Foot lift (tiles)',    group: 'limbs',  type: 'range', min: 0, max: 0.5, step: 0.01, default: 0.12 },
+  { key: 'stepHeight',  label: 'Foot lift (tiles)',    group: 'limbs',  type: 'range', min: 0, max: 0.5, step: 0.01, default: 0.2 },
   { key: 'legSwing',    label: 'Leg swing (deg)',      group: 'limbs',  type: 'range', min: 0, max: 45, step: 1, default: 20 },
   { key: 'headNod',     label: 'Head nod (deg)',       group: 'limbs',  type: 'range', min: 0, max: 15, step: 1, default: 3 },
   { key: 'tailSway',    label: 'Tail sway (deg)',      group: 'limbs',  type: 'range', min: 0, max: 30, step: 1, default: 8 },

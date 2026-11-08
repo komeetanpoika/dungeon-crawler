@@ -1,6 +1,14 @@
 {
   "rig": "monsteri",
-  "params": {},
+  "params": {
+    "wobble": 3,
+    "armSwing": 20,
+    "stepHeight": 0.2,
+    "legSwing": 20,
+    "headNod": 3,
+    "tailSway": 8,
+    "attackReach": 35
+  },
   "stats": {
     "hp": 12,
     "dmg": 2,

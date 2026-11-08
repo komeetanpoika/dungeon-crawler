@@ -71,7 +71,7 @@ describe('cutout rig', () => {
     assert.deepEqual(rigOf().PARAM_SCHEMA, CUTOUT_SCHEMA)
     const d = k => CUTOUT_SCHEMA.find(p => p.key === k).default
     assert.deepEqual(['size', 'body', 'lift', 'bob', 'wobble', 'gaitFreq', 'lunge', 'armSwing', 'stepHeight', 'legSwing', 'headNod', 'tailSway', 'attackReach'].map(d),
-      [3, 0.5, 1.1, 0.4, 3, 6, 0.2, 20, 0.12, 20, 3, 8, 35])
+      [3, 0.5, 1.1, 0.4, 3, 6, 0.2, 20, 0.2, 20, 3, 8, 35])
   })
 
   for (const state of ['idle', 'walk', 'attack', 'hit', 'death']) {
