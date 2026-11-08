@@ -1,0 +1,14 @@
+{
+  "rig": "monsteri",
+  "params": {},
+  "stats": {
+    "hp": 12,
+    "dmg": 2,
+    "speed": 60
+  },
+  "behavior": {},
+  "hooks": true,
+  "spawn": null,
+  "tuning": {},
+  "name": "monsteri"
+}

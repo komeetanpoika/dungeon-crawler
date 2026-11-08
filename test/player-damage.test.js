@@ -1,6 +1,6 @@
-import { describe, it } from 'node:test'
+import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { damagePlayer, INVULN_DURATION } from '../renderer/systems/player-damage.js'
+import { damagePlayer, INVULN_DURATION, setDamageObserver } from '../renderer/systems/player-damage.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 import { makePlayer, makeShieldContents, makeOutfitContents } from '../renderer/systems/entities.js'
@@ -98,5 +98,50 @@ describe('damagePlayer with a shield and armour', () => {
     const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = plate
     damagePlayer(s, 3, 'hit')
     assert.equal(s.player.hp, 7)
+  })
+})
+
+describe('damage observer', () => {
+  afterEach(() => setDamageObserver(null))
+  const lastFloat = s => s.feedback.floats.at(-1)
+  it('can zero the hp loss while the float shows the would-be damage', () => {
+    setDamageObserver(() => 0)
+    const s = freshState()
+    assert.equal(damagePlayer(s, 3, 'hit'), true)
+    assert.equal(s.player.hp, 10)
+    assert.equal(lastFloat(s).text, '-3')
+    assert.equal(s.player.invulnTimer, INVULN_DURATION)
+  })
+  it('sees the amount after outfit protect, with state, player and kind', () => {
+    const seen = []
+    setDamageObserver((state, player, amount, kind) => { seen.push({ state, player, amount, kind }); return amount })
+    const p = { ...makePlayer(1, 1), px: 40, py: 60, hp: 10 }
+    const { type, ...plate } = makeOutfitContents('plate'); p.gear.melee.outfit = plate
+    const s = { player: p, feedback: makeFeedback(), sfx: makeSfx() }
+    damagePlayer(s, 3, 'hit')
+    assert.equal(seen.length, 1)
+    assert.equal(seen[0].state, s); assert.equal(seen[0].player, p)
+    assert.equal(seen[0].amount, 1); assert.equal(seen[0].kind, 'hit')
+    assert.equal(p.hp, 9)
+  })
+  it('a non-finite return leaves the amount unchanged', () => {
+    setDamageObserver(() => undefined)
+    const s = freshState()
+    damagePlayer(s, 3, 'dot')
+    assert.equal(s.player.hp, 7)
+  })
+  it('without an observer behaviour is unchanged', () => {
+    const s = freshState()
+    damagePlayer(s, 3, 'hit')
+    assert.equal(s.player.hp, 7)
+  })
+  it('is not consulted for a blocked hit', () => {
+    let calls = 0
+    setDamageObserver((_s, _p, a) => { calls++; return a })
+    const p = { ...makePlayer(1, 1), px: 40, py: 60, hp: 10, facing: 'east', stamina: 100, blocking: true }
+    const { type, ...b } = makeShieldContents('buckler'); p.gear.melee.off = { kind: 'shield', ...b }
+    const s = { player: p, feedback: makeFeedback(), sfx: makeSfx() }
+    assert.equal(damagePlayer(s, 3, 'hit', { px: 80, py: 60 }), false)
+    assert.equal(calls, 0)
   })
 })

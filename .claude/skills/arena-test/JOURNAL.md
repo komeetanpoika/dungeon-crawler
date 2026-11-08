@@ -199,3 +199,10 @@ Terminology note (2026-09-17, does not touch entries below): earlier runs pre-gr
 **Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
 **Score:** 4/5
 **Notes:** Overlay capsules sit on every sprite/rig (dragon over its body, elk nose-to-tail, podeboo full height, cyclops whole sprite). Arrow 20 px off the cyclops centre hit (30→29), the same offset past a guard missed. Fireball at x=+20 from the elk detonated at its rim (zone origin tile 19,15 ≈ py 504 = 528-24); at +50 it flew past and burst at the wall. Elk hp stayed 30 because the hirvi hit hook absorbs outside its quest stage, so burst damage on a rig was witnessed on podeboo/boarhound/rappeluu (all burned by an accidental first detonation) rather than the elk — hence 4 not 5.
+
+## Run 29 — 2026-10-24 — CLOSED
+**Question:** Does the bench tune, save and reload monsteri live?
+**Criteria:** a panel cooldown edit changes debugState's cd on the next frame; Save writes it to the JSON; editing the hook file reloads the page with the saved value shown; monsteri reads clearly in the arena
+**Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
+**Score:** 5/5
+**Notes:** All four criteria met on --bench monsteri via a scratch playwright probe: cooldown 6 typed in the panel moved debugState cd from <=2 to 4.83 on the next readout; Save wrote tuning {cooldown:6} to monsteri.json without reloading the page (own-write suppression); an unsaved 3.5 plus a rewrite of the hook file reloaded the page with 3.5 kept, dirty, Hitboxes still on and tuningOf live at 3.5; monsteri renders upright with its hit circle on the torso. Contrast of the pale crayon red on the level-0 dark red floor is lower than on grass.

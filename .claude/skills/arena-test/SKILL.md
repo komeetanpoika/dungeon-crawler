@@ -32,7 +32,7 @@ mandatory — the journal is how arena testing improves itself across sessions.
    ```
 
    - Every field optional; omit the file entirely for the default dragon-boss arena.
-   - Enemy kinds: `guard`, `monster` (variants `weak`/`medium`/`strong`/`boss`), `dragon`, `crab`, `cyclops`, `wizard`, `dragon_boss`, `dragon_boss_pixel` (the pixel-art skin — same type, AI and hitboxes as `dragon_boss`, only the renderer differs). Omit `x`/`y` to auto-place near the center. Optional `hp` spawns the enemy pre-damaged (clamped 1..maxHp) — e.g. `{ "kind": "guard", "hp": 1 }` to observe low-HP fleeing.
+   - Enemy kinds: `guard`, `monster` (variants `weak`/`medium`/`strong`/`boss`), `dragon`, `crab`, `cyclops`, `wizard`, `dragon_boss`, `dragon_boss_pixel` (the pixel-art skin — same type, AI and hitboxes as `dragon_boss`, only the renderer differs), plus any registry monster name listed in `renderer/data/monsters/index.json` (e.g. `podeboo`). Omit `x`/`y` to auto-place near the center. Optional `hp` spawns the enemy pre-damaged (clamped 1..maxHp) — e.g. `{ "kind": "guard", "hp": 1 }` to observe low-HP fleeing.
    - Chest kinds: `weapon` (`weaponType`: `dagger`/`sword`/`longsword`/`axe`), `potion`. Omit positions to auto-place on the perimeter.
    - `player`: spawn position plus optional `weaponType` and `hp` overrides.
    - `columns`: interior COLUMN tiles (block movement AND line of sight) — build walls/obstacles for pathfinding and LOS-break tests; never placed on the player spawn; spawns never land on them.
@@ -52,6 +52,8 @@ mandatory — the journal is how arena testing improves itself across sessions.
    ```bash
    node .claude/skills/run-game/driver.mjs
    ```
+
+   `DC_EXTRA_ARGS` adds launch flags: `DC_EXTRA_ARGS="--dcdebug"` exposes `window.__dc`, and `DC_EXTRA_ARGS="--bench <name>"` opens the **monster bench** instead of the title (`npm run bench -- <name>` by hand): the arena with that registry monster, `__dc`, and a panel with live tuning, Freeze, Invulnerable, Hitboxes, pause/step/slow motion and Respawn — no level0 cheat needed. The driver reads commands as they arrive, so feed `launch` and wait for it before the next command.
 
    Then on its prompt: `launch`, wait for the title screen, type the cheat with
    `press l`, `press e`, `press v`, `press e`, `press l`, `press 0` — the arena

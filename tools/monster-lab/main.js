@@ -5,6 +5,7 @@ import { buildParamsPanel, buildFieldEditors } from './params-panel.js'
 import { defaultParams, clampParams } from '/renderer/render/monster-rigs/schema.js'
 import { toast } from '/tools/tile-editor/toast.js'
 import { makePinStrip } from './compare.js'
+import { saveBody } from './save-body.js'
 
 const stage = makeStage(document.getElementById('stage'), document.getElementById('simbar'))
 document.getElementById('zoom').oninput = e => { stage.zoom = Number(e.target.value) }
@@ -36,7 +37,7 @@ const els = { list: document.getElementById('monster-list'), params: document.ge
               newBtn: document.getElementById('new-monster') }
 
 let rigMod = null
-let work = null          // { name, rigId, params, stats, behavior, spawn, hooks, dirty }
+let work = null          // { name, rigId, params, stats, behavior, spawn, hooks, extra, dirty }
 let saved = []           // defs from the server
 
 function markDirty() {
@@ -72,7 +73,7 @@ function renderLibrary() {
     li.classList.toggle('dirty', work?.name === d.name && work.dirty)
     li.onclick = () => setWork({ name: d.name, rigId: d.rig, params: { ...(d.params ?? {}) },
       stats: { ...(d.stats ?? {}) }, behavior: { ...(d.behavior ?? {}) },
-      spawn: d.spawn ? { ...d.spawn } : null, hooks: d.hooks ?? false, dirty: false })
+      spawn: d.spawn ? { ...d.spawn } : null, hooks: d.hooks ?? false, extra: d, dirty: false })
     els.list.append(li)
   }
 }
@@ -86,11 +87,8 @@ els.newBtn.onclick = async () => {
 }
 
 els.save.onclick = async () => {
-  const { name, rigId, params, stats, behavior, spawn, hooks } = work
-  const clean = { rig: rigId, params, stats, behavior,
-                  ...(spawn?.depths ? { spawn } : {}), ...(hooks ? { hooks: true } : {}) }
   try {
-    await io.saveMonster(name, clean)
+    await io.saveMonster(work.name, saveBody(work))
     work.dirty = false
     els.save.disabled = true
     await refreshList()
