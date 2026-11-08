@@ -9,6 +9,7 @@ import { autoMask, keepMain, encodeMask } from './mask.js'
 import { findPieces } from './finder.js'
 import { segment } from './segment.js'
 import { validateCut } from './cut-format.js'
+import { guessPoints } from './cut-model.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const args = process.argv.slice(2)
@@ -28,27 +29,7 @@ const mask = keepMain(autoMask(src, { tolerance: Number(flag('tolerance', 40)) }
 const pieces = findPieces(mask, w, h)
 const { owner } = segment(mask, w, h, pieces)
 
-// the topmost pixel of a piece (x = middle of its top row) moved 15% of its height down
-function topPoint(idx) {
-  let top = h, bottom = -1, x0 = w, x1 = -1
-  for (let i = 0; i < w * h; i++) if (owner[i] === idx) { const y = (i / w) | 0; if (y < top) top = y; if (y > bottom) bottom = y }
-  if (bottom < 0) return null
-  for (let x = 0; x < w; x++) if (owner[top * w + x] === idx) { if (x < x0) x0 = x; x1 = x }
-  return { x: Math.round((x0 + x1) / 2), y: Math.round(top + 0.15 * (bottom - top)) }
-}
-const figureTop = () => {
-  let top = h, x0 = w, x1 = -1
-  for (let i = 0; i < w * h; i++) if (mask[i]) { const y = (i / w) | 0; if (y < top) top = y }
-  for (let x = 0; x < w; x++) if (mask[top * w + x]) { if (x < x0) x0 = x; x1 = x }
-  return { x: Math.round((x0 + x1) / 2), y: top }
-}
-const torsoIdx = pieces.findIndex(p => p.parent === null), headIdx = pieces.findIndex(p => p.role === 'head')
-const headPt = (headIdx >= 0 && topPoint(headIdx)) || figureTop()
-const chestPt = topPoint(torsoIdx) ?? figureTop()
-const points = {
-  head: { piece: headIdx >= 0 ? pieces[headIdx].id : pieces[torsoIdx].id, ...headPt },
-  chest: { piece: pieces[torsoIdx].id, ...chestPt },
-}
+const points = guessPoints(mask, w, h, pieces, owner)
 
 const cut = { version: 1, name, source: `assets/cuts/${name}.png`, credit: null, w, h, mask: encodeMask(mask),
   view: flag('view', 'front'), faces: flag('faces', 'left'), outHeight: 84, outline: null, pieces, points }
