@@ -21,6 +21,12 @@ describe('lab server API', () => {
     assert.ok(rigs.includes('quadruped'))
     assert.ok(!rigs.includes('schema'))
   })
+
+  it('GET /api/rigs leaves out helper modules', async () => {
+    const rigs = await (await fetch(`${base}/api/rigs`)).json()
+    assert.ok(!rigs.includes('pixel'))
+    assert.ok(!rigs.includes('cutout'))
+  })
   it('PUT then GET /api/monsters round-trips', async () => {
     const put = await fetch(`${base}/api/monsters/testmon`, {
       method: 'PUT', body: JSON.stringify({ rig: 'quadruped', stats: { hp: 5 } }) })

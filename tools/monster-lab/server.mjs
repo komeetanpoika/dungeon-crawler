@@ -17,6 +17,8 @@ const DEFAULTS = {
   monstersDir: path.resolve(HERE, '../../renderer/data/monsters'),
   rigsDir: path.resolve(HERE, '../../renderer/render/monster-rigs'),
 }
+// shared helper modules in the rigs dir, not rigs themselves
+const HELPERS = new Set(['schema.js', 'pixel.js', 'cutout.js'])
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
                '.css': 'text/css', '.json': 'application/json', '.png': 'image/png',
                '.svg': 'image/svg+xml', '.wav': 'audio/wav' }
@@ -51,7 +53,7 @@ export function createLabServer(opts = {}) {
       return
     }
     if (u.pathname === '/api/rigs' && req.method === 'GET') {
-      const rigs = fs.readdirSync(rigsDir).filter(f => f.endsWith('.js') && f !== 'schema.js').map(f => f.slice(0, -3))
+      const rigs = fs.readdirSync(rigsDir).filter(f => f.endsWith('.js') && !HELPERS.has(f)).map(f => f.slice(0, -3))
       return send(200, JSON.stringify(rigs))
     }
     if (u.pathname === '/api/events') {
