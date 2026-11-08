@@ -171,7 +171,7 @@ export function makeCutoutRig({ id, parts, imageUrl, extend = null }) {
         const m = tr.get(piece.id)
         const rects = [valid(piece.rect) && [piece.at[0], piece.at[1], piece.rect[2], piece.rect[3]],
           valid(piece.cap) && [piece.cap[4], piece.cap[5], piece.cap[2], piece.cap[3]]]
-        for (const r of rects) if (r) for (const [cx, cy] of [[r[0], r[1]], [r[0] + r[2], r[1]]]) {
+        for (const r of rects) if (r) for (const [cx, cy] of [[r[0], r[1]], [r[0] + r[2], r[1]], [r[0], r[1] + r[3]], [r[0] + r[2], r[1] + r[3]]]) {
           const q = apply(m, cx, cy)
           const x = (q.x - figure.w / 2) * f.k, y = (q.y - figure.h) * f.k
           top = Math.min(top, R(FOOT * S) + f.bob + sin * x + cos * y)

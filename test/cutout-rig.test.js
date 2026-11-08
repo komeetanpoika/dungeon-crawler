@@ -210,6 +210,26 @@ describe('cutout rig', () => {
     assert.equal(rig.drawnTop(P, 32), rig.drawnTop(P, 32))
   })
 
+  it('drawnTop clears limbs turned past 90 degrees (max reach and swing)', () => {
+    // a long arm hanging from its shoulder: turned 120 degrees its hand rises above the head
+    const arm = PARTS.pieces.find(q => q.id === 'arm_l')
+    const long = { ...PARTS, pieces: PARTS.pieces.map(q => q === arm ? { ...q, rect: [0, 0, 10, 90], at: [26, 40], pivot: [31, 40], cap: null } : q) }
+    const rig = makeCutoutRig({ id: 'long', parts: long, imageUrl: null })
+    const mx = { ...P, attackReach: 120, armSwing: 60, legSwing: 45, headNod: 15, tailSway: 30, wobble: 15 }
+    const poses = [pose('idle', { t: 0.25 }), pose('idle', { t: 1.25 }), ...[0, 1, 2, 3].map(i => walkAt(mx, i)),
+      pose('attack', { t: 0.25 }), pose('attack', { t: 1.25 }), pose('hit', { t: 1.25 }),
+      ...[0, 1, 2, 3].map(i => walkAt(mx, i, { state: 'attack' }))]
+    const dt = rig.drawnTop(mx, 32)
+    for (const ps of poses) {
+      const { ctx, img } = makeSoftCanvas(400, 400)
+      ctx.translate(200, 250)
+      rig.drawMonster(ctx, mx, ps, 32)
+      let top = Infinity
+      for (let y = 0; y < 400 && top === Infinity; y++) for (let x = 0; x < 400; x++) if (img.rgba[(y * 400 + x) * 4 + 3] > 0) { top = y - 250; break }
+      assert.ok(dt <= top, `drawnTop ${dt} vs ${top} (${ps.state} t=${ps.t})`)
+    }
+  })
+
   it('hit radius stays within 8..28 and sits on the body', () => {
     const rig = rigOf()
     for (const p of [P, extremes('min'), extremes('max')]) {
@@ -251,14 +271,16 @@ describe('cutout rig', () => {
     const rig = withImage()
     const fh = PARTS.figure.h, fw = PARTS.figure.w
     const params = { ...P, size: fh / 32, wobble: 0, bob: 0 }
-    const render = ps => {
+    const render = (prm, ps) => {
       const { ctx, img } = makeSoftCanvas(240, 240)
       ctx.translate(120, 120)
-      rig.drawMonster(ctx, params, ps, 32)
+      rig.drawMonster(ctx, prm, ps, 32)
       return img
     }
     const oy = 120 + Math.round(0.45 * 32) - fh, ox = 120 - fw / 2   // device px of art (0,0)
-    const rest = render(pose('idle', { t: 0.25 })), max = render(walkAt({ ...params, armSwing: 60 }, 0))
+    const maxP = { ...params, armSwing: 60 }
+    assert.equal(maxP.armSwing, 60)
+    const rest = render(params, pose('idle', { t: 0.25 })), max = render(maxP, walkAt(maxP, 0))
     const limb = PARTS.pieces.find(p => p.id === 'arm_l')
     const cutLen = Math.hypot(0, 60 - 39)
     const r = cutLen / 2 - 1
