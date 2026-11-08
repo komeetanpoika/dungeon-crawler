@@ -148,11 +148,15 @@ export function monstersForOpenMap(depth) {
 // (enemy-attack.js's getEnemyWeapon falls back to ENEMY_MELEE[type], which
 // has no registry rows) — boarhound and rappeluu are in that state today,
 // deliberately unarmed until someone decides they bite.
-export function makeMonsterFromDef(name, x, y) {
+// A spawn's isBoss (a lair's boss letter, map.js placeTemplate) comes along
+// too: the boss gate and the key drop in game.js read it off the entity —
+// Monsteri guards the depth-4 lair this way.
+export function makeMonsterFromDef(name, x, y, { isBoss = false } = {}) {
   const d = REGISTRY[name]
   if (!d) return null
   return { type: name, x, y, hp: d.stats.hp, maxHp: d.stats.hp, damage: d.stats.dmg, inCombat: false,
-    ...(d.behavior?.weapon ? { weaponId: d.behavior.weapon } : {}) }
+    ...(d.behavior?.weapon ? { weaponId: d.behavior.weapon } : {}),
+    ...(isBoss ? { isBoss: true } : {}) }
 }
 
 // Per-frame pose bookkeeping, stored on the entity. Called from the enemy

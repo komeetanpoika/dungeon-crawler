@@ -598,7 +598,7 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       case 'echo':    return [{ type: 'echo', id: 'echo', x: s.x, y: s.y, px: cx, py: cy, fadeA: 0, t: 0, trail: [], said: null }]
       case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
       default: {
-        const gen = makeMonsterFromDef(s.kind, s.x, s.y)
+        const gen = makeMonsterFromDef(s.kind, s.x, s.y, { isBoss: !!s.isBoss })
         return gen ? [hpOverride({ ...gen, px: cx, py: cy, ...aiInit() })] : []
       }
     }

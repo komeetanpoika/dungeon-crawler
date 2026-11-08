@@ -21,6 +21,9 @@ export const TEMPLATE_LEGEND = {
   'W': { label: 'Weapon',   kind: 'spawn', spawn: 'weapon',      roomScoped: false, color: '#3a8a6a', icon: '⚔' },
   'P': { label: 'Potion',   kind: 'spawn', spawn: 'potion',      roomScoped: false, color: '#8a3a8a', icon: '⚗' },
   'D': { label: 'Dragon',   kind: 'spawn', spawn: 'dragon',      roomScoped: true,  isBoss: true, color: '#a33333', icon: '🐉' },
+  // Monsteri (a registry monster, data/monsters/monsteri.json) took the plain
+  // dragon's place in DRAGON_LAIR; 'D' stays so a template can still ask for one.
+  'M': { label: 'Monsteri', kind: 'spawn', spawn: 'monsteri',    roomScoped: true,  isBoss: true, color: '#cd8476', icon: '👹' },
   'B': { label: 'Boss',     kind: 'spawn', spawn: 'dragon_boss', roomScoped: true, single: true, isBoss: true, color: '#cc2222', icon: '🐲' },
   'Q': { label: 'Boss (pixel)', kind: 'spawn', spawn: 'dragon_boss_pixel', roomScoped: true, single: true, isBoss: true, color: '#cc7722', icon: '🟧' },
   'R': { label: 'Crab',     kind: 'spawn', spawn: 'crab',        roomScoped: false, isBoss: true, color: '#c87a3a', icon: '🦀' },
@@ -43,7 +46,7 @@ export const TEMPLATES = {
       '######................##',
       '####..................##',
       '###...................##',
-      '##.....D...............#',
+      '##.....M...............#',
       '##...C...X...C.........#',
       '##.....................#',
       '###...................##',

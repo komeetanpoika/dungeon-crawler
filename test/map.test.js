@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateLevel, generateFallback, isFullyConnected, healConnectivity, createMap, carveRoomShaped, carveCorridor, placeTemplate } from '../renderer/systems/map.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
-import { TEMPLATE_LEGEND } from '../renderer/data/levels.js'
+import { TEMPLATE_LEGEND, TEMPLATES } from '../renderer/data/levels.js'
 
 describe('isFullyConnected', () => {
   it('returns true for a single-room map', () => {
@@ -433,7 +433,7 @@ describe('placeTemplate', () => {
   it('legend covers all template symbols with valid entries', () => {
     assert.deepEqual(
       Object.keys(TEMPLATE_LEGEND).sort(),
-      ['#', '.', 'B', 'C', 'D', 'L', 'P', 'Q', 'R', 'S', 'T', 'W', 'X', 'Z'],
+      ['#', '.', 'B', 'C', 'D', 'L', 'M', 'P', 'Q', 'R', 'S', 'T', 'W', 'X', 'Z'],
     )
     for (const [ch, e] of Object.entries(TEMPLATE_LEGEND)) {
       assert.ok(e.label, `${ch} has a label`)
@@ -484,6 +484,20 @@ describe('boss template spawns', () => {
     assert.equal(TEMPLATE_LEGEND['Z'].isBoss, true)
     assert.equal(TEMPLATE_LEGEND['D'].isBoss, true)
     assert.equal(TEMPLATE_LEGEND['B'].isBoss, true)
+  })
+
+  it('the depth-4 lair holds Monsteri as its boss, not the plain dragon', () => {
+    assert.equal(TEMPLATE_LEGEND['M'].spawn, 'monsteri')
+    assert.equal(TEMPLATE_LEGEND['M'].isBoss, true)
+    const lair = TEMPLATES.DRAGON_LAIR.tiles.join('')
+    assert.equal([...lair].filter(ch => ch === 'M').length, 1)
+    assert.equal(lair.includes('D'), false)
+    for (let i = 0; i < 3; i++) {
+      const { entitySpawns } = generateLevel(4)
+      const bosses = entitySpawns.filter(s => s.isBoss)
+      assert.deepEqual(bosses.map(s => s.kind), ['monsteri'])
+      assert.equal(entitySpawns.some(s => s.kind === 'dragon'), false)
+    }
   })
 
   it('placeTemplate tags the boss spawn with isBoss', () => {
