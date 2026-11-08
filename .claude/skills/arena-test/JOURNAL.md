@@ -213,3 +213,10 @@ Terminology note (2026-09-17, does not touch entries below): earlier runs pre-gr
 **Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
 **Score:** 5/5
 **Notes:** Second arena run met every criterion: monsteri spawned with isBoss + weaponId dragon_claw; sampler showed freeze -> grab (squeeze 1 hp / 0.5 s) -> mash free -> reel -> 4 claw swings 0.8 s apart for 2 hp each, all 16 swing frames in mech state stalk, none in hold; the kill left a key at its tile with the boss-falls toast. Real level4 (rush mode): exactly one isBoss entity, monsteri with dragon_claw, zero plain dragons, and it breathed frost on the teleported hero. First run idled 15 s because the hero started 7 tiles away, outside the 200 px sightRange.
+
+## Run 31 — 2026-11-08 — CLOSED
+**Question:** Does monsteri's health bar now sit above its head instead of across its belly?
+**Criteria:** Bench screenshot of monsteri in combat (inCombat, hp < max): the green/black bar is drawn just above the orbs, a few px clear of the drawing, centred over it.
+**Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
+**Score:** 5/5
+**Notes:** Bench shot (monsteri moved beside the hero, rooted, inCombat, hp 7/12): the yellow/black bar is drawn ~10 px above the orb tips, clear of the drawing and centred over it; before, it sat at the tile centre across the belly. The gap is the attack-swell margin drawnTop reserves so a swipe never covers the bar.

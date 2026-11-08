@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, hitShape, anchor, _setSheetImage } from '../renderer/render/monster-rigs/monsteri.js'
+import { RIG_ID, PARAM_SCHEMA, drawMonster, hitHalf, hitShape, anchor, drawnTop, _setSheetImage } from '../renderer/render/monster-rigs/monsteri.js'
 import { SHEET } from '../renderer/assets/monsters/monsteri-sheet.js'
 import { readPng } from '../tools/png-read.mjs'
 
@@ -109,6 +109,26 @@ describe('monsteri rig', () => {
     const c = recordingCtx()
     drawMonster(c, P, pose('death', { eyeGlow: 1 }), 32)
     assert.equal(c.ops.filter(o => o[0] === 'fillRect').length, 0)
+  })
+
+  // The health bar sits just above drawnTop (render/canvas.js drawHealthBars),
+  // so it must clear the drawing in every living pose — the attack swell and
+  // the idle breath included — without floating far above an idle head.
+  it('drawnTop clears the drawing in every living pose, and hugs the idle head', () => {
+    _setSheetImage(fakeSheet)
+    const top = (params, state, t) => {
+      const c = recordingCtx()
+      drawMonster(c, params, pose(state, { t }), 32)
+      const ty = c.ops.filter(o => o[0] === 'translate').reduce((s, o) => s + o[2], 0)
+      return ty + blits(c)[0][7]
+    }
+    for (const params of [P, extremes('min'), extremes('max')]) {
+      for (const state of ['idle', 'walk', 'attack', 'hit'])
+        for (const t of [0, 0.05, 0.1, 0.15, 1.0, 1.1, 1.25])
+          assert.ok(drawnTop(params, 32) <= top(params, state, t), `${state} t=${t} size ${params.size}`)
+      // the swell and breath add ~10 % of the height; much more is floating
+      assert.ok(top(params, 'idle', 0) - drawnTop(params, 32) <= params.size * 32 * 0.12, 'not floating far above an idle head')
+    }
   })
 
   it('names where its head and chest are drawn: high on the body, mirrored when it turns', () => {
