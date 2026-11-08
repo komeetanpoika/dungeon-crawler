@@ -16,7 +16,7 @@ import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha } from '../systems/campfire.js'
 import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
-import { getMonsterDef, drawGeneratedMonster, isStoryCreature, drawMonsterFx } from '../systems/monsters.js'
+import { getMonsterDef, drawGeneratedMonster, isStoryCreature, drawMonsterFx, drawnTop } from '../systems/monsters.js'
 import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
 import { makeWeatherLayer, drawNight, drawFog } from './weather.js'
 import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.js'
@@ -999,14 +999,18 @@ function drawDragonBreath(ctx, dragon, camX, camY) {
   }
 }
 
-function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
+// The bar sits just above the entity's tile — or, for a tall rig that names
+// where its drawing tops out, just above that head.
+export function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
   for (const e of entities) {
     if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
     if (e.dying > 0) continue
     if (isStoryCreature(e) && creatureAlpha(e, state) === 0) continue
     if (!map[e.y]?.[e.x]?.visible) continue
     const px = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
-    const py = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
+    const top = e.py !== undefined ? drawnTop(e, S) : null
+    const py = top !== null ? Math.round(e.py + top - camY)
+      : e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
     const ratio = Math.max(0, Math.min(1, e.hp / e.maxHp))
     const color = ratio > 0.6 ? '#22c55e' : ratio > 0.3 ? '#facc15' : '#ef4444'
     ctx.fillStyle = '#111'

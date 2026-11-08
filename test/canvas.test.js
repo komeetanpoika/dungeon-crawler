@@ -1,12 +1,13 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawMeleeSwing, drawRiteCeremony, playerSpriteKey, Renderer, drawHero } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawMeleeSwing, drawRiteCeremony, playerSpriteKey, Renderer, drawHero, drawHealthBars } from '../renderer/render/canvas.js'
 import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
 import { createMap } from '../renderer/systems/map.js'
 import { SPRITES } from '../renderer/render/sprites.js'
 import { readPng } from '../tools/png-read.mjs'
+import { readFileSync } from 'node:fs'
 import { gearWearing } from './helpers/outfits.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in. `ops`
@@ -995,5 +996,43 @@ describe('a bound hero', () => {
     const heroAt = ops.findIndex(o => o.name === 'drawImage' && o.img === 'PLAYER')
     const fxAt = ops.findIndex(o => o.name === 'fillRect' && o.fs === '#123456')
     assert.ok(heroAt >= 0 && fxAt > heroAt, `fx ${fxAt} after hero ${heroAt}`)
+  })
+})
+
+// Health bars: a tile-sized enemy's bar sits just above its tile; a tall rig
+// that names its drawnTop (monsteri, 3 tiles of drawing above its feet) gets
+// its bar above that head instead of across its belly.
+describe('drawHealthBars', () => {
+  const S = 32
+  const at = (type, x, y) => ({ type, x, y, px: x * S + 16, py: y * S + 16, hp: 2, maxHp: 4, inCombat: true })
+  function bars(e) {
+    const rects = []
+    const ctx = { set fillStyle(_v) {}, get fillStyle() { return '' }, fillRect: (x, y, w, h) => rects.push({ x, y, w, h }) }
+    const map = createMap(12, 12)
+    map[e.y][e.x].visible = true
+    drawHealthBars(ctx, [e], map, 0, 0, S, { entities: [e] })
+    return rects
+  }
+
+  it('keeps a tile-sized enemy’s bar just above its tile', () => {
+    const e = at('guard', 3, 3)
+    const [bg, fill] = bars(e)
+    assert.equal(bg.y, e.py - S / 2 - 7)
+    assert.equal(fill.w, S / 2)
+  })
+
+  it('puts a tall monster’s bar above the head its rig names', async () => {
+    clearMonsters()
+    const def = JSON.parse(readFileSync('renderer/data/monsters/monsteri.json', 'utf8'))
+    await registerMonsters([def], { loadHooks: async () => ({}), warn: () => {} })
+    try {
+      const { drawnTop, PARAM_SCHEMA } = await import('../renderer/render/monster-rigs/monsteri.js')
+      const params = Object.fromEntries(PARAM_SCHEMA.map(p => [p.key, def.params[p.key] ?? p.default]))
+      const e = at('monsteri', 5, 8)
+      const [bg] = bars(e)
+      assert.ok(bg.y + bg.h <= e.py + drawnTop(params, S), `bar bottom ${bg.y + bg.h} above the head at ${e.py + drawnTop(params, S)}`)
+      assert.ok(bg.y >= e.py + drawnTop(params, S) - 12, 'not floating far above it')
+      assert.equal(bg.x, e.px - S / 2, 'still centred over the monster')
+    } finally { clearMonsters() }
   })
 })

@@ -193,6 +193,14 @@ export function entityPose(e) {
            sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0 }
 }
 
+// Where a registry monster's drawing tops out, in px from its centre at tile
+// size S — null unless its rig says (`drawnTop(params, S)`, monsteri's 3-tile
+// drawing), in which case the health bar goes above that head.
+export function drawnTop(e, S) {
+  const d = REGISTRY[e.type]
+  return typeof d?.rig.drawnTop === 'function' ? d.rig.drawnTop(d.params, S) : null
+}
+
 // Draw dispatch for the canvas entity loop: translate to the entity's screen
 // centre and hand off to the rig. creatureAlpha honors any registered
 // CREATURE_ALPHA hook (defaults to 1 for unhooked types).

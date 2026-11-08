@@ -31,6 +31,8 @@ const R = Math.round
 const WHITE = '#f8f8f8'
 const FOOT = 0.45            // tiles below the entity centre where the feet stand
 const DEATH = 0.7            // s, systems/dying.js DEATH_TIME (not imported: dying → monsters is a cycle)
+const SWELL = 1.08           // the attack's grow
+const BREATH = 1.02          // the idle breath's grow
 const LEAN = [-1, 0, 1, 0]   // walk cycle, one entry per gait step
 const BOB = [0, -1, 0, -1]
 // Points on the drawing, in sheet pixels (72x86): the three orb tips on
@@ -55,6 +57,14 @@ export function hitHalf(p) {
 
 export const hitShape = p => ({ r: hitHalf(p), oy: -R(p.lift * 32) })
 
+// Where the top of the drawing is, in px from the entity centre at tile size
+// S, at its tallest living pose (an attack swell on an idle breath), so the
+// health bar drawn above it (render/canvas.js drawHealthBars) never sits on
+// the orbs. The walk's bob is a pixel or two and left out.
+export function drawnTop(p, S) {
+  return R(FOOT * S) - R(p.size * S * SWELL * BREATH)
+}
+
 // Drawn tail-right, it trails behind: facing east mirrors it (straight
 // north/south: as drawn).
 const mirrored = facing => Math.cos(facing ?? 0) > 0.01
@@ -73,8 +83,8 @@ export function drawMonster(ctx, p, pose, S) {
   const stepI = Math.floor(t * p.gaitFreq) % 4
   const walking = state === 'walk' || (pose.speed01 ?? 0) > 0.05
   const dying = state === 'death' ? Math.min(1, (pose.stateT ?? 0) / DEATH) : 0
-  const breath = !walking && Math.floor(t * 2) % 4 >= 2 ? 1.02 : 1
-  const grow = (state === 'attack' ? 1.08 : 1) * (1 - 0.4 * dying)
+  const breath = !walking && Math.floor(t * 2) % 4 >= 2 ? BREATH : 1
+  const grow = (state === 'attack' ? SWELL : 1) * (1 - 0.4 * dying)
   const flip = mirrored(pose.facing)
   const h = R(p.size * S * grow * breath), w = R(h * SHEET.cellW / SHEET.cellH)
   const lean = walking ? LEAN[stepI] * p.wobble * Math.PI / 180 : 0
