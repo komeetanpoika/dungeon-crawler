@@ -6,26 +6,11 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { writePng } from './png-write.mjs'
+import { downsample } from './monster-cutter/raster.js'
 
-// Box downsample an RGBA frame by an integer factor, averaging colour with
-// alpha weights so transparent neighbours never darken an edge.
-export function downsample({ w, h, rgba }, scale) {
-  const W = Math.ceil(w / scale), H = Math.ceil(h / scale)
-  const out = new Uint8Array(W * H * 4)
-  for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
-    let r = 0, g = 0, b = 0, a = 0, n = 0
-    for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
-      const x = X * scale + dx, y = Y * scale + dy
-      if (x >= w || y >= h) continue
-      const i = (y * w + x) * 4, al = rgba[i + 3] / 255
-      r += rgba[i] * al; g += rgba[i + 1] * al; b += rgba[i + 2] * al; a += al; n++
-    }
-    const o = (Y * W + X) * 4
-    if (a > 0) { out[o] = Math.round(r / a); out[o + 1] = Math.round(g / a); out[o + 2] = Math.round(b / a) }
-    out[o + 3] = Math.round(255 * a / n)
-  }
-  return { w: W, h: H, rgba: out }
-}
+// downsample lives in monster-cutter/raster.js (pure, browser-safe); re-exported
+// here so the extractors keep importing it from this module.
+export { downsample }
 
 // rows: [{ name, frames: [{ w, h, rgba }] }]. Every frame is centred in a
 // cell as wide as the widest frame; `align` picks 'bottom' (a waterline that
