@@ -147,6 +147,59 @@ describe('cut endpoints', () => {
     assert.deepEqual(after.params, { tuned: 7 })
     assert.equal(after.stats.hp, 99)
   })
+  it('status for a name whose def is broken JSON answers 500 and the server lives on', async () => {
+    fs.writeFileSync(path.join(croot, 'renderer/data/monsters/broken.json'), '{nope')
+    const res = await fetch(`${cbase}/api/cuts/broken/status`)
+    assert.equal(res.status, 500)
+    assert.match((await res.json()).error, /not valid JSON/)
+    assert.equal((await fetch(`${cbase}/api/cuts`)).status, 200)
+  })
+  it('PUT over a hand-written rig file answers 409 with an error', async () => {
+    fs.writeFileSync(path.join(croot, 'renderer/render/monster-rigs/handmade.js'), 'export const x = 1\n')
+    const res = await put('handmade', makeBody())
+    assert.equal(res.status, 409)
+    const j = await res.json()
+    assert.match(j.error, /not a cut-out rig/)
+    assert.equal(j.needsSwitch, undefined)
+  })
+  it('PUT over a corrupt def answers 500', async () => {
+    fs.writeFileSync(path.join(croot, 'renderer/data/monsters/corrupt.json'), '{nope')
+    assert.equal((await put('corrupt', makeBody())).status, 500)
+  })
+  it('a refused leaking PUT leaves the last good cut on disk', async () => {
+    assert.equal((await put('good', makeBody())).status, 200)
+    const f = path.join(croot, 'assets/cuts/good.json')
+    const before = fs.readFileSync(f, 'utf8')
+    const res = await put('good', makeBody({ short: true }))
+    assert.equal(res.status, 400)
+    assert.match((await res.json()).error, /arm/)
+    assert.equal(fs.readFileSync(f, 'utf8'), before)
+  })
+  it('/api/events delivers a cuts event after the first PUT on a fresh root', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lab-fresh-'))
+    for (const d of ['renderer/assets/monsters', 'renderer/render/monster-rigs', 'renderer/data/monsters'])
+      fs.mkdirSync(path.join(root, d), { recursive: true })
+    fs.writeFileSync(path.join(root, 'renderer/data/monsters/index.json'), '[]')
+    const s = createLabServer({ root: process.cwd(), monstersDir: path.join(root, 'renderer/data/monsters'),
+      rigsDir: path.join(root, 'renderer/render/monster-rigs'), cutsRoot: root })
+    await new Promise(r => s.listen(0, r))
+    const b = `http://127.0.0.1:${s.address().port}`
+    const ac = new AbortController()
+    try {
+      const ev = await fetch(`${b}/api/events`, { signal: ac.signal })
+      const reader = ev.body.getReader()
+      await reader.read() // :ok
+      await fetch(`${b}/api/cuts/fresh`, { method: 'PUT', body: JSON.stringify(makeBody()) })
+      let text = ''
+      const deadline = Date.now() + 3000
+      while (!/"dir":"cuts"/.test(text) && Date.now() < deadline) {
+        const { value, done } = await Promise.race([reader.read(), new Promise(r => setTimeout(() => r({ done: true }), 3000))])
+        if (done) break
+        text += Buffer.from(value).toString()
+      }
+      assert.match(text, /"dir":"cuts"/)
+    } finally { ac.abort(); s.close() }
+  })
   it('PUT a reserved name or a bad name or a non-PNG source is refused 400', async () => {
     assert.equal((await put('dragon', makeBody())).status, 400)
     assert.equal((await put('..%2Fevil', makeBody())).status, 400)

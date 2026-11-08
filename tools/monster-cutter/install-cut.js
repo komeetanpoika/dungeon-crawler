@@ -20,7 +20,7 @@ const readDef = (root, name) => {
 }
 
 export function cutStatus({ root, name }) {
-  if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
+  if (typeof name !== 'string' || !NAME_RE.test(name)) throw Object.assign(new Error(`invalid monster name "${name}"`), { status: 400 })
   const def = readDef(root, name)
   const file = rigFile(root, name)
   const exists = fs.existsSync(file)
@@ -32,12 +32,12 @@ export function cutStatus({ root, name }) {
 }
 
 export function installCut({ root, name, switchRig = false }) {
-  if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
-  if (RESERVED_NAMES.has(name)) throw new Error(`monster name "${name}" is reserved for a built-in type`)
+  if (typeof name !== 'string' || !NAME_RE.test(name)) throw Object.assign(new Error(`invalid monster name "${name}"`), { status: 400 })
+  if (RESERVED_NAMES.has(name)) throw Object.assign(new Error(`monster name "${name}" is reserved for a built-in type`), { status: 400 })
   const status = cutStatus({ root, name })
-  if (status.rig.exists && !status.rig.cutout) throw new Error(`rig "${name}" is not a cut-out rig`)
+  if (status.rig.exists && !status.rig.cutout) throw Object.assign(new Error(`rig "${name}" is not a cut-out rig`), { status: 409 })
   const def = readDef(root, name)
-  if (def && def.rig !== name && !switchRig) throw Object.assign(new Error(`def uses rig ${def.rig}`), { needsSwitch: true })
+  if (def && def.rig !== name && !switchRig) throw Object.assign(new Error(`def uses rig ${def.rig}`), { needsSwitch: true, status: 409 })
 
   const out = { createdRig: false, createdDef: false, switched: false }
   if (!status.rig.exists) {

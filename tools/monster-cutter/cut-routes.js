@@ -2,8 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { validateCut } from './cut-format.js'
-import { buildCut } from './build-cut.js'
+import { buildCut, checkCut } from './build-cut.js'
 import { cutStatus, installCut } from './install-cut.js'
 
 const { NAME_RE, RESERVED_NAMES } = createRequire(import.meta.url)('../monster-lab/monster-files.cjs')
@@ -29,7 +28,10 @@ export function handleCutRoute({ req, res, u, send, cutsRoot, pageFile }) {
   const isStatus = !!m[2]
   if (isStatus && req.method === 'GET') {
     if (!NAME_RE.test(name)) json(400, { error: 'invalid name' })
-    else json(200, cutStatus({ root: cutsRoot, name }))
+    else {
+      try { json(200, cutStatus({ root: cutsRoot, name })) }
+      catch (err) { json(err.status ?? 500, { error: err.message }) }
+    }
     return true
   }
   if (!isStatus && req.method === 'PUT') {
@@ -38,8 +40,7 @@ export function handleCutRoute({ req, res, u, send, cutsRoot, pageFile }) {
     req.on('end', () => {
       try { json(200, saveCut({ cutsRoot, name, body })) }
       catch (err) {
-        const code = err.needsSwitch || /is not a cut-out rig/.test(err.message) ? 409 : 400
-        json(code, err.needsSwitch ? { error: err.message, needsSwitch: true } : { error: err.message })
+        json(err.status ?? 500, err.needsSwitch ? { error: err.message, needsSwitch: true } : { error: err.message })
       }
     })
     return true
@@ -47,24 +48,25 @@ export function handleCutRoute({ req, res, u, send, cutsRoot, pageFile }) {
   return false
 }
 
+const bad = msg => Object.assign(new Error(msg), { status: 400 })
+
 function saveCut({ cutsRoot, name, body }) {
-  if (!NAME_RE.test(name)) throw new Error('invalid name')
-  if (RESERVED_NAMES.has(name)) throw new Error(`monster name "${name}" is reserved for a built-in type`)
+  if (!NAME_RE.test(name)) throw bad('invalid name')
+  if (RESERVED_NAMES.has(name)) throw bad(`monster name "${name}" is reserved for a built-in type`)
   let parsed
-  try { parsed = JSON.parse(body) } catch { throw new Error('body is not valid JSON') }
+  try { parsed = JSON.parse(body) } catch { throw bad('body is not valid JSON') }
   const { cut, sourcePng, switchRig } = parsed ?? {}
-  if (!cut || typeof cut !== 'object') throw new Error('body needs a cut')
+  if (!cut || typeof cut !== 'object') throw bad('body needs a cut')
   const dir = path.join(cutsRoot, 'assets/cuts')
   const pngRel = `assets/cuts/${name}.png`
   if (sourcePng !== undefined && (typeof sourcePng !== 'string' || !sourcePng.startsWith(PNG_PREFIX)))
-    throw new Error('sourcePng must be a data:image/png;base64 URL')
+    throw bad('sourcePng must be a data:image/png;base64 URL')
   if (sourcePng === undefined && !fs.existsSync(path.join(cutsRoot, cut.source ?? '')))
-    throw new Error('no sourcePng given and the cut source does not exist')
+    throw bad('no sourcePng given and the cut source does not exist')
   const full = { ...cut, name, ...(sourcePng !== undefined ? { source: pngRel } : {}) }
-  const errs = validateCut(full)
-  if (errs.length) throw new Error(`cut "${name}" is invalid:\n- ${errs.join('\n- ')}`)
+  checkCut(full, name) // a refused save must not touch the last good cut
   // a given source must stay inside the cuts dir
-  if (path.resolve(cutsRoot, full.source).startsWith(path.resolve(cutsRoot) + path.sep) === false) throw new Error('source path escapes the project')
+  if (path.resolve(cutsRoot, full.source).startsWith(path.resolve(cutsRoot) + path.sep) === false) throw bad('source path escapes the project')
   fs.mkdirSync(dir, { recursive: true })
   if (sourcePng !== undefined) fs.writeFileSync(path.join(cutsRoot, pngRel), Buffer.from(sourcePng.slice(PNG_PREFIX.length), 'base64'))
   fs.writeFileSync(path.join(dir, name + '.json'), JSON.stringify(full))

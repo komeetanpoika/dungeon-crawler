@@ -12,6 +12,16 @@ import { createRequire } from 'node:module'
 
 const { NAME_RE } = createRequire(import.meta.url)('../monster-lab/monster-files.cjs')
 
+const bad = (msg, status = 400) => Object.assign(new Error(msg), { status })
+
+// Throws a 400 error when the cut is invalid or a piece's cut line leaks.
+export function checkCut(cut, name) {
+  const errs = validateCut(cut)
+  if (errs.length) throw bad(`cut "${name}" is invalid:\n- ${errs.join('\n- ')}`)
+  const { leaks } = segment(decodeMask(cut.mask, cut.w * cut.h), cut.w, cut.h, cut.pieces)
+  if (leaks.length) throw bad(`cut "${name}" has pieces whose cut line leaks: ${leaks.join(', ')}`)
+}
+
 // write beside the target, then rename, so a file watcher never sees a half file
 function writeAtomic(file, data) {
   const tmp = `${file}.${process.pid}.tmp`
@@ -20,17 +30,13 @@ function writeAtomic(file, data) {
 }
 
 export function buildCut({ root, name }) {
-  if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
+  if (typeof name !== 'string' || !NAME_RE.test(name)) throw bad(`invalid monster name "${name}"`)
   const cutFile = path.join(root, 'assets/cuts', name + '.json')
   const cut = JSON.parse(fs.readFileSync(cutFile, 'utf8'))
-  const errs = validateCut(cut)
-  if (errs.length) throw new Error(`cut "${name}" is invalid:\n- ${errs.join('\n- ')}`)
+  checkCut(cut, name) // composeCut leaves a leaking piece empty without saying so
   const png = readPng(path.join(root, cut.source))
   const src = { w: png.width, h: png.height, rgba: png.pixels }
-  if (src.w !== cut.w || src.h !== cut.h) throw new Error(`source is ${src.w}x${src.h} but the cut is ${cut.w}x${cut.h}`)
-  // composeCut leaves a leaking piece empty without saying so; stop here instead
-  const { leaks } = segment(decodeMask(cut.mask, cut.w * cut.h), cut.w, cut.h, cut.pieces)
-  if (leaks.length) throw new Error(`cut "${name}" has pieces whose cut line leaks: ${leaks.join(', ')}`)
+  if (src.w !== cut.w || src.h !== cut.h) throw bad(`source is ${src.w}x${src.h} but the cut is ${cut.w}x${cut.h}`)
 
   const { atlas, parts } = composeCut(src, cut)
   const dir = path.join(root, 'renderer/assets/monsters')

@@ -28,6 +28,8 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/jav
 
 export function createLabServer(opts = {}) {
   const { root, monstersDir, rigsDir, cutsRoot } = { ...DEFAULTS, ...opts }
+  // the first PUT creates assets/cuts; watch it from the start
+  try { fs.mkdirSync(path.join(cutsRoot, 'assets/cuts'), { recursive: true }) } catch { /* read-only root */ }
   const sseClients = new Set()
   const watchers = []
   const notify = (dir, file) => {
