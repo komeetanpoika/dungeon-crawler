@@ -1,3 +1,4 @@
+// cutout-rig: hand-written over the shared engine (orb glow via extend); re-cutting rewrites only monsteri-parts.*
 // Monsteri: the user's own crayon drawing, cut into pieces by the monster
 // cutter (assets/cuts/monsteri.json → renderer/assets/monsters/monsteri-
 // parts.png + monsteri-parts.js) and drawn by the shared cut-out engine

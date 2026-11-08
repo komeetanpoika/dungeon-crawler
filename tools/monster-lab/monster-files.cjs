@@ -43,6 +43,7 @@ function atomicWrite(file, text) {
 
 function writeMonster(dir, name, data) {
   if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
+  if (name === 'index') throw new Error('monster name "index" is reserved for the index file')
   if (RESERVED_NAMES.has(name)) throw new Error(`monster name "${name}" is reserved for a built-in type`)
   fs.mkdirSync(dir, { recursive: true })
   atomicWrite(path.join(dir, name + '.json'), JSON.stringify({ ...data, name }, null, 2))

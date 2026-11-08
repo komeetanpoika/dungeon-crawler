@@ -162,6 +162,50 @@ describe('cut endpoints', () => {
     assert.match(j.error, /not a cut-out rig/)
     assert.equal(j.needsSwitch, undefined)
   })
+  const snapshot = () => {
+    const out = {}
+    const walk = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name)
+      if (e.isDirectory()) walk(p); else out[path.relative(croot, p)] = fs.readFileSync(p).toString('base64')
+    } }
+    walk(croot)
+    return out
+  }
+  it('both 409 refusals and a bad source leave the root untouched', async () => {
+    fs.writeFileSync(path.join(croot, 'renderer/render/monster-rigs/plain.js'), 'export const x = 1\n')
+    fs.writeFileSync(path.join(croot, 'renderer/data/monsters/swit.json'),
+      JSON.stringify({ rig: 'quadruped', params: {}, stats: { hp: 5, dmg: 1, speed: 50 }, behavior: {}, hooks: false, spawn: null, tuning: {} }))
+    let snap = snapshot()
+    assert.equal((await put('plain', makeBody())).status, 409)
+    assert.deepEqual(snapshot(), snap)
+    assert.equal((await put('swit', makeBody())).status, 409)
+    assert.deepEqual(snapshot(), snap)
+    const junk = makeBody(); junk.sourcePng = 'data:image/png;base64,' + Buffer.from('not a png at all').toString('base64')
+    assert.equal((await put('junk', junk)).status, 400)
+    assert.deepEqual(snapshot(), snap)
+    assert.equal((await put('index', makeBody())).status, 400)
+    assert.deepEqual(snapshot(), snap)
+  })
+  it('a source PNG whose size differs from the cut answers 400 with nothing written', async () => {
+    const snap = snapshot()
+    const small = makeBody()
+    const f = path.join(os.tmpdir(), `srv-small-${process.pid}.png`)
+    writePng(f, 10, 10, new Uint8Array(10 * 10 * 4))
+    small.sourcePng = 'data:image/png;base64,' + fs.readFileSync(f).toString('base64')
+    const r = await put('tiny', small)
+    assert.equal(r.status, 400)
+    assert.match((await r.json()).error, /100x100/)
+    assert.deepEqual(snapshot(), snap)
+  })
+  it('re-PUT over a hand-written rig with the cutout-rig prefix succeeds and keeps the rig file', async () => {
+    const rig = path.join(croot, 'renderer/render/monster-rigs/hw.js')
+    const src = '// cutout-rig: hand-written over the shared engine\nexport const x = 1\n'
+    fs.writeFileSync(rig, src)
+    const r = await put('hw', makeBody())
+    assert.equal(r.status, 200)
+    assert.equal(fs.readFileSync(rig, 'utf8'), src)
+    assert.ok(fs.existsSync(path.join(croot, 'renderer/assets/monsters/hw-parts.js')))
+  })
   it('PUT over a corrupt def answers 500', async () => {
     fs.writeFileSync(path.join(croot, 'renderer/data/monsters/corrupt.json'), '{nope')
     assert.equal((await put('corrupt', makeBody())).status, 500)

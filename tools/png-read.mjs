@@ -30,7 +30,13 @@ function unfilter(type, line, prev, ch) {
 }
 
 export function readPng(path) {
-  const buf = readFileSync(path)
+  return decodePng(readFileSync(path), path)
+}
+
+// Decode a PNG held in memory; `label` names it in error messages.
+export function decodePng(buf, label = 'png') {
+  const path = label
+  if (buf.length < 8) throw new Error(`${path}: not a PNG`)
   if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error(`${path}: not a PNG`)
 
   let pos = 8

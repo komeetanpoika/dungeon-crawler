@@ -4,10 +4,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { CUTOUT_MARKER, rigModuleSource } from './templates.js'
+import { rigModuleSource } from './templates.js'
 
 const { writeMonster, RESERVED_NAMES, NAME_RE } = createRequire(import.meta.url)('../monster-lab/monster-files.cjs')
 
+// the generated template's marker line starts with this; a hand-written rig opts in by the same prefix
+const CUTOUT_PREFIX = '// cutout-rig:'
 const rigFile = (root, name) => path.join(root, 'renderer/render/monster-rigs', name + '.js')
 const defDir = root => path.join(root, 'renderer/data/monsters')
 const readDef = (root, name) => {
@@ -27,18 +29,24 @@ export function cutStatus({ root, name }) {
   return {
     reserved: RESERVED_NAMES.has(name),
     def: { exists: !!def, rig: def?.rig ?? null },
-    rig: { exists, cutout: exists && fs.readFileSync(file, 'utf8').split('\n')[0] === CUTOUT_MARKER },
+    rig: { exists, cutout: exists && fs.readFileSync(file, 'utf8').split('\n')[0].startsWith(CUTOUT_PREFIX) },
   }
 }
 
-export function installCut({ root, name, switchRig = false }) {
+// Every refusal installCut can make, with no writes; returns { status, def }.
+export function checkInstall({ root, name, switchRig = false }) {
   if (typeof name !== 'string' || !NAME_RE.test(name)) throw Object.assign(new Error(`invalid monster name "${name}"`), { status: 400 })
+  if (name === 'index') throw Object.assign(new Error('monster name "index" is reserved for the index file'), { status: 400 })
   if (RESERVED_NAMES.has(name)) throw Object.assign(new Error(`monster name "${name}" is reserved for a built-in type`), { status: 400 })
   const status = cutStatus({ root, name })
   if (status.rig.exists && !status.rig.cutout) throw Object.assign(new Error(`rig "${name}" is not a cut-out rig`), { status: 409 })
   const def = readDef(root, name)
   if (def && def.rig !== name && !switchRig) throw Object.assign(new Error(`def uses rig ${def.rig}`), { needsSwitch: true, status: 409 })
+  return { status, def }
+}
 
+export function installCut({ root, name, switchRig = false }) {
+  const { status, def } = checkInstall({ root, name, switchRig })
   const out = { createdRig: false, createdDef: false, switched: false }
   if (!status.rig.exists) {
     fs.mkdirSync(path.dirname(rigFile(root, name)), { recursive: true })

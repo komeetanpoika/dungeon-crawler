@@ -18,7 +18,9 @@ const bad = (msg, status = 400) => Object.assign(new Error(msg), { status })
 export function checkCut(cut, name) {
   const errs = validateCut(cut)
   if (errs.length) throw bad(`cut "${name}" is invalid:\n- ${errs.join('\n- ')}`)
-  const { leaks } = segment(decodeMask(cut.mask, cut.w * cut.h), cut.w, cut.h, cut.pieces)
+  const mask = decodeMask(cut.mask, cut.w * cut.h)
+  if (!mask.some(v => v)) throw bad(`cut "${name}" is invalid: mask is empty`)
+  const { leaks } = segment(mask, cut.w, cut.h, cut.pieces)
   if (leaks.length) throw bad(`cut "${name}" has pieces whose cut line leaks: ${leaks.join(', ')}`)
 }
 
@@ -31,6 +33,7 @@ function writeAtomic(file, data) {
 
 export function buildCut({ root, name }) {
   if (typeof name !== 'string' || !NAME_RE.test(name)) throw bad(`invalid monster name "${name}"`)
+  if (name === 'index') throw bad('monster name "index" is reserved for the index file')
   const cutFile = path.join(root, 'assets/cuts', name + '.json')
   const cut = JSON.parse(fs.readFileSync(cutFile, 'utf8'))
   checkCut(cut, name) // composeCut leaves a leaking piece empty without saying so

@@ -35,6 +35,16 @@ describe('writeMonster', () => {
   })
 })
 
+describe('writeMonster index name', () => {
+  it('refuses the name index so the index file survives', () => {
+    const dir = tmp()
+    writeMonster(dir, 'a', {})
+    const before = fs.readFileSync(path.join(dir, 'index.json'), 'utf8')
+    assert.throws(() => writeMonster(dir, 'index', {}), /reserved for the index file/)
+    assert.equal(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'), before)
+  })
+})
+
 describe('readMonsters', () => {
   it('round-trips what writeMonster wrote', () => {
     const dir = tmp()

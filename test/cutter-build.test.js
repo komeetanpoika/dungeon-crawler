@@ -6,7 +6,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { writePng } from '../tools/png-write.mjs'
 import { encodeMask } from '../tools/monster-cutter/mask.js'
-import { buildCut } from '../tools/monster-cutter/build-cut.js'
+import { buildCut, checkCut } from '../tools/monster-cutter/build-cut.js'
 import { installCut, cutStatus } from '../tools/monster-cutter/install-cut.js'
 import { CUTOUT_MARKER, rigModuleSource } from '../tools/monster-cutter/templates.js'
 
@@ -79,6 +79,28 @@ test('installCut refuses to overwrite a hand-written rig', () => {
   fs.writeFileSync(rigPath(root), 'export const x = 1\n')
   assert.throws(() => installCut({ root, name: 't' }), /not a cut-out rig/)
   assert.equal(fs.readFileSync(rigPath(root), 'utf8'), 'export const x = 1\n')
+})
+
+test('checkCut refuses an empty mask', () => {
+  const { root } = makeRoot()
+  const cut = JSON.parse(fs.readFileSync(path.join(root, 'assets/cuts/t.json'), 'utf8'))
+  cut.mask = encodeMask(new Uint8Array(W * H))
+  assert.throws(() => checkCut(cut, 't'), e => e.status === 400 && /mask is empty/.test(e.message))
+})
+
+test('index is not a valid cut name', () => {
+  const { root } = makeRoot()
+  assert.throws(() => installCut({ root, name: 'index' }), e => e.status === 400 && /index/.test(e.message))
+  assert.throws(() => buildCut({ root, name: 'index' }), e => e.status === 400 && /index/.test(e.message))
+})
+
+test('installCut accepts a rig whose first line starts with the cutout-rig prefix, and leaves it alone', () => {
+  const { root } = makeRoot()
+  const src = '// cutout-rig: hand-written over the shared engine\nexport const x = 1\n'
+  fs.writeFileSync(rigPath(root), src)
+  assert.equal(cutStatus({ root, name: 't' }).rig.cutout, true)
+  installCut({ root, name: 't' })
+  assert.equal(fs.readFileSync(rigPath(root), 'utf8'), src)
 })
 
 test('installCut asks before switching a def on another rig, then switches keeping the rest', () => {

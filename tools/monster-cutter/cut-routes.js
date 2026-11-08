@@ -2,8 +2,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { decodePng } from '../png-read.mjs'
 import { buildCut, checkCut } from './build-cut.js'
-import { cutStatus, installCut } from './install-cut.js'
+import { cutStatus, installCut, checkInstall } from './install-cut.js'
 
 const { NAME_RE, RESERVED_NAMES } = createRequire(import.meta.url)('../monster-lab/monster-files.cjs')
 const PNG_PREFIX = 'data:image/png;base64,'
@@ -52,6 +53,7 @@ const bad = msg => Object.assign(new Error(msg), { status: 400 })
 
 function saveCut({ cutsRoot, name, body }) {
   if (!NAME_RE.test(name)) throw bad('invalid name')
+  if (name === 'index') throw bad('monster name "index" is reserved for the index file')
   if (RESERVED_NAMES.has(name)) throw bad(`monster name "${name}" is reserved for a built-in type`)
   let parsed
   try { parsed = JSON.parse(body) } catch { throw bad('body is not valid JSON') }
@@ -67,8 +69,17 @@ function saveCut({ cutsRoot, name, body }) {
   checkCut(full, name) // a refused save must not touch the last good cut
   // a given source must stay inside the cuts dir
   if (path.resolve(cutsRoot, full.source).startsWith(path.resolve(cutsRoot) + path.sep) === false) throw bad('source path escapes the project')
+  // decide everything before the first write: the rig/def refusals and the source's validity
+  checkInstall({ root: cutsRoot, name, switchRig: !!switchRig })
+  let pngBuf
+  if (sourcePng !== undefined) {
+    pngBuf = Buffer.from(sourcePng.slice(PNG_PREFIX.length), 'base64')
+    let png
+    try { png = decodePng(pngBuf, 'sourcePng') } catch (e) { throw bad(`sourcePng is not a valid PNG: ${e.message}`) }
+    if (png.width !== full.w || png.height !== full.h) throw bad(`source is ${png.width}x${png.height} but the cut is ${full.w}x${full.h}`)
+  }
   fs.mkdirSync(dir, { recursive: true })
-  if (sourcePng !== undefined) fs.writeFileSync(path.join(cutsRoot, pngRel), Buffer.from(sourcePng.slice(PNG_PREFIX.length), 'base64'))
+  if (pngBuf) fs.writeFileSync(path.join(cutsRoot, pngRel), pngBuf)
   fs.writeFileSync(path.join(dir, name + '.json'), JSON.stringify(full))
   buildCut({ root: cutsRoot, name }) // before install: the rig module imports -parts.js
   return { ok: true, ...installCut({ root: cutsRoot, name, switchRig: !!switchRig }) }
