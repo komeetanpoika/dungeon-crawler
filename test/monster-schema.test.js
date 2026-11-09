@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { schemaErrors, defaultParams, clampParams } from '../renderer/render/monster-rigs/schema.js'
+import { schemaErrors, defaultParams, clampParams, sparseValues } from '../renderer/render/monster-rigs/schema.js'
 
 const GOOD = [
   { key: 'legLength', label: 'Leg length', group: 'legs', type: 'range', min: 0.4, max: 2.2, step: 0.05, default: 1.0 },
@@ -43,4 +43,24 @@ describe('clampParams', () => {
     assert.deepEqual(out, defaultParams(GOOD))
   })
   it('handles null params', () => assert.deepEqual(clampParams(GOOD, null), defaultParams(GOOD)))
+})
+
+describe('sparseValues', () => {
+  const S = [
+    { key: 'a', label: 'A', group: 'g', type: 'range', min: 0, max: 10, step: 1, default: 2 },
+    { key: 'b', label: 'B', group: 'g', type: 'range', min: 0, max: 10, step: 1, default: 5 },
+    { key: 'tint', label: 'T', group: 'g', type: 'color', default: '#336699' },
+    { key: 'flip', label: 'F', group: 'g', type: 'toggle', default: false },
+  ]
+  it('drops default-valued keys the baseline lacks', () => {
+    assert.deepEqual(sparseValues(S, { a: 2, b: 5, tint: '#336699', flip: false }, {}), {})
+    assert.deepEqual(sparseValues(S, { tint: '#336699' }), {})
+    assert.deepEqual(sparseValues(S, { tint: '#336699'.toUpperCase() }, null), {})
+  })
+  it('keeps a baseline key even at its default', () => {
+    assert.deepEqual(sparseValues(S, { a: 2, b: 5, tint: '#336699', flip: false }, { a: 7, flip: false }), { a: 2, flip: false })
+  })
+  it('keeps changed keys, in schema order, and drops keys outside the schema', () => {
+    assert.deepEqual(sparseValues(S, { flip: true, gone: 3, b: 6, a: 2 }, { gone: 1 }), { b: 6, flip: true })
+  })
 })

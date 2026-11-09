@@ -50,3 +50,20 @@ export function clampParams(schema, params, warn = () => {}) {
   }
   return out
 }
+
+// The values worth writing to a def: a key the def already holds (baseline)
+// stays even at its default, any other key only where it leaves the schema's
+// default, so a later default change still reaches the monster. Keys outside
+// the schema are dropped. Pure.
+export function sparseValues(schema, values, baseline = {}) {
+  const out = {}
+  const base = baseline ?? {}, vals = values ?? {}
+  for (const p of schema) {
+    if (!Object.hasOwn(vals, p.key)) continue
+    const v = vals[p.key]
+    const isDefault = p.type === 'color' && typeof v === 'string' && typeof p.default === 'string'
+      ? v.toLowerCase() === p.default.toLowerCase() : v === p.default
+    if (Object.hasOwn(base, p.key) || !isDefault) out[p.key] = v
+  }
+  return out
+}

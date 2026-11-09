@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { describeChanges } from '../tools/monster-studio/changes.js'
+import { clampParams, sparseValues } from '../renderer/render/monster-rigs/schema.js'
 
 const W = { maul: { damage: 2, reach: 34 }, club: { damage: 3, reach: 52 } }
 const pub = { stats: { hp: 20, speed: 50 }, behavior: { weapon: 'maul' }, params: { armSwing: 4 }, tuning: {}, spawn: null }
@@ -22,5 +23,16 @@ describe('describeChanges', () => {
     assert.deepEqual(describeChanges({ name: 'x', isNew: true, published: null, draft, cutChanged: true, weapons: W }).slice(0, 1), ['New monster "x"'])
     assert.deepEqual(describeChanges({ name: 'x', isNew: false, published: pub, draft, cutChanged: false, weapons: W }),
       ['Special moves: rush — → 3', 'aggro — → 6'])
+  })
+  it('one slider moved on a monster the game holds sparsely: exactly one Movement line', () => {
+    const schema = ['size', 'armSwing', 'footLift', 'bob', 'lean', 'nod'].map((key, i) =>
+      ({ key, label: key, group: 'g', type: 'range', min: 0, max: 10, step: 1, default: i }))
+    const published = { ...pub, params: { armSwing: 4 } }
+    // what the Movement tab holds (clamped, every key) and what it saves after one nudge
+    const live = { ...clampParams(schema, published.params), bob: 7 }
+    const draft = { ...published, params: sparseValues(schema, live, published.params) }
+    assert.deepEqual(draft.params, { armSwing: 4, bob: 7 })
+    assert.deepEqual(describeChanges({ name: 'o', isNew: false, published, draft, cutChanged: false, labels: { bob: 'Bob' }, weapons: W }),
+      ['Movement: Bob — → 7'])
   })
 })

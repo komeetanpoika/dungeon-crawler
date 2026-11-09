@@ -39,6 +39,30 @@ describe('edit / savePatch / markSaved', () => {
   })
 })
 
+describe('savePatch writes only what the def holds or what changed', () => {
+  // a registry def: tuning/params clamped full, `own` = what the file holds
+  const regDef = () => ({ ...def({ cooldown: 3, range: 200 }), own: { tuning: { cooldown: 3 }, params: { tint: '#336699' } },
+    rig: { PARAM_SCHEMA: PSCHEMA }, params: { armSwing: 0.5, tint: '#336699', flip: false } })
+  it('an untouched monster saves its own keys only', () => {
+    const p = savePatch(makeBenchModel(regDef()))
+    assert.deepEqual(p.tuning, { cooldown: 3 })
+    assert.deepEqual(p.params, { tint: '#336699' })
+  })
+  it('a changed key is added; a baseline key set back to its default stays', () => {
+    const m = makeBenchModel(regDef())
+    edit(m, 'tuning', 'range', 250); edit(m, 'tuning', 'cooldown', 2)
+    edit(m, 'params', 'flip', true)
+    assert.deepEqual(savePatch(m).tuning, { cooldown: 2, range: 250 })
+    assert.deepEqual(savePatch(m).params, { tint: '#336699', flip: true })
+  })
+  it('a stats-only edit sends no tuning keys the def lacked (the studio leaves params out)', () => {
+    const m = makeBenchModel({ ...regDef(), tuning: { cooldown: 2, range: 200 }, own: { tuning: {}, params: {} } })
+    edit(m, 'stats', 'hp', 20)
+    const p = savePatch(m, { params: false })
+    assert.deepEqual(p.tuning, {}); assert.equal('params' in p, false); assert.equal(p.stats.hp, 20)
+  })
+})
+
 describe('savePatch without a tuning schema', () => {
   it('leaves tuning out, so Save never wipes saved values when the hook failed to load', () => {
     const m = makeBenchModel({ ...def(), tuning: {}, tuningSchema: null })

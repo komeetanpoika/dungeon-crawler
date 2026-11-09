@@ -1,10 +1,11 @@
 // The Movement tab: the monster's real rig (through the /sg/ game mirror, on
 // the draft's own parts) walking on a stage, with its PARAM_SCHEMA sliders.
 // Slider edits change the live params at once and are saved to the draft's
-// def.json 400 ms after the last one; flush() sends a pending save now.
+// def.json 400 ms after the last one; flush() sends a pending save now. Only
+// the keys the game's copy holds and the ones off their default are saved.
 import { makeStage } from '/tools/monster-lab/stage.js'
 import { buildParamsPanel } from '/tools/monster-lab/params-panel.js'
-import { clampParams } from '/renderer/render/monster-rigs/schema.js'
+import { clampParams, sparseValues } from '/renderer/render/monster-rigs/schema.js'
 import { toast } from '/tools/tile-editor/toast.js'
 
 const SAVE_DELAY = 400
@@ -34,6 +35,7 @@ export function mountMovementTab(rootEl, { api }) {
   let schema = []
   let name = null
   let params = null
+  let baseline = {}          // the params keys the game's copy (or a new draft) holds
   let timer = null
   let dirty = false          // params differ from what the draft holds
   let inflight = Promise.resolve()
@@ -44,7 +46,7 @@ export function mountMovementTab(rootEl, { api }) {
   function send() {
     clearTimeout(timer); timer = null
     if (!dirty) return inflight
-    const forName = name, snapshot = { ...params }
+    const forName = name, snapshot = sparseValues(schema, params, baseline)
     dirty = false
     inflight = inflight.catch(() => {}).then(async () => {
       try { await api.patchDef(forName, { params: snapshot }) } catch (err) { dirty = true; throw err }
@@ -75,6 +77,7 @@ export function mountMovementTab(rootEl, { api }) {
       }
       schema = rig.PARAM_SCHEMA
       params = clampParams(schema, view.def.params ?? {})
+      baseline = { ...((view.isNew ? view.def.params : view.published?.params) ?? {}) }
       message.textContent = ''
       stage.setRig(rig)
       stage.setParams(params)

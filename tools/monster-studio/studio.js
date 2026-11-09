@@ -9,6 +9,7 @@ import { makeAutosave } from './autosave.js'
 import { mountMovementTab } from './movement-tab.js'
 import { mountFightTab } from './fight-tab.js'
 import { mountPublishTab } from './publish-tab.js'
+import { describeChanges } from './changes.js'
 import { mountCutter } from '/tools/monster-cutter/cutter.js'
 import { ask } from '/tools/monster-cutter/panels.js'
 import { toast } from '/tools/tile-editor/toast.js'
@@ -81,7 +82,9 @@ function renderBadge() {
   if (autosave.pending()) [text, cls] = ['Saving…', 'saving']
   else if (autosave.error) [text, cls] = ['Not saved', 'error']
   else if (isStale(v)) [text, cls] = [STALE_NOTE, 'stale']
-  else if (v.isNew || v.cutChanged || JSON.stringify(v.def) !== JSON.stringify(v.published)) [text, cls] = ['Unpublished changes', 'changed']
+  // the same test as the Publish tab's "What changes" list, so the two agree
+  else if (v.isNew || v.cutChanged || describeChanges({ name: v.name, isNew: false, published: v.published, draft: v.def }).length)
+    [text, cls] = ['Unpublished changes', 'changed']
   else [text, cls] = ['Same as the game', 'same']
   b.textContent = text
   b.className = cls

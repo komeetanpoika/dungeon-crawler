@@ -4,7 +4,7 @@
 // unsaved, and the switches. A snapshot of the unsaved values and the
 // switches rides sessionStorage across the bench's reload-on-edit, so a
 // tweak never vanishes because Claude saved a file. Pure — no DOM.
-import { clampParams } from '../../renderer/render/monster-rigs/schema.js'
+import { clampParams, sparseValues } from '../../renderer/render/monster-rigs/schema.js'
 import { WEAPONS } from '../../renderer/systems/enemy-attack.js'
 import { fightValues, weaponPatch } from './fight-fields.js'
 
@@ -27,6 +27,13 @@ export function makeBenchModel(def) {
     // no tuning to offer, and Save must not overwrite what the file holds
     hasTuning: Array.isArray(def.tuningSchema),
     hasParams: Array.isArray(def.rig?.PARAM_SCHEMA),
+    schemas: { tuning: def.tuningSchema ?? [], params: def.rig?.PARAM_SCHEMA ?? [] },
+    // the keys the def file holds (the registry's `own`; a bare def counts
+    // every key): Save keeps them, and adds others only off their default
+    baseline: {
+      tuning: { ...(def.own?.tuning ?? def.tuning ?? {}) },
+      params: { ...(def.own?.params ?? def.params ?? {}) },
+    },
     dirty: new Set(),
     switches: { frozen: false, invulnerable: false, hitboxes: false, timeScale: 1, paused: false, count: 1, collapsed: false },
   }
@@ -43,12 +50,13 @@ export function setWeapon(model, id) {
 }
 
 // `params: false` leaves the rig params out (the studio's draft keeps them
-// in the cutter's file, not in the bench's saves).
+// in the cutter's file, not in the bench's saves). Tuning and params are
+// sparse: a key the def did not hold is written only off its default.
 export function savePatch(model, { params = true } = {}) {
   const { tuning, stats, behavior, params: rigParams, weapon } = model.values
   return {
-    ...(model.hasTuning ? { tuning: { ...tuning } } : {}),
-    ...(params && model.hasParams ? { params: { ...rigParams } } : {}),
+    ...(model.hasTuning ? { tuning: sparseValues(model.schemas.tuning, tuning, model.baseline.tuning) } : {}),
+    ...(params && model.hasParams ? { params: sparseValues(model.schemas.params, rigParams, model.baseline.params) } : {}),
     stats: { ...stats },
     behavior: { ...behavior, ...weaponPatch(weapon) },
   }
