@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-const { readMonsters, writeMonster, updateMonster } = createRequire(import.meta.url)('../tools/monster-lab/monster-files.cjs')
+const { readMonsters, writeMonster, updateMonster, mergeDefPatch } = createRequire(import.meta.url)('../tools/monster-lab/monster-files.cjs')
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'monfiles-'))
 
@@ -110,5 +110,20 @@ describe('updateMonster', () => {
   })
   it('refuses a bad name', () => {
     assert.throws(() => updateMonster(tmp(), '../x', { tuning: {} }))
+  })
+})
+
+describe('mergeDefPatch', () => {
+  it('behaviour null deletes, stats merge, params/tuning replace, spawn replaces, rest survives', () => {
+    const def = { rig: 'ogre', stats: { hp: 20, dmg: 2, speed: 50 }, behavior: { weapon: 'maul', weaponOverrides: { damage: 3 }, sightRange: 200 },
+                  params: { bob: 1, wobble: 2 }, tuning: { a: 1 }, spawn: { depths: [3, 5], weight: 1 }, hooks: false, name: 'ogre' }
+    const out = mergeDefPatch(def, { stats: { hp: 24 }, behavior: { weapon: null, weaponOverrides: null }, params: { bob: 2 }, spawn: null })
+    assert.deepEqual(out.stats, { hp: 24, dmg: 2, speed: 50 })
+    assert.deepEqual(out.behavior, { sightRange: 200 })
+    assert.deepEqual(out.params, { bob: 2 })
+    assert.deepEqual(out.tuning, { a: 1 })
+    assert.equal(out.spawn, null)
+    assert.equal(out.hooks, false)
+    assert.equal(def.behavior.weapon, 'maul') // input untouched
   })
 })

@@ -154,8 +154,18 @@ export function monstersForOpenMap(depth) {
 export function makeMonsterFromDef(name, x, y, { isBoss = false } = {}) {
   const d = REGISTRY[name]
   if (!d) return null
+  // behavior.weaponOverrides ({ damage, reach }) rides along with a weapon:
+  // getEnemyWeapon merges it over WEAPONS[id], so the def owns its swing numbers.
+  const ov = {}
+  if (d.behavior?.weapon) {
+    for (const k of ['damage', 'reach']) {
+      const v = d.behavior.weaponOverrides?.[k]
+      if (Number.isFinite(v)) ov[k] = v
+    }
+  }
   return { type: name, x, y, hp: d.stats.hp, maxHp: d.stats.hp, damage: d.stats.dmg, inCombat: false,
     ...(d.behavior?.weapon ? { weaponId: d.behavior.weapon } : {}),
+    ...(Object.keys(ov).length ? { weaponOverrides: ov } : {}),
     ...(isBoss ? { isBoss: true } : {}) }
 }
 
