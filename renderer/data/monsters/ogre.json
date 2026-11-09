@@ -18,7 +18,15 @@
     "weapon": "maul"
   },
   "hooks": false,
-  "spawn": null,
+  "spawn": {
+    "openMaps": {
+      "depths": [
+        7,
+        18
+      ],
+      "count": 2
+    }
+  },
   "tuning": {},
   "name": "ogre"
 }
