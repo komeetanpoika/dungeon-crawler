@@ -14,8 +14,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const COPIED = ['renderer/data/monsters', 'assets/cuts', 'renderer/assets/monsters', 'renderer/render/monster-rigs']
 const FIGHT_TIMEOUT = 180000
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-smoke-'))
-for (const d of COPIED) fs.cpSync(path.join(repo, d), path.join(tmp, d), { recursive: true })
+let tmp
 const inTmp = (...p) => path.join(tmp, ...p)
 const readJson = (...p) => JSON.parse(fs.readFileSync(inTmp(...p), 'utf8'))
 
@@ -36,6 +35,8 @@ async function until(fn, what, timeout = 10000) {
 }
 
 async function main() {
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-smoke-'))
+  for (const d of COPIED) fs.cpSync(path.join(repo, d), path.join(tmp, d), { recursive: true })
   server = createLabServer({ root: repo, cutsRoot: tmp })
   await new Promise(r => server.listen(0, '127.0.0.1', r))
   const base = `http://127.0.0.1:${server.address().port}`
@@ -67,7 +68,7 @@ async function main() {
       await page.goto(base + '/studio')
       await page.waitForFunction(() => window.studio)
       await openViaDialog('boarhound')
-      await until(() => true, '')
+      await page.waitForFunction(() => window.studio.state.tab === 'movement')
       expect(await activeTab() === 'movement', `active tab is ${await activeTab()}, not movement`)
       expect(await tabBtn('drawing').isDisabled(), 'Drawing tab button should be disabled for a code-drawn monster')
       expect(await tabBtn('cuts').isDisabled(), 'Cuts tab button should be disabled for a code-drawn monster')
@@ -76,25 +77,31 @@ async function main() {
     ['movement slider reaches the draft', async () => {
       const slider = page.locator('.movement-sliders input[type=range]').first()
       await slider.waitFor()
-      const before = readJson('renderer/data/monsters/boarhound.json').params
-      const { key, value } = await slider.evaluate(el => {
+      const rigName = readJson('renderer/data/monsters/boarhound.json').rig
+      const label = await slider.evaluate(el => el.closest('.row').querySelector('label').textContent)
+      const key = await page.evaluate(async ([rig, label]) => {
+        const { PARAM_SCHEMA } = await import(`/renderer/render/monster-rigs/${rig}.js`)
+        return PARAM_SCHEMA.find(p => p.label === label)?.key
+      }, [rigName, label])
+      expect(key, `no PARAM_SCHEMA entry labelled "${label}"`)
+      const value = await slider.evaluate(el => {
         const min = Number(el.min), max = Number(el.max), cur = Number(el.value)
         const v = Math.abs(cur - max) > Math.abs(cur - min) ? max : min
         el.value = String(v)
         el.dispatchEvent(new Event('input', { bubbles: true }))
-        return { value: v, key: el.closest('.field, .row, div')?.textContent ?? '' }
+        return v
       })
-      await tabBtn('publish').click() // immediately: the tab switch must flush the pending save
-      const defFile = inTmp('drafts/monsters/boarhound/def.json')
-      await until(() => fs.existsSync(defFile) && Object.values(JSON.parse(fs.readFileSync(defFile, 'utf8')).params ?? {}).includes(value), 'draft params to hold the new slider value', 8000)
-      const now = JSON.parse(fs.readFileSync(defFile, 'utf8')).params
-      expect(JSON.stringify(now) !== JSON.stringify(before), 'draft params equal the published ones')
-      return `draft params hold ${value}`
+      await tabBtn('publish').click() // immediately: the tab switch itself must flush the pending save
+      await page.waitForFunction(() => window.studio.state.tab === 'publish')
+      const params = readJson('drafts/monsters/boarhound/def.json').params // read once, no polling
+      expect(params[key] === value, `draft params.${key} is ${params[key]}, expected ${value}`)
+      return `tab switch flushed params.${key} = ${value}`
     }],
     ['fight tab runs the game in studio mode', async () => {
       const { frame, seconds } = await fightFrame()
       const iframeEl = await page.$('iframe.fight-frame')
       const fr = await iframeEl.contentFrame()
+      await fr.evaluate(() => { window.__smokeMarker = 1 }) // step 4 must see a fresh page without it
       expect(await fr.evaluate(() => window.saveAPI?.isStudio === true), 'saveAPI.isStudio is not true in the game')
       expect((await frame.locator('#bench-panel').textContent()).includes('Fight — applies on respawn'), 'bench panel lacks the Fight section')
       const hp = healthInput(frame)
@@ -113,9 +120,12 @@ async function main() {
       await until(() => { try { return readJson('drafts/monsters/boarhound/def.json').stats.hp !== 9 } catch { return true } }, 'the discarded draft to go', 8000)
       await openViaDialog('boarhound')
       const { frame, seconds } = await fightFrame()
+      const fr = await (await page.$('iframe.fight-frame')).contentFrame()
+      expect(await fr.evaluate(() => window.__smokeMarker === undefined), 'the Fight iframe is the old page from step 3, not a fresh boot')
+      const want = readJson('renderer/data/monsters/boarhound.json').stats.hp
       const v = await healthInput(frame).inputValue()
-      expect(v === '6', `Health reads ${v}, expected the game's 6`)
-      return `Health reads 6 (game re-booted in ${seconds}s)`
+      expect(Number(v) === want && want !== 9, `Health reads ${v}, expected the published ${want}`)
+      return `Health reads ${want} = published (fresh game booted in ${seconds}s)`
     }],
     ['story monster has no Fight tab', async () => {
       await openViaDialog('nakki')
@@ -140,7 +150,7 @@ async function main() {
       for (const f of ['assets/cuts/big_tusk.json', 'renderer/render/monster-rigs/big_tusk.js', 'renderer/data/monsters/big_tusk.json'])
         expect(fs.existsSync(inTmp(f)), `${f} was not published`)
       const def = readJson('renderer/data/monsters/big_tusk.json')
-      expect(def.spawn?.openMaps, `published def has no spawn.openMaps: ${JSON.stringify(def.spawn)}`)
+      expect(JSON.stringify(def.spawn?.openMaps) === JSON.stringify({ depths: [7, 18], count: 1 }), `spawn.openMaps is ${JSON.stringify(def.spawn?.openMaps)}, expected depths [7,18] count 1`)
       const idx = fs.readFileSync(inTmp('renderer/data/monsters/index.json'), 'utf8')
       expect(idx.includes('big_tusk'), 'index.json does not list big_tusk')
       return `published, spawn ${JSON.stringify(def.spawn)}`
@@ -169,6 +179,6 @@ let code = 1
 try { code = await main() } catch (err) { console.error('smoke script error:', err.stack) } finally {
   await browser?.close().catch(() => {})
   await new Promise(r => (server ? server.close(r) : r()))
-  fs.rmSync(tmp, { recursive: true, force: true })
+  if (tmp) fs.rmSync(tmp, { recursive: true, force: true })
 }
 process.exit(code)
