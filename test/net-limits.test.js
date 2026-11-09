@@ -138,23 +138,23 @@ describe('clientIp', () => {
     assert.equal(clientIp(req('1.2.3.4, '), true), '10.0.0.5')
     assert.equal(clientIp(req('1.2.3.4'), false), '10.0.0.5')
   })
-  it('defaults to NET.trustProxy', () => {
-    assert.equal(clientIp(req('198.51.100.7')), '198.51.100.7')
+  it('defaults to NET.trustProxy, which is off: a direct client cannot pick its own address', () => {
+    assert.equal(clientIp(req('198.51.100.7')), '10.0.0.5')
   })
   // Item 2a: a household (or a phone rotating its low bits) shares an IPv6
   // /64, so the gate keys on that prefix, not the full address — otherwise
   // one /64 could open as many sockets/rooms as it has addresses to spare.
   it('keys a plain IPv6 address by its /64 prefix', () => {
-    assert.equal(clientIp(req('2001:db8:1234:5678:aaaa:bbbb:cccc:dddd')), '2001:db8:1234:5678')
-    assert.equal(clientIp(req('2001:db8:1234:5678:1111::2')), '2001:db8:1234:5678')
-    assert.equal(clientIp(req('2001:db8:1234:5679::1')), '2001:db8:1234:5679')
+    assert.equal(clientIp(req('2001:db8:1234:5678:aaaa:bbbb:cccc:dddd'), true), '2001:db8:1234:5678')
+    assert.equal(clientIp(req('2001:db8:1234:5678:1111::2'), true), '2001:db8:1234:5678')
+    assert.equal(clientIp(req('2001:db8:1234:5679::1'), true), '2001:db8:1234:5679')
   })
   it('normalises an IPv4-mapped IPv6 address (::ffff:a.b.c.d) to the plain IPv4 address', () => {
-    assert.equal(clientIp(req('::ffff:203.0.113.9')), '203.0.113.9')
-    assert.equal(clientIp(req('::FFFF:203.0.113.9')), '203.0.113.9')
+    assert.equal(clientIp(req('::ffff:203.0.113.9'), true), '203.0.113.9')
+    assert.equal(clientIp(req('::FFFF:203.0.113.9'), true), '203.0.113.9')
   })
   it('leaves a plain IPv4 address unchanged', () => {
-    assert.equal(clientIp(req('203.0.113.9')), '203.0.113.9')
+    assert.equal(clientIp(req('203.0.113.9'), true), '203.0.113.9')
   })
 })
 

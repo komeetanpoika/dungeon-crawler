@@ -1,62 +1,89 @@
 # Dungeon Crawler
 
-A tile-based dungeon-crawler built with Electron and vanilla JavaScript — no bundler, no framework. Fight your way down through procedurally decorated dungeon levels, past crabs, cyclopes, and wizards, to a segmented dragon boss. Depth 6 opens up into an overworld you can explore.
+A tile-based action RPG built with Electron and vanilla JavaScript: no bundler,
+no framework. It has three modes, picked on the title screen:
 
-A playable web build is hosted at <https://dungeon-crawler-254496209424.europe-west4.run.app>.
+- **Adventure**: a chain of open forest, mountain, desert and sea maps with
+  villages, caves, house interiors, quests and a day/night cycle.
+- **Dungeon Rush**: the classic crawl through five procedural dungeon levels,
+  with a boss lair.
+- **Timewarp**: three short story episodes, each about putting right what a
+  missing villager left broken.
+
+There is also a free-for-all PvP arena, against bots or, in the browser
+build, online.
+
+Play it in a browser: <https://dungeon-crawler-254496209424.europe-west4.run.app>
 
 ## Getting started
 
+Needs Node.js 22.
+
 ```bash
 npm install
-npm start           # launch the game (Electron)
-npm run editor      # launch the tile/level editor (electron . --editor)
-npm test            # run the test suite (node --test test/)
-npm run web         # serve the browser build locally (tools/web-server.mjs)
+npm start               # the game (Electron)
+npm run editor          # the tile/level editor
+npm test                # the test suite (node:test)
+npm run web             # the browser build plus the PvP server, http://localhost:8080
+npm run monster-lab     # monster tuner and cutter, http://localhost:5180
+npm run bench -- <name> # one monster in an arena with a live tuning panel
 ```
 
 ## Project layout
 
 ```
-main.cjs, preload.cjs      Electron shell (main process + preload bridge)
-renderer/                  The game itself (loaded in the Electron renderer / browser)
-  game.js                  Entry point and main loop
-  systems/                 Gameplay logic (pure-ish modules, unit-tested)
-  render/                  Canvas drawing: canvas, sprites, hud, dragon boss
-  ui/                      Menus and UI widgets
-  data/                    Level, tuning, and config data (incl. enemy-ai.js)
-  assets/                  Art
-  web-shim.js              Browser adapter (localStorage saves, no editor); no-op under Electron
-tools/
-  tile-editor/             The in-app level/tile editor (--editor mode)
-  web-server.mjs           Static server for the web build (PORT-aware)
-  bake-dragon-parts.mjs    Asset baking for the dragon boss (npm run bake)
-test/                      node:test suites, one per system
-docs/superpowers/          Specs and implementation plans
+main.cjs, preload.cjs   Electron shell (main process and preload bridge)
+renderer/               The game, loaded by Electron or a browser
+  game.js               Entry point and main loop
+  systems/              Gameplay logic, mostly pure modules with unit tests
+  render/               Canvas drawing, sprites, HUD, Web Audio synthesis
+  ui/                   Menus, inventory panel, touch controls
+  data/                 Levels, maps, monsters, tuning
+  pvp/, net/            PvP simulation, netcode and client
+  assets/               Runtime art
+  web-shim.js           Browser adapter (localStorage saves); a no-op under Electron
+server/                 Static file server and the PvP WebSocket server
+tools/                  Editor, monster lab and bench, map generators, art pipelines
+assets/                 Source art the runtime art is built from
+test/                   node:test suites, one per system
 ```
-
-## Gameplay systems (`renderer/systems/`)
-
-- **World:** `map` (tile grid), `decorate` (procedural decoration), `overworld` (the open world reached at depth 6), `progression` and `phase` (level flow), `meta` (persistent progression)
-- **Player:** `walk` (movement), `melee` / `ranged` / `fire` (attacks), `loot`, `player-damage`, `knockback`, `cheats`
-- **Enemy AI:** `nav` (flow-field / A* pathfinding), `brain` (perception and intent), `act` (movement modes), with tuning in `renderer/data/enemy-ai.js`
-- **Enemies and bosses:** `crab`, `cyclops`, `wizard`, `dragonboss` (multi-segment boss with its own renderer in `renderer/render/dragonboss.js`), `enemy-attack`, `shockwave`
 
 ## Testing
 
-Tests are plain `node:test` files in `test/`, one per system. Rendering and canvas checks use `playwright-core` (headless Chromium); the Electron app itself can also be driven at runtime via Playwright's `_electron` on WSLg.
+The tests are plain `node:test` files that import the renderer modules
+directly. A few rendering checks use `playwright-core`.
 
 ```bash
-npm test                          # everything
-node --test test/nav.test.js      # a single suite
+npm test
+node --test test/nav.test.js   # one suite
 ```
 
-## Web release
+## Hosting the web build
 
-The `web-release` branch carries the browser build: `renderer/web-shim.js`, `tools/web-server.mjs`, `Dockerfile`, and `.gcloudignore`. It deploys to Cloud Run (GCP project `delimaster`, region `europe-west4`):
+`npm run web` (`tools/web-server.mjs`) serves `renderer/` and the PvP WebSocket
+on `/pvp` from one port (`PORT`, default 8080). Any static host can serve the
+single-player game on its own.
+
+The PvP server limits connections per IP address. Behind a proxy that appends
+the caller to `X-Forwarded-For` (Cloud Run, nginx, Caddy), start it with
+`TRUST_PROXY=1`. Leave that unset when clients connect to it directly.
+
+The `Dockerfile` builds that server with `TRUST_PROXY=1` set. To run it on
+Google Cloud Run:
 
 ```bash
-git checkout web-release   # rebase on the main feature branch first
-gcloud run deploy dungeon-crawler --source . --region europe-west4 --allow-unauthenticated --quiet
+GCP_PROJECT=<your-project-id> tools/deploy-web.sh   # REGION and SERVICE optional
 ```
 
-The web shim is a no-op under Electron, so the same branch runs on desktop too.
+The script keeps a single instance, because every PvP room lives in one
+process.
+
+## Notes
+
+Code comments sometimes cite design specs under `docs/superpowers/`. Those
+working notes are not part of the public repository.
+
+## Licence
+
+The code is MIT, see `LICENSE`. The art comes from several sources, most of it
+CC0; see `CREDITS.md`.

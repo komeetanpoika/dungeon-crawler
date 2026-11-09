@@ -2,6 +2,11 @@
 // (CC0: Tiny Town, Roguelike/RPG pack) into renderer/assets/tiles/ under an
 // ow_ prefix. Tiny Town ships loose 16x16 PNGs (copied + renamed); the RPG
 // pack is a 57x31 spritesheet at 17px stride (sliced in chromium).
+//
+// SCRATCH is a folder holding the two packs unzipped (both CC0, by Kenney):
+//   $SCRATCH/tiny-town-x/  https://kenney.nl/assets/tiny-town
+//   $SCRATCH/rpg-x/        https://kenney.nl/assets/roguelike-rpg-pack
+//   SCRATCH=/path/to/packs node tools/static-overworld/extract-tiles.mjs
 import { runPixels } from './px.mjs'
 import * as path from 'node:path'
 import * as fs from 'node:fs'

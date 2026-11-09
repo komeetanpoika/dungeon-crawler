@@ -1,6 +1,12 @@
 {
   "name": "dungeon-crawler",
   "version": "0.1.0",
+  "description": "A tile-based action RPG in Electron and vanilla JavaScript",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/komeetanpoika/dungeon-crawler.git"
+  },
   "type": "module",
   "main": "main.cjs",
   "scripts": {

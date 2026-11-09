@@ -134,7 +134,7 @@ function ipKey(addr) {
   return addr.includes(':') ? ipv6Prefix64(addr) : addr
 }
 
-// Behind Cloud Run the caller is the last X-Forwarded-For entry (Google's
+// Behind a proxy (Cloud Run, nginx…) the caller is the last X-Forwarded-For entry (the
 // front end appends the address it saw); anything earlier is client-supplied
 // and spoofable. Without the header — or with trustProxy off — the socket's
 // own address.

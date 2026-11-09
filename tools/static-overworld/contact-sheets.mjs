@@ -1,6 +1,11 @@
 // Render labeled contact sheets of the downloaded Kenney packs so tiles can
 // be picked by coordinate. Tiny Town: one sheet of its 132 loose tiles.
 // RPG pack: the 57x31 spritesheet (17px stride) split into labeled quadrants.
+//
+// SCRATCH is a folder holding the two packs unzipped (both CC0, by Kenney):
+//   $SCRATCH/tiny-town-x/  https://kenney.nl/assets/tiny-town
+//   $SCRATCH/rpg-x/        https://kenney.nl/assets/roguelike-rpg-pack
+// Sheets are written to $SCRATCH/sheets/.
 import { runPixels } from './px.mjs'
 import * as path from 'node:path'
 import * as fs from 'node:fs'

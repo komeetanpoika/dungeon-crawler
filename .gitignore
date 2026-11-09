@@ -1,8 +1,8 @@
 node_modules/
 .superpowers/
 dist/
-.claude/*
-!.claude/skills/
+.claude/
+docs/
 debug*.mjs
 debug*.png
 arena-config.json
@@ -10,3 +10,6 @@ tools/sword-compare/out/
 *.generated.*
 tools/asset-review/review.json
 tools/monster-cutter/out/
+# Windows download markers and stray spreadsheets never belong in the repo.
+*:Zone.Identifier
+*.xlsx
