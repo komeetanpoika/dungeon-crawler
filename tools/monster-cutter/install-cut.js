@@ -21,6 +21,8 @@ const readDef = (root, name) => {
   try { return JSON.parse(text) } catch { throw new Error(`def ${name}.json is not valid JSON`) }
 }
 
+export const newDef = name => ({ rig: name, params: {}, stats: { hp: 10, dmg: 1, speed: 60 }, behavior: {}, hooks: false, spawn: null, tuning: {} })
+
 export function cutStatus({ root, name }) {
   if (typeof name !== 'string' || !NAME_RE.test(name)) throw Object.assign(new Error(`invalid monster name "${name}"`), { status: 400 })
   const def = readDef(root, name)
@@ -54,7 +56,7 @@ export function installCut({ root, name, switchRig = false }) {
     out.createdRig = true
   }
   if (!def) {
-    writeMonster(defDir(root), name, { rig: name, params: {}, stats: { hp: 10, dmg: 1, speed: 60 }, behavior: {}, hooks: false, spawn: null, tuning: {} })
+    writeMonster(defDir(root), name, newDef(name))
     out.createdDef = true
   } else if (def.rig !== name) {
     writeMonster(defDir(root), name, { ...def, rig: name, params: {} })

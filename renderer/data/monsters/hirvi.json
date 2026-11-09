@@ -1,5 +1,5 @@
 {
-  "name": "hirvi",
+  "name": "hirvi", "placedBy": "story",
   "rig": "quadruped",
   "params": { "bodyLength": 2.2, "bodyWidth": 1, "bulge": 0.1, "legLength": 1.5, "legThick": 0.22,
               "headSize": 0.7, "snout": 0.55, "eyeSize": 0.09, "horns": true,

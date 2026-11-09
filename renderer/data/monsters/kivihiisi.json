@@ -1,5 +1,5 @@
 {
-  "name": "kivihiisi",
+  "name": "kivihiisi", "placedBy": "story",
   "rig": "quadruped",
   "params": { "bodyLength": 1.6, "bodyWidth": 1.8, "bulge": 0.5, "legLength": 0.3, "legThick": 0.45,
               "headSize": 0.9, "snout": 0.5, "eyeSize": 0.07, "horns": true,

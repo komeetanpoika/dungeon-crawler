@@ -1,5 +1,5 @@
 {
-  "name": "nakki",
+  "name": "nakki", "placedBy": "story",
   "rig": "serpent",
   "params": { "width": 4.5, "shift": 1.4, "waterline": 0.45, "idleFps": 5, "swimFps": 8, "bob": 0.4 },
   "stats": { "hp": 1, "dmg": 1, "speed": 0 },

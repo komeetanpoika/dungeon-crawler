@@ -31,10 +31,10 @@ function writeAtomic(file, data) {
   fs.renameSync(tmp, file)
 }
 
-export function buildCut({ root, name }) {
+export function buildCut({ root, name, cutPath, outDir }) {
   if (typeof name !== 'string' || !NAME_RE.test(name)) throw bad(`invalid monster name "${name}"`)
   if (name === 'index') throw bad('monster name "index" is reserved for the index file')
-  const cutFile = path.join(root, 'assets/cuts', name + '.json')
+  const cutFile = cutPath ?? path.join(root, 'assets/cuts', name + '.json')
   const cut = JSON.parse(fs.readFileSync(cutFile, 'utf8'))
   checkCut(cut, name) // composeCut leaves a leaking piece empty without saying so
   const png = readPng(path.join(root, cut.source))
@@ -42,7 +42,7 @@ export function buildCut({ root, name }) {
   if (src.w !== cut.w || src.h !== cut.h) throw bad(`source is ${src.w}x${src.h} but the cut is ${cut.w}x${cut.h}`)
 
   const { atlas, parts } = composeCut(src, cut)
-  const dir = path.join(root, 'renderer/assets/monsters')
+  const dir = outDir ?? path.join(root, 'renderer/assets/monsters')
   fs.mkdirSync(dir, { recursive: true })
   const atlasPath = path.join(dir, name + '-parts.png')
   const partsPath = path.join(dir, name + '-parts.js')

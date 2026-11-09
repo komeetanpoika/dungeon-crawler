@@ -13,3 +13,4 @@ tools/monster-cutter/out/
 # Windows download markers and stray spreadsheets never belong in the repo.
 *:Zone.Identifier
 *.xlsx
+drafts/
