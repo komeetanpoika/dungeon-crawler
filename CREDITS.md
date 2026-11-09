@@ -18,10 +18,10 @@ The monster cutter's test images are credited in
 
 ## AI-generated art
 
-These concept sheets were made with OpenAI's image generator; the sources carry
-OpenAI's C2PA provenance metadata, except the wolf, whose source was a re-saved
-JPEG. AI-generated images may not be protected by copyright at all; whatever
-rights the project holds in them are offered under the MIT licence.
+These concept sheets are AI-generated. All but the wolf carry OpenAI's C2PA
+provenance metadata; the wolf's source was a re-saved JPEG, which strips it.
+AI-generated images may not be protected by copyright at all; whatever rights
+the project holds in them are offered under the MIT licence.
 
 | What ships in the game | Source sheet |
 |---|---|
@@ -35,7 +35,8 @@ rights the project holds in them are offered under the MIT licence.
 
 - `renderer/assets/monsters/monsteri-parts.png` comes from a crayon drawing
   (`assets/cuts/monsteri.png`), and `renderer/assets/tiles/weapon_maunonmiekka.png`
-  was pixelized from a hand drawing. Both drawings were supplied by the project owner.
+  was pixelized from a hand drawing. Both drawings were supplied by the project
+  owner, and their authors agreed to release them under the MIT licence.
 - Sprites drawn by the project's scripts: items, props and floors
   (`tools/npc-placeholders.mjs`), bows, wands and ammo (`tools/make-ranged-tiles.mjs`,
   `make-firewand-tile.mjs`, `make-ukonvasara-tile.mjs`), the dragon boss sheet
