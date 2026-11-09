@@ -87,10 +87,10 @@ describe('cut endpoints', () => {
   }
   const put = (name, body) => fetch(`${cbase}/api/cuts/${name}`, { method: 'PUT', body: JSON.stringify(body) })
 
-  it('GET /cutter serves the cutter page', async () => {
-    const res = await fetch(`${cbase}/cutter`)
-    assert.equal(res.status, 200)
-    assert.match(res.headers.get('content-type'), /text\/html/)
+  it('GET /cutter redirects to /studio', async () => {
+    const res = await fetch(`${cbase}/cutter`, { redirect: 'manual' })
+    assert.equal(res.status, 302)
+    assert.equal(res.headers.get('location'), '/studio')
   })
   it('PUT a valid cut with its source writes the cut, the parts and a new def; GET /api/cuts lists it', async () => {
     const res = await put('srv', makeBody())

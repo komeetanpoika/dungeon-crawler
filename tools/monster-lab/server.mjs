@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 
 import { handleCutRoute } from '../monster-cutter/cut-routes.js'
+import { handleStudioRoute } from '../monster-studio/studio-routes.js'
 
 const require = createRequire(import.meta.url)
 const { readMonsters, writeMonster, NAME_RE } = require('./monster-files.cjs')
@@ -61,7 +62,8 @@ export function createLabServer(opts = {}) {
       const rigs = fs.readdirSync(rigsDir).filter(f => f.endsWith('.js') && !HELPERS.has(f)).map(f => f.slice(0, -3))
       return send(200, JSON.stringify(rigs))
     }
-    if (handleCutRoute({ req, res, u, send, cutsRoot, pageFile: path.join(HERE, '../monster-cutter/index.html') })) return
+    if (handleStudioRoute({ req, res, u, send, root, projectRoot: cutsRoot })) return
+    if (handleCutRoute({ req, res, u, send, cutsRoot })) return
     if (u.pathname === '/api/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
       res.write(':ok\n\n')

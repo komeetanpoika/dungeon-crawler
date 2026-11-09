@@ -16,6 +16,7 @@
     "web": "node tools/web-server.mjs",
     "bake": "node tools/bake-dragon-parts.mjs",
     "monster-lab": "node tools/monster-lab/server.mjs",
+    "studio": "node tools/monster-studio/start.mjs",
     "bench": "electron . --bench"
   },
   "devDependencies": {
