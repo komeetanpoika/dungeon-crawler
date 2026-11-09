@@ -1,0 +1,24 @@
+{
+  "rig": "ogre",
+  "params": {
+    "bob": 0.3,
+    "wobble": 2,
+    "gaitFreq": 5,
+    "armSwing": 4,
+    "stepHeight": 0.08,
+    "headNod": 3,
+    "attackReach": 12
+  },
+  "stats": {
+    "hp": 20,
+    "dmg": 2,
+    "speed": 50
+  },
+  "behavior": {
+    "weapon": "maul"
+  },
+  "hooks": false,
+  "spawn": null,
+  "tuning": {},
+  "name": "ogre"
+}

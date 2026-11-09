@@ -227,3 +227,10 @@ Terminology note (2026-09-17, does not touch entries below): earlier runs pre-gr
 **Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
 **Score:** 4/5
 **Notes:** Walk frames (walk_sheet.png) show differing arm angles and feet heights; no transparent wedge at shoulders/hips (only ragged torso edge lines); HP bar clears the head once inCombat; breath particles/orb glow at head but the translucent cone's apex sits low on the body (feet/hip), not the head; Arm swing slider moved params.armSwing 20->55 and the next frame visibly changed. Not 5 because of the breath cone apex.
+
+## Run 33 — 2026-11-09 — CLOSED
+**Question:** Does the new cut monster 'ogre' (from ogre.png) render and animate correctly live in the monster bench: legs stepping and hammer swaying while it walks, hammer lifting on attack, HP bar above its head?
+**Criteria:** In npm run bench -- ogre: (1) the ogre draws from its atlas (not role-coloured rectangles); (2) two walk-time zoomed shots differ in foot heights / hammer angle with no see-through gaps at the joints; (3) an attack-state shot shows the hammer raised; (4) with inCombat=true the HP bar sits above the head; (5) no console errors.
+**Config:** guard, monster(weak), monster(medium), monster(strong), monster(boss), wizard, crab, dragon, cyclops, boarhound, rappeluu, podeboo, hirvi, kivihiisi, maahinen
+**Score:** 5/5
+**Notes:** All five criteria met on the second live run (after the wrist claim band). (1) ogre draws from ogre-parts.png atlas, flips with facing; (2) walk shots differ in foot lift and hammer angle, no see-through joint — the first run DID show a background-coloured gap at the right wrist in the hammer-down walk frame (the hammer pivots at the left fist, so the wrist cut has no cap), fixed by a forearm claim band and re-verified; (3) attack shot (e.attack true) shows the hammer lifted and the maul landing -2 on the hero; (4) HP bar sits above the head in the attack and idle shots; (5) zero console/page errors.
