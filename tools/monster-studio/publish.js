@@ -21,10 +21,12 @@ export function publishDraft(root, name, { force = false } = {}) {
   const idxFile = path.join(defDir, 'index.json')
   const published = readJson(defFile)
   const drawn = v.kind === 'drawn', story = v.kind === 'story'
+  // an unchanged cut stays as the game has it: no cut, source, parts or rig is written
+  const writeCut = drawn && (v.isNew || v.cutChanged)
 
   if (v.stale && !force) throw fail(409, `"${name}" changed in the game since this draft was started`, { stale: true })
   if (v.isNew && (published || (readJson(idxFile) ?? []).includes(name))) throw fail(409, `"${name}" is now a published monster`)
-  if (drawn) {
+  if (writeCut) {
     try { checkCut(v.cut, name) } catch (e) { throw fail(400, e.message) }
     checkInstall({ root, name })
   }
@@ -35,10 +37,11 @@ export function publishDraft(root, name, { force = false } = {}) {
 
   const before = snapshot(root)
   const dd = draftDir(root, name)
-  if (drawn) {
+  if (writeCut) {
     const cutFile = path.join(root, 'assets/cuts', name + '.json')
     fs.mkdirSync(path.dirname(cutFile), { recursive: true })
-    fs.writeFileSync(cutFile, JSON.stringify({ ...v.cut, source: `assets/cuts/${name}.png` }, null, 2))
+    // compact, as the cutter (cut-routes.js, auto.mjs) writes it
+    fs.writeFileSync(cutFile, JSON.stringify({ ...v.cut, source: `assets/cuts/${name}.png` }))
     fs.copyFileSync(path.join(dd, 'source.png'), path.join(root, 'assets/cuts', name + '.png'))
     buildCut({ root, name })
     installCut({ root, name })
@@ -57,7 +60,7 @@ export function publishDraft(root, name, { force = false } = {}) {
   const wrote = Object.keys(after).filter(f => before[f] !== after[f] || !(f in before))
   // a rewrite of identical bytes still counts as written for the def
   const always = [defFile]
-  if (drawn) always.push(path.join(root, 'assets/cuts', name + '.json'), path.join(root, 'assets/cuts', name + '.png'),
+  if (writeCut) always.push(path.join(root, 'assets/cuts', name + '.json'), path.join(root, 'assets/cuts', name + '.png'),
     path.join(root, 'renderer/assets/monsters', name + '-parts.js'), path.join(root, 'renderer/assets/monsters', name + '-parts.png'))
   for (const f of always) if (!wrote.includes(rel(root, f))) wrote.push(rel(root, f))
   return { ok: true, wrote: wrote.sort() }
