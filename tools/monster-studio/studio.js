@@ -5,7 +5,9 @@
 // live in their own modules.
 import * as api from './api.js'
 import { tabsFor, startTab, disabledNote } from './tabs.js'
+import { makeAutosave } from './autosave.js'
 import { mountCutter } from '/tools/monster-cutter/cutter.js'
+import { ask } from '/tools/monster-cutter/panels.js'
 import { toast } from '/tools/tile-editor/toast.js'
 
 const $ = id => document.getElementById(id)
@@ -23,44 +25,25 @@ const stem = fileName => fileName.replace(/\.[^.]*$/, '')
 // cut the cutter holds (null while it holds none, so its edits go nowhere).
 const state = { name: null, kind: null, view: null, tab: null, cutterFor: null }
 
-// ---- the cut autosave: debounced, one save in flight, saves land in order ----
-const autosave = { timer: null, job: null, inflight: null, error: null }
-const savePending = () => !!(autosave.timer || autosave.inflight)
-function queueCut(name, cut) {
-  autosave.job = { name, cut }
-  clearTimeout(autosave.timer)
-  autosave.timer = setTimeout(() => { autosave.timer = null; drain() }, CUT_DEBOUNCE)
-  renderBadge()
-}
-function drain() {
-  if (autosave.inflight || autosave.timer || !autosave.job) return
-  autosave.inflight = (async () => {
-    while (autosave.job && !autosave.timer) {
-      const { name, cut } = autosave.job
-      autosave.job = null
-      try {
-        await api.saveCut(name, cut)
-        autosave.error = null
-        if (name === state.name) {
-          const view = await api.readDraft(name) // the badge follows the saved cut
-          if (name === state.name) applyView(view)
-        }
-      } catch (err) {
-        autosave.error = err.message
-        toast(`Cut not saved: ${err.message}`, 'error')
-      }
-    }
-  })().finally(() => { autosave.inflight = null; renderBadge(); drain() })
-}
-async function flushCut() {
-  if (autosave.timer) { clearTimeout(autosave.timer); autosave.timer = null; drain() }
-  while (autosave.inflight) await autosave.inflight
-}
-window.addEventListener('beforeunload', e => { if (savePending()) { e.preventDefault(); e.returnValue = '' } })
+// ---- the cut autosave (autosave.js keeps a failed save until it lands or the user leaves) ----
+const autosave = makeAutosave({
+  delay: CUT_DEBOUNCE,
+  async save({ name, cut }) {
+    await api.saveCut(name, cut)
+    if (name !== state.name) return
+    try { // the badge follows the saved cut
+      const view = await api.readDraft(name)
+      if (name === state.name) applyView(view)
+    } catch { /* the next read catches the badge up */ }
+  },
+  onChange: () => renderBadge(),
+  onError: err => toast(`Cut not saved: ${err.message}`, 'error'),
+})
+window.addEventListener('beforeunload', e => { if (autosave.unsaved()) { e.preventDefault(); e.returnValue = '' } })
 
 // ---- tabs ----
 const cutter = mountCutter({
-  onCutChanged: cut => { if (state.name && state.cutterFor === state.name) queueCut(state.name, cut) },
+  onCutChanged: cut => { if (state.name && state.cutterFor === state.name) autosave.queue(state.name, cut) },
   isActive: () => !!state.view && CUTTER_TABS.has(state.tab),
 })
 const cutterTab = {
@@ -70,7 +53,7 @@ const cutterTab = {
     state.cutterFor = view.name
   },
   hide() {},
-  flush: flushCut,
+  flush: () => autosave.flush(),
 }
 const notYet = () => ({ show() {}, hide() {}, async flush() {} }) // Tasks 7–9 replace these
 const tabs = { drawing: cutterTab, cuts: cutterTab, movement: notYet(), fight: notYet(), publish: notYet() }
@@ -81,7 +64,7 @@ function renderBadge() {
   b.hidden = !v
   if (!v) return
   let text, cls
-  if (savePending()) [text, cls] = ['Saving…', 'saving']
+  if (autosave.pending()) [text, cls] = ['Saving…', 'saving']
   else if (autosave.error) [text, cls] = ['Not saved', 'error']
   else if (v.isNew || v.cutChanged || JSON.stringify(v.def) !== JSON.stringify(v.published)) [text, cls] = ['Unpublished changes', 'changed']
   else [text, cls] = ['Same as the game', 'same']
@@ -118,10 +101,34 @@ function applyView(view) {
 let busy = Promise.resolve()
 const serial = fn => (...args) => (busy = busy.then(() => fn(...args)).catch(err => toast(err.message, 'error')))
 
+// A tab whose edits can't be saved keeps the page on it (its flush rejects).
+async function leaveTab() {
+  const leaving = state.tab && tabs[state.tab]
+  if (!leaving) return true
+  try { await leaving.flush() } catch (err) {
+    toast(`Staying here: ${err.message}. Switching again retries the save.`, 'error')
+    return false
+  }
+  leaving.hide()
+  return true
+}
+// Before leaving the open monster its cut must be saved; when the save keeps
+// failing, the user chooses between staying and throwing those edits away.
+async function leaveMonster() {
+  try { await autosave.flush(); return true } catch (err) {
+    const name = err.job?.name ?? state.name
+    if (await ask(`The cut of ${name} could not be saved: ${err.message}. Leave it anyway and lose those edits?`, 'Leave anyway')) {
+      autosave.reset()
+      return true
+    }
+    toast(`Still on ${name}: its cut is not saved yet.`, 'error')
+    return false
+  }
+}
+
 async function doShowTab(tab) {
   if (!state.view || !tabsFor(state.kind)[tab]) return
-  const leaving = state.tab && tabs[state.tab]
-  if (leaving) { await leaving.flush(); leaving.hide() }
+  if (!(await leaveTab())) return
   applyView(await api.readDraft(state.name))
   state.tab = tab
   renderPanes()
@@ -129,7 +136,7 @@ async function doShowTab(tab) {
   await tabs[tab].show(state.view)
 }
 async function doOpenMonster(name) {
-  await flushCut()
+  if (!(await leaveMonster())) return
   const view = await api.openDraft(name)
   state.cutterFor = null // the cutter reloads from this draft
   applyView(view)
@@ -137,7 +144,7 @@ async function doOpenMonster(name) {
 }
 async function doOpenDrawing(file) {
   if (!file) return
-  await flushCut()
+  if (!(await leaveMonster())) return
   const got = await cutter.openImage(file)
   if (!got) return
   state.cutterFor = null // a drawing with no draft yet: edits wait for it
@@ -145,7 +152,7 @@ async function doOpenDrawing(file) {
     const { name } = await api.suggestName(stem(file.name))
     applyView(await api.createDraft({ name, cut: got.cut, sourcePng: got.sourcePng }))
     state.cutterFor = name
-    if (cutter.cut !== got.cut) queueCut(name, cutter.cut) // edited while the draft was being made
+    if (cutter.cut !== got.cut) autosave.queue(name, cutter.cut) // edited while the draft was being made
   } catch (err) {
     toast(`Could not start a draft: ${err.message}`, 'error')
     if (state.view && CUTTER_TABS.has(state.tab)) await doShowTab(state.tab) // put the open monster's cut back
