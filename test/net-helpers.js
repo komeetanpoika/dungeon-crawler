@@ -4,9 +4,11 @@ import WebSocket from 'ws'
 import { attachPvp } from '../server/pvp-server.js'
 import { encode, decode } from '../renderer/net/protocol.js'
 
+// The test server stands behind a pretend proxy (trustProxy on, as the
+// deployed container runs) unless a test says otherwise.
 export async function startServer(opts = {}) {
   const server = http.createServer((req, res) => { res.writeHead(404); res.end() })
-  const pvp = attachPvp(server, opts)
+  const pvp = attachPvp(server, { trustProxy: true, ...opts })
   await new Promise(r => server.listen(0, '127.0.0.1', r))
   const url = `ws://127.0.0.1:${server.address().port}/pvp`
   return { url, pvp, close: () => new Promise(r => { pvp.close(); server.close(r) }) }
@@ -25,7 +27,7 @@ export async function waitFor(fn, ms = 2000, step = 10) {
 }
 
 // Each raw client comes from its own made-up address, via X-Forwarded-For,
-// which the server trusts by default, so a test file's many sockets never
+// which startServer's server trusts, so a test file's many sockets never
 // trip the per-IP limits. Pass { ip } to pin one, or { ip: null } for none.
 let ipSeq = 0
 const nextIp = () => { const n = ipSeq++; return `10.9.${(n >> 8) & 255}.${n & 255}` }

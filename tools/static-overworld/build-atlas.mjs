@@ -4,8 +4,8 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const TOOL = '/home/lappemikb/projects/dungeon-crawler/tools/static-overworld'
-const OUT = process.argv[2] ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'overworld-atlas.html')
+const TOOL = path.dirname(fileURLToPath(import.meta.url))
+const OUT = process.argv[2] ?? path.join(TOOL, 'overworld-atlas.html')
 
 const POI_COLORS = {
   dungeon_entrance: '#e5484d', village: '#f5a524', ruin: '#c084fc',

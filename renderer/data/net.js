@@ -37,7 +37,8 @@ export const NET = {
   // Public launch (4a): public rooms, bots, abuse limits.
   botFill: 4,              // a public room is topped up with bots to this many heroes
   botNames: ['Ukko', 'Ilmatar', 'Tapio', 'Mielikki', 'Ahti', 'Tuoni', 'Louhi', 'Otso', 'Pellervo', 'Kalma', 'Vellamo', 'Hiisi'],
-  trustProxy: true,        // clientIp: the last X-Forwarded-For entry (Cloud Run's front end appends the caller)
+  trustProxy: false,       // clientIp: the socket's address. Behind a proxy that appends the caller to
+                           // X-Forwarded-For (Cloud Run, nginx, Caddy) start the server with TRUST_PROXY=1
   maxSockets: 600,         // every open socket on the server
   perIpSockets: 8,         // open sockets per IP
   helloBurst: 10,          // hellos per IP: a bucket of 10…

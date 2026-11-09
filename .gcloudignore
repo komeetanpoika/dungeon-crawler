@@ -1,20 +1,12 @@
-# Keep the Cloud Build upload to what the web-release container needs:
-# Dockerfile, tools/web-server.mjs, renderer/**.
-.git/
-.gitignore
-node_modules/
-test/
-docs/
-.superpowers/
-.claude/
-tools/tile-editor/
-tools/sword-compare/
-/miekka_croppedcleaned.png
-/miekka_croppedcleaned.png:Zone.Identifier
-/debug*.mjs
-/main.cjs
-/preload.cjs
-/arena-config.json
-/.dc-monitor.mjs
-tools/monster-cutter/fixtures/
-assets/cuts/
+# Cloud Build uploads only what the Dockerfile copies: an allowlist, so stray
+# local files (art drafts, exports) never leave the machine.
+# Check with: gcloud meta list-files-for-upload .
+/*
+!/Dockerfile
+!/package.json
+!/package-lock.json
+!/server/
+!/renderer/
+!/tools/
+/tools/*
+!/tools/web-server.mjs

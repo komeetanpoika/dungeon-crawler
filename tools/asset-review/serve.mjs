@@ -6,7 +6,7 @@
 //   node tools/asset-review/serve.mjs        -> http://127.0.0.1:8877
 //
 // Candidate cells reference Tiny Town source tiles ('tt:N') served from the
-// downloaded pack; point TT_DIR at <pack>/Tiles if the default is gone.
+// downloaded pack (https://kenney.nl/assets/tiny-town): set TT_DIR to its Tiles/ folder.
 import * as http from 'node:http'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -15,8 +15,8 @@ import { ITEMS } from './composites.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TILES = path.resolve(HERE, '../../renderer/assets/tiles')
-const TT_DIR = process.env.TT_DIR ??
-  '/tmp/claude-1000/-home-lappemikb-projects-dungeon-crawler/41619199-0c12-42ea-9079-2ab910443468/scratchpad/tiny-town-x/Tiles'
+const TT_DIR = process.env.TT_DIR
+if (!TT_DIR) console.warn('TT_DIR is not set: Tiny Town candidate tiles will 404')
 const REVIEW = path.join(HERE, 'review.json')
 const PORT = 8877
 
@@ -47,7 +47,10 @@ const server = http.createServer((req, res) => {
     const tile = /^\/tiles\/((?:ow|tile|road|custom)_[a-z0-9_]+)\.png$/.exec(u.pathname)
     if (tile) return send(200, fs.readFileSync(path.join(TILES, tile[1] + '.png')), 'image/png')
     const tt = /^\/tt\/(\d+)\.png$/.exec(u.pathname)
-    if (tt) return send(200, fs.readFileSync(path.join(TT_DIR, `tile_${String(tt[1]).padStart(4, '0')}.png`)), 'image/png')
+    if (tt) {
+      const file = TT_DIR && path.join(TT_DIR, `tile_${String(tt[1]).padStart(4, '0')}.png`)
+      return file && fs.existsSync(file) ? send(200, fs.readFileSync(file), 'image/png') : send(404, '{"error":"no tile"}')
+    }
     send(404, '{"error":"not found"}')
   } catch (e) {
     send(500, JSON.stringify({ error: String(e) }))

@@ -201,7 +201,7 @@ describe('4a numbers', () => {
     assert.equal(NET.botFill, 4)
     assert.equal(NET.maxHeroes, 6)
     assert.deepEqual(NET.botNames, ['Ukko', 'Ilmatar', 'Tapio', 'Mielikki', 'Ahti', 'Tuoni', 'Louhi', 'Otso', 'Pellervo', 'Kalma', 'Vellamo', 'Hiisi'])
-    assert.equal(NET.trustProxy, true)
+    assert.equal(NET.trustProxy, false)
     assert.equal(NET.maxSockets, 600)
     assert.equal(NET.perIpSockets, 8)
     assert.equal(NET.helloBurst, 10)
