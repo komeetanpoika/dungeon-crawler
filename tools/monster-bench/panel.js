@@ -132,8 +132,8 @@ export function mountPanel(model, core, handlers) {
     return input
   }
   const syncFight = () => fightRows.forEach(f => f())
-  for (const [key, label] of [['hp', 'Health'], ['speed', 'Speed']])
-    fightRow(key, label, numberInput(() => model.values.stats[key], v => edit(model, 'stats', key, v)))
+  for (const [key, label, min] of [['hp', 'Health', 1], ['speed', 'Speed', 0]])
+    fightRow(key, label, numberInput(() => model.values.stats[key], v => edit(model, 'stats', key, v), min))
   const pick = el('select', {}, el('option', { value: '', textContent: 'none' }),
     ...Object.keys(WEAPONS).map(id => el('option', { value: id, textContent: id })))
   pick.value = model.values.weapon.weapon ?? ''

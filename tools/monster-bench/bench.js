@@ -55,18 +55,35 @@ export function startBench(seam) {
   setDamageObserver(core.observe)
   seam.startArena(benchArenaConfig(name, model.switches.count))
 
-  let saveTimer = null
+  // Studio: every edit is saved to the draft 400 ms after the last one, one
+  // save in flight at a time. A failed save stays unsent until the next edit
+  // or flush sends it again.
+  let saveTimer = null, inflight = null, unsent = false
+  function sendSave() {
+    clearTimeout(saveTimer); saveTimer = null
+    if (!unsent) return inflight ?? Promise.resolve()
+    unsent = false
+    const patch = savePatch(model, { params: false })
+    const p = (inflight ?? Promise.resolve()).catch(() => {}).then(() => window.saveAPI.benchSave(name, patch)).then(
+      () => { if (!unsent) { markSaved(model); panel.markSaved() } panel.setError('') },
+      err => { unsent = true; panel.setError(`save failed: ${err.message}`); throw err })
+    inflight = p
+    p.finally(() => { if (inflight === p) inflight = null }).catch(() => {})
+    return p
+  }
+  if (studio) {
+    // the studio page's Fight tab: send a pending save now (rejects when it fails), and is one waiting?
+    window.benchFlush = () => sendSave()
+    window.benchPending = () => !!(saveTimer || inflight || unsent)
+  }
   const panel = mountPanel(model, core, {
     def,
     studio,
     ignores: def.hookModule?.IGNORES ?? {},
-    // the studio saves every edit to its draft, 400 ms after the last one
     onEdit: () => {
+      unsent = true
       clearTimeout(saveTimer)
-      saveTimer = setTimeout(async () => {
-        try { await window.saveAPI.benchSave(name, savePatch(model, { params: false })); markSaved(model); panel.markSaved(); panel.setError('') }
-        catch (err) { panel.setError(`save failed: ${err.message}`) }
-      }, 400)
+      saveTimer = setTimeout(() => { sendSave().catch(() => { /* shown in the panel */ }) }, 400)
     },
     onTuning: (k, v) => { def.tuning[k] = v },
     // the rig reads def.params every frame; retune keeps the hit size in step

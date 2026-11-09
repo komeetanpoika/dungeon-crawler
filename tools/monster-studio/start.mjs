@@ -7,6 +7,8 @@ const url = `http://localhost:${port}/studio`
 const server = createLabServer()
 server.on('error', err => {
   if (err.code === 'EADDRINUSE') {
+    // its file watchers would keep this process alive: the running lab serves the studio
+    server.close()
     console.log(`monster lab already running on :${port}`)
     console.log(`monster studio: ${url}`)
     openBrowser(url)

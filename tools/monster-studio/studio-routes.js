@@ -1,12 +1,13 @@
 // HTTP routes of the Monster Studio, mounted by the monster lab server.
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { listStudio, suggestName, createDraft, openDraft, readDraft, saveDraftCut, patchDraftDef,
          renameDraft, discardDraft, draftDir } from './drafts.js'
 import { publishDraft } from './publish.js'
 import { resolveGameFile } from './game-overlay.js'
 
-const PAGE = path.join(path.dirname(new URL(import.meta.url).pathname), 'index.html')
+const PAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.html')
 
 function readBody(req) {
   return new Promise(resolve => {

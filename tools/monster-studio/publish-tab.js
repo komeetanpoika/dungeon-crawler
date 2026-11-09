@@ -14,7 +14,7 @@ const DONE = 'In the game. Restart the game to see it. The public website is a s
 export function mountPublishTab(rootEl, { api, labels = () => ({}), onPublished, onDiscarded, onRenamed }) {
   const make = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter(k => k != null)); return e }
   let view = null, form = null, touched = false
-  let timer = null, dirty = false, inflight = Promise.resolve()
+  let timer = null, dirty = false, inflight = Promise.resolve(), sending = 0
   let publishing = false, resultFor = null, nameError = '', paramLabels = {}
 
   function sendSpawn() {
@@ -22,8 +22,9 @@ export function mountPublishTab(rootEl, { api, labels = () => ({}), onPublished,
     if (!dirty) return inflight
     const forName = view.name, spawn = formToSpawn(form)
     dirty = false
+    sending++
     inflight = inflight.catch(() => {}).then(async () => {
-      try { await api.patchDef(forName, { spawn }) } catch (err) { dirty = true; throw err }
+      try { await api.patchDef(forName, { spawn }) } catch (err) { dirty = true; throw err } finally { sending-- }
     })
     return inflight
   }
@@ -35,7 +36,7 @@ export function mountPublishTab(rootEl, { api, labels = () => ({}), onPublished,
   }
 
   async function loadLabels(v) {
-    let l = labels() ?? {}
+    let l = labels(v.name) ?? {}
     if (Object.keys(l).length || v.buildError) return l
     try {
       const rig = await import(`/sg/${v.name}@${v.rev}/renderer/render/monster-rigs/${v.def.rig}.js`)
@@ -156,5 +157,6 @@ export function mountPublishTab(rootEl, { api, labels = () => ({}), onPublished,
     },
     hide() {},
     flush() { return sendSpawn() },
+    pending: () => dirty || !!timer || sending > 0,
   }
 }

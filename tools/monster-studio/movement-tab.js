@@ -39,6 +39,8 @@ export function mountMovementTab(rootEl, { api }) {
   let timer = null
   let dirty = false          // params differ from what the draft holds
   let inflight = Promise.resolve()
+  let sending = 0            // saves on their way
+  let labelsFor = null       // the monster whose rig labels `schema` holds
 
   const say = text => { message.textContent = text; panel.replaceChildren() }
 
@@ -48,8 +50,9 @@ export function mountMovementTab(rootEl, { api }) {
     if (!dirty) return inflight
     const forName = name, snapshot = sparseValues(schema, params, baseline)
     dirty = false
+    sending++
     inflight = inflight.catch(() => {}).then(async () => {
-      try { await api.patchDef(forName, { params: snapshot }) } catch (err) { dirty = true; throw err }
+      try { await api.patchDef(forName, { params: snapshot }) } catch (err) { dirty = true; throw err } finally { sending-- }
     })
     return inflight
   }
@@ -67,6 +70,7 @@ export function mountMovementTab(rootEl, { api }) {
       name = view.name
       params = null
       schema = []
+      labelsFor = null
       stage.setRig(null)
       if (view.buildError) return say(`Fix the cut first: ${view.buildError}`)
       let rig
@@ -76,6 +80,7 @@ export function mountMovementTab(rootEl, { api }) {
         return say(`Could not load the rig: ${err.message}`)
       }
       schema = rig.PARAM_SCHEMA
+      labelsFor = view.name
       params = clampParams(schema, view.def.params ?? {})
       baseline = { ...((view.isNew ? view.def.params : view.published?.params) ?? {}) }
       message.textContent = ''
@@ -86,6 +91,8 @@ export function mountMovementTab(rootEl, { api }) {
     },
     hide() {},
     flush() { return send() },
-    labels() { return Object.fromEntries(schema.map(p => [p.key, p.label])) },
+    pending: () => dirty || !!timer || sending > 0,
+    // the rig's slider labels, only when they were loaded for this monster ({} otherwise)
+    labels(forName) { return forName && forName === labelsFor ? Object.fromEntries(schema.map(p => [p.key, p.label])) : {} },
   }
 }

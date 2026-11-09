@@ -1,12 +1,15 @@
 // The Fight tab: the real game's bench arena (through the /sg/ mirror, on the
 // draft's def and parts) in an iframe. The bench panel inside it autosaves its
-// Fight fields to the draft; flush() waits out that 400 ms debounce.
-const AUTOSAVE_WAIT = 450
+// Fight fields to the draft; flush() asks the bench to send a pending save now
+// (window.benchFlush) and rejects when it can't be saved.
+const AUTOSAVE_WAIT = 450 // only for a page without benchFlush: outlasts its 400 ms debounce
 
 export function mountFightTab(rootEl) {
   rootEl.replaceChildren()
   const make = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e }
   let frame = null
+  // the bench's studio hooks, once the game inside the frame has started it
+  const hook = key => { try { const f = frame?.contentWindow?.[key]; return typeof f === 'function' ? f : null } catch { return null } }
 
   function hide() {
     if (!frame) return
@@ -30,6 +33,12 @@ export function mountFightTab(rootEl) {
       rootEl.append(note, frame)
     },
     hide,
-    flush: () => new Promise(resolve => setTimeout(resolve, AUTOSAVE_WAIT)),
+    async flush() {
+      if (!frame) return
+      const benchFlush = hook('benchFlush')
+      if (benchFlush) return benchFlush()
+      return new Promise(resolve => setTimeout(resolve, AUTOSAVE_WAIT))
+    },
+    pending: () => !!hook('benchPending')?.(),
   }
 }

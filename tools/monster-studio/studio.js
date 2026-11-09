@@ -1,8 +1,8 @@
 // The Monster Studio page: wiring only. It owns the page state, the header
 // (Open…, the monster's name, the draft badge, the five tabs), the cut
 // autosave and tab switching. Each tab is an object { show(view), hide(),
-// flush() }: the cutter covers Drawing and Cuts; Movement, Fight and Publish
-// live in their own modules.
+// flush(), pending?() }: the cutter covers Drawing and Cuts; Movement, Fight
+// and Publish live in their own modules.
 import * as api from './api.js'
 import { tabsFor, startTab, disabledNote } from './tabs.js'
 import { makeAutosave } from './autosave.js'
@@ -44,7 +44,9 @@ const autosave = makeAutosave({
   onChange: () => renderBadge(),
   onError: err => toast(`Cut not saved: ${err.message}`, 'error'),
 })
-window.addEventListener('beforeunload', e => { if (autosave.unsaved()) { e.preventDefault(); e.returnValue = '' } })
+// leaving the page asks while any edit is not saved yet (the cut, or a tab's own save)
+const unsaved = () => autosave.unsaved() || Object.values(tabs).some(t => t.pending?.())
+window.addEventListener('beforeunload', e => { if (unsaved()) { e.preventDefault(); e.returnValue = '' } })
 
 // ---- tabs ----
 const cutter = mountCutter({
@@ -63,7 +65,7 @@ const cutterTab = {
 const movementTab = mountMovementTab($('tab-movement'), { api })
 const publishTab = mountPublishTab($('tab-publish'), {
   api,
-  labels: () => movementTab.labels(),
+  labels: name => movementTab.labels(name),
   onPublished: name => openMonster(name, 'publish'),
   onDiscarded: (name, wasNew) => (wasNew ? closeMonster() : openMonster(name, 'publish')),
   onRenamed: to => openMonster(to, 'publish'),
@@ -120,14 +122,18 @@ let busy = Promise.resolve()
 const serial = fn => (...args) => (busy = busy.then(() => fn(...args)).catch(err => toast(err.message, 'error')))
 
 // A tab whose edits can't be saved keeps the page on it (its flush rejects).
-async function leaveTab() {
-  const leaving = state.tab && tabs[state.tab]
-  if (!leaving) return true
-  try { await leaving.flush() } catch (err) {
+async function flushTab() {
+  const current = state.tab && tabs[state.tab]
+  if (!current) return true
+  try { await current.flush() } catch (err) {
     toast(`Staying here: ${err.message}. Switching again retries the save.`, 'error')
     return false
   }
-  leaving.hide()
+  return true
+}
+async function leaveTab() {
+  if (!(await flushTab())) return false
+  if (state.tab) tabs[state.tab].hide()
   return true
 }
 // Before leaving the open monster its cut must be saved; when the save keeps
@@ -155,6 +161,8 @@ async function doShowTab(tab) {
 }
 async function doOpenMonster(name, tab) {
   if (!(await leaveMonster())) return
+  // the open tab's edits land on the monster they belong to before another opens
+  if (!(await flushTab())) return
   const view = await api.openDraft(name)
   state.cutterFor = null // the cutter reloads from this draft
   applyView(view)
@@ -168,10 +176,7 @@ async function doRestartFromGame() {
   // pending saves land in the old draft first, so none of them reaches the fresh copy
   try { await autosave.flush() } catch { /* those cut edits are being thrown away */ }
   autosave.reset()
-  const t = state.tab && tabs[state.tab]
-  if (t) {
-    try { await t.flush() } catch (err) { return toast(`Not started again: ${err.message}`, 'error') }
-  }
+  if (!(await flushTab())) return
   await api.discardDraft(name)
   await doOpenMonster(name, state.tab)
 }
