@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeBenchModel, edit, snapshot, restore, savePatch, markSaved, storageKey, takeSnapshot, keepSnapshot } from '../tools/monster-bench/bench-state.js'
+import { makeBenchModel, edit, snapshot, restore, savePatch, markSaved, setWeapon, usesSnapshots, storageKey, takeSnapshot, keepSnapshot } from '../tools/monster-bench/bench-state.js'
 
 const SCHEMA = [
   { key: 'cooldown', label: 'Cooldown', group: 'attack', type: 'range', min: 0.5, max: 10, step: 0.1, default: 2 },
@@ -33,7 +33,7 @@ describe('edit / savePatch / markSaved', () => {
   it('savePatch returns full values; markSaved clears dirty', () => {
     const m = makeBenchModel(def())
     edit(m, 'tuning', 'cooldown', 4)
-    assert.deepEqual(savePatch(m), { tuning: { cooldown: 4, range: 200 }, stats: { hp: 10, dmg: 2, speed: 60 }, behavior: { sightRange: 300 } })
+    assert.deepEqual(savePatch(m), { tuning: { cooldown: 4, range: 200 }, stats: { hp: 10, dmg: 2, speed: 60 }, behavior: { sightRange: 300, weapon: null, weaponOverrides: null } })
     markSaved(m)
     assert.equal(m.dirty.size, 0)
   })
@@ -163,5 +163,33 @@ describe('takeSnapshot / keepSnapshot', () => {
     const bad = { getItem: () => { throw new Error('denied') }, setItem: () => { throw new Error('denied') }, removeItem: () => {} }
     assert.equal(takeSnapshot(bad, 'k'), null)
     assert.doesNotThrow(() => keepSnapshot(bad, 'k', makeBenchModel(def())))
+  })
+})
+
+describe('weapon section', () => {
+  it('setWeapon resets damage and reach, and savePatch carries the weapon patch', () => {
+    const m = makeBenchModel({ ...def(), behavior: { weapon: 'maul', weaponOverrides: { damage: 3 } } })
+    setWeapon(m, 'club')
+    assert.deepEqual(m.values.weapon, { weapon: 'club', damage: null, reach: null })
+    const p = savePatch(m)
+    assert.equal(p.behavior.weapon, 'club')
+    assert.equal(p.behavior.weaponOverrides, null)
+  })
+  it('savePatch({ params: false }) leaves params out', () => {
+    assert.equal('params' in savePatch(makeBenchModel(def()), { params: false }), false)
+  })
+  it('restore drops an unknown weapon id', () => {
+    const m1 = makeBenchModel(def()); edit(m1, 'weapon', 'weapon', 'laser_sword')
+    const m2 = makeBenchModel(def()); restore(m2, snapshot(m1), SCHEMA)
+    assert.equal(m2.values.weapon.weapon, null)
+  })
+  it('restore keeps a known weapon and finite overrides', () => {
+    const m1 = makeBenchModel(def()); setWeapon(m1, 'club'); edit(m1, 'weapon', 'reach', 60)
+    const m2 = makeBenchModel(def()); restore(m2, snapshot(m1), SCHEMA)
+    assert.deepEqual(m2.values.weapon, { weapon: 'club', damage: null, reach: 60 })
+  })
+  it('studio mode never restores or keeps a snapshot', () => {
+    assert.equal(usesSnapshots({ isStudio: true }), false)
+    assert.equal(usesSnapshots({ benchSave() {} }), true)
   })
 })

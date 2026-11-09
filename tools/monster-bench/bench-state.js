@@ -5,8 +5,10 @@
 // switches rides sessionStorage across the bench's reload-on-edit, so a
 // tweak never vanishes because Claude saved a file. Pure — no DOM.
 import { clampParams } from '../../renderer/render/monster-rigs/schema.js'
+import { WEAPONS } from '../../renderer/systems/enemy-attack.js'
+import { fightValues, weaponPatch } from './fight-fields.js'
 
-const SECTIONS = ['tuning', 'stats', 'behavior', 'params']
+const SECTIONS = ['tuning', 'stats', 'behavior', 'params', 'weapon']
 const STATS = ['hp', 'dmg', 'speed']
 
 export const storageKey = name => `dc-bench:${name}`
@@ -19,6 +21,7 @@ export function makeBenchModel(def) {
       stats: Object.fromEntries(STATS.map(k => [k, def.stats?.[k]])),
       behavior: numeric(def.behavior),
       params: { ...(def.params ?? {}) },
+      weapon: fightValues(def),
     },
     // without a schema (a hook that failed to load, or none) the panel has
     // no tuning to offer, and Save must not overwrite what the file holds
@@ -34,10 +37,28 @@ export function edit(model, section, key, value) {
   model.dirty.add(`${section}.${key}`)
 }
 
-export function savePatch(model) {
-  const { tuning, stats, behavior, params } = model.values
-  return { ...(model.hasTuning ? { tuning: { ...tuning } } : {}), ...(model.hasParams ? { params: { ...params } } : {}), stats: { ...stats }, behavior: { ...behavior } }
+export function setWeapon(model, id) {
+  model.values.weapon = { weapon: id ?? null, damage: null, reach: null }
+  for (const k of ['weapon', 'damage', 'reach']) model.dirty.add(`weapon.${k}`)
 }
+
+// `params: false` leaves the rig params out (the studio's draft keeps them
+// in the cutter's file, not in the bench's saves).
+export function savePatch(model, { params = true } = {}) {
+  const { tuning, stats, behavior, params: rigParams, weapon } = model.values
+  return {
+    ...(model.hasTuning ? { tuning: { ...tuning } } : {}),
+    ...(params && model.hasParams ? { params: { ...rigParams } } : {}),
+    stats: { ...stats },
+    behavior: { ...behavior, ...weaponPatch(weapon) },
+  }
+}
+
+export const liveBehavior = model => savePatch(model).behavior
+
+// Studio mode runs the bench in an iframe whose draft is the source of
+// truth: no sessionStorage snapshot is read or kept.
+export const usesSnapshots = saveAPI => !saveAPI?.isStudio
 
 export function markSaved(model) { model.dirty.clear() }
 
@@ -76,6 +97,8 @@ export function restore(model, text, schema, paramSchema) {
       const p = byParamKey.get(key)
       if (!p || !validParam(p, v)) continue
       edit(model, section, key, clampParams([p], { [key]: v })[key])
+    } else if (section === 'weapon') {
+      if (key === 'weapon' ? (v === null || (typeof v === 'string' && Object.hasOwn(WEAPONS, v))) : (key === 'damage' || key === 'reach') && (v === null || Number.isFinite(v))) edit(model, section, key, v)
     } else if (key in model.values[section] && Number.isFinite(v)) edit(model, section, key, v)
   }
   for (const [k, v] of Object.entries(snap.switches ?? {}))

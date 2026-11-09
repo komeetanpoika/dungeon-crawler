@@ -6,7 +6,7 @@
 // reload a file change triggers, via sessionStorage.
 import { getMonsterDef, monsterNames, retuneMonster } from '../../renderer/systems/monsters.js'
 import { setDamageObserver } from '../../renderer/systems/player-damage.js'
-import { makeBenchModel, restore, storageKey, savePatch, markSaved, takeSnapshot, keepSnapshot } from './bench-state.js'
+import { makeBenchModel, restore, storageKey, savePatch, markSaved, takeSnapshot, keepSnapshot, liveBehavior, usesSnapshots } from './bench-state.js'
 import { makeBenchCore, benchArenaConfig } from './bench-core.js'
 import { mountPanel } from './panel.js'
 import { drawOverlay } from './overlay.js'
@@ -43,18 +43,31 @@ export function startBench(seam) {
   const model = makeBenchModel(def)
   const key = storageKey(name)
   const store = (() => { try { return globalThis.sessionStorage } catch { return null } })()
-  restore(model, takeSnapshot(store, key), def.tuningSchema, def.rig?.PARAM_SCHEMA)
+  const studio = !!window.saveAPI.isStudio
+  const snapshots = usesSnapshots(window.saveAPI)
+  if (snapshots) restore(model, takeSnapshot(store, key), def.tuningSchema, def.rig?.PARAM_SCHEMA)
   // What the panel shows is what the monster runs on: restored tweaks go
   // into the live tuning object and the AI row before anything spawns.
   Object.assign(def.tuning, model.values.tuning)
   Object.assign(def.params, model.values.params)
-  retuneMonster(name, { stats: model.values.stats, behavior: model.values.behavior })
+  retuneMonster(name, { stats: model.values.stats, behavior: liveBehavior(model) })
   const core = makeBenchCore(model)
   setDamageObserver(core.observe)
   seam.startArena(benchArenaConfig(name, model.switches.count))
 
+  let saveTimer = null
   const panel = mountPanel(model, core, {
     def,
+    studio,
+    ignores: def.hookModule?.IGNORES ?? {},
+    // the studio saves every edit to its draft, 400 ms after the last one
+    onEdit: () => {
+      clearTimeout(saveTimer)
+      saveTimer = setTimeout(async () => {
+        try { await window.saveAPI.benchSave(name, savePatch(model, { params: false })); markSaved(model); panel.markSaved(); panel.setError('') }
+        catch (err) { panel.setError(`save failed: ${err.message}`) }
+      }, 400)
+    },
     onTuning: (k, v) => { def.tuning[k] = v },
     // the rig reads def.params every frame; retune keeps the hit size in step
     onParam: (k, v) => { def.params[k] = v; retuneMonster(name) },
@@ -67,8 +80,10 @@ export function startBench(seam) {
   })
   let lastRead = -Infinity
 
-  window.addEventListener('pagehide', () => keepSnapshot(store, key, model))
-  window.saveAPI.onBenchFilesChanged?.(() => location.reload())
+  if (snapshots) {
+    window.addEventListener('pagehide', () => keepSnapshot(store, key, model))
+    window.saveAPI.onBenchFilesChanged?.(() => location.reload())
+  }
 
   return {
     arenaConfig: () => benchArenaConfig(name, model.switches.count),

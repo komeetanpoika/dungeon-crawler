@@ -4,6 +4,7 @@
 // respawning it with the panel's current numbers, the arena it fights in,
 // and the gate that keeps panel typing away from the game's keys.
 import { retuneMonster } from '../../renderer/systems/monsters.js'
+import { liveBehavior } from './bench-state.js'
 
 // No plate: a hit lands at face value, so the damage numbers read true.
 export const BENCH_KIT = { weaponType: 'sword', rangedType: 'shortbow', wandType: 'sparkwand',
@@ -52,7 +53,7 @@ export function makeBenchCore(model) {
     isFrozen: (e, name) => sw.frozen && e.type === name,
 
     respawn(seam, name) {
-      retuneMonster(name, { stats: model.values.stats, behavior: model.values.behavior })
+      retuneMonster(name, { stats: model.values.stats, behavior: liveBehavior(model) })
       const state = seam.getState()
       state.entities = state.entities.filter(e => e.type !== name)
       seam.spawn(respawnSpots(sw.count).map(p => ({ kind: name, ...p })))
