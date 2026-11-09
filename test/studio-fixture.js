@@ -60,3 +60,5 @@ export function snapshotTree(root, dirs) {
   for (const d of dirs) walk(d)
   return out.sort((a, b) => a[0] < b[0] ? -1 : 1)
 }
+
+export const readJson = (root, rel) => JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'))
