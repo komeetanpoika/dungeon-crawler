@@ -1,0 +1,36 @@
+/* tools/monster-studio/studio.css: the cutter's dark chrome plus the studio header and tabs */
+@import url('/tools/monster-cutter/cutter.css');
+
+/* one tab at a time: an author display rule (#layout's grid) must not beat [hidden] */
+[hidden] { display: none !important; }
+
+body { display: flex; flex-direction: column; height: 100vh; }
+#layout { height: auto; flex: 1; min-height: 0; }
+.tab-page { flex: 1; min-height: 0; padding: 8px; }
+#start-prompt { flex: 1; display: grid; place-items: center; color: var(--dim); font-size: 15px; text-align: center; }
+#start-prompt.drop { outline: 2px dashed var(--accent); outline-offset: -16px; }
+
+/* header: Open…, the monster, its draft badge, the five tabs */
+#studio-head { flex: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px;
+               background: var(--panel); border-bottom: 1px solid var(--line); }
+#monster-name { font-size: 15px; font-weight: 600; color: #eef0f3; }
+#draft-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--dim); }
+#draft-badge.changed { color: var(--accent); border-color: #8a6a28; background: #3a3320; }
+#draft-badge.same { color: var(--ok); border-color: #3c6e3c; }
+#draft-badge.error { color: var(--leak); border-color: var(--leak); }
+#tabs { display: flex; gap: 4px; margin-left: 8px; }
+#tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; }
+#tabs button.active .step { background: #8a6a28; color: var(--bg); }
+#lab-link { margin-left: auto; color: var(--dim); text-decoration: none; font-size: 12px; }
+#lab-link:hover { color: var(--text); }
+
+/* the Open… dialog */
+#open-dialog { width: 460px; max-width: 92vw; }
+#open-dialog h2 { margin-bottom: 10px; }
+#open-dialog h3 { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; color: var(--dim); }
+.pick-list { display: grid; gap: 4px; max-height: 38vh; overflow-y: auto; }
+.pick-list button { display: flex; align-items: center; gap: 8px; text-align: left; }
+.pick-list .kind { margin-left: auto; color: var(--dim); font-size: 11px; }
+.pick-list .has-draft { color: var(--accent); font-size: 11px; font-weight: 600; }
+.pick-list .none { color: var(--dim); font-size: 12px; margin: 0; }
+#open-dialog .btns { margin-top: 14px; }

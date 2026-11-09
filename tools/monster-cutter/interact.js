@@ -24,7 +24,8 @@ function spaced(from, to, step) {
 
 // ctl: { S, view, redraw, begin, preview(cut), end, select(id), hint(msg, kind),
 //        paintMask(discs), ownerAt([x, y]), finishSplit(seed), placePoint([x, y]),
-//        setTool(t), setBrush(r), fit(), undo(), redo(), merge(id), coords([x, y] | null) }
+//        setTool(t), setBrush(r), fit(), undo(), redo(), merge(id), coords([x, y] | null),
+//        isActive?() -> boolean: false while the editor's tab is hidden, so its keys stay off }
 export function attachEditor(canvas, ctl) {
   const { S, view } = ctl
   let drag = null, spaceDown = false
@@ -169,6 +170,7 @@ export function attachEditor(canvas, ctl) {
   }, { passive: false })
 
   window.addEventListener('keydown', e => {
+    if (ctl.isActive?.() === false) return
     if (e.target.closest?.('input, select, textarea, dialog')) return
     if (!S.cut) return
     const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase()
@@ -188,5 +190,10 @@ export function attachEditor(canvas, ctl) {
     else return
     e.preventDefault()
   })
-  window.addEventListener('keyup', e => { if (e.key === ' ') { spaceDown = false; canvas.style.cursor = S.tool === 'edit' ? 'default' : 'crosshair' } })
+  // space is always let go, so a tab switch mid-pan never leaves it stuck down
+  window.addEventListener('keyup', e => {
+    if (e.key !== ' ') return
+    spaceDown = false
+    if (ctl.isActive?.() !== false) canvas.style.cursor = S.tool === 'edit' ? 'default' : 'crosshair'
+  })
 }

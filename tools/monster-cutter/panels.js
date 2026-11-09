@@ -1,4 +1,4 @@
-// The cutter page's side-panel lists (warnings, pieces, points) and its
+// The cutter's side-panel lists (warnings, pieces, points) and its
 // confirm dialog. DOM only: every change goes through the `act` callbacks.
 import { ROLES } from './cut-format.js'
 import { LEAK } from './overlay.js'
@@ -14,7 +14,7 @@ export function renderWarnings(box, { leaks, behind }) {
   if (leaks.size) {
     box.append(el('div', { className: 'warn leak' },
       el('b', { textContent: `Cut line doesn't close: ${[...leaks].join(', ')}` }),
-      el('div', { textContent: 'Drag both round ends past the outline so the line crosses the whole part, and keep the square seed on the part itself. Save is blocked until every cut closes.' })))
+      el('div', { textContent: 'Drag both round ends past the outline so the line crosses the whole part, and keep the square seed on the part itself. The game can\'t use the cut until every cut closes.' })))
   }
   for (const { id, over } of behind) {
     box.append(el('div', { className: 'warn behind',
