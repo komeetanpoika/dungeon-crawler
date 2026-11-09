@@ -25,3 +25,4 @@ Feature ideas harvested from test runs (`arena-log.mjs suggest`). Format: `- [NE
 - [NEW] 2026-10-24 (run 29): The bench arena always uses the level-0 dungeon floor (dark red); a backdrop choice (forest/grass) would show how a monster reads where it will actually live.
 - [NEW] 2026-11-08 (run 30): Arena/probe boss kills write meta.bossToastsSeen into the user's real meta.json (~/.config/dungeon-crawler/dungeon-crawler/meta.json), so the user later misses that boss's first-kill toast; arena mode could skip persisting meta, or the probe should strip its entry afterwards.
 - [NEW] 2026-11-08 (run 32): Bench: add a panel switch to force inCombat so HP bars show without hitting the monster.
+- [NEW] 2026-11-09 (run 33): Bench: a 'Bring close' button that moves the monster inside its sightRange next to the hero — every live attack check otherwise needs a teleport eval because the bench spawns it 8 rows out, past the default 200 px sightRange.
