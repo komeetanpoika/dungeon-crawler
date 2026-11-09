@@ -19,6 +19,8 @@ import { newDef } from '../monster-cutter/install-cut.js'
 const { NAME_RE, RESERVED_NAMES, mergeDefPatch } = createRequire(import.meta.url)('../monster-lab/monster-files.cjs')
 
 export const DRAFTS_DIR = 'drafts/monsters'
+// meta.rev of a draft nobody has edited yet; every save bumps it
+const FIRST_REV = 1
 const PNG_PREFIX = 'data:image/png;base64,'
 
 const fail = (status, msg) => Object.assign(new Error(msg), { status })
@@ -151,26 +153,43 @@ export function createDraft(root, { name, cut, sourcePng } = {}) {
   writeAtomic(f.png, png)
   writeJson(f.cut, { ...cut, name, source: sourceRel(name) })
   writeJson(f.def, newDef(name))
-  writeJson(f.meta, { isNew: true, rev: 1, base: { def: null, cut: null, png: null } })
+  writeJson(f.meta, { isNew: true, rev: FIRST_REV, base: { def: null, cut: null, png: null } })
   tryBuild(root, name)
   return readDraft(root, name)
 }
 
-export function openDraft(root, name) {
-  checkName(name)
-  if (hasDraft(root, name)) return readDraft(root, name)
+// Copy the game's files into a fresh draft, replacing any draft there. Every
+// check runs before the first write, so a refusal leaves the old draft alone.
+function copyFromGame(root, name) {
   const p = pub(root, name), f = draftFiles(root, name)
-  const def = readJson(p.def)
-  if (!def) throw fail(404, `no monster "${name}"`)
-  const cut = readJson(p.cut), png = readBytes(p.png)
+  const defBuf = readBytes(p.def)
+  if (!defBuf) throw fail(404, `no monster "${name}"`)
+  const cutBuf = readBytes(p.cut), png = readBytes(p.png)
+  const def = JSON.parse(defBuf.toString('utf8')), cut = cutBuf ? JSON.parse(cutBuf.toString('utf8')) : null
+  if (cut && !png) throw fail(409, `cut source assets/cuts/${name}.png is missing`)
+  const base = { def: sha1(defBuf), cut: cutBuf ? sha1(cutBuf) : null, png: png ? sha1(png) : null }
+  fs.rmSync(f.dir, { recursive: true, force: true })
   writeJson(f.def, def)
   if (cut) {
-    if (!png) throw fail(409, `cut source assets/cuts/${name}.png is missing`)
     writeAtomic(f.png, png)
     writeJson(f.cut, { ...cut, source: sourceRel(name) })
   }
-  writeJson(f.meta, { isNew: false, rev: 1, base: { def: hashFile(p.def), cut: hashFile(p.cut), png: hashFile(p.png) } })
+  writeJson(f.meta, { isNew: false, rev: FIRST_REV, base })
   if (cut) tryBuild(root, name)
+}
+
+// An untouched draft (still at FIRST_REV) follows the game: when the game's
+// copy changed since it was made, it is copied again. A draft with edits is
+// kept as it is and comes back stale.
+export function openDraft(root, name) {
+  checkName(name)
+  if (hasDraft(root, name)) {
+    const v = readDraft(root, name)
+    if (!v.stale || v.isNew || v.rev !== FIRST_REV) return v
+    try { copyFromGame(root, name) } catch { return v } // the game's copy is gone or broken: keep this one
+    return readDraft(root, name)
+  }
+  copyFromGame(root, name)
   return readDraft(root, name)
 }
 

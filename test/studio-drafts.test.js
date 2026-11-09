@@ -47,6 +47,34 @@ describe('draft store', () => {
     fs.writeFileSync(path.join(r, 'renderer/data/monsters/boar.json'), '{"rig":"quadruped","name":"boar","stats":{"hp":7}}')
     assert.equal(readDraft(r, 'boar').stale, true)
   })
+  it('an untouched draft follows the game: reopening after the game changed copies it again', () => {
+    const r = makeProjectRoot(); openDraft(r, 'boar')
+    const next = { name: 'boar', rig: 'quadruped', params: {}, stats: { hp: 7, dmg: 1, speed: 50 }, behavior: {}, spawn: null }
+    fs.writeFileSync(path.join(r, 'renderer/data/monsters/boar.json'), JSON.stringify(next))
+    const v = openDraft(r, 'boar')
+    assert.deepEqual(v.def, next); assert.equal(v.stale, false); assert.equal(v.rev, 1)
+  })
+  it('an untouched drawn draft picks up a changed cut too', () => {
+    const r = makeProjectRoot(); openDraft(r, 'monsterx')
+    const cut = { ...makeCutBody({ name: 'monsterx' }).cut, outHeight: 44 }
+    fs.writeFileSync(path.join(r, 'assets/cuts/monsterx.json'), JSON.stringify(cut))
+    const v = openDraft(r, 'monsterx')
+    assert.equal(v.stale, false); assert.equal(v.cut.outHeight, 44); assert.equal(v.cut.source, 'drafts/monsters/monsterx/source.png')
+    assert.equal(v.cutChanged, false); assert.equal(v.buildError, null)
+  })
+  it('an edited stale draft is kept, and reopening says it is stale', () => {
+    const r = makeProjectRoot(); openDraft(r, 'boar')
+    patchDraftDef(r, 'boar', { stats: { hp: 9 } })
+    fs.writeFileSync(path.join(r, 'renderer/data/monsters/boar.json'), '{"rig":"quadruped","name":"boar","stats":{"hp":7}}')
+    const v = openDraft(r, 'boar')
+    assert.equal(v.stale, true); assert.equal(v.def.stats.hp, 9)
+  })
+  it('an untouched draft whose game copy is gone is kept as it is', () => {
+    const r = makeProjectRoot(); openDraft(r, 'boar')
+    fs.rmSync(path.join(r, 'renderer/data/monsters/boar.json'))
+    const v = openDraft(r, 'boar')
+    assert.equal(v.stale, true); assert.equal(v.def.stats.hp, 5)
+  })
   it('bad names are refused 400 everywhere', () => {
     const r = makeProjectRoot()
     for (const f of [() => openDraft(r, '../x'), () => readDraft(r, 'A'), () => discardDraft(r, 'index')])

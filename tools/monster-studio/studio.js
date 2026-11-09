@@ -23,6 +23,7 @@ const CUT_DEBOUNCE = 600
 const CUTTER_TABS = new Set(['drawing', 'cuts'])
 const KIND_LABEL = { drawn: 'drawn', code: 'drawn by code', story: 'story' }
 const stem = fileName => fileName.replace(/\.[^.]*$/, '')
+const STALE_NOTE = "The game's copy changed since this draft started"
 
 // kind: 'new' while view.isNew, else view.kind. cutterFor: the draft whose
 // cut the cutter holds (null while it holds none, so its edits go nowhere).
@@ -69,13 +70,17 @@ const publishTab = mountPublishTab($('tab-publish'), {
 const tabs = { drawing: cutterTab, cuts: cutterTab, movement: movementTab, fight: mountFightTab($('tab-fight')), publish: publishTab }
 
 // ---- header and panes ----
+// a draft of a game monster whose game copy moved on since the draft started
+const isStale = v => !!v && v.stale && !v.isNew
 function renderBadge() {
   const b = $('draft-badge'), v = state.view
   b.hidden = !v
+  $('stale-restart').hidden = !isStale(v)
   if (!v) return
   let text, cls
   if (autosave.pending()) [text, cls] = ['Saving…', 'saving']
   else if (autosave.error) [text, cls] = ['Not saved', 'error']
+  else if (isStale(v)) [text, cls] = [STALE_NOTE, 'stale']
   else if (v.isNew || v.cutChanged || JSON.stringify(v.def) !== JSON.stringify(v.published)) [text, cls] = ['Unpublished changes', 'changed']
   else [text, cls] = ['Same as the game', 'same']
   b.textContent = text
@@ -150,7 +155,22 @@ async function doOpenMonster(name, tab) {
   const view = await api.openDraft(name)
   state.cutterFor = null // the cutter reloads from this draft
   applyView(view)
-  await doShowTab(tab ?? startTab(state.kind))
+  await doShowTab(tab && tabsFor(state.kind)[tab] ? tab : startTab(state.kind))
+}
+// The stale badge's button: throw this draft away and copy the game's version.
+async function doRestartFromGame() {
+  const name = state.name
+  if (!isStale(state.view)) return
+  if (!(await ask("Throw away this draft's changes and start again from the game's current version?", 'Start again'))) return
+  // pending saves land in the old draft first, so none of them reaches the fresh copy
+  try { await autosave.flush() } catch { /* those cut edits are being thrown away */ }
+  autosave.reset()
+  const t = state.tab && tabs[state.tab]
+  if (t) {
+    try { await t.flush() } catch (err) { return toast(`Not started again: ${err.message}`, 'error') }
+  }
+  await api.discardDraft(name)
+  await doOpenMonster(name, state.tab)
 }
 // A discarded new drawing leaves nothing to show: back to the empty page.
 async function doCloseMonster() {
@@ -181,6 +201,7 @@ async function doOpenDrawing(file) {
 const showTab = serial(doShowTab)
 const openMonster = serial(doOpenMonster)
 const closeMonster = serial(doCloseMonster)
+const restartFromGame = serial(doRestartFromGame)
 const openDrawing = serial(doOpenDrawing)
 
 // ---- the Open… dialog ----
@@ -199,6 +220,7 @@ async function showOpenDialog() {
   dlg.showModal()
 }
 $('open').onclick = showOpenDialog
+$('stale-restart').onclick = () => restartFromGame()
 $('open-file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; $('open-dialog').close(); openDrawing(f) }
 $('file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; openDrawing(f) }
 for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => showTab(b.dataset.tab)

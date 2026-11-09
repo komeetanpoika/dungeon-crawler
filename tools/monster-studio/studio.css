@@ -18,6 +18,8 @@ body { display: flex; flex-direction: column; height: 100vh; }
 #draft-badge.changed { color: var(--accent); border-color: #8a6a28; background: #3a3320; }
 #draft-badge.same { color: var(--ok); border-color: #3c6e3c; }
 #draft-badge.error { color: var(--leak); border-color: var(--leak); }
+#draft-badge.stale { color: #f0a040; border-color: #8a5a12; background: #3a2a14; }
+#stale-restart { font-size: 11px; padding: 2px 8px; }
 #tabs { display: flex; gap: 4px; margin-left: 8px; }
 #tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; }
 #tabs button.active .step { background: #8a6a28; color: var(--bg); }
