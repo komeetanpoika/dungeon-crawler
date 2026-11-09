@@ -6,6 +6,7 @@
 import * as api from './api.js'
 import { tabsFor, startTab, disabledNote } from './tabs.js'
 import { makeAutosave } from './autosave.js'
+import { mountMovementTab } from './movement-tab.js'
 import { mountCutter } from '/tools/monster-cutter/cutter.js'
 import { ask } from '/tools/monster-cutter/panels.js'
 import { toast } from '/tools/tile-editor/toast.js'
@@ -55,8 +56,8 @@ const cutterTab = {
   hide() {},
   flush: () => autosave.flush(),
 }
-const notYet = () => ({ show() {}, hide() {}, async flush() {} }) // Tasks 7–9 replace these
-const tabs = { drawing: cutterTab, cuts: cutterTab, movement: notYet(), fight: notYet(), publish: notYet() }
+const notYet = () => ({ show() {}, hide() {}, async flush() {} }) // Tasks 8–9 replace these
+const tabs = { drawing: cutterTab, cuts: cutterTab, movement: mountMovementTab($('tab-movement'), { api }), fight: notYet(), publish: notYet() }
 
 // ---- header and panes ----
 function renderBadge() {
