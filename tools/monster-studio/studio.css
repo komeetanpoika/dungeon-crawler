@@ -45,3 +45,14 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .movement-side { flex: 1; min-width: 280px; max-width: 520px; overflow-y: auto; max-height: calc(100vh - 90px); }
 #tab-fight { display: flex; flex-direction: column; }
 .fight-frame { flex: 1; width: 100%; min-height: 0; border: 1px solid var(--line); background: #000; }
+
+/* Publish tab */
+#tab-publish { overflow-y: auto; }
+.publish-layout { max-width: 640px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.publish-layout h2 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; color: var(--dim); }
+.spawn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0; }
+.spawn-row input[type=number] { width: 56px; }
+.publish-changes ul { margin: 0; padding-left: 20px; }
+.publish-actions .btns { display: flex; gap: 8px; }
+.publish-layout .error { color: var(--leak); margin: 6px 0 0; }
+.publish-layout .result { color: var(--ok); }

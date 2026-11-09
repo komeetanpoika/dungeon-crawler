@@ -8,6 +8,7 @@ import { tabsFor, startTab, disabledNote } from './tabs.js'
 import { makeAutosave } from './autosave.js'
 import { mountMovementTab } from './movement-tab.js'
 import { mountFightTab } from './fight-tab.js'
+import { mountPublishTab } from './publish-tab.js'
 import { mountCutter } from '/tools/monster-cutter/cutter.js'
 import { ask } from '/tools/monster-cutter/panels.js'
 import { toast } from '/tools/tile-editor/toast.js'
@@ -57,8 +58,15 @@ const cutterTab = {
   hide() {},
   flush: () => autosave.flush(),
 }
-const notYet = () => ({ show() {}, hide() {}, async flush() {} }) // Tasks 8–9 replace these
-const tabs = { drawing: cutterTab, cuts: cutterTab, movement: mountMovementTab($('tab-movement'), { api }), fight: mountFightTab($('tab-fight')), publish: notYet() }
+const movementTab = mountMovementTab($('tab-movement'), { api })
+const publishTab = mountPublishTab($('tab-publish'), {
+  api,
+  labels: () => movementTab.labels(),
+  onPublished: name => openMonster(name, 'publish'),
+  onDiscarded: (name, wasNew) => (wasNew ? closeMonster() : openMonster(name, 'publish')),
+  onRenamed: to => openMonster(to, 'publish'),
+})
+const tabs = { drawing: cutterTab, cuts: cutterTab, movement: movementTab, fight: mountFightTab($('tab-fight')), publish: publishTab }
 
 // ---- header and panes ----
 function renderBadge() {
@@ -137,12 +145,20 @@ async function doShowTab(tab) {
   renderHeader()
   await tabs[tab].show(state.view)
 }
-async function doOpenMonster(name) {
+async function doOpenMonster(name, tab) {
   if (!(await leaveMonster())) return
   const view = await api.openDraft(name)
   state.cutterFor = null // the cutter reloads from this draft
   applyView(view)
-  await doShowTab(startTab(state.kind))
+  await doShowTab(tab ?? startTab(state.kind))
+}
+// A discarded new drawing leaves nothing to show: back to the empty page.
+async function doCloseMonster() {
+  await leaveTab()
+  autosave.reset()
+  Object.assign(state, { name: null, kind: null, view: null, tab: null, cutterFor: null })
+  renderPanes()
+  renderHeader()
 }
 async function doOpenDrawing(file) {
   if (!file) return
@@ -164,6 +180,7 @@ async function doOpenDrawing(file) {
 }
 const showTab = serial(doShowTab)
 const openMonster = serial(doOpenMonster)
+const closeMonster = serial(doCloseMonster)
 const openDrawing = serial(doOpenDrawing)
 
 // ---- the Open… dialog ----
