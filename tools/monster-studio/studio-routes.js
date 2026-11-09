@@ -21,6 +21,17 @@ async function jsonBody(req) {
   try { return JSON.parse(text) } catch { throw Object.assign(new Error('body is not valid JSON'), { status: 400 }) }
 }
 
+// A studio write must come from a page on this machine's lab server. A web
+// page elsewhere can send a "simple" cross-site POST (text/plain, no
+// preflight), so every non-GET checks the Host header (no DNS-rebound names)
+// and the Origin header when the browser sends one. Any port is fine.
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+const hostnameOf = url => { try { return new URL(url).hostname } catch { return null } }
+export function isLocalRequest(headers = {}) {
+  if (typeof headers.host !== 'string' || !LOCAL_HOSTS.has(hostnameOf(`http://${headers.host}`))) return false
+  return headers.origin === undefined || LOCAL_HOSTS.has(hostnameOf(headers.origin))
+}
+
 // Returns true when it handled the request.
 export function handleStudioRoute({ req, res, u, send, root, projectRoot }) {
   const json = (code, obj) => send(code, JSON.stringify(obj))
@@ -49,6 +60,7 @@ export function handleStudioRoute({ req, res, u, send, root, projectRoot }) {
   }
 
   if (!p.startsWith('/api/studio/')) return false
+  if (m !== 'GET' && m !== 'HEAD' && !isLocalRequest(req.headers)) { json(403, { error: 'cross-site request refused' }); return true }
   if (p === '/api/studio/monsters' && m === 'GET') return run(() => listStudio(projectRoot))
   if (p === '/api/studio/suggest-name' && m === 'GET') return run(() => ({ name: suggestName(projectRoot, u.searchParams.get('base') ?? '') }))
   if (p === '/api/studio/drafts' && m === 'POST')
