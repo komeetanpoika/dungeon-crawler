@@ -43,3 +43,5 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .movement-bar label { color: var(--dim); display: inline-flex; align-items: center; gap: 4px; }
 .movement-bar input[type=range] { width: 80px; }
 .movement-side { flex: 1; min-width: 280px; max-width: 520px; overflow-y: auto; max-height: calc(100vh - 90px); }
+#tab-fight { display: flex; flex-direction: column; }
+.fight-frame { flex: 1; width: 100%; min-height: 0; border: 1px solid var(--line); background: #000; }
