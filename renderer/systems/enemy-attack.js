@@ -104,9 +104,15 @@ function strike(e, state) {
   a.duration = w.duration
 }
 
+// A stunned (or frozen) attacker's windup pauses: its clock holds, so it
+// lands no blow while it cannot move and its posed windup stays where it
+// froze; it picks up and strikes once the stun ends. Only an attack with a
+// windup (a posed sequence's) is ever in that phase — a windup-0 weapon
+// strikes as it starts — and a swing plays out under a stun as before.
 export function stepEnemyAttack(e, state, delta) {
   const a = e.attack
   if (!a) return
+  if (a.phase === 'windup' && e.stunTimer > 0) return
   a.timer = Math.max(0, a.timer - delta)
   if (a.timer > 0) return
   if (a.phase === 'windup') strike(e, state)

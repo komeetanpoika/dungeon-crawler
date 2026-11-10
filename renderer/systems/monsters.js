@@ -223,11 +223,27 @@ function attackClock(e) {
                       t: Math.max(0, (e.attack.duration ?? 0) - (e.attack.timer ?? 0)) } : null
 }
 
+// The pose the rig draws. game.js runs updateMonsterPose before the attack
+// starts and steps, so on the frame an attack starts or ends the bookkeeping
+// (state, anim, blend) is a frame behind e.attack, which is read live here.
+// Those two frames are reported as the next update will record them: an
+// attack that has just ended is at its end (no built-in reach, lunge or
+// swell for a frame), and an animation that has just switched starts its
+// blend from where the old one was left (no jump to the new pose for a
+// frame). Pure: nothing on the entity changes. A monster without a sequence
+// draws as before: the engine ignores the blend without one, and its
+// built-in motion goes by the state, never the attack clock.
 export function entityPose(e) {
   const p = e.pose ?? { t: 0, state: 'idle', stateT: 0, facing: 0, speed01: 0, seed: 0 }
+  const live = attackClock(e)
+  // the finished attack: the follow-through's end (curve 0, the start pose)
+  const attack = !live && p.state === 'attack' ? { phase: 'swing', t: Infinity } : live
+  const blend = p.anim != null && animOf({ state: p.state, speed01: p.speed01, attack: live }) !== p.anim
+    ? { from: p.anim, at: p.anim === 'attack' ? p.lastAttack : p.animT, t: 0 }
+    : p.blend ?? null
   return { t: p.t, state: p.state, stateT: p.stateT, facing: p.facing, speed01: p.speed01, seed: p.seed,
            headAim: p.headAim, eyeGlow: p.eyeGlow ?? 0,
-           attack: attackClock(e), animT: p.animT ?? 0, blend: p.blend ?? null,
+           attack, animT: p.animT ?? 0, blend,
            // hook-written channels live on the entity (a hook may run before
            // the first pose update): how far it has sunk, burned, flickers
            sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0 }
