@@ -12,7 +12,12 @@
     "dmg": 1,
     "speed": 60
   },
-  "behavior": {},
+  "behavior": {
+    "weapon": "claw",
+    "weaponOverrides": {
+      "damage": 3
+    }
+  },
   "hooks": false,
   "spawn": {
     "depths": [
@@ -142,6 +147,19 @@
               "turn": -154.9,
               "stretch": 2
             },
+            "arm_r": {
+              "turn": 153.7,
+              "stretch": 1.7
+            },
+            "extra_5": {
+              "turn": -36,
+              "stretch": 1.05
+            }
+          }
+        },
+        {
+          "time": 0.2,
+          "pose": {
             "arm_r": {
               "turn": 153.7,
               "stretch": 1.7
