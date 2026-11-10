@@ -93,6 +93,7 @@ export function startBench(seam) {
       catch (err) { panel.setError(`save failed: ${err.message}`) }
     },
     onRespawn: () => core.respawn(seam, name),
+    onWeapon: () => core.rearm(seam.getState(), name),
     onHeal: () => core.heal(seam.getState()),
   })
   let lastRead = -Infinity
