@@ -79,6 +79,10 @@ function mergeDefPatch(def, patch = {}) {
   if (patch.tuning) out.tuning = { ...patch.tuning }
   if (patch.params) out.params = { ...patch.params }
   if ('spawn' in patch) out.spawn = patch.spawn
+  if ('anims' in patch) {
+    if (patch.anims === null) delete out.anims
+    else out.anims = JSON.parse(JSON.stringify(patch.anims))
+  }
   return out
 }
 

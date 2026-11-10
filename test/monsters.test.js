@@ -554,3 +554,69 @@ describe('weapon overrides from the def', () => {
     assert.deepEqual(makeMonsterFromDef('wbad', 1, 1).weaponOverrides, { reach: 40 })
   })
 })
+
+describe('posed sequences in the game', () => {
+  const STRIKE = { phases: [{ time: 0.30, pose: {} }, { time: 0.35, pose: { a: { turn: -25 } } }, { time: 0.08, hit: true, pose: { a: { turn: 120 } } }] }
+  const armed = (over = {}) => ({ ...DEF, name: 'striker', behavior: { weapon: 'maul' }, anims: { attack: STRIKE }, ...over })
+  beforeEach(() => clearMonsters())
+
+  it('attaches cleaned anims to the params, not to own.params', async () => {
+    await load([armed()])
+    const d = getMonsterDef('striker')
+    assert.deepEqual(d.params.anims, { attack: STRIKE })
+    assert.equal('anims' in d.own.params, false)
+  })
+  it('the attack sequence sets the weapon timing (windup to the hit, the rest as follow-through)', async () => {
+    await load([armed()])
+    const e = makeMonsterFromDef('striker', 1, 1)
+    assert.ok(Math.abs(e.weaponOverrides.windup - 0.43) < 1e-9)
+    assert.ok(Math.abs(e.weaponOverrides.duration - 0.30) < 1e-9)
+    assert.ok(Math.abs(getEnemyWeapon(e).windup - 0.43) < 1e-9)
+    assert.equal(getEnemyWeapon(e).damage, WEAPONS.maul.damage)
+  })
+  it('no weapon: no timing stamped (Review Focus 5); no sequence: entity unchanged', async () => {
+    await load([armed({ behavior: {} }), { ...DEF, name: 'plain', behavior: { weapon: 'maul' } }])
+    assert.equal(makeMonsterFromDef('striker', 1, 1).weaponOverrides, undefined)
+    assert.equal(makeMonsterFromDef('plain', 1, 1).weaponOverrides, undefined)
+  })
+  it('broken anims load with a warning, never throw (Review Focus 4)', async () => {
+    const warns = []
+    await load([armed({ anims: { dance: 1, attack: { phases: 'x' } } })], { warn: m => warns.push(m) })
+    assert.deepEqual(getMonsterDef('striker').params.anims, {})
+    assert.ok(warns.some(w => w.includes('striker') && w.includes('anims')))
+  })
+  it('entityPose exposes the attack clock', async () => {
+    await load([armed()])
+    const e = { ...makeMonsterFromDef('striker', 2, 3), px: 80, py: 112 }
+    updateMonsterPose(e, 0.016)
+    assert.equal(entityPose(e).attack, null)
+    e.attack = { phase: 'windup', timer: 0.1, duration: 0.43 }
+    assert.deepEqual({ ...entityPose(e).attack, t: Math.round(entityPose(e).attack.t * 100) / 100 }, { phase: 'windup', t: 0.33 })
+    e.attack = { swing: 1 }
+    assert.equal(entityPose(e).attack.phase, 'swing')
+  })
+  it('an animation switch starts a blend and restarts animT', async () => {
+    await load([armed()])
+    const e = { ...makeMonsterFromDef('striker', 2, 3), px: 80, py: 112 }
+    updateMonsterPose(e, 0.016); updateMonsterPose(e, 0.016)
+    assert.ok(entityPose(e).animT > 0.016)
+    e.attack = { phase: 'windup', timer: 0.3, duration: 0.43 }
+    updateMonsterPose(e, 0.016)
+    assert.equal(entityPose(e).blend.from, 'idle')
+    assert.equal(entityPose(e).animT, 0)
+    updateMonsterPose(e, 0.016)
+    assert.ok(Math.abs(entityPose(e).blend.t - 0.016) < 1e-9)
+    e.attack = null
+    updateMonsterPose(e, 0.016)
+    assert.equal(entityPose(e).blend.from, 'attack')
+    assert.equal(entityPose(e).blend.at.phase, 'windup')
+  })
+  it('the attack starts with the windup the sequence set, then strikes', async () => {
+    await load([armed()])
+    const e = { ...makeMonsterFromDef('striker', 2, 3), px: 80, py: 112 }
+    const state = { player: { px: e.px + 10, py: e.py } }      // inside maul's 34 px reach; a windup > 0 does not strike yet
+    assert.equal(tryStartEnemyAttack(e, state), true)
+    assert.equal(e.attack.phase, 'windup')
+    assert.ok(Math.abs(e.attack.timer - 0.43) < 1e-9)
+  })
+})

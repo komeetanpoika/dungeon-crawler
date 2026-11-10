@@ -398,6 +398,16 @@ describe('pose sequences', () => {
     near(leg(pose('walk', { animT: 0.05, blend: { from: 'idle', at: 0, t: BLEND_TIME } })), 30 * ease(0.25), 1e-6)
   })
 
+  it('a built-in animation left behind keeps running on pose.t (Ruling 6)', () => {
+    const params = withAnims(STRIKE)                                  // attack is the only sequence; walk is built-in
+    const leg = p => angle(pieceTransforms(PARTS, params, p).get('leg_l'))
+    const atNow = leg(pose('walk', { t: 1.25 })), atThen = leg(pose('walk', { t: 0.1 }))
+    assert.ok(Math.abs(atNow - atThen) > 1e-3)                        // the two clocks give different walk values
+    const u = 0.04 / BLEND_TIME                                       // the blend itself is linear
+    const blended = leg(pose('attack', { t: 1.25, attack: { phase: 'windup', t: 0 }, blend: { from: 'walk', at: 0.1, t: 0.04 } }))
+    near(blended, atNow * (1 - u), 1e-6)
+  })
+
   it('the lunge builds through the windup and peaks on the hit', () => {
     const lungeX = (params, p) => { const c = recordingCtx(); rigOf().drawMonster(c, params, p, 32); return c.ops.find(o => o[0] === 'translate')[1] }
     const params = { ...withAnims(STRIKE), lunge: 0.5 }

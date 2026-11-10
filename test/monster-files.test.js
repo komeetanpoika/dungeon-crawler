@@ -114,6 +114,15 @@ describe('updateMonster', () => {
 })
 
 describe('mergeDefPatch', () => {
+  it('anims replace whole, null deletes, absent keeps', () => {
+    const def = { name: 'x', params: {}, anims: { walk: { phases: [{ time: 0.2, pose: {} }] } } }
+    const next = { attack: { phases: [{ time: 0.3, pose: {} }] } }
+    const out = mergeDefPatch(def, { anims: next })
+    assert.deepEqual(out.anims, next)
+    assert.notEqual(out.anims, next)
+    assert.equal('anims' in mergeDefPatch(def, { anims: null }), false)
+    assert.deepEqual(mergeDefPatch(def, { params: { bob: 1 } }).anims, def.anims)
+  })
   it('behaviour null deletes, stats merge, params/tuning replace, spawn replaces, rest survives', () => {
     const def = { rig: 'ogre', stats: { hp: 20, dmg: 2, speed: 50 }, behavior: { weapon: 'maul', weaponOverrides: { damage: 3 }, sightRange: 200 },
                   params: { bob: 1, wobble: 2 }, tuning: { a: 1 }, spawn: { depths: [3, 5], weight: 1 }, hooks: false, name: 'ogre' }

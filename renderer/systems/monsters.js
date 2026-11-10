@@ -7,6 +7,7 @@
 // module instead — see isStoryCreature below.
 import { clampParams, schemaErrors } from '../render/monster-rigs/schema.js'
 import { TILE_ART_PX, snapFacing, palette } from '../render/monster-rigs/pixel.js'
+import { cleanAnims, attackTiming, animOf } from '../render/monster-rigs/anims.js'
 import { registerMonsterAI } from '../data/enemy-ai.js'
 import { creatureAlpha } from './creatures.js'
 import { dyingAlpha } from './dying.js'
@@ -56,6 +57,7 @@ export async function registerMonsters(defs, opts = {}) {
       warn(`monsters: ${raw.name}: rig "${raw.rig}" missing or invalid — skipped`); continue
     }
     const params = clampParams(rig.PARAM_SCHEMA, raw.params ?? {}, m => warn(`monsters: ${raw.name}: ${m}`))
+    params.anims = cleanAnims(raw.anims, m => warn(`monsters: ${raw.name}: anims ${m}`))
     const stats = { hp: 10, dmg: 1, speed: 70, half: 8, ...(raw.stats ?? {}) }
     // A rig that knows its drawn extent owns the hitbox: collision and nav
     // clearance track the visuals, and the def's stats.half is a fallback
@@ -166,6 +168,10 @@ export function makeMonsterFromDef(name, x, y, { isBoss = false } = {}) {
       const v = d.behavior.weaponOverrides?.[k]
       if (Number.isFinite(v)) ov[k] = v
     }
+    // The attack sequence owns the timing: windup up to the hit card, the
+    // rest as follow-through. Only an armed monster can attack at all.
+    const timing = attackTiming(d.params.anims?.attack)
+    if (timing) { ov.windup = timing.windup; ov.duration = timing.followThrough }
   }
   return { type: name, x, y, hp: d.stats.hp, maxHp: d.stats.hp, damage: d.stats.dmg, inCombat: false,
     ...(d.behavior?.weapon ? { weaponId: d.behavior.weapon } : {}),
@@ -180,6 +186,7 @@ export function updateMonsterPose(e, delta) {
     t: 0, state: 'idle', stateT: 0, facing: 0, speed01: 0,
     seed: (((e.x ?? 0) * 31 + (e.y ?? 0) * 17) & 1023),
     prevPx: e.px, prevPy: e.py, hpSeen: e.hp, hitT: 0,
+    anim: null, animT: 0, blend: null,
   })
   p.t += delta
   const dx = e.px - p.prevPx, dy = e.py - p.prevPy
@@ -196,12 +203,31 @@ export function updateMonsterPose(e, delta) {
     : e.attack ? 'attack'
     : p.speed01 > 0.05 ? 'walk' : 'idle'
   if (next !== p.state) { p.state = next; p.stateT = 0 } else p.stateT += delta
+  // Which animation plays, and the clocks the cut-out engine reads: a switch
+  // starts a blend from where the old one was left and restarts animT.
+  const anim = animOf({ state: next, speed01: p.speed01, attack: e.attack })
+  if (e.attack) p.lastAttack = attackClock(e)
+  if (p.anim !== null && anim !== p.anim) {
+    p.blend = { from: p.anim, at: p.anim === 'attack' ? p.lastAttack : p.animT, t: 0 }
+    p.animT = 0
+  } else {
+    p.animT += delta
+    if (p.blend) p.blend.t += delta
+  }
+  p.anim = anim
+}
+
+// The attack's clock as the rig reads it: which half, and seconds into it.
+function attackClock(e) {
+  return e.attack ? { phase: e.attack.phase === 'windup' ? 'windup' : 'swing',
+                      t: Math.max(0, (e.attack.duration ?? 0) - (e.attack.timer ?? 0)) } : null
 }
 
 export function entityPose(e) {
   const p = e.pose ?? { t: 0, state: 'idle', stateT: 0, facing: 0, speed01: 0, seed: 0 }
   return { t: p.t, state: p.state, stateT: p.stateT, facing: p.facing, speed01: p.speed01, seed: p.seed,
            headAim: p.headAim, eyeGlow: p.eyeGlow ?? 0,
+           attack: attackClock(e), animT: p.animT ?? 0, blend: p.blend ?? null,
            // hook-written channels live on the entity (a hook may run before
            // the first pose update): how far it has sunk, burned, flickers
            sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0 }

@@ -138,7 +138,7 @@ function motionOf(parts, params, pose) {
   const b = pose.blend
   if (!b || !hasSequences(params.anims) || !(b.t < BLEND_TIME)) return current
   const from = b.from === 'attack' || b.from === 'walk' ? b.from : 'idle'
-  const builtIn = { ...pose, state: from, speed01: from === 'walk' ? 1 : 0, t: from === 'attack' ? pose.t : b.at }
+  const builtIn = { ...pose, state: from, speed01: from === 'walk' ? 1 : 0, t: pose.t }
   const left = animMotion(parts, params, from, b.at, builtIn)
   const u = Math.max(0, b.t / BLEND_TIME)
   return piece => {
