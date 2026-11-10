@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { schemaErrors, defaultParams } from '../renderer/render/monster-rigs/schema.js'
-import { CUTOUT_SCHEMA, pieceTransforms, makeCutoutRig } from '../renderer/render/monster-rigs/cutout.js'
+import { CUTOUT_SCHEMA, pieceTransforms, makeCutoutRig, pieceEnd, pieceFrames, stillMatrix } from '../renderer/render/monster-rigs/cutout.js'
+import { cleanAnims, ease, BLEND_TIME } from '../renderer/render/monster-rigs/anims.js'
 import { makeSoftCanvas } from '../tools/monster-cutter/soft-canvas.js'
 import { composeCut } from '../tools/monster-cutter/compose.js'
 import { encodeMask } from '../tools/monster-cutter/mask.js'
@@ -305,5 +306,116 @@ describe('cutout rig', () => {
       assert.equal(alpha(max, x, y), 255, `turned ${ax},${ay}`)
     }
     assert.ok(n > 200)
+  })
+})
+
+describe('pose sequences', () => {
+  const byId = id => PARTS.pieces.find(p => p.id === id)
+  const app = (m, [x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
+  const STRIKE = cleanAnims({ attack: { phases: [
+    { time: 0.30, pose: {} },
+    { time: 0.35, pose: { arm_l: { turn: -25 } } },
+    { time: 0.08, hit: true, pose: { arm_l: { turn: 120, stretch: 1.35 } } },
+  ] } })
+  const withAnims = anims => ({ ...P, anims })
+
+  it('pieceEnd is the rect point farthest from the joint', () => {
+    for (const p of drawable) {
+      const [ex, ey] = pieceEnd(p), [x, y] = p.at, [w, h] = [p.rect[2], p.rect[3]]
+      const d = Math.hypot(ex - p.pivot[0], ey - p.pivot[1])
+      for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) assert.ok(d >= Math.hypot(cx - p.pivot[0], cy - p.pivot[1]) - 1e-9)
+    }
+  })
+
+  it('a still pose turns and stretches exactly that piece', () => {
+    const tr = pieceTransforms(PARTS, P, { state: 'idle', t: 0, still: { arm_l: { turn: 90, stretch: 2 } } })
+    const arm = byId('arm_l'), m = tr.get('arm_l'), e = pieceEnd(arm)
+    const [px, py] = app(m, arm.pivot); near(px, arm.pivot[0]); near(py, arm.pivot[1])
+    const [qx, qy] = app(m, e)
+    near(Math.hypot(qx - arm.pivot[0], qy - arm.pivot[1]), 2 * Math.hypot(e[0] - arm.pivot[0], e[1] - arm.pivot[1]), 1e-6)
+    assert.deepEqual(tr.get('leg_l'), [1, 0, 0, 1, 0, 0])
+  })
+
+  it('a child rides a stretched parent rigidly', () => {
+    const fr = pieceFrames(PARTS, P, { state: 'idle', t: 0, still: { torso: { turn: 10, stretch: 1.5 } } })
+    const head = fr.get('head').world, torso = fr.get('torso').world, hp = byId('head').pivot
+    near(head[0] * head[0] + head[1] * head[1], 1, 1e-9)            // no scale on the head
+    near(head[0] * head[3] - head[1] * head[2], 1, 1e-9)
+    const a = app(head, hp), b = app(torso, hp); near(a[0], b[0]); near(a[1], b[1])
+  })
+
+  it('no sequences: transforms and draw ops are identical to today (Review Focus 1)', () => {
+    const rig = withImage()
+    for (const state of ['idle', 'walk', 'attack', 'hit', 'death'])
+      for (const t of [0.1, 0.6, 1.3]) {
+        const base = pose(state, { t })
+        const extra = { ...base, animT: 0.05, blend: { from: 'walk', at: 0.2, t: 0.03 }, attack: { phase: 'windup', t: 0.1 } }
+        for (const params of [withAnims(undefined), withAnims({}), withAnims(cleanAnims({ walk: { phases: [{ time: 0.2, pose: {} }] } }))]) {
+          assert.deepEqual([...pieceTransforms(PARTS, params, extra)], [...pieceTransforms(PARTS, P, base)], `${state} ${t}`)
+          const c1 = recordingCtx(), c2 = recordingCtx()
+          rig.drawMonster(c1, P, base, 32); rig.drawMonster(c2, params, extra, 32)
+          assert.deepEqual(c2.ops, c1.ops, `${state} ${t}`)
+        }
+      }
+  })
+
+  // A stretched piece's turn, read as the studio handle reads it: how far the
+  // line from its joint to its far end has turned (a stretch along a diagonal
+  // tilts the matrix's columns, so angle() would not read it).
+  const turnOf = (m, piece) => {
+    const e = pieceEnd(piece), a = app(m, piece.pivot), b = app(m, e)
+    const d = (Math.atan2(b[1] - a[1], b[0] - a[0]) - Math.atan2(e[1] - piece.pivot[1], e[0] - piece.pivot[0])) * 180 / Math.PI
+    return ((d + 540) % 360) - 180
+  }
+
+  it('the attack follows its clock: start, pull up, hit, back', () => {
+    const at = (phase, t, state = 'attack') => turnOf(pieceTransforms(PARTS, withAnims(STRIKE), pose(state, { attack: { phase, t } })).get('arm_l'), byId('arm_l'))
+    near(at('windup', 0), 0, 1e-6)
+    near(at('windup', 0.35), -25, 1e-6)
+    near(at('windup', 0.43), 120, 1e-6)
+    near(at('swing', 0.30), 0, 1e-6)
+  })
+
+  it('a hit flash in the windup keeps the sequence and still flashes white (Review Focus 3)', () => {
+    near(angle(pieceTransforms(PARTS, withAnims(STRIKE), pose('hit', { attack: { phase: 'windup', t: 0.35 } })).get('arm_l')), -25, 1e-6)
+    const ctx = recordingCtx()
+    rigOf().drawMonster(ctx, withAnims(STRIKE), pose('hit', { attack: { phase: 'windup', t: 0.35 } }), 32)
+    assert.ok(ctx.ops.length > 0)
+    assert.equal(ctx.fillStyle, '#f8f8f8')
+  })
+
+  it('walk and idle loop on animT', () => {
+    const anims = cleanAnims({ walk: { phases: [{ time: 0.2, pose: {} }, { time: 0.2, pose: { leg_l: { turn: 30 } } }] } })
+    const leg = animT => angle(pieceTransforms(PARTS, withAnims(anims), pose('walk', { animT })).get('leg_l'))
+    near(leg(0.2), 30, 1e-6); near(leg(0.6), 30, 1e-6); near(leg(0.4), 0, 1e-6)
+  })
+
+  it('switching animations blends over BLEND_TIME when the monster has a sequence', () => {
+    const anims = cleanAnims({ walk: { phases: [{ time: 0.2, pose: {} }, { time: 0.2, pose: { leg_l: { turn: 30 } } }] } })
+    const leg = p => angle(pieceTransforms(PARTS, withAnims(anims), p).get('leg_l'))
+    // the idle built-in leg is 0 (legs don't move while idle), so half way through the blend the walk value is halved
+    near(leg(pose('walk', { animT: 0.05, blend: { from: 'idle', at: 0, t: BLEND_TIME / 2 } })), 0.5 * 30 * ease(0.25), 1e-6)
+    near(leg(pose('walk', { animT: 0.05, blend: { from: 'idle', at: 0, t: BLEND_TIME } })), 30 * ease(0.25), 1e-6)
+  })
+
+  it('the lunge builds through the windup and peaks on the hit', () => {
+    const lungeX = (params, p) => { const c = recordingCtx(); rigOf().drawMonster(c, params, p, 32); return c.ops.find(o => o[0] === 'translate')[1] }
+    const params = { ...withAnims(STRIKE), lunge: 0.5 }
+    assert.equal(lungeX(params, pose('attack', { attack: { phase: 'windup', t: 0 } })), 0)
+    assert.equal(lungeX(params, pose('attack', { attack: { phase: 'windup', t: 0.43 } })), Math.round(0.5 * 32))
+    assert.equal(lungeX({ ...P, lunge: 0.5 }, pose('attack', { attack: { phase: 'windup', t: 0 } })), Math.round(0.5 * 32)) // built-in: unchanged
+  })
+
+  it('unknown piece ids are ignored (Review Focus 2)', () => {
+    const anims = cleanAnims({ attack: { phases: [{ time: 0.2, pose: { ghost: { turn: 90 } } }, { time: 0.2, hit: true, pose: { ghost: { turn: 45 }, arm_l: { turn: 30 } } }] } })
+    assert.doesNotThrow(() => rigOf().drawMonster(recordingCtx(), withAnims(anims), pose('attack', { attack: { phase: 'windup', t: 0.2 } }), 32))
+    near(angle(pieceTransforms(PARTS, withAnims(anims), pose('attack', { attack: { phase: 'windup', t: 0.2 } })).get('arm_l')), 30, 1e-6)
+  })
+
+  it('drawnTop covers a raised pose; stillMatrix places the feet where drawMonster does', () => {
+    const raised = cleanAnims({ attack: { phases: [{ time: 0.2, pose: {} }, { time: 0.2, hit: true, pose: { head: { stretch: 2 } } }] } }) // the head doubles upward past the figure's top
+    assert.ok(rigOf().drawnTop(withAnims(raised), 32) < rigOf().drawnTop(P, 32))
+    const m = stillMatrix(PARTS, P, 32), k = P.size * 32 / PARTS.figure.h
+    assert.deepEqual(m, [k, 0, 0, k, -PARTS.figure.w / 2 * k, Math.round(0.45 * 32) - PARTS.figure.h * k])
   })
 })

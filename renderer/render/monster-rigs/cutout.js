@@ -8,10 +8,23 @@
 // while walking, a lunge and swell on attack, the white flash on a hit, a
 // shrink while dying, and a mirror so the drawing faces where it walks. Feet
 // stand just below the entity's centre; the hit circle sits on the torso.
+// Posed sequences (params.anims, see anims.js) replace that built-in motion
+// for the animations the user posed: idle and walk loop on pose.animT, the
+// attack follows the game's attack clock (pose.attack, windup then swing) so
+// the hit card lands with the strike, and the lunge and swell build through
+// the windup and ease off in the follow-through. A posed piece turns and
+// stretches: the stretch runs along the line from its joint to its far end
+// (pieceEnd), and the pieces hung on it ride that end, turned with it but
+// never distorted (pieceFrames' carry). On a switch of animation a monster
+// with any sequence blends from the pose it left over BLEND_TIME, built-in
+// motion included. pose.still draws exactly the given pose with no motion
+// (the studio's posing view; stillMatrix places it). A monster with no
+// sequence draws exactly as before, number for number.
 // Without an image (Node tests, the cutter preview, before the atlas loads)
 // each piece is a plain role-coloured rectangle. Everything here is shipped
 // to the game: nothing may import from tools/.
 import { drawSheetCell } from './pixel.js'
+import { isActive, hasSequences, loopLength, samplePose, attackTiming, attackTime, animOf, ease, BLEND_TIME } from './anims.js'
 
 export const CUTOUT_SCHEMA = [
   { key: 'size',        label: 'Height (tiles)',       group: 'body',   type: 'range', min: 1.5, max: 6, step: 0.25, default: 3 },
@@ -83,41 +96,147 @@ function limbMotion(piece, parts, p, pose) {
   return { deg, lift }
 }
 
-// Canvas-style affine [a b c d e f] per piece id, in figure px: its own turn
-// about its pivot, composed parent before child. No whole-figure effects.
-export function pieceTransforms(parts, params, pose) {
+// The point of a piece's drawn rect (its four corners, then its four edge
+// midpoints) farthest from its joint, in figure px: where the studio's handle
+// sits, and the direction a stretch lengthens the piece.
+export function pieceEnd(piece) {
+  const [x, y] = piece.at, w = piece.rect?.[2] ?? 0, h = piece.rect?.[3] ?? 0, [px, py] = piece.pivot
+  let best = [x, y], bd = -1
+  for (const q of [[x, y], [x + w, y], [x, y + h], [x + w, y + h], [x + w / 2, y], [x + w / 2, y + h], [x, y + h / 2], [x + w, y + h / 2]]) {
+    const d = Math.hypot(q[0] - px, q[1] - py)
+    if (d > bd) { bd = d; best = q }
+  }
+  return best
+}
+
+const REST = { deg: 0, lift: 0, stretch: 1 }
+
+// One animation's per-piece values at its clock `at` (a number for idle and
+// walk, the attack clock for attack): its sequence, sampled once here, or the
+// built-in motion of `builtIn` (a pose in that state).
+function animMotion(parts, params, name, at, builtIn) {
+  const seq = params.anims?.[name]
+  if (!isActive(seq)) return piece => ({ ...limbMotion(piece, parts, params, builtIn), stretch: 1 })
+  const t = name === 'attack' ? (at && typeof at === 'object' ? attackTime(seq, at) : 0) : (at ?? 0) % loopLength(seq)
+  const sampled = samplePose(seq, t)
+  return piece => {
+    if (!Object.hasOwn(sampled, piece.id)) return REST
+    const v = sampled[piece.id]
+    return { deg: v.turn, lift: 0, stretch: v.stretch }
+  }
+}
+
+// Each piece's turn (degrees, clockwise), lift (figure px up) and stretch for
+// a pose: a still pose as given; otherwise the playing animation (sequence or
+// built-in), blended from the animation just left while a monster with any
+// sequence is inside BLEND_TIME of the switch.
+function motionOf(parts, params, pose) {
+  const still = pose.still
+  if (still) return piece => ({ deg: still[piece.id]?.turn ?? 0, lift: 0, stretch: still[piece.id]?.stretch ?? 1 })
+  const name = animOf(pose)
+  const current = animMotion(parts, params, name, name === 'attack' ? pose.attack : pose.animT ?? pose.t, pose)
+  const b = pose.blend
+  if (!b || !hasSequences(params.anims) || !(b.t < BLEND_TIME)) return current
+  const from = b.from === 'attack' || b.from === 'walk' ? b.from : 'idle'
+  const builtIn = { ...pose, state: from, speed01: from === 'walk' ? 1 : 0, t: from === 'attack' ? pose.t : b.at }
+  const left = animMotion(parts, params, from, b.at, builtIn)
+  const u = Math.max(0, b.t / BLEND_TIME)
+  return piece => {
+    const x = left(piece), y = current(piece)
+    return { deg: x.deg + (y.deg - x.deg) * u, lift: x.lift + (y.lift - x.lift) * u, stretch: x.stretch + (y.stretch - x.stretch) * u }
+  }
+}
+
+// Canvas-style affine [a b c d e f] pairs per piece id, in figure px. `world`
+// draws the piece: its own turn and stretch about its pivot, lifted, composed
+// on `carry`, its placement on its parent (world = carry · local). A piece on
+// a stretched parent rides the parent's stretched drawing at its own joint
+// but takes only the parent's rigid turn, so it is never distorted; on an
+// unstretched parent carry is simply the parent's world. No whole-figure
+// effects.
+export function pieceFrames(parts, params, pose) {
   const byId = new Map(parts.pieces.map(p => [p.id, p]))
+  const motion = motionOf(parts, params, pose)
   const out = new Map()
+  const rigidWorld = new Map()                        // stretched pieces only: their world without the stretch
   const build = piece => {
     if (out.has(piece.id)) return out.get(piece.id)
-    out.set(piece.id, IDENTITY)                       // guards a parent cycle
-    const { deg, lift } = limbMotion(piece, parts, params, pose)
+    const frame = { world: IDENTITY, carry: IDENTITY }
+    out.set(piece.id, frame)                          // guards a parent cycle
+    const { deg, lift, stretch } = motion(piece)
     const c = Math.cos(deg * RAD), s = Math.sin(deg * RAD), [px, py] = piece.pivot
-    const local = deg === 0 && lift === 0 ? IDENTITY : [c, s, -s, c, px - c * px + s * py, py - s * px - c * py - lift]
+    const rigid = deg === 0 && lift === 0 ? IDENTITY : [c, s, -s, c, px - c * px + s * py, py - s * px - c * py - lift]
+    let local = rigid, stretched = false
+    if (stretch !== 1) {
+      const [ex, ey] = pieceEnd(piece), len = Math.hypot(ex - px, ey - py)
+      if (len > 1e-9) {
+        const ux = (ex - px) / len, uy = (ey - py) / len, g = stretch - 1
+        const a = 1 + g * ux * ux, b = g * ux * uy, d = 1 + g * uy * uy
+        local = mul(rigid, [a, b, b, d, px - a * px - b * py, py - b * px - d * py])
+        stretched = true
+      }
+    }
     const parent = piece.parent && byId.get(piece.parent)
-    const world = parent ? mul(build(parent), local) : local
-    out.set(piece.id, world)
-    return world
+    if (parent) {
+      const pf = build(parent), pr = rigidWorld.get(parent.id)
+      if (!pr) frame.carry = pf.world
+      else {
+        const on = apply(pf.world, px, py), off = apply(pr, px, py)
+        frame.carry = [pr[0], pr[1], pr[2], pr[3], pr[4] + on.x - off.x, pr[5] + on.y - off.y]
+      }
+      frame.world = mul(frame.carry, local)
+    } else frame.world = local
+    if (stretched) rigidWorld.set(piece.id, parent ? mul(frame.carry, rigid) : rigid)
+    return frame
   }
   for (const piece of parts.pieces) build(piece)
   return out
 }
 
+// The `world` of each piece (see pieceFrames).
+export function pieceTransforms(parts, params, pose) {
+  const out = new Map()
+  for (const [id, f] of pieceFrames(parts, params, pose)) out.set(id, f.world)
+  return out
+}
+
+// Figure px → px from the entity centre for a still pose at tile size S:
+// unflipped, no lean, bob, lunge or breath, feet where drawMonster puts them.
+export function stillMatrix(parts, params, S) {
+  const { figure } = parts, k = params.size * S / figure.h
+  return [k, 0, 0, k, -figure.w / 2 * k, R(FOOT * S) - figure.h * k]
+}
+
+// How far a playing attack sequence has built (0..1): up through the windup,
+// back down through the follow-through. null without one.
+function attackCurve(p, pose) {
+  if (animOf(pose) !== 'attack') return null
+  const tm = attackTiming(p.anims?.attack)
+  if (!tm) return null
+  const part = (t, d) => d > 0 ? ease(t / d) : 1
+  const t = pose.attack.t ?? 0
+  return pose.attack.phase === 'swing' ? 1 - part(t, tm.followThrough) : part(t, tm.windup)
+}
+
 // The whole-figure state of a pose at tile size S: scale from art px to
-// screen px, lean, bob, lunge, flip.
+// screen px, lean, bob, lunge, flip. A playing attack sequence drives the
+// lunge and swell by its curve, whatever the pose state (a hit flash too).
 function frameOf(parts, p, pose, S) {
   const t = pose.t ?? 0, state = pose.state
   const i = Math.floor(t * p.gaitFreq) % 4
   const walking = isWalking(pose)
   const dying = state === 'death' ? Math.min(1, (pose.stateT ?? 0) / DEATH) : 0
   const breath = !walking && Math.floor(t * 2) % 4 >= 2 ? BREATH : 1
-  const grow = (state === 'attack' ? SWELL : 1) * (1 - 0.4 * dying)
+  const curve = attackCurve(p, pose)
+  const swell = curve === null ? (state === 'attack' ? SWELL : 1) : 1 + (SWELL - 1) * curve
+  const grow = swell * (1 - 0.4 * dying)
   return {
     k: p.size * S * grow * breath / parts.figure.h,
     flip: mirrored(parts, pose.facing),
     lean: walking ? LEAN[i] * p.wobble * RAD : 0,
     bob: walking ? R(BOB[i] * p.bob * S * 0.1) : 0,
-    lunge: state === 'attack' ? R(Math.cos(pose.facing ?? 0) * p.lunge * S) : 0,
+    lunge: curve !== null ? R(Math.cos(pose.facing ?? 0) * p.lunge * S * curve)
+      : state === 'attack' ? R(Math.cos(pose.facing ?? 0) * p.lunge * S) : 0,
   }
 }
 
@@ -154,16 +273,24 @@ export function makeCutoutRig({ id, parts, imageUrl, extend = null }) {
   }
 
   // The top of the drawing at its tallest living pose, in px from the entity
-  // centre, so the health bar clears it. Memoised: the bar asks every frame.
-  let topKey = null, topVal = 0
+  // centre, so the health bar clears it: the built-in poses of every
+  // animation left unposed, and every phase of every posed one held still in
+  // its animation's frame (the attack's at full swell). Memoised: the bar
+  // asks every frame.
+  let topKey = null, topAnims = null, topVal = 0
   function drawnTop(p, S) {
     const key = S + '|' + CUTOUT_SCHEMA.map(d => p[d.key]).join(',')
-    if (key === topKey) return topVal
+    if (key === topKey && p.anims === topAnims) return topVal
+    const posed = name => isActive(p.anims?.[name])
+    const CLOCK = { phase: 'windup', t: 0 }, FULL = { phase: 'windup', t: Infinity }
+    const idle = [0.25, 0.75, 1.25, 1.75].map(t => ({ t, state: 'idle' }))
+    const walk = [0, 1, 2, 3].map(i => ({ t: (i + 0.5) / p.gaitFreq, state: 'walk', speed01: 1 }))
+    const attack = [...idle, ...walk].map(f => ({ ...f, state: 'attack', attack: CLOCK }))
+    const frames = { idle, walk, attack: attack.map(f => ({ ...f, attack: FULL })) }
     const poses = []
-    for (const t of [0.25, 0.75, 1.25, 1.75]) poses.push({ t, state: 'idle' }, { t, state: 'attack' })
-    for (let i = 0; i < 4; i++) {
-      const t = (i + 0.5) / p.gaitFreq
-      poses.push({ t, state: 'walk', speed01: 1 }, { t, state: 'attack', speed01: 1 })
+    for (const [name, list] of [['idle', idle], ['walk', walk], ['attack', attack]]) {
+      if (!posed(name)) { poses.push(...list); continue }
+      for (const phase of p.anims[name].phases) for (const f of frames[name]) poses.push({ ...f, still: phase.pose })
     }
     let top = Infinity
     for (const pose of poses) {
@@ -180,7 +307,7 @@ export function makeCutoutRig({ id, parts, imageUrl, extend = null }) {
         }
       }
     }
-    topKey = key
+    topKey = key; topAnims = p.anims
     return (topVal = Math.floor(top))
   }
 
