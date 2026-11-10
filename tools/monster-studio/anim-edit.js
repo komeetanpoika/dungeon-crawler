@@ -73,18 +73,26 @@ export function resetCard(anims, name, i) {
   return editAnim(anims, name, phases => { if (phases[i]) phases[i].pose = {} })
 }
 
-export function toSaved(anims, pieceIds) {
-  const known = new Set(pieceIds)
+// An animation that is still exactly the start card a new one begins with
+// (one card, rest pose, the start time, no name or hit), as a reset on an
+// animation never posed leaves it: it plays nothing, so it is not saved.
+const START = startAnim().phases[0]
+const untouched = phases => phases.length === 1 && phases[0].time === START.time && !phases[0].name && !phases[0].hit
+  && !Object.keys(phases[0].pose).length
+
+// The animations as the def stores them: sparse (rest values left out) and
+// rounded. Piece ids the current cut lacks are kept (Ruling 9): the engine
+// ignores them, and a re-cut, even one undone later, must not wipe poses.
+export function toSaved(anims) {
   const out = {}
   for (const [name, anim] of Object.entries(anims ?? {})) {
     if (!anim?.phases?.length) continue
-    out[name] = { phases: anim.phases.map(ph => {
+    const phases = anim.phases.map(ph => {
       const pose = {}
       for (const [id, ch] of Object.entries(ph.pose ?? {})) {
-        if (!known.has(id)) continue
         const c = {}
-        if (typeof ch.turn === 'number') { const t = fix(round(ch.turn, 0.1), 1); if (t !== 0) c.turn = t }
-        if (typeof ch.stretch === 'number') { const s = fix(round(ch.stretch, 0.01), 2); if (s !== 1) c.stretch = s }
+        if (typeof ch?.turn === 'number') { const t = fix(round(ch.turn, 0.1), 1); if (t !== 0) c.turn = t }
+        if (typeof ch?.stretch === 'number') { const s = fix(round(ch.stretch, 0.01), 2); if (s !== 1) c.stretch = s }
         if (Object.keys(c).length) pose[id] = c
       }
       const p = { time: fix(round(ph.time, 0.01), 2) }
@@ -92,7 +100,8 @@ export function toSaved(anims, pieceIds) {
       if (ph.hit) p.hit = true
       p.pose = pose
       return p
-    }) }
+    })
+    if (!untouched(phases)) out[name] = { phases }
   }
   return out
 }

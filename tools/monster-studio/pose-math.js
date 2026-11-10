@@ -28,3 +28,20 @@ export function dragValues({ joint, restEnd, mouse, prevTurn = 0 }) {
     : Math.min(LIMITS.stretch[1], Math.max(LIMITS.stretch[0], Math.hypot(mx, my) / restLen))
   return { turn, stretch }
 }
+
+// Grabbing a handle: the drag moves the dot by the pointer's travel from
+// where it went down, never onto the pointer (a press can land up to the
+// hit radius off the dot), and nothing moves until the pointer has left a
+// small dead zone, so a plain click on a dot only selects its piece.
+export const DEAD_ZONE = 3       // canvas px
+
+export function startGrab(tip, mouse) {
+  return { dx: tip.x - mouse.x, dy: tip.y - mouse.y, from: { x: mouse.x, y: mouse.y }, live: false }
+}
+
+// Where the grabbed dot is with the pointer at `mouse`, or null while a
+// grab that has not gone live is still inside the dead zone.
+export function grabPoint(grab, mouse, deadZone = DEAD_ZONE) {
+  if (!grab.live && Math.hypot(mouse.x - grab.from.x, mouse.y - grab.from.y) < deadZone) return null
+  return { x: mouse.x + grab.dx, y: mouse.y + grab.dy }
+}

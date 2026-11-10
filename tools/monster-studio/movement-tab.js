@@ -16,8 +16,8 @@ import { clampParams, sparseValues } from '/renderer/render/monster-rigs/schema.
 import { ANIM_NAMES, cleanAnims, isActive, attackTiming, loopLength } from '/renderer/render/monster-rigs/anims.js'
 import { startAnim, addPhase, deletePhase, setTime, setHit, setName, setPieces, resetPieces, resetCard, toSaved, timingSummary }
   from '/tools/monster-studio/anim-edit.js'
-import { posablePieces, jointGroups } from '/tools/monster-studio/pose-math.js'
-import { makePreviewClock } from '/tools/monster-studio/preview-clock.js'
+import { jointGroups } from '/tools/monster-studio/pose-math.js'
+import { makePreviewClock, previewZoom } from '/tools/monster-studio/preview-clock.js'
 import { mountPoseEditor, drawStill } from '/tools/monster-studio/pose-editor.js'
 import { mountPhaseCards } from '/tools/monster-studio/phase-cards.js'
 import { toast } from '/tools/tile-editor/toast.js'
@@ -25,6 +25,7 @@ import { toast } from '/tools/tile-editor/toast.js'
 const SAVE_DELAY = 400
 const PLAIN_STAGE = 480       // the stage canvas on its own (code-drawn and story monsters)
 const PREVIEW_STAGE = [380, 400] // the stage as the posing screen's preview
+const PREVIEW_ORIGIN = { x: 0.5, y: 0.82 } // its entity centre: the feet near the bottom, room above for raised poses
 const ANIM_LABEL = { idle: 'Idle', walk: 'Walk', attack: 'Attack' }
 const MOVE_COLOURS = ['#5a8fd8', '#8a6bd8', '#3fa37a', '#d8a13f']
 const BACK_COLOUR = '#6b7c93', HIT_COLOUR = '#e0533d'
@@ -89,7 +90,6 @@ export function mountMovementTab(rootEl, { api }) {
   // posing state, for a monster with a cut
   let posable = false
   let figure = null          // { rig, engine, parts, params, groups } for the posing view and thumbnails
-  let pieceIds = []          // the posable pieces, the ones a saved pose may name
   let working = {}           // the animations as edited; the engine plays cleanAnims(working)
   let hasWeapon = true
   let animName = 'idle'
@@ -107,7 +107,7 @@ export function mountMovementTab(rootEl, { api }) {
     if (!dirty) return inflight
     const forName = name, patch = { params: sparseValues(schema, params, baseline) }
     if (posable) {
-      const saved = toSaved(working, pieceIds)
+      const saved = toSaved(working)
       patch.anims = Object.keys(saved).length ? saved : null // nothing posed: no anims key in the def
     }
     dirty = false
@@ -242,6 +242,7 @@ export function mountMovementTab(rootEl, { api }) {
     if (on) previewHead.after(canvas, simBar, stageBar)
     else left.append(canvas, simBar, stageBar)
     stage.setStateButtons(!on)
+    stage.setOrigin(on ? PREVIEW_ORIGIN : undefined)
     if (!on) {
       stage.setPoseExtra(null)
       figure = null
@@ -260,14 +261,25 @@ export function mountMovementTab(rootEl, { api }) {
     rig._setSheetImage(img)
   }
 
+  // The preview opens at a zoom its tallest pose (rig.drawnTop covers every
+  // card) and its rest drawing with the lunge fit; the slider moves it on.
+  function fitPreview(rig, parts) {
+    const { w, h } = parts.figure
+    const halfWidth = (w / 2 * params.size / h + params.lunge) * 32
+    const z = previewZoom({ top: rig.drawnTop?.(params, 32) ?? null, halfWidth }, ...PREVIEW_STAGE, PREVIEW_ORIGIN,
+      { min: Number(zoom.min), max: 2, step: Number(zoom.step) })
+    zoom.value = String(z)
+    stage.zoom = z
+  }
+
   function startPosing(view, rig, engine, parts) {
-    if (posingFor !== view.name) {
+    const fresh = posingFor !== view.name
+    if (fresh) {
       animName = 'idle'
       selectedCard = { idle: 0, walk: 0, attack: 0 }
       selectedPiece = null
       posingFor = view.name
     }
-    pieceIds = posablePieces(parts)
     const groups = jointGroups(parts)
     if (!groups.has(selectedPiece)) selectedPiece = null
     working = cleanAnims(view.def.anims)
@@ -275,7 +287,8 @@ export function mountMovementTab(rootEl, { api }) {
     hasWeapon = !!view.def.behavior?.weapon
     figure = { rig, engine, parts, params, groups }
     setPosable(true)
-    previewClock = makePreviewClock()
+    if (fresh) fitPreview(rig, parts)
+    previewClock = makePreviewClock({ faces: parts.faces })
     previewClock.select(animName, params.anims, stage.sim.t)
     playheadAt = null
     stage.setPoseExtra(sim => {

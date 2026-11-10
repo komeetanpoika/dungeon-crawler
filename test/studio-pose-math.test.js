@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { posablePieces, jointGroups, dragValues } from '../tools/monster-studio/pose-math.js'
+import { posablePieces, jointGroups, dragValues, startGrab, grabPoint, DEAD_ZONE } from '../tools/monster-studio/pose-math.js'
 
 const piece = (id, parent, pivot, rect = [0, 0, 4, 4]) => ({ id, role: 'arm', parent, pivot, rect, at: [0, 0] })
 const PARTS = { pieces: [
@@ -31,5 +31,21 @@ describe('pose-math', () => {
     assert.ok(Math.abs(dragValues({ joint, restEnd, mouse, prevTurn: 175 }).turn - 190) < 1e-9)
     assert.ok(Math.abs(dragValues({ joint, restEnd, mouse, prevTurn: -175 }).turn - -170) < 1e-9)
     assert.equal(dragValues({ joint, restEnd, mouse: { x: 10, y: 0 }, prevTurn: 359 }).turn, 360)
+  })
+  it('a grab moves the dot by the pointer\'s travel, not onto the pointer, and a click moves nothing', () => {
+    const joint = { x: 0, y: 0 }, tip = { x: 10, y: 0 }
+    const press = { x: 10, y: 14 }                                   // 14 px off the dot, inside the hit radius
+    const grab = startGrab(tip, press)
+    assert.equal(grabPoint(grab, press), null)                       // pressed, not moved
+    assert.equal(grabPoint(grab, { x: 11, y: 15.5 }), null)          // hand jitter inside the dead zone
+    assert.ok(DEAD_ZONE >= 2 && DEAD_ZONE <= 4)
+    const at = grabPoint(grab, { x: 10, y: 18 })                     // 4 px down: past the dead zone
+    assert.deepEqual(at, { x: 10, y: 4 })                            // the dot, moved 4 px down
+    const v = dragValues({ joint, restEnd: tip, mouse: at })
+    assert.ok(Math.abs(v.turn - Math.atan2(4, 10) * 180 / Math.PI) < 1e-9)  // a small turn...
+    const snap = dragValues({ joint, restEnd: tip, mouse: { x: 10, y: 18 } })
+    assert.ok(snap.turn > 2 * v.turn && snap.stretch > 1.9)          // ...not the snap to the pointer
+    grab.live = true                                                 // once dragging, the dead zone is gone
+    assert.deepEqual(grabPoint(grab, { x: 10, y: 15 }), { x: 10, y: 1 })
   })
 })

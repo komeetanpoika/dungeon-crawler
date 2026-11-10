@@ -38,15 +38,25 @@ describe('anim-edit', () => {
     assert.deepEqual(resetCard(anims, 'walk', 1).walk.phases[1].pose, {})
     assert.equal(timingSummary(anims.walk, 'walk').windup, undefined)
   })
-  it('toSaved is sparse, rounded, and prunes pieces a re-cut removed (Review Focus 2)', () => {
-    const anims = { idle: startAnim(), walk: { phases: [] }, attack: { phases: [
+  it('toSaved is sparse and rounded, and keeps pieces the current cut lacks (Ruling 9)', () => {
+    const anims = { walk: { phases: [] }, attack: { phases: [
       { time: 0.3, pose: { arm_l: { turn: 0, stretch: 1 } } },
-      { time: 0.123456, hit: true, pose: { arm_l: { turn: 12.345, stretch: 1.23456 }, gone: { turn: 9, stretch: 1 } } },
+      { time: 0.123456, hit: true, pose: { arm_l: { turn: 12.345, stretch: 1.23456 }, gone: { turn: 9.04, stretch: 1.004 } } },
     ] } }
-    assert.deepEqual(toSaved(anims, ['arm_l', 'arm_r']), {
-      idle: { phases: [{ time: 0.3, pose: {} }] },
-      attack: { phases: [{ time: 0.3, pose: {} }, { time: 0.12, hit: true, pose: { arm_l: { turn: 12.3, stretch: 1.23 } } }] },
+    assert.deepEqual(toSaved(anims), {
+      attack: { phases: [{ time: 0.3, pose: {} }, { time: 0.12, hit: true, pose: { arm_l: { turn: 12.3, stretch: 1.23 }, gone: { turn: 9 } } }] },
     })
+  })
+  it('toSaved leaves out an animation that is still the untouched start card (a reset on a new one)', () => {
+    assert.deepEqual(toSaved({ idle: startAnim() }), {})
+    assert.deepEqual(toSaved(resetCard({}, 'walk', 0)), {})
+    assert.deepEqual(toSaved(resetPieces({}, 'attack', 0, ['arm_l'])), {})
+    assert.deepEqual(toSaved(setPieces({}, 'idle', 0, ['arm_l'], { turn: 0, stretch: 1 })), {})   // posed back to rest
+    // anything the user did to the card keeps it
+    assert.deepEqual(toSaved(setPieces({}, 'idle', 0, ['arm_l'], { turn: 10, stretch: 1 })), { idle: { phases: [{ time: 0.3, pose: { arm_l: { turn: 10 } } }] } })
+    assert.deepEqual(toSaved(setTime({}, 'walk', 0, 0.5)), { walk: { phases: [{ time: 0.5, pose: {} }] } })
+    assert.deepEqual(toSaved(setName({}, 'walk', 0, 'Stand')), { walk: { phases: [{ time: 0.3, name: 'Stand', pose: {} }] } })
+    assert.deepEqual(Object.keys(toSaved(addPhase({}, 'attack', 0).anims)), ['attack'])
   })
   it('an active attack with no hit is reported', () => {
     assert.equal(timingSummary({ phases: [{ time: 0.3, pose: {} }, { time: 0.2, pose: {} }] }, 'attack').missingHit, true)

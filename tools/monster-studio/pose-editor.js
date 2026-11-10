@@ -2,9 +2,11 @@
 // the monster's own rig (pose.still), with a yellow dot at each posable
 // piece's joint and a white dot at its far end. Dragging a white dot turns
 // and stretches that piece and its joint-mates (onDrag gets every id of the
-// group). It redraws only when told something changed (setFigure, setPose,
-// select) or while a drag runs: no animation loop, the canvas is software.
-import { dragValues } from './pose-math.js'
+// group); the dot keeps its offset from the pointer, and a click without a
+// drag only selects (pose-math.js startGrab/grabPoint). It redraws only when
+// told something changed (setFigure, setPose, select) or while a drag runs:
+// no animation loop, the canvas is software.
+import { dragValues, startGrab, grabPoint } from './pose-math.js'
 
 const FILL = 0.6                 // the rest figure's share of the view; posed limbs need room
 const HIT_R = 16                 // canvas px around a white dot that grab it
@@ -114,11 +116,11 @@ export function mountPoseEditor(canvas, { onDrag = () => {}, onSelect = () => {}
 
   canvas.addEventListener('pointerdown', e => {
     if (e.button !== 0) return
-    const h = handleAt(toCanvas(e))
+    const m = toCanvas(e), h = handleAt(m)
     if (!h) return
     e.preventDefault()
     // the joint and the rest end stay put while this piece turns: its parent doesn't move
-    drag = { id: h.id, joint: h.joint, rest: h.rest }
+    drag = { id: h.id, joint: h.joint, rest: h.rest, grab: startGrab(h.tip, m) }
     canvas.setPointerCapture(e.pointerId)
     canvas.style.cursor = 'grabbing'
     if (selected !== h.id) { selected = h.id; onSelect(h.id); redraw() }
@@ -126,7 +128,10 @@ export function mountPoseEditor(canvas, { onDrag = () => {}, onSelect = () => {}
   canvas.addEventListener('pointermove', e => {
     const m = toCanvas(e)
     if (!drag) { canvas.style.cursor = handleAt(m) ? 'grab' : ''; return }
-    const values = dragValues({ joint: drag.joint, restEnd: drag.rest, mouse: m, prevTurn: still[drag.id]?.turn ?? 0 })
+    const at = grabPoint(drag.grab, m)
+    if (!at) return                  // still a click: the piece is selected, not moved
+    drag.grab.live = true
+    const values = dragValues({ joint: drag.joint, restEnd: drag.rest, mouse: at, prevTurn: still[drag.id]?.turn ?? 0 })
     onDrag(fig.groups.get(drag.id) ?? [drag.id], values)
   })
   const end = () => { if (!drag) return; drag = null; canvas.style.cursor = '' }
