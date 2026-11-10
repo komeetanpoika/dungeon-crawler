@@ -132,4 +132,15 @@ describe('gateKeys', () => {
     }
     assert.deepEqual(blurred, ['submit', 'range', 'checkbox'])
   })
+  it('a dropdown keeps focus while its menu is open and gives it back once a choice is made', () => {
+    const root = new EventTarget(), win = new EventTarget()
+    gateKeys(root, win)
+    let blurred = 0
+    const select = { type: 'select-one', blur: () => blurred++ }
+    const on = type => { const ev = new Event(type); Object.defineProperty(ev, 'target', { value: select }); root.dispatchEvent(ev) }
+    on('pointerup')
+    assert.equal(blurred, 0, 'releasing the click that opens the menu must not close it')
+    on('change')
+    assert.equal(blurred, 1, 'picking an option hands the keyboard back to the game')
+  })
 })
