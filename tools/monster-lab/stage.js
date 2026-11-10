@@ -2,11 +2,17 @@
 // Preview canvas + pose simulator. Runs its own rAF loop; renders the current
 // rig with the current params at the sim's pose. Backdrop and collision
 // overlay are toggles. Pure UI — persistence lives in io.js.
+// The studio's Movement tab drives the pose itself: setPoseExtra(fn) merges
+// fn(sim)'s fields last over the sim pose every frame, and
+// setStateButtons(false) hides the state buttons it makes moot, and
+// setOrigin puts the entity centre lower so a tall pose fits. The monster
+// lab calls none of them: its entity centre stays in the middle.
 const STATES = ['idle', 'walk', 'attack', 'hit', 'death']
 
 export function makeStage(canvas, simBar) {
   const ctx = canvas.getContext('2d')
-  const st = { rig: null, params: {}, half: 8, zoom: 2, backdrop: true, overlay: false,
+  const st = { rig: null, params: {}, half: 8, zoom: 2, backdrop: true, overlay: false, poseExtra: null,
+               origin: { x: 0.5, y: 0.5 },          // where the entity centre sits, as fractions of the canvas
                sim: { state: 'idle', speed01: 0, seed: 7, paused: false, t: 0, stateT: 0 } }
 
   // sim bar: state buttons, speed slider, seed reroll, pause
@@ -36,6 +42,7 @@ export function makeStage(canvas, simBar) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now
     if (!st.sim.paused) { st.sim.t += dt; st.sim.stateT += dt }
     const S = 32 * st.zoom, W = canvas.width, H = canvas.height
+    const ox = W * st.origin.x, oy = H * st.origin.y
     ctx.clearRect(0, 0, W, H)
     if (st.backdrop) {                       // simple checker floor
       for (let y = 0; y < H; y += S) for (let x = 0; x < W; x += S) {
@@ -44,16 +51,17 @@ export function makeStage(canvas, simBar) {
       }
     }
     if (st.rig) {
-      ctx.save(); ctx.translate(W / 2, H / 2)
-      st.rig.drawMonster(ctx, st.params,
-        { t: st.sim.t, state: st.sim.state, stateT: st.sim.stateT,
-          facing: -Math.PI / 2, speed01: st.sim.state === 'walk' ? Math.max(0.6, st.sim.speed01) : st.sim.speed01,
-          seed: st.sim.seed }, S)
+      const pose = { t: st.sim.t, state: st.sim.state, stateT: st.sim.stateT,
+        facing: -Math.PI / 2, speed01: st.sim.state === 'walk' ? Math.max(0.6, st.sim.speed01) : st.sim.speed01,
+        seed: st.sim.seed }
+      if (st.poseExtra) Object.assign(pose, st.poseExtra(st.sim))
+      ctx.save(); ctx.translate(ox, oy)
+      st.rig.drawMonster(ctx, st.params, pose, S)
       ctx.restore()
     }
     if (st.overlay) {
       ctx.strokeStyle = '#4caf50'; ctx.setLineDash([4, 3])
-      ctx.beginPath(); ctx.arc(W / 2, H / 2, st.half * st.zoom, 0, Math.PI * 2); ctx.stroke()
+      ctx.beginPath(); ctx.arc(ox, oy, st.half * st.zoom, 0, Math.PI * 2); ctx.stroke()
       ctx.setLineDash([])
     }
     requestAnimationFrame(frame)
@@ -65,6 +73,9 @@ export function makeStage(canvas, simBar) {
     setRig: mod => { st.rig = mod },
     setParams: p => { st.params = p },
     setHalf: n => { st.half = n },
+    setPoseExtra: fn => { st.poseExtra = fn ?? null },
+    setOrigin: (o = { x: 0.5, y: 0.5 }) => { st.origin = { x: o.x, y: o.y } },
+    setStateButtons: visible => { for (const b of simBar.querySelectorAll('button[data-state]')) b.style.display = visible ? '' : 'none' },
     set zoom(z) { st.zoom = z }, get zoom() { return st.zoom },
     set backdrop(v) { st.backdrop = v }, set overlay(v) { st.overlay = v },
   }

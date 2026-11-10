@@ -181,6 +181,42 @@ describe('windup > 0 (telegraph framework)', () => {
   })
 })
 
+describe('a stun during the windup (Ruling 8)', () => {
+  it('pauses it: no strike and no clock while stunned; it resumes and strikes once the stun ends', () => {
+    const e = makeEnemy('guard', 100, 100)
+    e.weaponOverrides = { windup: 0.3 }
+    const state = makeState({ px: 110, py: 100, hp: 10 })
+    tryStartEnemyAttack(e, state)
+    stepEnemyAttack(e, state, 0.1)
+    e.stunTimer = 0.5                                     // frozen with 0.2 s of windup left
+    stepEnemyAttack(e, state, 0.4)
+    stepEnemyAttack(e, state, 0.4)
+    assert.equal(e.attack.phase, 'windup')
+    assert.ok(Math.abs(e.attack.timer - 0.2) < 1e-9, 'the windup clock held')
+    assert.equal(state.player.hp, 10, 'a frozen monster lands no blow')
+    assert.equal(e.damageCooldown, 0)
+    e.stunTimer = 0                                       // thawed
+    stepEnemyAttack(e, state, 0.1)
+    assert.equal(e.attack.phase, 'windup')
+    assert.equal(state.player.hp, 10)
+    stepEnemyAttack(e, state, 0.15)
+    assert.equal(e.attack.phase, 'swing')
+    assert.equal(state.player.hp, 9)
+  })
+
+  it('a swing (every windup-0 weapon swings at once) plays out under a stun as before', () => {
+    const e = makeEnemy('guard', 100, 100)
+    const state = makeState({ px: 110, py: 100, hp: 10 })
+    tryStartEnemyAttack(e, state)
+    assert.equal(e.attack.phase, 'swing')
+    e.stunTimer = 1
+    stepEnemyAttack(e, state, 0.1)
+    assert.ok(Math.abs(e.attack.timer - 0.15) < 1e-9)
+    stepEnemyAttack(e, state, 0.2)
+    assert.equal(e.attack ?? null, null)
+  })
+})
+
 describe('stepEnemyAttack — swing lifecycle', () => {
   it('clears the attack when the swing finishes', () => {
     const e = makeEnemy('guard', 100, 100)

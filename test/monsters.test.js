@@ -12,7 +12,8 @@ import { TILE } from '../renderer/systems/entities.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 import { hurtCreature } from '../renderer/systems/creatures.js'
-import { tryStartEnemyAttack, getEnemyWeapon, WEAPONS } from '../renderer/systems/enemy-attack.js'
+import { tryStartEnemyAttack, stepEnemyAttack, getEnemyWeapon, WEAPONS } from '../renderer/systems/enemy-attack.js'
+import { makeCutoutRig, pieceTransforms } from '../renderer/render/monster-rigs/cutout.js'
 import { ensureHirvi, startBolt, updateHirvi, makeStand } from '../renderer/systems/monsters/hirvi.js'
 
 const FAKE_RIG = {
@@ -552,5 +553,146 @@ describe('weapon overrides from the def', () => {
     ], opts)
     assert.equal('weaponOverrides' in makeMonsterFromDef('wnone', 1, 1), false)
     assert.deepEqual(makeMonsterFromDef('wbad', 1, 1).weaponOverrides, { reach: 40 })
+  })
+})
+
+describe('posed sequences in the game', () => {
+  const STRIKE = { phases: [{ time: 0.30, pose: {} }, { time: 0.35, pose: { a: { turn: -25 } } }, { time: 0.08, hit: true, pose: { a: { turn: 120 } } }] }
+  const armed = (over = {}) => ({ ...DEF, name: 'striker', behavior: { weapon: 'maul' }, anims: { attack: STRIKE }, ...over })
+  beforeEach(() => clearMonsters())
+
+  it('attaches cleaned anims to the params, not to own.params', async () => {
+    await load([armed()])
+    const d = getMonsterDef('striker')
+    assert.deepEqual(d.params.anims, { attack: STRIKE })
+    assert.equal('anims' in d.own.params, false)
+  })
+  it('the attack sequence sets the weapon timing (windup to the hit, the rest as follow-through)', async () => {
+    await load([armed()])
+    const e = makeMonsterFromDef('striker', 1, 1)
+    assert.ok(Math.abs(e.weaponOverrides.windup - 0.43) < 1e-9)
+    assert.ok(Math.abs(e.weaponOverrides.duration - 0.30) < 1e-9)
+    assert.ok(Math.abs(getEnemyWeapon(e).windup - 0.43) < 1e-9)
+    assert.equal(getEnemyWeapon(e).damage, WEAPONS.maul.damage)
+  })
+  it('no weapon: no timing stamped (Review Focus 5); no sequence: entity unchanged', async () => {
+    await load([armed({ behavior: {} }), { ...DEF, name: 'plain', behavior: { weapon: 'maul' } }])
+    assert.equal(makeMonsterFromDef('striker', 1, 1).weaponOverrides, undefined)
+    assert.equal(makeMonsterFromDef('plain', 1, 1).weaponOverrides, undefined)
+  })
+  it('broken anims load with a warning, never throw (Review Focus 4)', async () => {
+    const warns = []
+    await load([armed({ anims: { dance: 1, attack: { phases: 'x' } } })], { warn: m => warns.push(m) })
+    assert.deepEqual(getMonsterDef('striker').params.anims, {})
+    assert.ok(warns.some(w => w.includes('striker') && w.includes('anims')))
+  })
+  it('entityPose exposes the attack clock', async () => {
+    await load([armed()])
+    const e = { ...makeMonsterFromDef('striker', 2, 3), px: 80, py: 112 }
+    updateMonsterPose(e, 0.016)
+    assert.equal(entityPose(e).attack, null)
+    e.attack = { phase: 'windup', timer: 0.1, duration: 0.43 }
+    assert.deepEqual({ ...entityPose(e).attack, t: Math.round(entityPose(e).attack.t * 100) / 100 }, { phase: 'windup', t: 0.33 })
+    e.attack = { swing: 1 }
+    assert.equal(entityPose(e).attack.phase, 'swing')
+  })
+  it('an animation switch starts a blend and restarts animT', async () => {
+    await load([armed()])
+    const e = { ...makeMonsterFromDef('striker', 2, 3), px: 80, py: 112 }
+    updateMonsterPose(e, 0.016); updateMonsterPose(e, 0.016)
+    assert.ok(entityPose(e).animT > 0.016)
+    e.attack = { phase: 'windup', timer: 0.3, duration: 0.43 }
+    updateMonsterPose(e, 0.016)
+    assert.equal(entityPose(e).blend.from, 'idle')
+    assert.equal(entityPose(e).animT, 0)
+    updateMonsterPose(e, 0.016)
+    assert.ok(Math.abs(entityPose(e).blend.t - 0.016) < 1e-9)
+    e.attack = null
+    updateMonsterPose(e, 0.016)
+    assert.equal(entityPose(e).blend.from, 'attack')
+    assert.equal(entityPose(e).blend.at.phase, 'windup')
+  })
+  it('the attack starts with the windup the sequence set, then strikes', async () => {
+    await load([armed()])
+    const e = { ...makeMonsterFromDef('striker', 2, 3), px: 80, py: 112 }
+    const state = { player: { px: e.px + 10, py: e.py } }      // inside maul's 34 px reach; a windup > 0 does not strike yet
+    assert.equal(tryStartEnemyAttack(e, state), true)
+    assert.equal(e.attack.phase, 'windup')
+    assert.ok(Math.abs(e.attack.timer - 0.43) < 1e-9)
+  })
+})
+
+// The game's own frame order: the pose bookkeeping runs before the attack
+// starts and steps (game.js), and the canvas draws after both. Whatever that
+// order, a posed attack must ease in and out — no one-frame pop of the arm or
+// the lunge at its start or its end.
+describe('a posed attack in the game frame order', () => {
+  // a two-piece cut-out figure: a torso and a left arm hung on it
+  const PARTS = { figure: { w: 40, h: 60 }, view: 'front', faces: 'left', points: {},
+    pieces: [
+      { id: 'torso', role: 'torso', side: null, parent: null, z: 0, pivot: [20, 30], rect: [0, 0, 20, 30], at: [10, 15], cap: null },
+      { id: 'arm', role: 'arm', side: 'left', parent: 'torso', z: 1, pivot: [10, 20], rect: [20, 0, 6, 20], at: [4, 20], cap: null },
+    ] }
+  // slow moves, so a legitimate frame never turns the arm far: start and end
+  // at -40 (the built-in attack reach would be +35), pull back, strike at 80
+  const SLOW = { phases: [{ time: 0.4, pose: { arm: { turn: -40 } } }, { time: 0.4, pose: {} }, { time: 0.4, hit: true, pose: { arm: { turn: 80 } } }] }
+  const def = anims => ({ name: 'poser', rig: 'cut', params: { lunge: 0.5, armSwing: 0 }, stats: { hp: 10, speed: 70 },
+    behavior: { weapon: 'maul' }, ...(anims ? { anims } : {}) })
+  const loadCut = d => registerMonsters([d], { loadRig: async () => makeCutoutRig({ id: 'cut', parts: PARTS, imageUrl: null }),
+    loadHooks: async () => {}, warn: () => {} })
+  const recorder = () => { const t = { ops: [] }; return new Proxy(t, { get: (o, k) => (k in o ? o[k] : (...a) => { o.ops.push([k, ...a]) }), set: (o, k, v) => { o[k] = v; return true } }) }
+  const draw = (d, pose) => { const c = recorder(); d.rig.drawMonster(c, d.params, pose, 32); return c.ops }
+  const armDeg = (d, pose) => { const m = pieceTransforms(PARTS, d.params, pose).get('arm'); return Math.atan2(m[1], m[0]) * 180 / Math.PI }
+  const lungeOf = ops => ops.find(o => o[0] === 'translate')[1]
+
+  // idle, the player steps in, the attack runs its windup and swing (the
+  // player has stepped away, so it whiffs), then idle again
+  function run(d, frame) {
+    const dt = 1 / 60
+    const e = { ...makeMonsterFromDef('poser', 2, 3), px: 80, py: 112, damageCooldown: 0 }
+    const state = { player: { px: 2000, py: 112, hp: 10 } }
+    let started = false, ended = false
+    for (let i = 0; i < 150; i++) {
+      if (i === 30) state.player.px = e.px + 10                  // inside maul's reach: the attack starts
+      if (e.attack) state.player.px = 2000                        // and steps away again
+      updateMonsterPose(e, dt)
+      if (tryStartEnemyAttack(e, state)) started = true
+      stepEnemyAttack(e, state, dt)
+      if (started && !e.attack) ended = true
+      frame(e, i)
+    }
+    assert.ok(started && ended, 'the attack ran start to end')
+  }
+
+  beforeEach(() => clearMonsters())
+
+  it('the posed arm and the lunge never jump at the start or the end', async () => {
+    await loadCut(def({ attack: SLOW }))
+    const d = getMonsterDef('poser')
+    let prev = null, maxTurn = 0, maxLunge = 0, peak = -Infinity
+    run(d, e => {
+      const pose = entityPose(e)
+      const now = { arm: armDeg(d, pose), lunge: lungeOf(draw(d, pose)) }
+      if (prev) {
+        maxTurn = Math.max(maxTurn, Math.abs(now.arm - prev.arm))
+        maxLunge = Math.max(maxLunge, Math.abs(now.lunge - prev.lunge))
+      }
+      peak = Math.max(peak, now.arm)
+      prev = now
+    })
+    assert.ok(peak > 75, `the strike was reached (${peak})`)
+    assert.ok(maxTurn <= 10, `the arm turned at most 10 degrees a frame, got ${maxTurn}`)
+    assert.ok(maxLunge <= 2, `the lunge moved at most 2 px a frame, got ${maxLunge}`)
+    assert.equal(prev.lunge, 0)
+    assert.ok(Math.abs(prev.arm) < 1e-9, 'back at rest once idle')
+  })
+
+  it('an unposed monster draws exactly as it would from the bare pose (attack and blend are inert)', async () => {
+    await loadCut(def(null))
+    const d = getMonsterDef('poser')
+    run(d, (e, i) => {
+      const pose = entityPose(e)
+      assert.deepEqual(draw(d, pose), draw(d, { ...pose, attack: null, blend: null }), `frame ${i}`)
+    })
   })
 })

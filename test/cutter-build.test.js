@@ -68,7 +68,7 @@ test('the generated rig module imports the engine and the parts, and runs', asyn
   const { root } = makeRoot()
   buildCut({ root, name: 't' })
   installCut({ root, name: 't' })
-  for (const f of ['cutout.js', 'pixel.js']) fs.copyFileSync(path.join(ROOT, 'renderer/render/monster-rigs', f), path.join(root, 'renderer/render/monster-rigs', f))
+  for (const f of ['cutout.js', 'anims.js', 'pixel.js']) fs.copyFileSync(path.join(ROOT, 'renderer/render/monster-rigs', f), path.join(root, 'renderer/render/monster-rigs', f))
   const rig = await import(pathToFileURL(rigPath(root)).href)
   for (const k of ['RIG_ID', 'PARAM_SCHEMA', 'drawMonster', 'hitHalf', 'hitShape', 'drawnTop', 'anchor', '_setSheetImage']) assert.ok(k in rig, k)
   assert.equal(rig.RIG_ID, 't')

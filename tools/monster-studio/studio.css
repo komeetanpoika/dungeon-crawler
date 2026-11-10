@@ -45,6 +45,49 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .movement-bar label { color: var(--dim); display: inline-flex; align-items: center; gap: 4px; }
 .movement-bar input[type=range] { width: 80px; }
 .movement-side { flex: 1; min-width: 280px; max-width: 520px; overflow-y: auto; max-height: calc(100vh - 90px); }
+/* Movement tab, a monster with a cut: the animation switch over the posing view and its cards,
+   the stage as the preview at the side with the timeline under it */
+.movement-anims { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 8px; }
+.movement-anims .lbl { color: var(--dim); margin-right: 4px; }
+.movement-anims button { border-radius: 14px; padding: 4px 14px; }
+.movement-anims button.active { background: #3a3320; color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.movement-warn { color: var(--warn); font-size: 12px; margin-left: 8px; }
+.movement-layout.posable .movement-side { flex: none; width: 396px; max-height: calc(100vh - 130px); }
+.movement-pose { flex: 1; min-width: 0; max-height: calc(100vh - 130px); overflow-y: auto; }
+.movement-posing { display: block; max-width: 100%; margin: 0 auto; touch-action: none; border: 1px solid var(--line); border-radius: 6px;
+                   background: repeating-conic-gradient(#2a2d33 0 25%, #24272d 0 50%) 0 0 / 24px 24px; }
+.movement-readout { text-align: center; color: var(--text); min-height: 18px; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+.movement-pose .hint { text-align: center; }
+.movement-cards { display: flex; gap: 10px; overflow-x: auto; padding: 12px 2px 6px; }
+.phase-card { flex: none; width: 148px; position: relative; border: 2px solid var(--line); border-radius: 8px; padding: 6px 8px 8px;
+              background: var(--panel); cursor: pointer; }
+.phase-card.sel { border-color: var(--accent); background: #2f2d27; }
+.phase-card.hit { border-color: #e0533d; }
+.phase-card.hit.sel { box-shadow: 0 0 0 2px var(--accent); }
+.phase-card .top { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+.phase-card .top input { flex: 1; min-width: 0; padding: 1px 4px; background: transparent; border-color: transparent; font-weight: 600; }
+.phase-card .top input:hover, .phase-card .top input:focus { background: #1d1f24; border-color: #444956; }
+.phase-card .del { border: none; background: none; color: var(--dim); padding: 0 2px; font-size: 13px; }
+.phase-card .del:hover { color: var(--text); background: none; }
+.phase-card canvas { display: block; margin: 4px auto; background: #1d1f24; border-radius: 4px; }
+.phase-card .time { display: flex; justify-content: space-between; color: var(--dim); font-size: 11px; }
+.phase-card .time b { color: var(--text); font-variant-numeric: tabular-nums; }
+.phase-card input[type=range] { width: 100%; }
+.phase-card .hitrow { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 12px; color: var(--dim); cursor: pointer; }
+.phase-card .hitbadge { position: absolute; top: -9px; right: 8px; background: #e0533d; color: #fff; font-size: 10px; font-weight: 700;
+                        padding: 1px 6px; border-radius: 8px; letter-spacing: 0.04em; }
+.add-phase { flex: none; width: 110px; border: 2px dashed var(--line); border-radius: 8px; background: none; color: var(--accent); font-weight: 600; }
+.add-phase:hover { border-color: var(--accent); background: none; }
+.movement-preview { margin-bottom: 10px; }
+.movement-preview .movement-stage { margin: 0 auto; }
+.movement-timeline { position: relative; display: flex; height: 22px; margin-top: 10px; border-radius: 5px; overflow: hidden; background: var(--btn); }
+.movement-timeline > div { flex: none; height: 100%; border-right: 1px solid var(--panel); font-size: 10px; color: #fff;
+                           display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+.movement-timeline .playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--text); }
+.movement-tl-text { color: var(--dim); font-size: 12px; margin: 6px 0 0; line-height: 1.5; }
+.movement-tl-text b { color: var(--text); }
+.movement-tl-text b.hit { color: #e0533d; }
+.movement-note { color: var(--dim); font-size: 12px; border-top: 1px solid var(--line); padding-top: 8px; margin: 8px 0; }
 #tab-fight { display: flex; flex-direction: column; }
 .fight-frame { flex: 1; width: 100%; min-height: 0; border: 1px solid var(--line); background: #000; }
 

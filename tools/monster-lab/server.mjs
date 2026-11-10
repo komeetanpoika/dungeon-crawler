@@ -22,7 +22,7 @@ const DEFAULTS = {
   cutsRoot: path.resolve(HERE, '../..'),
 }
 // shared helper modules in the rigs dir, not rigs themselves
-const HELPERS = new Set(['schema.js', 'pixel.js', 'cutout.js'])
+const HELPERS = new Set(['schema.js', 'pixel.js', 'cutout.js', 'anims.js'])
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
                '.css': 'text/css', '.json': 'application/json', '.png': 'image/png',
                '.svg': 'image/svg+xml', '.wav': 'audio/wav' }

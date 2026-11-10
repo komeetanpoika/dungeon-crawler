@@ -132,10 +132,38 @@ async function main() {
       expect(await tabBtn('fight').isDisabled(), 'Fight tab button should be disabled for nakki')
       return 'Fight disabled'
     }],
-    ['new drawing, publish into the open maps', async () => {
+    ['new drawing, pose an attack', async () => {
       await page.click('#open')
       await page.setInputFiles('#open-file', path.join(repo, 'tools/monster-cutter/fixtures/big-tusk.png'))
       await until(() => fs.existsSync(inTmp('drafts/monsters/big_tusk/cut.json')), 'drafts/monsters/big_tusk/cut.json', 30000)
+      await tabBtn('movement').click()
+      await page.waitForFunction(() => window.studio.state.tab === 'movement')
+      await page.locator('[data-anim=attack]').click()
+      await page.locator('.phase-card').first().waitFor()
+      await page.locator('.add-phase').click()
+      await page.locator('.add-phase').click()
+      expect(await page.locator('.phase-card').count() === 3, `expected 3 phase cards, found ${await page.locator('.phase-card').count()}`)
+      await page.locator('.phase-card').nth(2).locator('input[type=radio]').check()
+      const ids = readJson('drafts/monsters/big_tusk/cut.json').pieces.map(p => p.id)
+      const found = await page.evaluate(ids => {
+        for (const id of ids) { const p = window.studio.movement.posing.handlePoint(id); if (p) return { id, ...p } }
+        return null
+      }, ids)
+      expect(found, 'no piece has a white dot to drag')
+      await page.mouse.move(found.x, found.y)
+      await page.mouse.down()
+      await page.mouse.move(found.x + 40, found.y - 30, { steps: 5 })
+      await page.mouse.up()
+      await tabBtn('publish').click() // immediately: the tab switch itself must flush the pending save
+      await page.waitForFunction(() => window.studio.state.tab === 'publish')
+      const attack = readJson('drafts/monsters/big_tusk/def.json').anims?.attack // read once, no polling
+      expect(attack?.phases?.length === 3, `draft anims.attack has ${attack?.phases?.length} phases, expected 3`)
+      const hits = attack.phases.map((p, i) => (p.hit ? i : -1)).filter(i => i >= 0)
+      expect(JSON.stringify(hits) === '[2]', `hit phases are ${JSON.stringify(hits)}, expected [2]`)
+      expect(attack.phases.some(p => Object.keys(p.pose ?? {}).length > 0), 'no phase holds a pose after the drag')
+      return `3 attack phases, hit on card 3, ${found.id} posed`
+    }],
+    ['publish into the open maps, with its animation', async () => {
       await tabBtn('publish').click()
       await page.waitForSelector('.publish-layout')
       const rows = page.locator('.spawn-row')
@@ -153,6 +181,7 @@ async function main() {
       expect(JSON.stringify(def.spawn?.openMaps) === JSON.stringify({ depths: [7, 18], count: 1 }), `spawn.openMaps is ${JSON.stringify(def.spawn?.openMaps)}, expected depths [7,18] count 1`)
       const idx = fs.readFileSync(inTmp('renderer/data/monsters/index.json'), 'utf8')
       expect(idx.includes('big_tusk'), 'index.json does not list big_tusk')
+      expect(def.anims?.attack?.phases?.length === 3, `published anims.attack has ${def.anims?.attack?.phases?.length} phases, expected 3`)
       return `published, spawn ${JSON.stringify(def.spawn)}`
     }],
   ]

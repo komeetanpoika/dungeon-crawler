@@ -28,6 +28,7 @@ describe('lab server API', () => {
     const rigs = await (await fetch(`${base}/api/rigs`)).json()
     assert.ok(!rigs.includes('pixel'))
     assert.ok(!rigs.includes('cutout'))
+    assert.ok(!rigs.includes('anims'))
   })
   it('PUT then GET /api/monsters round-trips', async () => {
     const put = await fetch(`${base}/api/monsters/testmon`, {

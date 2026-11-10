@@ -244,4 +244,4 @@ for (const zone of [$('canvas-wrap'), $('start-prompt')]) {
 
 renderPanes()
 renderHeader()
-window.studio = { state, showTab, openMonster, openDrawing }
+window.studio = { state, showTab, openMonster, openDrawing, movement: movementTab.debug }

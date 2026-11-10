@@ -2,6 +2,7 @@
 // plain words. Pure (no DOM, no node: imports).
 import { effectiveFight, fightValues } from '../monster-bench/fight-fields.js'
 import { WEAPONS } from '../../renderer/systems/enemy-attack.js'
+import { ANIM_NAMES, isActive } from '../../renderer/render/monster-rigs/anims.js'
 import { describeSpawn } from './spawn-form.js'
 
 const show = v => (v == null ? '—' : v)
@@ -30,6 +31,14 @@ export function describeChanges({ name, isNew, published, draft, cutChanged, lab
   }
   const diffKeys = (a = {}, b = {}) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]))
   for (const k of diffKeys(pub.params, d.params)) out.push(`Movement: ${labels[k] ?? k} ${show(pub.params?.[k])} → ${show(d.params?.[k])}`)
+  for (const k of ANIM_NAMES) {
+    const a = pub.anims?.[k], b = d.anims?.[k]
+    if (same(a, b)) continue
+    const label = k[0].toUpperCase() + k.slice(1)
+    if (isActive(b) && !isActive(a)) out.push(`${label} animation: ${b.phases.length} phases (was built-in)`)
+    else if (isActive(a) && !isActive(b)) out.push(`${label} animation: back to built-in`)
+    else out.push(`${label} animation changed`)
+  }
   for (const k of diffKeys(pub.tuning, d.tuning)) out.push(`Special moves: ${k} ${show(pub.tuning?.[k])} → ${show(d.tuning?.[k])}`)
   for (const k of diffKeys(pub.behavior, d.behavior)) {
     if (SKIP_BEHAVIOR.has(k)) continue
