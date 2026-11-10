@@ -22,6 +22,28 @@ function readInside(base, rel) {
   try { if (!fs.statSync(file).isFile()) return null; return fs.readFileSync(file) } catch { return null }
 }
 
+// The draft as the mirror needs it, read once per revision. readDraft runs
+// the cut's leak check and hashes files (about 200 ms on a big drawing) and
+// one game boot asks for ~700 files, so reading it per file made the Fight
+// tab take minutes. The key is meta.json's text: every saved edit bumps its
+// rev, and a draft discarded and opened again gets fresh base hashes.
+export function makeDraftCache(read = readDraft) {
+  const seen = new Map()
+  return {
+    get(projectRoot, name) {
+      const id = projectRoot + '\0' + name
+      let key = null
+      try { key = fs.readFileSync(path.join(draftDir(projectRoot, name), 'meta.json'), 'utf8') } catch { seen.delete(id) }
+      const hit = seen.get(id)
+      if (key !== null && hit?.key === key) return hit.draft
+      const draft = read(projectRoot, name)
+      if (key !== null) seen.set(id, { key, draft })
+      return draft
+    },
+  }
+}
+const drafts = makeDraftCache()
+
 export function resolveGameFile({ root, projectRoot, name, rel }) {
   if (typeof name !== 'string' || !NAME_RE.test(name) || name === 'index') return null
   let decoded
@@ -30,7 +52,7 @@ export function resolveGameFile({ root, projectRoot, name, rel }) {
   const norm = path.posix.normalize(decoded.replace(/\\/g, '/')).replace(/^\/+/, '')
   if (norm === '..' || norm.startsWith('../') || norm === '.' || norm === '') return null
   let draft
-  try { draft = readDraft(projectRoot, name) } catch { return null }
+  try { draft = drafts.get(projectRoot, name) } catch { return null }
   const dir = draftDir(projectRoot, name)
   const typeOf = file => ({ type: mimeOf(file) })
 
