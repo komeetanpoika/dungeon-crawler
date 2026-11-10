@@ -31,6 +31,12 @@ describe('samplePose and timing', () => {
     near(samplePose(STRIKE, 99).a.turn, 0)           // clamped to the loop end
     near(samplePose(STRIKE, 0).a.stretch, 1)
   })
+  it('every piece named in any phase is in the result', () => {
+    const anim = { phases: [{ time: 0.2, pose: { a: { turn: 10 } } }, { time: 0.2, pose: {} }, { time: 0.2, pose: { b: { turn: 30 } } }] }
+    const s = samplePose(anim, 0.1)
+    near(s.b.turn, 0); near(s.b.stretch, 1)
+    assert.deepEqual(Object.keys(samplePose(anim, 99)).sort(), ['a', 'b'])
+  })
   it('loop length and attack timing', () => {
     near(loopLength(STRIKE), 0.73)
     const tm = attackTiming(STRIKE)

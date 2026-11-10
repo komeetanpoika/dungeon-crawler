@@ -79,9 +79,9 @@ export function attackTiming(anim) {
 
 const chan = (pose, id) => ({ turn: pose?.[id]?.turn ?? 0, stretch: pose?.[id]?.stretch ?? 1 })
 
-export function lerpPose(a, b, u) {
+export function lerpPose(a, b, u, extraIds = []) {
   const out = {}
-  for (const id of new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])) {
+  for (const id of new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {}), ...extraIds])) {
     const x = chan(a, id), y = chan(b, id)
     out[id] = { turn: x.turn + (y.turn - x.turn) * u, stretch: x.stretch + (y.stretch - x.stretch) * u }
   }
@@ -90,13 +90,14 @@ export function lerpPose(a, b, u) {
 
 export function samplePose(anim, t) {
   const ph = anim.phases
-  if (ph.length < 2) return lerpPose(ph[0]?.pose, ph[0]?.pose, 0)
+  const ids = new Set(ph.flatMap(p => Object.keys(p.pose ?? {})))
+  if (ph.length < 2) return lerpPose(ph[0]?.pose, ph[0]?.pose, 0, ids)
   const time = Math.min(Math.max(t, 0), loopLength(anim))
   let start = 0
   for (let k = 1; k <= ph.length; k++) {
     const from = ph[k - 1], to = k < ph.length ? ph[k] : ph[0], dur = to.time
     if (time <= start + dur || k === ph.length) {
-      return lerpPose(from.pose, to.pose, ease((time - start) / dur))
+      return lerpPose(from.pose, to.pose, ease((time - start) / dur), ids)
     }
     start += dur
   }
