@@ -69,9 +69,12 @@ export function makeBenchCore(model) {
 // which game.js answers by releasing every held key. Buttons, sliders and
 // checkboxes give focus back after use — a focused button would otherwise
 // take the attack key (Space) as another click; text fields keep it until
-// Escape or a click on the arena. The focused control is not always the
-// event's target (a press dragged off its button), so both are released.
+// Escape or a click on the arena. A dropdown keeps focus while its menu is
+// open (blurring it on the click's release would close the menu at once)
+// and gives it back once a choice is made. The focused control is not always
+// the event's target (a press dragged off its button), so both are released.
 const KEEPS_FOCUS = new Set(['text', 'number'])
+const MENUS = new Set(['select-one', 'select-multiple'])
 export function gateKeys(root, win = globalThis.window, doc = globalThis.document) {
   root.addEventListener('focusin', () => win.dispatchEvent(new Event('blur')))
   root.addEventListener('keydown', e => { if (e.key === 'Escape') e.target?.blur?.(); e.stopPropagation() })
@@ -79,6 +82,7 @@ export function gateKeys(root, win = globalThis.window, doc = globalThis.documen
   const release = e => {
     for (const n of new Set([e.target, doc?.activeElement])) {
       if (!n || KEEPS_FOCUS.has(n.type)) continue
+      if (e.type === 'pointerup' && MENUS.has(n.type)) continue
       if (n === e.target || root.contains?.(n)) n.blur?.()
     }
   }
