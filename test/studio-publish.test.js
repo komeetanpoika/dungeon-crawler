@@ -76,4 +76,16 @@ describe('publish', () => {
     publishDraft(r, 'monsterx', { force: true })
     assert.match(fs.readFileSync(path.join(r, 'renderer/render/monster-rigs/monsterx.js'), 'utf8'), /hand-written/)
   })
+
+  it('publish writes the draft anims; a draft without anims removes them', () => {
+    const STRIKE = { phases: [{ time: 0.3, pose: {} }, { time: 0.35, pose: { arm_l: { turn: -25 } } }, { time: 0.08, hit: true, pose: {} }] }
+    const r = makeProjectRoot(); openDraft(r, 'monsterx')
+    patchDraftDef(r, 'monsterx', { anims: { attack: STRIKE } })
+    assert.deepEqual(publishDraft(r, 'monsterx').wrote, ['renderer/data/monsters/monsterx.json'])
+    assert.deepEqual(readJson(r, 'renderer/data/monsters/monsterx.json').anims, { attack: STRIKE })
+    openDraft(r, 'monsterx')
+    patchDraftDef(r, 'monsterx', { anims: null })
+    publishDraft(r, 'monsterx')
+    assert.equal('anims' in readJson(r, 'renderer/data/monsters/monsterx.json'), false)
+  })
 })

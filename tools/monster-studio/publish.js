@@ -50,7 +50,7 @@ export function publishDraft(root, name, { force = false } = {}) {
   let next
   if (story) next = { ...base, params: v.def.params ?? {} }
   else {
-    next = mergeDefPatch(base, { params: v.def.params ?? {}, tuning: v.def.tuning ?? {}, stats: v.def.stats ?? {}, spawn: v.def.spawn ?? null })
+    next = mergeDefPatch(base, { params: v.def.params ?? {}, tuning: v.def.tuning ?? {}, stats: v.def.stats ?? {}, spawn: v.def.spawn ?? null, anims: v.def.anims ?? null })
     next.behavior = v.def.behavior ?? {}
   }
   writeMonster(defDir, name, next)

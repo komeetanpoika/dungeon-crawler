@@ -35,4 +35,11 @@ describe('describeChanges', () => {
     assert.deepEqual(describeChanges({ name: 'o', isNew: false, published, draft, cutChanged: false, labels: { bob: 'Bob' }, weapons: W }),
       ['Movement: Bob — → 7'])
   })
+  it('names animation changes in plain words', () => {
+    const ph = n => ({ phases: Array.from({ length: n }, (_, i) => ({ time: 0.2, pose: {}, ...(i === n - 1 && n > 1 ? { hit: true } : {}) })) })
+    const pub = { stats: {}, params: {}, behavior: {}, anims: { walk: ph(2), idle: ph(2) } }
+    const draft = { ...pub, anims: { attack: ph(3), walk: { phases: [{ time: 0.3, pose: {} }, { time: 0.2, pose: { a: { turn: 5 } } }] } } }
+    assert.deepEqual(describeChanges({ name: 'p', isNew: false, published: pub, draft, cutChanged: false, weapons: W }),
+      ['Idle animation: back to built-in', 'Walk animation changed', 'Attack animation: 3 phases (was built-in)'])
+  })
 })
