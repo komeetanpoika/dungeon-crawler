@@ -61,19 +61,34 @@ function writeMonster(dir, name, data) {
   return { ok: true, name }
 }
 
-// The monster bench's Save: read-modify-write of one existing monster.
-// stats and behavior merge into what is on disk, tuning and params are replaced whole,
-// and every other field of the def survives.
+// Pure: apply a bench/studio patch to a def, returning a new object.
+// stats merge; behavior merges and a null value deletes that key; params and
+// tuning replace whole; spawn replaces when present (null included); every
+// other field survives.
+function mergeDefPatch(def, patch = {}) {
+  const out = { ...def }
+  if (patch.stats) out.stats = { ...(def.stats ?? {}), ...patch.stats }
+  if (patch.behavior) {
+    const b = { ...(def.behavior ?? {}) }
+    for (const [k, v] of Object.entries(patch.behavior)) {
+      if (v === null) delete b[k]
+      else b[k] = v
+    }
+    out.behavior = b
+  }
+  if (patch.tuning) out.tuning = { ...patch.tuning }
+  if (patch.params) out.params = { ...patch.params }
+  if ('spawn' in patch) out.spawn = patch.spawn
+  return out
+}
+
+// The monster bench's Save: read, mergeDefPatch, write one existing monster.
 function updateMonster(dir, name, patch = {}) {
   if (typeof name !== 'string' || !NAME_RE.test(name)) throw new Error(`invalid monster name "${name}"`)
   let def
   try { def = JSON.parse(fs.readFileSync(path.join(dir, name + '.json'), 'utf8')) }
   catch { throw new Error(`no monster "${name}"`) }
-  if (patch.stats) def.stats = { ...(def.stats ?? {}), ...patch.stats }
-  if (patch.behavior) def.behavior = { ...(def.behavior ?? {}), ...patch.behavior }
-  if (patch.tuning) def.tuning = { ...patch.tuning }
-  if (patch.params) def.params = { ...patch.params }
-  return writeMonster(dir, name, def)
+  return writeMonster(dir, name, mergeDefPatch(def, patch))
 }
 
-module.exports = { readMonsters, writeMonster, updateMonster, NAME_RE, RESERVED_NAMES }
+module.exports = { readMonsters, writeMonster, updateMonster, mergeDefPatch, NAME_RE, RESERVED_NAMES }

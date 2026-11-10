@@ -1,5 +1,5 @@
 {
-  "name": "maahinen",
+  "name": "maahinen", "placedBy": "story",
   "rig": "quadruped",
   "params": { "bodyLength": 1.3, "bodyWidth": 1.4, "bulge": 0.4, "legLength": 0.35, "legThick": 0.3,
               "headSize": 0.7, "snout": 0.8, "eyeSize": 0.06, "horns": false,

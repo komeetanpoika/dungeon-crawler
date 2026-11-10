@@ -6,7 +6,7 @@
 // reload a file change triggers, via sessionStorage.
 import { getMonsterDef, monsterNames, retuneMonster } from '../../renderer/systems/monsters.js'
 import { setDamageObserver } from '../../renderer/systems/player-damage.js'
-import { makeBenchModel, restore, storageKey, savePatch, markSaved, takeSnapshot, keepSnapshot } from './bench-state.js'
+import { makeBenchModel, restore, storageKey, savePatch, markSaved, takeSnapshot, keepSnapshot, liveBehavior, usesSnapshots } from './bench-state.js'
 import { makeBenchCore, benchArenaConfig } from './bench-core.js'
 import { mountPanel } from './panel.js'
 import { drawOverlay } from './overlay.js'
@@ -43,18 +43,48 @@ export function startBench(seam) {
   const model = makeBenchModel(def)
   const key = storageKey(name)
   const store = (() => { try { return globalThis.sessionStorage } catch { return null } })()
-  restore(model, takeSnapshot(store, key), def.tuningSchema, def.rig?.PARAM_SCHEMA)
+  const studio = !!window.saveAPI.isStudio
+  const snapshots = usesSnapshots(window.saveAPI)
+  if (snapshots) restore(model, takeSnapshot(store, key), def.tuningSchema, def.rig?.PARAM_SCHEMA)
   // What the panel shows is what the monster runs on: restored tweaks go
   // into the live tuning object and the AI row before anything spawns.
   Object.assign(def.tuning, model.values.tuning)
   Object.assign(def.params, model.values.params)
-  retuneMonster(name, { stats: model.values.stats, behavior: model.values.behavior })
+  retuneMonster(name, { stats: model.values.stats, behavior: liveBehavior(model) })
   const core = makeBenchCore(model)
   setDamageObserver(core.observe)
   seam.startArena(benchArenaConfig(name, model.switches.count))
 
+  // Studio: every edit is saved to the draft 400 ms after the last one, one
+  // save in flight at a time. A failed save stays unsent until the next edit
+  // or flush sends it again.
+  let saveTimer = null, inflight = null, unsent = false
+  function sendSave() {
+    clearTimeout(saveTimer); saveTimer = null
+    if (!unsent) return inflight ?? Promise.resolve()
+    unsent = false
+    const patch = savePatch(model, { params: false })
+    const p = (inflight ?? Promise.resolve()).catch(() => {}).then(() => window.saveAPI.benchSave(name, patch)).then(
+      () => { if (!unsent) { markSaved(model); panel.markSaved() } panel.setError('') },
+      err => { unsent = true; panel.setError(`save failed: ${err.message}`); throw err })
+    inflight = p
+    p.finally(() => { if (inflight === p) inflight = null }).catch(() => {})
+    return p
+  }
+  if (studio) {
+    // the studio page's Fight tab: send a pending save now (rejects when it fails), and is one waiting?
+    window.benchFlush = () => sendSave()
+    window.benchPending = () => !!(saveTimer || inflight || unsent)
+  }
   const panel = mountPanel(model, core, {
     def,
+    studio,
+    ignores: def.hookModule?.IGNORES ?? {},
+    onEdit: () => {
+      unsent = true
+      clearTimeout(saveTimer)
+      saveTimer = setTimeout(() => { sendSave().catch(() => { /* shown in the panel */ }) }, 400)
+    },
     onTuning: (k, v) => { def.tuning[k] = v },
     // the rig reads def.params every frame; retune keeps the hit size in step
     onParam: (k, v) => { def.params[k] = v; retuneMonster(name) },
@@ -63,12 +93,15 @@ export function startBench(seam) {
       catch (err) { panel.setError(`save failed: ${err.message}`) }
     },
     onRespawn: () => core.respawn(seam, name),
+    onWeapon: () => core.rearm(seam.getState(), name),
     onHeal: () => core.heal(seam.getState()),
   })
   let lastRead = -Infinity
 
-  window.addEventListener('pagehide', () => keepSnapshot(store, key, model))
-  window.saveAPI.onBenchFilesChanged?.(() => location.reload())
+  if (snapshots) {
+    window.addEventListener('pagehide', () => keepSnapshot(store, key, model))
+    window.saveAPI.onBenchFilesChanged?.(() => location.reload())
+  }
 
   return {
     arenaConfig: () => benchArenaConfig(name, model.switches.count),

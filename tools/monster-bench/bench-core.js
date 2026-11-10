@@ -3,7 +3,8 @@
 // may not be hurt at all), the time controls, freezing the monster,
 // respawning it with the panel's current numbers, the arena it fights in,
 // and the gate that keeps panel typing away from the game's keys.
-import { retuneMonster } from '../../renderer/systems/monsters.js'
+import { retuneMonster, makeMonsterFromDef } from '../../renderer/systems/monsters.js'
+import { liveBehavior } from './bench-state.js'
 
 // No plate: a hit lands at face value, so the damage numbers read true.
 export const BENCH_KIT = { weaponType: 'sword', rangedType: 'shortbow', wandType: 'sparkwand',
@@ -52,10 +53,26 @@ export function makeBenchCore(model) {
     isFrozen: (e, name) => sw.frozen && e.type === name,
 
     respawn(seam, name) {
-      retuneMonster(name, { stats: model.values.stats, behavior: model.values.behavior })
+      retuneMonster(name, { stats: model.values.stats, behavior: liveBehavior(model) })
       const state = seam.getState()
       state.entities = state.entities.filter(e => e.type !== name)
       seam.spawn(respawnSpots(sw.count).map(p => ({ kind: name, ...p })))
+    },
+
+    // Weapon, damage and reach apply at once. The registry takes the weapon
+    // fields only (health, speed and the other behaviour numbers still wait
+    // for a respawn), and every monster of the type already in the arena is
+    // re-armed the way makeMonsterFromDef arms a new one. A swing begun with
+    // the old weapon is dropped: it cannot finish without one.
+    rearm(state, name) {
+      const { weapon, weaponOverrides } = liveBehavior(model)
+      retuneMonster(name, { behavior: { weapon, weaponOverrides } })
+      for (const e of state.entities) {
+        if (e.type !== name) continue
+        const fresh = makeMonsterFromDef(name, e.x, e.y)
+        for (const k of ['weaponId', 'weaponOverrides']) { if (fresh && k in fresh) e[k] = fresh[k]; else delete e[k] }
+        e.attack = null
+      }
     },
 
     heal(state) { state.player.hp = state.player.maxHp },
@@ -68,9 +85,12 @@ export function makeBenchCore(model) {
 // which game.js answers by releasing every held key. Buttons, sliders and
 // checkboxes give focus back after use — a focused button would otherwise
 // take the attack key (Space) as another click; text fields keep it until
-// Escape or a click on the arena. The focused control is not always the
-// event's target (a press dragged off its button), so both are released.
+// Escape or a click on the arena. A dropdown keeps focus while its menu is
+// open (blurring it on the click's release would close the menu at once)
+// and gives it back once a choice is made. The focused control is not always
+// the event's target (a press dragged off its button), so both are released.
 const KEEPS_FOCUS = new Set(['text', 'number'])
+const MENUS = new Set(['select-one', 'select-multiple'])
 export function gateKeys(root, win = globalThis.window, doc = globalThis.document) {
   root.addEventListener('focusin', () => win.dispatchEvent(new Event('blur')))
   root.addEventListener('keydown', e => { if (e.key === 'Escape') e.target?.blur?.(); e.stopPropagation() })
@@ -78,6 +98,7 @@ export function gateKeys(root, win = globalThis.window, doc = globalThis.documen
   const release = e => {
     for (const n of new Set([e.target, doc?.activeElement])) {
       if (!n || KEEPS_FOCUS.has(n.type)) continue
+      if (e.type === 'pointerup' && MENUS.has(n.type)) continue
       if (n === e.target || root.contains?.(n)) n.blur?.()
     }
   }

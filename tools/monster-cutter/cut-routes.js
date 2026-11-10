@@ -10,10 +10,10 @@ const { NAME_RE, RESERVED_NAMES } = createRequire(import.meta.url)('../monster-l
 const PNG_PREFIX = 'data:image/png;base64,'
 
 // Returns true when it handled the request.
-export function handleCutRoute({ req, res, u, send, cutsRoot, pageFile }) {
+export function handleCutRoute({ req, res, u, send, cutsRoot }) {
   const json = (code, obj) => send(code, JSON.stringify(obj))
   if (u.pathname === '/cutter' && req.method === 'GET') {
-    fs.readFile(pageFile, (err, data) => err ? send(404, 'not found', 'text/plain') : send(200, data, 'text/html'))
+    res.writeHead(302, { Location: '/studio' }); res.end()
     return true
   }
   if (u.pathname === '/api/cuts' && req.method === 'GET') {

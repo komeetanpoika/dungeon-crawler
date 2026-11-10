@@ -1,5 +1,5 @@
 {
-  "name": "sammunut",
+  "name": "sammunut", "placedBy": "story",
   "rig": "wraith",
   "params": { "height": 2.85, "lift": 0.25, "floatFps": 6, "bob": 0.5, "emberColor": "#ff7a2a" },
   "stats": { "hp": 18, "dmg": 0, "speed": 80 },

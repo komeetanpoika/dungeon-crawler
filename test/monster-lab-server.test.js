@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createLabServer } from '../tools/monster-lab/server.mjs'
 import { writePng } from '../tools/png-write.mjs'
-import { encodeMask } from '../tools/monster-cutter/mask.js'
+import { makeCutBody } from './studio-fixture.js'
 
 let server, base, dir
 before(async () => {
@@ -78,34 +78,19 @@ describe('cut endpoints', () => {
   })
   after(() => cserver.close())
 
-  const W = 100, H = 100
   function makeBody({ short = false, withPng = true, switchRig } = {}) {
-    const mask = new Uint8Array(W * H), rgba = new Uint8Array(W * H * 4)
-    for (let i = 0; i < W * H; i++) rgba.set([255, 255, 255, 255], i * 4)
-    const rect = (x, y, w, h, col) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) { mask[j * W + i] = 1; rgba.set([...col, 255], (j * W + i) * 4) } }
-    rect(30, 20, 40, 60, [255, 0, 0]); rect(20, 25, 10, 40, [0, 0, 255])
-    const pieces = [
-      { id: 'torso', role: 'torso', side: null, parent: null, seed: [50, 50], cut: null, pivot: [50, 50], z: 0, claims: [] },
-      { id: 'arm', role: 'arm', side: 'left', parent: 'torso', seed: [22, 40],
-        cut: short ? [[30, 40], [30, 45]] : [[30, 22], [30, 68]], pivot: [29, 40], z: 1, claims: [] },
-    ]
-    const cut = { version: 1, name: 'srv', source: 'assets/cuts/srv.png', credit: null, w: W, h: H, mask: encodeMask(mask),
-      view: 'front', faces: 'left', outHeight: 30, outline: '#102030', pieces, points: { chest: { piece: 'torso', x: 50, y: 40 } } }
+    const { cut, sourcePng } = makeCutBody({ name: 'srv', short })
     const body = { cut }
-    if (withPng) {
-      const f = path.join(os.tmpdir(), `srv-${process.pid}.png`)
-      writePng(f, W, H, rgba)
-      body.sourcePng = 'data:image/png;base64,' + fs.readFileSync(f).toString('base64')
-    }
+    if (withPng) body.sourcePng = sourcePng
     if (switchRig !== undefined) body.switchRig = switchRig
     return body
   }
   const put = (name, body) => fetch(`${cbase}/api/cuts/${name}`, { method: 'PUT', body: JSON.stringify(body) })
 
-  it('GET /cutter serves the cutter page', async () => {
-    const res = await fetch(`${cbase}/cutter`)
-    assert.equal(res.status, 200)
-    assert.match(res.headers.get('content-type'), /text\/html/)
+  it('GET /cutter redirects to /studio', async () => {
+    const res = await fetch(`${cbase}/cutter`, { redirect: 'manual' })
+    assert.equal(res.status, 302)
+    assert.equal(res.headers.get('location'), '/studio')
   })
   it('PUT a valid cut with its source writes the cut, the parts and a new def; GET /api/cuts lists it', async () => {
     const res = await put('srv', makeBody())

@@ -12,7 +12,7 @@ import { TILE } from '../renderer/systems/entities.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 import { hurtCreature } from '../renderer/systems/creatures.js'
-import { tryStartEnemyAttack } from '../renderer/systems/enemy-attack.js'
+import { tryStartEnemyAttack, getEnemyWeapon, WEAPONS } from '../renderer/systems/enemy-attack.js'
 import { ensureHirvi, startBolt, updateHirvi, makeStand } from '../renderer/systems/monsters/hirvi.js'
 
 const FAKE_RIG = {
@@ -531,5 +531,26 @@ describe('drawMonsterFx', () => {
     const { ops, ctx } = recorder()
     drawMonsterFx(ctx, [{ type: 'boarhound', x: 2, y: 3, px: 80, py: 112, hp: 5 }], scene(), 0, 0, S)
     assert.deepEqual(ops, [])
+  })
+})
+
+describe('weapon overrides from the def', () => {
+  beforeEach(clearMonsters)
+  const opts = { loadRig: async () => FAKE_RIG, loadHooks: async () => {}, warn: () => {} }
+  it('stamps a def\'s weapon overrides onto the entity, and the swing uses them', async () => {
+    await registerMonsters([{ name: 'wovr', rig: 'fakerig', stats: { hp: 5 }, behavior: { weapon: 'maul', weaponOverrides: { damage: 3 } } }], opts)
+    const e = makeMonsterFromDef('wovr', 1, 1)
+    assert.deepEqual(e.weaponOverrides, { damage: 3 })
+    const w = getEnemyWeapon(e)
+    assert.equal(w.damage, 3)
+    assert.equal(w.reach, WEAPONS.maul.reach)
+  })
+  it('ignores overrides without a weapon, and non-finite override values', async () => {
+    await registerMonsters([
+      { name: 'wnone', rig: 'fakerig', behavior: { weaponOverrides: { damage: 3 } } },
+      { name: 'wbad', rig: 'fakerig', behavior: { weapon: 'maul', weaponOverrides: { damage: 'x', reach: 40, extra: 1 } } },
+    ], opts)
+    assert.equal('weaponOverrides' in makeMonsterFromDef('wnone', 1, 1), false)
+    assert.deepEqual(makeMonsterFromDef('wbad', 1, 1).weaponOverrides, { reach: 40 })
   })
 })

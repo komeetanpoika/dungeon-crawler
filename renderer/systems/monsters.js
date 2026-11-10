@@ -61,8 +61,12 @@ export async function registerMonsters(defs, opts = {}) {
     // clearance track the visuals, and the def's stats.half is a fallback
     // for rigs without hitHalf.
     if (typeof rig.hitHalf === 'function') stats.half = rig.hitHalf(params)
+    // `own` keeps the params/tuning the def file itself holds, before
+    // clamping fills in defaults: the bench writes back only those keys and
+    // the ones it changed (sparseValues), so later default changes still apply.
     const def = REGISTRY[raw.name] = { name: raw.name, rigId: raw.rig, rig, params, stats,
                           behavior: raw.behavior ?? {}, spawn: raw.spawn ?? null,
+                          own: { params: { ...(raw.params ?? {}) }, tuning: { ...(raw.tuning ?? {}) } },
                           tuningSchema: null, tuning: {}, hookModule: null, warnings: [] }
     // This monster's own load warnings stay on the def, so the monster
     // bench can show a broken hook instead of quietly running without it.
@@ -154,8 +158,18 @@ export function monstersForOpenMap(depth) {
 export function makeMonsterFromDef(name, x, y, { isBoss = false } = {}) {
   const d = REGISTRY[name]
   if (!d) return null
+  // behavior.weaponOverrides ({ damage, reach }) rides along with a weapon:
+  // getEnemyWeapon merges it over WEAPONS[id], so the def owns its swing numbers.
+  const ov = {}
+  if (d.behavior?.weapon) {
+    for (const k of ['damage', 'reach']) {
+      const v = d.behavior.weaponOverrides?.[k]
+      if (Number.isFinite(v)) ov[k] = v
+    }
+  }
   return { type: name, x, y, hp: d.stats.hp, maxHp: d.stats.hp, damage: d.stats.dmg, inCombat: false,
     ...(d.behavior?.weapon ? { weaponId: d.behavior.weapon } : {}),
+    ...(Object.keys(ov).length ? { weaponOverrides: ov } : {}),
     ...(isBoss ? { isBoss: true } : {}) }
 }
 

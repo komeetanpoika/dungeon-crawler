@@ -1,11 +1,14 @@
 // tools/monster-bench/panel.js
 // The bench's tuning panel: a column down the right edge (F2 or the edge
 // button folds it away) over the running arena. Look and tuning edits apply on the
-// next frame; stats and behaviour wait for a respawn. Buttons show state by
+// next frame, and so do weapon, damage and reach; health, speed and the
+// other behaviour numbers wait for a respawn. Buttons show state by
 // colour. Every key event stops at the panel (gateKeys), so typing a number
 // never walks the hero.
-import { edit } from './bench-state.js'
+import { edit, setWeapon } from './bench-state.js'
 import { gateKeys } from './bench-core.js'
+import { effectiveFight, fieldStates } from './fight-fields.js'
+import { WEAPONS } from '../../renderer/systems/enemy-attack.js'
 
 const CSS = `
 #bench-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 280px; z-index: 30; overflow-y: auto;
@@ -28,6 +31,11 @@ const CSS = `
 #bench-panel button.on { background: #2f6f4f; border-color: #4ade80; color: #fff; }
 #bench-panel button.dirty { background: #8a5a12; border-color: #f0c040; color: #fff; }
 #bench-panel .bp-read { white-space: pre-wrap; color: #cfe; background: #15151b; padding: 4px 6px; min-height: 3em; }
+#bench-panel .bp-status { color: #7a7a8c; font-size: 11px; }
+#bench-panel details { margin: 6px 0; }
+#bench-panel summary { cursor: pointer; color: #8a8aa0; font-size: 11px; }
+#bench-panel select { background: #1b1b22; color: #eee; border: 1px solid #3a3a48; font: 12px monospace; }
+#bench-panel .bp-row.off label { color: #666; }
 #bench-panel .bp-err { color: #f87171; white-space: pre-wrap; }
 body.bench-open #hud-offhand, body.bench-open #hud-ammo { right: 294px; }
 `
@@ -49,9 +57,13 @@ export function mountPanel(model, core, handlers) {
                            fold.textContent = sw.collapsed ? '<' : '>' }
   fold.onclick = () => { sw.collapsed = !sw.collapsed; syncFold() }
   window.addEventListener('keydown', e => { if (e.key === 'F2' && !e.repeat) { sw.collapsed = !sw.collapsed; syncFold() } })
-  const syncDirty = () => save.classList.toggle('dirty', model.dirty.size > 0)
+  const studio = !!handlers.studio
+  const status = el('span', { className: 'bp-status', textContent: 'Saved to draft' })
+  const syncDirty = () => { if (!studio) save.classList.toggle('dirty', model.dirty.size > 0) }
+  // every edit lands here: the studio saves it on its own
+  const touched = () => { syncDirty(); if (studio) { status.textContent = 'Saving…'; handlers.onEdit?.() } }
   save.onclick = async () => { await handlers.onSave(); syncDirty() }
-  root.append(el('div', { className: 'bp-head' }, fold, el('h2', { textContent: def.name }), save))
+  root.append(el('div', { className: 'bp-head' }, fold, el('h2', { textContent: def.name }), studio ? status : save))
   // a hook that failed to load, a bad schema, clamped values: say so up top
   if (def.warnings?.length) root.append(el('div', { className: 'bp-err', textContent: def.warnings.join('\n') }))
 
@@ -64,7 +76,7 @@ export function mountPanel(model, core, handlers) {
     for (const p of schema) {
       if (p.group !== group) { group = p.group; root.append(el('div', { className: 'bp-note', textContent: group })) }
       const row = el('div', { className: 'bp-row' })
-      const set = v => { edit(model, section, p.key, v); onChange(p.key, v); syncDirty() }
+      const set = v => { edit(model, section, p.key, v); onChange(p.key, v); touched() }
       const cur = model.values[section][p.key]
       if (p.type === 'range') {
         const num = el('input', { type: 'number', min: p.min, max: p.max, step: p.step, value: cur })
@@ -89,22 +101,71 @@ export function mountPanel(model, core, handlers) {
       root.append(row)
     }
   }
-  schemaRows('Look — live', def.rig?.PARAM_SCHEMA, 'params', handlers.onParam)
-  schemaRows('Tuning — live', def.tuningSchema, 'tuning', handlers.onTuning)
+  if (!studio) schemaRows('Look — live', def.rig?.PARAM_SCHEMA, 'params', handlers.onParam)
+  schemaRows('Special moves — live', def.tuningSchema, 'tuning', handlers.onTuning)
 
-  // stats and numeric behaviour: plain numbers, applied by the next respawn
-  root.append(el('h3', { textContent: 'Stats and behaviour' }), el('div', { className: 'bp-note', textContent: 'applies on respawn' }))
-  for (const section of ['stats', 'behavior']) {
-    for (const [k, v] of Object.entries(model.values[section])) {
-      const input = el('input', { type: 'number', value: v })
-      input.onchange = () => {
-        const n = Number(input.value)
-        if (input.value === '' || !Number.isFinite(n)) { input.value = model.values[section][k]; return }
-        edit(model, section, k, n); syncDirty()
-      }
-      root.append(el('div', { className: 'bp-row' }, el('label', { textContent: k }), input))
-    }
+  // Fight: health and speed apply on the next respawn; weapon, damage and
+  // reach re-arm the monsters already in the arena at once (onWeapon)
+  root.append(el('h3', { textContent: 'Fight — health and speed apply on respawn' }))
+  const states = () => fieldStates(model.values.weapon, handlers.ignores)
+  const fightRows = []
+  const fightRow = (key, label, control, hint) => {
+    const row = el('div', { className: 'bp-row' }, el('label', { textContent: label }), control)
+    const reason = el('div', { className: 'bp-hint' })
+    row.append(reason)
+    fightRows.push(() => {
+      const st = states()[key]
+      control.disabled = st.disabled
+      row.classList.toggle('off', st.disabled)
+      reason.textContent = st.disabled ? st.reason : (hint ?? '')
+      reason.style.display = reason.textContent ? '' : 'none'
+    })
+    root.append(row)
   }
+  const numberInput = (read, write, min) => {
+    const input = el('input', { type: 'number', step: 1, value: read() ?? '' })
+    if (min != null) input.min = min
+    input.onchange = () => {
+      const n = Number(input.value)
+      if (input.value === '' || !Number.isFinite(n)) { input.value = read() ?? ''; return }
+      const v = min != null ? Math.max(min, n) : n
+      input.value = v; write(v); touched()
+    }
+    return input
+  }
+  const syncFight = () => fightRows.forEach(f => f())
+  for (const [key, label, min] of [['hp', 'Health', 1], ['speed', 'Speed', 0]])
+    fightRow(key, label, numberInput(() => model.values.stats[key], v => edit(model, 'stats', key, v), min))
+  const pick = el('select', {}, el('option', { value: '', textContent: 'none' }),
+    ...Object.keys(WEAPONS).map(id => el('option', { value: id, textContent: id })))
+  pick.value = model.values.weapon.weapon ?? ''
+  const rearm = () => handlers.onWeapon?.()
+  const damage = numberInput(() => effectiveFight(model.values.weapon).damage, v => { edit(model, 'weapon', 'damage', v); rearm() }, 0)
+  const reach = numberInput(() => effectiveFight(model.values.weapon).reach, v => { edit(model, 'weapon', 'reach', v); rearm() }, 1)
+  pick.onchange = () => {
+    setWeapon(model, pick.value || null)
+    rearm()
+    damage.value = effectiveFight(model.values.weapon).damage ?? ''
+    reach.value = effectiveFight(model.values.weapon).reach ?? ''
+    syncFight(); touched()
+  }
+  fightRow('weapon', 'Weapon', pick)
+  fightRow('damage', 'Damage', damage)
+  fightRow('reach', 'Reach', reach)
+  syncFight()
+
+  // the rest of the behaviour numbers, tucked away
+  const other = el('details', {}, el('summary', { textContent: 'Other behaviour numbers' }))
+  for (const [k, v] of Object.entries(model.values.behavior)) {
+    const input = el('input', { type: 'number', value: v })
+    input.onchange = () => {
+      const n = Number(input.value)
+      if (input.value === '' || !Number.isFinite(n)) { input.value = model.values.behavior[k]; return }
+      edit(model, 'behavior', k, n); touched()
+    }
+    other.append(el('div', { className: 'bp-row' }, el('label', { textContent: k }), input))
+  }
+  root.append(other)
 
   // switches
   const toggle = (label, key, title) => {
@@ -149,5 +210,6 @@ export function mountPanel(model, core, handlers) {
     refresh(text) { if (text !== lastText) { lastText = text; read.textContent = text } },
     setError(msg) { err.textContent = msg ?? '' },
     syncDirty,
+    markSaved() { status.textContent = 'Saved to draft' },
   }
 }

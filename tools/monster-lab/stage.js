@@ -31,6 +31,8 @@ export function makeStage(canvas, simBar) {
 
   let last = performance.now()
   function frame(now) {
+    // a hidden stage (its tab or column is display:none) draws nothing: software canvas
+    if (canvas.offsetParent === null) { last = now; requestAnimationFrame(frame); return }
     const dt = Math.min(0.1, (now - last) / 1000); last = now
     if (!st.sim.paused) { st.sim.t += dt; st.sim.stateT += dt }
     const S = 32 * st.zoom, W = canvas.width, H = canvas.height
