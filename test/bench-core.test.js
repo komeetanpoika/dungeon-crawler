@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { BENCH_KIT, benchArenaConfig, respawnSpots, makeBenchCore, gateKeys } from '../tools/monster-bench/bench-core.js'
-import { makeBenchModel } from '../tools/monster-bench/bench-state.js'
+import { makeBenchModel, setWeapon } from '../tools/monster-bench/bench-state.js'
 import { registerMonsters, clearMonsters, getMonsterDef } from '../renderer/systems/monsters.js'
 import { getAIConfig } from '../renderer/data/enemy-ai.js'
 
@@ -72,6 +72,31 @@ describe('respawn', () => {
     assert.deepEqual(spawned, [{ kind: 'glorp', x: 13, y: 7 }, { kind: 'glorp', x: 10, y: 7 }])
     assert.equal(getAIConfig({ type: 'glorp' }).speed, 120)
     assert.equal(getMonsterDef('glorp').stats.hp, 33)
+  })
+})
+
+describe('rearm', () => {
+  beforeEach(clearMonsters)
+  it('a weapon change reaches the monsters already in the arena; health and behaviour wait for a respawn', async () => {
+    await registerMonsters([{ name: 'glorp', rig: 'r', stats: { hp: 10, speed: 60 }, behavior: { sightRange: 300 } }],
+      { loadRig: async () => RIG, loadHooks: async () => ({}), warn: () => {} })
+    const m = makeBenchModel(getMonsterDef('glorp')), core = makeBenchCore(m)
+    const state = { entities: [{ type: 'glorp', x: 1, y: 1, attack: { phase: 'windup' } }, { type: 'chest' }, { type: 'glorp', x: 2, y: 1 }] }
+    setWeapon(m, 'club'); m.values.weapon.damage = 5
+    m.values.stats.hp = 33; m.values.behavior.sightRange = 999
+    core.rearm(state, 'glorp')
+    for (const e of [state.entities[0], state.entities[2]]) {
+      assert.equal(e.weaponId, 'club')
+      assert.deepEqual(e.weaponOverrides, { damage: 5 })
+      assert.equal(e.attack, null, 'a swing begun with the old weapon is dropped')
+    }
+    assert.deepEqual(state.entities[1], { type: 'chest' })
+    assert.equal(getMonsterDef('glorp').stats.hp, 10)
+    assert.equal(getMonsterDef('glorp').behavior.sightRange, 300)
+    setWeapon(m, null)
+    core.rearm(state, 'glorp')
+    assert.equal('weaponId' in state.entities[0], false)
+    assert.equal('weaponOverrides' in state.entities[0], false)
   })
 })
 

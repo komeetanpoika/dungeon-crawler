@@ -1,7 +1,8 @@
 // tools/monster-bench/panel.js
 // The bench's tuning panel: a column down the right edge (F2 or the edge
 // button folds it away) over the running arena. Look and tuning edits apply on the
-// next frame; stats and behaviour wait for a respawn. Buttons show state by
+// next frame, and so do weapon, damage and reach; health, speed and the
+// other behaviour numbers wait for a respawn. Buttons show state by
 // colour. Every key event stops at the panel (gateKeys), so typing a number
 // never walks the hero.
 import { edit, setWeapon } from './bench-state.js'
@@ -103,8 +104,9 @@ export function mountPanel(model, core, handlers) {
   if (!studio) schemaRows('Look — live', def.rig?.PARAM_SCHEMA, 'params', handlers.onParam)
   schemaRows('Special moves — live', def.tuningSchema, 'tuning', handlers.onTuning)
 
-  // Fight: health, speed, weapon, damage, reach; applied by the next respawn
-  root.append(el('h3', { textContent: 'Fight — applies on respawn' }))
+  // Fight: health and speed apply on the next respawn; weapon, damage and
+  // reach re-arm the monsters already in the arena at once (onWeapon)
+  root.append(el('h3', { textContent: 'Fight — health and speed apply on respawn' }))
   const states = () => fieldStates(model.values.weapon, handlers.ignores)
   const fightRows = []
   const fightRow = (key, label, control, hint) => {
@@ -137,10 +139,12 @@ export function mountPanel(model, core, handlers) {
   const pick = el('select', {}, el('option', { value: '', textContent: 'none' }),
     ...Object.keys(WEAPONS).map(id => el('option', { value: id, textContent: id })))
   pick.value = model.values.weapon.weapon ?? ''
-  const damage = numberInput(() => effectiveFight(model.values.weapon).damage, v => edit(model, 'weapon', 'damage', v), 0)
-  const reach = numberInput(() => effectiveFight(model.values.weapon).reach, v => edit(model, 'weapon', 'reach', v), 1)
+  const rearm = () => handlers.onWeapon?.()
+  const damage = numberInput(() => effectiveFight(model.values.weapon).damage, v => { edit(model, 'weapon', 'damage', v); rearm() }, 0)
+  const reach = numberInput(() => effectiveFight(model.values.weapon).reach, v => { edit(model, 'weapon', 'reach', v); rearm() }, 1)
   pick.onchange = () => {
     setWeapon(model, pick.value || null)
+    rearm()
     damage.value = effectiveFight(model.values.weapon).damage ?? ''
     reach.value = effectiveFight(model.values.weapon).reach ?? ''
     syncFight(); touched()

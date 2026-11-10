@@ -103,7 +103,7 @@ async function main() {
       const fr = await iframeEl.contentFrame()
       await fr.evaluate(() => { window.__smokeMarker = 1 }) // step 4 must see a fresh page without it
       expect(await fr.evaluate(() => window.saveAPI?.isStudio === true), 'saveAPI.isStudio is not true in the game')
-      expect((await frame.locator('#bench-panel').textContent()).includes('Fight — applies on respawn'), 'bench panel lacks the Fight section')
+      expect((await frame.locator('#bench-panel').textContent()).includes('Fight — health and speed apply on respawn'), 'bench panel lacks the Fight section')
       const hp = healthInput(frame)
       await hp.fill('9')
       await hp.dispatchEvent('change')
