@@ -11,7 +11,7 @@ import { decorateMap, pruneMissingTiles, rulesetHasOverlays, skinFloors } from '
 import { Renderer, BLINK_DUR } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
 import { tickWalk } from './systems/walk.js'
-import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG, OVERWORLD_DEPTH, ADVENTURE_DEPTH } from './data/levels.js'
+import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG, OVERWORLD_DEPTH, ADVENTURE_DEPTH, WILDS_DEPTH } from './data/levels.js'
 import { countBosses, spawnBossDrop } from './systems/progression.js'
 import { PHASE, canTransition } from './systems/phase.js'
 import * as menu from './ui/menu.js'
@@ -44,6 +44,11 @@ import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from 
 import { generateInterior } from './systems/interior.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
+import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep } from './wilds/session.js'
+import { makeWorld } from './wilds/world.js'
+import { WILDS_SKINS } from './wilds/terrain.js'
+import { PIECE } from './wilds/layout.js'
+import { randomSeed } from './pvp/rng.js'
 import { normalizeTimewarpSave, enterEpisode, episodeEntries } from './systems/timewarp.js'
 import { makeNpc, updateNpc, onNpcHit, interactNpc, nearestPeacefulNpc, rollNpcDrop } from './systems/npc.js'
 import { npcSpawnsForMap } from './systems/openmap.js'
@@ -89,7 +94,13 @@ import { applyLoadout, handPayload } from './systems/loadout.js'
 // Fresh weather state for a depth's map — rebuilt on every surface-map
 // construction so a departing map's weather (and its fog cells, keyed to
 // that map's own tiles) is never inherited by the one arrived at.
-const weatherForDepth = depth => OPEN_MAPS[depth] ? makeWeather(OPEN_MAPS[depth]) : null
+// The Wilds (renderer/wilds/) has no OPEN_MAPS entry: its surface is generated
+// as the player walks. Everything that asks "is this an open-map surface, and
+// what is it called" goes through mapDataFor, which answers for the Wilds
+// with this stand-in (no POIs: no quest, no episode, no waystone gate).
+const WILDS_MAP = { name: 'wilds', title: 'the Wilds', pois: [], wilds: true }
+const mapDataFor = depth => depth === WILDS_DEPTH ? WILDS_MAP : OPEN_MAPS[depth]
+const weatherForDepth = depth => mapDataFor(depth) ? makeWeather(mapDataFor(depth)) : null
 
 const TILE_SIZE = 32
 const PROJECTILE_SPEED = 280
@@ -271,7 +282,7 @@ let bench = null
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
 if (new URLSearchParams(location.search).has('dcdebug')) {
-  window.__dc = { get state() { return state }, get save() { return activeSave } }
+  window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld } }
 }
 let inventoryOpen = false
 let meta = null
@@ -296,16 +307,30 @@ let savedTimewarp = normalizeTimewarpSave(null)
 // timewarp — the picked episode's own adventure-shaped mini-save. Every
 // map-state helper goes through this so the two modes can't cross-write.
 let activeSave = savedAdventure
+// The Wilds: its own adventure-shaped save carrying the world record
+// (`wilds`, renderer/wilds/world.js), and the live world while a Wilds run
+// is up — null in every other mode, which is what keeps its hooks quiet.
+let savedWilds = normalizeAdventureSave(null)
+let wildsWorld = null
+const wildsBuild = (spawns, map, depth) => buildEntities(spawns, map, depth, state?.player ?? null)
+const wildsHooks = {
+  buildEntities: wildsBuild,
+  onVillage: v => { announce(state, `You reach ${v.name}.`); persistRun() },
+}
 
 function persistRun() {
-  if (runMode !== 'adventure' && runMode !== 'timewarp') return
+  if (runMode !== 'adventure' && runMode !== 'timewarp' && runMode !== 'wilds') return
   const surface = state?.cave ? state.cave.surface : state
-  const mapName = surface ? OPEN_MAPS[surface.level]?.name : null
+  const mapName = surface ? mapDataFor(surface.level)?.name : null
+  // The Wilds keeps its gone things and felled trees per piece in its own
+  // record (snapshotWilds); the per-map lists below are the fixed maps'.
+  const wilds = runMode === 'wilds'
   if (mapName) activeSave.caves[mapName] = surface.caveInstances ?? {}
-  if (mapName) activeSave.gates[mapName] =
+  if (mapName && !wilds) activeSave.gates[mapName] =
     Object.entries(surface.gates ?? {}).filter(([, g]) => g.open).map(([id]) => id)
-  if (mapName) recordNpcState(activeSave, mapName, surface.npcSpawnIds ?? [], surface.entities, surface.npcWrath)
-  if (mapName) activeSave.felled[mapName] = felledCells(surface.map)
+  if (mapName && !wilds) recordNpcState(activeSave, mapName, surface.npcSpawnIds ?? [], surface.entities, surface.npcWrath)
+  if (mapName && !wilds) activeSave.felled[mapName] = felledCells(surface.map)
+  if (mapName && wilds && wildsWorld) activeSave.wilds = snapshotWilds(state, wildsWorld)
   if (mapName && state.player) {
     activeSave.talents = [...(state.player.talents ?? [])]
     activeSave.body = {
@@ -321,13 +346,14 @@ function persistRun() {
     }
   }
   if (runMode === 'timewarp') window.saveAPI.saveTimewarp?.(savedTimewarp)
+  else if (wilds) window.saveAPI.saveWilds?.(savedWilds)
   else window.saveAPI.saveCaves?.(savedAdventure)
 }
 
 // Progress only persists on the open maps (Adventure/Timewarp) — a
 // Dungeon Rush level, or a cave under one, saves nothing mid-run.
 function persistIfSurface() {
-  if (OPEN_MAPS[state.cave ? state.cave.surface.level : state.level]) persistRun()
+  if (mapDataFor(state.cave ? state.cave.surface.level : state.level)) persistRun()
 }
 
 // One thought per key per `secs`, so a held key or a stood-on tile can't
@@ -629,7 +655,7 @@ function respawnNpcs() {
 // Leap maps: install the persona while the episode is open, or bring the
 // missing person home if it is already resolved.
 function arriveOnMap() {
-  const mapData = OPEN_MAPS[state.level]
+  const mapData = mapDataFor(state.level)
   const ep = episodeFor(mapData)
   state.episode = ep
   state.villagerLines = null
@@ -696,11 +722,14 @@ const CHARGE_STANCE = { draw: 'ranged', spell: 'magic' }
 function startNewRun(depth = 1, arenaCfg = null) {
   const theme = DEPTH_THEMES.find(t => t.depths.includes(depth)) ?? DEPTH_THEMES[0]
   const cfg = LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[0]
-  const openMap = OPEN_MAPS[depth]
-  const npcRecord = openMap ? npcRecordFor(activeSave, openMap.name) : null
-  const felledRecord = openMap ? activeSave.felled[openMap.name] ?? [] : null
-  const { map, entitySpawns, playerSpawn, caveEntrances, houseDoors, gates, mapExit, signs } =
-    generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
+  // The Wilds builds its own map once `state` exists (enterWilds below).
+  const wilds = depth === WILDS_DEPTH
+  const openMap = mapDataFor(depth)
+  const npcRecord = openMap && !wilds ? npcRecordFor(activeSave, openMap.name) : null
+  const felledRecord = openMap && !wilds ? activeSave.felled[openMap.name] ?? [] : null
+  const { map, entitySpawns, playerSpawn, caveEntrances, houseDoors, gates, mapExit, signs } = wilds
+    ? { map: [], entitySpawns: [], playerSpawn: { x: 0, y: 0 } }
+    : generateLevel(depth, cfg.mapW, cfg.mapH, { skipProps: rulesetHasOverlays(rulesets[theme.ruleset]), structures, arena: arenaCfg,
       npcs: npcRecord, felled: felledRecord })
   // Timewarp is fully mode-independent of the rush meta: no unlocked
   // bonuses, no meta starting items — episodes run on their fixed kit only.
@@ -719,7 +748,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     player.talents = [...RUSH_START_TALENTS]
     for (const ot of RUSH_START_OUTFITS) { const { type, ...payload } = makeOutfitContents(ot); wearOutfit(player, payload) }
   }
-  if (OPEN_MAPS[depth]) {
+  if (openMap) {
     player.talents = [...activeSave.talents]
     if (activeSave.body) {
       // Hand payloads are re-derived from their tables rather than copied.
@@ -755,7 +784,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   // First entry into an episode: the fixed kit, not the adventure body.
   // A mid-episode resume has a body in the mini-save and restored it above.
   if (runMode === 'timewarp' && !activeSave.body) applyLoadout(player, episodeFor(OPEN_MAPS[depth])?.kit)
-  decorateMap(map, rulesets[theme.ruleset])
+  if (!wilds) decorateMap(map, rulesets[theme.ruleset])
   state = {
     level: depth,
     mode: runMode,
@@ -784,7 +813,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     lastBossTile: null,
     caveEntrances: caveEntrances ?? [],
     houseDoors: houseDoors ?? [],
-    caveInstances: OPEN_MAPS[depth] ? { ...activeSave.caves[OPEN_MAPS[depth].name] } : {},
+    caveInstances: openMap ? { ...activeSave.caves[openMap.name] } : {},
     gates: gates ?? {},
     mapExit: mapExit ?? null,
     entranceHold: false,
@@ -801,11 +830,20 @@ function startNewRun(depth = 1, arenaCfg = null) {
     // must stay recorded as dead on the next persist rather than be forgotten.
     npcSpawnIds: npcRecord ? [...npcSpawns(entitySpawns), ...npcRecord.dead] : [],
   }
+  // The Wilds: load (or begin) the world and build the window around where
+  // the player was — or the last village, or home on a fresh world.
+  wildsWorld = null
+  if (wilds) {
+    const fresh = !activeSave.wilds
+    wildsWorld = makeWorld(activeSave.wilds, { seed: randomSeed() })
+    enterWilds(state, wildsWorld, wildsWorld.pos ?? wildsWorld.lastVillage, wildsHooks)
+    if (fresh) persistRun()
+  }
   if (runMode === 'adventure' && OPEN_MAPS[depth]) recordVisit(activeSave.progress, OPEN_MAPS[depth].name)
-  if (OPEN_MAPS[depth]) arriveOnMap()
+  if (openMap) arriveOnMap()
   // Gates opened on an earlier visit stay open: swap in the open art and
   // set their fountains flowing before the first frame.
-  for (const id of activeSave.gates[OPEN_MAPS[depth]?.name] ?? []) {
+  for (const id of activeSave.gates[openMap?.name] ?? []) {
     openGate(state, id)
     for (const e of state.entities) {
       if (e.gateId !== id || !(e.isFountainWall || e.isFountainBasin)) continue
@@ -813,7 +851,8 @@ function startNewRun(depth = 1, arenaCfg = null) {
       e.propType = e.isFountainWall ? 'prop_gargoyle_flow' : 'prop_fountain_full'
     }
   }
-  announce(state, depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…')
+  announce(state, wilds ? 'The wilds lie open in every direction…'
+    : depth >= OVERWORLD_DEPTH ? 'You step out into the open…' : 'You enter the dungeon…')
 }
 
 function setPhase(to) {
@@ -828,6 +867,7 @@ function goTitle() {
   phase = PHASE.TITLE
   menu.showTitle(meta, {
     onAdventure: () => beginRun(OPEN_MAPS[savedAdventure.progress.mapDepth] ? savedAdventure.progress.mapDepth : ADVENTURE_DEPTH, 'adventure'),
+    onWilds: () => beginRun(WILDS_DEPTH, 'wilds'),
     onTimewarp: () => goEpisodeSelect(),
     onRush: () => beginRun(1, 'rush'),
     onOpenEditor: () => window.saveAPI.openEditor(),
@@ -1085,7 +1125,7 @@ function netFrame() {
 
 async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = null) {
   runMode = mode
-  activeSave = mode === 'timewarp' ? enterEpisode(savedTimewarp, depth).save : savedAdventure
+  activeSave = mode === 'timewarp' ? enterEpisode(savedTimewarp, depth).save : mode === 'wilds' ? savedWilds : savedAdventure
   // The bench builds its arena in memory, so a Restart stays on the bench.
   let arenaCfg = depth === 0 ? arenaOverride ?? bench?.arenaConfig() ?? null : null
   if (depth === 0 && !arenaCfg && window.saveAPI?.loadArenaConfig) {
@@ -1106,6 +1146,9 @@ function resumeGame() {
 }
 
 function pauseGame() {
+  // The Wilds saves where you stand whenever you pause: there is no map
+  // change or waystone hop to do it for you.
+  if (runMode === 'wilds' && state && !state.gameOver) persistRun()
   setPhase(PHASE.PAUSED)
   const restartDepth = state?.cave ? state.cave.surface.level : state?.level ?? 1
   menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth, runMode), onQuitToTitle: goTitle })
@@ -1354,6 +1397,13 @@ function update(delta) {
     }
     tickFeedback(state.feedback, delta)
     return
+  }
+  // The Wilds: when the player has walked into a neighbouring piece the
+  // window re-centres on it — before anything this frame reads the map. The
+  // tile cache moves along so the chunks on screen are not baked again.
+  if (wildsWorld && state.wilds) {
+    const { recentred } = tickWilds(state, wildsWorld, delta, wildsHooks)
+    if (recentred) renderer.rekeyTiles(state.map, -recentred.dx * PIECE, -recentred.dy * PIECE)
   }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
@@ -1918,6 +1968,9 @@ function update(delta) {
     // Slow/root/freeze count down for everything a spell can catch — hostile
     // villagers included, whose brain runs inside updateNpc below.
     tickStatus(e, delta)
+    // The Wilds: whatever is far from the player sleeps — nine pieces of
+    // monsters and villagers thinking at once is more than the frame affords.
+    if (wildsWorld && !state.cave && e.maxHp !== undefined && asleep(e, player)) continue
     // Ukonvasara's shock: a stroke a second, drawn as a short bolt onto the
     // enemy. Kills are culled with the rest of the frame's dead below.
     if (e.shock) {
@@ -2098,7 +2151,19 @@ function update(delta) {
   if (player.hp <= 0) {
     sfx(state, 'player-death')
     const surfaceLevel = state.cave ? state.cave.surface.level : state.level
-    const mapData = OPEN_MAPS[surfaceLevel]
+    const mapData = mapDataFor(surfaceLevel)
+    if (mapData?.wilds) {
+      // The Wilds: wake in the last village visited, the window rebuilt
+      // around it. A cave died in is abandoned unstored, as in Adventure.
+      resetNpcs(activeSave)
+      npcDirty = false
+      state = adventureRespawn(state, { x: state.player.x, y: state.player.y })
+      const village = wildsRespawn(state, wildsWorld, wildsHooks)
+      state.npcWrath = false
+      persistRun()
+      queueToast(state, { title: `You awaken in ${village?.name ?? 'the village'}…`, lines: ['The dark took its toll — but you are alive.'] })
+      return
+    }
     if (mapData) {
       resetNpcs(activeSave)
       npcDirty = false
@@ -2139,11 +2204,11 @@ function update(delta) {
     // and the first dungeon cleared on a map with a MAP_CLEAR_OUTFITS entry
     // leaves that outfit. Neither drops for a body that already owns it.
     const drops = [BOSS_DROP_OUTFITS[bossType]]
-    if (state.cave) drops.push(MAP_CLEAR_OUTFITS[OPEN_MAPS[state.cave.surface.level].name])
+    if (state.cave) drops.push(MAP_CLEAR_OUTFITS[mapDataFor(state.cave.surface.level).name])
     for (const ot of new Set(drops.filter(Boolean)))
       if (!ownsOutfit(state.player, ot)) spawnOutfitDrop(state.lastBossTile, ot)
     if (state.cave) {
-      const mapData = OPEN_MAPS[state.cave.surface.level]
+      const mapData = mapDataFor(state.cave.surface.level)
       const before = isMapComplete(activeSave.progress, mapData)
       markCleared(activeSave.progress, mapData.name, state.cave.label)
       if (!before && isMapComplete(activeSave.progress, mapData)) state.cave.mapJustCompleted = true
@@ -2176,7 +2241,7 @@ function update(delta) {
 
   // Flush NPC deaths and wrath. It has to sit after the cull above, because
   // recordNpcState reads `dead` as "declared id with no entity left".
-  if (npcDirty && !state.cave && OPEN_MAPS[state.level]) { npcDirty = false; persistRun() }
+  if (npcDirty && !state.cave && mapDataFor(state.level)) { npcDirty = false; persistRun() }
   if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
 
   // Clear hit flash — it fires once per swing
@@ -2192,7 +2257,7 @@ function render() {
   // matches the audio falloff edge, so what you hear you can usually see.
   // Open-map surfaces see the whole radius; dungeons, caves and interiors
   // keep line of sight.
-  const surface = !state.cave && !!OPEN_MAPS[state.level]
+  const surface = !state.cave && !!mapDataFor(state.level)
   // The bench lights its whole arena: the monster spawns 11 tiles out and
   // its wind-ups must read from across the room.
   maybeComputeFOV(state.map, state.player, bench ? 40 : surface ? 14 : 8, { los: !surface })
@@ -2388,10 +2453,11 @@ async function init() {
   rulesets = (await window.saveAPI.loadRulesets()) ?? {}
   await registerMonsters((await window.saveAPI.loadMonsters?.()) ?? [])
   structures = (await window.saveAPI.loadStructures()) ?? {}
-  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES])
+  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES, ...WILDS_SKINS])
   pruneMissingTiles(rulesets, renderer.sprites)
   savedAdventure = normalizeAdventureSave(await window.saveAPI.loadCaves?.())
   savedTimewarp = normalizeTimewarpSave(await window.saveAPI.loadTimewarp?.(), savedAdventure.leaps, savedAdventure.npcs)
+  savedWilds = normalizeAdventureSave(await window.saveAPI.loadWilds?.())
   const savedMeta = await window.saveAPI.loadMeta()
   meta = validateMeta(savedMeta) ? savedMeta : getInitialMeta()
   // Resizing reallocates the canvas backing store (blank); repaint the current

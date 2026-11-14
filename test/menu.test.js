@@ -294,8 +294,8 @@ describe('the Online menu', () => {
     try {
       let online = false
       showTitle(META, { onOnline: () => { online = true } })
-      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'Timewarp', 'Dungeon Rush', 'Online'])
-      buttonsOf(d.overlay)[3].listeners.click()
+      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'The Wilds', 'Timewarp', 'Dungeon Rush', 'Online'])
+      buttonsOf(d.overlay)[4].listeners.click()
       assert.equal(online, true)
     } finally { d.cleanup() }
   })
@@ -303,7 +303,17 @@ describe('the Online menu', () => {
     const d = stubDomFull({ isWeb: false })
     try {
       showTitle(META, {})
-      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'Timewarp', 'Dungeon Rush', 'Open Editor', 'Quit'])
+      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'The Wilds', 'Timewarp', 'Dungeon Rush', 'Open Editor', 'Quit'])
+    } finally { d.cleanup() }
+  })
+  it('The Wilds sits right after Adventure and calls onWilds', () => {
+    const d = stubDomFull({ isWeb: false })
+    try {
+      let wilds = false
+      showTitle(META, { onWilds: () => { wilds = true } })
+      assert.equal(labelsOf(d.overlay)[1], 'The Wilds')
+      buttonsOf(d.overlay)[1].listeners.click()
+      assert.equal(wilds, true)
     } finally { d.cleanup() }
   })
   it('Online: Quick match, Play with friends, Back — and Escape goes back', () => {
