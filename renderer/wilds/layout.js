@@ -29,37 +29,69 @@ const HOME = PIECE / 2   // the middle of the home piece, the world's centre
 // country goes long without a change of scene. Returns the blob's kind when
 // (X, Y) lies inside one, else null.
 const POCKET_CELL = 3 * PIECE
-function pocket(seed, X, Y, wobble) {
-  const cx0 = Math.floor(X / POCKET_CELL), cy0 = Math.floor(Y / POCKET_CELL)
-  for (let cy = cy0 - 1; cy <= cy0 + 1; cy++) for (let cx = cx0 - 1; cx <= cx0 + 1; cx++) {
-    const px = (cx + 0.2 + 0.6 * hash(seed, cx, cy, 331)) * POCKET_CELL
-    const py = (cy + 0.2 + 0.6 * hash(seed, cx, cy, 332)) * POCKET_CELL
-    const radius = (0.75 + 0.6 * hash(seed, cx, cy, 333)) * PIECE
-    if (Math.hypot(X - px, Y - py) / radius + (wobble - 0.5) * 0.7 < 1)
-      return { kind: hashInt(seed, cx, cy, 334) % BIOMES.length, cx, cy }
+const BLOB_REACH = 1.35   // a blob's bent outline never passes this many radii
+function blobOf(seed, cx, cy) {
+  return {
+    px: (cx + 0.2 + 0.6 * hash(seed, cx, cy, 331)) * POCKET_CELL,
+    py: (cy + 0.2 + 0.6 * hash(seed, cx, cy, 332)) * POCKET_CELL,
+    radius: (0.75 + 0.6 * hash(seed, cx, cy, 333)) * PIECE,
+    kind: hashInt(seed, cx, cy, 334) % BIOMES.length,
   }
-  return null
+}
+// Every blob that can reach into a rectangle of world tiles, in a fixed
+// (row-major cell) order so overlapping blobs resolve the same everywhere.
+function blobsFor(seed, x0, y0, x1, y1) {
+  const out = []
+  for (let cy = Math.floor(y0 / POCKET_CELL) - 1; cy <= Math.floor(y1 / POCKET_CELL) + 1; cy++)
+    for (let cx = Math.floor(x0 / POCKET_CELL) - 1; cx <= Math.floor(x1 / POCKET_CELL) + 1; cx++) {
+      const blob = blobOf(seed, cx, cy)
+      const reach = blob.radius * BLOB_REACH
+      if (blob.px + reach < x0 || blob.px - reach > x1 || blob.py + reach < y0 || blob.py - reach > y1) continue
+      out.push(blob)
+    }
+  return out
 }
 
-// The country at a world tile. Forest around home; beyond it a country per
-// compass direction with the boundaries bent by noise, and pockets of other
-// country where a slow field runs high.
-export function biomeAt(seed, X, Y) {
+function countryAt(seed, X, Y, blobs) {
   const dx = X - HOME, dy = Y - HOME
   const r = Math.hypot(dx, dy) / PIECE
-  const wobble = noise2(seed + 1, X, Y, { freq: 1 / (1.5 * PIECE), octaves: 3 })
-  if (r < 1.7 + wobble * 0.8) return 'forest'
-  const ang = Math.atan2(dy, dx) * 180 / Math.PI + (wobble - 0.5) * 50
+  // far from home the forest test cannot pass and the bend is only needed
+  // within 25 degrees of a sector boundary
+  let wobble = -1
+  const bend = () => wobble < 0 ? (wobble = noise2(seed + 1, X, Y, { freq: 1 / (1.5 * PIECE), octaves: 3 })) : wobble
+  if (r < 2.5 && r < 1.7 + bend() * 0.8) return 'forest'
+  const raw = Math.atan2(dy, dx) * 180 / Math.PI
+  const near = Math.abs(((raw + 45) % 90 + 90) % 90 - 45)   // degrees from the nearest sector centre: 45 = on a boundary
+  const ang = near > 19 ? raw + (bend() - 0.5) * 50 : raw
   const main = ang > -135 && ang <= -45 ? 'mountain'
     : ang > -45 && ang <= 45 ? 'desert'
     : ang > 45 && ang <= 135 ? 'sea'
     : noise2(seed + 2, X, Y, { freq: 1 / (2.5 * PIECE), octaves: 2 }) > 0.5 ? 'autumn' : 'marsh'
-  const p = pocket(seed, X, Y, noise2(seed + 3, X, Y, { freq: 1 / 40, octaves: 2 }))
-  if (!p) return main
-  // a pocket is always a change of scene: one that would repeat its host is
-  // the next country in the list
-  const b = BIOMES[p.kind]
-  return b === main ? BIOMES[(p.kind + 1) % BIOMES.length] : b
+  for (const blob of blobs) {
+    const d = Math.hypot(X - blob.px, Y - blob.py) / blob.radius
+    if (d >= BLOB_REACH) continue
+    if (d < 0.65 || d + (noise2(seed + 3, X, Y, { freq: 1 / 40, octaves: 2 }) - 0.5) * 0.7 < 1) {
+      // a pocket is always a change of scene: one that would repeat its host
+      // is the next country in the list
+      const b = BIOMES[blob.kind]
+      return b === main ? BIOMES[(blob.kind + 1) % BIOMES.length] : b
+    }
+  }
+  return main
+}
+
+// The country at a world tile. Forest around home; beyond it a country per
+// compass direction with the boundaries bent by noise, and pockets of other
+// country in blobs.
+export function biomeAt(seed, X, Y) {
+  return countryAt(seed, X, Y, blobsFor(seed, X, Y, X, Y))
+}
+
+// biomeAt for many tiles of one rectangle (inclusive world-tile bounds):
+// the blobs are looked up once. Same answers as biomeAt.
+export function biomeSampler(seed, x0, y0, x1, y1) {
+  const blobs = blobsFor(seed, x0, y0, x1, y1)
+  return (X, Y) => countryAt(seed, X, Y, blobs)
 }
 
 // The country a piece mostly is: the majority of a 3x3 sample, the centre
