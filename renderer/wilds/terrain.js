@@ -159,7 +159,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
   const landGround = memo((x, y) => {
     switch (biome(x, y)) {
       case 'marsh': return fMud(x, y) > 0.53 ? dirtSkin(x, y) : grassSkin(x, y)
-      case 'desert': return fHard(x, y) > 0.64 ? (hash(seed, X0 + x, Y0 + y, 44) < 0.75 ? HARDPAN[0] : HARDPAN[1]) : sandSkin(x, y)
+      case 'desert': return fHard(x, y) > 0.68 ? (hash(seed, X0 + x, Y0 + y, 44) < 0.75 ? HARDPAN[0] : HARDPAN[1]) : sandSkin(x, y)
       case 'sea': return nearWater(x, y, REACH) ? SAND[0] : grassSkin(x, y)
       case 'mountain': return !nearSandy(x, y) && fMass(x, y) > 0.46 ? floorSkin(x, y) : grassSkin(x, y)
       default: return grassSkin(x, y)
