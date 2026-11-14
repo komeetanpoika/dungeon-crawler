@@ -74,7 +74,7 @@ try {
   })
   const gate = await ev(() => window.__dc.wilds.pieces.get('0,0').gates.E)
   await place(80 + 72, 80 + gate.y)
-  const near = await ev(() => { const s = window.__dc.state; return s.entities.filter(e => e.x >= 160).slice(0, 1).map(e => ({ k: e.wildsKey, i: e.wildsIx, x: e.x, y: e.y }))[0] })
+  const near = await ev(() => { const s = window.__dc.state; return s.entities.filter(e => e.x >= 160 && e.maxHp === undefined).slice(0, 1).map(e => ({ k: e.wildsKey, i: e.wildsIx, x: e.x, y: e.y }))[0] })
   await page.keyboard.down('d')
   let crossed = null
   for (let i = 0; i < 80 && !crossed; i++) {

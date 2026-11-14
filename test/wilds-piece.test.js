@@ -103,16 +103,109 @@ test('every piece is crossable and its things are reachable', () => {
   }
 })
 
-test('one main thing and one to three small things', () => {
+const SMALL_KINDS = ['chest', 'animals', 'mushrooms', 'hut', 'rocks', 'nest', 'stones']
+const hostile = s => s.kind === 'monster' || s.kind === 'guard' || MONSTER_NAMES.includes(s.kind) ||
+  (s.kind === 'npc' && NPC_SPECIES[s.species].hostile)
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+
+test('one main thing and two to four small things', () => {
+  let n = 0, total = 0
+  const kinds = new Set()
   for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed)) {
     const p = generatePiece(seed, wx, wy)
     assert.ok(MAIN_KINDS.includes(p.main.kind), p.main.kind)
     assert.equal(p.main.kind, mainKind(seed, wx, wy, 0))
-    assert.ok(p.small.length >= 1 && p.small.length <= 3, `${p.small.length} small things at ${wx},${wy}`)
-    for (const s of p.small) assert.ok(['chest', 'animals', 'mushrooms', 'hut', 'rocks'].includes(s.kind), s.kind)
+    assert.ok(p.small.length >= 1 && p.small.length <= 4, `${p.small.length} small things at ${wx},${wy}`)
+    for (const s of p.small) { assert.ok(SMALL_KINDS.includes(s.kind), s.kind); kinds.add(s.kind) }
+    n++; total += p.small.length
     assert.ok(p.main.x >= 16 && p.main.x < PIECE - 16 && p.main.y >= 16 && p.main.y < PIECE - 16)
     if (villageAt(seed, wx, wy)) assert.equal(p.main.kind, 'village')
   }
+  assert.ok(total / n >= 2.5, `only ${(total / n).toFixed(2)} small things a piece`)
+  for (const k of ['nest', 'stones']) assert.ok(kinds.has(k), `no ${k} anywhere`)
+})
+
+test('a guarded thing has its chest and its guards', () => {
+  let seen = 0
+  for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed)) {
+    const p = generatePiece(seed, wx, wy)
+    for (const s of p.small) {
+      if (s.kind !== 'nest' && s.kind !== 'stones') continue
+      assert.notEqual(p.main.kind, 'village', 'a village piece holds nothing guarded')
+      const near = p.spawns.filter(q => dist(q, s) <= 4)
+      // a spawn cut off by the land is dropped, so count only whole ones
+      if (!near.some(q => q.kind === 'chest')) continue
+      seen++
+      assert.ok(near.some(hostile), `${s.kind} at ${wx},${wy} has no guard`)
+    }
+  }
+  assert.ok(seen >= 10, `only ${seen} guarded things in the sample`)
+})
+
+test('wild land has roaming packs, off the main thing and apart from each other', () => {
+  let wild = 0, packs = 0, thin = 0, roads = 0, roamers = 0
+  for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed)) {
+    const p = generatePiece(seed, wx, wy)
+    if (p.main.kind === 'village') continue
+    wild++
+    packs += p.packs.length
+    if (p.packs.length < 2) thin++
+    if (p.packs.some(k => k.road)) roads++
+    for (const [i, k] of p.packs.entries()) {
+      assert.ok(k.x >= 9 && k.y >= 9 && k.x <= PIECE - 10 && k.y <= PIECE - 10, `pack at the rim of ${wx},${wy}`)
+      assert.ok(dist(k, p.main) >= 12, `pack on the main thing of ${wx},${wy}`)
+      for (const o of p.packs.slice(i + 1)) assert.ok(dist(k, o) >= 12, `two packs together at ${wx},${wy}`)
+      const foes = p.spawns.filter(s => hostile(s) && dist(s, k) <= 3)
+      assert.ok(foes.length >= 1 && foes.length <= 3, `${foes.length} foes in a pack at ${wx},${wy}`)
+      roamers += foes.length
+    }
+  }
+  assert.ok(packs / wild >= 2, `only ${(packs / wild).toFixed(2)} packs a piece`)
+  assert.ok(thin / wild <= 0.2, `${thin}/${wild} pieces with fewer than two packs`)
+  assert.ok(roamers / wild >= 4, `only ${(roamers / wild).toFixed(2)} roaming foes a piece`)
+  assert.ok(roads / wild >= 0.25 && roads / wild <= 0.75, `${roads}/${wild} pieces with a pack on the road`)
+})
+
+test('the land round home is gentle, and a village keeps its foes at arm\'s length', () => {
+  for (const seed of SEEDS) {
+    let packs = 0
+    for (let wy = -1; wy <= 1; wy++) for (let wx = -1; wx <= 1; wx++) {
+      const p = generatePiece(seed, wx, wy)
+      assert.notEqual(p.main.kind, 'boss', 'no boss beside home')
+      if (wx || wy) packs += p.packs.length
+      for (const s of p.spawns.filter(hostile)) {
+        if (dist(s, p.main) < 12) continue   // a camp keeps its own roster
+        const mild = (s.kind === 'monster' && s.variant === 'weak') || (s.kind === 'npc' && s.species === 'wolf')
+        assert.ok(mild, `${s.kind} ${s.variant ?? s.species ?? ''} roams beside home at ${wx},${wy}`)
+      }
+    }
+    assert.ok(packs >= 10, `only ${packs} packs in the eight pieces round home`)
+  }
+  let villages = 0
+  for (const seed of SEEDS) for (let wy = -8; wy <= 8; wy++) for (let wx = -8; wx <= 8; wx++) {
+    if (!(wx === 0 && wy === 0) && !villageAt(seed, wx, wy)) continue
+    villages++
+    const p = generatePiece(seed, wx, wy)
+    for (const s of p.spawns.filter(hostile)) {
+      assert.equal(s.kind, 'monster', `${s.kind} ${s.species ?? ''} in the village piece ${wx},${wy}`)
+      assert.ok(dist(s, p.main) >= 22, `a foe ${dist(s, p.main).toFixed(0)} tiles from the village at ${wx},${wy}`)
+    }
+  }
+  assert.ok(villages >= 20)
+})
+
+test('an open-world boss can turn up two pieces from home, never beside it', () => {
+  let near = 0, bosses = 0
+  for (const seed of SEEDS) for (let wy = -2; wy <= 2; wy++) for (let wx = -2; wx <= 2; wx++) for (let deal = 0; deal < 12; deal++) {
+    if (tierAt(wx, wy) !== 1 || villageAt(seed, wx, wy)) continue
+    const kind = mainKind(seed, wx, wy, deal)
+    if (Math.max(Math.abs(wx), Math.abs(wy)) <= 1) { assert.notEqual(kind, 'boss'); continue }
+    near++
+    if (kind === 'boss') bosses++
+  }
+  assert.ok(bosses / near >= 0.03 && bosses / near <= 0.15, `${bosses}/${near} bosses at toughness 1`)
+  const p = generatePiece(3, 2, 0, [...Array(60).keys()].find(d => mainKind(3, 2, 0, d) === 'boss'))
+  assert.equal(p.spawns.filter(s => s.kind === 'ogre').length, 1)
 })
 
 test('nothing on the surface is flagged a boss, and nothing spawns on a blocked cell or twice on one', () => {
@@ -154,7 +247,7 @@ test('toughness drives the camp roster and the cave depth', () => {
       assert.ok(p.spawns.some(s => s.kind === 'chest'))
     }
     if (kind === 'cave') { caves++; assert.ok(p.caves[0].caveDepth === p.tier || p.caves[0].caveDepth === Math.min(5, p.tier + 1)) }
-    if (kind === 'boss') { assert.ok(p.tier >= 2); assert.ok(p.spawns.some(s => s.kind === 'ogre' || s.kind === 'manticore')) }
+    if (kind === 'boss') assert.ok(p.spawns.some(s => s.kind === 'ogre' || s.kind === 'manticore'))
   }
   assert.ok(camps > 20 && caves > 20)
 })

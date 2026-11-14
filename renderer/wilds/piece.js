@@ -43,7 +43,7 @@ export function generatePiece(seed, wx, wy, deal = 0) {
   const tier = tierAt(wx, wy)
   const piece = {
     key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy),
-    main: null, small: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
+    main: null, small: [], packs: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
     spawnPoint: null, gates: t.gates, lootDepth: lootDepthFor(tier),
   }
   placeFeatures(t, piece)
@@ -72,6 +72,8 @@ export function generatePiece(seed, wx, wy, deal = 0) {
   const seen = reachable(cells, piece.spawnPoint)
   const ok = p => seen[p.y * PIECE + p.x] === 1
   piece.spawns = piece.spawns.filter(ok)
+  // a pack whose every foe was cut off is no pack
+  piece.packs = piece.packs.filter(k => piece.spawns.some(s => s.kind !== 'chest' && Math.hypot(s.x - k.x, s.y - k.y) <= 3))
   piece.doors = piece.doors.filter(ok)
   piece.caves = piece.caves.filter(ok)
   for (const [side, g] of Object.entries(piece.gates))

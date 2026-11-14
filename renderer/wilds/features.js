@@ -1,5 +1,5 @@
-// What a Wilds piece holds: one main thing, one to three small things, and
-// the paths that lead to them. Stamped onto a piece's terrain (terrain.js)
+// What a Wilds piece holds: one main thing, two to four small things, the
+// paths that lead to them, and the packs that roam the land between. Stamped onto a piece's terrain (terrain.js)
 // before its art passes run.
 //
 // Order matters and is always the same: open the main pad, run a path from
@@ -40,6 +40,20 @@ const CAMPS = [
   { from: 4, name: 'manticores', foes: [{ kind: 'manticore' }, { kind: 'boarhound' }, { kind: 'boarhound' }], lead: 1 },
 ]
 
+// Roaming packs by toughness; row 0 is the ring round home. Every row has an
+// all-spider pack, which is what a village piece draws from: nothing that
+// hunts on its own initiative within a walk of the villagers.
+const bones = { kind: 'rappeluu' }, hound = { kind: 'boarhound' }
+const PACKS = [
+  [[spider('weak'), spider('weak')], [wolf], [spider('weak'), spider('weak'), spider('weak')]],
+  [[spider('weak'), spider('weak')], [wolf, wolf], [spider('weak'), spider('medium')], [spider('weak'), spider('weak'), spider('weak')]],
+  [[spider('medium'), spider('medium')], [bones, bones], [wolf, wolf, wolf], [bear], [spider('weak'), spider('medium'), spider('medium')]],
+  [[hound, hound], [spider('strong'), spider('medium')], [bones, bones, bones], [bear, wolf, wolf]],
+  [[{ kind: 'manticore' }], [hound, hound, hound], [{ kind: 'podeboo' }, bones], [spider('strong'), spider('strong')]],
+]
+const VILLAGE_CALM = 24   // tiles round a village centre no pack is dealt into
+const nearHome = (wx, wy) => Math.max(Math.abs(wx), Math.abs(wy)) <= 1
+
 const ANIMALS = {
   forest: ['deer', 'deer', 'boar', 'mouse'], autumn: ['deer', 'deer', 'boar', 'mouse'],
   marsh: ['boar', 'mouse', 'mouse'], mountain: ['deer', 'mouse'], sea: ['chicken', 'mouse'],
@@ -51,8 +65,10 @@ export function mainKind(seed, wx, wy, deal = 0) {
   const fixed = fixedMain(wx, wy)
   if (fixed) return fixed
   if (villageAt(seed, wx, wy)) return 'village'
-  const tough = tierAt(wx, wy) >= 2
-  const table = [['cave', 30], ['camp', tough ? 30 : 45], ['boss', tough ? 15 : 0], ['ruin', 12], ['landmark', 13]]
+  // An open-world boss is common far out, rare in the first country and
+  // never beside home; what it gives up goes to the camps.
+  const boss = tierAt(wx, wy) >= 2 ? 15 : nearHome(wx, wy) ? 0 : 8
+  const table = [['cave', 30], ['camp', 45 - boss], ['boss', boss], ['ruin', 12], ['landmark', 13]]
   let r = hash(seed, wx, wy, 400 + deal) * 100
   for (const [kind, weight] of table) { if (r < weight) return kind; r -= weight }
   return 'camp'
@@ -123,18 +139,22 @@ export function placeFeatures(t, piece) {
 
   // ---- small things: spots first, then trails -------------------------------
   const here = t.biome(mx, my)
+  const roster = PACKS[nearHome(wx, wy) ? 0 : tier].filter(p => kind !== 'village' || p.every(f => f.kind === 'monster'))
   const smallKinds = ['chest', 'chest', 'rocks', 'hut']
   if (ANIMALS[piece.biome]) smallKinds.push('animals', 'animals')
   if (['forest', 'autumn', 'marsh'].includes(piece.biome)) smallKinds.push('mushrooms')
-  const want = 1 + Math.floor(rng() * 3)
+  // guarded things: a nest round a chest, old stones with something in them
+  if (kind !== 'village') smallKinds.push('nest', 'nest', 'stones')
+  const padOf = k => k === 'hut' ? 4 : k === 'stones' ? 3 : 2
+  const want = 2 + Math.floor(rng() * 3)
   const lo = FRAME + 5, hi = PIECE - FRAME - 6
   for (let i = 0; i < want; i++) {
     const k = pick(smallKinds)
-    const pad = k === 'hut' ? 4 : 2
-    for (let tries = 0; tries < 40; tries++) {
+    const pad = padOf(k)
+    for (let tries = 0; tries < 60; tries++) {
       const x = ri(lo, hi), y = ri(lo, hi)
       if (Math.hypot(x - mx, y - my) < PAD[kind] + 8) continue
-      if (piece.small.some(s => Math.hypot(x - s.x, y - s.y) < 12)) continue
+      if (piece.small.some(s => Math.hypot(x - s.x, y - s.y) < 10)) continue
       let crossed = false
       for (let dy = -pad - 1; dy <= pad + 1 && !crossed; dy++) for (let dx = -pad - 1; dx <= pad + 1; dx++) if (t.onPath(x + dx, y + dy)) { crossed = true; break }
       if (crossed) continue
@@ -142,7 +162,7 @@ export function placeFeatures(t, piece) {
       break
     }
   }
-  for (const s of piece.small) t.open(s.x, s.y, s.kind === 'hut' ? 4 : 2)
+  for (const s of piece.small) t.open(s.x, s.y, padOf(s.kind))
   for (const s of piece.small) t.path(s.x, s.y, mx, my, 1)
 
   // ---- stamp the main thing ---------------------------------------------------
@@ -223,13 +243,21 @@ export function placeFeatures(t, piece) {
     if (s.kind === 'chest') place({ kind: 'chest' }, s.x, s.y, 0, 1)
     else if (s.kind === 'animals') {
       const list = ANIMALS[piece.biome]
-      if (tier >= 1 && rng() < 0.2) for (let i = 0; i < 2; i++) place({ npc: 'wolf' }, s.x, s.y, 0, 2)
+      if (kind !== 'village' && rng() < 0.2) for (let i = 0; i < 2; i++) place({ npc: 'wolf' }, s.x, s.y, 0, 2)
       else for (let i = ri(2, 3); i > 0; i--) place({ npc: pick(list) }, s.x, s.y, 0, 2)
     } else if (s.kind === 'mushrooms') {
       t.setProp(s.x, s.y, 'ow_mushroom'); hold(s.x, s.y)
       for (let i = ri(2, 4); i > 0; i--) place({ kind: 'wild_mushroom' }, s.x, s.y, 1, 2)
     } else if (s.kind === 'hut') {
       house(s.x, s.y, rng() < 0.5 ? 'red' : 'brown', 'hut')
+    } else if (s.kind === 'nest') {
+      spawn({ kind: 'chest', x: s.x, y: s.y })
+      for (const foe of pick(roster).slice(0, 2)) place(foe, s.x, s.y, 1, 2)
+    } else if (s.kind === 'stones') {
+      ring(s.x, s.y, 2, 5, () => pick(RUIN_BITS))
+      spawn({ kind: 'chest', x: s.x, y: s.y })
+      const guards = tier >= 2 ? [bones, bones] : pick(roster).slice(0, 2)
+      for (const foe of guards) place(foe, s.x, s.y, 1, 3)
     } else {
       // a knot of rocks to mine, around the end of the trail
       const set = rocksFor(t.biome(s.x, s.y))
@@ -240,6 +268,33 @@ export function placeFeatures(t, piece) {
       }
     }
   }
+  // ---- the packs that roam between ---------------------------------------------
+  // Two or three in wild land (one more far out), one or two round a village
+  // and those well away from it. Half the wild pieces post one on a road.
+  const village = kind === 'village'
+  const keep = village ? VILLAGE_CALM : PAD[kind] + 8
+  const rim = FRAME + 4
+  const roomy = (x, y) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!t.free(x + dx, y + dy)) return false; return true }
+  const clear = (x, y) => x >= rim && y >= rim && x < PIECE - rim && y < PIECE - rim &&
+    Math.hypot(x - mx, y - my) >= keep &&
+    piece.small.every(s => Math.hypot(x - s.x, y - s.y) >= 8) &&
+    piece.packs.every(p => Math.hypot(x - p.x, y - p.y) >= 14)
+  const pack = (x, y, road) => {
+    const made = pick(roster).map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
+    // a village's calm is measured to each foe, not to the middle of its pack
+    if (made.length) piece.packs.push({ x, y, road })
+  }
+  if (!village && rng() < 0.5) {
+    const road = []
+    for (let y = rim; y < PIECE - rim; y++) for (let x = rim; x < PIECE - rim; x++) if (t.onPath(x, y) && t.free(x, y) && clear(x, y)) road.push({ x, y })
+    if (road.length) { const at = pick(road); pack(at.x, at.y, true) }
+  }
+  const wantPacks = village ? ri(1, 2) : ri(2, 3) + (tier >= 3 ? 1 : 0)
+  for (let tries = 0; tries < 400 && piece.packs.length < wantPacks; tries++) {
+    const x = ri(rim, PIECE - rim - 1), y = ri(rim, PIECE - rim - 1)
+    if (clear(x, y) && roomy(x, y)) pack(x, y, false)
+  }
+
   // A piece that could fit no small thing still gets its chest, by the main pad.
   if (!piece.small.length) {
     const at = freeSpot(mx, my, PAD[kind] - 1, PAD[kind] + 2) ?? piece.spawnPoint
