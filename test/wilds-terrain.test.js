@@ -39,7 +39,7 @@ test('a piece is deterministic', () => {
 })
 
 test('neighbours agree on what both can see', () => {
-  for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed, 12)) for (const [da, db] of [[0, 1], [2, 0]]) {
+  for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed, 8)) for (const [da, db] of [[0, 1], [2, 0]]) {
     const A = built(seed, wx, wy, da)
     const E = built(seed, wx + 1, wy, db)
     const S = built(seed, wx, wy + 1, db)

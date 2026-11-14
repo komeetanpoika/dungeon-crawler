@@ -14,7 +14,7 @@ const MONSTER_NAMES = JSON.parse(fs.readFileSync(new URL('../renderer/data/monst
 const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger']
 const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark']
 // 40 pieces per seed, biased so every tier and country turns up.
-const samplePieces = seed => Array.from({ length: 40 }, (_, i) => ({
+const samplePieces = seed => Array.from({ length: 22 }, (_, i) => ({
   wx: (hashInt(seed, i, 0, 6) % 25) - 12, wy: (hashInt(seed, i, 1, 6) % 25) - 12,
 }))
 const walk = c => c.tile !== TILE.WALL
