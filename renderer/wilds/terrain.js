@@ -301,8 +301,10 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
       if (dx * dx + dy * dy <= r * r) openCell(cx + dx, cy + dy)
   }
   // One path cell: a pier over water, a pass through rock, a trail on land.
+  const pathCells = new Set()
   const pathCell = (x, y, pier) => {
     if (!inside(x, y)) return
+    pathCells.add(y * PIECE + x)
     const bx = x + MARGIN, by = y + MARGIN
     const g = b.palette[b.ground[by][bx]]
     if (isWaterSkin(g)) {
@@ -314,6 +316,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     b.ground[by][bx] = b.skin(isMassSkin(was) && !isFloor(g) ? floorSkin(x, y) : pathGround(g, x, y))
     b.walkG[by][bx] = true
   }
+  const clampIn = v => Math.max(FRAME, Math.min(PIECE - 1 - FRAME, v))
   // A gently wandering path between two interior cells.
   const path = (x0, y0, x1, y1, width = 2) => {
     const dx = x1 - x0, dy = y1 - y0
@@ -328,7 +331,9 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     for (let i = 0; i <= n; i++) {
       const t = i / n
       const off = amp * (s1 * Math.sin(Math.PI * t) + 0.5 * s2 * Math.sin(2 * Math.PI * t))
-      const px = Math.round(x0 + dx * t + nx * off), py = Math.round(y0 + dy * t + ny * off)
+      // a bulge that would leave the interior slides along its edge instead,
+      // so the path never breaks
+      const px = clampIn(Math.round(x0 + dx * t + nx * off)), py = clampIn(Math.round(y0 + dy * t + ny * off))
       for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) pathCell(px + a, py + c, pier)
     }
   }
@@ -388,7 +393,15 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
       b.prop[y + MARGIN][x + MARGIN] = b.skin(skin)
       b.walkG[y + MARGIN][x + MARGIN] = walkable
     },
+    // a pond cell: open water, blocked; finish() gives it its rim
+    setWater: (x, y) => {
+      if (!inside(x, y)) return
+      clearCell(x, y)
+      b.ground[y + MARGIN][x + MARGIN] = b.skin(waterSkin(x, y))
+      b.walkG[y + MARGIN][x + MARGIN] = false
+    },
     walkable: (x, y) => !!b.walkG[y + MARGIN]?.[x + MARGIN],
+    onPath: (x, y) => pathCells.has(y * PIECE + x),
     rnd, dryGround, grassSkin,
   }
 }
