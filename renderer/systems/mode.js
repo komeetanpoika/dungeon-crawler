@@ -3,9 +3,11 @@
 // directly; this is for the level<N> cheat and defaults, where only the depth
 // is known.
 import { OPEN_MAPS } from '../data/open-maps.js'
+import { WILDS_DEPTH } from '../data/levels.js'
 
 export function modeForDepth(depth) {
   if (depth === 0) return 'arena'
+  if (depth === WILDS_DEPTH) return 'wilds'
   if (OPEN_MAPS[depth]?.leap) return 'timewarp'
   if (OPEN_MAPS[depth]) return 'adventure'
   return 'rush'

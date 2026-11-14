@@ -231,7 +231,9 @@ describe('day cycle on every open map', () => {
       assert.equal(cfg?.dayCycle, true, `${data.name} has no day cycle`)
       assert.equal(!!cfg.fog, data.name === 'lake-1-ferry', `${data.name} fog`)
     }
-    assert.equal(Object.keys(WEATHER).length, Object.keys(OPEN_MAPS).length)
+    // one entry per open map, plus the Wilds (renderer/wilds/), which has no OPEN_MAPS entry
+    assert.equal(weatherFor({ name: 'wilds' })?.dayCycle, true)
+    assert.equal(Object.keys(WEATHER).length, Object.keys(OPEN_MAPS).length + 1)
   })
 })
 

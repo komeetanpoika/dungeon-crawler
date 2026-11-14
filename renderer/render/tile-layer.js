@@ -129,6 +129,23 @@ export function makeTileLayer(createCanvas) {
   const layer = {
     map: null,
     chunks: new Map(),   // "cx,cy" -> { canvas, ctx, explored }
+    // The Wilds window re-centred: `map` holds the same cells as the map
+    // drawn so far, moved by (dxChunks, dyChunks). Baked chunks move with
+    // them instead of being baked again; the ones that fell off are dropped.
+    rekey(map, dxChunks, dyChunks) {
+      const whole = Number.isInteger(dxChunks) && Number.isInteger(dyChunks)
+      const next = new Map()
+      if (whole && layer.map) {
+        const cw = Math.ceil(map[0].length / CHUNK), ch = Math.ceil(map.length / CHUNK)
+        for (const [key, chunk] of layer.chunks) {
+          const [cx, cy] = key.split(',').map(Number)
+          const nx = cx + dxChunks, ny = cy + dyChunks
+          if (nx >= 0 && ny >= 0 && nx < cw && ny < ch) next.set(`${nx},${ny}`, chunk)
+        }
+      }
+      layer.chunks = next
+      layer.map = map
+    },
     draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
       if (map !== layer.map) { layer.map = map; layer.chunks.clear() }
       const dirty = takeDirtyTiles(map)
@@ -173,6 +190,7 @@ export function makeTileLayer(createCanvas) {
 // kept as the reference the cached layer must match.
 export function makeDirectTileLayer() {
   return {
+    rekey() {},
     draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
       const cells = viewCells(map, S, camX, camY, W, H)
       for (let row = cells.r0; row < cells.r1; row++) {

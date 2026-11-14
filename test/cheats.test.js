@@ -23,7 +23,11 @@ describe('parseLevelCheat', () => {
 
   it('ignores depths with no LEVEL_CONFIG entry', () => {
     assert.equal(parseLevelCheat('level19'), null)
-    assert.equal(parseLevelCheat('level20'), null)
+    assert.equal(parseLevelCheat('level21'), null)
+  })
+
+  it('accepts level20, the Wilds', () => {
+    assert.equal(parseLevelCheat('level20'), 20)
   })
 
   it('returns null for partial or empty input', () => {

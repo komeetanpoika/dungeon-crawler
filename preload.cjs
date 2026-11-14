@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('saveAPI', {
   loadCaves: () => ipcRenderer.invoke('load-caves'),
   saveTimewarp: (data) => ipcRenderer.invoke('save-timewarp', data),
   loadTimewarp: () => ipcRenderer.invoke('load-timewarp'),
+  saveWilds: (data) => ipcRenderer.invoke('save-wilds', data),
+  loadWilds: () => ipcRenderer.invoke('load-wilds'),
   loadRulesets: () => ipcRenderer.invoke('load-rulesets'),
   loadMonsters: () => ipcRenderer.invoke('load-monsters'),
   loadStructures: () => ipcRenderer.invoke('load-structures'),

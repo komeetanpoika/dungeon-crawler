@@ -120,6 +120,16 @@ function diagOk(nav, x, y, dx, dy, clearance) {
 // A* over tiles passable at `clearance`, octile heuristic. Returns waypoints
 // from the first step to the target (start excluded), [] if already there,
 // or null when unreachable.
+// A* scratch arrays, reused while the grid size stays the same: on a 240x240
+// Wilds window two fresh arrays per call would be most of a megabyte, several
+// times a second per pathing enemy.
+let scratchN = 0, scratchG = null, scratchCame = null
+function scratch(n) {
+  if (n !== scratchN) { scratchN = n; scratchG = new Float64Array(n); scratchCame = new Int32Array(n) }
+  scratchG.fill(Infinity)
+  scratchCame.fill(-1)
+}
+
 export function findPath(nav, sx, sy, tx, ty, clearance = 1) {
   const { w, h } = nav
   if (!passable(nav, sx, sy, clearance)) {
@@ -133,8 +143,8 @@ export function findPath(nav, sx, sy, tx, ty, clearance = 1) {
     tx = alt.x; ty = alt.y
   }
   if (sx === tx && sy === ty) return []
-  const g = new Float64Array(w * h).fill(Infinity)
-  const came = new Int32Array(w * h).fill(-1)
+  scratch(w * h)
+  const g = scratchG, came = scratchCame
   const hcost = (x, y) => {
     const ax = Math.abs(x - tx), ay = Math.abs(y - ty)
     return Math.max(ax, ay) + (SQRT2 - 1) * Math.min(ax, ay)
@@ -163,7 +173,9 @@ export function findPath(nav, sx, sy, tx, ty, clearance = 1) {
 
 // Dijkstra distances from (tx,ty) over tiles passable at `clearance`.
 // Chasers walk downhill on this field; fleeing enemies walk uphill.
-export function buildFlowField(nav, tx, ty, clearance = 1) {
+// `limit` stops the search that many path-tiles out (cells beyond stay
+// Infinity): on a big map nothing that far away is chasing anyway.
+export function buildFlowField(nav, tx, ty, clearance = 1, limit = Infinity) {
   const { w, h } = nav
   const dist = new Float64Array(w * h).fill(Infinity)
   if (!passable(nav, tx, ty, clearance)) {
@@ -182,6 +194,7 @@ export function buildFlowField(nav, tx, ty, clearance = 1) {
       const nx = x + dx, ny = y + dy
       if (!passable(nav, nx, ny, clearance) || !diagOk(nav, x, y, dx, dy, clearance)) continue
       const nd = d + (dx && dy ? SQRT2 : 1)
+      if (nd > limit) continue
       const ni = ny * w + nx
       if (nd < dist[ni] - 1e-9) { dist[ni] = nd; heap.push(nd, ni) }
     }

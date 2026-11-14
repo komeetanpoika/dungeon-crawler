@@ -173,6 +173,7 @@ const LOOT_TIERS = {
   6: 2,                                             // castle sandbox
   7: 1, 8: 1, 9: 1, 10: 2,                          // Clearings + the leap maps
   11: 1, 12: 2, 13: 2, 14: 3, 15: 3, 16: 3, 17: 4, 18: 4,   // the Adventure chain
+  20: 1,                                            // the Wilds surface (each piece rolls on its own toughness)
 }
 
 export const LEVEL_CONFIG = [
@@ -191,6 +192,10 @@ export const LEVEL_CONFIG = [
   ...Array.from({ length: 12 }, (_, i) => (
     { depth: 7 + i, mapW: 120, mapH: 80, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] }
   )),
+  // Depth 20 — the Wilds (renderer/wilds/): an endless generated surface
+  // played through a 240x240 window. Densities are moot (the pieces carry
+  // their own spawns); the row enables the level20 cheat.
+  { depth: 20, mapW: 240, mapH: 240, staircaseWidth: 1, guardCount: 0, monsterDensity: 0, trapDensity: 0, puzzleDensity: 0, weaponDensity: 0, potionDensity: 0, landmark: null, weapons: ['dagger'] },
 ].map(c => ({ ...c, lootTier: LOOT_TIERS[c.depth] ?? 1 }))
 
 export const DEPTH_THEMES = [
@@ -240,7 +245,7 @@ export const DEPTH_THEMES = [
   // backgrounds follow the biome: forest 7-12 (Clearings, the three leap
   // maps, River Split, Mountain Pass), desert 13-15, sea 16-18.
   {
-    depths: [7, 8, 9, 10, 11, 12],
+    depths: [7, 8, 9, 10, 11, 12, 20],   // 20: the Wilds
     floorTile: 'floor',
     bgColor:  '#0a1208',
     tint:     null,
@@ -288,3 +293,7 @@ export const OVERWORLD_DEPTH = 6
 // Adventure — the static open world (Clearings), the game's main mode.
 // Dungeon Rush is the classic depth 1-5 descent.
 export const ADVENTURE_DEPTH = 7
+
+// The Wilds — the endless generated world (renderer/wilds/). Depth 19 is the
+// house interiors.
+export const WILDS_DEPTH = 20

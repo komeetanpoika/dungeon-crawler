@@ -9,7 +9,8 @@ import { sfx } from './sfx.js'
 // The stance talents of the 2026-08-22 design, now items. Ski-legs stays a talent.
 export const RETIRED_TALENT_OUTFITS = { ranged_stance: 'ranger', magic_stance: 'robe', heavy_weapons: 'plate' }
 // A dungeon cleared on this map drops the outfit at the boss's feet (once — see ownsOutfit).
-export const MAP_CLEAR_OUTFITS = { 'forest-1-clearings': 'ranger' }
+// In the Wilds the first cave cleared anywhere is the one that drops it.
+export const MAP_CLEAR_OUTFITS = { 'forest-1-clearings': 'ranger', wilds: 'ranger' }
 // A boss of this type drops the outfit wherever it dies (Rush depth 3, the Mountain Pass cave).
 export const BOSS_DROP_OUTFITS = { cyclops: 'plate' }
 // Dungeon Rush wears everything from the first step.
