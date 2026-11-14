@@ -1202,8 +1202,8 @@ export class Renderer {
 
   // The Wilds window re-centred by (dxTiles, dyTiles): move the tile cache
   // along (tile-layer.js rekey) so the visible chunks are not baked again.
-  rekeyTiles(map, dxTiles, dyTiles) {
-    this.tileLayer.rekey?.(map, dxTiles / CHUNK, dyTiles / CHUNK)
+  rekeyTiles(oldMap, map, dxTiles, dyTiles) {
+    this.tileLayer.rekey?.(oldMap, map, dxTiles / CHUNK, dyTiles / CHUNK)
   }
 
   updateCamera(player, shake = 0, fx = null) {

@@ -116,3 +116,14 @@ test('shiftState covers every list of the running game', () => {
   assert.equal(state._flowFields, undefined)
   assert.equal(state.player._fovMap, null)
 })
+
+// found by the whole-branch review: pixel positions under other names
+test('shiftDeep moves a rig pose, a projectile trail and the walk sway anchor', () => {
+  const monster = { x: 100, y: 90, px: 3216, py: 2896, pose: { prevPx: 3210, prevPy: 2896, facing: 0.5 }, _wpx: 3216, _wpy: 2896 }
+  const shot = { px: 3000, py: 3000, lastPx: 2990, lastPy: 3000, dx: 120, dy: 0 }
+  shiftDeep(monster, -80, 80)
+  shiftDeep(shot, -80, 80)
+  assert.deepEqual([monster.pose.prevPx, monster.pose.prevPy, monster.pose.facing], [3210 - 2560, 2896 + 2560, 0.5])
+  assert.deepEqual([monster._wpx, monster._wpy], [3216 - 2560, 2896 + 2560])
+  assert.deepEqual([shot.lastPx, shot.lastPy, shot.dx], [2990 - 2560, 3000 + 2560, 120])
+})

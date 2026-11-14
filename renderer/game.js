@@ -44,7 +44,7 @@ import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from 
 import { generateInterior } from './systems/interior.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
-import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep } from './wilds/session.js'
+import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
@@ -325,6 +325,8 @@ function persistRun() {
   // The Wilds keeps its gone things and felled trees per piece in its own
   // record (snapshotWilds); the per-map lists below are the fixed maps'.
   const wilds = runMode === 'wilds'
+  // An endless world would otherwise keep every cave ever left unfinished.
+  if (mapName && wilds) surface.caveInstances = capInstances(surface.caveInstances)
   if (mapName) activeSave.caves[mapName] = surface.caveInstances ?? {}
   if (mapName && !wilds) activeSave.gates[mapName] =
     Object.entries(surface.gates ?? {}).filter(([, g]) => g.open).map(([id]) => id)
@@ -1402,8 +1404,9 @@ function update(delta) {
   // window re-centres on it — before anything this frame reads the map. The
   // tile cache moves along so the chunks on screen are not baked again.
   if (wildsWorld && state.wilds) {
+    const before = state.map
     const { recentred } = tickWilds(state, wildsWorld, delta, wildsHooks)
-    if (recentred) renderer.rekeyTiles(state.map, -recentred.dx * PIECE, -recentred.dy * PIECE)
+    if (recentred) renderer.rekeyTiles(before, state.map, -recentred.dx * PIECE, -recentred.dy * PIECE)
   }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
@@ -2241,7 +2244,9 @@ function update(delta) {
 
   // Flush NPC deaths and wrath. It has to sit after the cull above, because
   // recordNpcState reads `dead` as "declared id with no entity left".
-  if (npcDirty && !state.cave && mapDataFor(state.level)) { npcDirty = false; persistRun() }
+  // (The Wilds keeps no per-map npc record — its dead are in the piece
+  // records — so there a struck animal is no reason to write the save.)
+  if (npcDirty && !state.cave && mapDataFor(state.level)) { npcDirty = false; if (runMode !== 'wilds') persistRun() }
   if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
 
   // Clear hit flash — it fires once per swing

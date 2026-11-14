@@ -27,6 +27,9 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   const world = {
     seed: ok ? saved.seed : seed, gen: GEN, playtime: 0, origin: null,
     pieces: new Map(), records: new Map(), deals: new Map(),
+    // key -> spawn indices alive in the window while their home piece is out
+    // of it (session.js); never saved — a load puts everyone back at home
+    strays: new Map(),
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
   }
   if (!ok) return world

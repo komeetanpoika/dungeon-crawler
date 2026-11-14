@@ -7,7 +7,7 @@ import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { buildNavGrid, findPath, buildFlowField } from '../renderer/systems/nav.js'
 import { getPlayerField } from '../renderer/systems/act.js'
-import { makeTileLayer, makeDirectTileLayer, CHUNK } from '../renderer/render/tile-layer.js'
+import { makeTileLayer, makeDirectTileLayer, CHUNK, MAX_CHUNKS } from '../renderer/render/tile-layer.js'
 import { modeForDepth } from '../renderer/systems/mode.js'
 import { LEVEL_CONFIG, DEPTH_THEMES, WILDS_DEPTH } from '../renderer/data/levels.js'
 import { weatherFor } from '../renderer/data/weather.js'
@@ -33,13 +33,16 @@ test('a flow field stops at its limit', () => {
   assert.equal(at(full, 59, 50), at(limited, 59, 50))
 })
 
-test('the player field is limited on a big map and whole on a small one', () => {
-  const big = { map: openMap(240, 240), player: { x: 120, y: 120 } }
-  const f = getPlayerField(big)
+test('the player field is limited in the Wilds and whole everywhere else', () => {
+  const wilds = { map: openMap(240, 240), player: { x: 120, y: 120 }, wilds: true }
+  const f = getPlayerField(wilds)
   assert.ok(Number.isFinite(f.dist[120 * 240 + 160]), '40 tiles away is covered')
   assert.equal(f.dist[120 * 240 + 180], Infinity, '60 tiles away is not')
   const small = { map: openMap(120, 80), player: { x: 10, y: 10 } }
   assert.ok(Number.isFinite(getPlayerField(small).dist[70 * 120 + 110]))
+  // the depth-6 sandbox is bigger than a Wilds piece but is not the Wilds
+  const sandbox = { map: openMap(180, 116), player: { x: 10, y: 10 } }
+  assert.ok(Number.isFinite(getPlayerField(sandbox).dist[100 * 180 + 170]), 'another mode keeps its whole field')
 })
 
 test('findPath gives the same path again, and after a map of another size', () => {
@@ -88,7 +91,7 @@ test('rekey moves the baked chunks with the window', () => {
   assert.ok(bakedCalls > 0)
   // the window steps one piece east: everything is 5 chunks further west
   const mapB = mapA.map(row => [...row.slice(80), ...row.slice(0, 80)])
-  layer.rekey(mapB, -80 / CHUNK, 0)
+  layer.rekey(mapA, mapB, -80 / CHUNK, 0)
   assert.equal(layer.map, mapB)
   assert.equal(layer.chunks.get('2,2'), moved)
   assert.ok(!layer.chunks.has('7,2') || layer.chunks.get('7,2') !== moved)
@@ -97,10 +100,38 @@ test('rekey moves the baked chunks with the window', () => {
   assert.equal(moved.ctx.calls.length, bakedCalls, 'the moved chunk was not baked again')
   // a rekey for a map it never drew simply adopts it
   const other = makeTileLayer(fakeCanvas)
-  other.rekey(mapB, 5, 5)
+  other.rekey(mapA, mapB, 5, 5)
   assert.equal(other.map, mapB)
   assert.equal(other.chunks.size, 0)
-  makeDirectTileLayer().rekey(mapB, 1, 0)   // the uncached layer has nothing to move
+  makeDirectTileLayer().rekey(mapA, mapB, 1, 0)   // the uncached layer has nothing to move
+})
+
+test('rekey only moves chunks baked from the map it is told was there before', () => {
+  const S = 32
+  const layer = makeTileLayer(fakeCanvas)
+  const cave = openMap(48, 32), surface = openMap(240, 240), shifted = openMap(240, 240)
+  for (const m of [cave, surface]) for (const row of m) for (const c of row) c.explored = true
+  layer.draw(fakeCanvas().ctx, cave, {}, S, 0, 0, 32 * S, 16 * S, 0.5)
+  assert.ok(layer.chunks.size > 0)
+  // the surface was never drawn (a cave was): its chunks must not be passed off as the surface's
+  layer.rekey(surface, shifted, -5, 0)
+  assert.equal(layer.chunks.size, 0)
+  assert.equal(layer.map, shifted)
+})
+
+test('the tile cache stays bounded while wandering a big map', () => {
+  const S = 32
+  const layer = makeTileLayer(fakeCanvas)
+  const map = openMap(240, 240)
+  for (const row of map) for (const c of row) c.explored = true
+  const screen = fakeCanvas()
+  for (let ty = 0; ty < 240 - 16; ty += 16) for (let tx = 0; tx < 240 - 32; tx += 32)
+    layer.draw(screen.ctx, map, {}, S, tx * S, ty * S, 32 * S, 16 * S, 0.5)
+  assert.ok(MAX_CHUNKS >= 40, 'room for every chunk of a 120x80 map')
+  assert.ok(layer.chunks.size <= MAX_CHUNKS, `cache holds ${layer.chunks.size} chunks`)
+  // what is on screen now is still cached
+  layer.draw(screen.ctx, map, {}, S, 0, 0, 32 * S, 16 * S, 0.5)
+  assert.ok(layer.chunks.has('0,0') && layer.chunks.has('1,0'))
 })
 
 test('depth 20 is the Wilds', () => {

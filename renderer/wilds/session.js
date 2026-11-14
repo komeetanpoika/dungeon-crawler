@@ -41,9 +41,33 @@ function record(world, piece, entities) {
   return rec
 }
 
+// Build one spawn of a piece standing at window column c, row r.
+function build(state, piece, ix, c, r, buildEntities) {
+  const s = piece.spawns[ix]
+  for (const e of buildEntities([{ ...s, x: s.x + c * PIECE, y: s.y + r * PIECE }], state.map, piece.lootDepth)) {
+    e.wildsKey = piece.key
+    e.wildsIx = ix
+    state.entities.push(e)
+  }
+}
+
+// Strays are things alive in the window while their home piece is out of it.
+// One that is no longer among the living was killed out there: it is gone.
+function settleStrays(world, entities, onlyKey = null) {
+  for (const [key, set] of world.strays) {
+    if (onlyKey !== null && key !== onlyKey) continue
+    const alive = new Set()
+    for (const e of entities) if (e.wildsKey === key) alive.add(e.wildsIx)
+    for (const ix of set) if (!alive.has(ix)) { recordFor(world, key).gone.add(ix); set.delete(ix) }
+    if (!set.size) world.strays.delete(key)
+  }
+}
+
 // Bring a piece into the window at column c, row r: re-fell what was felled
 // and build every spawn that is neither gone nor already walking about.
 function join(state, world, piece, c, r, buildEntities) {
+  settleStrays(world, state.entities, piece.key)
+  world.strays.delete(piece.key)   // whoever of them lives is home again
   const rec = world.records.get(piece.key)
   const ox = c * PIECE, oy = r * PIECE
   if (rec?.felled.size) applyFelled(state.map, [...rec.felled].map(k => { const [x, y] = k.split(',').map(Number); return `${x + ox},${y + oy}` }))
@@ -51,12 +75,17 @@ function join(state, world, piece, c, r, buildEntities) {
   for (const e of state.entities) if (e.wildsKey === piece.key) present.add(e.wildsIx)
   piece.spawns.forEach((s, ix) => {
     if (rec?.gone.has(ix) || present.has(ix)) return
-    for (const e of buildEntities([{ ...s, x: s.x + ox, y: s.y + oy }], state.map, piece.lootDepth)) {
-      e.wildsKey = piece.key
-      e.wildsIx = ix
-      state.entities.push(e)
-    }
+    build(state, piece, ix, c, r, buildEntities)
   })
+}
+
+// Unfinished caves never age out (only beaten ones reset), and each is a
+// whole dungeon in the save. Keep every cleared instance — those go on their
+// own timer — and only the newest few unfinished ones. Pure.
+export function capInstances(instances, max = 4) {
+  const entries = Object.entries(instances ?? {})
+  let spare = entries.filter(([, inst]) => inst?.cleared !== true).length - max
+  return Object.fromEntries(entries.filter(([, inst]) => inst?.cleared === true || spare-- <= 0))
 }
 
 // The walk-onto triggers and signs of the nine pieces, in window tiles.
@@ -95,7 +124,9 @@ function putPlayer(state, x, y) {
 export function enterWilds(state, world, target, { buildEntities }) {
   if (world.origin && state.wilds && state.map?.length === WIN_TILES) {
     eachPiece(windowGrid(world), piece => record(world, piece, state.entities))
+    settleStrays(world, state.entities)
   }
+  world.strays.clear()   // everything is rebuilt at its post
   let goal = target
   if (goal.X === undefined) {
     const p = getPiece(world, goal.wx, goal.wy)
@@ -118,6 +149,10 @@ export function enterWilds(state, world, target, { buildEntities }) {
   const at = nearestWalkable(state.map, want.x, want.y, 6)
     ?? { x: PIECE + centre.spawnPoint.x, y: PIECE + centre.spawnPoint.y }
   putPlayer(state, at.x, at.y)
+  // Waking on a cave mouth or a doorstep (a save made underground puts you
+  // there) must not walk you straight back in: hold until you step off.
+  const on = t => t.x === at.x && t.y === at.y
+  state.entranceHold = state.caveEntrances.some(on) || state.houseDoors.some(on)
 }
 
 // Step the window by (dx, dy) pieces: record and drop what leaves, shift
@@ -129,11 +164,27 @@ function recentre(state, world, dx, dy, buildEntities) {
   const leaving = []
   eachPiece(windowGrid(world), piece => { if (!stays(piece.wx, piece.wy)) leaving.push(piece) })
   for (const piece of leaving) record(world, piece, state.entities)
-  // whatever stands in a leaving piece goes with it, whoever's it is
+  // Whatever stands in a leaving piece goes with it, whoever's it is. One
+  // whose own piece stays is put back at its post below rather than lost;
+  // one whose piece left while it lives on in a kept piece becomes a stray.
   const gone = new Set(leaving.map(p => p.key))
+  const rehome = []
   state.entities = state.entities.filter(e => {
     const { X, Y } = toWorld(old, e.x, e.y)
-    return !gone.has(pieceKey(Math.floor(X / PIECE), Math.floor(Y / PIECE)))
+    const tagged = e.wildsKey !== undefined
+    if (!gone.has(pieceKey(Math.floor(X / PIECE), Math.floor(Y / PIECE)))) {
+      if (tagged && gone.has(e.wildsKey)) {
+        if (!world.strays.has(e.wildsKey)) world.strays.set(e.wildsKey, new Set())
+        world.strays.get(e.wildsKey).add(e.wildsIx)
+      }
+      return true
+    }
+    if (tagged) {
+      world.strays.get(e.wildsKey)?.delete(e.wildsIx)   // carried off alive: back at home when home returns
+      const home = e.wildsKey.split(',').map(Number)
+      if (stays(home[0], home[1])) rehome.push({ wx: home[0], wy: home[1], ix: e.wildsIx })
+    }
+    return false
   })
   shiftState(state, -dx * PIECE, -dy * PIECE)
   world.origin = next
@@ -144,6 +195,7 @@ function recentre(state, world, dx, dy, buildEntities) {
     recordFor(world, piece.key).lastSeen = world.playtime
     if (!wasIn(piece.wx, piece.wy)) join(state, world, piece, c, r, buildEntities)
   })
+  for (const h of rehome) build(state, grid[h.wy - next.wy][h.wx - next.wx], h.ix, h.wx - next.wx, h.wy - next.wy, buildEntities)
   setTriggers(state, grid)
 }
 
@@ -205,6 +257,7 @@ export function snapshotWilds(state, world) {
   const surface = state.cave ? state.cave.surface : state
   if (world.origin && surface.map?.length === WIN_TILES) {
     eachPiece(windowGrid(world), piece => record(world, piece, surface.entities))
+    settleStrays(world, surface.entities)
     world.pos = toWorld(world.origin, surface.player.x, surface.player.y)
   }
   return exportWorld(world)

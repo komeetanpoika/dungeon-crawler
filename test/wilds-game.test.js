@@ -43,3 +43,13 @@ test('the title offers The Wilds and the level20 cheat reaches it', () => {
   assert.match(SRC, /onWilds: \(\) => beginRun\(WILDS_DEPTH, 'wilds'\)/)
   assert.match(SRC, /mode === 'wilds' \? savedWilds/)
 })
+
+// found by the whole-branch review
+test('a hit on an animal does not write the whole Wilds save', () => {
+  assert.match(SRC, /npcDirty = false; if \(runMode !== 'wilds'\) persistRun\(\)/)
+})
+
+test('the Wilds caps the unfinished caves it keeps in the save, and tells the tile cache which map it replaced', () => {
+  assert.match(SRC, /capInstances\(/)
+  assert.match(SRC, /renderer\.rekeyTiles\(before, state\.map,/)
+})

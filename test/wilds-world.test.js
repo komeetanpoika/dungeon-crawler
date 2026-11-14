@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeWorld, getPiece, recordFor, sweep, exportWorld, GEN, FORGET_PIECES, FORGET_SECONDS } from '../renderer/wilds/world.js'
-import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, ACTIVE_TILES } from '../renderer/wilds/session.js'
+import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, ACTIVE_TILES, capInstances } from '../renderer/wilds/session.js'
 import { toWorld } from '../renderer/wilds/window.js'
 import { PIECE, villagesNear, isPermanent, villageAt } from '../renderer/wilds/layout.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -299,4 +299,80 @@ test('exportWorld is plain JSON', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(out)), out)
   assert.ok(Array.isArray(out.visited) && out.visited.includes('0,0'))
   for (const rec of Object.values(out.records)) { assert.ok(Array.isArray(rec.gone)); assert.ok(Array.isArray(rec.felled)); assert.equal(typeof rec.lastSeen, 'number') }
+})
+
+// ---- found by the whole-branch review ---------------------------------------
+
+test('one who strayed into a piece that leaves goes back to its post, alive', () => {
+  const { world, state } = start()
+  const e = state.entities.find(x => x.wildsKey === '0,0')
+  const post = { X: toWorld(world.origin, e.x, e.y).X, Y: toWorld(world.origin, e.x, e.y).Y }
+  // it wanders west into piece (-1, 0), which leaves when the player walks east
+  e.x = 40; e.y = 120; e.px = e.x * 32 + 16; e.py = e.y * 32 + 16
+  walkEastOnePiece(state, world)
+  const back = state.entities.filter(x => x.wildsKey === '0,0' && x.wildsIx === e.wildsIx)
+  assert.equal(back.length, 1, 'still exactly one of it')
+  assert.deepEqual(toWorld(world.origin, back[0].x, back[0].y), post, 'at its post')
+  snapshotWilds(state, world)
+  assert.ok(!recordFor(world, '0,0').gone.has(e.wildsIx), 'and not written off')
+})
+
+test('a stray killed away from home stays dead', () => {
+  const { world, state } = start()
+  const e = state.entities.find(x => x.wildsKey === '-1,0')
+  e.x = PIECE + 5; e.y = PIECE + 5; e.px = e.x * 32 + 16; e.py = e.y * 32 + 16
+  walkEastOnePiece(state, world)          // its home piece leaves; it is alive in a kept piece
+  assert.ok(state.entities.includes(e))
+  state.entities = state.entities.filter(x => x !== e)   // the player kills it
+  walkWestOnePiece(state, world)          // home comes back
+  assert.ok(!state.entities.some(x => x.wildsKey === '-1,0' && x.wildsIx === e.wildsIx), 'it does not come back')
+  assert.ok(recordFor(world, '-1,0').gone.has(e.wildsIx))
+})
+
+test('a save taken after killing a stray records the kill', () => {
+  const { world, state } = start()
+  const e = state.entities.find(x => x.wildsKey === '-1,0')
+  e.x = PIECE + 5; e.y = PIECE + 5; e.px = e.x * 32 + 16; e.py = e.y * 32 + 16
+  walkEastOnePiece(state, world)
+  state.entities = state.entities.filter(x => x !== e)
+  const saved = snapshotWilds(state, world)
+  assert.ok(saved.records['-1,0'].gone.includes(e.wildsIx))
+})
+
+test('a stray carried off with a leaving piece is back home when home returns', () => {
+  const { world, state } = start()
+  const e = state.entities.find(x => x.wildsKey === '-1,0')
+  e.x = PIECE + 5; e.y = PIECE + 5; e.px = e.x * 32 + 16; e.py = e.y * 32 + 16
+  walkEastOnePiece(state, world)          // home (-1,0) leaves, it lives on in (0,0)
+  walkEastOnePiece(state, world)          // now (0,0) leaves too, taking it along
+  assert.ok(!state.entities.some(x => x.wildsKey === '-1,0'))
+  walkWestOnePiece(state, world); walkWestOnePiece(state, world)
+  assert.equal(state.entities.filter(x => x.wildsKey === '-1,0' && x.wildsIx === e.wildsIx).length, 1, 'alive at home again')
+  assert.ok(!recordFor(world, '-1,0').gone.has(e.wildsIx))
+})
+
+test('waking on a cave mouth or a door does not walk you straight in', () => {
+  const { world, state } = start()
+  assert.ok(!state.entranceHold, 'no hold when you land on plain ground')
+  const mouth = state.caveEntrances[0]
+  const saved = { ...JSON.parse(JSON.stringify(snapshotWilds(state, world))), pos: toWorld(world.origin, mouth.x, mouth.y) }
+  const again = start(saved)
+  assert.deepEqual(playerWorld(again.state, again.world), saved.pos)
+  assert.equal(again.state.entranceHold, true)
+  const door = state.houseDoors[0]
+  const atDoor = start({ ...saved, pos: toWorld(world.origin, door.x, door.y) })
+  assert.equal(atDoor.state.entranceHold, true)
+})
+
+test('capInstances keeps cleared caves and only the newest few unfinished ones', () => {
+  const inst = {
+    'cave:1,1': { cleared: false }, 'house:wilds:5,5': { cleared: true }, 'cave:2,2': { cleared: false },
+    'cave:3,3': { cleared: false }, 'cave:4,4': { cleared: true }, 'cave:5,5': { cleared: false },
+    'cave:6,6': { cleared: false }, 'cave:7,7': { cleared: false },
+  }
+  const out = capInstances(inst, 4)
+  assert.deepEqual(Object.keys(out), ['house:wilds:5,5', 'cave:3,3', 'cave:4,4', 'cave:5,5', 'cave:6,6', 'cave:7,7'])
+  assert.equal(Object.keys(inst).length, 8, 'the input is untouched')
+  assert.deepEqual(capInstances(undefined), {})
+  assert.deepEqual(Object.keys(capInstances({ a: { cleared: false } })), ['a'])
 })

@@ -8,7 +8,12 @@
 // entities, their AI state (paths, patrol points, last-seen and home tiles),
 // projectiles, ground zones and effects without each system registering.
 const TILE_SIZE = 32
-const PIXEL_PAIRS = [['px', 'py'], ['startPx', 'startPy'], ['targetPx', 'targetPy'], ['x0', 'y0'], ['x1', 'y1'], ['cx', 'cy']]
+// px/py everywhere; start/target on floating items; x0..y1 on lightning arcs;
+// cx/cy on the rite; prevPx/prevPy on a rig's pose (its facing is the
+// direction it moved since); lastPx/lastPy on a projectile (where it bursts
+// when it meets a wall); _wpx/_wpy the walk-sway anchor.
+const PIXEL_PAIRS = [['px', 'py'], ['startPx', 'startPy'], ['targetPx', 'targetPy'], ['x0', 'y0'], ['x1', 'y1'], ['cx', 'cy'],
+  ['prevPx', 'prevPy'], ['lastPx', 'lastPy'], ['_wpx', '_wpy']]
 const num = v => typeof v === 'number' && Number.isFinite(v)
 const plain = v => v !== null && typeof v === 'object' && !ArrayBuffer.isView(v) && !(v instanceof Map) && !(v instanceof Set)
 
