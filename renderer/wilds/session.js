@@ -1,0 +1,218 @@
+// The glue between a Wilds world and the running game state: building the
+// window, re-centring it as the player walks, remembering what changed in
+// the pieces that leave, and saving. No DOM and no game.js import — game.js
+// passes in its own buildEntities.
+//
+// Every entity built from a piece's spawn list is tagged with that piece's
+// key and the spawn's index (wildsKey, wildsIx). A spawn whose entity is
+// missing when its piece leaves the window is gone for good.
+import { PIECE, pieceKey, pieceOf } from './layout.js'
+import { assemble, toWindow, toWorld, recentreStep, WIN, WIN_TILES } from './window.js'
+import { shiftState } from './shift.js'
+import { getPiece, recordFor, sweep, exportWorld } from './world.js'
+import { applyFelled, STUMP } from '../systems/lumber.js'
+import { TILE } from '../systems/entities.js'
+
+// Things farther than this from the player neither think nor move.
+export const ACTIVE_TILES = 34
+export const asleep = (e, player) => Math.max(Math.abs(e.x - player.x), Math.abs(e.y - player.y)) > ACTIVE_TILES
+
+const SWEEP_EVERY = 10       // seconds between forgetting sweeps
+const PREGEN_EVERY = 0.25    // seconds between pieces generated ahead of the player
+const VILLAGE_REACH = 10     // tiles from a village's centre that count as being in it
+const TRANSIENT = ['projectiles', 'zones', 'fireZones', 'lightning', 'strikes', 'shockwaves', 'arcs', 'hitEffects']
+
+const windowGrid = world => Array.from({ length: WIN }, (_, r) =>
+  Array.from({ length: WIN }, (_, c) => getPiece(world, world.origin.wx + c, world.origin.wy + r)))
+const eachPiece = (grid, fn) => { for (let r = 0; r < WIN; r++) for (let c = 0; c < WIN; c++) fn(grid[r][c], c, r) }
+
+// What changed in a piece: spawns with no entity left (or a chest standing
+// open), and felled trees and cleared rocks. Felled keys only ever grow.
+function record(world, piece, entities) {
+  const rec = recordFor(world, piece.key)
+  const present = new Set()
+  for (const e of entities) if (e.wildsKey === piece.key && !(e.type === 'chest' && e.opening)) present.add(e.wildsIx)
+  for (let ix = 0; ix < piece.spawns.length; ix++) if (!present.has(ix)) rec.gone.add(ix)
+  for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+    const c = piece.cells[y][x]
+    if (c.overlay === STUMP || c.cleared === 'rock') rec.felled.add(`${x},${y}`)
+  }
+  rec.lastSeen = world.playtime
+  return rec
+}
+
+// Bring a piece into the window at column c, row r: re-fell what was felled
+// and build every spawn that is neither gone nor already walking about.
+function join(state, world, piece, c, r, buildEntities) {
+  const rec = world.records.get(piece.key)
+  const ox = c * PIECE, oy = r * PIECE
+  if (rec?.felled.size) applyFelled(state.map, [...rec.felled].map(k => { const [x, y] = k.split(',').map(Number); return `${x + ox},${y + oy}` }))
+  const present = new Set()
+  for (const e of state.entities) if (e.wildsKey === piece.key) present.add(e.wildsIx)
+  piece.spawns.forEach((s, ix) => {
+    if (rec?.gone.has(ix) || present.has(ix)) return
+    for (const e of buildEntities([{ ...s, x: s.x + ox, y: s.y + oy }], state.map, piece.lootDepth)) {
+      e.wildsKey = piece.key
+      e.wildsIx = ix
+      state.entities.push(e)
+    }
+  })
+}
+
+// The walk-onto triggers and signs of the nine pieces, in window tiles.
+function setTriggers(state, grid) {
+  state.caveEntrances = []
+  state.houseDoors = []
+  state.signs = []
+  eachPiece(grid, (piece, c, r) => {
+    const at = t => ({ ...t, x: t.x + c * PIECE, y: t.y + r * PIECE })
+    state.caveEntrances.push(...piece.caves.map(at))
+    state.houseDoors.push(...piece.doors.map(at))
+    state.signs.push(...piece.signs.map(at))
+  })
+  state.gates = {}
+  state.mapExit = null
+}
+
+const walkableAt = (map, x, y) => map[y]?.[x]?.tile === TILE.FLOOR
+function nearestWalkable(map, x, y, maxR) {
+  for (let r = 0; r <= maxR; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+    if (walkableAt(map, x + dx, y + dy)) return { x: x + dx, y: y + dy }
+  }
+  return null
+}
+function putPlayer(state, x, y) {
+  const p = state.player
+  p.x = x; p.y = y
+  p.px = x * 32 + 16; p.py = y * 32 + 16
+  p._fovMap = null; p._fovLitMap = null
+}
+
+// Arrive somewhere in the world: `target` is a world tile { X, Y } or a
+// piece { wx, wy } (its spawn point). Whatever window was up is recorded and
+// dropped, and a new one is built around the target.
+export function enterWilds(state, world, target, { buildEntities }) {
+  if (world.origin && state.wilds && state.map?.length === WIN_TILES) {
+    eachPiece(windowGrid(world), piece => record(world, piece, state.entities))
+  }
+  let goal = target
+  if (goal.X === undefined) {
+    const p = getPiece(world, goal.wx, goal.wy)
+    goal = { X: goal.wx * PIECE + p.spawnPoint.x, Y: goal.wy * PIECE + p.spawnPoint.y }
+  }
+  const { wx: cwx, wy: cwy } = pieceOf(goal.X, goal.Y)
+  world.origin = { wx: cwx - 1, wy: cwy - 1 }
+  const grid = windowGrid(world)
+  state.map = assemble(grid)
+  state.entities = []
+  for (const key of TRANSIENT) state[key] = []
+  state.blinkTrail = null
+  state.lastBossTile = null
+  delete state._flowFields
+  state.wilds = true
+  eachPiece(grid, (piece, c, r) => { recordFor(world, piece.key).lastSeen = world.playtime; join(state, world, piece, c, r, buildEntities) })
+  setTriggers(state, grid)
+  const want = toWindow(world.origin, goal.X, goal.Y)
+  const centre = grid[1][1]
+  const at = nearestWalkable(state.map, want.x, want.y, 6)
+    ?? { x: PIECE + centre.spawnPoint.x, y: PIECE + centre.spawnPoint.y }
+  putPlayer(state, at.x, at.y)
+}
+
+// Step the window by (dx, dy) pieces: record and drop what leaves, shift
+// every position, assemble the new window and bring in what joins.
+function recentre(state, world, dx, dy, buildEntities) {
+  const old = world.origin
+  const next = { wx: old.wx + dx, wy: old.wy + dy }
+  const stays = (wx, wy) => wx >= next.wx && wx <= next.wx + 2 && wy >= next.wy && wy <= next.wy + 2
+  const leaving = []
+  eachPiece(windowGrid(world), piece => { if (!stays(piece.wx, piece.wy)) leaving.push(piece) })
+  for (const piece of leaving) record(world, piece, state.entities)
+  // whatever stands in a leaving piece goes with it, whoever's it is
+  const gone = new Set(leaving.map(p => p.key))
+  state.entities = state.entities.filter(e => {
+    const { X, Y } = toWorld(old, e.x, e.y)
+    return !gone.has(pieceKey(Math.floor(X / PIECE), Math.floor(Y / PIECE)))
+  })
+  shiftState(state, -dx * PIECE, -dy * PIECE)
+  world.origin = next
+  const grid = windowGrid(world)
+  state.map = assemble(grid)
+  const wasIn = (wx, wy) => wx >= old.wx && wx <= old.wx + 2 && wy >= old.wy && wy <= old.wy + 2
+  eachPiece(grid, (piece, c, r) => {
+    recordFor(world, piece.key).lastSeen = world.playtime
+    if (!wasIn(piece.wx, piece.wy)) join(state, world, piece, c, r, buildEntities)
+  })
+  setTriggers(state, grid)
+}
+
+// Once per surface frame. Returns { recentred: {dx, dy} | null } so the
+// caller can move its tile cache along.
+export function tickWilds(state, world, delta, { buildEntities, onVillage } = {}) {
+  if (state.cave || !world.origin) return { recentred: null }
+  world.playtime += delta
+  let recentred = null
+  const step = recentreStep(state.player.x, state.player.y)
+  if (step.dx || step.dy) { recentre(state, world, step.dx, step.dy, buildEntities); recentred = step }
+
+  // the village the player stands in becomes the place they wake
+  const { X, Y } = toWorld(world.origin, state.player.x, state.player.y)
+  const here = pieceOf(X, Y)
+  const piece = world.pieces.get(pieceKey(here.wx, here.wy))
+  if (piece?.village) {
+    const lx = X - here.wx * PIECE, ly = Y - here.wy * PIECE
+    if (Math.max(Math.abs(lx - piece.village.x), Math.abs(ly - piece.village.y)) <= VILLAGE_REACH) {
+      world.lastVillage = { wx: here.wx, wy: here.wy }
+      if (!world.visited.includes(piece.key)) { world.visited.push(piece.key); onVillage?.(piece.village) }
+    }
+  }
+
+  world._sweepT = (world._sweepT ?? 0) + delta
+  if (world._sweepT >= SWEEP_EVERY) {
+    world._sweepT = 0
+    for (const key of sweep(world, here.wx, here.wy)) dropInstances(state, key)
+  }
+
+  // generate the ring beyond the window ahead of need, a piece at a time
+  world._pregenT = (world._pregenT ?? PREGEN_EVERY) + delta
+  if (!recentred && world._pregenT >= PREGEN_EVERY) {
+    const cx = world.origin.wx + 1, cy = world.origin.wy + 1
+    ring: for (let r = 2; r <= 2; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (world.pieces.has(pieceKey(cx + dx, cy + dy))) continue
+      getPiece(world, cx + dx, cy + dy)
+      world._pregenT = 0
+      break ring
+    }
+  }
+  return { recentred }
+}
+
+// A forgotten piece's cave and houses are forgotten with it.
+function dropInstances(state, key) {
+  const inst = state.caveInstances
+  if (!inst) return
+  delete inst[`cave:${key}`]
+  for (const label of Object.keys(inst)) {
+    const m = /^house:wilds:(-?\d+),(-?\d+)$/.exec(label)
+    if (m && pieceKey(Math.floor(m[1] / PIECE), Math.floor(m[2] / PIECE)) === key) delete inst[label]
+  }
+}
+
+// The save record. Read from the surface, so it is safe from inside a cave
+// or a house.
+export function snapshotWilds(state, world) {
+  const surface = state.cave ? state.cave.surface : state
+  if (world.origin && surface.map?.length === WIN_TILES) {
+    eachPiece(windowGrid(world), piece => record(world, piece, surface.entities))
+    world.pos = toWorld(world.origin, surface.player.x, surface.player.y)
+  }
+  return exportWorld(world)
+}
+
+// Death: wake in the last village visited. Returns that village.
+export function wildsRespawn(state, world, hooks) {
+  const v = world.lastVillage
+  enterWilds(state, world, { wx: v.wx, wy: v.wy }, hooks)
+  return getPiece(world, v.wx, v.wy).village
+}
