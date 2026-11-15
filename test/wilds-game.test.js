@@ -57,3 +57,11 @@ test('the Wilds caps the unfinished caves it keeps in the save, and tells the ti
 test('the game builds a camp\'s fire from its spawn', () => {
   assert.match(SRC, /case 'campfire':\s*return \[makeCampfire\(s\.x, s\.y, \{ eternal: true \}\)\]/)
 })
+
+test('the Wilds\' tiles load on entering the Wilds, not with the title', () => {
+  assert.doesNotMatch(SRC, /renderer\.loadSprites\(\[[^\]]*WILDS_SKINS/, 'the title still loads the Wilds tiles')
+  assert.match(SRC, /renderer\.addSprites\(WILDS_SKINS\)/)
+  // beginRun waits for them before it builds the first window
+  const begin = SRC.slice(SRC.indexOf('async function beginRun'), SRC.indexOf('function resumeGame'))
+  assert.ok(begin.indexOf('await loadWildsSprites()') > 0 && begin.indexOf('await loadWildsSprites()') < begin.indexOf('startNewRun('))
+})
