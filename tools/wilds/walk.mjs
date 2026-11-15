@@ -62,6 +62,13 @@ try {
   check(start.tile === 1 && start.x >= 80 && start.x < 160, 'the player stands on open ground in the middle piece', `${start.x},${start.y}`)
   check(start.entities > 20 && start.doors >= 4 && start.caves >= 2, 'things, doors and a cave are around', JSON.stringify([start.entities, start.doors, start.caves]))
   check(start.weather, 'the day cycle runs')
+  // the Wilds' tiles load on entering it (game.js loadWildsSprites): none may be left out
+  const bare = await ev(() => {
+    const s = window.__dc.state, have = window.__dc.sprites, miss = new Set()
+    for (const row of s.map) for (const c of row) { if (!have[c.skin]) miss.add(c.skin); if (c.overlay && !have[c.overlay]) miss.add(c.overlay) }
+    return [...miss]
+  })
+  check(bare.length === 0, 'every tile in the window has its picture', bare.slice(0, 5).join(' '))
   await shot('1-home')
   noErrors('on entering')
 

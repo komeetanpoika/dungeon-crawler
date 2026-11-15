@@ -282,7 +282,7 @@ let bench = null
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
 if (new URLSearchParams(location.search).has('dcdebug')) {
-  window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld } }
+  window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld }, get sprites() { return renderer?.sprites } }
 }
 let inventoryOpen = false
 let meta = null
@@ -1127,7 +1127,19 @@ function netFrame() {
   playCues(audio, drainCues(s), view.player, net.muted)
 }
 
+// The Wilds lays several hundred tiles no other mode uses. They load the
+// first time the Wilds is entered, so the title does not wait for them.
+let wildsSprites = null
+const loadWildsSprites = () => wildsSprites ??= renderer.addSprites(WILDS_SKINS)
+let beginning = false
+
 async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = null) {
+  if (beginning) return   // a second press while the Wilds' tiles are still coming in
+  if (mode === 'wilds') {
+    beginning = true
+    if (!wildsSprites) menu.setSubtitle('Loading the Wilds\u2026')
+    try { await loadWildsSprites() } finally { beginning = false }
+  }
   runMode = mode
   activeSave = mode === 'timewarp' ? enterEpisode(savedTimewarp, depth).save : mode === 'wilds' ? savedWilds : savedAdventure
   // The bench builds its arena in memory, so a Restart stays on the bench.
@@ -2460,7 +2472,7 @@ async function init() {
   rulesets = (await window.saveAPI.loadRulesets()) ?? {}
   await registerMonsters((await window.saveAPI.loadMonsters?.()) ?? [])
   structures = (await window.saveAPI.loadStructures()) ?? {}
-  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES, ...WILDS_SKINS])
+  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES])
   pruneMissingTiles(rulesets, renderer.sprites)
   savedAdventure = normalizeAdventureSave(await window.saveAPI.loadCaves?.())
   savedTimewarp = normalizeTimewarpSave(await window.saveAPI.loadTimewarp?.(), savedAdventure.leaps, savedAdventure.npcs)

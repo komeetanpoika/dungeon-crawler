@@ -146,3 +146,31 @@ test('depth 20 is the Wilds', () => {
   assert.equal(weatherFor({ name: 'wilds' }).dayCycle, true)
   assert.equal(MAP_CLEAR_OUTFITS.wilds, 'ranger')
 })
+
+// ---- the Wilds' tiles load when the Wilds is entered ----------------------------
+test('loadMoreSprites fetches only the pictures it does not have yet', async () => {
+  const { loadMoreSprites, missingSprites } = await import('../renderer/render/sprites.js')
+  assert.deepEqual(missingSprites({ a: 1, b: 2 }, ['a', 'c', 'c', 'd']), ['c', 'd'])
+  const asked = []
+  const realImage = globalThis.Image
+  globalThis.Image = class {
+    set src(v) { asked.push(v); queueMicrotask(() => v.includes('broken') ? this.onerror() : this.onload()) }
+  }
+  const realWarn = console.warn
+  const warned = []
+  console.warn = m => warned.push(m)
+  try {
+    const had = { ow_grass_0: 'kept' }
+    const out = await loadMoreSprites(had, ['ow_grass_0', 'ow_roof_blue_l', 'ow_roof_blue_l', 'ow_broken'])
+    assert.equal(out, had, 'it fills the set it was given')
+    assert.deepEqual(asked, ['./assets/tiles/ow_roof_blue_l.png', './assets/tiles/ow_broken.png'])
+    assert.equal(had.ow_grass_0, 'kept')
+    assert.ok(had.ow_roof_blue_l instanceof globalThis.Image)
+    assert.ok(!('ow_broken' in had), 'a missing file is not a picture')
+    assert.equal(warned.length, 1)
+    // a second call has nothing new to ask for but the one that failed
+    asked.length = 0
+    await loadMoreSprites(had, ['ow_grass_0', 'ow_roof_blue_l'])
+    assert.deepEqual(asked, [])
+  } finally { globalThis.Image = realImage; console.warn = realWarn }
+})

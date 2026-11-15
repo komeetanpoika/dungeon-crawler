@@ -139,13 +139,23 @@ export async function loadSprites(extraNames = []) {
   const entries = { ...SPRITES }
   for (const name of extraNames) if (!(name in entries)) entries[name] = name
   const loaded = {}
-  await Promise.all(
-    Object.entries(entries).map(([key, name]) => new Promise(resolve => {
-      const img = new Image()
-      img.onload = () => { loaded[key] = img; resolve() }
-      img.onerror = () => { console.warn(`Missing sprite: ${name}`); resolve() }
-      img.src = `./assets/tiles/${name}.png`
-    }))
-  )
+  await Promise.all(Object.entries(entries).map(([key, name]) => loadOne(loaded, key, name)))
+  return loaded
+}
+
+const loadOne = (loaded, key, name) => new Promise(resolve => {
+  const img = new Image()
+  img.onload = () => { loaded[key] = img; resolve() }
+  img.onerror = () => { console.warn(`Missing sprite: ${name}`); resolve() }
+  img.src = `./assets/tiles/${name}.png`
+})
+
+// The file names in `names` that `loaded` has no picture for yet.
+export const missingSprites = (loaded, names) => [...new Set(names)].filter(name => !(name in loaded))
+
+// Add tiles, by file name, to a set already loaded: a mode's own tiles when
+// that mode is first entered (the Wilds), so the title does not wait for them.
+export async function loadMoreSprites(loaded, names) {
+  await Promise.all(missingSprites(loaded, names).map(name => loadOne(loaded, name, name)))
   return loaded
 }

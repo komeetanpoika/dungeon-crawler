@@ -1,6 +1,6 @@
 import { FACING_ANGLE } from '../systems/entities.js'
 import { canWieldHeavy } from '../systems/inventory.js'
-import { loadSprites } from './sprites.js'
+import { loadSprites, loadMoreSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
 import { drawDragonBossPixel } from './dragonboss-pixel.js'
@@ -1163,6 +1163,10 @@ export class Renderer {
 
   async loadSprites(extraNames = []) {
     this.sprites = await loadSprites(extraNames)
+  }
+  // More tiles by file name, into the loaded set; ones already there are not fetched again.
+  async addSprites(names) {
+    await loadMoreSprites(this.sprites, names)
   }
 
   // Rite wizards wear white: the enemy wizard sprite desaturated and
