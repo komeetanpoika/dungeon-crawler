@@ -87,3 +87,11 @@ test('sinituli: a fire the player builds is blue, and its light mends', () => {
   assert.match(SRC, /hasTalent\(state\.player, 'sinituli'\)\) fire\.blue = true/)
   assert.match(SRC, /tickBlueRest\(state, delta\)/)
 })
+
+test('the title: Adventure is the Wilds, PvP arena is online play on the web and a local match on the desktop', () => {
+  const title = SRC.slice(SRC.indexOf('menu.showTitle(meta, {'), SRC.indexOf('menu.showTitle(meta, {') + 700)
+  assert.match(title, /onWilds: \(\) => beginRun\(WILDS_DEPTH, 'wilds'\)/)
+  assert.match(title, /onPvpArena: \(\) => \(window\.saveAPI\?\.isWeb \? goOnline\(\) : goPvpPicker\(\)\)/)
+  assert.ok(!/onTimewarp|onAdventure/.test(title), 'the old modes are still wired to the title')
+  assert.ok(!SRC.includes('Loading the Wilds'), 'the player still reads "the Wilds" as the mode\'s name')
+})

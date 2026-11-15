@@ -157,20 +157,19 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onAdventure, onWilds, onTimewarp, onRush, onOnline, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
-  // The web release has no tile editor and nothing to quit to, but it has
-  // online play. The old procedural overworld left the menu with the mode
-  // split; it remains reachable as the level6 cheat.
+export function showTitle(meta, { onWilds, onRush, onPvpArena, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
+  // Adventure is the Wilds (2026-11-15): the old map-by-map Adventure and
+  // Timewarp left the title, their maps still answer to the level<N> cheats.
+  // The web release has no tile editor and nothing to quit to.
   const isWeb = typeof window !== 'undefined' && window.saveAPI?.isWeb
   renderScreen({
     title: 'DUNGEON CRAWLER',
     subtitle: formatMetaSummary(meta),
     buttons: [
-      { label: 'Adventure', onSelect: onAdventure },
-      { label: 'The Wilds', onSelect: onWilds },
-      { label: 'Timewarp', onSelect: onTimewarp },
+      { label: 'Adventure', onSelect: onWilds },
       { label: 'Dungeon Rush', onSelect: onRush },
-      ...(isWeb ? [{ label: 'Online', onSelect: onOnline }] : [
+      { label: 'PvP arena', onSelect: onPvpArena },
+      ...(isWeb ? [] : [
         { label: 'Open Editor', onSelect: onOpenEditor },
         { label: 'Quit', onSelect: onQuit },
       ]),

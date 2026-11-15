@@ -886,16 +886,16 @@ function goTitle() {
   if (bench) { location.reload(); return }
   phase = PHASE.TITLE
   menu.showTitle(meta, {
-    onAdventure: () => beginRun(OPEN_MAPS[savedAdventure.progress.mapDepth] ? savedAdventure.progress.mapDepth : ADVENTURE_DEPTH, 'adventure'),
+    // Adventure is the Wilds. The old Adventure chain and Timewarp have no
+    // title entry any more; the level<N> cheats (onCheat) still reach their maps.
     onWilds: () => beginRun(WILDS_DEPTH, 'wilds'),
-    onTimewarp: () => goEpisodeSelect(),
     onRush: () => beginRun(1, 'rush'),
+    onPvpArena: () => (window.saveAPI?.isWeb ? goOnline() : goPvpPicker()),
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
     onPvp: goPvpPicker,
     onNet: goNet,
-    onOnline: goOnline,
   })
 }
 
@@ -1153,7 +1153,7 @@ async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = n
   if (beginning) return   // a second press while the Wilds' tiles are still coming in
   if (mode === 'wilds') {
     beginning = true
-    if (!wildsSprites) menu.setSubtitle('Loading the Wilds\u2026')
+    if (!wildsSprites) menu.setSubtitle('Loading the world\u2026')
     try { await loadWildsSprites() } finally { beginning = false }
   }
   runMode = mode
