@@ -46,8 +46,10 @@ export function makeCtx({ getState, save, record, mapData, extra = {},
 
 const carries = (player, kind) => player.inventory.findIndex(i => i.kind === kind)
 const onCell = (player, c) => c && player.x === c.x && player.y === c.y
-const besideNpc = (entities, player, species) => entities.some(e => e.type === 'npc' && e.species === species && !e.hostile
-  && Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 1)
+// `ok` narrows who counts: a caller with more than one village on its map
+// (the Wilds' tales) passes ctx.isGiver.
+const besideNpc = (entities, player, species, ok = () => true) => entities.some(e => e.type === 'npc' && e.species === species && !e.hostile
+  && ok(e) && Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 1)
 
 // One delivery per call: the first whose item is carried and whose target the
 // player stands on (POI) or beside (NPC of the species). Removes one item,
@@ -58,7 +60,7 @@ export function checkDeliveries(ctx, deliveries) {
     if (flags[d.sets]) continue
     const i = carries(state.player, d.item)
     if (i === -1) continue
-    const here = d.to.poi ? onCell(state.player, poiCell(mapData, d.to.poi)) : besideNpc(state.entities, state.player, d.to.species)
+    const here = d.to.poi ? onCell(state.player, poiCell(mapData, d.to.poi)) : besideNpc(state.entities, state.player, d.to.species, ctx.isGiver)
     if (!here) continue
     removeItem(state.player, i)
     ctx.set(d.sets)

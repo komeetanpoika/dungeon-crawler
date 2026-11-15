@@ -65,6 +65,7 @@ function lightPit(ctx) {
 // never again once `bow_given` records it in the player's hands.
 function dropBow(ctx) {
   const { state } = ctx
+  if (ctx.special?.() === false) return   // optional hook: the special reward is spent; the caller pays otherwise
   if (hasBow(state.player) || bowOnGround(state)) return
   const c = poiCell(ctx.mapData, CAMP)
   if (c) ctx.spawn([{ kind: 'floating_pickup', contents: { type: 'ranged', weaponType: BOW }, x: c.x, y: c.y }])
@@ -72,10 +73,12 @@ function dropBow(ctx) {
 
 export function onArrive(ctx) {
   const { state, flags } = ctx
-  if (!flags.bridge_done) GAPS.forEach((label, i) => {
+  // A finished bridge is planked too, not left to the map: the Adventure map
+  // is baked whole (planking it again changes nothing), a generated one is not.
+  GAPS.forEach((label, i) => {
     const c = poiCell(ctx.mapData, label)
     if (!c) return
-    if (flags[plankFlag(i)]) plankGap(state.map, c); else breakGap(state.map, c)
+    if (flags.bridge_done || flags[plankFlag(i)]) plankGap(state.map, c); else breakGap(state.map, c)
   })
   if (flags.pit_lit) lightPit(ctx)
   if (flags.bridge_done && !flags.bow_given) dropBow(ctx)
@@ -90,7 +93,8 @@ export function tick(ctx, delta) {
     return
   }
 
-  if (!flags.bridge_seen) {
+  // ctx.sees (optional): on a map too big to see across, wait for the gap to be near
+  if (!flags.bridge_seen && (ctx.sees?.(poiCell(ctx.mapData, GAPS[1])) ?? true)) {
     ctx.set('bridge_seen')
     think(state, 'The middle planks are gone. No bridge holds without tar.')
     ctx.persist()

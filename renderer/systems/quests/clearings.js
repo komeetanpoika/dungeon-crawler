@@ -33,7 +33,9 @@ const carriesHide = player => player.inventory.some(i => i.kind === 'elk_hide')
 const flushOf = flags => Math.min(flags.flush ?? 0, LAST)
 
 const ELDER_ID = 'npc:quest:elder'
-const hasElder = state => state.entities.some(e => e.type === 'npc' && e.species === 'elder')
+// ctx.isGiver (optional) says which elder is this quest's: on a map with
+// several villages another village's elder is not "the elder is here".
+const hasElder = ctx => ctx.state.entities.some(e => e.type === 'npc' && e.species === 'elder' && (ctx.isGiver?.(e) ?? true))
 // The village anchor, by openmap.js's own rule.
 const villageCell = mapData => { const p = mapData.pois.find(q => q.kind === 'village' || q.kind === 'camp'); return p ? { x: p.x, y: p.y } : null }
 
@@ -91,8 +93,10 @@ function walkableNear(map, at, radius = 4) {
 // (the same rule game.js uses for the missing villager).
 function ensureElder(ctx) {
   const { state, mapData } = ctx
-  if (hasElder(state)) return
-  const anchor = villageCell(mapData)
+  if (hasElder(ctx)) return
+  // ctx.giverCell (optional) is where the giver's village is, for a caller
+  // whose map data has more than one
+  const anchor = ctx.giverCell ? ctx.giverCell() : villageCell(mapData)
   const at = anchor && walkableNear(state.map, anchor)
   if (at) ctx.spawn([{ kind: 'npc', species: 'elder', x: at.x, y: at.y, id: ELDER_ID }])
 }
@@ -115,7 +119,8 @@ export function tick(ctx, delta) {
   if (flags.hirvi_dead) {
     ensureElder(ctx)   // cheap, and a same-visit kill of the elder must not strand the hide
     if (!checkDeliveries(ctx, DELIVERIES)) return
-    grantTalent(state, 'ski_legs')   // queues its own toast and cue
+    // ctx.special (optional) false: this world has had its Ski-legs; the caller pays otherwise
+    if (ctx.special?.() !== false) grantTalent(state, 'ski_legs')   // queues its own toast and cue
     ctx.refreshInventory()
     ctx.persist()
     return

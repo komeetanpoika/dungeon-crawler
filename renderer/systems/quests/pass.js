@@ -75,7 +75,8 @@ function walkableNear(map, at, avoid, radius = 3) {
 function dropPick(ctx) {
   const { state, mapData } = ctx
   if (hasPick(state.player) || pickOnGround(state)) return
-  const hut = villageCell(mapData)
+  // the hut by name where the map names it, else the first village/camp POI (which on the Mountain Pass is the hut)
+  const hut = poiCell(mapData, 'hermit hut') ?? villageCell(mapData)
   const at = hut && walkableNear(state.map, hut, { x: state.player.x, y: state.player.y })
   if (at) ctx.spawn([{ kind: 'floating_pickup', contents: { type: 'weapon', ...weaponContents(PICK) }, x: at.x, y: at.y }])
 }
@@ -101,6 +102,16 @@ function stampArena(ctx) {
   if (!kiuas) return
   if (!flags.hiisi_woken && !isBoulder(state.map[kiuas.y]?.[kiuas.x])) stampBoulder(state.map, kiuas, CAPSTONE)
   const n = flags.hiisi_woken ? stonesOf(flags) : 0
+  // Cells that outlive a visit (a generated world keeps them) may still hold
+  // boulders from before: only stones 0..n-1 stand. On a fresh map this is a no-op.
+  for (let i = n; i < RING_STONES; i++) {
+    const c = ringCell(kiuas, i), cell = state.map[c.y]?.[c.x]
+    if (!isBoulder(cell) || cell.tile !== TILE.WALL) continue
+    cell.tile = TILE.FLOOR
+    delete cell.overlay
+    delete cell.chopHp
+    markTileDirty(state.map, c.x, c.y)
+  }
   for (let i = 0; i < n; i++) {
     const c = ringCell(kiuas, i)
     if (!isBoulder(state.map[c.y]?.[c.x])) stampBoulder(state.map, c, boulderSkin(i))
@@ -123,6 +134,7 @@ function spawnHiisi(ctx) {
 // a re-drop on arrival after it was lost. Never duplicated.
 function dropHammer(ctx, at = null) {
   const { state } = ctx
+  if (ctx.special?.() === false) return   // optional hook: the special reward is spent; the caller pays otherwise
   if (hasHammer(state.player) || hammerOnGround(state)) return
   at ??= poiCell(ctx.mapData, KIUAS)
   if (at) ctx.spawn([{ kind: 'floating_pickup', contents: { type: 'weapon', ...weaponContents(HAMMER) }, x: at.x, y: at.y }])

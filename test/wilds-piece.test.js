@@ -431,8 +431,11 @@ const POINTS = {
   kivihiisi: ['hiidenkiuas', 'hermit hut'],
 }
 // Six pieces of each tale's home land per seed.
+const taleCache = new Map()
 function talePieces(seed, id) {
+  if (taleCache.has(`${seed}:${id}`)) return taleCache.get(`${seed}:${id}`)
   const out = []
+  taleCache.set(`${seed}:${id}`, out)
   for (let r = 1; r <= 9 && out.length < 6; r++) for (let wy = -r; wy <= r; wy++) for (let wx = -r; wx <= r; wx++) {
     if (Math.max(Math.abs(wx), Math.abs(wy)) !== r || villageAt(seed, wx, wy) || out.length >= 6) continue
     if (TALE_SPOTS[id].includes(pieceBiome(seed, wx, wy))) out.push(generatePiece(seed, wx, wy, 0, id))
@@ -484,6 +487,7 @@ test('the causeway: a deck with a three-cell gap is the only way to the islet', 
     // break the gap as the quest does: the islet must be cut off
     for (const g of gaps) p.cells[g.y][g.x].tile = TILE.WALL
     assert.ok(!flood(p, p.spawnPoint).has(`${chest.x},${chest.y}`), 'the islet is reachable without the deck')
+    for (const g of gaps) p.cells[g.y][g.x].tile = TILE.FLOOR   // the sample pieces are shared between tests
     const pit = pt(p, 'tar pit')
     assert.ok(walk(p.cells[pit.y][pit.x]) && p.cells[pit.y][pit.x].overlay === 'ow_deco_firepit')
     assert.ok(around(p, pit, 2, s => s === 'ow_kiln_cold') >= 1 && around(p, pit, 4, s => s === 'ow_prop_woodpile') >= 2)
