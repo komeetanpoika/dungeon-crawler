@@ -103,3 +103,8 @@ test('the flute plays instead of striking, and its tune is ticked every frame', 
   assert.ok(swing.indexOf('wpn.tune') < swing.indexOf('meleeCost('), 'the flute costs no stamina')
   assert.match(SRC, /tickTune\(state, delta\)/)
 })
+
+// found by the step-3 review: an offhand dagger took every second press and stabbed the mice being led
+test('with the flute in hand the off hand never swings', () => {
+  assert.match(SRC, /const offBlade = off\?\.kind === 'weapon' && !isChargeWeapon\(meleeWT\) && !player\.weapon\?\.tune \? off : null/)
+})

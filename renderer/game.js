@@ -1715,7 +1715,9 @@ function update(delta) {
   // the offhand blade would spend the main hand's charge on the wrong steel.
   const meleeWT = player.weapon?.weaponType
   const off = offhand(player)
-  const offBlade = off?.kind === 'weapon' && !isChargeWeapon(meleeWT) ? off : null
+  // Nor does the off hand swing beside the flute: a tune kept going would
+  // otherwise stab, on every second press, the mice it is leading.
+  const offBlade = off?.kind === 'weapon' && !isChargeWeapon(meleeWT) && !player.weapon?.tune ? off : null
   const swing = (mods) => {
     const hand = swingHand(player, offBlade)
     const wpn = hand === 'off' ? offBlade : player.weapon

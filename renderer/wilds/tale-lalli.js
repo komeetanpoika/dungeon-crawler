@@ -22,7 +22,7 @@ import { think, speakFrom, addFloat } from '../systems/feedback.js'
 
 export const MICE = 8
 export const MEAT_FOR_SAUSAGE = 2
-const AWAY = 12        // tiles from which the Lalli who climbed down is no longer watched
+const AWAY = 16        // tiles from which the Lalli who climbed down is out of sight (the player sees 14)
 // who a stray blow must not take out of the tale
 const KEPT = new Set(['lalli_treed', 'piper', 'kerttu'])
 
@@ -87,12 +87,27 @@ function handFlute(ctx) {
   ctx.refreshInventory?.()
 }
 
-export function onArrive(ctx) {
+// The tale's people at their posts. Asked on arrival and again every tick:
+// whatever a blow does to one of them, they are there the next frame, and
+// Lalli is in his pine however hard he was hit.
+function posts(ctx) {
   person(ctx, 'kerttu', poi(ctx, 'kerttu'), 'kerttu')
   person(ctx, 'piper', poi(ctx, 'piper camp'), 'piper')
-  if (ctx.flags.lalli_down) { layAxe(ctx); return }
-  person(ctx, 'lalli_treed', poi(ctx, 'lalli tree'), 'lalli')
-  topUp(ctx)
+  if (ctx.flags.lalli_down) return
+  const top = poi(ctx, 'lalli tree')
+  person(ctx, 'lalli_treed', top, 'lalli')
+  if (!top) return
+  for (const e of folk(ctx, 'lalli_treed')) {
+    if (e.x === top.x && e.y === top.y && !e.knockback) continue
+    Object.assign(e, { x: top.x, y: top.y, px: top.x * 32 + 16, py: top.y * 32 + 16 })
+    delete e.knockback
+  }
+}
+
+export function onArrive(ctx) {
+  posts(ctx)
+  if (ctx.flags.lalli_down) layAxe(ctx)
+  else topUp(ctx)
 }
 
 function climbDown(ctx) {
@@ -113,14 +128,22 @@ function climbDown(ctx) {
 export function tick(ctx) {
   const { state, flags } = ctx
   const { player } = state
+  posts(ctx)
   for (const e of state.entities) if (e.type === 'npc' && KEPT.has(e.species) && own(ctx, e) && e.hp < e.maxHp) e.hp = e.maxHp
 
   // Kerttu: two cuts of raw meat for a sausage, as often as one is needed
   const [kerttu] = folk(ctx, 'kerttu')
-  if (kerttu && !flags.flute_given && near(player, kerttu) && count(player, 'meat') >= MEAT_FOR_SAUSAGE && !count(player, 'sausage')) {
-    // with no room for it she keeps her hands in her apron and the meat stays where it is
-    if (addItem(player, makeItem('sausage')).ok) {
-      take(player, 'meat', MEAT_FOR_SAUSAGE)
+  const asking = !!kerttu && !flags.flute_given && near(player, kerttu) && count(player, 'meat') >= MEAT_FOR_SAUSAGE && !count(player, 'sausage')
+  if (!asking) ctx.runtime.noRoom = false
+  else {
+    // the two cuts go first (they may be what makes room); with no room for
+    // the sausage they come straight back and she says so, once per visit
+    take(player, 'meat', MEAT_FOR_SAUSAGE)
+    if (!addItem(player, makeItem('sausage')).ok) {
+      addItem(player, makeItem('meat', MEAT_FOR_SAUSAGE))
+      if (!ctx.runtime.noRoom) speakFrom(state, kerttu, 'Make room in that sack and I will make it.')
+      ctx.runtime.noRoom = true
+    } else {
       ctx.set('sausage_made')
       speakFrom(state, kerttu, 'There. It is all boar once it is in the skin.')
       sfx(state, 'pickup', { px: player.px, py: player.py })

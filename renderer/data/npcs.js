@@ -111,14 +111,14 @@ export const NPC_SPECIES = {
   },
   piper: {
     faction: 'wild', sprite: 'npc_piper', walker: true,
-    hp: 3, onHit: 'flee', fleeHp: 1,
+    hp: 99, onHit: 'flee', fleeHp: 1,
     speed: 60, wanderSpeed: 20, roam: 0,
     priorities: ['flee_hurt', 'go_to', 'wander'],
     lines: ['Ja, ja. Good day.', 'A man must eat. A man must also drink.'],
   },
   kerttu: {
     faction: 'village', sprite: 'npc_kerttu', walker: true,
-    hp: 3, onHit: 'flee', fleeHp: 1,
+    hp: 99, onHit: 'flee', fleeHp: 1,
     speed: 60, wanderSpeed: 20, roam: 0,
     priorities: ['flee_hurt', 'go_to', 'wander'],
     lines: ['Mind the step.', 'He is a good man. Mostly.'],

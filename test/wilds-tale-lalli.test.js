@@ -325,3 +325,59 @@ test("inside Lalli's house the pint stands on the larder floor, in a house with 
     assert.ok(!spawns.some(s => s.kind === 'monster'), 'vermin in a village house')
   }
 })
+
+// ---- found by the whole-branch review ----
+test('a blow that takes Kerttu or the piper out of the world does not take them out of the tale', () => {
+  const t = setup()
+  const camp = point(t.world, 'piper camp'), k = vpoint(t.world, 'kerttu')
+  for (const species of ['piper', 'kerttu']) assert.ok(who(t.state, species)[0].maxHp >= 50, `${species} falls to one arrow`)
+  t.state.entities = t.state.entities.filter(e => e.species !== 'piper' && e.species !== 'kerttu')
+  tick(t)
+  assert.deepEqual(who(t.state, 'piper').map(e => [e.x, e.y]), [[camp.x, camp.y]])
+  assert.deepEqual(who(t.state, 'kerttu').map(e => [e.x, e.y]), [[k.x, k.y]])
+  tick(t)
+  assert.equal(who(t.state, 'piper').length + who(t.state, 'kerttu').length, 2)
+})
+
+test('Lalli knocked out of his pine is back in it at once', () => {
+  const t = setup()
+  const top = point(t.world, 'lalli tree')
+  const [lalli] = who(t.state, 'lalli_treed')
+  move(lalli, { x: top.x + 2, y: top.y + 1 })
+  lalli.knockback = { vx: 300, vy: 0, t: 0.2 }
+  tick(t)
+  assert.deepEqual([lalli.x, lalli.y, lalli.px, lalli.py], [top.x, top.y, top.x * S + 16, top.y * S + 16])
+  assert.ok(!lalli.knockback)
+  // taken out altogether, he is put back too
+  t.state.entities = t.state.entities.filter(e => e !== lalli)
+  tick(t)
+  assert.deepEqual(who(t.state, 'lalli_treed').map(e => [e.x, e.y]), [[top.x, top.y]])
+})
+
+test('a full sack whose meat is exactly the two cuts still gets its sausage; with more meat she says why not', () => {
+  const t = setup()
+  put(t.state, vpoint(t.world, 'kerttu'), 1, 0)
+  t.state.player.maxInventory = 1
+  give(t.state, 'meat', 2)
+  tick(t)
+  assert.equal(has(t.state, 'sausage'), 1)
+  assert.equal(has(t.state, 'meat'), 0)
+  t.state.player.inventory = [makeItem('meat', 3)]
+  t.flags.sausage_made = false
+  tick(t)
+  assert.equal(has(t.state, 'meat'), 3)
+  assert.match(t.state.feedback.bubble?.text ?? '', /room/i)
+})
+
+test('the Lalli who climbed down stays while he can be seen', () => {
+  const t = setup({ flags: { flute_given: true } })
+  drown(t, MICE)
+  const foot = point(t.world, 'tree foot')
+  const down = () => who(t.state, 'lalli').filter(e => e.role !== 'missing')
+  put(t.state, foot, 14, 0)   // the edge of sight
+  tick(t)
+  assert.equal(down().length, 1, 'he vanished in view')
+  put(t.state, foot, 17, 0)
+  tick(t)
+  assert.equal(down().length, 0)
+})
