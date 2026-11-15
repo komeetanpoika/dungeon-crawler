@@ -160,7 +160,8 @@ export const GOALS = {
     },
   },
   startle: {
-    when: (e, ctx) => !!ctx.def.startle && (e.ai.startleTimer > 0 || ctx.playerDist < ctx.def.startle),
+    // an animal led by the flute (systems/tune.js) does not bolt from the one it follows
+    when: (e, ctx) => !!ctx.def.startle && !e.piped && (e.ai.startleTimer > 0 || ctx.playerDist < ctx.def.startle),
     enter: e => { e.ai.startleTimer = Math.max(e.ai.startleTimer, STARTLE_TIME) },
     run: (e, ctx, dt) => { e.ai.startleTimer = Math.max(0, e.ai.startleTimer - dt); return { mode: 'flee', speed: ctx.cfg.speed } },
   },
@@ -179,6 +180,11 @@ export const GOALS = {
       }
       return { mode: 'patrol', target: e.objective, speed: ctx.cfg.speed }
     },
+  },
+  // rooted to the spot (Lalli up his tree): nothing moves him
+  stay: {
+    when: () => true,
+    run: () => ({ mode: 'hold' }),
   },
   wander: {
     when: () => true,
@@ -263,8 +269,8 @@ export function rollNpcDrop(e, rng = Math.random) {
 export function spriteKeyFor(e) {
   const def = NPC_SPECIES[e.species]
   if (!def) return null
-  if (e.role === 'missing') return 'npc_villager_3'
   if (e.species !== 'villager') return def.sprite
+  if (e.role === 'missing') return 'npc_villager_3'
   const idx = Number(e.id?.split(':').at(-1)) || 0
   // In the Wilds someone comes home to many villages: the third face is kept for them.
   if (e.wildsKey !== undefined) return ['npc_villager', 'npc_villager_2'][idx % 2]

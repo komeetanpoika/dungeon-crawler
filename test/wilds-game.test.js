@@ -95,3 +95,16 @@ test('the title: Adventure is the Wilds, PvP arena is online play on the web and
   assert.ok(!/onTimewarp|onAdventure/.test(title), 'the old modes are still wired to the title')
   assert.ok(!SRC.includes('Loading the Wilds'), 'the player still reads "the Wilds" as the mode\'s name')
 })
+
+test('the flute plays instead of striking, and its tune is ticked every frame', () => {
+  assert.match(SRC, /import \{[^}]*\bplayTune\b[^}]*\btickTune\b[^}]*\} from '.\/systems\/tune.js'/)
+  const swing = SRC.slice(SRC.indexOf('const swing = (mods) => {'), SRC.indexOf("sfx(state, 'melee-swing'"))
+  assert.match(swing, /if \(wpn\.tune\) \{[^}]*playTune\(state\)[^}]*return/s, 'the flute must return before any stamina is spent or blow dealt')
+  assert.ok(swing.indexOf('wpn.tune') < swing.indexOf('meleeCost('), 'the flute costs no stamina')
+  assert.match(SRC, /tickTune\(state, delta\)/)
+})
+
+// found by the step-3 review: an offhand dagger took every second press and stabbed the mice being led
+test('with the flute in hand the off hand never swings', () => {
+  assert.match(SRC, /const offBlade = off\?\.kind === 'weapon' && !isChargeWeapon\(meleeWT\) && !player\.weapon\?\.tune \? off : null/)
+})

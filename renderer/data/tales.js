@@ -219,8 +219,55 @@ export const TALES = {
       } },
     ],
   },
+  // ---- step 3: a tale of this world's own (wilds/tale-lalli.js plays it) ----
+  // After the legend of Lalli and the bishop: he took the bishop's hat, the
+  // hat stuck, and the mice chased him up a tree.
+  lalli: {
+    id: 'lalli', title: "Lalli and the bishop's hat", kind: 'need', land: ['forest', 'autumn', 'marsh'],
+    creature: null, module: 'lalli', engine: 'wilds', arriveOn: 'both',
+    rule: f => !!f.lalli_down,
+    missing: { species: 'lalli', name: 'Lalli' },
+    landWord: 'the wood',
+    // his house stands in the village, not at the tale's place
+    houses: { "Lalli's house": { in: 'village', room: 'aino_larder', pickups: [{ type: 'beer' }] } },
+    remarks: [
+      { at: 'lalli tree', within: 5, when: f => !f.lalli_down, text: "A man up a pine, in a bishop's hat. And mice at the bottom of it. A great many mice." },
+      { at: 'piper camp', within: 3, when: f => !f.flute_given, text: 'An empty barrel, and a man looking into it sadly.' },
+      { at: 'pier end', within: 1, when: f => !f.lalli_down, text: 'Deep water on three sides. Anything small that followed me out here would have nowhere to go.' },
+    ],
+    lines: [
+      { when: f => f.lalli_down, by: {
+        villager: ['Lalli is home. The hat is not coming off, mind.', 'We do not mention the bishop. Or the mice.'],
+        elder:    ["A man comes home in a bishop's hat and asks for his supper. I have stopped asking questions."],
+        kerttu:   ['He is home, and that is your doing. He will not say where the hat came from.', 'It will not come off. He sleeps in it.'],
+        lalli:    ['It will not come off. Do not ask.', 'I am never going near a bishop again. Or a mouse.', 'Keep the axe. I have had enough of what axes get a man into.'],
+        piper:    ['Eight mice, one pond. Good work. Keep the flute.', 'In Hameln they did not pay me. Here I get beer. A better country.'],
+      } },
+      { when: f => f.flute_given, by: {
+        villager: ['A flute? For mice? Well. Nothing else has worked.'],
+        elder:    ['Mice follow a tune, the old people said. Lead them somewhere they will not come back from.'],
+        kerttu:   ['The piper gave you that? Then play it by the tree, and do not stop until they are in the pond.'],
+        lalli_treed: ['Play it! Play it and walk away!', 'They follow the tune. Take them off the end of the pier!'],
+        piper:    ['Hold it and strike, like a sword. It plays. Play, and they follow; stop, and they forget.', 'Walk them out on the pier, ja? To the very end. A mouse does not swim so good as it thinks.'],
+      } },
+      { when: f => f.sausage_made, by: {
+        villager: ["Kerttu's sausage? There is no better. Do not ask what is in it."],
+        elder:    ['The piper wants paying before he will lift a finger. Beer and sausage, they say.'],
+        kerttu:   ['That sausage is for the piper, mind. He wants a pint with it: there is one in our larder. Go in, go in.', 'Lose it and I will make another. Two cuts of raw meat, same as before.'],
+        lalli_treed: ['Get them away from me!', 'The piper! Ask the piper, down by the pond!'],
+        piper:    ['Is that sausage I smell? And the beer? Both, or no flute.', 'A proper pint. Not the thin stuff.'],
+      } },
+      { when: () => true, by: {
+        villager: ['Lalli has not been home since the bishop came through. Ask Kerttu: theirs is the house by the field.', 'They say there is a man up a pine {where}, shouting at mice.'],
+        elder:    ['Lalli went out after the bishop with his axe, and came back without the bishop, and then did not come back at all. Ask Kerttu.'],
+        kerttu:   ["My Lalli is up a pine {where}, with the bishop's hat stuck on his head and the mice at the foot of it. They ate our larder bare once and now they want him.", 'There is a foreign piper camped by that tree who says he can shift mice. He wants a pint and a boar sausage first. The pint is in our larder: go in. Bring me two cuts of raw meat and I will make the sausage.', 'It is all boar once it is in the skin.'],
+        lalli_treed: ['Get them away from me!', 'It is not my hat! It is stuck!', 'The piper says he can shift them. He wants paying first. Kerttu will know!'],
+        piper:    ['Mice, ja, I do mice. Rats also. Children, once; we do not speak of it.', 'For a proper pint of beer and a wild boar sausage, the flute is yours. Not before.'],
+      } },
+    ],
+  },
 }
-export const TALE_IDS = ['elk', 'tar', 'kivihiisi', 'nakki', 'fold', 'flame']
+export const TALE_IDS = ['elk', 'tar', 'kivihiisi', 'nakki', 'fold', 'flame', 'lalli']
 
 // What a village with no tale talks about: its own country.
 export const PLAIN_LINES = {

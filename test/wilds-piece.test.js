@@ -8,11 +8,12 @@ import { PIECE, tierAt, villageAt, isPermanent, lootDepthFor, pieceBiome, BIOMES
 import { hashInt } from '../renderer/wilds/rand.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
+import { TREES } from '../renderer/systems/lumber.js'
 
 const SEEDS = [3, 77, 2024]
 const MONSTER_NAMES = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/index.json', import.meta.url), 'utf8'))
 const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger', 'campfire', 'floating_pickup']
-const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark', 'tale_elk', 'tale_tar', 'tale_kivihiisi', 'tale_nakki', 'tale_fold', 'tale_flame']
+const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark', 'tale_elk', 'tale_tar', 'tale_kivihiisi', 'tale_nakki', 'tale_fold', 'tale_flame', 'tale_lalli']
 // 40 pieces per seed, biased so every tier and country turns up.
 const samplePieces = seed => Array.from({ length: 22 }, (_, i) => ({
   wx: (hashInt(seed, i, 0, 6) % 25) - 12, wy: (hashInt(seed, i, 1, 6) % 25) - 12,
@@ -424,7 +425,7 @@ test('rock built on a road never shuts a gate', () => {
 })
 
 // ---- the places of the tales -----------------------------------------------------
-const TALE_SPOTS = { elk: ['forest', 'autumn'], tar: ['sea', 'marsh'], kivihiisi: ['mountain'], nakki: ['forest', 'autumn', 'marsh'], fold: ['forest', 'autumn', 'mountain'], flame: ['marsh', 'autumn', 'forest'] }
+const TALE_SPOTS = { elk: ['forest', 'autumn'], tar: ['sea', 'marsh'], kivihiisi: ['mountain'], nakki: ['forest', 'autumn', 'marsh'], fold: ['forest', 'autumn', 'mountain'], flame: ['marsh', 'autumn', 'forest'], lalli: ['forest', 'autumn', 'marsh'] }
 const POINTS = {
   elk: ['forest shrine', 'wallow 1', 'wallow 2', 'wallow 3'],
   tar: ['tar pit', 'lumber camp', 'bridge gap 1', 'bridge gap 2', 'bridge gap 3'],
@@ -432,9 +433,10 @@ const POINTS = {
   nakki: ['bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'orchard', 'islet cache', "Toivo's hut"],
   fold: ['den', 'burn 1', 'burn 2', 'burn 3', 'burn 4', 'burrow', 'lair', 'fleece cache'],
   flame: ['hermit hut', 'hearth', 'knoll'],
+  lalli: ['lalli tree', 'tree foot', 'pond', 'pier end', 'pier bank', 'piper camp'],
 }
 // Points a tale keeps shut until it is played: behind water or rock.
-const SEALED = { nakki: ['nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'orchard'], fold: ['lair', 'burrow', 'burn 1', 'burn 2', 'burn 3', 'burn 4'] }
+const SEALED = { nakki: ['nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'orchard'], fold: ['lair', 'burrow', 'burn 1', 'burn 2', 'burn 3', 'burn 4'], lalli: ['pond'] }
 // Six pieces of each tale's home land per seed.
 const taleCache = new Map()
 function talePieces(seed, id) {
@@ -636,5 +638,72 @@ test('a village built for the fold keeps every gate it had', () => {
     const was = flood(plain, plain.spawnPoint), is = flood(fold, fold.spawnPoint)
     for (const [side, g] of Object.entries(fold.gates))
       if (was.has(`${g.x},${g.y}`)) assert.ok(is.has(`${g.x},${g.y}`), `village ${wx},${wy} (seed ${seed}): the fold shut gate ${side}`)
+  }
+})
+
+// ---- the Lalli tale (step 3) ----
+const isWater = c => c.tile === TILE.WALL && c.losClear && !c.overlay
+test('Lalli\'s pine: a tree no axe can fell, open ground at its foot', () => {
+  for (const seed of SEEDS) for (const p of talePieces(seed, 'lalli')) {
+    const top = pt(p, 'lalli tree'), foot = pt(p, 'tree foot')
+    assert.equal(p.cells[top.y][top.x].overlay, 'ow_lalli_pine_top')
+    assert.equal(p.cells[top.y + 1][top.x].overlay, 'ow_lalli_pine_trunk')
+    for (const c of [p.cells[top.y][top.x], p.cells[top.y + 1][top.x]]) {
+      assert.equal(c.tile, TILE.WALL)
+      assert.equal(TREES[c.overlay], undefined, 'the pine is in the lumber table')
+    }
+    assert.deepEqual(foot, { label: 'tree foot', x: top.x, y: top.y + 2 })
+    // room for eight mice and whoever comes to look at them
+    let open = 0
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (walk(p.cells[foot.y + dy][foot.x + dx]) && !p.cells[foot.y + dy][foot.x + dx].overlay) open++
+    assert.ok(open >= 30, `only ${open} open cells at the foot`)
+  }
+})
+
+test('the pond: a pier from the bank to an end with deep water on three sides', () => {
+  for (const seed of SEEDS) for (const p of talePieces(seed, 'lalli')) {
+    const end = pt(p, 'pier end'), bank = pt(p, 'pier bank'), pond = pt(p, 'pond')
+    const at = `lalli at ${p.wx},${p.wy} (seed ${seed})`
+    assert.equal(end.y, bank.y)
+    assert.ok(end.x - bank.x >= 4, `${at}: a pier of ${end.x - bank.x}`)
+    assert.ok(walk(p.cells[bank.y][bank.x]) && p.cells[bank.y][bank.x].overlay !== 'ow_pier_log', `${at}: the bank is not land`)
+    for (let x = bank.x + 1; x <= end.x; x++) {
+      assert.equal(p.cells[end.y][x].overlay, 'ow_pier_log', `${at}: no plank at ${x}`)
+      assert.ok(walk(p.cells[end.y][x]), `${at}: a plank nobody can stand on`)
+    }
+    for (const [dx, dy] of [[1, 0], [0, 1], [0, -1]]) assert.ok(!walk(p.cells[end.y + dy][end.x + dx]), `${at}: the pier's end is not surrounded by water`)
+    assert.ok(!walk(p.cells[pond.y][pond.x]))
+    assert.ok(dist(end, pt(p, 'tree foot')) <= 14, `${at}: the pond is a long way from the tree`)
+  }
+})
+
+test('the piper\'s camp: a tent, a fire and an empty barrel, with room to stand by him', () => {
+  for (const seed of SEEDS) for (const p of talePieces(seed, 'lalli')) {
+    const camp = pt(p, 'piper camp')
+    assert.ok(around(p, camp, 3, s => s.startsWith('ow_tent_')) === 4, 'no tent')
+    assert.ok(around(p, camp, 3, s => s.startsWith('ow_prop_barrel')) >= 1, 'no barrel')
+    assert.ok(p.spawns.some(s => s.kind === 'campfire' && dist(s, camp) <= 3), 'no fire')
+    assert.ok(walk(p.cells[camp.y][camp.x]) && !p.cells[camp.y][camp.x].overlay)
+    assert.ok(!p.spawns.some(s => s.x === camp.x && s.y === camp.y), 'something is dealt where the piper stands')
+  }
+})
+
+test('a Lalli village: his house is a story house, Kerttu has a place by its door, and nothing else changes', () => {
+  for (const seed of SEEDS) {
+    const plain = generatePiece(seed, 0, 0), p = generatePiece(seed, 0, 0, 0, null, 'lalli')
+    assert.deepEqual(p.villagePoints.map(q => q.label), ["Lalli's house", 'kerttu'])
+    const [house, kerttu] = p.villagePoints
+    const door = p.doors.find(d => d.x === house.x && d.y === house.y)
+    assert.equal(door.story, "Lalli's house")
+    assert.equal(door.tier, 'safe')
+    assert.equal(p.doors.filter(d => d.story).length, 1)
+    assert.ok(plain.doors.every(d => !d.story))
+    assert.ok(walk(p.cells[kerttu.y][kerttu.x]) && !p.cells[kerttu.y][kerttu.x].overlay, 'Kerttu has nowhere to stand')
+    assert.ok(!(kerttu.x === door.x && kerttu.y === door.y + 1), 'Kerttu stands on the doorstep')
+    assert.ok(Math.max(Math.abs(kerttu.x - door.x), Math.abs(kerttu.y - door.y)) <= 2)
+    assert.ok(!p.spawns.some(s => s.x === kerttu.x && s.y === kerttu.y), 'someone is dealt onto her spot')
+    // the same village otherwise, cell for cell and spawn for spawn
+    assert.deepEqual(p.cells.map(r => r.map(c => `${c.tile}:${c.skin}:${c.overlay ?? ''}`)), plain.cells.map(r => r.map(c => `${c.tile}:${c.skin}:${c.overlay ?? ''}`)))
+    assert.deepEqual(p.spawns, plain.spawns)
   }
 })

@@ -86,6 +86,8 @@ export const TT = {
   ow_grass_0: 0, ow_grass_1: 1, ow_grass_2: 2,
   // trees: 2-tall pairs + complete 1-tile trees; 5 reads as a bush
   ow_tree_pine_top: 4, ow_tree_pine_trunk: 16,
+  // the same pine under names the lumber table does not know: Lalli's tree cannot be felled
+  ow_lalli_pine_top: 4, ow_lalli_pine_trunk: 16,
   ow_tree_autumn_top: 3, ow_tree_autumn_trunk: 15,
   ow_tree_small: 28, ow_tree_small_autumn: 27, ow_bush_round: 5,
   ow_mushroom: 29, ow_sign: 83, ow_well: 104, ow_well_top: 92, ow_beehive: 94,

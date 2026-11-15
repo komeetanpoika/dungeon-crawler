@@ -46,6 +46,7 @@ import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdven
 import { modeForDepth } from './systems/mode.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
+import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
@@ -1714,11 +1715,22 @@ function update(delta) {
   // the offhand blade would spend the main hand's charge on the wrong steel.
   const meleeWT = player.weapon?.weaponType
   const off = offhand(player)
-  const offBlade = off?.kind === 'weapon' && !isChargeWeapon(meleeWT) ? off : null
+  // Nor does the off hand swing beside the flute: a tune kept going would
+  // otherwise stab, on every second press, the mice it is leading.
+  const offBlade = off?.kind === 'weapon' && !isChargeWeapon(meleeWT) && !player.weapon?.tune ? off : null
   const swing = (mods) => {
     const hand = swingHand(player, offBlade)
     const wpn = hand === 'off' ? offBlade : player.weapon
     const wt = wpn.weaponType
+    // The piper's flute strikes nothing and tires nobody: a swing plays its
+    // tune (systems/tune.js), and the flute stays in the hand while it sounds.
+    if (wpn.tune) {
+      playTune(state)
+      player.meleeCooldown = 0.6
+      player.swingHand = hand
+      player.nextHand = nextHandAfter(hand, offBlade)
+      return
+    }
     const cost = meleeCost(wt, mods.tier)
     if (!canAfford(player, cost)) {
       mods = tierMods('tap', wt)                 // starved: weak swing
@@ -2176,6 +2188,7 @@ function update(delta) {
   // Campfires burn out after a minute.
   const fires = tickCampfires(state.entities, delta)
   tickBlueRest(state, delta)
+  tickTune(state, delta)
   state.entities = fires.entities
   for (const f of fires.expired) sfx(state, 'campfire-out', { px: f.px, py: f.py })
 

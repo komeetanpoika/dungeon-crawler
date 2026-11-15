@@ -67,6 +67,11 @@ export const RECIPES = {
   'bell':           { kind: 'blip',   wave: 'triangle', f0: 1320, f1: 1300, dur: 0.90, vol: 0.7 },
   'drag':           { kind: 'rumble', freq: 60,  dur: 0.30, vol: 0.8 },
   'sink':           { kind: 'swoosh', f0: 500, f1: 120, dur: 0.45, vol: 0.5 },
+  // the piper's flute: four pitches (D5 G5 A5 B5) a tune is strung from (systems/tune.js)
+  'flute-0':        { kind: 'blip',   wave: 'triangle', f0: 587,  f1: 587,  dur: 0.16, vol: 0.55 },
+  'flute-1':        { kind: 'blip',   wave: 'triangle', f0: 784,  f1: 784,  dur: 0.16, vol: 0.55 },
+  'flute-2':        { kind: 'blip',   wave: 'triangle', f0: 880,  f1: 880,  dur: 0.16, vol: 0.55 },
+  'flute-3':        { kind: 'blip',   wave: 'triangle', f0: 988,  f1: 988,  dur: 0.16, vol: 0.55 },
   'erupt':          { kind: 'rumble', freq: 85,  dur: 0.40, vol: 0.9 },
   'wraith-touch':   { kind: 'swoosh', f0: 900,  f1: 200,  dur: 0.20, vol: 0.3 },
   'wraith-burn':    { kind: 'burst', freq: 1800, q: 0.7, dur: 0.30, vol: 0.35 },

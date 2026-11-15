@@ -182,7 +182,7 @@ export function placeFeatures(t, piece) {
     const v = villageAt(seed, wx, wy) ?? { name: 'Koivula' }
     spawnPoint = { x: mx + 1, y: my + 1 }
     hold(spawnPoint.x, spawnPoint.y)
-    sites.village(mx, my)
+    sites.village(mx, my, piece.villageTale)
     // what the village's own tale leaves standing in it
     if (piece.villageTale) piece.villagePoints = sites.villageTrouble(piece.villageTale, mx, my)
     const toward = (dx, dy) => BIOME_NAMES[pieceBiome(seed, wx + dx * 3, wy + dy * 3)]

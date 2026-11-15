@@ -8,7 +8,7 @@ const SEEDS = [3, 77, 2024]
 const villages = seed => [{ wx: 0, wy: 0 }, ...villagesNear(seed, 0, 0, 12).filter(v => v.wx || v.wy)]
 
 test('the three tales are declared with their kind and home land', () => {
-  assert.deepEqual(TALE_IDS, ['elk', 'tar', 'kivihiisi', 'nakki', 'fold', 'flame'])
+  assert.deepEqual(TALE_IDS, ['elk', 'tar', 'kivihiisi', 'nakki', 'fold', 'flame', 'lalli'])
   assert.deepEqual([TALES.elk.kind, TALES.tar.kind, TALES.kivihiisi.kind], ['story', 'need', 'old'])
   assert.deepEqual(TALES.elk.land, ['forest', 'autumn'])
   assert.equal(TALES.kivihiisi.rule({ hiisi_dead: true }), true)
@@ -209,8 +209,8 @@ test('the six tales are declared: three ride the quest modules, three the episod
   assert.deepEqual(['nakki', 'fold', 'flame'].map(k => TALES[k].engine), ['episode', 'episode', 'episode'])
   assert.deepEqual(['nakki', 'fold', 'flame'].map(k => TALES[k].kind), ['need', 'need', 'old'])
   assert.deepEqual(['nakki', 'fold', 'flame'].map(k => TALES[k].module), ['lake-1-ferry', 'highland-2-fold', 'marsh-3-hermit'])
-  assert.deepEqual(TALE_IDS.map(k => TALES[k].arriveOn), ['both', 'place', 'place', 'place', 'place', 'village'])
-  assert.deepEqual(TALE_IDS.map(k => TALES[k].creatureAt ?? 'place'), ['place', 'place', 'place', 'place', 'place', 'village'])
+  assert.deepEqual(TALE_IDS.map(k => TALES[k].arriveOn), ['both', 'place', 'place', 'place', 'place', 'village', 'both'])
+  assert.deepEqual(TALE_IDS.map(k => TALES[k].creatureAt ?? 'place'), ['place', 'place', 'place', 'place', 'place', 'village', 'place'])
   assert.deepEqual(TALE_IDS.filter(k => TALES[k].villageBorne), ['fold', 'flame'])
   assert.deepEqual(['nakki', 'fold', 'flame'].map(k => TALES[k].missing.name), ['Toivo', 'Aino', 'Lauri'])
   assert.equal(TALES.fold.rule({ maahinen_dead: true }, { wolvesAlive: 0 }), false)
@@ -251,4 +251,28 @@ test('a recorded kind outranks the table', () => {
   assert.ok(JSON.stringify(fillLines(world, key)).includes('tar'), 'not the tar pit\'s lines')
   assert.equal(getPiece(world, v.wx, v.wy).villageTale, 'tar')
   assert.equal(getPiece(makeWorld(null, { seed }), v.wx, v.wy).villageTale, taleOf(seed, v))
+})
+
+test('the Lalli tale: an immediate need with its own module, people who speak at every stage, and a house', () => {
+  const t = TALES.lalli
+  assert.equal(t.kind, 'need')
+  assert.equal(t.engine, 'wilds')
+  assert.deepEqual(t.land, ['forest', 'autumn', 'marsh'])
+  assert.deepEqual(t.missing, { species: 'lalli', name: 'Lalli' })
+  assert.equal(t.creature, null)
+  assert.ok(!t.reward, 'the reward is a thing laid at the tree, not a talent')
+  assert.deepEqual(t.houses["Lalli's house"].pickups, [{ type: 'beer' }])
+  assert.equal(t.rule({}), false)
+  assert.equal(t.rule({ mice: 7, flute_given: true }), false)
+  assert.equal(t.rule({ lalli_down: true }), true)
+  // whoever can be met at a stage has something to say at it
+  const speakers = { villager: 1, elder: 1, kerttu: 1, piper: 1 }
+  for (const flags of [{}, { sausage_made: true }, { flute_given: true }, { lalli_down: true }]) {
+    const stage = t.lines.find(s => s.when(flags))
+    for (const who of [...Object.keys(speakers), flags.lalli_down ? 'lalli' : 'lalli_treed']) assert.ok(stage.by[who]?.length, `${who} is mute at ${JSON.stringify(flags)}`)
+  }
+  // an immediate need: its village says exactly where
+  assert.ok(t.lines.at(-1).by.kerttu.some(l => l.includes('{where}')))
+  assert.ok(t.lines.at(-1).by.kerttu.some(l => /two/.test(l) && /meat/.test(l)), 'Kerttu never says what she needs')
+  assert.ok(t.lines.at(-1).by.piper.some(l => /beer/.test(l) && /sausage/.test(l)), 'the piper never names his price')
 })
