@@ -45,7 +45,7 @@ export const SITE_SKINS = [...new Set([
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
   'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
   'ow_deco_firepit', 'ow_kiln_cold', 'ow_mtn_rock_cap', 'ow_prop_fishrack_l', 'ow_prop_fishrack_r', 'ow_pier_log', 'ow_stone_ground_0',
-  'ow_prop_bell', 'ow_tree_apple',
+  'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small',
 ])]
 
 // ---- the places of the tales (data/tales.js) --------------------------------------
@@ -54,7 +54,7 @@ export const SITE_SKINS = [...new Set([
 //   hub    where the roads from the gates meet
 //   keep   circles nothing else of the piece is dealt into
 //   ways   cells opened as an unmarked way through the trees; nothing is built on them
-export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16 }
+export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16, fold: 8 }
 // The cells of a one-wide walkable line, each a step along x or y from the last.
 export function wayCells(x0, y0, x1, y1) {
   const out = [{ x: x0, y: y0 }]
@@ -66,7 +66,7 @@ export function wayCells(x0, y0, x1, y1) {
   }
   return out
 }
-export function layoutTale(tale, rng) {
+export function layoutTale(tale, rng, gateInner = null) {
   const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))
   if (tale === 'elk') {
     const cx = ri(30, 49), cy = ri(30, 49)
@@ -84,6 +84,17 @@ export function layoutTale(tale, rng) {
   if (tale === 'tar') {
     const cx = ri(32, 53), cy = ri(24, 55)
     return { cx, cy, hub: { x: cx - 14, y: cy }, keep: [{ x: cx - 17, y: cy + 2, r: 7 }] }
+  }
+  if (tale === 'fold') {
+    const cx = ri(26, 44), cy = ri(34, 52)
+    const burrow = { x: cx + ri(13, 16), y: cy - ri(8, 11) }
+    // the wood the village burns: four bands along the longest road in, the one from the farthest gate
+    const far = ['N', 'E', 'S', 'W'].map(side => gateInner(side)).sort((a, b) => Math.hypot(b.x - cx, b.y - cy) - Math.hypot(a.x - cx, a.y - cy))[0]
+    const burns = [0.2, 0.38, 0.56, 0.74].map(f => ({ x: Math.round(far.x + (cx - far.x) * f), y: Math.round(far.y + (cy - far.y) * f) }))
+    const hub = { x: cx, y: cy + 2 }
+    // a sure way from the den to the burrow's mouth, whatever grows between
+    const ways = wayCells(hub.x, hub.y, burrow.x, burrow.y + 1)
+    return { cx, cy, hub, burrow, burns, ways, keep: [{ x: burrow.x, y: burrow.y - 2, r: 8 }, ...burns.map(b => ({ x: b.x, y: b.y, r: 4 }))] }
   }
   if (tale === 'nakki') {
     const cx = ri(36, 52), cy = ri(26, 50)
@@ -474,6 +485,32 @@ export function makeSites(c) {
     ]
   }
 
+  // The ridge (the fold): the wolves' den, the burrow the lambs went into,
+  // sealed with rock a pick can open, and the wood the village burns a band at a time.
+  function ridge(g) {
+    const { cx, cy, burrow: B } = g
+    for (const w of g.ways) { t.clear(w.x, w.y); hold(w.x, w.y) }
+    camp(cx, cy, 'den')
+    for (const [dx, dy] of [[-2, 0], [1, -1], [2, 1]]) { t.clear(cx + dx, cy + dy); c.npc('wolf', cx + dx, cy + dy, { hostile: false }) }
+    for (let dy = -5; dy <= 1; dy++) for (let dx = -4; dx <= 4; dx++) t.setFloor(B.x + dx, B.y + dy, { roads: true })
+    for (let dy = -4; dy <= 0; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const x = B.x + dx, y = B.y + dy
+      if (Math.abs(dx) <= 1 && (dy === -1 || dy === -2)) { t.clear(x, y); hold(x, y) }         // the hollow
+      else if (Math.abs(dx) <= 1 && dy === 0) put(x, y, pick(c.rocks))                        // its mouth, walled up
+      else { t.setMass(x, y); hold(x, y) }
+    }
+    walkRound(B.x - 4, B.y - 5, B.x + 4, B.y + 1)
+    c.spawn({ kind: 'floating_pickup', contents: { type: 'fleece' }, x: B.x, y: B.y + 1 })
+    // a prospector's leavings
+    low(B.x + 3, B.y + 2, 'ow_prop_crate_2'); low(B.x - 3, B.y + 2, 'ow_prop_bucket'); low(B.x + 2, B.y + 3, 'ow_prop_sack_1')
+    flat(B.x - 1, B.y + 2, 'ow_deco_skull')
+    for (const b of g.burns) for (let i = 0; i < 7; i++) { const at = c.freeSpot(b.x, b.y, 1, 4); if (at && !t.onPath(at.x, at.y)) put(at.x, at.y, 'ow_tree_small') }
+    return [
+      { label: 'den', x: cx, y: cy }, ...g.burns.map((b, i) => ({ label: `burn ${i + 1}`, ...b })),
+      { label: 'burrow', ...B }, { label: 'lair', x: B.x, y: B.y - 2 }, { label: 'fleece cache', x: B.x, y: B.y + 1 },
+    ]
+  }
+
   // What a village's own tale leaves standing in it. Laid where the village
   // keeps no house, door or road end. Returns the village's named points.
   function villageTrouble(tale, cx, cy) {
@@ -482,9 +519,19 @@ export function makeSites(c) {
       put(cx - 11, cy - 2, 'ow_prop_fishrack_l'); put(cx - 10, cy - 2, 'ow_prop_fishrack_r')
       put(cx - 11, cy - 1, 'ow_prop_fishrack_l'); put(cx - 10, cy - 1, 'ow_prop_fishrack_r')
     }
+    if (tale === 'fold') {
+      // the fold the lambs go missing from, south-east of the square; the
+      // ground east and south of it is opened so a road that ran there goes round
+      fence(cx + 7, cy + 8, cx + 11, cy + 11, { x: cx + 8, y: cy + 8 })
+      for (let dy = 9; dy <= 10; dy++) for (let dx = 8; dx <= 10; dx++) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+      for (let d = 7; d <= 12; d++) t.clear(cx + d, cy + 12)
+      for (let d = 8; d <= 12; d++) t.clear(cx + 12, cy + d)
+      t.clear(cx + 8, cy + 7); hold(cx + 8, cy + 7)
+      for (const [dx, dy] of [[8, 10], [9, 9], [10, 10]]) c.npc('sheep', cx + dx, cy + dy)
+    }
     return []
   }
 
-  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake }
+  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge }
   return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble }
 }

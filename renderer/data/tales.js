@@ -139,7 +139,41 @@ export const TALES = {
     rule: (f, rc) => !!f.maahinen_dead && (rc?.wolvesAlive ?? 0) >= 1,
     missing: { species: 'villager', name: 'Aino' },
     landWord: 'the ridge',
-    lines: [],
+    reward: 'tapio_peace',
+    begins: 'village',     // the burning starts when the stranger first stands in the village
+    // the village never attacks a stranger: after the last band it shuts them out until the fleece is shown
+    shut: f => (f.burn ?? 0) >= 4 && !f.fleece_shown,
+    shutLines: {
+      villager: ['Go. You have done enough.', 'The den is ash and still the lambs go. We have nothing to say to you.'],
+      elder:    ['Unless you carry proof it was not the wolves, we are done talking.'],
+    },
+    // the pack is never gone for good while the thing under the ridge lives
+    arrive({ flags, point, free, spawn, think, wolves }) {
+      if (flags.maahinen_dead || wolves() > 0) return
+      const den = point('den')
+      if (!den) return
+      spawn(free(den, 2).map((at, i) => ({ kind: 'npc', species: 'wolf', hostile: false, id: `wolf:${i}`, ...at })))
+      think('The pack is back on the ridge.')
+    },
+    remarks: [
+      { at: 'den', within: 5, when: f => !f.maahinen_dead, text: 'Wolves. No bones here, no wool. They are watching me, not hunting.' },
+      { at: 'fleece cache', within: 2, when: f => !f.fleece_shown, text: "Lamb's fleece, and a prospector's diggings. The elder should see this." },
+      { at: 'burrow', within: 3, when: f => f.fleece_shown && !f.maahinen_spawned, text: 'Something breathes behind these rocks. If I break in it comes out — and the wolves are just down the slope.' },
+    ],
+    lines: [
+      { when: f => f.maahinen_dead, by: {
+        villager: ['Aino brought the torches down. The wolves can keep the ridge.', 'The lambs sleep through the night now.'],
+        elder:    ['The pack did what we could not. Leave them be.'],
+      } },
+      { when: f => f.fleece_shown, by: {
+        villager: ['The torches are down. The elder says it was never the wolves.'],
+        elder:    ['Whatever is under that ridge keeps to its own dark. Break its door and it comes up after you — then lead it to something with teeth.', 'That pick opens rock. Do not fight the thing yourself.'],
+      } },
+      { when: () => true, by: {
+        villager: ['The lambs are gone again. Three this week.', 'It is the wolves. Their den is {where}, up on {land}. We burn the wood between us and them, a band at a time, until they have nowhere to lie up.'],
+        elder:    ['Aino went up to that den to prove the wolves had no part in it. She has not come back.', 'The wolves never took lambs before the prospector dug up there. Bring me proof and I will call the torches off.'],
+      } },
+    ],
   },
   flame: {
     id: 'flame', title: 'The flame-thief', kind: 'old', land: ['marsh', 'autumn', 'forest'],

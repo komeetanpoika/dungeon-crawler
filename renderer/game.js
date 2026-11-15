@@ -638,7 +638,8 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       case 'floating_pickup': return [{ type: 'floating_item', contents: s.contents, x: s.x, y: s.y,
         startPx: cx, startPy: cy, targetPx: cx, targetPy: cy, px: cx, py: cy, progress: 1, duration: 0.3 }]
       case 'echo':    return [{ type: 'echo', id: 'echo', x: s.x, y: s.y, px: cx, py: cy, fadeA: 0, t: 0, trail: [], said: null }]
-      case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
+      // Tapio's peace (a tale's reward): wolves are built calm; striking one still makes it fight
+      case 'npc': { const n = makeNpc(s.species === 'wolf' && hasTalent(player, 'tapio_peace') ? { ...s, hostile: false } : s); return n ? [n] : [] }
       // a Wilds camp's fire (wilds/sites.js): it never burns down, and cooks like any other
       case 'campfire': return [makeCampfire(s.x, s.y, { eternal: true })]
       default: {

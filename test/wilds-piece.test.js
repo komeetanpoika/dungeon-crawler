@@ -424,15 +424,16 @@ test('rock built on a road never shuts a gate', () => {
 })
 
 // ---- the places of the tales -----------------------------------------------------
-const TALE_SPOTS = { elk: ['forest', 'autumn'], tar: ['sea', 'marsh'], kivihiisi: ['mountain'], nakki: ['forest', 'autumn', 'marsh'] }
+const TALE_SPOTS = { elk: ['forest', 'autumn'], tar: ['sea', 'marsh'], kivihiisi: ['mountain'], nakki: ['forest', 'autumn', 'marsh'], fold: ['forest', 'autumn', 'mountain'] }
 const POINTS = {
   elk: ['forest shrine', 'wallow 1', 'wallow 2', 'wallow 3'],
   tar: ['tar pit', 'lumber camp', 'bridge gap 1', 'bridge gap 2', 'bridge gap 3'],
   kivihiisi: ['hiidenkiuas', 'hermit hut'],
   nakki: ['bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'orchard', 'islet cache', "Toivo's hut"],
+  fold: ['den', 'burn 1', 'burn 2', 'burn 3', 'burn 4', 'burrow', 'lair', 'fleece cache'],
 }
 // Points a tale keeps shut until it is played: behind water or rock.
-const SEALED = { nakki: ['nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'orchard'] }
+const SEALED = { nakki: ['nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'orchard'], fold: ['lair', 'burrow', 'burn 1', 'burn 2', 'burn 3', 'burn 4'] }
 // Six pieces of each tale's home land per seed.
 const taleCache = new Map()
 function talePieces(seed, id) {
@@ -548,20 +549,48 @@ test('the bell lake: a pier that stops short of the orchard island, a bell, an i
 })
 
 test('a village is built for the tale it carries, and stays a whole village', () => {
-  const dress = { nakki: s => s.startsWith('ow_prop_fishrack') }
+  const dress = { nakki: s => s.startsWith('ow_prop_fishrack'), fold: (s, x, y, p) => s.startsWith('ow_fence_') && y > p.main.y + 7 && x > p.main.x + 6 }
   for (const seed of SEEDS) for (const [tale, has] of Object.entries(dress)) {
     const v = [{ wx: 0, wy: 0 }, ...[...Array(40).keys()].flatMap(i => { const wx = (i % 9) - 4, wy = Math.floor(i / 9) - 2; return villageAt(seed, wx, wy) ? [{ wx, wy }] : [] })].slice(0, 3)
     for (const { wx, wy } of v) {
       const p = generatePiece(seed, wx, wy, 0, null, tale)
       const at = `${tale} village ${wx},${wy} (seed ${seed})`
       assert.equal(p.villageTale, tale)
-      assert.ok(around(p, p.main, 13, has) >= 2, `${at}: nothing shows its trouble`)
+      assert.ok(around(p, p.main, 13, (s, x, y) => has(s, x, y, p)) >= (tale === 'fold' ? 10 : 2), `${at}: nothing shows its trouble`)
+      if (tale === 'fold') assert.ok(p.spawns.filter(s => s.kind === 'npc' && s.species === 'sheep' && s.y > p.main.y + 7).length >= 3, `${at}: no sheep in the fold`)
       const seen = flood(p, p.spawnPoint)
       const safe = p.doors.filter(d => d.tier === 'safe')
       assert.ok(safe.length >= 4, `${at}: ${safe.length} houses`)
       for (const d of safe) assert.ok(seen.has(`${d.x},${d.y + 1}`), `${at}: a doorstep is blocked`)
       assert.equal(around(p, p.main, 2, s => s === 'ow_well'), 1, `${at}: no well`)
       for (const [side, g] of Object.entries(p.gates)) assert.ok(seen.has(`${g.x},${g.y}`), `${at}: gate ${side} cut off`)
+    }
+  }
+})
+
+test('the ridge: a den of calm wolves, a burrow sealed with rock, the wood the village burns', () => {
+  for (const seed of SEEDS) for (const p of talePieces(seed, 'fold')) {
+    const at = `fold at ${p.wx},${p.wy} (seed ${seed})`
+    const den = pt(p, 'den'), burrow = pt(p, 'burrow'), lair = pt(p, 'lair'), cache = pt(p, 'fleece cache')
+    const wolves = p.spawns.filter(s => s.kind === 'npc' && s.species === 'wolf' && dist(s, den) <= 4)
+    assert.equal(wolves.length, 3, `${at}: ${wolves.length} wolves at the den`)
+    assert.ok(wolves.every(w => w.hostile === false), `${at}: a den wolf that attacks`)
+    for (const dx of [-1, 0, 1]) {
+      const c = p.cells[burrow.y][burrow.x + dx]
+      assert.ok(c.tile === TILE.WALL && /^ow_(rock_|mtn_rock_)/.test(c.overlay ?? ''), `${at}: the burrow mouth is not rock (${c.overlay})`)
+    }
+    assert.ok(walk(p.cells[lair.y][lair.x]), `${at}: the lair is solid`)
+    const seen = flood(p, p.spawnPoint)
+    assert.ok(!seen.has(`${lair.x},${lair.y}`), `${at}: the lair is open`)
+    p.cells[burrow.y][burrow.x].tile = TILE.FLOOR
+    assert.ok(flood(p, p.spawnPoint).has(`${lair.x},${lair.y}`), `${at}: mining the mouth does not open the lair`)
+    p.cells[burrow.y][burrow.x].tile = TILE.WALL
+    assert.ok(seen.has(`${cache.x},${cache.y}`), `${at}: the fleece cannot be reached`)
+    assert.ok(p.spawns.some(s => s.kind === 'floating_pickup' && s.contents.type === 'fleece' && s.x === cache.x && s.y === cache.y), `${at}: no fleece`)
+    for (let n = 1; n <= 4; n++) {
+      const b = pt(p, `burn ${n}`)
+      assert.ok(around(p, b, 6, s => /^ow_tree_/.test(s)) >= 3, `${at}: nothing to burn at band ${n}`)
+      assert.ok(dist(b, den) >= 6, `${at}: band ${n} is on the den`)
     }
   }
 })

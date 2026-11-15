@@ -15,7 +15,7 @@ describe('talent registry', () => {
   it('a rush run starts with every talent', () => {
     // Dungeon Rush keeps the talents it always had; the tales' rewards are the Wilds' own
     assert.deepEqual([...RUSH_START_TALENTS], ['ski_legs'])
-    for (const id of ['lake_breath']) assert.ok(TALENTS[id]?.name && TALENTS[id]?.desc, `no talent ${id}`)
+    for (const id of ['lake_breath', 'tapio_peace']) assert.ok(TALENTS[id]?.name && TALENTS[id]?.desc, `no talent ${id}`)
   })
 })
 

@@ -106,8 +106,9 @@ function pendingDelivery(ctx) {
   const d = DELIVERIES[0]
   if (flags[d.sets]) return null
   if (!state.player.inventory.some(i => i.kind === d.item)) return null
+  // ctx.isGiver (optional): on a map with more than one village, whose elder this is
   const beside = state.entities.some(e => e.type === 'npc' && e.species === d.to.species && !e.hostile
-    && Math.abs(e.x - state.player.x) + Math.abs(e.y - state.player.y) <= 1)
+    && (ctx.isGiver?.(e) ?? true) && Math.abs(e.x - state.player.x) + Math.abs(e.y - state.player.y) <= 1)
   return beside ? d : null
 }
 
@@ -129,7 +130,7 @@ function tryDeliverFleece(ctx, delta) {
   }
   const delivered = checkDeliveries(ctx, DELIVERIES)
   if (!delivered) return
-  setVillageHostile(state, false)
+  turnVillage(ctx, false)
   if (spot) dropGiftAt(state, delivered.gives, spot)
   else {
     // itemFromContents returns null for contents it cannot build (an unknown
@@ -143,9 +144,34 @@ function tryDeliverFleece(ctx, delta) {
   ctx.persist()
 }
 
+// Optional ctx hooks, for a caller whose map is not this episode's own (the
+// Wilds' tales); absent, everything below is as it always was:
+//   turnVillage(hostile)  called instead of setting the villagers on the player
+//   burning()             the burn timer counts only while it is true
+//   cellKey(x, y) / cellOf(key)  how a burnt cell is remembered and found again
+//                         on a map whose tiles move (cellOf null: not here now)
+function turnVillage(ctx, hostile) {
+  if (ctx.turnVillage) ctx.turnVillage(hostile)
+  else setVillageHostile(ctx.state, hostile)
+}
+const keyOf = (ctx, key) => { if (!ctx.cellKey) return key; const [x, y] = key.split(',').map(Number); return ctx.cellKey(x, y) }
+const cellsOf = (ctx, keys) => !ctx.cellOf ? (keys ?? [])
+  : (keys ?? []).map(k => typeof k === 'string' ? ctx.cellOf(k) : null).filter(Boolean).map(c => `${c.x},${c.y}`)
+
+// Chars band n if its ground is here; records the cells and that it is done.
+function charBand(ctx, n) {
+  const { state, mapData, flags } = ctx
+  if (!poiCell(mapData, `burn ${n}`)) return false
+  const keys = burnBand(state.map, mapData, n).map(k => keyOf(ctx, k)).filter(Boolean)
+  ctx.set('burnt', [...new Set([...(flags.burnt ?? []), ...keys])])
+  if (ctx.cellOf) ctx.set('charred', n)
+  return true
+}
+
 function tickBurn(ctx, delta) {
   const { state, mapData, flags } = ctx
   if (flags.fleece_shown || flags.maahinen_dead) return
+  if (ctx.burning && !ctx.burning()) return
   const burn = flags.burn ?? 0
   if (burn >= BURN_STAGES) return
   state.burnT = (state.burnT ?? 0) + delta
@@ -153,14 +179,13 @@ function tickBurn(ctx, delta) {
   state.burnT = 0
   const next = burn + 1
   ctx.set('burn', next)
-  const keys = burnBand(state.map, mapData, next)
-  ctx.set('burnt', [...new Set([...(flags.burnt ?? []), ...keys])])
+  charBand(ctx, next)
   const spot = poiCell(mapData, `burn ${next}`)
   sfx(state, 'fire-burst', spot ? { px: spot.x * S + S / 2, py: spot.y * S + S / 2 } : undefined)
   think(state, "Smoke on the ridge — they've lit another band.")
   if (next === BURN_STAGES) {
-    setVillageHostile(state, true)
-    announce(state, 'The village turns on you!')
+    turnVillage(ctx, true)
+    if (!ctx.turnVillage) announce(state, 'The village turns on you!')
   }
   ctx.persist()
 }
@@ -211,7 +236,9 @@ function tickMaahinen(ctx) {
 // (and persisting) once.
 export function onArrive(ctx) {
   const { state, mapData, flags } = ctx
-  applyBurnt(state.map, flags.burnt)
+  applyBurnt(state.map, cellsOf(ctx, flags.burnt))
+  // bands that fell due while their ground was away (only a moving map has any)
+  if (ctx.cellOf) for (let n = (flags.charred ?? 0) + 1; n <= (flags.burn ?? 0); n++) if (!charBand(ctx, n)) break
   if (flags.maahinen_dead) return
   if (!burrowOpen(state.map, mapData)) return
   if (!spawnMaahinen(ctx)) return

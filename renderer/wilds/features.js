@@ -83,7 +83,7 @@ export function placeFeatures(t, piece) {
   const hold = (x, y) => taken.add(`${x},${y}`)
   const spawn = s => { piece.spawns.push(s); hold(s.x, s.y); return s }
   let npcIx = 0
-  const npc = (species, x, y) => spawn({ kind: 'npc', species, id: `npc:wilds:${key}:${npcIx++}`, x, y })
+  const npc = (species, x, y, extra = {}) => spawn({ kind: 'npc', species, id: `npc:wilds:${key}:${npcIx++}`, x, y, ...extra })
   // A free, untaken cell between rMin and rMax tiles of (cx, cy), or null.
   const freeSpot = (cx, cy, rMin, rMax) => {
     for (let tries = 0; tries < 80; tries++) {
@@ -125,7 +125,7 @@ export function placeFeatures(t, piece) {
   // A tale's place takes the main thing over: its parts are laid out first so
   // roads, small things and packs keep clear of them.
   // (a tale whose place is not built yet is dealt as ordinary land)
-  const geo = piece.tale && TALE_PAD[piece.tale] !== undefined ? layoutTale(piece.tale, rng) : null
+  const geo = piece.tale && TALE_PAD[piece.tale] !== undefined ? layoutTale(piece.tale, rng, side => t.gateInner(side)) : null
   const kind = geo ? `tale_${piece.tale}` : mainKind(seed, wx, wy, deal)
   const home = wx === 0 && wy === 0
   const mx = geo ? geo.cx : home ? 40 : ri(18, PIECE - 19), my = geo ? geo.cy : home ? 40 : ri(18, PIECE - 19)

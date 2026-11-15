@@ -78,3 +78,7 @@ test('a story house in the Wilds takes its things from the tale', () => {
   assert.match(SRC, /storyEpisode\(wildsWorld, door\)/)
   assert.match(SRC, /save: \(\) => activeSave/)
 })
+
+test("Tapio's peace: wolves are built calm for a player who has it", () => {
+  assert.match(SRC, /s\.species === 'wolf' && hasTalent\(player, 'tapio_peace'\)/)
+})

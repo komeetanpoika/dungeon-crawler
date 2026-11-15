@@ -91,6 +91,13 @@ function makeRun(state, world, vKey, rec, hooks) {
     extra: {
       inWilds: true,
       episode: { houses: tale.houses ?? {}, resolvedLines: null },
+      // the fold (episodes/fold.js): its timer waits for the stranger, nobody
+      // turns on them (the tale's `shut` closes the village instead), and burnt
+      // cells are kept in the ridge's own tiles, not the window's
+      burning: () => !!rec.flags.begun,
+      turnVillage: () => {},
+      cellKey: (x, y) => { const piece = placePiece(); if (!piece) return null; const o = toWin(world, piece, { x: 0, y: 0 }); return `${x - o.x},${y - o.y}` },
+      cellOf: key => { const piece = placePiece(); if (!piece) return null; const [x, y] = key.split(',').map(Number); return toWin(world, piece, { x, y }) },
       isGiver: e => e.wildsKey === vKey || e.taleKey === taleKey,
       giverCell: villagePoint,
       sees: c => { const p = hooks.getState().player; return !!c && Math.max(Math.abs(c.x - p.x), Math.abs(c.y - p.y)) <= SEES_TILES },
@@ -146,6 +153,7 @@ export function arriveTales(state, world, hooks, { fresh = false } = {}) {
     if (lairNew && run.tale.creature && state.creatureKills) delete state.creatureKills[run.tale.creature]
     const on = run.tale.arriveOn ?? 'both'
     if ((placeNew && on !== 'village') || (villageNew && on !== 'place')) run.module?.onArrive?.(run.ctx)
+    if (placeNew && !rec.done) run.tale.arrive?.(arrival(state, run, rec))
     if (rec.done) comeHome(state, run)
   }
 }
@@ -157,6 +165,7 @@ export function tickTales(state, world, delta, hooks) {
   for (const [vKey, run] of runs) {
     const rec = world.tales.get(vKey)
     if (!rec) continue
+    begin(state, run, rec)
     tickModule(state, vKey, run, delta)
     remark(state, run, rec)
     if (rec.done || !run.tale.rule(rec.flags, ruleCtx(state, run, rec, hooks))) continue
@@ -276,4 +285,35 @@ export function storyEpisode(world, door) {
   const place = world.places.get(pieceKey(Math.floor(m[1] / PIECE), Math.floor(m[2] / PIECE)))
   const houses = place && TALES[place.id]?.houses
   return houses?.[door.story] ? { houses } : null
+}
+
+// A tale that `begins: 'village'` starts its clock when the player first
+// stands in its village (within 10 tiles of the middle), not when the village
+// first comes into the window.
+function begin(state, run, rec) {
+  if (run.tale.begins !== 'village' || rec.flags.begun || !run.villageIn) return
+  const c = run.villagePoint(), p = state.player
+  if (c && Math.max(Math.abs(c.x - p.x), Math.abs(c.y - p.y)) <= 10) run.ctx.set('begun')
+}
+
+// What a tale's own `arrive` gets when its place enters the window.
+function arrival(state, run, rec) {
+  const isWolf = e => e.type === 'npc' && e.species === 'wolf' && e.hp > 0 && (e.taleKey === run.taleKey || e.wildsKey === rec.place)
+  return {
+    state, flags: rec.flags,
+    point: label => run.ctx.mapData.pois.find(p => p.label === label) ?? null,
+    // up to n free walkable cells within 3 tiles of a point
+    free: (at, n) => {
+      const out = []
+      for (let r = 1; r <= 3 && out.length < n; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || out.length >= n) continue
+        const x = at.x + dx, y = at.y + dy
+        if (state.map[y]?.[x]?.tile === TILE.FLOOR && !state.entities.some(e => e.x === x && e.y === y)) out.push({ x, y })
+      }
+      return out
+    },
+    spawn: spawns => run.ctx.spawn(spawns.map(s => ({ ...s, id: `npc:${run.taleKey}:${s.id}` }))),
+    think: text => think(state, text),
+    wolves: () => state.entities.filter(isWolf).length,
+  }
 }

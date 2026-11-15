@@ -14,6 +14,8 @@ import { PIECE, villagesNear } from '../renderer/wilds/layout.js'
 import { registerMonsters, clearMonsters, makeMonsterFromDef } from '../renderer/systems/monsters.js'
 import { makeHirvi, FLUSH_TILES } from '../renderer/systems/monsters/hirvi.js'
 import { makeNakki } from '../renderer/systems/monsters/nakki.js'
+import { makeMaahinen } from '../renderer/systems/monsters/maahinen.js'
+import { BURN_INTERVAL } from '../renderer/systems/episodes/fold.js'
 import { makeNpc } from '../renderer/systems/npc.js'
 import { makeCampfire } from '../renderer/systems/campfire.js'
 import { RING } from '../renderer/systems/quests/pass.js'
@@ -36,6 +38,7 @@ function buildEntities(spawns) {
     if (s.kind === 'npc') { const n = makeNpc(s); return n ? [Object.assign(n, at)] : [] }
     if (s.kind === 'hirvi') return [Object.assign(makeHirvi(s.x, s.y), at)]
     if (s.kind === 'nakki') return [Object.assign(makeNakki(s.x, s.y), at)]
+    if (s.kind === 'maahinen') return [Object.assign(makeMaahinen(s.x, s.y), at)]
     if (s.kind === 'kivihiisi') return [Object.assign(makeMonsterFromDef('kivihiisi', s.x, s.y), at)]
     if (s.kind === 'floating_pickup') return [{ type: 'floating_item', contents: s.contents, ...at, progress: 1 }]
     if (s.kind === 'campfire') return [makeCampfire(s.x, s.y, { eternal: true })]
@@ -506,4 +509,110 @@ test('the stranger works the Näkki out from what is there', () => {
   assert.match(told, /Toivo/)
   assert.match(told, /a short walk south-east/)
   assert.ok(!/\{\w+\}/.test(told))
+})
+
+// ---- step 2: the fold and the wolves ---------------------------------------------------------
+// the den's own wolves (a roaming pack in the same piece is not the den's)
+const denWolves = (state, world) => { const den = point(world, 'den'); return state.entities.filter(e => e.type === 'npc' && e.species === 'wolf' && (e.wildsKey === '1,1' || e.taleKey === 'tale:0,0') && Math.max(Math.abs(e.x - den.x), Math.abs(e.y - den.y)) <= 6) }
+const charredNear = (t, label) => { const b = point(t.world, label); let n = 0; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) if (String(t.state.map[b.y + dy]?.[b.x + dx]?.overlay).startsWith('ow_deadtree')) n++; return n }
+function burnAll(t, bands) {
+  put(t.state, centre(t))
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.begun, true, 'the burning did not begin when the stranger stood in the village')
+  for (let n = 1; n <= bands; n++) { tickTales(t.state, t.world, BURN_INTERVAL + 1, t.hooks); assert.equal(t.flags.burn, n) }
+}
+
+test('the fold, start to finish: the bands burn, the village shuts, the fleece, the burrow, the wolves, Aino home', () => {
+  const t = setup('fold', '1,1')
+  assert.equal(denWolves(t.state, t.world).length, 3)
+  assert.ok(denWolves(t.state, t.world).every(w => !w.hostile), 'the den wolves attack')
+  put(t.state, point(t.world, 'den'), 0, 3)     // up on the ridge, never yet in the village
+  tickTales(t.state, t.world, BURN_INTERVAL * 5, t.hooks)
+  assert.ok(!t.flags.burn, 'the wood burnt before the stranger had set foot in the village')
+  burnAll(t, 4)
+  for (let n = 1; n <= 4; n++) assert.ok(charredNear(t, `burn ${n}`) >= 1, `band ${n} is not charred`)
+  assert.ok(t.state.entities.every(e => e.type !== 'npc' || e.species === 'wolf' || !e.hostile), 'a villager attacks')
+  assert.ok(!t.state.npcWrath)
+  assert.deepEqual(t.state.villageLines['0,0'], TALES.fold.shutLines)
+
+  const fleece = pickups(t.state).find(e => e.contents?.type === 'fleece'), cache = point(t.world, 'fleece cache')
+  assert.deepEqual([fleece.x, fleece.y], [cache.x, cache.y])
+  t.state.entities = t.state.entities.filter(e => e !== fleece)
+  t.state.player.inventory.push(makeItem('fleece'))
+  put(t.state, villageElder(t.state), 1, 0)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.fleece_shown, true)
+  assert.notDeepEqual(t.state.villageLines['0,0'], TALES.fold.shutLines)
+  assert.ok(pickups(t.state).some(e => e.contents?.weaponType === 'pick') || t.state.player.weapon?.weaponType === 'pick' || t.state.player.inventory.some(i => i.payload?.weaponType === 'pick'), 'no pick from the elder')
+  tickTales(t.state, t.world, BURN_INTERVAL * 3, t.hooks)
+  assert.equal(t.flags.burn, 4)
+
+  const burrow = point(t.world, 'burrow'), lair = point(t.world, 'lair')
+  put(t.state, burrow, 0, 2)
+  mineOut(t.state, burrow)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.maahinen_spawned, true)
+  const [beast] = t.state.entities.filter(e => e.type === 'maahinen')
+  assert.deepEqual([beast.x, beast.y, beast.taleKey], [lair.x, lair.y, 'tale:0,0'])
+  t.state.creatureKills.maahinen = true     // the wolves bring it down
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.maahinen_dead, true)
+  assert.equal(t.rec.done, true)
+  assert.deepEqual(t.calls.talents, ['tapio_peace'])
+  assert.equal(missing(t.state).length, 1, 'Aino did not come home')
+})
+
+// Review Focus 1
+test('the fold with no wolves left: two are back at the den on the next arrival, and the tale can end', () => {
+  const t = setup('fold', '1,1', { flags: { begun: true, fleece_shown: true } })
+  // every wolf of the ridge, the den's and any roaming pack's
+  const all = t.state.entities.filter(e => e.type === 'npc' && e.species === 'wolf' && e.wildsKey === '1,1')
+  for (const w of all) recordFor(t.world, '1,1').gone.add(w.wildsIx)
+  t.state.entities = t.state.entities.filter(e => !all.includes(e))
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  t.flags.maahinen_spawned = true; t.flags.maahinen_dead = true
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.ok(!t.rec.done, 'the fold ended with no wolf alive')
+  t.flags.maahinen_dead = false
+  enterWilds(t.state, t.world, { wx: 0, wy: 0 }, { buildEntities })
+  arriveTales(t.state, t.world, t.hooks, { fresh: true })
+  const back = denWolves(t.state, t.world), den = point(t.world, 'den')
+  assert.equal(back.length, 2)
+  assert.ok(back.every(w => !w.hostile && w.taleKey === 'tale:0,0' && Math.max(Math.abs(w.x - den.x), Math.abs(w.y - den.y)) <= 4))
+  arriveTales(t.state, t.world, t.hooks)
+  assert.equal(denWolves(t.state, t.world).length, 2, 'more wolves each arrival')
+  t.flags.maahinen_dead = true
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.rec.done, true)
+})
+
+// Review Focus 5
+test('death at the third band: the charred wood is charred again on a ridge made anew', () => {
+  const t = setup('fold', '1,1')
+  burnAll(t, 3)
+  t.world.pieces.delete('1,1')
+  wildsRespawn(t.state, t.world, { buildEntities })
+  arriveTales(t.state, t.world, t.hooks, { fresh: true })
+  for (let n = 1; n <= 3; n++) assert.ok(charredNear(t, `burn ${n}`) >= 1, `band ${n} came back green`)
+})
+
+// Review Focus 4
+test('two tale villages on one screen: only the fold\'s own people shut the player out', () => {
+  let found = null
+  for (let seed = 1; seed <= 60 && !found; seed++) {
+    const vs = villagesNear(seed, 0, 0, 10).filter(v => v.wx || v.wy)
+    for (const a of vs) for (const b of vs) if (a !== b && !found && Math.max(Math.abs(a.wx - b.wx), Math.abs(a.wy - b.wy)) <= 2) found = { seed, a, b }
+  }
+  const { seed, a, b } = found
+  const world = makeWorld(null, { seed })
+  const ka = `${a.wx},${a.wy}`, kb = `${b.wx},${b.wy}`
+  world.tales.set(ka, { id: 'fold', flags: { begun: true, burn: 4 }, place: null, n: 0, nSide: 0, done: false })
+  world.tales.set(kb, { id: 'elk', flags: {}, place: null, n: 0, nSide: 0, done: false })
+  const state = { player: { x: 0, y: 0, px: 0, py: 0, hp: 10, maxHp: 10, talents: [], inventory: [], maxInventory: 20 }, entities: [], feedback: makeFeedback(), sfx: makeSfx(), creatureKills: {} }
+  const hooks = { getState: () => state, spawn: s => buildEntities(s), persist: () => {}, refreshInventory: () => {}, rollLoot: () => ({ type: 'potion', amount: 4 }), save: () => ({ clock: 0 }), isNight: () => false, grantTalent: () => {} }
+  enterWilds(state, world, { wx: Math.round((a.wx + b.wx) / 2), wy: Math.round((a.wy + b.wy) / 2) }, { buildEntities })
+  arriveTales(state, world, hooks, { fresh: true })
+  assert.deepEqual(state.villageLines[ka], TALES.fold.shutLines)
+  assert.notDeepEqual(state.villageLines[kb], TALES.fold.shutLines)
+  assert.ok(state.villageLines[kb].villager.length >= 1)
 })
