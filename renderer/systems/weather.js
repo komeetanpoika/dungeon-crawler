@@ -2,7 +2,7 @@
 // Pure — no canvas, no DOM. render/weather.js paints from the `look` this
 // module produces each frame; game.js wires the clock and the arrival build.
 import { DAY_LENGTH, DAY_START, weatherFor } from '../data/weather.js'
-import { campfireAlpha, isDeadwoodFire } from './campfire.js'
+import { campfireAlpha, isBlueFire } from './campfire.js'
 import { FIRE_DURATION } from './fire.js'
 import { LOS_CLEAR_PREFIXES } from './openmap.js'
 
@@ -100,7 +100,7 @@ export function lightSources(state) {
   const out = []
   for (const e of state.entities ?? []) {
     if (e.type !== 'campfire') continue
-    out.push({ px: e.px, py: e.py, r: CAMPFIRE_LIGHT_TILES, strength: campfireAlpha(e), grey: isDeadwoodFire(e) })
+    out.push({ px: e.px, py: e.py, r: CAMPFIRE_LIGHT_TILES, strength: campfireAlpha(e), grey: isBlueFire(e) })
   }
   for (const z of state.fireZones ?? []) {
     const strength = Math.max(0, Math.min(1, (FIRE_DURATION - z.age) / FIRE_ZONE_FADE))

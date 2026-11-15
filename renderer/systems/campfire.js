@@ -47,13 +47,28 @@ export function makeCampfire(x, y, { eternal = false, hearth = false, fuel = 'lu
   const fire = { type: 'campfire', x, y, px: x * TILE_SIZE + TILE_SIZE / 2, py: y * TILE_SIZE + TILE_SIZE / 2, t: 0 }
   if (eternal) fire.eternal = true
   if (hearth) fire.hearth = true
-  if (fuel === 'deadwood') fire.fuel = 'deadwood'   // grey fire: the wraith cannot snuff it and burns in its light
+  if (fuel === 'deadwood' || fuel === 'greywood') fire.fuel = fuel   // grey fire: the wraith cannot snuff it and burns in its light
   return fire
 }
 
 // A grey fire — built from deadwood. The hermit episode's wraith burns only
 // in this light (a later task); a plain lumber fire has no `fuel` field.
-export const isDeadwoodFire = e => e?.type === 'campfire' && e.fuel === 'deadwood'
+export const isDeadwoodFire = e => e?.type === 'campfire' && (e.fuel === 'deadwood' || e.fuel === 'greywood')
+// Drawn blue: a grey fire, or one built by a player with the sinituli talent
+// (`blue`), which is an ordinary fire to the wraith.
+export const isBlueFire = e => isDeadwoodFire(e) || (e?.type === 'campfire' && e.blue === true)
+
+// Sinituli: standing in the light of a talent-blue fire mends you slowly.
+export const BLUE_REST_TILES = 2
+export const BLUE_REST_SECONDS = 3
+export function tickBlueRest(state, delta) {
+  const p = state.player
+  const near = state.entities.some(e => e.type === 'campfire' && e.blue === true
+    && Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y)) <= BLUE_REST_TILES)
+  if (!near || p.hp <= 0 || p.hp >= p.maxHp) { p.blueRestT = 0; return }
+  p.blueRestT = (p.blueRestT ?? 0) + delta
+  while (p.blueRestT >= BLUE_REST_SECONDS && p.hp < p.maxHp) { p.blueRestT -= BLUE_REST_SECONDS; p.hp++ }
+}
 
 // Age every fire; those past their duration are dropped and returned. Eternal
 // and hearth fires still age (so campfireAlpha's t-based math stays sane)

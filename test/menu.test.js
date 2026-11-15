@@ -289,31 +289,32 @@ const inputOf = overlay => overlay.children[0].children.find(c => c.tag === 'inp
 const META = { deepestReached: 0, runsCompleted: 0, treasureStolen: false }
 
 describe('the Online menu', () => {
-  it('the web title has Online right after Dungeon Rush, and it calls onOnline', () => {
+  // 2026-11-15: the title is Adventure (the Wilds), Dungeon Rush and PvP arena;
+  // the old map-by-map Adventure and Timewarp left it (their maps answer to the level cheats).
+  it('the web title is Adventure, Dungeon Rush, PvP arena', () => {
     const d = stubDomFull({ isWeb: true })
     try {
-      let online = false
-      showTitle(META, { onOnline: () => { online = true } })
-      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'The Wilds', 'Timewarp', 'Dungeon Rush', 'Online'])
-      buttonsOf(d.overlay)[4].listeners.click()
-      assert.equal(online, true)
+      const got = []
+      showTitle(META, { onWilds: () => got.push('wilds'), onRush: () => got.push('rush'), onPvpArena: () => got.push('pvp') })
+      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'Dungeon Rush', 'PvP arena'])
+      for (const b of buttonsOf(d.overlay)) b.listeners.click()
+      assert.deepEqual(got, ['wilds', 'rush', 'pvp'])
     } finally { d.cleanup() }
   })
-  it('the desktop title has no Online button', () => {
+  it('the desktop title adds the editor and Quit, and has no Timewarp or Wilds entry', () => {
     const d = stubDomFull({ isWeb: false })
     try {
       showTitle(META, {})
-      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'The Wilds', 'Timewarp', 'Dungeon Rush', 'Open Editor', 'Quit'])
+      assert.deepEqual(labelsOf(d.overlay), ['Adventure', 'Dungeon Rush', 'PvP arena', 'Open Editor', 'Quit'])
     } finally { d.cleanup() }
   })
-  it('The Wilds sits right after Adventure and calls onWilds', () => {
+  it('Adventure starts the Wilds', () => {
     const d = stubDomFull({ isWeb: false })
     try {
-      let wilds = false
-      showTitle(META, { onWilds: () => { wilds = true } })
-      assert.equal(labelsOf(d.overlay)[1], 'The Wilds')
-      buttonsOf(d.overlay)[1].listeners.click()
-      assert.equal(wilds, true)
+      let wilds = false, old = false
+      showTitle(META, { onWilds: () => { wilds = true }, onAdventure: () => { old = true } })
+      buttonsOf(d.overlay)[0].listeners.click()
+      assert.deepEqual([wilds, old], [true, false])
     } finally { d.cleanup() }
   })
   it('Online: Quick match, Play with friends, Back — and Escape goes back', () => {

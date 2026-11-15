@@ -399,8 +399,15 @@ test('tales survive a save and load; an old or broken save has none', () => {
   assert.deepEqual(again.places.get('1,1'), { id: 'elk', village: '0,0', done: false })
   assert.ok(again.paid.has('elk'))
   assert.equal(getPiece(again, 1, 1).tale, 'elk')
-  const old = makeWorld({ ...exportWorld(world), gen: GEN - 1 })
-  assert.equal(old.tales.size + old.places.size + old.paid.size, 0)
+  // Review Focus 3 (step 2): a save from an older generator keeps its tales, not its records
+  recordFor(world, '3,3').gone.add(1)
+  const old = makeWorld(JSON.parse(JSON.stringify({ ...exportWorld(world), gen: GEN - 1 })))
+  assert.deepEqual(old.tales.get('0,0'), { id: 'elk', flags: { flush: 1 }, place: '1,1', n: 2, nSide: 1, done: false })
+  assert.deepEqual(old.places.get('1,1'), { id: 'elk', village: '0,0', done: false })
+  assert.ok(old.paid.has('elk'))
+  assert.equal(old.records.size, 0)
+  assert.equal(getPiece(old, 1, 1).tale, 'elk')
+  assert.equal(getPiece(old, 0, 0).villageTale, 'elk')
   for (const bad of [{ tales: 7, places: 'x', paid: {} }, { tales: { '0,0': { id: 'nope' } }, places: { a: null }, paid: [3] }]) {
     const w = makeWorld({ ...exportWorld(world), ...bad })
     assert.equal(w.tales.size + w.places.size + w.paid.size, 0)

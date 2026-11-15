@@ -67,9 +67,31 @@ test('the Wilds\' tiles load on entering the Wilds, not with the title', () => {
 })
 
 test('the tales are wired in: arrival after every new window, a tick after the Wilds tick', () => {
-  assert.match(SRC, /import \{ arriveTales, tickTales \} from '\.\/wilds\/tale-run\.js'/)
+  assert.match(SRC, /import \{ arriveTales, tickTales, storyEpisode \} from '\.\/wilds\/tale-run\.js'/)
   const upd = SRC.slice(SRC.indexOf('tickWilds(state, wildsWorld, delta, wildsHooks)'))
   assert.ok(upd.indexOf('tickTales(state, wildsWorld, delta, taleHooks)') > 0 && upd.indexOf('tickTales(') < 900, 'tickTales does not follow tickWilds')
   assert.ok((SRC.match(/arriveTales\(state, wildsWorld, taleHooks, \{ fresh: true \}\)/g) ?? []).length >= 2, 'arriveTales after entering and after waking')
   assert.match(SRC, /if \(recentred\) [\s\S]{0,200}arriveTales\(state, wildsWorld, taleHooks\)/)
+})
+
+test('a story house in the Wilds takes its things from the tale', () => {
+  assert.match(SRC, /storyEpisode\(wildsWorld, door\)/)
+  assert.match(SRC, /save: \(\) => activeSave/)
+})
+
+test("Tapio's peace: wolves are built calm for a player who has it", () => {
+  assert.match(SRC, /s\.species === 'wolf' && hasTalent\(player, 'tapio_peace'\)/)
+})
+
+test('sinituli: a fire the player builds is blue, and its light mends', () => {
+  assert.match(SRC, /hasTalent\(state\.player, 'sinituli'\)\) fire\.blue = true/)
+  assert.match(SRC, /tickBlueRest\(state, delta\)/)
+})
+
+test('the title: Adventure is the Wilds, PvP arena is online play on the web and a local match on the desktop', () => {
+  const title = SRC.slice(SRC.indexOf('menu.showTitle(meta, {'), SRC.indexOf('menu.showTitle(meta, {') + 700)
+  assert.match(title, /onWilds: \(\) => beginRun\(WILDS_DEPTH, 'wilds'\)/)
+  assert.match(title, /onPvpArena: \(\) => \(window\.saveAPI\?\.isWeb \? goOnline\(\) : goPvpPicker\(\)\)/)
+  assert.ok(!/onTimewarp|onAdventure/.test(title), 'the old modes are still wired to the title')
+  assert.ok(!SRC.includes('Loading the Wilds'), 'the player still reads "the Wilds" as the mode\'s name')
 })

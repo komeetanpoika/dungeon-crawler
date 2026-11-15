@@ -8,10 +8,15 @@ import { sfx } from './sfx.js'
 
 export const TALENTS = {
   ski_legs: { name: 'Ski-legs', desc: 'Sprinting costs far less stamina.' },
+  // rewards of the Wilds' tales (data/tales.js `reward`)
+  lake_breath: { name: "The lake's breath", desc: 'A quarter more stamina.' },
+  tapio_peace: { name: "Tapio's peace", desc: 'Wolves leave you be unless you strike first.' },
+  sinituli: { name: 'Sinituli', desc: 'Your campfires burn blue, and their light mends you.' },
 }
-// Dungeon Rush: every talent from the first step (outfits too — see
-// systems/outfits.js RUSH_START_OUTFITS). Assigned silently at spawn.
-export const RUSH_START_TALENTS = Object.keys(TALENTS)
+// Dungeon Rush: Ski-legs from the first step (outfits too — see
+// systems/outfits.js RUSH_START_OUTFITS). Assigned silently at spawn. A fixed
+// list: the tales' rewards are earned in the Wilds, not handed to a Rush run.
+export const RUSH_START_TALENTS = ['ski_legs']
 
 export function hasTalent(player, id) {
   return (player?.talents ?? []).includes(id)

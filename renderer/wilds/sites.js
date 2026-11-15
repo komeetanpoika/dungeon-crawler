@@ -45,6 +45,7 @@ export const SITE_SKINS = [...new Set([
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
   'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
   'ow_deco_firepit', 'ow_kiln_cold', 'ow_mtn_rock_cap', 'ow_prop_fishrack_l', 'ow_prop_fishrack_r', 'ow_pier_log', 'ow_stone_ground_0',
+  'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small', 'ow_greytree_0', 'ow_greytree_1',
 ])]
 
 // ---- the places of the tales (data/tales.js) --------------------------------------
@@ -53,7 +54,7 @@ export const SITE_SKINS = [...new Set([
 //   hub    where the roads from the gates meet
 //   keep   circles nothing else of the piece is dealt into
 //   ways   cells opened as an unmarked way through the trees; nothing is built on them
-export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9 }
+export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16, fold: 8, flame: 9 }
 // The cells of a one-wide walkable line, each a step along x or y from the last.
 export function wayCells(x0, y0, x1, y1) {
   const out = [{ x: x0, y: y0 }]
@@ -65,7 +66,7 @@ export function wayCells(x0, y0, x1, y1) {
   }
   return out
 }
-export function layoutTale(tale, rng) {
+export function layoutTale(tale, rng, gateInner = null) {
   const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))
   if (tale === 'elk') {
     const cx = ri(30, 49), cy = ri(30, 49)
@@ -83,6 +84,25 @@ export function layoutTale(tale, rng) {
   if (tale === 'tar') {
     const cx = ri(32, 53), cy = ri(24, 55)
     return { cx, cy, hub: { x: cx - 14, y: cy }, keep: [{ x: cx - 17, y: cy + 2, r: 7 }] }
+  }
+  if (tale === 'fold') {
+    const cx = ri(26, 44), cy = ri(34, 52)
+    const burrow = { x: cx + ri(13, 16), y: cy - ri(8, 11) }
+    // the wood the village burns: four bands along the longest road in, the one from the farthest gate
+    const far = ['N', 'E', 'S', 'W'].map(side => gateInner(side)).sort((a, b) => Math.hypot(b.x - cx, b.y - cy) - Math.hypot(a.x - cx, a.y - cy))[0]
+    const burns = [0.2, 0.38, 0.56, 0.74].map(f => ({ x: Math.round(far.x + (cx - far.x) * f), y: Math.round(far.y + (cy - far.y) * f) }))
+    const hub = { x: cx, y: cy + 2 }
+    // a sure way from the den to the burrow's mouth, whatever grows between
+    const ways = wayCells(hub.x, hub.y, burrow.x, burrow.y + 1)
+    return { cx, cy, hub, burrow, burns, ways, keep: [{ x: burrow.x, y: burrow.y - 2, r: 8 }, ...burns.map(b => ({ x: b.x, y: b.y, r: 4 }))] }
+  }
+  if (tale === 'flame') {
+    const cx = ri(26, 50), cy = ri(28, 50)
+    return { cx, cy, hub: { x: cx, y: cy + 5 }, keep: [{ x: cx + 7, y: cy + 4, r: 6 }] }
+  }
+  if (tale === 'nakki') {
+    const cx = ri(36, 52), cy = ri(26, 50)
+    return { cx, cy, hub: { x: cx - 15, y: cy }, keep: [{ x: cx - 19, y: cy + 2, r: 7 }, { x: cx - 6, y: cy + 14, r: 5 }] }
   }
   const cx = ri(26, 52), cy = ri(26, 53)
   return { cx, cy, hub: { x: cx, y: cy + 4 }, keep: [{ x: cx + 11, y: cy + 3, r: 6 }] }
@@ -105,7 +125,7 @@ export function makeSites(c) {
   }
 
   // A house whose door is at (dx, dy). Returns its box.
-  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1 } = {}) {
+  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null } = {}) {
     const R = ROOF[roof], W = WALL[wall]
     const dbl = w === 5 && rng() < 0.35
     const dcol = w === 3 ? 1 : w === 4 ? (rng() < 0.5 ? 1 : 2) : 2
@@ -124,7 +144,7 @@ export function makeSites(c) {
     }
     // the doorstep stays clear
     for (let i = -1; i <= 1; i++) { t.clear(dx + i, dy + 1); hold(dx + i, dy + 1) }
-    c.door(dx, dy, tier)
+    c.door(dx, dy, tier, story)
     return { x0, x1: x0 + w - 1, top, w }
   }
 
@@ -429,5 +449,127 @@ export function makeSites(c) {
     return [{ label: 'hiidenkiuas', x: cx, y: cy }, { label: 'hermit hut', ...door }]
   }
 
-  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, elkWood, causeway, oven }
+  // The bell lake (the Näkki): a pier that stops four planks short of an
+  // orchard island, the silent bell at its end, an islet with the clapper on
+  // a spit of land, and the ferryman's hut on the bank.
+  function bellLake(g) {
+    const { cx, cy } = g
+    const islet = { x: cx - 6, y: cy + 9 }
+    for (let dy = -14; dy <= 14; dy++) for (let dx = -14; dx <= 14; dx++) {
+      const d = Math.hypot(dx, dy)
+      if (d <= 4) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+      else if (d + wob(cx + dx, cy + dy, 530) <= 13) { t.setWater(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+    }
+    // the pier: five standing planks from the bank at cx - 14, then four gone
+    const standing = [cx - 13, cx - 12, cx - 11, cx - 10, cx - 9], gone = [cx - 8, cx - 7, cx - 6, cx - 5]
+    for (const x of [...standing, ...gone]) { t.setWater(x, cy); hold(x, cy) }
+    for (const x of standing) t.setProp(x, cy, 'ow_pier_log', { walkable: true })
+    const end = { x: cx - 9, y: cy }
+    t.setWater(end.x, cy - 1); t.setProp(end.x, cy - 1, 'ow_prop_bell'); hold(end.x, cy - 1)
+    // the islet and the spit that joins it to the south bank
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (dx * dx + dy * dy <= 4) { t.clear(islet.x + dx, islet.y + dy); hold(islet.x + dx, islet.y + dy) }
+    for (let y = islet.y + 2; y <= cy + 15; y++) { t.clear(islet.x, y); hold(islet.x, y) }
+    put(islet.x - 1, islet.y - 1, pick(DEAD))
+    c.spawn({ kind: 'floating_pickup', contents: { type: 'clapper' }, x: islet.x, y: islet.y })
+    // the orchard nobody can reach
+    for (const [dx, dy] of [[-2, -2], [0, -3], [2, -2], [-3, 1], [3, 1], [-1, 2]]) put(cx + dx, cy + dy, 'ow_tree_apple')
+    c.spawn({ kind: 'chest', x: cx + 1, y: cy + 1, sealed: true })
+    scatter(cx, cy, 0, 3, 4, FLOWERS)
+    // the bank: Toivo's hut, his racks, what he fed the lake from
+    const bx = cx - 14
+    for (let dy = -5; dy <= 7; dy++) for (let dx = -8; dx <= 0; dx++) t.clear(bx + dx, cy + dy)
+    const h = house(bx - 4, cy + 4, 'hut', { w: 3, wall: 'wood', story: "Toivo's hut" })
+    put(bx - 2, cy - 2, 'ow_prop_fishrack_l'); put(bx - 1, cy - 2, 'ow_prop_fishrack_r')
+    low(h.x1 + 1, cy + 4, 'ow_prop_barrel_1'); low(bx - 6, cy - 2, 'ow_prop_bucket')
+    t.setProp(bx - 3, cy - 1, 'ow_deco_firepit', { walkable: true }); hold(bx - 3, cy - 1)
+    return [
+      { label: 'bell', ...end }, { label: 'pier end', ...end }, { label: 'nakki', x: gone[0], y: cy },
+      ...gone.map((x, i) => ({ label: `pier gap ${i + 1}`, x, y: cy })),
+      { label: 'orchard', x: cx, y: cy }, { label: 'islet cache', ...islet }, { label: "Toivo's hut", x: bx - 4, y: cy + 4 },
+    ]
+  }
+
+  // The ridge (the fold): the wolves' den, the burrow the lambs went into,
+  // sealed with rock a pick can open, and the wood the village burns a band at a time.
+  function ridge(g) {
+    const { cx, cy, burrow: B } = g
+    for (const w of g.ways) { t.clear(w.x, w.y); hold(w.x, w.y) }
+    camp(cx, cy, 'den')
+    for (const [dx, dy] of [[-2, 0], [1, -1], [2, 1]]) { t.clear(cx + dx, cy + dy); c.npc('wolf', cx + dx, cy + dy, { hostile: false }) }
+    for (let dy = -5; dy <= 1; dy++) for (let dx = -4; dx <= 4; dx++) t.setFloor(B.x + dx, B.y + dy, { roads: true })
+    for (let dy = -4; dy <= 0; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const x = B.x + dx, y = B.y + dy
+      if (Math.abs(dx) <= 1 && (dy === -1 || dy === -2)) { t.clear(x, y); hold(x, y) }         // the hollow
+      else if (Math.abs(dx) <= 1 && dy === 0) put(x, y, pick(c.rocks))                        // its mouth, walled up
+      else { t.setMass(x, y); hold(x, y) }
+    }
+    walkRound(B.x - 4, B.y - 5, B.x + 4, B.y + 1)
+    c.spawn({ kind: 'floating_pickup', contents: { type: 'fleece' }, x: B.x, y: B.y + 1 })
+    // a prospector's leavings
+    low(B.x + 3, B.y + 2, 'ow_prop_crate_2'); low(B.x - 3, B.y + 2, 'ow_prop_bucket'); low(B.x + 2, B.y + 3, 'ow_prop_sack_1')
+    flat(B.x - 1, B.y + 2, 'ow_deco_skull')
+    for (const b of g.burns) for (let i = 0; i < 7; i++) { const at = c.freeSpot(b.x, b.y, 1, 4); if (at && !t.onPath(at.x, at.y)) put(at.x, at.y, 'ow_tree_small') }
+    return [
+      { label: 'den', x: cx, y: cy }, ...g.burns.map((b, i) => ({ label: `burn ${i + 1}`, ...b })),
+      { label: 'burrow', ...B }, { label: 'lair', x: B.x, y: B.y - 2 }, { label: 'fleece cache', x: B.x, y: B.y + 1 },
+    ]
+  }
+
+  // The knoll (the flame-thief): a rise of stony ground where grey trees
+  // stand that grow nowhere else, and the silent hermit's hut beside it.
+  function knoll(g) {
+    const { cx, cy } = g
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) if (dx * dx + dy * dy <= 64) {
+      t.clear(cx + dx, cy + dy)
+      if (dx * dx + dy * dy <= 49) t.setFloor(cx + dx, cy + dy, { roads: true })
+    }
+    hold(g.hub.x, g.hub.y)
+    // the stand: one tree on every other cell of a loose ring and its heart, never on a road
+    let grown = 0
+    for (let i = 0; i < 300 && grown < 16; i++) {
+      const a = rng() * Math.PI * 2, r = 1.5 + rng() * 4.5
+      const x = cx + Math.round(Math.cos(a) * r), y = cy + Math.round(Math.sin(a) * r)
+      if (!t.free(x, y) || c.taken(x, y) || t.onPath(x, y)) continue
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => (t.propAt(x + dx, y + dy) ?? '').startsWith('ow_greytree_'))) continue
+      put(x, y, pick(['ow_greytree_0', 'ow_greytree_1'])); grown++
+    }
+    const door = { x: cx + 7, y: cy + 4 }
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) t.clear(door.x + dx, door.y + dy)
+    const h = house(door.x, door.y, 'hut', { w: 3, wall: 'stone', roof: 'blue', story: 'hermit hut' })
+    const hearth = { x: h.x0 - 2, y: door.y + 1 }
+    t.setProp(hearth.x, hearth.y, 'ow_deco_firepit', { walkable: true }); hold(hearth.x, hearth.y)
+    low(h.x1 + 1, door.y, 'ow_prop_woodpile')
+    c.npc('hermit', door.x + 1, door.y + 1)
+    return [{ label: 'knoll', x: cx, y: cy }, { label: 'hermit hut', ...door }, { label: 'hearth', ...hearth }]
+  }
+
+  // What a village's own tale leaves standing in it. Laid where the village
+  // keeps no house, door or road end. Returns the village's named points.
+  function villageTrouble(tale, cx, cy) {
+    if (tale === 'nakki') {
+      // fish racks standing empty since the pier was given up
+      put(cx - 11, cy - 2, 'ow_prop_fishrack_l'); put(cx - 10, cy - 2, 'ow_prop_fishrack_r')
+      put(cx - 11, cy - 1, 'ow_prop_fishrack_l'); put(cx - 10, cy - 1, 'ow_prop_fishrack_r')
+    }
+    if (tale === 'fold') {
+      // the fold the lambs go missing from, south-east of the square; the
+      // ground east and south of it is opened so a road that ran there goes round
+      fence(cx + 7, cy + 8, cx + 11, cy + 11, { x: cx + 8, y: cy + 8 })
+      for (let dy = 9; dy <= 10; dy++) for (let dx = 8; dx <= 10; dx++) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+      for (let d = 7; d <= 12; d++) t.clear(cx + d, cy + 12)
+      for (let d = 8; d <= 12; d++) t.clear(cx + 12, cy + d)
+      for (let d = 8; d <= 12; d++) { t.clear(cx + d, cy + 7); hold(cx + d, cy + 7) }   // and north of it, the way in from the square
+      for (const [dx, dy] of [[8, 10], [9, 9], [10, 10]]) c.npc('sheep', cx + dx, cy + dy)
+    }
+    if (tale === 'flame') {
+      // three hearths on the square, lit at dusk and cold by midnight
+      const hearths = [[-2, -2], [2, -2], [0, 3]].map(([dx, dy], i) => ({ label: `hearth ${i + 1}`, x: cx + dx, y: cy + dy }))
+      for (const h of hearths) put(h.x, h.y, 'prop_hearth_cold')
+      return hearths
+    }
+    return []
+  }
+
+  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll }
+  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble }
 }

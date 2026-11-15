@@ -83,7 +83,7 @@ export function placeFeatures(t, piece) {
   const hold = (x, y) => taken.add(`${x},${y}`)
   const spawn = s => { piece.spawns.push(s); hold(s.x, s.y); return s }
   let npcIx = 0
-  const npc = (species, x, y) => spawn({ kind: 'npc', species, id: `npc:wilds:${key}:${npcIx++}`, x, y })
+  const npc = (species, x, y, extra = {}) => spawn({ kind: 'npc', species, id: `npc:wilds:${key}:${npcIx++}`, x, y, ...extra })
   // A free, untaken cell between rMin and rMax tiles of (cx, cy), or null.
   const freeSpot = (cx, cy, rMin, rMax) => {
     for (let tries = 0; tries < 80; tries++) {
@@ -102,8 +102,8 @@ export function placeFeatures(t, piece) {
     if (!at) return null
     return maker.npc ? npc(maker.npc, at.x, at.y) : spawn({ ...maker, x: at.x, y: at.y })
   }
-  const door = (x, y, doorTier) => {
-    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story: null })
+  const door = (x, y, doorTier, story = null) => {
+    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story })
     hold(x, y)
   }
   const ring = (cx, cy, r, n, skinOf) => {
@@ -124,7 +124,8 @@ export function placeFeatures(t, piece) {
   // ---- the main thing -------------------------------------------------------
   // A tale's place takes the main thing over: its parts are laid out first so
   // roads, small things and packs keep clear of them.
-  const geo = piece.tale ? layoutTale(piece.tale, rng) : null
+  // (a tale whose place is not built yet is dealt as ordinary land)
+  const geo = piece.tale && TALE_PAD[piece.tale] !== undefined ? layoutTale(piece.tale, rng, side => t.gateInner(side)) : null
   const kind = geo ? `tale_${piece.tale}` : mainKind(seed, wx, wy, deal)
   const home = wx === 0 && wy === 0
   const mx = geo ? geo.cx : home ? 40 : ri(18, PIECE - 19), my = geo ? geo.cy : home ? 40 : ri(18, PIECE - 19)
@@ -174,7 +175,7 @@ export function placeFeatures(t, piece) {
   })
   let spawnPoint = null
   if (geo) {
-    piece.points = piece.tale === 'elk' ? sites.elkWood(geo) : piece.tale === 'tar' ? sites.causeway(geo) : sites.oven(geo)
+    piece.points = sites.tales[piece.tale](geo)
     spawnPoint = hub
     hold(hub.x, hub.y)
   } else if (kind === 'village') {
@@ -182,6 +183,8 @@ export function placeFeatures(t, piece) {
     spawnPoint = { x: mx + 1, y: my + 1 }
     hold(spawnPoint.x, spawnPoint.y)
     sites.village(mx, my)
+    // what the village's own tale leaves standing in it
+    if (piece.villageTale) piece.villagePoints = sites.villageTrouble(piece.villageTale, mx, my)
     const toward = (dx, dy) => BIOME_NAMES[pieceBiome(seed, wx + dx * 3, wy + dy * 3)]
     piece.signs.push({
       x: mx - 2, y: my + 1, title: v.name,

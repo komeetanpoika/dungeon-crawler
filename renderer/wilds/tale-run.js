@@ -4,7 +4,13 @@
 // game.js import: game.js passes its own hooks.
 //
 //   hooks = { getState(), spawn(spawns, depth) -> entities, persist(),
-//             refreshInventory(), rollLoot(depth) -> chest contents }
+//             refreshInventory(), rollLoot(depth) -> chest contents,
+//             save() -> the Wilds save (its clock), isNight() -> boolean,
+//             grantTalent(id) }
+//
+// The Timewarp episodes (systems/episodes/) run here too, for a stranger:
+// no Echo (a tale's `remarks` are thought by the player on first coming near
+// a point), and the tale's missing villager comes home when it is done.
 //
 // A module finds its places through mapData.pois. Here those are the named
 // points of the tale's place and the giver village's centre, in window tiles
@@ -18,7 +24,8 @@ import { WIN } from './window.js'
 import { getPiece } from './world.js'
 import { makeCtx } from '../systems/story.js'
 import { QUEST_MODULES } from '../systems/quests/index.js'
-import { queueToast } from '../systems/feedback.js'
+import { EPISODE_MODULES } from '../systems/episodes/index.js'
+import { queueToast, think } from '../systems/feedback.js'
 import { TILE } from '../systems/entities.js'
 
 const SEES_TILES = 10   // how near a thing must be for the player to remark on it
@@ -62,24 +69,69 @@ function makeRun(state, world, vKey, rec, hooks) {
       const piece = placePiece()
       if (piece) for (const p of piece.points) out.push({ kind: 'landmark', label: p.label, ...toWin(world, piece, p) })
       const at = villagePoint()
-      if (at) out.push({ kind: 'giver', label: 'village', ...at })
+      if (at) {
+        out.push({ kind: 'giver', label: 'village', ...at })
+        // what the village's own tale left standing in it (the hearths)
+        for (const p of getPiece(world, v.wx, v.wy).villagePoints ?? []) out.push({ kind: 'landmark', label: p.label, ...toWin(world, v, p) })
+      }
       return out
     },
   }
   const lootDepth = () => (placePiece() ?? getPiece(world, v.wx, v.wy)).lootDepth
   const ctx = makeCtx({
-    getState: hooks.getState, save: null, record: { [taleKey]: rec }, mapData,
+    getState: hooks.getState, save: hooks.save?.() ?? { clock: 0 }, record: { [taleKey]: rec }, mapData,
     persist: hooks.persist, refreshInventory: hooks.refreshInventory,
+    // an episode says it is done; the tale's rule is still what finishes it
+    resolve: () => { ctx.set('resolved') },
     spawn: spawns => {
       const st = hooks.getState()
       for (const e of hooks.spawn(spawns, lootDepth())) {
         e.taleKey = taleKey
         if (e.type === 'npc') e.linesKey = vKey
+        // the flame-thief keeps to its village: it sees no fire and wanders nowhere beyond it
+        if (e.type === 'sammunut') {
+          const c = villagePoint()
+          if (c) e.leash = { x: c.x, y: c.y, r: 36 }
+          e.bane = 'greywood'   // any dead tree's wood is an ordinary fire to it here
+        }
         st.entities.push(e)
       }
     },
     onFlag: () => setLines(hooks.getState(), world, vKey, rec),
     extra: {
+      inWilds: true,
+      episode: { houses: tale.houses ?? {}, resolvedLines: null },
+      // the flame-thief (episodes/hermit.js): grey wood only, this village's
+      // people and fires only, the hour left alone, and a Sammunut that rises
+      // a short walk from the village instead of at the far corner of a map
+      wood: 'greywood',
+      runtime: {},
+      isWorker: e => e.wildsKey === vKey,
+      keepClock: true,
+      hasWraith: () => hooks.getState().entities.some(e => e.type === 'sammunut' && e.taleKey === taleKey),
+      hasCreature: kind => hooks.getState().entities.some(e => e.type === kind && e.taleKey === taleKey),
+      ownsWraith: e => e.taleKey === taleKey,
+      ownsFire: f => { const c = villagePoint(); return !!c && Math.max(Math.abs(f.x - c.x), Math.abs(f.y - c.y)) <= 12 },
+      wraithSpot: () => {
+        const c = villagePoint(), map = hooks.getState().map
+        if (!c) return null
+        const o = toWin(world, v, { x: 0, y: 0 })
+        for (let r = 30; r >= 20; r--) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+          const x = c.x + dx, y = c.y + dy
+          if (x < o.x + 2 || y < o.y + 2 || x > o.x + PIECE - 3 || y > o.y + PIECE - 3) continue
+          if (map[y]?.[x]?.tile === TILE.FLOOR) return { x, y }
+        }
+        return null
+      },
+      onResolved: () => setLines(hooks.getState(), world, vKey, rec),
+      // the fold (episodes/fold.js): its timer waits for the stranger, nobody
+      // turns on them (the tale's `shut` closes the village instead), and burnt
+      // cells are kept in the ridge's own tiles, not the window's
+      burning: () => !!rec.flags.begun,
+      turnVillage: () => {},
+      cellKey: (x, y) => { const piece = placePiece(); if (!piece) return null; const o = toWin(world, piece, { x: 0, y: 0 }); return `${x - o.x},${y - o.y}` },
+      cellOf: key => { const piece = placePiece(); if (!piece) return null; const [x, y] = key.split(',').map(Number); return toWin(world, piece, { x, y }) },
       isGiver: e => e.wildsKey === vKey || e.taleKey === taleKey,
       giverCell: villagePoint,
       sees: c => { const p = hooks.getState().player; return !!c && Math.max(Math.abs(c.x - p.x), Math.abs(c.y - p.y)) <= SEES_TILES },
@@ -92,13 +144,17 @@ function makeRun(state, world, vKey, rec, hooks) {
       },
     },
   })
-  return { ctx, tale, module: QUEST_MODULES[tale.module], villageIn: false, placeIn: false }
+  const module = tale.engine === 'episode' ? EPISODE_MODULES[tale.module] : QUEST_MODULES[tale.module]
+  return { ctx, tale, module, vKey, taleKey, villagePoint, villageIn: false, placeIn: false }
 }
 
 // What the people of a tale say: its village's villagers, and whoever lives at its place.
+const plainLines = (world, vKey) => { const v = parseKey(vKey); return PLAIN_LINES[getPiece(world, v.wx, v.wy).biome] ?? PLAIN_LINES.forest }
 function setLines(state, world, vKey, rec) {
-  const lines = fillLines(world, vKey)
-  if (!lines) return
+  // a tale with nothing to say yet leaves its village talking about its country
+  const tale = rec && TALES[rec.id]
+  // a village that has shut the player out says only that
+  const lines = (tale?.shut?.(rec.flags) && tale.shutLines) || fillLines(world, vKey) || plainLines(world, vKey)
   state.villageLines ??= {}
   state.villageLines[vKey] = lines
   if (rec?.place) state.villageLines[rec.place] = lines
@@ -117,7 +173,7 @@ export function arriveTales(state, world, hooks, { fresh = false } = {}) {
     const rec = world.tales.get(vKey) ?? (at.villageIn ? taleRecord(world, at.v) : null)
     if (!rec) {
       // a village with no tale talks about its country
-      if (at.villageIn) state.villageLines[vKey] = PLAIN_LINES[getPiece(world, at.v.wx, at.v.wy).biome] ?? PLAIN_LINES.forest
+      if (at.villageIn) state.villageLines[vKey] = plainLines(world, vKey)
       continue
     }
     setLines(state, world, vKey, rec)
@@ -125,9 +181,14 @@ export function arriveTales(state, world, hooks, { fresh = false } = {}) {
     if (!run) runs.set(vKey, run = makeRun(state, world, vKey, rec, hooks))
     const placeNew = at.placeIn && !run.placeIn, villageNew = at.villageIn && !run.villageIn
     run.placeIn = at.placeIn; run.villageIn = at.villageIn
-    // a kill is counted per visit and per kind: another place's must not count here
-    if (placeNew && run.tale.creature && state.creatureKills) delete state.creatureKills[run.tale.creature]
-    if (placeNew || villageNew) run.module?.onArrive?.(run.ctx)
+    // a kill is counted per visit and per kind: another place's must not count
+    // where this tale's creature lives
+    const lairNew = run.tale.creatureAt === 'village' ? villageNew : placeNew
+    if (lairNew && run.tale.creature && state.creatureKills) delete state.creatureKills[run.tale.creature]
+    const on = run.tale.arriveOn ?? 'both'
+    if ((placeNew && on !== 'village') || (villageNew && on !== 'place')) run.module?.onArrive?.(run.ctx)
+    if (placeNew && !rec.done) run.tale.arrive?.(arrival(state, run, rec))
+    if (rec.done) comeHome(state, run)
   }
 }
 
@@ -138,12 +199,22 @@ export function tickTales(state, world, delta, hooks) {
   for (const [vKey, run] of runs) {
     const rec = world.tales.get(vKey)
     if (!rec) continue
+    begin(state, run, rec)
+    // a tale's own upkeep, about once a second while its place is here
+    if (run.tale.tend && run.placeIn && !rec.done && (run.tendT = (run.tendT ?? 0) + delta) >= 1) {
+      run.tendT = 0
+      run.tale.tend(arrival(state, run, rec))
+    }
     tickModule(state, vKey, run, delta)
-    if (rec.done || !run.tale.rule(rec.flags)) continue
+    remark(state, run, rec)
+    if (rec.done || !run.tale.rule(rec.flags, ruleCtx(state, run, rec, hooks))) continue
     rec.done = true
     const place = rec.place && world.places.get(rec.place)
     if (place) place.done = true   // released: it may now be forgotten like other land
+    // an episode has no reward of its own: the tale names a talent, had once per world
+    if (run.tale.reward && run.ctx.special()) hooks.grantTalent?.(run.tale.reward)
     if (rec.special === false) pay(state, world, vKey, run, hooks)
+    comeHome(state, run)
     setLines(state, world, vKey, rec)
     hooks.persist()
   }
@@ -158,14 +229,16 @@ function tickModule(state, vKey, run, delta) {
   const kind = run.tale.creature
   const kills = state.creatureKills
   if (!kind || !kills?.[kind]) {
-    if (kind) run.sawCreature = run.placeIn && state.entities.some(e => e.type === kind && e.taleKey === `tale:${vKey}`)
+    if (kind) run.sawCreature = (run.tale.creatureAt === 'village' ? run.villageIn : run.placeIn)
+      && state.entities.some(e => e.type === kind && e.taleKey === `tale:${vKey}`)
     run.module?.tick?.(run.ctx, delta)
     // a kill the module itself dealt this tick (the Hiisi's last stone) was settled in it
     if (kind && run.sawCreature && state.creatureKills?.[kind]) delete state.creatureKills[kind]
     return
   }
-  const here = run.placeIn && state.entities.some(e => e.type === kind && e.taleKey === `tale:${vKey}`)
-  const mine = here || (run.placeIn && run.sawCreature)
+  const lairIn = run.tale.creatureAt === 'village' ? run.villageIn : run.placeIn
+  const here = lairIn && state.entities.some(e => e.type === kind && e.taleKey === `tale:${vKey}`)
+  const mine = here || (lairIn && run.sawCreature)
   run.sawCreature = here
   if (mine) {
     run.module?.tick?.(run.ctx, delta)
@@ -191,4 +264,97 @@ function pay(state, world, vKey, run, hooks) {
   }
   run.ctx.spawn(spots.map(at => ({ kind: 'floating_pickup', contents: hooks.rollLoot(village.lootDepth), ...at })))
   queueToast(state, { title: village.village?.name ?? run.tale.title, lines: ['The village pays what it can.', 'Take it.'] })
+}
+
+// What a tale's rule may ask beyond its flags. The den's wolves are counted
+// while the place is in the window and remembered in the flags for when it
+// is not (a wolf cannot die out of sight).
+function ruleCtx(state, run, rec, hooks) {
+  if (run.placeIn) {
+    const wolves = state.entities.filter(e => e.type === 'npc' && e.species === 'wolf' && e.hp > 0
+      && (e.taleKey === run.taleKey || e.wildsKey === rec.place)).length
+    if (rec.flags.wolves !== wolves && run.tale.id === 'fold') rec.flags.wolves = wolves
+  }
+  return { wolvesAlive: rec.flags.wolves ?? 0, night: !!hooks.isNight?.() }
+}
+
+// The stranger's own thoughts on first coming near a thing: what the Echo
+// used to say. One at a time, each once (flags.said holds the indices).
+function remark(state, run, rec) {
+  const remarks = run.tale.remarks
+  if (!remarks?.length || state.feedback?.bubble) return
+  const said = rec.flags.said ?? []
+  const { player } = state
+  const pois = run.ctx.mapData.pois
+  for (let i = 0; i < remarks.length; i++) {
+    const r = remarks[i]
+    if (said.includes(i) || (r.when && !r.when(rec.flags))) continue
+    const at = pois.find(p => p.label === r.at)
+    if (!at || Math.max(Math.abs(at.x - player.x), Math.abs(at.y - player.y)) > (r.within ?? 4)) continue
+    think(state, r.text)
+    run.ctx.set('said', [...said, i])
+    return
+  }
+}
+
+// The missing villager is home once their tale is done: beside the village's
+// middle, with their own face (role 'missing'), every time the village is here.
+function comeHome(state, run) {
+  const who = run.tale.missing
+  if (!who || !run.villageIn) return
+  const id = `npc:${run.taleKey}:missing`
+  if (state.entities.some(e => e.id === id)) return
+  const c = run.villagePoint()
+  if (!c) return
+  const taken = (x, y) => state.entities.some(e => e.x === x && e.y === y)
+  for (let r = 1; r <= 4; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+    const x = c.x + dx, y = c.y + dy
+    if (state.map[y]?.[x]?.tile !== TILE.FLOOR || state.map[y][x].overlay || taken(x, y)) continue
+    run.ctx.spawn([{ kind: 'npc', species: who.species, role: 'missing', hostile: false, id, x, y }])
+    return
+  }
+}
+
+// A door of a tale's place that opens on a story room: the episode-shaped
+// record game.js hands the interior builder ({ houses }), or null.
+export function storyEpisode(world, door) {
+  const m = /^house:wilds:(-?\d+),(-?\d+)$/.exec(door?.label ?? '')
+  if (!m || !door.story) return null
+  const place = world.places.get(pieceKey(Math.floor(m[1] / PIECE), Math.floor(m[2] / PIECE)))
+  const houses = place && TALES[place.id]?.houses
+  return houses?.[door.story] ? { houses } : null
+}
+
+// A tale that `begins: 'village'` starts its clock when the player first
+// stands in its village (within 10 tiles of the middle), not when the village
+// first comes into the window.
+function begin(state, run, rec) {
+  if (run.tale.begins !== 'village' || rec.flags.begun || !run.villageIn) return
+  const c = run.villagePoint(), p = state.player
+  if (c && Math.max(Math.abs(c.x - p.x), Math.abs(c.y - p.y)) <= 10) run.ctx.set('begun')
+}
+
+// What a tale's own `arrive` gets when its place enters the window.
+function arrival(state, run, rec) {
+  const isWolf = e => e.type === 'npc' && e.species === 'wolf' && e.hp > 0 && (e.taleKey === run.taleKey || e.wildsKey === rec.place)
+  return {
+    state, flags: rec.flags,
+    point: label => run.ctx.mapData.pois.find(p => p.label === label) ?? null,
+    // up to n free walkable cells within 3 tiles of a point
+    free: (at, n) => {
+      const out = []
+      for (let r = 1; r <= 3 && out.length < n; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || out.length >= n) continue
+        const x = at.x + dx, y = at.y + dy
+        if (state.map[y]?.[x]?.tile === TILE.FLOOR && !state.entities.some(e => e.x === x && e.y === y)) out.push({ x, y })
+      }
+      return out
+    },
+    spawn: spawns => run.ctx.spawn(spawns.map(s => ({ ...s, id: `npc:${run.taleKey}:${s.id}` }))),
+    think: text => think(state, text),
+    wolves: () => state.entities.filter(isWolf).length,
+    // is the player at least n tiles from a point?
+    away: (at, n) => Math.max(Math.abs(at.x - state.player.x), Math.abs(at.y - state.player.y)) >= n,
+  }
 }

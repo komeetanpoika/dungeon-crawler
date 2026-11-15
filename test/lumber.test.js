@@ -209,6 +209,9 @@ describe('rocks', () => {
 describe('deadwood drop', () => {
   it('dead trees drop deadwood, other trees lumber', () => {
     assert.equal(HARVEST.ow_deadtree_0.drop, 'deadwood')
+    // the hermit's grey trees (the Wilds) give their own wood
+    assert.equal(HARVEST.ow_greytree_0.drop, 'greywood')
+    assert.equal(HARVEST.ow_greytree_1.tool, 'chop')
     assert.equal(HARVEST.ow_tree_small.drop ?? 'lumber', 'lumber')
     const map = createMap(5, 5)
     for (let y = 1; y < 4; y++) for (let x = 1; x < 4; x++) map[y][x].tile = TILE.FLOOR

@@ -137,3 +137,39 @@ describe('hearth fires', () => {
     assert.equal('hearth' in makeCampfire(1, 1), false)
   })
 })
+
+// ---- grey wood and the blue fire (the Wilds' flame-thief tale) --------------------------------
+import { tickBlueRest, isBlueFire } from '../renderer/systems/campfire.js'
+describe('grey wood, and sinituli', () => {
+  it('a grey-wood fire is the wraith\'s bane like a deadwood one; a talent-blue fire is not', () => {
+    const grey = makeCampfire(1, 1, { fuel: 'greywood' }), dead = makeCampfire(1, 1, { fuel: 'deadwood' }), plain = makeCampfire(1, 1)
+    const blue = Object.assign(makeCampfire(1, 1), { blue: true })
+    assert.deepEqual([grey, dead, plain, blue].map(isDeadwoodFire), [true, true, false, false])
+    assert.deepEqual([grey, dead, plain, blue].map(isBlueFire), [true, true, false, true])
+  })
+  it('standing in a blue fire\'s light heals one health every three seconds, to the brim and no further', () => {
+    const fire = Object.assign(makeCampfire(10, 10), { blue: true })
+    const state = { entities: [fire], player: { x: 12, y: 11, hp: 5, maxHp: 7 } }
+    tickBlueRest(state, 2.9)
+    assert.equal(state.player.hp, 5)
+    tickBlueRest(state, 0.2)
+    assert.equal(state.player.hp, 6)
+    tickBlueRest(state, 9)
+    assert.equal(state.player.hp, 7)
+    state.player.hp = 3; state.player.x = 13
+    tickBlueRest(state, 30)
+    assert.equal(state.player.hp, 3, 'healed from three tiles away')
+    state.player.x = 11; fire.blue = false
+    tickBlueRest(state, 30)
+    assert.equal(state.player.hp, 3, 'an ordinary fire healed')
+  })
+})
+
+describe('sinituli and death', () => {
+  it('a blue fire does not lift the dead', () => {
+    const fire = Object.assign(makeCampfire(10, 10), { blue: true })
+    const state = { entities: [fire], player: { x: 10, y: 11, hp: 0, maxHp: 7, blueRestT: 2.9 } }
+    tickBlueRest(state, 5)
+    assert.equal(state.player.hp, 0)
+  })
+})

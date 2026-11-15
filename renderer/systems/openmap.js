@@ -20,7 +20,7 @@ import { monstersForOpenMap } from './monsters.js'
 // crosses up to LOS_TREE_BUDGET such cells (losSoft). Rocks, buildings and
 // ruins stay fully opaque. See hasLineOfSight in entities.js.
 export const LOS_CLEAR_PREFIXES = ['ow_water_', 'ow_pond_', 'ow_shore_', 'ow_mud_']
-export const LOS_SOFT_PREFIXES = ['ow_tree_', 'ow_deadtree_', 'ow_bush_', 'ow_shrub_', 'ow_mushroom', 'ow_cactus']
+export const LOS_SOFT_PREFIXES = ['ow_tree_', 'ow_deadtree_', 'ow_greytree_', 'ow_bush_', 'ow_shrub_', 'ow_mushroom', 'ow_cactus']
 // Mountains (peak fill and cliff rims): a sight line to one may cross other
 // mountain cells — the range is seen whole from a distance — but nothing
 // beyond it is.

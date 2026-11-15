@@ -20,6 +20,9 @@ export const TREES = {
   ow_tree_apple:        { hp: 3, yield: 1, cells: 1 },
   ow_deadtree_0:        { hp: 2, yield: 1, cells: 1, drop: 'deadwood' },
   ow_deadtree_1:        { hp: 2, yield: 1, cells: 1, drop: 'deadwood' },
+  // the hermit's grey trees (the Wilds' flame-thief tale, wilds/sites.js): only they give grey wood
+  ow_greytree_0:        { hp: 2, yield: 1, cells: 1, drop: 'greywood' },
+  ow_greytree_1:        { hp: 2, yield: 1, cells: 1, drop: 'greywood' },
   ow_tree_pine_trunk:   { hp: 4, yield: 2, cells: 2 },
   ow_tree_autumn_trunk: { hp: 4, yield: 2, cells: 2 },
   // The autumn canopy art does double duty: gen-forest.mjs stamps it both as

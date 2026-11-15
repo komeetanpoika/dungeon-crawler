@@ -174,3 +174,21 @@ test('loadMoreSprites fetches only the pictures it does not have yet', async () 
     assert.deepEqual(asked, [])
   } finally { globalThis.Image = realImage; console.warn = realWarn }
 })
+
+// ---- found by the step-2 review ---------------------------------------------------------------
+test('the one who comes home has a face no Wilds villager wears', async () => {
+  const { spriteKeyFor } = await import('../renderer/systems/npc.js')
+  const home = spriteKeyFor({ species: 'villager', role: 'missing', id: 'npc:tale:0,0:missing' })
+  assert.equal(home, 'npc_villager_3')
+  for (let i = 0; i < 9; i++) assert.notEqual(spriteKeyFor({ species: 'villager', id: `npc:wilds:0,0:${i}`, wildsKey: '0,0' }), home, `villager ${i}`)
+  assert.deepEqual(new Set([0, 1, 2, 3].map(i => spriteKeyFor({ species: 'villager', id: `npc:wilds:0,0:${i}`, wildsKey: '0,0' }))).size, 2)
+  // the hand-made maps rotate over all three, as before
+  assert.equal(spriteKeyFor({ species: 'villager', id: 'npc:forest-1-clearings:2' }), 'npc_villager_3')
+})
+
+test('a tale\'s creature never sleeps, however far the player', async () => {
+  const { asleep, ACTIVE_TILES } = await import('../renderer/wilds/session.js')
+  const player = { x: 100, y: 100 }
+  assert.equal(asleep({ x: 100 + ACTIVE_TILES + 5, y: 100 }, player), true)
+  assert.equal(asleep({ x: 100 + ACTIVE_TILES + 5, y: 100, taleKey: 'tale:0,0' }, player), false)
+})

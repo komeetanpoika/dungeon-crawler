@@ -13,7 +13,7 @@ import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { drawNpcSheet } from './npc-sheets.js'
 import { NPC_SPECIES } from '../data/npcs.js'
-import { campfireAlpha } from '../systems/campfire.js'
+import { campfireAlpha, isBlueFire } from '../systems/campfire.js'
 import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
 import { getMonsterDef, drawGeneratedMonster, isStoryCreature, drawMonsterFx, drawnTop } from '../systems/monsters.js'
@@ -157,7 +157,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     const prev = ctx.globalAlpha, prevF = ctx.filter
     ctx.globalAlpha = prev * campfireAlpha(entity)
     // Deadwood burns blue: the orange flame swung round the hue wheel, kept saturated.
-    if (entity.fuel === 'deadwood') ctx.filter = 'hue-rotate(195deg) saturate(1.1) brightness(1.15)'
+    if (isBlueFire(entity)) ctx.filter = 'hue-rotate(195deg) saturate(1.1) brightness(1.15)'
     ctx.drawImage(s, px, py, S, S)
     ctx.filter = prevF; ctx.globalAlpha = prev
     return
@@ -201,7 +201,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, px, py, S, S)
     } else {
       const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
-                    deadwood: 'item_deadwood', clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
+                    deadwood: 'item_deadwood', greywood: 'item_deadwood', clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
       const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
       else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }

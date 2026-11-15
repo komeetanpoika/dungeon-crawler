@@ -70,6 +70,9 @@ export const RPG = {
   // tale places (the Wilds, 2026-11-15)
   ow_deco_firepit: [13, 8], ow_kiln_cold: [12, 0], ow_mtn_rock_cap: [12, 0],
   ow_prop_fishrack_l: [51, 13], ow_prop_fishrack_r: [52, 13],
+  ow_prop_bell: [51, 17],
+  // the hermit's grey trees: the dead trees with the colour taken out (a third element is a canvas filter)
+  ow_greytree_0: [27, 9, 'grayscale(1) brightness(1.35) contrast(0.9)'], ow_greytree_1: [27, 11, 'grayscale(1) brightness(1.35) contrast(0.9)'],
   // grey stone ruins
   ow_ruin_stub_0: [20, 18], ow_ruin_stub_1: [21, 18],
   ow_ruin_col_0: [20, 19], ow_ruin_col_1: [21, 19], ow_ruin_col_base_0: [20, 20], ow_ruin_col_base_1: [21, 20],
@@ -131,11 +134,12 @@ for (const [name, n] of Object.entries(TT)) {
 const sheet = path.join(SCRATCH, 'rpg-x/Spritesheet/roguelikeSheet_transparent.png')
 await runPixels({ sheet }, (images, slices) => {
   const files = {}
-  for (const [name, [col, row]] of Object.entries(slices)) {
+  for (const [name, [col, row, filter]] of Object.entries(slices)) {
     const c = document.createElement('canvas')
     c.width = 16; c.height = 16
     const g = c.getContext('2d')
     g.imageSmoothingEnabled = false
+    if (filter) g.filter = filter
     g.drawImage(images.sheet, col * 17, row * 17, 16, 16, 0, 0, 16, 16)
     files[name + '.png'] = c.toDataURL()
   }

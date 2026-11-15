@@ -45,7 +45,7 @@ import { generateInterior } from './systems/interior.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
-import { arriveTales, tickTales } from './wilds/tale-run.js'
+import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
@@ -59,7 +59,7 @@ import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { questFor, questFlags, questLines, makeQuestCtx } from './systems/quests.js'
 import { QUEST_MODULES } from './systems/quests/index.js'
 import { felledCells, findHarvestHit, harvest, resolveTool } from './systems/lumber.js'
-import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
+import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat, tickBlueRest } from './systems/campfire.js'
 import { isEnemy, isHittable, isSpellTarget } from './systems/factions.js'
 import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
 import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature } from './systems/monsters.js'
@@ -76,7 +76,7 @@ import { stepProjectiles } from './systems/projectiles.js'
 import { nearestPoint } from './systems/hitbox.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
-import { TALENTS, hasTalent, RUSH_START_TALENTS } from './systems/talents.js'
+import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS } from './systems/talents.js'
 import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, RUSH_START_OUTFITS, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
   TRANCE_FADE, PULL_DURATION, PULL_TELEPORT_AT, pullTarget } from './systems/rites.js'
@@ -88,7 +88,8 @@ import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { tickBinds, playerBound, struggle } from './systems/player-bind.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
-import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
+import { makeWeather, advanceClock, weatherLook, isNight } from './systems/weather.js'
+import { DAY_START } from './data/weather.js'
 import { canMoveTo, moveEntity, PLAYER_HALF, PLAYER_SPEED } from './systems/movement.js'
 import { applyLoadout, handPayload } from './systems/loadout.js'
 
@@ -326,6 +327,9 @@ const taleHooks = {
   persist: () => persistRun(),
   refreshInventory: () => afterInventoryChange(),
   rollLoot: depth => rollChestLoot(depth, Math.random, state.player),
+  save: () => activeSave,
+  isNight: () => isNight(activeSave.clock ?? DAY_START),
+  grantTalent: id => grantTalent(state, id),
 }
 
 function persistRun() {
@@ -634,7 +638,8 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       case 'floating_pickup': return [{ type: 'floating_item', contents: s.contents, x: s.x, y: s.y,
         startPx: cx, startPy: cy, targetPx: cx, targetPy: cy, px: cx, py: cy, progress: 1, duration: 0.3 }]
       case 'echo':    return [{ type: 'echo', id: 'echo', x: s.x, y: s.y, px: cx, py: cy, fadeA: 0, t: 0, trail: [], said: null }]
-      case 'npc': { const n = makeNpc(s); return n ? [n] : [] }
+      // Tapio's peace (a tale's reward): wolves are built calm; striking one still makes it fight
+      case 'npc': { const n = makeNpc(s.species === 'wolf' && hasTalent(player, 'tapio_peace') ? { ...s, hostile: false } : s); return n ? [n] : [] }
       // a Wilds camp's fire (wilds/sites.js): it never burns down, and cooks like any other
       case 'campfire': return [makeCampfire(s.x, s.y, { eternal: true })]
       default: {
@@ -881,16 +886,16 @@ function goTitle() {
   if (bench) { location.reload(); return }
   phase = PHASE.TITLE
   menu.showTitle(meta, {
-    onAdventure: () => beginRun(OPEN_MAPS[savedAdventure.progress.mapDepth] ? savedAdventure.progress.mapDepth : ADVENTURE_DEPTH, 'adventure'),
+    // Adventure is the Wilds. The old Adventure chain and Timewarp have no
+    // title entry any more; the level<N> cheats (onCheat) still reach their maps.
     onWilds: () => beginRun(WILDS_DEPTH, 'wilds'),
-    onTimewarp: () => goEpisodeSelect(),
     onRush: () => beginRun(1, 'rush'),
+    onPvpArena: () => (window.saveAPI?.isWeb ? goOnline() : goPvpPicker()),
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
     onPvp: goPvpPicker,
     onNet: goNet,
-    onOnline: goOnline,
   })
 }
 
@@ -1148,7 +1153,7 @@ async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = n
   if (beginning) return   // a second press while the Wilds' tiles are still coming in
   if (mode === 'wilds') {
     beginning = true
-    if (!wildsSprites) menu.setSubtitle('Loading the Wilds\u2026')
+    if (!wildsSprites) menu.setSubtitle('Loading the world\u2026')
     try { await loadWildsSprites() } finally { beginning = false }
   }
   runMode = mode
@@ -1324,6 +1329,8 @@ function buildCampfire(fuel = 'lumber') {
   if (!spot) { think(state, 'No room for a fire here.'); return }
   spendLumber(state.player, fuel)
   const fire = makeCampfire(spot.x, spot.y, { fuel })
+  // Sinituli (a tale's reward): the player's own fires burn blue and mend them
+  if (hasTalent(state.player, 'sinituli')) fire.blue = true
   state.entities.push(fire)
   sfx(state, fuel === 'deadwood' ? 'grey-fire' : 'campfire-light', { px: fire.px, py: fire.py })
   if (inventoryOpen) closeInventory()
@@ -2168,6 +2175,7 @@ function update(delta) {
 
   // Campfires burn out after a minute.
   const fires = tickCampfires(state.entities, delta)
+  tickBlueRest(state, delta)
   state.entities = fires.entities
   for (const f of fires.expired) sfx(state, 'campfire-out', { px: f.px, py: f.py })
 
@@ -2347,9 +2355,11 @@ function enterHouse(door) {
   } else {
     const cfg = INTERIOR_CONFIG[door.tier]
     const theme = DEPTH_THEMES.find(t => t.depths.includes(INTERIOR_DEPTH)) ?? DEPTH_THEMES[0]
-    const structs = storyStructures(structures, state.episode, door.story)
+    // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
+    const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
+    const structs = storyStructures(structures, storyEp, door.story)
     const { map, entitySpawns, playerSpawn } = generateInterior(cfg, { structures: structs })
-    const spawns = attachPickups(entitySpawns, state.episode?.houses?.[door.story]?.pickups ?? [])
+    const spawns = attachPickups(entitySpawns, storyEp?.houses?.[door.story]?.pickups ?? [])
     state = buildCaveState(state, entrance, {
       map, entities: buildEntities(spawns, map, INTERIOR_DEPTH), playerSpawn, theme,
     })

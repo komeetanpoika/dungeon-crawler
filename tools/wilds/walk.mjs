@@ -46,7 +46,10 @@ try {
   const noErrors = what => { check(errors.length === 0, `no errors ${what}`, errors.slice(0, 3).join(' | ')); errors.length = 0 }
 
   // ---- enter ---------------------------------------------------------------
-  for (const k of 'level20') { await page.keyboard.press(k); await sleep(120) }
+  // through the title, as a player does: Adventure is the Wilds
+  const titles = await page.locator('button').allTextContents()
+  check(JSON.stringify(titles.slice(0, 3)) === JSON.stringify(['Adventure', 'Dungeon Rush', 'PvP arena']), 'the title offers Adventure, Dungeon Rush, PvP arena', titles.join(' | '))
+  await page.getByText('Adventure', { exact: true }).first().click()
   await sleep(3500)
   const start = await ev(() => {
     const s = window.__dc.state, w = window.__dc.wilds
@@ -84,6 +87,7 @@ try {
   })
   const gate = await ev(() => window.__dc.wilds.pieces.get('0,0').gates.E)
   await place(80 + 72, 80 + gate.y)
+  await page.bringToFront()   // keys go nowhere if the window lost focus (seen once on WSLg)
   const near = await ev(() => { const s = window.__dc.state; return s.entities.filter(e => e.x >= 160 && e.maxHp === undefined).slice(0, 1).map(e => ({ k: e.wildsKey, i: e.wildsIx, x: e.x, y: e.y }))[0] })
   await page.keyboard.down('d')
   let crossed = null
@@ -180,7 +184,8 @@ try {
       const e = window.__dc.state.entities.find(e => e.type === 'hirvi')
       return e ? { dx: e.x + o.wx * 80 - X, dy: e.y + o.wy * 80 - Y, mood: e.mood } : null
     }, [w1.X, w1.Y])
-    check(pts.tale === 'elk' && !!elk && Math.abs(elk.dx) <= 2 && Math.abs(elk.dy) <= 2, 'the elk is bedded at its first wallow', JSON.stringify(elk))
+    // hopping into the wood can land beside the wallow and flush it: bedded there, or already running
+    check(pts.tale === 'elk' && !!elk && (elk.mood === 'bolting' || (Math.abs(elk.dx) <= 2 && Math.abs(elk.dy) <= 2)), 'the elk is at its first wallow, bedded or just flushed', JSON.stringify(elk))
     noErrors('at the elk\'s wood')
   }
 

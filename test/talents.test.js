@@ -8,11 +8,14 @@ const mkState = () => ({ player: { talents: [] }, feedback: makeFeedback() })
 
 describe('talent registry', () => {
   it('defines ski-legs and no stance talents', () => {
-    assert.deepEqual(Object.keys(TALENTS), ['ski_legs'])
+    assert.ok('ski_legs' in TALENTS)
+    for (const stance of ['marksmanship', 'gust', 'might']) assert.ok(!(stance in TALENTS), `${stance} is a talent again`)
   })
 
   it('a rush run starts with every talent', () => {
-    assert.deepEqual([...RUSH_START_TALENTS].sort(), Object.keys(TALENTS).sort())
+    // Dungeon Rush keeps the talents it always had; the tales' rewards are the Wilds' own
+    assert.deepEqual([...RUSH_START_TALENTS], ['ski_legs'])
+    for (const id of ['lake_breath', 'tapio_peace', 'sinituli']) assert.ok(TALENTS[id]?.name && TALENTS[id]?.desc, `no talent ${id}`)
   })
 })
 
