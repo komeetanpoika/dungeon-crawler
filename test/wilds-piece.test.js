@@ -424,13 +424,14 @@ test('rock built on a road never shuts a gate', () => {
 })
 
 // ---- the places of the tales -----------------------------------------------------
-const TALE_SPOTS = { elk: ['forest', 'autumn'], tar: ['sea', 'marsh'], kivihiisi: ['mountain'], nakki: ['forest', 'autumn', 'marsh'], fold: ['forest', 'autumn', 'mountain'] }
+const TALE_SPOTS = { elk: ['forest', 'autumn'], tar: ['sea', 'marsh'], kivihiisi: ['mountain'], nakki: ['forest', 'autumn', 'marsh'], fold: ['forest', 'autumn', 'mountain'], flame: ['marsh', 'autumn', 'forest'] }
 const POINTS = {
   elk: ['forest shrine', 'wallow 1', 'wallow 2', 'wallow 3'],
   tar: ['tar pit', 'lumber camp', 'bridge gap 1', 'bridge gap 2', 'bridge gap 3'],
   kivihiisi: ['hiidenkiuas', 'hermit hut'],
   nakki: ['bell', 'pier end', 'nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'orchard', 'islet cache', "Toivo's hut"],
   fold: ['den', 'burn 1', 'burn 2', 'burn 3', 'burn 4', 'burrow', 'lair', 'fleece cache'],
+  flame: ['hermit hut', 'hearth', 'knoll'],
 }
 // Points a tale keeps shut until it is played: behind water or rock.
 const SEALED = { nakki: ['nakki', 'pier gap 1', 'pier gap 2', 'pier gap 3', 'pier gap 4', 'orchard'], fold: ['lair', 'burrow', 'burn 1', 'burn 2', 'burn 3', 'burn 4'] }
@@ -549,7 +550,7 @@ test('the bell lake: a pier that stops short of the orchard island, a bell, an i
 })
 
 test('a village is built for the tale it carries, and stays a whole village', () => {
-  const dress = { nakki: s => s.startsWith('ow_prop_fishrack'), fold: (s, x, y, p) => s.startsWith('ow_fence_') && y > p.main.y + 7 && x > p.main.x + 6 }
+  const dress = { nakki: s => s.startsWith('ow_prop_fishrack'), fold: (s, x, y, p) => s.startsWith('ow_fence_') && y > p.main.y + 7 && x > p.main.x + 6, flame: s => s === 'prop_hearth_cold' }
   for (const seed of SEEDS) for (const [tale, has] of Object.entries(dress)) {
     const v = [{ wx: 0, wy: 0 }, ...[...Array(40).keys()].flatMap(i => { const wx = (i % 9) - 4, wy = Math.floor(i / 9) - 2; return villageAt(seed, wx, wy) ? [{ wx, wy }] : [] })].slice(0, 3)
     for (const { wx, wy } of v) {
@@ -592,5 +593,38 @@ test('the ridge: a den of calm wolves, a burrow sealed with rock, the wood the v
       assert.ok(around(p, b, 6, s => /^ow_tree_/.test(s)) >= 3, `${at}: nothing to burn at band ${n}`)
       assert.ok(dist(b, den) >= 6, `${at}: band ${n} is on the den`)
     }
+  }
+})
+
+test('the knoll: grey trees found nowhere else, the hermit and his hut', () => {
+  for (const seed of SEEDS) for (const p of talePieces(seed, 'flame')) {
+    const at = `flame at ${p.wx},${p.wy} (seed ${seed})`
+    const knoll = pt(p, 'knoll'), hut = pt(p, 'hermit hut'), hearth = pt(p, 'hearth')
+    assert.ok(around(p, knoll, 7, s => s.startsWith('ow_greytree_')) >= 12, `${at}: ${around(p, knoll, 7, s => s.startsWith('ow_greytree_'))} grey trees`)
+    assert.equal(around(p, knoll, 7, s => s.startsWith('ow_deadtree_')), 0, `${at}: an ordinary dead tree in the stand`)
+    const door = p.doors.find(d => d.x === hut.x && d.y === hut.y)
+    assert.ok(door && door.story === 'hermit hut', `${at}: no story door`)
+    assert.ok(p.spawns.some(s => s.kind === 'npc' && s.species === 'hermit' && dist(s, hut) <= 3), `${at}: no hermit`)
+    assert.ok(walk(p.cells[hearth.y][hearth.x]) && dist(hearth, hut) <= 4)
+  }
+  // nowhere else: a hundred ordinary pieces hold no grey tree
+  for (let i = 0; i < 100; i++) {
+    const p = generatePiece(3, (i % 10) - 5, Math.floor(i / 10) - 5)
+    for (const row of p.cells) for (const c of row) assert.ok(!(c.overlay ?? '').startsWith('ow_greytree_'))
+  }
+})
+
+test('a flame-thief village has three hearths on its square, each with a place to stand', () => {
+  for (const seed of SEEDS) {
+    const p = generatePiece(seed, 0, 0, 0, null, 'flame')
+    assert.deepEqual(p.villagePoints.map(q => q.label), ['hearth 1', 'hearth 2', 'hearth 3'])
+    const seen = flood(p, p.spawnPoint)
+    for (const h of p.villagePoints) {
+      assert.equal(p.cells[h.y][h.x].overlay, 'prop_hearth_cold')
+      assert.equal(p.cells[h.y][h.x].tile, TILE.WALL)
+      assert.ok([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen.has(`${h.x + dx},${h.y + dy}`)), 'a hearth nobody can stand by')
+      assert.ok(dist(h, p.main) <= 5)
+    }
+    assert.deepEqual(generatePiece(seed, 0, 0).villagePoints, [])
   }
 })

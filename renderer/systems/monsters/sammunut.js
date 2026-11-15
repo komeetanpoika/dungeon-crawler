@@ -58,6 +58,8 @@ export function nearestFire(entities, e) {
   for (const f of entities) {
     if (f.type !== 'campfire') continue
     if (isDeadwoodFire(f) && e.shun) continue
+    // a leashed wraith (the Wilds: it keeps to its village) does not see fires beyond it
+    if (e.leash && Math.max(Math.abs(f.x - e.leash.x), Math.abs(f.y - e.leash.y)) > e.leash.r) continue
     const d = Math.hypot(f.px - e.px, f.py - e.py)
     if (d < bestDist) { bestDist = d; best = f }
   }
@@ -94,10 +96,12 @@ function driftToward(e, tx, ty, delta, map) {
   e.py = clamp(e.py, TILE_SIZE, (h - 1) * TILE_SIZE)
 }
 
-function pickWanderPoint(map, rng) {
+function pickWanderPoint(map, rng, leash = null) {
   const w = map[0].length, h = map.length
-  const x = 1 + Math.floor(rng() * Math.max(1, w - 2))
-  const y = 1 + Math.floor(rng() * Math.max(1, h - 2))
+  const x0 = leash ? Math.max(1, leash.x - leash.r) : 1, x1 = leash ? Math.min(w - 2, leash.x + leash.r) : w - 2
+  const y0 = leash ? Math.max(1, leash.y - leash.r) : 1, y1 = leash ? Math.min(h - 2, leash.y + leash.r) : h - 2
+  const x = x0 + Math.floor(rng() * Math.max(1, x1 - x0 + 1))
+  const y = y0 + Math.floor(rng() * Math.max(1, y1 - y0 + 1))
   return { px: x * TILE_SIZE + TILE_SIZE / 2, py: y * TILE_SIZE + TILE_SIZE / 2 }
 }
 
@@ -167,7 +171,7 @@ export function updateSammunut(e, state, delta) {
     } else {
       e.wanderT = (e.wanderT ?? 0) - delta
       if (!e.wanderPoint || e.wanderT <= 0) {
-        e.wanderPoint = pickWanderPoint(map, e.rng ?? Math.random)
+        e.wanderPoint = pickWanderPoint(map, e.rng ?? Math.random, e.leash ?? null)
         e.wanderT = WANDER_REPICK
       }
       driftToward(e, e.wanderPoint.px, e.wanderPoint.py, delta, map)

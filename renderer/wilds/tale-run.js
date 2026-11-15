@@ -69,7 +69,11 @@ function makeRun(state, world, vKey, rec, hooks) {
       const piece = placePiece()
       if (piece) for (const p of piece.points) out.push({ kind: 'landmark', label: p.label, ...toWin(world, piece, p) })
       const at = villagePoint()
-      if (at) out.push({ kind: 'giver', label: 'village', ...at })
+      if (at) {
+        out.push({ kind: 'giver', label: 'village', ...at })
+        // what the village's own tale left standing in it (the hearths)
+        for (const p of getPiece(world, v.wx, v.wy).villagePoints ?? []) out.push({ kind: 'landmark', label: p.label, ...toWin(world, v, p) })
+      }
       return out
     },
   }
@@ -84,6 +88,8 @@ function makeRun(state, world, vKey, rec, hooks) {
       for (const e of hooks.spawn(spawns, lootDepth())) {
         e.taleKey = taleKey
         if (e.type === 'npc') e.linesKey = vKey
+        // the flame-thief keeps to its village: it sees no fire and wanders nowhere beyond it
+        if (e.type === 'sammunut') { const c = villagePoint(); if (c) e.leash = { x: c.x, y: c.y, r: 36 } }
         st.entities.push(e)
       }
     },
@@ -91,6 +97,29 @@ function makeRun(state, world, vKey, rec, hooks) {
     extra: {
       inWilds: true,
       episode: { houses: tale.houses ?? {}, resolvedLines: null },
+      // the flame-thief (episodes/hermit.js): grey wood only, this village's
+      // people and fires only, the hour left alone, and a Sammunut that rises
+      // a short walk from the village instead of at the far corner of a map
+      wood: 'greywood',
+      runtime: {},
+      isWorker: e => e.wildsKey === vKey,
+      keepClock: true,
+      hasWraith: () => hooks.getState().entities.some(e => e.type === 'sammunut' && e.taleKey === taleKey),
+      ownsWraith: e => e.taleKey === taleKey,
+      ownsFire: f => { const c = villagePoint(); return !!c && Math.max(Math.abs(f.x - c.x), Math.abs(f.y - c.y)) <= 12 },
+      wraithSpot: () => {
+        const c = villagePoint(), map = hooks.getState().map
+        if (!c) return null
+        const o = toWin(world, v, { x: 0, y: 0 })
+        for (let r = 30; r >= 20; r--) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+          const x = c.x + dx, y = c.y + dy
+          if (x < o.x + 2 || y < o.y + 2 || x > o.x + PIECE - 3 || y > o.y + PIECE - 3) continue
+          if (map[y]?.[x]?.tile === TILE.FLOOR) return { x, y }
+        }
+        return null
+      },
+      onResolved: () => setLines(hooks.getState(), world, vKey, rec),
       // the fold (episodes/fold.js): its timer waits for the stranger, nobody
       // turns on them (the tale's `shut` closes the village instead), and burnt
       // cells are kept in the ridge's own tiles, not the window's

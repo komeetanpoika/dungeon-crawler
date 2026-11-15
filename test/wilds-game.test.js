@@ -82,3 +82,8 @@ test('a story house in the Wilds takes its things from the tale', () => {
 test("Tapio's peace: wolves are built calm for a player who has it", () => {
   assert.match(SRC, /s\.species === 'wolf' && hasTalent\(player, 'tapio_peace'\)/)
 })
+
+test('sinituli: a fire the player builds is blue, and its light mends', () => {
+  assert.match(SRC, /hasTalent\(state\.player, 'sinituli'\)\) fire\.blue = true/)
+  assert.match(SRC, /tickBlueRest\(state, delta\)/)
+})

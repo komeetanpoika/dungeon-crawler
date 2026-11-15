@@ -11,6 +11,7 @@ export const TALENTS = {
   // rewards of the Wilds' tales (data/tales.js `reward`)
   lake_breath: { name: "The lake's breath", desc: 'A quarter more stamina.' },
   tapio_peace: { name: "Tapio's peace", desc: 'Wolves leave you be unless you strike first.' },
+  sinituli: { name: 'Sinituli', desc: 'Your campfires burn blue, and their light mends you.' },
 }
 // Dungeon Rush: Ski-legs from the first step (outfits too — see
 // systems/outfits.js RUSH_START_OUTFITS). Assigned silently at spawn. A fixed

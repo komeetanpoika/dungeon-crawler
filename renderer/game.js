@@ -59,7 +59,7 @@ import { EPISODE_MODULES } from './systems/episodes/index.js'
 import { questFor, questFlags, questLines, makeQuestCtx } from './systems/quests.js'
 import { QUEST_MODULES } from './systems/quests/index.js'
 import { felledCells, findHarvestHit, harvest, resolveTool } from './systems/lumber.js'
-import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat } from './systems/campfire.js'
+import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat, tickBlueRest } from './systems/campfire.js'
 import { isEnemy, isHittable, isSpellTarget } from './systems/factions.js'
 import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
 import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature } from './systems/monsters.js'
@@ -1329,6 +1329,8 @@ function buildCampfire(fuel = 'lumber') {
   if (!spot) { think(state, 'No room for a fire here.'); return }
   spendLumber(state.player, fuel)
   const fire = makeCampfire(spot.x, spot.y, { fuel })
+  // Sinituli (a tale's reward): the player's own fires burn blue and mend them
+  if (hasTalent(state.player, 'sinituli')) fire.blue = true
   state.entities.push(fire)
   sfx(state, fuel === 'deadwood' ? 'grey-fire' : 'campfire-light', { px: fire.px, py: fire.py })
   if (inventoryOpen) closeInventory()
@@ -2173,6 +2175,7 @@ function update(delta) {
 
   // Campfires burn out after a minute.
   const fires = tickCampfires(state.entities, delta)
+  tickBlueRest(state, delta)
   state.entities = fires.entities
   for (const f of fires.expired) sfx(state, 'campfire-out', { px: f.px, py: f.py })
 

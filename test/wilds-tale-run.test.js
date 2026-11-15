@@ -15,6 +15,9 @@ import { registerMonsters, clearMonsters, makeMonsterFromDef } from '../renderer
 import { makeHirvi, FLUSH_TILES } from '../renderer/systems/monsters/hirvi.js'
 import { makeNakki } from '../renderer/systems/monsters/nakki.js'
 import { makeMaahinen } from '../renderer/systems/monsters/maahinen.js'
+import { makeSammunut } from '../renderer/systems/monsters/sammunut.js'
+import { CHORE_TIMEOUT, DELIVERY_COOLDOWN } from '../renderer/systems/episodes/hermit.js'
+import { isNight } from '../renderer/systems/weather.js'
 import { BURN_INTERVAL } from '../renderer/systems/episodes/fold.js'
 import { makeNpc } from '../renderer/systems/npc.js'
 import { makeCampfire } from '../renderer/systems/campfire.js'
@@ -39,6 +42,7 @@ function buildEntities(spawns) {
     if (s.kind === 'hirvi') return [Object.assign(makeHirvi(s.x, s.y), at)]
     if (s.kind === 'nakki') return [Object.assign(makeNakki(s.x, s.y), at)]
     if (s.kind === 'maahinen') return [Object.assign(makeMaahinen(s.x, s.y), at)]
+    if (s.kind === 'sammunut') return [Object.assign(makeSammunut(s.x, s.y), at)]
     if (s.kind === 'kivihiisi') return [Object.assign(makeMonsterFromDef('kivihiisi', s.x, s.y), at)]
     if (s.kind === 'floating_pickup') return [{ type: 'floating_item', contents: s.contents, ...at, progress: 1 }]
     if (s.kind === 'campfire') return [makeCampfire(s.x, s.y, { eternal: true })]
@@ -615,4 +619,117 @@ test('two tale villages on one screen: only the fold\'s own people shut the play
   assert.deepEqual(state.villageLines[ka], TALES.fold.shutLines)
   assert.notDeepEqual(state.villageLines[kb], TALES.fold.shutLines)
   assert.ok(state.villageLines[kb].villager.length >= 1)
+})
+
+// ---- step 2: the flame-thief and the grey wood ---------------------------------------------------
+const NIGHT = [...Array(360).keys()].find(c => isNight(c)), DAY = [...Array(360).keys()].find(c => !isNight(c))
+const wraiths = state => state.entities.filter(e => e.type === 'sammunut')
+const firesOf = state => state.entities.filter(e => e.type === 'campfire')
+const hearth = (t, n) => { const p = getPiece(t.world, 0, 0), h = p.villagePoints[n - 1]; return { x: (0 - t.world.origin.wx) * PIECE + h.x, y: (0 - t.world.origin.wy) * PIECE + h.y } }
+// hearths seen to this dusk: a villager on the way, or one already there who lit it at once
+const tended = (state, folk) => folk.filter(v => v.chore).length + firesOf(state).filter(f => f.hearth).length
+const villagers = state => state.entities.filter(e => e.type === 'npc' && ['villager', 'elder'].includes(e.species) && e.wildsKey === '0,0')
+function handWood(t) {
+  t.state.player.inventory.push(makeItem('greywood', 3))
+  put(t.state, villagers(t.state).find(v => !v.chore) ?? villagers(t.state)[0], 1, 0)
+  tickTales(t.state, t.world, DELIVERY_COOLDOWN + 0.1, t.hooks)
+  tickTales(t.state, t.world, CHORE_TIMEOUT + 1, t.hooks)
+}
+
+test('the flame-thief, start to finish: dusk, the snuffing, three blue hearths, Lauri home', () => {
+  const t = setup('flame', '1,1')
+  const c = centre(t)
+  const [wraith] = wraiths(t.state)
+  assert.equal(wraiths(t.state).length, 1)
+  const far = Math.max(Math.abs(wraith.x - c.x), Math.abs(wraith.y - c.y))
+  assert.ok(far >= 20 && far <= 30, `the Sammunut rose ${far} tiles from the village`)
+  assert.deepEqual([wraith.taleKey, wraith.leash?.x, wraith.leash?.y], ['tale:0,0', c.x, c.y])
+  assert.equal(t.save.clock, 0, 'the hour was changed')
+
+  t.save.clock = NIGHT
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(tended(t.state, villagers(t.state)), 3, 'the three hearths were not all seen to')
+  tickTales(t.state, t.world, CHORE_TIMEOUT + 1, t.hooks)
+  assert.equal(firesOf(t.state).filter(f => f.hearth).length, 3)
+  put(t.state, hearth(t, 1), 0, 4)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  const h1 = hearth(t, 1)
+  t.state.entities = t.state.entities.filter(e => !(e.type === 'campfire' && Math.abs(e.x - h1.x) <= 1 && Math.abs(e.y - h1.y) <= 1))
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.seen_snuff, true)
+
+  t.state.player.inventory.push(makeItem('deadwood', 3))
+  put(t.state, villagers(t.state)[0], 1, 0)
+  tickTales(t.state, t.world, DELIVERY_COOLDOWN + 0.1, t.hooks)
+  assert.ok(!t.flags.wood_1, 'dead wood from any tree was taken')
+  t.state.player.inventory.length = 0
+  for (const n of [1, 2, 3]) {
+    handWood(t)
+    assert.equal(t.flags[`wood_${n}`], true)
+    const hn = hearth(t, n)
+    assert.ok(firesOf(t.state).some(f => f.eternal && f.fuel === 'greywood' && f.x === hn.x && f.y === hn.y), `hearth ${n} is not blue`)
+  }
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(wraith.doomed, true)
+  t.state.creatureKills.sammunut = true
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.wraith_dead, true)
+  assert.equal(t.rec.done, true)
+  assert.deepEqual(t.calls.talents, ['sinituli'])
+  assert.equal(missing(t.state).length, 1, 'Lauri did not come home')
+  assert.equal(t.state.map[h1.y][h1.x].overlay, 'prop_hearth_lit')
+})
+
+// Review Focus 2
+test('dusk while away: coming back at night finds the hearths tended and one Sammunut about', () => {
+  const t = setup('flame', '1,1')
+  shift(t, 0, -1); shift(t, 0, -1)
+  assert.equal(wraiths(t.state).length, 0)
+  t.save.clock = NIGHT
+  tickTales(t.state, t.world, 30, t.hooks)
+  shift(t, 0, 1); shift(t, 0, 1)
+  assert.equal(wraiths(t.state).length, 1)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(tended(t.state, villagers(t.state)), 3)
+  arriveTales(t.state, t.world, t.hooks)
+  assert.equal(wraiths(t.state).length, 1, 'a second Sammunut rose')
+})
+
+// Review Focus 5
+test('death with two hearths blue: both burn again on waking', () => {
+  const t = setup('flame', '1,1', { flags: { arrived: true, sammunut_spawned: true, wood_1: true, wood_2: true } })
+  wildsRespawn(t.state, t.world, { buildEntities })
+  arriveTales(t.state, t.world, t.hooks, { fresh: true })
+  const blue = firesOf(t.state).filter(f => f.eternal && f.fuel === 'greywood')
+  assert.equal(blue.length, 2)
+  for (const n of [1, 2]) { const h = hearth(t, n); assert.ok(blue.some(f => f.x === h.x && f.y === h.y)) }
+  assert.equal(wraiths(t.state).length, 1)
+})
+
+// Review Focus 4
+test('a fold village on the same screen lights no hearths and takes no grey wood', () => {
+  let found = null
+  for (let seed = 1; seed <= 60 && !found; seed++) {
+    const vs = villagesNear(seed, 0, 0, 10).filter(v => v.wx || v.wy)
+    for (const a of vs) for (const b of vs) if (a !== b && !found && Math.max(Math.abs(a.wx - b.wx), Math.abs(a.wy - b.wy)) <= 2) found = { seed, a, b }
+  }
+  const { seed, a, b } = found
+  const world = makeWorld(null, { seed })
+  const ka = `${a.wx},${a.wy}`, kb = `${b.wx},${b.wy}`
+  world.tales.set(ka, { id: 'flame', flags: { arrived: true, sammunut_spawned: true }, place: null, n: 0, nSide: 0, done: false })
+  world.tales.set(kb, { id: 'fold', flags: {}, place: null, n: 0, nSide: 0, done: false })
+  const state = { player: { x: 0, y: 0, px: 0, py: 0, hp: 10, maxHp: 10, talents: [], inventory: [], maxInventory: 20 }, entities: [], feedback: makeFeedback(), sfx: makeSfx(), creatureKills: {} }
+  const save = { clock: NIGHT }
+  const hooks = { getState: () => state, spawn: s => buildEntities(s), persist: () => {}, refreshInventory: () => {}, rollLoot: () => ({ type: 'potion', amount: 4 }), save: () => save, isNight: () => true, grantTalent: () => {} }
+  enterWilds(state, world, { wx: Math.round((a.wx + b.wx) / 2), wy: Math.round((a.wy + b.wy) / 2) }, { buildEntities })
+  arriveTales(state, world, hooks, { fresh: true })
+  tickTales(state, world, 0.016, hooks)
+  const of = k => state.entities.filter(e => e.type === 'npc' && ['villager', 'elder'].includes(e.species) && e.wildsKey === k)
+  assert.equal(tended(state, of(ka)), 3)
+  assert.equal(of(kb).filter(v => v.chore).length, 0, 'the fold\'s people were sent to light hearths')
+  state.player.inventory.push(makeItem('greywood', 3))
+  const stranger = of(kb)[0]
+  Object.assign(state.player, { x: stranger.x + 1, y: stranger.y })
+  tickTales(state, world, 3, hooks)
+  assert.equal(state.player.inventory[0].count, 3, 'the fold\'s people took the grey wood')
 })

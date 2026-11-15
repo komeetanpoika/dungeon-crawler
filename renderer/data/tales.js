@@ -181,7 +181,38 @@ export const TALES = {
     rule: f => !!f.wraith_dead,
     missing: { species: 'villager', name: 'Lauri' },
     landWord: 'the fen',
-    lines: [],
+    reward: 'sinituli',
+    houses: { 'hermit hut': { room: 'hermit_woodpile', pickups: [
+      { type: 'weapon', weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 },
+      { type: 'greywood', count: 3 },
+    ] } },
+    remarks: [
+      { at: 'knoll', within: 6, text: 'Grey trees, cold to the touch. Nothing else out here grows like this.' },
+      { at: 'hermit hut', within: 3, text: 'His hearth is cold, but the woodpile by it is grey as ash.' },
+      { at: 'hearth 1', within: 6, when: f => f.seen_snuff && !f.wood_1, text: 'It ate the fire. Ordinary wood only feeds it.' },
+    ],
+    lines: [
+      { when: f => f.wraith_dead, by: {
+        villager: ['Blue on every hearth. It will not walk in again.', 'The old man came down to see them burn.'],
+        elder:    ['His wood, our hearths. That is how it should have been.'],
+        hermit:   ['The fire held. I was wrong to keep it to myself.'],
+      } },
+      { when: f => f.wood_1, by: {
+        villager: ['Blue. Like his. It could not put that one out.', 'Bring more of his wood. Every hearth wants it.'],
+        elder:    ['It cannot snuff the blue and it cannot leave it alone. Light all three.'],
+        hermit:   ['…'],
+      } },
+      { when: f => f.seen_snuff, by: {
+        villager: ['You saw it? Nobody has seen it. The fires just go out.'],
+        elder:    ['Something walks in and puts them out. Only the old hermit\'s wood ever held — grey stuff, off his knoll, somewhere out in {land}. It burned blue.', 'Not any dead tree. His.'],
+        hermit:   ['…'],
+      } },
+      { when: () => true, by: {
+        villager: ['We light the hearths at dusk. By midnight they are cold again.', 'Lauri walked out one night to see what does it. He did not come back.'],
+        elder:    ['Stay till dark and watch the hearths, stranger. Then tell me what you saw.', 'There was a hermit out in {land} whose hearth never went out, they say. An old tale.'],
+        hermit:   ['…'],
+      } },
+    ],
   },
 }
 export const TALE_IDS = ['elk', 'tar', 'kivihiisi', 'nakki', 'fold', 'flame']

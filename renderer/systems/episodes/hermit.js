@@ -14,6 +14,7 @@ import { DAY_LENGTH } from '../../data/weather.js'
 import { isNight } from '../weather.js'
 import { sfx } from '../sfx.js'
 import { think, speakFrom } from '../feedback.js'
+import { markTileDirty } from '../tile-dirty.js'
 
 const S = 32
 export const SAMMUNUT_MIN_DIST = 20
@@ -58,9 +59,22 @@ export function lightHearths(map, mapData) {
   for (const label of HEARTH_LABELS) {
     const spot = poiCell(mapData, label)
     const cell = spot && map[spot.y]?.[spot.x]
-    if (cell) cell.overlay = 'prop_hearth_lit'
+    if (cell) { cell.overlay = 'prop_hearth_lit'; markTileDirty(map, spot.x, spot.y) }
   }
 }
+
+// Optional ctx hooks, for a caller whose map is not this episode's own (the
+// Wilds' tales); absent, everything is as it always was:
+//   wood          the fuel the hearths take ('deadwood' here; the Wilds' grey wood)
+//   runtime       an object to keep the per-visit state on, instead of state.hermit
+//   isWorker(e)   which villagers light hearths and take wood (one village of several)
+//   keepClock     do not set the hour on first arrival
+//   hasWraith()   a Sammunut of this telling is already about: do not raise another
+//   wraithSpot()  where it rises
+//   ownsFire(f) / ownsWraith(e)  which hearth fires dawn douses, which wraith is doomed
+//   onResolved()  called in place of setting the map-wide villager lines
+const woodOf = ctx => ctx.wood ?? 'deadwood'
+const worker = (ctx, e) => isWorker(e) && (ctx.isWorker?.(e) ?? true)
 
 // A campfire entity within Chebyshev 1 of the hearth cell, or null.
 export function hearthFireAt(entities, hearth) {
@@ -92,10 +106,10 @@ const pick = (lines, e) => lines[Math.abs(hashId(e.id)) % lines.length]
 function hashId(id) { let h = 0; for (const ch of String(id ?? '')) h = (h * 31 + ch.charCodeAt(0)) | 0; return h }
 
 // The nearest worker with no chore, or null.
-function freeWorker(entities, cell) {
+function freeWorker(ctx, cell) {
   let best = null, bestD = Infinity
-  for (const e of entities) {
-    if (!isWorker(e) || e.chore) continue
+  for (const e of ctx.state.entities) {
+    if (!worker(ctx, e) || e.chore) continue
     const d = Math.hypot(e.x - cell.x, e.y - cell.y)
     if (d < bestD) { bestD = d; best = e }
   }
@@ -120,7 +134,8 @@ function sendToHearth(state, e, cell) {
 
 function spawnWraith(ctx) {
   const { state, flags } = ctx
-  const spot = sammunutSpot(state.map, state.player)
+  if (ctx.hasWraith?.()) return
+  const spot = ctx.wraithSpot ? ctx.wraithSpot() : sammunutSpot(state.map, state.player)
   if (!spot) { console.warn(`hermit: no spot ${SAMMUNUT_MIN_DIST}+ tiles from the player — the Sammunut cannot spawn`); return }
   ctx.spawn([{ kind: 'sammunut', x: spot.x, y: spot.y }])
   if (!flags.sammunut_spawned) { ctx.set('sammunut_spawned'); ctx.persist() }
@@ -128,11 +143,11 @@ function spawnWraith(ctx) {
 
 // Lights hearth n blue: an eternal deadwood fire on the hearth cell itself,
 // replacing whatever ordinary fire was burning beside it.
-function lightBlue(state, cell) {
+function lightBlue(state, cell, fuel = 'deadwood') {
   const old = hearthFireAt(state.entities, cell)
   if (old?.eternal) return old
   if (old) state.entities = state.entities.filter(e => e !== old)
-  const fire = makeCampfire(cell.x, cell.y, { eternal: true, fuel: 'deadwood' })
+  const fire = makeCampfire(cell.x, cell.y, { eternal: true, fuel })
   state.entities.push(fire)
   return fire
 }
@@ -142,29 +157,33 @@ function lightBlue(state, cell) {
 // the same session, or an arrival that hasn't rebuilt entities).
 function relightBlue(ctx) {
   const { state, mapData, flags } = ctx
-  for (const { n, cell } of hearths(mapData)) if (flags[woodFlag(n)]) lightBlue(state, cell)
+  for (const { n, cell } of hearths(mapData)) if (flags[woodFlag(n)]) lightBlue(state, cell, woodOf(ctx))
 }
 
 // Arrival — a fresh load or a waystone journey; a cave dive stashes the
 // surface state whole and never re-runs this.
 export function onArrive(ctx) {
   const { state, mapData, flags, episode, save } = ctx
-  state.hermit = { lit: {}, seen: {}, deliverT: 0 }
+  if (ctx.runtime) Object.assign(ctx.runtime, { lit: {}, seen: {}, deliverT: 0 })
+  else state.hermit = { lit: {}, seen: {}, deliverT: 0 }
   relightBlue(ctx)
   if (flags.wraith_dead) {
     lightHearths(state.map, mapData)
-    state.villagerLines = episode.resolvedLines
+    if (ctx.onResolved) ctx.onResolved(); else state.villagerLines = episode.resolvedLines
     return
   }
   if (!flags.arrived) {
-    save.clock = ARRIVAL_CLOCK
+    if (!ctx.keepClock) save.clock = ARRIVAL_CLOCK
     ctx.set('arrived')
     ctx.persist()
   }
   spawnWraith(ctx)
 }
 
-const runtime = state => state.hermit ??= { lit: {}, seen: {}, deliverT: 0 }
+const runtime = ctx => {
+  if (ctx.runtime) { ctx.runtime.lit ??= {}; ctx.runtime.seen ??= {}; ctx.runtime.deliverT ??= 0; return ctx.runtime }
+  return ctx.state.hermit ??= { lit: {}, seen: {}, deliverT: 0 }
+}
 
 // Dusk: every cold hearth without a fire, a chore or a lighting already this
 // night gets the nearest free villager. Dawn: the ordinary hearth fires go
@@ -172,19 +191,19 @@ const runtime = state => state.hermit ??= { lit: {}, seen: {}, deliverT: 0 }
 // the next dusk starts over. A blue chore is kept — that wood was handed over.
 function tickHearths(ctx) {
   const { state, mapData, flags, save } = ctx
-  const rt = runtime(state)
+  const rt = runtime(ctx)
   if (!isNight(save.clock)) {
     if (Object.keys(rt.lit).length) rt.lit = {}
-    state.entities = state.entities.filter(e => !(e.type === 'campfire' && e.hearth))
-    for (const e of state.entities) if (e.chore && !e.chore.blue) { delete e.chore; e.objective = null }
+    state.entities = state.entities.filter(e => !(e.type === 'campfire' && e.hearth && (ctx.ownsFire?.(e) ?? true)))
+    for (const e of state.entities) if (e.chore && !e.chore.blue && (ctx.isWorker?.(e) ?? true)) { delete e.chore; e.objective = null }
     return
   }
   for (const { n, cell } of hearths(mapData)) {
     if (flags[woodFlag(n)] || rt.lit[n] || hearthFireAt(state.entities, cell)) continue
-    if (state.entities.some(e => e.chore?.hearth === n)) continue
-    const worker = freeWorker(state.entities, cell)
-    if (!worker) continue
-    assignChore(state, worker, n, cell, false)
+    if (state.entities.some(e => e.chore?.hearth === n && (ctx.isWorker?.(e) ?? true))) continue
+    const who = freeWorker(ctx, cell)
+    if (!who) continue
+    assignChore(state, who, n, cell, false)
   }
 }
 
@@ -193,9 +212,9 @@ function tickHearths(ctx) {
 // dusk chore, blue and eternal for a delivered one.
 function tickChores(ctx, delta) {
   const { state, mapData, flags } = ctx
-  const rt = runtime(state)
+  const rt = runtime(ctx)
   for (const e of state.entities) {
-    if (!e.chore) continue
+    if (!e.chore || !(ctx.isWorker?.(e) ?? true)) continue
     const cell = poiCell(mapData, HEARTH_LABELS[e.chore.hearth - 1])
     // a dusk chore for a hearth that has since gone blue has nothing to do
     if (!cell || (!e.chore.blue && flags[woodFlag(e.chore.hearth)])) { delete e.chore; e.objective = null; continue }
@@ -206,7 +225,7 @@ function tickChores(ctx, delta) {
       continue
     }
     if (e.chore.blue) {
-      const fire = lightBlue(state, cell)
+      const fire = lightBlue(state, cell, woodOf(ctx))
       sfx(state, 'grey-fire', { px: fire.px, py: fire.py })
       speakFrom(state, e, pick(BLUE_LINES, e))
     } else if (!hearthFireAt(state.entities, cell)) {
@@ -225,16 +244,16 @@ function tickChores(ctx, delta) {
 // the first cold hearth blue. One hearth per handover, a breath apart.
 function tickDelivery(ctx, delta) {
   const { state, mapData, flags } = ctx
-  const rt = runtime(state)
+  const rt = runtime(ctx)
   rt.deliverT = Math.max(0, rt.deliverT - delta)
   if (rt.deliverT > 0 || allBlue(flags)) return
   const { player } = state
-  if (!canBuildCampfire(player, 'deadwood').ok) return
-  const v = state.entities.find(e => isWorker(e) && Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 1)
+  if (!canBuildCampfire(player, woodOf(ctx)).ok) return
+  const v = state.entities.find(e => worker(ctx, e) && Math.abs(e.x - player.x) + Math.abs(e.y - player.y) <= 1)
   if (!v) return
   const target = hearths(mapData).find(h => !flags[woodFlag(h.n)])
   if (!target) return
-  spendLumber(player, 'deadwood')
+  spendLumber(player, woodOf(ctx))
   ctx.set(woodFlag(target.n))
   ctx.refreshInventory()
   assignChore(state, v, target.n, target.cell, true)
@@ -249,7 +268,7 @@ function tickDelivery(ctx, delta) {
 // happens on the day branch of tickHearths, so it never reaches here.
 function tickSnuffWatch(ctx) {
   const { state, mapData, flags, save } = ctx
-  const rt = runtime(state)
+  const rt = runtime(ctx)
   const now = {}
   for (const { n, cell } of hearths(mapData)) now[n] = !!hearthFireAt(state.entities, cell)?.hearth
   const was = rt.seen
@@ -271,7 +290,7 @@ function tickSnuffWatch(ctx) {
 function tickDoom(ctx) {
   const { state, flags } = ctx
   if (!allBlue(flags)) return
-  for (const e of state.entities) if (e.type === 'sammunut' && !e.doomed) e.doomed = true
+  for (const e of state.entities) if (e.type === 'sammunut' && !e.doomed && (ctx.ownsWraith?.(e) ?? true)) e.doomed = true
 }
 
 // Death is the explicit kill game.js records on state.creatureKills, never

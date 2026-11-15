@@ -45,7 +45,7 @@ export const SITE_SKINS = [...new Set([
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
   'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
   'ow_deco_firepit', 'ow_kiln_cold', 'ow_mtn_rock_cap', 'ow_prop_fishrack_l', 'ow_prop_fishrack_r', 'ow_pier_log', 'ow_stone_ground_0',
-  'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small',
+  'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small', 'ow_greytree_0', 'ow_greytree_1',
 ])]
 
 // ---- the places of the tales (data/tales.js) --------------------------------------
@@ -54,7 +54,7 @@ export const SITE_SKINS = [...new Set([
 //   hub    where the roads from the gates meet
 //   keep   circles nothing else of the piece is dealt into
 //   ways   cells opened as an unmarked way through the trees; nothing is built on them
-export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16, fold: 8 }
+export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16, fold: 8, flame: 9 }
 // The cells of a one-wide walkable line, each a step along x or y from the last.
 export function wayCells(x0, y0, x1, y1) {
   const out = [{ x: x0, y: y0 }]
@@ -95,6 +95,10 @@ export function layoutTale(tale, rng, gateInner = null) {
     // a sure way from the den to the burrow's mouth, whatever grows between
     const ways = wayCells(hub.x, hub.y, burrow.x, burrow.y + 1)
     return { cx, cy, hub, burrow, burns, ways, keep: [{ x: burrow.x, y: burrow.y - 2, r: 8 }, ...burns.map(b => ({ x: b.x, y: b.y, r: 4 }))] }
+  }
+  if (tale === 'flame') {
+    const cx = ri(26, 50), cy = ri(28, 50)
+    return { cx, cy, hub: { x: cx, y: cy + 5 }, keep: [{ x: cx + 7, y: cy + 4, r: 6 }] }
   }
   if (tale === 'nakki') {
     const cx = ri(36, 52), cy = ri(26, 50)
@@ -511,6 +515,34 @@ export function makeSites(c) {
     ]
   }
 
+  // The knoll (the flame-thief): a rise of stony ground where grey trees
+  // stand that grow nowhere else, and the silent hermit's hut beside it.
+  function knoll(g) {
+    const { cx, cy } = g
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) if (dx * dx + dy * dy <= 64) {
+      t.clear(cx + dx, cy + dy)
+      if (dx * dx + dy * dy <= 49) t.setFloor(cx + dx, cy + dy, { roads: true })
+    }
+    hold(g.hub.x, g.hub.y)
+    // the stand: one tree on every other cell of a loose ring and its heart, never on a road
+    let grown = 0
+    for (let i = 0; i < 300 && grown < 16; i++) {
+      const a = rng() * Math.PI * 2, r = 1.5 + rng() * 4.5
+      const x = cx + Math.round(Math.cos(a) * r), y = cy + Math.round(Math.sin(a) * r)
+      if (!t.free(x, y) || c.taken(x, y) || t.onPath(x, y)) continue
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => (t.propAt(x + dx, y + dy) ?? '').startsWith('ow_greytree_'))) continue
+      put(x, y, pick(['ow_greytree_0', 'ow_greytree_1'])); grown++
+    }
+    const door = { x: cx + 7, y: cy + 4 }
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) t.clear(door.x + dx, door.y + dy)
+    const h = house(door.x, door.y, 'hut', { w: 3, wall: 'stone', roof: 'blue', story: 'hermit hut' })
+    const hearth = { x: h.x0 - 2, y: door.y + 1 }
+    t.setProp(hearth.x, hearth.y, 'ow_deco_firepit', { walkable: true }); hold(hearth.x, hearth.y)
+    low(h.x1 + 1, door.y, 'ow_prop_woodpile')
+    c.npc('hermit', door.x + 1, door.y + 1)
+    return [{ label: 'knoll', x: cx, y: cy }, { label: 'hermit hut', ...door }, { label: 'hearth', ...hearth }]
+  }
+
   // What a village's own tale leaves standing in it. Laid where the village
   // keeps no house, door or road end. Returns the village's named points.
   function villageTrouble(tale, cx, cy) {
@@ -529,9 +561,15 @@ export function makeSites(c) {
       t.clear(cx + 8, cy + 7); hold(cx + 8, cy + 7)
       for (const [dx, dy] of [[8, 10], [9, 9], [10, 10]]) c.npc('sheep', cx + dx, cy + dy)
     }
+    if (tale === 'flame') {
+      // three hearths on the square, lit at dusk and cold by midnight
+      const hearths = [[-2, -2], [2, -2], [0, 3]].map(([dx, dy], i) => ({ label: `hearth ${i + 1}`, x: cx + dx, y: cy + dy }))
+      for (const h of hearths) put(h.x, h.y, 'prop_hearth_cold')
+      return hearths
+    }
     return []
   }
 
-  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge }
+  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll }
   return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble }
 }

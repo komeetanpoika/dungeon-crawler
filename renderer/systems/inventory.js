@@ -14,7 +14,8 @@ const STACKABLE_KINDS = {
   meat:        { name: 'Meat',        emoji: '🍖', extra: { heal: 1 } },   // animal drop, raw
   cooked_meat: { name: 'Cooked Meat', emoji: '🍗', extra: { heal: 4 } },   // raw meat cooked on a campfire
   lumber:      { name: 'Lumber',      emoji: '🪵', extra: {} },            // felled tree (systems/lumber.js)
-  deadwood:    { name: 'Grey Wood',   emoji: '🪵', extra: {} },  // dead-tree wood (systems/lumber.js); the hermit's fuel
+  deadwood:    { name: 'Dead Wood',   emoji: '🪵', extra: {} },  // any dead tree's wood (systems/lumber.js); the hermit's fuel on the Timewarp map
+  greywood:    { name: 'Grey Wood',   emoji: '🪵', extra: {} },  // the hermit's own, from his knoll's grey trees (the Wilds)
   // Leap-episode quest items: never consumable, no default panel action
   // (Drop stays available — see ui/inventory-panel-model.js sackActions).
   clapper:     { name: 'Bell Clapper', emoji: '🔔', extra: { quest: true } },
