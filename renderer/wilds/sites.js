@@ -25,6 +25,7 @@ const OLD_STONES = ['ow_ruin_stub_0', 'ow_ruin_stub_1', 'ow_ruin_col_base_0', 'o
 const SAND_STONES = ['ow_ruin_pillar', 'ow_ruin_pillar_2', 'ow_ruin_rubble', 'ow_ruin_wall_2']
 const SAND_FLOOR = ['ow_ruin_crack_0', 'ow_ruin_crack_1', 'ow_ruin_crack_2']
 const DEAD = ['ow_deadtree_0', 'ow_deadtree_1']
+const LALLI_HOUSE = "Lalli's house"
 
 export const SITE_SKINS = [...new Set([
   ...Object.values(ROOF).flatMap(r => [...r.top, ...r.low, r.chim, r.gable]),
@@ -56,7 +57,7 @@ export const SITE_SKINS = [...new Set([
 //   hub    where the roads from the gates meet
 //   keep   circles nothing else of the piece is dealt into
 //   ways   cells opened as an unmarked way through the trees; nothing is built on them
-export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16, fold: 8, flame: 9 }
+export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16, fold: 8, flame: 9, lalli: 8 }
 // The cells of a one-wide walkable line, each a step along x or y from the last.
 export function wayCells(x0, y0, x1, y1) {
   const out = [{ x: x0, y: y0 }]
@@ -101,6 +102,14 @@ export function layoutTale(tale, rng, gateInner = null) {
   if (tale === 'flame') {
     const cx = ri(26, 50), cy = ri(28, 50)
     return { cx, cy, hub: { x: cx, y: cy + 5 }, keep: [{ x: cx + 7, y: cy + 4, r: 6 }] }
+  }
+  if (tale === 'lalli') {
+    // the pine in the middle, the pond a short walk east, the piper's camp south-west
+    const cx = ri(28, 48), cy = ri(28, 50)
+    const pond = { x: cx + 12, y: cy + 1 }, camp = { x: cx - 10, y: cy + 5 }
+    const hub = { x: cx, y: cy + 4 }, bank = { x: pond.x - 6, y: pond.y }
+    const ways = [...wayCells(hub.x, hub.y, bank.x, bank.y), ...wayCells(hub.x, hub.y, camp.x + 2, camp.y)]
+    return { cx, cy, hub, pond, camp, bank, ways, keep: [{ x: pond.x, y: pond.y, r: 7 }, { x: camp.x, y: camp.y, r: 5 }] }
   }
   if (tale === 'nakki') {
     const cx = ri(36, 52), cy = ri(26, 50)
@@ -189,14 +198,15 @@ export function makeSites(c) {
   // ---- the village ------------------------------------------------------------
   // Four to six houses round a cobbled well, no two rows of them touching;
   // everything stays within 11 tiles of the centre, inside the opened pad.
-  function village(cx, cy) {
+  function village(cx, cy, tale = null) {
     cobble(cx, cy, 14)
     put(cx, cy - 1, 'ow_well_top'); put(cx, cy, 'ow_well')
     put(cx - 2, cy + 1, 'ow_sign')
     const big = rng() < 0.5
     house(cx - 7, cy - 3, 'safe', { w: 4 + (rng() < 0.5 ? 1 : 0) })
     house(cx + 6, cy - 4, 'safe', { w: 5, storeys: big ? 2 : 1 })
-    house(cx - 7, cy + 5, 'safe', { w: 3 })
+    // in a Lalli village the house by the field is his: its larder holds the tale's pint
+    house(cx - 7, cy + 5, 'safe', { w: 3, story: tale === 'lalli' ? LALLI_HOUSE : null })
     house(cx + 7, cy + 4, 'safe', { w: 3 + (rng() < 0.5 ? 1 : 0) })
     if (rng() < 0.5) house(cx - 3, cy - 8, 'safe', { w: 3 })
     if (rng() < 0.4) house(cx + 4, cy + 9, 'safe', { w: 3 + (rng() < 0.5 ? 1 : 0) })
@@ -545,9 +555,39 @@ export function makeSites(c) {
     return [{ label: 'knoll', x: cx, y: cy }, { label: 'hermit hut', ...door }, { label: 'hearth', ...hearth }]
   }
 
+  // Lalli's pine (the Lalli tale): one tall pine no axe fells, alone on open
+  // ground; a pond with a pier out to its middle; the piper's camp. Lalli,
+  // the mice and the piper are the tale's own to put there (wilds/tale-lalli.js).
+  function lalliTree(g) {
+    const { cx, cy, pond: P, camp: C, bank } = g
+    for (const w of g.ways) { t.clear(w.x, w.y); hold(w.x, w.y) }
+    for (let dy = -4; dy <= 5; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy <= 20) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+    put(cx, cy - 1, 'ow_lalli_pine_top'); put(cx, cy, 'ow_lalli_pine_trunk')
+    // the pond, with a shore to walk all the way round
+    for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) {
+      const d = Math.hypot(dx, dy)
+      if (d + wob(P.x + dx, P.y + dy, 540) <= 4.6) { t.setWater(P.x + dx, P.y + dy); hold(P.x + dx, P.y + dy) }
+      else if (d <= 6.6) { t.clear(P.x + dx, P.y + dy); hold(P.x + dx, P.y + dy) }
+    }
+    // five planks from the bank to within a step of the pond's middle
+    for (let x = bank.x + 1; x <= P.x - 1; x++) { t.setWater(x, P.y); t.setProp(x, P.y, 'ow_pier_log', { walkable: true }); hold(x, P.y) }
+    // the camp: a tent, a fire, a bedroll, and a barrel with nothing left in it
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { t.clear(C.x + dx, C.y + dy); hold(C.x + dx, C.y + dy) }
+    tent(C.x - 2, C.y - 2, 'ow_tent_tan')
+    fire(C.x + 1, C.y + 1)
+    low(C.x - 2, C.y + 1, 'ow_prop_barrel_0'); low(C.x + 2, C.y - 2, 'ow_prop_log'); low(C.x, C.y - 2, 'ow_prop_bedroll_0')
+    return [
+      { label: 'lalli tree', x: cx, y: cy - 1 }, { label: 'tree foot', x: cx, y: cy + 1 },
+      { label: 'pond', ...P }, { label: 'pier end', x: P.x - 1, y: P.y }, { label: 'pier bank', ...bank }, { label: 'piper camp', ...C },
+    ]
+  }
+
   // What a village's own tale leaves standing in it. Laid where the village
   // keeps no house, door or road end. Returns the village's named points.
   function villageTrouble(tale, cx, cy) {
+    // Lalli's house is the one by the field (village() marks its door); Kerttu
+    // waits beside the doorstep. She is the tale's own to put there.
+    if (tale === 'lalli') return [{ label: LALLI_HOUSE, x: cx - 7, y: cy + 5 }, { label: 'kerttu', x: cx - 6, y: cy + 6 }]
     if (tale === 'nakki') {
       // fish racks standing empty since the pier was given up
       put(cx - 11, cy - 2, 'ow_prop_fishrack_l'); put(cx - 10, cy - 2, 'ow_prop_fishrack_r')
@@ -572,6 +612,6 @@ export function makeSites(c) {
     return []
   }
 
-  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll }
+  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree }
   return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble }
 }

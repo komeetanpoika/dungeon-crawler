@@ -25,9 +25,12 @@ import { getPiece } from './world.js'
 import { makeCtx } from '../systems/story.js'
 import { QUEST_MODULES } from '../systems/quests/index.js'
 import { EPISODE_MODULES } from '../systems/episodes/index.js'
+import * as lalli from './tale-lalli.js'
 import { queueToast, think } from '../systems/feedback.js'
 import { TILE } from '../systems/entities.js'
 
+// tales with a module of their own (`engine: 'wilds'`), not one borrowed from an older mode
+const WILDS_MODULES = { lalli }
 const SEES_TILES = 10   // how near a thing must be for the player to remark on it
 const parseKey = key => { const [wx, wy] = key.split(',').map(Number); return { wx, wy } }
 const inWindow = (world, p) => !!world.origin && p.wx >= world.origin.wx && p.wx < world.origin.wx + WIN
@@ -144,7 +147,7 @@ function makeRun(state, world, vKey, rec, hooks) {
       },
     },
   })
-  const module = tale.engine === 'episode' ? EPISODE_MODULES[tale.module] : QUEST_MODULES[tale.module]
+  const module = { episode: EPISODE_MODULES, wilds: WILDS_MODULES }[tale.engine]?.[tale.module] ?? QUEST_MODULES[tale.module]
   return { ctx, tale, module, vKey, taleKey, villagePoint, villageIn: false, placeIn: false }
 }
 
@@ -316,14 +319,18 @@ function comeHome(state, run) {
   }
 }
 
-// A door of a tale's place that opens on a story room: the episode-shaped
-// record game.js hands the interior builder ({ houses }), or null.
+// A door that opens on a story room, at a tale's place or in the village
+// that tells it (Lalli's house): the episode-shaped record game.js hands the
+// interior builder ({ houses }), or null.
 export function storyEpisode(world, door) {
   const m = /^house:wilds:(-?\d+),(-?\d+)$/.exec(door?.label ?? '')
   if (!m || !door.story) return null
-  const place = world.places.get(pieceKey(Math.floor(m[1] / PIECE), Math.floor(m[2] / PIECE)))
-  const houses = place && TALES[place.id]?.houses
-  return houses?.[door.story] ? { houses } : null
+  const key = pieceKey(Math.floor(m[1] / PIECE), Math.floor(m[2] / PIECE))
+  // a house declared `in: 'village'` stands in the village; every other at the tale's place
+  const place = world.places.get(key)?.id, village = world.tales.get(key)?.id
+  const at = id => id && TALES[id]?.houses?.[door.story]
+  const id = at(place) && at(place).in !== 'village' ? place : at(village)?.in === 'village' ? village : null
+  return id ? { houses: TALES[id].houses } : null
 }
 
 // A tale that `begins: 'village'` starts its clock when the player first
