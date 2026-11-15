@@ -266,6 +266,8 @@ export function spriteKeyFor(e) {
   if (e.role === 'missing') return 'npc_villager_3'
   if (e.species !== 'villager') return def.sprite
   const idx = Number(e.id?.split(':').at(-1)) || 0
+  // In the Wilds someone comes home to many villages: the third face is kept for them.
+  if (e.wildsKey !== undefined) return ['npc_villager', 'npc_villager_2'][idx % 2]
   return ['npc_villager', 'npc_villager_2', 'npc_villager_3'][idx % 3]
 }
 

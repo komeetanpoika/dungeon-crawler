@@ -164,3 +164,12 @@ describe('grey wood, and sinituli', () => {
     assert.equal(state.player.hp, 3, 'an ordinary fire healed')
   })
 })
+
+describe('sinituli and death', () => {
+  it('a blue fire does not lift the dead', () => {
+    const fire = Object.assign(makeCampfire(10, 10), { blue: true })
+    const state = { entities: [fire], player: { x: 10, y: 11, hp: 0, maxHp: 7, blueRestT: 2.9 } }
+    tickBlueRest(state, 5)
+    assert.equal(state.player.hp, 0)
+  })
+})

@@ -8,6 +8,7 @@ import { itemFromContents, autoEquipOnPickup } from '../inventory.js'
 import { NPC_SPECIES } from '../../data/npcs.js'
 import { sfx } from '../sfx.js'
 import { think, announce } from '../feedback.js'
+import { markTileDirty } from '../tile-dirty.js'
 
 const S = 32
 const GIFT_MSG_COOLDOWN = 3
@@ -45,6 +46,7 @@ export function burnBand(map, mapData, n) {
       const cell = map[y]?.[x]
       if (!cell || !isTreeOverlay(cell.overlay)) continue
       cell.overlay = DEADTREE[keys.length % 2]
+      markTileDirty(map, x, y)
       keys.push(`${x},${y}`)
     }
   }
@@ -61,6 +63,7 @@ export function applyBurnt(map, keys) {
     const cell = map[y]?.[x]
     if (!cell) return
     cell.overlay = DEADTREE[i % 2]
+    markTileDirty(map, x, y)
   })
 }
 
@@ -202,6 +205,9 @@ export function burrowOpen(map, mapData) {
 
 // Puts the Maahinen on the lair POI. Returns whether it actually spawned.
 function spawnMaahinen(ctx) {
+  // ctx.hasCreature (optional): on a map that keeps things alive between
+  // arrivals, this telling's Maahinen may still be about
+  if (ctx.hasCreature?.('maahinen')) return true
   const spot = poiCell(ctx.mapData, 'lair')
   if (!spot) { console.warn('fold: no lair POI — the Maahinen cannot spawn'); return false }
   ctx.spawn([{ kind: 'maahinen', x: spot.x, y: spot.y }])

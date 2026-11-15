@@ -65,7 +65,7 @@ export function tickBlueRest(state, delta) {
   const p = state.player
   const near = state.entities.some(e => e.type === 'campfire' && e.blue === true
     && Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y)) <= BLUE_REST_TILES)
-  if (!near || p.hp >= p.maxHp) { p.blueRestT = 0; return }
+  if (!near || p.hp <= 0 || p.hp >= p.maxHp) { p.blueRestT = 0; return }
   p.blueRestT = (p.blueRestT ?? 0) + delta
   while (p.blueRestT >= BLUE_REST_SECONDS && p.hp < p.maxHp) { p.blueRestT -= BLUE_REST_SECONDS; p.hp++ }
 }

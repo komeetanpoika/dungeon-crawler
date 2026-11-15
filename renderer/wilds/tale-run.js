@@ -89,7 +89,11 @@ function makeRun(state, world, vKey, rec, hooks) {
         e.taleKey = taleKey
         if (e.type === 'npc') e.linesKey = vKey
         // the flame-thief keeps to its village: it sees no fire and wanders nowhere beyond it
-        if (e.type === 'sammunut') { const c = villagePoint(); if (c) e.leash = { x: c.x, y: c.y, r: 36 } }
+        if (e.type === 'sammunut') {
+          const c = villagePoint()
+          if (c) e.leash = { x: c.x, y: c.y, r: 36 }
+          e.bane = 'greywood'   // any dead tree's wood is an ordinary fire to it here
+        }
         st.entities.push(e)
       }
     },
@@ -105,6 +109,7 @@ function makeRun(state, world, vKey, rec, hooks) {
       isWorker: e => e.wildsKey === vKey,
       keepClock: true,
       hasWraith: () => hooks.getState().entities.some(e => e.type === 'sammunut' && e.taleKey === taleKey),
+      hasCreature: kind => hooks.getState().entities.some(e => e.type === kind && e.taleKey === taleKey),
       ownsWraith: e => e.taleKey === taleKey,
       ownsFire: f => { const c = villagePoint(); return !!c && Math.max(Math.abs(f.x - c.x), Math.abs(f.y - c.y)) <= 12 },
       wraithSpot: () => {
@@ -195,6 +200,11 @@ export function tickTales(state, world, delta, hooks) {
     const rec = world.tales.get(vKey)
     if (!rec) continue
     begin(state, run, rec)
+    // a tale's own upkeep, about once a second while its place is here
+    if (run.tale.tend && run.placeIn && !rec.done && (run.tendT = (run.tendT ?? 0) + delta) >= 1) {
+      run.tendT = 0
+      run.tale.tend(arrival(state, run, rec))
+    }
     tickModule(state, vKey, run, delta)
     remark(state, run, rec)
     if (rec.done || !run.tale.rule(rec.flags, ruleCtx(state, run, rec, hooks))) continue
@@ -344,5 +354,7 @@ function arrival(state, run, rec) {
     spawn: spawns => run.ctx.spawn(spawns.map(s => ({ ...s, id: `npc:${run.taleKey}:${s.id}` }))),
     think: text => think(state, text),
     wolves: () => state.entities.filter(isWolf).length,
+    // is the player at least n tiles from a point?
+    away: (at, n) => Math.max(Math.abs(at.x - state.player.x), Math.abs(at.y - state.player.y)) >= n,
   }
 }

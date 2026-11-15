@@ -558,7 +558,7 @@ export function makeSites(c) {
       for (let dy = 9; dy <= 10; dy++) for (let dx = 8; dx <= 10; dx++) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
       for (let d = 7; d <= 12; d++) t.clear(cx + d, cy + 12)
       for (let d = 8; d <= 12; d++) t.clear(cx + 12, cy + d)
-      t.clear(cx + 8, cy + 7); hold(cx + 8, cy + 7)
+      for (let d = 8; d <= 12; d++) { t.clear(cx + d, cy + 7); hold(cx + d, cy + 7) }   // and north of it, the way in from the square
       for (const [dx, dy] of [[8, 10], [9, 9], [10, 10]]) c.npc('sheep', cx + dx, cy + dy)
     }
     if (tale === 'flame') {

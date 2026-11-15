@@ -207,3 +207,56 @@ describe('the Sammunut on a leash', () => {
     }
   })
 })
+
+// ---- found by the whole-branch review ------------------------------------------------------
+import { makeCampfire } from '../renderer/systems/campfire.js'
+import { takeDirtyTiles } from '../renderer/systems/tile-dirty.js'
+
+describe('the Sammunut whose bane is grey wood (the Wilds)', () => {
+  const world = (w, fire) => ({ entities: [w, fire], map: makeMap(), player: { x: 2, y: 2, px: 80, py: 80, stamina: 100 }, sfx: makeSfx(), feedback: makeFeedback() })
+  it('a dead-wood fire is any other fire to it: it does not burn in it, and it snuffs it', () => {
+    const w = makeSammunut(30, 30); w.bane = 'greywood'
+    const state = world(w, makeCampfire(32, 30, { fuel: 'deadwood' }))
+    const hp = w.hp
+    for (let i = 0; i < 400; i++) updateSammunut(w, state, 0.05)
+    assert.equal(w.hp, hp, 'it burned in dead-wood light')
+    assert.equal(state.entities.filter(e => e.type === 'campfire').length, 0, 'the dead-wood fire was not snuffed')
+    const plain = makeSammunut(30, 30)
+    const old = world(plain, makeCampfire(32, 30, { fuel: 'deadwood' }))
+    for (let i = 0; i < 100; i++) updateSammunut(plain, old, 0.05)
+    assert.ok(plain.hp < hp, 'without a bane, dead wood no longer burns it (Timewarp changed)')
+  })
+  it('grey wood burns it', () => {
+    const w = makeSammunut(30, 30); w.bane = 'greywood'
+    const state = world(w, makeCampfire(32, 30, { fuel: 'greywood', eternal: true }))
+    const hp = w.hp
+    for (let i = 0; i < 100; i++) updateSammunut(w, state, 0.05)
+    assert.ok(w.hp < hp)
+  })
+  it('it does not go and sit by a fire it can never put out', () => {
+    const w = makeSammunut(30, 30); w.bane = 'greywood'
+    const camp = makeCampfire(35, 30, { eternal: true })
+    assert.equal(nearestFire([camp], w), null)
+    assert.equal(nearestFire([camp], makeSammunut(30, 30)), camp, 'Timewarp changed')
+  })
+})
+
+describe('the fold: more hooks', () => {
+  it('hasCreature keeps a second Maahinen from rising', () => {
+    const t = build(FOLD, { flags: { maahinen_spawned: true }, hooks: { hasCreature: kind => kind === 'maahinen' } })
+    t.state.map[20][50].cleared = 'rock'
+    fold.onArrive(t.ctx)
+    assert.equal(t.spawned.length, 0)
+    const free = build(FOLD, { flags: { maahinen_spawned: true } })
+    free.state.map[20][50].cleared = 'rock'
+    fold.onArrive(free.ctx)
+    assert.deepEqual(free.spawned.map(s => s.kind), ['maahinen'])
+  })
+  it('a charred band is redrawn', () => {
+    const t = build(FOLD)
+    treesRound(t.state, 'burn 1')
+    takeDirtyTiles(t.state.map)
+    fold.burnBand(t.state.map, t.ctx.mapData, 1)
+    assert.equal(takeDirtyTiles(t.state.map).length, 8, 'four cells, x and y each')
+  })
+})

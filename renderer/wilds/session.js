@@ -16,7 +16,9 @@ import { TILE } from '../systems/entities.js'
 
 // Things farther than this from the player neither think nor move.
 export const ACTIVE_TILES = 34
-export const asleep = (e, player) => Math.max(Math.abs(e.x - player.x), Math.abs(e.y - player.y)) > ACTIVE_TILES
+// A tale's own creatures are the exception: the flame-thief has to come to
+// its village from thirty tiles out, the elk has to finish its run.
+export const asleep = (e, player) => e.taleKey === undefined && Math.max(Math.abs(e.x - player.x), Math.abs(e.y - player.y)) > ACTIVE_TILES
 
 const SWEEP_EVERY = 10       // seconds between forgetting sweeps
 const PREGEN_EVERY = 0.25    // seconds between pieces generated ahead of the player

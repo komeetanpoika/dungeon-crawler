@@ -566,28 +566,44 @@ test('the fold, start to finish: the bands burn, the village shuts, the fleece, 
   assert.equal(missing(t.state).length, 1, 'Aino did not come home')
 })
 
-// Review Focus 1
-test('the fold with no wolves left: two are back at the den on the next arrival, and the tale can end', () => {
-  const t = setup('fold', '1,1', { flags: { begun: true, fleece_shown: true } })
-  // every wolf of the ridge, the den's and any roaming pack's
+// Review Focus 1, and the step-2 review's dead end: the stranger kills the pack and then the thing itself
+test('the fold with no wolves left: the pack comes back to an empty den, and the tale still ends', () => {
+  const t = setup('fold', '1,1', { flags: { begun: true, burn: 4 } })     // no fleece shown: the village is shut
   const all = t.state.entities.filter(e => e.type === 'npc' && e.species === 'wolf' && e.wildsKey === '1,1')
   for (const w of all) recordFor(t.world, '1,1').gone.add(w.wildsIx)
   t.state.entities = t.state.entities.filter(e => !all.includes(e))
-  tickTales(t.state, t.world, 0.016, t.hooks)
   t.flags.maahinen_spawned = true; t.flags.maahinen_dead = true
-  tickTales(t.state, t.world, 0.016, t.hooks)
+  put(t.state, point(t.world, 'den'), 0, 4)
+  tickTales(t.state, t.world, 1.5, t.hooks)
+  assert.equal(denWolves(t.state, t.world).length, 0, 'wolves appeared in front of the player')
   assert.ok(!t.rec.done, 'the fold ended with no wolf alive')
-  t.flags.maahinen_dead = false
-  enterWilds(t.state, t.world, { wx: 0, wy: 0 }, { buildEntities })
-  arriveTales(t.state, t.world, t.hooks, { fresh: true })
+  put(t.state, centre(t))                                             // back in the village: nobody at the den to see
+  tickTales(t.state, t.world, 1.5, t.hooks)
   const back = denWolves(t.state, t.world), den = point(t.world, 'den')
   assert.equal(back.length, 2)
   assert.ok(back.every(w => !w.hostile && w.taleKey === 'tale:0,0' && Math.max(Math.abs(w.x - den.x), Math.abs(w.y - den.y)) <= 4))
-  arriveTales(t.state, t.world, t.hooks)
-  assert.equal(denWolves(t.state, t.world).length, 2, 'more wolves each arrival')
-  t.flags.maahinen_dead = true
+  tickTales(t.state, t.world, 1.5, t.hooks)
+  assert.equal(denWolves(t.state, t.world).length, 2, 'more wolves each time')
+  assert.equal(t.rec.done, true, 'the fold is a dead end')
+  assert.equal(missing(t.state).length, 1, 'Aino did not come home')
+  assert.notDeepEqual(t.state.villageLines['0,0'], TALES.fold.shutLines, 'the village is still shut after the tale is done')
+})
+
+test('a Maahinen that wandered off is not joined by a second when the ridge comes back', () => {
+  const t = setup('fold', '1,1', { flags: { begun: true, fleece_shown: true } })
+  mineOut(t.state, point(t.world, 'burrow'))
   tickTales(t.state, t.world, 0.016, t.hooks)
-  assert.equal(t.rec.done, true)
+  const [beast] = t.state.entities.filter(e => e.type === 'maahinen')
+  Object.assign(beast, { x: 100, y: 200, px: 100 * S + 16, py: 200 * S + 16 })   // into the piece south of home, which stays
+  shift(t, -1, 0)                                                              // the ridge leaves the window
+  assert.equal(t.state.entities.filter(e => e.type === 'maahinen').length, 1)
+  shift(t, 1, 0)
+  assert.equal(t.state.entities.filter(e => e.type === 'maahinen').length, 1, 'a second Maahinen rose')
+})
+
+test('the Sammunut of the Wilds fears only grey wood', () => {
+  const t = setup('flame', '1,1')
+  assert.equal(wraiths(t.state)[0].bane, 'greywood')
 })
 
 // Review Focus 5

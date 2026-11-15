@@ -628,3 +628,13 @@ test('a flame-thief village has three hearths on its square, each with a place t
     assert.deepEqual(generatePiece(seed, 0, 0).villagePoints, [])
   }
 })
+
+// found by the step-2 review: the sheep fold shut a gate in a few villages
+test('a village built for the fold keeps every gate it had', () => {
+  for (const [seed, wx, wy] of [[2, 0, 6], [2, -2, -10], [3, -6, 11], [5, -2, 14]]) {
+    const plain = generatePiece(seed, wx, wy), fold = generatePiece(seed, wx, wy, 0, null, 'fold')
+    const was = flood(plain, plain.spawnPoint), is = flood(fold, fold.spawnPoint)
+    for (const [side, g] of Object.entries(fold.gates))
+      if (was.has(`${g.x},${g.y}`)) assert.ok(is.has(`${g.x},${g.y}`), `village ${wx},${wy} (seed ${seed}): the fold shut gate ${side}`)
+  }
+})

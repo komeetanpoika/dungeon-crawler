@@ -25,6 +25,14 @@
 //                near enough to share a window never carry the same kind
 //   missing      the villager who comes home when the tale is done
 //   rule(flags, rc)  rc = { wolvesAlive, night } from the runner
+function foldPack({ point, free, spawn, think, wolves, away }) {
+  if (wolves() > 0) return
+  const den = point('den')
+  if (!den || !away(den, 12)) return
+  spawn(free(den, 2).map((at, i) => ({ kind: 'npc', species: 'wolf', hostile: false, id: `wolf:${i}`, ...at })))
+  think('The pack is back on the ridge.')
+}
+
 export const TALES = {
   elk: {
     id: 'elk', title: 'Hiiden hirvi', kind: 'story', land: ['forest', 'autumn'],
@@ -142,19 +150,16 @@ export const TALES = {
     reward: 'tapio_peace',
     begins: 'village',     // the burning starts when the stranger first stands in the village
     // the village never attacks a stranger: after the last band it shuts them out until the fleece is shown
-    shut: f => (f.burn ?? 0) >= 4 && !f.fleece_shown,
+    shut: f => (f.burn ?? 0) >= 4 && !f.fleece_shown && !f.maahinen_dead,
     shutLines: {
       villager: ['Go. You have done enough.', 'The den is ash and still the lambs go. We have nothing to say to you.'],
       elder:    ['Unless you carry proof it was not the wolves, we are done talking.'],
     },
-    // the pack is never gone for good while the thing under the ridge lives
-    arrive({ flags, point, free, spawn, think, wolves }) {
-      if (flags.maahinen_dead || wolves() > 0) return
-      const den = point('den')
-      if (!den) return
-      spawn(free(den, 2).map((at, i) => ({ kind: 'npc', species: 'wolf', hostile: false, id: `wolf:${i}`, ...at })))
-      think('The pack is back on the ridge.')
-    },
+    // The pack is never gone for good: an empty den fills again when nobody
+    // is near to see it, whether or not the thing under the ridge still
+    // lives, so the tale can always end. Asked on arrival and every second.
+    arrive: api => foldPack(api),
+    tend: api => foldPack(api),
     remarks: [
       { at: 'den', within: 5, when: f => !f.maahinen_dead, text: 'Wolves. No bones here, no wool. They are watching me, not hunting.' },
       { at: 'fleece cache', within: 2, when: f => !f.fleece_shown, text: "Lamb's fleece, and a prospector's diggings. The elder should see this." },
@@ -180,7 +185,7 @@ export const TALES = {
     creature: 'sammunut', creatureAt: 'village', module: 'marsh-3-hermit', engine: 'episode', arriveOn: 'village', villageBorne: true,
     rule: f => !!f.wraith_dead,
     missing: { species: 'villager', name: 'Lauri' },
-    landWord: 'the fen',
+    landWord: 'the wild country',   // the knoll may stand in fen or in wood
     reward: 'sinituli',
     houses: { 'hermit hut': { room: 'hermit_woodpile', pickups: [
       { type: 'weapon', weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 },
