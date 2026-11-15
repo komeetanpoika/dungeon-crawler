@@ -124,7 +124,8 @@ export function placeFeatures(t, piece) {
   // ---- the main thing -------------------------------------------------------
   // A tale's place takes the main thing over: its parts are laid out first so
   // roads, small things and packs keep clear of them.
-  const geo = piece.tale ? layoutTale(piece.tale, rng) : null
+  // (a tale whose place is not built yet is dealt as ordinary land)
+  const geo = piece.tale && TALE_PAD[piece.tale] !== undefined ? layoutTale(piece.tale, rng) : null
   const kind = geo ? `tale_${piece.tale}` : mainKind(seed, wx, wy, deal)
   const home = wx === 0 && wy === 0
   const mx = geo ? geo.cx : home ? 40 : ri(18, PIECE - 19), my = geo ? geo.cy : home ? 40 : ri(18, PIECE - 19)

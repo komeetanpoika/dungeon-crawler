@@ -43,12 +43,35 @@ export function fitsOf(seed, v, reach = REACH) {
   return fits
 }
 
+// A village's tale by the table alone (a world's record outranks it: kindOf).
+// A tale that plays out in the village itself is not given to two villages
+// near enough to share a window: the one with the larger key takes its next
+// fitting kind. Smaller keys are settled first, so this is well defined.
+const taleCache = new Map()
 export function taleOf(seed, v) {
   if (isHome(v)) return 'elk'
+  const key = `${seed}:${v.wx},${v.wy}`
+  if (taleCache.has(key)) return taleCache.get(key)
   const fits = fitsOf(seed, v)
   const fitting = TALE_IDS.filter(id => fits[id].length >= MIN_LAND)
-  return fitting.length ? fitting[hashInt(seed, v.wx, v.wy, 710) % fitting.length] : null
+  let tale = null
+  if (fitting.length) {
+    const mine = pieceKey(v.wx, v.wy)
+    const before = villagesNear(seed, v.wx, v.wy, 2).filter(o => pieceKey(o.wx, o.wy) < mine)
+    const taken = id => TALES[id].villageBorne && before.some(o => taleOf(seed, o) === id)
+    const start = hashInt(seed, v.wx, v.wy, 710) % fitting.length
+    for (let i = 0; i < fitting.length && !tale; i++) {
+      const id = fitting[(start + i) % fitting.length]
+      if (!taken(id)) tale = id
+    }
+  }
+  if (taleCache.size > 4000) taleCache.clear()
+  taleCache.set(key, tale)
+  return tale
 }
+
+// The kind of a village's tale in this world: what its record says, else the table.
+export const kindOf = (world, v) => world.tales.get(pieceKey(v.wx, v.wy))?.id ?? taleOf(world.seed, v)
 
 // The compass octant of a piece from the village: 0 north, clockwise.
 export function sideOfPiece(v, wx, wy) {
@@ -142,7 +165,7 @@ export function admit(world, pieces) {
     || (b === '0,0') - (a === '0,0') || (a < b ? -1 : 1))
   for (const vKey of order) {
     const v = villages.get(vKey)
-    const id = taleOf(seed, v)
+    const id = kindOf(world, v)
     if (!id) continue
     const known = world.tales.get(vKey)
     if (known?.place || known?.done) continue

@@ -16,10 +16,19 @@
 //   {where}  an exact phrase ("a good walk east"), for an immediate need
 //   {land}   the tale's `landWord`
 // `hermit` lines are spoken by the hermit at the Kivihiisi's place.
+//
+// Step 2 (the Timewarp stories, 2026-11-15) adds:
+//   engine       'quest' (systems/quests/) or 'episode' (systems/episodes/)
+//   creatureAt   where the tale's creature lives and dies: 'place' (default) or 'village'
+//   arriveOn     which piece entering the window re-runs the module's onArrive
+//   villageBorne the trouble plays out in the village itself; two such villages
+//                near enough to share a window never carry the same kind
+//   missing      the villager who comes home when the tale is done
+//   rule(flags, rc)  rc = { wolvesAlive, night } from the runner
 export const TALES = {
   elk: {
     id: 'elk', title: 'Hiiden hirvi', kind: 'story', land: ['forest', 'autumn'],
-    creature: 'hirvi', module: 'forest-1-clearings',
+    creature: 'hirvi', module: 'forest-1-clearings', engine: 'quest', arriveOn: 'both',
     rule: f => !!f.hide_given,
     landWord: 'the deep wood',
     lines: [
@@ -43,7 +52,7 @@ export const TALES = {
   },
   tar: {
     id: 'tar', title: 'Tervahauta', kind: 'need', land: ['sea', 'marsh'],
-    creature: null, module: 'forest-2-river',
+    creature: null, module: 'forest-2-river', engine: 'quest', arriveOn: 'place',
     rule: f => !!f.bridge_done,
     landWord: 'the water',
     lines: [
@@ -63,7 +72,7 @@ export const TALES = {
   },
   kivihiisi: {
     id: 'kivihiisi', title: 'Kivihiisi', kind: 'old', land: ['mountain'],
-    creature: 'kivihiisi', module: 'forest-3-autumn',
+    creature: 'kivihiisi', module: 'forest-3-autumn', engine: 'quest', arriveOn: 'place',
     rule: f => !!f.hiisi_dead,
     landWord: 'the high ground',
     lines: [
@@ -84,8 +93,33 @@ export const TALES = {
       } },
     ],
   },
+  // ---- the Timewarp stories, told to a stranger (lines and the rest come with each tale) ----
+  nakki: {
+    id: 'nakki', title: "The ferryman's bell", kind: 'need', land: ['forest', 'autumn', 'marsh'],
+    creature: 'nakki', module: 'lake-1-ferry', engine: 'episode', arriveOn: 'place',
+    rule: f => !!f.nakki_gone,
+    missing: { species: 'villager', name: 'Toivo' },
+    landWord: 'the lake',
+    lines: [],
+  },
+  fold: {
+    id: 'fold', title: 'Wolves at the fold', kind: 'need', land: ['forest', 'autumn', 'mountain'],
+    creature: 'maahinen', module: 'highland-2-fold', engine: 'episode', arriveOn: 'place', villageBorne: true,
+    rule: (f, rc) => !!f.maahinen_dead && (rc?.wolvesAlive ?? 0) >= 1,
+    missing: { species: 'villager', name: 'Aino' },
+    landWord: 'the ridge',
+    lines: [],
+  },
+  flame: {
+    id: 'flame', title: 'The flame-thief', kind: 'old', land: ['marsh', 'autumn', 'forest'],
+    creature: 'sammunut', creatureAt: 'village', module: 'marsh-3-hermit', engine: 'episode', arriveOn: 'village', villageBorne: true,
+    rule: f => !!f.wraith_dead,
+    missing: { species: 'villager', name: 'Lauri' },
+    landWord: 'the fen',
+    lines: [],
+  },
 }
-export const TALE_IDS = ['elk', 'tar', 'kivihiisi']
+export const TALE_IDS = ['elk', 'tar', 'kivihiisi', 'nakki', 'fold', 'flame']
 
 // What a village with no tale talks about: its own country.
 export const PLAIN_LINES = {

@@ -8,7 +8,7 @@ const SEEDS = [3, 77, 2024]
 const villages = seed => [{ wx: 0, wy: 0 }, ...villagesNear(seed, 0, 0, 12).filter(v => v.wx || v.wy)]
 
 test('the three tales are declared with their kind and home land', () => {
-  assert.deepEqual(TALE_IDS, ['elk', 'tar', 'kivihiisi'])
+  assert.deepEqual(TALE_IDS, ['elk', 'tar', 'kivihiisi', 'nakki', 'fold', 'flame'])
   assert.deepEqual([TALES.elk.kind, TALES.tar.kind, TALES.kivihiisi.kind], ['story', 'need', 'old'])
   assert.deepEqual(TALES.elk.land, ['forest', 'autumn'])
   assert.equal(TALES.kivihiisi.rule({ hiisi_dead: true }), true)
@@ -35,14 +35,14 @@ test('a village has one tale whose home land lies in its reach; Koivula has the 
     for (const v of villages(seed)) {
       const id = taleOf(seed, v)
       assert.equal(id, taleOf(seed, v), 'the same every time')
-      if (id === null) { for (const k of TALE_IDS) assert.ok(fitsOf(seed, v)[k].length < MIN_LAND); continue }
+      if (id === null) continue   // nothing fits, or the neighbour rule left nothing
       seen.add(id)
       const fits = fitsOf(seed, v)[id]
       if (v.wx || v.wy) assert.ok(fits.length >= MIN_LAND, `${id} with ${fits.length} pieces`)
       for (const p of fits) assert.ok(TALES[id].land.includes(pieceBiome(seed, p.wx, p.wy)))
     }
   }
-  assert.deepEqual([...seen].sort(), ['elk', 'kivihiisi', 'tar'])
+  for (const k of TALE_IDS) assert.ok(seen.has(k), `no village tells ${k}`)
 })
 
 test('a well-known story has a side with its land on it; other kinds have none', () => {
@@ -63,7 +63,7 @@ test('a well-known story has a side with its land on it; other kinds have none',
 })
 
 import { makeWorld, getPiece, recordFor, sweep, exportWorld, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
-import { admit, taleRecord, eligible, SPACING, fillLines } from '../renderer/wilds/tales.js'
+import { admit, taleRecord, eligible, SPACING, fillLines, kindOf } from '../renderer/wilds/tales.js'
 import { pieceKey } from '../renderer/wilds/layout.js'
 
 // a sporadic walk: a spiral of window centres out to 2 pieces, which shows all of a reach of 3
@@ -201,4 +201,54 @@ test('a village whose country has all been walked has its place', () => {
   }
   assert.ok(seen >= 20, `${seen} villages`)
   assert.equal(starved, 0, `${starved}/${seen} villages never got a place`)
+})
+
+// ---- step 2: six kinds ----------------------------------------------------------------
+test('the six tales are declared: three ride the quest modules, three the episodes', () => {
+  assert.deepEqual(['elk', 'tar', 'kivihiisi'].map(k => TALES[k].engine), ['quest', 'quest', 'quest'])
+  assert.deepEqual(['nakki', 'fold', 'flame'].map(k => TALES[k].engine), ['episode', 'episode', 'episode'])
+  assert.deepEqual(['nakki', 'fold', 'flame'].map(k => TALES[k].kind), ['need', 'need', 'old'])
+  assert.deepEqual(['nakki', 'fold', 'flame'].map(k => TALES[k].module), ['lake-1-ferry', 'highland-2-fold', 'marsh-3-hermit'])
+  assert.deepEqual(TALE_IDS.map(k => TALES[k].arriveOn), ['both', 'place', 'place', 'place', 'place', 'village'])
+  assert.deepEqual(TALE_IDS.map(k => TALES[k].creatureAt ?? 'place'), ['place', 'place', 'place', 'place', 'place', 'village'])
+  assert.deepEqual(TALE_IDS.filter(k => TALES[k].villageBorne), ['fold', 'flame'])
+  assert.deepEqual(['nakki', 'fold', 'flame'].map(k => TALES[k].missing.name), ['Toivo', 'Aino', 'Lauri'])
+  assert.equal(TALES.fold.rule({ maahinen_dead: true }, { wolvesAlive: 0 }), false)
+  assert.equal(TALES.fold.rule({ maahinen_dead: true }, { wolvesAlive: 1 }), true)
+  assert.equal(TALES.flame.rule({ wraith_dead: true }), true)
+})
+
+test('neighbouring villages never both carry the fold or the flame-thief', () => {
+  const seen = new Set()
+  let pairs = 0
+  for (let seed = 1; seed <= 40; seed++) {
+    const vs = villages(seed)
+    for (const v of vs) seen.add(taleOf(seed, v))
+    for (const [i, a] of vs.entries()) for (const b of vs.slice(i + 1)) {
+      if (Math.max(Math.abs(a.wx - b.wx), Math.abs(a.wy - b.wy)) > 2) continue
+      pairs++
+      const ka = taleOf(seed, a), kb = taleOf(seed, b)
+      if (ka && TALES[ka].villageBorne) assert.notEqual(ka, kb, `seed ${seed}: ${a.wx},${a.wy} and ${b.wx},${b.wy} both tell ${ka}`)
+    }
+  }
+  assert.ok(pairs >= 200, `${pairs} neighbouring pairs`)
+  for (const k of TALE_IDS) assert.ok(seen.has(k), `no village tells ${k}`)
+})
+
+test('a recorded kind outranks the table', () => {
+  const seed = 3
+  const v = villages(seed).find(v => (v.wx || v.wy) && taleOf(seed, v) && taleOf(seed, v) !== 'tar' && fitsOf(seed, v).tar.length >= 1)
+  assert.ok(v, 'no village to test with')
+  const key = `${v.wx},${v.wy}`
+  const world = makeWorld(null, { seed })
+  world.tales.set(key, { id: 'tar', flags: {}, place: null, n: 0, nSide: 0, done: false })
+  assert.equal(kindOf(world, v), 'tar')
+  assert.equal(kindOf(makeWorld(null, { seed }), v), taleOf(seed, v))
+  look(world, v.wx, v.wy)
+  const place = world.tales.get(key).place
+  assert.ok(place, 'no place taken')
+  assert.equal(world.places.get(place).id, 'tar')
+  assert.ok(JSON.stringify(fillLines(world, key)).includes('tar'), 'not the tar pit\'s lines')
+  assert.equal(getPiece(world, v.wx, v.wy).villageTale, 'tar')
+  assert.equal(getPiece(makeWorld(null, { seed }), v.wx, v.wy).villageTale, taleOf(seed, v))
 })

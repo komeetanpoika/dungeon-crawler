@@ -96,9 +96,10 @@ function makeRun(state, world, vKey, rec, hooks) {
 }
 
 // What the people of a tale say: its village's villagers, and whoever lives at its place.
+const plainLines = (world, vKey) => { const v = parseKey(vKey); return PLAIN_LINES[getPiece(world, v.wx, v.wy).biome] ?? PLAIN_LINES.forest }
 function setLines(state, world, vKey, rec) {
-  const lines = fillLines(world, vKey)
-  if (!lines) return
+  // a tale with nothing to say yet leaves its village talking about its country
+  const lines = fillLines(world, vKey) ?? plainLines(world, vKey)
   state.villageLines ??= {}
   state.villageLines[vKey] = lines
   if (rec?.place) state.villageLines[rec.place] = lines
@@ -117,7 +118,7 @@ export function arriveTales(state, world, hooks, { fresh = false } = {}) {
     const rec = world.tales.get(vKey) ?? (at.villageIn ? taleRecord(world, at.v) : null)
     if (!rec) {
       // a village with no tale talks about its country
-      if (at.villageIn) state.villageLines[vKey] = PLAIN_LINES[getPiece(world, at.v.wx, at.v.wy).biome] ?? PLAIN_LINES.forest
+      if (at.villageIn) state.villageLines[vKey] = plainLines(world, vKey)
       continue
     }
     setLines(state, world, vKey, rec)
