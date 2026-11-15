@@ -7,6 +7,9 @@ import { TILE } from '../systems/entities.js'
 import { LOS_CLEAR_PREFIXES, LOS_SOFT_PREFIXES, LOS_TALL_PREFIXES } from '../systems/openmap.js'
 
 const startsWithAny = (s, prefixes) => prefixes.some(p => s.startsWith(p))
+// Low things a sight line passes over, like open water: the site dressing
+// of sites.js. Kept here, not in openmap.js, so the hand-made maps see as before.
+const LOW_PREFIXES = ['ow_prop_', 'ow_fence_', 'ow_lily_']
 
 // The same cell the hand-made open maps use (systems/openmap.js): ground art
 // as the skin, anything standing on it as the overlay, and for a blocking
@@ -16,7 +19,7 @@ function cellOf(ground, prop, walkable) {
   if (prop) c.overlay = prop
   if (!walkable) {
     const blocker = prop ?? ground
-    if (startsWithAny(blocker, LOS_CLEAR_PREFIXES)) c.losClear = true
+    if (startsWithAny(blocker, LOS_CLEAR_PREFIXES) || startsWithAny(blocker, LOW_PREFIXES)) c.losClear = true
     else if (startsWithAny(blocker, LOS_SOFT_PREFIXES)) c.losSoft = true
     else if (startsWithAny(blocker, LOS_TALL_PREFIXES)) c.losTall = true
   }

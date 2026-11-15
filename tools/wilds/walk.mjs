@@ -139,10 +139,11 @@ try {
   await sleep(800)
   const woke = await ev(() => {
     const s = window.__dc.state, w = window.__dc.wilds
-    return { hp: s.player.hp, max: s.player.maxHp, origin: w.origin, x: s.player.x, y: s.player.y, tile: s.map[s.player.y][s.player.x].tile, cave: !!s.cave }
+    return { hp: s.player.hp, max: s.player.maxHp, origin: w.origin, village: w.lastVillage, x: s.player.x, y: s.player.y, tile: s.map[s.player.y][s.player.x].tile, cave: !!s.cave }
   })
   check(woke.hp === woke.max && !woke.cave, 'death is a setback, not an end', JSON.stringify(woke))
-  check(woke.origin.wx === -1 && woke.origin.wy === -1 && woke.tile === 1, 'you wake in the home village')
+  // the house step may have stood in another village's square: that one is then the last visited
+  check(woke.origin.wx === woke.village.wx - 1 && woke.origin.wy === woke.village.wy - 1 && woke.tile === 1, 'you wake in the last village you visited', JSON.stringify(woke.village))
   await page.keyboard.press('Enter')
   await sleep(400)
   await shot('5-woke')

@@ -53,3 +53,7 @@ test('the Wilds caps the unfinished caves it keeps in the save, and tells the ti
   assert.match(SRC, /capInstances\(/)
   assert.match(SRC, /renderer\.rekeyTiles\(before, state\.map,/)
 })
+
+test('the game builds a camp\'s fire from its spawn', () => {
+  assert.match(SRC, /case 'campfire':\s*return \[makeCampfire\(s\.x, s\.y, \{ eternal: true \}\)\]/)
+})

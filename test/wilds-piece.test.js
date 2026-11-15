@@ -11,7 +11,7 @@ import { NPC_SPECIES } from '../renderer/data/npcs.js'
 
 const SEEDS = [3, 77, 2024]
 const MONSTER_NAMES = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/index.json', import.meta.url), 'utf8'))
-const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger']
+const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger', 'campfire']
 const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark']
 // 40 pieces per seed, biased so every tier and country turns up.
 const samplePieces = seed => Array.from({ length: 22 }, (_, i) => ({
@@ -39,8 +39,9 @@ test('the home trio', () => {
     // eight villagers and livestock on the plaza (animals out in the woods are a small thing)
     assert.equal(home.spawns.filter(s => s.kind === 'npc' && Math.hypot(s.x - home.main.x, s.y - home.main.y) <= 8).length, 8)
     assert.ok(home.spawns.some(s => s.kind === 'weapon' && s.weaponType === 'hatchet'))
-    // the four village houses; a hut out in the woods may add a fifth door
-    assert.equal(home.doors.filter(d => d.tier === 'safe').length, 4)
+    // four to six village houses; a hut out in the woods may add a door of its own
+    const safe = home.doors.filter(d => d.tier === 'safe').length
+    assert.ok(safe >= 4 && safe <= 6, `${safe} village houses`)
     assert.equal(home.signs.length, 1)
     assert.equal(home.signs[0].title, 'Koivula')
     assert.equal(home.signs[0].lines.length, 4)
@@ -288,4 +289,136 @@ test('a new deal is a different piece; a permanent piece is the same piece', () 
 
 test('the country of a piece is its majority country', () => {
   for (const { wx, wy } of samplePieces(3)) assert.equal(generatePiece(3, wx, wy).biome, pieceBiome(3, wx, wy))
+})
+
+// ---- what the sites look like ---------------------------------------------------
+const over = (p, x, y) => p.cells[y]?.[x]?.overlay ?? ''
+const around = (p, at, r, test) => {
+  let n = 0
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (test(over(p, at.x + dx, at.y + dy), at.x + dx, at.y + dy)) n++
+  return n
+}
+const isHouse = s => s.startsWith('ow_house_')
+// The house a door belongs to, read back off the cells: its wall row and what stands above it.
+function houseAt(p, d) {
+  let x0 = d.x, x1 = d.x
+  while (isHouse(over(p, x0 - 1, d.y))) x0--
+  while (isHouse(over(p, x1 + 1, d.y))) x1++
+  let top = d.y
+  while (isHouse(over(p, d.x, top - 1)) || over(p, d.x, top - 1).startsWith('ow_roof_')) top--
+  return { x0, x1, top, w: x1 - x0 + 1, h: d.y - top + 1 }
+}
+
+test('every tile the Wilds can lay has its picture', () => {
+  for (const name of WILDS_SKINS)
+    assert.ok(fs.existsSync(new URL(`../renderer/assets/tiles/${name}.png`, import.meta.url)), `no picture for ${name}`)
+})
+
+test('a house is whole: a door in a wall under two rows of roof, three to five wide', () => {
+  const widths = new Set(), roofs = new Set(), walls = new Set()
+  let n = 0
+  for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed)) {
+    const p = generatePiece(seed, wx, wy)
+    for (const d of p.doors.filter(d => d.tier !== 'ruin')) {
+      n++
+      const at = `house at ${d.x},${d.y} of ${wx},${wy} (seed ${seed})`
+      assert.match(over(p, d.x, d.y), /^ow_house_(door|dbl)/, `${at}: the door is ${over(p, d.x, d.y)}`)
+      const h = houseAt(p, d)
+      assert.ok(h.w >= 3 && h.w <= 5, `${at}: ${h.w} wide`)
+      assert.ok(h.h === 3 || h.h === 4, `${at}: ${h.h} tall`)
+      for (let x = h.x0; x <= h.x1; x++) {
+        for (let y = h.top; y <= d.y; y++) {
+          const skin = over(p, x, y)
+          assert.ok(y < h.top + 2 ? skin.startsWith('ow_roof_') : isHouse(skin), `${at}: ${skin || 'nothing'} at row ${y - h.top}`)
+          if (!(x === d.x && y === d.y)) assert.equal(p.cells[y][x].tile, TILE.WALL, `${at}: a house cell is walkable`)
+        }
+        // nothing built against the front of the house
+        assert.ok(!isHouse(over(p, x, d.y + 1)) && !over(p, x, d.y + 1).startsWith('ow_roof_'), `${at}: another house at its feet`)
+      }
+      assert.ok(walk(p.cells[d.y + 1][d.x]), `${at}: the doorstep is blocked`)
+      widths.add(h.w)
+      roofs.add(over(p, h.x0, h.top).replace(/_l$/, ''))
+      walls.add(over(p, h.x0, d.y))
+    }
+  }
+  assert.ok(n >= 30, `only ${n} houses in the sample`)
+  assert.ok(widths.size >= 3, `house widths: ${[...widths]}`)
+  assert.ok(roofs.size >= 2 && walls.size >= 2, `roofs ${[...roofs]} walls ${[...walls]}`)
+})
+
+test('a village is lived in: houses, a well, a fenced field and things lying about', () => {
+  let villages = 0
+  for (const seed of SEEDS) for (let wy = -6; wy <= 6; wy++) for (let wx = -6; wx <= 6; wx++) {
+    if (!(wx === 0 && wy === 0) && !villageAt(seed, wx, wy)) continue
+    villages++
+    const p = generatePiece(seed, wx, wy)
+    const at = `village ${wx},${wy} (seed ${seed})`
+    const safe = p.doors.filter(d => d.tier === 'safe')
+    assert.ok(safe.length >= 4 && safe.length <= 6, `${at}: ${safe.length} houses`)
+    assert.ok(new Set(safe.map(d => houseAt(p, d).w)).size >= 2, `${at}: every house the same width`)
+    assert.equal(around(p, p.main, 2, s => s === 'ow_well'), 1, `${at}: no well`)
+    assert.ok(around(p, p.main, 14, s => s.startsWith('ow_fence_')) >= 8, `${at}: no fence`)
+    assert.ok(around(p, p.main, 14, s => s.startsWith('ow_deco_crop_')) >= 4, `${at}: no crops`)
+    assert.ok(around(p, p.main, 14, s => s.startsWith('ow_prop_')) >= 8, `${at}: nothing lying about`)
+    assert.ok(walk(p.cells[p.spawnPoint.y][p.spawnPoint.x]))
+  }
+  assert.ok(villages >= 12)
+})
+
+test('camps, nests, old stones, ruins and caves have a look of their own', () => {
+  const dressed = s => /^ow_(prop_|deco_skull|tent_|ruin_|deadtree_|rock_|mtn_rock_|statue)/.test(s)
+  const seen = { camp: 0, fire: 0, nest: 0, stones: 0, ruin: 0, cave: 0, boss: 0 }
+  for (const seed of SEEDS) for (const { wx, wy } of [...samplePieces(seed), { wx: 0, wy: -1 }]) {
+    const p = generatePiece(seed, wx, wy)
+    const at = `${p.main.kind} at ${wx},${wy} (seed ${seed})`
+    if (p.main.kind === 'camp' || p.main.kind === 'boss') {
+      seen[p.main.kind]++
+      assert.ok(around(p, p.main, 7, dressed) >= 5, `${at}: bare ground`)
+      if (p.spawns.some(s => s.kind === 'campfire' && dist(s, p.main) <= 3)) seen.fire++
+    }
+    if (p.main.kind === 'ruin') {
+      seen.ruin++
+      assert.ok(around(p, p.main, 7, s => s === 'ow_brick' || s.startsWith('ow_ruin_') || s.startsWith('ow_castle_')) >= 8, `${at}: no ruin`)
+      assert.equal(p.doors.filter(d => d.tier === 'ruin').length, 1, `${at}: no way in`)
+    }
+    if (p.main.kind === 'cave') {
+      seen.cave++
+      assert.ok(around(p, p.caves[0], 4, s => /^ow_(rock_|mtn_)/.test(s)) >= 9, `${at}: a bare arch`)
+      assert.ok(walk(p.cells[p.caves[0].y + 1][p.caves[0].x]) || walk(p.cells[p.caves[0].y + 1][p.caves[0].x + 1]), `${at}: the mouth is walled in`)
+    }
+    for (const s of p.small) {
+      if (s.kind === 'nest') { seen.nest++; assert.ok(around(p, s, 3, k => k === 'ow_prop_mound') >= 1, `nest at ${wx},${wy}: no mound`) }
+      if (s.kind === 'stones') { seen.stones++; assert.ok(around(p, s, 3, k => k.startsWith('ow_ruin_')) >= 4, `stones at ${wx},${wy}: no stones`) }
+    }
+  }
+  assert.ok(seen.fire >= 3, `only ${seen.fire} camps keep a fire`)
+  for (const [k, n] of Object.entries(seen)) assert.ok(n >= 3, `only ${n} ${k} in the sample`)
+})
+
+test('low things are seen over and flat things are walked on', () => {
+  let low = 0, flat = 0
+  for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed).slice(0, 12)) {
+    const p = generatePiece(seed, wx, wy)
+    for (const row of p.cells) for (const c of row) {
+      const s = c.overlay ?? ''
+      if (s.startsWith('ow_deco_')) { flat++; assert.equal(c.tile, TILE.FLOOR, `${s} blocks the way`) }
+      if (s.startsWith('ow_prop_') || s.startsWith('ow_fence_')) { low++; assert.equal(c.tile, TILE.WALL, `${s} is walkable`); assert.equal(c.losClear, true, `${s} blocks sight`) }
+    }
+  }
+  assert.ok(low >= 30 && flat >= 10, `${low} low things, ${flat} flat things`)
+})
+
+// found while dressing the sites: rock heaped behind a cave mouth or round a
+// den sat on the road from the north gate and shut it
+test('rock built on a road never shuts a gate', () => {
+  let n = 0
+  for (let wy = -7; wy <= 7; wy++) for (let wx = -7; wx <= 7; wx++) {
+    const kind = mainKind(42, wx, wy, 0)
+    if (kind !== 'cave' && kind !== 'camp' && kind !== 'ruin') continue
+    n++
+    const p = generatePiece(42, wx, wy)
+    const seen = flood(p, p.spawnPoint)
+    for (const [side, g] of Object.entries(p.gates)) assert.ok(seen.has(`${g.x},${g.y}`), `${kind} at ${wx},${wy}: gate ${side} is cut off`)
+  }
+  assert.ok(n >= 100)
 })

@@ -15,6 +15,7 @@ import { hash, hashInt, noise2, mulberry32 } from './rand.js'
 import { MapBuilder, shoreline, WATER_SKINS, isWaterSkin, RIM_TILES, TREE_PAIRS } from '../terrain/lib.js'
 import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, LAT_PX, LAT_PY } from '../terrain/mountain.js'
 import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
+import { SITE_SKINS } from './sites.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
@@ -46,17 +47,10 @@ export const TERRAIN_SKINS = [...new Set([
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
   ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES,
 ])]
-// Skins stamped by features.js (villages, caves, ruins, landmarks).
+// Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks).
 export const FEATURE_SKINS = [
-  'ow_cobble_green', 'ow_well', 'ow_well_top', 'ow_sign', 'ow_fence_l', 'ow_fence_m', 'ow_fence_r',
-  'ow_roof_red_l', 'ow_roof_red_m', 'ow_roof_red_r', 'ow_roof_red_el', 'ow_roof_red_em', 'ow_roof_red_er',
-  'ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r', 'ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r',
-  'ow_house_wall_l', 'ow_house_wall_r', 'ow_house_wall_brown_l', 'ow_house_wall_brown_r',
-  'ow_house_wall_stone_l', 'ow_house_wall_stone_r',
-  'ow_house_door', 'ow_house_door_gray', 'ow_house_door_brown', 'ow_house_arch_stone',
-  'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_mushroom', 'ow_boat', 'ow_beehive', 'ow_stump', 'ow_tree_apple',
-  'ow_ruin_pillar', 'ow_ruin_pillar_2', 'ow_ruin_rubble', 'ow_ruin_wall_0', 'ow_ruin_wall_1', 'ow_ruin_wall_2',
-  'ow_pond_11', 'ow_bush_berry', 'ow_tent_00', 'ow_tent_01', 'ow_tent_10', 'ow_tent_11',
+  ...SITE_SKINS,
+  'ow_mushroom', 'ow_boat', 'ow_stump', 'ow_tree_apple', 'ow_tree_small', 'ow_pond_11', 'ow_bush_berry',
 ]
 export const WILDS_SKINS = [...new Set([...TERRAIN_SKINS, ...FEATURE_SKINS])]
 
@@ -382,7 +376,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
   return {
     seed, wx, wy, deal, b,
     biome: (x, y) => biome(x, y),
-    kind, free, inside, open, path, gates, gateInner, finish,
+    kind, free, inside, open, clear: openCell, path, gates, gateInner, finish,
     // for features: the prop and ground art of a local cell
     propAt: (x, y) => skinAt(b.prop, x, y),
     groundAt: (x, y) => skinAt(b.ground, x, y),
@@ -392,6 +386,18 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
       if (!inside(x, y)) return
       b.prop[y + MARGIN][x + MARGIN] = b.skin(skin)
       b.walkG[y + MARGIN][x + MARGIN] = walkable
+    },
+    // a cell of mountain rock (finish() shapes it), and the stony ground it stands on
+    setMass: (x, y) => {
+      if (!inside(x, y)) return
+      clearCell(x, y)
+      b.ground[y + MARGIN][x + MARGIN] = b.skin(floorSkin(x, y))
+      b.prop[y + MARGIN][x + MARGIN] = b.skin(MTN.lat[0][0])
+      b.walkG[y + MARGIN][x + MARGIN] = false
+    },
+    setFloor: (x, y) => {
+      if (!inside(x, y) || isWaterSkin(skinAt(b.ground, x, y)) || pathCells.has(y * PIECE + x)) return
+      b.ground[y + MARGIN][x + MARGIN] = b.skin(floorSkin(x, y))
     },
     // a pond cell: open water, blocked; finish() gives it its rim
     setWater: (x, y) => {
