@@ -138,7 +138,7 @@ export function tickTales(state, world, delta, hooks) {
   for (const [vKey, run] of runs) {
     const rec = world.tales.get(vKey)
     if (!rec) continue
-    run.module?.tick?.(run.ctx, delta)
+    tickModule(state, vKey, run, delta)
     if (rec.done || !run.tale.rule(rec.flags)) continue
     rec.done = true
     const place = rec.place && world.places.get(rec.place)
@@ -146,6 +146,35 @@ export function tickTales(state, world, delta, hooks) {
     if (rec.special === false) pay(state, world, vKey, run, hooks)
     setLines(state, world, vKey, rec)
     hooks.persist()
+  }
+}
+
+// A module learns of its creature's death from state.creatureKills, which is
+// keyed by kind and outlives re-centres, caves and death. So a kill is shown
+// only to the tale whose creature it was (here now, or here last tick), and
+// taken away once that tale has seen it: a village whose own place is not in
+// the window must not be finished by another village's kill.
+function tickModule(state, vKey, run, delta) {
+  const kind = run.tale.creature
+  const kills = state.creatureKills
+  if (!kind || !kills?.[kind]) {
+    if (kind) run.sawCreature = run.placeIn && state.entities.some(e => e.type === kind && e.taleKey === `tale:${vKey}`)
+    run.module?.tick?.(run.ctx, delta)
+    // a kill the module itself dealt this tick (the Hiisi's last stone) was settled in it
+    if (kind && run.sawCreature && state.creatureKills?.[kind]) delete state.creatureKills[kind]
+    return
+  }
+  const here = run.placeIn && state.entities.some(e => e.type === kind && e.taleKey === `tale:${vKey}`)
+  const mine = here || (run.placeIn && run.sawCreature)
+  run.sawCreature = here
+  if (mine) {
+    run.module?.tick?.(run.ctx, delta)
+    delete kills[kind]
+  } else {
+    const kept = kills[kind]
+    delete kills[kind]
+    run.module?.tick?.(run.ctx, delta)
+    kills[kind] = kept
   }
 }
 

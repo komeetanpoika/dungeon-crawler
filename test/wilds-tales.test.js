@@ -63,9 +63,11 @@ test('a well-known story has a side with its land on it; other kinds have none',
 })
 
 import { makeWorld, getPiece, recordFor, sweep, exportWorld, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
-import { admit, taleRecord, SPACING, fillLines } from '../renderer/wilds/tales.js'
+import { admit, taleRecord, eligible, SPACING, fillLines } from '../renderer/wilds/tales.js'
 import { pieceKey } from '../renderer/wilds/layout.js'
 
+// a sporadic walk: a spiral of window centres out to 2 pieces, which shows all of a reach of 3
+const SPIRAL = [[0, 0], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1], [2, -1], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2], [-1, 2], [-2, 2], [-2, 1], [-2, 0], [-2, -1], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2]]
 const cheb = (a, b) => Math.max(Math.abs(a.wx - b.wx), Math.abs(a.wy - b.wy))
 const parse = k => { const [wx, wy] = k.split(',').map(Number); return { wx, wy } }
 // Bring the 3x3 round (cx, cy) into the window the way session.js does.
@@ -81,11 +83,8 @@ test('wandering fitting land finds the place: by the fifth eligible piece, never
   for (const seed of [3, 77, 2024, 5, 11]) {
     const world = makeWorld(null, { seed })
     const v = { wx: 0, wy: 0 }
-    const seenBefore = new Set()
     let found = null
-    // a sporadic walk: a spiral of window centres out to 3 pieces
-    const steps = [[0, 0], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1], [2, -1], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2], [-1, 2], [-2, 2], [-2, 1], [-2, 0], [-2, -1], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2]]
-    for (const [cx, cy] of steps) {
+    for (const [cx, cy] of SPIRAL) {
       const before = new Set(world.records.keys())
       const hits = look(world, cx, cy)
       for (const k of hits) {
@@ -127,13 +126,13 @@ test('an immediate need takes the nearest eligible piece when its village comes 
     if (taleOf(seed, v) !== 'tar') continue
     n++
     const world = makeWorld(null, { seed })
+    const far = p => Math.hypot(p.wx - v.wx, p.wy - v.wy)
+    const nearest = Math.min(...fitsOf(seed, v).tar.filter(p => eligible(world, v, 'tar', p.wx, p.wy)).map(far))
     look(world, v.wx, v.wy)
     const rec = taleRecord(world, v)
     assert.ok(rec.place, 'chosen as soon as the village is in the window')
-    const far = p => Math.hypot(p.wx - v.wx, p.wy - v.wy)
-    const nearest = Math.min(...fitsOf(seed, v).tar.map(far))
-    // nearest by straight-line distance, unless another village's place took the ground first
-    assert.ok(far(parse(rec.place)) <= nearest + 1e-9 || world.places.size > 1, 'not the nearest fitting piece')
+    // its own village is the nearest to the land entering, so it chooses first
+    assert.ok(Math.abs(far(parse(rec.place)) - nearest) < 1e-9, 'not the nearest fitting piece')
     const kept = rec.place
     for (const [dx, dy] of [[2, 0], [0, 2], [-2, 0], [0, -2]]) look(world, v.wx + dx, v.wy + dy)
     assert.equal(taleRecord(world, v).place, kept)
@@ -149,8 +148,9 @@ test('crowded country: no piece is two places and places keep their distance', (
     for (let cy = -9; cy <= 9; cy += 2) for (let cx = -9; cx <= 9; cx += 2) look(world, cx, cy)
     const keys = [...world.places.keys()]
     assert.ok(keys.length >= 6, `${keys.length} places in 361 pieces`)
+    // two of one kind are never in a window together; different kinds may be neighbours
     for (const [i, a] of keys.entries()) for (const b of keys.slice(i + 1))
-      assert.ok(cheb(parse(a), parse(b)) >= SPACING, `places ${a} and ${b} too close`)
+      if (world.places.get(a).id === world.places.get(b).id) assert.ok(cheb(parse(a), parse(b)) >= SPACING, `two ${world.places.get(a).id} places ${a} and ${b} too close`)
     for (const [vk, rec] of world.tales) if (rec.place) assert.equal(world.places.get(rec.place).village, vk)
   }
 })
@@ -169,4 +169,36 @@ test('villagers tell the tale at the exactness of its kind, and stop once it is 
   const done = fillLines(world, '0,0')
   assert.ok(![...done.villager, ...done.elder].some(l => l.includes('south-west')), 'a finished tale is no longer told')
   assert.notDeepEqual(done, after)
+})
+
+// ---- found by the whole-branch review ----------------------------------------------
+test('the first place a new world shows is Koivula\'s own, and walking its reach finds it in every world', () => {
+  let own = 0, other = 0, none = 0
+  for (let seed = 1; seed <= 150; seed++) {
+    const world = makeWorld(null, { seed })
+    const first = look(world, 0, 0)
+    if (first.some(k => world.places.get(k).village === '0,0')) own++
+    // another village's elk beside home would look like Koivula's and not be
+    else if (first.some(k => world.places.get(k).id === 'elk')) other++
+    for (const [cx, cy] of SPIRAL.slice(1)) look(world, cx, cy)
+    if (!taleRecord(world, { wx: 0, wy: 0 }).place) none++
+  }
+  assert.ok(own >= 140, `only ${own}/150 first windows hold Koivula's wood`)
+  assert.ok(other <= 2, `${other}/150 first windows hold another village's elk and not Koivula's`)
+  assert.equal(none, 0, `${none}/150 worlds have no elk after home's whole reach was walked`)
+})
+
+test('a village whose country has all been walked has its place', () => {
+  let seen = 0, starved = 0
+  for (const seed of [3, 77, 2024, 5]) {
+    const world = makeWorld(null, { seed })
+    for (let cy = -10; cy <= 10; cy++) for (let cx = -10; cx <= 10; cx++) look(world, cx, cy)
+    for (const v of villages(seed)) {
+      if (Math.max(Math.abs(v.wx), Math.abs(v.wy)) > 5 || !taleOf(seed, v)) continue
+      seen++
+      if (!taleRecord(world, v).place) starved++
+    }
+  }
+  assert.ok(seen >= 20, `${seen} villages`)
+  assert.equal(starved, 0, `${starved}/${seen} villages never got a place`)
 })

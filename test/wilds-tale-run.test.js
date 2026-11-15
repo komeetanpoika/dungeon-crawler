@@ -15,6 +15,8 @@ import { makeNpc } from '../renderer/systems/npc.js'
 import { makeCampfire } from '../renderer/systems/campfire.js'
 import { RING } from '../renderer/systems/quests/pass.js'
 import { TILE } from '../renderer/systems/entities.js'
+import { hurtCreature } from '../renderer/systems/creatures.js'
+import { harvest } from '../renderer/systems/lumber.js'
 import { makeItem } from '../renderer/systems/inventory.js'
 import { hasTalent } from '../renderer/systems/talents.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
@@ -266,4 +268,72 @@ test('two villages in one window speak their own lines; one without a tale still
     assert.ok(lines?.villager?.length >= 1 && lines?.elder?.length >= 1, `village ${v.wx},${v.wy} is mute`)
     assert.ok(!/\{\w+\}/.test(JSON.stringify(lines)), 'a placeholder was left in')
   }
+})
+
+// ---- found by the whole-branch review ----------------------------------------------
+const PICK = { weaponType: 'pick', name: 'Pick', damage: 2, mine: 3 }
+const mineOut = (state, c) => { for (let i = 0; i < 5; i++) harvest(state.map, c.x, c.y, PICK) }
+
+test('a kill left over from another place does not finish a village whose own place is not here', () => {
+  let kept = 0
+  for (const [id, creature, flag] of [['elk', 'hirvi', 'hirvi_dead'], ['kivihiisi', 'kivihiisi', 'hiisi_dead']]) {
+    const t = setup(id, '2,2')          // the village is in the window, its place is not
+    t.state.creatureKills[creature] = true
+    tickTales(t.state, t.world, 0.016, t.hooks)
+    assert.ok(!t.flags[flag], `${id}: another place's kill finished this tale`)
+    assert.ok(!t.rec.done)
+    assert.equal(pickups(t.state).filter(e => e.taleKey === 'tale:0,0').length, 0, `${id}: paid for a kill that was not its own`)
+    // ...and it is left for whoever it does belong to (unless that one is in this window and took it)
+    if (!t.state.entities.some(e => e.type === creature)) { kept++; assert.equal(t.state.creatureKills[creature], true, 'the kill was thrown away') }
+  }
+  assert.ok(kept >= 1, 'neither world left the kill to be checked')
+})
+
+test('the elk, start to finish through the runner: flushed twice, stood, killed, the hide handed in', () => {
+  const t = setup('elk', '1,1')
+  for (const n of [1, 2]) {
+    const elk = elks(t.state)[0]
+    put(t.state, elk, 2, 0)
+    tickTales(t.state, t.world, 0.016, t.hooks)
+    assert.equal(elk.mood, 'bolting')
+    elk.bolted = true
+    tickTales(t.state, t.world, 0.016, t.hooks)
+    assert.equal(t.flags.flush, n)
+  }
+  const elk = elks(t.state)[0], w3 = point(t.world, 'wallow 3')
+  assert.deepEqual([elk.x, elk.y], [w3.x, w3.y])
+  hurtCreature(t.state, elk, elk.hp)
+  assert.equal(t.state.creatureKills.hirvi, true, 'the standing elk did not die')
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.hirvi_dead, true)
+  assert.equal(t.state.creatureKills.hirvi, undefined, 'the kill was not consumed')
+  const hide = pickups(t.state).find(e => e.contents?.type === 'elk_hide')
+  assert.ok(hide, 'no hide where the elk fell')
+  t.state.entities = t.state.entities.filter(e => e !== hide)
+  t.state.player.inventory.push(makeItem('elk_hide'))
+  put(t.state, villageElder(t.state), 1, 0)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.hide_given, true)
+  assert.equal(hasTalent(t.state.player, 'ski_legs'), true)
+  assert.equal(t.rec.done, true)
+})
+
+test('the Kivihiisi, start to finish through the runner: the capstone, six stones, the hammer', () => {
+  const t = setup('kivihiisi', '1,1')
+  const k = point(t.world, 'hiidenkiuas')
+  put(t.state, k, 0, 5)
+  mineOut(t.state, k)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.hiisi_woken, true)
+  assert.equal(t.state.entities.filter(e => e.type === 'kivihiisi').length, 1)
+  for (let i = 0; i < 6; i++) {
+    mineOut(t.state, { x: k.x + RING[i][0], y: k.y + RING[i][1] })
+    tickTales(t.state, t.world, 0.016, t.hooks)
+    assert.equal(t.flags.stones, 5 - i)
+  }
+  assert.equal(t.flags.hiisi_dead, true)
+  assert.equal(t.state.creatureKills.kivihiisi, undefined, 'the kill was not consumed')
+  assert.ok(pickups(t.state).some(e => e.contents?.weaponType === 'ukonvasara'), 'no hammer')
+  assert.equal(t.rec.done, true)
+  assert.ok(t.world.paid.has('kivihiisi'))
 })

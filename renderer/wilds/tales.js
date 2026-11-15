@@ -9,16 +9,17 @@ import { villageAt, villagesNear, pieceBiome, pieceKey } from './layout.js'
 import { hash, hashInt } from './rand.js'
 
 export const REACH = 3       // pieces (Chebyshev) from the village
-export const SPACING = 3     // pieces between any two places: never two in one window
+export const SPACING = 3     // pieces between two places of one kind: never two of a kind in one window
+export const WIDEST = 5      // how far a tale may look once nothing nearer is left for it
 export const MIN_LAND = 3    // home-land pieces in reach for a kind to fit
 export const HOME_TRIO = ['0,0', '1,0', '0,-1']
 export const SIDE_NAMES = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
 
 const isHome = v => v.wx === 0 && v.wy === 0
 
-export function reachOf(seed, v) {
+export function reachOf(seed, v, reach = REACH) {
   const out = []
-  for (let dy = -REACH; dy <= REACH; dy++) for (let dx = -REACH; dx <= REACH; dx++) {
+  for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
     const wx = v.wx + dx, wy = v.wy + dy
     if (HOME_TRIO.includes(pieceKey(wx, wy)) || villageAt(seed, wx, wy)) continue
     out.push({ wx, wy })
@@ -28,12 +29,12 @@ export function reachOf(seed, v) {
 
 // fitsOf walks up to 48 pieces' country: remembered per (seed, village).
 const fitsCache = new Map()
-export function fitsOf(seed, v) {
-  const key = `${seed}:${v.wx},${v.wy}`
+export function fitsOf(seed, v, reach = REACH) {
+  const key = `${seed}:${v.wx},${v.wy}:${reach}`
   let fits = fitsCache.get(key)
   if (fits) return fits
   fits = Object.fromEntries(TALE_IDS.map(id => [id, []]))
-  for (const p of reachOf(seed, v)) {
+  for (const p of reachOf(seed, v, reach)) {
     const land = pieceBiome(seed, p.wx, p.wy)
     for (const id of TALE_IDS) if (TALES[id].land.includes(land)) fits[id].push(p)
   }
@@ -93,13 +94,25 @@ export function taleRecord(world, v) {
 
 // May this piece become the place of village v's tale? New land (no record),
 // the tale's home land within reach, and far enough from every other place
-// that no two are ever in one window.
-export function eligible(world, v, id, wx, wy) {
+// of its kind that no two are ever in one window: the quest code finds its
+// creature by type. Places of different kinds may be neighbours.
+export function eligible(world, v, id, wx, wy, reach = REACH) {
   const key = pieceKey(wx, wy)
   if (world.records.has(key) || world.places.has(key)) return false
-  if (!fitsOf(world.seed, v)[id].some(p => p.wx === wx && p.wy === wy)) return false
-  for (const other of world.places.keys()) if (cheb(parseKey(other), { wx, wy }) < SPACING) return false
+  if (!fitsOf(world.seed, v, reach)[id].some(p => p.wx === wx && p.wy === wy)) return false
+  for (const [other, place] of world.places) if (place.id === id && cheb(parseKey(other), { wx, wy }) < SPACING) return false
   return true
+}
+
+// The pieces still open to a tale: those of its reach, or, once every one of
+// them has been walked or taken, of the next ring out, up to WIDEST. A tale is
+// never left with directions to a place that cannot come.
+function openTo(world, v, id) {
+  for (let reach = REACH; reach <= WIDEST; reach++) {
+    const open = fitsOf(world.seed, v, reach)[id].filter(p => eligible(world, v, id, p.wx, p.wy, reach))
+    if (open.length) return open
+  }
+  return []
 }
 
 // `pieces` are about to enter the window; call before their records are
@@ -121,17 +134,22 @@ export function admit(world, pieces) {
     world.pieces.delete(key)   // generated out of sight as ordinary land: make it anew
     hits.push(key)
   }
-  for (const vKey of [...villages.keys()].sort()) {
+  // The village nearest the land coming in chooses first: at the start of a
+  // new world that is Koivula, whose wood should be the one beside it.
+  const near = v => Math.min(...pieces.map(p => Math.hypot(p.wx - v.wx, p.wy - v.wy)))
+  // (a village in the same window is as near as Koivula: home still goes first)
+  const order = [...villages.keys()].sort((a, b) => near(villages.get(a)) - near(villages.get(b))
+    || (b === '0,0') - (a === '0,0') || (a < b ? -1 : 1))
+  for (const vKey of order) {
     const v = villages.get(vKey)
     const id = taleOf(seed, v)
     if (!id) continue
     const known = world.tales.get(vKey)
     if (known?.place || known?.done) continue
-    const fits = fitsOf(seed, v)[id]
     if (TALES[id].kind === 'need') {
       if (!entering.has(vKey) && !world.records.has(vKey)) continue
       const far = p => Math.hypot(p.wx - v.wx, p.wy - v.wy)
-      const open = fits.filter(p => eligible(world, v, id, p.wx, p.wy))
+      const open = openTo(world, v, id)
         .sort((a, b) => far(a) - far(b) || (pieceKey(a.wx, a.wy) < pieceKey(b.wx, b.wy) ? -1 : 1))
       if (open.length) take(v, vKey, id, open[0])
       continue
@@ -139,15 +157,20 @@ export function admit(world, pieces) {
     const side = sideOf(seed, v, id)
     const onSide = p => side !== null && sideOfPiece(v, p.wx, p.wy) === side
     const tried = new Set()
-    const candidates = pieces.filter(p => eligible(world, v, id, p.wx, p.wy))
+    const isOpen = p => openTo(world, v, id).some(q => q.wx === p.wx && q.wy === p.wy)
+    const candidates = pieces.filter(isOpen)
       .sort((a, b) => (onSide(b) - onSide(a)) || (pieceKey(a.wx, a.wy) < pieceKey(b.wx, b.wy) ? -1 : 1))
     for (const p of candidates) {
-      if (!eligible(world, v, id, p.wx, p.wy)) continue   // another tale's place came too close meanwhile
+      const open = openTo(world, v, id)
+      if (!open.some(q => q.wx === p.wx && q.wy === p.wy)) continue   // another tale's place came too close meanwhile
       const rec = taleRecord(world, v)
       const table = TALES[id].kind === 'old' ? OLD : onSide(p) ? STORY_SIDE : STORY_OFF
       const i = onSide(p) ? rec.nSide : rec.n
-      const left = fits.filter(q => !tried.has(pieceKey(q.wx, q.wy)) && eligible(world, v, id, q.wx, q.wy)).length
-      const chance = left <= 1 ? 1 : table[Math.min(i, table.length - 1)]
+      const left = open.filter(q => !tried.has(pieceKey(q.wx, q.wy))).length
+      // Koivula's own tale does not gamble: the first fitting new land beside
+      // home is its place, so the first elk a new player meets is the one
+      // their own village tells of.
+      const chance = left <= 1 || vKey === '0,0' ? 1 : table[Math.min(i, table.length - 1)]
       if (onSide(p)) rec.nSide++; else rec.n++
       tried.add(pieceKey(p.wx, p.wy))
       if (hash(seed, p.wx, p.wy, 700 + i) < chance) { take(v, vKey, id, p); break }
