@@ -377,6 +377,18 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     seed, wx, wy, deal, b,
     biome: (x, y) => biome(x, y),
     kind, free, inside, open, clear: openCell, path, gates, gateInner, finish,
+    // a walkable line one cell wide with no path art: a way through the trees
+    // for something that must be reachable but not signposted
+    clearLine: (x0, y0, x1, y1) => {
+      let x = x0, y = y0
+      openCell(x, y)
+      while (x !== x1 || y !== y1) {
+        const dx = x1 - x, dy = y1 - y
+        if (Math.abs(dx) >= Math.abs(dy)) x += Math.sign(dx); else y += Math.sign(dy)
+        openCell(x, y)
+      }
+    },
+    dirtSkin: (x, y) => dirtSkin(x, y),
     // for features: the prop and ground art of a local cell
     propAt: (x, y) => skinAt(b.prop, x, y),
     groundAt: (x, y) => skinAt(b.ground, x, y),
@@ -395,8 +407,8 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
       b.prop[y + MARGIN][x + MARGIN] = b.skin(MTN.lat[0][0])
       b.walkG[y + MARGIN][x + MARGIN] = false
     },
-    setFloor: (x, y) => {
-      if (!inside(x, y) || isWaterSkin(skinAt(b.ground, x, y)) || pathCells.has(y * PIECE + x)) return
+    setFloor: (x, y, { roads = false } = {}) => {
+      if (!inside(x, y) || isWaterSkin(skinAt(b.ground, x, y)) || (!roads && pathCells.has(y * PIECE + x))) return
       b.ground[y + MARGIN][x + MARGIN] = b.skin(floorSkin(x, y))
     },
     // a pond cell: open water, blocked; finish() gives it its rim

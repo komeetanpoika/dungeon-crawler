@@ -69,6 +69,9 @@ try {
     return [...miss]
   })
   check(bare.length === 0, 'every tile in the window has its picture', bare.slice(0, 5).join(' '))
+  // Koivula tells the elk's tale, and names a side
+  const told = await ev(() => { const l = window.__dc.state.villageLines?.['0,0']; return l ? [...(l.villager ?? []), ...(l.elder ?? [])] : [] })
+  check(told.some(l => /(north|south|east|west)/.test(l)) && !told.some(l => /\{\w+\}/.test(l)), 'the home villagers tell the elk\'s tale and name a side', told[told.length - 1] ?? 'no lines')
   await shot('1-home')
   noErrors('on entering')
 
@@ -139,6 +142,46 @@ try {
     await sleep(300)
     check(await ev(() => !window.__dc.state.cave && window.__dc.state.map.length === 240), 'and back out')
     noErrors('through the house')
+  }
+
+  // ---- a tale: find the elk's wood and see the elk bedded at its first wallow ----------
+  // Moving a piece at a time keeps the player inside the window while it follows.
+  const pieceOfPlayer = async () => { const w = await playerWorld(); return { wx: Math.floor(w.X / 80), wy: Math.floor(w.Y / 80) } }
+  const hop = async (wx, wy) => {
+    for (let i = 0; i < 12; i++) {
+      const at = await pieceOfPlayer()
+      if (at.wx === wx && at.wy === wy) return
+      const w = await playerWorld()
+      await placeWorld(w.X + 80 * Math.sign(wx - at.wx), w.Y + 80 * Math.sign(wy - at.wy))
+      await ev(() => { const p = window.__dc.state.player; p.hp = p.maxHp })
+      await sleep(350)
+    }
+  }
+  const elkPlace = () => ev(() => window.__dc.wilds.tales.get('0,0')?.place ?? null)
+  let wood = await elkPlace()
+  // not found yet: look round home's reach, as a wanderer would
+  for (const [wx, wy] of [[2, 0], [2, 2], [0, 2], [-2, 2], [-2, 0], [-2, -2], [0, -2], [2, -2]]) {
+    if (wood) break
+    await hop(wx, wy)
+    wood = await elkPlace()
+  }
+  check(!!wood, 'the elk\'s wood has appeared within home\'s reach', String(wood))
+  if (wood) {
+    const [wx, wy] = wood.split(',').map(Number)
+    await hop(wx, wy)
+    const pts = await ev(key => { const p = window.__dc.wilds.pieces.get(key); return { tale: p.tale, points: p.points } }, wood)
+    const world = label => { const q = pts.points.find(p => p.label === label); return { X: wx * 80 + q.x, Y: wy * 80 + q.y } }
+    const shrine = world('forest shrine'), w1 = world('wallow 1')
+    await placeWorld(shrine.X, shrine.Y + 4)
+    await sleep(900)
+    await shot('6-tale')
+    const elk = await ev(([X, Y]) => {
+      const o = window.__dc.wilds.origin
+      const e = window.__dc.state.entities.find(e => e.type === 'hirvi')
+      return e ? { dx: e.x + o.wx * 80 - X, dy: e.y + o.wy * 80 - Y, mood: e.mood } : null
+    }, [w1.X, w1.Y])
+    check(pts.tale === 'elk' && !!elk && Math.abs(elk.dx) <= 2 && Math.abs(elk.dy) <= 2, 'the elk is bedded at its first wallow', JSON.stringify(elk))
+    noErrors('at the elk\'s wood')
   }
 
   // ---- death: wake in the last village ---------------------------------------------

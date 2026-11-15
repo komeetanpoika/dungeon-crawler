@@ -67,6 +67,9 @@ export const RPG = {
   ow_deco_skull: [49, 9], ow_deco_crop_0: [22, 10], ow_deco_crop_1: [22, 11],
   ow_deco_flower_0: [28, 9], ow_deco_flower_1: [29, 9], ow_deco_flower_2: [30, 9], ow_deco_flower_3: [31, 9],
   ow_lily_0: [28, 10], ow_lily_1: [28, 11], ow_lily_2: [25, 11],
+  // tale places (the Wilds, 2026-11-15)
+  ow_deco_firepit: [13, 8], ow_kiln_cold: [12, 0], ow_mtn_rock_cap: [12, 0],
+  ow_prop_fishrack_l: [51, 13], ow_prop_fishrack_r: [52, 13],
   // grey stone ruins
   ow_ruin_stub_0: [20, 18], ow_ruin_stub_1: [21, 18],
   ow_ruin_col_0: [20, 19], ow_ruin_col_1: [21, 19], ow_ruin_col_base_0: [20, 20], ow_ruin_col_base_1: [21, 20],

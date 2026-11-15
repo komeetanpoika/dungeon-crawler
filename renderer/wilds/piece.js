@@ -41,12 +41,12 @@ function reachable(cells, from) {
   return seen
 }
 
-export function generatePiece(seed, wx, wy, deal = 0) {
+export function generatePiece(seed, wx, wy, deal = 0, tale = null) {
   const t = makeTerrain(seed, wx, wy, deal)
   const tier = tierAt(wx, wy)
   const piece = {
     key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy),
-    main: null, small: [], packs: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
+    main: null, small: [], packs: [], tale, points: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
     spawnPoint: null, gates: t.gates, lootDepth: lootDepthFor(tier),
   }
   placeFeatures(t, piece)

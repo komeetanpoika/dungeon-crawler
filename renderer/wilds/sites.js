@@ -44,7 +44,49 @@ export const SITE_SKINS = [...new Set([
   'ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r', 'ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r',
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
   'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
+  'ow_deco_firepit', 'ow_kiln_cold', 'ow_mtn_rock_cap', 'ow_prop_fishrack_l', 'ow_prop_fishrack_r', 'ow_pier_log', 'ow_stone_ground_0',
 ])]
+
+// ---- the places of the tales (data/tales.js) --------------------------------------
+// Where a tale's place puts its parts, worked out before anything is stamped
+// so the piece's roads, small things and packs can keep clear of them.
+//   hub    where the roads from the gates meet
+//   keep   circles nothing else of the piece is dealt into
+//   ways   cells opened as an unmarked way through the trees; nothing is built on them
+export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9 }
+// The cells of a one-wide walkable line, each a step along x or y from the last.
+export function wayCells(x0, y0, x1, y1) {
+  const out = [{ x: x0, y: y0 }]
+  let x = x0, y = y0
+  while (x !== x1 || y !== y1) {
+    const dx = x1 - x, dy = y1 - y
+    if (Math.abs(dx) >= Math.abs(dy)) x += Math.sign(dx); else y += Math.sign(dy)
+    out.push({ x, y })
+  }
+  return out
+}
+export function layoutTale(tale, rng) {
+  const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))
+  if (tale === 'elk') {
+    const cx = ri(30, 49), cy = ri(30, 49)
+    // three of the four quarters, in turn, so each wallow is a long run from the last
+    const quarters = [[1, -1], [1, 1], [-1, 1], [-1, -1]]
+    const first = ri(0, 3)
+    const wallows = [0, 1, 2].map(i => {
+      const [sx, sy] = quarters[(first + i) % 4]
+      return { x: cx + sx * ri(17, 19), y: cy + sy * ri(17, 19), away: sy }
+    })
+    const hub = { x: cx, y: cy + 1 }
+    const ways = [hub, ...wallows].slice(0, -1).flatMap((from, i) => wayCells(from.x, from.y, wallows[i].x, wallows[i].y))
+    return { cx, cy, hub, wallows, ways, keep: wallows.map(w => ({ x: w.x, y: w.y, r: 6 })) }
+  }
+  if (tale === 'tar') {
+    const cx = ri(32, 53), cy = ri(24, 55)
+    return { cx, cy, hub: { x: cx - 14, y: cy }, keep: [{ x: cx - 17, y: cy + 2, r: 7 }] }
+  }
+  const cx = ri(26, 52), cy = ri(26, 53)
+  return { cx, cy, hub: { x: cx, y: cy + 4 }, keep: [{ x: cx + 11, y: cy + 3, r: 6 }] }
+}
 
 // c: { t, rng, pick, ri, hold, spawn, place, freeSpot, door, rocks, sandy }
 export function makeSites(c) {
@@ -289,5 +331,103 @@ export function makeSites(c) {
   }
   const flowers = (cx, cy, rMin, rMax, n) => scatter(cx, cy, rMin, rMax, n, FLOWERS)
 
-  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers }
+  // ---- tale places: each returns its named points ---------------------------------
+  const wob = (x, y, salt) => (c.hash(x, y, salt) - 0.5) * 1.6
+
+  // The elk's wood: a tended shrine, and three wallows a long run apart.
+  function elkWood(g) {
+    const { cx, cy } = g
+    // ways through the trees first (they would dry a pool dug before them)
+    for (const c of g.ways) t.clear(c.x, c.y)
+    // nothing solid or wet goes on a way: it is the one sure road to each wallow
+    const ways = new Set(g.ways.map(c => `${c.x},${c.y}`))
+    const offWay = (x, y) => !ways.has(`${x},${y}`)
+    cobble(cx, cy, 10)
+    put(cx, cy - 1, 'ow_statue_top'); put(cx, cy, 'ow_statue')
+    low(cx - 2, cy, 'ow_prop_pot'); low(cx + 2, cy, 'ow_prop_sack_0')
+    low(cx - 2, cy - 2, 'ow_prop_torch'); low(cx + 2, cy - 2, 'ow_prop_torch')
+    low(cx - 3, cy + 2, 'ow_prop_grave_2'); low(cx + 3, cy + 2, 'ow_prop_grave_3')
+    hold(g.hub.x, g.hub.y)
+    scatter(cx, cy, 2, 5, 6, FLOWERS)
+    for (const w of g.wallows) {
+      // churned ground, then the pool on the side away from the shrine
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy <= 14) {
+        t.clear(w.x + dx, w.y + dy); t.setGround(w.x + dx, w.y + dy, t.dirtSkin(w.x + dx, w.y + dy)); hold(w.x + dx, w.y + dy)
+      }
+      for (const [dx, dy] of [[-1, 1], [0, 1], [1, 1], [-1, 2], [0, 2], [1, 2], [0, 3], [-2, 2], [2, 2], [1, 3]])
+        if (offWay(w.x + dx, w.y + dy * w.away)) t.setWater(w.x + dx, w.y + dy * w.away)
+      for (const [dx, dy, skin] of [[-3, 0, 'ow_prop_stump_0'], [3, -1, 'ow_prop_stump_1'], [2, -2, 'ow_prop_stump_0']])
+        if (offWay(w.x + dx, w.y + dy * w.away)) low(w.x + dx, w.y + dy * w.away, skin)
+    }
+    return [{ label: 'forest shrine', ...g.hub }, ...g.wallows.map((w, i) => ({ label: `wallow ${i + 1}`, x: w.x, y: w.y }))]
+  }
+
+  // The broken causeway: a lake with a fishing islet, a deck out to it whose
+  // middle the quest breaks, and the tar pit and the crew's hut on the bank.
+  function causeway(g) {
+    const { cx, cy } = g
+    for (let dy = -13; dy <= 13; dy++) for (let dx = -13; dx <= 13; dx++) {
+      const d = Math.hypot(dx, dy)
+      if (d <= 3) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+      else if (d + wob(cx + dx, cy + dy, 520) <= 12) { t.setWater(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+    }
+    // the deck runs west from the islet until it meets the bank
+    // ten cells of deck from the islet to the bank at cx - 14 (the hub), over
+    // water wherever the lake's edge wobbles
+    const deck = Array.from({ length: 10 }, (_, i) => cx - 4 - i)
+    for (const x of deck) { t.setWater(x, cy); t.setProp(x, cy, 'ow_pier_log', { walkable: true }); hold(x, cy) }
+    const mid = deck[Math.floor(deck.length / 2)]
+    // the islet: racks, a barrel, what the village cannot reach
+    put(cx - 1, cy - 2, 'ow_prop_fishrack_l'); put(cx, cy - 2, 'ow_prop_fishrack_r'); low(cx + 1, cy - 2, 'ow_prop_barrel_1')
+    c.spawn({ kind: 'chest', x: cx + 1, y: cy })
+    // the bank: the pit, its kiln and wood, the crew's hut
+    const bx = deck[deck.length - 1] - 1
+    // made ground: by the sea the bank would otherwise be open water
+    for (let dy = -5; dy <= 7; dy++) for (let dx = -8; dx <= 0; dx++) t.clear(bx + dx, cy + dy)
+    const pit = { x: bx - 1, y: cy - 2 }
+    t.setProp(pit.x, pit.y, 'ow_deco_firepit', { walkable: true }); hold(pit.x, pit.y)
+    put(pit.x - 1, pit.y - 1, 'ow_kiln_cold')
+    low(pit.x + 1, pit.y - 1, 'ow_prop_woodpile'); low(pit.x - 2, pit.y, 'ow_prop_woodpile'); low(pit.x - 2, pit.y + 1, 'ow_prop_woodpile')
+    low(pit.x - 1, pit.y + 1, 'ow_prop_barrel_0'); low(pit.x + 1, pit.y - 2, 'ow_prop_stump_axe')
+    const h = house(bx - 4, cy + 4, 'hut', { w: 3 })
+    low(h.x1 + 1, cy + 4, 'ow_prop_barrel_1')
+    return [
+      { label: 'tar pit', ...pit }, { label: 'lumber camp', x: bx - 4, y: cy + 5 },
+      ...[-1, 0, 1].map((d, i) => ({ label: `bridge gap ${i + 1}`, x: mid + d, y: cy })),
+    ]
+  }
+
+  // The giant's oven: a bare bowl on stony ground with the capstone in its
+  // middle, standing stones round the rim, and the hermit's hut to one side.
+  function oven(g) {
+    const { cx, cy } = g
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
+      const d2 = dx * dx + dy * dy
+      if (d2 > 64) continue
+      if (d2 <= 50) t.clear(cx + dx, cy + dy)
+      // stony all over, the roads into it too: the bowl is one scorched floor
+      t.setFloor(cx + dx, cy + dy, { roads: true })
+      // a built hearth of flagstones under and round the capstone
+      if (d2 <= 2) t.setGround(cx + dx, cy + dy, 'ow_stone_ground_0')
+    }
+    t.setProp(cx, cy, 'ow_mtn_rock_cap'); hold(cx, cy)
+    // the six cells the quest raises its stones on stay bare
+    for (const [dx, dy] of [[3, 0], [-3, 0], [0, 3], [3, 3], [-3, -3], [3, -3]]) hold(cx + dx, cy + dy)
+    scatter(cx, cy, 2, 6, 7, ['ow_deco_skull'])
+    for (let i = 0; i < 9; i++) {
+      const a = i / 9 * Math.PI * 2 + 0.3
+      const x = cx + Math.round(Math.cos(a) * 8), y = cy + Math.round(Math.sin(a) * 8)
+      if (!t.onPath(x, y) && !(Math.abs(x - g.hub.x) <= 1 && y > cy)) put(x, y, pick(OLD_STONES))
+    }
+    // the hermit's hut, and a way from it to the bowl
+    const door = { x: cx + 11, y: cy + 3 }
+    t.clearLine(door.x, door.y + 1, cx + 6, cy + 2)
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) t.clear(door.x + dx, door.y + dy)
+    const h = house(door.x, door.y, 'hut', { w: 3, wall: 'stone' })
+    low(h.x0 - 1, door.y, 'ow_prop_woodpile'); low(h.x1 + 1, door.y + 1, 'ow_prop_stump_axe')
+    c.npc('hermit', door.x + 1, door.y + 1)
+    return [{ label: 'hiidenkiuas', x: cx, y: cy }, { label: 'hermit hut', ...door }]
+  }
+
+  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, elkWood, causeway, oven }
 }

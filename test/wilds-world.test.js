@@ -376,3 +376,33 @@ test('capInstances keeps cleared caves and only the newest few unfinished ones',
   assert.deepEqual(capInstances(undefined), {})
   assert.deepEqual(Object.keys(capInstances({ a: { cleared: false } })), ['a'])
 })
+
+test('a place is permanent while its tale is open and released once it is done', () => {
+  const world = makeWorld(null, { seed: 3 })
+  world.places.set('5,5', { id: 'kivihiisi', village: '4,4', done: false })
+  recordFor(world, '5,5').lastSeen = 0
+  world.playtime = FORGET_SECONDS + 100
+  assert.deepEqual(sweep(world, 40, 40), [])
+  world.places.get('5,5').done = true
+  assert.deepEqual(sweep(world, 40, 40), ['5,5'])
+  assert.equal(world.places.has('5,5'), false)
+})
+
+// Review Focus 5
+test('tales survive a save and load; an old or broken save has none', () => {
+  const world = makeWorld(null, { seed: 3 })
+  world.tales.set('0,0', { id: 'elk', flags: { flush: 1 }, place: '1,1', n: 2, nSide: 1, done: false })
+  world.places.set('1,1', { id: 'elk', village: '0,0', done: false })
+  world.paid.add('elk')
+  const again = makeWorld(JSON.parse(JSON.stringify(exportWorld(world))))
+  assert.deepEqual(again.tales.get('0,0'), { id: 'elk', flags: { flush: 1 }, place: '1,1', n: 2, nSide: 1, done: false })
+  assert.deepEqual(again.places.get('1,1'), { id: 'elk', village: '0,0', done: false })
+  assert.ok(again.paid.has('elk'))
+  assert.equal(getPiece(again, 1, 1).tale, 'elk')
+  const old = makeWorld({ ...exportWorld(world), gen: GEN - 1 })
+  assert.equal(old.tales.size + old.places.size + old.paid.size, 0)
+  for (const bad of [{ tales: 7, places: 'x', paid: {} }, { tales: { '0,0': { id: 'nope' } }, places: { a: null }, paid: [3] }]) {
+    const w = makeWorld({ ...exportWorld(world), ...bad })
+    assert.equal(w.tales.size + w.places.size + w.paid.size, 0)
+  }
+})

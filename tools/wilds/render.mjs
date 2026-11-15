@@ -19,6 +19,7 @@ const flag = (name, dflt) => { const i = args.indexOf(name); if (i < 0) return d
 const has = name => { const i = args.indexOf(name); if (i < 0) return false; args.splice(i, 1); return true }
 const deal = Number(flag('--deal', 0)), scale = Number(flag('--scale', 8)), out = flag('--out', 'wilds.png')
 const grid = has('--grid'), marks = has('--marks')
+const tale = flag('--tale', null)   // draw every piece as this tale's place: elk | tar | kivihiisi
 const [seed, wx0, wy0, cols = 3, rows = 3] = args.map(Number)
 if (![seed, wx0, wy0].every(Number.isFinite)) { console.error('usage: render.mjs <seed> <wx> <wy> [cols] [rows] [--deal N] [--scale 8] [--grid] [--marks] [--out file.png]'); process.exit(1) }
 
@@ -27,7 +28,7 @@ if (![seed, wx0, wy0].every(Number.isFinite)) { console.error('usage: render.mjs
 async function pieceArt(wx, wy) {
   try {
     const { generatePiece } = await import('../../renderer/wilds/piece.js')
-    const p = generatePiece(seed, wx, wy, deal)
+    const p = generatePiece(seed, wx, wy, deal, tale)
     return {
       ground: p.cells.map(r => r.map(c => c.skin)), prop: p.cells.map(r => r.map(c => c.overlay ?? null)),
       marks: [

@@ -185,6 +185,7 @@ describe('rocks', () => {
   it('a pick mines a rock in three blows; the cell clears to plain floor and is recorded', () => {
     const m = grass(); rock(m, 3, 3)
     assert.equal(HARVEST.ow_rock_gray_1.tool, 'mine')
+    assert.equal(HARVEST.ow_mtn_rock_cap.tool, 'mine')
     assert.deepEqual(harvest(m, 3, 3, { mine: 1 }), { felled: false, yield: 0, kind: 'rock', drop: null })
     assert.deepEqual(harvest(m, 3, 3, { mine: 2 }), { felled: true, yield: 0, kind: 'rock', drop: 'lumber' })
     assert.equal(m[3][3].tile, TILE.FLOOR); assert.equal(m[3][3].overlay, null)
