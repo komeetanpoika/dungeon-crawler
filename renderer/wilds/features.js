@@ -9,7 +9,7 @@
 // path end never cuts the piece in two.
 import { PIECE, FRAME, tierAt, pieceBiome, fixedMain, villageAt, caveDepthFor, pieceKey, BIOME_NAMES } from './layout.js'
 import { hash, hashInt, mulberry32 } from './rand.js'
-import { makeSites } from './sites.js'
+import { makeSites, layoutTale, TALE_PAD } from './sites.js'
 
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7 }
 const VILLAGERS = ['villager', 'villager', 'villager', 'elder', 'chicken', 'chicken', 'sheep', 'goat']
@@ -122,12 +122,20 @@ export function placeFeatures(t, piece) {
   }
 
   // ---- the main thing -------------------------------------------------------
-  const kind = mainKind(seed, wx, wy, deal)
+  // A tale's place takes the main thing over: its parts are laid out first so
+  // roads, small things and packs keep clear of them.
+  const geo = piece.tale ? layoutTale(piece.tale, rng) : null
+  const kind = geo ? `tale_${piece.tale}` : mainKind(seed, wx, wy, deal)
   const home = wx === 0 && wy === 0
-  const mx = home ? 40 : ri(18, PIECE - 19), my = home ? 40 : ri(18, PIECE - 19)
+  const mx = geo ? geo.cx : home ? 40 : ri(18, PIECE - 19), my = geo ? geo.cy : home ? 40 : ri(18, PIECE - 19)
+  const pad = geo ? TALE_PAD[piece.tale] : PAD[kind]
+  const hub = geo ? geo.hub : { x: mx, y: my }
+  const keepOut = geo ? geo.keep : []
+  const kept = (x, y, margin) => keepOut.some(k => Math.hypot(x - k.x, y - k.y) < k.r + margin) ||
+    (geo?.ways ?? []).some(c => Math.abs(c.x - x) <= margin + 1 && Math.abs(c.y - y) <= margin + 1)
   piece.main = { kind, x: mx, y: my }
-  t.open(mx, my, PAD[kind])
-  for (const side of ['N', 'E', 'S', 'W']) { const g = t.gateInner(side); t.path(g.x, g.y, mx, my, 2) }
+  t.open(mx, my, pad)
+  for (const side of ['N', 'E', 'S', 'W']) { const g = t.gateInner(side); t.path(g.x, g.y, hub.x, hub.y, 2) }
 
   // ---- small things: spots first, then trails -------------------------------
   const here = t.biome(mx, my)
@@ -145,7 +153,7 @@ export function placeFeatures(t, piece) {
     const pad = padOf(k)
     for (let tries = 0; tries < 60; tries++) {
       const x = ri(lo, hi), y = ri(lo, hi)
-      if (Math.hypot(x - mx, y - my) < PAD[kind] + 8) continue
+      if (Math.hypot(x - mx, y - my) < pad + 8 || kept(x, y, 6)) continue
       if (piece.small.some(s => Math.hypot(x - s.x, y - s.y) < 10)) continue
       let crossed = false
       for (let dy = -pad - 1; dy <= pad + 1 && !crossed; dy++) for (let dx = -pad - 1; dx <= pad + 1; dx++) if (t.onPath(x + dx, y + dy)) { crossed = true; break }
@@ -155,16 +163,21 @@ export function placeFeatures(t, piece) {
     }
   }
   for (const s of piece.small) t.open(s.x, s.y, padOf(s.kind))
-  for (const s of piece.small) t.path(s.x, s.y, mx, my, 1)
+  for (const s of piece.small) t.path(s.x, s.y, hub.x, hub.y, 1)
 
   // ---- stamp the main thing ---------------------------------------------------
   const sandy = here === 'desert' || here === 'sea'
   const sites = makeSites({
-    t, rng, pick, ri, hold, spawn, place, freeSpot, door,
+    t, rng, pick, ri, hold, spawn, place, freeSpot, door, npc,
+    hash: (x, y, salt) => hash(seed, wx * PIECE + x, wy * PIECE + y, salt + deal),
     taken: (x, y) => taken.has(`${x},${y}`), rocks: rocksFor(here), sandy,
   })
   let spawnPoint = null
-  if (kind === 'village') {
+  if (geo) {
+    piece.points = piece.tale === 'elk' ? sites.elkWood(geo) : piece.tale === 'tar' ? sites.causeway(geo) : sites.oven(geo)
+    spawnPoint = hub
+    hold(hub.x, hub.y)
+  } else if (kind === 'village') {
     const v = villageAt(seed, wx, wy) ?? { name: 'Koivula' }
     spawnPoint = { x: mx + 1, y: my + 1 }
     hold(spawnPoint.x, spawnPoint.y)
@@ -233,7 +246,7 @@ export function placeFeatures(t, piece) {
       for (let i = 0; i < 3; i++) place({ npc: here === 'marsh' ? 'boar' : 'deer' }, mx, my, 4, 6)
     }
   }
-  piece.spawnPoint = spawnPoint ?? freeSpot(mx, my, Math.max(1, PAD[kind] - 3), PAD[kind] - 1) ?? { x: mx, y: my }
+  piece.spawnPoint = spawnPoint ?? freeSpot(mx, my, Math.max(1, pad - 3), pad - 1) ?? { x: mx, y: my }
 
   // ---- stamp the small things -------------------------------------------------
   for (const s of piece.small) {
@@ -270,11 +283,11 @@ export function placeFeatures(t, piece) {
   // Two or three in wild land (one more far out), one or two round a village
   // and those well away from it. Half the wild pieces post one on a road.
   const village = kind === 'village'
-  const keep = village ? VILLAGE_CALM : PAD[kind] + 8
+  const keep = village ? VILLAGE_CALM : pad + 8
   const rim = FRAME + 4
   const roomy = (x, y) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!t.free(x + dx, y + dy)) return false; return true }
   const clear = (x, y) => x >= rim && y >= rim && x < PIECE - rim && y < PIECE - rim &&
-    Math.hypot(x - mx, y - my) >= keep &&
+    Math.hypot(x - mx, y - my) >= keep && !kept(x, y, 6) &&
     piece.small.every(s => Math.hypot(x - s.x, y - s.y) >= 8) &&
     piece.packs.every(p => Math.hypot(x - p.x, y - p.y) >= 14)
   const pack = (x, y, road) => {
@@ -295,7 +308,7 @@ export function placeFeatures(t, piece) {
 
   // A piece that could fit no small thing still gets its chest, by the main pad.
   if (!piece.small.length) {
-    const at = freeSpot(mx, my, PAD[kind] - 1, PAD[kind] + 2) ?? piece.spawnPoint
+    const at = freeSpot(mx, my, pad - 1, pad + 2) ?? piece.spawnPoint
     piece.small.push({ kind: 'chest', x: at.x, y: at.y })
     if (!taken.has(`${at.x},${at.y}`)) spawn({ kind: 'chest', x: at.x, y: at.y })
   }

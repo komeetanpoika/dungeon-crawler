@@ -12,7 +12,7 @@ import { NPC_SPECIES } from '../renderer/data/npcs.js'
 const SEEDS = [3, 77, 2024]
 const MONSTER_NAMES = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/index.json', import.meta.url), 'utf8'))
 const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger', 'campfire']
-const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark']
+const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark', 'tale_elk', 'tale_tar', 'tale_kivihiisi']
 // 40 pieces per seed, biased so every tier and country turns up.
 const samplePieces = seed => Array.from({ length: 22 }, (_, i) => ({
   wx: (hashInt(seed, i, 0, 6) % 25) - 12, wy: (hashInt(seed, i, 1, 6) % 25) - 12,
@@ -421,4 +421,89 @@ test('rock built on a road never shuts a gate', () => {
     for (const [side, g] of Object.entries(p.gates)) assert.ok(seen.has(`${g.x},${g.y}`), `${kind} at ${wx},${wy}: gate ${side} is cut off`)
   }
   assert.ok(n >= 100)
+})
+
+// ---- the places of the tales -----------------------------------------------------
+const TALE_SPOTS = { elk: ['forest', 'autumn'], tar: ['sea', 'marsh'], kivihiisi: ['mountain'] }
+const POINTS = {
+  elk: ['forest shrine', 'wallow 1', 'wallow 2', 'wallow 3'],
+  tar: ['tar pit', 'lumber camp', 'bridge gap 1', 'bridge gap 2', 'bridge gap 3'],
+  kivihiisi: ['hiidenkiuas', 'hermit hut'],
+}
+// Six pieces of each tale's home land per seed.
+function talePieces(seed, id) {
+  const out = []
+  for (let r = 1; r <= 9 && out.length < 6; r++) for (let wy = -r; wy <= r; wy++) for (let wx = -r; wx <= r; wx++) {
+    if (Math.max(Math.abs(wx), Math.abs(wy)) !== r || villageAt(seed, wx, wy) || out.length >= 6) continue
+    if (TALE_SPOTS[id].includes(pieceBiome(seed, wx, wy))) out.push(generatePiece(seed, wx, wy, 0, id))
+  }
+  return out
+}
+const pt = (p, label) => p.points.find(q => q.label === label)
+
+test('a tale piece has its named points, each reachable from every gate', () => {
+  for (const seed of SEEDS) for (const id of Object.keys(POINTS)) for (const p of talePieces(seed, id)) {
+    const at = `${id} at ${p.wx},${p.wy} (seed ${seed})`
+    assert.equal(p.tale, id)
+    assert.equal(p.main.kind, `tale_${id}`)
+    assert.deepEqual(p.points.map(q => q.label).sort(), [...POINTS[id]].sort(), at)
+    const seen = flood(p, p.spawnPoint)
+    for (const [side, g] of Object.entries(p.gates)) assert.ok(seen.has(`${g.x},${g.y}`), `${at}: gate ${side} cut off`)
+    for (const q of p.points) {
+      const beside = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen.has(`${q.x + dx},${q.y + dy}`))
+      assert.ok(beside, `${at}: ${q.label} unreachable`)
+    }
+    for (const s of p.spawns) assert.ok(seen.has(`${s.x},${s.y}`), `${at}: ${s.kind} unreachable`)
+  }
+})
+
+test('the elk\'s wood: a shrine and three wallows well apart, each beside its mud', () => {
+  for (const seed of SEEDS) for (const p of talePieces(seed, 'elk')) {
+    const spots = POINTS.elk.map(l => pt(p, l))
+    for (const [i, a] of spots.entries()) for (const b of spots.slice(i + 1)) assert.ok(dist(a, b) >= 22, `${dist(a, b).toFixed(0)} tiles apart`)
+    assert.ok(around(p, spots[0], 2, s => s === 'ow_statue') === 1, 'no statue at the shrine')
+    for (const w of spots.slice(1)) {
+      assert.ok(walk(p.cells[w.y][w.x]), 'a wallow point is stood on')
+      let wet = 0
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (/^ow_(water|pond|mud)/.test(p.cells[w.y + dy][w.x + dx].skin)) wet++
+      assert.ok(wet >= 5, `a wallow with ${wet} wet cells`)
+    }
+  }
+})
+
+test('the causeway: a deck with a three-cell gap is the only way to the islet', () => {
+  for (const seed of SEEDS) for (const p of talePieces(seed, 'tar')) {
+    const gaps = [1, 2, 3].map(i => pt(p, `bridge gap ${i}`))
+    assert.ok(gaps[0].y === gaps[1].y && gaps[1].y === gaps[2].y && gaps[1].x === gaps[0].x + 1 && gaps[2].x === gaps[1].x + 1)
+    for (const g of gaps) assert.equal(p.cells[g.y][g.x].overlay, 'ow_pier_log')
+    let deck = 0
+    for (let x = gaps[0].x - 8; x <= gaps[2].x + 8; x++) if (p.cells[gaps[0].y][x]?.overlay === 'ow_pier_log') deck++
+    assert.ok(deck >= 9, `a deck of ${deck}`)
+    const chest = p.spawns.find(s => s.kind === 'chest' && dist(s, p.main) <= 3)
+    assert.ok(chest, 'no chest on the islet')
+    // break the gap as the quest does: the islet must be cut off
+    for (const g of gaps) p.cells[g.y][g.x].tile = TILE.WALL
+    assert.ok(!flood(p, p.spawnPoint).has(`${chest.x},${chest.y}`), 'the islet is reachable without the deck')
+    const pit = pt(p, 'tar pit')
+    assert.ok(walk(p.cells[pit.y][pit.x]) && p.cells[pit.y][pit.x].overlay === 'ow_deco_firepit')
+    assert.ok(around(p, pit, 2, s => s === 'ow_kiln_cold') >= 1 && around(p, pit, 4, s => s === 'ow_prop_woodpile') >= 2)
+    assert.ok(p.doors.some(d => dist(d, pt(p, 'lumber camp')) <= 2), 'no crew hut at the camp')
+  }
+})
+
+test('the giant\'s oven: a bare bowl, a capstone to mine, the hermit and his hut', () => {
+  for (const seed of SEEDS) for (const p of talePieces(seed, 'kivihiisi')) {
+    const k = pt(p, 'hiidenkiuas')
+    assert.equal(p.cells[k.y][k.x].overlay, 'ow_mtn_rock_cap')
+    assert.equal(p.cells[k.y][k.x].tile, TILE.WALL)
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+      if ((!dx && !dy) || dx * dx + dy * dy > 36) continue
+      assert.ok(walk(p.cells[k.y + dy][k.x + dx]), `cover inside the bowl at ${dx},${dy}`)
+    }
+    const hut = pt(p, 'hermit hut')
+    assert.ok(dist(hut, k) >= 9 && dist(hut, k) <= 14)
+    assert.ok(p.doors.some(d => d.x === hut.x && d.y === hut.y))
+    const hermit = p.spawns.find(s => s.kind === 'npc' && s.species === 'hermit')
+    assert.ok(hermit && dist(hermit, hut) <= 3, 'no hermit at the hut')
+  }
 })
