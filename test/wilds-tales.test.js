@@ -61,3 +61,96 @@ test('a well-known story has a side with its land on it; other kinds have none',
   assert.equal(wherePhrase({ wx: 4, wy: 4 }, { wx: 6, wy: 4 }), 'a good walk east')
   assert.equal(wherePhrase({ wx: 4, wy: 4 }, { wx: 3, wy: 3 }), 'a short walk north-west')
 })
+
+import { makeWorld, getPiece, recordFor, sweep, exportWorld, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
+import { admit, taleRecord, SPACING } from '../renderer/wilds/tales.js'
+import { pieceKey } from '../renderer/wilds/layout.js'
+
+const cheb = (a, b) => Math.max(Math.abs(a.wx - b.wx), Math.abs(a.wy - b.wy))
+const parse = k => { const [wx, wy] = k.split(',').map(Number); return { wx, wy } }
+// Bring the 3x3 round (cx, cy) into the window the way session.js does.
+function look(world, cx, cy) {
+  const nine = []
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) nine.push({ wx: cx + dx, wy: cy + dy })
+  const hits = admit(world, nine)
+  for (const p of nine) recordFor(world, pieceKey(p.wx, p.wy))
+  return hits
+}
+
+test('wandering fitting land finds the place: by the fifth eligible piece, never in seen land, never twice', () => {
+  for (const seed of [3, 77, 2024, 5, 11]) {
+    const world = makeWorld(null, { seed })
+    const v = { wx: 0, wy: 0 }
+    const seenBefore = new Set()
+    let found = null
+    // a sporadic walk: a spiral of window centres out to 3 pieces
+    const steps = [[0, 0], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1], [2, -1], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2], [-1, 2], [-2, 2], [-2, 1], [-2, 0], [-2, -1], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2]]
+    for (const [cx, cy] of steps) {
+      const before = new Set(world.records.keys())
+      const hits = look(world, cx, cy)
+      for (const k of hits) {
+        if (world.places.get(k).village !== '0,0') continue
+        assert.equal(found, null, 'the elk appeared twice')
+        assert.ok(!before.has(k), 'it appeared in land already seen')
+        found = k
+      }
+    }
+    const rec = taleRecord(world, v)
+    assert.ok(found, `seed ${seed}: no elk after walking the whole reach`)
+    assert.equal(rec.place, found)
+    assert.ok(rec.n <= 5 && rec.nSide <= 2, `rolled ${rec.n} + ${rec.nSide} pieces`)
+    assert.equal(getPiece(world, ...Object.values(parse(found))).tale, 'elk')
+  }
+})
+
+test('searching the named side first finds a well-known story there by the second piece', () => {
+  let n = 0
+  for (const seed of [3, 77, 2024, 5, 11, 19, 23, 42]) {
+    const world = makeWorld(null, { seed })
+    const v = { wx: 0, wy: 0 }
+    const side = sideOf(seed, v, 'elk')
+    const onSide = fitsOf(seed, v).elk.filter(p => sideOfPiece(v, p.wx, p.wy) === side)
+    if (onSide.length < 2) continue
+    n++
+    // admit the on-side pieces alone, as if the player walked straight that way
+    for (const p of onSide.slice(0, 2)) { admit(world, [p]); recordFor(world, pieceKey(p.wx, p.wy)) }
+    const rec = taleRecord(world, v)
+    assert.ok(rec.place, `seed ${seed}: not found on its side`)
+    assert.equal(sideOfPiece(v, ...Object.values(parse(rec.place))), side)
+  }
+  assert.ok(n >= 4)
+})
+
+test('an immediate need takes the nearest eligible piece when its village comes near, and keeps it', () => {
+  let n = 0
+  for (const seed of SEEDS) for (const v of villages(seed)) {
+    if (taleOf(seed, v) !== 'tar') continue
+    n++
+    const world = makeWorld(null, { seed })
+    look(world, v.wx, v.wy)
+    const rec = taleRecord(world, v)
+    assert.ok(rec.place, 'chosen as soon as the village is in the window')
+    const far = p => Math.hypot(p.wx - v.wx, p.wy - v.wy)
+    const nearest = Math.min(...fitsOf(seed, v).tar.map(far))
+    // nearest by straight-line distance, unless another village's place took the ground first
+    assert.ok(far(parse(rec.place)) <= nearest + 1e-9 || world.places.size > 1, 'not the nearest fitting piece')
+    const kept = rec.place
+    for (const [dx, dy] of [[2, 0], [0, 2], [-2, 0], [0, -2]]) look(world, v.wx + dx, v.wy + dy)
+    assert.equal(taleRecord(world, v).place, kept)
+    if (n >= 6) return
+  }
+  assert.ok(n >= 2)
+})
+
+// Review Focus 4
+test('crowded country: no piece is two places and places keep their distance', () => {
+  for (const seed of SEEDS) {
+    const world = makeWorld(null, { seed })
+    for (let cy = -9; cy <= 9; cy += 2) for (let cx = -9; cx <= 9; cx += 2) look(world, cx, cy)
+    const keys = [...world.places.keys()]
+    assert.ok(keys.length >= 6, `${keys.length} places in 361 pieces`)
+    for (const [i, a] of keys.entries()) for (const b of keys.slice(i + 1))
+      assert.ok(cheb(parse(a), parse(b)) >= SPACING, `places ${a} and ${b} too close`)
+    for (const [vk, rec] of world.tales) if (rec.place) assert.equal(world.places.get(rec.place).village, vk)
+  }
+})

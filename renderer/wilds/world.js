@@ -10,10 +10,11 @@
 //   deals    key -> how many times the piece has been forgotten
 import { generatePiece } from './piece.js'
 import { pieceKey, isPermanent } from './layout.js'
+import { TALE_IDS } from '../data/tales.js'
 
 // Bump when the generator's output changes: spawn indices and the ground
 // itself in an older save no longer match, so its records are dropped.
-export const GEN = 3
+export const GEN = 4
 export const FORGET_PIECES = 5      // Chebyshev pieces from the player
 export const FORGET_SECONDS = 1200  // of play since the piece was last in the window
 export const CACHE_MAX = 49
@@ -30,6 +31,9 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     // key -> spawn indices alive in the window while their home piece is out
     // of it (session.js); never saved — a load puts everyone back at home
     strays: new Map(),
+    // tales (tales.js): villageKey -> { id, flags, place, n, nSide, done, special? };
+    // places: pieceKey -> { id, village, done }; paid: kinds whose special reward is spent
+    tales: new Map(), places: new Map(), paid: new Set(),
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
   }
   if (!ok) return world
@@ -47,6 +51,17 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     })
   }
   if (saved.pos && isInt(saved.pos.X) && isInt(saved.pos.Y)) world.pos = { X: saved.pos.X, Y: saved.pos.Y }
+  const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v)
+  for (const [key, t] of Object.entries(isObj(saved.tales) ? saved.tales : {})) {
+    if (!isObj(t) || !TALE_IDS.includes(t.id) || !isObj(t.flags) || !(t.place === null || typeof t.place === 'string') || !isInt(t.n) || !isInt(t.nSide)) continue
+    world.tales.set(key, { id: t.id, flags: { ...t.flags }, place: t.place, n: t.n, nSide: t.nSide, done: t.done === true,
+      ...(typeof t.special === 'boolean' && { special: t.special }) })
+  }
+  for (const [key, p] of Object.entries(isObj(saved.places) ? saved.places : {})) {
+    if (!isObj(p) || !TALE_IDS.includes(p.id) || typeof p.village !== 'string') continue
+    world.places.set(key, { id: p.id, village: p.village, done: p.done === true })
+  }
+  if (Array.isArray(saved.paid)) for (const id of saved.paid) if (TALE_IDS.includes(id)) world.paid.add(id)
   return world
 }
 
@@ -58,7 +73,7 @@ export function getPiece(world, wx, wy) {
   const key = pieceKey(wx, wy)
   let piece = world.pieces.get(key)
   if (piece) return piece
-  piece = generatePiece(world.seed, wx, wy, world.deals.get(key) ?? 0)
+  piece = generatePiece(world.seed, wx, wy, world.deals.get(key) ?? 0, world.places.get(key)?.id ?? null)
   world.pieces.set(key, piece)
   if (world.pieces.size > CACHE_MAX) evict(world)
   return piece
@@ -94,10 +109,13 @@ export function sweep(world, cwx, cwy) {
     if (Math.max(Math.abs(wx - cwx), Math.abs(wy - cwy)) <= FORGET_PIECES) continue
     if (world.playtime - rec.lastSeen <= FORGET_SECONDS) continue
     if (inWindow(world, wx, wy) || isPermanent(world.seed, wx, wy)) continue
+    // a tale's place stays until its tale is done; after that it is land like any other
+    if (world.places.has(key) && !world.places.get(key).done) continue
     forgotten.push(key)
   }
   for (const key of forgotten) {
     world.records.delete(key)
+    world.places.delete(key)
     world.deals.set(key, (world.deals.get(key) ?? 0) + 1)
     world.pieces.delete(key)
   }
@@ -112,5 +130,8 @@ export function exportWorld(world) {
     pos: world.pos ? { ...world.pos } : null,
     lastVillage: { ...world.lastVillage }, visited: [...world.visited],
     records, deals: Object.fromEntries(world.deals),
+    tales: Object.fromEntries([...world.tales].map(([key, t]) => [key, { ...t, flags: { ...t.flags } }])),
+    places: Object.fromEntries([...world.places].map(([key, p]) => [key, { ...p }])),
+    paid: [...world.paid],
   }
 }
