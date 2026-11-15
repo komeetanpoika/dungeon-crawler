@@ -155,3 +155,26 @@ export function admit(world, pieces) {
   }
   return hits
 }
+
+// ---- what the village says ---------------------------------------------------------
+// The lines of a village's tale at its current stage, placeholders filled.
+// The side is the promised one until the place is chosen and the real one
+// after, so the directions are never wrong for where the place is.
+export function fillLines(world, villageKey) {
+  const v = parseKey(villageKey)
+  const rec = world.tales.get(villageKey)
+  const id = rec?.id ?? taleOf(world.seed, v)
+  if (!id) return null
+  const tale = TALES[id]
+  const stage = tale.lines.find(s => s.when(rec?.flags ?? {}))
+  if (!stage) return null
+  const place = rec?.place ? parseKey(rec.place) : null
+  const promised = sideOf(world.seed, v, id)
+  const words = {
+    side: place ? SIDE_NAMES[sideOfPiece(v, place.wx, place.wy)] : promised !== null ? SIDE_NAMES[promised] : 'out',
+    where: place ? wherePhrase(v, place) : 'not far',
+    land: tale.landWord,
+  }
+  const fill = line => line.replace(/\{(\w+)\}/g, (whole, key) => words[key] ?? whole)
+  return Object.fromEntries(Object.entries(stage.by).map(([species, lines]) => [species, lines.map(fill)]))
+}

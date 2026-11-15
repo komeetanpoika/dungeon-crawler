@@ -63,7 +63,7 @@ test('a well-known story has a side with its land on it; other kinds have none',
 })
 
 import { makeWorld, getPiece, recordFor, sweep, exportWorld, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
-import { admit, taleRecord, SPACING } from '../renderer/wilds/tales.js'
+import { admit, taleRecord, SPACING, fillLines } from '../renderer/wilds/tales.js'
 import { pieceKey } from '../renderer/wilds/layout.js'
 
 const cheb = (a, b) => Math.max(Math.abs(a.wx - b.wx), Math.abs(a.wy - b.wy))
@@ -153,4 +153,20 @@ test('crowded country: no piece is two places and places keep their distance', (
       assert.ok(cheb(parse(a), parse(b)) >= SPACING, `places ${a} and ${b} too close`)
     for (const [vk, rec] of world.tales) if (rec.place) assert.equal(world.places.get(rec.place).village, vk)
   }
+})
+
+test('villagers tell the tale at the exactness of its kind, and stop once it is done', () => {
+  const world = makeWorld(null, { seed: 3 })
+  const home = fillLines(world, '0,0')
+  const side = SIDE_NAMES[sideOf(3, { wx: 0, wy: 0 }, 'elk')]
+  assert.ok([...home.villager, ...home.elder].some(l => l.includes(side)), 'the elk story names its side')
+  assert.ok(![...home.villager, ...home.elder].some(l => /\{\w+\}/.test(l)), 'a placeholder was left in')
+  const rec = taleRecord(world, { wx: 0, wy: 0 })
+  rec.place = '-2,1'; world.places.set('-2,1', { id: 'elk', village: '0,0', done: false })
+  const after = fillLines(world, '0,0')
+  assert.ok([...after.villager, ...after.elder].some(l => l.includes('south-west') || l.includes('west')), 'the side follows the real place')
+  rec.flags.hide_given = true
+  const done = fillLines(world, '0,0')
+  assert.ok(![...done.villager, ...done.elder].some(l => l.includes('south-west')), 'a finished tale is no longer told')
+  assert.notDeepEqual(done, after)
 })

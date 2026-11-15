@@ -7,24 +7,92 @@
 // `land` is the country its place appears in; `module` is the key of the
 // quest module (systems/quests/index.js) that plays it; `rule(flags)` is when
 // it is done. Pure data: nothing here imports the game.
+//
+// `lines` are what the village says, as in data/quests.js: stages read
+// top-down, the first whose `when(flags)` holds speaks, the last is the
+// catch-all and the first is the done stage, which no longer tells the tale.
+// Placeholders are filled by wilds/tales.js fillLines:
+//   {side}   a compass side ("north-east"): promised until the place is found, true after
+//   {where}  an exact phrase ("a good walk east"), for an immediate need
+//   {land}   the tale's `landWord`
+// `hermit` lines are spoken by the hermit at the Kivihiisi's place.
 export const TALES = {
   elk: {
     id: 'elk', title: 'Hiiden hirvi', kind: 'story', land: ['forest', 'autumn'],
     creature: 'hirvi', module: 'forest-1-clearings',
     rule: f => !!f.hide_given,
-    lines: [],
+    landWord: 'the deep wood',
+    lines: [
+      { when: f => f.hide_given, by: {
+        villager: ['The barley will stand this year.', 'Hiisi hide makes boots that run like weather.'],
+        elder:    ['Hiisi keeps his herd. This one he lent us, and you sent it back.'],
+      } },
+      { when: f => f.hirvi_dead, by: {
+        villager: ['You brought it down? Take the hide to the elder — he tanned for my father.'],
+        elder:    ['Bring me the hide and I will see you right for it.'],
+      } },
+      { when: f => (f.flush ?? 0) >= 1, by: {
+        villager: ['It runs when it is pushed. It always runs.', 'Nobody walks that one down. Nobody ever has.'],
+        elder:    ['Hiisi hunts on skis, they say. You have no skis, so you have running. Follow where it breaks the ground.'],
+      } },
+      { when: () => true, by: {
+        villager: ['Something has been through the barley again. Hooves the size of plates.', 'It keeps to {land}, {side} of here. There is an old shrine in there, and it stands in the offerings at dusk.'],
+        elder:    ["That is Hiisi's elk, and it eats where it likes. Go {side} into {land} and pick up its trail at the shrine."],
+      } },
+    ],
   },
   tar: {
     id: 'tar', title: 'Tervahauta', kind: 'need', land: ['sea', 'marsh'],
     creature: null, module: 'forest-2-river',
     rule: f => !!f.bridge_done,
-    lines: [],
+    landWord: 'the water',
+    lines: [
+      { when: f => f.bridge_done, by: {
+        villager: ['Tarred and true. That deck will outlast the both of us.', 'Fish on the racks again. Take one as you pass.'],
+        elder:    ['The crew left you something by their hut at the water. It is yours.'],
+      } },
+      { when: f => f.pit_lit, by: {
+        villager: ['Smell that? Pine tar. The deck wants three pots of it.', 'Stand at the broken end with a pot in your sack and the planks go down.'],
+        elder:    ['Three pots, three planks. Lay them from the end of the deck, one after the other.'],
+      } },
+      { when: () => true, by: {
+        villager: ['The deck out to the fish racks went in the spring storm. No fish since, and we will not lay planks that rot by autumn.', "It is {where}, where the road meets the lake. Six logs into the pit by the crew's hut — they burn down to tar."],
+        elder:    ['No deck on that water ever held without tar. Go {where} from the well; you cannot miss the lake.'],
+      } },
+    ],
   },
   kivihiisi: {
     id: 'kivihiisi', title: 'Kivihiisi', kind: 'old', land: ['mountain'],
     creature: 'kivihiisi', module: 'forest-3-autumn',
     rule: f => !!f.hiisi_dead,
-    lines: [],
+    landWord: 'the high ground',
+    lines: [
+      { when: f => f.hiisi_dead, by: {
+        villager: ['The goats came back on their own. They know.'],
+        elder:    ["Ukko's own hammer. Do not swing it near the houses."],
+        hermit:   ['Quiet under the stones now. I can hear the wind again.'],
+      } },
+      { when: f => f.hiisi_woken, by: {
+        villager: ['You woke it? Grandmother said it cannot leave its oven while its stones stand.'],
+        elder:    ['It reaches with what it has for arms, and it sees through its own stones. Mine each one with it squarely at your back — a step to the side and it will drag you in.'],
+        hermit:   ['It sees through its own stones. Keep one squarely between you and it while you mine the next.', 'Break all six. It is nothing without its skin.'],
+      } },
+      { when: () => true, by: {
+        villager: ['Goats go missing up in {land}. Wolves, my husband says.', "Grandmother told of a giant's oven up there with something asleep in it. She also told of a pike that talked."],
+        elder:    ['A hermit went up into {land} years ago, to be near the old oven. If he lives, he knows more than our stories do.'],
+        hermit:   ['Something breathes under that capstone. Nothing opens it but a pick.', 'My pick is by the door. I am too old to swing it.'],
+      } },
+    ],
   },
 }
 export const TALE_IDS = ['elk', 'tar', 'kivihiisi']
+
+// What a village with no tale talks about: its own country.
+export const PLAIN_LINES = {
+  forest:   { villager: ['Good timber this year. Mind the wolves past the second ridge.', 'The mushrooms are up early.'], elder: ['Every road out of here ends in trees. That suits us.'] },
+  autumn:   { villager: ['The leaves turn early here and stay late.', 'Boar in the red wood. Loud, mostly.'], elder: ['My father cleared this ground. The wood wants it back.'] },
+  marsh:    { villager: ['Keep to the planks. The fen keeps what it takes.', 'Cloudberries, if you know where.'], elder: ['Wet feet and long lives. That is the fen.'] },
+  mountain: { villager: ['Thin soil, good stone.', 'The pass was open when I was a girl.'], elder: ['Up here the weather tells you first.'] },
+  desert:   { villager: ['Water at the well only. Nowhere else.', 'Walk at dusk. The sand keeps the day.'], elder: ['Caravans came through once. The sand took the road.'] },
+  sea:      { villager: ['Herring when the wind is west.', 'Mend nets in winter, curse them in summer.'], elder: ['The sea gives. It also keeps count.'] },
+}

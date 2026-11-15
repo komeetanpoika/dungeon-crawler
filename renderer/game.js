@@ -45,6 +45,7 @@ import { generateInterior } from './systems/interior.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
+import { arriveTales, tickTales } from './wilds/tale-run.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
@@ -316,6 +317,15 @@ const wildsBuild = (spawns, map, depth) => buildEntities(spawns, map, depth, sta
 const wildsHooks = {
   buildEntities: wildsBuild,
   onVillage: v => { announce(state, `You reach ${v.name}.`); persistRun() },
+}
+// The villages' tales (wilds/tale-run.js) run the Adventure quest modules
+// through these: the same seams arriveOnMap gives a quest ctx.
+const taleHooks = {
+  getState: () => state,
+  spawn: (spawns, depth) => buildEntities(spawns, state.map, depth),
+  persist: () => persistRun(),
+  refreshInventory: () => afterInventoryChange(),
+  rollLoot: depth => rollChestLoot(depth, Math.random, state.player),
 }
 
 function persistRun() {
@@ -841,6 +851,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     const fresh = !activeSave.wilds
     wildsWorld = makeWorld(activeSave.wilds, { seed: randomSeed() })
     enterWilds(state, wildsWorld, wildsWorld.pos ?? wildsWorld.lastVillage, wildsHooks)
+    arriveTales(state, wildsWorld, taleHooks, { fresh: true })
     if (fresh) persistRun()
   }
   if (runMode === 'adventure' && OPEN_MAPS[depth]) recordVisit(activeSave.progress, OPEN_MAPS[depth].name)
@@ -1420,7 +1431,12 @@ function update(delta) {
   if (wildsWorld && state.wilds) {
     const before = state.map
     const { recentred } = tickWilds(state, wildsWorld, delta, wildsHooks)
-    if (recentred) renderer.rekeyTiles(before, state.map, -recentred.dx * PIECE, -recentred.dy * PIECE)
+    if (recentred) {
+      renderer.rekeyTiles(before, state.map, -recentred.dx * PIECE, -recentred.dy * PIECE)
+      arriveTales(state, wildsWorld, taleHooks)
+    }
+    // the tales rest underground, as the Adventure quests do
+    if (!state.cave) tickTales(state, wildsWorld, delta, taleHooks)
   }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
@@ -2176,6 +2192,7 @@ function update(delta) {
       npcDirty = false
       state = adventureRespawn(state, { x: state.player.x, y: state.player.y })
       const village = wildsRespawn(state, wildsWorld, wildsHooks)
+      arriveTales(state, wildsWorld, taleHooks, { fresh: true })
       state.npcWrath = false
       persistRun()
       queueToast(state, { title: `You awaken in ${village?.name ?? 'the village'}…`, lines: ['The dark took its toll — but you are alive.'] })
