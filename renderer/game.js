@@ -45,7 +45,7 @@ import { generateInterior } from './systems/interior.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
-import { arriveTales, tickTales } from './wilds/tale-run.js'
+import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
@@ -76,7 +76,7 @@ import { stepProjectiles } from './systems/projectiles.js'
 import { nearestPoint } from './systems/hitbox.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
-import { TALENTS, hasTalent, RUSH_START_TALENTS } from './systems/talents.js'
+import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS } from './systems/talents.js'
 import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, RUSH_START_OUTFITS, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
   TRANCE_FADE, PULL_DURATION, PULL_TELEPORT_AT, pullTarget } from './systems/rites.js'
@@ -88,7 +88,8 @@ import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { tickBinds, playerBound, struggle } from './systems/player-bind.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
-import { makeWeather, advanceClock, weatherLook } from './systems/weather.js'
+import { makeWeather, advanceClock, weatherLook, isNight } from './systems/weather.js'
+import { DAY_START } from './data/weather.js'
 import { canMoveTo, moveEntity, PLAYER_HALF, PLAYER_SPEED } from './systems/movement.js'
 import { applyLoadout, handPayload } from './systems/loadout.js'
 
@@ -326,6 +327,9 @@ const taleHooks = {
   persist: () => persistRun(),
   refreshInventory: () => afterInventoryChange(),
   rollLoot: depth => rollChestLoot(depth, Math.random, state.player),
+  save: () => activeSave,
+  isNight: () => isNight(activeSave.clock ?? DAY_START),
+  grantTalent: id => grantTalent(state, id),
 }
 
 function persistRun() {
@@ -2347,9 +2351,11 @@ function enterHouse(door) {
   } else {
     const cfg = INTERIOR_CONFIG[door.tier]
     const theme = DEPTH_THEMES.find(t => t.depths.includes(INTERIOR_DEPTH)) ?? DEPTH_THEMES[0]
-    const structs = storyStructures(structures, state.episode, door.story)
+    // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
+    const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
+    const structs = storyStructures(structures, storyEp, door.story)
     const { map, entitySpawns, playerSpawn } = generateInterior(cfg, { structures: structs })
-    const spawns = attachPickups(entitySpawns, state.episode?.houses?.[door.story]?.pickups ?? [])
+    const spawns = attachPickups(entitySpawns, storyEp?.houses?.[door.story]?.pickups ?? [])
     state = buildCaveState(state, entrance, {
       map, entities: buildEntities(spawns, map, INTERIOR_DEPTH), playerSpawn, theme,
     })

@@ -67,9 +67,14 @@ test('the Wilds\' tiles load on entering the Wilds, not with the title', () => {
 })
 
 test('the tales are wired in: arrival after every new window, a tick after the Wilds tick', () => {
-  assert.match(SRC, /import \{ arriveTales, tickTales \} from '\.\/wilds\/tale-run\.js'/)
+  assert.match(SRC, /import \{ arriveTales, tickTales, storyEpisode \} from '\.\/wilds\/tale-run\.js'/)
   const upd = SRC.slice(SRC.indexOf('tickWilds(state, wildsWorld, delta, wildsHooks)'))
   assert.ok(upd.indexOf('tickTales(state, wildsWorld, delta, taleHooks)') > 0 && upd.indexOf('tickTales(') < 900, 'tickTales does not follow tickWilds')
   assert.ok((SRC.match(/arriveTales\(state, wildsWorld, taleHooks, \{ fresh: true \}\)/g) ?? []).length >= 2, 'arriveTales after entering and after waking')
   assert.match(SRC, /if \(recentred\) [\s\S]{0,200}arriveTales\(state, wildsWorld, taleHooks\)/)
+})
+
+test('a story house in the Wilds takes its things from the tale', () => {
+  assert.match(SRC, /storyEpisode\(wildsWorld, door\)/)
+  assert.match(SRC, /save: \(\) => activeSave/)
 })

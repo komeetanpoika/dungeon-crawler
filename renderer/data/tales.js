@@ -31,6 +31,10 @@ export const TALES = {
     creature: 'hirvi', module: 'forest-1-clearings', engine: 'quest', arriveOn: 'both',
     rule: f => !!f.hide_given,
     landWord: 'the deep wood',
+    // what the stranger thinks on first coming near a thing (`at`: a point of the place, or 'village')
+    remarks: [
+      { at: 'forest shrine', within: 4, text: 'Fresh offerings. And hoofprints the size of plates, leading off through the trees.' },
+    ],
     lines: [
       { when: f => f.hide_given, by: {
         villager: ['The barley will stand this year.', 'Hiisi hide makes boots that run like weather.'],
@@ -100,6 +104,12 @@ export const TALES = {
     rule: f => !!f.nakki_gone,
     missing: { species: 'villager', name: 'Toivo' },
     landWord: 'the lake',
+    // interiors that hold the tale's things, as data/leaps.js declares them
+    houses: { "Toivo's hut": { room: 'toivo_kitchen', pickups: [
+      { type: 'meat', count: 3 },
+      { type: 'weapon', weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 },
+      { type: 'lumber', count: 3 },
+    ] } },
     lines: [],
   },
   fold: {

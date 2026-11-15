@@ -4,7 +4,9 @@
 import { test, before } from 'node:test'
 import fs from 'node:fs'
 import assert from 'node:assert/strict'
-import { arriveTales, tickTales } from '../renderer/wilds/tale-run.js'
+import { arriveTales, tickTales, storyEpisode } from '../renderer/wilds/tale-run.js'
+import { EPISODE_MODULES } from '../renderer/systems/episodes/index.js'
+import { TALES } from '../renderer/data/tales.js'
 import { fillLines } from '../renderer/wilds/tales.js'
 import { makeWorld, getPiece, recordFor, exportWorld } from '../renderer/wilds/world.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn } from '../renderer/wilds/session.js'
@@ -49,15 +51,17 @@ function setup(id, place, { flags = {}, seed = 3, paid = [] } = {}) {
     player: { x: 0, y: 0, px: 0, py: 0, hp: 10, maxHp: 10, talents: [], inventory: [], maxInventory: 20, weapon: null },
     entities: [], feedback: makeFeedback(), sfx: makeSfx(), creatureKills: {},
   }
-  const calls = { persist: 0 }
+  const calls = { persist: 0, talents: [] }
+  const save = { clock: 0 }
   const hooks = {
     getState: () => state, spawn: (spawns, depth) => buildEntities(spawns, state.map, depth),
     persist: () => { calls.persist++ }, refreshInventory: () => {}, rollLoot: () => ({ type: 'potion', amount: 4 }),
+    save: () => save, isNight: () => false, grantTalent: id => { calls.talents.push(id); (state.player.talents ??= []).push(id) },
   }
   enterWilds(state, world, { wx: 0, wy: 0 }, { buildEntities })
   arriveTales(state, world, hooks, { fresh: true })
   const rec = world.tales.get('0,0')
-  return { world, state, hooks, rec, flags: rec.flags, calls }
+  return { world, state, hooks, rec, flags: rec.flags, calls, save }
 }
 const [pwx, pwy] = [1, 1]
 // A named point of the place at (1, 1), in window tiles.
@@ -336,4 +340,94 @@ test('the Kivihiisi, start to finish through the runner: the capstone, six stone
   assert.ok(pickups(t.state).some(e => e.contents?.weaponType === 'ukonvasara'), 'no hammer')
   assert.equal(t.rec.done, true)
   assert.ok(t.world.paid.has('kivihiisi'))
+})
+
+// ---- step 2: the runner drives episodes -------------------------------------------------
+const thought = state => state.feedback.bubble?.kind === 'thought' ? state.feedback.bubble.text : null
+const missing = state => state.entities.filter(e => e.type === 'npc' && e.role === 'missing')
+const centre = (t, wx = 0, wy = 0) => { const p = getPiece(t.world, wx, wy); return { x: (wx - t.world.origin.wx) * PIECE + p.village.x, y: (wy - t.world.origin.wy) * PIECE + p.village.y } }
+
+test('a remark is thought once when its point comes near', () => {
+  const t = setup('elk', '1,1')
+  const text = TALES.elk.remarks[0].text
+  put(t.state, point(t.world, 'forest shrine'), 0, 12)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.notEqual(thought(t.state), text, 'remarked from too far away')
+  put(t.state, point(t.world, 'forest shrine'), 0, 3)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(thought(t.state), text)
+  assert.deepEqual(t.flags.said, [0])
+  t.state.feedback.bubble = null
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(thought(t.state), null, 'said twice')
+})
+
+test('the missing person comes home when the tale is done, once, and is there on every later arrival', () => {
+  const t = setup('nakki', '2,2', { flags: { nakki_gone: true } })
+  assert.equal(missing(t.state).length, 0)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.rec.done, true)
+  const [who] = missing(t.state)
+  assert.equal(missing(t.state).length, 1)
+  assert.deepEqual([who.species, who.hostile, who.taleKey, who.linesKey], ['villager', false, 'tale:0,0', '0,0'])
+  const c = centre(t)
+  assert.ok(Math.max(Math.abs(who.x - c.x), Math.abs(who.y - c.y)) <= 4)
+  assert.equal(t.state.map[who.y][who.x].tile, TILE.FLOOR)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  arriveTales(t.state, t.world, t.hooks)
+  assert.equal(missing(t.state).length, 1, 'a second one came home')
+  shift(t, 0, -1); shift(t, 0, -1)          // the village leaves the window...
+  assert.equal(missing(t.state).length, 0)
+  shift(t, 0, 1); shift(t, 0, 1)            // ...and is back
+  assert.equal(missing(t.state).length, 1)
+  arriveTales(t.state, t.world, t.hooks, { fresh: true })
+  assert.equal(missing(t.state).length, 1)
+})
+
+test('an episode that calls resolve() is finished, and reads the Wilds clock', () => {
+  const t = setup('flame', '2,2', { flags: { sammunut_spawned: true, arrived: true } })
+  assert.equal(t.rec.done, false)
+  t.state.entities.push({ type: 'sammunut', taleKey: 'tale:0,0', x: 5, y: 5, px: 176, py: 176 })
+  t.state.creatureKills.sammunut = true
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.wraith_dead, true, 'the village tale did not see its own creature die')
+  assert.equal(t.flags.resolved, true)
+  assert.equal(t.state.creatureKills.sammunut, undefined)
+  assert.equal(t.rec.done, true)
+})
+
+test('a creature that lives in the village is not the tale\'s own when only the knoll is here', () => {
+  const t = setup('flame', '3,0', { flags: { sammunut_spawned: true, arrived: true } })
+  enterWilds(t.state, t.world, { wx: 3, wy: 0 }, { buildEntities })
+  arriveTales(t.state, t.world, t.hooks, { fresh: true })
+  assert.ok(t.world.origin.wx > 0, 'the village is still in the window')
+  t.state.creatureKills.sammunut = true
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.ok(!t.flags.wraith_dead)
+  assert.equal(t.state.creatureKills.sammunut, true)
+})
+
+test('onArrive runs when the piece the tale names comes in, not the other', () => {
+  const spy = id => { const mod = EPISODE_MODULES[TALES[id].module], real = mod.onArrive; let n = 0; mod.onArrive = () => { n++ }; return { get n() { return n }, restore: () => { mod.onArrive = real } } }
+  const flame = spy('flame'), nakki = spy('nakki')
+  try {
+    const a = setup('flame', '2,0')            // village here, knoll one piece outside the window
+    assert.equal(flame.n, 1)
+    shift(a, 1, 0)                             // the knoll comes in, the village stays
+    assert.equal(flame.n, 1, 'the flame-thief arrived again for its knoll')
+    const b = setup('nakki', '2,0')
+    assert.equal(nakki.n, 0, 'the Näkki arrived for its village')
+    shift(b, 1, 0)
+    assert.equal(nakki.n, 1)
+  } finally { flame.restore(); nakki.restore() }
+})
+
+test('a story house hands out its tale\'s things', () => {
+  const t = setup('nakki', '1,1')
+  const door = { label: `house:wilds:${1 * PIECE + 30},${1 * PIECE + 30}`, story: "Toivo's hut", tier: 'hut' }
+  const ep = storyEpisode(t.world, door)
+  assert.ok(ep?.houses["Toivo's hut"].pickups.length >= 3)
+  assert.equal(ep.houses["Toivo's hut"].room, 'toivo_kitchen')
+  assert.equal(storyEpisode(t.world, { ...door, label: 'house:wilds:5,5' }), null, 'a door outside any place')
+  assert.equal(storyEpisode(t.world, { ...door, story: null }), null)
 })
