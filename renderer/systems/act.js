@@ -10,6 +10,7 @@ const SEP_RADIUS = 20        // px within which enemies push each other apart
 const SEP_WEIGHT = 0.6
 const REPATH_INTERVAL = 0.5  // s between A* recomputes for a moving target
 const WAYPOINT_REACHED = 10  // px
+const WILDS_FIELD = 48       // path-tiles from the player the flow field reaches in the Wilds
 
 // Player flow field, cached on state and rebuilt only when the player's tile
 // (or the map) changes — the maybeComputeFOV trick applied to navigation.
@@ -19,7 +20,9 @@ export function getPlayerField(state, clearance = 1) {
   const cache = state._flowFields ?? (state._flowFields = {})
   const c = cache[clearance]
   if (!c || c.x !== p.x || c.y !== p.y || c.nav !== nav) {
-    cache[clearance] = { x: p.x, y: p.y, nav, field: buildFlowField(nav, p.x, p.y, clearance) }
+    // In the Wilds (a 240x240 window) the field covers the neighbourhood only.
+    const limit = state.wilds ? WILDS_FIELD : Infinity
+    cache[clearance] = { x: p.x, y: p.y, nav, field: buildFlowField(nav, p.x, p.y, clearance, limit) }
   }
   return cache[clearance].field
 }

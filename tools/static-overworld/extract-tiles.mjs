@@ -50,6 +50,26 @@ export const RPG = {
   ow_ruin_crack_0: [17, 19], ow_ruin_crack_1: [16, 19], ow_ruin_crack_2: [18, 19],
   // camp
   ow_tent_00: [46, 10], ow_tent_10: [47, 10], ow_tent_01: [46, 11], ow_tent_11: [47, 11],
+  ow_tent_tan_00: [48, 10], ow_tent_tan_10: [49, 10], ow_tent_tan_01: [48, 11], ow_tent_tan_11: [49, 11],
+  // site dressing (the Wilds, 2026-11-15). ow_prop_* are low things a sight
+  // line passes over (LOS_CLEAR_PREFIXES); ow_deco_* lie flat and are walked on.
+  ow_prop_campfire_cold: [13, 8],
+  ow_prop_stump_0: [53, 19], ow_prop_stump_1: [53, 20], ow_prop_stump_axe: [53, 21], ow_prop_woodpile: [53, 22],
+  ow_prop_barrel_0: [22, 0], ow_prop_barrel_1: [23, 0], ow_prop_sack_0: [26, 2], ow_prop_sack_1: [27, 2],
+  ow_prop_crate_0: [13, 7], ow_prop_crate_1: [14, 7], ow_prop_crate_2: [15, 7],
+  ow_prop_grave_0: [51, 9], ow_prop_grave_1: [52, 9], ow_prop_grave_2: [51, 11], ow_prop_grave_3: [52, 11],
+  ow_prop_cross_0: [53, 9], ow_prop_cross_1: [51, 10],
+  ow_prop_mound: [41, 10], ow_prop_torch: [17, 7], ow_prop_signpost: [19, 0],
+  ow_prop_bedroll_0: [12, 3], ow_prop_bedroll_1: [13, 3],
+  ow_prop_counter_0: [11, 4], ow_prop_counter_1: [12, 4], ow_prop_counter_2: [13, 4],
+  ow_stall_top: [10, 0], ow_stall_front: [10, 1], ow_stall_top_green: [11, 0], ow_stall_front_green: [11, 1],
+  ow_statue_top: [50, 10], ow_statue: [50, 11],
+  ow_deco_skull: [49, 9], ow_deco_crop_0: [22, 10], ow_deco_crop_1: [22, 11],
+  ow_deco_flower_0: [28, 9], ow_deco_flower_1: [29, 9], ow_deco_flower_2: [30, 9], ow_deco_flower_3: [31, 9],
+  ow_lily_0: [28, 10], ow_lily_1: [28, 11], ow_lily_2: [25, 11],
+  // grey stone ruins
+  ow_ruin_stub_0: [20, 18], ow_ruin_stub_1: [21, 18],
+  ow_ruin_col_0: [20, 19], ow_ruin_col_1: [21, 19], ow_ruin_col_base_0: [20, 20], ow_ruin_col_base_1: [21, 20],
 }
 
 // --- Tiny Town copies: name -> tile number ---
@@ -81,6 +101,23 @@ export const TT = {
   ow_cave_arch_0: 113, ow_cave_arch_1: 114,
   ow_cave_gate_l: 111, ow_cave_gate_r: 112,
   ow_cave_door: 125, ow_brick: 126,
+  // the house kit as Tiny Town means it (the Wilds, 2026-11-15): 48-50 and
+  // 60-62 are the blue roof's two rows, not walls; 51/55 a chimney on roof;
+  // 84/88 windows; 86+87 and 90+91 double doors
+  ow_roof_blue_l: 48, ow_roof_blue_m: 49, ow_roof_blue_r: 50, ow_roof_blue_chim: 51,
+  ow_roof_blue_el: 60, ow_roof_blue_em: 61, ow_roof_blue_er: 62,
+  ow_roof_red_chim: 55,
+  ow_house_win_brown: 84, ow_house_win_stone: 88,
+  ow_house_dbl_brown_l: 86, ow_house_dbl_brown_r: 87, ow_house_dbl_stone_l: 90, ow_house_dbl_stone_r: 91,
+  ow_castle_parapet_l: 99, ow_castle_parapet_m: 100, ow_castle_parapet_r: 101,
+  // fence: 44/46 top corners (ow_fence_l/r), 45 run, 56/58 sides, 68/70
+  // bottom corners, 69 and 80 the two ends beside a gate gap
+  ow_fence_side_l: 56, ow_fence_side_r: 58, ow_fence_bl: 68, ow_fence_br: 70, ow_fence_end_r: 69, ow_fence_end_l: 80,
+  ow_prop_cart: 57, ow_prop_target: 95, ow_prop_log: 106, ow_prop_pot: 107, ow_prop_bucket: 130, ow_prop_bucket_water: 131,
+  ow_prop_pitchfork: 116,
+  // a dirt patch with its own grass edge (field, yard)
+  ow_patch_tl: 12, ow_patch_t: 13, ow_patch_tr: 14, ow_patch_l: 24, ow_patch_m: 25, ow_patch_r: 26,
+  ow_patch_bl: 36, ow_patch_b: 37, ow_patch_br: 38,
 }
 
 const pad = n => String(n).padStart(4, '0')

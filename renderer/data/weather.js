@@ -21,6 +21,8 @@ export const WEATHER = {
   'sea-1-suomenlinna':      { dayCycle: true },
   'sea-2-fishing-village':  { dayCycle: true },
   'sea-3-archipelago':      { dayCycle: true },
+  // the Wilds (renderer/wilds/): one clock on its own save
+  'wilds':                  { dayCycle: true },
 }
 
 export const weatherFor = mapData => (mapData && WEATHER[mapData.name]) || null

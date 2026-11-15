@@ -7,6 +7,7 @@
 const META_KEY = 'dungeon-crawler-meta'
 const CAVES_KEY = 'dungeon-crawler-caves'
 const TIMEWARP_KEY = 'dungeon-crawler-timewarp'
+const WILDS_KEY = 'dungeon-crawler-wilds'
 
 async function fetchJSON(url, fallback) {
   try {
@@ -32,6 +33,10 @@ if (!window.saveAPI) {
     saveTimewarp: async (data) => { try { localStorage.setItem(TIMEWARP_KEY, JSON.stringify(data)) } catch {} },
     loadTimewarp: async () => {
       try { return JSON.parse(localStorage.getItem(TIMEWARP_KEY)) } catch { return null }
+    },
+    saveWilds: async (data) => { try { localStorage.setItem(WILDS_KEY, JSON.stringify(data)) } catch {} },
+    loadWilds: async () => {
+      try { return JSON.parse(localStorage.getItem(WILDS_KEY)) } catch { return null }
     },
     loadRulesets: () => fetchJSON('./data/rulesets.json', {}),
     // Mirrors main.cjs's load-monsters: the index lists names, each name is

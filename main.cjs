@@ -15,6 +15,7 @@ const RUN_FILE = path.join(SAVE_DIR, 'run.json')
 const META_FILE = path.join(SAVE_DIR, 'meta.json')
 const CAVES_FILE = path.join(SAVE_DIR, 'caves.json')
 const TIMEWARP_FILE = path.join(SAVE_DIR, 'timewarp.json')
+const WILDS_FILE = path.join(SAVE_DIR, 'wilds.json')
 const RULESETS_FILE = path.join(__dirname, 'renderer', 'data', 'rulesets.json')
 const PAINTER_MAPS_FILE = path.join(__dirname, 'renderer', 'data', 'painter-maps.json')
 const STRUCTURES_FILE = path.join(__dirname, 'renderer', 'data', 'structures.json')
@@ -86,6 +87,10 @@ ipcMain.handle('load-caves', () => {
 ipcMain.handle('save-timewarp', (_e, data) => fs.writeFileSync(TIMEWARP_FILE, JSON.stringify(data)))
 ipcMain.handle('load-timewarp', () => {
   try { return JSON.parse(fs.readFileSync(TIMEWARP_FILE, 'utf8')) } catch { return null }
+})
+ipcMain.handle('save-wilds', (_e, data) => fs.writeFileSync(WILDS_FILE, JSON.stringify(data)))
+ipcMain.handle('load-wilds', () => {
+  try { return JSON.parse(fs.readFileSync(WILDS_FILE, 'utf8')) } catch { return null }
 })
 ipcMain.handle('open-editor', () => createEditorWindow())
 ipcMain.handle('quit-app', () => app.quit())

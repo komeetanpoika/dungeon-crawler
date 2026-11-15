@@ -22,7 +22,7 @@ import { makeWeatherLayer, drawNight, drawFog } from './weather.js'
 import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.js'
 import { spriteHue } from '../systems/rites.js'
 import { drawTile } from './tiles.js'
-import { makeTileLayer, makeDirectTileLayer } from './tile-layer.js'
+import { makeTileLayer, makeDirectTileLayer, CHUNK } from './tile-layer.js'
 import { drawComboFx, drawArrowTrail, drawBuffSpot, drawBuffUnder, drawBuffOver } from './pvp-fx.js'
 import { BUFF_COLORS } from '../data/pvp.js'
 
@@ -1198,6 +1198,12 @@ export class Renderer {
     this.ctx.imageSmoothingEnabled = false
     this.weatherLayer?.resize(this.viewW, this.viewH)
     this.tranceLayer?.resize(this.viewW, this.viewH)
+  }
+
+  // The Wilds window re-centred by (dxTiles, dyTiles): move the tile cache
+  // along (tile-layer.js rekey) so the visible chunks are not baked again.
+  rekeyTiles(oldMap, map, dxTiles, dyTiles) {
+    this.tileLayer.rekey?.(oldMap, map, dxTiles / CHUNK, dyTiles / CHUNK)
   }
 
   updateCamera(player, shake = 0, fx = null) {

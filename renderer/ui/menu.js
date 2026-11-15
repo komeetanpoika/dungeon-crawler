@@ -157,7 +157,7 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOnline, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
+export function showTitle(meta, { onAdventure, onWilds, onTimewarp, onRush, onOnline, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
   // The web release has no tile editor and nothing to quit to, but it has
   // online play. The old procedural overworld left the menu with the mode
   // split; it remains reachable as the level6 cheat.
@@ -167,6 +167,7 @@ export function showTitle(meta, { onAdventure, onTimewarp, onRush, onOnline, onO
     subtitle: formatMetaSummary(meta),
     buttons: [
       { label: 'Adventure', onSelect: onAdventure },
+      { label: 'The Wilds', onSelect: onWilds },
       { label: 'Timewarp', onSelect: onTimewarp },
       { label: 'Dungeon Rush', onSelect: onRush },
       ...(isWeb ? [{ label: 'Online', onSelect: onOnline }] : [

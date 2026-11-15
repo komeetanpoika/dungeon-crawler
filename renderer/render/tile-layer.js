@@ -16,6 +16,11 @@ import { takeDirtyTiles } from '../systems/tile-dirty.js'
 import { drawTile } from './tiles.js'
 
 export const CHUNK = 16   // cells per chunk side; 512 px at S = 32
+// A baked chunk is a megabyte of canvas. Every map before the Wilds had at
+// most a few dozen chunks; a 240x240 window has 225, so the cache drops the
+// ones farthest from the view once it holds more than this.
+export const MAX_CHUNKS = 64
+const KEEP_CHUNKS = 48
 
 // A mushroom trip recolours the world itself. The bakes stay in their own
 // colours — they outlive the trip — and each chunk keeps a hue-rotated copy
@@ -129,6 +134,25 @@ export function makeTileLayer(createCanvas) {
   const layer = {
     map: null,
     chunks: new Map(),   // "cx,cy" -> { canvas, ctx, explored }
+    // The Wilds window re-centred: `map` holds the same cells as `oldMap`,
+    // moved by (dxChunks, dyChunks). Baked chunks move with them instead of
+    // being baked again; the ones that fell off are dropped. If the layer
+    // last drew some other map (a cave just left, say) there is nothing of
+    // oldMap's to move and the cache simply starts over.
+    rekey(oldMap, map, dxChunks, dyChunks) {
+      const whole = Number.isInteger(dxChunks) && Number.isInteger(dyChunks)
+      const next = new Map()
+      if (whole && layer.map === oldMap) {
+        const cw = Math.ceil(map[0].length / CHUNK), ch = Math.ceil(map.length / CHUNK)
+        for (const [key, chunk] of layer.chunks) {
+          const [cx, cy] = key.split(',').map(Number)
+          const nx = cx + dxChunks, ny = cy + dyChunks
+          if (nx >= 0 && ny >= 0 && nx < cw && ny < ch) next.set(`${nx},${ny}`, chunk)
+        }
+      }
+      layer.chunks = next
+      layer.map = map
+    },
     draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
       if (map !== layer.map) { layer.map = map; layer.chunks.clear() }
       const dirty = takeDirtyTiles(map)
@@ -162,6 +186,18 @@ export function makeTileLayer(createCanvas) {
           ctx.drawImage(img, Math.round(cx * CS - camX), Math.round(cy * CS - camY))
         }
       }
+      if (layer.chunks.size > MAX_CHUNKS) {
+        // keep what is nearest the view
+        const mx = (cx0 + cx1 - 1) / 2, my = (cy0 + cy1 - 1) / 2
+        const far = [...layer.chunks.keys()].map(key => {
+          const [x, y] = key.split(',').map(Number)
+          return { key, d: Math.max(Math.abs(x - mx), Math.abs(y - my)) }
+        }).sort((a, b) => b.d - a.d)
+        for (const { key } of far) {
+          if (layer.chunks.size <= KEEP_CHUNKS) break
+          layer.chunks.delete(key)
+        }
+      }
       drawFogRuns(ctx, map, S, camX, camY, viewCells(map, S, camX, camY, W, H), fogAlpha)
     },
   }
@@ -173,6 +209,7 @@ export function makeTileLayer(createCanvas) {
 // kept as the reference the cached layer must match.
 export function makeDirectTileLayer() {
   return {
+    rekey() {},
     draw(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
       const cells = viewCells(map, S, camX, camY, W, H)
       for (let row = cells.r0; row < cells.r1; row++) {
