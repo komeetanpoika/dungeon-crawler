@@ -201,7 +201,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, px, py, S, S)
     } else {
       const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
-                    deadwood: 'item_deadwood', greywood: 'item_deadwood', clapper: 'item_clapper', fleece: 'item_fleece' }[c.type]
+                    deadwood: 'item_deadwood', greywood: 'item_deadwood', clapper: 'item_clapper', fleece: 'item_fleece',
+                    beer: 'item_beer', sausage: 'item_sausage' }[c.type]
       const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
       else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }

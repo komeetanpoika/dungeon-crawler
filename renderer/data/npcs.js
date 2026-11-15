@@ -92,4 +92,35 @@ export const NPC_SPECIES = {
     priorities: ['flee_hurt', 'go_to', 'wander'],
     lines: ['…'],
   },
+  // The Lalli tale (wilds/tale-lalli.js). Lalli up his pine never moves and
+  // is nobody's faction (a stray arrow rouses no village); on the ground he
+  // is a villager with a mitre. The piper and Kerttu keep to their posts.
+  lalli_treed: {
+    faction: 'wild', sprite: 'npc_lalli_tree',
+    hp: 99, onHit: 'flee', fleeHp: 0,
+    speed: 0, wanderSpeed: 0, roam: 0,
+    priorities: ['stay'],
+    lines: ['Get them away from me!'],
+  },
+  lalli: {
+    faction: 'village', sprite: 'npc_lalli', walker: true,
+    hp: 3, onHit: 'flee', fleeHp: 1,
+    speed: 60, wanderSpeed: 30, roam: 2,
+    priorities: ['flee_hurt', 'go_to', 'wander'],
+    lines: ['It will not come off.'],
+  },
+  piper: {
+    faction: 'wild', sprite: 'npc_piper', walker: true,
+    hp: 3, onHit: 'flee', fleeHp: 1,
+    speed: 60, wanderSpeed: 20, roam: 0,
+    priorities: ['flee_hurt', 'go_to', 'wander'],
+    lines: ['Ja, ja. Good day.'],
+  },
+  kerttu: {
+    faction: 'village', sprite: 'npc_kerttu', walker: true,
+    hp: 3, onHit: 'flee', fleeHp: 1,
+    speed: 60, wanderSpeed: 20, roam: 0,
+    priorities: ['flee_hurt', 'go_to', 'wander'],
+    lines: ['Mind the step.'],
+  },
 }

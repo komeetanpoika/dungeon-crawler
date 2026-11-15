@@ -317,6 +317,34 @@ describe('spriteKeyFor', () => {
   })
 })
 
+describe('the people of the Lalli tale', () => {
+  it('each has their own picture, and Lalli keeps his when he comes home', () => {
+    assert.equal(spriteKeyFor(npcAt('lalli', 1, 1)), 'npc_lalli')
+    assert.equal(spriteKeyFor(npcAt('lalli', 1, 1, { id: 'npc:tale:0,0:missing', role: 'missing' })), 'npc_lalli', 'the mitre is still on')
+    assert.equal(spriteKeyFor(npcAt('lalli_treed', 1, 1)), 'npc_lalli_tree')
+    assert.equal(spriteKeyFor(npcAt('piper', 1, 1)), 'npc_piper')
+    assert.equal(spriteKeyFor(npcAt('kerttu', 1, 1)), 'npc_kerttu')
+  })
+  it('Lalli up his tree goes nowhere, whatever happens round him', () => {
+    const e = npcAt('lalli_treed', 5, 5)
+    const state = makeState(field(), { x: 6, y: 5 }, [e])
+    e.objective = { x: 9, y: 9 }
+    onNpcHit(e, state)
+    for (let i = 0; i < 120; i++) updateNpc(e, state, 0.05)
+    assert.deepEqual([e.x, e.y, e.px, e.py], [5, 5, 5 * S + 16, 5 * S + 16])
+    assert.equal(e.hostile, false)
+    assert.ok(!state.npcWrath, 'hitting him does not rouse a village')
+  })
+  it('the piper and Kerttu stay where they stand', () => {
+    for (const species of ['piper', 'kerttu']) {
+      const e = npcAt(species, 5, 5)
+      const state = makeState(field(), { x: 12, y: 5 }, [e])
+      for (let i = 0; i < 400; i++) updateNpc(e, state, 0.05)
+      assert.ok(Math.max(Math.abs(e.x - 5), Math.abs(e.y - 5)) <= 1, `${species} wandered to ${e.x},${e.y}`)
+    }
+  })
+})
+
 describe('makeNpc role', () => {
   it('carries a declared role through onto the entity, and omits it otherwise', () => {
     assert.equal(npcAt('villager', 1, 1, { role: 'missing' }).role, 'missing')

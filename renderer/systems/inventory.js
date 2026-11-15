@@ -23,6 +23,9 @@ const STACKABLE_KINDS = {
   // Adventure quest items: same carry-only rule as the leap ones.
   elk_hide:    { name: 'Elk Hide',    emoji: '🦌', extra: { quest: true } },
   tar:         { name: 'Pine Tar',    emoji: '🛢', extra: { quest: true } },
+  // The Lalli tale (wilds/tale-lalli.js): what the piper asks for his flute.
+  beer:        { name: 'Pint of Beer', emoji: '🍺', extra: { quest: true } },
+  sausage:     { name: 'Boar Sausage', emoji: '🌭', extra: { quest: true } },
 }
 
 export function makeItem(kind, count = 1) {

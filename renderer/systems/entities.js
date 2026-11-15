@@ -31,6 +31,10 @@ export const WEAPON_TYPES = {
   // Leap-episode tool: chops like a hatchet and mines rock (systems/leap.js
   // episode modules, Tasks 12-14).
   pick:      { name: 'Pick',      damage: 2, chop: 1, mine: 1 },
+  // The Lalli tale (wilds/tale-lalli.js). The flute strikes nothing: a swing
+  // plays a tune instead (systems/tune.js). Neither rolls from a chest.
+  flute:     { name: "Piper's Flute", damage: 0, tune: true },
+  lalli_axe: { name: "Lalli's Axe", damage: 3, chop: 2 },
 }
 
 // The melee-weapon payload every chest, drop and hand slot carries.
@@ -39,7 +43,7 @@ export function weaponContents(weaponType) {
   const def = WEAPON_TYPES[wt]
   return { weaponType: wt, name: def.name, damage: def.damage,
     ...(def.heavy && { heavy: true }), ...(def.chop && { chop: def.chop }), ...(def.mine && { mine: def.mine }),
-    ...(def.lightning && { lightning: def.lightning }) }
+    ...(def.lightning && { lightning: def.lightning }), ...(def.tune && { tune: true }) }
 }
 
 // Bows, the crossbow and the sling — looted from chests, never a starting
@@ -121,7 +125,7 @@ export function makeShieldContents(weaponType = 'buckler') {
 // less and never heavy. Derived from the table so a new dagger needs no list.
 export const isSmallBlade = weaponType => {
   const d = WEAPON_TYPES[weaponType]
-  return !!d && !d.heavy && d.damage <= 2
+  return !!d && !d.heavy && !d.tune && d.damage <= 2
 }
 
 // Outfits — one per loadout slot (systems/inventory.js gearOf). Wearing the
