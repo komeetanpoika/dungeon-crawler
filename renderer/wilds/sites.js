@@ -45,6 +45,7 @@ export const SITE_SKINS = [...new Set([
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
   'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
   'ow_deco_firepit', 'ow_kiln_cold', 'ow_mtn_rock_cap', 'ow_prop_fishrack_l', 'ow_prop_fishrack_r', 'ow_pier_log', 'ow_stone_ground_0',
+  'ow_prop_bell', 'ow_tree_apple',
 ])]
 
 // ---- the places of the tales (data/tales.js) --------------------------------------
@@ -53,7 +54,7 @@ export const SITE_SKINS = [...new Set([
 //   hub    where the roads from the gates meet
 //   keep   circles nothing else of the piece is dealt into
 //   ways   cells opened as an unmarked way through the trees; nothing is built on them
-export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9 }
+export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16 }
 // The cells of a one-wide walkable line, each a step along x or y from the last.
 export function wayCells(x0, y0, x1, y1) {
   const out = [{ x: x0, y: y0 }]
@@ -84,6 +85,10 @@ export function layoutTale(tale, rng) {
     const cx = ri(32, 53), cy = ri(24, 55)
     return { cx, cy, hub: { x: cx - 14, y: cy }, keep: [{ x: cx - 17, y: cy + 2, r: 7 }] }
   }
+  if (tale === 'nakki') {
+    const cx = ri(36, 52), cy = ri(26, 50)
+    return { cx, cy, hub: { x: cx - 15, y: cy }, keep: [{ x: cx - 19, y: cy + 2, r: 7 }, { x: cx - 6, y: cy + 14, r: 5 }] }
+  }
   const cx = ri(26, 52), cy = ri(26, 53)
   return { cx, cy, hub: { x: cx, y: cy + 4 }, keep: [{ x: cx + 11, y: cy + 3, r: 6 }] }
 }
@@ -105,7 +110,7 @@ export function makeSites(c) {
   }
 
   // A house whose door is at (dx, dy). Returns its box.
-  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1 } = {}) {
+  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null } = {}) {
     const R = ROOF[roof], W = WALL[wall]
     const dbl = w === 5 && rng() < 0.35
     const dcol = w === 3 ? 1 : w === 4 ? (rng() < 0.5 ? 1 : 2) : 2
@@ -124,7 +129,7 @@ export function makeSites(c) {
     }
     // the doorstep stays clear
     for (let i = -1; i <= 1; i++) { t.clear(dx + i, dy + 1); hold(dx + i, dy + 1) }
-    c.door(dx, dy, tier)
+    c.door(dx, dy, tier, story)
     return { x0, x1: x0 + w - 1, top, w }
   }
 
@@ -429,5 +434,57 @@ export function makeSites(c) {
     return [{ label: 'hiidenkiuas', x: cx, y: cy }, { label: 'hermit hut', ...door }]
   }
 
-  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, elkWood, causeway, oven }
+  // The bell lake (the Näkki): a pier that stops four planks short of an
+  // orchard island, the silent bell at its end, an islet with the clapper on
+  // a spit of land, and the ferryman's hut on the bank.
+  function bellLake(g) {
+    const { cx, cy } = g
+    const islet = { x: cx - 6, y: cy + 9 }
+    for (let dy = -14; dy <= 14; dy++) for (let dx = -14; dx <= 14; dx++) {
+      const d = Math.hypot(dx, dy)
+      if (d <= 4) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+      else if (d + wob(cx + dx, cy + dy, 530) <= 13) { t.setWater(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+    }
+    // the pier: five standing planks from the bank at cx - 14, then four gone
+    const standing = [cx - 13, cx - 12, cx - 11, cx - 10, cx - 9], gone = [cx - 8, cx - 7, cx - 6, cx - 5]
+    for (const x of [...standing, ...gone]) { t.setWater(x, cy); hold(x, cy) }
+    for (const x of standing) t.setProp(x, cy, 'ow_pier_log', { walkable: true })
+    const end = { x: cx - 9, y: cy }
+    t.setWater(end.x, cy - 1); t.setProp(end.x, cy - 1, 'ow_prop_bell'); hold(end.x, cy - 1)
+    // the islet and the spit that joins it to the south bank
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (dx * dx + dy * dy <= 4) { t.clear(islet.x + dx, islet.y + dy); hold(islet.x + dx, islet.y + dy) }
+    for (let y = islet.y + 2; y <= cy + 15; y++) { t.clear(islet.x, y); hold(islet.x, y) }
+    put(islet.x - 1, islet.y - 1, pick(DEAD))
+    c.spawn({ kind: 'floating_pickup', contents: { type: 'clapper' }, x: islet.x, y: islet.y })
+    // the orchard nobody can reach
+    for (const [dx, dy] of [[-2, -2], [0, -3], [2, -2], [-3, 1], [3, 1], [-1, 2]]) put(cx + dx, cy + dy, 'ow_tree_apple')
+    c.spawn({ kind: 'chest', x: cx + 1, y: cy + 1, sealed: true })
+    scatter(cx, cy, 0, 3, 4, FLOWERS)
+    // the bank: Toivo's hut, his racks, what he fed the lake from
+    const bx = cx - 14
+    for (let dy = -5; dy <= 7; dy++) for (let dx = -8; dx <= 0; dx++) t.clear(bx + dx, cy + dy)
+    const h = house(bx - 4, cy + 4, 'hut', { w: 3, wall: 'wood', story: "Toivo's hut" })
+    put(bx - 2, cy - 2, 'ow_prop_fishrack_l'); put(bx - 1, cy - 2, 'ow_prop_fishrack_r')
+    low(h.x1 + 1, cy + 4, 'ow_prop_barrel_1'); low(bx - 6, cy - 2, 'ow_prop_bucket')
+    t.setProp(bx - 3, cy - 1, 'ow_deco_firepit', { walkable: true }); hold(bx - 3, cy - 1)
+    return [
+      { label: 'bell', ...end }, { label: 'pier end', ...end }, { label: 'nakki', x: gone[0], y: cy },
+      ...gone.map((x, i) => ({ label: `pier gap ${i + 1}`, x, y: cy })),
+      { label: 'orchard', x: cx, y: cy }, { label: 'islet cache', ...islet }, { label: "Toivo's hut", x: bx - 4, y: cy + 4 },
+    ]
+  }
+
+  // What a village's own tale leaves standing in it. Laid where the village
+  // keeps no house, door or road end. Returns the village's named points.
+  function villageTrouble(tale, cx, cy) {
+    if (tale === 'nakki') {
+      // fish racks standing empty since the pier was given up
+      put(cx - 11, cy - 2, 'ow_prop_fishrack_l'); put(cx - 10, cy - 2, 'ow_prop_fishrack_r')
+      put(cx - 11, cy - 1, 'ow_prop_fishrack_l'); put(cx - 10, cy - 1, 'ow_prop_fishrack_r')
+    }
+    return []
+  }
+
+  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake }
+  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble }
 }

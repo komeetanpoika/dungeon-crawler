@@ -102,8 +102,8 @@ export function placeFeatures(t, piece) {
     if (!at) return null
     return maker.npc ? npc(maker.npc, at.x, at.y) : spawn({ ...maker, x: at.x, y: at.y })
   }
-  const door = (x, y, doorTier) => {
-    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story: null })
+  const door = (x, y, doorTier, story = null) => {
+    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story })
     hold(x, y)
   }
   const ring = (cx, cy, r, n, skinOf) => {
@@ -175,7 +175,7 @@ export function placeFeatures(t, piece) {
   })
   let spawnPoint = null
   if (geo) {
-    piece.points = piece.tale === 'elk' ? sites.elkWood(geo) : piece.tale === 'tar' ? sites.causeway(geo) : sites.oven(geo)
+    piece.points = sites.tales[piece.tale](geo)
     spawnPoint = hub
     hold(hub.x, hub.y)
   } else if (kind === 'village') {
@@ -183,6 +183,8 @@ export function placeFeatures(t, piece) {
     spawnPoint = { x: mx + 1, y: my + 1 }
     hold(spawnPoint.x, spawnPoint.y)
     sites.village(mx, my)
+    // what the village's own tale leaves standing in it
+    if (piece.villageTale) piece.villagePoints = sites.villageTrouble(piece.villageTale, mx, my)
     const toward = (dx, dy) => BIOME_NAMES[pieceBiome(seed, wx + dx * 3, wy + dy * 3)]
     piece.signs.push({
       x: mx - 2, y: my + 1, title: v.name,

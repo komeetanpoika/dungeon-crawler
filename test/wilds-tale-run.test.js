@@ -13,6 +13,7 @@ import { enterWilds, tickWilds, snapshotWilds, wildsRespawn } from '../renderer/
 import { PIECE, villagesNear } from '../renderer/wilds/layout.js'
 import { registerMonsters, clearMonsters, makeMonsterFromDef } from '../renderer/systems/monsters.js'
 import { makeHirvi, FLUSH_TILES } from '../renderer/systems/monsters/hirvi.js'
+import { makeNakki } from '../renderer/systems/monsters/nakki.js'
 import { makeNpc } from '../renderer/systems/npc.js'
 import { makeCampfire } from '../renderer/systems/campfire.js'
 import { RING } from '../renderer/systems/quests/pass.js'
@@ -34,6 +35,7 @@ function buildEntities(spawns) {
     const at = { x: s.x, y: s.y, px: s.x * S + 16, py: s.y * S + 16 }
     if (s.kind === 'npc') { const n = makeNpc(s); return n ? [Object.assign(n, at)] : [] }
     if (s.kind === 'hirvi') return [Object.assign(makeHirvi(s.x, s.y), at)]
+    if (s.kind === 'nakki') return [Object.assign(makeNakki(s.x, s.y), at)]
     if (s.kind === 'kivihiisi') return [Object.assign(makeMonsterFromDef('kivihiisi', s.x, s.y), at)]
     if (s.kind === 'floating_pickup') return [{ type: 'floating_item', contents: s.contents, ...at, progress: 1 }]
     if (s.kind === 'campfire') return [makeCampfire(s.x, s.y, { eternal: true })]
@@ -430,4 +432,78 @@ test('a story house hands out its tale\'s things', () => {
   assert.equal(ep.houses["Toivo's hut"].room, 'toivo_kitchen')
   assert.equal(storyEpisode(t.world, { ...door, label: 'house:wilds:5,5' }), null, 'a door outside any place')
   assert.equal(storyEpisode(t.world, { ...door, story: null }), null)
+})
+
+// ---- step 2: the Näkki and the bell ---------------------------------------------------------
+const nakkis = state => state.entities.filter(e => e.type === 'nakki')
+function ringAndFeed(t) {
+  const islet = point(t.world, 'islet cache'), end = point(t.world, 'pier end')
+  const clapper = pickups(t.state).find(e => e.contents?.type === 'clapper')
+  assert.deepEqual([clapper.x, clapper.y], [islet.x, islet.y])
+  t.state.entities = t.state.entities.filter(e => e !== clapper)
+  t.state.player.inventory.push(makeItem('clapper'))
+  put(t.state, end)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.equal(t.flags.bell_hung, true)
+  const [nakki] = nakkis(t.state), at = point(t.world, 'nakki')
+  assert.equal(nakkis(t.state).length, 1)
+  assert.deepEqual([nakki.x, nakki.y, nakki.taleKey], [at.x, at.y, 'tale:0,0'])
+  assert.deepEqual(nakki.pierEnd, end)
+  t.state.player.inventory.push(makeItem('cooked_meat', 3))
+  for (let i = 1; i <= 3; i++) {
+    nakki.state = 'surfaced'
+    tickTales(t.state, t.world, 0.016, t.hooks)
+    assert.equal(t.flags.fed, i)
+  }
+}
+
+test('the Näkki, start to finish: the clapper, the bell, three meals, Toivo home', () => {
+  const t = setup('nakki', '1,1')
+  const gaps = [1, 2, 3, 4].map(i => point(t.world, `pier gap ${i}`))
+  for (const g of gaps) assert.equal(t.state.map[g.y][g.x].tile, TILE.WALL)
+  assert.equal(nakkis(t.state).length, 0, 'the Näkki is there before the bell is rung')
+  ringAndFeed(t)
+  assert.equal(t.flags.nakki_gone, true)
+  for (const g of gaps) { assert.equal(t.state.map[g.y][g.x].tile, TILE.FLOOR); assert.equal(t.state.map[g.y][g.x].overlay, 'ow_pier_log') }
+  assert.equal(t.rec.done, true)
+  assert.deepEqual(t.calls.talents, ['lake_breath'])
+  assert.ok(t.world.paid.has('nakki'))
+  assert.equal(missing(t.state).length, 1, 'Toivo did not come home')
+  assert.ok(!JSON.stringify(t.state.villageLines['0,0']).includes('Nobody dares'), 'the village still tells the tale')
+  // the lake is made anew: the pier is whole from the flags
+  t.world.pieces.delete('1,1')
+  enterWilds(t.state, t.world, { wx: 0, wy: 0 }, { buildEntities })
+  arriveTales(t.state, t.world, t.hooks, { fresh: true })
+  for (const g of [1, 2, 3, 4].map(i => point(t.world, `pier gap ${i}`))) assert.equal(t.state.map[g.y][g.x].tile, TILE.FLOOR)
+  assert.equal(nakkis(t.state).length, 0)
+})
+
+test('a second village\'s Näkki pays loot, not the lake\'s breath', () => {
+  const t = setup('nakki', '1,1', { paid: ['nakki'] })
+  ringAndFeed(t)
+  assert.equal(t.rec.done, true)
+  assert.deepEqual(t.calls.talents, [])
+  assert.equal(pickups(t.state).filter(e => e.taleKey === 'tale:0,0').length, 2)
+})
+
+// Review Focus 5
+test('death with the bell hung: the Näkki is back at the pier', () => {
+  const t = setup('nakki', '1,1', { flags: { bell_hung: true, fed: 1 } })
+  assert.equal(nakkis(t.state).length, 1)
+  wildsRespawn(t.state, t.world, { buildEntities })
+  arriveTales(t.state, t.world, t.hooks, { fresh: true })
+  const at = point(t.world, 'nakki')
+  assert.equal(nakkis(t.state).length, 1)
+  assert.deepEqual([nakkis(t.state)[0].x, nakkis(t.state)[0].y], [at.x, at.y])
+})
+
+test('the stranger works the Näkki out from what is there', () => {
+  const t = setup('nakki', '1,1')
+  put(t.state, point(t.world, 'bell'), -2, 0)
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  assert.match(thought(t.state) ?? '', /clapper/)
+  const told = JSON.stringify(t.state.villageLines['0,0'])
+  assert.match(told, /Toivo/)
+  assert.match(told, /a short walk south-east/)
+  assert.ok(!/\{\w+\}/.test(told))
 })

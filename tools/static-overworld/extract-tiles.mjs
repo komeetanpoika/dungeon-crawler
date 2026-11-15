@@ -70,6 +70,7 @@ export const RPG = {
   // tale places (the Wilds, 2026-11-15)
   ow_deco_firepit: [13, 8], ow_kiln_cold: [12, 0], ow_mtn_rock_cap: [12, 0],
   ow_prop_fishrack_l: [51, 13], ow_prop_fishrack_r: [52, 13],
+  ow_prop_bell: [51, 17],
   // grey stone ruins
   ow_ruin_stub_0: [20, 18], ow_ruin_stub_1: [21, 18],
   ow_ruin_col_0: [20, 19], ow_ruin_col_1: [21, 19], ow_ruin_col_base_0: [20, 20], ow_ruin_col_base_1: [21, 20],

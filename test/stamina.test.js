@@ -141,3 +141,15 @@ describe('outfit sprint drain', () => {
     assert.equal(sprintProfile('melee', { drainMul: 2 }).speedMul, sprintProfile('melee').speedMul)
   })
 })
+
+describe("the lake's breath", () => {
+  it('a quarter more stamina for who has the talent, the usual tank for who has not', () => {
+    const plain = { stamina: 100, maxStamina: 100, staminaRegenT: 99, talents: [] }
+    tickStamina(plain, 1)
+    assert.equal(plain.maxStamina, STAMINA_MAX)
+    const deep = { stamina: 100, maxStamina: 100, staminaRegenT: 99, talents: ['lake_breath'] }
+    tickStamina(deep, 5)
+    assert.equal(deep.maxStamina, STAMINA_MAX * 1.25)
+    assert.equal(deep.stamina, STAMINA_MAX * 1.25)
+  })
+})

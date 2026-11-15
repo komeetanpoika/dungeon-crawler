@@ -59,6 +59,9 @@ export function tickStamina(player, dt) {
     player.staminaRegenT = 0
     return
   }
+  // the lake's breath (a tale's reward): a quarter more tank
+  const cap = STAMINA_MAX * ((player.talents ?? []).includes('lake_breath') ? 1.25 : 1)
+  if (player.maxStamina !== cap) player.maxStamina = cap
   player.staminaRegenT = (player.staminaRegenT ?? 0) + dt
   if (player.staminaRegenT <= REGEN_DELAY) return
   const t = Math.min(dt, player.staminaRegenT - REGEN_DELAY)

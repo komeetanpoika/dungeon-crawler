@@ -104,13 +104,34 @@ export const TALES = {
     rule: f => !!f.nakki_gone,
     missing: { species: 'villager', name: 'Toivo' },
     landWord: 'the lake',
+    reward: 'lake_breath',
+    remarks: [
+      { at: 'bell', within: 3, when: f => !f.bell_hung, text: 'A bell with no clapper. Nobody has rung it in a long while.' },
+      { at: "Toivo's hut", within: 3, text: 'A fish rack and a cold fire pit. Someone fed the lake from here every dusk.' },
+      { at: 'islet cache', within: 2, when: f => !f.bell_hung, text: 'So this is where he kept the spare.' },
+      { at: 'pier end', within: 1, when: f => f.bell_hung && !f.fed, text: 'It is watching the end of the pier. It is not angry. It is hungry.' },
+      { at: 'pier end', within: 1, when: f => f.fed >= 1 && !f.nakki_gone, text: 'It liked that. I would not offer it anything raw.' },
+    ],
     // interiors that hold the tale's things, as data/leaps.js declares them
     houses: { "Toivo's hut": { room: 'toivo_kitchen', pickups: [
       { type: 'meat', count: 3 },
       { type: 'weapon', weaponType: 'hatchet', name: 'Hatchet', damage: 1, chop: 1 },
       { type: 'lumber', count: 3 },
     ] } },
-    lines: [],
+    lines: [
+      { when: f => f.nakki_gone, by: {
+        villager: ['Toivo rings the bell at dusk again.', 'The orchard is ours again — try an apple.'],
+        elder:    ['The lake gave him back. I do not ask it why.'],
+      } },
+      { when: f => f.bell_hung, by: {
+        villager: ['You rang it? Then feed it, as he did. Cooked — Toivo never served the lake anything raw.'],
+        elder:    ['He rang at dusk and laid meat at the end of the pier, and the water lay flat after.'],
+      } },
+      { when: () => true, by: {
+        villager: ['Toivo our ferryman is gone. The lake took him, the night the bell went quiet.', 'Nobody dares the pier now. The orchard rots out on its island and we eat seed grain. The lake is {where}.'],
+        elder:    ['It was never the lake that took him. It was what lives in it, and nobody has rung for it since.', 'The clapper went with him. He kept a spare on the little islet, off the south bank.'],
+      } },
+    ],
   },
   fold: {
     id: 'fold', title: 'Wolves at the fold', kind: 'need', land: ['forest', 'autumn', 'mountain'],
