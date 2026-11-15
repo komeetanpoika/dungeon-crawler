@@ -32,9 +32,10 @@ export const WEAPON_TYPES = {
   // episode modules, Tasks 12-14).
   pick:      { name: 'Pick',      damage: 2, chop: 1, mine: 1 },
   // The Lalli tale (wilds/tale-lalli.js). The flute strikes nothing: a swing
-  // plays a tune instead (systems/tune.js). Neither rolls from a chest.
-  flute:     { name: "Piper's Flute", damage: 0, tune: true },
-  lalli_axe: { name: "Lalli's Axe", damage: 3, chop: 2 },
+  // plays a tune instead (systems/tune.js). `tale`: had from the tale only,
+  // never from a chest or the test arena's ring of weapons.
+  flute:     { name: "Piper's Flute", damage: 0, tune: true, tale: true },
+  lalli_axe: { name: "Lalli's Axe", damage: 3, chop: 2, tale: true },
 }
 
 // The melee-weapon payload every chest, drop and hand slot carries.

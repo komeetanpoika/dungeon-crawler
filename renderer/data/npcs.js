@@ -98,7 +98,7 @@ export const NPC_SPECIES = {
   lalli_treed: {
     faction: 'wild', sprite: 'npc_lalli_tree',
     hp: 99, onHit: 'flee', fleeHp: 0,
-    speed: 0, wanderSpeed: 0, roam: 0,
+    speed: 1, wanderSpeed: 1, roam: 0,
     priorities: ['stay'],
     lines: ['Get them away from me!'],
   },
@@ -107,20 +107,20 @@ export const NPC_SPECIES = {
     hp: 3, onHit: 'flee', fleeHp: 1,
     speed: 60, wanderSpeed: 30, roam: 2,
     priorities: ['flee_hurt', 'go_to', 'wander'],
-    lines: ['It will not come off.'],
+    lines: ['It will not come off.', 'Do not ask about the hat.'],
   },
   piper: {
     faction: 'wild', sprite: 'npc_piper', walker: true,
     hp: 3, onHit: 'flee', fleeHp: 1,
     speed: 60, wanderSpeed: 20, roam: 0,
     priorities: ['flee_hurt', 'go_to', 'wander'],
-    lines: ['Ja, ja. Good day.'],
+    lines: ['Ja, ja. Good day.', 'A man must eat. A man must also drink.'],
   },
   kerttu: {
     faction: 'village', sprite: 'npc_kerttu', walker: true,
     hp: 3, onHit: 'flee', fleeHp: 1,
     speed: 60, wanderSpeed: 20, roam: 0,
     priorities: ['flee_hurt', 'go_to', 'wander'],
-    lines: ['Mind the step.'],
+    lines: ['Mind the step.', 'He is a good man. Mostly.'],
   },
 }

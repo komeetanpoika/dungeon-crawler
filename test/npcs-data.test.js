@@ -4,24 +4,26 @@ import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { WEAPONS } from '../renderer/systems/enemy-attack.js'
 import { NPC_SHEETS } from '../renderer/render/npc-sheets.js'
 
-const GOAL_NAMES = new Set(['flee_hurt', 'hunt_prey', 'attack_hostile', 'startle', 'go_to', 'wander'])
+const GOAL_NAMES = new Set(['flee_hurt', 'hunt_prey', 'attack_hostile', 'startle', 'go_to', 'wander', 'stay'])
+// Lalli up his pine (the Lalli tale) is scenery that speaks: rooted, no reaction, no drop.
+const ROOTED = 'lalli_treed'
 
 describe('NPC_SPECIES', () => {
   it('defines the villagers, livestock and wild animals', () => {
     assert.deepEqual(Object.keys(NPC_SPECIES).sort(),
-      ['bear', 'boar', 'chicken', 'deer', 'elder', 'goat', 'hermit', 'mouse', 'sheep', 'villager', 'wolf'])
+      ['bear', 'boar', 'chicken', 'deer', 'elder', 'goat', 'hermit', 'kerttu', 'lalli', 'lalli_treed', 'mouse', 'piper', 'sheep', 'villager', 'wolf'])
   })
 
   it('every species has the fields the goal loop reads', () => {
     for (const [name, s] of Object.entries(NPC_SPECIES)) {
       assert.ok(['village', 'wild'].includes(s.faction), `${name} faction`)
       assert.ok(['fight', 'flee'].includes(s.onHit), `${name} onHit`)
-      assert.ok(s.hp >= 1 && s.speed > 0 && s.wanderSpeed > 0 && s.roam >= 1, `${name} numbers`)
+      assert.ok(s.hp >= 1 && s.speed > 0 && s.wanderSpeed > 0 && s.roam >= 0, `${name} numbers`)
       assert.ok(s.fleeHp >= 0 && s.fleeHp <= 1, `${name} fleeHp`)
       // Art is a 16x16 tile or a frame sheet, never both.
       if (s.sheet) assert.ok(NPC_SHEETS[s.sheet] && s.sprite === undefined, `${name} sheet`)
       else assert.ok(typeof s.sprite === 'string', `${name} sprite`)
-      assert.ok(s.priorities.length && s.priorities.at(-1) === 'wander', `${name} ends in wander`)
+      assert.ok(s.priorities.length && s.priorities.at(-1) === (name === ROOTED ? 'stay' : 'wander'), `${name} ends in wander`)
       for (const g of s.priorities) assert.ok(GOAL_NAMES.has(g), `${name} goal ${g}`)
     }
   })
@@ -31,6 +33,7 @@ describe('NPC_SPECIES', () => {
       // The hermit is the one walker deliberately kept to a single silent
       // line ('…') until the episode resolves (data/leaps.js resolvedLines).
       if (name === 'hermit') { assert.deepEqual(s.lines, ['…'], `${name} lines`); continue }
+      if (name === ROOTED) continue
       if (s.walker) { assert.ok(s.lines.length >= 2, `${name} lines`); continue }
       if (s.hostile) {
         assert.ok(WEAPONS[s.weapon], `${name} weapon`)
@@ -45,7 +48,7 @@ describe('NPC_SPECIES', () => {
 
   it('animals drop meat with a probability; villagers never do', () => {
     for (const [name, s] of Object.entries(NPC_SPECIES)) {
-      if (s.walker) assert.equal(s.drop, undefined, `${name} drops`)
+      if (s.walker || name === ROOTED) assert.equal(s.drop, undefined, `${name} drops`)
       else assert.ok(s.drop > 0 && s.drop <= 1, `${name} drop chance`)
     }
   })

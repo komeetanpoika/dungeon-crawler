@@ -500,7 +500,7 @@ export function buildArena(config = {}, warn = console.warn) {
       warn(`arena: column at (${cx},${cy}) removed — default boss spawn takes precedence`)
     }
     entitySpawns.push({ kind: 'dragon_boss_pixel', x: cx, y: cy, isBoss: true })
-    const weaponKeys = Object.keys(WEAPON_TYPES)
+    const weaponKeys = Object.keys(WEAPON_TYPES).filter(k => !WEAPON_TYPES[k].tale)
     const CHEST_COUNT = 20
     for (let i = 0; i < CHEST_COUNT; i++) {
       const cell = ringCells[Math.round(i * ringCells.length / CHEST_COUNT) % ringCells.length]
