@@ -141,6 +141,19 @@ describe('cells that remember', () => {
     }
   })
 
+  it('deck is told of each gap cell once it has changed; the planks themselves stay plain logs', () => {
+    // (the Wilds lays its bridges as deck cut to their neighbours and re-cuts round the cell it is told of)
+    const calls = []
+    const t = build('t', RIVER, { flags: { plank_1: true }, at: { x: 20, y: 10 }, inventory: [makeItem('tar', 2)] })
+    t.ctx.deck = c => calls.push([c.x, c.y, t.state.map[c.y][c.x].tile, t.state.map[c.y][c.x].overlay])
+    river.onArrive(t.ctx)
+    assert.deepEqual(calls, [[20, 10, TILE.FLOOR, 'ow_pier_log'], [21, 10, TILE.WALL, null], [22, 10, TILE.WALL, null]])
+    calls.length = 0
+    river.tick(t.ctx, 0.016)   // standing on the first plank, tar in the sack: the second goes down
+    assert.equal(t.flags.plank_2, true)
+    assert.deepEqual(calls, [[21, 10, TILE.FLOOR, 'ow_pier_log']])
+  })
+
   it('the ring is exactly the stones the flag says, wherever boulders stood before', () => {
     const { ctx, state } = build('t', PASS, { flags: { hiisi_woken: true, stones: 4 } })
     for (let i = 0; i < 6; i++) pass.stampBoulder(state.map, ringCell(i), 'ow_mtn_rock_1')

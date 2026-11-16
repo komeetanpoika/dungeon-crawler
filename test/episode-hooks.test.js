@@ -4,6 +4,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import * as fold from '../renderer/systems/episodes/fold.js'
+import * as ferry from '../renderer/systems/episodes/ferry.js'
 import { makeCtx } from '../renderer/systems/story.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -43,6 +44,29 @@ const FOLD = [['village', 10, 10, 'village'], ['den', 40, 30], ['burn 1', 20, 20
 const plant = (state, x, y) => { Object.assign(state.map[y][x], { tile: TILE.WALL, overlay: 'ow_tree_small' }) }
 const treesRound = (state, label) => { const p = FOLD.find(f => f[0] === label); for (const [dx, dy] of [[1, 0], [-2, 1], [0, 3], [3, -2]]) plant(state, p[1] + dx, p[2] + dy) }
 const charred = (state, label) => { const p = FOLD.find(f => f[0] === label); return [[1, 0], [-2, 1], [0, 3], [3, -2]].filter(([dx, dy]) => String(state.map[p[2] + dy][p[1] + dx].overlay).startsWith('ow_deadtree')).length }
+
+describe('the ferryman: hooks', () => {
+  const FERRY = [['bell', 20, 10], ['pier end', 20, 10], ['nakki', 21, 10], ['pier gap 1', 21, 10], ['pier gap 2', 22, 10], ['pier gap 3', 23, 10], ['pier gap 4', 24, 10]]
+  const drown = state => { for (let x = 21; x <= 24; x++) Object.assign(state.map[10][x], { tile: TILE.WALL, skin: 'ow_water_0', losClear: true }) }
+
+  it('deck is told of each plank once it is laid; the planks themselves stay plain logs', () => {
+    // (the Wilds lays its piers as deck cut to their neighbours and re-cuts round the cell it is told of)
+    const calls = []
+    const t = build(FERRY, { flags: { nakki_gone: true } })
+    drown(t.state)
+    t.ctx.deck = c => calls.push([c.x, c.y, t.state.map[c.y][c.x].tile, t.state.map[c.y][c.x].overlay])
+    ferry.onArrive(t.ctx)
+    // from the pier's end outward, so each plank joins deck already laid
+    assert.deepEqual(calls, [21, 22, 23, 24].map(x => [x, 10, TILE.FLOOR, 'ow_pier_log']))
+  })
+
+  it('without deck the gaps open as they always did', () => {
+    const t = build(FERRY, { flags: { nakki_gone: true } })
+    drown(t.state)
+    ferry.onArrive(t.ctx)
+    for (let x = 21; x <= 24; x++) assert.deepEqual([t.state.map[10][x].tile, t.state.map[10][x].overlay, 'losClear' in t.state.map[10][x]], [TILE.FLOOR, 'ow_pier_log', false])
+  })
+})
 
 describe('the fold: hooks', () => {
   it('the burning waits until burning() says it has begun', () => {

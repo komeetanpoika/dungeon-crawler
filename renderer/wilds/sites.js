@@ -124,14 +124,18 @@ export function makeSites(c) {
   const { t, rng, pick, ri, hold } = c
   // Lay one piece of art, on ground cleared for it.
   const put = (x, y, skin, opts) => { t.clear(x, y); t.setProp(x, y, skin, opts); hold(x, y) }
-  const low = put
+  // Dressing: laid the same way and remembered, because it gives way. Where
+  // a barrel or a fallen column turns out to stand in the one way a path had
+  // left, features.js takes it up again.
+  const dressing = []
+  const low = (x, y, skin) => { put(x, y, skin); dressing.push({ x, y }) }
   const flat = (x, y, skin) => { if (t.free(x, y) && !c.taken(x, y)) { t.setProp(x, y, skin, { walkable: true }); hold(x, y) } }
   const row = (x, y, skins) => skins.forEach((s, i) => { if (s) put(x + i, y, s) })
   const scatter = (cx, cy, rMin, rMax, n, skins, solid = false) => {
     for (let i = 0; i < n; i++) {
       const at = c.freeSpot(cx, cy, rMin, rMax)
       if (!at) return
-      if (solid) put(at.x, at.y, pick(skins)); else flat(at.x, at.y, pick(skins))
+      if (solid) low(at.x, at.y, pick(skins)); else flat(at.x, at.y, pick(skins))
     }
   }
 
@@ -159,19 +163,22 @@ export function makeSites(c) {
     return { x0, x1: x0 + w - 1, top, w }
   }
 
-  // A fenced rectangle with a gate gap in its top or bottom run.
-  function fence(x0, y0, x1, y1, gate = null) {
+  // A fenced rectangle with a gate gap in its top or bottom run. A path
+  // through it makes a gap of its own, unless the fence is `whole`: then it
+  // stands across the path, and whoever asks for it leaves a way round.
+  function fence(x0, y0, x1, y1, gate = null, whole = false) {
+    const rail = whole ? put : low
+    const open = (x, y) => (!whole && t.onPath(x, y)) || (gate && gate.y === y && x === gate.x)
     for (let x = x0; x <= x1; x++) for (const y of [y0, y1]) {
       const top = y === y0
       let skin = x === x0 ? (top ? 'ow_fence_l' : 'ow_fence_bl') : x === x1 ? (top ? 'ow_fence_r' : 'ow_fence_br') : 'ow_fence_m'
-      if (gate && gate.y === y) {
-        if (x === gate.x) { t.clear(x, y); hold(x, y); continue }
-        if (x === gate.x - 1 && x > x0) skin = 'ow_fence_end_r'
-        if (x === gate.x + 1 && x < x1) skin = 'ow_fence_end_l'
-      }
-      low(x, y, skin)
+      const gap = gx => gx >= x0 && gx <= x1 && open(gx, y)
+      if (gap(x)) { t.clear(x, y); hold(x, y); continue }
+      if (gap(x + 1) && x > x0) skin = 'ow_fence_end_r'
+      if (gap(x - 1) && x < x1) skin = 'ow_fence_end_l'
+      rail(x, y, skin)
     }
-    for (let y = y0 + 1; y < y1; y++) { low(x0, y, 'ow_fence_side_l'); low(x1, y, 'ow_fence_side_r') }
+    for (let y = y0 + 1; y < y1; y++) for (const x of [x0, x1]) if (!open(x, y)) rail(x, y, x === x0 ? 'ow_fence_side_l' : 'ow_fence_side_r')
   }
   // Tilled ground with its own grass edge, and a crop on every cell.
   function field(x0, y0, x1, y1) {
@@ -192,6 +199,9 @@ export function makeSites(c) {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
       if (x === x0 || x === x1 || y === y0 || y === y1) { t.clear(x, y); hold(x, y) }
   }
+  // The box such rock is heaped in is the site's own ground, ring and all:
+  // claimed before the rock is laid, so the rock may stand on a path there.
+  const claimBox = (x0, y0, x1, y1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) t.claim(x, y) }
   const tent = (x, y, kind = 'ow_tent') => { put(x, y, `${kind}_00`); put(x + 1, y, `${kind}_10`); put(x, y + 1, `${kind}_01`); put(x + 1, y + 1, `${kind}_11`) }
   const fire = (x, y) => { t.clear(x, y); c.spawn({ kind: 'campfire', x, y }) }
 
@@ -215,9 +225,13 @@ export function makeSites(c) {
     fence(cx - 9, cy + 7, cx - 4, cy + 10, { x: cx - 7, y: cy + 7 })
     field(cx - 8, cy + 8, cx - 5, cy + 9)
     low(cx - 3, cy + 8, 'ow_prop_pitchfork')
-    // the bee yard
-    fence(cx + 3, cy - 11, cx + 6, cy - 9)
-    put(cx + 4, cy - 10, 'ow_beehive'); put(cx + 5, cy - 10, 'ow_beehive')
+    // the bee yard, unless a road comes in where it would stand (too small to keep with a gap in it)
+    let road = false
+    for (let y = cy - 11; y <= cy - 9; y++) for (let x = cx + 3; x <= cx + 6; x++) if (t.onPath(x, y)) road = true
+    if (!road) {
+      fence(cx + 3, cy - 11, cx + 6, cy - 9)
+      low(cx + 4, cy - 10, 'ow_beehive'); low(cx + 5, cy - 10, 'ow_beehive')
+    }
     // a market stall on the square
     if (rng() < 0.65) {
       const g = rng() < 0.5 ? '_green' : ''
@@ -283,12 +297,13 @@ export function makeSites(c) {
       low(cx - 1, cy + 3, 'ow_prop_log')
     } else if (look === 'graves') {
       for (const gy of [cy - 3, cy - 1, cy + 2]) for (const gx of [cx - 4, cx - 2, cx + 2, cx + 4]) if (rng() < 0.75) low(gx, gy, pick(GRAVES))
-      put(cx - 5, cy + 1, DEAD[0]); put(cx + 5, cy - 2, DEAD[1])
+      low(cx - 5, cy + 1, DEAD[0]); low(cx + 5, cy - 2, DEAD[1])
       low(cx, cy - 4, 'ow_prop_cross_1')
       scatter(cx, cy, 1, 5, 4, ['ow_deco_skull'])
     } else if (look === 'den') {
       // a horseshoe of rock open to the south, the pack in its lap
       const rock = (dx, dy) => { if (c.sandy) put(cx + dx, cy + dy, pick(c.rocks)); else { t.setMass(cx + dx, cy + dy); hold(cx + dx, cy + dy) } }
+      claimBox(cx - 5, cy - 7, cx + 5, cy - 2)
       if (!c.sandy) for (let dy = -7; dy <= -2; dy++) for (let dx = -5; dx <= 5; dx++) if (!((dy === -7 || dy === -2) && Math.abs(dx) === 5)) t.setFloor(cx + dx, cy + dy)
       for (let dx = -1; dx <= 1; dx++) rock(dx, -6)
       for (let dx = -3; dx <= 3; dx++) rock(dx, -5)
@@ -299,7 +314,7 @@ export function makeSites(c) {
       scatter(cx, cy, 1, 5, 5, ['ow_deco_skull'])
     } else {
       for (const [dx, dy] of [[-3, -2], [2, -3], [4, 1], [-2, 3], [-4, 1], [0, -4]]) low(cx + dx, cy + dy, 'ow_prop_mound')
-      put(cx - 5, cy - 1, DEAD[0]); put(cx + 1, cy + 4, DEAD[1]); put(cx + 5, cy - 3, DEAD[0])
+      low(cx - 5, cy - 1, DEAD[0]); low(cx + 1, cy + 4, DEAD[1]); low(cx + 5, cy - 3, DEAD[0])
       scatter(cx, cy, 1, 5, 5, ['ow_deco_skull'])
     }
   }
@@ -315,13 +330,13 @@ export function makeSites(c) {
   function nest(x, y) {
     low(x - 1, y - 1, 'ow_prop_mound'); low(x + 1, y - 1, 'ow_prop_mound')
     flat(x - 1, y + 1, 'ow_deco_skull'); flat(x + 2, y, 'ow_deco_skull')
-    put(x + 2, y - 2, pick(DEAD))
+    low(x + 2, y - 2, pick(DEAD))
   }
   function stones(x, y) {
     const set = c.sandy ? SAND_STONES : OLD_STONES
     for (let i = 0; i < 5; i++) {
       const a = i / 5 * Math.PI * 2 - Math.PI / 2
-      put(x + Math.round(Math.cos(a) * 2), y + Math.round(Math.sin(a) * 2), pick(set))
+      low(x + Math.round(Math.cos(a) * 2), y + Math.round(Math.sin(a) * 2), pick(set))
     }
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (rng() < 0.6) t.setGround(x + dx, y + dy, c.sandy ? pick(SAND_FLOOR) : 'ow_cobble_green')
     flat(x + 1, y + 1, 'ow_deco_skull')
@@ -334,6 +349,7 @@ export function makeSites(c) {
     // where the mountain art has no edge to sit on, a heap of boulders
     const hill = !c.sandy
     const rock = (dx, dy) => { if (hill) { t.setMass(x + dx, y + dy); hold(x + dx, y + dy) } else put(x + dx, y + dy, pick(c.rocks)) }
+    claimBox(x - 4, y - 4, x + 5, y + 1)
     if (hill) for (let dy = -4; dy <= 1; dy++) for (let dx = -4; dx <= 5; dx++) if (!((dy === -4 || dy === 1) && (dx === -4 || dx === 5))) t.setFloor(x + dx, y + dy)
     for (let dx = -1 + (rng() < 0.5 ? 1 : 0); dx <= 2 - (rng() < 0.5 ? 1 : 0); dx++) rock(dx, -3)
     for (let dx = -2; dx <= 3; dx++) rock(dx, -2)
@@ -371,9 +387,10 @@ export function makeSites(c) {
     const { cx, cy } = g
     // ways through the trees first (they would dry a pool dug before them)
     for (const c of g.ways) t.clear(c.x, c.y)
-    // nothing solid or wet goes on a way: it is the one sure road to each wallow
+    // nothing solid or wet goes on a way: it is the one sure road to each
+    // wallow; nor on a path, which the wood grows right up to
     const ways = new Set(g.ways.map(c => `${c.x},${c.y}`))
-    const offWay = (x, y) => !ways.has(`${x},${y}`)
+    const offWay = (x, y) => !ways.has(`${x},${y}`) && !t.onPath(x, y)
     cobble(cx, cy, 10)
     put(cx, cy - 1, 'ow_statue_top'); put(cx, cy, 'ow_statue')
     low(cx - 2, cy, 'ow_prop_pot'); low(cx + 2, cy, 'ow_prop_sack_0')
@@ -590,13 +607,14 @@ export function makeSites(c) {
     if (tale === 'lalli') return [{ label: LALLI_HOUSE, x: cx - 7, y: cy + 5 }, { label: 'kerttu', x: cx - 6, y: cy + 6 }]
     if (tale === 'nakki') {
       // fish racks standing empty since the pier was given up
-      put(cx - 11, cy - 2, 'ow_prop_fishrack_l'); put(cx - 10, cy - 2, 'ow_prop_fishrack_r')
-      put(cx - 11, cy - 1, 'ow_prop_fishrack_l'); put(cx - 10, cy - 1, 'ow_prop_fishrack_r')
+      // (a rack is two cells wide and goes whole or not at all)
+      for (const y of [cy - 2, cy - 1]) if (!t.onPath(cx - 11, y) && !t.onPath(cx - 10, y)) { put(cx - 11, y, 'ow_prop_fishrack_l'); put(cx - 10, y, 'ow_prop_fishrack_r') }
     }
     if (tale === 'fold') {
       // the fold the lambs go missing from, south-east of the square; the
       // ground east and south of it is opened so a road that ran there goes round
-      fence(cx + 7, cy + 8, cx + 11, cy + 11, { x: cx + 8, y: cy + 8 })
+      claimBox(cx + 6, cy + 7, cx + 12, cy + 12)
+      fence(cx + 7, cy + 8, cx + 11, cy + 11, { x: cx + 8, y: cy + 8 }, true)
       for (let dy = 9; dy <= 10; dy++) for (let dx = 8; dx <= 10; dx++) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
       for (let d = 7; d <= 12; d++) t.clear(cx + d, cy + 12)
       for (let d = 8; d <= 12; d++) t.clear(cx + 12, cy + d)
@@ -613,5 +631,5 @@ export function makeSites(c) {
   }
 
   const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree }
-  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble }
+  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing }
 }

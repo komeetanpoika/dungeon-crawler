@@ -12,10 +12,11 @@
 // Local cell (x, y), 0..PIECE-1, is builder cell (x + MARGIN, y + MARGIN).
 import { PIECE, FRAME, BLEND, MARGIN, biomeSampler, gateAt } from './layout.js'
 import { hash, hashInt, noise2, mulberry32 } from './rand.js'
-import { MapBuilder, shoreline, WATER_SKINS, isWaterSkin, RIM_TILES, TREE_PAIRS } from '../terrain/lib.js'
+import { MapBuilder, shoreline, WATER_SKINS, isWaterSkin, isSandySkin, RIM_TILES, TREE_PAIRS } from '../terrain/lib.js'
 import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, LAT_PX, LAT_PY } from '../terrain/mountain.js'
 import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
 import { SITE_SKINS } from './sites.js'
+import { skinBridges, DECK_SKINS } from './bridge-art.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
@@ -34,15 +35,19 @@ const SKERRY = ['ow_rock_water_gray_0', 'ow_rock_water_gray_1', 'ow_rock_water_g
 const GRASS = ['ow_grass_0', 'ow_grass_1', 'ow_grass_2']
 const DIRT = ['ow_dirt_0', 'ow_dirt_1', 'ow_dirt_2', 'ow_dirt_3']
 const SAND = ['ow_sand_0', 'ow_sand_flat']
-const HARDPAN = ['ow_hardpan_0', 'ow_hardpan_1']
+// (ow_hardpan_1 is the pack's left edge of a hardpan flat, see-through down
+// one side: as fill it left black nicks all over the desert)
+const HARDPAN = 'ow_hardpan_0'
+// A path over sand: the dirt of a path over grass, its tufts turned to drifts of sand.
+const SAND_PATH = ['ow_path_sand_0', 'ow_path_sand_1', 'ow_path_sand_2', 'ow_path_sand_3']
 const PIER = { h: 'ow_pier_log', v: 'ow_pier_log_v' }
 const TOP_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [trunk, top]))
 const TRUNK_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [top, trunk]))
 
 // Every tile name terrain.js can lay. features.js adds its own (FEATURE_SKINS).
 export const TERRAIN_SKINS = [...new Set([
-  ...GRASS, ...DIRT, ...SAND, ...HARDPAN, ...WATER_SKINS,
-  ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, PIER.h, PIER.v,
+  ...GRASS, ...DIRT, ...SAND, HARDPAN, ...SAND_PATH, ...WATER_SKINS,
+  ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, PIER.h, PIER.v, ...DECK_SKINS,
   ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
   ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES,
@@ -153,7 +158,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
   const landGround = memo((x, y) => {
     switch (biome(x, y)) {
       case 'marsh': return fMud(x, y) > 0.53 ? dirtSkin(x, y) : grassSkin(x, y)
-      case 'desert': return fHard(x, y) > 0.68 ? (hash(seed, X0 + x, Y0 + y, 44) < 0.75 ? HARDPAN[0] : HARDPAN[1]) : sandSkin(x, y)
+      case 'desert': return fHard(x, y) > 0.68 ? HARDPAN : sandSkin(x, y)
       case 'sea': return nearWater(x, y, REACH) ? SAND[0] : grassSkin(x, y)
       case 'mountain': return !nearSandy(x, y) && fMass(x, y) > 0.46 ? floorSkin(x, y) : grassSkin(x, y)
       default: return grassSkin(x, y)
@@ -214,7 +219,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
 
   const pathGround = (ground, x, y) =>
     isGrass(ground) || ground.startsWith('ow_dirt') ? dirtSkin(x, y)
-      : ground.startsWith('ow_sand') ? HARDPAN[0]
+      : ground.startsWith('ow_sand') || ground === HARDPAN ? SAND_PATH[hashInt(seed, X0 + x, Y0 + y, 42) % SAND_PATH.length]
       : ground
   const waterSkin = (x, y) => WATER_SKINS[mod(X0 + x + Y0 + y, 2)]
 
@@ -290,15 +295,35 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     else if (isMassSkin(was) && !isFloor(g)) b.ground[by][bx] = b.skin(floorSkin(x, y))
     b.walkG[by][bx] = true
   }
+  // Ground a site is built on: its opened pad, and whatever else it claims.
+  // The paths are laid before the sites are stamped; off this ground nothing
+  // solid or wet may then land on a path, so a path is only ever interrupted
+  // where a site has ground of its own to walk round what stands on it.
+  const siteCells = new Set()
+  const claim = (x, y) => { if (inside(x, y)) siteCells.add(y * PIECE + x) }
   const open = (cx, cy, r = 0) => {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++)
-      if (dx * dx + dy * dy <= r * r) openCell(cx + dx, cy + dy)
+      if (dx * dx + dy * dy <= r * r) { openCell(cx + dx, cy + dy); claim(cx + dx, cy + dy) }
   }
   // One path cell: a pier over water, a pass through rock, a trail on land.
   const pathCells = new Set()
+  const pathKept = (x, y) => pathCells.has(y * PIECE + x) && !siteCells.has(y * PIECE + x)
+  // (a gate corridor in the frame is path too, though not this deal's to lay)
+  const laid = (x, y) => pathCells.has(y * PIECE + x) || !!corridor(x, y)
   const pathCell = (x, y, pier) => {
     if (!inside(x, y)) return
-    pathCells.add(y * PIECE + x)
+    // Path cells never touch only at a corner: such a joint cannot be walked
+    // over water, through rock or between trees, so a diagonal step takes the
+    // cell between as well. That is what makes a one-wide trail a stair, and
+    // two bridges that brush past each other one deck.
+    if (!pathCells.has(y * PIECE + x)) {
+      pathCells.add(y * PIECE + x)
+      for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+        if (!laid(x + dx, y + dy) || laid(x + dx, y) || laid(x, y + dy)) continue
+        const along = pier === PIER.h ? inside(x, y + dy) : !inside(x + dx, y)
+        if (along) pathCell(x, y + dy, pier); else pathCell(x + dx, y, pier)
+      }
+    }
     const bx = x + MARGIN, by = y + MARGIN
     const g = b.palette[b.ground[by][bx]]
     if (isWaterSkin(g)) {
@@ -371,12 +396,39 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     }
     stampGroundEdge(b)
     shoreline(b)
+    // shoreline() gives a beach its sand-coloured rim only where the land is
+    // sand: beside a path laid over the sand, or the desert's hardpan, the
+    // water got the green bank of a pond in the grass.
+    const beachy = (bx, by) => {
+      const n = b.palette[b.ground[by]?.[bx]]
+      return isSandySkin(n) || n === HARDPAN || SAND_PATH.includes(n)
+    }
+    // ow_pond_<x><y>: which side the bank is on, 0 west/north, 2 east/south
+    const bank = b.palette.map(n => /^ow_pond_([012])([012])$/.exec(n))
+    for (let by = 0; by < SIZE; by++) for (let bx = 0; bx < SIZE; bx++) {
+      const m = bank[b.ground[by][bx]]
+      if (!m) continue
+      const dx = m[1] - 1, dy = m[2] - 1
+      if ((dx || dy) && (!dx || beachy(bx + dx, by)) && (!dy || beachy(bx, by + dy))) b.ground[by][bx] = b.skin(`ow_shore_${m[1]}${m[2]}`)
+    }
+    // Bridges: every pier a path, a corridor or a site laid becomes plank
+    // deck cut to what ended up beside it. A corridor's planks follow the
+    // corridor, so the frame looks the same whatever is dealt inside.
+    skinBridges(b, {
+      X0: X0 - MARGIN, Y0: Y0 - MARGIN,
+      runs: (bx, by) => {
+        const x = bx - MARGIN, y = by - MARGIN
+        if (inside(x, y)) return null
+        const cor = corridor(x, y)
+        return cor === 'v' ? 'ns' : cor === 'h' ? 'ew' : null
+      },
+    })
   }
 
   return {
     seed, wx, wy, deal, b,
     biome: (x, y) => biome(x, y),
-    kind, free, inside, open, clear: openCell, path, gates, gateInner, finish,
+    kind, free, inside, open, claim, clear: openCell, path, gates, gateInner, finish,
     // a walkable line one cell wide with no path art: a way through the trees
     // for something that must be reachable but not signposted
     clearLine: (x0, y0, x1, y1) => {
@@ -395,13 +447,13 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     // stamp helpers in local coordinates, for interior cells only
     setGround: (x, y, skin) => { if (inside(x, y)) b.ground[y + MARGIN][x + MARGIN] = b.skin(skin) },
     setProp: (x, y, skin, { walkable = false } = {}) => {
-      if (!inside(x, y)) return
+      if (!inside(x, y) || (!walkable && pathKept(x, y))) return
       b.prop[y + MARGIN][x + MARGIN] = b.skin(skin)
       b.walkG[y + MARGIN][x + MARGIN] = walkable
     },
     // a cell of mountain rock (finish() shapes it), and the stony ground it stands on
     setMass: (x, y) => {
-      if (!inside(x, y)) return
+      if (!inside(x, y) || pathKept(x, y)) return
       clearCell(x, y)
       b.ground[y + MARGIN][x + MARGIN] = b.skin(floorSkin(x, y))
       b.prop[y + MARGIN][x + MARGIN] = b.skin(MTN.lat[0][0])
@@ -413,13 +465,14 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     },
     // a pond cell: open water, blocked; finish() gives it its rim
     setWater: (x, y) => {
-      if (!inside(x, y)) return
+      if (!inside(x, y) || pathKept(x, y)) return
       clearCell(x, y)
       b.ground[y + MARGIN][x + MARGIN] = b.skin(waterSkin(x, y))
       b.walkG[y + MARGIN][x + MARGIN] = false
     },
     walkable: (x, y) => !!b.walkG[y + MARGIN]?.[x + MARGIN],
     onPath: (x, y) => pathCells.has(y * PIECE + x),
+    onSite: (x, y) => siteCells.has(y * PIECE + x),
     rnd, dryGround, grassSkin,
   }
 }
