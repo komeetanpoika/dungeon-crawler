@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { slopeShores, SLOPE_SKINS, FAMILIES, LIES, fillSkin, cutSkin, foamSkin, isBankSkin } from '../renderer/wilds/shore-art.js'
+import { slopeShores, SLOPE_SKINS, FAMILIES, LIES, SIDES, fillSkin, cutSkin, foamSkin, isBankSkin } from '../renderer/wilds/shore-art.js'
 import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
 import { generatePiece } from '../renderer/wilds/piece.js'
 import { isFilletSkin } from '../renderer/wilds/bridge-art.js'
@@ -37,9 +37,14 @@ function scene(rows) {
 }
 const RIMS = new Set(Object.values(RIM_TILES).flat())
 // A cell as a short word: Fnea a fill, Cnwa a cut, Mnwb the foam under a cut,
-// R the square rim, ~ open water, . land.
+// R the square rim, ~ open water, . land. A double lies by one side, written
+// twice: Fnnu a pocket's end, Cnnu a bump and Mnnu the water off its tip,
+// Cnnv a spit's end.
 function word(name) {
   let m
+  if ((m = /^ow_(?:pond|shore|mud)_slope_([nsew])_u$/.exec(name))) return `F${m[1]}${m[1]}u`
+  if ((m = /^ow_bank_(?:grass|sand|dirt)_([nsew])_([uv])$/.exec(name))) return `C${m[1]}${m[1]}${m[2]}`
+  if ((m = /^ow_water_foam_([nsew])_u$/.exec(name))) return `M${m[1]}${m[1]}u`
   if ((m = /^ow_(?:pond|shore|mud)_slope_(..)_(.)$/.exec(name))) return `F${m[1]}${m[2]}`
   if ((m = /^ow_bank_(?:grass|sand|dirt)_(..)_(.)$/.exec(name))) return `C${m[1]}${m[2]}`
   if ((m = /^ow_water_foam_(..)_(.)$/.exec(name))) return `M${m[1]}${m[2]}`
@@ -86,7 +91,9 @@ const looser = (wd, turn) => turn.swaps && wd.length === 4 && wd[3] === 'e' ? wd
 
 test('every slope tile is drawn, loaded with the Wilds, and named for what its cell is', () => {
   assert.equal(new Set(SLOPE_SKINS).size, SLOPE_SKINS.length)
-  assert.equal(SLOPE_SKINS.length, 196)   // per bank 32 fills and 28 cuts, and 16 foam tiles for all
+  // per bank 32 fills and 28 cuts and, for the doubles, 4 pocket ends, 4 bumps and 4 spit ends;
+  // for all banks 16 foam tiles and the 4 for the water off a bump
+  assert.equal(SLOPE_SKINS.length, 236)
   const loaded = new Set(WILDS_SKINS)
   for (const n of SLOPE_SKINS) {
     assert.ok(loaded.has(n), `${n} is not in WILDS_SKINS`)
@@ -94,14 +101,17 @@ test('every slope tile is drawn, loaded with the Wilds, and named for what its c
     assert.ok(!isPierSkin(n) && !n.endsWith('_top'), n)
   }
   const water = SLOPE_SKINS.filter(n => !isBankSkin(n)), land = SLOPE_SKINS.filter(isBankSkin)
-  assert.equal(water.length, 112)
-  assert.equal(land.length, 84)
+  assert.equal(water.length, 128)
+  assert.equal(land.length, 108)
   // a fill and the foam under a cut are water to every reader of names: collision art, sight, lightning
   for (const n of water) assert.ok(isWaterSkin(n) && LOS_CLEAR_PREFIXES.some(p => n.startsWith(p)), n)
   // a cut is land: never water, and not grass to the elk's trail, which would repaint it
   for (const n of land) assert.ok(!isWaterSkin(n) && !LOS_CLEAR_PREFIXES.some(p => n.startsWith(p)) && !n.startsWith('ow_grass'), n)
   for (const f of FAMILIES) for (const l of LIES) {
     assert.ok(loaded.has(fillSkin(f.rim, l, 'a')) && loaded.has(cutSkin(f.ground, l, 'b')) && loaded.has(foamSkin(l, 'c')))
+  }
+  for (const f of FAMILIES) for (const l of SIDES) {
+    assert.ok(loaded.has(fillSkin(f.rim, l, 'u')) && loaded.has(cutSkin(f.ground, l, 'u')) && loaded.has(cutSkin(f.ground, l, 'v')) && loaded.has(foamSkin(l, 'u')))
   }
 })
 
@@ -209,7 +219,7 @@ test('a tread one tile long with a riser of two or more slopes along the riser',
   ])
 })
 
-test('bays and capes ramp from both ends; a real corner, a channel and a spit stay square', () => {
+test('bays and capes ramp from both ends; a real corner and a channel open at both ends stay square', () => {
   // a bay two wide and one five wide: the fills meet, or leave the rim
   // between them; the two cells of land between the bays are a cape
   expectWords([
@@ -231,17 +241,124 @@ test('bays and capes ramp from both ends; a real corner, a channel and a spit st
     'R R R Fneb Fnea Cnwc . Cnec Fnwa Fnwb R R R',
     '~ ~ ~ ~    ~    Mnwc R Mnec ~    ~    ~ ~ ~',
   ])
-  // corners with both legs two or longer, a one-tile channel and its end, a one-tile spit
+  // corners with both legs two or longer, a one-tile channel with no end
   for (const rows of [
     ['gggggg', 'gg....', 'gg....', 'gg....'],
     ['gggggg', '......', 'gggggg'],
-    ['ggggg', 'gg.gg', 'gg.gg', 'gg.gg', 'ggggg'],
-    ['.....', '..g..', '..g..', '..g..', 'ggggg'],
   ]) {
     const { w, res } = sloped(rows)
     assert.equal(res.fills + res.cuts, 0, rows.join('/'))
     assert.ok(w.flat().every(c => c.length === 1), rows.join('/'))
   }
+})
+
+test('a one-tile pocket is a V notch, a one-tile bump a point, and a channel or a spit ends in a taper', () => {
+  // a pocket: its end filled from both corners, the land either side cut to meet it
+  expectWords([
+    'ggggggggggggg',
+    'gggggg.gggggg',
+    '.............',
+    '.............',
+  ], [
+    '. . . . .    .    .    .    .    . . . .',
+    '. . . . Cneb Cnea Fnnu Cnwa Cnwb . . . .',
+    'R R R R Mneb ~    ~    ~    Mnwb R R R R',
+    '~ ~ ~ ~ ~    ~    ~    ~    ~    ~ ~ ~ ~',
+  ])
+  // a bump: cut from both corners to a point, the foot of its bank on the water beyond, the fills beside it
+  expectWords([
+    'ggggggggggggg',
+    '.............',
+    '.............',
+    '......g......',
+    'ggggggggggggg',
+  ], [
+    '. . . . .    .    .    .    .    . . . .',
+    'R R R R R    R    R    R    R    R R R R',
+    '~ ~ ~ ~ ~    ~    Mnnu ~    ~    ~ ~ ~ ~',
+    'R R R R Fseb Fsea Cnnu Fswa Fswb R R R R',
+    '. . . . .    .    .    .    .    . . . .',
+  ])
+  // a one-tile channel, however long its walls: the same V at its end
+  expectWords([
+    'ggggggg',
+    'ggg.ggg',
+    'ggg.ggg',
+    'ggg.ggg',
+    '.......',
+    '.......',
+  ], [
+    '. . . .    . . .',
+    '. . . Fnnu . . .',
+    '. . . R    . . .',
+    '. . . R    . . .',
+    'R R R ~    R R R',
+    '~ ~ ~ ~    ~ ~ ~',
+  ])
+  // a spit: its last cell tapered from both sides, the water either side taking the foot of that bank
+  expectWords([
+    '.......',
+    '.......',
+    '...g...',
+    '...g...',
+    '...g...',
+    'ggggggg',
+  ], [
+    '~ ~ ~    ~    ~    ~ ~',
+    '~ ~ ~    ~    ~    ~ ~',
+    '~ ~ Menc Cnnv Mwnc ~ ~',
+    '~ ~ R    .    R    ~ ~',
+    'R R R    .    R    R R',
+    '. . .    .    .    . .',
+  ])
+  // each in its own ground: the pocket in its end wall's, the bump and the spit in their own
+  for (const [ch, f] of [['g', FAMILIES[0]], ['s', FAMILIES[1]], ['m', FAMILIES[2]]]) {
+    const names = rows => { const b = scene(rows.map(r => r.replaceAll('g', ch))); slopeShores(b); return new Set(b.ground.flat().map(i => b.palette[i])) }
+    assert.ok(names(['ggggggggggggg', 'gggggg.gggggg', '.............', '.............']).has(fillSkin(f.rim, 'n', 'u')), f.ground)
+    const bump = names(['ggggggggggggg', '.............', '.............', '......g......', 'ggggggggggggg'])
+    assert.ok(bump.has(cutSkin(f.ground, 'n', 'u')) && bump.has(foamSkin('n', 'u')), f.ground)
+    const spit = names(['.......', '.......', '...g...', '...g...', '...g...', 'ggggggg'])
+    assert.ok(spit.has(cutSkin(f.ground, 'n', 'v')) && spit.has(foamSkin('en', 'c')) && spit.has(foamSkin('wn', 'c')), f.ground)
+  }
+})
+
+test('teeth with no clean answer stay square', () => {
+  const square = rows => { const { w } = sloped(rows); return w.flat().every(c => c.length === 1) }
+  // a cell four corners want: a one-tile pond, a one-tile island
+  assert.ok(square(['ggggg', 'gg.gg', 'ggggg']))
+  assert.ok(square(['.....', '..g..', '.....', '.....'].flatMap((r, y) => y === 0 ? [r, r] : [r])))
+  // the water off a tip is another bank's to rim: a bump facing a coast one tile off keeps its
+  // square end (the fills beside it stand), and so does a spit that all but closes a strait
+  expectWords([
+    'ggggggggggggg',
+    '.............',
+    '......g......',
+    'ggggggggggggg',
+  ], [
+    '. . . . .    .    . .    .    . . . .',
+    'R R R R R    R    R R    R    R R R R',
+    'R R R R Fseb Fsea . Fswa Fswb R R R R',
+    '. . . . .    .    . .    .    . . . .',
+  ])
+  expectWords([
+    'ggggggg',
+    '.......',
+    '...g...',
+    '...g...',
+    '...g...',
+    'ggggggg',
+  ], [
+    '. . . . . . .',
+    'R R R R R R R',
+    '~ ~ R . R ~ ~',
+    '~ ~ R . R ~ ~',
+    'R R R . R R R',
+    '. . . . . . .',
+  ])
+  // a bump whose one side cannot be filled (a rock in that water) is not cut at all
+  const { w } = sloped(['ggggggggggggg', '.............', '.............', '.....lg......', 'ggggggggggggg'])
+  assert.deepEqual(w[3].slice(4, 9), ['R', 'R', '.', 'Fswa', 'Fswb'])
+  assert.equal(w[2][6], 'R')
 })
 
 test('the rule is the same whichever way the coast faces', () => {
@@ -252,6 +369,9 @@ test('the rule is the same whichever way the coast faces', () => {
     ['gggggggggggg', 'g..gg.....gg', '............'],
     ['ggggggggggggg', '.....ggg.....', '.............'],
     ['ggggggggggggggggg', 'ggggg.......ggggg', 'ggg...........ggg', 'gg......g......gg', 'g......ggg......g', 'g.....ggggg.....g', 'gg.....ggg.....gg', 'ggg.....g.....ggg', 'ggggg.......ggggg', 'ggggggggggggggggg'],
+    // teeth: a pocket, a bump, a dead-end channel, a spit
+    ['ggggggggggggg', 'gggggg.gggggg', '.............', '.............', '......g......', 'ggggggggggggg'],
+    ['ggggggggg', 'ggg.ggggg', 'ggg.ggggg', '.........', '.........', '.....g...', '.....g...', '.....g...', 'ggggggggg'],
   ]
   const seen = new Set()
   for (const rows of coasts) {
@@ -267,6 +387,7 @@ test('the rule is the same whichever way the coast faces', () => {
   // every piece of every lie came up: all four sides, both ways along each
   for (const l of LIES) for (const c of ['Fa', 'Fb', 'Fc', 'Ca', 'Cb', 'Cc', 'Mb', 'Mc']) assert.ok(seen.has(c[0] + l + c[1]), `${c[0]}${l}${c[1]} never laid`)
   for (const l of ['nw', 'ne', 'sw', 'se']) for (const c of ['Fd', 'Cd']) assert.ok(seen.has(c[0] + l + c[1]), `${c[0]}${l}${c[1]} never laid`)
+  for (const l of SIDES) for (const c of ['Fu', 'Cu', 'Mu', 'Cv']) assert.ok(seen.has(c[0] + l + l + c[1]), `${c[0]}${l}${c[1]} never laid`)
 })
 
 test('each bank slopes in its own ground, cell by cell; ground with no tiles stays square', () => {
@@ -321,21 +442,20 @@ test('what stands on a cell: a tree may be cut under, a house may not, and then 
   assert.deepEqual(deck[2].slice(4, 10), ['R', 'R', 'Fneb', 'Fnea', 'Cnwa', 'Cnwb'])
 })
 
-test('a cell two pieces want: a cut is drawn over a fill, two fills both stay square', () => {
-  // a channel one tile high. Its east end is the notch of the tread above
-  // and of the one below: two fills, neither drawn. The cell west of that
-  // lies under the cut of the upper tread and in the fill from below: the
-  // cut, with its foam, is the one drawn.
+test('a channel one tile high: its end is filled from both corners, and the cut above keeps its foam', () => {
+  // the channel's east end is the notch of the tread above and of the one
+  // below: one double fill. Nothing then wants the water under the cut of
+  // the upper tread but that cut.
   expectWords([
     'gggggggggggg',
     '.....ggggggg',
     '.......ggggg',
     'gggggggggggg',
   ], [
-    '. . . .    .    .    . . . . . .',
-    'R R R Fneb Fnea Cnwc . . . . . .',
-    'R R R R    R    Mnwc R . . . . .',
-    '. . . .    .    .    . . . . . .',
+    '. . . .    .    .    .    . . . . .',
+    'R R R Fneb Fnea Cnwc .    . . . . .',
+    'R R R R    R    Mnwc Feeu . . . . .',
+    '. . . .    .    .    .    . . . . .',
   ])
 })
 

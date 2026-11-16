@@ -22,8 +22,17 @@
 // from a square corner; a fill can stand alone, and then the step is half
 // as tall as it was. Where two pieces want one cell the cut wins over the
 // fill (sooner water shown on ground you can walk than land where you
-// cannot), and two of a kind both stay square: that is what leaves one-cell
-// channels and spits alone.
+// cannot).
+//
+// Two pieces of a kind at the two ends of one single-tile edge both want
+// its cell: the end of a pocket or of a one-tile channel (two fills), a
+// one-tile bump or the end of a spit (two cuts). They are drawn as one: the
+// water cell filled from both corners to a V, the bump cut from both to a
+// point with the foot of its bank on the water beyond, the spit's last cell
+// tapered from both sides over its whole length. A bump, like any cut,
+// needs the fills beside it; a spit's end has only water round it, which
+// takes the feet of its two banks, so it needs none. A cell wanted any
+// other way by two of a kind, or by three, stays square.
 //
 // A piece of ramp is drawn whole or not at all. Not at all when the land of
 // one of its cells is not grass, sand or marsh dirt (each cell is drawn in
@@ -48,27 +57,34 @@ export const LIES = ['nw', 'ne', 'sw', 'se', 'wn', 'ws', 'en', 'es']
 const DIAGONAL = ['nw', 'ne', 'sw', 'se']
 // Pieces: a b the two cells of a long ramp from the corner, c the one cell of
 // a short one, d the 45-degree corner; e is d for a fill whose far half
-// carries on the cut of the land cell across it.
+// carries on the cut of the land cell across it. The doubles lie by one
+// side alone, the one their single-tile edge is on: u a pocket's end filled
+// from both corners, or a bump cut from both; v a spit's end tapered.
 export const fillSkin = (rim, lie, piece) => `${rim}_slope_${lie}_${piece}`
 export const cutSkin = (ground, lie, piece) => `ow_bank_${ground}_${lie}_${piece}`
 // the water cell under a cut, where the foot of the bank comes through
 export const foamSkin = (lie, piece) => `ow_water_foam_${lie}_${piece}`
 export const isBankSkin = n => typeof n === 'string' && n.startsWith('ow_bank_')
 
+export const SIDES = ['n', 's', 'w', 'e']
 export const SLOPE_SKINS = [
   ...FAMILIES.flatMap(f => [
     ...LIES.flatMap(l => ['a', 'b', 'c'].map(p => fillSkin(f.rim, l, p))),
     ...DIAGONAL.flatMap(l => ['d', 'e'].map(p => fillSkin(f.rim, l, p))),
+    ...SIDES.map(l => fillSkin(f.rim, l, 'u')),
     ...LIES.flatMap(l => ['a', 'b', 'c'].map(p => cutSkin(f.ground, l, p))),
     ...DIAGONAL.map(l => cutSkin(f.ground, l, 'd')),
+    ...SIDES.flatMap(l => ['u', 'v'].map(p => cutSkin(f.ground, l, p))),
   ]),
   ...LIES.flatMap(l => ['b', 'c'].map(p => foamSkin(l, p))),
+  ...SIDES.map(l => foamSkin(l, 'u')),
 ]
 
 const mod = (n, m) => ((n % m) + m) % m
 const NONE = 0, PIER = 1, OTHER = 2, GROWTH = 3
 // What may stand on a land cell the water cuts into.
 const GROWS = ['ow_tree_', 'ow_bush_', 'ow_deadtree_', 'ow_shrub_', 'ow_rock_']
+const DX = [1, -1, 0, 0], DY = [0, 0, 1, -1]
 
 // Slant the shores of builder `b` (ground, prop: palette indices).
 //   X0, Y0   world tile of builder cell (0, 0)
@@ -173,7 +189,7 @@ export function slopeShores(b, { X0 = 0, Y0 = 0, frame = null } = {}) {
       const acrossV = (vy + sy) * w + vx, acrossH = vy * w + vx + sx
       const u = {
         v: vy * w + vx, notch, lie, piece: steps === 0 ? 'd' : null, steps, water, land,
-        claims: null, fams: null, needs: [], farH: -1, wantsE: -1, strip: 0, dead: false,
+        claims: null, fams: null, needs: [], farH: -1, wantsE: -1, strip: 0, dead: false, q: Qy * w + Qx,
       }
       if (notch) {
         // a fill is the ground of the land across the bank from it, cell by cell
@@ -203,63 +219,137 @@ export function slopeShores(b, { X0 = 0, Y0 = 0, frame = null } = {}) {
     return out
   }
 
+  // Two pieces of a kind cornered on one cell, at the two ends of one of its
+  // edges, and nothing else after that cell: they become one piece, known
+  // by either corner. `inStrip`: the pieces are the edge strips' own, and
+  // the double must be decided from its strip too; else it must keep out of
+  // the strips.
+  function pairUp(units, fixed, inStrip) {
+    const cornered = new Map(), wanted = new Map()
+    for (const set of [fixed, units]) for (const u of set.values()) for (const i of u.claims) wanted.set(i, (wanted.get(i) ?? 0) + 1)
+    for (const u of units.values()) { const a = cornered.get(u.q); if (a) a.push(u); else cornered.set(u.q, [u]) }
+    for (const [q, pair] of cornered) {
+      if (pair.length !== 2 || wanted.get(q) !== 2) continue
+      const [a, c] = pair, gap = Math.abs(a.v - c.v)
+      if (gap !== 1 && gap !== w) continue   // corners across the cell from each other
+      const qx = q % w, qy = (q / w) | 0
+      const side = gap === 1 ? (((a.v / w) | 0) === qy ? 'n' : 's') : (a.v % w === qx ? 'w' : 'e')
+      // the cell past the edge the two share: a pocket's end wall, the water off a tip
+      const ex = qx + (side === 'w' ? -1 : side === 'e' ? 1 : 0), ey = qy + (side === 'n' ? -1 : side === 's' ? 1 : 0)
+      if (ex < 0 || ey < 0 || ex >= w || ey >= h) continue
+      const past = ey * w + ex
+      const m = {
+        v: a.v, notch: a.notch, lie: side, piece: 'u', steps: -1, water: [], land: [], sides: [], past, q,
+        claims: [q], fams: null, needs: [], farH: -1, wantsE: -1, wantsEs: [], strip: a.strip & c.strip, dead: false,
+      }
+      if (a.notch) {
+        if (fam[past] < 0) continue
+        m.fams = [fam[past]]
+      } else {
+        // the water off the tip is redrawn: it must be this land's alone to
+        // rim, or another bank's rim would go with it
+        if (!wet[past] || on[past] !== NONE) continue
+        let alone = true, seen = 15
+        for (let d = 0; d < 4 && alone; d++) {
+          const x = ex + DX[d], y = ey + DY[d], i = y * w + x
+          if (i === q) continue
+          if (x < 0 || y < 0 || x >= w || y >= h || !wet[i]) alone = false
+          else if (strips) seen &= strips[i]
+        }
+        if (!alone) continue
+        m.strip &= seen
+        m.fams = [fam[q]]
+        if (a.steps === 0 && c.steps === 0) {
+          // a bump: the fills beside it, which are each corner's but for the other corner
+          m.needs = [...a.needs.filter(v => v !== c.v), ...c.needs.filter(v => v !== a.v)]
+          m.wantsEs = [a.wantsE, c.wantsE].filter(v => v >= 0 && v !== a.v && v !== c.v)
+          m.claims = [q, past]
+        } else if (a.steps > 0 && c.steps > 0) {
+          // a spit's end: the water on either side takes the foot of that side's bank
+          m.piece = 'v'
+          m.sides = [[a.water[0], a.lie], [c.water[0], c.lie]]
+          m.claims = [q, a.water[0], c.water[0], past]
+        } else continue
+      }
+      if (strips) {
+        if (inStrip) { m.strip &= strips[past]; if (!m.strip) continue }
+        else if (m.claims.some(i => strips[i])) continue
+      }
+      units.set(a.v, m)
+      units.set(c.v, m)
+    }
+  }
+
   // Which pieces are drawn. `fixed` are pieces already settled (the strips
   // along the piece edges): they stand, and whatever touches them gives way.
-  function settle(units, fixed = new Map()) {
+  // `ban`: cells no piece may want.
+  function settle(units, fixed = new Map(), { inStrip = false, ban = null } = {}) {
+    pairUp(units, fixed, inStrip)
+    const all = [...new Set(units.values())]
+    if (ban) for (const u of all) if (u.claims.some(ban)) u.dead = true
     const claimed = new Map()   // cell -> pieces wanting it
-    for (const set of [fixed, units]) for (const u of set.values()) for (const i of u.claims) {
+    for (const u of [...new Set(fixed.values()), ...all]) for (const i of u.claims) {
       const a = claimed.get(i)
       if (a) a.push(u); else claimed.set(i, [u])
     }
-    for (const u of units.values()) for (const i of u.claims) for (const o of claimed.get(i)) {
+    for (const u of all) for (const i of u.claims) for (const o of claimed.get(i)) {
       if (o === u) continue
       // a settled piece outranks all; else a cut gives way only to a cut, a fill to anything
       if (fixed.has(o.v) || !o.notch || u.notch) u.dead = true
     }
     const live = v => { const u = fixed.get(v) ?? units.get(v); return u && !u.dead ? u : null }
-    for (const u of units.values()) {
+    for (const u of all) {
       if (u.notch || u.dead) continue
       if (u.needs.some(v => !live(v)?.notch)) { u.dead = true; continue }
       // a settled fill keeps the half it has
-      const e = u.wantsE >= 0 ? live(u.wantsE) : null
-      if (e && e.steps === 0 && fixed.has(e.v) && e.piece !== 'e') u.dead = true
+      for (const v of u.wantsEs ?? [u.wantsE]) {
+        const e = v >= 0 ? live(v) : null
+        if (e && e.steps === 0 && fixed.has(e.v) && e.piece !== 'e') u.dead = true
+      }
     }
-    for (const u of units.values()) {
+    for (const u of all) {
       if (!u.notch || u.dead || u.steps !== 0) continue
       const cut = live(u.farH)
       if (cut && !cut.notch) u.piece = 'e'
     }
-    return units
+    return all
   }
 
   const asked = scan()
   let drawn
-  if (!frame) drawn = [...settle(asked).values()].filter(u => !u.dead)
+  if (!frame) drawn = settle(asked).filter(u => !u.dead)
   else {
     // the strips first, each from itself alone; a cell in two strips is where they cross
     const strip = new Map([...asked].filter(([, u]) => u.strip))
     const crossing = i => (strips[i] & 3) !== 0 && (strips[i] & 12) !== 0
-    for (const u of strip.values()) if (u.claims.some(crossing)) u.dead = true
-    settle(strip)
+    settle(strip, undefined, { inStrip: true, ban: crossing })
     const fixed = new Map([...strip].filter(([, u]) => !u.dead))
     // then the inside, which may read anything
     const inner = new Map([...asked].filter(([, u]) => !u.claims.some(i => strips[i])))
-    settle(inner, fixed)
-    drawn = [...fixed.values(), ...[...inner.values()].filter(u => !u.dead)]
+    drawn = [...new Set(fixed.values()), ...settle(inner, fixed).filter(u => !u.dead)]
   }
 
   const put = (i, name) => { b.ground[(i / w) | 0][i % w] = b.skin(name) }
   let fills = 0, cuts = 0
+  const open = i => WATER_SKINS[mod(X0 + i % w + Y0 + ((i / w) | 0), 2)]
   for (const u of drawn) {
     const pieceOf = k => u.piece ?? (u.steps === 2 ? 'ab'[k] : 'c')
-    if (u.notch) {
+    if (u.steps < 0) {
+      // a double: one tile on the cell, and round a cut the water its banks reach
+      const f = FAMILIES[u.fams[0]]
+      if (u.notch) { fills++; put(u.q, fillSkin(f.rim, u.lie, 'u')); continue }
+      cuts++
+      put(u.q, cutSkin(f.ground, u.lie, u.piece))
+      for (const [i, lie] of u.sides) put(i, foamSkin(lie, 'c'))
+      put(u.past, u.piece === 'u' ? foamSkin(u.lie, 'u') : open(u.past))
+    } else if (u.notch) {
       fills++
       u.water.forEach((i, k) => put(i, fillSkin(FAMILIES[u.fams[k]].rim, u.lie, pieceOf(k))))
     } else {
       cuts++
       u.land.forEach((i, k) => put(i, cutSkin(FAMILIES[u.fams[k]].ground, u.lie, pieceOf(k))))
       // under the first cell of a long cut the bank's foot does not reach the water cell
-      u.water.forEach((i, k) => put(i, pieceOf(k) === 'a' ? WATER_SKINS[mod(X0 + i % w + Y0 + ((i / w) | 0), 2)] : foamSkin(u.lie, pieceOf(k))))
+      u.water.forEach((i, k) => put(i, pieceOf(k) === 'a' ? open(i) : foamSkin(u.lie, pieceOf(k))))
     }
   }
   return { fills, cuts, square: asked.size - drawn.length }
