@@ -43,9 +43,9 @@ the project holds in them are offered under the MIT licence.
   (`tools/bake-dragon-parts.mjs`), the Wilds' bridge decks `ow_pier_deck_*.png`, the
   planked fillets in the corners of their steps `ow_prop_fillet_*.png` and
   its paths over sand `ow_path_sand_*.png`, which are Tiny Town's dirt tiles repainted
-  (`tools/make-wilds-path-tiles.mjs`), the Wilds' slanted shores `ow_*_slope_*.png`,
-  `ow_bank_*.png` and `ow_water_foam_*.png`, which are Tiny Town's pond rim redrawn
-  along a slant (`tools/make-wilds-shore-tiles.mjs`), and the app icons
+  (`tools/make-wilds-path-tiles.mjs`), the Wilds' shores `ow_*_k_*.png` and
+  `ow_bank_*.png`, which are Tiny Town's pond rim redrawn along a slant and round
+  the corners it has no tile for (`tools/make-wilds-shore-tiles.mjs`), and the app icons
   `renderer/assets/icon-*.png`.
 - `custom_moss_floor_*.png` were drawn in the in-game tile editor.
 
