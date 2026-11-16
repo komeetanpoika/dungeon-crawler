@@ -1,0 +1,41 @@
+{
+  "rig": "klovni",
+  "params": {
+    "lift": 1.4,
+    "bob": 0.5,
+    "wobble": 5,
+    "armSwing": 12,
+    "stepHeight": 0.15,
+    "headNod": 6,
+    "attackReach": 30
+  },
+  "stats": {
+    "hp": 8,
+    "dmg": 1,
+    "speed": 60
+  },
+  "behavior": {
+    "weapon": "fists",
+    "weaponOverrides": {
+      "damage": 2,
+      "reach": 34
+    }
+  },
+  "hooks": false,
+  "spawn": {
+    "depths": [
+      1,
+      5
+    ],
+    "weight": 1,
+    "openMaps": {
+      "depths": [
+        7,
+        18
+      ],
+      "count": 1
+    }
+  },
+  "tuning": {},
+  "name": "klovni"
+}
