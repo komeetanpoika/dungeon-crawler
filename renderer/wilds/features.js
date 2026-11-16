@@ -40,12 +40,12 @@ const CAMPS = [
 // Roaming packs by toughness; row 0 is the ring round home. Every row has an
 // all-spider pack, which is what a village piece draws from: nothing that
 // hunts on its own initiative within a walk of the villagers.
-const bones = { kind: 'rappeluu' }, hound = { kind: 'boarhound' }
+const bones = { kind: 'rappeluu' }, hound = { kind: 'boarhound' }, clown = { kind: 'klovni' }
 const PACKS = [
   [[spider('weak'), spider('weak')], [wolf], [spider('weak'), spider('weak'), spider('weak')]],
-  [[spider('weak'), spider('weak')], [wolf, wolf], [spider('weak'), spider('medium')], [spider('weak'), spider('weak'), spider('weak')]],
-  [[spider('medium'), spider('medium')], [bones, bones], [wolf, wolf, wolf], [bear], [spider('weak'), spider('medium'), spider('medium')]],
-  [[hound, hound], [spider('strong'), spider('medium')], [bones, bones, bones], [bear, wolf, wolf]],
+  [[spider('weak'), spider('weak')], [wolf, wolf], [spider('weak'), spider('medium')], [spider('weak'), spider('weak'), spider('weak')], [clown]],
+  [[spider('medium'), spider('medium')], [bones, bones], [wolf, wolf, wolf], [bear], [spider('weak'), spider('medium'), spider('medium')], [clown]],
+  [[hound, hound], [spider('strong'), spider('medium')], [bones, bones, bones], [bear, wolf, wolf], [clown]],
   [[{ kind: 'manticore' }], [hound, hound, hound], [{ kind: 'podeboo' }, bones], [spider('strong'), spider('strong')]],
 ]
 const VILLAGE_CALM = 24   // tiles round a village centre no pack is dealt into
