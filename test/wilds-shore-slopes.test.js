@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { slopeShores, SLOPE_SKINS, FAMILIES, LIES, fillSkin, cutSkin, foamSkin, isBankSkin } from '../renderer/wilds/shore-art.js'
 import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
 import { generatePiece } from '../renderer/wilds/piece.js'
+import { isFilletSkin } from '../renderer/wilds/bridge-art.js'
 import { PIECE, MARGIN } from '../renderer/wilds/layout.js'
 import { hashInt } from '../renderer/wilds/rand.js'
 import { MapBuilder, shoreline, isWaterSkin, isPierSkin, RIM_TILES } from '../renderer/terrain/lib.js'
@@ -382,9 +383,9 @@ test('real pieces: slopes are laid, whole, and on cells that are what they were'
         else assert.ok(/^ow_(tree|bush|deadtree|shrub|rock)_/.test(c.overlay ?? ''), `${at} under ${c.overlay}`)
       } else {
         fills++
-        // water: blocked and seen across, or under a deck
+        // water: blocked and seen across (a bridge's fillet may lie on it), or under a deck
         if (c.tile === TILE.FLOOR) assert.ok(isPierSkin(c.overlay), at)
-        else assert.ok(c.losClear && !c.overlay, at)
+        else assert.ok(c.losClear && (!c.overlay || isFilletSkin(c.overlay)), `${at} under ${c.overlay}`)
       }
       // the two cells of a long ramp come together (inside the piece: the neighbour draws its own)
       const m = /_(..)_([ab])$/.exec(n)

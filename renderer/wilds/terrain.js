@@ -16,7 +16,7 @@ import { MapBuilder, shoreline, WATER_SKINS, isWaterSkin, isSandySkin, RIM_TILES
 import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, LAT_PX, LAT_PY } from '../terrain/mountain.js'
 import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
 import { SITE_SKINS } from './sites.js'
-import { skinBridges, DECK_SKINS } from './bridge-art.js'
+import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
 
 const SIZE = PIECE + 2 * MARGIN
@@ -48,7 +48,7 @@ const TRUNK_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [top, trunk]))
 // Every tile name terrain.js can lay. features.js adds its own (FEATURE_SKINS).
 export const TERRAIN_SKINS = [...new Set([
   ...GRASS, ...DIRT, ...SAND, HARDPAN, ...SAND_PATH, ...WATER_SKINS,
-  ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, ...SLOPE_SKINS, PIER.h, PIER.v, ...DECK_SKINS,
+  ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, ...SLOPE_SKINS, PIER.h, PIER.v, ...DECK_SKINS, ...DECK_CUT_SKINS, ...FILLET_SKINS,
   ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
   ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES,
@@ -422,9 +422,11 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     })
     // Bridges: every pier a path, a corridor or a site laid becomes plank
     // deck cut to what ended up beside it. A corridor's planks follow the
-    // corridor, so the frame looks the same whatever is dealt inside.
+    // corridor, so the frame looks the same whatever is dealt inside; and
+    // only a deck dealt inside has its stepped edges slanted.
     skinBridges(b, {
       X0: X0 - MARGIN, Y0: Y0 - MARGIN,
+      slant: (bx, by) => inside(bx - MARGIN, by - MARGIN),
       runs: (bx, by) => {
         const x = bx - MARGIN, y = by - MARGIN
         if (inside(x, y)) return null

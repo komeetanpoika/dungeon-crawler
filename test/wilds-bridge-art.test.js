@@ -5,7 +5,10 @@ import assert from 'node:assert/strict'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { skinBridges, recutDeck, deckSkin, deckHasPost, isDeckSkin, DECK_SKINS } from '../renderer/wilds/bridge-art.js'
+import {
+  skinBridges, recutDeck, deckSkin, deckHasPost, isDeckSkin, DECK_SKINS,
+  DECK_CUT_SKINS, FILLET_SKINS, deckCutSkin, filletSkin, isDeckCutSkin, isFilletSkin,
+} from '../renderer/wilds/bridge-art.js'
 import { WILDS_SKINS } from '../renderer/wilds/terrain.js'
 import { generatePiece } from '../renderer/wilds/piece.js'
 import { PIECE, FRAME, MARGIN } from '../renderer/wilds/layout.js'
@@ -16,9 +19,14 @@ import { takeDirtyTiles } from '../renderer/systems/tile-dirty.js'
 const TILES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer/assets/tiles')
 const N = 1, E = 2, S = 4, W = 8
 const mod = (n, m) => ((n % m) + m) % m
+// (a deck cell with a slanted corner has no deck on the two sides of that
+// corner, and never a post: `cut` is its lie and piece)
+const BIT = { n: N, e: E, s: S, w: W }, FACING = { n: 's', s: 'n', w: 'e', e: 'w' }
 const parse = name => {
   const m = /^ow_pier_deck_([hv])_(\d+)(p?)$/.exec(name ?? '')
-  return m && { boards: m[1], mask: +m[2], post: m[3] === 'p' }
+  if (m) return { boards: m[1], mask: +m[2], post: m[3] === 'p' }
+  const c = /^ow_pier_deck_([hv])_([nsew])([nsew])([cd])$/.exec(name ?? '')
+  return c && { boards: c[1], mask: BIT[FACING[c[2]]] | BIT[c[3]], post: false, cut: { lie: c[2] + c[3], piece: c[4] } }
 }
 
 // ---- hand-made shapes ---------------------------------------------------------
@@ -324,6 +332,158 @@ test('the cut leaves alone what is not a deck over water', () => {
   assert.equal(takeDirtyTiles(map), null)
 })
 
+// ---- slanted edges -------------------------------------------------------------
+// A cell as a short word: # deck, Cnwd a deck cell with a slanted corner (its
+// lie and piece), Fnec a fillet on the water, . anything else.
+const slantWord = n => {
+  let m
+  if ((m = /^ow_pier_deck_[hv]_(..)([cd])$/.exec(n ?? ''))) return `C${m[1]}${m[2]}`
+  if ((m = /^ow_prop_fillet_(..)_([cd])$/.exec(n ?? ''))) return `F${m[1]}${m[2]}`
+  return isDeckSkin(n) ? '#' : '.'
+}
+const slantWords = b => b.prop.map(r => r.map(i => slantWord(b.palette[i])).join(' '))
+const tidy = rows => rows.map(r => r.trim().split(/\s+/).join(' '))
+
+test('every slanted deck tile and fillet is drawn, loaded with the Wilds, and named for what its cell is', () => {
+  assert.equal(new Set(DECK_CUT_SKINS).size, 24)   // 8 ramps and 4 corners, planked both ways
+  assert.equal(new Set(FILLET_SKINS).size, 12)
+  const loaded = new Set(WILDS_SKINS)
+  for (const n of [...DECK_CUT_SKINS, ...FILLET_SKINS]) {
+    assert.ok(loaded.has(n), `${n} is not in WILDS_SKINS`)
+    assert.ok(fs.existsSync(path.join(TILES, `${n}.png`)), `no tile art for ${n}`)
+  }
+  // a cut deck is deck: a pier to every reader of names, and it parses as the two sides it has no deck on
+  for (const n of DECK_CUT_SKINS) assert.ok(isPierSkin(n) && isDeckSkin(n) && isDeckCutSkin(n) && parse(n)?.cut && !isFilletSkin(n), n)
+  for (const n of DECK_SKINS) assert.ok(!isDeckCutSkin(n), n)
+  // a fillet is a low prop: never a pier or a deck, not water by its own name, and sight passes over it
+  for (const n of FILLET_SKINS) assert.ok(isFilletSkin(n) && !isPierSkin(n) && !isDeckSkin(n) && !isWaterSkin(n) && n.startsWith('ow_prop_'), n)
+  assert.equal(deckCutSkin('h', 'nw', 'd'), 'ow_pier_deck_h_nwd')
+  assert.equal(filletSkin('es', 'c'), 'ow_prop_fillet_es_c')
+})
+
+test('a deck that steps a tile at a time: outer corners cut, inner corners filleted, the edge one slanted line', () => {
+  // steps of two: each straight edge ramps over the one cell next to the step
+  const two = skinned([
+    '...........',
+    '.####......',
+    '...####....',
+    '.....####..',
+    '.......###.',
+    '...........',
+  ])
+  assert.deepEqual(slantWords(two.b), tidy([
+    '. . .    .    .    .    .    .    .    .    .',
+    '. # #    #    Csec Fswc .    .    .    .    .',
+    '. . Fnec Cnwc #    #    Csec Fswc .    .    .',
+    '. . .    .    Fnec Cnwc #    #    Csec Fswd .',
+    '. . .    .    .    .    Fnec Cnwc #    #    .',
+    '. . .    .    .    .    .    .    .    .    .',
+  ]))
+  // steps of one: 45 degrees, every cell of a two-wide deck with a corner off
+  const one = skinned([
+    '........',
+    '.##.....',
+    '..##....',
+    '...##...',
+    '....##..',
+    '........',
+  ])
+  assert.deepEqual(slantWords(one.b), tidy([
+    '. .    .    .    .    .    . .',
+    '. #    Csec Fswd .    .    . .',
+    '. Fned Cnwd Csed Fswd .    . .',
+    '. .    Fned Cnwd Csed Fswd . .',
+    '. .    .    Fned Cnwc #    . .',
+    '. .    .    .    .    .    . .',
+  ]))
+  for (const { b } of [two, one]) {
+    assertCut(b)   // beams as ever: a cut cell has no deck on the two sides of its corner
+    const boards = parse(propAt(b, 1, 1)).boards
+    for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+      const n = propAt(b, x, y), d = parse(n)
+      if (d) {
+        // deck, cut or not: walked on, over water, planked like the rest
+        assert.ok(b.walkG[y][x] && isWaterSkin(b.palette[b.ground[y][x]]), `${x},${y}`)
+        assert.equal(d.boards, boards, `planks at ${x},${y}`)
+      } else if (isFilletSkin(n)) {
+        // a fillet: on water that stays water and stays shut
+        assert.ok(!b.walkG[y][x] && isWaterSkin(b.palette[b.ground[y][x]]), `${x},${y}`)
+      } else assert.equal(n, null, `${x},${y}`)
+    }
+  }
+})
+
+test('a cut and its fillet go together, and where the rule has no clean answer the deck stays square', () => {
+  const none = rows => { const { b } = skinned(rows); assert.ok(slantWords(b).join(' ').split(' ').every(c => c === '#' || c === '.'), rows.join('/')); return b }
+  // real corners, a straight span and its ends, a hole in a wide deck
+  none(['......', '.####.', '.#....', '.#....', '......'])
+  none(['ggg', '.#.', '.#.', '.#.', '...'])
+  none(['......', '.####.', '.#.##.', '.####.', '......'])
+  // two decks that touch at a corner: one bridge, but no edge to slant
+  none(['......', '.##...', '.##...', '...##.', '...##.', '......'])
+  // the end of a one-wide pier: two outer corners on one cell, and no deck behind them
+  none(['.....', '.###.', '.....'])
+  // a step against land is a landing, not an edge: the same deck's step over the water is slanted
+  const { b } = skinned(['gggggg', '.###gg', '...##g', '......'])
+  assert.deepEqual(slantWords(b), tidy(['. . .    .    . .', '. # #    #    . .', '. . Fnec Cnwc # .', '. . .    .    . .']))
+  // nothing where the caller says no; and a step is slanted only if every cell round it may be
+  assert.deepEqual(slantWords(skinned(['......', '.###..', '...###', '......'], { slant: false }).b).join(' ').match(/[CF]/), null)
+  const half = skinned(['........', '.####...', '...#####', '........'], { slant: x => x < 4 }).b
+  assert.deepEqual(slantWords(half), tidy(['. . . . . . . .', '. # # # # . . .', '. . . # # # # #', '. . . . . . . .']))
+  const whole = skinned(['........', '.####...', '...#####', '........']).b
+  assert.deepEqual(slantWords(whole), tidy(['. . .    .    .    .    . .', '. # #    #    Csec Fswc . .', '. . Fnec Cnwc #    #    # #', '. . .    .    .    .    . .']))
+})
+
+test('the slanted pass is the same done twice, and lays nothing but props', () => {
+  const rows = ['........', '.##.....', '..##....', '...##...', '....####', '........']
+  const s = scene(rows)
+  const ground = JSON.stringify(s.b.ground), walk = JSON.stringify(s.b.walkG)
+  skinBridges(s.b)
+  const once = slantWords(s.b), names = s.b.prop.map(r => r.map(i => s.b.palette[i] ?? null))
+  assert.ok(once.join(' ').includes('F') && once.join(' ').includes('C'))
+  skinBridges(s.b)
+  assert.deepEqual(s.b.prop.map(r => r.map(i => s.b.palette[i] ?? null)), names)
+  assert.equal(JSON.stringify(s.b.ground), ground)
+  assert.equal(JSON.stringify(s.b.walkG), walk)
+})
+
+test('a plank laid or lifted on a stepped deck: the slants follow, and the fillets stay water', () => {
+  const stair = ['..........', '.####.....', '...####...', '.....####.', '..........']
+  const whole = generated(stair)
+  assert.ok(whole.flat().some(isFilletSkin) && whole.flat().some(isDeckCutSkin))
+  // every plank in turn lifted and laid back: each time what the generator would lay
+  for (let y = 1; y <= 3; y++) for (let x = 1; x <= 8; x++) {
+    if (stair[y][x] !== '#') continue
+    const map = gameCells(skinned(stair).b)
+    takeDirtyTiles(map)
+    lift(map, x, y)
+    const gone = stair.map((r, ry) => ry === y ? r.slice(0, x) + '.' + r.slice(x + 1) : r)
+    assert.deepEqual(overlays(map), generated(gone), `lifted ${x},${y}`)
+    // (the lifted cell's own overlay is the caller's; the tile layer hears of every other cell that changed)
+    const dirty = takeDirtyTiles(map) ?? []
+    for (let cy = 0; cy < map.length; cy++) for (let cx = 0; cx < map[0].length; cx++) {
+      if ((cx !== x || cy !== y) && (whole[cy][cx] ?? null) !== (map[cy][cx].overlay ?? null)) {
+        assert.ok(dirty.some((v, i) => i % 2 === 0 && v === cx && dirty[i + 1] === cy), `lifted ${x},${y}: ${cx},${cy} changed unseen`)
+      }
+    }
+    lay(map, x, y)
+    assert.deepEqual(overlays(map), whole, `laid back ${x},${y}`)
+    for (const r of map) for (const c of r) {
+      if (isFilletSkin(c.overlay)) assert.ok(c.tile === TILE.WALL && isWaterSkin(c.skin) && c.losClear, 'a fillet on open water')
+      if (isDeckSkin(c.overlay)) assert.equal(c.tile, TILE.FLOOR)
+    }
+  }
+  // a plank laid on a fillet's cell takes its place; lifted, the fillet is back
+  const map = gameCells(skinned(stair).b)
+  const fx = whole[1].findIndex(isFilletSkin)
+  assert.ok(fx > 0)
+  lay(map, fx, 1)
+  assert.deepEqual(overlays(map), generated(stair.map((r, y) => y === 1 ? r.slice(0, fx) + '#' + r.slice(fx + 1) : r)))
+  lift(map, fx, 1)
+  // (lifting leaves the caller's null where the generator has nothing or a fillet: the fillet is laid again)
+  assert.deepEqual(overlays(map), whole)
+})
+
 // ---- real pieces ---------------------------------------------------------------
 const cache = new Map()
 const piece = (seed, wx, wy, deal = 0, tale = null) => {
@@ -368,6 +528,30 @@ test('every deck cell of a piece is cut to the cells beside it', () => {
     const along = mask & (N | S) ? p.wx * PIECE + d.x : p.wy * PIECE + d.y
     assert.equal(d.post, deckHasPost(mask) && mod(along, 3) === 0, `${p.key}: post at ${d.x},${d.y}`)
   }
+})
+
+test('a piece\'s slanted edges: cut deck you walk, fillets on water that stays shut, and never in the frame', () => {
+  let cuts = 0, fillets = 0
+  const beside = (p, x, y, pred) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => pred(p.cells[y + dy]?.[x + dx]?.overlay))
+  for (const p of [...SAMPLE, ...TALES.map(t => t.p)]) for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+    const c = p.cells[y][x], at = `${p.key}: ${c.overlay} at ${x},${y}`
+    const isCut = isDeckCutSkin(c.overlay), isFillet = isFilletSkin(c.overlay)
+    if (!isCut && !isFillet) continue
+    // the frame is square as it was: what a neighbour, or another deal, cannot see is not slanted
+    assert.ok(Math.min(x, y, PIECE - 1 - x, PIECE - 1 - y) >= FRAME, `${at}: in the frame`)
+    assert.ok(isWaterSkin(c.skin), at)
+    if (isCut) {
+      cuts++
+      assert.equal(c.tile, TILE.FLOOR, at)
+      assert.ok(beside(p, x, y, isFilletSkin), `${at}: no fillet beside it`)
+    } else {
+      fillets++
+      // water still: shut, seen across, and no pier to anything that reads names
+      assert.ok(c.tile === TILE.WALL && c.losClear && !c.losSoft && !c.losTall && !isPierSkin(c.overlay), at)
+      assert.ok(beside(p, x, y, isDeckCutSkin), `${at}: no cut beside it`)
+    }
+  }
+  assert.ok(cuts > 150 && fillets > 150, `only ${cuts} cuts and ${fillets} fillets in the sample`)
 })
 
 test('one bridge, one planking; a gate corridor is planked across the crossing', () => {
