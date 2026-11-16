@@ -40,12 +40,18 @@ const CAMPS = [
 // Roaming packs by toughness; row 0 is the ring round home. Every row has an
 // all-spider pack, which is what a village piece draws from: nothing that
 // hunts on its own initiative within a walk of the villagers.
-const bones = { kind: 'rappeluu' }, hound = { kind: 'boarhound' }, clown = { kind: 'klovni' }
+const bones = { kind: 'rappeluu' }, hound = { kind: 'boarhound' }
+// A rare pack is dealt only one time in five that the pick lands on it
+// (RARE_ODDS); the other times the pick is made again among the common packs
+// of its row. The clown: about one wild piece in eight to twelve has one.
+const RARE_ODDS = 0.2
+const CLOWN = [{ kind: 'klovni' }]
+const RARE = new Set([CLOWN])
 const PACKS = [
   [[spider('weak'), spider('weak')], [wolf], [spider('weak'), spider('weak'), spider('weak')]],
-  [[spider('weak'), spider('weak')], [wolf, wolf], [spider('weak'), spider('medium')], [spider('weak'), spider('weak'), spider('weak')], [clown]],
-  [[spider('medium'), spider('medium')], [bones, bones], [wolf, wolf, wolf], [bear], [spider('weak'), spider('medium'), spider('medium')], [clown]],
-  [[hound, hound], [spider('strong'), spider('medium')], [bones, bones, bones], [bear, wolf, wolf], [clown]],
+  [[spider('weak'), spider('weak')], [wolf, wolf], [spider('weak'), spider('medium')], [spider('weak'), spider('weak'), spider('weak')], CLOWN],
+  [[spider('medium'), spider('medium')], [bones, bones], [wolf, wolf, wolf], [bear], [spider('weak'), spider('medium'), spider('medium')], CLOWN],
+  [[hound, hound], [spider('strong'), spider('medium')], [bones, bones, bones], [bear, wolf, wolf], CLOWN],
   [[{ kind: 'manticore' }], [hound, hound, hound], [{ kind: 'podeboo' }, bones], [spider('strong'), spider('strong')]],
 ]
 const VILLAGE_CALM = 24   // tiles round a village centre no pack is dealt into
@@ -141,6 +147,8 @@ export function placeFeatures(t, piece) {
   // ---- small things: spots first, then trails -------------------------------
   const here = t.biome(mx, my)
   const roster = PACKS[nearHome(wx, wy) ? 0 : tier].filter(p => kind !== 'village' || p.every(f => f.kind === 'monster'))
+  const common = roster.filter(p => !RARE.has(p))
+  const pickPack = () => { const p = pick(roster); return !RARE.has(p) || rng() < RARE_ODDS ? p : pick(common) }
   const smallKinds = ['chest', 'chest', 'rocks', 'hut']
   if (ANIMALS[piece.biome]) smallKinds.push('animals', 'animals')
   if (['forest', 'autumn', 'marsh'].includes(piece.biome)) smallKinds.push('mushrooms')
@@ -266,11 +274,11 @@ export function placeFeatures(t, piece) {
     } else if (s.kind === 'nest') {
       spawn({ kind: 'chest', x: s.x, y: s.y })
       sites.nest(s.x, s.y)
-      for (const foe of pick(roster).slice(0, 2)) place(foe, s.x, s.y, 1, 2)
+      for (const foe of pickPack().slice(0, 2)) place(foe, s.x, s.y, 1, 2)
     } else if (s.kind === 'stones') {
       spawn({ kind: 'chest', x: s.x, y: s.y })
       sites.stones(s.x, s.y)
-      const guards = tier >= 2 ? [bones, bones] : pick(roster).slice(0, 2)
+      const guards = tier >= 2 ? [bones, bones] : pickPack().slice(0, 2)
       for (const foe of guards) place(foe, s.x, s.y, 1, 3)
     } else {
       // a knot of rocks to mine, around the end of the trail
@@ -294,7 +302,7 @@ export function placeFeatures(t, piece) {
     piece.small.every(s => Math.hypot(x - s.x, y - s.y) >= 8) &&
     piece.packs.every(p => Math.hypot(x - p.x, y - p.y) >= 14)
   const pack = (x, y, road) => {
-    const made = pick(roster).map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
+    const made = pickPack().map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
     // a village's calm is measured to each foe, not to the middle of its pack
     if (made.length) piece.packs.push({ x, y, road })
   }
