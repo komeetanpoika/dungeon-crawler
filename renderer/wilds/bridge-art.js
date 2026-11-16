@@ -9,14 +9,19 @@
 // are deck, and that they can be walked, is decided before it.
 //
 // A deck that steps a tile at a time has its edge slanted through the middle
-// of each step, the way shore-art.js slants a bank: the deck cell at the
-// outer corner of a step has that corner cut away, water showing under a
-// slanted beam, and the water cell in the inner corner takes a timber fillet.
-// A cut cell is deck still, by name and to walk on; a fillet is a prop on
-// water that stays water: it is not planked, never a pier to any reader of
-// names, and no more in the way of sight than the water was. A cut is only
-// made beside its fillet. The straight edges on either side of a step ramp
-// toward it over one cell; two single-tile edges meet in a 45-degree corner.
+// of each step, the way shore-art.js slants a bank, and the edge beam goes
+// with it: one beam round the whole outline, planks and nothing else inside.
+// The deck cell at the outer corner of a step has that corner cut away, the
+// beam laid along the slant and water showing past it. The water cell in the
+// inner corner takes a fillet: more planking, in the bridge's own direction,
+// with the beam on its slanted side. No straight beam is left between a
+// fillet and the deck it joins: a deck side a fillet lies on has none, and
+// where a fillet thins to less than a beam's width the deck cell under it
+// carries the tail of the beam. A cut cell is deck still, by name and to
+// walk on; a fillet is a prop on water that stays water: never a pier to any
+// reader of names, and no more in the way of sight than the water was. The
+// straight edges on either side of a step ramp toward it over one cell; two
+// single-tile edges meet in a 45-degree corner.
 //
 // A tale lays and lifts planks while the game runs (the tar pit's causeway,
 // the ferryman's pier): recutDeck is the same cut on the game's own cells.
@@ -44,17 +49,30 @@ export const isDeckSkin = n => typeof n === 'string' && n.startsWith(DECK)
 // that ramps (n s w e), then the end the corner is at. Piece c is the ramp's
 // one cell, d the 45-degree corner (named from its east-west edge).
 export const SLANT_LIES = ['nw', 'ne', 'sw', 'se', 'wn', 'ws', 'en', 'es']
-const slantPieces = fn => [...SLANT_LIES.map(l => fn(l, 'c')), ...SLANT_LIES.slice(0, 4).map(l => fn(l, 'd'))]
-// a deck cell with a corner cut away along a slant
+const BOARDS = ['h', 'v']
+// a deck cell with a corner cut away along a slant: planks and the slanted beam
 export const deckCutSkin = (boards, lie, piece) => `${DECK}_${boards}_${lie}${piece}`
-// the timber in the inner corner of a step, on the water cell there
-export const filletSkin = (lie, piece) => `ow_prop_fillet_${lie}_${piece}`
+// a deck cell under the long leg of the ramp fillet of that lie: no beam of
+// its own on that side but the tail of the fillet's. `far` is its other
+// side: 0 deck, 1 open water and a straight beam, 2 the long leg of the
+// ramp that mirrors this one (a one-wide deck stepping the same way on both
+// edges; named by the lie that starts n or w)
+export const deckUnderSkin = (boards, lie, far) => `${DECK}_${boards}_${lie}u${+far}`
+const mirrored = lie => FACING[lie[0]] + FACING[lie[1]]
+// the planking in the inner corner of a step, on the water cell there. Piece
+// c and d as a cut's; e and f are d where only one of the two deck cells it
+// joins is cut: the beam runs on straight along the other, on the fillet's
+// side of the line (e along its east-west leg, f along its north-south one).
+export const filletSkin = (boards, lie, piece) => `ow_prop_fillet_${boards}_${lie}_${piece}`
 export const isFilletSkin = n => typeof n === 'string' && n.startsWith('ow_prop_fillet_')
 export const isDeckCutSkin = n => isDeckSkin(n) && /[cd]$/.test(n)
-export const DECK_CUT_SKINS = ['h', 'v'].flatMap(o => slantPieces((l, p) => deckCutSkin(o, l, p)))
-export const FILLET_SKINS = slantPieces(filletSkin)
+export const isDeckUnderSkin = n => isDeckSkin(n) && /u[012]$/.test(n)
+export const DECK_CUT_SKINS = BOARDS.flatMap(o => [...SLANT_LIES.map(l => deckCutSkin(o, l, 'c')), ...SLANT_LIES.slice(0, 4).map(l => deckCutSkin(o, l, 'd'))])
+export const DECK_UNDER_SKINS = BOARDS.flatMap(o => SLANT_LIES.flatMap(l => [0, 1, ...('nw'.includes(l[0]) ? [2] : [])].map(far => deckUnderSkin(o, l, far))))
+export const FILLET_SKINS = BOARDS.flatMap(o => [...SLANT_LIES.map(l => filletSkin(o, l, 'c')), ...SLANT_LIES.slice(0, 4).flatMap(l => ['d', 'e', 'f'].map(p => filletSkin(o, l, p)))])
 
 const mod = (n, m) => ((n % m) + m) % m
+const FACING = { n: 's', s: 'n', w: 'e', e: 'w' }
 // A bridge runs east-west when its cells spread this many times wider than tall.
 const CLEAR = 2
 
@@ -68,25 +86,39 @@ function cutSkin(boards, n, e, s, w, X, Y) {
 }
 
 // Where a deck's edge slants. `kind(x, y)` says what a cell is: DECKED (deck
-// over water), OPEN (water with nothing on it but, maybe, a fillet) or
-// neither. The answer for one cell: null, or { lie, piece } of the cut (a
-// deck cell) or the fillet (a water cell) it takes.
+// over water), OPEN (water with nothing on it but, maybe, a fillet), ALIEN
+// (deck that may have no part in a slant: a piece's frame) or anything else.
+// The answer for one cell is null, or
+//   on water   { fillet, lie, piece, from }: the fillet it takes; `from` is
+//              the deck cell whose planking it carries on
+//   on deck    { cut, lie, piece }: its corner cut away, or
+//              { covered, under }: `covered` the sides (bits) a fillet lies
+//              on, which have no beam; `under` { lie, side } when one of
+//              those is the long leg of a ramp, whose beam tails off here
+//              (`both`: and the far side is the leg of the ramp mirroring it)
 //
 // Corners are read as shore-art.js reads a coast, the deck for land. An
 // inner corner (one water cell among three of deck) is a fillet, an outer
 // one (one deck cell among three of water) a cut; both edges two tiles or
 // longer make a real corner, which is left; a cell two corners want stays
-// square; a cut needs deck on its two far sides, so that its tile is the
-// one tile there is, and the fillet across each single-tile edge it turns
-// on. A fillet is laid only beside such a cut: sooner water showing on deck
-// you can walk than timber alone where you cannot.
-const DECKED = 1, OPEN = 0
+// square. A cut needs deck on its two far sides, so that it has no edge but
+// the slanted one, and the fillet across each single-tile edge it turns on.
+// A fillet is laid only beside such a cut: sooner water showing on deck you
+// can walk than planks alone where you cannot. A 45-degree fillet joins two
+// deck cells; with one of them cut and the other not (the last step before
+// a landing, a square end) the slant ends there and the beam runs straight
+// on. A ramp's fillet needs plain deck under its long leg, and no fillet
+// lies against deck that cannot give up its beam for it.
+const DECKED = 1, OPEN = 0, ALIEN = -2
+const BIT = { n: N, e: E, s: S, w: W }
+const STEP = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] }
 function slanter(kind) {
-  const corners = new Map()
+  const corners = new Map(), answers = new Map()
   const BIG = 1 << 15
+  const key = (x, y) => (y + BIG) * 2 * BIG + x + BIG
   // the corner at grid vertex (vx, vy): the top-left corner of cell (vx, vy)
   const cornerAt = (vx, vy) => {
-    const k = (vy + BIG) * 2 * BIG + vx + BIG
+    const k = key(vx, vy)
     let u = corners.get(k)
     if (u === undefined) corners.set(k, u = read(vx, vy))
     return u
@@ -109,8 +141,11 @@ function slanter(kind) {
     return {
       x: Qx, y: Qy, cut, piece: longH || longV ? 'c' : 'd',
       lie: longV ? (west ? 'w' : 'e') + (sy > 0 ? 'n' : 's') : (north ? 'n' : 's') + (sx > 0 ? 'w' : 'e'),
-      // the far ends of the single-tile edges it turns on
+      // the far ends of the single-tile edges it turns on: the north-south one first
       needs: [...(longV ? [] : [[vx, vy + sy]]), ...(longH ? [] : [[vx + sx, vy]])],
+      // a fillet's two legs lie along the deck across its east-west edge and across its north-south one
+      legs: cut ? null : { h: [Qx, Oy], v: [Ox, Qy] },
+      long: cut ? null : longH ? [Qx, Oy] : longV ? [Ox, Qy] : null,
     }
   }
   // the one corner that wants cell (x, y), if exactly one does
@@ -130,12 +165,58 @@ function slanter(kind) {
     const o = cornerAt(vx, vy)
     return o && o.cut !== u.cut && wanting(o.x, o.y) === o ? o : null
   }
-  const cutStands = u => u.needs.every(v => across(u, v))
-  return (x, y) => {
-    const u = wanting(x, y)
-    if (!u) return null
-    return (u.cut ? cutStands(u) : u.needs.some(v => { const c = across(u, v); return c && cutStands(c) })) ? u : null
+  // a fillet: not against deck that cannot give up its beam for it; and a
+  // ramp's, if the deck cell under its long leg has another's long leg on
+  // its far side, only when that is the ramp that mirrors this one
+  const sound = f => {
+    for (const side of 'nesw') if (kind(f.x + STEP[side][0], f.y + STEP[side][1]) === ALIEN) return false
+    if (!f.long) return true
+    const [lx, ly] = f.long, ox = 2 * lx - f.x, oy = 2 * ly - f.y
+    if (kind(ox, oy) !== OPEN) return true
+    const o = wanting(ox, oy)
+    return !(o && o.long && o.long[0] === lx && o.long[1] === ly) || o.lie === mirrored(f.lie)
   }
+  const cutStands = u => u.needs.every(v => { const f = across(u, v); return f && sound(f) })
+  function solve(x, y) {
+    const k = kind(x, y)
+    if (k !== DECKED && k !== OPEN) return null
+    const u = wanting(x, y)
+    if (k === OPEN) {
+      if (!u || !sound(u)) return null
+      const stands = u.needs.map(v => { const c = across(u, v); return !!c && cutStands(c) })
+      if (u.piece === 'c') return stands[0] ? { fillet: true, lie: u.lie, piece: 'c', from: u.long } : null
+      if (!stands[0] && !stands[1]) return null
+      return { fillet: true, lie: u.lie, piece: !stands[1] ? 'e' : !stands[0] ? 'f' : 'd', from: stands[1] ? u.legs.h : u.legs.v }
+    }
+    if (u && cutStands(u)) return { cut: true, lie: u.lie, piece: u.piece }
+    let covered = 0, under = null, both = false
+    for (const side of 'nesw') {
+      const nx = x + STEP[side][0], ny = y + STEP[side][1]
+      const f = kind(nx, ny) === OPEN ? answer(nx, ny) : null
+      if (!f) continue
+      covered |= BIT[side]
+      if (f.piece !== 'c' || f.from[0] !== x || f.from[1] !== y) continue
+      both = !!under
+      under = { lie: f.lie, side }
+    }
+    return covered ? { covered, under, both } : null
+  }
+  const answer = (x, y) => {
+    const k = key(x, y)
+    let a = answers.get(k)
+    if (a === undefined) answers.set(k, a = solve(x, y))
+    return a
+  }
+  return answer
+}
+// The tile of a deck cell with its slant: `a` the answer for it, `open(side)`
+// whether that side has no deck beside it.
+function slantSkin(a, boards, open, X, Y) {
+  if (a.cut) return deckCutSkin(boards, a.lie, a.piece)
+  const bare = side => open(side) && !(a.covered & BIT[side])
+  if (a.both) return deckUnderSkin(boards, 'nw'.includes(a.under.lie[0]) ? a.under.lie : mirrored(a.under.lie), 2)
+  if (a.under) return deckUnderSkin(boards, a.under.lie, bare(FACING[a.under.side]))
+  return cutSkin(boards, !bare('n'), !bare('e'), !bare('s'), !bare('w'), X, Y)
 }
 
 // Skin every walkable pier cell of builder `b` that lies over water.
@@ -206,25 +287,27 @@ export function skinBridges(b, { X0 = 0, Y0 = 0, runs = () => null, slant = () =
   // the slanted edges: cuts on the deck, fillets on the water beside it
   if (slant === false) return cells.length
   const kind = (x, y) => {
-    if (x < 0 || y < 0 || x >= w || y >= h || !slant(x, y)) return -1
+    if (x < 0 || y < 0 || x >= w || y >= h) return -1
     const i = y * w + x
+    if (!slant(x, y)) return pier[i] === 1 ? ALIEN : -1
     if (pier[i]) return pier[i] === 1 ? DECKED : -1
     return b.prop[y][x] === -1 && !b.walkG[y][x] && isWater[b.ground[y][x]] ? OPEN : -1
   }
   const slantOf = slanter(kind)
-  const fillets = []
+  const boardsAt = (x, y) => b.palette[b.prop[y][x]][DECK.length + 1]
+  const fillets = new Map()
   for (const i of cells) {
     const x = i % w, y = (i / w) | 0
-    const u = slantOf(x, y)
-    if (u) b.prop[y][x] = b.skin(deckCutSkin(b.palette[b.prop[y][x]][DECK.length + 1], u.lie, u.piece))
+    const a = slantOf(x, y)
+    if (a) b.prop[y][x] = b.skin(slantSkin(a, boardsAt(x, y), side => !deck(x + STEP[side][0], y + STEP[side][1]), X0 + x, Y0 + y))
     // a fillet lies beside a deck cell: look at the eight cells round each
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      if (kind(x + dx, y + dy) !== OPEN) continue
-      const f = slantOf(x + dx, y + dy)
-      if (f) fillets.push([x + dx, y + dy, filletSkin(f.lie, f.piece)])
+      const j = (y + dy) * w + x + dx
+      if (fillets.has(j) || kind(x + dx, y + dy) !== OPEN) continue
+      fillets.set(j, slantOf(x + dx, y + dy))
     }
   }
-  for (const [x, y, name] of fillets) b.prop[y][x] = b.skin(name)
+  for (const [j, f] of fillets) if (f) b.prop[(j / w) | 0][j % w] = b.skin(filletSkin(boardsAt(...f.from), f.lie, f.piece))
   return cells.length
 }
 
@@ -241,12 +324,11 @@ export function skinBridges(b, { X0 = 0, Y0 = 0, runs = () => null, slant = () =
 // cells changed.
 //
 // A plank moves the corners of the deck, and with them the slanted edges:
-// every cell within REACH of it is given the cut or the fillet the new
-// shape asks for, or made square again. (A slant hangs on nothing further
-// off than that: each is one cell, decided from the cells round its corner
-// and the corners next to it.)
+// every cell within REACH of it is given the cut, the fillet or the beams
+// the new shape asks for. (A cell's tile hangs on nothing further off than
+// that: its own corner, the fillets beside it, and the corners those turn on.)
 const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]]
-const REACH = 4
+const REACH = 6
 export function recutDeck(map, x, y, { X0 = 0, Y0 = 0 } = {}) {
   const at = (cx, cy) => map[cy]?.[cx]
   if (!at(x, y)) return 0
@@ -298,15 +380,18 @@ export function recutDeck(map, x, y, { X0 = 0, Y0 = 0 } = {}) {
     return !c.overlay || isFilletSkin(c.overlay) ? OPEN : -1
   }
   const slantOf = slanter(kind)
+  const open = (cx, cy) => side => !deck(cx + STEP[side][0], cy + STEP[side][1])
   for (const [cx, cy, c] of before) {
-    const k = kind(cx, cy)
-    if (k !== DECKED && k !== OPEN) continue
-    const u = slantOf(cx, cy)
-    if (k === OPEN) {
-      if (u) c.overlay = filletSkin(u.lie, u.piece)
-      else if (c.overlay) delete c.overlay
-    } else if (u) c.overlay = deckCutSkin(boardsOf(c) ?? 'h', u.lie, u.piece)
-    else if (isDeckCutSkin(c.overlay)) cut(cx, cy, boardsOf(c))
+    if (kind(cx, cy) !== DECKED) continue
+    const a = slantOf(cx, cy), boards = boardsOf(c) ?? 'h'
+    if (a) c.overlay = slantSkin(a, boards, open(cx, cy), X0 + cx, Y0 + cy)
+    else if (isDeckSkin(c.overlay)) cut(cx, cy, boards)
+  }
+  for (const [cx, cy, c] of before) {
+    if (kind(cx, cy) !== OPEN) continue
+    const f = slantOf(cx, cy)
+    if (f) c.overlay = filletSkin(boardsOf(at(...f.from)) ?? 'h', f.lie, f.piece)
+    else if (c.overlay) delete c.overlay
   }
   let changed = 0
   for (const [cx, cy, c, was] of before) {

@@ -41,7 +41,7 @@ the project holds in them are offered under the MIT licence.
   (`tools/npc-placeholders.mjs`), bows, wands and ammo (`tools/make-ranged-tiles.mjs`,
   `make-firewand-tile.mjs`, `make-ukonvasara-tile.mjs`), the dragon boss sheet
   (`tools/bake-dragon-parts.mjs`), the Wilds' bridge decks `ow_pier_deck_*.png`, the
-  timber fillets in their corners `ow_prop_fillet_*.png` and
+  planked fillets in the corners of their steps `ow_prop_fillet_*.png` and
   its paths over sand `ow_path_sand_*.png`, which are Tiny Town's dirt tiles repainted
   (`tools/make-wilds-path-tiles.mjs`), the Wilds' slanted shores `ow_*_slope_*.png`,
   `ow_bank_*.png` and `ow_water_foam_*.png`, which are Tiny Town's pond rim redrawn

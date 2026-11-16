@@ -7,8 +7,9 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   skinBridges, recutDeck, deckSkin, deckHasPost, isDeckSkin, DECK_SKINS,
-  DECK_CUT_SKINS, FILLET_SKINS, deckCutSkin, filletSkin, isDeckCutSkin, isFilletSkin,
+  DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS, deckCutSkin, deckUnderSkin, filletSkin, isDeckCutSkin, isDeckUnderSkin, isFilletSkin,
 } from '../renderer/wilds/bridge-art.js'
+import { readPng } from '../tools/png-read.mjs'
 import { WILDS_SKINS } from '../renderer/wilds/terrain.js'
 import { generatePiece } from '../renderer/wilds/piece.js'
 import { PIECE, FRAME, MARGIN } from '../renderer/wilds/layout.js'
@@ -19,14 +20,19 @@ import { takeDirtyTiles } from '../renderer/systems/tile-dirty.js'
 const TILES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer/assets/tiles')
 const N = 1, E = 2, S = 4, W = 8
 const mod = (n, m) => ((n % m) + m) % m
-// (a deck cell with a slanted corner has no deck on the two sides of that
-// corner, and never a post: `cut` is its lie and piece)
+// A deck cell on a slanted edge. `cut`: its corner cut away; `mask` is then
+// the two sides of that corner, which have no deck beside them, though the
+// tile has no straight beam at all. `under`: the long leg of a ramp's fillet
+// lies on one side; `mask` is the straight beam it may have on the far one.
+// Neither has a post.
 const BIT = { n: N, e: E, s: S, w: W }, FACING = { n: 's', s: 'n', w: 'e', e: 'w' }
 const parse = name => {
   const m = /^ow_pier_deck_([hv])_(\d+)(p?)$/.exec(name ?? '')
   if (m) return { boards: m[1], mask: +m[2], post: m[3] === 'p' }
   const c = /^ow_pier_deck_([hv])_([nsew])([nsew])([cd])$/.exec(name ?? '')
-  return c && { boards: c[1], mask: BIT[FACING[c[2]]] | BIT[c[3]], post: false, cut: { lie: c[2] + c[3], piece: c[4] } }
+  if (c) return { boards: c[1], mask: BIT[FACING[c[2]]] | BIT[c[3]], post: false, cut: { lie: c[2] + c[3], piece: c[4] } }
+  const u = /^ow_pier_deck_([hv])_([nsew])([nsew])u([012])$/.exec(name ?? '')
+  return u && { boards: u[1], mask: u[4] === '1' ? BIT[u[2]] : 0, post: false, under: { lie: u[2] + u[3], side: FACING[u[2]], both: u[4] === '2' } }
 }
 
 // ---- hand-made shapes ---------------------------------------------------------
@@ -52,15 +58,19 @@ const skinned = (rows, opts = {}) => {
 }
 // Every deck cell's beams and posts follow from the four cells beside it.
 function assertCut(b, { X0 = 0, Y0 = 0 } = {}) {
-  const joined = (x, y) => !b.in(x, y) || (b.walkG[y][x] && isPierSkin(propAt(b, x, y)))
+  const decked = (x, y) => !b.in(x, y) || (b.walkG[y][x] && isPierSkin(propAt(b, x, y)))
+  // a fillet is deck to the cell it lies against: no beam between the two
+  const joined = (x, y) => decked(x, y) || isFilletSkin(propAt(b, x, y))
+  const open = (x, y, is) => (is(x, y - 1) ? 0 : N) | (is(x + 1, y) ? 0 : E) | (is(x, y + 1) ? 0 : S) | (is(x - 1, y) ? 0 : W)
   let n = 0
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
     const d = parse(propAt(b, x, y))
     if (!d) continue
     n++
-    const mask = (joined(x, y - 1) ? 0 : N) | (joined(x + 1, y) ? 0 : E) | (joined(x, y + 1) ? 0 : S) | (joined(x - 1, y) ? 0 : W)
+    if (d.cut) { assert.equal(d.mask, open(x, y, decked), `the corner cut at ${x},${y}`); continue }
+    const mask = open(x, y, joined)
     assert.equal(d.mask, mask, `beams at ${x},${y}`)
-    assert.equal(d.post, deckHasPost(mask) && mod(mask & (N | S) ? X0 + x : Y0 + y, 3) === 0, `post at ${x},${y}`)
+    if (!d.under) assert.equal(d.post, deckHasPost(mask) && mod(mask & (N | S) ? X0 + x : Y0 + y, 3) === 0, `post at ${x},${y}`)
   }
   return n
 }
@@ -143,8 +153,8 @@ test('a stair of steps is one deck: no beam between its cells, one planking thro
     const boards = new Set()
     for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if (at(x, y)) boards.add(at(x, y).boards)
     assert.equal(boards.size, 1, 'the stair changes planking')
-    // a step's outer corner is cut on its two outer sides, and joined on the other two
-    assert.equal(at(1, 1).mask, N | E)
+    // a step's outer corner has no deck on its two outer sides, and is joined on the other two
+    assert.equal(at(2, 2).mask, N | E)
     assert.equal(at(1, 2).mask, rows[2][0] === '#' ? 0 : W | S)
   }
 })
@@ -197,7 +207,9 @@ test('a wide corridor narrowing to a path keeps its edge all the way round', () 
   assertCut(b)
   assert.equal(at(1, 2).mask, S | W)
   assert.equal(at(2, 2).mask, 0)
-  assert.equal(at(2, 3).mask, W)
+  // (the shoulder is slanted: the path's first cell lies under the ramp's fillet, with no beam of its own there)
+  assert.ok(at(2, 3).under && at(2, 3).mask === 0)
+  assert.equal(at(2, 4).mask, S | W)
   // the caller's word wins where it gives one; the rest follows the bridge
   assert.equal(at(2, 0).boards, 'v')
   assert.equal(at(2, 4).boards, 'h')
@@ -334,70 +346,70 @@ test('the cut leaves alone what is not a deck over water', () => {
 
 // ---- slanted edges -------------------------------------------------------------
 // A cell as a short word: # deck, Cnwd a deck cell with a slanted corner (its
-// lie and piece), Fnec a fillet on the water, . anything else.
+// lie and piece), Unw1 a deck cell under a ramp fillet's long leg (the
+// fillet's lie; 1 with a beam on its far side), Fnec a fillet on the water,
+// . anything else.
 const slantWord = n => {
   let m
   if ((m = /^ow_pier_deck_[hv]_(..)([cd])$/.exec(n ?? ''))) return `C${m[1]}${m[2]}`
-  if ((m = /^ow_prop_fillet_(..)_([cd])$/.exec(n ?? ''))) return `F${m[1]}${m[2]}`
+  if ((m = /^ow_pier_deck_[hv]_(..)u([012])$/.exec(n ?? ''))) return `U${m[1]}${m[2]}`
+  if ((m = /^ow_prop_fillet_[hv]_(..)_([cdef])$/.exec(n ?? ''))) return `F${m[1]}${m[2]}`
   return isDeckSkin(n) ? '#' : '.'
 }
 const slantWords = b => b.prop.map(r => r.map(i => slantWord(b.palette[i])).join(' '))
 const tidy = rows => rows.map(r => r.trim().split(/\s+/).join(' '))
 
 test('every slanted deck tile and fillet is drawn, loaded with the Wilds, and named for what its cell is', () => {
-  assert.equal(new Set(DECK_CUT_SKINS).size, 24)   // 8 ramps and 4 corners, planked both ways
-  assert.equal(new Set(FILLET_SKINS).size, 12)
+  assert.equal(new Set(DECK_CUT_SKINS).size, 24)     // 8 ramps and 4 corners, planked both ways
+  assert.equal(new Set(DECK_UNDER_SKINS).size, 40)   // under each of the 8 ramps with a far beam or none, and under 4 mirrored pairs, both ways
+  assert.equal(new Set(FILLET_SKINS).size, 40)       // 8 ramps, and 4 corners whole or ending along either leg, both ways
   const loaded = new Set(WILDS_SKINS)
-  for (const n of [...DECK_CUT_SKINS, ...FILLET_SKINS]) {
+  for (const n of [...DECK_CUT_SKINS, ...DECK_UNDER_SKINS, ...FILLET_SKINS]) {
     assert.ok(loaded.has(n), `${n} is not in WILDS_SKINS`)
     assert.ok(fs.existsSync(path.join(TILES, `${n}.png`)), `no tile art for ${n}`)
   }
-  // a cut deck is deck: a pier to every reader of names, and it parses as the two sides it has no deck on
-  for (const n of DECK_CUT_SKINS) assert.ok(isPierSkin(n) && isDeckSkin(n) && isDeckCutSkin(n) && parse(n)?.cut && !isFilletSkin(n), n)
-  for (const n of DECK_SKINS) assert.ok(!isDeckCutSkin(n), n)
+  // no tile of the fillets that were timber wedges is left behind
+  const drawn = fs.readdirSync(TILES).filter(f => f.startsWith('ow_prop_fillet_')).map(f => f.slice(0, -4)).sort()
+  assert.deepEqual(drawn, [...FILLET_SKINS].sort())
+  // deck on a slant is deck: a pier to every reader of names, and it parses
+  for (const n of DECK_CUT_SKINS) assert.ok(isPierSkin(n) && isDeckSkin(n) && isDeckCutSkin(n) && !isDeckUnderSkin(n) && parse(n)?.cut && !isFilletSkin(n), n)
+  for (const n of DECK_UNDER_SKINS) assert.ok(isPierSkin(n) && isDeckSkin(n) && isDeckUnderSkin(n) && !isDeckCutSkin(n) && parse(n)?.under && !isFilletSkin(n), n)
+  for (const n of DECK_SKINS) assert.ok(!isDeckCutSkin(n) && !isDeckUnderSkin(n), n)
   // a fillet is a low prop: never a pier or a deck, not water by its own name, and sight passes over it
   for (const n of FILLET_SKINS) assert.ok(isFilletSkin(n) && !isPierSkin(n) && !isDeckSkin(n) && !isWaterSkin(n) && n.startsWith('ow_prop_'), n)
   assert.equal(deckCutSkin('h', 'nw', 'd'), 'ow_pier_deck_h_nwd')
-  assert.equal(filletSkin('es', 'c'), 'ow_prop_fillet_es_c')
+  assert.equal(deckUnderSkin('v', 'se', true), 'ow_pier_deck_v_seu1')
+  assert.equal(filletSkin('h', 'es', 'c'), 'ow_prop_fillet_h_es_c')
 })
 
-test('a deck that steps a tile at a time: outer corners cut, inner corners filleted, the edge one slanted line', () => {
-  // steps of two: each straight edge ramps over the one cell next to the step
-  const two = skinned([
-    '...........',
-    '.####......',
-    '...####....',
-    '.....####..',
-    '.......###.',
-    '...........',
-  ])
+const STEPS_OF_TWO = ['...........', '.####......', '...####....', '.....####..', '.......###.', '...........']
+const STEPS_OF_ONE = ['........', '.##.....', '..##....', '...##...', '....##..', '........']
+
+test('a deck that steps a tile at a time: outer corners cut, inner corners filleted, the deck between gives up its beam', () => {
+  // steps of two: each straight edge ramps over the one cell next to the
+  // step. The deck cell under a fillet's long leg has no beam of its own on
+  // that side (U); where the bridge ends square the last fillet ends the slant (e)
+  const two = skinned(STEPS_OF_TWO)
   assert.deepEqual(slantWords(two.b), tidy([
     '. . .    .    .    .    .    .    .    .    .',
-    '. # #    #    Csec Fswc .    .    .    .    .',
-    '. . Fnec Cnwc #    #    Csec Fswc .    .    .',
-    '. . .    .    Fnec Cnwc #    #    Csec Fswd .',
+    '. # Une1 #    Csec Fswc .    .    .    .    .',
+    '. . Fnec Cnwc Une0 Usw0 Csec Fswc .    .    .',
+    '. . .    .    Fnec Cnwc Une0 Usw0 Csec Fswe .',
     '. . .    .    .    .    Fnec Cnwc #    #    .',
     '. . .    .    .    .    .    .    .    .    .',
   ]))
   // steps of one: 45 degrees, every cell of a two-wide deck with a corner off
-  const one = skinned([
-    '........',
-    '.##.....',
-    '..##....',
-    '...##...',
-    '....##..',
-    '........',
-  ])
+  const one = skinned(STEPS_OF_ONE)
   assert.deepEqual(slantWords(one.b), tidy([
     '. .    .    .    .    .    . .',
     '. #    Csec Fswd .    .    . .',
-    '. Fned Cnwd Csed Fswd .    . .',
-    '. .    Fned Cnwd Csed Fswd . .',
+    '. Fnee Cnwd Csed Fswd .    . .',
+    '. .    Fned Cnwd Csed Fswe . .',
     '. .    .    Fned Cnwc #    . .',
     '. .    .    .    .    .    . .',
   ]))
   for (const { b } of [two, one]) {
-    assertCut(b)   // beams as ever: a cut cell has no deck on the two sides of its corner
+    assertCut(b)
     const boards = parse(propAt(b, 1, 1)).boards
     for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
       const n = propAt(b, x, y), d = parse(n)
@@ -406,8 +418,9 @@ test('a deck that steps a tile at a time: outer corners cut, inner corners fille
         assert.ok(b.walkG[y][x] && isWaterSkin(b.palette[b.ground[y][x]]), `${x},${y}`)
         assert.equal(d.boards, boards, `planks at ${x},${y}`)
       } else if (isFilletSkin(n)) {
-        // a fillet: on water that stays water and stays shut
+        // a fillet: on water that stays water and stays shut, planked as the bridge is
         assert.ok(!b.walkG[y][x] && isWaterSkin(b.palette[b.ground[y][x]]), `${x},${y}`)
+        assert.equal(n['ow_prop_fillet_'.length], boards, `planks of the fillet at ${x},${y}`)
       } else assert.equal(n, null, `${x},${y}`)
     }
   }
@@ -425,13 +438,74 @@ test('a cut and its fillet go together, and where the rule has no clean answer t
   none(['.....', '.###.', '.....'])
   // a step against land is a landing, not an edge: the same deck's step over the water is slanted
   const { b } = skinned(['gggggg', '.###gg', '...##g', '......'])
-  assert.deepEqual(slantWords(b), tidy(['. . .    .    . .', '. # #    #    . .', '. . Fnec Cnwc # .', '. . .    .    . .']))
+  assert.deepEqual(slantWords(b), tidy(['. . .    .    . .', '. # Une1 #    . .', '. . Fnec Cnwc # .', '. . .    .    . .']))
+  // a one-wide deck stepping the same way on both edges: one cell lies under a ramp on each side
+  assert.deepEqual(slantWords(skinned(['.........', '.###.....', '...###...', '.....###.', '.........']).b), tidy([
+    '. . .    .    .    .    .    . .',
+    '. # Une1 Csec Fswc .    .    . .',
+    '. . Fnec Cnwc Une2 Csec Fswc . .',
+    '. . .    .    Fnec Cnwc Usw1 # .',
+    '. . .    .    .    .    .    . .',
+  ]))
   // nothing where the caller says no; and a step is slanted only if every cell round it may be
-  assert.deepEqual(slantWords(skinned(['......', '.###..', '...###', '......'], { slant: false }).b).join(' ').match(/[CF]/), null)
+  assert.deepEqual(slantWords(skinned(['......', '.###..', '...###', '......'], { slant: false }).b).join(' ').match(/[CFU]/), null)
   const half = skinned(['........', '.####...', '...#####', '........'], { slant: x => x < 4 }).b
   assert.deepEqual(slantWords(half), tidy(['. . . . . . . .', '. # # # # . . .', '. . . # # # # #', '. . . . . . . .']))
   const whole = skinned(['........', '.####...', '...#####', '........']).b
-  assert.deepEqual(slantWords(whole), tidy(['. . .    .    .    .    . .', '. # #    #    Csec Fswc . .', '. . Fnec Cnwc #    #    # #', '. . .    .    .    .    . .']))
+  assert.deepEqual(slantWords(whole), tidy(['. . .    .    .    .    . .', '. # Une1 #    Csec Fswc . .', '. . Fnec Cnwc #    Usw1 # #', '. . .    .    .    .    . .']))
+})
+
+// The prop layer of a shape as pixels, from the tiles themselves: null where
+// nothing is drawn, else the colour as 'r,g,b'.
+const TILE_PX = new Map()
+const tilePx = name => {
+  if (!TILE_PX.has(name)) TILE_PX.set(name, readPng(path.join(TILES, `${name}.png`)))
+  return TILE_PX.get(name)
+}
+function propPixels(b) {
+  const W16 = b.w * 16, px = new Array(W16 * b.h * 16).fill(null)
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    const n = propAt(b, x, y)
+    if (!n) continue
+    const t = tilePx(n)
+    for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+      const o = (j * 16 + i) * 4
+      if (t.pixels[o + 3]) px[(y * 16 + j) * W16 + x * 16 + i] = `${t.pixels[o]},${t.pixels[o + 1]},${t.pixels[o + 2]}`
+    }
+  }
+  return { px, w: W16, h: b.h * 16 }
+}
+// the two dark inks of a beam's outer edge and of a post: never used for a plank
+const DARK = new Set(['109,74,47', '74,49,34'])
+
+test('the outline of a slanted bridge is one beam: dark edge all the way round, and no beam inside it', () => {
+  const shapes = [
+    STEPS_OF_ONE, STEPS_OF_TWO,
+    // 45 degrees three wide, a gentle stair of fours, a slant meeting a straight run, two slants joining
+    ['.........', '.###.....', '..###....', '...###...', '....###..', '.........'],
+    ['..............', '.#####........', '.....#####....', '.........####.', '..............'],
+    ['............', '.##.........', '..##........', '...##.......', '....#######.', '............'],
+    ['...........', '.##.....##.', '..##...##..', '...##.##...', '....###....', '....###....', '...........'],
+  ]
+  for (const rows of shapes) {
+    const { b } = skinned(rows)
+    const { px, w, h } = propPixels(b)
+    const at = (x, y) => x < 0 || y < 0 || x >= w || y >= h ? null : px[y * w + x]
+    let edge = 0, bare = 0
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const c = at(x, y)
+      if (!c) continue
+      const outer = !at(x - 1, y) || !at(x + 1, y) || !at(x, y - 1) || !at(x, y + 1)
+      if (outer) { edge++; if (!DARK.has(c)) bare++ }
+      if (!DARK.has(c)) continue
+      // a dark pixel is the outer edge of a beam, or a post's: water within 4 px of it
+      let near = false
+      for (let dy = -4; dy <= 4 && !near; dy++) for (let dx = -4; dx <= 4; dx++) if (!at(x + dx, y + dy)) { near = true; break }
+      assert.ok(near, `${rows.join('/')}: a beam inside the deck at pixel ${x},${y}`)
+    }
+    // the outline itself: beam all the way, but for the end grain where a beam stops at a corner
+    assert.ok(edge >= 150 && bare / edge < 0.04, `${rows.join('/')}: ${bare} of ${edge} outline pixels are not beam`)
+  }
 })
 
 test('the slanted pass is the same done twice, and lays nothing but props', () => {
@@ -450,7 +524,7 @@ test('the slanted pass is the same done twice, and lays nothing but props', () =
 test('a plank laid or lifted on a stepped deck: the slants follow, and the fillets stay water', () => {
   const stair = ['..........', '.####.....', '...####...', '.....####.', '..........']
   const whole = generated(stair)
-  assert.ok(whole.flat().some(isFilletSkin) && whole.flat().some(isDeckCutSkin))
+  assert.ok(whole.flat().some(isFilletSkin) && whole.flat().some(isDeckCutSkin) && whole.flat().some(isDeckUnderSkin))
   // every plank in turn lifted and laid back: each time what the generator would lay
   for (let y = 1; y <= 3; y++) for (let x = 1; x <= 8; x++) {
     if (stair[y][x] !== '#') continue
@@ -521,37 +595,51 @@ test('every deck cell of a piece is cut to the cells beside it', () => {
     let mask = 0
     for (const [bit, dx, dy] of [[N, 0, -1], [E, 1, 0], [S, 0, 1], [W, -1, 0]]) {
       const c = p.cells[d.y + dy]?.[d.x + dx]
-      // off the piece the neighbour is not ours to see: take the tile's word (the seam has its own test)
-      if (c ? !isBridge(c) : d.mask & bit) mask |= bit
+      // off the piece the neighbour is not ours to see: take the tile's word (the seam has its own test).
+      // A cut corner's two sides have no deck; to any other cell a fillet lying against it is deck.
+      if (c ? !isBridge(c) && (d.cut || !isFilletSkin(c.overlay)) : d.mask & bit) mask |= bit
     }
     assert.equal(d.mask, mask, `${p.key}: beams at ${d.x},${d.y}`)
+    if (d.cut || d.under) continue
     const along = mask & (N | S) ? p.wx * PIECE + d.x : p.wy * PIECE + d.y
     assert.equal(d.post, deckHasPost(mask) && mod(along, 3) === 0, `${p.key}: post at ${d.x},${d.y}`)
   }
 })
 
-test('a piece\'s slanted edges: cut deck you walk, fillets on water that stays shut, and never in the frame', () => {
-  let cuts = 0, fillets = 0
-  const beside = (p, x, y, pred) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => pred(p.cells[y + dy]?.[x + dx]?.overlay))
+test('a piece\'s slanted edges: cut deck you walk, fillets on water that stays shut, no beam between them, and never in the frame', () => {
+  let cuts = 0, fillets = 0, unders = 0
+  const STEPS = [['n', 0, -1], ['e', 1, 0], ['s', 0, 1], ['w', -1, 0]]
+  const beside = (p, x, y, pred) => STEPS.some(([, dx, dy]) => pred(p.cells[y + dy]?.[x + dx]?.overlay))
   for (const p of [...SAMPLE, ...TALES.map(t => t.p)]) for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
     const c = p.cells[y][x], at = `${p.key}: ${c.overlay} at ${x},${y}`
-    const isCut = isDeckCutSkin(c.overlay), isFillet = isFilletSkin(c.overlay)
-    if (!isCut && !isFillet) continue
+    const d = isDeckSkin(c.overlay) ? parse(c.overlay) : null
+    // a deck side a fillet lies on has no straight beam, whatever the cell
+    // is: a cut cell has none at all, the cell under a ramp only on its far side
+    if (d && !d.cut) for (const [side, dx, dy] of STEPS) {
+      if (isFilletSkin(p.cells[y + dy]?.[x + dx]?.overlay)) assert.equal(d.mask & BIT[side], 0, `${at}: a beam against the fillet to its ${side}`)
+    }
+    if (d?.under) {
+      unders++
+      const [, dx, dy] = STEPS.find(([side]) => side === d.under.side)
+      const f = /^ow_prop_fillet_[hv]_(..)_c$/.exec(p.cells[y + dy]?.[x + dx]?.overlay ?? '')
+      assert.equal(f?.[1], d.under.lie, `${at}: not under the long leg of that ramp`)
+    }
+    const isCut = !!d?.cut, isFillet = isFilletSkin(c.overlay)
+    if (!isCut && !isFillet && !d?.under) continue
     // the frame is square as it was: what a neighbour, or another deal, cannot see is not slanted
     assert.ok(Math.min(x, y, PIECE - 1 - x, PIECE - 1 - y) >= FRAME, `${at}: in the frame`)
     assert.ok(isWaterSkin(c.skin), at)
-    if (isCut) {
-      cuts++
-      assert.equal(c.tile, TILE.FLOOR, at)
-      assert.ok(beside(p, x, y, isFilletSkin), `${at}: no fillet beside it`)
-    } else {
+    if (isFillet) {
       fillets++
       // water still: shut, seen across, and no pier to anything that reads names
       assert.ok(c.tile === TILE.WALL && c.losClear && !c.losSoft && !c.losTall && !isPierSkin(c.overlay), at)
       assert.ok(beside(p, x, y, isDeckCutSkin), `${at}: no cut beside it`)
+    } else {
+      assert.equal(c.tile, TILE.FLOOR, at)
+      if (isCut) { cuts++; assert.ok(beside(p, x, y, isFilletSkin), `${at}: no fillet beside it`) }
     }
   }
-  assert.ok(cuts > 150 && fillets > 150, `only ${cuts} cuts and ${fillets} fillets in the sample`)
+  assert.ok(cuts > 150 && fillets > 150 && unders > 40, `only ${cuts} cuts, ${fillets} fillets and ${unders} cells under a ramp in the sample`)
 })
 
 test('one bridge, one planking; a gate corridor is planked across the crossing', () => {
