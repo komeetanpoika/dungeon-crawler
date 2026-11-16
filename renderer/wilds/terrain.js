@@ -17,6 +17,7 @@ import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, LAT_PX, LAT_PY } fr
 import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
 import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS } from './bridge-art.js'
+import { slopeShores, SLOPE_SKINS } from './shore-art.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
@@ -47,7 +48,7 @@ const TRUNK_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [top, trunk]))
 // Every tile name terrain.js can lay. features.js adds its own (FEATURE_SKINS).
 export const TERRAIN_SKINS = [...new Set([
   ...GRASS, ...DIRT, ...SAND, HARDPAN, ...SAND_PATH, ...WATER_SKINS,
-  ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, PIER.h, PIER.v, ...DECK_SKINS,
+  ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, ...SLOPE_SKINS, PIER.h, PIER.v, ...DECK_SKINS,
   ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
   ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES,
@@ -411,6 +412,14 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
       const dx = m[1] - 1, dy = m[2] - 1
       if ((dx || dy) && (!dx || beachy(bx + dx, by)) && (!dy || beachy(bx, by + dy))) b.ground[by][bx] = b.skin(`ow_shore_${m[1]}${m[2]}`)
     }
+    // The rim is square; where a coast steps a tile at a time the bank is
+    // redrawn slanted through the middle of each step. Near a piece edge it
+    // is decided from what both pieces know of the strip along it: the
+    // frame, whose land and water no deal moves.
+    slopeShores(b, {
+      X0: X0 - MARGIN, Y0: Y0 - MARGIN,
+      frame: { x0: MARGIN, y0: MARGIN, w: PIECE, h: PIECE, band: MARGIN, look: FRAME, far: (bx, by) => rawKind(bx - MARGIN, by - MARGIN) === 'water' },
+    })
     // Bridges: every pier a path, a corridor or a site laid becomes plank
     // deck cut to what ended up beside it. A corridor's planks follow the
     // corridor, so the frame looks the same whatever is dealt inside.
