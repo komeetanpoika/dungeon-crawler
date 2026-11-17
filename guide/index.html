@@ -1,0 +1,1424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Dungeon Crawler Field Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+/* Layout: a sticky contents rail beside one reading column; every mechanism gets prose, then a live stage that runs the game's own algorithm. */
+:root {
+  --bg: #eef2f3; --panel: #fbfcfc; --ink: #15232b; --muted: #4d606b; --line: #c5d0d6; --soft: #dfe6e9;
+  --accent: #b0520b; --blue: #1c68ad; --hit: #c2362f; --ok: #23794a;
+  --wall: #2a3a44; --floor: #d6dfe3; --floor2: #aebcc4;
+  --forest: #3f8f4a; --autumn: #c9792b; --mountain: #8a9099; --desert: #d8b765; --sea: #3b82c4; --marsh: #73804a;
+  --display: 'Pixelify Sans', ui-monospace, 'Courier New', monospace;
+  --body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e161b; --panel: #162128; --ink: #e2eaee; --muted: #93a6b0; --line: #2b3a43; --soft: #1d2a32;
+    --accent: #f0a33e; --blue: #6ab4f2; --hit: #ef6a61; --ok: #58c48a;
+    --wall: #070c0f; --floor: #3b4e59; --floor2: #2a3943;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e161b; --panel: #162128; --ink: #e2eaee; --muted: #93a6b0; --line: #2b3a43; --soft: #1d2a32;
+  --accent: #f0a33e; --blue: #6ab4f2; --hit: #ef6a61; --ok: #58c48a;
+  --wall: #070c0f; --floor: #3b4e59; --floor2: #2a3943;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.6; }
+.page { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; max-width: 1180px; margin: 0 auto;
+  padding-block: 40px 96px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+nav.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 14px; }
+nav.rail p { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+nav.rail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; border-left: 2px solid var(--line); }
+nav.rail a { display: block; padding: 4px 12px; margin-left: -2px; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; }
+nav.rail a:hover, nav.rail a:focus-visible { color: var(--ink); border-left-color: var(--accent); }
+main { min-width: 0; display: flex; flex-direction: column; gap: 72px; }
+header.top { display: flex; flex-direction: column; gap: 14px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin: 0; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(34px, 6vw, 56px); line-height: 1.02; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 3.6vw, 34px); line-height: 1.1; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--body); font-weight: 600; font-size: 18px; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 18px; color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 20px; scroll-margin-top: 24px; }
+section > .sub { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; }
+a { color: var(--blue); }
+a:focus-visible, button:focus-visible, input:focus-visible, canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: .88em; background: var(--soft); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; font-family: var(--mono); font-size: 13px; color: var(--muted); margin: 4px 0 0; padding: 0; list-style: none; }
+.facts li::before { content: "▪ "; color: var(--accent); }
+.where { font-family: var(--mono); font-size: 13px; color: var(--muted); max-width: none; }
+.where code { background: none; padding: 0; color: var(--ink); }
+
+/* live stages */
+figure { margin: 0; }
+figure.demo { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; display: flex; flex-direction: column; min-width: 0; }
+.demo-head { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.demo-head .tag { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.demo canvas { display: block; width: 100%; height: auto; touch-action: pan-y; background: var(--wall); }
+.demo canvas.draw { touch-action: none; cursor: crosshair; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line); font-size: 14px; }
+.controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.controls input[type="number"] { width: 7.5em; font: inherit; font-family: var(--mono); padding: 4px 6px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; }
+.controls input[type="range"] { width: 130px; accent-color: var(--accent); }
+.controls output { font-family: var(--mono); font-size: 13px; color: var(--ink); min-width: 3.2em; }
+button { font: inherit; font-size: 14px; padding: 5px 12px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+.seg { display: inline-flex; flex-wrap: wrap; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { margin-left: 0; border-radius: 3px 0 0 3px; }
+.seg button:last-child { border-radius: 0 3px 3px 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); position: relative; }
+.readout { font-family: var(--mono); font-size: 13px; padding: 10px 14px; border-top: 1px solid var(--line); max-width: none; min-height: 2.6em; font-variant-numeric: tabular-nums; }
+figcaption { padding: 10px 14px 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--line); list-style: none; margin: 0; }
+.legend i { display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px; }
+
+/* static figures */
+figure.plain { display: flex; flex-direction: column; gap: 8px; }
+figure.plain figcaption { padding: 0; border: 0; }
+.scroll { overflow-x: auto; }
+.scroll svg { display: block; min-width: 600px; width: 100%; height: auto; color: var(--ink); }
+svg text { font-family: var(--mono); font-size: 12px; fill: currentColor; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 18px; counter-reset: step; }
+.steps li { counter-increment: step; border-top: 3px solid var(--line); padding: 10px 2px 0; font-size: 14px; color: var(--muted); min-width: 0; }
+.steps li strong { display: block; color: var(--ink); font-size: 15px; }
+.steps li::before { content: counter(step); font-family: var(--display); font-size: 20px; color: var(--accent); display: block; line-height: 1; margin-bottom: 4px; }
+.steps code { font-size: 12px; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); }
+th { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+td code { white-space: nowrap; }
+td.wrap code { white-space: normal; }
+.tablewrap { overflow-x: auto; }
+.tablewrap table { min-width: 560px; }
+.num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+
+.lootbar { display: flex; height: 30px; border: 1px solid var(--line); margin: 14px; }
+.lootbar div { min-width: 0; height: 100%; }
+.loot-table { margin: 0 14px 12px; width: auto; }
+.loot-table td, .loot-table th { padding-block: 5px; }
+.loot-table i { display: inline-block; width: 11px; height: 11px; margin-right: 8px; vertical-align: -1px; }
+.loot-table .tease { color: var(--muted); font-style: italic; }
+.rules { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; max-width: 72ch; }
+
+@media (max-width: 900px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: 28px; padding-block: 24px 64px; }
+  nav.rail { position: static; }
+  nav.rail ol { flex-direction: row; flex-wrap: wrap; border-left: 0; gap: 4px 6px; }
+  nav.rail a { border: 1px solid var(--line); margin: 0; padding: 3px 10px; border-radius: 3px; }
+  nav.rail a:hover, nav.rail a:focus-visible { border-color: var(--accent); }
+  main { gap: 56px; }
+  .pair { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+<style>body { margin: 0; }</style>
+</head>
+<body>
+
+<div class="page">
+<nav class="rail" aria-label="Contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#layout">Code layout</a></li>
+    <li><a href="#dungeon">Dungeon generator</a></li>
+    <li><a href="#wilds">The Wilds</a></li>
+    <li><a href="#tiles">Tile cache</a></li>
+    <li><a href="#ai">Enemy AI</a></li>
+    <li><a href="#combat">Hits and blocks</a></li>
+    <li><a href="#loot">Chest loot</a></li>
+    <li><a href="#monsters">Monster pipeline</a></li>
+    <li><a href="#tales">Village tales</a></li>
+    <li><a href="#pvp">Online arena</a></li>
+    <li><a href="#tools">Tools</a></li>
+    <li><a href="#rules">House rules</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="top">
+  <p class="eyebrow">For developers</p>
+  <h1>Dungeon Crawler Field Guide</h1>
+  <p class="lede">How the game is put together: where the code lives, how its worlds are generated, how enemies find you, how a hit is decided, how a crayon drawing becomes a monster, and how the online arena stays in step. The stages on this page run the game's own algorithms and constants, ported from the source.</p>
+  <ul class="facts">
+    <li>Electron + vanilla JS, no bundler</li>
+    <li>32 px tiles</li>
+    <li>systems are DOM-free</li>
+    <li>tests on node:test</li>
+    <li>PvP simulation at 30 Hz</li>
+  </ul>
+</header>
+
+<!-- ───────────────────────────── layout ───────────────────────────── -->
+<section id="layout">
+  <h2>Code layout</h2>
+  <p>The Electron shell (<code>main.cjs</code>, <code>preload.cjs</code>) hosts one page, <code>renderer/index.html</code>, and <code>renderer/game.js</code> runs it. <code>game.js</code> owns input, the frame loop and the seams between modes and saves. Everything it calls is split by job, and the split is strict: a system holds rules and never touches the DOM, a render module draws and never decides, and tuning numbers sit in data tables.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Path</th><th>What lives there</th></tr></thead>
+    <tbody>
+      <tr><td><code>renderer/game.js</code></td><td>The orchestrator: keys and touch, <code>update</code> and <code>render</code>, building entities from spawn lists, switching mode and save.</td></tr>
+      <tr><td><code>renderer/systems/</code></td><td>Gameplay rules, one module per system: map generation, navigation, brain, stamina, shield, spells, loot, lumber, quests. Pure, so each has a unit test.</td></tr>
+      <tr><td><code>renderer/render/</code></td><td>Canvas drawing: tile art, the chunk cache, sprites, monster rigs, weather, HUD, synthesised audio.</td></tr>
+      <tr><td><code>renderer/data/</code></td><td>Tables: level configs, enemy AI rows, monsters (one JSON each), tales, PvP and netcode numbers.</td></tr>
+      <tr><td><code>renderer/wilds/</code>, <code>renderer/terrain/</code></td><td>The endless outdoor world and the tile-laying library it shares with the hand-made maps.</td></tr>
+      <tr><td><code>renderer/pvp/</code>, <code>renderer/net/</code>, <code>server/</code></td><td>The arena simulation, client netcode, and the WebSocket server that runs the same simulation in Node.</td></tr>
+      <tr><td><code>tools/</code></td><td>Editors, generators, extractors, benches and probes. Never shipped; game code may not import from here.</td></tr>
+      <tr><td><code>test/</code></td><td>About 220 <code>node:test</code> files, one per system, with <code>playwright-core</code> for canvas checks.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="sub">
+    <h3>One frame</h3>
+    <p><code>gameLoop</code> clamps the frame time to 100 ms, so a hitch never lets anything tunnel through a wall, and only the playing phase animates. Sound cues are drained every frame, paused or not.</p>
+    <ol class="steps">
+      <li><strong>Re-centre the Wilds</strong><code>tickWilds</code> runs before anything reads the map, then the tile cache is re-keyed.</li>
+      <li><strong>Player</strong>Binds, shield, movement, stamina, then the swing, shot or cast.</li>
+      <li><strong>Projectiles and ground</strong><code>stepProjectiles</code>, bramble and fire zones, lightning marks.</li>
+      <li><strong>Everyone else</strong>Villagers, then for each enemy <code>act(e, updateBrain(e))</code>, then enemy attacks.</li>
+      <li><strong>Sight</strong><code>maybeComputeFOV</code>: radius 8 with line of sight underground, 14 and open on the surface.</li>
+      <li><strong>Draw</strong>Tile chunks, entities, monster effects, health bars, night wash, HUD.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ───────────────────────────── dungeon ───────────────────────────── -->
+<section id="dungeon">
+  <h2>Dungeon generator</h2>
+  <p>Dungeon Rush levels and the caves under the Wilds come from <code>generateLevel</code>. It splits the map into leaves, puts a room in each, joins the rooms with a minimum spanning tree, stamps the boss lair over a room, and then repairs whatever the lair cut off. Step through it.</p>
+  <figure class="demo">
+    <div class="demo-head"><span class="tag">Live</span><strong>generateLevel on an 80 × 50 map</strong></div>
+    <canvas id="cv-dungeon" style="aspect-ratio: 640 / 400" role="img" aria-label="Dungeon generation shown one step at a time"></canvas>
+    <div class="controls">
+      <div class="seg" id="dg-steps" role="group" aria-label="Generation step">
+        <button type="button" data-v="1">1 Split</button><button type="button" data-v="2">2 Rooms</button><button type="button" data-v="3">3 Corridors</button><button type="button" data-v="4">4 Lair</button><button type="button" data-v="5">5 Heal</button>
+      </div>
+      <button type="button" id="dg-new">New dungeon</button>
+    </div>
+    <p class="readout" id="dg-read" aria-live="polite"></p>
+    <figcaption>The split, the room inset, the spanning tree and the corridor rule are the game's. Rooms here are plain rectangles and the lair is a sealed box; the game also rolls L, cross and sunken rooms and uses painted lair templates.</figcaption>
+  </figure>
+  <p>The repair step matters more than it looks. A lair is mostly wall and lands on corridors that were already carved, so it can leave fifteen separate regions. <code>healConnectivity</code> gets a budget of regions minus one, because each pass joins at least two. A level that is still in pieces is thrown away, and after five failures the game falls back to one empty room without a warning. If content goes missing at random, look for a connectivity bug first.</p>
+  <p class="where">Lives in <code>renderer/systems/map.js</code> · per-depth numbers in <code>renderer/data/levels.js</code></p>
+</section>
+
+<!-- ───────────────────────────── wilds ───────────────────────────── -->
+<section id="wilds">
+  <h2>The Wilds</h2>
+  <p>Adventure is an endless outdoor world built from 80 × 80 tile <em>pieces</em>. Nothing in it is generated from a random stream. Every answer is a pure function of the seed and a coordinate, so any piece can be made at any time, in any order, and still fit its neighbours.</p>
+
+  <div class="sub">
+    <h3>The big picture never moves</h3>
+    <p><code>layout.js</code> decides the country at every tile: forest around home, then one country per compass direction with the borders bent by noise, and a blob of other country in every 3 × 3 pieces. Toughness rises with distance from home, and each 4 × 4 block of pieces holds exactly one village. Change the seed and move over the map.</p>
+    <figure class="demo">
+      <div class="demo-head"><span class="tag">Live</span><strong>biomeAt(seed, X, Y) over 21 × 21 pieces</strong></div>
+      <canvas id="cv-world" style="aspect-ratio: 1 / 1" role="img" aria-label="Map of the countries of a Wilds world for the chosen seed"></canvas>
+      <div class="controls">
+        <label for="w-seed">Seed <input type="number" id="w-seed" value="1" min="1" max="999999" step="1"></label>
+        <button type="button" id="w-roll">Random seed</button>
+      </div>
+      <p class="readout" id="w-read" aria-live="polite">Move over the map to read a piece.</p>
+      <ul class="legend">
+        <li><i style="background: var(--forest)"></i>forest</li><li><i style="background: var(--autumn)"></i>autumn woods</li><li><i style="background: var(--marsh)"></i>marsh</li>
+        <li><i style="background: var(--mountain)"></i>mountains</li><li><i style="background: var(--desert)"></i>desert</li><li><i style="background: var(--sea)"></i>the sea</li>
+        <li><i style="background: var(--ink)"></i>village</li><li>dashed rings: toughness 2, 3, 4</li>
+      </ul>
+      <figcaption>The hash, the value noise, the pocket blobs, the village pick and the main-thing table are ported line for line. North is up. The square at the centre is Koivula, with the mushroom ring to its east and the first cave to its north.</figcaption>
+    </figure>
+  </div>
+
+  <div class="sub">
+    <h3>What a piece holds</h3>
+    <p>A piece has a <em>deal</em>, a counter that says which version of its interior to generate. The outer six tiles never depend on the deal, and the next eight blend from the fixed frame to the dealt interior. That is what lets a forgotten piece come back different and still join up.</p>
+    <figure class="plain">
+      <div class="scroll">
+      <svg viewBox="0 0 560 380" role="img" aria-label="Anatomy of one piece: a fixed frame, a blend band, a dealt interior, one gate on each edge, paths from the gates to the main thing, small things and roaming packs">
+        <defs><marker id="pa" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
+        <rect x="20" y="30" width="320" height="320" style="fill: var(--blue)" fill-opacity=".3" stroke="currentColor"/>
+        <rect x="44" y="54" width="272" height="272" style="fill: var(--panel)"/>
+        <rect x="44" y="54" width="272" height="272" style="fill: var(--accent)" fill-opacity=".16"/>
+        <rect x="76" y="86" width="208" height="208" style="fill: var(--panel)" stroke="currentColor" stroke-dasharray="3 3" stroke-opacity=".5"/>
+        <g fill="none" stroke="currentColor" stroke-width="5" stroke-opacity=".35" stroke-linejoin="round">
+          <polyline points="168,30 168,112 176,168"/><polyline points="228,350 228,282 198,224"/>
+          <polyline points="20,142 104,142 154,184"/><polyline points="340,210 262,210 212,200"/>
+        </g>
+        <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity=".5" stroke-dasharray="2 4">
+          <line x1="118" y1="254" x2="160" y2="214"/><line x1="258" y1="124" x2="200" y2="176"/><line x1="124" y1="104" x2="166" y2="170"/>
+        </g>
+        <circle cx="182" cy="196" r="30" style="fill: var(--accent)" fill-opacity=".85"/>
+        <g style="fill: var(--ink)"><rect x="110" y="246" width="16" height="16"/><rect x="250" y="116" width="16" height="16"/><rect x="116" y="96" width="16" height="16"/></g>
+        <g style="fill: var(--hit)"><circle cx="262" cy="266" r="5"/><circle cx="274" cy="272" r="5"/><circle cx="264" cy="280" r="5"/><circle cx="96" cy="190" r="5"/><circle cx="106" cy="198" r="5"/></g>
+        <g style="fill: var(--ink)"><rect x="160" y="24" width="16" height="12"/><rect x="220" y="344" width="16" height="12"/><rect x="14" y="134" width="12" height="16"/><rect x="334" y="202" width="12" height="16"/></g>
+        <g stroke="currentColor" stroke-opacity=".6" fill="none" marker-end="url(#pa)">
+          <line x1="388" y1="46" x2="336" y2="42"/><line x1="388" y1="86" x2="312" y2="70"/><line x1="388" y1="126" x2="270" y2="124"/>
+          <line x1="388" y1="166" x2="280" y2="166"/><line x1="388" y1="206" x2="350" y2="209"/><line x1="388" y1="246" x2="210" y2="212"/><line x1="388" y1="286" x2="284" y2="274"/>
+        </g>
+        <text x="394" y="50">frame · 6 tiles</text><text x="394" y="90">blend · 8 tiles</text><text x="394" y="130">small thing · 2–4</text>
+        <text x="394" y="170">dealt interior</text><text x="394" y="210">gate · one per edge</text><text x="394" y="250">main thing</text><text x="394" y="290">roaming pack · 2–3</text>
+      </svg>
+      </div>
+      <figcaption>A gate's offset along its edge (20 to 59) is hashed from the edge, so the two pieces that share it always agree. The main thing is a village, cave, camp, boss, ruin or landmark, or a tale's place. Paths run from every gate to it.</figcaption>
+    </figure>
+  </div>
+
+  <div class="sub">
+    <h3>The game still runs on an ordinary map</h3>
+    <p>No system knows the world is endless. The game sees a 240 × 240 map: a 3 × 3 <em>window</em> of pieces whose rows share the pieces' own cell objects. When the player is eight tiles into a neighbouring piece the window steps over. <code>shiftState</code> then moves every tile and pixel position it can find in the state by 80 tiles, and the baked tile chunks are re-keyed instead of redrawn. Click or tap to walk.</p>
+    <figure class="demo">
+      <div class="demo-head"><span class="tag">Live</span><strong>The window re-centring</strong><button type="button" id="win-play" style="margin-left: auto"></button></div>
+      <canvas id="cv-window" style="aspect-ratio: 1 / 1" role="img" aria-label="A three by three window of pieces following the player across the world"></canvas>
+      <p class="readout" id="win-read" aria-live="off"></p>
+      <figcaption>Solid outline: the window. Dashed: the zone the player can roam without a re-centre; its eight-tile margin stops the window flipping back and forth on a boundary. Dots mark pieces with a record. A record is dropped, and the deal goes up by one, once a piece has been more than five pieces away for twenty minutes of play; villages and the ring round home are never forgotten.</figcaption>
+    </figure>
+  </div>
+  <p class="where">Lives in <code>renderer/wilds/</code>: <code>layout.js</code> <code>terrain.js</code> <code>features.js</code> <code>sites.js</code> <code>piece.js</code> <code>window.js</code> <code>shift.js</code> <code>session.js</code> <code>world.js</code></p>
+</section>
+
+<!-- ───────────────────────────── tiles ───────────────────────────── -->
+<section id="tiles">
+  <h2>Tile cache</h2>
+  <p>Electron here falls back to a software canvas, so the frame budget is the number of draw calls. Drawing every visible cell costs about 700 sprite blits a frame. The tile layer bakes the map into 16 × 16-cell images instead and blits one image per visible chunk. A chunk is baked again only when its count of explored cells changes or a system marks one of its cells dirty.</p>
+  <figure class="demo">
+    <div class="demo-head"><span class="tag">Live</span><strong>Chunks baked on demand</strong><button type="button" id="ch-play" style="margin-left: auto"></button></div>
+    <canvas id="cv-chunks" style="aspect-ratio: 576 / 384" role="img" aria-label="A map divided into chunks; chunks under the camera are baked as the player explores"></canvas>
+    <p class="readout" id="ch-read" aria-live="off"></p>
+    <figcaption>The outlined rectangle is the camera. A chunk flashes when it is baked. Dim chunks sit in the cache but are not drawn this frame. Click a tree to fell it: that is <code>markTileDirty</code>, and only its chunk is baked again. Fog over cells that are explored but out of sight is one rectangle per horizontal run.</figcaption>
+  </figure>
+  <p>The Wilds window holds 225 chunks at a megabyte each, so the cache keeps at most 64 and drops the farthest from the view. During a mushroom trip each chunk keeps a hue-rotated copy, and only two copies are rebuilt per frame.</p>
+  <p class="where">Lives in <code>renderer/render/tile-layer.js</code> · <code>renderer/systems/tile-dirty.js</code> · measure with <code>node tools/perf/trace.mjs &lt;depth&gt;</code></p>
+</section>
+
+<!-- ───────────────────────────── ai ───────────────────────────── -->
+<section id="ai">
+  <h2>Enemy AI</h2>
+  <p>Three modules, three questions. <code>nav.js</code> answers <em>where can a body go</em>. <code>brain.js</code> answers <em>what does it want</em> and returns an intent. <code>act.js</code> answers <em>how does it move</em>: it follows a path or a field, pushes enemies apart, and slides along walls one axis at a time.</p>
+
+  <div class="sub">
+    <h3>One field for every chaser</h3>
+    <p>Chasers do not each plan a path. One Dijkstra field holds the walking distance from every tile to the player, and it is rebuilt only when the player's tile changes. A chaser steps to the neighbour with the lowest number, and a fleeing enemy steps to the highest. Body width is handled by a clearance grid: the distance from each tile to the nearest wall. A two-tile body may use only tiles with clearance 2, so narrow doors close for it.</p>
+    <figure class="demo">
+      <div class="demo-head"><span class="tag">Live</span><strong>buildFlowField and fieldStep</strong><button type="button" id="ff-play" style="margin-left: auto"></button></div>
+      <canvas id="cv-flow" class="draw" style="aspect-ratio: 640 / 400" role="img" aria-label="A grid with walls; arrows show the way to the player from every tile"></canvas>
+      <div class="controls">
+        <div class="seg" id="ff-size" role="group" aria-label="Body size"><button type="button" data-v="1">One-tile body</button><button type="button" data-v="2">Two-tile body</button></div>
+        <div class="seg" id="ff-dir" role="group" aria-label="Intent"><button type="button" data-v="down">Chase</button><button type="button" data-v="up">Flee</button></div>
+        <button type="button" id="ff-reset">Reset walls</button>
+      </div>
+      <figcaption>Drag the hero. Draw or erase walls anywhere else. Brighter tiles are closer to the hero by foot. A diagonal step is legal only when both orthogonal neighbours are open, so no body cuts a corner. Tiles with a cross are walkable but too narrow for the chosen body.</figcaption>
+    </figure>
+    <p>A* is still there for fixed targets: patrol points and the last place the player was seen. It reuses its scratch arrays, repaths at most every half second, and skips a waypoint when the body can slide straight to the next one. In the Wilds the field stops 48 tiles out and anything more than 34 tiles from the player sleeps.</p>
+  </div>
+
+  <div class="sub">
+    <h3>What an enemy wants</h3>
+    <figure class="plain">
+      <div class="scroll">
+      <svg viewBox="0 0 680 300" role="img" aria-label="Brain state machine: patrol, chase, hunt and flee with the conditions that move an enemy between them">
+        <defs><marker id="ba" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
+        <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="20" y="120" width="130" height="46"/><rect x="530" y="120" width="130" height="46"/><rect x="275" y="236" width="130" height="46"/>
+        </g>
+        <rect x="275" y="120" width="130" height="46" style="fill: var(--accent)" fill-opacity=".22" stroke="currentColor" stroke-width="1.5"/>
+        <g text-anchor="middle" font-weight="500"><text x="85" y="148" font-size="14">patrol</text><text x="340" y="148" font-size="14">chase</text><text x="595" y="148" font-size="14">hunt</text><text x="340" y="264" font-size="14">flee</text></g>
+        <g fill="none" stroke="currentColor" marker-end="url(#ba)">
+          <line x1="150" y1="134" x2="273" y2="134"/><line x1="405" y1="134" x2="528" y2="134"/><line x1="530" y1="154" x2="407" y2="154"/>
+          <path d="M595,120 C595,36 85,36 85,118"/><line x1="340" y1="166" x2="340" y2="234"/><path d="M275,259 C150,259 85,236 85,168"/>
+        </g>
+        <g text-anchor="middle">
+          <text x="212" y="126">sees the player</text><text x="467" y="126">loses sight</text><text x="467" y="172">sees again</text>
+          <text x="340" y="50">1.5 s at the last-seen tile, or 3 s unreachable</text><text x="150" y="286">out past 1.6 × sight</text>
+        </g>
+        <text x="350" y="198">badly hurt and the player</text><text x="350" y="214">is within 1.25 × sight</text>
+      </svg>
+      </div>
+      <figcaption>Every boundary has a gap between entering and leaving. A chase starts at the sight range and holds out to four thirds of it; flight starts at 1.25 × and ends at 1.6 ×. Without the gap an enemy standing on the ring flips mode every frame. Chase is emitted as <code>approach</code>, <code>strafe</code> (the crab) or <code>kite</code> (the wizard, who keeps 120 to 240 px away).</figcaption>
+    </figure>
+    <p>Who routs is data. In <code>data/enemy-ai.js</code> a humanoid or mammal flees at 30 % health and a beast fights to the death, unless the row says otherwise. A monster from the registry brings its own row in its JSON, which replaces the built-in row whole.</p>
+  </div>
+  <p class="where">Lives in <code>renderer/systems/nav.js</code> <code>brain.js</code> <code>act.js</code> · tuning in <code>renderer/data/enemy-ai.js</code></p>
+</section>
+
+<!-- ───────────────────────────── combat ───────────────────────────── -->
+<section id="combat">
+  <h2>Hits and blocks</h2>
+  <p>Every body resolves to one shape: a capsule, which is a segment with a radius. A circle is a capsule of zero length. Each damage path asks the shape one of three questions, and movement asks none of them, because how wide a body is for walking is a navigation matter.</p>
+  <div class="pair">
+    <figure class="demo">
+      <div class="demo-head"><span class="tag">Live</span><strong>Three questions to a capsule</strong></div>
+      <canvas id="cv-capsule" style="aspect-ratio: 320 / 250" role="img" aria-label="A capsule-shaped body probed by a point"></canvas>
+      <div class="controls"><button type="button" id="cap-turn">Turn 45°</button></div>
+      <p class="readout" id="cap-read" aria-live="off"></p>
+      <figcaption>Move the probe. Projectiles ask <code>pointHits</code>. Cones, melee and shockwaves measure to <code>nearestPoint</code>, so a big body is in reach as soon as its edge is. Zones that live on tiles ask <code>overlapsTiles</code>. The capsule follows the eight headings a rig is drawn at.</figcaption>
+    </figure>
+    <figure class="demo">
+      <div class="demo-head"><span class="tag">Live</span><strong>The shield's arc</strong></div>
+      <canvas id="cv-block" style="aspect-ratio: 320 / 250" role="img" aria-label="A hero with a raised shield and the arc it covers"></canvas>
+      <div class="controls"><button type="button" id="blk-turn">Turn 90°</button></div>
+      <p class="readout" id="blk-read" aria-live="off"></p>
+      <figcaption>Move the attacker. A raised shield absorbs a hit that arrives within 60° either side of the facing. Every positioned hit passes its source to <code>damagePlayer</code>; a hit with no source, a burn or lightning cannot be blocked.</figcaption>
+    </figure>
+  </div>
+  <p>One stamina tank prices everything: 100 points, refilling at 18 a second after 0.7 s without spending. A dagger swing costs 8 and an overcharged axe 48. A release the tank cannot afford drops to the dearest tier it can, so a long hold is never wasted. A block costs the shield's own price, and a block that empties the tank drops the shield for 0.8 s.</p>
+  <p class="where">Lives in <code>renderer/systems/hitbox.js</code> <code>capsules.js</code> <code>shield.js</code> <code>stamina.js</code> <code>player-damage.js</code></p>
+</section>
+
+<!-- ───────────────────────────── loot ───────────────────────────── -->
+<section id="loot">
+  <h2>Chest loot</h2>
+  <p>Two things shape a chest. The level's loot tier picks the pool, on one ladder laid over every depth scale. What the player wears decides whether a category is worth offering: bows need the Ranger's Coat, wands the Mage's Robe, heavy blades the Plated Armor. A category the player cannot use keeps a fifth of its weight and offers the humblest item of its kind, enough to hint that it exists.</p>
+  <figure class="demo">
+    <div class="demo-head"><span class="tag">Live</span><strong>rollChestLoot weights</strong></div>
+    <div class="controls" style="border-top: 0">
+      <div class="seg" id="lt-tier" role="group" aria-label="Loot tier"><button type="button" data-v="1">Tier 1</button><button type="button" data-v="2">Tier 2</button><button type="button" data-v="3">Tier 3</button><button type="button" data-v="4">Tier 4</button></div>
+      <label for="lt-ranger"><input type="checkbox" id="lt-ranger"> Ranger's Coat</label>
+      <label for="lt-robe"><input type="checkbox" id="lt-robe"> Mage's Robe</label>
+      <label for="lt-plate"><input type="checkbox" id="lt-plate"> Plated Armor</label>
+      <label for="lt-bow"><input type="checkbox" id="lt-bow"> Carries a bow</label>
+    </div>
+    <div class="lootbar" id="lt-bar" role="img" aria-label="Share of each loot category"></div>
+    <table class="loot-table" id="lt-table"></table>
+    <figcaption>Weights and pools are the game's. Ammo is offered only for bows actually carried. The three story outfits never roll; they come from the world.</figcaption>
+  </figure>
+  <p class="where">Lives in <code>renderer/systems/loot.js</code> · tiers in <code>renderer/data/levels.js</code> · check real chests with <code>node tools/verify-loot.mjs</code></p>
+</section>
+
+<!-- ───────────────────────────── monsters ───────────────────────────── -->
+<section id="monsters">
+  <h2>Monster pipeline</h2>
+  <p>A monster is a JSON file plus a rig, and nobody has to write the rig. A drawing is cut into pieces, the pieces are packed into an atlas, and one shared engine swings them. Re-cutting rewrites data only. Monsteri, the depth-4 boss, started as a child's crayon drawing.</p>
+  <ol class="steps">
+    <li><strong>Drawing</strong>A PNG or a photo of paper. The mask keys out the backdrop by flooding in from the border.</li>
+    <li><strong>Cut</strong>The finder takes the thick core as the torso and cuts each limb where it leaves the core. You correct it by hand. <code>assets/cuts/&lt;name&gt;.json</code></li>
+    <li><strong>Build</strong>Pieces, pivots and joint caps packed into <code>&lt;name&gt;-parts.png</code> and <code>.js</code>.</li>
+    <li><strong>Rig</strong><code>cutout.js</code> turns each piece about its pivot, parent before child.</li>
+    <li><strong>Bench</strong>An arena with the monster and live sliders for look, stats and its hook's tuning.</li>
+    <li><strong>Publish</strong>Monster Studio keeps drafts apart from the game until you publish.</li>
+  </ol>
+  <div class="sub">
+    <h3>The cut-out engine</h3>
+    <p>Motion is stepped, four poses to a gait cycle, which suits pixel art. Each role has a rule. In a front view both arms turn the same way, so one swings out as the other comes in, and the feet lift in turn. The sliders below are the rig's real parameters with their real ranges.</p>
+    <figure class="demo">
+      <div class="demo-head"><span class="tag">Live</span><strong>limbMotion by role</strong><button type="button" id="rig-play" style="margin-left: auto"></button></div>
+      <canvas id="cv-rig" style="aspect-ratio: 640 / 300; background: var(--soft)" role="img" aria-label="A figure of six rectangles animated by the cut-out rig rules"></canvas>
+      <div class="controls">
+        <div class="seg" id="rig-state" role="group" aria-label="Animation"><button type="button" data-v="idle">Idle</button><button type="button" data-v="walk">Walk</button><button type="button" data-v="attack">Attack</button></div>
+        <label for="rig-arm">Arm swing <input type="range" id="rig-arm" min="0" max="60" step="1" value="20"><output id="rig-arm-o"></output></label>
+        <label for="rig-step">Foot lift <input type="range" id="rig-step" min="0" max="0.5" step="0.01" value="0.2"><output id="rig-step-o"></output></label>
+        <label for="rig-gait">Gait speed <input type="range" id="rig-gait" min="1" max="12" step="0.5" value="6"><output id="rig-gait-o"></output></label>
+        <label for="rig-bob">Bob <input type="range" id="rig-bob" min="0" max="1" step="0.05" value="0.4"><output id="rig-bob-o"></output></label>
+      </div>
+      <figcaption>With no image loaded the engine draws each piece as a plain rectangle in its role's colour, which is what tests and the cutter preview see, and what is drawn here. Dots are pivots. The strip on the right shows the four steps of the cycle.</figcaption>
+    </figure>
+    <p>Behaviour is separate from looks. A hook module in <code>systems/monsters/</code> runs the monster's state machine and may export a <code>TUNING_SCHEMA</code>; the bench reads it and turns every number into a slider that applies on the next frame. For posed animation, Studio's Movement tab stores pose cards in the def, and the attack's hit card sets the weapon's real windup.</p>
+  </div>
+  <p class="where">Lives in <code>tools/monster-cutter/</code> <code>tools/monster-bench/</code> <code>tools/monster-studio/</code> · <code>renderer/render/monster-rigs/cutout.js</code> <code>anims.js</code> · <code>renderer/data/monsters/</code></p>
+</section>
+
+<!-- ───────────────────────────── tales ───────────────────────────── -->
+<section id="tales">
+  <h2>Village tales</h2>
+  <p>Every village has a tale that fits the land within three pieces of it. The tale's place has no spot on the map at first. When new land enters the window, <code>admit</code> may let one of those pieces become the place. How exact the villagers are depends on the tale's kind.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Kind</th><th>What villagers tell you</th><th>How the place appears</th><th>Tales</th></tr></thead>
+    <tbody>
+      <tr><td><code>need</code></td><td>Exactly where</td><td>Takes the nearest fitting piece once its village is near</td><td>Tar pit, ferryman's bell, the fold, Lalli</td></tr>
+      <tr><td><code>story</code></td><td>A compass side</td><td>Rolls with rising odds; certain by the second piece on its side</td><td>The Elk of Hiisi</td></tr>
+      <tr><td><code>old</code></td><td>Only the kind of land</td><td>Rolls with rising odds; certain by the fifth piece</td><td>Kivihiisi, the flame-thief</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>A place is stamped as the main thing of its piece, with named points that match the labels the quest code already used on the hand-made maps. That is how <code>tale-run.js</code> runs the old Adventure quest modules unchanged: one context per tale, flags kept in the world record, points converted to window tiles at each use, and its creatures rebuilt from flags when their piece returns. Two places of one kind stay at least three pieces apart, because quest code finds its creature by type and a window must never hold two.</p>
+  <p class="where">Lives in <code>renderer/wilds/tales.js</code> <code>tale-run.js</code> <code>tale-lalli.js</code> · declared in <code>renderer/data/tales.js</code> · modules in <code>renderer/systems/quests/</code> and <code>systems/episodes/</code></p>
+</section>
+
+<!-- ───────────────────────────── pvp ───────────────────────────── -->
+<section id="pvp">
+  <h2>Online arena</h2>
+  <p>The arena is a fixed-step simulation of two to six heroes, <code>renderer/pvp/sim.js</code>, with no DOM in it. The server imports that same file and steps it 30 times a second, and sends snapshots 20 times a second. The client hides the delay in two different ways.</p>
+  <p><strong>Your own hero is predicted.</strong> Each input is applied at once with the same <code>moveHero</code> the server runs, and kept in a pending list. When a snapshot arrives the hero is reset to the server's state and the inputs the server has not acknowledged are replayed. If the result differs from what was on screen by 2 to 96 px, the difference is blended away over 100 ms. <strong>Everyone else is interpolated</strong> three ticks behind the estimated server tick, between the two snapshots around that moment.</p>
+  <figure class="demo">
+    <div class="demo-head"><span class="tag">Live</span><strong>One hero, three views</strong><button type="button" id="net-play" style="margin-left: auto"></button></div>
+    <canvas id="cv-net" style="aspect-ratio: 640 / 250; background: var(--panel)" role="img" aria-label="The same hero as you see it, as the server has it, and as an opponent sees it"></canvas>
+    <div class="controls">
+      <label for="net-rtt">Round trip <input type="range" id="net-rtt" min="0" max="300" step="10" value="120"><output id="net-rtt-o"></output></label>
+      <button type="button" id="net-left">◀ Hold left</button><button type="button" id="net-right">Hold right ▶</button>
+      <button type="button" id="net-shove">Shove (server only)</button>
+    </div>
+    <p class="readout" id="net-read" aria-live="off"></p>
+    <figcaption>The hero walks a script unless you hold a direction. While only your inputs move the hero, prediction is exact and there is nothing to correct. Press Shove: a knockback happens on the server, the client never predicted it, and the next snapshot pulls your hero over.</figcaption>
+  </figure>
+  <p>Damage is never predicted, but the stamina and cooldown a swing pays are, so a replay leaves the tank where the server has it. Melee is lag-compensated on the server: a swing is tested against where the attacker saw the target, up to nine ticks (300 ms) back. The interpolation clock is slewed at most 10 % toward each new estimate and never runs backwards.</p>
+  <p class="where">Lives in <code>renderer/pvp/</code> · <code>renderer/net/predict.js</code> <code>interp.js</code> <code>client.js</code> <code>protocol.js</code> · <code>server/rooms.js</code> <code>pvp-server.js</code> · numbers in <code>renderer/data/net.js</code> <code>pvp.js</code></p>
+</section>
+
+<!-- ───────────────────────────── tools ───────────────────────────── -->
+<section id="tools">
+  <h2>Tools</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Command</th><th>What it is for</th></tr></thead>
+    <tbody>
+      <tr><td class="wrap"><code>npm start</code></td><td>The game. On the title, typing <code>level&lt;N&gt;</code> jumps to any depth with a config row; <code>pvp</code> starts a local bot match.</td></tr>
+      <tr><td class="wrap"><code>npm test</code></td><td>The whole suite on <code>node:test</code>.</td></tr>
+      <tr><td class="wrap"><code>npm run editor</code></td><td>The tile editor: paint maps and prefab structures, and derive adjacency rules from what you painted.</td></tr>
+      <tr><td class="wrap"><code>npm run bench -- &lt;name&gt;</code></td><td>Monster bench: a lit arena with one monster and a live tuning panel. Reloads on a code or data change.</td></tr>
+      <tr><td class="wrap"><code>npm run studio</code></td><td>Monster Studio on port 5180: Drawing, Cuts, Movement, Fight, Publish.</td></tr>
+      <tr><td class="wrap"><code>node tools/monster-cutter/auto.mjs &lt;name&gt; &lt;png&gt;</code></td><td>Headless first cut of a drawing; <code>build.mjs</code> then packs the parts.</td></tr>
+      <tr><td class="wrap"><code>node tools/monster-bench/new-monster.mjs &lt;name&gt;</code></td><td>Scaffold a def, a hook and a test.</td></tr>
+      <tr><td class="wrap"><code>node tools/wilds/render.mjs &lt;seed&gt; &lt;wx&gt; &lt;wy&gt;</code></td><td>Draw Wilds pieces to a PNG, with <code>--grid</code>, <code>--marks</code> and <code>--deal N</code>.</td></tr>
+      <tr><td class="wrap"><code>node tools/wilds/walk.mjs</code></td><td>A one-minute live walk of the Wilds in Electron on a throwaway profile.</td></tr>
+      <tr><td class="wrap"><code>node tools/perf/trace.mjs &lt;depth&gt;</code></td><td>Frame cost on a depth. <code>pvp-step.mjs</code> times the arena step and <code>tools/pvp-soak.mjs</code> soaks the server.</td></tr>
+      <tr><td class="wrap"><code>node tools/map-shots/shoot.mjs</code></td><td>Photograph whole maps for review.</td></tr>
+      <tr><td class="wrap"><code>node tools/trance-lab/serve.mjs</code></td><td>Tune the mushroom trip's visuals.</td></tr>
+      <tr><td class="wrap"><code>npm run web</code></td><td>The web build's server, with the <code>/pvp</code> WebSocket. <code>tools/deploy-web.sh</code> ships it to Cloud Run.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ───────────────────────────── rules ───────────────────────────── -->
+<section id="rules">
+  <h2>House rules</h2>
+  <p>Each of these was learned from a bug.</p>
+  <ul class="rules">
+    <li><strong>Wilds cells are pure in their world tile.</strong> Never use a sequential random stream for anything a neighbouring piece can see. <code>test/wilds-terrain.test.js</code> holds the frame to it.</li>
+    <li><strong>Bump <code>GEN</code> in <code>wilds/world.js</code></strong> whenever the generator's output changes. Old saves then drop their records and wake at the last village.</li>
+    <li><strong>Call <code>markTileDirty</code></strong> after changing a cell's tile, overlay or skin, or the baked chunk keeps showing the old art.</li>
+    <li><strong>Convert world tiles to window tiles at the moment of use.</strong> A window tile held across frames is wrong after the next re-centre.</li>
+    <li><strong>Heal connectivity last.</strong> Any step that stamps floor or wall after the heal can strand a region, and five failed levels become one empty room.</li>
+    <li><strong>An unknown spawn kind is dropped silently</strong> by <code>buildEntities</code>. Add new kinds to its switch and to the arena's allow-list.</li>
+    <li><strong>Every weapon key needs a <code>SPRITES['weapon_&lt;key&gt;']</code> entry</strong> or the canvas draws nothing. <code>test/sprites.test.js</code> guards it.</li>
+    <li><strong>No built-in AI row may share a name with a registry monster.</strong> Registration replaces the row whole.</li>
+    <li><strong>Keep the arena simulation DOM-free.</strong> The server runs the same files in Node, and the predictor must spend exactly what the server spends.</li>
+    <li><strong>Count draw calls.</strong> On a software canvas a new per-cell effect is a frame-rate bug until measured.</li>
+    <li><strong>Leave <code>TRUST_PROXY=1</code> in the Dockerfile.</strong> Without it every player shares one address and the per-IP limits lock out online play.</li>
+  </ul>
+</section>
+</main>
+</div>
+
+<script>
+(() => {
+'use strict'
+const $ = s => document.querySelector(s)
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+const TOKENS = ['bg', 'panel', 'ink', 'muted', 'line', 'soft', 'accent', 'blue', 'hit', 'ok', 'wall', 'floor', 'floor2', 'forest', 'autumn', 'mountain', 'desert', 'sea', 'marsh']
+let pal = null
+function P() {
+  if (!pal) { const cs = getComputedStyle(document.documentElement); pal = {}; for (const k of TOKENS) pal[k] = cs.getPropertyValue('--' + k).trim() }
+  return pal
+}
+const redraws = []
+function themeChanged() { pal = null; for (const f of redraws) f() }
+new MutationObserver(themeChanged).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeChanged)
+const rgb = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255] }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+
+// A canvas drawn in a fixed logical space LW x LH, whatever its size on screen.
+function stage(sel, LW, LH) {
+  const c = $(sel), ctx = c.getContext('2d')
+  const s = { c, ctx, LW, LH, draw() {}, visible: true, onTheme() {} }
+  s.fit = () => {
+    const w = c.clientWidth || LW, dpr = Math.min(2, window.devicePixelRatio || 1)
+    const W = Math.round(w * dpr), H = Math.round(w * LH / LW * dpr)
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H }
+    ctx.setTransform(W / LW, 0, 0, W / LW, 0, 0)
+    s.draw()
+  }
+  // text of a constant size on screen
+  s.font = (px, weight = 400) => { ctx.font = `${weight} ${px * LW / (c.clientWidth || LW)}px ${getComputedStyle(document.body).getPropertyValue('--mono') || 'monospace'}` }
+  s.pt = e => { const r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * LW / r.width, y: (e.clientY - r.top) * LH / r.height } }
+  new ResizeObserver(s.fit).observe(c)
+  new IntersectionObserver(es => { s.visible = es[0].isIntersecting }).observe(c)
+  redraws.push(() => { s.onTheme(); s.draw() })
+  return s
+}
+const tickers = []
+function animate(s, tick, btn) {
+  const a = { s, tick, on: !still }
+  tickers.push(a)
+  if (btn) {
+    const set = () => { btn.textContent = a.on ? 'Pause' : 'Play' }
+    btn.addEventListener('click', () => { a.on = !a.on; set() })
+    set()
+  }
+  return a
+}
+let last = performance.now()
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now
+  for (const a of tickers) if (a.on && a.s.visible) { a.tick(dt); a.s.draw() }
+  requestAnimationFrame(frame)
+}
+requestAnimationFrame(frame)
+function seg(sel, initial, onChange) {
+  const el = $(sel), btns = [...el.querySelectorAll('button')]
+  const set = v => { for (const b of btns) b.setAttribute('aria-pressed', String(b.dataset.v === String(v))) }
+  for (const b of btns) b.addEventListener('click', () => { set(b.dataset.v); onChange(b.dataset.v) })
+  set(initial)
+  return set
+}
+const setText = (el, t) => { if (el.textContent !== t) el.textContent = t }
+const safe = fn => { try { fn() } catch (err) { console.error(err) } }
+
+// ── shared ports ───────────────────────────────────────────────────────
+function mulberry32(seed) {
+  let a = seed >>> 0
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+// renderer/wilds/rand.js
+function hashInt(seed, x, y, salt = 0) {
+  let h = Math.imul(seed | 0, 0x9E3779B1) ^ Math.imul(x | 0, 0x85EBCA6B) ^ Math.imul(y | 0, 0xC2B2AE35) ^ Math.imul(salt | 0, 0x27D4EB2F)
+  h ^= h >>> 15; h = Math.imul(h, 0x2C1B3C6D)
+  h ^= h >>> 12; h = Math.imul(h, 0x297A2D39)
+  h ^= h >>> 15
+  return h >>> 0
+}
+const hash = (seed, x, y, salt = 0) => hashInt(seed, x, y, salt) / 4294967296
+const fade = t => t * t * (3 - 2 * t)
+function valueAt(seed, x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi
+  const a = hash(seed, xi, yi, 91), b = hash(seed, xi + 1, yi, 91), c = hash(seed, xi, yi + 1, 91), d = hash(seed, xi + 1, yi + 1, 91)
+  const u = fade(xf), v = fade(yf)
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v
+}
+function noise2(seed, x, y, freq = 0.08, octaves = 3) {
+  let sum = 0, amp = 1, tot = 0, f = freq
+  for (let o = 0; o < octaves; o++) { sum += valueAt(seed + o * 101, x * f, y * f) * amp; tot += amp; amp *= 0.5; f *= 2 }
+  return sum / tot
+}
+// renderer/wilds/layout.js
+const PIECE = 80, BIOMES = ['forest', 'autumn', 'mountain', 'desert', 'sea', 'marsh']
+const BIOME_NAMES = { forest: 'forest', autumn: 'autumn woods', mountain: 'mountains', desert: 'desert', sea: 'the sea', marsh: 'marsh' }
+const HOME = PIECE / 2, POCKET_CELL = 3 * PIECE, BLOB_REACH = 1.35
+function blobOf(seed, cx, cy) {
+  return {
+    px: (cx + 0.2 + 0.6 * hash(seed, cx, cy, 331)) * POCKET_CELL, py: (cy + 0.2 + 0.6 * hash(seed, cx, cy, 332)) * POCKET_CELL,
+    radius: (0.75 + 0.6 * hash(seed, cx, cy, 333)) * PIECE, kind: hashInt(seed, cx, cy, 334) % BIOMES.length,
+  }
+}
+function blobsFor(seed, x0, y0, x1, y1) {
+  const out = []
+  for (let cy = Math.floor(y0 / POCKET_CELL) - 1; cy <= Math.floor(y1 / POCKET_CELL) + 1; cy++)
+    for (let cx = Math.floor(x0 / POCKET_CELL) - 1; cx <= Math.floor(x1 / POCKET_CELL) + 1; cx++) {
+      const blob = blobOf(seed, cx, cy), reach = blob.radius * BLOB_REACH
+      if (blob.px + reach < x0 || blob.px - reach > x1 || blob.py + reach < y0 || blob.py - reach > y1) continue
+      out.push(blob)
+    }
+  return out
+}
+function countryAt(seed, X, Y, blobs) {
+  const dx = X - HOME, dy = Y - HOME, r = Math.hypot(dx, dy) / PIECE
+  let wobble = -1
+  const bend = () => wobble < 0 ? (wobble = noise2(seed + 1, X, Y, 1 / (1.5 * PIECE), 3)) : wobble
+  if (r < 2.5 && r < 1.7 + bend() * 0.8) return 'forest'
+  const raw = Math.atan2(dy, dx) * 180 / Math.PI
+  const near = Math.abs(((raw + 45) % 90 + 90) % 90 - 45)
+  const ang = near > 19 ? raw + (bend() - 0.5) * 50 : raw
+  const main = ang > -135 && ang <= -45 ? 'mountain' : ang > -45 && ang <= 45 ? 'desert' : ang > 45 && ang <= 135 ? 'sea'
+    : noise2(seed + 2, X, Y, 1 / (2.5 * PIECE), 2) > 0.5 ? 'autumn' : 'marsh'
+  for (const blob of blobs) {
+    const d = Math.hypot(X - blob.px, Y - blob.py) / blob.radius
+    if (d >= BLOB_REACH) continue
+    if (d < 0.65 || d + (noise2(seed + 3, X, Y, 1 / 40, 2) - 0.5) * 0.7 < 1) {
+      const b = BIOMES[blob.kind]
+      return b === main ? BIOMES[(blob.kind + 1) % BIOMES.length] : b
+    }
+  }
+  return main
+}
+const biomeAt = (seed, X, Y) => countryAt(seed, X, Y, blobsFor(seed, X, Y, X, Y))
+function pieceBiome(seed, wx, wy) {
+  const counts = {}
+  for (const y of [13, 40, 67]) for (const x of [13, 40, 67]) {
+    const b = biomeAt(seed, wx * PIECE + x, wy * PIECE + y)
+    counts[b] = (counts[b] ?? 0) + (x === 40 && y === 40 ? 1.5 : 1)
+  }
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
+}
+const tierAt = (wx, wy) => { const d = Math.hypot(wx, wy); return d < 3 ? 1 : d < 6 ? 2 : d < 9 ? 3 : 4 }
+const fixedMain = (wx, wy) => wx === 0 && wy === 0 ? 'village' : wx === 1 && wy === 0 ? 'ring' : wx === 0 && wy === -1 ? 'cave' : null
+const STEMS = ['Koivu', 'Hauki', 'Kuusi', 'Mänty', 'Karhu', 'Suo', 'Kivi', 'Meri', 'Hiekka', 'Ruska', 'Kaisla', 'Louhi', 'Honka', 'Lehto', 'Vaara', 'Salo', 'Kuura', 'Sammal', 'Terva', 'Ahma']
+const ENDS = ['la', 'niemi', 'koski', 'ranta', 'mäki', 'järvi', 'salo', 'kylä']
+function villageName(seed, wx, wy) {
+  if (wx === 0 && wy === 0) return 'Koivula'
+  const stem = STEMS[hashInt(seed, wx, wy, 311) % STEMS.length]
+  let end = ENDS[hashInt(seed, wx, wy, 312) % ENDS.length]
+  if (/[äöy]/.test(stem)) end = end.replace('la', 'lä')
+  const name = stem + end
+  return name === 'Koivula' ? 'Koivuniemi' : name
+}
+function blockVillage(seed, bx, by) {
+  if (bx === 0 && by === 0) return { wx: 0, wy: 0 }
+  let i = hashInt(seed, bx, by, 310) % 16
+  for (let n = 0; n < 16; n++, i = (i + 1) % 16) {
+    const wx = bx * 4 + (i % 4), wy = by * 4 + (i >> 2)
+    if (!fixedMain(wx, wy)) return { wx, wy }
+  }
+  return null
+}
+function villageAt(seed, wx, wy) {
+  const v = blockVillage(seed, Math.floor(wx / 4), Math.floor(wy / 4))
+  return v && v.wx === wx && v.wy === wy ? { name: villageName(seed, wx, wy) } : null
+}
+function gateAt(seed, wx, wy, side) {
+  const [ex, ey, salt] = side === 'E' ? [wx, wy, 321] : side === 'W' ? [wx - 1, wy, 321] : side === 'S' ? [wx, wy, 322] : [wx, wy - 1, 322]
+  return 20 + hashInt(seed, ex, ey, salt) % 40
+}
+// renderer/wilds/features.js
+function mainKind(seed, wx, wy, deal = 0) {
+  const fixed = fixedMain(wx, wy)
+  if (fixed) return fixed
+  if (villageAt(seed, wx, wy)) return 'village'
+  const nearHome = Math.max(Math.abs(wx), Math.abs(wy)) <= 1
+  const boss = tierAt(wx, wy) >= 2 ? 15 : nearHome ? 0 : 8
+  let r = hash(seed, wx, wy, 400 + deal) * 100
+  for (const [kind, weight] of [['cave', 30], ['camp', 45 - boss], ['boss', boss], ['ruin', 12], ['landmark', 13]]) { if (r < weight) return kind; r -= weight }
+  return 'camp'
+}
+let worldSeed = 1
+const seedListeners = []
+
+// ── dungeon generator ──────────────────────────────────────────────────
+safe(() => {
+  const W = 80, H = 50, C = 8
+  const s = stage('#cv-dungeon', 640, 400), read = $('#dg-read')
+  let seed = 7, step = 5, D = null
+  const NOTES = {
+    1: n => `bspSplit: ${n.leaves} leaves, none smaller than 8 tiles on a side.`,
+    2: n => `One room per leaf, inset two tiles. ${n.leaves} rooms.`,
+    3: n => `Prim's spanning tree over room centres by Manhattan distance: ${n.leaves - 1} corridors, each 1, 2 or 3 tiles wide.`,
+    4: n => `The lair is stamped over a room. ${n.regions} regions now; ${n.regions - 1} cannot reach the spawn (red).`,
+    5: n => `healConnectivity carved ${n.heals} corridor${n.heals === 1 ? '' : 's'} (amber). Blue is the spawn room, the square the locked exit, the diamond the boss.`,
+  }
+  function gen() {
+    const rnd = mulberry32(seed), leaves = []
+    ;(function split(r) {
+      const m = 8
+      if (r.w < m * 2 && r.h < m * 2) { leaves.push(r); return }
+      const splitH = r.w < m * 2 ? true : r.h < m * 2 ? false : rnd() < 0.5
+      if (splitH) { const sy = Math.floor(m + rnd() * (r.h - m * 2)); split({ x: r.x, y: r.y, w: r.w, h: sy }); split({ x: r.x, y: r.y + sy, w: r.w, h: r.h - sy }) }
+      else { const sx = Math.floor(m + rnd() * (r.w - m * 2)); split({ x: r.x, y: r.y, w: sx, h: r.h }); split({ x: r.x + sx, y: r.y, w: r.w - sx, h: r.h }) }
+    })({ x: 0, y: 0, w: W, h: H })
+    const rooms = leaves.map(l => ({ x: l.x + 2, y: l.y + 2, w: Math.max(6, l.w - 4), h: Math.max(6, l.h - 4) }))
+    const centre = r => ({ x: Math.floor(r.x + r.w / 2), y: Math.floor(r.y + r.h / 2) })
+    const g = new Uint8Array(W * H)   // 0 wall, 1 room, 2 corridor, 3 lair, 4 heal
+    const put = (x, y, v, force) => { if (x >= 0 && y >= 0 && x < W && y < H && (force || g[y * W + x] === 0)) g[y * W + x] = v }
+    for (const r of rooms) for (let y = r.y + 1; y < r.y + r.h - 1; y++) for (let x = r.x + 1; x < r.x + r.w - 1; x++) put(x, y, 1, true)
+    const g2 = g.slice()
+    const corridor = (x1, y1, x2, y2, width, v) => {
+      const offs = width === 1 ? [0] : width === 2 ? [0, 1] : [-1, 0, 1]
+      let x = x1, y = y1
+      while (x !== x2) { for (const o of offs) put(x, y + o, v); x += x < x2 ? 1 : -1 }
+      while (y !== y2) { for (const o of offs) put(x + o, y, v); y += y < y2 ? 1 : -1 }
+      put(x, y, v)
+    }
+    const cs = rooms.map(centre), connected = new Set([0])
+    while (connected.size < rooms.length) {
+      let best = Infinity, from = -1, to = -1
+      for (const i of connected) for (let j = 0; j < rooms.length; j++) {
+        if (connected.has(j)) continue
+        const d = Math.abs(cs[i].x - cs[j].x) + Math.abs(cs[i].y - cs[j].y)
+        if (d < best) { best = d; from = i; to = j }
+      }
+      if (to < 0) break
+      const r = rnd()
+      corridor(cs[from].x, cs[from].y, cs[to].x, cs[to].y, r < 0.6 ? 1 : r < 0.85 ? 2 : 3, 2)
+      connected.add(to)
+    }
+    const g3 = g.slice()
+    const spawn = cs.reduce((b, c, i) => c.x + c.y < cs[b].x + cs[b].y ? i : b, 0)
+    const others = rooms.map((_, i) => i).filter(i => i !== spawn)
+    const lairRoom = others[Math.floor(rnd() * others.length)]
+    const LW = 22, LH = 16
+    const ox = clamp(cs[lairRoom].x - LW / 2 | 0, 0, W - LW), oy = clamp(cs[lairRoom].y - LH / 2 | 0, 0, H - LH)
+    for (let y = oy; y < oy + LH; y++) for (let x = ox; x < ox + LW; x++) g[y * W + x] = (x >= ox + 4 && x < ox + LW - 4 && y >= oy + 4 && y < oy + LH - 4) ? 3 : 0
+    const boss = { x: ox + LW / 2 | 0, y: oy + LH / 2 | 0 }
+    for (const c of cs) if (g[c.y * W + c.x] === 0) g[c.y * W + c.x] = 1   // the room-centre repair
+    let exit = -1, far = -1
+    for (const i of others) { if (i === lairRoom) continue; const d = Math.abs(cs[i].x - cs[spawn].x) + Math.abs(cs[i].y - cs[spawn].y); if (d > far) { far = d; exit = i } }
+    const flood = (grid, sx, sy, seen) => {
+      const q = [sy * W + sx]; seen[sy * W + sx] = 1
+      for (let h = 0; h < q.length; h++) {
+        const i = q[h], x = i % W, y = i / W | 0
+        for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+          const nx = x + dx, ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue
+          const ni = ny * W + nx
+          if (!seen[ni] && grid[ni]) { seen[ni] = 1; q.push(ni) }
+        }
+      }
+      return q
+    }
+    const regionsOf = grid => { const seen = new Uint8Array(W * H); let n = 0; for (let i = 0; i < W * H; i++) if (grid[i] && !seen[i]) { n++; flood(grid, i % W, i / W | 0, seen) } return n }
+    const g4 = g.slice(), regions = regionsOf(g4)
+    const reach4 = new Uint8Array(W * H); flood(g4, cs[spawn].x, cs[spawn].y, reach4)
+    let heals = 0
+    for (let pass = 0; pass < regions - 1; pass++) {
+      const seen = new Uint8Array(W * H), reached = flood(g, cs[spawn].x, cs[spawn].y, seen)
+      let iso = -1
+      for (let i = 0; i < W * H; i++) if (g[i] && !seen[i]) { iso = i; break }
+      if (iso < 0) break
+      const ix = iso % W, iy = iso / W | 0
+      let bd = Infinity, bi = reached[0]
+      for (const i of reached) { const d = Math.abs(i % W - ix) + Math.abs((i / W | 0) - iy); if (d < bd) { bd = d; bi = i } }
+      corridor(bi % W, bi / W | 0, ix, iy, 1, 4); heals++
+    }
+    D = { leaves, rooms, cs, g2, g3, g4, g5: g.slice(), reach4, spawn, exit, boss, lair: { x: ox, y: oy, w: LW, h: LH }, n: { leaves: leaves.length, regions, heals } }
+  }
+  s.draw = () => {
+    const { ctx } = s, p = P()
+    ctx.fillStyle = p.wall; ctx.fillRect(0, 0, 640, 400)
+    if (!D) return
+    const grid = step >= 5 ? D.g5 : step === 4 ? D.g4 : step === 3 ? D.g3 : step === 2 ? D.g2 : null
+    if (grid) for (let i = 0; i < W * H; i++) {
+      const v = grid[i]
+      if (!v) continue
+      ctx.fillStyle = v === 4 ? p.accent : step === 4 && !D.reach4[i] ? p.hit : v === 2 ? p.floor2 : v === 3 ? p.floor2 : p.floor
+      ctx.fillRect((i % W) * C, (i / W | 0) * C, C, C)
+    }
+    if (step <= 2) { ctx.strokeStyle = p.blue; ctx.lineWidth = 1; ctx.globalAlpha = step === 1 ? 1 : 0.45; for (const l of D.leaves) ctx.strokeRect(l.x * C + 0.5, l.y * C + 0.5, l.w * C - 1, l.h * C - 1); ctx.globalAlpha = 1 }
+    if (step >= 4) { ctx.strokeStyle = p.hit; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(D.lair.x * C, D.lair.y * C, D.lair.w * C, D.lair.h * C); ctx.setLineDash([]) }
+    if (step >= 5) {
+      const sp = D.rooms[D.spawn]
+      ctx.strokeStyle = p.blue; ctx.lineWidth = 3; ctx.strokeRect(sp.x * C + C, sp.y * C + C, (sp.w - 2) * C, (sp.h - 2) * C)
+      if (D.exit >= 0) { const e = D.cs[D.exit]; ctx.fillStyle = p.wall; ctx.fillRect(e.x * C - 7, e.y * C - 7, 22, 22); ctx.fillStyle = p.accent; ctx.fillRect(e.x * C - 4, e.y * C - 4, 16, 16) }
+      const b = D.boss, bx = b.x * C + 4, by = b.y * C + 4
+      ctx.fillStyle = p.hit; ctx.beginPath(); ctx.moveTo(bx, by - 12); ctx.lineTo(bx + 12, by); ctx.lineTo(bx, by + 12); ctx.lineTo(bx - 12, by); ctx.closePath(); ctx.fill()
+    }
+    setText(read, NOTES[step](D.n))
+  }
+  const setStep = seg('#dg-steps', step, v => { step = +v; s.draw() })
+  $('#dg-new').addEventListener('click', () => { seed = (seed * 31 + 17) % 99991; gen(); s.draw() })
+  gen(); s.fit()
+  if (!still) { step = 1; setStep(1); let n = 1; const id = setInterval(() => { if (n >= 5) return clearInterval(id); n++; step = n; setStep(n); s.draw() }, 1100); $('#dg-steps').addEventListener('click', () => clearInterval(id), { once: true }) }
+})
+
+// ── the Wilds: country map ─────────────────────────────────────────────
+safe(() => {
+  const R = 10, N = 2 * R + 1, PX = 24, SUB = 6, L = N * PX
+  const s = stage('#cv-world', L, L), read = $('#w-read'), input = $('#w-seed')
+  const off = document.createElement('canvas'); off.width = off.height = N * SUB
+  const octx = off.getContext('2d')
+  let villages = [], hover = null
+  function build() {
+    const p = P(), cols = Object.fromEntries(BIOMES.map(b => [b, rgb(p[b])]))
+    const x0 = -R * PIECE, x1 = (R + 1) * PIECE, blobs = blobsFor(worldSeed, x0, x0, x1, x1)
+    const img = octx.createImageData(N * SUB, N * SUB), stepT = PIECE / SUB
+    for (let j = 0; j < N * SUB; j++) for (let i = 0; i < N * SUB; i++) {
+      const c = cols[countryAt(worldSeed, x0 + (i + 0.5) * stepT, x0 + (j + 0.5) * stepT, blobs)], k = (j * N * SUB + i) * 4
+      img.data[k] = c[0]; img.data[k + 1] = c[1]; img.data[k + 2] = c[2]; img.data[k + 3] = 255
+    }
+    octx.putImageData(img, 0, 0)
+    villages = []
+    for (let by = Math.floor(-R / 4); by <= Math.floor(R / 4); by++) for (let bx = Math.floor(-R / 4); bx <= Math.floor(R / 4); bx++) {
+      const v = blockVillage(worldSeed, bx, by)
+      if (v && Math.abs(v.wx) <= R && Math.abs(v.wy) <= R) villages.push(v)
+    }
+  }
+  s.onTheme = build
+  s.draw = () => {
+    const { ctx } = s, p = P()
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(off, 0, 0, L, L)
+    ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.lineWidth = 1; ctx.beginPath()
+    for (let i = 1; i < N; i++) { ctx.moveTo(i * PX + 0.5, 0); ctx.lineTo(i * PX + 0.5, L); ctx.moveTo(0, i * PX + 0.5); ctx.lineTo(L, i * PX + 0.5) }
+    ctx.stroke()
+    const hx = (R + 0.5) * PX
+    ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5
+    for (const r of [3, 6, 9]) { ctx.beginPath(); ctx.arc(hx, hx, r * PX, 0, Math.PI * 2); ctx.stroke() }
+    ctx.setLineDash([])
+    for (const v of villages) {
+      const x = (v.wx + R) * PX, y = (v.wy + R) * PX, home = v.wx === 0 && v.wy === 0
+      ctx.fillStyle = '#fff'; ctx.fillRect(x + 6, y + 6, 12, 12)
+      ctx.fillStyle = home ? p.accent : '#15232b'; ctx.fillRect(x + 8, y + 8, 8, 8)
+    }
+    // the home trio: ring east of home, first cave north of it
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc((1 + R + 0.5) * PX, hx, 6, 0, Math.PI * 2); ctx.stroke()
+    ctx.fillStyle = '#fff'; ctx.beginPath(); const cx = hx, cy = (R - 1 + 0.5) * PX; ctx.moveTo(cx, cy - 7); ctx.lineTo(cx + 7, cy + 6); ctx.lineTo(cx - 7, cy + 6); ctx.closePath(); ctx.fill()
+    if (hover) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect((hover.wx + R) * PX + 1, (hover.wy + R) * PX + 1, PX - 2, PX - 2) }
+  }
+  function describe(wx, wy) {
+    const v = villageAt(worldSeed, wx, wy), main = mainKind(worldSeed, wx, wy)
+    const parts = [`piece (${wx}, ${wy})`, BIOME_NAMES[pieceBiome(worldSeed, wx, wy)], `toughness ${tierAt(wx, wy)}`,
+      v ? `village ${wx === 0 && wy === 0 ? 'Koivula' : v.name}` : `main thing: ${main === 'ring' ? 'mushroom ring' : main}`,
+      `gates N ${gateAt(worldSeed, wx, wy, 'N')} · E ${gateAt(worldSeed, wx, wy, 'E')} · S ${gateAt(worldSeed, wx, wy, 'S')} · W ${gateAt(worldSeed, wx, wy, 'W')}`]
+    return parts.join(' · ')
+  }
+  const point = e => {
+    const q = s.pt(e), wx = clamp(Math.floor(q.x / PX) - R, -R, R), wy = clamp(Math.floor(q.y / PX) - R, -R, R)
+    hover = { wx, wy }; read.textContent = describe(wx, wy); s.draw()
+  }
+  s.c.addEventListener('pointermove', point); s.c.addEventListener('pointerdown', point)
+  const setSeed = v => { worldSeed = clamp(Math.round(+v) || 1, 1, 999999); input.value = worldSeed; build(); if (hover) read.textContent = describe(hover.wx, hover.wy); s.draw(); for (const f of seedListeners) f() }
+  input.addEventListener('change', () => setSeed(input.value))
+  $('#w-roll').addEventListener('click', () => setSeed(1 + Math.floor(Math.random() * 99999)))
+  build(); s.fit()
+})
+
+// ── the Wilds: the window ──────────────────────────────────────────────
+safe(() => {
+  const R = 4, N = 2 * R + 1, PX = 56, L = N * PX, K = PX / PIECE
+  const s = stage('#cv-window', L, L), read = $('#win-read')
+  let biomes = new Map()
+  const biomeOf = (wx, wy) => { const k = wx + ',' + wy; if (!biomes.has(k)) biomes.set(k, pieceBiome(worldSeed, wx, wy)); return biomes.get(k) }
+  let X = 40, Y = 40, origin = { wx: -1, wy: -1 }, target = null, t = 0, flash = 0, count = 0, lastStep = null
+  const seen = new Set()
+  const mark = () => { for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) seen.add((origin.wx + i) + ',' + (origin.wy + j)) }
+  mark()
+  seedListeners.push(() => { biomes = new Map(); s.draw() })
+  const sx = v => (v + R * PIECE) * K
+  function tick(dt) {
+    t += dt; flash = Math.max(0, flash - dt)
+    const goal = target ?? { X: 40 + Math.cos(t * 0.32) * 205, Y: 40 + Math.sin(t * 0.47) * 190 }
+    const dx = goal.X - X, dy = goal.Y - Y, d = Math.hypot(dx, dy), sp = 46 * dt
+    if (d > 0.5) { X += dx / d * Math.min(sp, d); Y += dy / d * Math.min(sp, d) }
+    X = clamp(X, -3 * PIECE + 4, 4 * PIECE - 5); Y = clamp(Y, -3 * PIECE + 4, 4 * PIECE - 5)
+    // window.js recentreStep, margin 8
+    const step = v => v < PIECE - 8 ? -1 : v >= 2 * PIECE + 8 ? 1 : 0
+    const dxs = step(X - origin.wx * PIECE), dys = step(Y - origin.wy * PIECE)
+    if (dxs || dys) { origin = { wx: origin.wx + dxs, wy: origin.wy + dys }; flash = 0.5; count++; lastStep = { dx: dxs, dy: dys }; mark() }
+  }
+  s.draw = () => {
+    const { ctx } = s, p = P()
+    ctx.fillStyle = p.wall; ctx.fillRect(0, 0, L, L)
+    for (let wy = -R; wy <= R; wy++) for (let wx = -R; wx <= R; wx++) {
+      const inWin = wx >= origin.wx && wx <= origin.wx + 2 && wy >= origin.wy && wy <= origin.wy + 2
+      const ahead = wx >= origin.wx - 1 && wx <= origin.wx + 3 && wy >= origin.wy - 1 && wy <= origin.wy + 3
+      ctx.globalAlpha = inWin ? 1 : ahead ? 0.5 : 0.2
+      ctx.fillStyle = p[biomeOf(wx, wy)]; ctx.fillRect((wx + R) * PX, (wy + R) * PX, PX - 1, PX - 1)
+      ctx.globalAlpha = 1
+      if (seen.has(wx + ',' + wy)) { ctx.fillStyle = '#fff'; ctx.fillRect((wx + R) * PX + 5, (wy + R) * PX + 5, 5, 5) }
+    }
+    const wx0 = (origin.wx + R) * PX, wy0 = (origin.wy + R) * PX
+    if (flash > 0) { ctx.fillStyle = p.accent; ctx.globalAlpha = flash; ctx.fillRect(wx0, wy0, 3 * PX, 3 * PX); ctx.globalAlpha = 1 }
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeRect(wx0, wy0, 3 * PX - 1, 3 * PX - 1)
+    ctx.strokeStyle = p.accent; ctx.lineWidth = 2; ctx.strokeRect(wx0, wy0, 3 * PX - 1, 3 * PX - 1)
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5
+    ctx.strokeRect(wx0 + (PIECE - 8) * K, wy0 + (PIECE - 8) * K, (PIECE + 16) * K, (PIECE + 16) * K); ctx.setLineDash([])
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx(X), sx(Y), 7, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#15232b'; ctx.beginPath(); ctx.arc(sx(X), sx(Y), 4.5, 0, Math.PI * 2); ctx.fill()
+    const fx = Math.floor(X), fy = Math.floor(Y)
+    setText(read, `world tile (${fx}, ${fy}) · window tile (${fx - origin.wx * PIECE}, ${fy - origin.wy * PIECE}) · window origin piece (${origin.wx}, ${origin.wy}) · re-centres ${count}` +
+      (lastStep ? ` · last shift: every position ${lastStep.dx ? (lastStep.dx > 0 ? '−80' : '+80') + ' in x' : ''}${lastStep.dx && lastStep.dy ? ', ' : ''}${lastStep.dy ? (lastStep.dy > 0 ? '−80' : '+80') + ' in y' : ''}` : ''))
+  }
+  const a = animate(s, tick, $('#win-play'))
+  const go = e => { const q = s.pt(e); target = { X: q.x / K - R * PIECE, Y: q.y / K - R * PIECE }; if (!a.on) { for (let i = 0; i < 40; i++) tick(0.05); s.draw() } }
+  s.c.addEventListener('pointerdown', go)
+  s.fit()
+})
+
+// ── tile chunk cache ───────────────────────────────────────────────────
+safe(() => {
+  const CW = 96, CH = 64, CELL = 6, CHUNK = 16, VW = 32, VH = 22, CS = CHUNK * CELL
+  const s = stage('#cv-chunks', CW * CELL, CH * CELL), read = $('#ch-read')
+  const explored = new Uint8Array(CW * CH), felled = new Uint8Array(CW * CH), kinds = new Uint8Array(CW * CH)
+  for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) {
+    const n = noise2(11, x, y, 0.07, 3)
+    kinds[y * CW + x] = n < 0.37 ? 2 : hash(5, x, y, 1) < (n > 0.58 ? 0.55 : 0.14) ? 1 : 0
+  }
+  const chunks = new Map()
+  let px = 48, py = 32, t = 0, target = null, bakesTotal = 0
+  function bake(ch, cx, cy) {
+    const g = ch.ctx; g.clearRect(0, 0, CS, CS)
+    let n = 0
+    for (let r = 0; r < CHUNK; r++) for (let c = 0; c < CHUNK; c++) {
+      const i = (cy * CHUNK + r) * CW + cx * CHUNK + c
+      if (!explored[i]) continue
+      n++
+      g.fillStyle = kinds[i] === 2 ? '#3b82c4' : '#5c9a57'; g.fillRect(c * CELL, r * CELL, CELL, CELL)
+      if (kinds[i] === 1) { g.fillStyle = felled[i] ? '#b9905a' : '#2c6437'; g.fillRect(c * CELL + 1, r * CELL + 1, CELL - 2, CELL - 2) }
+    }
+    ch.explored = n; ch.flash = 0.45; bakesTotal++
+  }
+  const countExplored = (cx, cy) => { let n = 0; for (let r = 0; r < CHUNK; r++) for (let c = 0; c < CHUNK; c++) n += explored[(cy * CHUNK + r) * CW + cx * CHUNK + c]; return n }
+  function reveal() {
+    const fx = Math.floor(px), fy = Math.floor(py)
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
+      if (dx * dx + dy * dy > 64) continue
+      const x = fx + dx, y = fy + dy
+      if (x >= 0 && y >= 0 && x < CW && y < CH) explored[y * CW + x] = 1
+    }
+  }
+  function tick(dt) {
+    t += dt
+    for (const ch of chunks.values()) ch.flash = Math.max(0, ch.flash - dt)
+    const goal = target ?? { x: 48 + Math.sin(t * 0.21) * 36, y: 32 + Math.sin(t * 0.34 + 1) * 21 }
+    const dx = goal.x - px, dy = goal.y - py, d = Math.hypot(dx, dy), sp = 9 * dt
+    if (d > 0.2) { px += dx / d * Math.min(sp, d); py += dy / d * Math.min(sp, d) }
+    reveal()
+  }
+  s.draw = () => {
+    const { ctx } = s, p = P()
+    ctx.imageSmoothingEnabled = false
+    ctx.fillStyle = p.wall; ctx.fillRect(0, 0, CW * CELL, CH * CELL)
+    const c0 = clamp(Math.floor(px) - VW / 2, 0, CW - VW), r0 = clamp(Math.floor(py) - VH / 2, 0, CH - VH)
+    const cx0 = Math.floor(c0 / CHUNK), cx1 = Math.ceil((c0 + VW) / CHUNK), cy0 = Math.floor(r0 / CHUNK), cy1 = Math.ceil((r0 + VH) / CHUNK)
+    ctx.globalAlpha = 0.3
+    for (const [key, ch] of chunks) { const [cx, cy] = key.split(',').map(Number); if (cx < cx0 || cx >= cx1 || cy < cy0 || cy >= cy1) ctx.drawImage(ch.canvas, cx * CS, cy * CS) }
+    ctx.globalAlpha = 1
+    let blits = 0, bakes = 0
+    for (let cy = cy0; cy < cy1; cy++) for (let cx = cx0; cx < cx1; cx++) {
+      const key = cx + ',' + cy
+      let ch = chunks.get(key)
+      if (!ch) { const canvas = document.createElement('canvas'); canvas.width = canvas.height = CS; ch = { canvas, ctx: canvas.getContext('2d'), explored: -1, flash: 0 }; chunks.set(key, ch) }
+      if (ch.explored !== countExplored(cx, cy)) { bake(ch, cx, cy); bakes++ }
+      ctx.drawImage(ch.canvas, cx * CS, cy * CS); blits++
+    }
+    // fog: one rect per horizontal run of explored cells that are out of sight
+    let runs = 0, fogged = 0
+    ctx.fillStyle = 'rgba(0,0,0,.42)'
+    const fx = Math.floor(px), fy = Math.floor(py)
+    for (let row = r0; row < r0 + VH; row++) {
+      let run = -1
+      for (let col = c0; col <= c0 + VW; col++) {
+        const fog = col < c0 + VW && explored[row * CW + col] && (col - fx) ** 2 + (row - fy) ** 2 > 64
+        if (fog) { fogged++; if (run < 0) run = col; continue }
+        if (run >= 0) { ctx.fillRect(run * CELL, row * CELL, (col - run) * CELL, CELL); runs++; run = -1 }
+      }
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1; ctx.beginPath()
+    for (let i = 1; i < CW / CHUNK; i++) { ctx.moveTo(i * CS + 0.5, 0); ctx.lineTo(i * CS + 0.5, CH * CELL) }
+    for (let j = 1; j < CH / CHUNK; j++) { ctx.moveTo(0, j * CS + 0.5); ctx.lineTo(CW * CELL, j * CS + 0.5) }
+    ctx.stroke()
+    for (const [key, ch] of chunks) if (ch.flash > 0) {
+      const [cx, cy] = key.split(',').map(Number)
+      ctx.strokeStyle = p.accent; ctx.globalAlpha = Math.min(1, ch.flash * 3); ctx.lineWidth = 4; ctx.strokeRect(cx * CS + 2, cy * CS + 2, CS - 4, CS - 4); ctx.globalAlpha = 1
+    }
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(c0 * CELL, r0 * CELL, VW * CELL, VH * CELL)
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px * CELL, py * CELL, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = p.hit; ctx.beginPath(); ctx.arc(px * CELL, py * CELL, 3, 0, Math.PI * 2); ctx.fill()
+    setText(read, `this frame: ${blits} chunk blits + ${runs} fog rects (for ${fogged} fogged cells) · bakes this frame ${bakes}, in total ${bakesTotal} · uncached: ${VW * VH} tile draws every frame`)
+  }
+  const a = animate(s, tick, $('#ch-play'))
+  const cellOf = e => { const q = s.pt(e); return { x: clamp(Math.floor(q.x / CELL), 0, CW - 1), y: clamp(Math.floor(q.y / CELL), 0, CH - 1) } }
+  s.c.addEventListener('pointerdown', e => {
+    const c = cellOf(e), i = c.y * CW + c.x
+    if (explored[i] && kinds[i] === 1) {
+      felled[i] ^= 1
+      const ch = chunks.get(Math.floor(c.x / CHUNK) + ',' + Math.floor(c.y / CHUNK))
+      if (ch) ch.explored = -1   // tile-dirty: keep the canvas, force a rebake
+    } else target = { x: c.x + 0.5, y: c.y + 0.5 }
+    if (!a.on) { for (let k = 0; k < 30; k++) tick(0.05); }
+    s.draw()
+  })
+  reveal(); s.fit()
+})
+
+// ── flow field ─────────────────────────────────────────────────────────
+safe(() => {
+  const GW = 32, GH = 20, CS = 20, DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+  const s = stage('#cv-flow', GW * CS, GH * CS)
+  const wall = new Uint8Array(GW * GH)
+  let player = { x: 26, y: 5 }, clearance = 1, dir = 'down', clear, dist, maxD = 1, enemies = []
+  function preset() {
+    wall.fill(0)
+    const Hh = (y, x0, x1, gaps = []) => { for (let x = x0; x <= x1; x++) if (!gaps.includes(x)) wall[y * GW + x] = 1 }
+    const V = (x, y0, y1, gaps = []) => { for (let y = y0; y <= y1; y++) if (!gaps.includes(y)) wall[y * GW + x] = 1 }
+    Hh(2, 2, 9); Hh(7, 2, 9, [6]); V(2, 2, 7); V(9, 2, 7, [5])
+    V(16, 0, 13, [5, 6, 7]); Hh(10, 17, 28, [23, 24, 25]); V(22, 11, 16, [13]); V(7, 11, 16)
+    for (let y = 13; y <= 16; y++) for (let x = 11; x <= 13; x++) wall[y * GW + x] = 1
+  }
+  const passable = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && clear[y * GW + x] >= clearance
+  const diagOk = (x, y, dx, dy) => !(dx && dy) || (passable(x + dx, y) && passable(x, y + dy))
+  function rebuild() {
+    // nav.js buildNavGrid: chebyshev distance to the nearest blocked tile or map edge
+    clear = new Int16Array(GW * GH).fill(-1)
+    const q = []
+    for (let i = 0; i < GW * GH; i++) if (wall[i]) { clear[i] = 0; q.push(i) }
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) if (x === 0 || y === 0 || x === GW - 1 || y === GH - 1) { const i = y * GW + x; if (clear[i] === -1) { clear[i] = 1; q.push(i) } }
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h], x = i % GW, y = i / GW | 0
+      for (const [dx, dy] of DIRS) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const ni = ny * GW + nx; if (clear[ni] === -1) { clear[ni] = clear[i] + 1; q.push(ni) } }
+    }
+    // nav.js buildFlowField: Dijkstra from the player's tile (the nearest passable one if it is too tight)
+    dist = new Float64Array(GW * GH).fill(Infinity)
+    let tx = player.x, ty = player.y
+    if (!passable(tx, ty)) {
+      let alt = null
+      for (let r = 0; r <= 6 && !alt; r++) for (let dy = -r; dy <= r && !alt; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+        if (passable(tx + dx, ty + dy)) { alt = { x: tx + dx, y: ty + dy }; break }
+      }
+      if (!alt) { maxD = 1; return }
+      tx = alt.x; ty = alt.y
+    }
+    dist[ty * GW + tx] = 0
+    const open = [ty * GW + tx]
+    while (open.length) {
+      let bi = 0
+      for (let k = 1; k < open.length; k++) if (dist[open[k]] < dist[open[bi]]) bi = k
+      const i = open.splice(bi, 1)[0], x = i % GW, y = i / GW | 0
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy
+        if (!passable(nx, ny) || !diagOk(x, y, dx, dy)) continue
+        const nd = dist[i] + (dx && dy ? Math.SQRT2 : 1), ni = ny * GW + nx
+        if (nd < dist[ni] - 1e-9) { dist[ni] = nd; open.push(ni) }
+      }
+    }
+    maxD = 1
+    for (let i = 0; i < GW * GH; i++) if (isFinite(dist[i]) && dist[i] > maxD) maxD = dist[i]
+  }
+  function fieldStep(x, y) {
+    if (x < 0 || y < 0 || x >= GW || y >= GH) return null
+    let best = null, bestD = dist[y * GW + x]
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy
+      if (!passable(nx, ny) || !diagOk(x, y, dx, dy)) continue
+      const d = dist[ny * GW + nx]
+      if (!isFinite(d)) continue
+      if (dir === 'down' ? d < bestD - 1e-9 : d > bestD + 1e-9) { bestD = d; best = { x: nx, y: ny } }
+    }
+    return best
+  }
+  const rnd = mulberry32(3)
+  function spawn(e) {
+    for (let n = 0; n < 200; n++) {
+      const x = Math.floor(rnd() * GW), y = Math.floor(rnd() * GH), d = dist[y * GW + x]
+      if (!isFinite(d) || (dir === 'down' ? d < 10 : d > 5 || d < 1.5)) continue
+      e.px = x * CS + CS / 2; e.py = y * CS + CS / 2; e.wait = 0; return
+    }
+    e.px = -99; e.py = -99; e.wait = 0
+  }
+  function respawnAll() { enemies = Array.from({ length: 6 }, () => ({})); for (const e of enemies) spawn(e) }
+  function tick(dt) {
+    const speed = (clearance === 2 ? 52 : 86) * dt
+    for (const e of enemies) {
+      const x = Math.floor(e.px / CS), y = Math.floor(e.py / CS)
+      if (!passable(x, y) || !isFinite(dist[y * GW + x])) { e.wait += dt; if (e.wait > 0.6) spawn(e); continue }
+      const step = fieldStep(x, y)
+      if (!step) { e.wait += dt; if (e.wait > (dir === 'down' ? 0.5 : 1.4)) spawn(e); continue }
+      const tx = step.x * CS + CS / 2, ty = step.y * CS + CS / 2, d = Math.hypot(tx - e.px, ty - e.py) || 1
+      e.px += (tx - e.px) / d * Math.min(speed, d); e.py += (ty - e.py) / d * Math.min(speed, d)
+    }
+  }
+  s.draw = () => {
+    const { ctx } = s, p = P()
+    ctx.fillStyle = p.floor2; ctx.fillRect(0, 0, GW * CS, GH * CS)
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+      const i = y * GW + x, X = x * CS, Y = y * CS
+      if (wall[i]) { ctx.fillStyle = p.wall; ctx.fillRect(X, Y, CS, CS); continue }
+      const d = dist[i]
+      if (isFinite(d)) { ctx.fillStyle = p.blue; ctx.globalAlpha = 0.12 + 0.75 * (1 - d / maxD); ctx.fillRect(X, Y, CS - 1, CS - 1); ctx.globalAlpha = 1 }
+      else if (clear[i] < clearance) { ctx.strokeStyle = p.muted; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X + 6, Y + 6); ctx.lineTo(X + 14, Y + 14); ctx.moveTo(X + 14, Y + 6); ctx.lineTo(X + 6, Y + 14); ctx.stroke() }
+    }
+    ctx.strokeStyle = p.ink; ctx.globalAlpha = 0.55; ctx.lineWidth = 1.2; ctx.beginPath()
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+      if (!isFinite(dist[y * GW + x])) continue
+      const st = fieldStep(x, y)
+      if (!st) continue
+      const cx = x * CS + CS / 2, cy = y * CS + CS / 2, ux = st.x - x, uy = st.y - y, l = Math.hypot(ux, uy)
+      const ex = cx + ux / l * 6, ey = cy + uy / l * 6
+      ctx.moveTo(cx - ux / l * 4, cy - uy / l * 4); ctx.lineTo(ex, ey)
+      ctx.moveTo(ex, ey); ctx.lineTo(ex - (ux / l) * 3.5 + (uy / l) * 2.5, ey - (uy / l) * 3.5 - (ux / l) * 2.5)
+      ctx.moveTo(ex, ey); ctx.lineTo(ex - (ux / l) * 3.5 - (uy / l) * 2.5, ey - (uy / l) * 3.5 + (ux / l) * 2.5)
+    }
+    ctx.stroke(); ctx.globalAlpha = 1
+    for (const e of enemies) { ctx.fillStyle = p.hit; ctx.strokeStyle = p.wall; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(e.px, e.py, clearance === 2 ? 15 : 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
+    const hx = player.x * CS + CS / 2, hy = player.y * CS + CS / 2
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hx, hy, 9, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = p.accent; ctx.beginPath(); ctx.arc(hx, hy, 6.5, 0, Math.PI * 2); ctx.fill()
+  }
+  const a = animate(s, tick, $('#ff-play'))
+  let drag = null, paint = 1
+  const cellOf = e => { const q = s.pt(e); return { x: clamp(Math.floor(q.x / CS), 0, GW - 1), y: clamp(Math.floor(q.y / CS), 0, GH - 1) } }
+  const apply = c => {
+    const i = c.y * GW + c.x
+    if (drag === 'player') { if (!wall[i] && (c.x !== player.x || c.y !== player.y)) { player = c; rebuild() } }
+    else if (!(c.x === player.x && c.y === player.y) && wall[i] !== paint) { wall[i] = paint; rebuild() }
+    if (!a.on) s.draw()
+  }
+  s.c.addEventListener('pointerdown', e => {
+    const c = cellOf(e)
+    s.c.setPointerCapture(e.pointerId)
+    if (Math.max(Math.abs(c.x - player.x), Math.abs(c.y - player.y)) <= 1) drag = 'player'
+    else { drag = 'wall'; paint = wall[c.y * GW + c.x] ? 0 : 1 }
+    apply(c); e.preventDefault()
+  })
+  s.c.addEventListener('pointermove', e => { if (drag) apply(cellOf(e)) })
+  const end = () => { drag = null }
+  s.c.addEventListener('pointerup', end); s.c.addEventListener('pointercancel', end)
+  seg('#ff-size', 1, v => { clearance = +v; rebuild(); respawnAll(); s.draw() })
+  seg('#ff-dir', 'down', v => { dir = v; respawnAll(); s.draw() })
+  $('#ff-reset').addEventListener('click', () => { preset(); player = { x: 26, y: 5 }; rebuild(); respawnAll(); s.draw() })
+  preset(); rebuild(); respawnAll(); s.fit()
+})
+
+// ── capsule ────────────────────────────────────────────────────────────
+safe(() => {
+  const s = stage('#cv-capsule', 320, 250), read = $('#cap-read'), T = 32
+  const body = { px: 150, py: 128, r: 18, front: 44, back: 34 }
+  let heading = 7, probe = { x: 246, y: 62 }
+  const closest = (x, y, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy; let t = l2 === 0 ? 0 : ((x - ax) * dx + (y - ay) * dy) / l2; t = clamp(t, 0, 1); return { x: ax + dx * t, y: ay + dy * t } }
+  const pointRect = (x, y, x0, y0, x1, y1) => Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(y0 - y, 0, y - y1))
+  const orient = (ax, ay, bx, by, cx, cy) => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+  const cross = (ax, ay, bx, by, cx, cy, dx, dy) => orient(ax, ay, bx, by, cx, cy) * orient(ax, ay, bx, by, dx, dy) < 0 && orient(cx, cy, dx, dy, ax, ay) * orient(cx, cy, dx, dy, bx, by) < 0
+  function segRect(ax, ay, bx, by, x0, y0, x1, y1) {
+    const inside = (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1
+    if (inside(ax, ay) || inside(bx, by)) return 0
+    for (const [e0, e1, e2, e3] of [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0]]) if (cross(ax, ay, bx, by, e0, e1, e2, e3)) return 0
+    let best = Math.min(pointRect(ax, ay, x0, y0, x1, y1), pointRect(bx, by, x0, y0, x1, y1))
+    for (const [cx, cy] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) { const c = closest(cx, cy, ax, ay, bx, by); best = Math.min(best, Math.hypot(cx - c.x, cy - c.y)) }
+    return best
+  }
+  s.draw = () => {
+    const { ctx } = s, p = P(), f = heading * Math.PI / 4, dx = Math.cos(f), dy = Math.sin(f)
+    const ax = body.px + dx * body.front, ay = body.py + dy * body.front, bx = body.px - dx * body.back, by = body.py - dy * body.back
+    ctx.fillStyle = p.floor; ctx.fillRect(0, 0, 320, 250)
+    let tiles = 0
+    for (let ty = 0; ty < 8; ty++) for (let tx = 0; tx < 10; tx++) {
+      if (segRect(ax, ay, bx, by, tx * T, ty * T, tx * T + T, ty * T + T) <= body.r) { tiles++; ctx.fillStyle = p.blue; ctx.globalAlpha = 0.28; ctx.fillRect(tx * T, ty * T, T, T); ctx.globalAlpha = 1 }
+    }
+    ctx.strokeStyle = p.muted; ctx.globalAlpha = 0.45; ctx.lineWidth = 1; ctx.beginPath()
+    for (let i = 1; i < 10; i++) { ctx.moveTo(i * T + 0.5, 0); ctx.lineTo(i * T + 0.5, 250) }
+    for (let j = 1; j < 8; j++) { ctx.moveTo(0, j * T + 0.5); ctx.lineTo(320, j * T + 0.5) }
+    ctx.stroke(); ctx.globalAlpha = 1
+    const c = closest(probe.x, probe.y, ax, ay, bx, by), d = Math.hypot(probe.x - c.x, probe.y - c.y), hit = d <= body.r + 2
+    ctx.lineCap = 'round'; ctx.strokeStyle = p.hit; ctx.globalAlpha = hit ? 0.9 : 0.45; ctx.lineWidth = body.r * 2
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineCap = 'butt'
+    ctx.strokeStyle = p.wall; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([])
+    ctx.fillStyle = p.wall; ctx.beginPath(); ctx.arc(ax, ay, 4, 0, Math.PI * 2); ctx.fill()
+    const gap = Math.max(0, d - body.r), nx = d > body.r ? c.x + (probe.x - c.x) * body.r / d : probe.x, ny = d > body.r ? c.y + (probe.y - c.y) * body.r / d : probe.y
+    if (gap > 0) { ctx.strokeStyle = p.wall; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(probe.x, probe.y); ctx.lineTo(nx, ny); ctx.stroke(); ctx.fillStyle = p.wall; ctx.beginPath(); ctx.arc(nx, ny, 3, 0, Math.PI * 2); ctx.fill() }
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(probe.x, probe.y, 7, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = p.accent; ctx.beginPath(); ctx.arc(probe.x, probe.y, 5, 0, Math.PI * 2); ctx.fill()
+    setText(read, `pointHits ${hit ? 'true' : 'false'} · nearestPoint is ${gap.toFixed(0)} px away · overlapsTiles: ${tiles} tiles`)
+  }
+  const move = e => { const q = s.pt(e); probe = { x: clamp(q.x, 4, 316), y: clamp(q.y, 4, 246) }; s.draw() }
+  s.c.addEventListener('pointermove', move); s.c.addEventListener('pointerdown', move)
+  $('#cap-turn').addEventListener('click', () => { heading = (heading + 1) % 8; s.draw() })
+  s.fit()
+})
+
+// ── shield arc ─────────────────────────────────────────────────────────
+safe(() => {
+  const s = stage('#cv-block', 320, 250), read = $('#blk-read')
+  const FACING = [['east', 0], ['south', Math.PI / 2], ['west', Math.PI], ['north', -Math.PI / 2]], HALF = Math.PI / 3
+  const hero = { px: 160, py: 130 }
+  let fi = 0, from = { x: 258, y: 78 }
+  s.draw = () => {
+    const { ctx } = s, p = P(), fa = FACING[fi][1]
+    ctx.fillStyle = p.floor; ctx.fillRect(0, 0, 320, 250)
+    const a = Math.atan2(from.y - hero.py, from.x - hero.px), d = Math.abs(Math.atan2(Math.sin(a - fa), Math.cos(a - fa))), blocked = d <= HALF
+    ctx.fillStyle = p.ok; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(hero.px, hero.py); ctx.arc(hero.px, hero.py, 96, fa - HALF, fa + HALF); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1
+    ctx.strokeStyle = p.ok; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(hero.px, hero.py, 20, fa - HALF, fa + HALF); ctx.stroke()
+    ctx.strokeStyle = blocked ? p.ok : p.hit; ctx.lineWidth = 2.5; ctx.setLineDash(blocked ? [] : [6, 4]); ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(hero.px, hero.py); ctx.stroke(); ctx.setLineDash([])
+    ctx.fillStyle = p.wall; ctx.beginPath(); ctx.arc(hero.px, hero.py, 12, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hero.px + Math.cos(fa) * 6, hero.py + Math.sin(fa) * 6, 3, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(from.x, from.y, 9, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = p.hit; ctx.beginPath(); ctx.arc(from.x, from.y, 7, 0, Math.PI * 2); ctx.fill()
+    setText(read, `facing ${FACING[fi][0]} · ${(d * 180 / Math.PI).toFixed(0)}° off the facing · ` + (blocked ? 'blocked: pays the block cost, a melee striker is shoved back 12 px' : 'the hit lands'))
+  }
+  const move = e => { const q = s.pt(e); from = { x: clamp(q.x, 6, 314), y: clamp(q.y, 6, 244) }; s.draw() }
+  s.c.addEventListener('pointermove', move); s.c.addEventListener('pointerdown', move)
+  $('#blk-turn').addEventListener('click', () => { fi = (fi + 1) % 4; s.draw() })
+  s.fit()
+})
+
+// ── chest loot ─────────────────────────────────────────────────────────
+safe(() => {
+  const NAMES = { dagger: 'Dagger', sword: 'Sword', longsword: 'Longsword', axe: 'Axe', sling: 'Sling', shortbow: 'Shortbow', hunterbow: 'Hunter bow', longbow: 'Longbow', splitbow: 'Split bow', crossbow: 'Crossbow',
+    sparkwand: 'Spark wand', frostwand: 'Frost wand', firewand: 'Fireball wand', bramblewand: 'Bramble wand', blinkwand: 'Blink wand', stormwand: 'Storm wand', buckler: 'Buckler', kite: 'Kite shield', leather: 'Leather Coat' }
+  const POOLS = {
+    melee: { 1: ['dagger', 'sword'], 2: ['sword', 'longsword'], 3: ['longsword', 'axe'], 4: ['axe', 'longsword'] },
+    shield: { 1: ['buckler'], 2: ['buckler'], 3: ['buckler', 'kite'], 4: ['kite'] },
+    ranged: { 1: ['sling', 'shortbow'], 2: ['shortbow', 'hunterbow'], 3: ['hunterbow', 'longbow', 'splitbow'], 4: ['longbow', 'splitbow', 'crossbow'] },
+    wand: { 1: ['sparkwand'], 2: ['sparkwand', 'frostwand'], 3: ['frostwand', 'firewand', 'bramblewand'], 4: ['firewand', 'bramblewand', 'blinkwand', 'stormwand'] },
+  }
+  const HEAVY = new Set(['longsword', 'axe', 'kite']), WEIGHT = { potion: 30, melee: 16, shield: 4, ranged: 15, wand: 15, ammo: 15, outfit: 5 }, TEASER = 0.2
+  const COLOUR = { potion: 'var(--hit)', melee: 'var(--wall)', shield: 'var(--mountain)', ranged: 'var(--forest)', wand: 'var(--blue)', ammo: 'var(--desert)', outfit: 'var(--autumn)' }
+  const LABEL = { potion: 'Potion', melee: 'Melee', shield: 'Shield', ranged: 'Bows', wand: 'Wands', ammo: 'Ammo', outfit: 'Outfit' }
+  let tier = 1
+  const bar = $('#lt-bar'), table = $('#lt-table'), box = id => $(id).checked
+  function render() {
+    const ranger = box('#lt-ranger'), robe = box('#lt-robe'), plate = box('#lt-plate'), bow = box('#lt-bow')
+    const usable = { melee: w => !HEAVY.has(w) || plate, shield: w => !HEAVY.has(w) || plate, ranged: () => ranger, wand: () => robe }
+    const bands = [{ k: 'potion', weight: WEIGHT.potion, items: 'Potion, heals 4', tease: false }]
+    for (const k of ['melee', 'shield', 'ranged', 'wand']) {
+      const ok = POOLS[k][tier].filter(usable[k])
+      bands.push(ok.length ? { k, weight: WEIGHT[k], items: ok.map(w => NAMES[w]).join(', '), tease: false }
+        : { k, weight: WEIGHT[k] * TEASER, items: POOLS[k][1].map(w => NAMES[w]).join(', '), tease: true })
+    }
+    bands.push({ k: 'ammo', weight: bow ? WEIGHT.ammo : 0, items: bow ? 'For the bows carried' : 'Not offered: no bow carried', tease: false })
+    bands.push({ k: 'outfit', weight: tier >= 2 ? WEIGHT.outfit : 0, items: tier >= 2 ? NAMES.leather : 'Not offered at tier 1', tease: false })
+    const total = bands.reduce((n, b) => n + b.weight, 0)
+    bar.replaceChildren(...bands.filter(b => b.weight > 0).map(b => { const d = document.createElement('div'); d.style.width = (b.weight / total * 100) + '%'; d.style.background = COLOUR[b.k]; d.title = `${LABEL[b.k]} ${(b.weight / total * 100).toFixed(0)} %`; return d }))
+    table.innerHTML = '<thead><tr><th>Band</th><th>Share</th><th>What can drop</th></tr></thead><tbody>' + bands.map(b =>
+      `<tr><td><i style="background:${COLOUR[b.k]}"></i>${LABEL[b.k]}</td><td class="num">${b.weight ? (b.weight / total * 100).toFixed(1) + ' %' : '0'}</td><td${b.tease ? ' class="tease"' : ''}>${b.items}${b.tease ? ' (teaser: a fifth of the weight, tier-1 items)' : ''}</td></tr>`).join('') + '</tbody>'
+  }
+  seg('#lt-tier', 1, v => { tier = +v; render() })
+  for (const id of ['#lt-ranger', '#lt-robe', '#lt-plate', '#lt-bow']) $(id).addEventListener('change', render)
+  render()
+})
+
+// ── cut-out rig ────────────────────────────────────────────────────────
+safe(() => {
+  const s = stage('#cv-rig', 640, 300)
+  const SWING = [1, 0, -1, 0], LIFT = [1, 0, 0, 0], BOB = [0, -1, 0, -1], LEAN = [-1, 0, 1, 0], RAD = Math.PI / 180
+  const COL = { torso: '#c0605a', head: '#d98a7a', arm: '#7a2a2a', leg: '#7a2a2a' }
+  // a front-view figure, feet at y = 0: rect [x, y, w, h] and pivot, in px
+  const PIECES = [
+    { role: 'leg', side: 'left', rect: [-26, -68, 20, 66], pivot: [-16, -66] }, { role: 'leg', side: 'right', rect: [6, -68, 20, 66], pivot: [16, -66] },
+    { role: 'arm', side: 'left', rect: [-48, -136, 16, 62], pivot: [-40, -132] }, { role: 'arm', side: 'right', rect: [32, -136, 16, 62], pivot: [40, -132] },
+    { role: 'torso', rect: [-30, -140, 60, 74], pivot: [0, -100] }, { role: 'head', rect: [-22, -186, 44, 44], pivot: [0, -142] },
+  ]
+  const FIG_H = 186, SIZE = 3, ATTACK_REACH = 35, HEAD_NOD = 3, WOBBLE = 3
+  let state = 'walk', t = 0
+  const val = id => +$(id).value
+  function motion(piece, i, j, st) {
+    const left = piece.side === 'left', outward = left ? 1 : -1
+    let deg = 0, lift = 0
+    if (piece.role === 'arm') deg = st === 'attack' ? ATTACK_REACH * outward : st === 'walk' ? val('#rig-arm') * SWING[i] : val('#rig-arm') / 4 * SWING[j] * outward
+    else if (piece.role === 'leg' && st === 'walk') { if ((left ? LIFT[i] : LIFT[(i + 2) % 4]) > 0) { lift = val('#rig-step') * FIG_H / SIZE; deg = 4 * outward } }
+    else if (piece.role === 'head' && st === 'walk') deg = HEAD_NOD * BOB[(i + 3) % 4]
+    return { deg, lift }
+  }
+  function figure(ctx, p, x, y, scale, i, j, st, dots) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale)
+    if (st === 'walk') { ctx.translate(0, BOB[i] * val('#rig-bob') * 8); ctx.rotate(WOBBLE * LEAN[i] * RAD) }
+    else if (st === 'attack') ctx.scale(1.08, 1.08)
+    else if (j % 2) ctx.scale(1.02, 1.02)
+    for (const piece of PIECES) {
+      const m = motion(piece, i, j, st), [px, py] = piece.pivot, [rx, ry, rw, rh] = piece.rect
+      ctx.save(); ctx.translate(px, py - m.lift); ctx.rotate(m.deg * RAD); ctx.translate(-px, -py)
+      ctx.fillStyle = COL[piece.role]; ctx.fillRect(rx, ry, rw, rh)
+      ctx.strokeStyle = p.wall; ctx.lineWidth = 1.5 / scale; ctx.strokeRect(rx, ry, rw, rh)
+      if (dots && piece.role !== 'torso') { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = p.wall; ctx.stroke() }
+      ctx.restore()
+    }
+    ctx.restore()
+  }
+  s.draw = () => {
+    const { ctx } = s, p = P()
+    ctx.fillStyle = p.soft; ctx.fillRect(0, 0, 640, 300)
+    const i = Math.floor(t * val('#rig-gait')) % 4, j = Math.floor(t * 2) % 4
+    ctx.strokeStyle = p.line; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(30, 262); ctx.lineTo(610, 262); ctx.stroke()
+    figure(ctx, p, 150, 260, 1.25, i, j, state, true)
+    // the four steps of the cycle
+    for (let k = 0; k < 4; k++) {
+      const x = 345 + k * 80
+      if ((state === 'walk' ? i : j) === k && state !== 'attack') { ctx.fillStyle = p.accent; ctx.globalAlpha = 0.25; ctx.fillRect(x - 36, 96, 72, 176); ctx.globalAlpha = 1 }
+      figure(ctx, p, x, 260, 0.62, k, k, state, false)
+      s.font(12); ctx.fillStyle = p.muted; ctx.textAlign = 'center'; ctx.fillText(String(k + 1), x, 290)
+    }
+    for (const [id, unit] of [['#rig-arm', '°'], ['#rig-step', ' tiles'], ['#rig-gait', ''], ['#rig-bob', '']]) setText($(id + '-o'), $(id).value + unit)
+  }
+  const a = animate(s, dt => { t += dt }, $('#rig-play'))
+  seg('#rig-state', 'walk', v => { state = v; s.draw() })
+  for (const id of ['#rig-arm', '#rig-step', '#rig-gait', '#rig-bob']) $(id).addEventListener('input', () => s.draw())
+  $('#cv-rig').addEventListener('pointerdown', () => { if (!a.on) { t += 1 / val('#rig-gait'); s.draw() } })
+  s.fit()
+})
+
+// ── netcode ────────────────────────────────────────────────────────────
+safe(() => {
+  const s = stage('#cv-net', 640, 250), read = $('#net-read')
+  const TICK = 1000 / 30, STEP = 5, X0 = 150, X1 = 610, SNAP_PX = 2, BIG = 96, CORR_MS = 100, DELAY = 3, EXTRA = 3
+  const cl = v => clamp(v, X0, X1)
+  let now = 0, acc = 0, seq = 0, held = 0, rtt = 120, lastCorr = 0
+  const client = { x: 380, pending: [], corr: 0, age: CORR_MS }
+  const server = { x: 380, dir: 0, tick: 0, ack: 0, knock: 0, queue: [] }
+  const wire = [], snaps = []
+  const scriptDir = () => [1, 1, 0, -1, -1, 0][Math.floor(now / 850) % 6]
+  const drawn = () => client.x + client.corr * Math.max(0, 1 - client.age / CORR_MS)
+  function oneTick() {
+    // client: apply the input at once, keep it as pending, send it
+    const dir = held || scriptDir()
+    seq++; client.x = cl(client.x + dir * STEP); client.pending.push({ seq, dir })
+    if (client.pending.length > 90) client.pending.shift()
+    server.queue.push({ at: now + rtt / 2, seq, dir })
+    // server: consume what has arrived (at most two a tick while catching up), step, snapshot at 20 Hz
+    let took = 0
+    while (server.queue.length && server.queue[0].at <= now && took < 2) {
+      const inp = server.queue.shift(); took++
+      server.dir = inp.dir; server.ack = inp.seq
+      server.x = cl(server.x + inp.dir * STEP)
+    }
+    if (server.knock) { server.x = cl(server.x + server.knock); server.knock *= 0.72; if (Math.abs(server.knock) < 0.4) server.knock = 0 }
+    server.tick++
+    if (server.tick % 3 !== 2) wire.push({ at: now + rtt / 2, tick: server.tick, x: server.x, ack: server.ack })
+  }
+  function receive() {
+    while (wire.length && wire[0].at <= now) {
+      const snap = wire.shift()
+      // predict.js reconcile
+      const before = drawn()
+      client.x = snap.x
+      client.pending = client.pending.filter(q => q.seq > snap.ack)
+      for (const q of client.pending) client.x = cl(client.x + q.dir * STEP)
+      const err = before - client.x
+      client.corr = 0; client.age = 0
+      if (Math.abs(err) >= SNAP_PX && Math.abs(err) <= BIG) { client.corr = err; lastCorr = err }
+      snaps.push({ tick: snap.tick, x: snap.x, at: now })
+      if (snaps.length > 32) snaps.shift()
+    }
+  }
+  function otherView() {
+    if (!snaps.length) return server.x
+    const newest = snaps[snaps.length - 1], rt = Math.min(newest.tick + (now - newest.at) / TICK, newest.tick + EXTRA + DELAY) - DELAY
+    let i = snaps.length - 1
+    while (i > 0 && snaps[i].tick > rt) i--
+    const a = snaps[i], b = snaps[i + 1]
+    if (b && a.tick <= rt) return a.x + (b.x - a.x) * clamp((rt - a.tick) / (b.tick - a.tick), 0, 1)
+    const prev = snaps[i - 1]
+    if (!prev || a.tick > rt) return a.x
+    return a.x + (a.x - prev.x) / (a.tick - prev.tick) * Math.min(rt - a.tick, EXTRA)
+  }
+  function tick(dt) {
+    acc += dt * 1000
+    while (acc >= TICK) { acc -= TICK; now += TICK; receive(); oneTick() }
+    client.age = Math.min(CORR_MS, client.age + dt * 1000)
+  }
+  s.draw = () => {
+    const { ctx } = s, p = P()
+    ctx.fillStyle = p.panel; ctx.fillRect(0, 0, 640, 250)
+    const rows = [['your screen', drawn(), p.accent, 54], ['server', server.x, p.ink, 126], ["opponent's screen", otherView(), p.blue, 198]]
+    ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.setLineDash([3, 4])
+    for (const [, x] of rows) { ctx.beginPath(); ctx.moveTo(x, 26); ctx.lineTo(x, 226); ctx.stroke() }
+    ctx.setLineDash([])
+    for (const [label, x, col, y] of rows) {
+      ctx.strokeStyle = p.line; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X0 - 12, y + 12); ctx.lineTo(X1 + 12, y + 12); ctx.stroke()
+      ctx.fillStyle = col; ctx.fillRect(x - 11, y - 11, 22, 22)
+      s.font(12); ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      const words = label.split(' ')
+      if (words.length > 1) { ctx.fillText(words[0], 8, y - 6); ctx.fillText(words.slice(1).join(' '), 8, y + 9) } else ctx.fillText(label, 8, y + 1)
+    }
+    ctx.textBaseline = 'alphabetic'
+    setText($('#net-rtt-o'), rtt + ' ms')
+    const ahead = Math.abs(drawn() - server.x), behind = Math.abs(drawn() - otherView())
+    setText(read, `pending inputs ${client.pending.length} · you are ${ahead.toFixed(0)} px ahead of the server · the opponent sees you ${behind.toFixed(0)} px behind · view delay ≈ ${(rtt + DELAY * TICK).toFixed(0)} ms · last correction ${Math.abs(lastCorr).toFixed(0)} px`)
+  }
+  const a = animate(s, tick, $('#net-play'))
+  $('#net-rtt').addEventListener('input', e => { rtt = +e.target.value; s.draw() })
+  const hold = (id, d) => {
+    const b = $(id)
+    b.addEventListener('pointerdown', () => { held = d }); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { if (held === d) held = 0 })
+    b.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') held = d }); b.addEventListener('keyup', () => { if (held === d) held = 0 })
+  }
+  hold('#net-left', -1); hold('#net-right', 1)
+  $('#net-shove').addEventListener('click', () => { server.knock = server.x < (X0 + X1) / 2 ? 22 : -22; if (!a.on) { for (let k = 0; k < 30; k++) tick(1 / 30); s.draw() } })
+  if (still) for (let k = 0; k < 45; k++) tick(1 / 30)
+  s.fit()
+})
+})()
+</script>
+</body>
+</html>
