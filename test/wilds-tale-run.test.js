@@ -29,6 +29,10 @@ import { makeItem } from '../renderer/systems/inventory.js'
 import { hasTalent } from '../renderer/systems/talents.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
+import { skinBridges, isDeckSkin } from '../renderer/wilds/bridge-art.js'
+import { generatePiece } from '../renderer/wilds/piece.js'
+import { MapBuilder } from '../renderer/terrain/lib.js'
+import { takeDirtyTiles } from '../renderer/systems/tile-dirty.js'
 
 const S = 32
 const KIVIHIISI_DEF = JSON.parse(fs.readFileSync('renderer/data/monsters/kivihiisi.json', 'utf8'))
@@ -78,6 +82,29 @@ const point = (world, label, wx = pwx, wy = pwy) => {
   const p = getPiece(world, wx, wy).points.find(q => q.label === label)
   return { x: (wx - world.origin.wx) * PIECE + p.x, y: (wy - world.origin.wy) * PIECE + p.y }
 }
+// The Wilds' piers are plank deck cut to their neighbours (wilds/bridge-art.js),
+// and a plank a tale lays or lifts must leave the deck as a newly made piece
+// would wear it. freshDecks runs the generator's own pass over the place's
+// piece as its cells now stand and answers for a window tile.
+function freshDecks(t, wx = pwx, wy = pwy) {
+  const ox = (wx - t.world.origin.wx) * PIECE, oy = (wy - t.world.origin.wy) * PIECE
+  const b = new MapBuilder('t', 't', 't', PIECE, PIECE)
+  for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+    const c = t.state.map[oy + y][ox + x]
+    b.ground[y][x] = b.skin(c.skin)
+    b.prop[y][x] = c.overlay ? b.skin(c.overlay) : -1
+    b.walkG[y][x] = c.tile === TILE.FLOOR
+  }
+  skinBridges(b, { X0: wx * PIECE, Y0: wy * PIECE })
+  return (x, y) => b.palette[b.prop[y - oy][x - ox]] ?? null
+}
+// Every cell of row y from x0 to x1 wears what the generator would lay there now.
+function assertFreshRow(t, y, x0, x1, what) {
+  const fresh = freshDecks(t)
+  for (let x = x0; x <= x1; x++) assert.equal(t.state.map[y][x].overlay ?? null, fresh(x, y), `${what}: the deck at ${x},${y} is not cut to its neighbours`)
+}
+const beams = cell => { const m = /^ow_pier_deck_[hv]_(\d+)p?$/.exec(cell.overlay ?? ''); return m ? +m[1] : null }
+const planking = cell => /^ow_pier_deck_([hv])_/.exec(cell.overlay ?? '')?.[1] ?? null
 const put = (state, c, dx = 0, dy = 0) => { const p = state.player; p.x = c.x + dx; p.y = c.y + dy; p.px = p.x * S + 16; p.py = p.y * S + 16 }
 // Step the window one piece by walking the player past its margin.
 function shift(t, dx, dy) {
@@ -226,16 +253,39 @@ test('the hermit speaks his own lines beside the oven', () => {
 test('the tar pit: six logs light it, three pots mend the gap, and it stays mended', () => {
   const t = setup('tar', '1,1')
   const gaps = [1, 2, 3].map(i => point(t.world, `bridge gap ${i}`))
-  for (const g of gaps) assert.equal(t.state.map[g.y][g.x].tile, TILE.WALL, 'the gap is not broken')
+  const row = t.state.map[gaps[0].y], lo = Math.min(...gaps.map(g => g.x)), hi = Math.max(...gaps.map(g => g.x))
+  for (const g of gaps) { assert.equal(row[g.x].tile, TILE.WALL, 'the gap is not broken'); assert.ok(!row[g.x].overlay, 'planks float on the broken gap') }
+  // the deck breaks off at the gap with a proper end on each side: a beam
+  // (and the corner posts that come with it) facing the missing planks
+  assert.equal(beams(row[lo - 1]), 1 | 2 | 4, 'the deck west of the gap has no end')
+  assert.equal(beams(row[hi + 1]), 1 | 4 | 8, 'the deck east of the gap has no end')
+  assertFreshRow(t, gaps[0].y, lo - 4, hi + 3, 'broken')
+  // a new piece of the same deal is the whole deck: what the mended one must match
+  const whole = generatePiece(t.world.seed, pwx, pwy, getPiece(t.world, pwx, pwy).deal, 'tar')
+  const wholeAt = x => whole.cells[gaps[0].y - (pwy - t.world.origin.wy) * PIECE][x - (pwx - t.world.origin.wx) * PIECE].overlay
   t.state.player.inventory.push(makeItem('lumber', 6))
   put(t.state, point(t.world, 'tar pit'))
   tickTales(t.state, t.world, 0.016, t.hooks)
   assert.equal(t.flags.pit_lit, true)
   assert.equal(t.state.player.inventory.find(i => i.kind === 'tar')?.count, 3)
+  takeDirtyTiles(t.state.map)
   put(t.state, gaps[0], -1, 0); tickTales(t.state, t.world, 0.016, t.hooks)
+  // one plank down: it and the deck it joins are cut together, the gap's other side is untouched
+  const near = gaps[0].x < gaps[2].x ? -1 : 1   // which way the standing deck lies from the first gap
+  assert.equal(row[gaps[0].x].tile, TILE.FLOOR)
+  assert.equal(beams(row[gaps[0].x]), 1 | 4 | (near < 0 ? 2 : 8), 'the new plank does not end at the next gap')
+  assert.equal(beams(row[gaps[0].x + near]), 1 | 4, 'the deck still ends where the new plank joins it')
+  assert.equal(planking(row[gaps[0].x]), planking(row[gaps[0].x + near]), 'the new plank lies the other way from the deck')
+  assertFreshRow(t, gaps[0].y, lo - 4, hi + 3, 'one plank down')
+  // the tile layer is told of the plank and of the neighbour whose end closed
+  const dirty = takeDirtyTiles(t.state.map) ?? []
+  const told = new Set(); for (let i = 0; i < dirty.length; i += 2) told.add(`${dirty[i]},${dirty[i + 1]}`)
+  for (const x of [gaps[0].x, gaps[0].x + near]) assert.ok(told.has(`${x},${gaps[0].y}`), `the cell at ${x} is not marked for redrawing`)
   put(t.state, gaps[0]); tickTales(t.state, t.world, 0.016, t.hooks)
+  assertFreshRow(t, gaps[0].y, lo - 4, hi + 3, 'two planks down')
   put(t.state, gaps[1]); tickTales(t.state, t.world, 0.016, t.hooks)
   assert.equal(t.flags.bridge_done, true)
+  for (let x = lo - 4; x <= hi + 3; x++) assert.equal(row[x].overlay ?? null, wholeAt(x) ?? null, `the mended deck differs from a new one at ${x}`)
   assert.equal(t.rec.done, true)
   assert.ok(pickups(t.state).some(e => e.contents?.weaponType === 'tervajousi'), 'no bow at the camp')
 
@@ -245,8 +295,23 @@ test('the tar pit: six logs light it, three pots mend the gap, and it stays mend
   arriveTales(t.state, t.world, t.hooks, { fresh: true })
   for (const g of [1, 2, 3].map(i => point(t.world, `bridge gap ${i}`))) {
     assert.equal(t.state.map[g.y][g.x].tile, TILE.FLOOR)
-    assert.equal(t.state.map[g.y][g.x].overlay, 'ow_pier_log')
+    assert.equal(t.state.map[g.y][g.x].overlay, wholeAt(g.x))
   }
+  for (let x = lo - 4; x <= hi + 3; x++) assert.equal(t.state.map[gaps[0].y][x].overlay ?? null, wholeAt(x) ?? null, `the deck made anew differs at ${x}`)
+})
+
+test('the tar pit, half mended and come back to: the deck is cut from the flags as it was left', () => {
+  const t = setup('tar', '1,1', { flags: { pit_lit: true, bridge_seen: true, plank_1: true } })
+  const gaps = [1, 2, 3].map(i => point(t.world, `bridge gap ${i}`))
+  const row = t.state.map[gaps[0].y]
+  assert.equal(row[gaps[0].x].tile, TILE.FLOOR)
+  assert.ok(isDeckSkin(row[gaps[0].x].overlay), `the plank the flag remembers is ${row[gaps[0].x].overlay}`)
+  for (const g of gaps.slice(1)) assert.equal(row[g.x].tile, TILE.WALL)
+  assertFreshRow(t, gaps[0].y, Math.min(gaps[0].x, gaps[2].x) - 4, Math.max(gaps[0].x, gaps[2].x) + 3, 'half mended')
+  // a second arrival (the window re-centred) changes nothing
+  const before = row.map(c => c.overlay ?? null)
+  arriveTales(t.state, t.world, t.hooks)
+  assert.deepEqual(row.map(c => c.overlay ?? null), before)
 })
 
 // Review Focus 3
@@ -471,7 +536,17 @@ test('the Näkki, start to finish: the clapper, the bell, three meals, Toivo hom
   assert.equal(nakkis(t.state).length, 0, 'the Näkki is there before the bell is rung')
   ringAndFeed(t)
   assert.equal(t.flags.nakki_gone, true)
-  for (const g of gaps) { assert.equal(t.state.map[g.y][g.x].tile, TILE.FLOOR); assert.equal(t.state.map[g.y][g.x].overlay, 'ow_pier_log') }
+  // the four planks join the standing pier as one deck: its planking, no
+  // beam left where the pier used to end, and cut as a new piece would be
+  const pierEnd = point(t.world, 'pier end'), pierRow = t.state.map[pierEnd.y]
+  for (const g of gaps) {
+    assert.equal(pierRow[g.x].tile, TILE.FLOOR)
+    assert.ok(isDeckSkin(pierRow[g.x].overlay), `the plank at ${g.x} is ${pierRow[g.x].overlay}`)
+    assert.equal(planking(pierRow[g.x]), planking(pierRow[pierEnd.x]))
+  }
+  assert.equal(beams(pierRow[pierEnd.x]), 1 | 4, 'the pier still ends where it used to stop')
+  for (const g of gaps.slice(0, 3)) assert.equal(beams(pierRow[g.x]), 1 | 4)
+  assertFreshRow(t, pierEnd.y, pierEnd.x - 5, gaps[3].x + 1, 'the pier mended')
   assert.equal(t.rec.done, true)
   assert.deepEqual(t.calls.talents, ['lake_breath'])
   assert.ok(t.world.paid.has('nakki'))
@@ -482,6 +557,7 @@ test('the Näkki, start to finish: the clapper, the bell, three meals, Toivo hom
   enterWilds(t.state, t.world, { wx: 0, wy: 0 }, { buildEntities })
   arriveTales(t.state, t.world, t.hooks, { fresh: true })
   for (const g of [1, 2, 3, 4].map(i => point(t.world, `pier gap ${i}`))) assert.equal(t.state.map[g.y][g.x].tile, TILE.FLOOR)
+  { const e = point(t.world, 'pier end'); assertFreshRow(t, e.y, e.x - 5, e.x + 5, 'the pier made anew') }
   assert.equal(nakkis(t.state).length, 0)
 })
 

@@ -9,6 +9,7 @@ import { hashInt } from '../renderer/wilds/rand.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { TREES } from '../renderer/systems/lumber.js'
+import { isDeckSkin } from '../renderer/wilds/bridge-art.js'
 
 const SEEDS = [3, 77, 2024]
 const MONSTER_NAMES = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/index.json', import.meta.url), 'utf8'))
@@ -450,6 +451,9 @@ function talePieces(seed, id) {
   return out
 }
 const pt = (p, label) => p.points.find(q => q.label === label)
+// A tale's pier is plank deck like any bridge (wilds/bridge-art.js): which
+// sides of a deck cell carry an edge beam (1 N / 2 E / 4 S / 8 W), or null.
+const beams = (p, x, y) => { const m = /^ow_pier_deck_[hv]_(\d+)p?$/.exec(p.cells[y]?.[x]?.overlay ?? ''); return m ? +m[1] : null }
 
 test('a tale piece has its named points, each reachable from every gate', () => {
   for (const seed of SEEDS) for (const id of Object.keys(POINTS)) for (const p of talePieces(seed, id)) {
@@ -486,10 +490,12 @@ test('the causeway: a deck with a three-cell gap is the only way to the islet', 
   for (const seed of SEEDS) for (const p of talePieces(seed, 'tar')) {
     const gaps = [1, 2, 3].map(i => pt(p, `bridge gap ${i}`))
     assert.ok(gaps[0].y === gaps[1].y && gaps[1].y === gaps[2].y && gaps[1].x === gaps[0].x + 1 && gaps[2].x === gaps[1].x + 1)
-    for (const g of gaps) assert.equal(p.cells[g.y][g.x].overlay, 'ow_pier_log')
+    // (the piece is made whole; the quest breaks the gap on arrival)
+    for (const g of gaps) assert.equal(beams(p, g.x, g.y), 1 | 4, 'a gap cell is not mid-deck: a beam north and south, none along the causeway')
     let deck = 0
-    for (let x = gaps[0].x - 8; x <= gaps[2].x + 8; x++) if (p.cells[gaps[0].y][x]?.overlay === 'ow_pier_log') deck++
+    for (let x = gaps[0].x - 8; x <= gaps[2].x + 8; x++) if (isDeckSkin(p.cells[gaps[0].y][x]?.overlay)) deck++
     assert.ok(deck >= 9, `a deck of ${deck}`)
+    for (const row of p.cells) for (const c of row) assert.ok(!/^ow_pier_log/.test(c.overlay ?? ''), 'a bare log left on the causeway')
     const chest = p.spawns.find(s => s.kind === 'chest' && dist(s, p.main) <= 3)
     assert.ok(chest, 'no chest on the islet')
     // break the gap as the quest does: the islet must be cut off
@@ -526,7 +532,10 @@ test('the bell lake: a pier that stops short of the orchard island, a bell, an i
     const at = `nakki at ${p.wx},${p.wy} (seed ${seed})`
     const end = pt(p, 'pier end'), bell = pt(p, 'bell')
     assert.deepEqual([bell.x, bell.y], [end.x, end.y])
-    assert.ok(walk(p.cells[end.y][end.x]) && p.cells[end.y][end.x].overlay === 'ow_pier_log', `${at}: the pier end is not a standing plank`)
+    assert.ok(walk(p.cells[end.y][end.x]) && isDeckSkin(p.cells[end.y][end.x].overlay), `${at}: the pier end is not a standing plank`)
+    // it breaks off with a proper end: beams on the three sides the water is
+    assert.equal(beams(p, end.x, end.y), 1 | 2 | 4, `${at}: the pier does not end where it stops`)
+    assert.equal(beams(p, end.x - 1, end.y), 1 | 4, `${at}: the pier is cut short of its end`)
     assert.ok(around(p, bell, 1, s => s === 'ow_prop_bell') === 1, `${at}: no bell`)
     const gaps = [1, 2, 3, 4].map(i => pt(p, `pier gap ${i}`))
     gaps.forEach((g, i) => {
@@ -666,10 +675,12 @@ test('the pond: a pier from the bank to an end with deep water on three sides', 
     const at = `lalli at ${p.wx},${p.wy} (seed ${seed})`
     assert.equal(end.y, bank.y)
     assert.ok(end.x - bank.x >= 4, `${at}: a pier of ${end.x - bank.x}`)
-    assert.ok(walk(p.cells[bank.y][bank.x]) && p.cells[bank.y][bank.x].overlay !== 'ow_pier_log', `${at}: the bank is not land`)
+    assert.ok(walk(p.cells[bank.y][bank.x]) && !/^ow_pier_/.test(p.cells[bank.y][bank.x].overlay ?? ''), `${at}: the bank is not land`)
     for (let x = bank.x + 1; x <= end.x; x++) {
-      assert.equal(p.cells[end.y][x].overlay, 'ow_pier_log', `${at}: no plank at ${x}`)
+      assert.ok(isDeckSkin(p.cells[end.y][x].overlay), `${at}: no plank at ${x}`)
       assert.ok(walk(p.cells[end.y][x]), `${at}: a plank nobody can stand on`)
+      // one deck from the bank to its end: beamed on the water sides only
+      assert.equal(beams(p, x, end.y), 1 | 4 | (x === end.x ? 2 : 0) | (x === bank.x + 1 ? 8 : 0), `${at}: the deck is cut at ${x}`)
     }
     for (const [dx, dy] of [[1, 0], [0, 1], [0, -1]]) assert.ok(!walk(p.cells[end.y + dy][end.x + dx]), `${at}: the pier's end is not surrounded by water`)
     assert.ok(!walk(p.cells[pond.y][pond.x]))

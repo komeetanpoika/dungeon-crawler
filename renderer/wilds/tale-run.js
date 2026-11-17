@@ -28,6 +28,7 @@ import { EPISODE_MODULES } from '../systems/episodes/index.js'
 import * as lalli from './tale-lalli.js'
 import { queueToast, think } from '../systems/feedback.js'
 import { TILE } from '../systems/entities.js'
+import { recutDeck } from './bridge-art.js'
 
 // tales with a module of their own (`engine: 'wilds'`), not one borrowed from an older mode
 const WILDS_MODULES = { lalli }
@@ -135,6 +136,9 @@ function makeRun(state, world, vKey, rec, hooks) {
       turnVillage: () => {},
       cellKey: (x, y) => { const piece = placePiece(); if (!piece) return null; const o = toWin(world, piece, { x: 0, y: 0 }); return `${x - o.x},${y - o.y}` },
       cellOf: key => { const piece = placePiece(); if (!piece) return null; const [x, y] = key.split(',').map(Number); return toWin(world, piece, { x, y }) },
+      // a plank laid or lifted on a pier (the causeway's gaps, the ferryman's
+      // pier): the Wilds' bridges are plank deck, cut again round the change
+      deck: c => recutDeck(hooks.getState().map, c.x, c.y, { X0: world.origin.wx * PIECE, Y0: world.origin.wy * PIECE }),
       isGiver: e => e.wildsKey === vKey || e.taleKey === taleKey,
       giverCell: villagePoint,
       sees: c => { const p = hooks.getState().player; return !!c && Math.max(Math.abs(c.x - p.x), Math.abs(c.y - p.y)) <= SEES_TILES },

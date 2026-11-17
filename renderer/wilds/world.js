@@ -15,7 +15,7 @@ import { TALE_IDS } from '../data/tales.js'
 
 // Bump when the generator's output changes: spawn indices and the ground
 // itself in an older save no longer match, so its records are dropped.
-export const GEN = 7
+export const GEN = 8
 export const FORGET_PIECES = 5      // Chebyshev pieces from the player
 export const FORGET_SECONDS = 1200  // of play since the piece was last in the window
 export const CACHE_MAX = 49

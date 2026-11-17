@@ -195,8 +195,10 @@ export function shoreline(b) {
 // filled: it becomes plain land with no logs at all. Collision is untouched.
 // Run before shoreline() so the bank cells under the logs take their rim.
 // Returns how many cells changed.
+// (The Wilds lays its bridges as plank deck, ow_pier_deck_*, cut by
+// wilds/bridge-art.js: a pier too, though no hand-made map has one.)
 const PIER_SKINS = ['ow_pier_log', 'ow_pier_log_v', 'ow_pier_post']
-export const isPierSkin = n => PIER_SKINS.includes(n)
+export const isPierSkin = n => PIER_SKINS.includes(n) || (typeof n === 'string' && n.startsWith('ow_pier_deck_'))
 export function layPiersOverWater(b, { grass = 'ow_grass_0' } = {}) {
   const at = (x, y) => b.in(x, y) ? b.palette[b.ground[y][x]] : null
   const pierAt = (x, y) => isPierSkin(at(x, y))

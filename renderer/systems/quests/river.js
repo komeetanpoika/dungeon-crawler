@@ -35,6 +35,8 @@ const bowOnGround = state => state.entities.some(e => e.type === 'floating_item'
 
 // A gap cell is baked as a walkable pier-log prop over a water skin. Broken,
 // it is water: WALL and losClear, no log art, the skin untouched.
+// (ctx.deck, optional: where the bridges are plank deck cut to their
+// neighbours, the caller re-cuts the art round a gap that changed.)
 export function breakGap(map, c) {
   const cell = map[c.y]?.[c.x]
   if (!cell) return
@@ -79,6 +81,7 @@ export function onArrive(ctx) {
     const c = poiCell(ctx.mapData, label)
     if (!c) return
     if (flags.bridge_done || flags[plankFlag(i)]) plankGap(state.map, c); else breakGap(state.map, c)
+    ctx.deck?.(c)
   })
   if (flags.pit_lit) lightPit(ctx)
   if (flags.bridge_done && !flags.bow_given) dropBow(ctx)
@@ -131,6 +134,7 @@ export function tick(ctx, delta) {
     if (!beside(player, c)) continue
     removeItem(player, ti)
     plankGap(state.map, c)
+    ctx.deck?.(c)
     ctx.set(plankFlag(i))
     sfx(state, 'drop', { px: c.x * 32 + 16, py: c.y * 32 + 16 })
     if (GAPS.every((_, j) => flags[plankFlag(j)])) {

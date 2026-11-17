@@ -4,9 +4,10 @@
 //
 // Order matters and is always the same: open the main pad, run a path from
 // each gate to it, pick the small things' spots clear of those paths, run a
-// trail from each to the main thing, then stamp the structures. Every
-// structure sits inside its own opened pad, so a house or a pond laid over a
-// path end never cuts the piece in two.
+// trail from each to the main thing, then stamp the structures. A structure
+// stands on a path only on its own site's ground (the opened pad, a tale's
+// circles: terrain.js refuses it anywhere else), where there is room to walk
+// round it; last of all the dressing that still blocks a way is taken up.
 import { PIECE, FRAME, tierAt, pieceBiome, fixedMain, villageAt, caveDepthFor, pieceKey, BIOME_NAMES } from './layout.js'
 import { hash, hashInt, mulberry32 } from './rand.js'
 import { makeSites, layoutTale, TALE_PAD } from './sites.js'
@@ -142,6 +143,9 @@ export function placeFeatures(t, piece) {
     (geo?.ways ?? []).some(c => Math.abs(c.x - x) <= margin + 1 && Math.abs(c.y - y) <= margin + 1)
   piece.main = { kind, x: mx, y: my }
   t.open(mx, my, pad)
+  // a tale's place is more than its pad: what it builds in its circles may stand on a path
+  for (const k of keepOut) for (let dy = -k.r; dy <= k.r; dy++) for (let dx = -k.r; dx <= k.r; dx++)
+    if (dx * dx + dy * dy <= k.r * k.r) t.claim(k.x + dx, k.y + dy)
   for (const side of ['N', 'E', 'S', 'W']) { const g = t.gateInner(side); t.path(g.x, g.y, hub.x, hub.y, 2) }
 
   // ---- small things: spots first, then trails -------------------------------
@@ -155,6 +159,7 @@ export function placeFeatures(t, piece) {
   // guarded things: a nest round a chest, old stones with something in them
   if (kind !== 'village') smallKinds.push('nest', 'nest', 'stones')
   const padOf = k => k === 'hut' ? 5 : k === 'stones' ? 3 : 2
+  const mainPad = pad
   const want = 2 + Math.floor(rng() * 3)
   const lo = FRAME + 5, hi = PIECE - FRAME - 6
   for (let i = 0; i < want; i++) {
@@ -162,7 +167,8 @@ export function placeFeatures(t, piece) {
     const pad = padOf(k)
     for (let tries = 0; tries < 60; tries++) {
       const x = ri(lo, hi), y = ri(lo, hi)
-      if (Math.hypot(x - mx, y - my) < pad + 8 || kept(x, y, 6)) continue
+      // (a tale's pad may be a lake: nothing small is dealt into it)
+      if (Math.hypot(x - mx, y - my) < pad + 8 || (geo && Math.hypot(x - mx, y - my) < mainPad + pad + 1) || kept(x, y, 6)) continue
       if (piece.small.some(s => Math.hypot(x - s.x, y - s.y) < 10)) continue
       let crossed = false
       for (let dy = -pad - 1; dy <= pad + 1 && !crossed; dy++) for (let dx = -pad - 1; dx <= pad + 1; dx++) if (t.onPath(x + dx, y + dy)) { crossed = true; break }
@@ -226,7 +232,7 @@ export function placeFeatures(t, piece) {
     if (tier >= 4 && rng() < 0.5) for (let i = 0; i < 3; i++) place({ kind: 'manticore' }, mx, my, 1, 3)
     else for (let i = 0; i < (tier >= 4 ? 2 : 1); i++) place({ kind: 'ogre' }, mx, my, 1, 2)
     place({ kind: 'chest' }, mx, my, 3, 5)
-    for (let i = 0; i < 5; i++) { const at = freeSpot(mx, my, 5, 7); if (at) { t.setProp(at.x, at.y, pick(rocksFor(here))); hold(at.x, at.y) } }
+    for (let i = 0; i < 5; i++) { const at = freeSpot(mx, my, 5, 7); if (at && !t.onPath(at.x, at.y)) { t.setProp(at.x, at.y, pick(rocksFor(here))); hold(at.x, at.y) } }
   } else if (kind === 'ruin') {
     sites.ruin(mx, my)
     place({ kind: 'chest' }, mx, my + 3, 0, 2)
@@ -290,6 +296,43 @@ export function placeFeatures(t, piece) {
       }
     }
   }
+  // ---- keep the paths whole ----------------------------------------------------
+  // From where the paths meet, every gate and every small thing must still be
+  // reached over path and the sites' own ground alone. What a site is (a
+  // house, a pond, a heap of rock) leaves such ground to walk round it; its
+  // dressing, where it turns out to stand in the one way left, is taken up.
+  const ground = (x, y) => t.inside(x, y) && (t.onPath(x, y) || t.onSite(x, y))
+  const loose = new Set(sites.dressing.map(d => d.y * PIECE + d.x))
+  const clearWay = goal => {
+    const prev = new Int32Array(PIECE * PIECE).fill(-2)
+    // fewest pieces of dressing first: `now` is walked at no cost, `later` costs one more
+    let now = [piece.spawnPoint.y * PIECE + piece.spawnPoint.x], later = []
+    prev[now[0]] = -1
+    while (now.length) {
+      for (let q = 0; q < now.length; q++) {
+        const i = now[q], x = i % PIECE, y = (i / PIECE) | 0
+        if (goal(x, y)) {
+          for (let k = i; k >= 0; k = prev[k]) if (loose.has(k) && !t.walkable(k % PIECE, (k / PIECE) | 0)) t.clear(k % PIECE, (k / PIECE) | 0)
+          return
+        }
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const n = (y + dy) * PIECE + x + dx
+          if (!ground(x + dx, y + dy) || prev[n] !== -2) continue
+          if (t.walkable(x + dx, y + dy)) { prev[n] = i; now.push(n) } else if (loose.has(n)) { prev[n] = i; later.push(n) }
+        }
+      }
+      now = later; later = []
+    }
+  }
+  for (const side of ['N', 'E', 'S', 'W']) { const g = t.gateInner(side); clearWay((x, y) => x === g.x && y === g.y) }
+  for (const s of piece.small) clearWay((x, y) => Math.hypot(x - s.x, y - s.y) <= padOf(s.kind))
+  // nor does it stand in the corner between two cells of a bridge, which would then only touch
+  const deck = (x, y) => t.walkable(x, y) && (t.propAt(x, y) ?? '').startsWith('ow_pier')
+  for (const d of sites.dressing) {
+    if (t.walkable(d.x, d.y)) continue
+    if ([[1, 1], [1, -1], [-1, 1], [-1, -1]].some(([dx, dy]) => deck(d.x + dx, d.y) && deck(d.x, d.y + dy) && !t.walkable(d.x + dx, d.y + dy))) t.clear(d.x, d.y)
+  }
+
   // ---- the packs that roam between ---------------------------------------------
   // Two or three in wild land (one more far out), one or two round a village
   // and those well away from it. Half the wild pieces post one on a road.

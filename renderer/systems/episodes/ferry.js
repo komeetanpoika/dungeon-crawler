@@ -20,6 +20,8 @@ const onCell = (entity, c) => !!c && entity.x === c.x && entity.y === c.y
 // go on the overlay over the untouched water skin, exactly how the rest of
 // the pier is baked (a walkable pier-log prop over lake ground): the log art
 // is transparent above and below the planks and needs water showing through.
+// (ctx.deck, optional: where the piers are plank deck cut to their
+// neighbours, the caller re-cuts the art round each plank laid.)
 function openGaps(ctx) {
   const { state, mapData } = ctx
   for (const spot of mapData.pois.filter(p => GAP_RE.test(p.label))) {
@@ -29,6 +31,7 @@ function openGaps(ctx) {
     cell.overlay = 'ow_pier_log'
     delete cell.losClear
     markTileDirty(state.map, spot.x, spot.y)
+    ctx.deck?.(spot)
   }
 }
 
