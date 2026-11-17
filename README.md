@@ -46,6 +46,7 @@ server/                 Static file server and the PvP WebSocket server
 tools/                  Editor, monster lab and bench, map generators, art pipelines
 assets/                 Source art the runtime art is built from
 test/                   node:test suites, one per system
+guide/                  Visual field guide to the mechanics and algorithms (open index.html)
 ```
 
 ## Testing
