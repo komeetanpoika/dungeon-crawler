@@ -1,11 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { isHouseDoorArt, isHouseWallArt, houseDoorsForMap, tierForDoor, storyForDoor, storyStructures, INTERIOR_DEPTH, SAFE_RADIUS } from '../renderer/systems/houses.js'
+import { isHouseDoorArt, isHouseWallArt, houseDoorsForMap, tierForDoor, storyForDoor, INTERIOR_DEPTH, SAFE_RADIUS } from '../renderer/systems/houses.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { EPISODES } from '../renderer/data/leaps.js'
-
-const STRUCTURES = JSON.parse(readFileSync(new URL('../renderer/data/structures.json', import.meta.url)))
 
 const byName = Object.fromEntries(Object.values(OPEN_MAPS).map(m => [m.name, m]))
 const propArt = (m, x, y) => { const pi = m.prop[y]?.[x]; return pi >= 0 ? m.palette[pi] : null }
@@ -115,37 +112,5 @@ describe('tier distribution across the real maps', () => {
     const data = { pois: [{ kind: 'village', x: 60, y: 60 }, { kind: 'camp', x: 5, y: 5 }] }
     assert.equal(tierForDoor(data, 7, 7, 'ow_house_door'), 'safe')
     assert.equal(tierForDoor(data, 30, 30, 'ow_house_door'), 'hut')
-  })
-})
-
-describe('storyStructures', () => {
-  it("resolves Toivo's hut to the toivo_kitchen prefab with targetDepth 19", () => {
-    const out = storyStructures(STRUCTURES, EPISODES['lake-1-ferry'], "Toivo's hut")
-    assert.deepEqual(Object.keys(out), ['toivo_kitchen'])
-    assert.equal(out.toivo_kitchen.targetDepth, INTERIOR_DEPTH)
-    assert.equal(out.toivo_kitchen.w, STRUCTURES.toivo_kitchen.w)
-    assert.deepEqual(out.toivo_kitchen.cells, STRUCTURES.toivo_kitchen.cells)
-  })
-  it('resolves the other two story houses', () => {
-    assert.deepEqual(Object.keys(storyStructures(STRUCTURES, EPISODES['highland-2-fold'], "Aino's house")), ['aino_larder'])
-    assert.deepEqual(Object.keys(storyStructures(STRUCTURES, EPISODES['marsh-3-hermit'], 'hermit hut')), ['hermit_woodpile'])
-  })
-  it('is {} when the story is null', () => {
-    assert.deepEqual(storyStructures(STRUCTURES, EPISODES['lake-1-ferry'], null), {})
-  })
-  it('is {} for a generic house (no story) even with an episode present', () => {
-    assert.deepEqual(storyStructures(STRUCTURES, EPISODES['lake-1-ferry'], undefined), {})
-  })
-  it('is {} when the named room is missing from structures.json (warns once)', () => {
-    const warnings = []
-    const orig = console.warn
-    console.warn = (...args) => warnings.push(args.join(' '))
-    try {
-      const out = storyStructures({}, EPISODES['lake-1-ferry'], "Toivo's hut")
-      assert.deepEqual(out, {})
-      assert.equal(warnings.length, 1)
-    } finally {
-      console.warn = orig
-    }
   })
 })

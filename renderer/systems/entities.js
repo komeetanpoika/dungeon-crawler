@@ -241,6 +241,12 @@ export function computePlayerFOV(map, player, radius = 8, { los = true } = {}) {
         t.visible = true
         t.explored = true
         lit.push(t)
+        // a house's lower wall face lights the face row and wall top above it,
+        // which no ray reaches past it (renderer/interior/walls.js)
+        for (let k = 1; k <= (t.seeUp ?? 0); k++) {
+          const a = map[ty - k]?.[tx]
+          if (a && !a.visible) { a.visible = true; a.explored = true; lit.push(a) }
+        }
       }
     }
   }

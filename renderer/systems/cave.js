@@ -13,12 +13,14 @@ const centered = n => n * TILE_SIZE + TILE_SIZE / 2
 export const CAVE_RESET_TIME = 180
 
 // entrance: {x, y, caveDepth, label}; dungeon: {map, entities, playerSpawn,
-// theme} — either freshly generated or a stored instance, which additionally
-// carries the boss-drop flags and any unclaimed key.
+// theme, exit?} — either freshly generated or a stored instance, which
+// additionally carries the boss-drop flags and any unclaimed key. A house
+// gives its front door as `exit` (a gap in its south wall, beside the
+// spawn); a cave's way out is the stairs under the spawn.
 export function buildCaveState(surface, entrance, dungeon) {
   const { map, entities, playerSpawn, theme } = dungeon
-  // the way back out: the spawn tile is the stairs you came down
-  map[playerSpawn.y][playerSpawn.x].tile = TILE.STAIRS_UP
+  const exit = dungeon.exit ?? playerSpawn
+  if (!dungeon.exit) map[playerSpawn.y][playerSpawn.x].tile = TILE.STAIRS_UP
   return {
     ...surface,
     level: entrance.caveDepth,
@@ -48,7 +50,8 @@ export function buildCaveState(surface, entrance, dungeon) {
     cave: {
       surface,
       mouth: { x: entrance.x, y: entrance.y },
-      stairs: { x: playerSpawn.x, y: playerSpawn.y },
+      stairs: { x: exit.x, y: exit.y },
+      spawn: { x: playerSpawn.x, y: playerSpawn.y },
       label: entrance.label,
       offStairs: false,
     },
@@ -60,7 +63,7 @@ export function buildCaveState(surface, entrance, dungeon) {
 // again until they step off it. The cave itself is stored as an instance so
 // re-entering finds it exactly as left — killed enemies dead, loot looted.
 export function restoreSurface(caveState) {
-  const { surface, mouth, label, stairs } = caveState.cave
+  const { surface, mouth, label, stairs, spawn } = caveState.cave
   return {
     ...surface,
     caveInstances: {
@@ -69,6 +72,8 @@ export function restoreSurface(caveState) {
         map: caveState.map,
         entities: caveState.entities,
         stairs: { ...stairs },
+        // a house's spawn is not its way out; a cave's is (and old saves have none)
+        ...(spawn && (spawn.x !== stairs.x || spawn.y !== stairs.y) ? { spawn: { ...spawn }, exit: { ...stairs } } : {}),
         theme: caveState.theme,
         level: caveState.level,
         dropSpawned: caveState.dropSpawned,

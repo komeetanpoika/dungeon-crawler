@@ -6,6 +6,7 @@
 import { makePlan } from './plan.js'
 import { buildCells } from './walls.js'
 import { assignRoles, floorsFor, furnish } from './furnish.js'
+import { HOME } from './recipes.js'
 import { VERSIONS, TRADE_LIST, occupants, loot, dress } from './versions.js'
 import { mulberry32, shuffle } from './rng.js'
 import { TILE } from '../systems/entities.js'
@@ -34,7 +35,13 @@ export function generateInterior(spec, { solved = false } = {}) {
   const roles = assignRoles(plan, { version: spec.version, trade: spec.trade, story: spec.story, rng })
   const floors = floorsFor(plan, roles, rng, spec.version)
   const map = buildCells(plan, { palette: spec.palette, floorOf: id => floors.get(id) })
-  furnish(map, plan, roles, { version: spec.version, trade: spec.trade, rng })
+  // a story house of one room is a cottage, with its story room's must-haves in it
+  const extra = {}
+  const storyRole = spec.story?.role
+  if (storyRole && ![...roles.values()].includes(storyRole) && HOME[storyRole]) {
+    extra[plan.entry] = { face: HOME[storyRole].face.filter(e => e.must), wall: HOME[storyRole].wall.filter(e => e.must) }
+  }
+  furnish(map, plan, roles, { version: spec.version, trade: spec.trade, rng, extra })
   dress(map, plan, spec, rng)
 
   const key = c => `${c.x},${c.y}`

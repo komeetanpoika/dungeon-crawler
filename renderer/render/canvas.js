@@ -1211,12 +1211,15 @@ export class Renderer {
     this.tileLayer.rekey?.(oldMap, map, dxTiles / CHUNK, dyTiles / CHUNK)
   }
 
-  updateCamera(player, shake = 0, fx = null) {
+  // `frame`: { w, h } in px of a map to keep whole in view (a house): on an
+  // axis where it fits the window it is centred, on the other the camera
+  // follows the player as everywhere else.
+  updateCamera(player, shake = 0, fx = null, frame = null) {
     const px = player.px ?? (player.x * this.S + this.S / 2)
     const py = player.py ?? (player.y * this.S + this.S / 2)
     const o = shakeOffset(shake)
-    this.camX = px - this.viewW / 2 + o.x
-    this.camY = py - this.viewH / 2 + o.y
+    this.camX = (frame && frame.w <= this.viewW ? (frame.w - this.viewW) / 2 : px - this.viewW / 2) + o.x
+    this.camY = (frame && frame.h <= this.viewH ? (frame.h - this.viewH) / 2 : py - this.viewH / 2) + o.y
     if (fx) { this.camX += fx.wobbleX; this.camY += fx.wobbleY }
   }
 

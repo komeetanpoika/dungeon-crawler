@@ -5,8 +5,8 @@ import { buildOpenMap } from '../renderer/systems/openmap.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
-import { generateInterior } from '../renderer/systems/interior.js'
-import { INTERIOR_DEPTH, INTERIOR_CONFIG } from '../renderer/systems/houses.js'
+import { generateInterior, specFor } from '../renderer/interior/index.js'
+import { INTERIOR_DEPTH } from '../renderer/systems/houses.js'
 
 const T = 32
 const dungeonMap = () => Array.from({ length: 6 }, () =>
@@ -237,16 +237,28 @@ describe('house doors round-trip through the cave transition', () => {
 
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
   const surface = { ...surfaceState(), houseDoors: surfaceMap.houseDoors, caveInstances: {} }
-  const interior = generateInterior(INTERIOR_CONFIG.safe, { structures: {} })
+  const interior = generateInterior(specFor({ version: 'home', seed: 3, label: door.label }))
 
-  it('buildCaveState labels the cave with the door label, at the interior depth, spawn as up-stairs', () => {
+  it('buildCaveState labels the cave with the door label, at the interior depth; the way out is the front door', () => {
     const state = buildCaveState(surface, entrance, {
-      map: interior.map, entities: [], playerSpawn: interior.playerSpawn, theme: {},
+      map: interior.map, entities: [], playerSpawn: interior.playerSpawn, exit: interior.exit, theme: {},
     })
     assert.equal(state.cave.label, door.label)
     assert.equal(state.level, INTERIOR_DEPTH)
-    assert.equal(state.map[interior.playerSpawn.y][interior.playerSpawn.x].tile, TILE.STAIRS_UP)
     assert.deepEqual([state.player.x, state.player.y], [interior.playerSpawn.x, interior.playerSpawn.y])
+    assert.deepEqual(state.cave.stairs, interior.exit)
+    assert.equal(state.map[interior.exit.y][interior.exit.x].tile, TILE.FLOOR_WOOD, 'the front door stays a floor')
+    assert.ok(!state.map.flat().some(c => c.tile === TILE.STAIRS_UP), 'no stairs in a house')
+  })
+
+  it('restoreSurface keeps the spawn and the way out on the stored instance', () => {
+    const state = buildCaveState(surface, entrance, {
+      map: interior.map, entities: [], playerSpawn: interior.playerSpawn, exit: interior.exit, theme: {},
+    })
+    const inst = restoreSurface(state).caveInstances[door.label]
+    assert.deepEqual(inst.spawn, interior.playerSpawn)
+    assert.deepEqual(inst.exit, interior.exit)
+    assert.deepEqual(inst.stairs, interior.exit)
   })
 
   it('restoreSurface stores the instance under the door label, cleared (no boss), player back on the door cell, entranceHold set', () => {

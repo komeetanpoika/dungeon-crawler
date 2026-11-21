@@ -7,15 +7,16 @@ import { mulberry32, hashStr, int, pick, chance, weighted, shuffle } from './rng
 import { TILE } from '../systems/entities.js'
 
 // The light inside, per version (a DEPTH_THEMES-shaped theme for the cave state).
+// `enter` is what the player notices stepping in.
 const theme = (bgColor, tint, fogAlpha) => ({ floorTile: 'floor_wood', bgColor, tint, fogAlpha })
 export const VERSIONS = {
-  home: { theme: theme('#0d0906', null, 0.35) },
-  empty: { theme: theme('#0b0806', null, 0.45) },
-  abandoned: { theme: theme('#06070a', 'rgba(30,45,70,0.16)', 0.72) },
-  hideout: { theme: theme('#0c0806', 'rgba(70,35,10,0.10)', 0.55) },
-  nest: { theme: theme('#050505', 'rgba(20,32,20,0.20)', 0.75) },
-  ruin: { theme: theme('#070809', 'rgba(20,30,50,0.14)', 0.68) },
-  sunroom: { theme: theme('#0f0b06', null, 0.25) },
+  home: { theme: theme('#0d0906', null, 0.35), enter: 'Warm air and woodsmoke.' },
+  empty: { theme: theme('#0b0806', null, 0.45), enter: 'Nobody is home.' },
+  abandoned: { theme: theme('#06070a', 'rgba(30,45,70,0.16)', 0.72), enter: 'Dust, and a long silence.' },
+  hideout: { theme: theme('#0c0806', 'rgba(70,35,10,0.10)', 0.55), enter: 'The talk stops. Someone is in here.' },
+  nest: { theme: theme('#050505', 'rgba(20,32,20,0.20)', 0.75), enter: 'Webs. Everywhere, webs.' },
+  ruin: { theme: theme('#070809', 'rgba(20,30,50,0.14)', 0.68), enter: 'Cold stone and old bones.' },
+  sunroom: { theme: theme('#0f0b06', null, 0.25), enter: 'Glass glints on every shelf.' },
 }
 
 // A tale's story room (data/tales.js, data/leaps.js `houses[label].room`) ->

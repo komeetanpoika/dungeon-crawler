@@ -159,7 +159,7 @@ export function makeSites(c) {
     }
     // the doorstep stays clear
     for (let i = -1; i <= 1; i++) { t.clear(dx + i, dy + 1); hold(dx + i, dy + 1) }
-    c.door(dx, dy, tier, story)
+    c.door(dx, dy, tier, story, { look: { w, storeys, wall } })
     return { x0, x1: x0 + w - 1, top, w }
   }
 
@@ -265,7 +265,7 @@ export function makeSites(c) {
     row(cx - 1, cy - 2, ['ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r'])
     row(cx - 1, cy - 1, ['ow_brick', 'ow_brick', 'ow_brick'])
     row(cx - 1, cy, ['ow_house_wall_stone_l', 'ow_house_arch_stone', 'ow_house_wall_stone_r'])
-    c.door(cx, cy, 'ruin')
+    c.door(cx, cy, 'ruin', null, { look: { w: 3, storeys: 2, wall: 'stone' } })
     for (let i = -1; i <= 1; i++) for (let j = 1; j <= 2; j++) { t.clear(cx + i, cy + j); hold(cx + i, cy + j) }
     const wall = (x, y, skin) => { if (!t.onPath(x, y) && !c.taken(x, y)) put(x, y, skin) }
     // north wall: parapet over brick, in runs

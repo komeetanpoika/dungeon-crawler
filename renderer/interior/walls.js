@@ -28,6 +28,9 @@ export function buildCells(plan, { palette, floorOf }) {
       const set = ch === 'u' ? kit.faceU : kit.faceL
       c.skin = l && r ? (set.lr ?? set.m) : l ? set.l : r ? set.r : set.m
       c.roomId = roomAt(x, y)?.id ?? null
+      // no ray reaches the upper face or the wall top past the lower face:
+      // when the lower face is seen, so are they (systems/entities.js)
+      if (ch === 'l') c.seeUp = 2
     } else if (ch === '.' || ch === 'd' || ch === 'E') {
       // a doorway takes the floor of the room it opens into (below, then beside)
       const room = roomAt(x, y) ?? roomAt(x, y + 1) ?? roomAt(x + 1, y) ?? roomAt(x - 1, y) ?? roomAt(x, y - 1)

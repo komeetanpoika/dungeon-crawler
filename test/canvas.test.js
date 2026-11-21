@@ -276,6 +276,18 @@ describe('Renderer DPR-aware resize', () => {
     assert.equal(r.camY, 500 - 150)
     globalThis.devicePixelRatio = prev
   })
+
+  // a house smaller than the window is framed whole, wherever the player stands in it
+  it('centres a frame that fits the view on that axis, and follows the player on one that does not', () => {
+    const c = fakeCanvas(400, 300)
+    const r = new Renderer(c)
+    r.resize()
+    r.updateCamera({ px: 40, py: 250 }, 0, null, { w: 320, h: 640 })
+    assert.equal(r.camX, (320 - 400) / 2)   // 320 wide fits: centred
+    assert.equal(r.camY, 250 - 150)          // 640 tall does not: follows
+    r.updateCamera({ px: 40, py: 250 }, 0, null, null)
+    assert.equal(r.camX, 40 - 200)
+  })
 })
 
 describe('drawRiteCeremony', () => {

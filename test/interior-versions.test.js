@@ -114,7 +114,27 @@ describe('story houses', () => {
   }
 })
 
+describe('a story house of one room', () => {
+  it("is a cottage that still has its story room's things: the hermit's logs, Toivo's stove", () => {
+    let small = 0
+    for (let i = 0; i < 60; i++) for (const [role, tile] of [['woodshed', 'in_logs'], ['kitchen', null], ['larder', null]]) {
+      const g = generateInterior(specFor({ version: 'empty', size: 'small', seed: i, label: `one:${role}:${i}`, story: { role, pickups: [] } }))
+      if (g.plan.rooms.length !== 1) continue
+      small++
+      const names = g.map.flat().map(c => c.overlay).filter(Boolean)
+      if (tile) assert.ok(names.includes(tile), `#${i}: no ${tile} in a one-room ${role}`)
+      if (role === 'kitchen') assert.ok(names.some(n => n === 'in_oven' || n === 'in_oven_cold' || n === 'in_stove'), `#${i}: no stove`)
+      if (role === 'larder') assert.ok(names.some(n => n === 'in_jars' || n === 'in_cupboard'), `#${i}: no larder cupboard`)
+    }
+    assert.ok(small > 30, `${small} one-room houses`)
+  })
+})
+
 describe('how a house is left', () => {
+  it('a wall face is seen from the front: its lower row lights the rows above', () => {
+    const g = generateInterior(specFor({ version: 'home', seed: 2, label: 'see' }))
+    g.map.forEach((row, y) => row.forEach((c, x) => { if (g.plan.grid[y][x] === 'l') assert.equal(c.seeUp, 2) }))
+  })
   it('a home sets food on its table, an abandoned house is dusty, cobwebbed and cold', () => {
     let food = 0
     for (let i = 0; i < 40; i++) {

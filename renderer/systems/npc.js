@@ -296,7 +296,8 @@ export function interactNpc(state, e, rng = Math.random) {
   const { player } = state
   // In the Wilds a village speaks for itself: lines are kept per piece an NPC
   // was built from (wilds/tale-run.js); a tale's own stand-in carries linesKey.
-  const lines = state.villageLines?.[e.linesKey ?? e.wildsKey]?.[e.species] ?? state.villagerLines?.[e.species] ?? def.lines
+  // Someone at home in a house carries the household's own lines (renderer/interior/).
+  const lines = e.lines ?? state.villageLines?.[e.linesKey ?? e.wildsKey]?.[e.species] ?? state.villagerLines?.[e.species] ?? def.lines
   if (lines) {
     e.facing = player.px < e.px ? 'west' : 'east'
     e.ai.wanderPt = null

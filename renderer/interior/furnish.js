@@ -64,9 +64,8 @@ function makeFurnisher(map, plan, rng, reserve) {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) bare.add(key(c.x + dx, c.y + dy))
   }
   const walk = c => c.tile !== TILE.WALL
-  let walkable = 0
-  for (const row of map) for (const c of row) if (walk(c)) walkable++
-  const connected = () => {
+  // cells the spawn reaches on foot
+  const reachCount = () => {
     const seen = new Uint8Array(W * H), q = [plan.spawn.y * W + plan.spawn.x]
     seen[q[0]] = 1
     let n = 0
@@ -79,11 +78,15 @@ function makeFurnisher(map, plan, rng, reserve) {
         if (!seen[j] && walk(map[ny][nx])) { seen[j] = 1; q.push(j) }
       }
     }
-    return n === walkable
+    return n
   }
+  // what the spawn reaches before any furniture (counted by flood, so a thing
+  // laid before furnish cannot skew it); no placement may shrink it
+  let walkable = reachCount()
+  const connected = () => reachCount() === walkable
   const placed = []
   const floorFree = (room, x, y) => x >= room.x0 && x <= room.x1 && y >= room.floorY0 && y <= room.y1 &&
-    plan.grid[y][x] === '.' && !map[y][x].overlay && !bare.has(key(x, y))
+    plan.grid[y][x] === '.' && map[y][x].tile === TILE.FLOOR_WOOD && !map[y][x].overlay && !bare.has(key(x, y))
 
   // A floor item with its top-left at (x, y); undone if it cuts the floor.
   function putFloor(room, id, x, y) {

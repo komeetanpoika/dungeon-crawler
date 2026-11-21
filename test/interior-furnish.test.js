@@ -13,7 +13,7 @@ function house(size, version, seed) {
   const plan = makePlan(size, rng)
   const trade = version === 'home' ? TRADES[seed % TRADES.length] : null
   const roles = assignRoles(plan, { version, trade, rng })
-  const floors = floorsFor(plan, roles, rng)
+  const floors = floorsFor(plan, roles, rng, version)
   const map = buildCells(plan, { palette: 'plaster', floorOf: id => floors.get(id) })
   const out = furnish(map, plan, roles, { version, trade, rng })
   return { plan, roles, map, ...out }

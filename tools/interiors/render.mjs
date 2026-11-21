@@ -1,10 +1,11 @@
 // Draw house interiors to one PNG sheet with the real tile art, to judge
 // plans, furniture and versions without running the game.
 //
-//   node tools/interiors/render.mjs [--stage walls|full] [--version home|...] [--size small|medium|large|grand]
+//   node tools/interiors/render.mjs [--stage walls|furnish|full] [--version home|...] [--size small|medium|large|grand]
 //        [--seeds 1,2,3 | --seeds 1..12] [--cols 3] [--scale 2] [--solved] [--out interiors.png]
 //
-// --stage walls draws plans with walls and floors only (no furniture).
+// --stage walls draws plans with walls and floors only; --stage furnish adds
+// furniture without a version's finish or people; full is the real house.
 // Spawns are drawn with their sprites; anything without one is a lettered dot.
 import * as path from 'node:path'
 import * as fs from 'node:fs'

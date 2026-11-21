@@ -58,52 +58,7 @@ export function houseDoorsForMap(data, episode) {
   return doors
 }
 
-// Interior generation: house doors transition into one of the five hand-drawn
-// plans in data/house-layouts.js (systems/interior.js) at this fixed depth,
-// which never needs a LEVEL_CONFIG entry of its own. Each tier gives count
-// ranges [min, max] rolled per house — a plan has 60-300 floor cells, so
-// per-tile densities would round to nothing.
+// What is behind a door is built by renderer/interior/ (systems/interior.js
+// re-exports it) from the door record above, at this fixed depth, which never
+// needs a LEVEL_CONFIG entry of its own.
 export const INTERIOR_DEPTH = 19
-// `guaranteed`: variants every house of the tier must hold, counted toward
-// (not on top of) the monster roll — spec "a ruin has spiders + 1 strong"
-// needs a deterministic strong (and a deterministic medium, so the interior
-// test can assert per-generation). `weapons` counts FLOOR weapons — a house
-// has no chests to open — and only a ruin arms you, only from `weaponPool`:
-// the two humblest melee weapons, so a derelict cottage never out-gifts a
-// dungeon.
-export const INTERIOR_CONFIG = {
-  safe: { depth: INTERIOR_DEPTH, monsters: [0, 0], variantPool: [],                             weapons: [0, 0], potions: [0, 1], props: ['prop_table', 'prop_chair', 'prop_barrel'] },
-  hut:  { depth: INTERIOR_DEPTH, monsters: [1, 2], variantPool: ['weak'],                       weapons: [0, 0], potions: [0, 1], props: ['prop_table', 'prop_chair', 'prop_barrel', 'prop_anvil'] },
-  ruin: { depth: INTERIOR_DEPTH, monsters: [3, 4], variantPool: ['medium', 'medium', 'strong'], weapons: [1, 1], potions: [1, 2], weaponPool: ['dagger', 'sword'], props: ['prop_gravestone', 'prop_barrel'], guaranteed: ['strong', 'medium'] },
-}
-
-// Prefab pickup slots -> the story house's items, laid on the floor. A
-// `{ kind: 'pickup', slot }` spawn (from placeStructure spreading a prefab
-// cell's `interaction: { type: 'pickup', slot }`) becomes a walk-into
-// floating pickup carrying `pickups[slot]`; a slot with no matching content
-// (or no pickups passed at all) is dropped.
-export function attachPickups(entitySpawns, pickups = []) {
-  return entitySpawns.flatMap(s => {
-    if (s.kind !== 'pickup') return [s]
-    const contents = pickups[s.slot]
-    return contents ? [{ kind: 'floating_pickup', x: s.x, y: s.y, contents }] : []
-  })
-}
-
-// Resolves a story door's prefab into the `structures` shape generateLevel
-// expects, so it lands as the interior's landmark room. `structures` is the
-// runtime-loaded structures.json (renderer/systems must stay pure, so it is
-// never imported here — game.js passes it in via saveAPI.loadStructures()).
-// Returns {} when there is no story (a generic house) or when the episode's
-// story house names a room that isn't in structures.json (warns once).
-export function storyStructures(structures, episode, story) {
-  if (!story) return {}
-  const room = episode?.houses?.[story]?.room
-  if (!room) return {}
-  const prefab = structures?.[room]
-  if (!prefab) {
-    console.warn(`storyStructures: room "${room}" for story house "${story}" not found in structures.json`)
-    return {}
-  }
-  return { [room]: { ...prefab, targetDepth: INTERIOR_DEPTH } }
-}

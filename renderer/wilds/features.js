@@ -109,8 +109,10 @@ export function placeFeatures(t, piece) {
     if (!at) return null
     return maker.npc ? npc(maker.npc, at.x, at.y) : spawn({ ...maker, x: at.x, y: at.y })
   }
-  const door = (x, y, doorTier, story = null) => {
-    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story })
+  // `extra`: what the house looks like outside ({ look: { w, storeys, wall } })
+  // and what it is (kind: 'sunroom'), for the interior built behind it
+  const door = (x, y, doorTier, story = null, extra = {}) => {
+    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story, toughness: tier, ...extra })
     hold(x, y)
   }
   const ring = (cx, cy, r, n, skinOf) => {
