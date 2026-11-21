@@ -1150,9 +1150,13 @@ function netFrame() {
 }
 
 // The Wilds lays several hundred tiles no other mode uses. They load the
-// first time the Wilds is entered, so the title does not wait for them.
+// first time the Wilds is entered, so the title does not wait for them; the
+// house interiors' tiles (renderer/interior/) come with them, and before the
+// other modes that have houses.
 let wildsSprites = null
-const loadWildsSprites = () => wildsSprites ??= renderer.addSprites(WILDS_SKINS)
+const loadWildsSprites = () => wildsSprites ??= renderer.addSprites([...WILDS_SKINS, ...INTERIOR_SKINS])
+let interiorSprites = null
+const loadInteriorSprites = () => interiorSprites ??= renderer.addSprites(INTERIOR_SKINS)
 let beginning = false
 
 async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = null) {
@@ -1161,6 +1165,9 @@ async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = n
     beginning = true
     if (!wildsSprites) menu.setSubtitle('Loading the world\u2026')
     try { await loadWildsSprites() } finally { beginning = false }
+  } else if (mode === 'adventure' || mode === 'timewarp') {
+    beginning = true
+    try { await loadInteriorSprites() } finally { beginning = false }
   }
   runMode = mode
   activeSave = mode === 'timewarp' ? enterEpisode(savedTimewarp, depth).save : mode === 'wilds' ? savedWilds : savedAdventure
@@ -2546,7 +2553,7 @@ async function init() {
   rulesets = (await window.saveAPI.loadRulesets()) ?? {}
   await registerMonsters((await window.saveAPI.loadMonsters?.()) ?? [])
   structures = (await window.saveAPI.loadStructures()) ?? {}
-  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES, ...INTERIOR_SKINS])
+  await renderer.loadSprites([...rulesetTileNames(rulesets), ...structureTileNames(structures), ...ROAD_TILES, ...OPEN_MAP_SPRITES])
   pruneMissingTiles(rulesets, renderer.sprites)
   savedAdventure = normalizeAdventureSave(await window.saveAPI.loadCaves?.())
   savedTimewarp = normalizeTimewarpSave(await window.saveAPI.loadTimewarp?.(), savedAdventure.leaps, savedAdventure.npcs)

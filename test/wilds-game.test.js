@@ -60,7 +60,9 @@ test('the game builds a camp\'s fire from its spawn', () => {
 
 test('the Wilds\' tiles load on entering the Wilds, not with the title', () => {
   assert.doesNotMatch(SRC, /renderer\.loadSprites\(\[[^\]]*WILDS_SKINS/, 'the title still loads the Wilds tiles')
-  assert.match(SRC, /renderer\.addSprites\(WILDS_SKINS\)/)
+  // the house interiors' tiles come with them, not with the title either
+  assert.doesNotMatch(SRC, /renderer\.loadSprites\(\[[^\]]*INTERIOR_SKINS/, 'the title loads the interior tiles')
+  assert.match(SRC, /renderer\.addSprites\(\[\.\.\.WILDS_SKINS, \.\.\.INTERIOR_SKINS\]\)/)
   // beginRun waits for them before it builds the first window
   const begin = SRC.slice(SRC.indexOf('async function beginRun'), SRC.indexOf('function resumeGame'))
   assert.ok(begin.indexOf('await loadWildsSprites()') > 0 && begin.indexOf('await loadWildsSprites()') < begin.indexOf('startNewRun('))
