@@ -159,7 +159,7 @@ export const HIDEOUT = {
     centre: null,
     wall: [
       { items: ['crate', 'chest', ...BARRELS, ...SACKS], n: [3, 6], at: 'edge', must: true },
-      { items: ['bedroll', 'bedroll2'], n: [0, 2], at: 'any' },
+      { items: ['bedroll', 'bedroll2'], n: [0, 1], at: 'edge' },
     ],
   },
 }
@@ -217,8 +217,8 @@ export const FILL = {
   woodshed: { floor: ['logs', 'barrel3', 'crate'], face: ['torch', 'shelves'] },
   cottage: { floor: [...PLANTS, ...BARRELS, 'sack', 'chest'], face: [...WINDOWS, ...PAINTINGS, 'potshelf', 'plateshelf'] },
   sunhall: { floor: [...PLANTS, 'candelabra'], face: ['window_tall_teal', 'window_tall_green', 'bookcase', 'clock', ...PAINTINGS] },
-  den: { floor: [...BARRELS, 'crate', 'sack'], flat: ['bedroll', 'bedroll2', 'bones'], face: ['torch', 'bottleshelf', 'window_broken', 'antlers'] },
-  stash: { floor: ['crate', 'chest', ...BARRELS, ...SACKS], flat: ['bedroll'], face: ['torch', 'potshelf'] },
+  den: { floor: [...BARRELS, 'crate', 'sack'], flat: ['bones', 'rubble'], face: ['torch', 'bottleshelf', 'window_broken', 'antlers'] },
+  stash: { floor: ['crate', 'chest', ...BARRELS, ...SACKS], face: ['torch', 'potshelf'] },
   ruin_hall: { floor: ['column', 'barrel3'], flat: ['rubble', 'bones', 'skull', 'web'], face: ['web_wall', 'torch', 'banner_teal'] },
   ruin_room: { floor: ['column', 'chest'], flat: ['rubble', 'bones', 'web'], face: ['web_wall', 'shelves'] },
 }

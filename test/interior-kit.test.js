@@ -36,6 +36,10 @@ describe('interior tile kit', () => {
     ]
     for (const n of names) assert.ok(known.has(n), `${n} is laid but not in INTERIOR_SKINS`)
   })
+  it('keeps the dusty suffix for dusty twins: no picture of its own ends in _d', () => {
+    const own = Object.values(ITEMS).flatMap(i => i.tiles.flat())
+    for (const n of own) assert.ok(!n.endsWith('_d'), `${n} reads as a dusty twin`)
+  })
   it('gives every item a footing and a 3x3 for every rug', () => {
     for (const [id, item] of Object.entries(ITEMS)) {
       assert.ok(['face', 'faceUpper', 'faceLower', 'floor'].includes(item.on), `${id}.on = ${item.on}`)
