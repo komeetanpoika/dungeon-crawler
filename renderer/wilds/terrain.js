@@ -20,6 +20,7 @@ import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
 import { CITY_SKINS } from './city/kit.js'
+import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
@@ -60,8 +61,9 @@ export const FEATURE_SKINS = [
   ...SITE_SKINS,
   'ow_mushroom', 'ow_boat', 'ow_stump', 'ow_tree_apple', 'ow_tree_small', 'ow_pond_11', 'ow_bush_berry',
 ]
-// Kalevanlinna (city/kit.js) is laid with the same art and these.
-export const WILDS_SKINS = [...new Set([...TERRAIN_SKINS, ...FEATURE_SKINS, ...CITY_SKINS])]
+// Kalevanlinna (city/kit.js) is laid with the same art and these; its people
+// and animals (data/townsfolk-looks.js) are loaded with them.
+export const WILDS_SKINS = [...new Set([...TERRAIN_SKINS, ...FEATURE_SKINS, ...CITY_SKINS, ...TOWNSFOLK_SKINS])]
 
 const mod = (n, m) => ((n % m) + m) % m
 const smooth = t => t * t * (3 - 2 * t)

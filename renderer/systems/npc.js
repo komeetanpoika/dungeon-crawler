@@ -13,7 +13,7 @@ import { tryStartEnemyAttack, WEAPONS } from './enemy-attack.js'
 import { speakFrom } from './feedback.js'
 import { sfx } from './sfx.js'
 import { hurtCreature } from './creatures.js'
-import { tickNpcAnim } from './npc-anim.js'
+import { tickNpcAnim, stepFrame } from './npc-anim.js'
 
 const S = 32
 export const FLEE_TIME = 3          // s a hit `flee` species keeps running
@@ -267,6 +267,8 @@ export function rollNpcDrop(e, rng = Math.random) {
 // The returned local is the exception: they get one fixed face of their own,
 // so the person who walks back in is visibly not a neighbour.
 export function spriteKeyFor(e) {
+  // Kalevanlinna's people and animals carry a look: tf_<look>, tf_<look>_step.
+  if (e.look) return stepFrame(e) ? `tf_${e.look}_step` : `tf_${e.look}`
   const def = NPC_SPECIES[e.species]
   if (!def) return null
   if (e.species !== 'villager') return def.sprite
