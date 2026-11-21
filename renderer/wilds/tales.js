@@ -51,6 +51,7 @@ export function fitsOf(seed, v, reach = REACH) {
 const taleCache = new Map()
 export function taleOf(seed, v) {
   if (isHome(v)) return 'elk'
+  if (isCityPiece(v.wx, v.wy)) return null   // the city is no village with a tale
   const key = `${seed}:${v.wx},${v.wy}`
   if (taleCache.has(key)) return taleCache.get(key)
   const fits = fitsOf(seed, v)

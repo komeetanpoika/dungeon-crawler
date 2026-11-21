@@ -9,6 +9,7 @@
 //            the piece was last in the window
 //   deals    key -> how many times the piece has been forgotten
 import { generatePiece } from './piece.js'
+import { generateCityPiece } from './city/piece.js'
 import { pieceKey, isPermanent, villageAt } from './layout.js'
 import { isCityPiece } from './city/geometry.js'
 import { kindOf } from './tales.js'
@@ -90,6 +91,13 @@ export function getPiece(world, wx, wy) {
   const key = pieceKey(wx, wy)
   let piece = world.pieces.get(key)
   if (piece) return piece
+  // Kalevanlinna's four pieces are cut from the city, built once per world
+  if (isCityPiece(wx, wy)) {
+    piece = generateCityPiece(world.seed, wx, wy)
+    world.pieces.set(key, piece)
+    if (world.pieces.size > CACHE_MAX) evict(world)
+    return piece
+  }
   // a village is built for the tale it carries, a tale's place for its tale
   const village = (wx === 0 && wy === 0) || villageAt(world.seed, wx, wy)
   piece = generatePiece(world.seed, wx, wy, world.deals.get(key) ?? 0, world.places.get(key)?.id ?? null,
