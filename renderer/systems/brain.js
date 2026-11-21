@@ -3,6 +3,7 @@
 // act() to execute. Never moves anything itself.
 import { hasLineOfSight, TILE } from './entities.js'
 import { buildNavGrid, findPath, clearanceFor, passable } from './nav.js'
+import { isWarded } from './ward.js'
 import { getAIConfig } from '../data/enemy-ai.js'
 
 const S = 32
@@ -58,7 +59,7 @@ export function ensureAI(e, state, cfg) {
   e.ai = {
     ...(e.ai ?? {}),
     mode: 'patrol', lastSeen: null, huntWait: 0, dwell: 0, giveUp: 0, patrolIdx: 0, fleeing: false,
-    patrolPoints: generatePatrol(buildNavGrid(state.map), state.map, e.x, e.y, cfg),
+    patrolPoints: generatePatrol(buildNavGrid(state.map, { ward: isWarded(e) }), state.map, e.x, e.y, cfg),
     path: undefined, pathTarget: null, repath: 0,
   }
   return e.ai
@@ -94,7 +95,7 @@ export function updateBrain(e, state, delta) {
     ai.mode = 'patrol'
     ai.lastSeen = null
     ai.path = undefined; ai.pathTarget = null
-    ai.patrolPoints = generatePatrol(buildNavGrid(state.map), state.map, e.x, e.y, cfg,
+    ai.patrolPoints = generatePatrol(buildNavGrid(state.map, { ward: isWarded(e) }), state.map, e.x, e.y, cfg,
       { px: player.px, py: player.py, r: cfg.sightRange * FLEE_ENTER })
     ai.patrolIdx = 0; ai.dwell = 0
   } else if (hurt && dist < cfg.sightRange * FLEE_ENTER) {
