@@ -1,7 +1,9 @@
 // Friendly-creature species (data, not code). Consumed by systems/npc.js.
 //   faction     'village' shares wrath: hurt one, every fight-capable villager on
 //               the map turns hostile. 'wild' animals are each for themselves.
-//   onHit       'fight' -> hostile; 'flee' -> timed flee.
+//               'city' (Kalevanlinna) shares no wrath: the watch deals with it.
+//   onHit       'fight' -> hostile; 'flee' -> timed flee; 'stand' -> neither
+//               (the city's rules on violence decide).
 //   fleeHp      hp fraction at/below which flee_hurt may take over (1 = any hit).
 //   roam        tiles from the home tile that wander may pick points in.
 //   startle     px radius at which a wild animal bolts even if untouched.
@@ -122,5 +124,50 @@ export const NPC_SPECIES = {
     speed: 60, wanderSpeed: 20, roam: 0,
     priorities: ['flee_hurt', 'go_to', 'wander'],
     lines: ['Mind the step.', 'He is a good man. Mostly.'],
+  },
+  // Kalevanlinna's people and animals, owned by the city runtime
+  // (wilds/city/runtime.js), which spawns them with a `look` (drawn as
+  // tf_<look>) and their own lines; `sprite` and `lines` here are stand-ins.
+  // follow_city walks their day; `wander` (roam) potters about a spot.
+  townsfolk: {
+    faction: 'city', sprite: 'npc_villager', walker: true,
+    hp: 3, onHit: 'flee', fleeHp: 1,
+    speed: 70, wanderSpeed: 45, roam: 2,
+    priorities: ['flee_hurt', 'follow_city', 'wander'],
+    lines: ['Good day.', 'Busy, busy.'],
+  },
+  // `defend` is the watch's answer to monsters in town (a later goal; until
+  // then selectGoal passes over the name).
+  watchman: {
+    faction: 'city', sprite: 'guard', walker: true, weapon: 'sword',
+    hp: 30, onHit: 'stand', fleeHp: 0,
+    speed: 85, wanderSpeed: 40, roam: 0,
+    priorities: ['attack_hostile', 'defend', 'follow_city', 'stay'],
+    lines: ['Move along.', 'Keep your blade sheathed inside the walls.'],
+  },
+  dog: {
+    faction: 'city', sprite: 'tf_dog_1',
+    hp: 2, onHit: 'flee', fleeHp: 1, startle: 24, react: 'hop',
+    speed: 110, wanderSpeed: 45, roam: 6,
+    priorities: ['flee_hurt', 'startle', 'wander'],
+  },
+  cat: {
+    faction: 'city', sprite: 'tf_cat_1',
+    hp: 1, onHit: 'flee', fleeHp: 1, startle: 56, react: 'bolt',
+    speed: 120, wanderSpeed: 30, roam: 6,
+    priorities: ['flee_hurt', 'startle', 'wander'],
+  },
+  // the yards' hens and goats: the farm animals' looks, the city's faction
+  city_chicken: {
+    faction: 'city', sprite: 'npc_chicken',
+    hp: 1, onHit: 'flee', fleeHp: 1, startle: 48, react: 'hop',
+    speed: 90, wanderSpeed: 30, roam: 3,
+    priorities: ['flee_hurt', 'startle', 'wander'],
+  },
+  city_goat: {
+    faction: 'city', sprite: 'npc_goat',
+    hp: 2, onHit: 'flee', fleeHp: 1, startle: 40, react: 'hop',
+    speed: 85, wanderSpeed: 30, roam: 3,
+    priorities: ['flee_hurt', 'startle', 'wander'],
   },
 }

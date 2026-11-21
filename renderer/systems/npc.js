@@ -27,6 +27,9 @@ export const HUNT_RANGE = 8 * S     // px a `prey` species will chase a target w
 export const BITE_REACH = 30        // px within which hunt_prey stops closing and bites
 export const BITE_INTERVAL = 0.8    // s between bites once in reach
 export const BITE_DMG = 2           // damage per bite, via hurtCreature
+export const GIVE_WAY_WAIT = 1      // s a townsperson waits for the player to step off their way
+const GIVE_WAY_NEAR = 1.6 * S       // px: how close they come before they wait
+const SIDESTEP_TIME = 1.5           // s at most spent stepping round the player
 
 export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
   const def = NPC_SPECIES[species]
@@ -181,6 +184,35 @@ export const GOALS = {
       return { mode: 'patrol', target: e.objective, speed: ctx.cfg.speed }
     },
   },
+  // Kalevanlinna's people (wilds/city/runtime.js): walk to the next waypoint
+  // of their day. The runtime sets e.city.next (a window tile) and moves it
+  // on as they reach it. A player standing on that waypoint is waited for a
+  // second, then walked round: a step aside, and e.city.passed tells the
+  // runtime to take the waypoint after it.
+  follow_city: {
+    when: e => !!e.city?.next,
+    enter: e => { e.ai.wait = 0; e.ai.side = null },
+    run: (e, ctx, dt) => {
+      const c = e.city, ai = e.ai, p = ctx.state.player
+      const speed = ctx.cfg.speed
+      if (ai.side) {
+        ai.side.t -= dt
+        const there = Math.hypot(ai.side.x * S + S / 2 - e.px, ai.side.y * S + S / 2 - e.py) < S * 0.25
+        if (ai.side.t > 0 && !there) return { mode: 'patrol', target: ai.side, speed }
+        ai.side = null
+        c.passed = true
+      }
+      const blocked = c.next.x === p.x && c.next.y === p.y && Math.hypot(p.px - e.px, p.py - e.py) <= GIVE_WAY_NEAR
+      if (!blocked) { ai.wait = 0; return { mode: 'patrol', target: c.next, speed } }
+      ai.wait = (ai.wait ?? 0) + dt
+      if (ai.wait < GIVE_WAY_WAIT) return { mode: 'hold' }
+      ai.wait = 0
+      const side = sidestep(e, ctx.state, c.next)
+      if (!side) { c.passed = true; return { mode: 'hold' } }
+      ai.side = { x: side.x, y: side.y, t: SIDESTEP_TIME }
+      return { mode: 'patrol', target: ai.side, speed }
+    },
+  },
   // rooted to the spot (Lalli up his tree): nothing moves him
   stay: {
     when: () => true,
@@ -205,6 +237,19 @@ export const GOALS = {
       return { mode: 'patrol', target: ai.wanderPt, speed: ctx.cfg.wanderSpeed }
     },
   },
+}
+
+// The tile beside `e` square to its way towards `to`: the right hand first,
+// then the left, never the player's. null when both are walls.
+function sidestep(e, state, to) {
+  const dx = Math.sign(to.x - e.x), dy = Math.sign(to.y - e.y)
+  const [ax, ay] = Math.abs(to.x - e.x) >= Math.abs(to.y - e.y) ? [dx || 1, 0] : [0, dy || 1]
+  const nav = buildNavGrid(state.map)
+  for (const [sx, sy] of [[-ay, ax], [ay, -ax]]) {
+    const x = e.x + sx, y = e.y + sy
+    if (passable(nav, x, y, 1) && !(x === state.player.x && y === state.player.y)) return { x, y }
+  }
+  return null
 }
 
 // First goal in the species list whose `when` holds. Runs `enter` on a change.
@@ -239,12 +284,14 @@ export function updateNpc(e, state, delta) {
 
 // Called by every damage site right after an NPC's hp drops. Flee species run;
 // fight species turn hostile; any blow on a villager rouses the village.
+// A `stand` species (the city's watch) does neither: the city's own rules on
+// violence decide what follows. The city shares no wrath.
 export function onNpcHit(e, state) {
   const def = NPC_SPECIES[e.species]
   if (!def) return { hostile: false, wrath: false }
   e.inCombat = true
   if (def.onHit === 'fight') e.hostile = true
-  else e.ai.fleeTimer = Math.max(e.ai.fleeTimer ?? 0, FLEE_TIME)
+  else if (def.onHit !== 'stand') e.ai.fleeTimer = Math.max(e.ai.fleeTimer ?? 0, FLEE_TIME)
   let wrath = false
   if (def.faction === 'village') {
     for (const o of state.entities) {
