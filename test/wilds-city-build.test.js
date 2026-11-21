@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { buildCity, cityFor } from '../renderer/wilds/city/build.js'
 import { generateCityPiece } from '../renderer/wilds/city/piece.js'
-import { PLAN, insideWalls } from '../renderer/wilds/city/plan.js'
+import { PLAN, insideWalls, towerCentre } from '../renderer/wilds/city/plan.js'
 import { cutBlocks } from '../renderer/wilds/city/blocks.js'
 import { CITY_KEYS, isCityPiece, fromCity } from '../renderer/wilds/city/geometry.js'
 import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
@@ -79,38 +79,51 @@ test('the city is the same every time for a seed, and its skeleton the same in e
   assert.notEqual(cellsDigest(cityFor(1)), cellsDigest(cityFor(7)))
 })
 
-// The wall runs on behind a tower: where the wall line (or a gate in it) meets
-// one, the tower's side cells carry the wall's masonry as their deco, so it
-// shows round the tower's body instead of the ground, and the wall's face
-// beside the tower does not end in an end piece.
-test('the walls run on behind their towers, the masonry unbroken', () => {
+// The wall runs into its towers. A tower on an east-west wall stands a tile
+// north of the wall line, its foot on the wall's walk: the walk runs on behind
+// the foot's sides (the wall's masonry as the deco of its side cells, so it
+// shows round the tower's body, not the ground) and the wall's face runs on
+// under the foot, slicing into the tower, never ending in an end piece beside
+// it. A north-south wall runs in under a tower's foot or the tip of its cap.
+test('the walls run into their towers, the masonry unbroken', () => {
   const city = cityFor(7)
   const at = (x, y) => city.cells[y]?.[x]
   const masonry = c => !!c && /^ow_city_(wall_top_|gate_|castle_gate)/.test(c.overlay ?? '')
-  const towers = []
+  const isFace = c => /^ow_city_wall_lower_/.test(c?.overlay ?? '')
+  const towers = []   // x, foot row, top row (3x3: the foot two rows under the cap's top)
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    if (/^ow_city_(tower_\w+|harbour_tower)_f1$/.test(at(x, y).overlay ?? '')) towers.push({ x, y: y - 1 })
+    if (/^ow_city_(tower_\w+|harbour_tower)_f1$/.test(at(x, y).overlay ?? '')) towers.push({ x, foot: y, top: y - 2 })
   }
   assert.ok(towers.length >= 30, `towers found (${towers.length})`)
   let sides = 0, ups = 0
   for (const t of towers) {
     for (const d of [-1, 1]) {
-      if (!masonry(at(t.x + 2 * d, t.y))) continue
+      // an east-west wall meets the tower on the row of its foot
+      if (!masonry(at(t.x + 2 * d, t.foot))) continue
       sides++
-      assert.equal(at(t.x + d, t.y).deco, 'ow_city_wall_top_10', `${t.x},${t.y}: the walk behind the tower's ${d < 0 ? 'west' : 'east'} side`)
-      assert.equal(at(t.x + d, t.y + 1).deco, 'ow_city_wall_lower_m', `${t.x},${t.y}: the face behind its ${d < 0 ? 'west' : 'east'} foot`)
+      const where = `${t.x},${t.foot} ${d < 0 ? 'west' : 'east'}`
+      assert.equal(at(t.x + d, t.foot).deco, 'ow_city_wall_top_10', `${where}: the walk runs on behind the foot`)
+      assert.ok(isFace(at(t.x + d, t.foot + 1)), `${where}: the face slices in under the foot (${at(t.x + d, t.foot + 1).overlay})`)
       // the face beside the tower must not end towards it: no `_r` west of it, no `_l` east of it, no `_lr`
-      const beside = at(t.x + 2 * d, t.y + 1).overlay ?? ''
+      const beside = at(t.x + 2 * d, t.foot + 1).overlay ?? ''
       const endsTowardTower = ['ow_city_wall_lower_lr', d < 0 ? 'ow_city_wall_lower_r' : 'ow_city_wall_lower_l'].includes(beside)
-      assert.ok(!endsTowardTower, `${t.x},${t.y}: the face beside it runs on (${beside})`)
+      assert.ok(!endsTowardTower, `${where}: the face beside it runs on (${beside})`)
     }
-    for (const d of [-1, 1]) {
-      if (!masonry(at(t.x, t.y + 2 * d))) continue
-      ups++
-      assert.equal(at(t.x, t.y + d).deco, 'ow_city_wall_top_5', `${t.x},${t.y}: the wall ${d < 0 ? 'north' : 'south'} runs in under it`)
-    }
+    if (masonry(at(t.x, t.foot + 1)) && !isFace(at(t.x, t.foot + 1))) { ups++; assert.equal(at(t.x, t.foot).deco, 'ow_city_wall_top_5', `${t.x},${t.foot}: the wall south runs in under the foot`) }
+    if (masonry(at(t.x, t.top - 1))) { ups++; assert.equal(at(t.x, t.top).deco, 'ow_city_wall_top_5', `${t.x},${t.top}: the wall north runs in under the cap`) }
   }
   assert.ok(sides >= 25 && ups >= 25, `joints checked (${sides} side, ${ups} up and down)`)
+})
+
+test('a tower on an east-west wall stands a tile north of it, one on a north-south wall on it', () => {
+  const city = cityFor(7)
+  for (const t of PLAN.towers) {
+    const c = towerCentre(t)
+    const foot = city.cells[c.y + 1][c.x].overlay ?? ''
+    assert.match(foot, /_f1$/, `${t.x},${t.y}: a foot at ${c.x},${c.y + 1}`)
+    const eastWest = /^ow_city_wall_top_/.test(city.cells[t.y][t.x - 2]?.overlay ?? '') || /^ow_city_wall_top_/.test(city.cells[t.y][t.x + 2]?.overlay ?? '')
+    if (eastWest) assert.equal(c.y, t.y - 1, `${t.x},${t.y} stands a tile north`)
+  }
 })
 
 test('the outer frame is ordinary land the neighbours agree with', () => {
