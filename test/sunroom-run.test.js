@@ -87,3 +87,48 @@ describe('playing the mirrors', () => {
     assert.equal(s2.cave.sun, null)
   })
 })
+
+// ---- found by the final review ----
+import { storedSunroom } from '../renderer/systems/sunroom-run.js'
+import { readFileSync } from 'node:fs'
+import { TILE } from '../renderer/systems/entities.js'
+
+describe('the mirrors, found by the final review', () => {
+  it('a beam a mirror turns straight into a wall ends going the new way', () => {
+    const m = Array.from({ length: 3 }, (_, y) => Array.from({ length: 3 }, (_, x) => ({ tile: x === 1 && y < 2 ? TILE.FLOOR_WOOD : TILE.WALL })))
+    Object.assign(m[1][1], { tile: TILE.WALL, losClear: true, mirror: '/' })   // S -> W, into the wall at 0,1
+    const b = traceBeam(m, { x: 1, y: 0, dir: 'S' })
+    assert.deepEqual(b.end, { x: 1, y: 1, dir: 'W' })
+  })
+  it('a push the walk stopped short counts, however big the step that frame', () => {
+    const { state } = house()
+    const m = mirrors(state.map)[0]
+    const push = against(state, m)
+    state.player.px -= push.vx * 7; state.player.py -= push.vy * 7    // a sprint step short at 30 fps
+    assert.equal(tickSunroom(state, push), null, 'a push from afar is no push')
+    assert.equal(tickSunroom(state, { ...push, blockedX: push.vx !== 0, blockedY: push.vy !== 0 }), 'turned')
+  })
+  it('holding the interact key is one press, not thirty a second', () => {
+    const src = readFileSync(new URL('../renderer/game.js', import.meta.url), 'utf8')
+    const line = src.split('\n').find(l => l.startsWith("window.addEventListener('keydown', e => {") && l.includes('keys[e.key] = true'))
+    assert.ok(line && /e\.repeat/.test(line) && /'f'/.test(line), `the key latch lets a held F repeat: ${line}`)
+  })
+  it('a stored hall owes its reward back when solved and not taken, and is built again when the world knows better', () => {
+    const { g } = house(3)
+    const lit = generateInterior(specFor({ version: 'sunroom', size: 'large', seed: 3, label: 'run:3' }), { solved: true })
+    const sun = findSun(lit.map)
+    assert.deepEqual(storedSunroom(lit.map, [], { solved: true, looted: false }), { rebuild: false, reward: sun.alcove })
+    assert.deepEqual(storedSunroom(lit.map, [{ type: 'chest', sunReward: true }], { solved: true, looted: false }), { rebuild: false, reward: null })
+    assert.deepEqual(storedSunroom(lit.map, [], { solved: true, looted: true }), { rebuild: false, reward: null })
+    // a death rolled the house back to before it was solved: build it lit
+    assert.deepEqual(storedSunroom(g.map, [], { solved: true, looted: true }), { rebuild: true, reward: null })
+    assert.deepEqual(storedSunroom(g.map, [], { solved: false, looted: false }), { rebuild: false, reward: null })
+    const plain = generateInterior(specFor({ version: 'home', seed: 2, label: 'p' }))
+    assert.deepEqual(storedSunroom(plain.map, [], { solved: false, looted: false }), { rebuild: false, reward: null })
+  })
+  it('a solve never puts a second reward in the wall once the first was taken', () => {
+    const src = readFileSync(new URL('../renderer/game.js', import.meta.url), 'utf8')
+    const on = src.slice(src.indexOf('function onSunroom'), src.indexOf('function exitCave'))
+    assert.match(on, /looted\.has\(/, 'onSunroom puts a chest in the alcove even when the reward was taken')
+  })
+})

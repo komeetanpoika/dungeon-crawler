@@ -33,7 +33,8 @@ export function traceBeam(map, start) {
     x += DIRS[dir][0]; y += DIRS[dir][1]
   }
   const last = cells.at(-1)
-  return { cells, hit: null, end: last ? { x: last.x, y: last.y, dir: last.mirror ? dir : last.dir } : { ...start } }
+  // a mirror cell's entry holds the way the light came in; it leaves the new way
+  return { cells, hit: null, end: last ? { x: last.x, y: last.y, dir: map[last.y][last.x].mirror ? dir : last.dir } : { ...start } }
 }
 
 // Where a house's puzzle is, read off its cells (null when it has none).

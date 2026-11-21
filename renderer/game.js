@@ -42,7 +42,7 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH } from './systems/houses.js'
 import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems/interior.js'
-import { tickSunroom } from './systems/sunroom-run.js'
+import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
@@ -128,7 +128,7 @@ function loadMutedPref() {
 function saveMutedPref(m) {
   try { localStorage.setItem('dc-muted', m ? '1' : '0') } catch {}
 }
-window.addEventListener('keydown', e => { keys[e.key] = true })
+window.addEventListener('keydown', e => { if (e.repeat && (e.key === 'f' || e.key === 'F')) return; keys[e.key] = true })   // a held F is one press (it turns Päivölä's mirrors)
 window.addEventListener('keyup',   e => { keys[e.key] = false })
 // Focus loss never delivers the keyup, so a key held over an Alt-Tab would
 // stay down for good. Q is the one that bites: tickShield would keep the
@@ -1494,9 +1494,13 @@ function update(delta) {
     : 1
   const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
+  const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
   // Päivölä: walking into a mirror turns it (systems/sunroom-run.js)
-  if (state.cave?.label?.startsWith('house:')) { const sun = tickSunroom(state, { vx, vy }); if (sun) onSunroom(sun) }
+  if (state.cave?.label?.startsWith('house:')) {
+    const sun = tickSunroom(state, { vx, vy, blockedX: vx !== 0 && player.px === walkedFrom.px, blockedY: vy !== 0 && player.py === walkedFrom.py })
+    if (sun) onSunroom(sun)
+  }
 
   // Chest interaction (walk onto chest tile)
   const chestIdx = state.entities.findIndex(e =>
@@ -2381,18 +2385,21 @@ function enterCave(entrance) {
 // has no front door of its own and is built afresh.
 function enterHouse(door) {
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
-  const inst = state.caveInstances?.[door.label]
+  let inst = state.caveInstances?.[door.label]
   let version = null
+  const world = wildsWorld && state.wilds ? wildsWorld : null
+  const owed = inst?.exit && inst.spawn ? storedSunroom(inst.map, inst.entities, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) }) : null
+  if (owed?.rebuild) inst = null
   if (inst?.exit && inst.spawn) {
     state = buildCaveState(state, entrance, {
       map: inst.map, entities: inst.entities, playerSpawn: inst.spawn, exit: inst.exit, theme: inst.theme,
       dropSpawned: inst.dropSpawned, lastBossTile: inst.lastBossTile, hasKey: inst.hasKey,
     })
+    if (owed?.reward) state.entities.push(sunRewardChest(owed.reward))
   } else {
     // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
     const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
     const spec = houseSpec(door, { worldSeed: wildsWorld && state.wilds ? wildsWorld.seed : 0, story: storyEp?.houses?.[door.story] ?? null })
-    const world = wildsWorld && state.wilds ? wildsWorld : null
     const house = generateInterior(spec, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) })
     state = buildCaveState(state, entrance, {
       map: house.map, entities: buildEntities(house.entitySpawns, house.map, INTERIOR_DEPTH),
@@ -2416,8 +2423,10 @@ function sunRewardChest(at) {
 function onSunroom(result) {
   if (result === 'turned') { sfx(state, 'mirror-turn', { px: state.player.px, py: state.player.py }); return }
   // the light has reached the seed: the alcove is open, the reward waits in it
-  state.entities.push(sunRewardChest(state.cave.sun.alcove))
-  if (wildsWorld && state.wilds) { wildsWorld.solved.add(state.cave.label); persistRun() }
+  // (unless it was taken before, in a visit a death has since rolled back)
+  const world = wildsWorld && state.wilds ? wildsWorld : null
+  if (!world?.looted.has(state.cave.label)) state.entities.push(sunRewardChest(state.cave.sun.alcove))
+  if (world) { world.solved.add(state.cave.label); persistRun() }
   announce(state, 'The seed drinks the light, and a panel in the wall swings open.')
   sfx(state, 'sun-bloom', { px: state.player.px, py: state.player.py })
 }

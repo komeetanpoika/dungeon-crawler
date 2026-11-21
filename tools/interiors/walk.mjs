@@ -107,7 +107,9 @@ try {
     // walk into each wrong mirror from a free side, holding the arrow key a moment
     const KEY = { east: 'ArrowRight', west: 'ArrowLeft', south: 'ArrowDown', north: 'ArrowUp' }
     let result = null
+    // (a decoy's recorded orientation is arbitrary: once the seed is lit, stop)
     for (const m of hall.mirrors.filter(m => m.o !== m.solution)) {
+      if (result?.solved) break
       const side = await ev(m => {
         const s = window.__dc.state
         for (const [dx, dy, dir] of [[-1, 0, 'east'], [1, 0, 'west'], [0, -1, 'south'], [0, 1, 'north']]) {
