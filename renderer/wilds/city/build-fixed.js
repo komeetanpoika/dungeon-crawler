@@ -8,7 +8,7 @@ import { PLAN, wallCells, insideWalls, streetCellsById } from './plan.js'
 import { HARBOUR, PROPS, PAVE, CASTLE, HOUSE_FRONT } from './kit.js'
 import { hashInt } from '../rand.js'
 import {
-  N, TAG, lay, pave, cobble, flag, alley, squareStone, wallRun, tower, harbourTower, gateArch, gateSide,
+  N, TAG, lay, pave, cobble, flag, alley, squareStone, wallRun, towerJoins, tower, harbourTower, gateArch, gateSide,
   house, stall, windmill, lamp, bench, keep, church, addDoor,
 } from './stamps.js'
 
@@ -59,9 +59,12 @@ function layWalls(G) {
   for (let d = -1; d <= 1; d++) gates.add(K(PLAN.gates.N.x + d, PLAN.gates.N.y + 1))
   wallRun(G, walls, towers, (x, y) => gates.has(K(x, y)))
   const mouth = PLAN.harbour.mouth
+  // the wall runs on behind each tower it meets, gates counting as wall
+  const masonry = new Set([...walls, ...gates])
   for (const t of PLAN.towers) {
-    if (t.y === mouth.y && (t.x < mouth.x0 || t.x > mouth.x1)) harbourTower(G, t.x, t.y)
-    else tower(G, t.x, t.y, t.kind === 'round' ? 'round3' : 'square3')
+    const joins = towerJoins(masonry, towers, t.x, t.y)
+    if (t.y === mouth.y && (t.x < mouth.x0 || t.x > mouth.x1)) harbourTower(G, t.x, t.y, joins)
+    else tower(G, t.x, t.y, t.kind === 'round' ? 'round3' : 'square3', 0, joins)
   }
   for (const g of PLAN.waterGates) gateSide(G, g.x, g.y, (x, y) => HARBOUR.mole[(x + y) & 1])
   gateArch(G, PLAN.gates.N.x, PLAN.gates.N.y)
@@ -125,7 +128,8 @@ function layCastle(G, rec) {
   // the courtyard
   rect(C.x0 + 1, C.y0 + 1, C.x1 - 1, C.y1 - 1, (x, y) => pave(G, x, y, flag(x, y)))
   wallRun(G, walls, towers, (x, y) => gate.has(K(x, y)))
-  for (const [x, y] of tw) tower(G, x, y, x === C.x0 || x === C.x1 ? 'round3' : 'square3')
+  const masonry = new Set([...walls, ...gate])
+  for (const [x, y] of tw) tower(G, x, y, x === C.x0 || x === C.x1 ? 'round3' : 'square3', 0, towerJoins(masonry, towers, x, y))
   // the gate: the portcullis down, the door a word with the guard
   CASTLE.gate2.forEach((r, j) => r.forEach((n, i) => lay(G, C.gate - 1 + i, C.y1 + j, n, { ground: cobble(C.gate - 1 + i, C.y1 + j) })))
   const door = addDoor(rec, C.gate, C.y1 + 1, { kind: 'castle', look: { w: 5, storeys: 2, wall: 'stone' }, closed: '"The Count receives no one today," says the guard.' })

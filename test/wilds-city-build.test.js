@@ -79,6 +79,40 @@ test('the city is the same every time for a seed, and its skeleton the same in e
   assert.notEqual(cellsDigest(cityFor(1)), cellsDigest(cityFor(7)))
 })
 
+// The wall runs on behind a tower: where the wall line (or a gate in it) meets
+// one, the tower's side cells carry the wall's masonry as their deco, so it
+// shows round the tower's body instead of the ground, and the wall's face
+// beside the tower does not end in an end piece.
+test('the walls run on behind their towers, the masonry unbroken', () => {
+  const city = cityFor(7)
+  const at = (x, y) => city.cells[y]?.[x]
+  const masonry = c => !!c && /^ow_city_(wall_top_|gate_|castle_gate)/.test(c.overlay ?? '')
+  const towers = []
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (/^ow_city_(tower_\w+|harbour_tower)_f1$/.test(at(x, y).overlay ?? '')) towers.push({ x, y: y - 1 })
+  }
+  assert.ok(towers.length >= 30, `towers found (${towers.length})`)
+  let sides = 0, ups = 0
+  for (const t of towers) {
+    for (const d of [-1, 1]) {
+      if (!masonry(at(t.x + 2 * d, t.y))) continue
+      sides++
+      assert.equal(at(t.x + d, t.y).deco, 'ow_city_wall_top_10', `${t.x},${t.y}: the walk behind the tower's ${d < 0 ? 'west' : 'east'} side`)
+      assert.equal(at(t.x + d, t.y + 1).deco, 'ow_city_wall_lower_m', `${t.x},${t.y}: the face behind its ${d < 0 ? 'west' : 'east'} foot`)
+      // the face beside the tower must not end towards it: no `_r` west of it, no `_l` east of it, no `_lr`
+      const beside = at(t.x + 2 * d, t.y + 1).overlay ?? ''
+      const endsTowardTower = ['ow_city_wall_lower_lr', d < 0 ? 'ow_city_wall_lower_r' : 'ow_city_wall_lower_l'].includes(beside)
+      assert.ok(!endsTowardTower, `${t.x},${t.y}: the face beside it runs on (${beside})`)
+    }
+    for (const d of [-1, 1]) {
+      if (!masonry(at(t.x, t.y + 2 * d))) continue
+      ups++
+      assert.equal(at(t.x, t.y + d).deco, 'ow_city_wall_top_5', `${t.x},${t.y}: the wall ${d < 0 ? 'north' : 'south'} runs in under it`)
+    }
+  }
+  assert.ok(sides >= 25 && ups >= 25, `joints checked (${sides} side, ${ups} up and down)`)
+})
+
 test('the outer frame is ordinary land the neighbours agree with', () => {
   for (const seed of SEEDS) for (const k of CITY_KEYS) {
     const [wx, wy] = keyOf(k); const piece = generateCityPiece(seed, wx, wy)

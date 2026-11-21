@@ -85,21 +85,43 @@ export function wallRun(G, walls, towers, noFace = () => false) {
     const m = (isWall(x, y - 1) ? 1 : 0) | (isWall(x + 1, y) ? 2 : 0) | (isWall(x, y + 1) ? 4 : 0) | (isWall(x - 1, y) ? 8 : 0)
     lay(G, x, y, WALL.top[m])
     if (!face(x, y)) continue
-    const l = !face(x - 1, y), r = !face(x + 1, y)
+    // a face runs on into a tower beside it (the tower's foot carries it on, tower())
+    const l = !face(x - 1, y) && !towers.has(k(x - 1, y)), r = !face(x + 1, y) && !towers.has(k(x + 1, y))
     const F = WALL.lower
     lay(G, x, y + 1, l && r ? F.lr : l ? F.l : r ? F.r : h(x, y, 4) % 6 === 0 ? F.m2 : F.m)
   }
 }
+// Where the wall meets a 3x3 tower centred on (x, y): the sides whose
+// neighbour two cells out on the wall line is wall or a gate in it, not
+// another tower. `masonry` is a set of keys (y * N + x): the walls and gates.
+export function towerJoins(masonry, towers, x, y) {
+  const on = (a, b) => masonry.has(b * N + a) && !towers.has(b * N + a)
+  return { w: on(x - 2, y), e: on(x + 2, y), n: on(x, y - 2), s: on(x, y + 2) }
+}
+// What lies under a tower's cell: the wall running on behind it where it
+// meets one, so the masonry shows round the tower's body, not the ground.
+// `i` the column (0..2), `dy` the row from the wall line, `top`/`bottom` the
+// tower's first and last rows on that count.
+function behindTower(joins, i, dy, top, bottom) {
+  if (!joins) return null
+  if ((i === 0 && joins.w) || (i === 2 && joins.e)) return dy === 0 ? WALL.top[10] : dy > 0 ? WALL.lower.m : null
+  if (i === 1 && ((dy === bottom && joins.s) || (dy === top && joins.n))) return WALL.top[5]
+  return null
+}
 // A 3x3 tower centred on (x, y): its cap's two rows over the wall line and
 // its foot below, `body` more rows of it standing above the footprint.
-export function tower(G, x, y, kind, body = 0) {
+// `joins` (towerJoins): the sides the wall meets it on.
+export function tower(G, x, y, kind, body = 0, joins = null) {
   const t = TOWER[kind]
   const rows = [...t.cap, ...Array(body).fill(t.body), t.base]
-  rows.forEach((r, j) => r.forEach((n, i) => lay(G, x - 1 + i, y - 1 - body + j, n)))
+  rows.forEach((r, j) => r.forEach((n, i) => {
+    const dy = j - 1 - body
+    lay(G, x - 1 + i, y + dy, n, { deco: behindTower(joins, i, dy, -1 - body, 1) })
+  }))
 }
-export function harbourTower(G, x, y) {
+export function harbourTower(G, x, y, joins = null) {
   const t = HARBOUR.tower
-  ;[...t.head, t.base].forEach((r, j) => r.forEach((n, i) => lay(G, x - 1 + i, y - 1 + j, n)))
+  ;[...t.head, t.base].forEach((r, j) => r.forEach((n, i) => lay(G, x - 1 + i, y - 1 + j, n, { deco: behindTower(joins, i, j - 1, -1, 1) })))
 }
 // A gate in a wall running east-west, three wide at x-1..x+1: its arch over
 // the wall row and the face row below; walked through on the street's cobbles.
