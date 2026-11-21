@@ -10,6 +10,7 @@ falls under the same MIT licence.
 |---|---|---|---|
 | `renderer/assets/tiles/tile_*.png` (dungeon tiles, hero, items, weapons); also `road_*.png`, derived from `tile_0042` | [Tiny Dungeon](https://kenney.nl/assets/tiny-dungeon) 1.0, kept in `assets/kenney_tiny-dungeon/` | Kenney ([kenney.nl](https://www.kenney.nl)) | CC0 1.0 |
 | `renderer/assets/tiles/ow_*.png` except `ow_mtn_*` (the open-map tiles), cut by `tools/static-overworld/extract-tiles.mjs` | [Tiny Town](https://kenney.nl/assets/tiny-town) and [Roguelike/RPG Pack](https://kenney.nl/assets/roguelike-rpg-pack) | Kenney | CC0 1.0 |
+| `renderer/assets/tiles/in_*.png` (house interiors), cut by `tools/interiors/extract-tiles.mjs`; the few pieces drawn there from pixel maps (cobwebs, the puzzle mirrors and sun-seed, the alcove, the doormat) are the project's own | [Roguelike/RPG Pack](https://kenney.nl/assets/roguelike-rpg-pack) | Kenney | CC0 1.0 |
 | `renderer/assets/tiles/npc_*.png`, `creature_dragon.png`, cut by `tools/extract-npc-sprites.mjs` | [Tiny Creatures](https://clintbellanger.net) 1.0, kept in `assets/tiny-creatures/` | Clint Bellanger | CC0 1.0 |
 | `renderer/assets/monsters/manticore-parts.png` | [DnD Manticore](https://commons.wikimedia.org/wiki/File:DnD_Manticore.png), Wikimedia Commons | LadyofHats | CC0 1.0 |
 
