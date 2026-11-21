@@ -14,7 +14,7 @@ const LOW_PREFIXES = ['ow_prop_', 'ow_fence_', 'ow_lily_']
 // The same cell the hand-made open maps use (systems/openmap.js): ground art
 // as the skin, anything standing on it as the overlay, and for a blocking
 // cell the sight class of whatever blocks.
-function cellOf(ground, prop, walkable) {
+export function cellOf(ground, prop, walkable) {
   const c = { tile: walkable ? TILE.FLOOR : TILE.WALL, dirty: true, roomId: null, visible: false, explored: false, skin: ground, locked: true }
   if (prop) c.overlay = prop
   if (!walkable) {

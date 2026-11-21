@@ -19,6 +19,7 @@ import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
 import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
+import { CITY_SKINS } from './city/kit.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
@@ -59,7 +60,8 @@ export const FEATURE_SKINS = [
   ...SITE_SKINS,
   'ow_mushroom', 'ow_boat', 'ow_stump', 'ow_tree_apple', 'ow_tree_small', 'ow_pond_11', 'ow_bush_berry',
 ]
-export const WILDS_SKINS = [...new Set([...TERRAIN_SKINS, ...FEATURE_SKINS])]
+// Kalevanlinna (city/kit.js) is laid with the same art and these.
+export const WILDS_SKINS = [...new Set([...TERRAIN_SKINS, ...FEATURE_SKINS, ...CITY_SKINS])]
 
 const mod = (n, m) => ((n % m) + m) % m
 const smooth = t => t * t * (3 - 2 * t)
@@ -441,6 +443,8 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
   return {
     seed, wx, wy, deal, b,
     biome: (x, y) => biome(x, y),
+    // what the land is before anything is laid on it ('land', 'water', 'mass'), up to EXT cells beyond the piece
+    rawKind: (x, y) => rawKind(x, y),
     kind, free, inside, open, claim, clear: openCell, path, gates, gateInner, finish,
     // a walkable line one cell wide with no path art: a way through the trees
     // for something that must be reachable but not signposted
