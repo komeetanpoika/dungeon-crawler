@@ -11,6 +11,7 @@
 //
 // Local cell (x, y), 0..PIECE-1, is builder cell (x + MARGIN, y + MARGIN).
 import { PIECE, FRAME, BLEND, MARGIN, biomeSampler, gateAt } from './layout.js'
+import { inBay } from './city/geometry.js'
 import { hash, hashInt, noise2, mulberry32 } from './rand.js'
 import { MapBuilder, shoreline, WATER_SKINS, isWaterSkin, isSandySkin, RIM_TILES, TREE_PAIRS } from '../terrain/lib.js'
 import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, LAT_PX, LAT_PY } from '../terrain/mountain.js'
@@ -114,6 +115,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
 
   // What the land is before gates, paths and features: 'land', 'water', 'mass'.
   const rawKind = memo((x, y) => {
+    if (inBay(X0 + x, Y0 + y)) return 'water'   // pure in the world tile, so neighbours agree
     switch (biome(x, y)) {
       case 'sea': return fWater(x, y) > 0.47 ? 'water' : 'land'
       case 'forest': return fWater(x, y) > 0.75 ? 'water' : 'land'

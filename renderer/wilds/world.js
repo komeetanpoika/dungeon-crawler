@@ -10,12 +10,13 @@
 //   deals    key -> how many times the piece has been forgotten
 import { generatePiece } from './piece.js'
 import { pieceKey, isPermanent, villageAt } from './layout.js'
+import { isCityPiece } from './city/geometry.js'
 import { kindOf } from './tales.js'
 import { TALE_IDS } from '../data/tales.js'
 
 // Bump when the generator's output changes: spawn indices and the ground
 // itself in an older save no longer match, so its records are dropped.
-export const GEN = 8
+export const GEN = 9
 export const FORGET_PIECES = 5      // Chebyshev pieces from the player
 export const FORGET_SECONDS = 1200  // of play since the piece was last in the window
 export const CACHE_MAX = 49
@@ -27,7 +28,7 @@ const parseKey = key => { const [wx, wy] = key.split(',').map(Number); return { 
 export function makeWorld(saved = null, { seed = 1 } = {}) {
   const ok = saved && typeof saved === 'object' && !Array.isArray(saved) && isInt(saved.seed)
   const world = {
-    seed: ok ? saved.seed : seed, gen: GEN, playtime: 0, origin: null,
+    seed: ok ? saved.seed : seed, gen: GEN, playtime: 0, day: 0, origin: null,
     pieces: new Map(), records: new Map(), deals: new Map(),
     // key -> spawn indices alive in the window while their home piece is out
     // of it (session.js); never saved — a load puts everyone back at home
@@ -42,6 +43,7 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   }
   if (!ok) return world
   if (Number.isFinite(saved.playtime) && saved.playtime >= 0) world.playtime = saved.playtime
+  if (isInt(saved.day) && saved.day >= 0) world.day = saved.day
   if (isPieceRef(saved.lastVillage)) world.lastVillage = { wx: saved.lastVillage.wx, wy: saved.lastVillage.wy }
   if (Array.isArray(saved.visited)) world.visited = [...new Set(['0,0', ...saved.visited.filter(k => typeof k === 'string')])]
   for (const [key, n] of Object.entries(saved.deals ?? {})) if (isInt(n) && n > 0) world.deals.set(key, n)
@@ -56,6 +58,13 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   for (const [key, p] of Object.entries(isObj(saved.places) ? saved.places : {})) {
     if (!isObj(p) || !TALE_IDS.includes(p.id) || typeof p.village !== 'string') continue
     world.places.set(key, { id: p.id, village: p.village, done: p.done === true })
+  }
+  // a saved place on a city piece (R2) is released; its tale keeps its flags
+  for (const key of [...world.places.keys()]) {
+    const { wx, wy } = parseKey(key)
+    if (!isCityPiece(wx, wy)) continue
+    world.places.delete(key)
+    for (const t of world.tales.values()) if (t.place === key) t.place = null
   }
   if (Array.isArray(saved.paid)) for (const id of saved.paid) if (TALE_IDS.includes(id)) world.paid.add(id)
   // a solved house stays solved, as a told tale stays told
@@ -137,7 +146,7 @@ export function exportWorld(world) {
   const records = {}
   for (const [key, rec] of world.records) records[key] = { gone: [...rec.gone], felled: [...rec.felled], lastSeen: rec.lastSeen }
   return {
-    seed: world.seed, gen: GEN, playtime: world.playtime,
+    seed: world.seed, gen: GEN, playtime: world.playtime, day: world.day,
     pos: world.pos ? { ...world.pos } : null,
     lastVillage: { ...world.lastVillage }, visited: [...world.visited],
     records, deals: Object.fromEntries(world.deals),
