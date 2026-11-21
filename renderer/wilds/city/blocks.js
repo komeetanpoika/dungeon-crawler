@@ -9,7 +9,8 @@
 //           Lots in a row share walls (terraced); frontage 3-5, depth 4-7.
 //   alleys  { pts: [[x0, y0], [x1, y1]], w: 1 | 2 } rastered like streets (w 2 =
 //           the given cell and the next one, to the east or south). Each alley
-//           joins a street or another alley at both ends.
+//           joins a street or another alley at both ends. There are no dead-end
+//           alleys at all (stricter than "ends at a door").
 //   yards, gardens  rects of leftover land behind lots (never covering lots or alleys)
 // `reserved()` lists the footprints no lot, yard or garden may cover (the point
 // places); the windmill also keeps a one-tile clear ring (`clear`).
@@ -44,10 +45,12 @@ function freeGrid() {
   const g = new Uint8Array(S * S)
   const sc = streetCells()
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (districtAt(x, y) && !sc.has(key(x, y))) g[key(x, y)] = FREE
-  for (const r of reserved()) {
-    const c = r.clear || r
-    for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) g[key(x, y)] = 0
-  }
+  // explicit exclusions, whatever districtAt says: basin and mouth, fixed places, reserved footprints
+  const { basin, mouth } = PLAN.harbour
+  const cut = c => { for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) g[key(x, y)] = 0 }
+  cut({ ...basin, y1: mouth.y }); cut({ x0: mouth.x0, x1: mouth.x1, y0: mouth.y, y1: mouth.y })
+  for (const p of Object.values(PLAN.places)) if (p.x0 !== undefined) cut(p)
+  for (const r of reserved()) cut(r.clear || r)
   return g
 }
 

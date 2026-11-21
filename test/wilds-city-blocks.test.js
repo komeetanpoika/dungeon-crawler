@@ -20,7 +20,10 @@ const alleyCells = b => {
   }
   return set
 }
+const mouthCells = () => { const m = PLAN.harbour.mouth; const out = []; for (let x = m.x0; x <= m.x1; x++) out.push([x, m.y]); return out }
 const forbidden = (x, y) => {
+  const m = PLAN.harbour.mouth
+  if (y === m.y && x >= m.x0 && x <= m.x1) return 'mouth'
   if (!insideWalls(x, y) || wallCells().has(key(x, y)) || streetCells().has(key(x, y)) || inRect(basin, x, y)) return 'land'
   if (placeRects().some(r => inRect(r, x, y))) return 'place'
   for (const r of reserved()) if (inRect(r.clear || r, x, y)) return 'reserved ' + r.id
@@ -54,6 +57,15 @@ test('no lot, yard, garden or alley overlaps a street, the wall, a fixed place, 
   }
 })
 
+test('the harbour mouth and basin stay empty', () => {
+  for (const seed of SEEDS) {
+    const b = cutBlocks(seed)
+    const all = [...b.lots, ...b.yards, ...b.gardens]
+    for (const [x, y] of mouthCells()) assert.ok(!all.some(r => inRect(r, x, y)) && !alleyCells(b).has(key(x, y)), `mouth cell ${x},${y}`)
+    for (const r of all) assert.ok(r.x1 < PLAN.harbour.basin.x0 || r.x0 > PLAN.harbour.basin.x1 || r.y1 < PLAN.harbour.basin.y0 || r.y0 > PLAN.harbour.mouth.y, 'basin')
+  }
+})
+
 test('point places keep a footprint: windmill, fountain, crier and stocks', () => {
   const ids = reserved().map(r => r.id).sort()
   assert.deepEqual(ids, ['crier', 'fountain', 'stocks', 'windmill'])
@@ -62,6 +74,7 @@ test('point places keep a footprint: windmill, fountain, crier and stocks', () =
   assert.deepEqual([w.clear.x0, w.clear.x1], [126, 130])
 })
 
+// No dead-end alleys: every alley joins a street or another alley at BOTH ends (stricter than "may end at a door").
 test('every door opens onto street or alley, and every alley joins streets at both ends', () => {
   const sc = streetCells()
   const front = { S: [0, 1], N: [0, -1], E: [1, 0], W: [-1, 0] }
@@ -87,7 +100,19 @@ test('every door opens onto street or alley, and every alley joins streets at bo
   }
 })
 
-test('lots are 3-5 wide at the front and 4-7 deep, terraced against their street', () => {
+test('lots in a row touch their same-front neighbour (terraced)', () => {
+  for (const seed of SEEDS) {
+    const lots = cutBlocks(seed).lots
+    const horiz = l => l.front === 'S' || l.front === 'N'
+    const touches = (a, b) => a !== b && a.front === b.front && (horiz(a)
+      ? a.y0 <= b.y1 && b.y0 <= a.y1 && (a.x1 + 1 === b.x0 || b.x1 + 1 === a.x0)
+      : a.x0 <= b.x1 && b.x0 <= a.x1 && (a.y1 + 1 === b.y0 || b.y1 + 1 === a.y0))
+    const n = lots.filter(a => lots.some(b => touches(a, b))).length
+    assert.ok(n / lots.length >= 0.7, `seed ${seed}: only ${n}/${lots.length} lots share a wall`)
+  }
+})
+
+test('lots are 3-5 wide at the front and 4-7 deep', () => {
   for (const seed of SEEDS) for (const l of cutBlocks(seed).lots) {
     const w = l.x1 - l.x0 + 1, h = l.y1 - l.y0 + 1
     const [fw, dp] = l.front === 'S' || l.front === 'N' ? [w, h] : [h, w]
