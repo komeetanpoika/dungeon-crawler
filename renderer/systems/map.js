@@ -599,10 +599,8 @@ export function generateLevel(depth, width = MAP_W, height = MAP_H, { skipProps 
   if (depth === 0) return buildArena({ size: { w: width, h: height }, ...(arena ?? {}) })
   if (depth === OVERWORLD_DEPTH) return generateOverworld(width, height, { structures })
   if (OPEN_MAPS[depth]) return buildOpenMap(OPEN_MAPS[depth], { npcs, felled, depth })
-  // `config` overrides the LEVEL_CONFIG lookup entirely (used by house
-  // interiors, which generate at a fixed depth with no LEVEL_CONFIG entry of
-  // their own). `pickups` is accepted but unused here — callers run
-  // houses.attachPickups on the returned entitySpawns instead.
+  // `config` overrides the LEVEL_CONFIG lookup entirely (the BSP houses once
+  // used it). `pickups` is accepted but unused here.
   const cfg = config ?? (LEVEL_CONFIG.find(c => c.depth === depth) ?? LEVEL_CONFIG[LEVEL_CONFIG.length - 1])
 
   for (let attempt = 0; attempt < 5; attempt++) {

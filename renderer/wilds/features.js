@@ -55,6 +55,7 @@ const PACKS = [
   [[hound, hound], [spider('strong'), spider('medium')], [bones, bones, bones], [bear, wolf, wolf], CLOWN],
   [[{ kind: 'manticore' }], [hound, hound, hound], [{ kind: 'podeboo' }, bones], [spider('strong'), spider('strong')]],
 ]
+const SUNROOM_ODDS = 0.25   // a village beyond home with Päivölä in it
 const VILLAGE_CALM = 24   // tiles round a village centre no pack is dealt into
 const nearHome = (wx, wy) => Math.max(Math.abs(wx), Math.abs(wy)) <= 1
 
@@ -109,8 +110,10 @@ export function placeFeatures(t, piece) {
     if (!at) return null
     return maker.npc ? npc(maker.npc, at.x, at.y) : spawn({ ...maker, x: at.x, y: at.y })
   }
-  const door = (x, y, doorTier, story = null) => {
-    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story })
+  // `extra`: what the house looks like outside ({ look: { w, storeys, wall } })
+  // and what it is (kind: 'sunroom'), for the interior built behind it
+  const door = (x, y, doorTier, story = null, extra = {}) => {
+    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story, toughness: tier, ...extra })
     hold(x, y)
   }
   const ring = (cx, cy, r, n, skinOf) => {
@@ -196,7 +199,9 @@ export function placeFeatures(t, piece) {
     const v = villageAt(seed, wx, wy) ?? { name: 'Koivula' }
     spawnPoint = { x: mx + 1, y: my + 1 }
     hold(spawnPoint.x, spawnPoint.y)
-    sites.village(mx, my, piece.villageTale)
+    // the glassmaker's house: always in the home village, in about one other in four
+    // (a hash, not the piece's rng, so nothing else of the piece moves)
+    sites.village(mx, my, piece.villageTale, key === '0,0' || hash(seed, wx, wy, 777) < SUNROOM_ODDS)
     // what the village's own tale leaves standing in it
     if (piece.villageTale) piece.villagePoints = sites.villageTrouble(piece.villageTale, mx, my)
     const toward = (dx, dy) => BIOME_NAMES[pieceBiome(seed, wx + dx * 3, wy + dy * 3)]

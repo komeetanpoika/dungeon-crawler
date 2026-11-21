@@ -309,20 +309,17 @@ test('a tune played where no tale is does nothing but lead mice', () => {
 })
 
 test("inside Lalli's house the pint stands on the larder floor, in a house with nothing in it that bites", async () => {
-  const fs = await import('node:fs')
-  const { generateInterior } = await import('../renderer/systems/interior.js')
-  const { INTERIOR_CONFIG, attachPickups, storyStructures } = await import('../renderer/systems/houses.js')
-  const structures = JSON.parse(fs.readFileSync(new URL('../renderer/data/structures.json', import.meta.url), 'utf8'))
+  const { generateInterior, houseSpec } = await import('../renderer/systems/interior.js')
   const t = setup()
   const door = getPiece(t.world, 0, 0).doors.find(d => d.story)
   const ep = storyEpisode(t.world, door)
-  for (let i = 0; i < 20; i++) {
-    const { map, entitySpawns } = generateInterior(INTERIOR_CONFIG[door.tier], { structures: storyStructures(structures, ep, door.story) })
-    const spawns = attachPickups(entitySpawns, ep.houses[door.story].pickups)
-    const pints = spawns.filter(s => s.kind === 'floating_pickup' && s.contents.type === 'beer')
+  for (let seed = 0; seed < 20; seed++) {
+    const g = generateInterior(houseSpec(door, { worldSeed: seed, story: ep.houses[door.story] }))
+    const pints = g.entitySpawns.filter(s => s.kind === 'floating_pickup' && s.contents.type === 'beer')
     assert.equal(pints.length, 1, 'no pint in the larder')
-    assert.notEqual(map[pints[0].y][pints[0].x].tile, TILE.WALL)
-    assert.ok(!spawns.some(s => s.kind === 'monster'), 'vermin in a village house')
+    assert.notEqual(g.map[pints[0].y][pints[0].x].tile, TILE.WALL)
+    assert.ok(['larder', 'cottage'].includes(g.roles.get(g.map[pints[0].y][pints[0].x].roomId)), 'the pint is not in the larder')
+    assert.ok(!g.entitySpawns.some(s => s.kind === 'monster'), 'vermin in a village house')
   }
 })
 

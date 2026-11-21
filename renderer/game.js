@@ -40,8 +40,9 @@ import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
-import { INTERIOR_DEPTH, INTERIOR_CONFIG, attachPickups, storyStructures } from './systems/houses.js'
-import { generateInterior } from './systems/interior.js'
+import { INTERIOR_DEPTH } from './systems/houses.js'
+import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems/interior.js'
+import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
@@ -127,7 +128,7 @@ function loadMutedPref() {
 function saveMutedPref(m) {
   try { localStorage.setItem('dc-muted', m ? '1' : '0') } catch {}
 }
-window.addEventListener('keydown', e => { keys[e.key] = true })
+window.addEventListener('keydown', e => { if (e.repeat && (e.key === 'f' || e.key === 'F')) return; keys[e.key] = true })   // a held F is one press (it turns Päivölä's mirrors)
 window.addEventListener('keyup',   e => { keys[e.key] = false })
 // Focus loss never delivers the keyup, so a key held over an Alt-Tab would
 // stay down for good. Q is the one that bites: tickShield would keep the
@@ -634,13 +635,17 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
         isFountainBasin: true, flowing: false, fountainTime: 0, pairX: s.pairX, pairY: s.pairY, gateId: s.gateId }]
       case 'talent_trigger': return [{ type: 'talent_trigger', x: s.x, y: s.y, outfit: s.outfit, rite: s.rite }]
       case 'wild_mushroom':  return [{ type: 'wild_mushroom', x: s.x, y: s.y, hueT: (s.x * 7 + s.y * 13) % 10 }]
-      // A story house's prefab pickup slot (attachPickups, systems/houses.js)
-      // — lands already-arrived (progress: 1) rather than arcing in.
+      // Something lying on a floor (a house's potions, a tale's things in a
+      // story house) — lands already-arrived (progress: 1) rather than arcing in.
       case 'floating_pickup': return [{ type: 'floating_item', contents: s.contents, x: s.x, y: s.y,
         startPx: cx, startPy: cy, targetPx: cx, targetPy: cy, px: cx, py: cy, progress: 1, duration: 0.3 }]
       case 'echo':    return [{ type: 'echo', id: 'echo', x: s.x, y: s.y, px: cx, py: cy, fadeA: 0, t: 0, trail: [], said: null }]
       // Tapio's peace (a tale's reward): wolves are built calm; striking one still makes it fight
-      case 'npc': { const n = makeNpc(s.species === 'wolf' && hasTalent(player, 'tapio_peace') ? { ...s, hostile: false } : s); return n ? [n] : [] }
+      case 'npc': {
+        const n = makeNpc(s.species === 'wolf' && hasTalent(player, 'tapio_peace') ? { ...s, hostile: false } : s)
+        if (n && s.lines) n.lines = s.lines   // someone at home says what that household says
+        return n ? [n] : []
+      }
       // a Wilds camp's fire (wilds/sites.js): it never burns down, and cooks like any other
       case 'campfire': return [makeCampfire(s.x, s.y, { eternal: true })]
       default: {
@@ -1145,9 +1150,13 @@ function netFrame() {
 }
 
 // The Wilds lays several hundred tiles no other mode uses. They load the
-// first time the Wilds is entered, so the title does not wait for them.
+// first time the Wilds is entered, so the title does not wait for them; the
+// house interiors' tiles (renderer/interior/) come with them, and before the
+// other modes that have houses.
 let wildsSprites = null
-const loadWildsSprites = () => wildsSprites ??= renderer.addSprites(WILDS_SKINS)
+const loadWildsSprites = () => wildsSprites ??= renderer.addSprites([...WILDS_SKINS, ...INTERIOR_SKINS])
+let interiorSprites = null
+const loadInteriorSprites = () => interiorSprites ??= renderer.addSprites(INTERIOR_SKINS)
 let beginning = false
 
 async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = null) {
@@ -1156,6 +1165,9 @@ async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = n
     beginning = true
     if (!wildsSprites) menu.setSubtitle('Loading the world\u2026')
     try { await loadWildsSprites() } finally { beginning = false }
+  } else if (mode === 'adventure' || mode === 'timewarp') {
+    beginning = true
+    try { await loadInteriorSprites() } finally { beginning = false }
   }
   runMode = mode
   activeSave = mode === 'timewarp' ? enterEpisode(savedTimewarp, depth).save : mode === 'wilds' ? savedWilds : savedAdventure
@@ -1482,7 +1494,13 @@ function update(delta) {
     : 1
   const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
+  const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
+  // Päivölä: walking into a mirror turns it (systems/sunroom-run.js)
+  if (state.cave?.label?.startsWith('house:')) {
+    const sun = tickSunroom(state, { vx, vy, blockedX: vx !== 0 && player.px === walkedFrom.px, blockedY: vy !== 0 && player.py === walkedFrom.py })
+    if (sun) onSunroom(sun)
+  }
 
   // Chest interaction (walk onto chest tile)
   const chestIdx = state.entities.findIndex(e =>
@@ -1514,6 +1532,7 @@ function update(delta) {
       })
     }
     if (granted) state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
+    if (granted && chest.sunReward && wildsWorld && state.wilds && state.cave) { wildsWorld.looted.add(state.cave.label); persistRun() }
   }
 
   // Floating item pickup (step onto landing tile once arc completes)
@@ -1654,6 +1673,9 @@ function update(delta) {
     const basin = state.entities.find(e =>
       e.type === 'prop' && e.isFountainBasin && e.x === player.x && e.y === player.y
     )
+    // facing one of Päivölä's mirrors, the key turns it
+    const sun = !basin && state.cave?.label?.startsWith('house:') ? tickSunroom(state, { interact: true }) : null
+    if (sun) { onSunroom(sun); return }
     const sign = basin ? null : signNearby(state.signs, player.x, player.y)
     const npc = (basin || sign) ? null : nearestPeacefulNpc(state)
     if (npc) { interactNpc(state, npc); return }
@@ -2320,7 +2342,9 @@ function render() {
   maybeComputeFOV(state.map, state.player, bench ? 40 : surface ? 14 : 8, { los: !surface })
   const fx = riteVisuals(state)
   if (state.weather) state.weather.look = state.cave ? null : weatherLook(state, activeSave)
-  renderer.updateCamera(state.player, state.shake ?? 0, fx)
+  // a house is framed whole in the window when it fits
+  const frame = state.cave?.label?.startsWith('house:') ? { w: state.map[0].length * TILE_SIZE, h: state.map.length * TILE_SIZE } : null
+  renderer.updateCamera(state.player, state.shake ?? 0, fx, frame)
   renderer.render(state, fx)
   bench?.drawOverlay(renderer.ctx, state, renderer)
   updateHUD(state)
@@ -2355,30 +2379,56 @@ function enterCave(entrance) {
 
 // House doors reuse the cave transition wholesale — a stored instance means
 // killed vermin stay dead and taken pickups stay taken; missing here means
-// generate a fresh interior (one of the five house plans, with the story
-// house's prefab + pickups laid in when the door resolves to one).
+// build the house behind the door (renderer/interior/): the same house every
+// time, from the world's seed and the door, with a story house's things laid
+// in when the door resolves to one. An instance stored by the old generator
+// has no front door of its own and is built afresh.
 function enterHouse(door) {
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
-  const inst = state.caveInstances?.[door.label]
-  if (inst) {
+  let inst = state.caveInstances?.[door.label]
+  let version = null
+  const world = wildsWorld && state.wilds ? wildsWorld : null
+  const owed = inst?.exit && inst.spawn ? storedSunroom(inst.map, inst.entities, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) }) : null
+  if (owed?.rebuild) inst = null
+  if (inst?.exit && inst.spawn) {
     state = buildCaveState(state, entrance, {
-      map: inst.map, entities: inst.entities, playerSpawn: inst.stairs, theme: inst.theme,
+      map: inst.map, entities: inst.entities, playerSpawn: inst.spawn, exit: inst.exit, theme: inst.theme,
       dropSpawned: inst.dropSpawned, lastBossTile: inst.lastBossTile, hasKey: inst.hasKey,
     })
+    if (owed?.reward) state.entities.push(sunRewardChest(owed.reward))
   } else {
-    const cfg = INTERIOR_CONFIG[door.tier]
-    const theme = DEPTH_THEMES.find(t => t.depths.includes(INTERIOR_DEPTH)) ?? DEPTH_THEMES[0]
     // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
     const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
-    const structs = storyStructures(structures, storyEp, door.story)
-    const { map, entitySpawns, playerSpawn } = generateInterior(cfg, { structures: structs })
-    const spawns = attachPickups(entitySpawns, storyEp?.houses?.[door.story]?.pickups ?? [])
+    const spec = houseSpec(door, { worldSeed: wildsWorld && state.wilds ? wildsWorld.seed : 0, story: storyEp?.houses?.[door.story] ?? null })
+    const house = generateInterior(spec, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) })
     state = buildCaveState(state, entrance, {
-      map, entities: buildEntities(spawns, map, INTERIOR_DEPTH), playerSpawn, theme,
+      map: house.map, entities: buildEntities(house.entitySpawns, house.map, INTERIOR_DEPTH),
+      playerSpawn: house.playerSpawn, exit: house.exit, theme: house.theme,
     })
+    if (house.reward) state.entities.push(sunRewardChest(house.reward))
+    version = house.version
   }
-  announce(state, 'You step inside.')
+  announce(state, (version && VERSIONS[version]?.enter) || 'You step inside.')
   sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
+}
+
+// Päivölä's reward: a chest in the alcove the light opened. What it holds is
+// rolled when it appears, on the rung of the caves' best but one.
+const SUN_LOOT_DEPTH = 4
+function sunRewardChest(at) {
+  const [chest] = buildEntities([{ kind: 'chest', x: at.x, y: at.y, contents: rollChestLoot(SUN_LOOT_DEPTH, Math.random, state.player) }], state.map, INTERIOR_DEPTH)
+  return { ...chest, sunReward: true }
+}
+
+function onSunroom(result) {
+  if (result === 'turned') { sfx(state, 'mirror-turn', { px: state.player.px, py: state.player.py }); return }
+  // the light has reached the seed: the alcove is open, the reward waits in it
+  // (unless it was taken before, in a visit a death has since rolled back)
+  const world = wildsWorld && state.wilds ? wildsWorld : null
+  if (!world?.looted.has(state.cave.label)) state.entities.push(sunRewardChest(state.cave.sun.alcove))
+  if (world) { world.solved.add(state.cave.label); persistRun() }
+  announce(state, 'The seed drinks the light, and a panel in the wall swings open.')
+  sfx(state, 'sun-bloom', { px: state.player.px, py: state.player.py })
 }
 
 function exitCave() {

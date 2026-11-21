@@ -140,7 +140,7 @@ export function makeSites(c) {
   }
 
   // A house whose door is at (dx, dy). Returns its box.
-  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null } = {}) {
+  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null } = {}) {
     const R = ROOF[roof], W = WALL[wall]
     const dbl = w === 5 && rng() < 0.35
     const dcol = w === 3 ? 1 : w === 4 ? (rng() < 0.5 ? 1 : 2) : 2
@@ -159,7 +159,7 @@ export function makeSites(c) {
     }
     // the doorstep stays clear
     for (let i = -1; i <= 1; i++) { t.clear(dx + i, dy + 1); hold(dx + i, dy + 1) }
-    c.door(dx, dy, tier, story)
+    c.door(dx, dy, tier, story, { look: { w, storeys, wall }, ...(kind ? { kind } : {}) })
     return { x0, x1: x0 + w - 1, top, w }
   }
 
@@ -208,13 +208,14 @@ export function makeSites(c) {
   // ---- the village ------------------------------------------------------------
   // Four to six houses round a cobbled well, no two rows of them touching;
   // everything stays within 11 tiles of the centre, inside the opened pad.
-  function village(cx, cy, tale = null) {
+  // `sunroom`: the big house is the glassmaker's, Päivölä (renderer/interior/sunroom.js)
+  function village(cx, cy, tale = null, sunroom = false) {
     cobble(cx, cy, 14)
     put(cx, cy - 1, 'ow_well_top'); put(cx, cy, 'ow_well')
     put(cx - 2, cy + 1, 'ow_sign')
     const big = rng() < 0.5
     house(cx - 7, cy - 3, 'safe', { w: 4 + (rng() < 0.5 ? 1 : 0) })
-    house(cx + 6, cy - 4, 'safe', { w: 5, storeys: big ? 2 : 1 })
+    house(cx + 6, cy - 4, 'safe', { w: 5, storeys: big ? 2 : 1, kind: sunroom ? 'sunroom' : null })
     // in a Lalli village the house by the field is his: its larder holds the tale's pint
     house(cx - 7, cy + 5, 'safe', { w: 3, story: tale === 'lalli' ? LALLI_HOUSE : null })
     house(cx + 7, cy + 4, 'safe', { w: 3 + (rng() < 0.5 ? 1 : 0) })
@@ -265,7 +266,7 @@ export function makeSites(c) {
     row(cx - 1, cy - 2, ['ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r'])
     row(cx - 1, cy - 1, ['ow_brick', 'ow_brick', 'ow_brick'])
     row(cx - 1, cy, ['ow_house_wall_stone_l', 'ow_house_arch_stone', 'ow_house_wall_stone_r'])
-    c.door(cx, cy, 'ruin')
+    c.door(cx, cy, 'ruin', null, { look: { w: 3, storeys: 2, wall: 'stone' } })
     for (let i = -1; i <= 1; i++) for (let j = 1; j <= 2; j++) { t.clear(cx + i, cy + j); hold(cx + i, cy + j) }
     const wall = (x, y, skin) => { if (!t.onPath(x, y) && !c.taken(x, y)) put(x, y, skin) }
     // north wall: parapet over brick, in runs

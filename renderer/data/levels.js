@@ -268,11 +268,9 @@ export const DEPTH_THEMES = [
     fogAlpha: 0.65,
     props: { room: [] },
   },
-  // House interiors (systems/houses.js, INTERIOR_DEPTH = 19) — a fixed BSP
-  // depth entered via village/hut/ruin doors. No ruleset: the BSP walls keep
-  // the dungeon wall art (cellars). Room props come from the tier's own
-  // INTERIOR_CONFIG.props, not this theme's (empty) props.room — generateLevel
-  // reads `config.props ?? theme.props.room`.
+  // House interiors (systems/houses.js, INTERIOR_DEPTH = 19): built by
+  // renderer/interior/, which hands each house its own version's theme; this
+  // one is the fallback.
   {
     depths: [19],
     floorTile: 'floor_wood',

@@ -124,7 +124,7 @@ describe('story house prefabs', () => {
         assert.deepEqual(missing, [], `missing tile files: ${missing.join(', ')}`)
       })
 
-      it('does not carry a targetDepth (storyStructures adds that at runtime)', () => {
+      it('does not carry a targetDepth', () => {
         assert.equal(s.targetDepth, undefined)
       })
 

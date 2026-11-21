@@ -162,6 +162,39 @@ describe('computePlayerFOV without line of sight (open maps)', () => {
   })
 })
 
+// A house's north wall is seen from the front: two rows of face and the wall
+// top above them. The lower face hides the upper row from every ray, so the
+// lower face lights the cells above it (renderer/interior/walls.js `seeUp`).
+describe('computePlayerFOV and a wall face seen from the front', () => {
+  const room = () => {
+    const map = openMap()
+    for (let x = 0; x < 20; x++) { map[2][x].tile = TILE.WALL; map[3][x].tile = TILE.WALL; map[4][x].tile = TILE.WALL; map[4][x].seeUp = 2 }
+    return map
+  }
+  it('lights the upper face and the wall top over a lit lower face', () => {
+    const map = room()
+    computePlayerFOV(map, { x: 6, y: 8 }, 8)
+    assert.equal(map[4][6].visible, true, 'the lower face')
+    assert.equal(map[3][6].visible, true, 'the upper face')
+    assert.equal(map[2][6].visible, true, 'the wall top')
+    assert.equal(map[3][6].explored, true)
+  })
+  it('lights nothing above a face it cannot see', () => {
+    const map = room()
+    computePlayerFOV(map, { x: 6, y: 8 }, 3)
+    assert.equal(map[3][15].visible, false)
+  })
+  it('clears the lifted cells again when the player looks away', () => {
+    const map = room()
+    const player = { x: 6, y: 8 }
+    computePlayerFOV(map, player, 8)
+    player.x = 6; player.y = 19
+    computePlayerFOV(map, player, 3)
+    assert.equal(map[3][6].visible, false)
+    assert.equal(map[3][6].explored, true, 'remembered')
+  })
+})
+
 describe('computePlayerFOV (radius-bounded clear)', () => {
   it('does not touch far-off tiles when recomputing on the same map', () => {
     // The clear must cost O(radius²), not O(map area): a recompute on the same

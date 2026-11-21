@@ -25,6 +25,8 @@ export const CUE_NAMES = [
   'leap', 'echo', 'bell', 'drag', 'sink', 'erupt', 'wraith-touch', 'wraith-burn',
   // the piper's flute (systems/tune.js)
   'flute-0', 'flute-1', 'flute-2', 'flute-3',
+  // Päivölä's mirrors and seed (systems/sunroom-run.js)
+  'mirror-turn', 'sun-bloom',
 ]
 
 export function makeSfx(muted = false) {

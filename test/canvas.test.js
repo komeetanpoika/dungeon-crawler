@@ -59,6 +59,19 @@ describe('drawTile overlay', () => {
     drawTile(ctx, TILE.FLOOR, 0, 0, 32, SPR, { skin: 'fl' })
     assert.deepEqual(ctx.calls, ['SKIN_FL'])
   })
+
+  // a house floor: the planks, a rug on them, a table on the rug
+  it('draws the deco layer between the skin and the overlay', () => {
+    const ctx = recordingCtx()
+    drawTile(ctx, TILE.FLOOR, 0, 0, 32, { ...SPR, rg: 'DECO_RUG' }, { skin: 'fl', deco: 'rg', overlay: 'br' })
+    assert.deepEqual(ctx.calls, ['SKIN_FL', 'DECO_RUG', 'OVERLAY_BR'])
+  })
+
+  it('draws the deco layer over the default sprite too', () => {
+    const ctx = recordingCtx()
+    drawTile(ctx, TILE.FLOOR, 0, 0, 32, { ...SPR, rg: 'DECO_RUG' }, { deco: 'rg' })
+    assert.deepEqual(ctx.calls, ['FLOOR', 'DECO_RUG'])
+  })
 })
 
 describe('isFlickerVisible', () => {
@@ -262,6 +275,18 @@ describe('Renderer DPR-aware resize', () => {
     assert.equal(r.camX, 1000 - 200)  // viewW/2, not canvas.width/2
     assert.equal(r.camY, 500 - 150)
     globalThis.devicePixelRatio = prev
+  })
+
+  // a house smaller than the window is framed whole, wherever the player stands in it
+  it('centres a frame that fits the view on that axis, and follows the player on one that does not', () => {
+    const c = fakeCanvas(400, 300)
+    const r = new Renderer(c)
+    r.resize()
+    r.updateCamera({ px: 40, py: 250 }, 0, null, { w: 320, h: 640 })
+    assert.equal(r.camX, (320 - 400) / 2)   // 320 wide fits: centred
+    assert.equal(r.camY, 250 - 150)          // 640 tall does not: follows
+    r.updateCamera({ px: 40, py: 250 }, 0, null, null)
+    assert.equal(r.camX, 40 - 200)
   })
 })
 

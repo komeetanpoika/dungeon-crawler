@@ -718,3 +718,32 @@ test('a Lalli village: his house is a story house, Kerttu has a place by its doo
     assert.deepEqual(p.spawns, plain.spawns)
   }
 })
+
+// House interiors (renderer/interior/) read the house off its door record;
+// telling them changes nothing else of the piece (no GEN bump for it).
+test('a door tells what the house looks like outside, and how tough the land is', () => {
+  const seen = new Set()
+  for (const [wx, wy] of [[0, 0], [1, 0], [0, -1], [2, 3], [-3, 1], [4, -2], [-5, -5], [6, 1], [3, 3], [-2, 4]]) {
+    const p = generatePiece(12345, wx, wy, 0)
+    for (const d of p.doors) {
+      assert.equal(d.toughness, p.tier, `${wx},${wy}: door toughness`)
+      assert.ok(d.look && [3, 4, 5].includes(d.look.w) && [1, 2].includes(d.look.storeys) && ['stone', 'wood'].includes(d.look.wall), `${wx},${wy}: ${JSON.stringify(d.look)}`)
+      seen.add(d.tier)
+    }
+  }
+  assert.ok(seen.has('safe') && seen.has('hut'))
+})
+
+test('the pieces are cell for cell what they were before doors told their looks', async () => {
+  const { createHash } = await import('node:crypto')
+  const BEFORE = { '0,0': '7d23a0869838e613', '1,0': 'cf3286888989fa92', '0,-1': 'cbef23c92f5261e9', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': 'f05d2b5bc40f9214', '6,1': '04fd70d97186adb6' }
+  for (const [key, want] of Object.entries(BEFORE)) {
+    const [wx, wy] = key.split(',').map(Number)
+    const p = generatePiece(12345, wx, wy, 0)
+    const h = createHash('sha1')
+    for (const row of p.cells) for (const c of row) h.update(`${c.tile}|${c.skin}|${c.overlay ?? ''};`)
+    h.update(JSON.stringify(p.spawns.map(s => [s.kind, s.x, s.y])))
+    h.update(JSON.stringify(p.doors.map(d => [d.x, d.y, d.tier, d.story])))
+    assert.equal(h.digest('hex').slice(0, 16), want, `piece ${key} changed`)
+  }
+})

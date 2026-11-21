@@ -267,6 +267,15 @@ describe('interactNpc', () => {
     assert.equal(state.feedback.bubble.anchorId, e.id)
     assert.equal(state.feedback.bubble.text, r.text)
   })
+  // someone at home in a house says what that household says (renderer/interior/)
+  it('a villager with lines of their own speaks those, not the species lines', () => {
+    const map = field()
+    const e = npcAt('villager', 5, 5)
+    e.lines = ['Wipe your feet, stranger.']
+    const state = makeState(map, { x: 4, y: 5 }, [e]); state.feedback = makeFeedback()
+    state.villagerLines = { villager: ['A village line.'] }
+    assert.equal(interactNpc(state, e, () => 0).text, 'Wipe your feet, stranger.')
+  })
   it('an animal reacts per species and queues its cue', () => {
     const map = field()
     const hen = npcAt('chicken', 5, 5), deer = npcAt('deer', 9, 9)

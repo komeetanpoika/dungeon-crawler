@@ -35,6 +35,9 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     // tales (tales.js): villageKey -> { id, flags, place, n, nSide, done, special? };
     // places: pieceKey -> { id, village, done }; paid: kinds whose special reward is spent
     tales: new Map(), places: new Map(), paid: new Set(),
+    // Päivölä (renderer/interior/sunroom.js): door labels of puzzle houses
+    // solved, and of those whose reward was taken
+    solved: new Set(), looted: new Set(),
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
   }
   if (!ok) return world
@@ -55,6 +58,8 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     world.places.set(key, { id: p.id, village: p.village, done: p.done === true })
   }
   if (Array.isArray(saved.paid)) for (const id of saved.paid) if (TALE_IDS.includes(id)) world.paid.add(id)
+  // a solved house stays solved, as a told tale stays told
+  for (const k of ['solved', 'looted']) if (Array.isArray(saved[k])) for (const label of saved[k]) if (typeof label === 'string') world[k].add(label)
   if (saved.gen !== GEN) return world
   for (const [key, rec] of Object.entries(saved.records ?? {})) {
     if (!rec || typeof rec !== 'object') continue
@@ -139,5 +144,6 @@ export function exportWorld(world) {
     tales: Object.fromEntries([...world.tales].map(([key, t]) => [key, { ...t, flags: { ...t.flags } }])),
     places: Object.fromEntries([...world.places].map(([key, p]) => [key, { ...p }])),
     paid: [...world.paid],
+    solved: [...world.solved], looted: [...world.looted],
   }
 }
