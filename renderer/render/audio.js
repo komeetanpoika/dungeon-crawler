@@ -32,6 +32,8 @@ export const RECIPES = {
   'enemy-death':    { kind: 'blip',   wave: 'square',   f0: 330,  f1: 90,   dur: 0.25, vol: 0.7 },
   'boss-death':     { kind: 'rumble', freq: 55,  dur: 1.20, vol: 1.0 },
   'pickup':         { kind: 'blip',   wave: 'square',   f0: 660,  f1: 990,  dur: 0.09, vol: 0.6 },
+  'mirror-turn':    { kind: 'blip',   wave: 'triangle', f0: 1400, f1: 1750, dur: 0.07, vol: 0.35 },
+  'sun-bloom':      { kind: 'blip',   wave: 'triangle', f0: 392,  f1: 1568, dur: 1.10, vol: 0.6 },
   'key-pickup':     { kind: 'blip',   wave: 'triangle', f0: 660,  f1: 1320, dur: 0.18, vol: 0.7 },
   'heal':           { kind: 'blip',   wave: 'triangle', f0: 440,  f1: 880,  dur: 0.20, vol: 0.6 },
   'equip':          { kind: 'blip',   wave: 'square',   f0: 550,  f1: 660,  dur: 0.07, vol: 0.5 },

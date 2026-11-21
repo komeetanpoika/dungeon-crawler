@@ -304,7 +304,7 @@ const SHEET_CELLS = {
   in_sack: [26, 2], in_sack2: [27, 2], in_grain: [41, 10], in_floorchest: [37, 9],
   in_anvil: [15, 0], in_logs: [13, 8], in_candelabra: [19, 8],
   in_statue_t: [50, 10], in_statue_b: [50, 11], in_column: [20, 19], in_gravestone: [51, 9],
-  in_rubble: [44, 10], in_skull: [49, 9], in_books_floor: [47, 15],
+  in_rubble: [44, 10], in_skull: [49, 9], in_books_floor: [50, 15],
   in_flower_a: [28, 9], in_flower_b: [29, 9], in_flower_c: [30, 9], in_flower_d: [31, 9],
   in_panel: [25, 6],
 }

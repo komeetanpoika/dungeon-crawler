@@ -54,7 +54,10 @@ async function build(seed, i) {
   const { generateInterior, specFor } = await import('../../renderer/interior/index.js')
   const spec = specFor({ version, size: sz, seed, label: `render:${seed}` })
   const g = generateInterior(spec, { solved })
-  return { map: g.map, spawns: g.entitySpawns, beam: g.beam ?? null, label: `${g.version} ${sz} ${spec.palette}${spec.trade ? ' ' + spec.trade : ''} #${seed}` }
+  const { findSun, traceBeam } = await import('../../renderer/interior/sunroom.js')
+  const sun = findSun(g.map)
+  const beam = sun ? [{ x: sun.start.x, y: sun.start.y - 1.2 }, ...traceBeam(g.map, sun.start).cells] : null
+  return { map: g.map, spawns: g.entitySpawns, beam, label: `${g.version} ${sz} ${spec.palette}${spec.trade ? ' ' + spec.trade : ''} #${seed}` }
 }
 
 const SPAWN_ART = s => {

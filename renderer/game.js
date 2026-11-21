@@ -42,6 +42,7 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH } from './systems/houses.js'
 import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems/interior.js'
+import { tickSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
@@ -1487,6 +1488,8 @@ function update(delta) {
   const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
+  // Päivölä: walking into a mirror turns it (systems/sunroom-run.js)
+  if (state.cave?.label?.startsWith('house:')) { const sun = tickSunroom(state, { vx, vy }); if (sun) onSunroom(sun) }
 
   // Chest interaction (walk onto chest tile)
   const chestIdx = state.entities.findIndex(e =>
@@ -1518,6 +1521,7 @@ function update(delta) {
       })
     }
     if (granted) state.entities = state.entities.map((e, i) => i === chestIdx ? { ...e, opening: true, frame: 2 } : e)
+    if (granted && chest.sunReward && wildsWorld && state.wilds && state.cave) { wildsWorld.looted.add(state.cave.label); persistRun() }
   }
 
   // Floating item pickup (step onto landing tile once arc completes)
@@ -1658,6 +1662,9 @@ function update(delta) {
     const basin = state.entities.find(e =>
       e.type === 'prop' && e.isFountainBasin && e.x === player.x && e.y === player.y
     )
+    // facing one of Päivölä's mirrors, the key turns it
+    const sun = !basin && state.cave?.label?.startsWith('house:') ? tickSunroom(state, { interact: true }) : null
+    if (sun) { onSunroom(sun); return }
     const sign = basin ? null : signNearby(state.signs, player.x, player.y)
     const npc = (basin || sign) ? null : nearestPeacefulNpc(state)
     if (npc) { interactNpc(state, npc); return }
@@ -2378,15 +2385,34 @@ function enterHouse(door) {
     // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
     const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
     const spec = houseSpec(door, { worldSeed: wildsWorld && state.wilds ? wildsWorld.seed : 0, story: storyEp?.houses?.[door.story] ?? null })
-    const house = generateInterior(spec, { solved: !!(wildsWorld && state.wilds && wildsWorld.solved?.has(door.label)) })
+    const world = wildsWorld && state.wilds ? wildsWorld : null
+    const house = generateInterior(spec, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) })
     state = buildCaveState(state, entrance, {
       map: house.map, entities: buildEntities(house.entitySpawns, house.map, INTERIOR_DEPTH),
       playerSpawn: house.playerSpawn, exit: house.exit, theme: house.theme,
     })
+    if (house.reward) state.entities.push(sunRewardChest(house.reward))
     version = house.version
   }
   announce(state, (version && VERSIONS[version]?.enter) || 'You step inside.')
   sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
+}
+
+// Päivölä's reward: a chest in the alcove the light opened. What it holds is
+// rolled when it appears, on the rung of the caves' best but one.
+const SUN_LOOT_DEPTH = 4
+function sunRewardChest(at) {
+  const [chest] = buildEntities([{ kind: 'chest', x: at.x, y: at.y, contents: rollChestLoot(SUN_LOOT_DEPTH, Math.random, state.player) }], state.map, INTERIOR_DEPTH)
+  return { ...chest, sunReward: true }
+}
+
+function onSunroom(result) {
+  if (result === 'turned') { sfx(state, 'mirror-turn', { px: state.player.px, py: state.player.py }); return }
+  // the light has reached the seed: the alcove is open, the reward waits in it
+  state.entities.push(sunRewardChest(state.cave.sun.alcove))
+  if (wildsWorld && state.wilds) { wildsWorld.solved.add(state.cave.label); persistRun() }
+  announce(state, 'The seed drinks the light, and a panel in the wall swings open.')
+  sfx(state, 'sun-bloom', { px: state.player.px, py: state.player.py })
 }
 
 function exitCave() {

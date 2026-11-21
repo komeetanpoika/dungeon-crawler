@@ -55,8 +55,10 @@ export function houseSpec(door, { worldSeed = 0, story = null } = {}) {
   const rng = mulberry32(seed ^ 0x5eed5eed)
   const version = chooseVersion(door, rng, story)
   const trade = version === 'home' || version === 'empty' || version === 'sunroom' ? pick(rng, TRADE_LIST) : null
+  // the sunlit hall needs room: the puzzle house is never smaller than large
+  const size = version === 'sunroom' && !['large', 'grand'].includes(sizeOf(door)) ? 'large' : sizeOf(door)
   return {
-    label: door.label, tier: door.tier ?? 'hut', version, size: sizeOf(door), palette: paletteOf(door, version),
+    label: door.label, tier: door.tier ?? 'hut', version, size, palette: paletteOf(door, version),
     toughness: door.toughness ?? 1, trade, seed,
     story: story ? { role: STORY_ROOMS[story.room] ?? 'kitchen', pickups: story.pickups ?? [] } : null,
   }
@@ -72,6 +74,19 @@ const TRADE_LINES = {
   baker: ["Bread's not ready. Come back at dawn.", 'Flour gets everywhere. Everywhere.'],
   scholar: ['Mind the books. Some are older than the village.', 'I am writing down the old songs before they are forgotten.'],
   weaver: ['Wool from our own sheep, every thread.', 'Red dye from bedstraw root. Takes all summer.'],
+}
+// The glassmaker of Päivölä (interior/sunroom.js): a hint before, thanks after.
+export const GLASSMAKER = {
+  hint: [
+    'The sun used to fill this hall. Now it falls on the floor and goes nowhere.',
+    'My mirrors were knocked about. Walk into one and it turns.',
+    'The seed in the planter wants the light. It has waited a long time.',
+  ],
+  solved: [
+    'Look at it! The whole hall is gold again.',
+    'Take what is in the wall. It was meant for whoever woke the seed.',
+    'Päivölä, my grandmother called this house. The home of the sun.',
+  ],
 }
 const ELDER_LINES = ['I have lived in this house since I was a boy.', 'The old songs say the sun was kept in a house once.', 'Sit, sit. My legs are not what they were.']
 const HERMIT_LINES = ['Not many find their way out here.', 'I keep to myself. You might try it.', 'The woods are quiet, if you let them be.']
@@ -108,6 +123,7 @@ export function occupants(spec, rng) {
       break
     }
     case 'ruin': out.push(monster('strong'), monster('medium')); for (let i = int(rng, 1, 2); i > 0; i--) out.push(monster('medium')); break
+    case 'sunroom': out.push({ kind: 'npc', species: 'elder', role: 'glassmaker', hostile: false, id: `${label}:glassmaker`, lines: GLASSMAKER.hint }); break
     default: break
   }
   return out

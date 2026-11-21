@@ -26,8 +26,8 @@ const L_CHANCE = 0.35
 const between = (rng, lo, hi) => lo + Math.floor(((rng() + rng()) / 2) * (hi - lo + 1))
 const int = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))
 
-const canV = r => r.x1 - r.x0 + 1 >= MIN_W * 2 + 1
-const canH = r => r.y1 - r.y0 + 1 >= MIN_H * 2 + 1
+const canV = r => !r.keep && r.x1 - r.x0 + 1 >= MIN_W * 2 + 1
+const canH = r => !r.keep && r.y1 - r.y0 + 1 >= MIN_H * 2 + 1
 function split(r, rng) {
   const w = r.x1 - r.x0 + 1, h = r.y1 - r.y0 + 1
   // rooms read wider than tall (two of their rows are wall), so lean vertical
@@ -41,9 +41,17 @@ function split(r, rng) {
 }
 
 // Cut the footprint into rects. Returns null when the count cannot be met.
-function cut(W, H, target, rng, withL) {
+// `hall`: the first cut gives a full-height hall of about 60% of the width,
+// never cut again (the puzzle house's sunlit hall).
+function cut(W, H, target, rng, withL, hall) {
   let rects = [{ x0: 1, x1: W, y0: 1, y1: H }]
-  if (withL) {
+  if (hall) {
+    const hw = Math.max(8, Math.round(W * (0.56 + rng() * 0.08)))
+    if (W - hw - 1 < MIN_W) return null
+    rects = rng() < 0.5
+      ? [{ x0: 1, x1: hw, y0: 1, y1: H, keep: true }, { x0: hw + 2, x1: W, y0: 1, y1: H }]
+      : [{ x0: W - hw + 1, x1: W, y0: 1, y1: H, keep: true }, { x0: 1, x1: W - hw - 1, y0: 1, y1: H }]
+  } else if (withL) {
     const cw = Math.round(W * (0.35 + rng() * 0.1)), ch = Math.round(H * (0.35 + rng() * 0.1))
     const left = rng() < 0.5
     // the full-height part and the lower wing, a wall between them
@@ -77,14 +85,14 @@ function doorChoices(a, b) {
   return out
 }
 
-function attempt(size, rng) {
+function attempt(size, rng, opts) {
   const S = SIZES[size]
   const W = int(rng, ...S.w), H = int(rng, ...S.h)
   const target = int(rng, ...S.rooms)
-  const withL = (size === 'large' || size === 'grand') && rng() < L_CHANCE
-  const rects = cut(W, H, target, rng, withL)
+  const withL = !opts.hall && (size === 'large' || size === 'grand') && rng() < L_CHANCE
+  const rects = cut(W, H, target, rng, withL, !!opts.hall)
   if (!rects) return null
-  const rooms = rects.map((r, id) => ({ id, ...r, floorY0: r.y0 + 2 }))
+  const rooms = rects.map(({ keep, ...r }, id) => ({ id, ...r, floorY0: r.y0 + 2 }))
   const w = W + 2, h = H + 2
   const g = Array.from({ length: h }, () => new Array(w).fill(' '))
   for (const r of rooms) for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++)
@@ -134,10 +142,11 @@ function attempt(size, rng) {
   }
 }
 
-export function makePlan(size, rng) {
+// opts.hall: the room by the door is a big full-height hall (see cut).
+export function makePlan(size, rng, opts = {}) {
   if (!SIZES[size]) throw new Error(`makePlan: unknown size "${size}"`)
   for (let i = 0; i < 40; i++) {
-    const p = attempt(size, rng)
+    const p = attempt(size, rng, opts)
     if (p) return p
   }
   throw new Error(`makePlan: no ${size} plan after 40 attempts`)

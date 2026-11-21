@@ -80,3 +80,16 @@ describe('house floor plans', () => {
     }
   })
 })
+
+describe('a plan with a hall first (the puzzle house)', () => {
+  it('keeps one big full-height room by the door, the rest cut beside it', () => {
+    for (const size of ['large', 'grand']) for (let i = 0; i < 200; i++) {
+      const p = makePlan(size, mulberry32(hashStr(`hall:${size}:${i}`)), { hall: true })
+      const hall = p.rooms.find(r => r.id === p.entry)
+      assert.ok(hall.x1 - hall.x0 + 1 >= 8, `hall ${hall.x1 - hall.x0 + 1} wide` + show(p))
+      assert.equal(hall.y0, 1, 'the hall starts at the north wall' + show(p))
+      assert.equal(hall.y1, p.h - 2, 'and runs to the south wall' + show(p))
+      assert.ok(p.rooms.length >= 2, 'the glassmaker sleeps somewhere')
+    }
+  })
+})

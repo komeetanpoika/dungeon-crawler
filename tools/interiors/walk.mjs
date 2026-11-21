@@ -85,6 +85,70 @@ try {
     check(out, 'walking onto the front door leads back out')
     if (!out) break
   }
+  // ---- Päivölä: solve it by walking into mirrors, open the chest, come back solved
+  const sunDoor = doors.find(d => d.kind === 'sunroom')
+  check(!!sunDoor, "the home village has the glassmaker's house")
+  if (sunDoor) {
+    await ev(() => { delete window.__dc.state.caveInstances?.[window.__dc.state.houseDoors.find(d => d.kind === 'sunroom').label] })
+    await placeWorld(sunDoor.X, sunDoor.Y + 2); await sleep(350)
+    await placeWorld(sunDoor.X, sunDoor.Y + 1); await sleep(300)
+    await placeWorld(sunDoor.X, sunDoor.Y); await sleep(1500)
+    const hall = await ev(() => {
+      const s = window.__dc.state
+      const mirrors = []
+      s.map.forEach((row, y) => row.forEach((c, x) => { if (c.mirror) mirrors.push({ x, y, o: c.mirror, solution: c.solution }) }))
+      return { inside: !!s.cave, sun: !!s.cave?.sun, solved: s.cave?.sun?.solved, mirrors, glass: s.entities.some(e => e.role === 'glassmaker') }
+    })
+    check(hall.inside && hall.sun && hall.solved === false, 'Päivölä opens on a hall with a sunbeam that goes nowhere', `${hall.mirrors.length} mirrors`)
+    check(hall.glass, 'the glassmaker is at home')
+    await ev(() => { const s = window.__dc.state; for (const row of s.map) for (const c of row) { c.explored = true; c.visible = true } })
+    await sleep(500)
+    await page.screenshot({ path: path.join(SHOTS, 'sunroom-0-unsolved.png') })
+    // walk into each wrong mirror from a free side, holding the arrow key a moment
+    const KEY = { east: 'ArrowRight', west: 'ArrowLeft', south: 'ArrowDown', north: 'ArrowUp' }
+    let result = null
+    for (const m of hall.mirrors.filter(m => m.o !== m.solution)) {
+      const side = await ev(m => {
+        const s = window.__dc.state
+        for (const [dx, dy, dir] of [[-1, 0, 'east'], [1, 0, 'west'], [0, -1, 'south'], [0, 1, 'north']]) {
+          const c = s.map[m.y + dy]?.[m.x + dx]
+          if (c && c.tile !== 0 && !s.entities.some(e => e.x === m.x + dx && e.y === m.y + dy && e.type === 'npc')) return { x: m.x + dx, y: m.y + dy, dir }
+        }
+        return null
+      }, m)
+      if (!side) { check(false, `mirror at ${m.x},${m.y} has a side to push from`); continue }
+      await place(side.x, side.y); await sleep(150)
+      await page.keyboard.down(KEY[side.dir]); await sleep(420); await page.keyboard.up(KEY[side.dir]); await sleep(150)
+      result = await ev(m => ({ o: window.__dc.state.map[m.y][m.x].mirror, solved: window.__dc.state.cave.sun.solved }), m)
+      check(result.o === m.solution, `walking into the mirror at ${m.x},${m.y} turned it once`, result.o)
+    }
+    check(result?.solved === true, 'the beam reaches the seed: solved')
+    const after = await ev(() => {
+      const s = window.__dc.state, a = s.cave.sun.alcove
+      return { open: s.map[a.y][a.x].tile !== 0, chest: s.entities.find(e => e.type === 'chest' && e.x === a.x && e.y === a.y) ? { x: a.x, y: a.y } : null,
+        solvedSaved: window.__dc.wilds.solved.has(s.cave.label), glad: s.entities.find(e => e.role === 'glassmaker')?.lines.some(l => /gold/i.test(l)) }
+    })
+    check(after.open && !!after.chest, 'the panel opened on a chest')
+    check(after.solvedSaved, 'the world remembers it solved')
+    check(after.glad, 'the glassmaker is glad')
+    await ev(() => { const s = window.__dc.state; for (const row of s.map) for (const c of row) { c.explored = true; c.visible = true } })
+    await sleep(600)
+    await page.screenshot({ path: path.join(SHOTS, 'sunroom-1-solved.png') })
+    if (after.chest) {
+      await place(after.chest.x, after.chest.y + 1); await sleep(200)
+      await place(after.chest.x, after.chest.y); await sleep(700)
+      check(await ev(() => window.__dc.wilds.looted.has(window.__dc.state.cave.label)), 'opening the chest takes the reward for good')
+    }
+    // out, forget the stored house (as the reset does), back in: still lit
+    const ex = await ev(() => window.__dc.state.cave.stairs)
+    await place(ex.x, ex.y); await sleep(900)
+    await ev(() => { const s = window.__dc.state; for (const k of Object.keys(s.caveInstances ?? {})) if (k.startsWith('house:')) delete s.caveInstances[k] })
+    await placeWorld(sunDoor.X, sunDoor.Y + 2); await sleep(350)
+    await placeWorld(sunDoor.X, sunDoor.Y + 1); await sleep(300)
+    await placeWorld(sunDoor.X, sunDoor.Y); await sleep(1500)
+    const again = await ev(() => { const s = window.__dc.state; return { solved: s.cave?.sun?.solved, chests: s.entities.filter(e => e.type === 'chest').length } })
+    check(again.solved === true && again.chests === 0, 'rebuilt after the reset it is still lit, the reward gone', JSON.stringify(again))
+  }
   check(errors.length === 0, 'no page errors', errors.slice(0, 3).join(' | '))
 } finally {
   await app.close()

@@ -1,3 +1,4 @@
+import { drawSunbeam } from './sunbeam.js'
 import { FACING_ANGLE } from '../systems/entities.js'
 import { canWieldHeavy } from '../systems/inventory.js'
 import { loadSprites, loadMoreSprites } from './sprites.js'
@@ -1288,6 +1289,8 @@ export class Renderer {
     // patches and the sigils of lightning marks that have not struck yet.
     drawZones(ctx, state.zones, camX, camY, S)
     drawLightningMarks(ctx, state.lightning, camX, camY, S)
+    // Päivölä's sunbeam lies on the floor too (render/sunbeam.js)
+    if (state.cave?.sun) drawSunbeam(ctx, state.cave.sun, map, camX, camY, S, (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000)
 
     for (const e of entities) {
       const margin = getMonsterDef(e.type) ? 3 : e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0

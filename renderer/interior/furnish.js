@@ -36,6 +36,10 @@ export function assignRoles(plan, { version = 'home', trade = null, story = null
   }
   if (!others.length) { roles.set(plan.entry, 'cottage'); return roles }
   roles.set(plan.entry, version === 'sunroom' ? 'sunhall' : 'hall')
+  if (version === 'sunroom') {   // the glassmaker reads, sleeps and cooks
+    others.forEach((r, i) => roles.set(r.id, ['study', 'bedroom', 'kitchen', 'larder'][i] ?? 'larder'))
+    return roles
+  }
   const work = TRADES[trade]?.workshopRole ?? (TRADES[trade] ? 'workshop' : null)
   let want = ['bedroom', 'kitchen', 'larder', 'bedroom', 'study', 'larder']
   if (work && others.length >= 3) want.splice(2, 0, work)
@@ -55,14 +59,21 @@ export function floorsFor(plan, roles, rng, version = 'home') {
   return out
 }
 
+// Cells nothing may stand on: the spawn, the way out, every doorway cell and
+// the cells beside them.
+export function bareOf(plan) {
+  const bare = new Set()
+  for (const c of [plan.spawn, plan.exit, ...plan.doors.flatMap(d => d.cells)]) {
+    bare.add(`${c.x},${c.y}`)
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) bare.add(`${c.x + dx},${c.y + dy}`)
+  }
+  return bare
+}
+
 function makeFurnisher(map, plan, rng, reserve) {
   const H = map.length, W = map[0].length
   const key = (x, y) => `${x},${y}`
-  const bare = new Set(reserve)
-  for (const c of [plan.spawn, plan.exit, ...plan.doors.flatMap(d => d.cells)]) {
-    bare.add(key(c.x, c.y))
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) bare.add(key(c.x + dx, c.y + dy))
-  }
+  const bare = new Set([...reserve, ...bareOf(plan)])
   const walk = c => c.tile !== TILE.WALL
   // cells the spawn reaches on foot
   const reachCount = () => {

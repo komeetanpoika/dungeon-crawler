@@ -109,6 +109,23 @@ export const HOME = {
     centre: null,
     wall: [{ items: ['logs'], n: [2, 4], at: 'edge', must: true }, { items: BARRELS, n: [0, 1], at: 'corner' }],
   },
+  // Päivölä's hall (interior/sunroom.js lays the window, mirrors and seed
+  // first): tall windows, books and plants, the floor left to the light
+  sunhall: {
+    floor: ['cream', 'flags'],
+    face: [
+      { items: ['window_tall_green', 'window_tall_orange'], n: [1, 2], at: 'spread' },
+      { items: ['bookcase', 'bookcase2'], n: [1, 2] },
+      { items: ['clock'], n: 1 },
+      { items: ['painting_teal', 'painting_green', 'portrait'], n: [0, 1] },
+    ],
+    centre: null,
+    wall: [
+      { items: PLANTS, n: [3, 5], at: 'edge', must: true },
+      { items: ['candelabra'], n: [1, 2], at: 'corner' },
+      { items: ['armchair'], n: [0, 1], at: 'edge' },
+    ],
+  },
   // a house of one room: hall, kitchen and bedroom at once
   cottage: {
     floor: ['planks', 'boards'],
