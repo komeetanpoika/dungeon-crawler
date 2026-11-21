@@ -100,11 +100,14 @@ export function layBlocks(G, rec, seed) {
   const street = (x, y) => streets.has(y * 160 + x) || (x >= sq.x0 && x <= sq.x1 && y >= sq.y0 && y <= sq.y1)
   const sliver = (x, y) => !taken[y * 160 + x] && !street(x, y) && districtAt(x, y) && G.walkable(x, y) && !G.prop(x, y) && G.ground(x, y)?.startsWith('ow_city_pave_flag')
   const grassy = (x, y) => G.ground(x, y)?.startsWith('ow_grass')
-  for (let pass = 0; pass < 3; pass++) for (let y = 0; y < 160; y++) for (let x = 0; x < 160; x++) {
-    if (!sliver(x, y)) continue
-    const n = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-    if (n.some(([dx, dy]) => grassy(x + dx, y + dy)) && !n.some(([dx, dy]) => street(x + dx, y + dy))) G.setGround(x, y, GRASS(x, y))
-  }
+  const n4 = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+  let slivers = []
+  for (let y = 0; y < 160; y++) for (let x = 0; x < 160; x++) if (sliver(x, y) && !n4.some(([dx, dy]) => street(x + dx, y + dy))) slivers.push([x, y])
+  for (let pass = 0; pass < 3 && slivers.length; pass++) slivers = slivers.filter(([x, y]) => {
+    if (!n4.some(([dx, dy]) => grassy(x + dx, y + dy))) return true
+    G.setGround(x, y, GRASS(x, y))
+    return false
+  })
 }
 
 function layLot(G, rec, l, { wall, roof }, rng) {

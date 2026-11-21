@@ -4,9 +4,8 @@
 // the fish market, the warehouses and the windmill (PLAN in plan.js says
 // where). Then, after the blocks are in, what dresses the streets: lamps,
 // benches, stalls and kerbs.
-import { PLAN, wallCells, insideWalls } from './plan.js'
+import { PLAN, wallCells, insideWalls, streetCellsById } from './plan.js'
 import { HARBOUR, PROPS, PAVE, CASTLE, HOUSE_FRONT } from './kit.js'
-import { WATER_GATES } from './build-land.js'
 import { hashInt } from '../rand.js'
 import {
   N, TAG, lay, pave, cobble, flag, alley, squareStone, wallRun, tower, harbourTower, gateArch, gateSide,
@@ -20,24 +19,6 @@ const FLOWERS = ['ow_deco_flower_0', 'ow_deco_flower_1', 'ow_deco_flower_2', 'ow
 const GRAVES = ['ow_prop_grave_0', 'ow_prop_grave_1', 'ow_prop_grave_2', 'ow_prop_grave_3', 'ow_prop_cross_0', 'ow_prop_cross_1']
 const rect = (x0, y0, x1, y1, fn) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) fn(x, y) }
 
-// The cells of each street, as plan.js rasterises them.
-export function streetsById() {
-  const out = new Map()
-  const wc = wallCells()
-  for (const st of PLAN.streets) {
-    const set = new Set()
-    const lo = Math.floor((st.w - 1) / 2), hi = Math.ceil((st.w - 1) / 2)
-    for (let i = 0; i + 1 < st.pts.length; i++) {
-      const [a, b] = [st.pts[i], st.pts[i + 1]]
-      const horiz = a[1] === b[1]
-      rect(Math.min(a[0], b[0]) - (horiz ? 0 : lo), Math.min(a[1], b[1]) - (horiz ? lo : 0), Math.max(a[0], b[0]) + (horiz ? 0 : hi), Math.max(a[1], b[1]) + (horiz ? hi : 0),
-        (x, y) => { if (!wc.has(K(x, y))) set.add(K(x, y)) })
-    }
-    out.set(st.id, set)
-  }
-  return out
-}
-
 // The castle's own wall, a tile inside its plot so its towers stay on it.
 const CASTLE_WALL = { x0: 105, y0: 25, x1: 135, y1: 55, gate: 110 }
 
@@ -47,8 +28,7 @@ export function layFixed(G, rec) {
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (insideWalls(x, y)) pave(G, x, y, flag(x, y))
 
   // ---- streets and the square ----
-  const streets = streetsById()
-  for (const [id, set] of streets) for (const k of set) {
+  for (const [id, set] of streetCellsById()) for (const k of set) {
     const x = k % N, y = (k - x) / N
     pave(G, x, y, MAIN.includes(id) ? cobble(x, y) : flag(x, y))
   }
@@ -70,25 +50,20 @@ export function layFixed(G, rec) {
 
 // ---- the wall ----------------------------------------------------------------------
 function layWalls(G) {
-  const walls = new Set(wallCells())
+  const walls = wallCells()
   const towers = new Set()
-  const foot = (x, y) => rect(x - 1, y - 1, x + 1, y + 1, (a, b) => { towers.add(K(a, b)); walls.add(K(a, b)) })
-  for (const t of PLAN.towers) foot(t.x, t.y)
-  // the water gates from the moles into the harbour, a tower either side
+  for (const t of PLAN.towers) rect(t.x - 1, t.y - 1, t.x + 1, t.y + 1, (a, b) => towers.add(K(a, b)))
+  // no face falls on a gate: its arch, and the north gate's lower row
   const gates = new Set()
-  for (const g of WATER_GATES) {
-    for (let d = -1; d <= 1; d++) { walls.delete(K(g.x, g.y + d)); gates.add(K(g.x, g.y + d)) }
-    foot(g.x, g.y - 4); foot(g.x, g.y + 4)
-  }
-  for (const g of Object.values(PLAN.gates)) for (let d = -1; d <= 1; d++) gates.add(g.dir === 'N' ? K(g.x + d, g.y) : K(g.x, g.y + d))
-  if (PLAN.gates.N) for (let d = -1; d <= 1; d++) gates.add(K(PLAN.gates.N.x + d, PLAN.gates.N.y + 1))
+  for (const g of [...Object.values(PLAN.gates), ...PLAN.waterGates]) for (let d = -1; d <= 1; d++) gates.add(g.dir === 'N' ? K(g.x + d, g.y) : K(g.x, g.y + d))
+  for (let d = -1; d <= 1; d++) gates.add(K(PLAN.gates.N.x + d, PLAN.gates.N.y + 1))
   wallRun(G, walls, towers, (x, y) => gates.has(K(x, y)))
   const mouth = PLAN.harbour.mouth
   for (const t of PLAN.towers) {
     if (t.y === mouth.y && (t.x < mouth.x0 || t.x > mouth.x1)) harbourTower(G, t.x, t.y)
     else tower(G, t.x, t.y, t.kind === 'round' ? 'round3' : 'square3')
   }
-  for (const g of WATER_GATES) { tower(G, g.x, g.y - 4, 'square3'); tower(G, g.x, g.y + 4, 'square3'); gateSide(G, g.x, g.y, (x, y) => HARBOUR.mole[(x + y) & 1]) }
+  for (const g of PLAN.waterGates) gateSide(G, g.x, g.y, (x, y) => HARBOUR.mole[(x + y) & 1])
   gateArch(G, PLAN.gates.N.x, PLAN.gates.N.y)
   gateSide(G, PLAN.gates.W.x, PLAN.gates.W.y)
   gateSide(G, PLAN.gates.E.x, PLAN.gates.E.y)
@@ -257,7 +232,7 @@ function layPlaces(G, rec) {
 // ---- dressing, once the blocks are in ----------------------------------------------------------
 export function layDressing(G, rec) {
   const P = PLAN.places, sq = P.square
-  const streets = streetsById()
+  const streets = streetCellsById()
   const mainCell = new Set(MAIN.flatMap(id => [...streets.get(id)]))
   const doorAt = new Set(rec.doors.map(d => K(d.x, d.y)))
   const isStreet = (x, y) => mainCell.has(K(x, y)) || (x >= sq.x0 && x <= sq.x1 && y >= sq.y0 && y <= sq.y1)

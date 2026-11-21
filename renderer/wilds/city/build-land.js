@@ -9,7 +9,7 @@
 import { makeTerrain } from '../terrain.js'
 import { PIECE, FRAME, MARGIN } from '../layout.js'
 import { CITY_KEYS, inBay, fromCity } from './geometry.js'
-import { insideWalls, wallCells } from './plan.js'
+import { PLAN, insideWalls, wallCells } from './plan.js'
 import { hash, hashInt, noise2, mulberry32 } from '../rand.js'
 import { isWaterSkin, isPierSkin, isSandySkin, isMuddySkin, WATER_SKINS, TREE_PAIRS } from '../../terrain/lib.js'
 import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, isMountainGround, LAT_PX, LAT_PY } from '../../terrain/mountain.js'
@@ -29,7 +29,7 @@ const GROWS = ['ow_tree_', 'ow_bush_', 'ow_deadtree_', 'ow_shrub_', 'ow_rock_', 
 
 export const edgeDepth = (x, y) => Math.min(x, y, N - 1 - x, N - 1 - y)
 // Inside the wall or on it: ground the city lays every cell of itself.
-const walled = (x, y) => insideWalls(x, y) || wallCells().has(y * N + x)
+const walled = (x, y) => x >= 0 && y >= 0 && x < N && y < N && (insideWalls(x, y) || wallCells().has(y * N + x))
 // The city's own cells: inside the frame.
 export const own = (x, y) => x >= 0 && y >= 0 && x < N && y < N && edgeDepth(x, y) >= FRAME
 
@@ -40,7 +40,8 @@ export function terrainUnder(seed) {
   const T = {}
   for (const key of CITY_KEYS) {
     const [wx, wy] = key.split(',').map(Number)
-    const t = makeTerrain(seed, wx, wy, 0)
+    // (the inside of the wall is the city's to lay: the terrain need not work it out)
+    const t = makeTerrain(seed, wx, wy, 0, { blank: (x, y) => walled(x + wx * PIECE, y + (wy - 2) * PIECE) })
     const b = t.b
     const raw = { g: b.ground.map(r => r.slice()), p: b.prop.map(r => r.slice()), w: b.walkG.map(r => r.slice()) }
     t.finish()
@@ -54,16 +55,23 @@ export function terrainUnder(seed) {
   return { seed, T, of }
 }
 
-// Lay the raw terrain over the whole grid, margin included.
+// Lay the raw terrain over the whole grid, margin included: each piece's
+// quarter, and the margin beyond the city from the piece beside it.
 export function layTerrain(G, land) {
   const b = G.b
-  for (const T of Object.values(land.T)) T.map = T.t.b.palette.map(n => b.skin(n))
-  for (let y = -M; y < N + M; y++) for (let x = -M; x < N + M; x++) {
-    const { T, lx, ly } = land.of(x, y)
-    const bx = lx + MARGIN, by = ly + MARGIN, p = T.raw.p[by][bx]
-    b.ground[y + M][x + M] = T.map[T.raw.g[by][bx]]
-    b.prop[y + M][x + M] = p < 0 ? -1 : T.map[p]
-    b.walkG[y + M][x + M] = T.raw.w[by][bx]
+  for (const T of Object.values(land.T)) {
+    const map = T.t.b.palette.map(n => b.skin(n))
+    const ox = T.wx * PIECE, oy = (T.wy - 2) * PIECE
+    const x0 = T.wx === 0 ? -M : PIECE, x1 = T.wx === 0 ? PIECE - 1 : N + M - 1
+    const y0 = T.wy === 2 ? -M : PIECE, y1 = T.wy === 2 ? PIECE - 1 : N + M - 1
+    for (let y = y0; y <= y1; y++) {
+      const rg = T.raw.g[y - oy + MARGIN], rp = T.raw.p[y - oy + MARGIN], rw = T.raw.w[y - oy + MARGIN]
+      const g = b.ground[y + M], p = b.prop[y + M], w = b.walkG[y + M]
+      for (let x = x0; x <= x1; x++) {
+        const bx = x - ox + MARGIN, q = rp[bx]
+        g[x + M] = map[rg[bx]]; p[x + M] = q < 0 ? -1 : map[q]; w[x + M] = rw[bx]
+      }
+    }
   }
 }
 
@@ -173,13 +181,12 @@ const moleCell = (G, x, y) => lay(G, x, y, null, { walk: true, ground: HARBOUR.m
 // The ring road: round the north of the city outside the wall, down both
 // sides to the farmland, along the south wall to the moles, and along the
 // shore to them; a spur from every edge crossing; the stone moles along the
-// outside of the harbour walls with a water gate into the harbour.
+// outside of the harbour walls, up to the water gates into the harbour.
 export const RING = {
   north: [15, 15, 144, 16], west: [15, 15, 16, 144], east: [143, 15, 144, 144],
   southW: [15, 124, 58, 125], southE: [102, 124, 144, 125], shoreW: [15, 143, 58, 144], shoreE: [102, 143, 144, 144],
   moleW: [59, 124, 60, 144], moleE: [100, 124, 101, 144],
 }
-export const WATER_GATES = [{ x: 62, y: 132, out: 61, in: 63 }, { x: 98, y: 132, out: 99, in: 97 }]
 export function layRoads(G, land, rec) {
   for (const k of ['north', 'west', 'east', 'southW', 'southE', 'shoreW', 'shoreE']) roadRect(G, ...RING[k])
   // the approaches to the three land gates
@@ -198,7 +205,8 @@ export function layRoads(G, land, rec) {
   }
   // the moles: stone along the outside of the harbour walls, out to the shore road
   for (const k of ['moleW', 'moleE']) rect(G, ...RING[k], (x, y) => moleCell(G, x, y))
-  for (const g of WATER_GATES) for (let d = -1; d <= 1; d++) moleCell(G, g.out, g.y + d)
+  // and up to the water gates (plan.js) into the harbour
+  for (const g of PLAN.waterGates) for (let d = -1; d <= 1; d++) moleCell(G, g.dir === 'W' ? g.x - 1 : g.x + 1, g.y + d)
   // where a mole ends in the water, its face
   for (const k of ['moleW', 'moleE']) {
     const [x0, , x1, y1] = RING[k]
@@ -283,10 +291,12 @@ const mod = (n, m) => ((n % m) + m) % m
 // shoreline() of terrain/lib.js, but the city's stone counts as water: a
 // mole or a quay meets the sea with its own kerb, not a bank of grass.
 function cityShoreline(G) {
-  const wet = (x, y) => !G.in(x, y) || G.tagAt(x, y) === TAG.CITY || isWaterSkin(G.ground(x, y)) || isPierSkin(G.ground(x, y))
+  const b = G.b
+  const palWet = b.palette.map(n => isWaterSkin(n) || isPierSkin(n)), palOpen = b.palette.map(n => n.startsWith('ow_water'))
+  const wet = (x, y) => !G.in(x, y) || G.tagAt(x, y) === TAG.CITY || palWet[b.ground[y + M][x + M]]
   const repaint = []
   for (let y = -M; y < N + M; y++) for (let x = -M; x < N + M; x++) {
-    if (G.tagAt(x, y) === TAG.CITY || !G.ground(x, y).startsWith('ow_water')) continue
+    if (!palOpen[b.ground[y + M][x + M]] || G.tagAt(x, y) === TAG.CITY) continue
     const ns = !wet(x, y - 1) ? 'N' : !wet(x, y + 1) ? 'S' : ''
     const ew = !wet(x - 1, y) ? 'W' : !wet(x + 1, y) ? 'E' : ''
     if (!ns && !ew) continue
@@ -297,8 +307,9 @@ function cityShoreline(G) {
   for (const [x, y, n] of repaint) G.setGround(x, y, n)
   // the beach's sand-coloured bank wherever the land beside it is sand
   const beachy = (x, y) => { const n = G.ground(x, y); return isSandySkin(n) || n === 'ow_hardpan_0' || SAND_PATH.includes(n) }
+  const bank = b.palette.map(n => /^ow_pond_([012])([012])$/.exec(n))
   for (let y = -M; y < N + M; y++) for (let x = -M; x < N + M; x++) {
-    const m = /^ow_pond_([012])([012])$/.exec(G.ground(x, y))
+    const m = bank[b.ground[y + M][x + M]]
     if (!m || G.tagAt(x, y) === TAG.CITY) continue
     const dx = m[1] - 1, dy = m[2] - 1
     if ((dx || dy) && (!dx || beachy(x + dx, y)) && (!dy || beachy(x, y + dy))) G.setGround(x, y, `ow_shore_${m[1]}${m[2]}`)
@@ -308,8 +319,13 @@ function cityShoreline(G) {
 export function finishLand(G, land) {
   const b = G.b
   const X0 = -M, Y0 = 2 * PIECE - M   // the world tile of builder cell (0, 0)
-  // only the passes something here needs
-  const has = test => b.palette.some(test)
+  // only the passes something on the city's own land needs (the frame is put back after)
+  const used = new Uint8Array(b.palette.length)
+  for (let y = FRAME; y < N - FRAME; y++) {
+    const g = b.ground[y + M], p = b.prop[y + M]
+    for (let x = FRAME; x < N - FRAME; x++) { used[g[x + M]] = 1; if (p[x + M] >= 0) used[p[x + M]] = 1 }
+  }
+  const has = test => b.palette.some((n, i) => used[i] && test(n))
   if (has(n => n.startsWith('ow_sand'))) stampSandEdge(b)
   const rock = has(isMassSkin) || has(isMountainGround)
   if (rock) {

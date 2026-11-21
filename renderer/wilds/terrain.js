@@ -66,7 +66,11 @@ export const WILDS_SKINS = [...new Set([...TERRAIN_SKINS, ...FEATURE_SKINS, ...C
 const mod = (n, m) => ((n % m) + m) % m
 const smooth = t => t * t * (3 - 2 * t)
 
-export function makeTerrain(seed, wx, wy, deal = 0) {
+// `blank(x, y)` (local cells): cells nobody will look at, laid as plain grass
+// without working out what grows there. Kalevanlinna passes the inside of its
+// wall, which it lays itself: those cells lie over a dozen tiles from any
+// piece edge it keeps, further than any rule or art pass looks.
+export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   const X0 = wx * PIECE, Y0 = wy * PIECE
   const dealSeed = hashInt(seed, wx, wy, 9000 + deal)
 
@@ -237,6 +241,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     b.walkG[by][bx] = walk
   }
   for (let y = -MARGIN; y < PIECE + MARGIN; y++) for (let x = -MARGIN; x < PIECE + MARGIN; x++) {
+    if (blank?.(x, y)) { put(x, y, GRASS[0], null, true); continue }
     const k = rawKind(x, y), cor = corridor(x, y)
     if (k === 'water') {
       if (cor) put(x, y, waterSkin(x, y), PIER[cor], true)

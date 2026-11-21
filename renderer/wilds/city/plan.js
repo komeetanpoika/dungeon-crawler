@@ -25,8 +25,18 @@ const gates = {
   W: { x: 20, y: 68, w: 3, dir: 'W' },
   E: { x: 140, y: 75, w: 3, dir: 'E' },
 }
+// The water gates: one in each harbour wall, from the stone moles the builder
+// lays along the outside of the harbour onto the moles inside it (the two
+// southern crossings come in that way). Shaped like the west and east land
+// gates: three cells down the wall line, `dir` the side the outside lies on;
+// their arches count as inside the walls, a square tower stands either side.
+const waterGates = [
+  { id: 'harbour-W', x: 62, y: 132, w: 3, dir: 'W' },
+  { id: 'harbour-E', x: 98, y: 132, w: 3, dir: 'E' },
+]
+const allGates = [...Object.values(gates), ...waterGates]
 
-// towers: every corner, a flanking pair at each land gate, and about one every 25 tiles between
+// towers: every corner, a flanking pair at each gate (land and water), and about one every 25 tiles between
 const makeTowers = () => {
   const out = []; const seen = new Set()
   const add = (x, y, kind) => { const k = x + ',' + y; if (!seen.has(k)) { seen.add(k); out.push({ x, y, kind }) } }
@@ -38,7 +48,7 @@ const makeTowers = () => {
     const lo = horiz ? Math.min(a[0], b[0]) : Math.min(a[1], b[1])
     const hi = horiz ? Math.max(a[0], b[0]) : Math.max(a[1], b[1])
     const fixed = horiz ? a[1] : a[0]
-    const gate = Object.values(gates).find(g => (horiz ? g.y === fixed : g.x === fixed) && (horiz ? g.x : g.y) > lo && (horiz ? g.x : g.y) < hi)
+    const gate = allGates.find(g => (horiz ? g.y === fixed : g.x === fixed) && (horiz ? g.x : g.y) > lo && (horiz ? g.x : g.y) < hi)
     const at = t => (horiz ? add(t, fixed, 'square') : add(fixed, t, 'square'))
     const n = Math.round((hi - lo) / 25)
     for (let j = 1; j < n; j++) {
@@ -73,6 +83,9 @@ const streets = [
   { id: 'mole-east', pts: [[96, 104], [96, 139]], w: 1 },
   // along the inside face of the wall, from the harbour's west mole round to its east mole
   { id: 'inner', ring: true, w: 2, pts: [[63, 118], [21, 118], [21, 21], [138, 21], [138, 118], [97, 118]] },
+  // through the water gates onto the moles
+  { id: 'water-west', pts: [[62, 132], [63, 132]], w: 3 },
+  { id: 'water-east', pts: [[97, 132], [98, 132]], w: 3 },
 ]
 
 const posts = [
@@ -161,12 +174,14 @@ const DISTRICTS = [
     [96, 106, 96, 139],
     [48, 119, 60, 119],
     [100, 119, 112, 119],
-    [63, 122, 63, 138],
-    [97, 122, 97, 138],
+    [63, 122, 63, 127],
+    [63, 137, 63, 138],
+    [97, 122, 97, 127],
+    [97, 137, 97, 138],
   ] },
 ]
 
-export const PLAN = deepFreeze({ wall, towers: makeTowers(), gates, harbour, streets, places, districts: DISTRICTS, posts, patrols })
+export const PLAN = deepFreeze({ wall, towers: makeTowers(), gates, waterGates, harbour, streets, places, districts: DISTRICTS, posts, patrols })
 
 const key = (x, y) => y * S + x
 const TOWER_HALF = 1
@@ -176,7 +191,7 @@ export function wallCells() {
   if (wallSet) return wallSet
   const set = new Set()
   const arch = new Set()
-  for (const g of Object.values(gates)) for (let d = -1; d <= 1; d++) arch.add(g.dir === 'N' ? key(g.x + d, g.y) : key(g.x, g.y + d))
+  for (const g of allGates) for (let d = -1; d <= 1; d++) arch.add(g.dir === 'N' ? key(g.x + d, g.y) : key(g.x, g.y + d))
   const m = harbour.mouth
   for (let i = 0; i < wall.length; i++) {
     const [a, b] = [wall[i], wall[(i + 1) % wall.length]]
@@ -218,11 +233,13 @@ export function insideWalls(cx, cy) {
   return insideGrid[key(cx, cy)] === 1
 }
 
-let streetSet = null
-export function streetCells() {
-  if (streetSet) return streetSet
-  const wc = wallCells(); const set = new Set()
+// The cells of each street (Map id -> Set of keys), and of all of them.
+let streetMap = null
+export function streetCellsById() {
+  if (streetMap) return streetMap
+  const wc = wallCells(); streetMap = new Map()
   for (const st of streets) {
+    const set = new Set()
     const lo = Math.floor((st.w - 1) / 2), hi = Math.ceil((st.w - 1) / 2)
     for (let i = 0; i + 1 < st.pts.length; i++) {
       const [a, b] = [st.pts[i], st.pts[i + 1]]
@@ -233,9 +250,16 @@ export function streetCells() {
           set.add(key(x, y))
         }
     }
+    streetMap.set(st.id, set)
   }
-  streetSet = set
-  return set
+  return streetMap
+}
+let streetSet = null
+export function streetCells() {
+  if (streetSet) return streetSet
+  streetSet = new Set()
+  for (const set of streetCellsById().values()) for (const k of set) streetSet.add(k)
+  return streetSet
 }
 
 let districtGrid = null

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { PLAN, insideWalls, wallCells, streetCells, districtAt } from '../renderer/wilds/city/plan.js'
+import { PLAN, insideWalls, wallCells, streetCells, streetCellsById, districtAt } from '../renderer/wilds/city/plan.js'
 
 const N = 160
 const key = (x, y) => y * N + x
@@ -17,6 +17,8 @@ const placePoints = plan => {
   for (const p of plan.posts) pts.push({ x: p.x, y: p.y, id: p.id })
   return pts
 }
+// every gate in the wall: the three land gates and the two water gates in the harbour walls
+const allGates = () => [...Object.entries(PLAN.gates), ...PLAN.waterGates.map(g => [g.id, g])]
 const inBasin = (x, y) => inRect({ ...PLAN.harbour.basin, y1: PLAN.harbour.mouth.y }, x, y) // basin and mouth: open water
 
 test('the wall is closed, orthogonal and inside the owned land', () => {
@@ -39,7 +41,12 @@ test('towers stand on every corner and both harbour heads, and keep clear of gat
     assert.ok(['round', 'square'].includes(t.kind))
     assert.ok(wc.has(key(t.x, t.y)))
   }
-  for (const g of Object.values(PLAN.gates)) for (const c of gateArch(g)) assert.ok(!wc.has(key(c.x, c.y)), 'tower on a gate arch')
+  for (const [, g] of allGates()) for (const c of gateArch(g)) assert.ok(!wc.has(key(c.x, c.y)), 'tower on a gate arch')
+  // a tower either side of every gate, land or water
+  for (const [d, g] of allGates()) {
+    const side = g.dir === 'N' ? [[g.x - 3, g.y], [g.x + 3, g.y]] : [[g.x, g.y - 3], [g.x, g.y + 3]]
+    for (const [x, y] of side) assert.ok(at(x, y), d + ' gate has no tower at ' + x + ',' + y)
+  }
 })
 
 const gateArch = g => {
@@ -55,10 +62,11 @@ test('every gate sits on the wall and opens both ways', () => {
     const b = PLAN.wall[(i + 1) % PLAN.wall.length]
     return x >= Math.min(a[0], b[0]) && x <= Math.max(a[0], b[0]) && y >= Math.min(a[1], b[1]) && y <= Math.max(a[1], b[1])
   })
-  for (const [d, g] of Object.entries(PLAN.gates)) {
+  assert.deepEqual(PLAN.waterGates.map(g => g.id), ['harbour-W', 'harbour-E'])
+  for (const [d, g] of allGates()) {
     assert.equal(g.w, 3)
     assert.ok(onWall(g.x, g.y), d + ' gate is off the wall')
-    const [dx, dy] = step[d]
+    const [dx, dy] = step[g.dir]
     for (const c of gateArch(g)) {
       assert.ok(onWall(c.x, c.y)); assert.ok(!wc.has(key(c.x, c.y)), 'arch is wall')
       assert.ok(insideWalls(c.x, c.y), 'arch not inside')
@@ -72,6 +80,8 @@ test('insideWalls: interior, basin and mouth yes; wall and outside no', () => {
   assert.ok(insideWalls(80, 73)); assert.ok(insideWalls(80, 120)); assert.ok(insideWalls(80, 139)); assert.ok(insideWalls(80, 140))
   assert.ok(!insideWalls(20, 40)); assert.ok(!insideWalls(19, 40)); assert.ok(!insideWalls(10, 10)); assert.ok(!insideWalls(50, 130))
   assert.ok(!insideWalls(80, 141)); assert.ok(!insideWalls(62, 130)); assert.ok(!insideWalls(98, 130))
+  // the water gates' arches are inside, like the land gates'
+  for (const y of [131, 132, 133]) { assert.ok(insideWalls(62, y)); assert.ok(insideWalls(98, y)); assert.ok(!insideWalls(61, y)); assert.ok(!insideWalls(99, y)) }
   assert.equal(wallCells(), wallCells()); assert.equal(streetCells(), streetCells())
 })
 
@@ -103,9 +113,9 @@ test('fixed places do not overlap each other or the streets, and stay off the wa
 test('the main streets join every gate to the square', () => {
   const sc = streetCells(); const sq = PLAN.places.square
   const nearSquare = (x, y) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => inRect(sq, x + dx, y + dy))
-  for (const [d, g] of Object.entries(PLAN.gates)) {
+  for (const [d, g] of allGates()) {
     const seen = new Set(); const q = []
-    for (const c of gateArch(g)) { const [dx, dy] = step[d]; q.push([c.x - dx, c.y - dy]) }
+    for (const c of gateArch(g)) { const [dx, dy] = step[g.dir]; q.push([c.x - dx, c.y - dy]) }
     let reached = false
     while (q.length) {
       const [x, y] = q.pop(); const k = key(x, y)
@@ -167,16 +177,23 @@ test('districts cover the block land exactly once and never touch a fixed place'
 })
 
 test('the plan is frozen', () => {
-  assert.ok(Object.isFrozen(PLAN) && Object.isFrozen(PLAN.wall) && Object.isFrozen(PLAN.gates.N) && Object.isFrozen(PLAN.districts[0].rects))
+  assert.ok(Object.isFrozen(PLAN) && Object.isFrozen(PLAN.wall) && Object.isFrozen(PLAN.gates.N) && Object.isFrozen(PLAN.waterGates[0]) && Object.isFrozen(PLAN.districts[0].rects))
 })
 
 test('no district cell is a gate arch or on the water; arches are street cells; the keep is in the castle', () => {
   const arches = new Set(), sc = streetCells()
-  for (const g of Object.values(PLAN.gates)) for (const c of gateArch(g)) { arches.add(key(c.x, c.y)); assert.ok(sc.has(key(c.x, c.y)), 'arch not a street cell') }
+  for (const [, g] of allGates()) for (const c of gateArch(g)) { arches.add(key(c.x, c.y)); assert.ok(sc.has(key(c.x, c.y)), 'arch not a street cell') }
   for (const d of PLAN.districts) for (const [x0, y0, x1, y1] of d.rects) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     assert.ok(!arches.has(key(x, y)), 'district on a gate arch ' + x + ',' + y)
     assert.ok(!inBasin(x, y), 'district on harbour water ' + x + ',' + y)
   }
   const { keep, castle } = PLAN.places
   assert.ok(keep.x0 >= castle.x0 && keep.x1 <= castle.x1 && keep.y0 >= castle.y0 && keep.y1 <= castle.y1)
+})
+
+test('the street cells are the union of each street\'s', () => {
+  const byId = streetCellsById()
+  assert.deepEqual([...byId.keys()], PLAN.streets.map(s => s.id))
+  const union = new Set(); for (const set of byId.values()) for (const k of set) union.add(k)
+  assert.deepEqual([...union].sort((a, b) => a - b), [...streetCells()].sort((a, b) => a - b))
 })

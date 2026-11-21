@@ -60,7 +60,8 @@ function crossings(seed) {
   }
   return out
 }
-const GATE_CELLS = [[80, 20], [80, 21], [20, 68], [140, 75]]
+// the land gates' arches and the water gates' (plan.js PLAN.waterGates)
+const GATE_CELLS = [[80, 20], [80, 21], [20, 68], [140, 75], ...PLAN.waterGates.flatMap(g => [[g.x, g.y - 1], [g.x, g.y], [g.x, g.y + 1]])]
 
 test('the city is the same every time for a seed, and its skeleton the same in every world', () => {
   assert.deepEqual(cellsDigest(buildCity(7)), cellsDigest(buildCity(7)))
@@ -212,10 +213,17 @@ test('lamps, chimneys and windows are where the city says', () => {
   for (const w of city.windows) assert.ok(labels.has(w.door))
 })
 
+// The gate is a warm build: the city is built once, when the game enters the
+// Wilds (a load moment), so the first, cold build there also pays for
+// compiling the generator (several hundred ms in a fresh process). Here the
+// test warms up on three other seeds itself, so it means the same run alone
+// or after the other tests.
 test('building is quick enough', () => {
-  buildCity(1)   // (warm)
-  const t0 = performance.now(); buildCity(31337); assert.ok(performance.now() - t0 < 200 * 2)   // CI headroom ×2
-  const t1 = performance.now(); generateCityPiece(31337, 1, 3); assert.ok(performance.now() - t1 < 10 * 2)
+  for (const seed of [101, 202, 303]) buildCity(seed)
+  const t0 = performance.now(); buildCity(31337); const build = performance.now() - t0
+  assert.ok(build < 200 * 2, `a warm build took ${build.toFixed(0)} ms`)   // CI headroom ×2
+  const t1 = performance.now(); generateCityPiece(31337, 1, 3); const piece = performance.now() - t1
+  assert.ok(piece < 10 * 2, `a piece took ${piece.toFixed(1)} ms`)
 })
 
 test('every skin the city lays exists as a tile, and the game loads it', () => {
