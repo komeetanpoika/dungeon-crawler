@@ -9,6 +9,7 @@
 import { makeTerrain } from '../terrain.js'
 import { PIECE, FRAME, MARGIN } from '../layout.js'
 import { CITY_KEYS, inBay, fromCity } from './geometry.js'
+import { insideWalls, wallCells } from './plan.js'
 import { hash, hashInt, noise2, mulberry32 } from '../rand.js'
 import { isWaterSkin, isPierSkin, isSandySkin, isMuddySkin, WATER_SKINS, TREE_PAIRS } from '../../terrain/lib.js'
 import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, isMountainGround, LAT_PX, LAT_PY } from '../../terrain/mountain.js'
@@ -27,6 +28,8 @@ const TRUNK_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [top, trunk]))
 const GROWS = ['ow_tree_', 'ow_bush_', 'ow_deadtree_', 'ow_shrub_', 'ow_rock_', 'ow_cactus']
 
 export const edgeDepth = (x, y) => Math.min(x, y, N - 1 - x, N - 1 - y)
+// Inside the wall or on it: ground the city lays every cell of itself.
+const walled = (x, y) => insideWalls(x, y) || wallCells().has(y * N + x)
 // The city's own cells: inside the frame.
 export const own = (x, y) => x >= 0 && y >= 0 && x < N && y < N && edgeDepth(x, y) >= FRAME
 
@@ -53,11 +56,14 @@ export function terrainUnder(seed) {
 
 // Lay the raw terrain over the whole grid, margin included.
 export function layTerrain(G, land) {
+  const b = G.b
+  for (const T of Object.values(land.T)) T.map = T.t.b.palette.map(n => b.skin(n))
   for (let y = -M; y < N + M; y++) for (let x = -M; x < N + M; x++) {
     const { T, lx, ly } = land.of(x, y)
-    const pal = T.t.b.palette, bx = lx + MARGIN, by = ly + MARGIN
-    G.setGround(x, y, pal[T.raw.g[by][bx]])
-    G.setProp(x, y, pal[T.raw.p[by][bx]] ?? null, T.raw.w[by][bx])
+    const bx = lx + MARGIN, by = ly + MARGIN, p = T.raw.p[by][bx]
+    b.ground[y + M][x + M] = T.map[T.raw.g[by][bx]]
+    b.prop[y + M][x + M] = p < 0 ? -1 : T.map[p]
+    b.walkG[y + M][x + M] = T.raw.w[by][bx]
   }
 }
 
@@ -84,7 +90,8 @@ export function layOutskirts(G, land) {
     const { X, Y } = fromCity(x, y)
     return edgeDepth(x, y) < FRAME + BLEND + Math.floor(noise2(seed + 4141, X, Y, { freq: 1 / 9, octaves: 2 }) * 4)
   }
-  const tamed = (x, y) => edgeDepth(x, y) >= FRAME + BLEND
+  // (inside the wall's box the city lays every cell itself)
+  const tamed = (x, y) => edgeDepth(x, y) >= FRAME + BLEND && !walled(x, y)
   const sea = new Uint8Array(N * N)
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     if (!tamed(x, y)) continue
@@ -100,16 +107,22 @@ export function layOutskirts(G, land) {
     } else if (isMountainGround(g) && !wild(x, y)) G.setGround(x, y, T.t.grassSkin(lx, ly))
   }
   // a beach only where there is still water beside it
-  const wetNear = (x, y, r) => {
-    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (isWaterSkin(G.ground(x + dx, y + dy))) return true
-    return false
+  const wet = new Uint8Array(N * N)
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (!isWaterSkin(G.ground(x, y))) continue
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const nx = x + dx, ny = y + dy
+      if (nx >= 0 && ny >= 0 && nx < N && ny < N) wet[ny * N + nx] = 1
+    }
   }
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     if (!tamed(x, y)) continue
-    const g = G.ground(x, y)
+    const g = G.ground(x, y), sand = g.startsWith('ow_sand')
+    if (!sand && !sea[y * N + x]) continue
     const { T, lx, ly } = land.of(x, y)
-    if (g?.startsWith('ow_sand') && T.t.biome(lx, ly) !== 'desert' && !wetNear(x, y, 2)) G.setGround(x, y, T.t.grassSkin(lx, ly))
-    else if (sea[y * N + x] && T.t.biome(lx, ly) === 'sea' && wetNear(x, y, 2)) G.setGround(x, y, 'ow_sand_0')
+    const b = T.t.biome(lx, ly)
+    if (sand && b !== 'desert' && !wet[y * N + x]) G.setGround(x, y, T.t.grassSkin(lx, ly))
+    else if (sea[y * N + x] && b === 'sea' && wet[y * N + x]) G.setGround(x, y, 'ow_sand_0')
   }
   // the woods thin out towards the city (a two-tile tree is judged by its trunk)
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
@@ -124,17 +137,15 @@ export function layOutskirts(G, land) {
 
 // Nothing grows against the wall, on the roads or round the farm buildings.
 export function clearRound(G, r = 2) {
-  const near = new Uint8Array(N * N)
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const t = G.tagAt(x, y)
-    if (t !== TAG.CITY && t !== TAG.ROAD) continue
+  const near = (x, y) => {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-      const nx = x + dx, ny = y + dy
-      if (nx >= 0 && ny >= 0 && nx < N && ny < N) near[ny * N + nx] = 1
+      const t = G.tagAt(x + dx, y + dy)
+      if (t === TAG.CITY || t === TAG.ROAD) return true
     }
+    return false
   }
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++)
-    if (near[y * N + x] && own(x, y) && G.tagAt(x, y) === TAG.LAND && isGrowth(G.prop(x, y))) clearWhole(G, x, y)
+    if (own(x, y) && !walled(x, y) && G.tagAt(x, y) === TAG.LAND && isGrowth(G.prop(x, y)) && near(x, y)) clearWhole(G, x, y)
 }
 
 // ---- roads -----------------------------------------------------------------------
@@ -205,7 +216,7 @@ export function layRoads(G, land, rec) {
 // Fields, an orchard, pastures and cottages in the farmland between the
 // south wall and the shore road, either side of the harbour.
 const FARMS = [
-  { field: [19, 128, 29, 134], orchard: [32, 128, 44, 138], pasture: [46, 127, 54, 133], cottages: [[20, 3, 'red'], [25, 4, 'blue'], [47, 3, 'blue']] },
+  { field: [19, 128, 29, 134], orchard: [32, 128, 44, 138], pasture: [46, 127, 54, 133], cottages: [[20, 3, 'red'], [25, 4, 'blue'], [39, 3, 'blue']] },
   { field: [118, 128, 129, 134], orchard: [132, 128, 141, 138], pasture: [105, 127, 113, 133], cottages: [[118, 3, 'blue'], [123, 4, 'red'], [134, 3, 'red']] },
 ]
 const FENCE = { tl: 'ow_fence_l', t: 'ow_fence_m', tr: 'ow_fence_r', side: ['ow_fence_side_l', 'ow_fence_side_r'], bl: 'ow_fence_bl', br: 'ow_fence_br', endL: 'ow_fence_end_l', endR: 'ow_fence_end_r' }
@@ -297,28 +308,35 @@ function cityShoreline(G) {
 export function finishLand(G, land) {
   const b = G.b
   const X0 = -M, Y0 = 2 * PIECE - M   // the world tile of builder cell (0, 0)
-  stampSandEdge(b)
-  stampMountainRim(b, mulberry32(hashInt(land.seed, 0, 2, 70)))
-  for (let by = 0; by < G.S; by++) for (let bx = 0; bx < G.S; bx++) {
-    const n = b.palette[b.prop[by][bx]] ?? ''
-    let m = /^ow_mtn_lat_(\d+)_\d+$/.exec(n)
-    if (m) { b.prop[by][bx] = b.skin(`ow_mtn_lat_${m[1]}_${mod(X0 + bx, LAT_PX) + LAT_PX * mod(Y0 + by, LAT_PY)}`); continue }
-    m = /^ow_mtn_ridge_(dr|dl)_\d+$/.exec(n)
-    if (m) { const set = MTN.ridge[m[1]]; b.prop[by][bx] = b.skin(set[hashInt(land.seed, X0 + bx, Y0 + by, 45) % set.length]) }
+  // only the passes something here needs
+  const has = test => b.palette.some(test)
+  if (has(n => n.startsWith('ow_sand'))) stampSandEdge(b)
+  const rock = has(isMassSkin) || has(isMountainGround)
+  if (rock) {
+    stampMountainRim(b, mulberry32(hashInt(land.seed, 0, 2, 70)))
+    // the cone lattice and the ridge pieces by world tile, as terrain.js has them
+    const lat = b.palette.map(n => /^ow_mtn_lat_(\d+)_\d+$/.exec(n)?.[1] ?? null)
+    const ridge = b.palette.map(n => /^ow_mtn_ridge_(dr|dl)_\d+$/.exec(n)?.[1] ?? null)
+    for (let by = 0; by < G.S; by++) for (let bx = 0; bx < G.S; bx++) {
+      const p = b.prop[by][bx]
+      if (p < 0) continue
+      if (lat[p]) b.prop[by][bx] = b.skin(`ow_mtn_lat_${lat[p]}_${mod(X0 + bx, LAT_PX) + LAT_PX * mod(Y0 + by, LAT_PY)}`)
+      else if (ridge[p]) { const set = MTN.ridge[ridge[p]]; b.prop[by][bx] = b.skin(set[hashInt(land.seed, X0 + bx, Y0 + by, 45) % set.length]) }
+    }
   }
-  stampGroundEdge(b)
+  if (rock) stampGroundEdge(b)
   cityShoreline(G)
   // the slanting of shores is for natural coasts: the city's stone and the water against it keep their art
-  const kept = []
-  for (let y = -M; y < N + M; y++) for (let x = -M; x < N + M; x++) {
-    const city = G.tagAt(x, y) === TAG.CITY
-    if (city || (isWaterSkin(G.ground(x, y)) && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => G.tagAt(x + dx, y + dy) === TAG.CITY))) kept.push([x, y, G.ground(x, y)])
-  }
+  const before = b.ground.map(r => r.slice())
   slopeShores(b, {
     X0, Y0,
     frame: { x0: M, y0: M, w: N, h: N, band: MARGIN, look: FRAME, far: (bx, by) => { const { T, lx, ly } = land.of(bx - M, by - M); return T.t.rawKind(lx, ly) === 'water' } },
   })
-  for (const [x, y, n] of kept) G.setGround(x, y, n)
+  for (let y = -M; y < N + M; y++) for (let x = -M; x < N + M; x++) {
+    if (b.ground[y + M][x + M] === before[y + M][x + M]) continue
+    const keep = G.tagAt(x, y) === TAG.CITY || (isWaterSkin(G.ground(x, y)) && (G.tagAt(x + 1, y) === TAG.CITY || G.tagAt(x - 1, y) === TAG.CITY || G.tagAt(x, y + 1) === TAG.CITY || G.tagAt(x, y - 1) === TAG.CITY))
+    if (keep) b.ground[y + M][x + M] = before[y + M][x + M]
+  }
   skinBridges(b, { X0, Y0, slant: (bx, by) => own(bx - M, by - M) })
   // the frame, exactly as the terrain finished it
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {

@@ -102,6 +102,11 @@ test('every door, gate, post and spot is reachable from the square', () => {
     for (const p of PLAN.posts) assert.ok(ok(p.x, p.y), `post ${p.id} seed ${seed}`)
     for (const [id, s] of Object.entries(city.spots)) assert.ok(ok(s.x, s.y), `spot ${id} at ${s.x},${s.y} seed ${seed}`)
     for (const c of crossings(seed)) assert.ok(ok(c.inner.x, c.inner.y) && ok(c.edge.x, c.edge.y), `crossing ${c.side} of ${c.key} seed ${seed}`)
+    // and no alley is shut by what the builder put in the streets
+    for (const a of cutBlocks(seed).alleys) {
+      const [[ax, ay], [bx, by]] = a.pts
+      for (let y = Math.min(ay, by); y <= Math.max(ay, by); y++) for (let x = Math.min(ax, bx); x <= Math.max(ax, bx); x++) assert.ok(ok(x, y), `alley cell ${x},${y} seed ${seed}`)
+    }
     assert.ok(ok(city.inn.door.x, city.inn.door.y) && ok(city.inn.doorstep.x, city.inn.doorstep.y))
   }
 })
