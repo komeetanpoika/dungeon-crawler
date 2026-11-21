@@ -45,9 +45,11 @@ for (const [n, [c, r]] of Object.entries(FLOOR)) {
   src(`in_floor_${n}`, cell(c, r))
   src(`in_floor_${n}_worn`, n === 'earth' ? cell(6, 4) : cell(c, r + 1))
 }
-const RUG_ROW = { green: 16, orange: 19, teal: 22 }
-for (const [c, r0] of Object.entries(RUG_ROW))
-  ['t', 'm', 'b'].forEach((v, dy) => ['l', 'm', 'r'].forEach((h, dx) => src(`in_rug_${c}_${v}${h}`, cell(10 + dx, r0 + dy))))
+// the pack's third rug (teal) reads as a pool of water; red and blue are the
+// orange one turned
+const RUG_ROW = { green: [16], orange: [19], red: [19, 'hue-rotate(-28deg) saturate(1.15) brightness(0.92)'], blue: [19, 'hue-rotate(185deg) saturate(0.7) brightness(0.95)'] }
+for (const [c, [r0, f]] of Object.entries(RUG_ROW))
+  ['t', 'm', 'b'].forEach((v, dy) => ['l', 'm', 'r'].forEach((h, dx) => src(`in_rug_${c}_${v}${h}`, cell(10 + dx, r0 + dy, f ? { f } : {}))))
 
 // ---- pixel maps for what the pack lacks -------------------------------------
 const WEB = { w: 'rgba(232,234,244,0.78)', v: 'rgba(232,234,244,0.42)' }

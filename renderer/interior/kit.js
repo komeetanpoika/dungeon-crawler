@@ -36,7 +36,7 @@ export const FLOORS = {
 // Bordered rugs, 3x3: rows top/middle/bottom, columns left/middle/right. A
 // bigger rug repeats the middle row and column.
 const rug = c => ['t', 'm', 'b'].map(v => ['l', 'm', 'r'].map(h => `in_rug_${c}_${v}${h}`))
-export const RUGS = { green: rug('green'), orange: rug('orange'), teal: rug('teal') }
+export const RUGS = { green: rug('green'), orange: rug('orange'), red: rug('red'), blue: rug('blue') }
 
 // Furniture and wall dressing. `on`:
 //   face       stands on both face rows of a north wall (two rows of tiles)
@@ -111,12 +111,12 @@ export const ITEMS = {
   table_candle: it('floor', [['in_table_candle']], { dusty: true }),
   table_books: it('floor', [['in_table_books']], { dusty: true }),
   table_broken: it('floor', [['in_table_broken']]),
-  chair_s: it('floor', [['in_chair_s']], { dusty: true }),
-  chair_n: it('floor', [['in_chair_n']], { dusty: true }),
-  chair_e: it('floor', [['in_chair_e']], { dusty: true }),
-  chair_w: it('floor', [['in_chair_w']], { dusty: true }),
+  chair_s: it('floor', [['in_chair_s']], { dusty: true, block: false }),
+  chair_n: it('floor', [['in_chair_n']], { dusty: true, block: false }),
+  chair_e: it('floor', [['in_chair_e']], { dusty: true, block: false }),
+  chair_w: it('floor', [['in_chair_w']], { dusty: true, block: false }),
   chair_down: it('floor', [['in_chair_down']], { block: false }),
-  stool: it('floor', [['in_stool']], { dusty: true }),
+  stool: it('floor', [['in_stool']], { dusty: true, block: false }),
   armchair: it('floor', [['in_armchair']], { dusty: true }),
   bench: it('floor', [['in_bench']], { dusty: true }),
   barrel: it('floor', [['in_barrel']], { dusty: true }),

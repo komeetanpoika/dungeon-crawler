@@ -35,6 +35,21 @@ async function build(seed, i) {
     const pal = ['plaster', 'wood', 'grey', 'pale'][seed % 4]
     return { map: buildCells(plan, { palette: pal, floorOf: id => floors[id % floors.length] }), spawns: [], label: `${sz} ${pal} #${seed}` }
   }
+  if (stage === 'furnish') {
+    const { makePlan } = await import('../../renderer/interior/plan.js')
+    const { buildCells } = await import('../../renderer/interior/walls.js')
+    const { assignRoles, floorsFor, furnish } = await import('../../renderer/interior/furnish.js')
+    const { mulberry32 } = await import('../../renderer/interior/rng.js')
+    const rng = mulberry32(seed * 7919 + 13)
+    const plan = makePlan(sz, rng)
+    const trade = ['farmer', 'hunter', 'fisher', 'smith', 'baker', 'scholar', 'weaver'][seed % 7]
+    const roles = assignRoles(plan, { version, trade, rng })
+    const floors = floorsFor(plan, roles, rng, version)
+    const pal = version === 'ruin' ? 'grey' : ['plaster', 'wood'][seed % 2]
+    const map = buildCells(plan, { palette: pal, floorOf: id => floors.get(id) })
+    furnish(map, plan, roles, { version, trade, rng })
+    return { map, spawns: [], label: `${version} ${sz} ${pal} ${trade} [${[...roles.values()].join(',')}] #${seed}` }
+  }
   const { generateInterior, specFor } = await import('../../renderer/interior/index.js')
   const spec = specFor({ version, size: sz, seed, label: `render:${seed}` })
   const g = generateInterior(spec, { solved })
