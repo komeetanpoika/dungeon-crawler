@@ -63,9 +63,9 @@ const places = {
 }
 
 const streets = [
-  { id: 'north', pts: [[80, 21], [80, 59]], w: 3 },
-  { id: 'west', pts: [[21, 68], [61, 68]], w: 3 },
-  { id: 'east', pts: [[139, 75], [97, 75]], w: 3 },
+  { id: 'north', pts: [[80, 20], [80, 59]], w: 3 },
+  { id: 'west', pts: [[20, 68], [61, 68]], w: 3 },
+  { id: 'east', pts: [[140, 75], [97, 75]], w: 3 },
   { id: 'quay', pts: [[79, 87], [79, 105]], w: 3 },
   { id: 'castle', pts: [[110, 57], [110, 75]], w: 3 },
   { id: 'wharf', pts: [[64, 104], [96, 104]], w: 2 },
@@ -90,27 +90,10 @@ const patrols = [
   { id: 'harbour', pts: [[79, 88], [79, 104], [64, 104], [64, 136]] },
 ]
 
-// Districts as inclusive [x0, y0, x1, y1] rects tiling every free cell inside the walls (streets included; walls,
-// fixed places and the basin left out). Split by market (the middle), gardens (west), crafts (east), harbour (south).
+// Districts as inclusive [x0, y0, x1, y1] rects tiling every free cell inside the walls (streets and gate arches included, since arches are street cells;
+// walls, fixed places, the basin and the harbour mouth left out). Split by market (the middle), gardens (west), crafts (east), harbour (south).
 // Cut from the plan by a scan: a change to places or walls means cutting them again; the test checks the cover.
 const DISTRICTS = [
-  { id: 'market', rects: [
-    [79, 20, 81, 59],
-    [62, 21, 66, 50],
-    [70, 21, 75, 50],
-    [85, 21, 90, 22],
-    [94, 21, 103, 22],
-    [67, 22, 69, 50],
-    [76, 22, 78, 50],
-    [82, 22, 84, 59],
-    [91, 22, 93, 22],
-    [85, 23, 85, 59],
-    [97, 23, 103, 61],
-    [86, 32, 96, 59],
-    [62, 51, 65, 59],
-    [77, 51, 78, 59],
-    [97, 70, 103, 86],
-  ] },
   { id: 'gardens', rects: [
     [22, 21, 42, 55],
     [46, 21, 61, 53],
@@ -124,7 +107,7 @@ const DISTRICTS = [
     [22, 57, 22, 119],
     [52, 65, 60, 86],
     [23, 66, 27, 69],
-    [20, 67, 21, 69],
+    [21, 67, 21, 69],
     [28, 67, 50, 69],
     [23, 70, 25, 119],
     [21, 73, 21, 93],
@@ -134,6 +117,23 @@ const DISTRICTS = [
     [26, 119, 39, 119],
     [43, 119, 47, 119],
   ] },
+  { id: 'market', rects: [
+    [62, 21, 66, 50],
+    [70, 21, 75, 50],
+    [79, 21, 81, 59],
+    [85, 21, 90, 22],
+    [94, 21, 103, 22],
+    [67, 22, 69, 50],
+    [76, 22, 78, 50],
+    [82, 22, 84, 59],
+    [91, 22, 93, 22],
+    [85, 23, 85, 59],
+    [97, 23, 103, 61],
+    [86, 32, 96, 59],
+    [62, 51, 65, 59],
+    [77, 51, 78, 59],
+    [97, 70, 103, 86],
+  ] },
   { id: 'crafts', rects: [
     [104, 21, 114, 23],
     [118, 21, 138, 23],
@@ -142,7 +142,7 @@ const DISTRICTS = [
     [137, 24, 138, 119],
     [139, 47, 139, 70],
     [104, 57, 136, 86],
-    [139, 74, 140, 76],
+    [139, 74, 139, 76],
     [139, 80, 139, 93],
     [113, 87, 136, 118],
     [139, 97, 139, 118],
@@ -163,7 +163,6 @@ const DISTRICTS = [
     [100, 119, 112, 119],
     [63, 122, 63, 138],
     [97, 122, 97, 138],
-    [65, 140, 95, 140],
   ] },
 ]
 

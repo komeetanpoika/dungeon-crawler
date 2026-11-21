@@ -17,7 +17,7 @@ const placePoints = plan => {
   for (const p of plan.posts) pts.push({ x: p.x, y: p.y, id: p.id })
   return pts
 }
-const inBasin = (x, y) => inRect(PLAN.harbour.basin, x, y)
+const inBasin = (x, y) => inRect({ ...PLAN.harbour.basin, y1: PLAN.harbour.mouth.y }, x, y) // basin and mouth: open water
 
 test('the wall is closed, orthogonal and inside the owned land', () => {
   const w = PLAN.wall
@@ -168,4 +168,15 @@ test('districts cover the block land exactly once and never touch a fixed place'
 
 test('the plan is frozen', () => {
   assert.ok(Object.isFrozen(PLAN) && Object.isFrozen(PLAN.wall) && Object.isFrozen(PLAN.gates.N) && Object.isFrozen(PLAN.districts[0].rects))
+})
+
+test('no district cell is a gate arch or on the water; arches are street cells; the keep is in the castle', () => {
+  const arches = new Set(), sc = streetCells()
+  for (const g of Object.values(PLAN.gates)) for (const c of gateArch(g)) { arches.add(key(c.x, c.y)); assert.ok(sc.has(key(c.x, c.y)), 'arch not a street cell') }
+  for (const d of PLAN.districts) for (const [x0, y0, x1, y1] of d.rects) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    assert.ok(!arches.has(key(x, y)), 'district on a gate arch ' + x + ',' + y)
+    assert.ok(!inBasin(x, y), 'district on harbour water ' + x + ',' + y)
+  }
+  const { keep, castle } = PLAN.places
+  assert.ok(keep.x0 >= castle.x0 && keep.x1 <= castle.x1 && keep.y0 >= castle.y0 && keep.y1 <= castle.y1)
 })
