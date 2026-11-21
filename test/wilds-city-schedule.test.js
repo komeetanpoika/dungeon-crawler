@@ -153,19 +153,24 @@ test('the land gates are manned round the clock, the harbour and castle by day',
 })
 
 test('a patrol pair walks the four routes in turn, together', () => {
-  const { seed, city, folk } = worlds[0]
-  for (const shift of ['day', 'night']) {
-    const pair = folk.filter(p => p.job === 'watch' && p.patrol && p.shift === shift)
-    assert.equal(pair.length, 2)
-    const [a, b] = pair.map(p => scheduleFor(p, city, seed, 1))
+  const rot = start => PLAN.patrols.map((_, i) => PLAN.patrols[(start + i) % PLAN.patrols.length].id)
+  const dedupe = list => list.filter((r, i) => i === 0 || r !== list[i - 1])
+  for (const { seed, city, folk } of worlds) for (const day of [0, 1, 4]) for (const shift of ['day', 'night']) {
+    const pairs = folk.filter(p => p.job === 'watch' && p.patrol && p.shift === shift)
+    assert.equal(pairs.length, 2)
+    const [a, b] = pairs.map(p => scheduleFor(p, city, seed, day))
     assert.deepEqual(a, b, 'identical entries')
-    const routes = a.filter(e => e.where.patrol).map(e => e.where.patrol)
-    // every route is walked within the shift
-    assert.deepEqual([...new Set(routes)].sort(), PLAN.patrols.map(r => r.id).sort())
-    const start = PLAN.patrols.findIndex(r => r.id === pair[0].patrol)
-    const order = PLAN.patrols.map((_, i) => PLAN.patrols[(start + i) % 4].id)
-    const seen = shift === 'day' ? routes : [...routes.slice(routes.length - 2), ...routes.slice(0, routes.length - 2)].filter((r, i, arr) => i === 0 || r !== arr[i - 1])
-    assert.deepEqual(routes.filter((r, i) => i === 0 || r !== routes[i - 1]).length >= 4, true)
-    if (shift === 'day') assert.deepEqual(seen, order)
+    const start = PLAN.patrols.findIndex(r => r.id === pairs[0].patrol)
+    const walks = a.filter(e => e.where.patrol)
+    assert.ok(walks.every(e => e.act === 'patrol'))
+    // duty order from the relief: the evening entries first, then (night) those after midnight, the one at 0 being the route still in force
+    const evening = walks.filter(e => e.at > 0.5).map(e => e.where.patrol)
+    const morning = walks.filter(e => e.at <= 0.5).map(e => e.where.patrol)
+    const seq = dedupe(shift === 'day' ? walks.map(e => e.where.patrol) : [...evening, ...morning])
+    assert.deepEqual(seq, rot(start), `${shift} pair starting ${pairs[0].patrol}`)
+    if (shift === 'night') {
+      assert.equal(a[0].where.patrol, rot(start)[2], 'at 0 the third route is in force')
+      assert.equal(a[0].at, 0)
+    }
   }
 })

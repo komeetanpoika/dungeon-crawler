@@ -9,9 +9,10 @@
 //
 // An entry is in force from its `at` until the next one. For anyone who walks
 // somewhere, `at` is when they set out: they should be there soon after. That
-// is also how the watch changes shift: the relief leaves the barracks 0.05
-// before the old shift's end and the old shift leaves 0.02 after, so a post
-// is never empty. A person's day starts and ends at home (the night watch
+// is also how the watch changes shift: at dusk the night relief leaves the
+// barracks 0.05 early and the day shift leaves its post 0.02 late; at dawn the
+// day relief leaves 0.04 early and the night shift 0.02 late, so a post is
+// never empty. A person's day starts and ends at home (the night watch
 // starts on duty and goes on from the last night's route), so nobody jumps
 // when the clock wraps and the day counter goes up.
 //
@@ -60,7 +61,7 @@ function indexOf(p) {
   if (kind === 'tf') return Number(rest)
   if (kind === 'watch') return 1000 + Number(rest)
   let h = 2000
-  for (const ch of rest) h = h * 31 + ch.charCodeAt(0) % 9973
+  for (const ch of rest) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   return h
 }
 
@@ -206,7 +207,7 @@ export function scheduleFor(person, city, seed, day) {
   let errand
   if (p.job === 'stallholder') errand = null
   else if (p.job === 'smith' || p.job === 'apprentice') errand = { where: { spot: 'smithy-anvil' }, act: 'work' }
-  else if (p.job === 'captain') errand = { where: { spot: pick(['castle-a', 'harbour-W', 'harbour-E', 'gate-E-a', 'gate-N-a', 'gate-W-a'], 21) }, act: 'work' }
+  else if (p.job === 'captain') errand = { where: { spot: pick(PLAN.posts.map(q => q.id), 21) }, act: 'work' }
   else if (p.job === 'porter' && H(22) < 0.6) errand = { where: { spot: pick(ctx.quays, 23) }, act: 'unload' }
   else if (p.job === 'fisher' && H(22) < 0.7 && p.work !== 'fish-market') errand = { where: { spot: 'fish-market' }, act: 'work' }
   else { const s = errandSpot(p.work, 20); errand = { where: { spot: s }, act: spotAct(s) } }
