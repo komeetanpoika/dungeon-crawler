@@ -5,6 +5,7 @@
 //   City = { seed, cells: Cell[160][160], doors, signs, lamps: {x,y}[],
 //            chimneys: { x, y, door }[], windows: { x, y, door }[],
 //            spots: { [id]: { x, y } }, inn: { door, doorstep }, spawns,
+//            yards: { x0, y0, x1, y1 }[] (the back yards and courtyards),
 //            streets: the street graph (streets.js) }
 //
 // A Cell is piece.js cellOf(ground, prop, walkable) with `deco` where a sign
@@ -44,7 +45,7 @@ export function buildCity(seed) {
   }))
   const city = {
     seed, cells, doors: rec.doors, signs: rec.signs, lamps: rec.lamps, chimneys: rec.chimneys, windows: rec.windows,
-    spots: rec.spots, inn: rec.inn, spawns: rec.spawns,
+    spots: rec.spots, inn: rec.inn, spawns: rec.spawns, yards: rec.yards,
   }
   city.streets = buildStreetGraph(city)
   cache = city

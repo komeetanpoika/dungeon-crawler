@@ -55,7 +55,7 @@ export function pave(G, x, y, ground) { lay(G, x, y, null, { walk: true, ground 
 // What was laid besides the cells: doors and where the lit windows, chimneys,
 // lamps and the townsfolk's spots are.
 export function makeRecord() {
-  return { doors: [], signs: [], lamps: [], chimneys: [], windows: [], spots: {}, spawns: [] }
+  return { doors: [], signs: [], lamps: [], chimneys: [], windows: [], spots: {}, spawns: [], yards: [] }
 }
 export const doorLabel = (x, y) => `house:city:${x},${y + 160}`
 export function addDoor(rec, x, y, { kind, lot = null, look, closed = null }) {

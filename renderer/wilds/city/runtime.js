@@ -1,0 +1,428 @@
+// Kalevanlinna at play: the runtime that owns every townsperson, watchman and
+// town animal while a city piece is in the window. No DOM and no game.js
+// import: game.js passes its own hooks.
+//
+//   hooks = { spawn(spawns) -> entities, clock() -> seconds, day() -> integer,
+//             viewHalf() -> { w, h } in tiles, sfx(name, pos), hurt(target, amount, from) }
+//
+// Everyone is in exactly one of three modes (R1):
+//   near     within the near radius (the visible half-width + 6 tiles): an npc
+//            entity (cityKey = their id) whose goals walk their day; the
+//            runtime moves e.city.next along their route (npc.js follow_city)
+//   far      a record walking its route at FAR_SPEED, no collision, no reactions
+//   indoors  inside a door, until the schedule's next entry brings them out
+// Far turns near where the walker stands, near turns far where the entity
+// stood (2 tiles of slack, so the edge does not flicker). Positions are kept
+// in world tiles here, never window tiles: shiftState moves the entities on a
+// re-centre and nothing in the runtime. An entity that vanished (a re-centre
+// dropped its piece) is far again at its last tracked position; a city entity
+// the runtime does not own is removed: nobody exists twice.
+//
+// With no city piece in the window the runtime is dropped whole, and coming
+// back puts everyone where the clock says (the schedules are pure in the
+// seed and the day). state.cityRun is never saved.
+//
+//   state.cityRun = { people: Map<id, Walker>, animals: Map<id, Animal>,
+//                     crime, scenes, lights, fx, nearR, swingAt, stats, ... }
+//   e.city = { next: window tile | null, entry, person, passed }
+import { cityFor } from './build.js'
+import { isCityPiece } from './geometry.js'
+import { scheduleFor, entryAt } from './schedule.js'
+import { WIN } from '../window.js'
+import { PIECE } from '../layout.js'
+import { TILE } from '../../systems/entities.js'
+import { speakFrom } from '../../systems/feedback.js'
+import { DAY_LENGTH } from '../../data/weather.js'
+import {
+  FAR_SPEED, cityCtx, makeWalker, setEntry, routeWalker, placeByClock, stepFar, advance, lastWaypoint,
+  cityToWorld, CITY_OX as OX, CITY_OY as OY,
+} from './walkers.js'
+import { makeAnimals } from './animals.js'
+
+export { FAR_SPEED }
+const S = 32
+const HYSTERESIS = 2        // tiles beyond the near radius before a near person turns far
+const MAX_NEAR = 50         // the window reaches 56 tiles past a player 24 tiles into a city piece
+const REACH = 0.6           // tiles from a waypoint that count as reaching it
+const ROUTES_PER_TICK = 8   // route requests served a frame (the bell sends half the town at once)
+const PLACE_PER_TICK = 12   // people placed by the clock a frame, when the city comes into the window on a walk
+const REROUTE_AFTER = 4     // s a near walker may make no headway before it is routed again
+const DRIFT = 10            // tiles from its next waypoint before a near walker is routed again
+const SHY_REACH = 3         // tiles from a swing that make a townsperson step back
+const SHY_TIME = 1.5        // s spent stepping back
+const SHY_SAY_EVERY = 4     // s between two 'Careful with that!'
+const SHY_LINE = 'Careful with that!'
+
+export const nearRadius = view => Math.min(MAX_NEAR, Math.ceil(Math.max(view.w, view.h)) + 6)
+
+// Lines by job, until the townsfolk get their own (a later task replaces this table).
+const JOB_LINES = {
+  baker: ['Fresh bread at dawn. Mostly fresh.', 'Rye, rye, or rye. Take your pick.'],
+  butcher: ['Good cuts today. Do not ask about the sausage.'],
+  weaver: ['Wool from the north, blisters from me.'],
+  stallholder: ['Look all you like. Buying is extra.', 'Turnips. Again.'],
+  fisher: ['The herring were in a mood this morning.', 'Wind from the east. Fish from the west. Go figure.'],
+  'net-mender': ['A net is mostly holes. The trick is the rest.'],
+  sailor: ['Solid ground. I never trust it.'],
+  porter: ['Crates in, crates out. The back hurts either way.'],
+  apprentice: ['Seppo says I will make a smith yet. One day.'],
+  dyer: ['Blue hands. It washes off by midsummer.'],
+  tanner: ['Do not stand downwind. Everyone learns that once.'],
+  miller: ['The wind turns the sails. I carry the sacks.'],
+  carter: ['Mind the wheels.', 'Market street at noon is no place for a cart. Or a person.'],
+  washer: ['Sea water for the washing, rain for the rinse. When it rains.'],
+  lamplighter: ['One lamp at a time. There is no other way.'],
+  'bell-ringer': ['My ears ring longer than the bell.'],
+  server: ['The Golden Pike. The soup is fish. So is the stew.'],
+  beggar: ['Spare a kind word? They cost nothing.'],
+  child: ['You can\'t catch me!', 'Are you a knight? You look like a knight. A bit.'],
+  elder: ['In my day the walls were lower and the herring bigger.', 'Sit a while. The bench does not mind.'],
+  smith: ['Iron listens if you hit it hard enough.'],
+  organist: ['The organ has one pipe that sulks. Like me.'],
+  herring: ['Herring! Salted, smoked, or just looked at.'],
+  vicar: ['Service at the bell. Bring your own sins.'],
+  crier: ['News at the bell! Mostly the same news.'],
+  innkeeper: ['The Golden Pike has beds. Most of them have legs.'],
+  captain: ['Keep the peace and we will get along.'],
+  count: ['Do I know you?'],
+  watch: ['Move along.', 'Keep your blade sheathed inside the walls.'],
+}
+export const linesFor = person => JOB_LINES[person.job] ?? ['Good day.']
+
+// Is any city piece in the window?
+function cityInWindow(world) {
+  const o = world.origin
+  if (!o) return false
+  for (let r = 0; r < WIN; r++) for (let c = 0; c < WIN; c++) if (isCityPiece(o.wx + c, o.wy + r)) return true
+  return false
+}
+
+const fracOf = clock => (((clock % DAY_LENGTH) + DAY_LENGTH) % DAY_LENGTH) / DAY_LENGTH
+
+// `lazy`: the city came into the window on a walk (the player is then a piece
+// away, out of reach of the near radius): people are placed by the clock a
+// few a frame instead of all in the frame of the re-centre.
+function makeRun(state, world, hooks, lazy) {
+  const city = cityFor(world.seed)
+  const cc = cityCtx(city, world.seed)
+  const day = hooks.day(), frac = fracOf(hooks.clock())
+  const run = {
+    seed: world.seed, cc, people: new Map(), animals: new Map(),
+    crime: null, scenes: null, lights: null, fx: null,
+    nearR: nearRadius(hooks.viewHalf()), day, frac, swingAt: null, shyT: 0,
+    queue: [], pending: [], tick: 0, remove: new Set(), stats: { noRoute: [], rerouted: 0 },
+  }
+  // patrol pairs walk side by side: the second of each pair keeps a step to its partner's right
+  const pairs = new Map()
+  cc.folk.forEach((p, n) => {
+    const w = makeWalker(cc, p, n)
+    w.lines = linesFor(p)
+    if (p.patrol) { const k = `${p.shift}:${p.patrol}`; w.side = pairs.has(k) ? 1 : 0; pairs.set(k, true) }
+    run.people.set(p.id, w)
+    if (lazy) { w.pending = true; run.pending.push(w); return }
+    w.sched = scheduleFor(p, city, world.seed, day); w.day = day
+    placeByClock(cc, w, frac, run.stats)
+  })
+  for (const a of makeAnimals(cc)) run.animals.set(a.id, a)
+  return run
+}
+
+// Make sure every person is an entity, a far walker or indoors, never two.
+// Idempotent; call after every enterWilds, re-centre and respawn (`fresh`
+// for a window built anew: a load, a wake after death).
+export function arriveCity(state, world, hooks, { fresh = false } = {}) {
+  if (!cityInWindow(world)) { dropCity(state); return }
+  if (fresh || !state.cityRun || state.cityRun.seed !== world.seed) {
+    dropCity(state)
+    state.cityRun = makeRun(state, world, hooks, !fresh)
+  }
+  const run = state.cityRun
+  reconcile(state, run)
+  run.nearR = nearRadius(hooks.viewHalf())
+  modes(state, world, run, hooks)
+  flush(state, run)
+}
+
+function dropCity(state) {
+  if (state.entities?.some(e => e.cityKey !== undefined)) state.entities = state.entities.filter(e => e.cityKey === undefined)
+  delete state.cityRun
+}
+
+// Every city entity in state.entities must be the one its walker holds, and
+// every near walker's entity must still be there.
+function reconcile(state, run) {
+  const seen = ++run.tick
+  let strays = null
+  for (const e of state.entities) {
+    if (e.cityKey === undefined) continue
+    const w = run.people.get(e.cityKey) ?? run.animals.get(e.cityKey)
+    if (!w || w.entity !== e || w.mode !== 'near') { (strays ??= new Set()).add(e); continue }
+    e._citySeen = seen
+  }
+  if (strays) state.entities = state.entities.filter(e => !strays.has(e))
+  const check = w => {
+    if (w.mode !== 'near' || w.entity._citySeen === seen) return
+    if (w.entity.hp <= 0) { knockedDown(run, w); return }
+    w.entity = null; w.mode = 'far'   // gone with a piece that left: on from where it last stood
+  }
+  for (const w of run.people.values()) check(w)
+  for (const a of run.animals.values()) check(a)
+}
+
+// Struck down (and culled by the game): a person is at home until the next
+// day, an animal gone until then. What else follows is for the city's rules.
+function knockedDown(run, w) {
+  if (w.entity?.hp > 0) run.remove.add(w.entity)
+  w.entity = null
+  if (w.animal) { w.mode = 'far'; w.gone = true; return }
+  w.out = true; w.mode = 'indoors'; w.door = w.person.home; w.path = null; w.shy = null
+}
+
+// Once per surface frame, beside the tales.
+export function tickCity(state, world, delta, hooks) {
+  const run = state.cityRun
+  if (!run || !world.origin) return
+  const { cc } = run
+  reconcile(state, run)
+  const day = hooks.day(), frac = fracOf(hooks.clock())
+  run.nearR = nearRadius(hooks.viewHalf())
+  // a new day (or a clock that wrapped with no day counted: the same day again)
+  if (day !== run.day || frac + 0.5 < run.frac) newDay(run, day, frac)
+  run.frac = frac
+  const ox = world.origin.wx * PIECE, oy = world.origin.wy * PIECE
+
+  for (let k = 0; k < PLACE_PER_TICK && run.pending.length; k++) {
+    const w = run.pending.pop()
+    w.sched = scheduleFor(w.person, cc.city, run.seed, run.day); w.day = run.day
+    placeByClock(cc, w, frac, run.stats)
+    w.pending = false
+  }
+  if (run.swingAt) shy(state, run, ox, oy)
+  run.shyT = Math.max(0, run.shyT - delta)
+  for (let k = 0; k < ROUTES_PER_TICK && run.queue.length; k++) {
+    const w = run.queue.shift()
+    if (!w.needRoute) continue
+    if (routeWalker(cc, w, run.stats) === 'indoors' && w.entity) { run.remove.add(w.entity); w.entity = null }
+  }
+
+  for (const w of run.people.values()) {
+    if (w.out || w.pending) continue
+    // the schedule moved on
+    const nx = w.sched[w.ei + 1]
+    if (nx && frac >= nx.at) {
+      setEntry(cc, w, entryAt(w.sched, frac))
+      if (w.needRoute) run.queue.push(w)
+      if (w.entity) w.entity.city.entry = w.entry
+    }
+    if (w.mode === 'near') near(state, run, w, delta, ox, oy)
+    else if (w.mode === 'far') stepFar(cc, w, delta)
+  }
+  modes(state, world, run, hooks)
+  flush(state, run)
+}
+
+// A new day: everyone's schedule for it. At midnight the place is the same
+// (home, or the night watch's post), so nobody moves; the knocked out are back.
+function newDay(run, day, frac) {
+  const { cc } = run
+  run.day = day
+  for (const w of run.people.values()) {
+    if (w.pending) continue   // placed by the new day's schedule when its turn comes
+    w.sched = scheduleFor(w.person, cc.city, run.seed, day); w.day = day
+    if (w.out) {
+      if (w.entity) { run.remove.add(w.entity); w.entity = null }
+      w.out = false
+      placeByClock(cc, w, frac, run.stats)
+      continue
+    }
+    w.ei = 0
+    setEntry(cc, w, entryAt(w.sched, frac))
+    if (w.needRoute) run.queue.push(w)
+    if (w.entity) w.entity.city.entry = w.entry
+  }
+  for (const a of run.animals.values()) a.gone = false
+}
+
+const setNext = (e, x, y) => {
+  const c = e.city
+  if (c.next) { c.next.x = x; c.next.y = y } else c.next = { x, y }
+}
+
+// A near walker: read where its entity stands, take it through its route.
+function near(state, run, w, dt, ox, oy) {
+  const e = w.entity
+  if (e.hp <= 0) { knockedDown(run, w); return }
+  w.X = e.px / S - 0.5 + ox; w.Y = e.py / S - 0.5 + oy
+  const c = e.city
+  if (w.shy) {
+    w.shy.t -= dt
+    if (w.shy.t > 0 && Math.hypot(w.shy.X - w.X, w.shy.Y - w.Y) > 0.4) { setNext(e, w.shy.X - ox, w.shy.Y - oy); return }
+    w.shy = null
+  }
+  if (c.passed) {
+    // gone round the player on the way: on to the next waypoint. A player
+    // standing on the very spot they were making for: about here will do.
+    c.passed = false
+    if (w.path && (!lastWaypoint(w) || w.goal.kind === 'spot') && advance(run.cc, w) === 'there' && !w.loop) { c.next = null; return }
+  }
+  const walking = w.path && (w.phase === 'go' || w.loop)
+  if (!walking) {
+    c.next = null
+    // about a spot: potter round it (the species' wander, from here)
+    if (w.phase === 'there' && !w.homed && w.goal?.kind === 'spot') {
+      const t = cityToWorld(w.goal.tile)
+      e.home = { x: t.X - ox, y: t.Y - oy }
+      if (e.ai.goals) e.ai.goals.wander = {}
+      e.ai.wanderPt = null
+      w.homed = true
+    }
+    return
+  }
+  // the window tile the entity walks to: the waypoint, or for a patrol
+  // partner a step to the right of the way
+  const aim = () => {
+    const q = w.path[w.wi]
+    let nx = q.x + OX - ox, ny = q.y + OY - oy
+    if (w.side) {
+      const p = w.path[w.wi - w.dir] ?? q
+      const dx = Math.sign(q.x - p.x), dy = Math.sign(q.y - p.y)
+      if (walkable(state.map, nx - dy, ny + dx)) { nx -= dy; ny += dx }
+    }
+    return { nx, ny }
+  }
+  let { nx, ny } = aim()
+  // reached: on that tile (act walks no further within it), or near enough its middle
+  if ((e.x === nx && e.y === ny) || Math.hypot(nx + ox - w.X, ny + oy - w.Y) < REACH) {
+    const r = advance(run.cc, w)
+    if (r === 'indoors') { run.remove.add(e); w.entity = null; return }
+    if (r === 'there' && !w.loop) { c.next = null; return }
+    ;({ nx, ny } = aim())
+  }
+  const t = { X: nx + ox, Y: ny + oy }
+  setNext(e, nx, ny)
+  // headway: a walker that makes none for a while, or strays far off its way, is routed again
+  const waiting = e.ai.wait > 0 || !!e.ai.side || e.ai.fleeTimer > 0
+  if (Math.hypot(w.X - w.sx, w.Y - w.sy) > 0.4) { w.sx = w.X; w.sy = w.Y; w.still = 0; w.rerouted = false }
+  else if (!waiting) w.still += dt
+  const stuck = w.still > REROUTE_AFTER && !w.rerouted
+  const drift = !(e.ai.fleeTimer > 0) && Math.hypot(t.X - w.X, t.Y - w.Y) > DRIFT
+  if ((stuck || drift) && !w.needRoute) {
+    if (stuck) w.rerouted = true
+    w.needRoute = true; run.queue.push(w); run.stats.rerouted++
+  }
+}
+
+// near <-> far by the near radius, for people and animals
+function modes(state, world, run, hooks) {
+  const ox = world.origin.wx * PIECE, oy = world.origin.wy * PIECE
+  const px = state.player.x + ox, py = state.player.y + oy
+  const R = run.nearR
+  const one = w => {
+    if (w.mode === 'indoors' || w.gone || w.pending) return
+    const d = Math.max(Math.abs(w.X - px), Math.abs(w.Y - py))
+    if (w.mode === 'near') {
+      if (d > R + HYSTERESIS) { run.remove.add(w.entity); w.entity = null; w.mode = 'far' }
+      else if (w.animal) { w.X = w.entity.px / S - 0.5 + ox; w.Y = w.entity.py / S - 0.5 + oy }
+    } else if (d <= R) spawn(state, run, w, hooks, ox, oy)
+  }
+  for (const w of run.people.values()) one(w)
+  for (const a of run.animals.values()) one(a)
+}
+
+const walkable = (map, x, y) => map[y]?.[x]?.tile === TILE.FLOOR
+function spawn(state, run, w, hooks, ox, oy) {
+  let x = Math.round(w.X) - ox, y = Math.round(w.Y) - oy
+  let fx = w.X - ox, fy = w.Y - oy
+  if (!walkable(state.map, x, y)) {
+    let found = null
+    for (let r = 1; r <= 2 && !found; r++) for (let dy = -r; dy <= r && !found; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) === r && walkable(state.map, x + dx, y + dy)) { found = { x: x + dx, y: y + dy }; break }
+    }
+    if (!found) return   // off the window or in a wall: stays far this frame
+    x = found.x; y = found.y; fx = x; fy = y
+  }
+  const [e] = hooks.spawn([{ kind: 'npc', species: w.species, id: w.id, x, y, lines: w.lines, hostile: false }])
+  if (!e) return
+  e.px = (fx + 0.5) * S; e.py = (fy + 0.5) * S
+  e.x = Math.floor(e.px / S); e.y = Math.floor(e.py / S)
+  e.cityKey = w.id
+  e.look = w.look
+  if (w.lines) e.lines = w.lines
+  if (w.animal) {
+    const h = cityToWorld(w.home)
+    e.home = { x: h.X - ox, y: h.Y - oy }
+  } else {
+    e.city = { next: null, entry: w.entry, person: w.person, passed: false }
+    w.homed = false; w.sx = w.X; w.sy = w.Y; w.still = 0
+  }
+  state.entities.push(e)
+  w.entity = e; w.mode = 'near'
+}
+
+function flush(state, run) {
+  if (!run.remove.size) return
+  const gone = run.remove
+  state.entities = state.entities.filter(e => !gone.has(e))
+  gone.clear()
+}
+
+// The player swung, shot or cast: game.js says so here (world tiles, so a
+// re-centre before the next tick cannot misplace it).
+export function noteCitySwing(state, world) {
+  const run = state.cityRun
+  if (!run || !world?.origin) return
+  run.swingAt = { X: state.player.x + world.origin.wx * PIECE, Y: state.player.y + world.origin.wy * PIECE }
+}
+
+// Townsfolk within SHY_REACH tiles of a swing step back two tiles, and the
+// nearest of them says so. Not violence: a flinch.
+function shy(state, run, ox, oy) {
+  const s = run.swingAt
+  run.swingAt = null
+  let speaker = null, best = Infinity
+  for (const w of run.people.values()) {
+    if (w.mode !== 'near' || w.species !== 'townsfolk') continue
+    const d = Math.max(Math.abs(w.X - s.X), Math.abs(w.Y - s.Y))
+    if (d > SHY_REACH) continue
+    const to = stepBack(state.map, Math.round(w.X) - ox, Math.round(w.Y) - oy, Math.sign(Math.round(w.X) - s.X), Math.sign(Math.round(w.Y) - s.Y))
+    if (to) {
+      w.shy = { X: to.x + ox, Y: to.y + oy, t: SHY_TIME }
+      setNext(w.entity, to.x, to.y)
+    }
+    if (d < best) { best = d; speaker = w }
+  }
+  if (speaker && run.shyT <= 0) { speakFrom(state, speaker.entity, SHY_LINE); run.shyT = SHY_SAY_EVERY }
+}
+// two tiles on, away from the swing (straight, then along either axis, then one tile)
+function stepBack(map, x, y, dx, dy) {
+  if (!dx && !dy) dy = 1
+  const tries = [[dx, dy], [dx, 0], [0, dy]].filter(([a, b]) => a || b)
+  for (const n of [2, 1]) for (const [a, b] of tries) {
+    let ok = true
+    for (let k = 1; k <= n && ok; k++) ok = walkable(map, x + a * k, y + b * k)
+    if (ok) return { x: x + a * n, y: y + b * n }
+  }
+  return null
+}
+
+// For tools and tests: everyone, where they are and in which mode.
+export function cityPeople(state) {
+  const run = state.cityRun ?? state.cave?.surface?.cityRun
+  if (!run) return []
+  const out = []
+  for (const w of run.people.values()) out.push({
+    id: w.id, mode: w.mode, X: w.X, Y: w.Y, door: w.mode === 'indoors' ? w.door : null,
+    entry: w.ei, act: w.entry?.act ?? null, going: w.mode !== 'indoors' && w.phase === 'go', there: w.phase === 'there',
+    goal: w.goal?.kind ?? null, still: w.still, out: w.out, pending: !!w.pending,
+  })
+  return out
+}
+
+// Who is inside that door now (the Person records), for the house the player steps into.
+export function occupantsOf(state, doorLabel) {
+  const run = state.cityRun ?? state.cave?.surface?.cityRun
+  if (!run) return []
+  const out = []
+  for (const w of run.people.values()) if (w.mode === 'indoors' && w.door === doorLabel) out.push(w.person)
+  return out
+}

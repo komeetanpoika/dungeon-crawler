@@ -91,6 +91,7 @@ export function layBlocks(G, rec, seed) {
   const looks = lookOfRows(lots, seed)
   for (const l of lots) layLot(G, rec, l, looks.get(l.id), rng)
   for (const y of yards) layYard(G, y, districtAt((y.x0 + y.x1) >> 1, (y.y0 + y.y1) >> 1) ?? 'market', rng)
+  rec.yards.push(...yards.map(({ x0, y0, x1, y1 }) => ({ x0, y0, x1, y1 })))   // where the town keeps its hens and goats
   for (const g of gardens) layGarden(G, g, rng)
   // the slivers no lot or yard took stay paved by the streets, and go to grass beside a garden
   const taken = new Uint8Array(160 * 160)
