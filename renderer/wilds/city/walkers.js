@@ -22,13 +22,14 @@ import { hash } from '../rand.js'
 import { DAY_LENGTH } from '../../data/weather.js'
 
 export const FAR_SPEED = 1.6           // tiles/s: a far walker's pace
+const ROUTE_RETRY = 2                  // s before a route that could not be found is asked for again
 const N = CITY.size
 const OX = CITY.wx0 * 80, OY = CITY.wy0 * 80   // world tile of city tile (0, 0)
 export { OX as CITY_OX, OY as CITY_OY }
 const EXACT = new Set(['post', 'stall', 'cry', 'lamps', 'ring'])   // acts done on the spot itself
 const SURE_DETOUR = 2.5                // a route is never longer than this many straight lines (+30)
 
-export const placeKey = where => where.door ? `d:${where.door}` : where.spot ? `s:${where.spot}` : `p:${where.patrol}`
+export const placeKey = where => 'door' in where ? `d:${where.door}` : where.spot ? `s:${where.spot}` : `p:${where.patrol}`
 const octile = (a, b) => { const dx = Math.abs(a.x - b.x), dy = Math.abs(a.y - b.y); return Math.max(dx, dy) + 0.414 * Math.min(dx, dy) }
 
 // What every walker of one city shares: the street graph, the doors, the
@@ -86,7 +87,12 @@ function standTile(cc, w, spot, act) {
 // The place an entry sends a walker to (city tiles).
 function targetOf(cc, w, entry) {
   const where = entry.where
-  if (where.door) { const d = cc.doorOf.get(where.door); return { key: placeKey(where), kind: 'door', door: where.door, tile: { x: d.x, y: d.y } } }
+  if ('door' in where) {
+    const d = cc.doorOf.get(where.door)
+    // a door the city does not have (no barracks for the watch): out of sight, wherever that is
+    if (!d) return { key: placeKey(where), kind: 'away' }
+    return { key: placeKey(where), kind: 'door', door: where.door, tile: { x: d.x, y: d.y } }
+  }
   if (where.spot) return { key: placeKey(where), kind: 'spot', tile: standTile(cc, w, where.spot, entry.act) }
   const path = patrolPath(cc, where.patrol)
   return { key: placeKey(where), kind: 'patrol', path, tile: path[0] }
@@ -123,6 +129,7 @@ const noRoute = (stats, w, from, to) => { if (stats && stats.noRoute.length < 50
 export function arrive(cc, w) {
   const g = w.goal
   w.path = null; w.loop = false; w.still = 0
+  if (g.kind === 'away') { w.mode = 'indoors'; w.door = null; w.phase = 'there'; return 'indoors' }
   if (g.kind === 'door') {
     w.mode = 'indoors'; w.door = g.door; w.phase = 'there'
     setAt(w, g.tile)
@@ -160,6 +167,7 @@ export const lastWaypoint = w => !w.loop && w.wi === w.path.length - 1
 export function routeWalker(cc, w, stats) {
   w.needRoute = false
   const g = w.goal
+  if (g.kind === 'away') return arrive(cc, w)
   const from = startTile(cc, w)
   let to = g.tile
   if (g.kind === 'patrol') {
@@ -168,7 +176,7 @@ export function routeWalker(cc, w, stats) {
   }
   if (from.x === to.x && from.y === to.y) return arrive(cc, w)
   let path = route(cc.G, from, to)
-  if (!path) { noRoute(stats, w, from, to); path = [from, to] }
+  if (!path) { noRoute(stats, w, from, to); path = [from, to]; w.retry = ROUTE_RETRY }
   w.path = path; w.wi = 1; w.dir = 1; w.loop = false; w.phase = 'go'
   w.still = 0; w.sx = w.X; w.sy = w.Y
   return null
@@ -185,7 +193,9 @@ export function setEntry(cc, w, ei) {
   if (same) return null
   let left = null
   if (w.mode === 'indoors') {
-    setAt(w, cc.front(w.door))
+    // out of their door; from nowhere (away), straight to where they are going
+    if (w.door) setAt(w, cc.front(w.door))
+    else if (goal.tile) setAt(w, goal.tile)
     w.mode = 'far'; w.door = null; left = 'out'
   }
   w.phase = 'wait'; w.path = null; w.loop = false; w.needRoute = true; w.homed = false
@@ -230,7 +240,8 @@ export function placeByClock(cc, w, frac, stats) {
   w.ei = ei; w.entry = S[ei]; w.goal = targetOf(cc, w, w.entry)
   w.mode = 'far'; w.door = null; w.path = null; w.loop = false; w.needRoute = false; w.homed = false
   const since = Math.max(0, frac - w.entry.at) * DAY_LENGTH
-  const prev = ei > 0 ? targetOf(cc, w, S[ei - 1]) : null
+  let prev = ei > 0 ? targetOf(cc, w, S[ei - 1]) : null
+  if (prev?.kind === 'away' || w.goal.kind === 'away') prev = null   // nowhere to walk from or to
   const there = extra => {
     if (w.goal.kind === 'patrol') {
       setAt(w, w.goal.path[0]); arrive(cc, w)

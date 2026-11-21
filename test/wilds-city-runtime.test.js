@@ -9,7 +9,9 @@ import { cityFor } from '../renderer/wilds/city/build.js'
 import { fromCity } from '../renderer/wilds/city/geometry.js'
 import { rollTownsfolk } from '../renderer/wilds/city/folk.js'
 import { scheduleFor } from '../renderer/wilds/city/schedule.js'
-import { makeWorld, exportWorld } from '../renderer/wilds/world.js'
+import { makeWorld, exportWorld, getPiece } from '../renderer/wilds/world.js'
+import { shiftState } from '../renderer/wilds/shift.js'
+import { assemble } from '../renderer/wilds/window.js'
 import { enterWilds, tickWilds } from '../renderer/wilds/session.js'
 import { toWorld, toWindow } from '../renderer/wilds/window.js'
 import { PIECE } from '../renderer/wilds/layout.js'
@@ -19,6 +21,10 @@ import { makeFeedback } from '../renderer/systems/feedback.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
+import { applyBurst, updateFireZones, makeFireZone, FIRE_TICK_DAMAGE } from '../renderer/systems/fire.js'
+import { applyShockwave } from '../renderer/systems/shockwave.js'
+import { cityCtx, makeWalker, placeByClock, setEntry, routeWalker, stepFar } from '../renderer/wilds/city/walkers.js'
+import { entryAt } from '../renderer/wilds/city/schedule.js'
 
 const SEED = 7
 const S = 32
@@ -65,6 +71,16 @@ function placePlayer(state, world, X, Y) {
   const { x, y } = toWindow(world.origin, X, Y)
   state.player.x = x; state.player.y = y; state.player.px = x * S + 16; state.player.py = y * S + 16
 }
+// What session.js recentre does to the state, minus recording pieces: drop
+// whatever stands in a piece that leaves, shift every position, lay the new window.
+function fakeRecentre(state, world, dx, dy) {
+  const old = world.origin, next = { wx: old.wx + dx, wy: old.wy + dy }
+  const stays = (wx, wy) => wx >= next.wx && wx <= next.wx + 2 && wy >= next.wy && wy <= next.wy + 2
+  state.entities = state.entities.filter(e => { const { X, Y } = toWorld(old, e.x, e.y); return stays(Math.floor(X / PIECE), Math.floor(Y / PIECE)) })
+  shiftState(state, -dx * PIECE, -dy * PIECE)
+  world.origin = next
+  state.map = assemble(Array.from({ length: 3 }, (_, r) => Array.from({ length: 3 }, (_, c) => getPiece(world, next.wx + c, next.wy + r))))
+}
 function assertOnce(state) {
   const keys = cityEntities(state).map(e => e.cityKey)
   assert.equal(new Set(keys).size, keys.length, 'no city entity twice')
@@ -96,25 +112,32 @@ test('arriving twice builds each person once', () => {
 })
 
 test('a re-centre that drops people keeps them all', () => {
-  const ctx = setup({ view: { w: 40, h: 24 } })
+  // the widest screen (radius 50): people near the player stand in the piece column east of the square
+  const ctx = setup({ view: { w: 60, h: 40 } })
   const { state, world, hooks } = ctx
   run(ctx, 1)
-  // recentre's filter: everything standing in the piece column at world X >= 80 goes
   const before = new Map(cityPeople(state).map(p => [p.id, p]))
-  const dropped = cityEntities(state).filter(e => entityWorld(world, e).X >= 80)
-  const droppedPeople = dropped.filter(e => e.city)
-  assert.ok(droppedPeople.length >= 3, `someone stands east of the seam (${droppedPeople.length})`)
-  const lastAt = new Map(droppedPeople.map(e => [e.cityKey, entityWorld(world, e)]))
-  state.entities = state.entities.filter(e => !dropped.includes(e))
+  const east = cityEntities(state).filter(e => e.city && entityWorld(world, e).X >= 80)
+  assert.ok(east.length >= 3, `someone stands east of the seam (${east.length})`)
+  const lastAt = new Map(east.map(e => [e.cityKey, entityWorld(world, e)]))
+  // the window steps west: recentre's own filter drops that column with everyone in it
+  fakeRecentre(state, world, -1, 0)
+  assert.equal(cityEntities(state).some(e => lastAt.has(e.cityKey)), false, 'they went with the column')
   arriveCity(state, world, hooks)
-  const people = assertOnce(state)
+  let people = assertOnce(state)
   for (const [id, at] of lastAt) {
     const p = people.find(q => q.id === id)
+    assert.equal(p.mode, 'far', `${id} walks on out of the window`)
     assert.ok(cheb(p, at) <= 1, `${id} kept where it stood`)
-    // still within reach: built again where it stood, never at home or twice
-    if (p.mode === 'near') assert.ok(cheb(entityWorld(world, cityEntities(state).find(e => e.cityKey === id)), at) <= 1)
+    assert.equal(p.out, false, 'not taken for struck down')
   }
   assert.equal(people.length, before.size)
+  run(ctx, 1, { npcs: false })
+  // and back east: they come near again where they walked to, once each
+  fakeRecentre(state, world, 1, 0)
+  arriveCity(state, world, hooks)
+  people = assertOnce(state)
+  for (const id of lastAt.keys()) assert.notEqual(people.find(q => q.id === id).out, true)
 
   // and a real re-centre: walk 25 tiles into the piece east of the square
   placePlayer(state, world, 104, 236)
@@ -404,4 +427,106 @@ test('someone struck down is at home until the next day, never raised where they
   run(ctx, DT)
   assert.equal(cityPeople(state).find(q => q.id === e.cityKey).out, false)
   assert.equal(state.cityRun.animals.get(dog?.cityKey)?.gone ?? false, false)
+})
+
+// Fire and the Maunonmiekka's shockwave hand back a copy of whatever they hurt
+// ({ ...e, hp }) and cull the dead copies: the same person either way.
+// Entities are compared by identity with assert.ok(a === b), never with
+// assert.equal(a, b): a failing strict equal makes Node diff both sides
+// inspected at depth 1000, and a city npc's ai.goals reaches the whole city
+// (115k lines), so the diff grows without end and took WSL down twice.
+test('fire and the shockwave hurt townsfolk like a blow: the hurt keep their hurt, the killed go home', () => {
+  const ctx = setup()
+  const { state } = ctx
+  const tileOf = e => [{ x: Math.floor(e.px / S), y: Math.floor(e.py / S) }]
+  const spread = cityEntities(state).filter(e => e.species === 'townsfolk')
+    .filter((e, i, all) => all.findIndex(o => Math.abs(o.x - e.x) <= 3 && Math.abs(o.y - e.y) <= 3) === i)
+  assert.ok(spread.length >= 3, 'three townsfolk apart from each other')
+  const [a, b, c] = spread
+  const home = c.city.person.home
+
+  // a fire tick: a copy one hp down stands in its place, and runs
+  const fz = updateFireZones([{ ...makeFireZone(tileOf(a)), tickTimer: 0 }], state.entities, state.player, 0.01)
+  state.entities = fz.entities
+  const copy = state.entities.find(e => e.cityKey === a.cityKey)
+  assert.ok(copy !== a, 'the fire hands back a copy'); assert.equal(copy.hp, a.maxHp - FIRE_TICK_DAMAGE)
+  onNpcHit(copy, state)   // what game.js does for every npc a splash struck
+  run(ctx, DT)
+  let now = cityEntities(state).filter(e => e.cityKey === a.cityKey)
+  assert.equal(now.length, 1); assert.ok(now[0] === copy, 'the copy is the person now')
+  assert.equal(now[0].hp, a.maxHp - FIRE_TICK_DAMAGE); assert.ok(now[0].ai.fleeTimer > 0, 'and still running')
+  run(ctx, 0.5)
+  now = cityEntities(state).filter(e => e.cityKey === a.cityKey)
+  assert.equal(now.length, 1); assert.equal(now[0].hp, a.maxHp - FIRE_TICK_DAMAGE)
+
+  // a fireball burst that kills, and a shockwave that kills: home until the next day
+  state.entities = applyBurst(state.entities, state.player, tileOf(b)).entities
+  state.entities = applyShockwave(state.entities, c.px, c.py).entities
+  run(ctx, DT)
+  for (const dead of [b, c]) {
+    const p = cityPeople(state).find(q => q.id === dead.cityKey)
+    assert.equal(p.mode, 'indoors', `${dead.cityKey} is not raised where they fell`); assert.equal(p.out, true)
+    assert.equal(cityEntities(state).some(e => e.cityKey === dead.cityKey), false)
+  }
+  run(ctx, 1)
+  for (const dead of [b, c]) assert.equal(cityEntities(state).some(e => e.cityKey === dead.cityKey), false, 'nor a second later')
+  assertOnce(state)
+  // nobody finds the struck down at home
+  assert.equal(occupantsOf(state, home).some(q => q.id === c.cityKey), false)
+
+  // a dog in the fire: the same, the copy kept
+  const dog = cityEntities(state).find(e => e.species === 'dog' || e.species === 'cat')
+  if (dog) {
+    state.entities = updateFireZones([{ ...makeFireZone(tileOf(dog)), tickTimer: 0 }], state.entities, state.player, 0.01).entities
+    const hurtDog = state.entities.find(e => e.cityKey === dog.cityKey)
+    run(ctx, DT)
+    assert.ok(cityEntities(state).find(e => e.cityKey === dog.cityKey) === hurtDog, 'the hurt copy is the animal now')
+    assert.equal(hurtDog.hp, dog.maxHp - FIRE_TICK_DAMAGE)
+  }
+})
+
+test('a route that cannot be found is asked for again only every two seconds', () => {
+  const ctx = setup()
+  const { state, world } = ctx
+  const run0 = state.cityRun
+  const e = cityEntities(state).find(q => q.species === 'townsfolk')
+  const w = run0.people.get(e.cityKey)
+  // a cell no street reaches, well away from them
+  const G = run0.cc.G
+  let nowhere = null
+  for (let i = 0; i < 160 * 160 && !nowhere; i++) {
+    const x = i % 160, y = (i / 160) | 0
+    if (G.snapDist[i] < 0 && Math.hypot(x - (w.X - 0), y + 160 - w.Y) > 20 && x > 30 && x < 130 && y > 30 && y < 120) nowhere = { x, y }
+  }
+  w.goal = { key: 's:nowhere', kind: 'spot', tile: nowhere }
+  w.needRoute = true; run0.queue.push(w)
+  const n0 = run0.stats.noRoute.length
+  run(ctx, 1.5)
+  assert.equal(run0.stats.noRoute.length - n0, 1, 'one try in a second and a half')
+  run(ctx, 3)
+  assert.ok(run0.stats.noRoute.length - n0 <= 3, `then one every two seconds (${run0.stats.noRoute.length - n0})`)
+  assert.ok(world.origin)
+})
+
+test('a watchman whose city has no barracks door is out of sight off duty, at his post on it', () => {
+  const city = cityFor(SEED)
+  const cc = cityCtx(city, SEED)
+  const person = { ...cc.folk.find(p => p.job === 'watch' && p.shift === 'day' && p.post), home: null }
+  const w = makeWalker(cc, person, 500)
+  w.sched = scheduleFor(person, city, SEED, 0)
+  for (let f = 0; f < 1; f += 0.05) assert.doesNotThrow(() => placeByClock(cc, w, f), `at ${f}`)
+  placeByClock(cc, w, 0.05)
+  assert.equal(w.mode, 'indoors'); assert.equal(w.door, null)
+  placeByClock(cc, w, 0.45)
+  const post = city.spots[person.post]
+  assert.deepEqual([w.X, w.Y], [post.x, post.y + 160])
+  // and the day walked through, entry by entry
+  placeByClock(cc, w, 0.01)
+  for (let f = 0.01; f < 0.99; f += 0.005) {
+    const ei = entryAt(w.sched, f)
+    if (ei !== w.ei) setEntry(cc, w, ei)
+    if (w.needRoute) routeWalker(cc, w)
+    if (w.mode === 'far') stepFar(cc, w, 0.005 * DAY_LENGTH)
+  }
+  assert.equal(w.mode, 'indoors'); assert.equal(w.door, null)
 })

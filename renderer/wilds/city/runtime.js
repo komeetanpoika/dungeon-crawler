@@ -28,7 +28,7 @@
 import { cityFor } from './build.js'
 import { isCityPiece } from './geometry.js'
 import { scheduleFor, entryAt } from './schedule.js'
-import { WIN } from '../window.js'
+import { WIN, WIN_TILES } from '../window.js'
 import { PIECE } from '../layout.js'
 import { TILE } from '../../systems/entities.js'
 import { speakFrom } from '../../systems/feedback.js'
@@ -138,7 +138,7 @@ export function arriveCity(state, world, hooks, { fresh = false } = {}) {
     state.cityRun = makeRun(state, world, hooks, !fresh)
   }
   const run = state.cityRun
-  reconcile(state, run)
+  reconcile(state, world, run)
   run.nearR = nearRadius(hooks.viewHalf())
   modes(state, world, run, hooks)
   flush(state, run)
@@ -150,20 +150,35 @@ function dropCity(state) {
 }
 
 // Every city entity in state.entities must be the one its walker holds, and
-// every near walker's entity must still be there.
-function reconcile(state, run) {
+// every near walker's entity must still be there. Fire and the shockwave hand
+// back a copy of a body they hurt ({ ...e, hp }) in its place: a copy whose
+// walker's entity is gone is the same person, taken on. A near entity gone
+// altogether went with a piece that left the window, if it stood outside the
+// window now; one gone from inside the window was struck down and culled.
+function reconcile(state, world, run) {
   const seen = ++run.tick
-  let strays = null
+  let loose = null
   for (const e of state.entities) {
     if (e.cityKey === undefined) continue
     const w = run.people.get(e.cityKey) ?? run.animals.get(e.cityKey)
-    if (!w || w.entity !== e || w.mode !== 'near') { (strays ??= new Set()).add(e); continue }
-    e._citySeen = seen
+    if (w && w.mode === 'near' && w.entity === e) e._citySeen = seen
+    else (loose ??= []).push(e)
+  }
+  let strays = null
+  if (loose) for (const e of loose) {
+    const w = run.people.get(e.cityKey) ?? run.animals.get(e.cityKey)
+    if (w && w.mode === 'near' && w.entity._citySeen !== seen) { w.entity = e; e._citySeen = seen; continue }
+    (strays ??= new Set()).add(e)
   }
   if (strays) state.entities = state.entities.filter(e => !strays.has(e))
+  const ox = world.origin.wx * PIECE, oy = world.origin.wy * PIECE
+  const inWindow = w => {
+    const x = Math.floor(w.X + 0.5) - ox, y = Math.floor(w.Y + 0.5) - oy
+    return x >= 0 && y >= 0 && x < WIN_TILES && y < WIN_TILES
+  }
   const check = w => {
     if (w.mode !== 'near' || w.entity._citySeen === seen) return
-    if (w.entity.hp <= 0) { knockedDown(run, w); return }
+    if (w.entity.hp <= 0 || inWindow(w)) { knockedDown(run, w); return }
     w.entity = null; w.mode = 'far'   // gone with a piece that left: on from where it last stood
   }
   for (const w of run.people.values()) check(w)
@@ -176,7 +191,9 @@ function knockedDown(run, w) {
   if (w.entity?.hp > 0) run.remove.add(w.entity)
   w.entity = null
   if (w.animal) { w.mode = 'far'; w.gone = true; return }
-  w.out = true; w.mode = 'indoors'; w.door = w.person.home; w.path = null; w.shy = null
+  // a route on order must not walk them anywhere; no home door (a city with
+  // no barracks for the watch) leaves them out of sight all the same
+  w.out = true; w.mode = 'indoors'; w.door = w.person.home ?? null; w.path = null; w.shy = null; w.needRoute = false
 }
 
 // Once per surface frame, beside the tales.
@@ -184,7 +201,7 @@ export function tickCity(state, world, delta, hooks) {
   const run = state.cityRun
   if (!run || !world.origin) return
   const { cc } = run
-  reconcile(state, run)
+  reconcile(state, world, run)
   const day = hooks.day(), frac = fracOf(hooks.clock())
   run.nearR = nearRadius(hooks.viewHalf())
   // a new day (or a clock that wrapped with no day counted: the same day again)
@@ -205,7 +222,7 @@ export function tickCity(state, world, delta, hooks) {
   const t0 = performance.now()
   for (let k = 0; k < ROUTES_PER_TICK && run.queue.length && (k === 0 || performance.now() - t0 < ROUTE_MS); k++) {
     const w = run.queue.shift()
-    if (!w.needRoute) continue
+    if (!w.needRoute || w.out) continue
     if (routeWalker(cc, w, run.stats) === 'indoors' && w.entity) { run.remove.add(w.entity); w.entity = null }
   }
 
@@ -310,7 +327,9 @@ function near(state, run, w, dt, ox, oy) {
   else if (!waiting) w.still += dt
   const stuck = w.still > REROUTE_AFTER && !w.rerouted
   const drift = !(e.ai.fleeTimer > 0) && Math.hypot(t.X - w.X, t.Y - w.Y) > DRIFT
-  if ((stuck || drift) && !w.needRoute) {
+  // a route that could not be found is not asked for again every frame
+  w.retry = Math.max(0, (w.retry ?? 0) - dt)
+  if ((stuck || drift) && !w.needRoute && w.retry <= 0) {
     if (stuck) w.rerouted = true
     w.needRoute = true; run.queue.push(w); run.stats.rerouted++
   }
@@ -337,12 +356,13 @@ const walkable = (map, x, y) => map[y]?.[x]?.tile === TILE.FLOOR
 function spawn(state, run, w, hooks, ox, oy) {
   let x = Math.round(w.X) - ox, y = Math.round(w.Y) - oy
   let fx = w.X - ox, fy = w.Y - oy
+  if (x < 0 || y < 0 || x >= WIN_TILES || y >= WIN_TILES) return   // beyond the window: stays far
   if (!walkable(state.map, x, y)) {
     let found = null
     for (let r = 1; r <= 2 && !found; r++) for (let dy = -r; dy <= r && !found; dy++) for (let dx = -r; dx <= r; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) === r && walkable(state.map, x + dx, y + dy)) { found = { x: x + dx, y: y + dy }; break }
     }
-    if (!found) return   // off the window or in a wall: stays far this frame
+    if (!found) return   // walled in: stays far this frame
     x = found.x; y = found.y; fx = x; fy = y
   }
   const [e] = hooks.spawn([{ kind: 'npc', species: w.species, id: w.id, x, y, lines: w.lines, hostile: false }])
@@ -428,6 +448,6 @@ export function occupantsOf(state, doorLabel) {
   const run = state.cityRun ?? state.cave?.surface?.cityRun
   if (!run) return []
   const out = []
-  for (const w of run.people.values()) if (w.mode === 'indoors' && w.door === doorLabel) out.push(w.person)
+  for (const w of run.people.values()) if (w.mode === 'indoors' && !w.out && w.door === doorLabel) out.push(w.person)
   return out
 }
