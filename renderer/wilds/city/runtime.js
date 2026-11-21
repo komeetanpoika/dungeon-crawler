@@ -45,6 +45,7 @@ const HYSTERESIS = 2        // tiles beyond the near radius before a near person
 const MAX_NEAR = 50         // the window reaches 56 tiles past a player 24 tiles into a city piece
 const REACH = 0.6           // tiles from a waypoint that count as reaching it
 const ROUTES_PER_TICK = 8   // route requests served a frame (the bell sends half the town at once)
+const ROUTE_MS = 1          // ... and the time they may take, after the first
 const PLACE_PER_TICK = 12   // people placed by the clock a frame, when the city comes into the window on a walk
 const REROUTE_AFTER = 4     // s a near walker may make no headway before it is routed again
 const DRIFT = 10            // tiles from its next waypoint before a near walker is routed again
@@ -199,7 +200,10 @@ export function tickCity(state, world, delta, hooks) {
   }
   if (run.swingAt) shy(state, run, ox, oy)
   run.shyT = Math.max(0, run.shyT - delta)
-  for (let k = 0; k < ROUTES_PER_TICK && run.queue.length; k++) {
+  // routes on order: a few a frame, and no more once a millisecond is spent (a
+  // patrol pair crossing the town asks for two long ones at once)
+  const t0 = performance.now()
+  for (let k = 0; k < ROUTES_PER_TICK && run.queue.length && (k === 0 || performance.now() - t0 < ROUTE_MS); k++) {
     const w = run.queue.shift()
     if (!w.needRoute) continue
     if (routeWalker(cc, w, run.stats) === 'indoors' && w.entity) { run.remove.add(w.entity); w.entity = null }
