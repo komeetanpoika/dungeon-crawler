@@ -36,6 +36,7 @@ test('every person has a home door that exists; every shop has its keeper', () =
     }
     for (const n of perHome.values()) assert.ok(n >= 1 && n <= 3)
     for (const d of city.doors.filter(d => d.kind === 'shop')) assert.ok(f.some(p => p.work === d.label), `shop ${d.label}`)
+    for (const p of f.filter(p => p.age === 'adult')) assert.notEqual(p.work, null, `${p.id} has work`)
     for (const p of f.filter(p => p.job === 'child' || p.job === 'elder')) assert.equal(p.work, null)
     // a keeper does not live in the shop
     for (const p of f.filter(p => p.id.startsWith('tf:'))) assert.notEqual(p.home, p.work)

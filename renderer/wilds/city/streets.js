@@ -57,7 +57,7 @@ export function buildStreetGraph(city) {
   for (let i = 0; i < N * N; i++) if (lane[i]) { snapDist[i] = 0; q.push(i) }
   for (let h = 0; h < q.length; h++) {
     const i = q[h]
-    if (snapDist[i] >= SNAP_RANGE) continue
+    if (snapDist[i] >= SNAP_RANGE || doorAt.has(i)) continue // a door is an end, never a way through
     const x = i % N, y = (i / N) | 0
     for (const [dx, dy] of D8.slice(0, 4)) {
       const nx = x + dx, ny = y + dy
@@ -72,7 +72,7 @@ export function buildStreetGraph(city) {
   return {
     n: N, lane, walk, off, adj, snapNext, snapDist,
     g: new Float64Array(n), from: new Int32Array(n), stamp: new Uint32Array(n), closed: new Uint8Array(n),
-    run: 0, heap: new Int32Array(n * 2), heapF: new Float64Array(n * 2),
+    run: 0, heap: new Int32Array(adj.length + 2), heapF: new Float64Array(adj.length + 2),
   }
 }
 

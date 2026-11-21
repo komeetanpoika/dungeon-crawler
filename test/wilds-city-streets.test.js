@@ -23,30 +23,55 @@ test('every home and workplace is routable from every gate', () => {
 })
 
 test('routes keep to streets and alleys, legs of at most six tiles', () => {
-  const city = cityFor(7)
-  const G = city.streets
-  const doorKeys = new Set(city.doors.map(d => d.y * 160 + d.x))
-  const ids = Object.values(city.spots)
-  let n = 0
-  for (let i = 0; i < ids.length; i++) for (let j = 0; j < ids.length; j += 7) {
-    if (i === j) continue
-    const r = route(G, ids[i], ids[j]); assert.ok(r); n++
-    for (let k = 1; k < r.length; k++) {
-      const a = r[k - 1], b = r[k]
-      const dx = Math.sign(b.x - a.x), dy = Math.sign(b.y - a.y)
-      const len = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y))
-      assert.ok(len <= 6, `leg ${len}`)
-      assert.ok(Math.abs(b.x - a.x) === 0 || Math.abs(b.y - a.y) === 0 || Math.abs(b.x - a.x) === Math.abs(b.y - a.y), 'straight')
-      for (let s = 0; s <= len; s++) {
-        const x = a.x + dx * s, y = a.y + dy * s
-        const c = city.cells[y][x]
-        assert.ok(isWalkable(c.tile, c), `walkable ${x},${y}`)
-        const mid = k > 1 && k < r.length - 1 || s > 0 && s < len
-        if (mid && !doorKeys.has(y * 160 + x)) assert.ok(G.lane[y * 160 + x] || G.snapDist[y * 160 + x] <= 10)
+  for (const seed of SEEDS) {
+    const city = cityFor(seed)
+    const G = city.streets
+    const doorKeys = new Set(city.doors.map(d => d.y * 160 + d.x))
+    const pts = [...Object.values(city.spots), ...city.doors]
+    const doors = city.doors
+    const spots = Object.values(city.spots)
+    const pairs = []
+    for (let i = 0; i < 120; i++) pairs.push([spots[(i * 7) % spots.length], spots[(i * 13 + 3) % spots.length]])
+    for (let i = 0; i < 150; i++) pairs.push([doors[(i * 37 + seed) % doors.length], doors[(i * 53 + 11) % doors.length]])
+    for (let i = 0; i < 100; i++) pairs.push([doors[(i * 17) % doors.length], spots[(i * 5) % spots.length]], [spots[(i * 3) % spots.length], doors[(i * 29 + 1) % doors.length]])
+    assert.ok(pts.length > 100)
+    let n = 0
+    for (const [a0, b0] of pairs) {
+      if (a0 === b0) continue
+      const r = route(G, a0, b0); assert.ok(r, `${seed} ${JSON.stringify(a0)} -> ${JSON.stringify(b0)}`); n++
+      assert.deepEqual(r[0], { x: a0.x, y: a0.y }); assert.deepEqual(r[r.length - 1], { x: b0.x, y: b0.y })
+      // every cell the route covers, in order
+      const cells = [{ x: r[0].x, y: r[0].y }]
+      for (let k = 1; k < r.length; k++) {
+        const a = r[k - 1], b = r[k]
+        const dx = Math.sign(b.x - a.x), dy = Math.sign(b.y - a.y)
+        const len = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y))
+        assert.ok(len <= 6, `leg ${len}`)
+        assert.ok(a.x === b.x || a.y === b.y || Math.abs(b.x - a.x) === Math.abs(b.y - a.y), 'straight')
+        for (let s = 1; s <= len; s++) cells.push({ x: a.x + dx * s, y: a.y + dy * s })
       }
+      cells.forEach((c, i) => {
+        const key = c.y * 160 + c.x
+        assert.ok(isWalkable(city.cells[c.y][c.x].tile, city.cells[c.y][c.x]), `walkable ${c.x},${c.y}`)
+        if (i > 0) assert.ok(Math.abs(c.x - cells[i - 1].x) <= 1 && Math.abs(c.y - cells[i - 1].y) <= 1, 'step')
+        const end = i === 0 || i === cells.length - 1
+        void end
+        if (!G.lane[key]) {
+          // only the snap chains at either end may leave the lanes
+          assert.ok(G.snapDist[key] >= 0 && G.snapDist[key] <= 10, `off-lane ${c.x},${c.y}`)
+        }
+        if (doorKeys.has(key) && !end) assert.fail(`passes through door ${c.x},${c.y}`)
+      })
+      // interior cells beyond the first and last chain are all lane cells
+      const firstLane = cells.findIndex(c => G.lane[c.y * 160 + c.x])
+      let lastLane = cells.length - 1
+      while (lastLane >= 0 && !G.lane[cells[lastLane].y * 160 + cells[lastLane].x]) lastLane--
+      assert.ok(firstLane >= 0 && lastLane >= firstLane)
+      assert.ok(firstLane <= 10 && cells.length - 1 - lastLane <= 10)
+      for (let i = firstLane; i <= lastLane; i++) assert.ok(G.lane[cells[i].y * 160 + cells[i].x], `lane gap ${cells[i].x},${cells[i].y}`)
     }
+    assert.ok(n > 300)
   }
-  assert.ok(n > 100)
 })
 
 test('a route avoids walking through other doors and the unreachable gives null', () => {

@@ -94,7 +94,8 @@ export function rollTownsfolk(seed, city) {
   const nElder = 14, nChild = 14
   const nShopFill = Math.max(0, room - nElder - nChild)
   workshops.slice(0, nShopFill).forEach((w, i) => add(WS_JOBS[i % WS_JOBS.length], 'adult', w))
-  while (slots.length < 112 - nElder - nChild) add('carter', 'adult', null)
+  // adults left over once the workshops run out carry on at the spare stalls
+  for (let i = 0; slots.length < 112 - nElder - nChild; i++) add('carter', 'adult', stalls[10 + (i % Math.max(1, stalls.length - 10))] ?? stalls[0])
   for (let i = 0; i < nChild; i++) add('child', 'child', null)
   while (slots.length < 112) add('elder', 'elder', null)
 
