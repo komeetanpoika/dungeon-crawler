@@ -56,7 +56,7 @@ const SHY_LINE = 'Careful with that!'
 
 export const nearRadius = view => Math.min(MAX_NEAR, Math.ceil(Math.max(view.w, view.h)) + 6)
 
-// Lines by job, until the townsfolk get their own (a later task replaces this table).
+// Lines by job, until the townsfolk get their own (a later task replaces this table and jobLines).
 const JOB_LINES = {
   baker: ['Fresh bread at dawn. Mostly fresh.', 'Rye, rye, or rye. Take your pick.'],
   butcher: ['Good cuts today. Do not ask about the sausage.'],
@@ -88,7 +88,7 @@ const JOB_LINES = {
   count: ['Do I know you?'],
   watch: ['Move along.', 'Keep your blade sheathed inside the walls.'],
 }
-export const linesFor = person => JOB_LINES[person.job] ?? ['Good day.']
+export const jobLines = person => JOB_LINES[person.job] ?? ['Good day.']
 
 // Is any city piece in the window?
 function cityInWindow(world) {
@@ -117,7 +117,7 @@ function makeRun(state, world, hooks, lazy) {
   const pairs = new Map()
   cc.folk.forEach((p, n) => {
     const w = makeWalker(cc, p, n)
-    w.lines = linesFor(p)
+    w.lines = jobLines(p)
     if (p.patrol) { const k = `${p.shift}:${p.patrol}`; w.side = pairs.has(k) ? 1 : 0; pairs.set(k, true) }
     run.people.set(p.id, w)
     if (lazy) { w.pending = true; run.pending.push(w); return }
@@ -374,7 +374,8 @@ function flush(state, run) {
 // re-centre before the next tick cannot misplace it).
 export function noteCitySwing(state, world) {
   const run = state.cityRun
-  if (!run || !world?.origin) return
+  // inside a house (a cave state carries the surface's fields) nobody outside sees it
+  if (!run || state.cave || !world?.origin) return
   run.swingAt = { X: state.player.x + world.origin.wx * PIECE, Y: state.player.y + world.origin.wy * PIECE }
 }
 

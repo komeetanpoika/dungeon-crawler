@@ -295,6 +295,9 @@ test('townsfolk give way to a player standing in their path, and step back from 
   assert.ok(cheb(nextW, { X: px, Y: py }) >= cheb(at, { X: px, Y: py }), 'away from the swing')
   const watch = cityEntities(st).find(q => q.species === 'watchman')
   if (watch) assert.notEqual(st.feedback.bubble.anchorId, watch.id, 'the watch does not flinch')
+  // a swing inside a house (whose state carries the surface's fields) is not seen in the street
+  noteCitySwing({ ...st, cave: { surface: st } }, world)
+  assert.equal(st.cityRun.swingAt, null)
 })
 
 test('dogs, cats and yard animals are there and owned by the city', () => {
