@@ -59,6 +59,19 @@ describe('drawTile overlay', () => {
     drawTile(ctx, TILE.FLOOR, 0, 0, 32, SPR, { skin: 'fl' })
     assert.deepEqual(ctx.calls, ['SKIN_FL'])
   })
+
+  // a house floor: the planks, a rug on them, a table on the rug
+  it('draws the deco layer between the skin and the overlay', () => {
+    const ctx = recordingCtx()
+    drawTile(ctx, TILE.FLOOR, 0, 0, 32, { ...SPR, rg: 'DECO_RUG' }, { skin: 'fl', deco: 'rg', overlay: 'br' })
+    assert.deepEqual(ctx.calls, ['SKIN_FL', 'DECO_RUG', 'OVERLAY_BR'])
+  })
+
+  it('draws the deco layer over the default sprite too', () => {
+    const ctx = recordingCtx()
+    drawTile(ctx, TILE.FLOOR, 0, 0, 32, { ...SPR, rg: 'DECO_RUG' }, { deco: 'rg' })
+    assert.deepEqual(ctx.calls, ['FLOOR', 'DECO_RUG'])
+  })
 })
 
 describe('isFlickerVisible', () => {

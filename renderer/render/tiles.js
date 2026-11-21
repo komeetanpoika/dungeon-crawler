@@ -1,9 +1,12 @@
 import { TILE } from '../systems/entities.js'
 
 // One map cell's art: the skin/default sprite, stair depth shading, and the
-// overlay prop on top. Pure function of the cell and sprites — nothing here
+// deco (a rug) and overlay prop on top. Pure function of the cell and sprites — nothing here
 // depends on time or camera, which is what lets tile-layer.js bake it.
 function drawOverlay(ctx, tileObj, px, py, S, sprites) {
+  // A house floor carries a third layer between its ground and what stands
+  // on it: the rug under a table (renderer/interior/).
+  if (tileObj?.deco && sprites[tileObj.deco]) ctx.drawImage(sprites[tileObj.deco], px, py, S, S)
   if (tileObj?.overlay && sprites[tileObj.overlay]) {
     ctx.drawImage(sprites[tileObj.overlay], px, py, S, S)
   }
