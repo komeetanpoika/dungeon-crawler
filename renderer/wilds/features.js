@@ -207,7 +207,7 @@ export function placeFeatures(t, piece) {
     const toward = (dx, dy) => BIOME_NAMES[pieceBiome(seed, wx + dx * 3, wy + dy * 3)]
     piece.signs.push({
       x: mx - 2, y: my + 1, title: v.name,
-      lines: [`North: ${toward(0, -1)}.`, `East: ${toward(1, 0)}.`, `South: ${toward(0, 1)}.`, `West: ${toward(-1, 0)}.`],
+      lines: [`North: ${toward(0, -1)}.`, `East: ${toward(1, 0)}.`, v.name === 'Koivula' ? 'South: Kalevanlinna, by the sea.' : `South: ${toward(0, 1)}.`, `West: ${toward(-1, 0)}.`],
     })
     piece.village = { name: v.name, x: mx, y: my }
     if (home) spawn({ kind: 'weapon', weaponType: 'hatchet', x: mx + 2, y: my + 1 })

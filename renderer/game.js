@@ -45,6 +45,7 @@ import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems
 import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
+import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { playTune, tickTune } from './systems/tune.js'
@@ -861,6 +862,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (wilds) {
     const fresh = !activeSave.wilds
     wildsWorld = makeWorld(activeSave.wilds, { seed: randomSeed() })
+    cityFor(wildsWorld.seed)   // the city's one-time build is paid here, not mid-walk
     enterWilds(state, wildsWorld, wildsWorld.pos ?? wildsWorld.lastVillage, wildsHooks)
     arriveTales(state, wildsWorld, taleHooks, { fresh: true })
     if (fresh) persistRun()
@@ -1569,7 +1571,11 @@ function update(delta) {
   // clock when the map has a cycle. Underground both hold.
   if (state.weather && !state.cave) {
     state.weather.t += delta
-    if (state.weather.dayCycle) advanceClock(activeSave, delta)
+    if (state.weather.dayCycle) {
+      const before = activeSave.clock ?? DAY_START
+      // a clock that comes out smaller has wrapped: a new day
+      if (advanceClock(activeSave, delta) < before && wildsWorld) wildsWorld.day += 1
+    }
   }
 
   // Campfire cooking — standing on a fire cooks every raw meat carried.
@@ -1597,7 +1603,10 @@ function update(delta) {
   }
   // House doors — same walk-onto/hold pattern as arches, no gate to check.
   const door = !state.cave && state.houseDoors?.find(d => d.x === player.x && d.y === player.y)
-  if (door && !state.entranceHold) { enterHouse(door); return }
+  if (door && !state.entranceHold) {
+    // the church and the castle are shut: the door says so, and never opens
+    if (typeof door.closed === 'string') { think(state, door.closed); state.entranceHold = true } else { enterHouse(door); return }
+  }
   if (!arch && !door) state.entranceHold = false
   if (state.cave) {
     const onStairs = player.x === state.cave.stairs.x && player.y === state.cave.stairs.y

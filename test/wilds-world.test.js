@@ -413,3 +413,72 @@ test('tales survive a save and load; an old or broken save has none', () => {
     assert.equal(w.tales.size + w.places.size + w.paid.size, 0)
   }
 })
+
+// ---- the city in the running game (Kalevanlinna) ----
+import { CITY_MARGIN } from '../renderer/wilds/session.js'
+import { recentreStep } from '../renderer/wilds/window.js'
+import { WILDS_SKINS } from '../renderer/wilds/terrain.js'
+import { CITY_SKINS } from '../renderer/wilds/city/kit.js'
+import { PLAIN_LINES } from '../renderer/data/tales.js'
+
+test('walking about the square never re-centres the window', () => {
+  assert.equal(CITY_MARGIN, 24)
+  // round the corner of the four city pieces: within 20 tiles of the window's seam
+  for (const px of [PIECE - 20, PIECE + 5, 2 * PIECE + 20])
+    assert.deepEqual(recentreStep(px, 2 * PIECE + 20, CITY_MARGIN), { dx: 0, dy: 0 })
+  assert.equal(recentreStep(PIECE - 20, 100).dx, -1, 'in the open the same spot would re-centre')
+  const world = makeWorld(null, { seed: SEED })
+  const state = freshState()
+  enterWilds(state, world, { X: 80, Y: 250 }, hooks)   // the square, inside the city
+  const o = { ...world.origin }
+  walkTo(state, world, PIECE - 20, PIECE + 40)
+  assert.deepEqual(world.origin, o)
+})
+
+test('standing inside the walls makes the inn the place you wake', () => {
+  const world = makeWorld(null, { seed: SEED })
+  const state = freshState()
+  enterWilds(state, world, { wx: 0, wy: 2 }, hooks)
+  const seen = []
+  const h = { buildEntities, onVillage: v => seen.push(v.name) }
+  tickWilds(state, world, 0.016, h)
+  assert.deepEqual(world.lastVillage, { wx: 0, wy: 2 })
+  assert.ok(world.visited.includes('city'))
+  tickWilds(state, world, 0.016, h)
+  assert.deepEqual(seen, ['Kalevanlinna'], 'announced once')
+  const inn = getPiece(world, 0, 2)
+  world.lastVillage = { wx: 0, wy: 0 }
+  tickWilds(state, world, 0.016, h)
+  assert.deepEqual(world.lastVillage, { wx: 0, wy: 2 })
+  assert.deepEqual(seen, ['Kalevanlinna'])
+  const woke = wildsRespawn(state, world, hooks)
+  assert.equal(woke.name, 'Kalevanlinna')
+  const at = playerWorld(state, world)
+  assert.deepEqual([at.X, at.Y], [inn.village.x, inn.village.y + 2 * PIECE])
+})
+
+test('the city is not inside the walls outside them', () => {
+  const world = makeWorld(null, { seed: SEED })
+  const state = freshState()
+  enterWilds(state, world, { X: 80, Y: 176 }, hooks)   // just outside the north gate
+  world.lastVillage = { wx: 0, wy: 0 }
+  tickWilds(state, world, 0.016, hooks)
+  assert.deepEqual(world.lastVillage, { wx: 0, wy: 0 })
+})
+
+test("the city's people never sleep, and its tiles load with the Wilds' tiles", () => {
+  const p = { x: 0, y: 0 }
+  assert.equal(asleep({ x: 100, y: 0 }, p), true)
+  assert.equal(asleep({ x: 100, y: 0, cityKey: 'w1' }, p), false)
+  assert.equal(asleep({ x: 100, y: 0, cityKey: 0 }, p), false)
+  const have = new Set(WILDS_SKINS)
+  for (const s of CITY_SKINS) assert.ok(have.has(s), s)
+})
+
+test("Koivula's sign and the plain villagers point to the city", () => {
+  const { world } = start()
+  const sign = getPiece(world, 0, 0).signs[0]
+  assert.ok(sign.lines.includes('South: Kalevanlinna, by the sea.'))
+  assert.ok(PLAIN_LINES.forest.villager.includes('Kalevanlinna has walls and a harbour. Guards, too. Behave there.'))
+  assert.ok(PLAIN_LINES.sea.villager.includes('The herring goes to Kalevanlinna. So does everyone, sooner or later.'))
+})

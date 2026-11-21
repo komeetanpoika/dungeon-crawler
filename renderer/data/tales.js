@@ -271,10 +271,10 @@ export const TALE_IDS = ['elk', 'tar', 'kivihiisi', 'nakki', 'fold', 'flame', 'l
 
 // What a village with no tale talks about: its own country.
 export const PLAIN_LINES = {
-  forest:   { villager: ['Good timber this year. Mind the wolves past the second ridge.', 'The mushrooms are up early.'], elder: ['Every road out of here ends in trees. That suits us.'] },
+  forest:   { villager: ['Good timber this year. Mind the wolves past the second ridge.', 'The mushrooms are up early.', 'Kalevanlinna has walls and a harbour. Guards, too. Behave there.'], elder: ['Every road out of here ends in trees. That suits us.'] },
   autumn:   { villager: ['The leaves turn early here and stay late.', 'Boar in the red wood. Loud, mostly.'], elder: ['My father cleared this ground. The wood wants it back.'] },
   marsh:    { villager: ['Keep to the planks. The fen keeps what it takes.', 'Cloudberries, if you know where.'], elder: ['Wet feet and long lives. That is the fen.'] },
   mountain: { villager: ['Thin soil, good stone.', 'The pass was open when I was a girl.'], elder: ['Up here the weather tells you first.'] },
   desert:   { villager: ['Water at the well only. Nowhere else.', 'Walk at dusk. The sand keeps the day.'], elder: ['Caravans came through once. The sand took the road.'] },
-  sea:      { villager: ['Herring when the wind is west.', 'Mend nets in winter, curse them in summer.'], elder: ['The sea gives. It also keeps count.'] },
+  sea:      { villager: ['Herring when the wind is west.', 'Mend nets in winter, curse them in summer.', 'The herring goes to Kalevanlinna. So does everyone, sooner or later.'], elder: ['The sea gives. It also keeps count.'] },
 }

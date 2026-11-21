@@ -13,13 +13,19 @@ import { getPiece, recordFor, sweep, exportWorld } from './world.js'
 import { admit } from './tales.js'
 import { applyFelled, STUMP } from '../systems/lumber.js'
 import { TILE } from '../systems/entities.js'
+import { isCityPiece, toCity } from './city/geometry.js'
+import { insideWalls } from './city/plan.js'
 
 // Things farther than this from the player neither think nor move.
 export const ACTIVE_TILES = 34
 // A tale's own creatures are the exception: the flame-thief has to come to
 // its village from thirty tiles out, the elk has to finish its run.
-export const asleep = (e, player) => e.taleKey === undefined && Math.max(Math.abs(e.x - player.x), Math.abs(e.y - player.y)) > ACTIVE_TILES
+// The city's people (cityKey) keep to their posts and rounds the same way.
+export const asleep = (e, player) => e.taleKey === undefined && e.cityKey === undefined && Math.max(Math.abs(e.x - player.x), Math.abs(e.y - player.y)) > ACTIVE_TILES
 
+// The window re-centres only this far into a neighbouring piece: 8 in the
+// open, 24 in the city, so the square (where four pieces meet) holds still.
+export const CITY_MARGIN = 24
 const SWEEP_EVERY = 10       // seconds between forgetting sweeps
 const PREGEN_EVERY = 0.25    // seconds between pieces generated ahead of the player
 const VILLAGE_REACH = 10     // tiles from a village's centre that count as being in it
@@ -213,14 +219,23 @@ export function tickWilds(state, world, delta, { buildEntities, onVillage } = {}
   if (state.cave || !world.origin) return { recentred: null }
   world.playtime += delta
   let recentred = null
-  const step = recentreStep(state.player.x, state.player.y)
+  const at = toWorld(world.origin, state.player.x, state.player.y)
+  const inCity = isCityPiece(Math.floor(at.X / PIECE), Math.floor(at.Y / PIECE))
+  const step = recentreStep(state.player.x, state.player.y, inCity ? CITY_MARGIN : undefined)
   if (step.dx || step.dy) { recentre(state, world, step.dx, step.dy, buildEntities); recentred = step }
 
   // the village the player stands in becomes the place they wake
   const { X, Y } = toWorld(world.origin, state.player.x, state.player.y)
   const here = pieceOf(X, Y)
   const piece = world.pieces.get(pieceKey(here.wx, here.wy))
-  if (piece?.village) {
+  if (isCityPiece(here.wx, here.wy)) {
+    // inside the walls is the city's own village: the inn's doorstep is where you wake
+    const c = toCity(X, Y)
+    if (insideWalls(c.cx, c.cy)) {
+      world.lastVillage = { wx: 0, wy: 2 }
+      if (!world.visited.includes('city')) { world.visited.push('city'); onVillage?.({ name: 'Kalevanlinna' }) }
+    }
+  } else if (piece?.village) {
     const lx = X - here.wx * PIECE, ly = Y - here.wy * PIECE
     if (Math.max(Math.abs(lx - piece.village.x), Math.abs(ly - piece.village.y)) <= VILLAGE_REACH) {
       world.lastVillage = { wx: here.wx, wy: here.wy }

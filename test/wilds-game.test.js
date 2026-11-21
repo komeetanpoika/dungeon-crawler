@@ -110,3 +110,15 @@ test('the flute plays instead of striking, and its tune is ticked every frame', 
 test('with the flute in hand the off hand never swings', () => {
   assert.match(SRC, /const offBlade = off\?\.kind === 'weapon' && !isChargeWeapon\(meleeWT\) && !player\.weapon\?\.tune \? off : null/)
 })
+
+test('the city in the running game: closed doors, day counter, build at entry', () => {
+  assert.match(SRC, /door\.closed/)
+  assert.match(SRC, /state\.entranceHold = true/)
+  assert.match(SRC, /wildsWorld\.day\s*\+=\s*1/)
+  assert.match(SRC, /import \{[^}]*\bcityFor\b[^}]*\} from '.\/wilds\/city\/build.js'/)
+  // built during Wilds entry, before the window is
+  assert.ok(SRC.indexOf('cityFor(wildsWorld.seed)') > 0 && SRC.indexOf('cityFor(wildsWorld.seed)') < SRC.indexOf('enterWilds(state, wildsWorld'))
+  // a closed door never reaches enterHouse
+  const i = SRC.indexOf('door.closed')
+  assert.match(SRC.slice(i, i + 200), /else \{ enterHouse\(door\); return \}/)
+})
