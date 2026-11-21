@@ -76,6 +76,23 @@ test('the tales are wired in: arrival after every new window, a tick after the W
   assert.match(SRC, /if \(recentred\) [\s\S]{0,200}arriveTales\(state, wildsWorld, taleHooks\)/)
 })
 
+test('the city runtime is wired in beside the tales, with the screen and the swing', () => {
+  assert.match(SRC, /import \{ arriveCity, tickCity, noteCitySwing \} from '\.\/wilds\/city\/runtime\.js'/)
+  // every arrival of the tales is one of the city's too: entering, waking, every re-centre
+  assert.equal((SRC.match(/arriveCity\(state, wildsWorld, cityHooks, \{ fresh: true \}\)/g) ?? []).length, 2, 'after entering and after waking')
+  for (const at of [...SRC.matchAll(/arriveTales\(state, wildsWorld, taleHooks(, \{ fresh: true \})?\)/g)]) {
+    const next = SRC.slice(at.index, at.index + 160)
+    assert.match(next, /arriveCity\(state, wildsWorld, cityHooks/, 'arriveCity follows arriveTales')
+  }
+  const upd = SRC.slice(SRC.indexOf('tickWilds(state, wildsWorld, delta, wildsHooks)'))
+  const tales = upd.indexOf('tickTales(state, wildsWorld, delta, taleHooks)')
+  assert.ok(upd.indexOf('tickCity(state, wildsWorld, delta, cityHooks)') > tales && upd.indexOf('tickCity(') < tales + 200, 'tickCity beside tickTales, on the surface')
+  // the near radius comes from the real screen, at 32 px a tile
+  assert.match(SRC, /viewHalf: \(\) => \(renderer \? \{ w: renderer\.viewW \/ \(2 \* TILE_SIZE\), h: renderer\.viewH \/ \(2 \* TILE_SIZE\) \}/)
+  // a swing, a shot and a cast each make the townsfolk flinch
+  assert.equal((SRC.match(/noteCitySwing\(state, wildsWorld\)/g) ?? []).length, 3)
+})
+
 test('a story house in the Wilds takes its things from the tale', () => {
   assert.match(SRC, /storyEpisode\(wildsWorld, door\)/)
   assert.match(SRC, /save: \(\) => activeSave/)

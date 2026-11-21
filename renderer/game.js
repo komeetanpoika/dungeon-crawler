@@ -48,6 +48,7 @@ import { modeForDepth } from './systems/mode.js'
 import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
+import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
@@ -334,6 +335,17 @@ const taleHooks = {
   isNight: () => isNight(activeSave.clock ?? DAY_START),
   grantTalent: id => grantTalent(state, id),
 }
+// Kalevanlinna's townsfolk (wilds/city/runtime.js): the clock and the day run
+// their schedules, and the screen's size sets who is near enough to be a
+// real entity (the visible half-width + 6 tiles).
+const cityHooks = {
+  spawn: spawns => buildEntities(spawns, state.map, 0),
+  clock: () => activeSave.clock ?? DAY_START,
+  day: () => wildsWorld?.day ?? 0,
+  viewHalf: () => (renderer ? { w: renderer.viewW / (2 * TILE_SIZE), h: renderer.viewH / (2 * TILE_SIZE) } : { w: 20, h: 12 }),
+  sfx: (name, pos) => sfx(state, name, pos),
+  hurt: (target, amount, from) => hurtEntity(target, amount, { source: from }),
+}
 
 function persistRun() {
   if (runMode !== 'adventure' && runMode !== 'timewarp' && runMode !== 'wilds') return
@@ -536,6 +548,7 @@ const GUST_RING = 44   // px: the ring radius a tap-tier cone draws
 function showCast(cast) {
   const player = state.player
   sfx(state, 'magic-cast', { px: player.px, py: player.py })
+  noteCitySwing(state, wildsWorld)   // the townsfolk flinch at a spell cast near them
   if (cast.projectiles) state.projectiles.push(...cast.projectiles)
   if (cast.caught !== undefined) {
     // A cone tier states its reach either as a multiplier of the gust's
@@ -865,6 +878,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     cityFor(wildsWorld.seed)   // the city's one-time build is paid here, not mid-walk
     enterWilds(state, wildsWorld, wildsWorld.pos ?? wildsWorld.lastVillage, wildsHooks)
     arriveTales(state, wildsWorld, taleHooks, { fresh: true })
+    arriveCity(state, wildsWorld, cityHooks, { fresh: true })
     if (fresh) persistRun()
   }
   if (runMode === 'adventure' && OPEN_MAPS[depth]) recordVisit(activeSave.progress, OPEN_MAPS[depth].name)
@@ -1456,9 +1470,14 @@ function update(delta) {
     if (recentred) {
       renderer.rekeyTiles(before, state.map, -recentred.dx * PIECE, -recentred.dy * PIECE)
       arriveTales(state, wildsWorld, taleHooks)
+      arriveCity(state, wildsWorld, cityHooks)
     }
-    // the tales rest underground, as the Adventure quests do
-    if (!state.cave) tickTales(state, wildsWorld, delta, taleHooks)
+    // the tales rest underground, as the Adventure quests do, and the town
+    // with them (the clock stops indoors)
+    if (!state.cave) {
+      tickTales(state, wildsWorld, delta, taleHooks)
+      tickCity(state, wildsWorld, delta, cityHooks)
+    }
   }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
@@ -1779,6 +1798,7 @@ function update(delta) {
     player.attackStyle = atk.style
     player.attackFacing = player.facing
     sfx(state, 'melee-swing', { px: player.px, py: player.py })
+    noteCitySwing(state, wildsWorld)
     player.attackReachMul = mods.reachMul
     const dmg = Math.max(1, Math.round((wpn.damage ?? 1) * mods.dmgMul))
     const fa = FACING_ANGLE[player.facing] ?? 0
@@ -1990,6 +2010,7 @@ function update(delta) {
     if (shot.explodes) { proj.explodes = true; proj.blastTiles = shot.blastTiles; if (shot.fireOnly) proj.fireOnly = true }
     state.projectiles.push(proj)
     sfx(state, 'ranged-shot', { px: player.px, py: player.py })
+    noteCitySwing(state, wildsWorld)
   }
 
   // A `draw` bow (the longbow) winds up while Space is held and looses on
@@ -2245,6 +2266,7 @@ function update(delta) {
       state = adventureRespawn(state, { x: state.player.x, y: state.player.y })
       const village = wildsRespawn(state, wildsWorld, wildsHooks)
       arriveTales(state, wildsWorld, taleHooks, { fresh: true })
+      arriveCity(state, wildsWorld, cityHooks, { fresh: true })
       state.npcWrath = false
       persistRun()
       queueToast(state, { title: `You awaken in ${village?.name ?? 'the village'}…`, lines: ['The dark took its toll — but you are alive.'] })
