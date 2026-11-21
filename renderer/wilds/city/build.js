@@ -4,7 +4,8 @@
 //
 //   City = { seed, cells: Cell[160][160], doors, signs, lamps: {x,y}[],
 //            chimneys: { x, y, door }[], windows: { x, y, door }[],
-//            spots: { [id]: { x, y } }, inn: { door, doorstep }, spawns }
+//            spots: { [id]: { x, y } }, inn: { door, doorstep }, spawns,
+//            streets: the street graph (streets.js) }
 //
 // A Cell is piece.js cellOf(ground, prop, walkable) with `deco` where a sign
 // or a banner hangs over another tile, and `ward: true` on every walkable
@@ -16,6 +17,7 @@ import { makeGrid, makeRecord } from './stamps.js'
 import { terrainUnder, layTerrain, layOutskirts, layRoads, clearRound, layFarms, finishLand } from './build-land.js'
 import { layFixed, layDressing } from './build-fixed.js'
 import { layBlocks } from './build-blocks.js'
+import { buildStreetGraph } from './streets.js'
 
 const N = 160
 
@@ -44,6 +46,7 @@ export function buildCity(seed) {
     seed, cells, doors: rec.doors, signs: rec.signs, lamps: rec.lamps, chimneys: rec.chimneys, windows: rec.windows,
     spots: rec.spots, inn: rec.inn, spawns: rec.spawns,
   }
+  city.streets = buildStreetGraph(city)
   cache = city
   return city
 }
