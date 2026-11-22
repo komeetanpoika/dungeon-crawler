@@ -293,7 +293,7 @@ export function tickCity(state, world, delta, hooks) {
     }
     if (w.mode === 'near') {
       const say = w.entity.city.say
-      if (say && say.t < BUBBLE_DUR) say.t += delta   // a scene line's bubble over them fades in its time
+      if (say && say.t < (say.dur ?? BUBBLE_DUR)) say.t += delta   // a scene line's bubble over them stays its time
       near(state, run, w, delta, ox, oy)
     } else if (w.mode === 'far') stepFar(cc, w, delta)
   }

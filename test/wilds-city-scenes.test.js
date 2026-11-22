@@ -18,9 +18,9 @@ import { cityFor } from '../renderer/wilds/city/build.js'
 import { enterWilds } from '../renderer/wilds/session.js'
 import { toWindow } from '../renderer/wilds/window.js'
 import { PIECE } from '../renderer/wilds/layout.js'
-import { makeNpc, updateNpc, sceneSay } from '../renderer/systems/npc.js'
+import { makeNpc, updateNpc, sceneSay, TALK_BEAT } from '../renderer/systems/npc.js'
 import { stepEnemyAttack } from '../renderer/systems/enemy-attack.js'
-import { makeFeedback, think, ambientSpeakers } from '../renderer/systems/feedback.js'
+import { makeFeedback, think, ambientSpeakers, sayDuration } from '../renderer/systems/feedback.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
 
@@ -132,8 +132,12 @@ test('two townsfolk talking stop, face each other and take turns', () => {
   run(ctx, lines.length * 2.4 + 2, { each: () => {
     for (const [who, e] of [['a', a], ['b', b]]) if (e.city.say && e.city.say.n !== seen[who]) {
       seen[who] = e.city.say.n; said.push({ who, text: e.city.say.text })
+      assert.ok(e.city.say.dur < TALK_BEAT, `a talk line is gone before the answer (${e.city.say.dur})`)
       if (onScreen(e)) { assert.ok(ambientSpeakers(state.entities, view, state.player).includes(e), 'a street talk shows over the speaker'); shown++ }
     }
+    // their two bubbles are never up at once
+    const up = e => e.city.say && e.city.say.t < e.city.say.dur
+    assert.ok(!(up(a) && up(b)), 'one speaks at a time')
     return !sc.done
   } })
   assert.deepEqual(said.map(s => s.text), lines, 'every line, in order')
@@ -153,7 +157,7 @@ test('a scene never talks over the player or a tale', () => {
   think(state, 'Hm.')
   sceneSay(state, e, 'Morning.')
   assert.equal(state.feedback.bubble.text, 'Hm.', 'the player\'s own thought stays')
-  assert.deepEqual(e.city.say, { text: 'Morning.', n: 1, t: 0 }, 'kept on the speaker all the same')
+  assert.deepEqual(e.city.say, { text: 'Morning.', n: 1, t: 0, dur: sayDuration('Morning.') }, 'kept on the speaker all the same')
   // the single bubble is never a scene's: each speaker has their own (wilds-city-lines.test.js)
   state.feedback.bubble = null
   sceneSay(state, e, 'Cold one.')

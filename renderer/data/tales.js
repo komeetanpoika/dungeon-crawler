@@ -17,6 +17,9 @@
 //   {land}   the tale's `landWord`
 // `hermit` lines are spoken by the hermit at the Kivihiisi's place.
 //
+// `newsWord` is what Kalevanlinna's crier calls safe again once the tale is
+// done (city/crier.js), where the `landWord` would read oddly; else the landWord.
+//
 // Step 2 (the Timewarp stories, 2026-11-15) adds:
 //   engine       'quest' (systems/quests/) or 'episode' (systems/episodes/)
 //   creatureAt   where the tale's creature lives and dies: 'place' (default) or 'village'
@@ -67,6 +70,7 @@ export const TALES = {
     creature: null, module: 'forest-2-river', engine: 'quest', arriveOn: 'place',
     rule: f => !!f.bridge_done,
     landWord: 'the water',
+    newsWord: 'the deck to the fish racks',
     lines: [
       { when: f => f.bridge_done, by: {
         villager: ['Tarred and true. That deck will outlast the both of us.', 'Fish on the racks again. Take one as you pass.'],

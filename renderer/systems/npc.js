@@ -10,7 +10,7 @@ import { buildNavGrid, passable } from './nav.js'
 import { act } from './act.js'
 import { updateBrain } from './brain.js'
 import { tryStartEnemyAttack, WEAPONS } from './enemy-attack.js'
-import { speakFrom } from './feedback.js'
+import { speakFrom, sayDuration } from './feedback.js'
 import { sfx } from './sfx.js'
 import { hurtCreature } from './creatures.js'
 import { tickNpcAnim, stepFrame } from './npc-anim.js'
@@ -35,6 +35,7 @@ export const STRIKE_INTERVAL = 0.8  // s between a watchman's blows
 export const STRIKE_DMG = 3         // damage per blow, through the city's hurt hook
 export const LOST_TIME = 5          // s a watchman leaves a foe he found no way to before he may take it on again
 export const TALK_BEAT = 2.4        // s a line in a street talk stands before the other answers
+export const TALK_SHOW = TALK_BEAT - 0.2   // s at most a street-talk line's bubble shows: gone before the answer's
 
 export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
   const def = NPC_SPECIES[species]
@@ -268,7 +269,7 @@ export const GOALS = {
       const tk = e.city.talk, cv = tk.conv
       face(e)
       if (!cv.go || cv.done || cv.i % 2 !== tk.me) return { mode: 'hold' }
-      if (cv.said !== cv.i) { cv.said = cv.i; sceneSay(ctx.state, e, tk.lines[cv.i]) }
+      if (cv.said !== cv.i) { cv.said = cv.i; sceneSay(ctx.state, e, tk.lines[cv.i], Math.min(TALK_SHOW, sayDuration(tk.lines[cv.i]))) }
       if ((cv.t -= dt) <= 0) {
         cv.i++; cv.t = TALK_BEAT
         if (cv.i >= tk.lines.length) cv.done = true
@@ -354,13 +355,15 @@ function face(e) {
 }
 
 // A line said in a scene (wilds/city/scenes.js): kept on the speaker
-// (e.city.say = { text, n, t }), whose own bubble the renderer draws while t
-// (aged by the city runtime) is under BUBBLE_DUR (feedback.js
-// ambientSpeakers). The single speech bubble is never a scene's: a scene never
-// talks over what the player or a tale is saying, nor one scene over another.
-export function sceneSay(state, e, text) {
+// (e.city.say = { text, n, t, dur }), whose own bubble the renderer draws
+// while t (aged by the city runtime) is under dur: long enough to read it
+// (feedback.js sayDuration), or `dur` given (a street talk's lines are gone
+// before the answer comes). The single speech bubble is never a scene's: a
+// scene never talks over what the player or a tale is saying, nor one scene
+// over another (feedback.js ambientSpeakers).
+export function sceneSay(state, e, text, dur = sayDuration(text)) {
   const c = e.city
-  if (c) c.say = { text, n: (c.say?.n ?? 0) + 1, t: 0 }
+  if (c) c.say = { text, n: (c.say?.n ?? 0) + 1, t: 0, dur }
 }
 
 // The tile beside `e` square to its way towards `to`: the right hand first,

@@ -1515,7 +1515,7 @@ export class Renderer {
       const near = ambientSpeakers(state.entities, v, state.player, { skip: fb.bubble?.anchorId ?? null })
       for (let i = near.length - 1; i >= 0; i--) {
         const s = near[i].city.say
-        this._drawBubble(near[i], { text: s.text, kind: 'speech', t: s.t })
+        this._drawBubble(near[i], { text: s.text, kind: 'speech', t: s.t, dur: s.dur })
       }
     }
     if (fb.bubble) {
@@ -1529,7 +1529,7 @@ export class Renderer {
     const { ctx, camX, camY, viewW } = this
     const px = Math.round(anchor.px - camX), py = Math.round(anchor.py - camY)
     ctx.save()
-    ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.12, (BUBBLE_DUR - b.t) / 0.3))
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.12, ((b.dur ?? BUBBLE_DUR) - b.t) / 0.3))
     ctx.font = '12px monospace'
     const lines = ['']
     for (const w of b.text.split(' ')) {

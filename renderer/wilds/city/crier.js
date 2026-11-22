@@ -6,11 +6,15 @@
 //     the market of the day, the weather, something about a townsperson (all
 //     rolled from the seed and the day), then what the player has done: every
 //     finished tale (world.tales, one item per kind, in the tale's own words:
-//     its landWord), Päivölä solved (world.solved), and the day after the
-//     stocks (world.stocksDay, set by law.js seat) the ruffian who sat in them.
+//     its newsWord, else its landWord; none, no item), Päivölä solved
+//     (world.solved), and the day after the stocks (world.stocksDay, set by
+//     law.js seat) the ruffian who sat in them.
+//   datedNews(world, day) -> string[]
+//     the items good for that day only (the stocks): the crier's first calls
+//     of the day, before the round goes on
 //
 // The crier scene (scenes.js) calls the next item at each call, a call every
-// 20 s while he is at his box; the rotation carries on from day to day. From
+// 20 s while he is at his box; the round carries on from day to day. From
 // project 3 on the questline adds items.
 import { hash, hashInt } from '../rand.js'
 import { TALES, TALE_IDS } from '../../data/tales.js'
@@ -85,16 +89,23 @@ function townsperson(seed, day) {
 
 // ---- what the player did ----------------------------------------------------------
 
-const taleNews = tale => `Hear ye! ${cap(tale.landWord)} is safe again, they say, thanks to a stranger.`
+// a tale's place in the news: its own word for it (newsWord), else the land it lies in
+const taleWord = tale => tale?.newsWord ?? tale?.landWord ?? null
+const taleNews = word => `Hear ye! ${cap(word)} is safe again, they say, thanks to a stranger.`
 export const SUN_NEWS = 'Hear ye! The sun is back in Päivölä, they say, thanks to a stranger.'
 export const STOCKS_NEWS = 'A ruffian sat in the stocks yesterday! Mind your manners in Kalevanlinna.'
+
+export const datedNews = (world, day) => Number.isInteger(world.stocksDay) && day - world.stocksDay === 1 ? [STOCKS_NEWS] : []
 
 export function crierNews(world, seed, day) {
   const out = [market(seed, day), weather(seed, day), townsperson(seed, day)]
   const done = new Set()
   for (const t of world.tales?.values() ?? []) if (t.done) done.add(t.id)
-  for (const id of TALE_IDS) if (done.has(id) && TALES[id]) out.push(taleNews(TALES[id]))
+  for (const id of TALE_IDS) {
+    const word = done.has(id) ? taleWord(TALES[id]) : null
+    if (word) out.push(taleNews(word))
+  }
   if (world.solved?.size) out.push(SUN_NEWS)
-  if (Number.isInteger(world.stocksDay) && day - world.stocksDay === 1) out.push(STOCKS_NEWS)
+  out.push(...datedNews(world, day))
   return out
 }

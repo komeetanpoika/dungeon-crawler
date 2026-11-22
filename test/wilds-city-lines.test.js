@@ -11,7 +11,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { linesFor, talkFor, TALKS, NIGHT_TALKS } from '../renderer/wilds/city/lines.js'
-import { crierNews } from '../renderer/wilds/city/crier.js'
+import { crierNews, datedNews, STOCKS_NEWS } from '../renderer/wilds/city/crier.js'
 import { NAMED, JOBS } from '../renderer/wilds/city/folk.js'
 import * as runtime from '../renderer/wilds/city/runtime.js'
 import { arriveCity, tickCity } from '../renderer/wilds/city/runtime.js'
@@ -21,9 +21,9 @@ import { cityCtx } from '../renderer/wilds/city/walkers.js'
 import { sceneWindows } from '../renderer/wilds/city/scenes.js'
 import { makeWorld, exportWorld } from '../renderer/wilds/world.js'
 import { enterWilds } from '../renderer/wilds/session.js'
-import { makeNpc, updateNpc, sceneSay, interactNpc } from '../renderer/systems/npc.js'
+import { makeNpc, updateNpc, sceneSay, interactNpc, TALK_BEAT } from '../renderer/systems/npc.js'
 import { stepEnemyAttack } from '../renderer/systems/enemy-attack.js'
-import { makeFeedback, think, ambientSpeakers, AMBIENT_MAX, BUBBLE_DUR } from '../renderer/systems/feedback.js'
+import { makeFeedback, think, ambientSpeakers, AMBIENT_MAX, BUBBLE_DUR, SAY_MAX, sayDuration } from '../renderer/systems/feedback.js'
 import { TALES } from '../renderer/data/tales.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
 
@@ -41,8 +41,8 @@ const freshState = () => ({
 })
 const FOUNTAIN = { X: 79, Y: 236 }   // a step south of the fountain, the crier's box in sight
 
-function setup({ at = FOUNTAIN, frac = 0.5, day = 0, view = { w: 20, h: 12 } } = {}) {
-  const world = makeWorld(null, { seed: SEED })
+// `world`: a world from before (a town freshly in the window of it)
+function setup({ at = FOUNTAIN, frac = 0.5, day = 0, view = { w: 20, h: 12 }, world = makeWorld(null, { seed: SEED }) } = {}) {
   world.day = day
   const state = freshState()
   enterWilds(state, world, at, { buildEntities })
@@ -185,12 +185,27 @@ test('the crier reports a finished tale', () => {
   world.tales.set('6,6', { id: 'tar', flags: {}, place: null, n: 0, nSide: 0, done: true })
   const news = crierNews(world, SEED, 2)
   assert.deepEqual(news.slice(0, 3), base, 'the rotation: market, weather, townsperson, then what the player did')
-  assert.deepEqual(news.slice(3), [elk, 'Hear ye! The water is safe again, they say, thanks to a stranger.'])
+  assert.deepEqual(news.slice(3), [elk, 'Hear ye! The deck to the fish racks is safe again, they say, thanks to a stranger.'], 'the tar pit\'s own word for the news')
+  // a tale with no word for its place makes no item (and breaks nothing)
+  const lw = TALES.lalli.landWord
+  world.tales.set('9,9', { id: 'lalli', flags: {}, place: null, n: 0, nSide: 0, done: true })
+  try {
+    delete TALES.lalli.landWord
+    assert.equal(crierNews(world, SEED, 2).length, 5)
+  } finally { TALES.lalli.landWord = lw }
+  assert.equal(crierNews(world, SEED, 2)[5], 'Hear ye! The wood is safe again, they say, thanks to a stranger.')
+  world.tales.delete('9,9')
   // Päivölä solved
   world.solved.add('7,2:door3')
   const sun = crierNews(world, SEED, 2)
   assert.equal(sun.length, 6)
   assert.ok(/Päivölä/.test(sun[5]) && isLine(sun[5]), sun[5])
+  // each call stays up long enough to read at an easy pace (2 s and a second a 15 letters), well inside his 20 s
+  assert.ok(SAY_MAX <= 10)
+  for (let d = 0; d < 12; d++) for (const l of crierNews(world, SEED, d)) {
+    const dur = sayDuration(l)
+    assert.ok(dur >= Math.min(SAY_MAX, 2 + l.length / 15) && dur > BUBBLE_DUR && dur <= SAY_MAX, `${dur.toFixed(1)} s for ${l.length} letters`)
+  }
 })
 
 test('the crier remembers the stocks the next day', () => {
@@ -205,6 +220,9 @@ test('the crier remembers the stocks the next day', () => {
   assert.ok(!crierNews(world, SEED, 3).includes(RUFFIAN), 'not news the same day')
   assert.ok(crierNews(world, SEED, 4).includes(RUFFIAN), 'news the next')
   assert.ok(!crierNews(world, SEED, 5).includes(RUFFIAN), 'and old news after that')
+  assert.equal(RUFFIAN, STOCKS_NEWS)
+  assert.deepEqual(datedNews(world, 4), [RUFFIAN], 'good for that day only')
+  assert.deepEqual(datedNews(world, 3), []); assert.deepEqual(datedNews(world, 5), [])
   // the memory is saved with the Wilds; a save from before has none
   const saved = exportWorld(world)
   assert.equal(saved.stocksDay, 3)
@@ -215,6 +233,36 @@ test('the crier remembers the stocks the next day', () => {
   assert.equal(makeWorld(old).stocksDay, null)
   assert.equal(makeWorld({ ...saved, stocksDay: 'yes' }).stocksDay, null)
   assert.equal(makeWorld({ ...saved, stocksDay: -1 }).stocksDay, null)
+})
+
+// The stocks are news for one day only, and the crier calls a few times a day
+// only while the player is near: the ruffian takes his first call of that day,
+// in a town freshly in the window, whatever else there is to tell.
+test('the day after the stocks, the crier\'s first call is the ruffian', () => {
+  const ctx3 = setup({ day: 3 })
+  assert.equal(arrest(ctx3.state), true)
+  assert.equal(seat(ctx3.state, ctx3.world), true)
+  clearCrime(ctx3.state)
+  const world = ctx3.world
+  world.tales.set('3,-2', { id: 'elk', flags: {}, place: null, n: 0, nSide: 0, done: true })
+  world.solved.add('7,2:door3')
+  const day = 4
+  const slots = sceneWindows(SEED, day).filter(s => s.id === 'crier')
+  const ctx = setup({ world, day, frac: slots[0].a })
+  const { state } = ctx
+  const news = crierNews(world, SEED, day)
+  assert.equal(news.indexOf(STOCKS_NEWS), news.length - 1, 'last in the round')
+  const calls = []
+  let last = null
+  run(ctx, (slots[2].b - slots[0].a) * DAY_LENGTH, { each: () => {
+    const say = state.cityRun.people.get('named:crier').entity?.city?.say
+    if (say && say !== last) { last = say; calls.push(say.text) }
+  } })
+  assert.ok(calls.length >= 1, 'he called')
+  assert.equal(calls[0], STOCKS_NEWS, 'the ruffian first')
+  // then the round, from the market
+  calls.slice(1).forEach((t, i) => assert.equal(t, news[i % news.length], `call ${i + 1}`))
+  assert.equal(state.cityRun.cryN, calls.length - 1)
 })
 
 test('a warned or wanted player hears wary lines, and the town forgets after', () => {
@@ -279,18 +327,25 @@ test('the crier\'s call in his scene carries the news, in rotation, every 20 s',
       calls.push({ text: say.text, at: flags.t, slot: slots.findIndex(s => s.a <= ctx.T.clock / DAY_LENGTH && ctx.T.clock / DAY_LENGTH < s.b) })
       assert.equal(w.scene?.id, 'crier', 'he speaks at his box only (no street talk keeps him from it)')
       assert.equal(say.t, 0, 'a fresh line')
+      assert.equal(say.dur, sayDuration(say.text), 'up long enough to read')
+      assert.ok(say.dur > BUBBLE_DUR && say.dur < 20 - 3, `inside his quiet (${say.dur.toFixed(1)} s)`)
       const v = view()
       if (ambientSpeakers(state.entities, v, state.player).includes(e)) flags.drawn = true
       else assert.ok(e.px < v.x0 || e.px > v.x1 || e.py < v.y0 || e.py > v.y1, 'on screen, the crier draws his bubble')
     }
-    if (say && say === flags.last && say.t >= BUBBLE_DUR) {
+    if (say && say === flags.last && say.t > BUBBLE_DUR + 0.5 && say.t < say.dur - 0.1) {
+      const v = view()
+      if (ambientSpeakers(state.entities, v, state.player).includes(e)) flags.long = true
+      else assert.ok(e.px < v.x0 || e.px > v.x1 || e.py < v.y0 || e.py > v.y1, 'a long call is still up after the usual bubble time')
+    }
+    if (say && say === flags.last && say.t >= say.dur) {
       flags.aged = true
       assert.ok(!ambientSpeakers(state.entities, view(), state.player).includes(e), 'an old line no longer draws')
     }
     flags.t += DT
   }
   // his turns at the box through the morning and after lunch
-  const calls = [], flags = { last: null, t: 0, drawn: false, aged: false }
+  const calls = [], flags = { last: null, t: 0, drawn: false, aged: false, long: false }
   run(ctx, (slots[2].b - slots[0].a) * DAY_LENGTH, { each: listen(calls, flags) })
   assert.ok(calls.length >= 2, `called at least twice (${calls.length}: ${calls.map(c => c.text).join(' | ')})`)
   calls.forEach((c, i) => assert.equal(c.text, news[(2 + i) % news.length], `call ${i}`))
@@ -298,6 +353,7 @@ test('the crier\'s call in his scene carries the news, in rotation, every 20 s',
   assert.ok(new Set(calls.map(c => c.slot)).size >= 2, 'the round goes on from one turn at the box to the next')
   assert.equal(state.cityRun.cryN, 2 + calls.length)
   assert.ok(flags.aged, 'the runtime ages a line said')
+  assert.ok(flags.long, 'a long call stays up past the usual bubble time')
   assert.ok(flags.drawn, 'the call draws over the crier')
 
   // at his box with the day held still: a call every 20 s
@@ -321,11 +377,16 @@ test('a scene line stays on its speaker, never in the player\'s bubble', () => {
   think(state, 'Hm.')
   sceneSay(state, e, 'Morning.')
   assert.equal(state.feedback.bubble.text, 'Hm.', 'the player\'s own thought stays')
-  assert.deepEqual(e.city.say, { text: 'Morning.', n: 1, t: 0 })
+  assert.deepEqual(e.city.say, { text: 'Morning.', n: 1, t: 0, dur: sayDuration('Morning.') })
   state.feedback.bubble = null
   sceneSay(state, e, 'Cold one.')
   assert.equal(state.feedback.bubble, null, 'the single bubble is the player\'s and the tales\'')
-  assert.deepEqual(e.city.say, { text: 'Cold one.', n: 2, t: 0 })
+  assert.deepEqual(e.city.say, { text: 'Cold one.', n: 2, t: 0, dur: sayDuration('Cold one.') })
+  sceneSay(state, e, 'True enough.', 1.5)
+  assert.equal(e.city.say.dur, 1.5, 'or as long as the scene says')
+  assert.ok(sayDuration('') >= BUBBLE_DUR && Math.abs(sayDuration('Hm.') - 2.2) < 1e-9, 'never shorter than a bubble')
+  assert.equal(sayDuration('x'.repeat(300)), SAY_MAX, 'nor longer than SAY_MAX')
+  assert.ok(Math.abs(sayDuration('x'.repeat(60)) - 6) < 1e-9, '2 s and a second for every 15 letters')
 })
 
 test('which city people draw their own bubble: fresh, on screen, the nearest few', () => {
@@ -351,4 +412,11 @@ test('which city people draw their own bubble: fresh, on screen, the nearest few
   const skip = ambientSpeakers(all, view, focus, { skip: 'a' })
   assert.ok(skip.length === 4 && !skip.includes(near1) && skip[3] === far5)
   assert.equal(ambientSpeakers([], view, focus).length, 0)
+  // a line's own time: up while t < dur, BUBBLE_DUR when it has none
+  const longLine = at('l', 1000, 1000, 3), longDur = at('m', 1000, 1000, 3)
+  longDur.city.say.dur = 6
+  const late = ambientSpeakers([longLine, longDur], view, focus)
+  assert.ok(late.length === 1 && late[0] === longDur)
+  longDur.city.say.t = 6
+  assert.equal(ambientSpeakers([longDur], view, focus).length, 0)
 })

@@ -40,7 +40,8 @@
 //                  while it is fresh, feedback.js ambientSpeakers). What they
 //                  say is lines.js's (talk, beggar, drunk) and crier.js's
 //   e.city.carry   true while carrying a crate (unload; w.scene.loaded is the truth)
-//   run.cryN       the crier's calls so far: his place in the news (nextNews)
+//   run.cryN       the crier's calls so far: his place in the news (nextNews);
+//   run.cryDay, run.cryDated   the day, and how many of its dated items he has called
 //
 // What later tasks draw and sound (Task 17, 18) is kept as plain data on the
 // run, in world tiles (scene-things.js moves the things):
@@ -63,7 +64,7 @@ import { route } from './streets.js'
 import { setEntry, reachable, CITY_OX as OX, CITY_OY as OY } from './walkers.js'
 import { sceneSay, TALK_BEAT } from '../../systems/npc.js'
 import { talkFor, BEGGAR_LINES, DRUNK_LINES } from './lines.js'
-import { crierNews } from './crier.js'
+import { crierNews, datedNews } from './crier.js'
 import {
   cheb, toWorld, walkableAt, thingsOf, lampDue, washDue, makeFlock, stepFlocks, moveCart, stepTurnips, ringRound, fleeTile,
 } from './scene-things.js'
@@ -203,7 +204,7 @@ export function makeStage(cc, seed, day, frac) {
   for (let i = 0; i < lit.length; i++) lit[i] = lampDue(things, i, frac)
   const washday = scenesForDay(seed, day).has('washing')
   return {
-    scenes: [], sceneT: 0, sceneCheck: 0, sceneN: 0, cryN: 0,
+    scenes: [], sceneT: 0, sceneCheck: 0, sceneN: 0, cryN: 0, cryDay: day, cryDated: 0,
     lights: { lit },
     fx: {
       turnips: [], carts: [], smithy: null, crier: null, busker: null, bell: false,
@@ -376,12 +377,17 @@ function byDoor(run, X, Y) {
   return false
 }
 
-// The crier's next call: the day's news (crier.js) in rotation, carried on
-// from one of his turns at the box to the next and from one day to the next
-// (he calls a few times a day, so the player's deeds at the end of the list
-// would never come round if every morning began at the market again).
+// The crier's next call. What is good for one day only (the stocks,
+// yesterday) takes his first calls of that day, in a town just come into the
+// window too; then the day's news (crier.js) in rotation, carried on from one
+// of his turns at the box to the next and from one day to the next (he calls
+// a few times a day, so the player's deeds at the end of the list would never
+// come round if every morning began at the market again).
 function nextNews(c) {
   const { run } = c
+  if (run.cryDay !== run.day) { run.cryDay = run.day; run.cryDated = 0 }
+  const dated = datedNews(c.world, run.day)
+  if (run.cryDated < dated.length) return dated[run.cryDated++]
   const news = crierNews(c.world, run.seed, run.day)
   return news[run.cryN++ % news.length]
 }
