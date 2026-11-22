@@ -146,7 +146,7 @@ function viewOf(state, run, ox, oy) {
 // The tiles: lamps lit or not, washing out or in, the moving things off the bake.
 export function syncCityTiles(state, run, ox, oy) {
   const map = state.map
-  if (!map) return
+  if (!map || state.cave) return
   const city = run.cc.city, lit = run.lights.lit
   const swap = (x, y, want, names) => {
     const cell = map[y]?.[x]
@@ -278,6 +278,9 @@ function smithy(run, v, dt) {
 
 // Once a frame (runtime.js tickCity, after the scenes; dt 0 on an arrival).
 export function tickCityFx(state, run, dt, ox, oy) {
+  // indoors (a cave state carries the surface's run along, on the house's own
+  // map): nothing of the street, and no cell of the house touched
+  if (state.cave) return
   const fx = run.fx
   fx.t += dt
   run.ox = ox; run.oy = oy

@@ -1953,7 +1953,7 @@ function update(delta) {
       const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, wpn)
       if (spot) {
         const res = harvest(state.map, spot.x, spot.y, tool)
-        state.hitEffects.push({ x: spot.x, y: spot.y })
+        // no hit flash here: chopping and mining show by the fall, as they always have
         const spx = spot.x * TILE_SIZE + TILE_SIZE / 2, spy = spot.y * TILE_SIZE + TILE_SIZE / 2
         const cue = res.kind === 'rock' ? 'wall-slam' : res.felled ? 'tree-fall' : 'chop'
         sfx(state, cue, { px: spx, py: spy })

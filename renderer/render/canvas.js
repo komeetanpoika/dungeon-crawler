@@ -1301,7 +1301,7 @@ export class Renderer {
     if (state.cave?.sun) drawSunbeam(ctx, state.cave.sun, map, camX, camY, S, (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000)
     // Kalevanlinna's banners, sails, birds on the ground and carts: with the
     // floor, under the people (render/city-fx.js)
-    if (state.cityRun) drawCityGround(ctx, state, sprites, camX, camY, S, W, H)
+    if (state.cityRun && !state.cave) drawCityGround(ctx, state, sprites, camX, camY, S, W, H)
 
     for (const e of entities) {
       const margin = getMonsterDef(e.type) ? 3 : e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0
@@ -1387,7 +1387,7 @@ export class Renderer {
 
     // Kalevanlinna's smoke, birds in the air, turnips, notes and bells: over
     // the people, under the night
-    if (state.cityRun) drawCityAir(ctx, state, sprites, camX, camY, S, W, H)
+    if (state.cityRun && !state.cave) drawCityAir(ctx, state, sprites, camX, camY, S, W, H)
 
     // Rite ceremony: blur the finished frame onto itself, wash it green.
     if (fx && (fx.blur > 0 || fx.greenAlpha > 0)) {
@@ -1410,7 +1410,7 @@ export class Renderer {
       drawNight(ctx, this.weatherLayer, look, { camX, camY }, { W, H }, S)
     }
     // Kalevanlinna's lit windows and the smith's sparks stay bright in the dark
-    if (state.cityRun) drawCityGlow(ctx, state, sprites, look, camX, camY, S)
+    if (state.cityRun && !state.cave) drawCityGlow(ctx, state, sprites, look, camX, camY, S)
 
     // Fireball zones: flickering flames per burning tile. Deterministic
     // flicker seeded by zone age + tile coords (no wall-clock), fading over

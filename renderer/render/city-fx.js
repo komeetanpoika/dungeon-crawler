@@ -3,6 +3,8 @@
 // keep it as data in world tiles) and drawn only where it is on screen; the
 // baked tile layer is never drawn again here (the lamp and washing tiles are
 // swapped in it by fx.js; what moves was taken off it and is drawn here).
+// Nothing is drawn in a cave or a house: the cave state carries the surface's
+// run along (systems/cave.js copies the surface), not its map.
 // Three passes, by where they sit among the rest of the frame (canvas.js):
 //   drawCityGround  with the floor, under the people: the banners, pennants
 //                   and windmill sails (what was baked under them before),
@@ -37,6 +39,7 @@ const seen = (state, run, X, Y) => !!cellAt(state, run, X, Y)?.visible
 const sx = (run, X, camX, S) => Math.round((X - run.ox) * S - camX)
 const sy = (run, Y, camY, S) => Math.round((Y - run.oy) * S - camY)
 
+// a sprite at a tile's top left corner; one that never loaded is left out
 function blit(ctx, img, x, y, S, flip = false) {
   if (!img) return
   if (!flip) { ctx.drawImage(img, x, y, S, S); return }
@@ -45,7 +48,7 @@ function blit(ctx, img, x, y, S, flip = false) {
 
 export function drawCityGround(ctx, state, sprites, camX, camY, S, W, H) {
   const run = state.cityRun
-  if (!run?.fx || !state.map) return
+  if (!run?.fx || !state.map || state.cave) return
   const v = viewOf(run, camX, camY, S, W, H), t = run.fx.t
   const fog = state.theme?.fogAlpha ?? 0.65
   // what turns and stirs on the castle, the gate towers and the mill
@@ -96,7 +99,7 @@ function drawCart(ctx, state, run, k, sprites, v, camX, camY, S, t) {
 
 export function drawCityAir(ctx, state, sprites, camX, camY, S, W, H) {
   const run = state.cityRun
-  if (!run?.fx || !state.map) return
+  if (!run?.fx || !state.map || state.cave) return
   const fx = run.fx, t = fx.t, v = viewOf(run, camX, camY, S, W, H)
   const half = S / 2
   // smoke, rising and drifting off with the wind, growing and thinning
@@ -106,14 +109,14 @@ export function drawCityAir(ctx, state, sprites, camX, camY, S, W, H) {
     const X = p.X + p.dx * p.t + 0.08 * Math.sin(p.t * 2.2 + p.c), Y = p.Y - PUFF_RISE * p.t
     if (!on(v, X, Y)) continue
     ctx.globalAlpha = 0.8 * (1 - k * k)
-    ctx.drawImage(sprites[FX.smoke[k < 0.3 ? 0 : k < 0.62 ? 1 : 2]] ?? sprites[FX.smoke[0]], sx(run, X, camX, S), sy(run, Y, camY, S), S, S)
+    blit(ctx, sprites[FX.smoke[k < 0.3 ? 0 : k < 0.62 ? 1 : 2]] ?? sprites[FX.smoke[0]], sx(run, X, camX, S), sy(run, Y, camY, S), S)
   }
   for (const p of fx.steam) {
     const k = p.t / STEAM_LIFE
     const X = p.X + p.dx * p.t, Y = p.Y - STEAM_RISE * p.t
     if (!on(v, X, Y)) continue
     ctx.globalAlpha = 0.85 * (1 - k)
-    ctx.drawImage(sprites[FX.steam[k < 0.4 ? 0 : 1]], sx(run, X, camX, S), sy(run, Y, camY, S), S, S)
+    blit(ctx, sprites[FX.steam[k < 0.4 ? 0 : 1]], sx(run, X, camX, S), sy(run, Y, camY, S), S)
   }
   ctx.globalAlpha = 1
   // birds in the air, a small shadow under each
@@ -130,12 +133,12 @@ export function drawCityAir(ctx, state, sprites, camX, camY, S, W, H) {
   for (const k of fx.turnips) {
     const u = Math.min(1, k.t / TURNIP_FLIGHT)
     const X = k.fromX + (k.toX - k.fromX) * u, Y = k.fromY + (k.toY - k.fromY) * u - 1.2 * 4 * u * (1 - u)
-    if (on(v, X, Y)) ctx.drawImage(sprites[PROPS.turnip], sx(run, X, camX, S), sy(run, Y - 0.25, camY, S), S, S)
+    if (on(v, X, Y)) blit(ctx, sprites[PROPS.turnip], sx(run, X, camX, S), sy(run, Y - 0.25, camY, S), S)
   }
   for (const s of fx.splats) {
     if (!on(v, s.X, s.Y)) continue
     ctx.globalAlpha = Math.min(1, 2 * (1 - s.t / SPLAT_LIFE))
-    ctx.drawImage(sprites[FX.splat], sx(run, s.X, camX, S), sy(run, s.Y, camY, S), S, S)
+    blit(ctx, sprites[FX.splat], sx(run, s.X, camX, S), sy(run, s.Y, camY, S), S)
   }
   ctx.globalAlpha = 1
   // the busker's tune: notes rising off him while he plays
@@ -145,7 +148,7 @@ export function drawCityAir(ctx, state, sprites, camX, camY, S, W, H) {
       const k = (t * 0.6 + i / 3) % 1
       ctx.globalAlpha = Math.min(1, 3 * (1 - k))
       const X = bk.X + 0.3 + 0.25 * Math.sin((t + i) * 3) + 0.3 * k, Y = bk.Y - 0.8 - 1.1 * k
-      ctx.drawImage(sprites[FX.note[i & 1]], sx(run, X, camX, S), sy(run, Y, camY, S), S, S)
+      blit(ctx, sprites[FX.note[i & 1]], sx(run, X, camX, S), sy(run, Y, camY, S), S)
     }
     ctx.globalAlpha = 1
   }
@@ -186,7 +189,7 @@ export function drawCityAir(ctx, state, sprites, camX, camY, S, W, H) {
 // the runs on screen) and the sparks off the anvil.
 export function drawCityGlow(ctx, state, sprites, look, camX, camY, S) {
   const run = state.cityRun
-  if (!run?.fx || !state.map) return
+  if (!run?.fx || !state.map || state.cave) return
   const dark = look?.dark ?? 0
   const wins = run.lights.windows
   if (dark > 0.05 && wins.length) {

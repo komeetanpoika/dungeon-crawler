@@ -298,9 +298,60 @@ test('the three passes draw the town\'s small life, only on screen', async () =>
     assert.ok(names.has(n), `${n} drawn`)
   }
   assert.ok(drawn.every(d => d.x > -2 * S && d.x < W + S && d.y > -2 * S && d.y < H + S), 'nothing drawn off the screen')
-  // and nothing when the town is not about (in a house, say)
-  drawn.length = 0
-  const inside = { ...state, cityRun: undefined }
-  drawCityGround(ctx, inside, sprites, camX, camY, S, W, H); drawCityAir(ctx, inside, sprites, camX, camY, S, W, H); drawCityGlow(ctx, inside, sprites, { dark: 0.8 }, camX, camY, S)
-  assert.equal(drawn.length, 0)
+})
+
+// Indoors the game's state is the cave state, which carries the surface's
+// city run along (systems/cave.js copies the surface) on the house's own map:
+// nothing of the street may be drawn over it, lit in it, or swapped in it.
+test('in a house or a cave, the street is neither drawn, lit nor laid on its map', async () => {
+  const { drawCityGround, drawCityAir, drawCityGlow } = await import('../renderer/render/city-fx.js')
+  const { tickCityFx } = await import('../renderer/wilds/city/fx.js')
+  const { buildCaveState } = await import('../renderer/systems/cave.js')
+  const { TILE } = await import('../renderer/systems/entities.js')
+  // the window centred on piece (1,3): its origin is the city's, so window
+  // tiles are city tiles and a 160-cell map has every lamp, line and banner on it
+  const ctx0 = setup({ at: { X: 96 + OX, Y: 110 + OY }, frac: 0.9 })
+  const { state, world } = ctx0
+  assert.ok(world.origin.wx * PIECE === OX && world.origin.wy * PIECE === OY, 'window tiles are city tiles')
+  run(ctx0, 2)
+  const r = state.cityRun, city = cityFor(SEED)
+  assert.ok(r.lights.lit.some(v => v) && r.fx.washing.some(l => l.state === 'in'), 'lamps lit, washing in')
+  r.fx.sparks.push({ X: 96 + OX, Y: 110 + OY, vx: 0, vy: 0, t: 0.1 })
+  r.fx.smoke.push({ c: 0, X: 96 + OX, Y: 110 + OY, t: 0.5, dx: 0 })
+  // a house's map as big as the city, seen all over, carrying on each cell where
+  // the street keeps a lamp, a line or a banner the very tile the street would swap
+  const map = Array.from({ length: 160 }, () => Array.from({ length: 160 }, () => ({ tile: TILE.FLOOR, explored: true, visible: true })))
+  city.lamps.forEach(l => { map[l.y][l.x].overlay = PROPS.lamp })
+  for (const l of r.fx.washing) { map[l.Y - OY][l.X - OX].overlay = PROPS.washing[0]; map[l.Y - OY][l.X - OX + 1].overlay = PROPS.washing[1] }
+  const { fxThingsOf } = await import('../renderer/wilds/city/fx.js')
+  for (const a of fxThingsOf(city).anim) map[a.Y - OY][a.X - OX].overlay = a.frames[0]
+  const before = map.map(row => row.map(c => c.overlay ?? null))
+  const cave = buildCaveState(state, { x: 96, y: 110, caveDepth: 19, label: 'house:city:test' },
+    { map, entities: [], playerSpawn: { x: 96, y: 112 }, theme: { bgColor: '#000', fogAlpha: 0.65 } })
+  assert.ok(cave.cityRun === r && cave.cave && cave.map === map, 'the run went along indoors, on the house\'s map')
+  takeDirtyTiles(map)
+  // the runtime's share leaves the house alone
+  tickCityFx(cave, r, 0.1, OX, OY)
+  assert.equal(takeDirtyTiles(map), null, 'no cell of the house marked to be baked again')
+  assert.ok(map.every((row, y) => row.every((c, x) => (c.overlay ?? null) === before[y][x])), 'no tile of the house swapped')
+  assert.ok(!lightSources(cave).some(l => l.r === 3 || l.r === 1.5 || l.r === 2.5), 'no street light indoors')
+  // and nothing is drawn
+  const drawn = []
+  const ctx = new Proxy({ globalAlpha: 1 }, {
+    get(t, k) { if (k in t) return t[k]; return k === 'drawImage' || k === 'fillRect' ? (...a) => drawn.push(a) : () => {} },
+    set(t, k, v) { t[k] = v; return true },
+  })
+  const sprites = new Proxy({}, { get: (_, k) => ({ name: k }) })
+  const camX = cave.player.px - 512, camY = cave.player.py - 346
+  drawCityGround(ctx, cave, sprites, camX, camY, S, 1024, 693)
+  drawCityAir(ctx, cave, sprites, camX, camY, S, 1024, 693)
+  drawCityGlow(ctx, cave, sprites, { dark: 0.8 }, camX, camY, S)
+  assert.equal(drawn.length, 0, 'nothing of the street drawn in the house')
+  // back on the street, the same run draws again (the gate is the house, not the run)
+  const { computePlayerFOV } = await import('../renderer/systems/entities.js')
+  computePlayerFOV(state.map, state.player, 40, { los: false })
+  drawCityGround(ctx, state, sprites, state.player.px - 512, state.player.py - 346, S, 1024, 693)
+  drawCityAir(ctx, state, sprites, state.player.px - 512, state.player.py - 346, S, 1024, 693)
+  drawCityGlow(ctx, state, sprites, { dark: 0.8 }, state.player.px - 512, state.player.py - 346, S)
+  assert.ok(drawn.length > 0, 'the street draws on the street')
 })

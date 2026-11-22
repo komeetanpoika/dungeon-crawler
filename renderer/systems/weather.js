@@ -111,7 +111,7 @@ export function lightSources(state) {
                  r: FIRE_ZONE_LIGHT_TILES, strength, grey: false })
     }
   }
-  const city = state.cityRun?.lights?.sources
+  const city = state.cave ? null : state.cityRun?.lights?.sources   // the street's, never a house's
   if (city) for (const l of city) out.push(l)
   return out
 }
