@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { WEAPONS } from '../renderer/systems/enemy-attack.js'
 import { NPC_SHEETS } from '../renderer/render/npc-sheets.js'
+import { GOALS } from '../renderer/systems/npc.js'
 
-// `defend` is named by the city watch before its goal exists (selectGoal passes over it).
-const GOAL_NAMES = new Set(['flee_hurt', 'hunt_prey', 'attack_hostile', 'startle', 'go_to', 'wander', 'stay', 'follow_city', 'defend'])
+// every goal a species names is in the registry (selectGoal passes over a name it does not know)
+const GOAL_NAMES = new Set(Object.keys(GOALS))
 // Lalli up his pine (the Lalli tale) is scenery that speaks: rooted, no reaction, no drop.
 const ROOTED = 'lalli_treed'
 // The city watch keeps its post or round (follow_city) and otherwise stands.

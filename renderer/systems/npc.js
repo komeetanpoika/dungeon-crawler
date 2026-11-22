@@ -34,6 +34,8 @@ export const STRIKE_REACH = 36      // px within which a watchman's sword reache
 export const STRIKE_INTERVAL = 0.8  // s between a watchman's blows
 export const STRIKE_DMG = 3         // damage per blow, through the city's hurt hook
 export const LOST_TIME = 5          // s a watchman leaves a foe he found no way to before he may take it on again
+export const TALK_BEAT = 2.4        // s a line in a street talk stands before the other answers
+const SAY_NEAR = 10 * S             // px from the player within which a scene's line takes the speech bubble
 
 export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
   const def = NPC_SPECIES[species]
@@ -253,6 +255,73 @@ export const GOALS = {
       return { mode: 'patrol', target: ai.side, speed }
     },
   },
+  // Kalevanlinna's scenes (wilds/city/scenes.js): the runtime casts people
+  // into a scene (e.city.scene) and walks them to their place in it; these
+  // goals are what they do once there. The runtime moves the scene on.
+  //
+  // Two people stop, face each other and take turns: e.city.talk = { lines,
+  // me (0 or 1), conv } with conv = { i, t, go, done, said } shared by both.
+  // Whoever's turn it is (i % 2) says line i and counts TALK_BEAT down, then
+  // it is the other's; done after the last line.
+  talk: {
+    when: e => e.city?.scene?.id === 'talk' && !e.city.next && !!e.city.talk,
+    run: (e, ctx, dt) => {
+      const tk = e.city.talk, cv = tk.conv
+      face(e)
+      if (!cv.go || cv.done || cv.i % 2 !== tk.me) return { mode: 'hold' }
+      if (cv.said !== cv.i) { cv.said = cv.i; sceneSay(ctx.state, e, tk.lines[cv.i]) }
+      if ((cv.t -= dt) <= 0) {
+        cv.i++; cv.t = TALK_BEAT
+        if (cv.i >= tk.lines.length) cv.done = true
+      }
+      return { mode: 'hold' }
+    },
+  },
+  // Children's tag: the runtime says who is "it" and where each runs to
+  // (e.city.scene.target, a window tile); "it" stands and counts first.
+  play_tag: {
+    when: e => e.city?.scene?.id === 'tag',
+    run: (e, ctx) => {
+      const sc = e.city.scene
+      if (sc.freeze > 0 || !sc.target) return { mode: 'hold' }
+      return { mode: 'patrol', target: sc.target, speed: ctx.cfg.speed * (sc.role === 'it' ? 1.1 : 1) }
+    },
+  },
+  // Standing round the stocks, facing them.
+  gawk: {
+    when: e => e.city?.scene?.id === 'gawk' && !e.city.next,
+    run: e => { face(e); return { mode: 'hold' } },
+  },
+  // A fisher or porter on the way between the boat and the fish market, a
+  // crate in their arms on the way up (e.city.carry); a moment at either end.
+  carry: {
+    when: e => e.city?.scene?.id === 'unload',
+    run: (e, ctx, dt) => e.city.next ? GOALS.follow_city.run(e, ctx, dt) : { mode: 'hold' },
+  },
+  // A drunk on the way home: wide of each waypoint, one side and the other,
+  // and slower; straight on when near it (so it is reached).
+  stagger: {
+    when: e => e.city?.scene?.id === 'drunk' && !!e.city.next,
+    run: (e, ctx, dt) => {
+      const n = e.city.next, ai = e.ai
+      ai.weave = (ai.weave ?? 0) + dt
+      const dx = Math.sign(n.x - e.x), dy = Math.sign(n.y - e.y)
+      let target = n
+      if (Math.max(Math.abs(n.x - e.x), Math.abs(n.y - e.y)) > 2) {
+        const s = Math.sin(ai.weave * 2.2) > 0 ? 1 : -1
+        const t = { x: n.x - dy * s, y: n.y + dx * s }
+        if (passable(buildNavGrid(ctx.state.map), t.x, t.y, 1)) target = t
+      }
+      return { mode: 'patrol', target, speed: ctx.cfg.speed * 0.6 }
+    },
+  },
+  // In a scene and at one's place in it (the smith at the anvil, the busker,
+  // a listener, the crier at his box, the beggar at the church door...):
+  // stand, facing what the scene is about.
+  at_scene: {
+    when: e => !!e.city?.scene && !e.city.next,
+    run: e => { face(e); return { mode: 'hold' } },
+  },
   // rooted to the spot (Lalli up his tree): nothing moves him
   stay: {
     when: () => true,
@@ -277,6 +346,26 @@ export const GOALS = {
       return { mode: 'patrol', target: ai.wanderPt, speed: ctx.cfg.wanderSpeed }
     },
   },
+}
+
+// A scene's facing (east or west; a sprite has no other), held while standing.
+function face(e) {
+  const f = e.city.scene?.facing
+  if (f) e.facing = f
+}
+
+// A line said in a scene (wilds/city/scenes.js): kept on the speaker
+// (e.city.say = { text, n }), and shown in the speech bubble if the speaker
+// is near the player and the bubble is free or another scene's. A scene never
+// talks over what the player or a tale is saying.
+export function sceneSay(state, e, text) {
+  const c = e.city
+  if (c) c.say = { text, n: (c.say?.n ?? 0) + 1 }
+  const fb = state.feedback, p = state.player
+  if (!fb || !p || (fb.bubble && !fb.bubble.scene)) return
+  if (Math.hypot(p.px - e.px, p.py - e.py) > SAY_NEAR) return
+  speakFrom(state, e, text)
+  fb.bubble.scene = true
 }
 
 // The tile beside `e` square to its way towards `to`: the right hand first,

@@ -6,39 +6,32 @@
 // of the barracks door, none further than CRIME.leashTiles beyond the wall.
 // The watch takes a wanted player alive (state.mercy, read by damagePlayer):
 // the last blow fades the screen and the player wakes in the stocks on the
-// square, where the townsfolk gather round and throw turnips (harmless), for
-// CRIME.stocksSeconds. No DOM and no game.js import: runtime.js runs tickLaw
-// every frame; game.js calls cityViolence for every npc it strikes, arrest
-// and toStocks for the fade, and clearCrime on a wake.
+// square for CRIME.stocksSeconds, where the townsfolk gather round and throw
+// turnips (the `gawk` scene, scenes.js: it runs while player.stocks.seated).
+// No DOM and no game.js import: runtime.js runs tickLaw every frame; game.js
+// calls cityViolence for every npc it strikes, arrest and toStocks for the
+// fade, and clearCrime on a wake.
 //
 //   w.hunt     a watchman after the player: hostile while near (the enemy
 //              brain drives him), walking a route to the player while far
 //   w.leashed  a hunter who went past the leash: calm until back inside the walls
-//   w.gawk     a townsperson come to stand round the stocks: { X, Y, k, sx, there }
-//   run.fx.turnips  [{ fromX, fromY, toX, toY, t }]: world tiles, t seconds in
-//              flight (city-fx draws them); each lands with a splat at TURNIP_FLIGHT
 //   player.stocks   { t, fade, seated }: t mirrors crime.t, fade runs to ARREST_FADE
-//
-// This is the small first form of the `gawk` scene; the scenes take it over.
 import { CRIME, CRIME_LINES, makeCrime, onViolence, tickCrime, spares } from './crime.js'
 import { cityFor } from './build.js'
 import { fromCity } from './geometry.js'
-import { setEntry, reachable, CITY_OX as OX, CITY_OY as OY } from './walkers.js'
-import { entryAt } from './schedule.js'
+import { reachable, CITY_OX as OX, CITY_OY as OY } from './walkers.js'
+import { backToDay, endScenes } from './scenes.js'
 import { PIECE } from '../layout.js'
 import { WIN_TILES } from '../window.js'
-import { TILE } from '../../systems/entities.js'
 import { speakFrom } from '../../systems/feedback.js'
 import { FLEE_TIME } from '../../systems/npc.js'
+
+export { TURNIP_FLIGHT } from './scenes.js'
 
 const S = 32
 const SCATTER = 6           // tiles from a struck person within which the townsfolk run too
 const REINFORCE_EVERY = 1.2 // s between two men out of the barracks door
 const HUNT_ROUTE = 3        // s between two routes a far hunter takes towards the player
-const GAWKERS = 8           // townsfolk who come to stand round the stocks
-const TURNIP_EVERY = 1.1    // s between two turnips
-export const TURNIP_FLIGHT = 0.6   // s a turnip is in the air
-const REACH = 0.6           // tiles from his spot that count as standing there
 const FAR = 255             // beyondWall's "further than the leash"
 
 // damagePlayer asks this (as state.mercy) whether a blow spares a life.
@@ -103,11 +96,7 @@ export function tickLaw(state, world, run, delta) {
     if (was === 'stocks') free(state, run)
   }
   if (crime.level === 'wanted') hunt(state, run, delta, ox, oy)
-  if (crime.level === 'stocks' && p.stocks) {
-    p.stocks.t = crime.t
-    if (p.stocks.seated) gawk(state, run, delta, ox, oy)
-  }
-  turnips(state, run, delta)
+  if (crime.level === 'stocks' && p.stocks) p.stocks.t = crime.t
 }
 
 // ---- the wanted -----------------------------------------------------------------
@@ -232,13 +221,6 @@ function calmAll(run) {
   }
 }
 
-function backToDay(run, w) {
-  w.goal = null   // whatever the schedule says is somewhere new: routed from where they stand
-  setEntry(run.cc, w, entryAt(w.sched, run.frac))
-  if (w.needRoute) run.queue.push(w)
-  if (w.entity) w.entity.city.entry = w.entry
-}
-
 // ---- the stocks -----------------------------------------------------------------
 
 // game.js, when damagePlayer spared the player (state.arrest): the watch has
@@ -267,7 +249,6 @@ export function seat(state, world) {
   p.x = x; p.y = y; p.px = x * S + S / 2; p.py = y * S + S / 2
   p.facing = 'south'
   p.stocks.seated = true
-  if (state.cityRun) state.cityRun.ring = null
   return true
 }
 
@@ -296,81 +277,10 @@ function free(state, run) {
   if (by) speakFrom(state, by, CRIME_LINES.freed)
 }
 
+// the crowd round the stocks goes back about its day, the turnips with it
 function release(run) {
-  for (const w of run.people.values()) {
-    if (!w.gawk) continue
-    w.gawk = null
-    if (!w.out && w.mode !== 'indoors') backToDay(run, w)
-  }
+  endScenes(run, 'gawk')
   run.fx.turnips.length = 0
-  run.ring = null
-}
-
-// The cells round the stocks a crowd stands on (2 and 3 tiles out), in world tiles.
-function ringRound(map, at, ox, oy) {
-  const out = []
-  for (const r of [2, 3]) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
-    if (map[at.Y + dy - oy]?.[at.X + dx - ox]?.tile === TILE.FLOOR) out.push({ X: at.X + dx, Y: at.Y + dy })
-  }
-  return out
-}
-
-// While the player sits in the stocks: up to GAWKERS near townsfolk, the
-// nearest first, come and stand round it facing it, and every TURNIP_EVERY
-// one who stands there throws a turnip.
-function gawk(state, run, delta, ox, oy) {
-  const at = stocksWorld({ seed: run.seed })
-  run.ring ??= ringRound(state.map, at, ox, oy)
-  const taken = new Set(), crowd = []
-  for (const w of run.people.values()) {
-    if (!w.gawk) continue
-    if (w.out || w.mode !== 'near') { w.gawk = null; if (!w.out && w.mode === 'far') backToDay(run, w); continue }
-    taken.add(w.gawk.k); crowd.push(w)
-  }
-  if (crowd.length < GAWKERS && taken.size < run.ring.length) {
-    const more = []
-    for (const w of run.people.values()) {
-      if (w.mode !== 'near' || w.species !== 'townsfolk' || w.gawk || w.out || !(w.entity?.hp > 0)) continue
-      more.push({ w, d: Math.max(Math.abs(w.X - at.X), Math.abs(w.Y - at.Y)) })
-    }
-    more.sort((a, b) => a.d - b.d)
-    for (const { w } of more) {
-      if (crowd.length >= GAWKERS) break
-      let k = 0
-      while (taken.has(k)) k++
-      if (k >= run.ring.length) break
-      taken.add(k)
-      w.gawk = { X: run.ring[k].X, Y: run.ring[k].Y, k, sx: at.X, there: false }
-      w.shy = null
-      crowd.push(w)
-    }
-  }
-  run.turnipT = (run.turnipT ?? TURNIP_EVERY) - delta
-  if (run.turnipT > 0) return
-  const ready = crowd.filter(w => w.gawk.there)
-  if (!ready.length) return
-  run.turnipT = TURNIP_EVERY
-  const w = ready[(run.thrown = (run.thrown ?? 0) + 1) % ready.length]
-  run.fx.turnips.push({ fromX: w.X, fromY: w.Y, toX: at.X, toY: at.Y, t: 0 })
-}
-
-function turnips(state, run, delta) {
-  const list = run.fx.turnips
-  for (let i = list.length - 1; i >= 0; i--) {
-    if ((list[i].t += delta) < TURNIP_FLIGHT) continue
-    list.splice(i, 1)
-    run.hooks.sfx?.('splat', { px: state.player.px, py: state.player.py })
-  }
-}
-
-// runtime.js near(): a gawker walks to their spot and, once there, faces the stocks.
-export function stepGawker(w, e, ox, oy) {
-  const g = w.gawk
-  const c = e.city
-  if (c.next) { c.next.x = g.X - ox; c.next.y = g.Y - oy } else c.next = { x: g.X - ox, y: g.Y - oy }
-  if (!g.there && Math.hypot(g.X - w.X, g.Y - w.Y) < REACH) g.there = true
-  if (g.there) e.facing = g.sx < w.X ? 'west' : 'east'
 }
 
 // ---- in and out of the window, death and load -------------------------------------

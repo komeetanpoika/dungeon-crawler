@@ -128,12 +128,15 @@ export const NPC_SPECIES = {
   // Kalevanlinna's people and animals, owned by the city runtime
   // (wilds/city/runtime.js), which spawns them with a `look` (drawn as
   // tf_<look>) and their own lines; `sprite` and `lines` here are stand-ins.
-  // follow_city walks their day; `wander` (roam) potters about a spot.
+  // follow_city walks their day; `wander` (roam) potters about a spot; the
+  // scene goals (talk, play_tag, gawk, carry, stagger, at_scene) are what they
+  // do in a scene (wilds/city/scenes.js). A dog's go_to is the pigeons scene's
+  // run at the flock.
   townsfolk: {
     faction: 'city', sprite: 'npc_villager', walker: true,
     hp: 3, onHit: 'flee', fleeHp: 1,
     speed: 70, wanderSpeed: 45, roam: 2,
-    priorities: ['flee_hurt', 'follow_city', 'wander'],
+    priorities: ['flee_hurt', 'play_tag', 'talk', 'gawk', 'carry', 'stagger', 'follow_city', 'at_scene', 'wander'],
     lines: ['Good day.', 'Busy, busy.'],
   },
   // `defend` is the watch's answer to monsters at the gates and in town: the
@@ -149,7 +152,7 @@ export const NPC_SPECIES = {
     faction: 'city', sprite: 'tf_dog_1',
     hp: 2, onHit: 'flee', fleeHp: 1, startle: 24, react: 'hop',
     speed: 110, wanderSpeed: 45, roam: 6,
-    priorities: ['flee_hurt', 'startle', 'wander'],
+    priorities: ['flee_hurt', 'startle', 'go_to', 'wander'],
   },
   cat: {
     faction: 'city', sprite: 'tf_cat_1',

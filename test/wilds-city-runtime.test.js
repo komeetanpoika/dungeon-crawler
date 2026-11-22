@@ -358,7 +358,8 @@ test('dogs, cats and yard animals are there and owned by the city', () => {
 })
 
 test('a watchman stands his ground when struck; the city shares no wrath', () => {
-  assert.deepEqual(NPC_SPECIES.townsfolk.priorities, ['flee_hurt', 'follow_city', 'wander'])
+  // a scene's goals (wilds/city/scenes.js) come before their day: talk, tag, the stocks' crowd, carrying, a drunk's walk
+  assert.deepEqual(NPC_SPECIES.townsfolk.priorities, ['flee_hurt', 'play_tag', 'talk', 'gawk', 'carry', 'stagger', 'follow_city', 'at_scene', 'wander'])
   assert.deepEqual(NPC_SPECIES.watchman.priorities, ['attack_hostile', 'defend', 'follow_city', 'stay'])
   const map = street()
   const w = makeNpc({ species: 'watchman', id: 'watch:0', x: 5, y: 5 })

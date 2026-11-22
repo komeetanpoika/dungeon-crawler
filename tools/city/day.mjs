@@ -14,11 +14,15 @@
 // --trace    a person's id: their walker every half second
 //
 // Prints a line per game minute: the hour, how many are near / far / indoors,
-// and which acts are in force on the square. Exits 1 if anyone had no route,
-// was stuck (on their way and no headway) for more than 10 s, or stood still
-// outdoors for more than 20 s other than at a post or about a spot.
+// which acts are in force on the square, and the scenes (wilds/city/scenes.js)
+// that ran on or beside it in that minute (and how many of each); then how many
+// different scenes each five minutes in a row had there. Exits 1 if anyone had
+// no route, was stuck (on their way and no headway) for more than 10 s, or
+// stood still outdoors for more than 20 s other than at a post, about a spot
+// or in a scene.
 import { performance } from 'node:perf_hooks'
 import { arriveCity, tickCity, cityPeople } from '../../renderer/wilds/city/runtime.js'
+import { squareScenesAt } from '../../renderer/wilds/city/scenes.js'
 import { cityFor } from '../../renderer/wilds/city/build.js'
 import { makeWorld } from '../../renderer/wilds/world.js'
 import { enterWilds } from '../../renderer/wilds/session.js'
@@ -71,6 +75,13 @@ const track = new Map()
 const problems = { stuck: new Map(), still: new Map() }
 const tick = { sum: 0, max: 0, n: 0 }, npc = { sum: 0, max: 0, n: 0 }
 const slow = []   // ticks over 1.5 ms
+// scenes on or beside the square: within SCENE_R tiles of the fountain (or
+// riding the schedules through it: the shift change and the church crowd)
+const SCENE_R = 20
+const onSquare = sc => sc.id === 'shift' || sc.id === 'church' || sc.id === 'cart' ||
+  (Math.abs(sc.at.x - fountain.x) <= SCENE_R && Math.abs(sc.at.y - (fountain.y + 160)) <= SCENE_R)
+let minuteScenes = new Map()   // id -> keys seen this minute
+const perMinute = []           // Set of ids per minute
 const dt = 1 / hz
 const steps = Math.round(minutes * 60 * hz)
 let simT = 0
@@ -88,6 +99,10 @@ for (let i = 1; i <= steps; i++) {
   for (const e of [...state.entities]) if (e.type === 'npc') updateNpc(e, state, dt)
   b = performance.now()
   npc.sum += b - a; npc.max = Math.max(npc.max, b - a); npc.n++
+  for (const sc of state.cityRun.scenes) if (!sc.done && onSquare(sc) && (sc.cast.length || sc.id === 'pigeons')) {
+    if (!minuteScenes.has(sc.id)) minuteScenes.set(sc.id, new Set())
+    minuteScenes.get(sc.id).add(sc.key)
+  }
 
   if (traceId && i % Math.max(1, Math.round(hz / 2)) === 0) {
     const w = state.cityRun.people.get(traceId), e = w.entity
@@ -98,16 +113,16 @@ for (let i = 1; i <= steps; i++) {
   if (i % Math.max(1, Math.round(hz / 4)) === 0) {
     for (const p of cityPeople(state)) {
       const k = track.get(p.id)
-      // stillness counts from where they were when they last moved or set out for somewhere else
-      if (!k || p.mode === 'indoors' || Math.hypot(p.X - k.X, p.Y - k.Y) > 0.5 || p.entry !== k.entry || p.going !== k.going || p.there !== k.there) {
-        track.set(p.id, { X: p.X, Y: p.Y, since: simT, entry: p.entry, going: p.going, there: p.there })
+      // stillness counts from where they were when they last moved, set out for somewhere else, or left a scene
+      if (!k || p.mode === 'indoors' || Math.hypot(p.X - k.X, p.Y - k.Y) > 0.5 || p.entry !== k.entry || p.going !== k.going || p.there !== k.there || p.scene !== k.scene) {
+        track.set(p.id, { X: p.X, Y: p.Y, since: simT, entry: p.entry, going: p.going, there: p.there, scene: p.scene })
         continue
       }
       const still = simT - k.since
-      // on the way and getting nowhere
-      if (p.going && still > STUCK) problems.stuck.set(p.id, { ...p, still, at: hhmm(T.clock) })
-      // standing about outdoors, other than at a post or about a spot (a patrol always walks)
-      const exempt = p.there && (p.goal === 'spot' || p.act === 'post')
+      // on the way and getting nowhere (one held in a scene stands where it wants them)
+      if (p.going && !p.scene && still > STUCK) problems.stuck.set(p.id, { ...p, still, at: hhmm(T.clock) })
+      // standing about outdoors, other than at a post or about a spot (a patrol always walks), or in a scene
+      const exempt = (p.there && (p.goal === 'spot' || p.act === 'post')) || p.scene
       if (!exempt && still > STILL) problems.still.set(p.id, { ...p, still, at: hhmm(T.clock) })
     }
   }
@@ -119,10 +134,22 @@ for (let i = 1; i <= steps; i++) {
     const actStr = Object.entries(acts).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join(', ') || '-'
     console.log(`${hhmm(T.clock)}  near ${String(n('near')).padStart(3)}  far ${String(n('far')).padStart(3)}  indoors ${String(n('indoors')).padStart(3)}` +
       `  | square: ${actStr}  | tick ${(tick.sum / tick.n).toFixed(3)} ms (max ${tick.max.toFixed(2)}), npcs ${(npc.sum / npc.n).toFixed(2)} ms`)
+    const ran = [...minuteScenes].map(([id, keys]) => keys.size > 1 ? `${id} x${keys.size}` : id)
+    // the timetable's word for the same minute, sampled every 10 s
+    const day = T.day, sched = new Set()
+    for (let s = 0; s < 60; s += 10) for (const id of squareScenesAt(seed, day, ((T.clock - 60 + s + DAY_LENGTH) % DAY_LENGTH) / DAY_LENGTH)) sched.add(id)
+    console.log(`       scenes on the square: ${ran.join(', ') || '-'}  | timetable: ${[...sched].join(', ') || '-'}`)
+    perMinute.push(new Set(minuteScenes.keys()))
+    minuteScenes = new Map()
   }
 }
 
 const city = state.cityRun
+if (perMinute.length >= 5) {
+  const spans = []
+  for (let m = 0; m + 5 <= perMinute.length; m++) spans.push(new Set(perMinute.slice(m, m + 5).flatMap(s => [...s])).size)
+  console.log(`\nscenes on the square in five minutes running: ${spans.map((n, m) => `minutes ${m + 1}-${m + 5}: ${n}`).join(', ')}`)
+}
 console.log(`\ntickCity: ${(tick.sum / tick.n).toFixed(3)} ms a tick on average, ${tick.max.toFixed(2)} ms at most, ` +
   `with ${city.people.size} people and ${city.animals.size} animals (near people's goals: ${(npc.sum / npc.n).toFixed(2)} ms a frame)`)
 console.log(`re-routed ${city.stats.rerouted} times`)

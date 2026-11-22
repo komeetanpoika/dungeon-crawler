@@ -1,7 +1,9 @@
 // Kalevanlinna's animals: six dogs and six cats who keep near their home
-// doors, and hens and goats in a few back yards. Pure in the city (and so in
-// the seed); the runtime (runtime.js) owns them like the people, near as npc
-// entities wandering round their home (the species' roam), far standing put.
+// doors (the first dog's is the home door nearest the fountain, so the square
+// has a dog for its pigeons), and hens and goats in a few back yards. Pure in
+// the city (and so in the seed); the runtime (runtime.js) owns them like the
+// people, near as npc entities wandering round their home (the species'
+// roam), far standing put.
 //
 //   Animal = { id, species, look, home: city tile, X, Y (world tiles),
 //              mode: 'near'|'far', entity, animal: true }
@@ -26,7 +28,10 @@ export function makeAnimals(cc) {
   const out = []
   const add = (id, species, look, home, at = home) => out.push({ id, species, look, home, X: at.x + OX, Y: at.y + OY, mode: 'far', entity: null, animal: true })
   // the pets: each at a home door of its own, by the step before it
-  const homes = shuffled(city.doors.filter(d => d.kind === 'home').map(d => d.label), seed, 81)
+  const fo = city.spots.fountain
+  const all = city.doors.filter(d => d.kind === 'home')
+  const bySquare = all.reduce((b, d) => !b || Math.hypot(d.x - fo.x, d.y - fo.y) < Math.hypot(b.x - fo.x, b.y - fo.y) ? d : b, null)
+  const homes = [bySquare.label, ...shuffled(all.filter(d => d !== bySquare).map(d => d.label), seed, 81)]
   for (let i = 0; i < PETS * 2; i++) {
     const kind = i < PETS ? 'dog' : 'cat', n = i % PETS
     const looks = ANIMAL_LOOKS[kind]

@@ -28,13 +28,15 @@
 // hooks.hurt (kept on the run for it). The old shift keeps a post until its
 // relief stands there.
 //
-// The law (law.js): the player's violence, the hunters it sets on them, the
-// stocks and the crowd round it. A hunter (w.hunt) or a gawker (w.gawk) is
-// out of their day until let go; then the schedule takes them back.
+// The law (law.js): the player's violence, the hunters it sets on them and
+// the stocks. The scenes (scenes.js): the set pieces cast from the near
+// people, the crowd round the stocks among them. A hunter (w.hunt) or one in
+// a scene (w.scene) is out of their day until let go; then the schedule takes
+// them back.
 //
 //   state.cityRun = { people: Map<id, Walker>, animals: Map<id, Animal>, hooks,
 //                     crime, scenes, lights, fx, nearR, swingAt, stats, ... }
-//   e.city = { next: window tile | null, entry, person, passed, foe, lost, lostT }
+//   e.city = { next: window tile | null, entry, person, passed, foe, lost, lostT, scene, talk, say, carry }
 import { cityFor } from './build.js'
 import { isCityPiece } from './geometry.js'
 import { scheduleFor, entryAt } from './schedule.js'
@@ -50,7 +52,8 @@ import {
 } from './walkers.js'
 import { makeAnimals } from './animals.js'
 import { makeCrime } from './crime.js'
-import { tickLaw, rouseEntity, stepGawker, cityMercy, carryCrime, bringCrime } from './law.js'
+import { tickLaw, rouseEntity, cityMercy, carryCrime, bringCrime } from './law.js'
+import { makeStage, tickScenes, sceneStep, endScenes } from './scenes.js'
 
 export { FAR_SPEED }
 const S = 32
@@ -126,7 +129,7 @@ function makeRun(state, world, hooks, lazy) {
   const day = hooks.day(), frac = fracOf(hooks.clock())
   const run = {
     seed: world.seed, cc, people: new Map(), animals: new Map(), hooks,
-    crime: makeCrime(), scenes: null, lights: null, fx: { turnips: [] },
+    crime: makeCrime(), ...makeStage(cc, world.seed, day, frac),
     nearR: nearRadius(hooks.viewHalf()), day, frac, swingAt: null, shyT: 0,
     queue: [], pending: [], tick: 0, remove: new Set(), stats: { noRoute: [], rerouted: 0 },
   }
@@ -251,7 +254,7 @@ function reconcile(state, world, run) {
 function knockedDown(run, w) {
   if (w.entity?.hp > 0) run.remove.add(w.entity)
   w.entity = null
-  w.hunt = false; w.gawk = null
+  w.hunt = false; w.scene = null
   if (w.animal) { w.mode = 'far'; w.gone = true; return }
   // a route on order must not walk them anywhere; no home door (a city with
   // no barracks for the watch) leaves them out of sight all the same
@@ -294,9 +297,9 @@ export function tickCity(state, world, delta, hooks) {
 
   for (const w of run.people.values()) {
     if (w.out || w.pending) continue
-    // the schedule moved on (a hunter or a gawker catches up when let go)
+    // the schedule moved on (a hunter or one held in a scene catches up when let go)
     const nx = w.sched[w.ei + 1]
-    if (nx && frac >= nx.at && !w.hunt && !w.gawk && !keepsPost(w, nx, frac)) {
+    if (nx && frac >= nx.at && !w.hunt && !(w.scene && !w.scene.day) && !keepsPost(w, nx, frac)) {
       setEntry(cc, w, entryAt(w.sched, frac))
       if (w.needRoute) run.queue.push(w)
       if (w.entity) w.entity.city.entry = w.entry
@@ -306,6 +309,7 @@ export function tickCity(state, world, delta, hooks) {
   }
   guard(state, run, delta, ox, oy)
   tickLaw(state, world, run, delta)
+  tickScenes(state, world, run, delta, ox, oy)
   modes(state, world, run, hooks)
   flush(state, run)
 }
@@ -359,6 +363,7 @@ function foeOf(state, run, w, e, foes, ox, oy) {
 function newDay(run, day, frac) {
   const { cc } = run
   run.day = day
+  endScenes(run, null, 'gawk')   // a new day's timetable (the stocks' crowd stays while the stocks are taken)
   for (const w of run.people.values()) {
     if (w.pending) continue   // placed by the new day's schedule when its turn comes
     w.sched = scheduleFor(w.person, cc.city, run.seed, day); w.day = day
@@ -368,7 +373,7 @@ function newDay(run, day, frac) {
       placeByClock(cc, w, frac, run.stats)
       continue
     }
-    if (w.hunt || w.gawk) continue   // the new day's schedule takes them back when let go
+    if (w.hunt || w.scene) continue   // the new day's schedule takes them back when let go
     w.ei = 0
     setEntry(cc, w, entryAt(w.sched, frac))
     if (w.needRoute) run.queue.push(w)
@@ -389,12 +394,12 @@ function near(state, run, w, dt, ox, oy) {
   w.X = e.px / S - 0.5 + ox; w.Y = e.py / S - 0.5 + oy
   const c = e.city
   if (w.hunt) return   // the enemy brain drives a hunter (law.js)
-  if (w.gawk) { stepGawker(w, e, ox, oy); return }
   if (w.shy) {
     w.shy.t -= dt
     if (w.shy.t > 0 && Math.hypot(w.shy.X - w.X, w.shy.Y - w.Y) > 0.4) { setNext(e, w.shy.X - ox, w.shy.Y - oy); return }
     w.shy = null
   }
+  if (w.scene && sceneStep(run, w, e, ox, oy)) return   // standing in a scene (scenes.js)
   if (c.passed) {
     // gone round the player on the way: on to the next waypoint. A player
     // standing on the very spot they were making for: about here will do.
@@ -411,6 +416,7 @@ function near(state, run, w, dt, ox, oy) {
       w.fought = false
     }
     c.next = null
+    if (w.scene) return   // at a scene's place: its goals stand them there
     // about a spot: potter round it (the species' wander, from here)
     if (w.phase === 'there' && !w.homed && w.goal?.kind === 'spot') {
       const t = cityToWorld(w.goal.tile)
@@ -499,7 +505,7 @@ function spawn(state, run, w, hooks, ox, oy) {
     const h = cityToWorld(w.home)
     e.home = { x: h.X - ox, y: h.Y - oy }
   } else {
-    e.city = { next: null, entry: w.entry, person: w.person, passed: false }
+    e.city = { next: null, entry: w.entry, person: w.person, passed: false, scene: w.scene ?? null, talk: w.scene?.talk ?? null }
     w.homed = false; w.sx = w.X; w.sy = w.Y; w.still = 0
     if (w.hunt) rouseEntity(e, state.player)   // one of the hunters comes near: after the player
   }
@@ -562,7 +568,8 @@ export function cityPeople(state) {
   for (const w of run.people.values()) out.push({
     id: w.id, mode: w.mode, X: w.X, Y: w.Y, door: w.mode === 'indoors' ? w.door : null,
     entry: w.ei, act: w.entry?.act ?? null, going: w.mode !== 'indoors' && w.phase === 'go', there: w.phase === 'there',
-    goal: w.goal?.kind ?? null, still: w.still, out: w.out, pending: !!w.pending, hunt: !!w.hunt, gawk: !!w.gawk,
+    goal: w.goal?.kind ?? null, still: w.still, out: w.out, pending: !!w.pending, hunt: !!w.hunt,
+    scene: w.scene?.id ?? null, gawk: w.scene?.id === 'gawk',
   })
   return out
 }
