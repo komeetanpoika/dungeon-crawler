@@ -355,3 +355,34 @@ test('in a house or a cave, the street is neither drawn, lit nor laid on its map
   drawCityGlow(ctx, state, sprites, { dark: 0.8 }, state.player.px - 512, state.player.py - 346, S)
   assert.ok(drawn.length > 0, 'the street draws on the street')
 })
+
+// The church bell's sound is drawn round the bell itself, up in the belfry,
+// not round the spot at the tower's foot (seen live: the lines were on the
+// grass four rows below the bell).
+test('the church bell rings out from the belfry', async () => {
+  const { drawCityAir } = await import('../renderer/render/city-fx.js')
+  const { computePlayerFOV } = await import('../renderer/systems/entities.js')
+  const steps = cityFor(SEED).spots['church-steps']
+  const ctx0 = setup({ at: { X: steps.x + OX + 2, Y: steps.y + OY + 3 }, frac: DAY.bell })
+  const { state } = ctx0
+  run(ctx0, 0.5)
+  computePlayerFOV(state.map, state.player, 40, { los: false })
+  state.cityRun.fx.bell = true
+  const W = 1024, H = 693
+  const camX = state.player.px - W / 2, camY = state.player.py - H / 2
+  const arcs = []
+  const ctx = new Proxy({ globalAlpha: 1, strokeStyle: '', lineWidth: 1 }, {
+    get(t, k) {
+      if (k in t) return t[k]
+      if (k === 'arc') return (x, y, r) => arcs.push({ x, y, r })
+      return () => {}
+    },
+    set(t, k, v) { t[k] = v; return true },
+  })
+  drawCityAir(ctx, state, new Proxy({}, { get: (_, k) => ({ name: k }) }), camX, camY, S, W, H)
+  assert.ok(arcs.length >= 4, `the bell's lines are drawn (${arcs.length})`)
+  for (const a of arcs) {
+    const cell = state.map[Math.floor((a.y + camY) / S)][Math.floor((a.x + camX) / S)]
+    assert.match(cell.overlay ?? '', /church_belfry/, `round the belfry, not ${cell.overlay ?? cell.skin}`)
+  }
+})

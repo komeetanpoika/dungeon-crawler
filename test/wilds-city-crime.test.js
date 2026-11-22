@@ -13,7 +13,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { CRIME, CRIME_LINES, WARN_GRACE, makeCrime, onViolence, tickCrime, spares } from '../renderer/wilds/city/crime.js'
 import { cityViolence, arrest, seat, toStocks, clearCrime, stocksWorld } from '../renderer/wilds/city/law.js'
-import { arriveCity, tickCity, cityPeople } from '../renderer/wilds/city/runtime.js'
+import { arriveCity, tickCity, cityPeople, noteCitySwing } from '../renderer/wilds/city/runtime.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { fromCity } from '../renderer/wilds/city/geometry.js'
 import { makeWorld } from '../renderer/wilds/world.js'
@@ -26,7 +26,7 @@ import { damagePlayer } from '../renderer/systems/player-damage.js'
 import { playerBound } from '../renderer/systems/player-bind.js'
 import { adventureRespawn } from '../renderer/systems/cave.js'
 import { updateFireZones, makeFireZone, applyBurst, BURST_DAMAGE } from '../renderer/systems/fire.js'
-import { makeFeedback } from '../renderer/systems/feedback.js'
+import { makeFeedback, tickFeedback } from '../renderer/systems/feedback.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { getMonsterDef } from '../renderer/systems/monsters.js'
 import { cullDead, tickDying } from '../renderer/systems/dying.js'
@@ -198,6 +198,33 @@ test('one blow is a warning; another within a minute makes you wanted', () => {
   run(ctx, 0.5)
   assert.ok(hunters(state).length >= 1, 'the watch is after you')
   assert.ok(cityEntities(state).every(e => e.species === 'watchman' || !e.hostile), 'the townsfolk are not')
+})
+
+// game.js's order for a swing that lands: the swing is noted (the townsfolk
+// flinch at it on the next tick), the blow lands, the law speaks. The flinch
+// line must not take the warning's place in the one bubble: seen live, the
+// shout was up for a single frame.
+test('the warning shout stays up: the flinch at the same swing does not talk over it', () => {
+  const ctx = setup()
+  const { state, world } = ctx
+  const [a] = twoTownsfolk(state)
+  const at = entityWorld(world, a)
+  placePlayer(state, world, Math.round(at.X) - 1, Math.round(at.Y))
+  noteCitySwing(state, world)
+  strike(ctx, a)
+  assert.equal(said(state), CRIME_LINES.warn)
+  run(ctx, 0.5)
+  assert.equal(said(state), CRIME_LINES.warn, 'the watch\'s shout is what the bubble says')
+  // once it has been read, a swing near someone is a flinch again
+  run(ctx, 3)
+  tickFeedback(state.feedback, 3)   // the game ages the bubble every frame; this harness does not
+  assert.equal(said(state), null, 'the shout has been read')
+  const tf = cityEntities(state).find(q => q.species === 'townsfolk' && !q.ai.fleeTimer && q !== a && inside(state, q))
+  const tw = entityWorld(world, tf)
+  placePlayer(state, world, Math.round(tw.X) - 2, Math.round(tw.Y))
+  noteCitySwing(state, world)
+  tickCity(state, world, DT, ctx.hooks)
+  assert.equal(said(state), 'Careful with that!')
 })
 
 test('a killing blow makes you wanted at once', () => {

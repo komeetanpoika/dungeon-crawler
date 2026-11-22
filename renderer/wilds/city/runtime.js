@@ -550,7 +550,11 @@ function shy(state, run, ox, oy) {
     }
     if (d < best) { best = d; speaker = w }
   }
-  if (speaker && run.shyT <= 0) { speakFrom(state, speaker.entity, SHY_LINE); run.shyT = SHY_SAY_EVERY }
+  // never over a line still up in the one bubble: the watch's shout at the
+  // blow this swing landed (law.js speaks in the swing's own frame), or
+  // anyone else's
+  const up = state.feedback?.bubble
+  if (speaker && run.shyT <= 0 && (!up || up.text === SHY_LINE)) { speakFrom(state, speaker.entity, SHY_LINE); run.shyT = SHY_SAY_EVERY }
 }
 // two tiles on, away from the swing (straight, then along either axis, then one tile)
 function stepBack(map, x, y, dx, dy) {

@@ -292,6 +292,10 @@ export function keep(G, x0, yLow, w) {
   return { door: { x: mid, y: yLow }, top: by0 }
 }
 
+// Rows from the bell tower's foot (the church's bell spot, a street cell the
+// townsfolk can reach) up to its belfry, where the bell hangs.
+export const BELFRY_UP = 7 - CHURCH.tower.spire.length
+
 // The church: the nave east-west with its south face on the street, the
 // apse at the east end, the bell tower at the west end. (x0, yLow): the
 // nave's west end and ground row; n: the nave's length; door: the column

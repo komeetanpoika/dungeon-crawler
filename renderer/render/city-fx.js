@@ -19,6 +19,7 @@ import { FX, PROPS } from '../wilds/city/kit.js'
 import { fxThingsOf, flockSprites, PUFF_LIFE, PUFF_RISE, STEAM_LIFE, STEAM_RISE, SPARK_LIFE, SPLAT_LIFE } from '../wilds/city/fx.js'
 import { TURNIP_FLIGHT } from '../wilds/city/scene-things.js'
 import { CITY_OX as OX, CITY_OY as OY } from '../wilds/city/walkers.js'
+import { BELFRY_UP } from '../wilds/city/stamps.js'
 
 const SAIL_STEP = 0.22          // s a sixteenth of a turn of the sails
 const BANNER_STEP = 0.7, PENNANT_STEP = 0.45
@@ -167,9 +168,10 @@ export function drawCityAir(ctx, state, sprites, camX, camY, S, W, H) {
     }
   }
   // the church bell ringing: its sound in lines either side of the belfry
+  // (BELFRY_UP rows above the bell spot at the tower's foot)
   const bell = run.cc.city.spots.bell
   if (fx.bell && bell) {
-    const X = bell.x + OX, Y = bell.y + OY
+    const X = bell.x + OX, Y = bell.y + OY - BELFRY_UP
     if (on(v, X, Y, 2) && cellAt(state, run, X, Y)?.explored) {
       const x = sx(run, X, camX, S) + half, y = sy(run, Y, camY, S) + half
       ctx.strokeStyle = 'rgba(63, 38, 49, 0.75)'
