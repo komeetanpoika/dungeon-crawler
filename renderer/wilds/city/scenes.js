@@ -36,7 +36,7 @@
 //                  scene ends when his day moves him on); else the schedule waits
 //   e.city.talk    { lines, me, conv } read by npc.js talk
 //   e.city.say     { text, n }: the last line they said in a scene
-//   e.city.carry   true while carrying a crate (unload)
+//   e.city.carry   true while carrying a crate (unload; w.scene.loaded is the truth)
 //
 // What later tasks draw and sound (Task 17, 18) is kept as plain data on the
 // run, in world tiles (scene-things.js moves the things):
@@ -49,7 +49,7 @@
 //   run.fx.crier    { X, Y, rings, ringing, by } | null (each ring counts up `rings`)
 //   run.fx.busker   { X, Y, playing, by } | null
 //   run.fx.bell     true while the church bell rings
-//   run.fx.washing  [{ X, Y (the line's west post), state: 'in'|'out' }]
+//   run.fx.washing  [{ X, Y (the line's west post), state: 'in'|'out', by }] (by: who saw to it last, null the clock)
 //   run.fx.turnips  [{ fromX, fromY, toX, toY, t }] (t seconds in the air, TURNIP_FLIGHT long)
 //   run.lights      { lit: Uint8Array } over city.lamps: 1 = lit
 import { hash, hashInt } from '../rand.js'
@@ -92,6 +92,8 @@ export function scenesForDay(seed, day) {
 // the bell: the ringing starts, the square empties towards the church and fills again
 const BELL = [DAY.bell - 0.025, DAY.bell + 0.07]
 const offBell = (a, b) => b <= BELL[0] || a >= BELL[1]
+// washing hung out, and taken in
+const WASH_OUT = [0.25, 0.31], WASH_IN = [0.70, 0.76]
 
 function buildWindows(seed, day) {
   const set = scenesForDay(seed, day)
@@ -120,7 +122,7 @@ function buildWindows(seed, day) {
   { const a = 0.29 + H(3) * 0.04; add('cart', a, a + 0.16) }
   { const a = 0.50 + H(4) * 0.02; add('cart', a, a + 0.15) }
   add('unload', DAY.dawn + 0.01, 0.31); add('unload', 0.34, 0.40)
-  add('washing', 0.25, 0.31, { phase: 'out' }); add('washing', 0.70, 0.76, { phase: 'in' })
+  add('washing', ...WASH_OUT, { phase: 'out' }); add('washing', ...WASH_IN, { phase: 'in' })
   { const a = 0.29 + H(5) * 0.06; add('busker', a, a + 0.10) }
   if (H(6) < 0.6) add('busker', 0.52, 0.572)
   add('beggar', 0.25, 0.36); add('beggar', 0.645, 0.70)
@@ -196,9 +198,12 @@ const HAMMER = 5, BLOW = 0.55, QUENCH = 2.5
 const RING_EVERY = 1, RINGS = 3, CRY_QUIET = 10
 const LIGHT_TIME = 1.2      // s at a lamp
 const HANG_TIME = 3         // s at a washing line
+const WASH_MAX = 45         // s someone may take to get to a line and see to it
+const WASHERS = 3           // lines seen to at once
 const ASK_EVERY = 6         // s between two asks of the beggar's
 const LISTENERS = 2, LISTEN = 15, LISTEN_COOL = 60
 const CARRIERS = 3, CARRY_PAUSE = 1.5
+const CARRY_MAX = 45        // s after the slot a crate already picked up may take to reach the market
 const DRUNK_SAY = 5
 const DRUNK_MAX = 90        // s a drunk may take to get home
 const GAWKERS = 8           // townsfolk who come to stand round the stocks
@@ -224,7 +229,7 @@ export function makeStage(cc, seed, day, frac) {
     fx: {
       turnips: [], carts: [], smithy: null, crier: null, busker: null, bell: false,
       flocks: [makeFlock(things, seed, day)],
-      washing: things.lines.map((l, j) => ({ X: l.x + OX, Y: l.y + OY, state: washDue(washday, seed, day, j, frac) })),
+      washing: things.lines.map((l, j) => ({ X: l.x + OX, Y: l.y + OY, state: washDue(washday, seed, day, j, frac), by: null })),
     },
   }
 }
@@ -385,6 +390,12 @@ export function sceneStep(run, w, e, ox, oy) {
 }
 
 const faceTo = (fromX, toX) => toX < fromX ? 'west' : 'east'
+// a world tile on or beside a door, where standing about would block the way in and out
+function byDoor(run, X, Y) {
+  const x = X - OX, y = Y - OY, cells = run.cc.doorCells
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (cells.has((y + dy) * 160 + x + dx)) return true
+  return false
+}
 
 // ---- the scenes -------------------------------------------------------------------
 
@@ -414,10 +425,11 @@ const STAGE = {
           if (d < bd) { b = o; bd = d }
         }
         if (!b) continue
-        // a stands; b comes up on whichever side of a is nearer and free
+        // a stands; b comes up on whichever side of a is nearer and free (never in a doorway)
         const ax = Math.round(a.X), ay = Math.round(a.Y)
+        if (byDoor(run, ax, ay)) continue
         const sides = b.X >= a.X ? [1, -1] : [-1, 1]
-        const side = sides.find(s => walkableAt(c, ax + s, ay) && !playerOn(c, ax + s, ay))
+        const side = sides.find(s => walkableAt(c, ax + s, ay) && !playerOn(c, ax + s, ay) && !byDoor(run, ax + s, ay))
         if (side === undefined) continue
         const pool = slot.place === 'inn' ? NIGHT_TALKS : TALKS
         const lines = pool[hashInt(run.seed, run.day, a.n * 1000 + b.n, 931) % pool.length]
@@ -563,9 +575,11 @@ const STAGE = {
     },
   },
 
-  // Fishers and porters carry crates from the boats to the fish market.
+  // Fishers and porters carry crates from the boats to the fish market. When
+  // the slot is over nobody fetches another, but a crate already picked up
+  // is carried to the market and set down there (CARRY_MAX at most).
   unload: {
-    range: 10,
+    range: 10, outlives: true,
     start(c, slot) {
       const { run } = c
       const market = spotW(run, 'fish-market')
@@ -584,20 +598,25 @@ const STAGE = {
         if (cheb(w.X, w.Y, market.X, market.Y) > 14 && cheb(w.X, w.Y, boat.X, boat.Y) > 6) continue
         const fm = run.cc.city.spots['fish-market']
         const m = [[0, 1], [1, 1], [-1, 1], [2, 1], [-2, 1], [0, 2]].map(([dx, dy]) => ({ x: fm.x + dx, y: fm.y + dy })).find(t => reachable(run.cc, t.x, t.y)) ?? fm
-        sc ??= open(c, slot, 'unload', market, { cool: 30 })
+        sc ??= open(c, slot, 'unload', market, { cool: 30, ends: slot.b, day: run.day, over: 0, delivered: 0 })
         cast(run, sc, w, { how: 'route', spot: boat, goalKey: `${sc.key}:${w.id}:boat`, boat, market: toWorld(m), loaded: false, pause: 0, trips: 0 })
       }
     },
     step(c, sc, dt) {
       const { run } = c
+      const over = run.day !== sc.day || run.frac >= sc.ends
+      if (over && (sc.over += dt) > CARRY_MAX) { end(run, sc); return }
       for (const w of members(run, sc)) {
         if (w.mode === 'near' && !onFeet(w)) { drop(run, sc, w, 30); continue }
         const r = w.scene
+        if (over && !r.loaded) { drop(run, sc, w, 30); continue }   // nothing more to fetch
         if (w.mode !== 'near' || !r.there) continue
         if ((r.pause += dt) < CARRY_PAUSE) continue
         r.pause = 0
         r.loaded = !r.loaded; r.trips++
         if (w.entity) w.entity.city.carry = r.loaded
+        if (!r.loaded) sc.delivered++   // set down at the market
+        if (over) { drop(run, sc, w, 30); continue }
         sendTo(run, w, `${sc.key}:${w.id}:${r.loaded ? 'market' : 'boat'}:${r.trips}`, r.loaded ? r.market : r.boat)
         r.spot = r.loaded ? r.market : r.boat
       }
@@ -643,15 +662,18 @@ const STAGE = {
     end(run) { run.fx.smithy = null },
   },
 
-  // Washing goes out on the lines in the morning and comes in at dusk: someone
-  // near a line walks to it and stays a moment; out of sight, the clock does it.
+  // Washing goes out on the lines in the morning and comes in at dusk: in
+  // sight, only when someone has walked to the line and stood at it a moment
+  // (they finish however long the walk, WASH_MAX at most); out of sight, by
+  // the clock (washingByClock).
   washing: {
+    outlives: true,
     step(c, sc, dt) {
       const { run } = c
       const w = member(run, sc, sc.cast[0]), line = run.fx.washing[sc.line]
-      if (!w || (w.mode === 'near' && !onFeet(w))) { line.state = sc.to; end(run, sc); return }
+      if (!w || (w.mode === 'near' && !onFeet(w)) || sc.t > WASH_MAX) { end(run, sc); return }
       if (w.mode !== 'near' || !w.scene.there) return
-      if ((w.scene.t += dt) >= HANG_TIME) { line.state = sc.to; end(run, sc) }
+      if ((w.scene.t += dt) >= HANG_TIME) { line.state = sc.to; line.by = w.id; line.byDay = run.day; end(run, sc) }
     },
   },
 
@@ -920,26 +942,38 @@ function lampsByClock(c) {
   }
 }
 
-// Lines whose washing should be out (or in) by now: near the player in the
-// washing slot, someone goes to see to it; else the clock does it.
+// The washing lines. Out of sight a line follows the clock (out in the
+// morning, in at dusk, on a washing day). In sight it changes only by hand:
+// in the washing slot someone near walks to each line still to be seen to
+// (from the slot's start, so most get there in time) and changes it when
+// they have stood there a moment; with nobody about it waits. line.by is who
+// did it last (null: the clock).
 function washingByClock(c, slots) {
   const { run } = c
   const things = thingsOf(run.cc)
   const washday = scenesForDay(run.seed, run.day).has('washing')
   const slot = slots.find(s => s.id === 'washing')
+  let busy = run.scenes.reduce((n, s) => n + (s.id === 'washing' && !s.done ? 1 : 0), 0)
   run.fx.washing.forEach((line, j) => {
-    const due = washDue(washday, run.seed, run.day, j, run.frac)
-    if (line.state === due || run.scenes.some(s => s.id === 'washing' && s.line === j && !s.done)) return
-    if (!slot || cheb(line.X, line.Y, c.PX, c.PY) > c.R) { line.state = due; return }
+    if (run.scenes.some(s => s.id === 'washing' && s.line === j && !s.done)) return
+    if (cheb(line.X, line.Y, c.PX, c.PY) > c.R) {
+      // (what a hand did today ahead of the clock stands: hung out this morning, taken in this evening)
+      const due = washDue(washday, run.seed, run.day, j, run.frac)
+      const handPhase = run.frac >= WASH_OUT[0] && run.frac < WASH_IN[0] ? 'out' : 'in'
+      if (line.state !== due && !(line.by && line.byDay === run.day && line.state === handPhase)) { line.state = due; line.by = null }
+      return
+    }
+    if (!slot || line.state === slot.phase || busy >= WASHERS) return
     let who = null, wd = 15
     for (const w of run.people.values()) {
       if (w.person.age !== 'adult' || !castable(run, w, { near: true })) continue
       const d = cheb(w.X, w.Y, line.X, line.Y)
       if (d < wd) { who = w; wd = d }
     }
-    if (!who) { line.state = due; return }
+    if (!who) return
     const stand = toWorld(things.lines[j].stand)
-    const sc = open(c, slot, 'washing', stand, { line: j, to: due, cool: 30 })
+    const sc = open(c, slot, 'washing', stand, { line: j, to: slot.phase, cool: 30 })
     cast(run, sc, who, { how: 'route', spot: stand, goalKey: `${sc.key}:line`, facing: 'east', t: 0 })
+    busy++
   })
 }

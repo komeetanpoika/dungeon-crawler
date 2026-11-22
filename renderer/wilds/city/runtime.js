@@ -505,7 +505,7 @@ function spawn(state, run, w, hooks, ox, oy) {
     const h = cityToWorld(w.home)
     e.home = { x: h.X - ox, y: h.Y - oy }
   } else {
-    e.city = { next: null, entry: w.entry, person: w.person, passed: false, scene: w.scene ?? null, talk: w.scene?.talk ?? null }
+    e.city = { next: null, entry: w.entry, person: w.person, passed: false, scene: w.scene ?? null, talk: w.scene?.talk ?? null, carry: !!w.scene?.loaded }
     w.homed = false; w.sx = w.X; w.sy = w.Y; w.still = 0
     if (w.hunt) rouseEntity(e, state.player)   // one of the hunters comes near: after the player
   }

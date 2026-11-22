@@ -262,6 +262,40 @@ test('a carter\'s cart comes down market street to a stall and back out; people 
 })
 const cityGateOut = () => { const { spots } = cityFor(SEED); return { X: spots['gate-N-out'].x, Y: spots['gate-N-out'].y + 160 } }
 
+test('fishers carry crates from the boats and set them down at the fish market', () => {
+  const day = 0, seed = 1
+  const world = makeWorld(null, { seed })
+  const state = freshState()
+  const AT = { X: 71, Y: 264 }   // on the wharf by the fish market
+  enterWilds(state, world, AT, { buildEntities })
+  const T = { clock: 0.205 * DAY_LENGTH, day, view: { w: 20, h: 12 } }
+  const hooks = { spawn: buildEntities, clock: () => T.clock, day: () => T.day, viewHalf: () => T.view, sfx: () => {}, hurt: () => {} }
+  arriveCity(state, world, hooks, { fresh: true })
+  const ctx = { world, state, hooks, T, cues: new Map() }
+  assert.ok(scenesForDay(seed, day).has('unload'))
+  const fm = cityFor(seed).spots['fish-market'], market = { X: fm.x, Y: fm.y + 160 }
+  const carrying = new Map()   // entity -> carrying last frame
+  let delivered = 0, setDown = 0, picked = 0
+  run(ctx, (0.45 - 0.205) * DAY_LENGTH, { each: () => {
+    for (const sc of state.cityRun.scenes) if (sc.id === 'unload') delivered = Math.max(delivered, sc.delivered)
+    for (const e of state.entities) {
+      if (e.cityKey === undefined || !e.city) continue
+      const now = !!e.city.carry, was = carrying.get(e)
+      if (was === false && now) picked++
+      if (was && !now) {
+        // a crate leaves the arms only at the market
+        assert.ok(cheb(entityWorld(world, e), market) <= 3, `${e.cityKey} put a crate down in the street at ${JSON.stringify(entityWorld(world, e))}`)
+        setDown++
+      }
+      carrying.set(e, now)
+    }
+  } })
+  assert.ok(picked >= 2, `crates picked up (${picked})`)
+  assert.ok(setDown >= 2 && delivered >= 1, `crates set down at the market (${setDown}, ${delivered} in one slot)`)
+  assert.equal(state.cityRun.scenes.some(s => s.id === 'unload'), false, 'and the work is over')
+  assert.ok(![...state.cityRun.people.values()].some(w => w.entity?.city.carry && !w.scene), 'nobody left holding a crate')
+})
+
 // A day on the square, dawn to night (seed 7, day 1: a cart, a busker, tag,
 // washing): the runtime casts only what the timetable has on, the scenes
 // round the square all happen, and nobody is left held by a scene that ended.
@@ -271,7 +305,8 @@ test('a day on the square: the timetable is what runs', () => {
   const { state } = ctx
   const run_ = state.cityRun
   const cast = new Set(), known = new Set()
-  const did = { blows: 0, rings: 0, unloading: false, lit: 0, lifts: 0, listeners: 0, tags: 0 }
+  const did = { blows: 0, rings: 0, unloading: false, lit: 0, lifts: 0, listeners: 0, tags: 0, hung: 0 }
+  const lineWas = run_.fx.washing.map(l => l.state)
   run(ctx, (0.97 - 0.18) * DAY_LENGTH, { each: () => {
     for (const sc of run_.scenes) {
       if (sc.done) continue
@@ -291,6 +326,16 @@ test('a day on the square: the timetable is what runs', () => {
     if (fx.carts.some(k => k.state === 'unloading')) did.unloading = true
     // everyone held is held by a scene still on
     for (const w of run_.people.values()) if (w.scene) assert.ok(run_.scenes.some(s => !s.done && s.key === w.scene.key), `${w.id} held by an ended ${w.scene.id}`)
+    // a line in sight changes only when someone has seen to it
+    const P = { X: state.player.x + ctx.world.origin.wx * PIECE, Y: state.player.y + ctx.world.origin.wy * PIECE }
+    fx.washing.forEach((l, j) => {
+      if (l.state === lineWas[j]) return
+      lineWas[j] = l.state
+      if (cheb(l, P) > run_.nearR) return
+      assert.ok(l.by, `line ${j} changed in sight with nobody at it`)
+      assert.ok(cheb(entityWorld(ctx.world, entityOf(state, l.by)), l) <= 2.5, 'by someone standing at it')
+      did.hung++
+    })
   } })
   for (const id of ['talk', 'smith', 'crier', 'lamps', 'church', 'shift', 'pigeons', 'cart', 'busker', 'tag']) assert.ok(cast.has(id), `${id} happened (${[...cast]})`)
   assert.ok(did.blows >= 10, `the smith hammered (${did.blows})`)
@@ -298,6 +343,7 @@ test('a day on the square: the timetable is what runs', () => {
   assert.ok(did.unloading, 'the cart got to its stall')
   assert.ok(did.lit >= 2, `the lamplighter lit lamps (${did.lit})`)
   assert.ok(did.lifts >= 1, 'the pigeons lifted')
+  assert.ok(did.hung >= 1, `washing hung out or taken in by hand (${did.hung})`)
   // by night every lamp is lit, and the washing is in
   assert.ok(run_.lights.lit.every(v => v === 1), 'lamps lit at night')
   assert.ok(run_.fx.washing.every(l => l.state === 'in'), 'washing in at night')
