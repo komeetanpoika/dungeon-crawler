@@ -9,9 +9,9 @@ falls under the same MIT licence.
 | What ships in the game | Source | Author | Licence |
 |---|---|---|---|
 | `renderer/assets/tiles/tile_*.png` (dungeon tiles, hero, items, weapons); also `road_*.png`, derived from `tile_0042` | [Tiny Dungeon](https://kenney.nl/assets/tiny-dungeon) 1.0, kept in `assets/kenney_tiny-dungeon/` | Kenney ([kenney.nl](https://www.kenney.nl)) | CC0 1.0 |
-| `renderer/assets/tiles/ow_*.png` except `ow_mtn_*` (the open-map tiles), cut by `tools/static-overworld/extract-tiles.mjs` | [Tiny Town](https://kenney.nl/assets/tiny-town) and [Roguelike/RPG Pack](https://kenney.nl/assets/roguelike-rpg-pack) | Kenney | CC0 1.0 |
+| `renderer/assets/tiles/ow_*.png` (the open-map tiles) except `ow_mtn_*` and the Kalevanlinna tiles the project draws (below), cut by `tools/static-overworld/extract-tiles.mjs`; among them the city's anvil, forge, produce crates and wall turret (`ow_prop_city_anvil`, `ow_city_forge`, `ow_prop_city_produce_*`, `ow_city_wall_turret`) | [Tiny Town](https://kenney.nl/assets/tiny-town) and [Roguelike/RPG Pack](https://kenney.nl/assets/roguelike-rpg-pack) | Kenney | CC0 1.0 |
 | `renderer/assets/tiles/in_*.png` (house interiors), cut by `tools/interiors/extract-tiles.mjs`; the few pieces drawn there from pixel maps (cobwebs, the puzzle mirrors and sun-seed, the alcove, the doormat) are the project's own | [Roguelike/RPG Pack](https://kenney.nl/assets/roguelike-rpg-pack) | Kenney | CC0 1.0 |
-| `renderer/assets/tiles/npc_*.png`, `creature_dragon.png`, cut by `tools/extract-npc-sprites.mjs` | [Tiny Creatures](https://clintbellanger.net) 1.0, kept in `assets/tiny-creatures/` | Clint Bellanger | CC0 1.0 |
+| `renderer/assets/tiles/npc_*.png`, `creature_dragon.png`, cut by `tools/extract-npc-sprites.mjs`; Kalevanlinna's horse `tf_horse_*.png` (tile 51), cut by `tools/city/make-townsfolk.mjs` | [Tiny Creatures](https://clintbellanger.net) 1.0, kept in `assets/tiny-creatures/` | Clint Bellanger | CC0 1.0 |
 | `renderer/assets/monsters/manticore-parts.png` | [DnD Manticore](https://commons.wikimedia.org/wiki/File:DnD_Manticore.png), Wikimedia Commons | LadyofHats | CC0 1.0 |
 
 The monster cutter's test images are credited in
@@ -48,6 +48,15 @@ the project holds in them are offered under the MIT licence.
   `ow_bank_*.png`, which are Tiny Town's pond rim redrawn along a slant and round
   the corners it has no tile for (`tools/make-wilds-shore-tiles.mjs`), and the app icons
   `renderer/assets/icon-*.png`.
+- Kalevanlinna, the walled city: its tiles `ow_city_*.png`, `ow_prop_city_*.png` and
+  `ow_deco_city_*.png` (all but those cut from the Kenney packs, named above) and
+  the sprites drawn over the town `fx_city_*.png` (smoke, steam, sparks, birds in
+  flight, the cart, the crier's bell, the busker's notes, turnip splats), drawn by
+  `tools/city/make-city-tiles.mjs` and its modules `fort.mjs`, `town.mjs`, `street.mjs`
+  and `fx.mjs`; some are built on Tiny Town's brick, red roof, door and windows and
+  the RPG pack's stall (CC0), recoloured and redrawn. Its people and town animals
+  `tf_*.png` (all but the horse, above) are drawn by `tools/city/make-townsfolk.mjs`
+  in the manner of Tiny Dungeon's people and Tiny Creatures' animals.
 - `custom_moss_floor_*.png` were drawn in the in-game tile editor.
 
 ## Sound and type
