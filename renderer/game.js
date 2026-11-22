@@ -49,7 +49,7 @@ import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
-import { cityViolence, arrest, seat, clearCrime, stocksWorld } from './wilds/city/law.js'
+import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
 import { ARREST_FADE } from './wilds/city/crime.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld } from './wilds/world.js'
@@ -1433,17 +1433,16 @@ function answerTheCall() {
   sfx(state, 'rite', { px: state.player.px, py: state.player.py })
 }
 
-// The arrest's darkest moment: the player is put in the stocks on the square.
-// Taken where the square is beyond the window (by the west gate, the window
-// still round the land outside it), the window is built round the stocks
-// first, the town anew with the record carried over.
-function toStocks() {
-  if (!wildsWorld || !state.cityRun || seat(state, wildsWorld)) return
-  const { crime } = state.cityRun
-  enterWilds(state, wildsWorld, stocksWorld(wildsWorld), wildsHooks)
-  arriveTales(state, wildsWorld, taleHooks, { fresh: true })
-  arriveCity(state, wildsWorld, cityHooks, { fresh: true })
-  if (state.cityRun) { state.cityRun.crime = crime; seat(state, wildsWorld) }
+// The arrest's darkest moment: the player is put in the stocks on the square
+// (wilds/city/law.js). Where the square is beyond the window, the window is
+// built round the stocks first, the tales and the town anew.
+function seatInStocks() {
+  if (!wildsWorld) return
+  toStocks(state, wildsWorld, at => {
+    enterWilds(state, wildsWorld, at, wildsHooks)
+    arriveTales(state, wildsWorld, taleHooks, { fresh: true })
+    arriveCity(state, wildsWorld, cityHooks, { fresh: true })
+  })
 }
 
 function update(delta) {
@@ -1512,7 +1511,7 @@ function update(delta) {
       if (st && st.fade < ARREST_FADE) {
         const was = st.fade
         st.fade = Math.min(ARREST_FADE, st.fade + delta)
-        if (was < ARREST_FADE / 2 && st.fade >= ARREST_FADE / 2) toStocks()
+        if (was < ARREST_FADE / 2 && st.fade >= ARREST_FADE / 2) seatInStocks()
       }
     }
   }

@@ -12,13 +12,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { CRIME, CRIME_LINES, makeCrime, onViolence, tickCrime, spares } from '../renderer/wilds/city/crime.js'
-import { cityViolence, arrest, seat, clearCrime, stocksWorld } from '../renderer/wilds/city/law.js'
+import { cityViolence, arrest, seat, toStocks, clearCrime, stocksWorld } from '../renderer/wilds/city/law.js'
 import { arriveCity, tickCity, cityPeople } from '../renderer/wilds/city/runtime.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { fromCity } from '../renderer/wilds/city/geometry.js'
 import { makeWorld } from '../renderer/wilds/world.js'
 import { enterWilds, tickWilds, wildsRespawn } from '../renderer/wilds/session.js'
-import { toWorld, toWindow } from '../renderer/wilds/window.js'
+import { toWorld, toWindow, WIN_TILES } from '../renderer/wilds/window.js'
 import { PIECE } from '../renderer/wilds/layout.js'
 import { makeNpc, updateNpc, onNpcHit } from '../renderer/systems/npc.js'
 import { stepEnemyAttack } from '../renderer/systems/enemy-attack.js'
@@ -281,6 +281,82 @@ test('the watch never kills you: the last blow puts you in the stocks', () => {
   assert.deepEqual(state.cityRun.fx.turnips, [])
   run(ctx, 1)
   assert.equal(cityPeople(state).filter(p => p.gawk).length, 0, 'the crowd goes back about its day')
+})
+
+// Taken just outside the west gate by a player come from the west: the window
+// is still the one round the land west of the city (it re-centres only 24
+// tiles into a city piece), so the square is not in it and the window is built
+// anew round the stocks (game.js toStocks: enterWilds, the tales, the town).
+test('taken outside the west gate, the square beyond the window: the window is built round the stocks', () => {
+  const world = makeWorld(null, { seed: SEED })
+  const state = freshState()
+  const WEST_GATE = { X: 20, Y: 228 }   // the west gate's arch (city 20,68), its posts at 22,66 and 22,70
+  enterWilds(state, world, { X: -4, Y: WEST_GATE.Y }, { buildEntities })   // walking in from the west
+  assert.deepEqual(world.origin, { wx: -2, wy: 1 })
+  const T = { clock: 0.5 * DAY_LENGTH, day: 0, view: { w: 20, h: 12 } }
+  const cues = new Map()
+  const hooks = {
+    spawn: spawns => buildEntities(spawns), clock: () => T.clock, day: () => T.day, viewHalf: () => T.view,
+    sfx: name => cues.set(name, (cues.get(name) ?? 0) + 1), hurt: (target, amount) => { target.hp -= amount },
+  }
+  const ctx = { world, state, hooks, T, cues }
+  // eight tiles beyond the wall, inside the watch's leash, the window not yet re-centred
+  const out = roadAt(state, world, WEST_GATE.X - 8, WEST_GATE.Y)
+  placePlayer(state, world, out.X, out.Y)
+  arriveCity(state, world, hooks, { fresh: true })
+  run(ctx, 0.5)
+  const st = stocksWorld(world), spot = cityFor(SEED).spots.stocks
+  assert.deepEqual(st, fromCity(spot.x, spot.y))
+  const sq = toWindow(world.origin, st.X, st.Y)
+  assert.ok(sq.x < 0 || sq.y < 0 || sq.x >= WIN_TILES || sq.y >= WIN_TILES, 'the square is beyond this window')
+  makeWanted(ctx)
+  state.player.hp = 1
+  run(ctx, 20, { each: () => !state.arrest })
+  assert.ok(state.arrest, 'the watch at the west gate landed the last blow')
+  assert.equal(state.player.hp, 1)
+  assert.equal(arrest(state), true)
+  const player = state.player
+  // at the fade's darkest: no seat in this window, so it is built round the stocks
+  assert.equal(seat(state, world), false)
+  let rebuilt = 0
+  const ok = toStocks(state, world, at => {
+    rebuilt++
+    enterWilds(state, world, at, { buildEntities })
+    arriveCity(state, world, hooks, { fresh: true })
+  })
+  assert.equal(ok, true)
+  assert.equal(rebuilt, 1)
+  assert.ok(state.player === player, 'the same player')
+  assert.deepEqual(playerWorld(state, world), st, 'in the stocks on the square')
+  const now = toWindow(world.origin, st.X, st.Y)
+  assert.ok(now.x >= 80 && now.y >= 80 && now.x < 160 && now.y < 160, 'the window built round it')
+  assert.ok(playerBound(state.player), 'bound')
+  assert.ok(state.player.stocks.seated)
+  assert.equal(state.cityRun.crime.level, 'stocks', 'the record went along')
+  assert.ok(state.cityRun.crime.t > 50 && Math.abs(state.player.stocks.t - state.cityRun.crime.t) < 1e-9)
+  // everyone once
+  const once = () => {
+    const keys = cityEntities(state).map(e => e.cityKey)
+    assert.equal(new Set(keys).size, keys.length, 'no city entity twice')
+    const people = cityPeople(state)
+    assert.equal(new Set(people.map(p => p.id)).size, people.length)
+    assert.equal(people.length, 140)
+    for (const p of people) assert.equal(keys.filter(k => k === p.id).length, p.mode === 'near' ? 1 : 0, `${p.id} ${p.mode}`)
+    assert.ok(people.filter(p => p.mode === 'near').length >= 10, 'the square is busy')
+  }
+  once()
+  assert.equal(hostileWatch(state).length, 0, 'the watch is calm')
+  assert.equal(hunters(state).length, 0)
+  assert.ok(!state.entities.some(e => e.cityKey !== undefined && e.hostile))
+  run(ctx, 10, { each: () => assert.equal(hostileWatch(state).length, 0) })
+  once()
+  assert.deepEqual(playerWorld(state, world), st, 'still in the stocks')
+  assert.ok(cityPeople(state).filter(p => p.gawk).length >= 4, 'the crowd gathers')
+  run(ctx, 50.5)
+  assert.equal(state.player.stocks, null)
+  assert.equal(state.player.hp, state.player.maxHp)
+  assert.equal(state.cityRun.crime.level, 'calm')
+  once()
 })
 
 test('two minutes outside the walls and you are no longer wanted', () => {

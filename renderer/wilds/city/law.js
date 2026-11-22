@@ -9,7 +9,7 @@
 // square, where the townsfolk gather round and throw turnips (harmless), for
 // CRIME.stocksSeconds. No DOM and no game.js import: runtime.js runs tickLaw
 // every frame; game.js calls cityViolence for every npc it strikes, arrest
-// and seat for the fade, and clearCrime on a wake.
+// and toStocks for the fade, and clearCrime on a wake.
 //
 //   w.hunt     a watchman after the player: hostile while near (the enemy
 //              brain drives him), walking a route to the player while far
@@ -279,6 +279,21 @@ export function seat(state, world) {
   p.stocks.seated = true
   if (state.cityRun) state.cityRun.ring = null
   return true
+}
+
+// The arrest's darkest moment: into the stocks. Taken where the square is
+// beyond the window (just outside the west gate, the window still round the
+// land west of the city), `rebuild(at)` builds the window anew round world
+// tile `at` first (game.js: enterWilds, the tales and the town, fresh), and
+// the record goes along to the new town.
+export function toStocks(state, world, rebuild) {
+  if (seat(state, world)) return true
+  const crime = state.cityRun?.crime
+  if (!crime || !state.player.stocks) return false
+  rebuild(stocksWorld(world))
+  if (!state.cityRun) return false
+  state.cityRun.crime = crime
+  return seat(state, world)
 }
 
 // The minute is up: full hp, the record clean, and a word from the watch.

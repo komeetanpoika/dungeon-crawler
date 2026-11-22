@@ -96,7 +96,7 @@ test('the city runtime is wired in beside the tales, with the screen and the swi
 
 // Kalevanlinna's law (wilds/city/law.js); its behaviour is test/wilds-city-crime.test.js
 test("the city's law is wired in: violence from npcStruck, the arrest's fade, a key jeers, a wake forgets", () => {
-  assert.match(SRC, /import \{ cityViolence, arrest, seat, clearCrime, stocksWorld \} from '\.\/wilds\/city\/law\.js'/)
+  assert.match(SRC, /import \{ cityViolence, arrest, toStocks, clearCrime \} from '\.\/wilds\/city\/law\.js'/)
   // every npc the player strikes reaches the law, with the hit path's source (the watch's own blows say 'watch')
   assert.match(SRC, /function npcStruck\(e, alive = e\.hp > 0, source = 'player'\)/)
   assert.match(SRC, /if \(e\.cityKey !== undefined && wildsWorld\) cityViolence\(state, wildsWorld, e, \{ killed: !alive, source \}\)/)
@@ -105,8 +105,9 @@ test("the city's law is wired in: violence from npcStruck, the arrest's fade, a 
   // the arrest follows the town's tick: fade, and the stocks at its darkest
   const upd = SRC.slice(SRC.indexOf('tickCity(state, wildsWorld, delta, cityHooks)'))
   assert.ok(upd.indexOf('if (state.arrest) arrest(state)') > 0 && upd.indexOf('if (state.arrest) arrest(state)') < 300, 'the arrest beside tickCity')
-  assert.match(upd.slice(0, 700), /ARREST_FADE \/ 2[\s\S]*toStocks\(\)/)
-  assert.match(SRC, /function toStocks\(\) \{[\s\S]{0,120}seat\(state, wildsWorld\)/)
+  assert.match(upd.slice(0, 700), /ARREST_FADE \/ 2[\s\S]*seatInStocks\(\)/)
+  // the window built round the stocks when the square is beyond it: the same arrival as a wake's
+  assert.match(SRC, /function seatInStocks\(\) \{[\s\S]{0,80}toStocks\(state, wildsWorld, at => \{\s*enterWilds\(state, wildsWorld, at, wildsHooks\)\s*arriveTales\(state, wildsWorld, taleHooks, \{ fresh: true \}\)\s*arriveCity\(state, wildsWorld, cityHooks, \{ fresh: true \}\)/)
   // in the stocks a key press only jeers
   assert.match(SRC, /if \(state\.player\.stocks\) \{ sfx\(state, 'jeer'[^}]*\}\); return \}\s*struggle\(state\.player\)/)
   // a wake and a load forget
