@@ -37,6 +37,30 @@ export function speakFrom(state, entity, text) {
   if (state.feedback) state.feedback.bubble = { text, kind: 'speech', t: 0, anchorId: entity.id }
 }
 
+// Kalevanlinna's people speak their scene lines over their own heads, apart
+// from the single bubble above (which stays the player's and the tales'):
+// e.city.say = { text, n, t } (npc.js sceneSay; the city runtime ages t).
+// Which of them draw a bubble now: a line younger than BUBBLE_DUR, a speaker
+// on its feet within `view` (a pixel rect { x0, y0, x1, y1 }), and of those
+// the `max` nearest `focus` (the player), nearest first; never `skip` (the id
+// the single bubble is over). Pure.
+export const AMBIENT_MAX = 4
+export function ambientSpeakers(entities, view, focus, { max = AMBIENT_MAX, skip = null } = {}) {
+  const out = [], d2 = []
+  for (const e of entities) {
+    const s = e.city?.say
+    if (!s || !(s.t < BUBBLE_DUR) || e.hp <= 0 || (skip !== null && e.id === skip)) continue
+    if (e.px < view.x0 || e.px > view.x1 || e.py < view.y0 || e.py > view.y1) continue
+    const d = (e.px - focus.px) ** 2 + (e.py - focus.py) ** 2
+    let i = out.length
+    while (i > 0 && d2[i - 1] > d) i--
+    if (i >= max) continue
+    out.splice(i, 0, e); d2.splice(i, 0, d)
+    if (out.length > max) { out.pop(); d2.pop() }
+  }
+  return out
+}
+
 export function announce(state, text) {
   if (state.feedback) state.feedback.banner = { text, t: 0 }
 }

@@ -35,7 +35,6 @@ export const STRIKE_INTERVAL = 0.8  // s between a watchman's blows
 export const STRIKE_DMG = 3         // damage per blow, through the city's hurt hook
 export const LOST_TIME = 5          // s a watchman leaves a foe he found no way to before he may take it on again
 export const TALK_BEAT = 2.4        // s a line in a street talk stands before the other answers
-const SAY_NEAR = 10 * S             // px from the player within which a scene's line takes the speech bubble
 
 export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
   const def = NPC_SPECIES[species]
@@ -355,17 +354,13 @@ function face(e) {
 }
 
 // A line said in a scene (wilds/city/scenes.js): kept on the speaker
-// (e.city.say = { text, n }), and shown in the speech bubble if the speaker
-// is near the player and the bubble is free or another scene's. A scene never
-// talks over what the player or a tale is saying.
+// (e.city.say = { text, n, t }), whose own bubble the renderer draws while t
+// (aged by the city runtime) is under BUBBLE_DUR (feedback.js
+// ambientSpeakers). The single speech bubble is never a scene's: a scene never
+// talks over what the player or a tale is saying, nor one scene over another.
 export function sceneSay(state, e, text) {
   const c = e.city
-  if (c) c.say = { text, n: (c.say?.n ?? 0) + 1 }
-  const fb = state.feedback, p = state.player
-  if (!fb || !p || (fb.bubble && !fb.bubble.scene)) return
-  if (Math.hypot(p.px - e.px, p.py - e.py) > SAY_NEAR) return
-  speakFrom(state, e, text)
-  fb.bubble.scene = true
+  if (c) c.say = { text, n: (c.say?.n ?? 0) + 1, t: 0 }
 }
 
 // The tile beside `e` square to its way towards `to`: the right hand first,
@@ -476,6 +471,8 @@ export function interactNpc(state, e, rng = Math.random) {
   // was built from (wilds/tale-run.js); a tale's own stand-in carries linesKey.
   // Someone at home in a house carries the household's own lines (renderer/interior/).
   const lines = e.lines ?? state.villageLines?.[e.linesKey ?? e.wildsKey]?.[e.species] ?? state.villagerLines?.[e.species] ?? def.lines
+  // no lines at all (Kalevanlinna's Count, who is not spoken to): no answer
+  if (lines && !lines.length) return null
   if (lines) {
     e.facing = player.px < e.px ? 'west' : 'east'
     e.ai.wanderPt = null

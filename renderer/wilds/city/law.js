@@ -239,7 +239,8 @@ export function arrest(state) {
 }
 
 // Put the player in the stocks. False when the square is beyond the window
-// (game.js then builds the window round it first).
+// (game.js then builds the window round it first). The world remembers the
+// day (world.stocksDay, saved): crime is never saved, but the town's talk is.
 export function seat(state, world) {
   const p = state.player
   if (!p.stocks || !world.origin) return false
@@ -249,6 +250,7 @@ export function seat(state, world) {
   p.x = x; p.y = y; p.px = x * S + S / 2; p.py = y * S + S / 2
   p.facing = 'south'
   p.stocks.seated = true
+  world.stocksDay = world.day   // the crier has it the next day (crier.js)
   return true
 }
 

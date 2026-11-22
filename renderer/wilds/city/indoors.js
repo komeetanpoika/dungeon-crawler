@@ -12,19 +12,23 @@
 // until the next day, as in the street: leaveCityHouse tells the runtime as
 // the player walks out.
 import { houseSpec } from '../../interior/versions.js'
-import { occupantsOf, householdOf, struckIndoors, jobLines } from './runtime.js'
+import { occupantsOf, householdOf, struckIndoors, moodOf } from './runtime.js'
 import { speciesOf } from './walkers.js'
+import { linesFor } from './lines.js'
 
-// A person as a spawn in their house (game.js buildEntities makes the npc).
-export const residentOf = person => ({
-  kind: 'npc', species: speciesOf(person), id: person.id, look: person.look, lines: jobLines(person), hostile: false,
+// A person as a spawn in their house (game.js buildEntities makes the npc),
+// saying what they would in the street in that mood (runtime.js moodOf).
+export const residentOf = (person, mood = {}) => ({
+  kind: 'npc', species: speciesOf(person), id: person.id, look: person.look, lines: linesFor(person, mood), hostile: false,
 })
 
 // What to build behind a city door (door.city) at this moment.
 export function cityHouseSpec(state, door, worldSeed) {
+  const run = state.cityRun ?? state.cave?.surface?.cityRun
+  const mood = run ? moodOf(run) : {}
   return houseSpec(door, {
     worldSeed,
-    residents: occupantsOf(state, door.label).map(residentOf),
+    residents: occupantsOf(state, door.label).map(p => residentOf(p, mood)),
     household: householdOf(state, door.label),
   })
 }

@@ -10,7 +10,7 @@ import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc, CHARGE } from '../systems/melee.js'
 import { GUST_CHARGE } from '../systems/magic.js'
 import { DRAW_CHARGE } from '../systems/ranged.js'
-import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
+import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR, ambientSpeakers } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { drawNpcSheet } from './npc-sheets.js'
 import { NPC_SPECIES } from '../data/npcs.js'
@@ -1483,8 +1483,9 @@ export class Renderer {
     if (this.debug) this._drawDebug(state, c0, c1, r0, r1)
   }
 
-  // Prominent message layer: rising damage/heal numbers, one speech/thought
-  // bubble above the player, and a centered banner for milestone events.
+  // Prominent message layer: rising damage/heal numbers, the city people's
+  // own speech bubbles, one speech/thought bubble above the player (or the
+  // one speaking to them), and a centered banner for milestone events.
   _drawFeedback(state) {
     const { ctx, camX, camY } = this
     const fb = state.feedback
@@ -1505,6 +1506,17 @@ export class Renderer {
         ctx.fillText(f.text, x, y)
       }
       ctx.restore()
+    }
+    // Kalevanlinna's people say their scene lines over their own heads: the
+    // nearest few on screen, nearest drawn last (on top), under the single bubble
+    if (state.cityRun && state.entities) {
+      const v = this._sayView ??= { x0: 0, y0: 0, x1: 0, y1: 0 }
+      v.x0 = camX - 32; v.x1 = camX + this.viewW + 32; v.y0 = camY; v.y1 = camY + this.viewH + 48
+      const near = ambientSpeakers(state.entities, v, state.player, { skip: fb.bubble?.anchorId ?? null })
+      for (let i = near.length - 1; i >= 0; i--) {
+        const s = near[i].city.say
+        this._drawBubble(near[i], { text: s.text, kind: 'speech', t: s.t })
+      }
     }
     if (fb.bubble) {
       const anchor = (fb.bubble.anchorId && state.entities.find(e => e.id === fb.bubble.anchorId)) || state.player

@@ -8,7 +8,8 @@
 // city npc's ai.goals reaches the whole city.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { SCENES, ALWAYS, scenesForDay, squareScenesAt, sceneWindows, scheduleAt, LIFT_R, TALKS, NIGHT_TALKS } from '../renderer/wilds/city/scenes.js'
+import { SCENES, ALWAYS, scenesForDay, squareScenesAt, sceneWindows, scheduleAt, LIFT_R } from '../renderer/wilds/city/scenes.js'
+import { TALKS, NIGHT_TALKS } from '../renderer/wilds/city/lines.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
 import { arriveCity, tickCity, cityPeople } from '../renderer/wilds/city/runtime.js'
 import { arrest, seat, clearCrime, stocksWorld } from '../renderer/wilds/city/law.js'
@@ -19,7 +20,7 @@ import { toWindow } from '../renderer/wilds/window.js'
 import { PIECE } from '../renderer/wilds/layout.js'
 import { makeNpc, updateNpc, sceneSay } from '../renderer/systems/npc.js'
 import { stepEnemyAttack } from '../renderer/systems/enemy-attack.js'
-import { makeFeedback, think } from '../renderer/systems/feedback.js'
+import { makeFeedback, think, ambientSpeakers } from '../renderer/systems/feedback.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
 
@@ -122,18 +123,23 @@ test('two townsfolk talking stop, face each other and take turns', () => {
   assert.ok(b.city.talk.lines === lines && [...TALKS, ...NIGHT_TALKS].includes(lines))
   const said = []
   const seen = { a: 0, b: 0 }
+  // on screen round the player, each line shows in a bubble over its speaker
+  const view = { x0: state.player.px - 20 * S, y0: state.player.py - 12 * S, x1: state.player.px + 20 * S, y1: state.player.py + 12 * S }
+  const onScreen = e => e.px >= view.x0 && e.px <= view.x1 && e.py >= view.y0 && e.py <= view.y1
+  let shown = 0
   // the first line may already be out
   for (const [who, e] of [['a', a], ['b', b]]) if (e.city.say) { said.push({ who, text: e.city.say.text }); seen[who] = e.city.say.n }
   run(ctx, lines.length * 2.4 + 2, { each: () => {
-    for (const [who, e] of [['a', a], ['b', b]]) if (e.city.say && e.city.say.n !== seen[who]) { seen[who] = e.city.say.n; said.push({ who, text: e.city.say.text }) }
+    for (const [who, e] of [['a', a], ['b', b]]) if (e.city.say && e.city.say.n !== seen[who]) {
+      seen[who] = e.city.say.n; said.push({ who, text: e.city.say.text })
+      if (onScreen(e)) { assert.ok(ambientSpeakers(state.entities, view, state.player).includes(e), 'a street talk shows over the speaker'); shown++ }
+    }
     return !sc.done
   } })
   assert.deepEqual(said.map(s => s.text), lines, 'every line, in order')
   for (let i = 0; i < said.length; i++) assert.equal(said[i].who, i % 2 ? 'b' : 'a', 'turn and turn about')
-  // near the player, the lines show in the speech bubble over them
-  if (Math.hypot(a.px - state.player.px, a.py - state.player.py) <= 9 * S) {
-    assert.ok(state.feedback.bubble?.scene, 'a street talk shows in the bubble')
-  }
+  if (onScreen(a)) assert.ok(shown >= 2, `the talk was seen (${shown})`)
+  assert.equal(state.feedback.bubble, null, 'and none of it in the player\'s own bubble')
   // done: both go back about their day
   run(ctx, 0.5)
   const people = new Map(cityPeople(state).map(p => [p.id, p]))
@@ -147,19 +153,16 @@ test('a scene never talks over the player or a tale', () => {
   think(state, 'Hm.')
   sceneSay(state, e, 'Morning.')
   assert.equal(state.feedback.bubble.text, 'Hm.', 'the player\'s own thought stays')
-  assert.deepEqual(e.city.say, { text: 'Morning.', n: 1 }, 'kept on the speaker all the same')
+  assert.deepEqual(e.city.say, { text: 'Morning.', n: 1, t: 0 }, 'kept on the speaker all the same')
+  // the single bubble is never a scene's: each speaker has their own (wilds-city-lines.test.js)
   state.feedback.bubble = null
   sceneSay(state, e, 'Cold one.')
-  assert.equal(state.feedback.bubble.text, 'Cold one.')
-  assert.equal(state.feedback.bubble.anchorId, 'tf:1')
-  sceneSay(state, { id: 'tf:2', px: 80, py: 16, city: {} }, 'True enough.')
-  assert.equal(state.feedback.bubble.text, 'True enough.', 'one scene line follows another')
-  // out of earshot: on the speaker only
-  state.feedback.bubble = null
-  const far = { id: 'tf:3', px: 16 + 20 * S, py: 16, city: {} }
-  sceneSay(state, far, 'Mm.')
+  const o = { id: 'tf:2', px: 80, py: 16, city: {} }
+  sceneSay(state, o, 'True enough.')
   assert.equal(state.feedback.bubble, null)
-  assert.equal(far.city.say.text, 'Mm.')
+  assert.equal(e.city.say.text, 'Cold one.'); assert.equal(o.city.say.text, 'True enough.')
+  const both = ambientSpeakers([e, o], { x0: 0, y0: 0, x1: 640, y1: 480 }, state.player)
+  assert.ok(both.length === 2 && both[0] === e && both[1] === o, 'two speakers, two bubbles')
 })
 
 test('pigeons lift when the dog runs at them and settle somewhere else', () => {

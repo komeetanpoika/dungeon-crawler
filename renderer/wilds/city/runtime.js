@@ -35,15 +35,17 @@
 // them back.
 //
 //   state.cityRun = { people: Map<id, Walker>, animals: Map<id, Animal>, hooks,
-//                     crime, scenes, lights, fx, nearR, swingAt, stats, ... }
+//                     crime, scenes, lights, fx, nearR, swingAt, stats, linesKey, ... }
 //   e.city = { next: window tile | null, entry, person, passed, foe, lost, lostT, scene, talk, say, carry }
+//   w.lines / e.lines   what they say to the player now (lines.js linesFor, kept by keepLines)
 import { cityFor } from './build.js'
 import { isCityPiece } from './geometry.js'
-import { scheduleFor, entryAt } from './schedule.js'
+import { scheduleFor, entryAt, DAY } from './schedule.js'
+import { linesFor, moodKey } from './lines.js'
 import { WIN, WIN_TILES } from '../window.js'
 import { PIECE } from '../layout.js'
 import { TILE } from '../../systems/entities.js'
-import { speakFrom } from '../../systems/feedback.js'
+import { speakFrom, BUBBLE_DUR } from '../../systems/feedback.js'
 import { isWarded } from '../../systems/ward.js'
 import { DAY_LENGTH } from '../../data/weather.js'
 import {
@@ -76,39 +78,23 @@ const HOLD_MAX = 0.25       // of the day: the longest the old shift keeps a pos
 
 export const nearRadius = view => Math.min(MAX_NEAR, Math.ceil(Math.max(view.w, view.h)) + 6)
 
-// Lines by job, until the townsfolk get their own (a later task replaces this table and jobLines).
-const JOB_LINES = {
-  baker: ['Fresh bread at dawn. Mostly fresh.', 'Rye, rye, or rye. Take your pick.'],
-  butcher: ['Good cuts today. Do not ask about the sausage.'],
-  weaver: ['Wool from the north, blisters from me.'],
-  stallholder: ['Look all you like. Buying is extra.', 'Turnips. Again.'],
-  fisher: ['The herring were in a mood this morning.', 'Wind from the east. Fish from the west. Go figure.'],
-  'net-mender': ['A net is mostly holes. The trick is the rest.'],
-  sailor: ['Solid ground. I never trust it.'],
-  porter: ['Crates in, crates out. The back hurts either way.'],
-  apprentice: ['Seppo says I will make a smith yet. One day.'],
-  dyer: ['Blue hands. It washes off by midsummer.'],
-  tanner: ['Do not stand downwind. Everyone learns that once.'],
-  miller: ['The wind turns the sails. I carry the sacks.'],
-  carter: ['Mind the wheels.', 'Market street at noon is no place for a cart. Or a person.'],
-  washer: ['Sea water for the washing, rain for the rinse. When it rains.'],
-  lamplighter: ['One lamp at a time. There is no other way.'],
-  'bell-ringer': ['My ears ring longer than the bell.'],
-  server: ['The Golden Pike. The soup is fish. So is the stew.'],
-  beggar: ['Spare a kind word? They cost nothing.'],
-  child: ['You can\'t catch me!', 'Are you a knight? You look like a knight. A bit.'],
-  elder: ['In my day the walls were lower and the herring bigger.', 'Sit a while. The bench does not mind.'],
-  smith: ['Iron listens if you hit it hard enough.'],
-  organist: ['The organ has one pipe that sulks. Like me.'],
-  herring: ['Herring! Salted, smoked, or just looked at.'],
-  vicar: ['Service at the bell. Bring your own sins.'],
-  crier: ['News at the bell! Mostly the same news.'],
-  innkeeper: ['The Golden Pike has beds. Most of them have legs.'],
-  captain: ['Keep the peace and we will get along.'],
-  count: ['Do I know you?'],
-  watch: ['Move along.', 'Keep your blade sheathed inside the walls.'],
+// What the town says to the player (lines.js): day or night, and wary of a
+// warned or wanted player. Every walker's lines (w.lines, and its entity's)
+// follow the mood: asked anew whenever what they depend on changes.
+const nightAt = frac => frac >= DAY.night || frac < DAY.dawn
+export const moodOf = run => ({ night: nightAt(run.frac), crime: run.crime.level })
+function keepLines(run) {
+  const night = nightAt(run.frac), crime = run.crime.level
+  if (night === run.linesNight && crime === run.linesCrime) return   // every frame: nothing new
+  run.linesNight = night; run.linesCrime = crime
+  const mood = { night, crime }, key = moodKey(mood)
+  if (key === run.linesKey) return
+  run.linesKey = key
+  for (const w of run.people.values()) {
+    w.lines = linesFor(w.person, mood)
+    if (w.entity) w.entity.lines = w.lines
+  }
 }
-export const jobLines = person => JOB_LINES[person.job] ?? ['Good day.']
 
 // Is any city piece in the window?
 function cityInWindow(world) {
@@ -137,7 +123,6 @@ function makeRun(state, world, hooks, lazy) {
   const pairs = new Map()
   cc.folk.forEach((p, n) => {
     const w = makeWalker(cc, p, n)
-    w.lines = jobLines(p)
     if (p.patrol) { const k = `${p.shift}:${p.patrol}`; w.side = pairs.has(k) ? 1 : 0; pairs.set(k, true) }
     run.people.set(p.id, w)
     if (lazy) { w.pending = true; run.pending.push(w); return }
@@ -154,6 +139,7 @@ function makeRun(state, world, hooks, lazy) {
   }
   if (!lazy) holdPosts(run, frac)
   for (const a of makeAnimals(cc)) run.animals.set(a.id, a)
+  keepLines(run)
   return run
 }
 
@@ -200,6 +186,7 @@ export function arriveCity(state, world, hooks, { fresh = false } = {}) {
   run.hooks = hooks
   reconcile(state, world, run)
   run.nearR = nearRadius(hooks.viewHalf())
+  keepLines(run)
   modes(state, world, run, hooks)
   flush(state, run)
 }
@@ -304,12 +291,16 @@ export function tickCity(state, world, delta, hooks) {
       if (w.needRoute) run.queue.push(w)
       if (w.entity) w.entity.city.entry = w.entry
     }
-    if (w.mode === 'near') near(state, run, w, delta, ox, oy)
-    else if (w.mode === 'far') stepFar(cc, w, delta)
+    if (w.mode === 'near') {
+      const say = w.entity.city.say
+      if (say && say.t < BUBBLE_DUR) say.t += delta   // a scene line's bubble over them fades in its time
+      near(state, run, w, delta, ox, oy)
+    } else if (w.mode === 'far') stepFar(cc, w, delta)
   }
   guard(state, run, delta, ox, oy)
   tickLaw(state, world, run, delta)
   tickScenes(state, world, run, delta, ox, oy)
+  keepLines(run)
   modes(state, world, run, hooks)
   flush(state, run)
 }

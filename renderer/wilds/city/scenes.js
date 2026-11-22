@@ -35,8 +35,12 @@
 //     day          true: their own day goes on meanwhile (the crier, whose
 //                  scene ends when his day moves him on); else the schedule waits
 //   e.city.talk    { lines, me, conv } read by npc.js talk
-//   e.city.say     { text, n }: the last line they said in a scene
+//   e.city.say     { text, n, t }: the last line they said in a scene, t seconds
+//                  ago (the runtime ages it; the renderer draws it over them
+//                  while it is fresh, feedback.js ambientSpeakers). What they
+//                  say is lines.js's (talk, beggar, drunk) and crier.js's
 //   e.city.carry   true while carrying a crate (unload; w.scene.loaded is the truth)
+//   run.cryN       the crier's calls so far: his place in the news (nextNews)
 //
 // What later tasks draw and sound (Task 17, 18) is kept as plain data on the
 // run, in world tiles (scene-things.js moves the things):
@@ -58,6 +62,8 @@ import { PLAN } from './plan.js'
 import { route } from './streets.js'
 import { setEntry, reachable, CITY_OX as OX, CITY_OY as OY } from './walkers.js'
 import { sceneSay, TALK_BEAT } from '../../systems/npc.js'
+import { talkFor, BEGGAR_LINES, DRUNK_LINES } from './lines.js'
+import { crierNews } from './crier.js'
 import {
   cheb, toWorld, walkableAt, thingsOf, lampDue, washDue, makeFlock, stepFlocks, moveCart, stepTurnips, ringRound, fleeTile,
 } from './scene-things.js'
@@ -153,33 +159,6 @@ export function squareScenesAt(seed, day, frac) {
   return out
 }
 
-// ---- lines (stand-ins: Task 16 gives the townsfolk their own) --------------------
-
-// Exchanges two people have in the street, alternating, the first speaker first.
-export const TALKS = [
-  ['Morning.', 'Morning. Cold one.', 'They are all cold.', 'True enough.'],
-  ['Heard about the herring?', 'No.', 'Neither have I. That is the trouble.', 'Mm.'],
-  ['Your roof still leaking?', 'Only when it rains.', 'So, always.', 'So, always.'],
-  ['Granny Pohjanen says it will snow.', 'She said that in June.', 'It nearly did.'],
-  ['Where are you off to?', 'The market. Turnips.', 'Again?', 'They are cheap and they keep.'],
-  ['Did you see the Count on the wall?', 'From a distance.', 'Best way to see him.'],
-  ['Seppo was at it before dawn.', 'Everyone heard.', 'He says it is a hinge for the gate.', 'Which gate?', 'He did not say.'],
-  ['The vicar went on a bit last week.', 'He always goes on a bit.', 'A bit more, then.'],
-  ['My boy wants to join the watch.', 'Tell him the boots pinch.', 'He would like it all the more.'],
-  ['Wind from the east.', 'Fish from the west, then.', 'So they say.'],
-  ['You look tired.', 'The goat got out again.', 'Whose goat?', 'Nobody will say.'],
-  ['Good day.', 'Is it?', 'It is not raining.', 'Give it time.'],
-]
-// ... and at the inn door, of an evening
-export const NIGHT_TALKS = [
-  ['Good night, then.', 'Mind the step.', 'What step?', 'That one.'],
-  ['One more?', 'My wife says no.', 'She is not here.', 'She will hear of it.'],
-  ['Taavetti watered the beer.', 'He says the rain got in.', 'Through the cellar?', 'It was a lot of rain.'],
-]
-export const CRIER_CALLS = ['Hear ye! Market on the square today!', 'Hear ye! Service at the bell!', 'Hear ye! Mind the carts on market street!']
-const BEGGAR_LINES = ['Spare a coin?', 'A coin for an old sailor?', 'Bless you anyway.']
-const DRUNK_LINES = ['Hic.', 'Which way is home?', 'I am not singing. That is the wind.']
-
 // ---- numbers ----------------------------------------------------------------------
 
 const CHECK = 0.25          // s between two looks at the timetable
@@ -195,7 +174,7 @@ const TAG_KIDS = 4
 const DOG_REACH = 32        // tiles from the flock a dog comes running from
 const CART_LATE = 0.05      // of the day: a cart that could not set out by then stays home
 const HAMMER = 5, BLOW = 0.55, QUENCH = 2.5
-const RING_EVERY = 1, RINGS = 3, CRY_QUIET = 10
+const RING_EVERY = 1, RINGS = 3, CRY_QUIET = 17   // a call every 20 s: three rings, the call, quiet
 const LIGHT_TIME = 1.2      // s at a lamp
 const HANG_TIME = 3         // s at a washing line
 const WASH_MAX = 45         // s someone may take to get to a line and see to it
@@ -224,7 +203,7 @@ export function makeStage(cc, seed, day, frac) {
   for (let i = 0; i < lit.length; i++) lit[i] = lampDue(things, i, frac)
   const washday = scenesForDay(seed, day).has('washing')
   return {
-    scenes: [], sceneT: 0, sceneCheck: 0, sceneN: 0,
+    scenes: [], sceneT: 0, sceneCheck: 0, sceneN: 0, cryN: 0,
     lights: { lit },
     fx: {
       turnips: [], carts: [], smithy: null, crier: null, busker: null, bell: false,
@@ -397,6 +376,16 @@ function byDoor(run, X, Y) {
   return false
 }
 
+// The crier's next call: the day's news (crier.js) in rotation, carried on
+// from one of his turns at the box to the next and from one day to the next
+// (he calls a few times a day, so the player's deeds at the end of the list
+// would never come round if every morning began at the market again).
+function nextNews(c) {
+  const { run } = c
+  const news = crierNews(c.world, run.seed, run.day)
+  return news[run.cryN++ % news.length]
+}
+
 // ---- the scenes -------------------------------------------------------------------
 
 const STAGE = {
@@ -412,7 +401,8 @@ const STAGE = {
       const reach = slot.place === 'inn' ? 8 : 16
       const cand = []
       for (const w of run.people.values()) {
-        if (w.person.age !== 'child' && castable(run, w, { near: true }) && cheb(w.X, w.Y, at.X, at.Y) <= reach) cand.push(w)
+        // (never the crier: he has the news to call, and a word's cooldown would keep him from his box)
+        if (w.person.age !== 'child' && w.person.job !== 'crier' && castable(run, w, { near: true }) && cheb(w.X, w.Y, at.X, at.Y) <= reach) cand.push(w)
       }
       // whoever is free, from a different place in the list each time
       const k0 = cand.length ? hashInt(run.seed, run.day, run.sceneN, 932) % cand.length : 0
@@ -431,8 +421,7 @@ const STAGE = {
         const sides = b.X >= a.X ? [1, -1] : [-1, 1]
         const side = sides.find(s => walkableAt(c, ax + s, ay) && !playerOn(c, ax + s, ay) && !byDoor(run, ax + s, ay))
         if (side === undefined) continue
-        const pool = slot.place === 'inn' ? NIGHT_TALKS : TALKS
-        const lines = pool[hashInt(run.seed, run.day, a.n * 1000 + b.n, 931) % pool.length]
+        const lines = talkFor(a.person, b.person, { night: slot.place === 'inn', k: hashInt(run.seed, run.day, a.n * 1000 + b.n, 931) })
         const conv = { i: 0, t: TALK_BEAT, go: false, done: false, said: -1 }
         const sc = open(c, slot, 'talk', { X: ax, Y: ay }, { cool: TALK_COOL, conv })
         cast(run, sc, a, { spot: { X: ax, Y: ay }, facing: side > 0 ? 'east' : 'west', talk: { lines, me: 0, conv } })
@@ -750,8 +739,8 @@ const STAGE = {
     },
   },
 
-  // The crier at his box rings his hand bell and calls (his day puts him there;
-  // the scene stands him still for it).
+  // The crier at his box rings his hand bell and calls the news, a call every
+  // 20 s (his day puts him there; the scene stands him still for it).
   crier: {
     start(c, slot) {
       const { run } = c
@@ -760,7 +749,7 @@ const STAGE = {
       if (!box || cheb(box.X, box.Y, c.PX, c.PY) > c.R + 4) return
       const w = [...run.people.values()].find(p => p.person.job === 'crier')
       if (!w || w.entry?.act !== 'cry' || !castable(run, w, { near: true })) return
-      const sc = open(c, slot, 'crier', box, { calls: 0 })
+      const sc = open(c, slot, 'crier', box)
       cast(run, sc, w, { how: 'ride', act: 'cry', day: true, facing: 'east', ring: 0, rung: 0, quiet: 0 })
       run.fx.crier = { X: box.X, Y: box.Y, rings: 0, ringing: false, by: w.id }
     },
@@ -774,7 +763,7 @@ const STAGE = {
       if (r.quiet > 0) { r.quiet -= dt; return }
       if ((r.ring -= dt) > 0) return
       if (r.rung < RINGS) { r.rung++; r.ring = RING_EVERY; fx.rings++; fx.ringing = true; return }
-      sceneSay(c.state, w.entity, CRIER_CALLS[sc.calls++ % CRIER_CALLS.length])
+      sceneSay(c.state, w.entity, nextNews(c))
       r.rung = 0; r.quiet = CRY_QUIET
     },
     end(run) { run.fx.crier = null },

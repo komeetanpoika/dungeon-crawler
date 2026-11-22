@@ -40,6 +40,9 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     // Päivölä (renderer/interior/sunroom.js): door labels of puzzle houses
     // solved, and of those whose reward was taken
     solved: new Set(), looted: new Set(),
+    // Kalevanlinna (city/law.js seat): the day the player last sat in the
+    // stocks, for the crier's news the day after (city/crier.js); null never
+    stocksDay: null,
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
   }
   if (!ok) return world
@@ -70,6 +73,7 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   if (Array.isArray(saved.paid)) for (const id of saved.paid) if (TALE_IDS.includes(id)) world.paid.add(id)
   // a solved house stays solved, as a told tale stays told
   for (const k of ['solved', 'looted']) if (Array.isArray(saved[k])) for (const label of saved[k]) if (typeof label === 'string') world[k].add(label)
+  if (isInt(saved.stocksDay) && saved.stocksDay >= 0) world.stocksDay = saved.stocksDay
   if (saved.gen !== GEN) return world
   for (const [key, rec] of Object.entries(saved.records ?? {})) {
     if (!rec || typeof rec !== 'object') continue
@@ -162,5 +166,6 @@ export function exportWorld(world) {
     places: Object.fromEntries([...world.places].map(([key, p]) => [key, { ...p }])),
     paid: [...world.paid],
     solved: [...world.solved], looted: [...world.looted],
+    stocksDay: world.stocksDay,
   }
 }
