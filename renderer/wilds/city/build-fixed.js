@@ -67,7 +67,8 @@ function layWalls(G) {
     if (t.y === mouth.y && (t.x < mouth.x0 || t.x > mouth.x1)) harbourTower(G, t.x, t.y, joins, r.body)
     else tower(G, t.x, t.y, t.kind === 'round' ? 'round3' : 'square3', r.body, joins)
   }
-  for (const g of PLAN.waterGates) gateSide(G, g.x, g.y, (x, y) => HARBOUR.mole[(x + y) & 1])
+  // the water gates' passage on the plain mole (the mossy one's moss would show through the arches)
+  for (const g of PLAN.waterGates) gateSide(G, g.x, g.y, () => HARBOUR.mole[0])
   gateArch(G, PLAN.gates.N.x, PLAN.gates.N.y)
   gateSide(G, PLAN.gates.W.x, PLAN.gates.W.y)
   gateSide(G, PLAN.gates.E.x, PLAN.gates.E.y)

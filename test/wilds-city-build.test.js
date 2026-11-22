@@ -133,6 +133,27 @@ test('a tower on an east-west wall is a row taller, its foot beside the wall\'s'
   }
 })
 
+// The harbour walls stand in stone: no grass or water shows through the
+// masonry there (a tower's margins, the slivers beside a wall's walk), and
+// the moles run right up to the walls with no strip of grass or water between.
+test('the harbour walls stand in stone, the moles right up against them', () => {
+  const natural = n => /^ow_(grass|water|sand|dirt|shore|mud|pond|bank)/.test(n ?? '')
+  const masonry = c => /^ow_city_(wall_|tower_|harbour_tower|gate_)/.test(c.overlay ?? '') || /^ow_city_(wall_|tower_)/.test(c.deco ?? '')
+  for (const seed of [7, 742458924]) {
+    const city = cityFor(seed)
+    for (const wallX of [62, 98]) for (let y = 118; y <= 141; y++) for (let x = wallX - 1; x <= wallX + 1; x++) {
+      const c = city.cells[y][x]
+      if (masonry(c)) assert.ok(!natural(c.skin), `seed ${seed}: ${x},${y} (${c.overlay ?? c.deco}) stands on ${c.skin}`)
+    }
+    for (let y = 122; y <= 141; y++) for (const x of [61, 99]) assert.ok(!natural(city.cells[y][x].skin), `seed ${seed}: ${x},${y} between the mole and the wall is ${city.cells[y][x].skin}`)
+    // and no moss of the mossy mole shows in a margin either
+    for (const wallX of [62, 98]) for (let y = 118; y <= 141; y++) for (let x = wallX - 1; x <= wallX + 1; x++) {
+      const c = city.cells[y][x]
+      if (masonry(c)) assert.notEqual(c.skin, 'ow_city_pave_mole_1', `seed ${seed}: ${x},${y} shows the mole's moss`)
+    }
+  }
+})
+
 test('the outer frame is ordinary land the neighbours agree with', () => {
   for (const seed of SEEDS) for (const k of CITY_KEYS) {
     const [wx, wy] = keyOf(k); const piece = generateCityPiece(seed, wx, wy)

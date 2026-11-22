@@ -185,7 +185,7 @@ const moleCell = (G, x, y) => lay(G, x, y, null, { walk: true, ground: HARBOUR.m
 export const RING = {
   north: [15, 15, 144, 16], west: [15, 15, 16, 144], east: [143, 15, 144, 144],
   southW: [15, 124, 58, 125], southE: [102, 124, 144, 125], shoreW: [15, 143, 58, 144], shoreE: [102, 143, 144, 144],
-  moleW: [59, 124, 60, 144], moleE: [100, 124, 101, 144],
+  moleW: [59, 122, 61, 144], moleE: [99, 122, 101, 144],
 }
 export function layRoads(G, land, rec) {
   for (const k of ['north', 'west', 'east', 'southW', 'southE', 'shoreW', 'shoreE']) roadRect(G, ...RING[k])
@@ -203,8 +203,9 @@ export function layRoads(G, land, rec) {
       if (side === 'E') roadRect(G, RING.east[2] + 1, y, x, y + 1)
     }
   }
-  // the moles: stone along the outside of the harbour walls, out to the shore road
-  for (const k of ['moleW', 'moleE']) rect(G, ...RING[k], (x, y) => moleCell(G, x, y))
+  // the moles: stone along the outside of the harbour walls, right up against
+  // them and out to the shore road; under a tower's side only its ground
+  for (const k of ['moleW', 'moleE']) rect(G, ...RING[k], (x, y) => G.prop(x, y) ? G.setGround(x, y, HARBOUR.mole[0]) : moleCell(G, x, y))
   // and up to the water gates (plan.js) into the harbour
   for (const g of PLAN.waterGates) for (let d = -1; d <= 1; d++) moleCell(G, g.dir === 'W' ? g.x - 1 : g.x + 1, g.y + d)
   // where a mole ends in the water, its face

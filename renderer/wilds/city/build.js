@@ -14,7 +14,7 @@
 // A door's and a chimney's `door` is the door's label.
 import { cellOf } from '../piece.js'
 import { insideWalls } from './plan.js'
-import { makeGrid, makeRecord } from './stamps.js'
+import { makeGrid, makeRecord, stoneUnderMasonry } from './stamps.js'
 import { terrainUnder, layTerrain, layOutskirts, layRoads, clearRound, layFarms, finishLand } from './build-land.js'
 import { layFixed, layDressing } from './build-fixed.js'
 import { layBlocks } from './build-blocks.js'
@@ -35,6 +35,7 @@ export function buildCity(seed) {
   clearRound(G)
   layFarms(G, land, rec)
   finishLand(G, land)
+  stoneUnderMasonry(G)
 
   const cells = Array.from({ length: N }, (_, y) => Array.from({ length: N }, (_, x) => {
     const c = cellOf(G.ground(x, y), G.prop(x, y), G.walkable(x, y))

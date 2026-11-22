@@ -132,6 +132,50 @@ function layTower(G, x, y, rows, joins) {
     lay(G, x - 1 + i, row, art, { deco: behindTower(joins, i, row - y, top - y) })
   }))
 }
+// Where the art of a wall, tower or gate is see-through (a tower's margins,
+// the slivers beside a wall's walk) its cell's ground shows, and laid before
+// the land round it that ground is still the terrain's grass or water. Such a
+// cell takes the stone beside it (paving, a quay, a mole) when stone stands on
+// either side of it, or stone on one side and water on the other (a wall's
+// end in the sea), judged east and west first (where its margins show), else
+// north and south; a neighbour that is masonry too counts once it has stone
+// of its own, so the stone works inwards, a pass at a time. A cell with grass
+// beside it (a roof against open country, a wall's outer side) keeps its own.
+// The mole's mossy variant would show its moss in a margin: the plain one.
+const NATURAL = /^ow_(grass|water|sand|dirt|shore|mud|pond|bank)/
+const MASONRY = /^ow_city_(wall_|tower_|harbour_tower|gate_|castle_gate)/
+const WATER = 'water'
+export function stoneUnderMasonry(G) {
+  const masonry = (x, y) => MASONRY.test(G.prop(x, y) ?? '') || MASONRY.test(G.decoAt(x, y) ?? '')
+  const natural = (x, y) => NATURAL.test(G.ground(x, y) ?? 'ow_grass')
+  const todo = []
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (masonry(x, y) && natural(x, y)) todo.push([x, y])
+  for (let pass = 0; pass < 6 && todo.length; pass++) {
+    // a neighbour at the start of the pass: its stone, WATER, false (grass and
+    // the like) or null (masonry not stoned yet: not known)
+    const known = (x, y) => {
+      if (!G.inCity(x, y)) return false
+      if (!natural(x, y)) return G.ground(x, y)
+      if (masonry(x, y)) return null
+      return /^ow_water/.test(G.ground(x, y)) ? WATER : false
+    }
+    const take = []
+    for (const [x, y] of todo) {
+      for (const pair of [[[x - 1, y], [x + 1, y]], [[x, y + 1], [x, y - 1]]]) {
+        const seen = pair.map(([a, b]) => known(a, b)).filter(v => v !== null)
+        if (!seen.length) continue
+        const stone = seen.find(v => v && v !== WATER)
+        // every side seen is stone or water (truthy), at least one stone
+        if (stone && seen.every(Boolean)) take.push([x, y, stone === HARBOUR.mole[1] ? HARBOUR.mole[0] : stone])
+        break
+      }
+    }
+    if (!take.length) break
+    for (const [x, y, g] of take) G.setGround(x, y, g)
+    const done = new Set(take.map(([x, y]) => y * N + x))
+    for (let i = todo.length - 1; i >= 0; i--) if (done.has(todo[i][1] * N + todo[i][0])) todo.splice(i, 1)
+  }
+}
 // A gate in a wall running east-west, three wide at x-1..x+1: its arch over
 // the wall row and the face row below; walked through on the street's cobbles.
 export function gateArch(G, x, y) {
