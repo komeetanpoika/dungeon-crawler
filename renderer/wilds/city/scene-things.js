@@ -1,5 +1,5 @@
 // The things Kalevanlinna's scenes move about (scenes.js casts and runs the
-// people): the pigeon flock, the horse and cart, the lamps and the washing
+// people): the pigeon flock and the gulls, the horse and cart, the lamps and the washing
 // lines, the turnips round the stocks, and the tiles the people stand on for
 // them. Plain data on the run in world tiles (the shapes are in scenes.js's
 // header) for the drawing and the sound to read. DOM-free; pure in the city,
@@ -13,11 +13,12 @@ import { TILE } from '../../systems/entities.js'
 
 const S = 32
 const N = CITY.size
-export const LIFT_R = 2         // tiles from a dog, a child at play or the player that lift the pigeons
-const LIFT_TIME = 0.6           // s the flock takes to get off the ground
+export const LIFT_R = 2         // tiles from a dog, a child at play or the player that lift the pigeons (and the gulls)
+export const LIFT_TIME = 0.6    // s the flock takes to get off the ground
 export const CIRCLE_TIME = 4    // s it circles before it settles somewhere else
 const SETTLE_MIN = 8            // tiles: the least a flock moves when it lifts
 const BIRDS = 9
+const GULLS = 2, GULL_BIRDS = 4  // gull flocks about the harbour, birds in each
 const TAG_BOX = 5               // tiles from the middle the children keep within, playing tag
 const CART_SPEED = 2            // tiles a second
 const CART_UNLOAD = 10          // s at the stall
@@ -32,8 +33,9 @@ export const walkableAt = (c, X, Y) => c.state.map[Math.round(Y) - c.oy]?.[Math.
 export const entityW = (c, e) => ({ X: e.px / S - 0.5 + c.ox, Y: e.py / S - 0.5 + c.oy })
 
 // What the scenes need of a city, found once: the square's open cells (where
-// pigeons settle), the washing lines, the lamps' order out from the fountain,
-// and the cell to stand on by each line and lamp.
+// pigeons settle), the quays' and moles' (where gulls do), the washing lines,
+// the lamps' order out from the fountain, and the cell to stand on by each
+// line and lamp.
 const thingsCache = new WeakMap()
 export function thingsOf(cc) {
   let t = thingsCache.get(cc.city)
@@ -47,6 +49,14 @@ export function thingsOf(cc) {
     for (let dy = -1; dy <= 1 && clear; dy++) for (let dx = -1; dx <= 1; dx++) if (!open(x + dx, y + dy)) { clear = false; break }
     if (clear) square.push({ x, y })
   }
+  const quay = [], mole = []
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (!open(x, y)) continue
+    const skin = city.cells[y][x].skin ?? ''
+    if (skin.startsWith('ow_city_pave_quay_')) quay.push({ x, y })
+    else if (skin.startsWith('ow_city_pave_mole_')) mole.push({ x, y })
+  }
+  const harbour = [...quay, ...mole]
   const besideOf = (x, y, tries) => {
     for (const [dx, dy] of tries) if (open(x + dx, y + dy) && reachable(cc, x + dx, y + dy)) return { x: x + dx, y: y + dy }
     return null
@@ -62,7 +72,7 @@ export function thingsOf(cc) {
   const rank = new Int16Array(city.lamps.length)
   lamps.forEach((l, r) => { rank[l.i] = r })
   const lampStand = city.lamps.map(l => besideOf(l.x, l.y, [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1]]))
-  t = { square, lines, rank, lampStand }
+  t = { square, quay, harbour, lines, rank, lampStand }
   thingsCache.set(city, t)
   return t
 }
@@ -86,7 +96,21 @@ export function washDue(washday, seed, day, j, frac) {
 export function makeFlock(things, seed, day) {
   const sq = things.square
   const at = sq.length ? sq[hashInt(seed, day, 0, 942) % sq.length] : { x: 79, y: 70 }
-  return { X: at.x + OX, Y: at.y + OY, state: 'settled', t: 0, from: null, target: null, birds: BIRDS, lifts: 0 }
+  return { kind: 'pigeon', X: at.x + OX, Y: at.y + OY, state: 'settled', t: 0, from: null, target: null, birds: BIRDS, lifts: 0 }
+}
+
+// The gulls: a few small flocks about the harbour, on the same pattern as the
+// pigeons (stepFlocks): the first on the wharf and the piers, the others
+// anywhere on the quays and moles; they settle anywhere about the harbour.
+export function makeGulls(things, seed, day) {
+  const out = []
+  for (let g = 0; g < GULLS; g++) {
+    const hb = g === 0 && things.quay.length ? things.quay : things.harbour
+    if (!hb.length) break
+    const at = hb[hashInt(seed, day, g, 944) % hb.length]
+    out.push({ kind: 'gull', X: at.x + OX, Y: at.y + OY, state: 'settled', t: 0, from: null, target: null, birds: GULL_BIRDS, lifts: 0 })
+  }
+  return out
 }
 
 // The cells round the stocks a crowd stands on (2 and 3 tiles out), in world tiles.
@@ -117,7 +141,7 @@ export function fleeTile(c, e, it, mid) {
 }
 
 // The flocks: settled until something spooks them, then up (LIFT_TIME), round
-// and down somewhere else on the square (CIRCLE_TIME).
+// and down somewhere else on the square (CIRCLE_TIME), or about the harbour.
 export function stepFlocks(c, dt) {
   const { run } = c
   for (const f of run.fx.flocks) {
@@ -152,12 +176,13 @@ function spooked(c, f) {
   return false
 }
 
-// somewhere else on the square, SETTLE_MIN tiles off at least and clear of the player
+// somewhere else on the square (about the harbour, for gulls), SETTLE_MIN
+// tiles off at least and clear of the player
 function settleSpot(c, f) {
-  const { run } = c, sq = thingsOf(run.cc).square
+  const { run } = c, things = thingsOf(run.cc), sq = f.kind === 'gull' ? things.harbour : things.square
   const n = sq.length
   if (!n) return { X: f.X, Y: f.Y }
-  const k0 = hashInt(run.seed, run.day, f.lifts, 943) % n
+  const k0 = hashInt(run.seed, run.day, f.lifts, f.kind === 'gull' ? 945 + run.fx.flocks.indexOf(f) : 943) % n
   for (let i = 0; i < n; i++) {
     const t = sq[(k0 + i * 37) % n], X = t.x + OX, Y = t.y + OY
     if (cheb(X, Y, f.from.X, f.from.Y) >= SETTLE_MIN && cheb(X, Y, c.PX, c.PY) > LIFT_R + 1) return { X, Y }
@@ -206,13 +231,14 @@ export function moveCart(c, sc, dt) {
   }
 }
 
-// Turnips in the air land after TURNIP_FLIGHT, with a splat.
+// Turnips in the air land after TURNIP_FLIGHT, with a splat (fx.splats, for the screen).
 export function stepTurnips(c, dt) {
   const { run, state } = c
   const list = run.fx.turnips
   for (let i = list.length - 1; i >= 0; i--) {
     if ((list[i].t += dt) < TURNIP_FLIGHT) continue
-    list.splice(i, 1)
+    const [k] = list.splice(i, 1)
+    run.fx.splats?.push({ X: k.toX, Y: k.toY, t: 0 })
     run.hooks.sfx?.('splat', { px: state.player.px, py: state.player.py })
   }
 }

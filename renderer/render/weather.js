@@ -100,7 +100,11 @@ export function drawNight(ctx, layer, look, { camX, camY }, { W, H }, S) {
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const l of visible) {
-    const x = l.px - camX, y = l.py - camY, rad = l.r * S * GLOW_RADIUS
+    // a light may say how far its warm glow reaches (tiles; 0 none): the
+    // city's lamps keep theirs small and its windows have none of this one
+    const rad = (l.glow ?? l.r * GLOW_RADIUS) * S
+    if (!(rad > 0)) continue
+    const x = l.px - camX, y = l.py - camY
     const flick = 1 + 0.08 * Math.sin(look.t * 9 + l.px)
     const a = GLOW_ALPHA * l.strength * look.dark * flick
     const c = l.grey ? '110,170,255' : '255,160,60'   // deadwood burns blue

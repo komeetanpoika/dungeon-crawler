@@ -22,7 +22,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
-import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
+import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './pvp/local.js'
@@ -1854,6 +1854,8 @@ function update(delta) {
     const zap = hammer && mods.tier === 'over'
     const collect = miekka || hammer
     const struck = []   // enemies hit this swing (for the Maunonmiekka's shockwave)
+    // a blow's flash on what it lands on (state.hitEffects, aged over HIT_LIFE)
+    const slash = e => state.hitEffects?.push({ x: e.x, y: e.y })
     state.entities = state.entities
       .map(e => {
         if (!isHittable(e)) return e
@@ -1869,6 +1871,7 @@ function update(delta) {
           const bossHit = { ...e, hp: e.hp - bossDmg, inCombat: true }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${bossDmg}`, kind: 'dealt' })
           sfx(state, 'melee-hit', { px: e.px, py: e.py })
+          slash(e)
           if (collect) struck.push(bossHit)
           return bossHit
         }
@@ -1876,6 +1879,7 @@ function update(delta) {
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
           const r = hurtCreature(state, e, dmg, { source: 'player' })
+          slash(e)
           if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
           if (r.think) think(state, r.think)
           if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
@@ -1890,6 +1894,7 @@ function update(delta) {
         // before the copy is taken, so the cleared `frozen` rides along.
         const total = dmg + shatterBonus(e)
         const hitEnemy = { ...e, hp: e.hp - total, inCombat: true }
+        slash(e)
         npcStruck(hitEnemy)
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${total}`, kind: 'dealt' })
         sfx(state, hitEnemy.hp <= 0 ? deathCue(hitEnemy) : 'melee-hit', { px: e.px, py: e.py })
@@ -1937,7 +1942,6 @@ function update(delta) {
         applyRain(player)
       }
     }
-    state.hitEffects = [{ x: player.x, y: player.y }]
     // Harvesting: a hatchet/axe swing lands on the nearest tree in the
     // wedge, a pick's mine also lands on the nearest rock. Damage is silent
     // bar-less chopHp on the cell; the fall/clear is what you hear and see,
@@ -2393,8 +2397,9 @@ function update(delta) {
   if (npcDirty && !state.cave && mapDataFor(state.level)) { npcDirty = false; if (runMode !== 'wilds') persistRun() }
   if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
 
-  // Clear hit flash — it fires once per swing
-  if (state.hitEffects?.length > 0) state.hitEffects = []
+  // Hit flashes fade out over their HIT_LIFE (they used to be wiped here,
+  // before the render ever drew them)
+  ageHitEffects(state, delta)
 
   // Tier-A toasts: open one pausing panel per frame; the rest stay queued.
   const pending = drainToasts(state)

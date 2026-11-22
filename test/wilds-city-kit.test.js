@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { CITY_SKINS, WALL, TOWER, GATE, HARBOUR, CASTLE, CHURCH, HOUSE_FRONT, PAVE, PROPS } from '../renderer/wilds/city/kit.js'
+import { CITY_SKINS, WALL, TOWER, GATE, HARBOUR, CASTLE, CHURCH, HOUSE_FRONT, PAVE, PROPS, FX } from '../renderer/wilds/city/kit.js'
 
 const TILES = new URL('../renderer/assets/tiles/', import.meta.url).pathname
 const names = v => typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(names) : v && typeof v === 'object' ? Object.values(v).flatMap(names) : []
@@ -19,7 +19,7 @@ test('the kit has every group the builder needs', () => {
 })
 
 test('CITY_SKINS is every name in the groups, once each', () => {
-  const all = [WALL, TOWER, GATE, HARBOUR, CASTLE, CHURCH, HOUSE_FRONT, PAVE, PROPS].flatMap(names)
+  const all = [WALL, TOWER, GATE, HARBOUR, CASTLE, CHURCH, HOUSE_FRONT, PAVE, PROPS, FX].flatMap(names)
   assert.deepEqual([...CITY_SKINS].sort(), [...new Set(all)].sort())
   assert.equal(new Set(CITY_SKINS).size, CITY_SKINS.length)
 })
@@ -31,6 +31,9 @@ test('new names keep to the prefixes: architecture, low props, flat deco, paving
     assert.match(n, /^ow_(city|prop_city|deco_city)_[a-z0-9_]+$/, n)
   }
   for (const n of names(PAVE)) assert.ok(n.startsWith('ow_city_pave_'), n)
+  // the sprites drawn over the town are never laid in a cell: their own prefix
+  for (const n of names(FX)) assert.match(n, /^fx_city_[a-z0-9_]+$/, n)
+  for (const n of names(PROPS.line)) assert.ok(n.startsWith('ow_prop_city_'), n)
 })
 
 test('the wall top has a tile for each of the sixteen neighbour masks', () => {

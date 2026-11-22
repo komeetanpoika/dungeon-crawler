@@ -5,7 +5,7 @@ import * as fs from 'node:fs'
 import { encodePng } from '../png-write.mjs'
 import { runPixels } from '../static-overworld/px.mjs'
 import { T } from './lib.mjs'
-import { WALL, TOWER, GATE, HARBOUR, CASTLE, CHURCH, HOUSE_FRONT, PAVE, PROPS, CITY_SKINS } from '../../renderer/wilds/city/kit.js'
+import { WALL, TOWER, GATE, HARBOUR, CASTLE, CHURCH, HOUSE_FRONT, PAVE, PROPS, FX, CITY_SKINS } from '../../renderer/wilds/city/kit.js'
 import { scene } from './scene.mjs'
 
 const row = (...names) => names
@@ -50,6 +50,14 @@ export function panels() {
     [null, null, null, null, null, null, null, null, ...PROPS.bed[2]],
   ], { labels: true, ground: 'ow_city_pave_flag_0' })
   add('PROPS windmill base, sails frames 0-3 (alone and over the base)', joinH([PROPS.windmill.base, ...PROPS.windmill.sails, ...PROPS.windmill.sails.map(f => f.map((r, y) => r.map((n, x) => [PROPS.windmill.base[y][x], n])))]))
+  add('FX smoke, steam, spark, splat, notes, hand bell; birds perched and flying; washing out and in', [
+    [...FX.smoke, ...FX.steam, FX.spark, FX.splat, ...FX.note, FX.handbell],
+    ['tf_pigeon_a', 'tf_pigeon_b', ...FX.pigeonFly, null, 'tf_gull_a', 'tf_gull_b', ...FX.gullFly],
+    [...PROPS.washing, null, ...PROPS.line],
+  ], { labels: true, ground: 'ow_city_pave_square_00' })
+  add('FX the cart going south, north (cart over horse, horse over cart), west and east, a carter on the box', joinH([
+    FX.cartS.map(n => [n]), FX.cartN.map(n => [n]), [[PROPS.cart[0], PROPS.cart[1]]],
+  ]), { ground: 'ow_city_pave_cobble_0' })
   // anything of the kit not shown above, so the sheet holds every tile
   const shown = new Set(P.flatMap(p => p.cells.flat(2)).filter(Boolean))
   const rest = CITY_SKINS.filter(n => !shown.has(n))

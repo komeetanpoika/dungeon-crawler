@@ -7,6 +7,17 @@ export const FLOAT_DUR = 0.8
 export const BUBBLE_DUR = 2.0
 export const BANNER_DUR = 2.5
 
+// A hit flash (state.hitEffects: { x, y } tiles, pushed by a blow) stays up
+// HIT_LIFE seconds, counted by the update, so the frame after the blow draws it.
+export const HIT_LIFE = 0.15
+export function ageHitEffects(state, dt) {
+  const list = state.hitEffects
+  if (!list?.length) return
+  let n = 0
+  for (const h of list) if ((h.t = (h.t ?? 0) + dt) < HIT_LIFE) list[n++] = h
+  list.length = n
+}
+
 export function makeFeedback() {
   return { floats: [], bubble: null, banner: null, toasts: [] }
 }

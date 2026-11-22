@@ -45,9 +45,10 @@
 //
 // What later tasks draw and sound (Task 17, 18) is kept as plain data on the
 // run, in world tiles (scene-things.js moves the things):
-//   run.fx.flocks   [{ X, Y, state: 'settled'|'lifting'|'circling', t, from, target, birds, lifts }]
-//                   a dog, a child at play or the player within LIFT_R lifts it;
-//                   circling flies from `from` to `target` over CIRCLE_TIME
+//   run.fx.flocks   [{ kind: 'pigeon'|'gull', X, Y, state: 'settled'|'lifting'|'circling', t, from, target, birds, lifts }]
+//                   the square's pigeons first (the dog's scene runs at them), then the
+//                   gulls about the harbour; a dog, a child at play or the player within
+//                   LIFT_R lifts one; circling flies from `from` to `target` over CIRCLE_TIME
 //   run.fx.carts    [{ X, Y, dir: 'north'|'south'|'east'|'west', state: 'rolling'|'stopped'|'unloading', look, by }]
 //                   a horse and cart with its carter (`by`, whose look it is) on the box
 //   run.fx.smithy   { X, Y (anvil), forge: {X, Y}, state: 'idle'|'hammering'|'quenching', blows, by } | null
@@ -56,7 +57,11 @@
 //   run.fx.bell     true while the church bell rings
 //   run.fx.washing  [{ X, Y (the line's west post), state: 'in'|'out', by }] (by: who saw to it last, null the clock)
 //   run.fx.turnips  [{ fromX, fromY, toX, toY, t }] (t seconds in the air, TURNIP_FLIGHT long)
-//   run.lights      { lit: Uint8Array } over city.lamps: 1 = lit
+//   run.fx.splats   [{ X, Y, t }] where they burst (wilds/city/fx.js ages them)
+//   run.lights      { lit: Uint8Array } over city.lamps: 1 = lit (fx.js lays the
+//                   lamp tiles and the light sources from it)
+// fx.js adds what only the screen needs (smoke, sparks, steam, the light
+// sources on screen) and draws nothing either: render/city-fx.js does.
 import { hash, hashInt } from '../rand.js'
 import { DAY, entryAt } from './schedule.js'
 import { PLAN } from './plan.js'
@@ -66,10 +71,10 @@ import { sceneSay, TALK_BEAT } from '../../systems/npc.js'
 import { talkFor, BEGGAR_LINES, DRUNK_LINES } from './lines.js'
 import { crierNews, datedNews } from './crier.js'
 import {
-  cheb, toWorld, walkableAt, thingsOf, lampDue, washDue, makeFlock, stepFlocks, moveCart, stepTurnips, ringRound, fleeTile,
+  cheb, toWorld, walkableAt, thingsOf, lampDue, washDue, makeFlock, makeGulls, stepFlocks, moveCart, stepTurnips, ringRound, fleeTile,
 } from './scene-things.js'
 
-export { LIFT_R, CIRCLE_TIME, TURNIP_FLIGHT } from './scene-things.js'
+export { LIFT_R, LIFT_TIME, CIRCLE_TIME, TURNIP_FLIGHT } from './scene-things.js'
 
 const S = 32
 
@@ -208,7 +213,7 @@ export function makeStage(cc, seed, day, frac) {
     lights: { lit },
     fx: {
       turnips: [], carts: [], smithy: null, crier: null, busker: null, bell: false,
-      flocks: [makeFlock(things, seed, day)],
+      flocks: [makeFlock(things, seed, day), ...makeGulls(things, seed, day)],
       washing: things.lines.map((l, j) => ({ X: l.x + OX, Y: l.y + OY, state: washDue(washday, seed, day, j, frac), by: null })),
     },
   }

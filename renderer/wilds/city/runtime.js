@@ -30,12 +30,14 @@
 //
 // The law (law.js): the player's violence, the hunters it sets on them and
 // the stocks. The scenes (scenes.js): the set pieces cast from the near
-// people, the crowd round the stocks among them. A hunter (w.hunt) or one in
+// people, the crowd round the stocks among them. What the screen shows of the
+// town's light and small life (fx.js): lamps, lit windows, smoke, sparks,
+// the tiles that change, the birds. A hunter (w.hunt) or one in
 // a scene (w.scene) is out of their day until let go; then the schedule takes
 // them back.
 //
 //   state.cityRun = { people: Map<id, Walker>, animals: Map<id, Animal>, hooks,
-//                     crime, scenes, lights, fx, nearR, swingAt, stats, linesKey, ... }
+//                     crime, scenes, lights, fx, nearR, swingAt, stats, linesKey, ox, oy, ... }
 //   e.city = { next: window tile | null, entry, person, passed, foe, lost, lostT, scene, talk, say, carry }
 //   w.lines / e.lines   what they say to the player now (lines.js linesFor, kept by keepLines)
 import { cityFor } from './build.js'
@@ -56,6 +58,7 @@ import { makeAnimals } from './animals.js'
 import { makeCrime } from './crime.js'
 import { tickLaw, rouseEntity, cityMercy, carryCrime, bringCrime } from './law.js'
 import { makeStage, tickScenes, sceneStep, endScenes } from './scenes.js'
+import { makeFx, tickCityFx } from './fx.js'
 
 export { FAR_SPEED }
 const S = 32
@@ -139,6 +142,7 @@ function makeRun(state, world, hooks, lazy) {
   }
   if (!lazy) holdPosts(run, frac)
   for (const a of makeAnimals(cc)) run.animals.set(a.id, a)
+  makeFx(run)
   keepLines(run)
   return run
 }
@@ -189,6 +193,7 @@ export function arriveCity(state, world, hooks, { fresh = false } = {}) {
   keepLines(run)
   modes(state, world, run, hooks)
   flush(state, run)
+  tickCityFx(state, run, 0, world.origin.wx * PIECE, world.origin.wy * PIECE)
 }
 
 function dropCity(state) {
@@ -303,6 +308,7 @@ export function tickCity(state, world, delta, hooks) {
   keepLines(run)
   modes(state, world, run, hooks)
   flush(state, run)
+  tickCityFx(state, run, delta, ox, oy)
 }
 
 // The watch at work. A near watchman takes on the nearest hostile the city

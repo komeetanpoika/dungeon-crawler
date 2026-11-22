@@ -213,8 +213,8 @@ function planter(v) {
     '................',
   ], { a: INK, s: S1, S: S2, g: G1, G: G2 }).crop(0, 0, T, T)
 }
-// a washing line between two posts, the wash hung on it
-function washing(side) {
+// a washing line between two posts, the wash hung on it (or not: the line bare)
+function washing(side, hung = true) {
   const p = new Pic(T, T)
   const postX = side === 'l' ? 1 : 13
   p.rect(postX, 1, 3, 15, INK).vline(postX + 1, 2, 14, W2).set(postX + 1, 2, W1)
@@ -222,6 +222,11 @@ function washing(side) {
   // the line, sagging to the middle of the two cells
   const sag = x => side === 'l' ? 3 + Math.round(((x - 3) / 13) * 2) : 5 - Math.round(((x) / 13) * 2)
   for (let x = side === 'l' ? 4 : 0; x <= (side === 'l' ? 15 : 12); x++) p.set(x, sag(x), INK)
+  if (!hung) {
+    // a peg or two left on the line
+    for (const x of side === 'l' ? [7, 12] : [3, 9]) p.set(x, sag(x) + 1, W1)
+    return p
+  }
   const shirt = (x0, col, dk) => p.map(['aaaaaaa', 'accccca', 'acccccaa'.slice(0, 7), 'aacccaa', '.accca.', '.adcda.', '.aaaaa.'], { a: INK, c: col, d: dk }, x0, sag(x0 + 3) + 1)
   if (side === 'l') {
     shirt(5, WHITE, CW[2])
@@ -462,6 +467,7 @@ export function draw({ put, putGrid }) {
   put(PROPS.bench, bench()); put(PROPS.benchSide, benchSide())
   PROPS.planter.forEach((n, i) => put(n, planter(i)))
   put(PROPS.washing[0], washing('l')); put(PROPS.washing[1], washing('r'))
+  put(PROPS.line[0], washing('l', false)); put(PROPS.line[1], washing('r', false))
   const blue = [['#c66527', '#3f7fc4'], ['#b45c24', '#336fae'], ['#a35422', '#285890']]
   put(PROPS.stall.blue[0], srcTile('ow_stall_top').recolor(blue)); put(PROPS.stall.blue[1], srcTile('ow_stall_front').recolor(blue))
   put(PROPS.stocks, stocks())

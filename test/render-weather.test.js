@@ -141,6 +141,16 @@ describe('drawNight', () => {
     assert.ok(or > ob && og > ob, `orange glow, got ${glow[1]}`)
   })
 
+  it('a light\'s glow says how far its warm glow reaches (tiles), 0 none: the hole is punched all the same', () => {
+    const ctx = recordingCtx(), layer = layerWith()
+    const lights = [{ px: 100, py: 100, r: 3, strength: 1, grey: false, glow: 1 }, { px: 200, py: 100, r: 1.5, strength: 0.7, grey: false, glow: 0 }]
+    drawNight(ctx, layer, look({ lights }), cam, view, S)
+    assert.equal(layer.ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'destination-out').length, 2, 'both punch their hole')
+    const glow = ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'lighter')
+    assert.equal(glow.length, 1, 'only the first glows')
+    assert.deepEqual(glow[0].a, [100 - 32, 100 - 32, 64, 64], 'a glow of one tile round it')
+  })
+
   it('skips lights that are off the layer', () => {
     const ctx = recordingCtx(), layer = layerWith()
     const far = { px: 5000, py: 5000, r: 2, strength: 1, grey: false }

@@ -13,7 +13,8 @@
 //
 // Multi-cell pieces are drawn whole and sliced into 16x16 tiles. The modules:
 // fort.mjs (walls, towers, gates, harbour, castle), town.mjs (church,
-// townhouses, shops, roofs, signs), street.mjs (paving, props, windmill);
+// townhouses, shops, roofs, signs), street.mjs (paving, props, windmill),
+// fx.mjs (the sprites drawn over the town: smoke, birds in flight, the cart);
 // sheet.mjs and scene.mjs lay the contact sheet.
 import * as path from 'node:path'
 import * as fs from 'node:fs'
@@ -45,7 +46,7 @@ setSources(await loadTiles(TILES, [
 ]))
 
 const ctx = { put, putGrid, putRow }
-for (const mod of ['./fort.mjs', './town.mjs', './street.mjs']) (await import(mod)).draw(ctx)
+for (const mod of ['./fort.mjs', './town.mjs', './street.mjs', './fx.mjs']) (await import(mod)).draw(ctx)
 
 // ==== write ===================================================================
 const missing = CITY_SKINS.filter(n => !art.has(n) && !fs.existsSync(`${TILES}/${n}.png`))

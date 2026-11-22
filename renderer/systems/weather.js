@@ -95,7 +95,9 @@ export function makeWeather(mapData) {
 }
 
 // Everything that punches a hole in the night: campfires (the hermit's
-// deadwood hearth glows grey) and burning fire-zone tiles. `r` is in tiles.
+// deadwood hearth glows grey), burning fire-zone tiles, and Kalevanlinna's
+// lamps, lit windows and forge on screen (wilds/city/fx.js keeps them on the
+// city run, in window pixels). `r` is in tiles.
 export function lightSources(state) {
   const out = []
   for (const e of state.entities ?? []) {
@@ -109,6 +111,8 @@ export function lightSources(state) {
                  r: FIRE_ZONE_LIGHT_TILES, strength, grey: false })
     }
   }
+  const city = state.cityRun?.lights?.sources
+  if (city) for (const l of city) out.push(l)
   return out
 }
 

@@ -10,7 +10,7 @@ import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc, CHARGE } from '../systems/melee.js'
 import { GUST_CHARGE } from '../systems/magic.js'
 import { DRAW_CHARGE } from '../systems/ranged.js'
-import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR, ambientSpeakers } from '../systems/feedback.js'
+import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR, HIT_LIFE, ambientSpeakers } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { drawNpcSheet } from './npc-sheets.js'
 import { NPC_SPECIES } from '../data/npcs.js'
@@ -27,6 +27,7 @@ import { makeTileLayer, makeDirectTileLayer, CHUNK } from './tile-layer.js'
 import { drawComboFx, drawArrowTrail, drawBuffSpot, drawBuffUnder, drawBuffOver } from './pvp-fx.js'
 import { BUFF_COLORS } from '../data/pvp.js'
 import { arrestFade } from '../wilds/city/crime.js'
+import { drawCityGround, drawCityAir, drawCityGlow } from './city-fx.js'
 
 const TILE_SIZE = 32
 
@@ -360,9 +361,12 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   if (s) drawImg(ctx, s, px, py, S, S, flip)
 }
 
-function drawHitEffect(ctx, x, y, camX, camY, S) {
+// A blow's flash, fading over its HIT_LIFE (systems/feedback.js ageHitEffects)
+function drawHitEffect(ctx, x, y, camX, camY, S, t = 0) {
   const px = Math.round(x * S - camX)
   const py = Math.round(y * S - camY)
+  ctx.save()
+  ctx.globalAlpha = Math.max(0.25, 1 - t / HIT_LIFE)
   ctx.fillStyle = 'rgba(255, 70, 0, 0.72)'
   ctx.fillRect(px, py, S, S)
   ctx.strokeStyle = '#fff'
@@ -372,6 +376,7 @@ function drawHitEffect(ctx, x, y, camX, camY, S) {
   ctx.moveTo(px + 5, py + 5); ctx.lineTo(px + S - 5, py + S - 5)
   ctx.moveTo(px + S - 5, py + 5); ctx.lineTo(px + 5, py + S - 5)
   ctx.stroke()
+  ctx.restore()
 }
 
 // The icy tint a frozen enemy wears: desaturated and lifted, then a pale sheen
@@ -1294,6 +1299,9 @@ export class Renderer {
     drawLightningMarks(ctx, state.lightning, camX, camY, S)
     // Päivölä's sunbeam lies on the floor too (render/sunbeam.js)
     if (state.cave?.sun) drawSunbeam(ctx, state.cave.sun, map, camX, camY, S, (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000)
+    // Kalevanlinna's banners, sails, birds on the ground and carts: with the
+    // floor, under the people (render/city-fx.js)
+    if (state.cityRun) drawCityGround(ctx, state, sprites, camX, camY, S, W, H)
 
     for (const e of entities) {
       const margin = getMonsterDef(e.type) ? 3 : e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0
@@ -1377,6 +1385,10 @@ export class Renderer {
       }
     }
 
+    // Kalevanlinna's smoke, birds in the air, turnips, notes and bells: over
+    // the people, under the night
+    if (state.cityRun) drawCityAir(ctx, state, sprites, camX, camY, S, W, H)
+
     // Rite ceremony: blur the finished frame onto itself, wash it green.
     if (fx && (fx.blur > 0 || fx.greenAlpha > 0)) {
       if (fx.blur > 0) {
@@ -1397,6 +1409,8 @@ export class Renderer {
     if (look && this.weatherLayer) {
       drawNight(ctx, this.weatherLayer, look, { camX, camY }, { W, H }, S)
     }
+    // Kalevanlinna's lit windows and the smith's sparks stay bright in the dark
+    if (state.cityRun) drawCityGlow(ctx, state, sprites, look, camX, camY, S)
 
     // Fireball zones: flickering flames per burning tile. Deterministic
     // flicker seeded by zone age + tile coords (no wall-clock), fading over
@@ -1437,9 +1451,9 @@ export class Renderer {
     }
 
     if (state.hitEffects?.length > 0) {
-      for (const { x, y } of state.hitEffects) {
+      for (const { x, y, t } of state.hitEffects) {
         if (x < c0 || x >= c1 || y < r0 || y >= r1) continue
-        drawHitEffect(ctx, x, y, camX, camY, S)
+        drawHitEffect(ctx, x, y, camX, camY, S, t)
       }
     }
 

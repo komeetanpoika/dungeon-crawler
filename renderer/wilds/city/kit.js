@@ -1,4 +1,5 @@
-// Kalevanlinna's tile kit: every tile name the city builder lays, in groups.
+// Kalevanlinna's tile kit: every tile name the city builder lays, in groups,
+// and the sprites drawn over the town (FX).
 // Data only; the art is cut by tools/static-overworld/extract-tiles.mjs and
 // drawn by tools/city/make-city-tiles.mjs (`--sheet <png>` draws them all).
 //
@@ -216,7 +217,8 @@ export const PAVE = {
 //            the lantern hangs at about (10, 5) px in its cell
 //   bench    facing south; benchSide: seen end-on (for a bench along a
 //            north-south edge)
-//   washing  a washing line, two cells: west post, east post
+//   washing  a washing line, two cells: west post, east post, the wash hung
+//            on it; line: the same line bare (the wash taken in)
 //   stall    market stalls: [top, front] per awning colour (two cells, the
 //            top north of the front; Tiny Town's red and green, a blue)
 //   crier    the crier's box, flat (walked on: the crier stands on it)
@@ -234,6 +236,7 @@ export const PROPS = {
   bench: 'ow_prop_city_bench', benchSide: 'ow_prop_city_bench_side',
   planter: ['ow_prop_city_planter_0', 'ow_prop_city_planter_1'],
   washing: ['ow_prop_city_washing_l', 'ow_prop_city_washing_r'],
+  line: ['ow_prop_city_line_l', 'ow_prop_city_line_r'],
   stall: { red: ['ow_stall_top', 'ow_stall_front'], green: ['ow_stall_top_green', 'ow_stall_front_green'], blue: ['ow_city_stall_top_blue', 'ow_city_stall_front_blue'] },
   stocks: 'ow_prop_city_stocks',
   crier: 'ow_deco_city_crier_box',
@@ -253,5 +256,33 @@ export const PROPS = {
   anvil: 'ow_prop_city_anvil', forge: 'ow_city_forge',
 }
 
+// ---- the town's small life ---------------------------------------------------
+// Sprites render/city-fx.js draws over the town a frame at a time, never laid
+// in a cell (fx_city_*):
+//   smoke    a chimney's smoke: three puffs, small to large as it rises
+//   steam    the smith's quench: two puffs
+//   spark    a spark off the anvil
+//   splat    a turnip burst on the ground
+//   note     the busker's tune: one note, two notes
+//   handbell the crier's bell
+//   pigeonFly, gullFly  a bird in the air side on, wings up then down (the
+//            perched birds are the townsfolk generator's tf_pigeon_a/_b and
+//            tf_gull_a/_b: wings folded, wings raised)
+//   cartN, cartS  the horse and cart going north and going south, two cells
+//            top to bottom (horse over cart going north, cart over horse
+//            going south); going east or west it is PROPS.cart (flipped east)
+export const FX = {
+  smoke: ['fx_city_smoke_0', 'fx_city_smoke_1', 'fx_city_smoke_2'],
+  steam: ['fx_city_steam_0', 'fx_city_steam_1'],
+  spark: 'fx_city_spark',
+  splat: 'fx_city_splat',
+  note: ['fx_city_note_0', 'fx_city_note_1'],
+  handbell: 'fx_city_handbell',
+  pigeonFly: ['fx_city_pigeon_fly_0', 'fx_city_pigeon_fly_1'],
+  gullFly: ['fx_city_gull_fly_0', 'fx_city_gull_fly_1'],
+  cartN: ['fx_city_cart_n_0', 'fx_city_cart_n_1'],
+  cartS: ['fx_city_cart_s_0', 'fx_city_cart_s_1'],
+}
+
 const flat = v => typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(flat) : Object.values(v).flatMap(flat)
-export const CITY_SKINS = [...new Set([WALL, TOWER, GATE, HARBOUR, CASTLE, CHURCH, HOUSE_FRONT, PAVE, PROPS].flatMap(flat))]
+export const CITY_SKINS = [...new Set([WALL, TOWER, GATE, HARBOUR, CASTLE, CHURCH, HOUSE_FRONT, PAVE, PROPS, FX].flatMap(flat))]
