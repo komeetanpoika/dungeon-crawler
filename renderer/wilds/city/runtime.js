@@ -575,3 +575,25 @@ export function occupantsOf(state, doorLabel) {
   for (const w of run.people.values()) if (w.mode === 'indoors' && !w.out && w.door === doorLabel) out.push(w.person)
   return out
 }
+
+// Whose house that door is: the people who work behind it, then those who
+// live there, in or out (the Person records; wilds/city/indoors.js takes the
+// house's trade from their jobs).
+export function householdOf(state, doorLabel) {
+  const run = state.cityRun ?? state.cave?.surface?.cityRun
+  if (!run) return []
+  const work = [], home = []
+  for (const w of run.people.values()) {
+    if (w.person.work === doorLabel) work.push(w.person)
+    else if (w.person.home === doorLabel) home.push(w.person)
+  }
+  return [...work, ...home]
+}
+
+// Struck down inside a house (wilds/city/indoors.js, as the player leaves
+// it): out until the next day, as one struck down in the street is.
+export function struckIndoors(state, id) {
+  const run = state.cityRun ?? state.cave?.surface?.cityRun
+  const w = run?.people.get(id)
+  if (w && !w.out) knockedDown(run, w)
+}

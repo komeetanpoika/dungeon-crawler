@@ -49,6 +49,7 @@ import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
+import { cityHouseSpec, leaveCityHouse } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
 import { ARREST_FADE } from './wilds/city/crime.js'
 import { playTune, tickTune } from './systems/tune.js'
@@ -672,6 +673,7 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       case 'npc': {
         const n = makeNpc(s.species === 'wolf' && hasTalent(player, 'tapio_peace') ? { ...s, hostile: false } : s)
         if (n && s.lines) n.lines = s.lines   // someone at home says what that household says
+        if (n && s.look) n.look = s.look      // one of Kalevanlinna's people at home, as they look outside
         return n ? [n] : []
       }
       // a Wilds camp's fire (wilds/sites.js): it never burns down, and cooks like any other
@@ -2450,10 +2452,12 @@ function enterCave(entrance) {
 // build the house behind the door (renderer/interior/): the same house every
 // time, from the world's seed and the door, with a story house's things laid
 // in when the door resolves to one. An instance stored by the old generator
-// has no front door of its own and is built afresh.
+// has no front door of its own and is built afresh. A Kalevanlinna door is
+// built afresh at every visit and never kept: inside are exactly the people
+// the town's schedules put there now (wilds/city/indoors.js).
 function enterHouse(door) {
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
-  let inst = state.caveInstances?.[door.label]
+  let inst = door.city ? null : state.caveInstances?.[door.label]
   let version = null
   const world = wildsWorld && state.wilds ? wildsWorld : null
   const owed = inst?.exit && inst.spawn ? storedSunroom(inst.map, inst.entities, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) }) : null
@@ -2467,12 +2471,14 @@ function enterHouse(door) {
   } else {
     // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
     const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
-    const spec = houseSpec(door, { worldSeed: wildsWorld && state.wilds ? wildsWorld.seed : 0, story: storyEp?.houses?.[door.story] ?? null })
+    const worldSeed = wildsWorld && state.wilds ? wildsWorld.seed : 0
+    const spec = door.city ? cityHouseSpec(state, door, worldSeed) : houseSpec(door, { worldSeed, story: storyEp?.houses?.[door.story] ?? null })
     const house = generateInterior(spec, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) })
     state = buildCaveState(state, entrance, {
       map: house.map, entities: buildEntities(house.entitySpawns, house.map, INTERIOR_DEPTH),
       playerSpawn: house.playerSpawn, exit: house.exit, theme: house.theme,
     })
+    if (door.city) state.cave.city = true
     if (house.reward) state.entities.push(sunRewardChest(house.reward))
     version = house.version
   }
@@ -2503,7 +2509,12 @@ function exitCave() {
   const isHouse = state.cave.label.startsWith('house:')
   const mapJustCompleted = runMode === 'adventure' && !isHouse && state.cave.mapJustCompleted
   const next = nextMapDepth(state.cave.surface.level)
+  const city = state.cave.city ? state.cave.label : null
+  // a Kalevanlinna house: whoever was struck down in it is out until tomorrow,
+  // and nothing of it is kept (it is built afresh at the next visit)
+  if (city) leaveCityHouse(state)
   state = restoreSurface(state)
+  if (city) delete state.caveInstances[city]
   persistRun()
   if (isHouse) {
     announce(state, 'You step back out.')

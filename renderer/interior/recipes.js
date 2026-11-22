@@ -126,6 +126,26 @@ export const HOME = {
       { items: ['armchair'], n: [0, 1], at: 'edge' },
     ],
   },
+  // the inn's hall (Kalevanlinna's Golden Pike): the bar on the face, a
+  // fireplace, tables with benches about the floor, kegs by the walls (the
+  // pack has no keg: barrels)
+  taproom: {
+    floor: ['boards', 'planks', 'flags'],
+    face: [
+      { items: ['hearth'], n: 1, must: true, at: 'mid' },
+      { items: ['bar'], n: 1, must: true },
+      { items: WINDOWS, n: [1, 2], at: 'spread' },
+      { items: ['banner_orange', 'banner_green', 'antlers', 'torch'], n: [1, 2] },
+      { items: ['clock', 'plateshelf', 'bottleshelf'], n: [0, 1] },
+    ],
+    centre: 'tavern',
+    wall: [
+      { items: BARRELS, n: [2, 3], at: 'corner', must: true },
+      { items: BARRELS, n: [1, 2], at: 'side' },
+      { items: ['crate', 'sack'], n: [0, 1], at: 'corner' },
+      { items: ['candelabra', ...PLANTS], n: [0, 1], at: 'edge' },
+    ],
+  },
   // a house of one room: hall, kitchen and bedroom at once
   cottage: {
     floor: ['planks', 'boards'],
@@ -151,6 +171,9 @@ export const TRADES = {
   baker: { hall: [{ items: ['crate_bread'], n: 1, at: 'edge' }], workshop: [{ items: ['grain', 'sack', 'crate_bread'], n: [2, 4], at: 'edge', must: true }], workshopFace: [{ items: ['oven'], n: [1, 2], must: true }] },
   scholar: { hallFace: [{ items: BOOKS, n: 1, must: true }], workshopRole: 'study' },
   weaver: { hall: [{ items: ['sack2'], n: 1, at: 'edge' }], workshop: [{ items: ['sack2', 'sack', 'chest'], n: [2, 3], at: 'edge', must: true }, { items: ['table_small'], n: 1, at: 'any' }], workshopFace: [{ items: PAINTINGS, n: [1, 2], must: true }] },
+  // Kalevanlinna's inn, never a village house's trade (versions.js TRADE_LIST):
+  // the room by the door is a taproom, the rest `rooms` in order
+  innkeeper: { hallRole: 'taproom', rooms: ['kitchen', 'bedroom', 'larder', 'bedroom', 'bedroom'] },
 }
 
 // Bandits: a den with cards on the table and beds on the floor, and a stash.
@@ -215,6 +238,9 @@ export const GROUPS = {
   kitchen_table: { table: ['table_small'], chairs: [0, 2], stools: true },
   desk: { table: ['table_books', 'table_candle'], chairs: [1, 1], rug: true },
   cards: { table: ['table_cards'], chairs: [2, 4] },
+  // several tables spread about the room, a bench along each long side; one
+  // table per `per` cells of floor, `tables` the least and most
+  tavern: { table: ['table'], bench: 'bench_seat', tables: [2, 4], per: 26 },
   statue: { single: 'statue' },
   rug: { rugOnly: true },
 }
@@ -233,6 +259,7 @@ export const FILL = {
   workshop: { floor: [...BARRELS, 'crate', 'sack', 'logs'], face: ['shelves', 'cupboard', 'torch', ...WINDOWS] },
   woodshed: { floor: ['logs', 'barrel3', 'crate'], face: ['torch', 'shelves'] },
   cottage: { floor: [...PLANTS, ...BARRELS, 'sack', 'chest'], face: [...WINDOWS, ...PAINTINGS, 'potshelf', 'plateshelf'] },
+  taproom: { floor: [...BARRELS, 'crate', 'bench', 'candelabra', ...PLANTS], face: [...WINDOWS, 'bottleshelf', 'banner_orange', 'banner_green', 'torch', 'painting_orange', 'portrait'] },
   sunhall: { floor: [...PLANTS, 'candelabra'], face: ['window_tall_teal', 'window_tall_green', 'bookcase', 'clock', ...PAINTINGS] },
   den: { floor: [...BARRELS, 'crate', 'sack'], flat: ['bones', 'rubble'], face: ['torch', 'bottleshelf', 'window_broken', 'antlers'] },
   stash: { floor: ['crate', 'chest', ...BARRELS, ...SACKS], face: ['torch', 'potshelf'] },

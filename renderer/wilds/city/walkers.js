@@ -110,9 +110,12 @@ function startTile(cc, w) {
   return t
 }
 
+// the npc species a person is, in the street and indoors
+export const speciesOf = person => person.job === 'watch' ? 'watchman' : 'townsfolk'
+
 export function makeWalker(cc, person, n) {
   return {
-    id: person.id, n, person, species: person.job === 'watch' ? 'watchman' : 'townsfolk', look: person.look,
+    id: person.id, n, person, species: speciesOf(person), look: person.look,
     sched: null, day: -1, ei: 0, entry: null, goal: null,
     mode: 'far', X: 0, Y: 0, door: null, entity: null, out: false,
     phase: 'wait', path: null, wi: 0, dir: 1, loop: false, needRoute: false,

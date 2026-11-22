@@ -3,6 +3,7 @@
 // stands; houseSpec turns it into what to build; occupants and dress fill
 // and finish a furnished house. Pure in their rng.
 import { ITEMS, FLOORS, MISC, dusty } from './kit.js'
+import { TRADES } from './recipes.js'
 import { mulberry32, hashStr, int, pick, chance, weighted, shuffle } from './rng.js'
 import { TILE } from '../systems/entities.js'
 
@@ -47,12 +48,15 @@ function paletteOf(door, version) {
   return door.tier === 'hut' ? 'wood' : 'plaster'
 }
 
-// door: { label, tier, story?, kind?, toughness?, look? }. story: the
+// door: { label, tier, story?, kind?, toughness?, look?, city? }. story: the
 // episode's `houses[door.story]` ({ room, pickups }) when the door is a story
-// house. Returns what generateInterior builds.
-export function houseSpec(door, { worldSeed = 0, story = null } = {}) {
+// house. A Kalevanlinna door (door.city) takes `residents` (the spawns of who
+// is in it now) and `household` (the Person records of whose house it is):
+// see citySpec. Returns what generateInterior builds.
+export function houseSpec(door, { worldSeed = 0, story = null, residents = [], household = [] } = {}) {
   const seed = hashStr(`${worldSeed}|${door.label}`)
   const rng = mulberry32(seed ^ 0x5eed5eed)
+  if (door.city) return citySpec(door, seed, rng, residents, household)
   const version = chooseVersion(door, rng, story)
   const trade = version === 'home' || version === 'empty' || version === 'sunroom' ? pick(rng, TRADE_LIST) : null
   // the sunlit hall needs room: the puzzle house is never smaller than large
@@ -61,6 +65,33 @@ export function houseSpec(door, { worldSeed = 0, story = null } = {}) {
     label: door.label, tier: door.tier ?? 'hut', version, size, palette: paletteOf(door, version),
     toughness: door.toughness ?? 1, trade, seed,
     story: story ? { role: STORY_ROOMS[story.room] ?? 'kitchen', pickups: story.pickups ?? [] } : null,
+  }
+}
+
+// ---- Kalevanlinna (wilds/city/indoors.js) --------------------------------------
+// A city house is lived in, never abandoned: a home when someone is in, else
+// empty (the same house, the hearth cold), with `residents` in place of the
+// version's occupants and nothing to take (`noLoot`). Its trade comes from
+// the door's kind, else from the jobs of whose house it is (workers first),
+// else, for a house nobody lives or works in (or none of whose jobs is a
+// trade), from its seed.
+const KIND_TRADES = { inn: 'innkeeper', smithy: 'smith', warehouse: 'farmer', barracks: null }
+const JOB_TRADES = {
+  baker: 'baker', weaver: 'weaver', dyer: 'weaver', fisher: 'fisher', 'net-mender': 'fisher', sailor: 'fisher',
+  smith: 'smith', apprentice: 'smith', butcher: 'hunter', tanner: 'hunter',
+  miller: 'farmer', stallholder: 'farmer', carter: 'farmer', porter: 'farmer',
+  organist: 'scholar', vicar: 'scholar', crier: 'scholar', captain: 'scholar',
+}
+function citySpec(door, seed, rng, residents, household) {
+  const version = residents.length ? 'home' : 'empty'
+  const trade = Object.hasOwn(KIND_TRADES, door.kind) ? KIND_TRADES[door.kind]
+    : household.map(p => JOB_TRADES[p.job]).find(Boolean) ?? pick(rng, TRADE_LIST)
+  // a taproom wants the big hall: never smaller than large, like the sunroom
+  const size = TRADES[trade]?.hallRole && !['large', 'grand'].includes(sizeOf(door)) ? 'large' : sizeOf(door)
+  return {
+    label: door.label, tier: 'safe', version, size, palette: paletteOf(door, version),
+    toughness: 1, trade, seed, story: null, city: true,
+    residents: residents.map(r => ({ ...r })), noLoot: true,
   }
 }
 
@@ -141,7 +172,9 @@ export function loot(spec, rng) {
 }
 
 // ---- how the place is left ---------------------------------------------------
-const ofItem = new Map(Object.entries(ITEMS).flatMap(([id, it]) => it.tiles.flat().map(n => [n, id])))
+// a tile name -> the first item listed that lays it (the bar reuses shelves and worktops)
+const ofItem = new Map()
+for (const [id, it] of Object.entries(ITEMS)) for (const n of it.tiles.flat()) if (!ofItem.has(n)) ofItem.set(n, id)
 const SWAP = {
   in_table_l: 'in_table_food_l', in_table_r: 'in_table_food_r',
 }

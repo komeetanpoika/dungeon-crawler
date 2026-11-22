@@ -2,10 +2,11 @@
 // plans, furniture and versions without running the game.
 //
 //   node tools/interiors/render.mjs [--stage walls|furnish|full] [--version home|...] [--size small|medium|large|grand]
-//        [--seeds 1,2,3 | --seeds 1..12] [--cols 3] [--scale 2] [--solved] [--out interiors.png]
+//        [--trade farmer|...|innkeeper] [--seeds 1,2,3 | --seeds 1..12] [--cols 3] [--scale 2] [--solved] [--out interiors.png]
 //
 // --stage walls draws plans with walls and floors only; --stage furnish adds
 // furniture without a version's finish or people; full is the real house.
+// --trade sets every house's trade (innkeeper: the inn, with its taproom).
 // Spawns are drawn with their sprites; anything without one is a lettered dot.
 import * as path from 'node:path'
 import * as fs from 'node:fs'
@@ -18,7 +19,7 @@ const TILES = path.resolve(HERE, '../../renderer/assets/tiles')
 const args = process.argv.slice(2)
 const flag = (name, dflt) => { const i = args.indexOf(name); if (i < 0) return dflt; const v = args[i + 1]; args.splice(i, 2); return v }
 const has = name => { const i = args.indexOf(name); if (i < 0) return false; args.splice(i, 1); return true }
-const stage = flag('--stage', 'full'), version = flag('--version', 'home'), size = flag('--size', null)
+const stage = flag('--stage', 'full'), version = flag('--version', 'home'), size = flag('--size', null), tradeArg = flag('--trade', null)
 const cols = Number(flag('--cols', 3)), scale = Number(flag('--scale', 2)), out = flag('--out', 'interiors.png')
 const solved = has('--solved')
 const seedArg = flag('--seeds', '1..6')
@@ -43,7 +44,7 @@ async function build(seed, i) {
     const { mulberry32 } = await import('../../renderer/interior/rng.js')
     const rng = mulberry32(seed * 7919 + 13)
     const plan = makePlan(sz, rng)
-    const trade = ['farmer', 'hunter', 'fisher', 'smith', 'baker', 'scholar', 'weaver'][seed % 7]
+    const trade = tradeArg ?? ['farmer', 'hunter', 'fisher', 'smith', 'baker', 'scholar', 'weaver'][seed % 7]
     const roles = assignRoles(plan, { version, trade, rng })
     const floors = floorsFor(plan, roles, rng, version)
     const pal = version === 'ruin' ? 'grey' : ['plaster', 'wood'][seed % 2]
@@ -52,7 +53,7 @@ async function build(seed, i) {
     return { map, spawns: [], label: `${version} ${sz} ${pal} ${trade} [${[...roles.values()].join(',')}] #${seed}` }
   }
   const { generateInterior, specFor } = await import('../../renderer/interior/index.js')
-  const spec = specFor({ version, size: sz, seed, label: `render:${seed}` })
+  const spec = specFor({ version, size: sz, seed, label: `render:${seed}`, ...(tradeArg ? { trade: tradeArg } : {}) })
   const g = generateInterior(spec, { solved })
   const { findSun, traceBeam } = await import('../../renderer/interior/sunroom.js')
   const sun = findSun(g.map)
@@ -61,7 +62,7 @@ async function build(seed, i) {
 }
 
 const SPAWN_ART = s => {
-  if (s.kind === 'npc') return SPRITES[`npc_${s.species}`] ?? SPRITES.npc_villager
+  if (s.kind === 'npc') return s.look ? `tf_${s.look}` : SPRITES[`npc_${s.species}`] ?? SPRITES.npc_villager
   if (s.kind === 'monster') return SPRITES[`monster_${s.variant}`]
   if (s.kind === 'guard') return SPRITES.guard
   if (s.kind === 'chest') return SPRITES.chest_0
