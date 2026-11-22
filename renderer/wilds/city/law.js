@@ -39,8 +39,7 @@ const GAWKERS = 8           // townsfolk who come to stand round the stocks
 const TURNIP_EVERY = 1.1    // s between two turnips
 export const TURNIP_FLIGHT = 0.6   // s a turnip is in the air
 const REACH = 0.6           // tiles from his spot that count as standing there
-const FAR = 255             // the ward field's "further than it counts"
-const FIELD_CAP = 32        // tiles out the ward field is counted
+const FAR = 255             // beyondWall's "further than the leash"
 
 // damagePlayer asks this (as state.mercy) whether a blow spares a life.
 export const cityMercy = (from, state) => spares(state?.cityRun?.crime, from)
@@ -113,33 +112,24 @@ export function tickLaw(state, world, run, delta) {
 
 // ---- the wanted -----------------------------------------------------------------
 
-// How many tiles each window cell stands beyond the wall (Chebyshev distance
-// to the nearest warded cell, 0 inside, FAR past FIELD_CAP). Built once per
-// window map and kept on it (a re-centre lays a new map).
-function wardField(map) {
-  if (map._wardDist) return map._wardDist
-  const H = map.length, W = map[0].length
-  const d = new Uint8Array(W * H).fill(FAR)
-  const q = new Int32Array(W * H)
-  let head = 0, tail = 0
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (map[y][x]?.ward) { d[y * W + x] = 0; q[tail++] = y * W + x }
-  while (head < tail) {
-    const i = q[head++], x = i % W, y = (i / W) | 0, n = d[i] + 1
-    if (n > FIELD_CAP) continue
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const X = x + dx, Y = y + dy
-      if (X < 0 || Y < 0 || X >= W || Y >= H || d[Y * W + X] !== FAR) continue
-      d[Y * W + X] = n; q[tail++] = Y * W + X
+// How many tiles a window cell stands beyond the wall: 0 on a warded cell,
+// else the Chebyshev distance to the nearest warded one, found ring by ring;
+// FAR past the leash (nothing further is ever asked). A handful of asks a
+// frame while wanted, most answered by the cell itself (a field over the
+// whole window cost 3-6 ms to build on every new window).
+function beyondWall(map, x, y) {
+  if (map[y]?.[x]?.ward) return 0
+  for (let r = 1; r <= CRIME.leashTiles + 1; r++) {
+    for (let d = -r; d <= r; d++) {
+      if (map[y - r]?.[x + d]?.ward || map[y + r]?.[x + d]?.ward || map[y + d]?.[x - r]?.ward || map[y + d]?.[x + r]?.ward) return r
     }
   }
-  map._wardDist = d
-  return d
+  return FAR
 }
 
 function hunt(state, run, delta, ox, oy) {
   const p = state.player, map = state.map
-  const field = wardField(map)
-  const beyond = (x, y) => x >= 0 && y >= 0 && x < WIN_TILES && y < WIN_TILES ? field[y * WIN_TILES + x] : FAR
+  const beyond = (x, y) => beyondWall(map, x, y)
   const reach = beyond(p.x, p.y) <= CRIME.leashTiles
   const wx = w => Math.round(w.X) - ox, wy = w => Math.round(w.Y) - oy
   let n = 0

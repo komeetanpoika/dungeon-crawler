@@ -15,6 +15,11 @@ export const CRIME_LINES = {
   freed: 'Off you go. Mind your manners.',
 }
 
+// s after a warning in which more violence is still the same offence (one
+// fireball catching two people, a blow and its wall slam, a fire ticking
+// twice): only a killing blow makes the player wanted within it
+export const WARN_GRACE = 1.5
+
 // s: the screen fades to black and back when the watch takes the player; at
 // its darkest they are put in the stocks (game.js runs it, canvas.js draws it)
 export const ARREST_FADE = 1.6
@@ -27,8 +32,11 @@ function calm(crime) {
 
 // A blow from the player on one of the city's people inside the walls. The
 // first is a warning; a second while it stands, or any killing blow, makes
-// the player wanted. More while wanted changes nothing but the count of time
-// away (the player is plainly not away). Nothing in the stocks.
+// the player wanted. Within WARN_GRACE of the warning (crime.t, counted down
+// by tickCrime, still above warnSeconds - WARN_GRACE) a blow that kills
+// nobody is the same offence and changes nothing. More while wanted changes
+// nothing but the count of time away (the player is plainly not away).
+// Nothing in the stocks.
 export function onViolence(crime, { killed = false } = {}) {
   if (crime.level === 'stocks') return null
   if (crime.level === 'wanted') { crime.away = 0; return null }
@@ -36,6 +44,7 @@ export function onViolence(crime, { killed = false } = {}) {
     crime.level = 'warned'; crime.t = CRIME.warnSeconds
     return 'warn'
   }
+  if (crime.level === 'warned' && !killed && crime.t > CRIME.warnSeconds - WARN_GRACE) return null
   crime.level = 'wanted'; crime.t = 0; crime.away = 0
   return 'wanted'
 }

@@ -11,7 +11,7 @@
 // city npc's ai.goals reaches the whole city.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CRIME, CRIME_LINES, makeCrime, onViolence, tickCrime, spares } from '../renderer/wilds/city/crime.js'
+import { CRIME, CRIME_LINES, WARN_GRACE, makeCrime, onViolence, tickCrime, spares } from '../renderer/wilds/city/crime.js'
 import { cityViolence, arrest, seat, toStocks, clearCrime, stocksWorld } from '../renderer/wilds/city/law.js'
 import { arriveCity, tickCity, cityPeople } from '../renderer/wilds/city/runtime.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
@@ -25,7 +25,7 @@ import { stepEnemyAttack } from '../renderer/systems/enemy-attack.js'
 import { damagePlayer } from '../renderer/systems/player-damage.js'
 import { playerBound } from '../renderer/systems/player-bind.js'
 import { adventureRespawn } from '../renderer/systems/cave.js'
-import { updateFireZones, makeFireZone } from '../renderer/systems/fire.js'
+import { updateFireZones, makeFireZone, applyBurst, BURST_DAMAGE } from '../renderer/systems/fire.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { getMonsterDef } from '../renderer/systems/monsters.js'
@@ -139,13 +139,17 @@ function twoTownsfolk(state) {
   assert.ok(a && b, 'two townsfolk about')
   return [a, b]
 }
-// wanted: the player struck a watchman twice
+// wanted: the player struck a watchman, and again once the warning's grace was past
 function makeWanted(ctx) {
   const g = cityEntities(ctx.state).find(e => e.species === 'watchman' && inside(ctx.state, e))
   assert.ok(g, 'a watchman about')
-  strike(ctx, g); strike(ctx, g)
+  strike(ctx, g)
+  run(ctx, WARN_GRACE + 0.1, { npcs: false })
+  const again = ctx.state.entities.find(e => e.cityKey === g.cityKey)
+  assert.ok(again, 'still about')
+  strike(ctx, again)
   assert.equal(ctx.state.cityRun.crime.level, 'wanted')
-  return g
+  return again
 }
 
 test('one blow is a warning; another within a minute makes you wanted', () => {
@@ -182,7 +186,12 @@ test('one blow is a warning; another within a minute makes you wanted', () => {
   const out = roadAt(state, world, 80, 170), o = toWindow(world.origin, out.X, out.Y)
   assert.equal(cityViolence(state, world, { ...b, x: o.x, y: o.y }, { killed: true }), null)
   assert.equal(state.cityRun.crime.level, 'warned')
-  // the second blow
+  // a second blow a second on, still within the warning's grace: the same offence
+  strike(ctx, b)
+  assert.equal(state.cityRun.crime.level, 'warned')
+  assert.equal(said(state), CRIME_LINES.warn)
+  // and one after it
+  run(ctx, WARN_GRACE - 1 + 0.1)
   strike(ctx, b)
   assert.equal(state.cityRun.crime.level, 'wanted')
   assert.equal(said(state), 'Seize them!')
@@ -226,12 +235,81 @@ test('fire you laid that hurts a townsperson is violence too', () => {
   assert.equal(state.cityRun.crime.level, 'warned')
   assert.equal(said(state), CRIME_LINES.warn)
   assert.ok(copy.ai.fleeTimer > 0, 'the burned one runs')
-  // and a second burn, the warning standing, is the wanted
-  const snap2 = npcSnapshot(state)
-  state.entities = updateFireZones([{ ...makeFireZone([{ x: copy.x, y: copy.y }]), tickTimer: 0 }],
-    state.entities, state.player, 0.01).entities
-  npcsStruckSince(ctx, snap2)
+  // the flames tick again on them before they are out of it: the same offence
+  const burn = e => {
+    const snap = npcSnapshot(state)
+    state.entities = updateFireZones([{ ...makeFireZone([{ x: Math.floor(e.px / S), y: Math.floor(e.py / S) }]), tickTimer: 0 }],
+      state.entities, state.player, 0.01).entities
+    npcsStruckSince(ctx, snap)
+  }
+  burn(copy)
+  assert.ok(state.entities.find(e => e.cityKey === a.cityKey).hp === a.hp - 2, 'burned twice')
+  assert.equal(state.cityRun.crime.level, 'warned', 'one fire, one warning')
+  assert.equal(said(state), CRIME_LINES.warn)
+  // fire that burns someone after the grace, the warning standing, is the wanted
+  run(ctx, WARN_GRACE + 0.1)
+  const [, b] = twoTownsfolk(state)
+  burn(b)
   assert.equal(state.cityRun.crime.level, 'wanted')
+})
+
+test('one action is one offence: within 1.5 s of the warning more counts for nothing, after it a second blow makes you wanted', () => {
+  assert.equal(WARN_GRACE, 1.5)
+  const c = makeCrime()
+  assert.equal(onViolence(c, {}), 'warn')
+  assert.equal(onViolence(c, {}), null, 'the same moment')
+  assert.equal(tickCrime(c, 1.4, { inside: true }), null)
+  assert.equal(onViolence(c, {}), null, 'still the same offence')
+  assert.equal(c.level, 'warned')
+  assert.equal(tickCrime(c, 0.2, { inside: true }), null)
+  assert.equal(onViolence(c, {}), 'wanted', 'a second blow after the grace')
+  const k = makeCrime()
+  onViolence(k, {})
+  assert.equal(onViolence(k, { killed: true }), 'wanted', 'a killing blow is never covered by the grace')
+
+  // in the town: a blow and the wall slam it knocks them into, in one frame
+  const ctx = setup()
+  const { state } = ctx
+  const [a, b] = twoTownsfolk(state)
+  strike(ctx, a); strike(ctx, a)
+  assert.equal(state.cityRun.crime.level, 'warned')
+  assert.equal(said(state), CRIME_LINES.warn, 'the warning is what you hear')
+  run(ctx, WARN_GRACE + 0.1)
+  assert.ok(!cityEntities(state).some(e => e.hostile))
+  strike(ctx, b)
+  assert.equal(state.cityRun.crime.level, 'wanted')
+  assert.equal(said(state), CRIME_LINES.wanted)
+})
+
+test('a fireball you set off among the townsfolk is violence: one burst, one warning', () => {
+  const ctx = setup()
+  const { state } = ctx
+  const tileOf = e => ({ x: Math.floor(e.px / S), y: Math.floor(e.py / S) })
+  // two townsfolk caught in one burst, as game.js detonateFireball finds them:
+  // a snapshot before, npcsStruckSince after. A burst does 4, more than a
+  // townsperson's 3 hp, so these two are made sturdier to be hurt, not killed
+  const [a, b] = twoTownsfolk(state)
+  for (const e of [a, b]) e.hp = e.maxHp = BURST_DAMAGE + 2
+  const snap = npcSnapshot(state)
+  state.entities = applyBurst(state.entities, state.player, [tileOf(a), tileOf(b)]).entities
+  const hurt = [a, b].map(o => state.entities.find(e => e.cityKey === o.cityKey))
+  assert.ok(hurt.every(e => e && e.hp === 2), 'both burned, both alive')
+  npcsStruckSince(ctx, snap)
+  assert.equal(state.cityRun.crime.level, 'warned', 'two hurt by one burst: one warning')
+  assert.equal(said(state), CRIME_LINES.warn)
+  assert.ok(hurt.every(e => e.ai.fleeTimer > 0), 'and they run')
+  run(ctx, 1)
+  assert.ok(!cityEntities(state).some(e => e.hostile), 'nobody turns on you')
+  assert.equal(state.cityRun.crime.level, 'warned')
+
+  // at the game's own numbers a burst kills a townsperson: a killing blow, wanted at once
+  const ctx2 = setup()
+  const [c] = twoTownsfolk(ctx2.state)
+  const snap2 = npcSnapshot(ctx2.state)
+  ctx2.state.entities = applyBurst(ctx2.state.entities, ctx2.state.player, [tileOf(c)]).entities
+  assert.ok(!ctx2.state.entities.some(e => e.cityKey === c.cityKey), 'killed and culled')
+  npcsStruckSince(ctx2, snap2)
+  assert.equal(ctx2.state.cityRun.crime.level, 'wanted')
 })
 
 test('the watch never kills you: the last blow puts you in the stocks', () => {
@@ -273,12 +351,12 @@ test('the watch never kills you: the last blow puts you in the stocks', () => {
   assert.ok(playerBound(state.player))
   // a minute in all, and they are let go: full hp, the record clean
   run(ctx, 40.5)
-  assert.equal(state.player.stocks, null)
+  assert.ok(state.player.stocks === null, 'out of the stocks')
   assert.ok(!playerBound(state.player))
   assert.equal(state.player.hp, state.player.maxHp)
   assert.equal(state.cityRun.crime.level, 'calm')
   assert.equal(said(state), 'Off you go. Mind your manners.')
-  assert.deepEqual(state.cityRun.fx.turnips, [])
+  assert.equal(state.cityRun.fx.turnips.length, 0)
   run(ctx, 1)
   assert.equal(cityPeople(state).filter(p => p.gawk).length, 0, 'the crowd goes back about its day')
 })
@@ -353,7 +431,7 @@ test('taken outside the west gate, the square beyond the window: the window is b
   assert.deepEqual(playerWorld(state, world), st, 'still in the stocks')
   assert.ok(cityPeople(state).filter(p => p.gawk).length >= 4, 'the crowd gathers')
   run(ctx, 50.5)
-  assert.equal(state.player.stocks, null)
+  assert.ok(state.player.stocks === null, 'out of the stocks')
   assert.equal(state.player.hp, state.player.maxHp)
   assert.equal(state.cityRun.crime.level, 'calm')
   once()
@@ -388,7 +466,7 @@ test('two minutes outside the walls and you are no longer wanted', () => {
   makeWanted(ctx)
   enterWilds(state, world, { wx: 0, wy: 0 }, { buildEntities })   // Koivula's window: no city piece in it
   arriveCity(state, world, hooks)
-  assert.equal(state.cityRun, undefined)
+  assert.ok(state.cityRun === undefined, 'no city in the window')
   T.clock += 60
   enterWilds(state, world, far, { buildEntities })
   arriveCity(state, world, hooks)
@@ -435,7 +513,7 @@ test('wanted, then killed by a wolf outside: a normal death, and you wake on the
   assert.deepEqual(playerWorld(state, world), fromCity(inn.x, inn.y), 'on the inn doorstep')
   assert.equal(state.player.hp, state.player.maxHp)
   assert.equal(state.cityRun.crime.level, 'calm', 'crime cleared')
-  assert.equal(state.player.stocks ?? null, null)
+  assert.ok((state.player.stocks ?? null) === null, 'not in the stocks')
   assert.ok(!state.arrest)
   assert.equal(hostileWatch(state).length, 0)
   assert.equal(hunters(state).length, 0)
