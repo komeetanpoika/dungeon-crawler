@@ -531,7 +531,8 @@ function hurtEntity(e, damage, meta) {
   if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
     const r = hurtCreature(state, e, damage, { source })
     if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
-    if (r.think) think(state, r.think)
+    // a watchman's blow is not the player's: the creature's reaction line is no thought of theirs
+    if (r.think && source !== 'watch') think(state, r.think)
     if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${damage}`, kind: 'dealt' })
     return e
   }

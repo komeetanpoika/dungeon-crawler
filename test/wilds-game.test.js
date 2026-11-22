@@ -104,6 +104,10 @@ test("the city's law is wired in: violence from npcStruck, the arrest's fade, a 
   assert.match(SRC, /if \(e\.cityKey !== undefined && wildsWorld\) cityViolence\(state, wildsWorld, e, \{ killed: !alive, source \}\)/)
   assert.match(SRC, /npcStruck\(e, e\.hp > 0, source\)/)
   assert.match(SRC, /hurt: \(target, amount\) => hurtEntity\(target, amount, \{ source: 'watch', hitCue: null \}\)/)
+  // a watchman's blow on a registry creature is not the player's: its reaction line is no thought of theirs
+  const hurt = SRC.slice(SRC.indexOf('function hurtEntity('), SRC.indexOf('function hurtEntity(') + 600)
+  assert.match(hurt, /if \(r\.think && source !== 'watch'\) think\(state, r\.think\)/)
+  assert.doesNotMatch(hurt, /if \(r\.think\) think\(/)
   // the arrest follows the town's tick: fade, and the stocks at its darkest
   const upd = SRC.slice(SRC.indexOf('tickCity(state, wildsWorld, delta, cityHooks)'))
   assert.ok(upd.indexOf('if (state.arrest) arrest(state)') > 0 && upd.indexOf('if (state.arrest) arrest(state)') < 300, 'the arrest beside tickCity')
