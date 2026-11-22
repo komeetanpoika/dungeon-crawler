@@ -143,15 +143,16 @@ test('gate guards kill a wolf that followed the player to the gate, then go back
   assert.ok(guards.every(g => !g.hostile), 'the watch never turned hostile')
 })
 
-test('a monster knocked onto a warded cell is fought and dies; nothing stays stuck', () => {
-  // noon on the castle street: the castle gate's two guards at their posts
+// Noon on the castle street, the castle gate's two guards at their posts, and
+// a warded floor cell deep in the town (no open ground within 7 tiles, so a
+// monster there cannot get out), 8 to 11 tiles from a watchman and beyond 7
+// of every post.
+function castleStreet() {
   const ctx = setup({ at: { X: 106, Y: 230 } })
-  const { state, world, blows } = ctx
+  const { state, world } = ctx
   run(ctx, 0.5)
   const near = cityEntities(state).filter(e => e.species === 'watchman')
   assert.ok(near.length >= 1, 'the watch is about')
-  // a warded floor cell deep in the town (no open ground within 7 tiles, so
-  // it cannot get out), 8 to 11 tiles from a watchman and beyond 7 of every post
   const deep = (X, Y) => {
     for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) {
       if (walkable(state, world, X + dx, Y + dy) && !cellAt(state, world, X + dx, Y + dy).ward) return false
@@ -170,6 +171,12 @@ test('a monster knocked onto a warded cell is fought and dies; nothing stays stu
     }
   }
   assert.ok(spot, 'such a cell')
+  return { ctx, near, spot }
+}
+
+test('a monster knocked onto a warded cell is fought and dies; nothing stays stuck', () => {
+  const { ctx, near, spot } = castleStreet()
+  const { state, world, blows } = ctx
   const bear = beast(ctx, 'bear', spot.X, spot.Y)
   assert.ok(bear.hp > 3, 'more than one blow')
   run(ctx, 0.5)
@@ -186,6 +193,40 @@ test('a monster knocked onto a warded cell is fought and dies; nothing stays stu
     const post = g.city.person.post
     if (post && g.city.entry.act === 'post') assert.ok(cheb(entityWorld(world, g), postAt(post)) < 0.7, `${g.cityKey} back at ${post}`)
   }
+})
+
+test('a foe a watchman found no way to is left alone 5 s, then fought again', () => {
+  const { ctx, near, spot } = castleStreet()
+  const { state, world, blows } = ctx
+  const bear = beast(ctx, 'bear', spot.X, spot.Y)
+  // walled in where it stands: nobody can get to it
+  const ring = []
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue
+    const cell = cellAt(state, world, spot.X + dx, spot.Y + dy)
+    ring.push([cell, cell.tile]); cell.tile = TILE.WALL
+  }
+  const relay = () => { delete state.map._nav; delete state.map._navWard }   // the nav grids are cached on the map
+  relay()
+  let quit = null
+  run(ctx, 8, { each: () => { quit = near.find(g => g.city.lost === bear) ?? null; return !quit } })
+  assert.ok(quit, 'a watchman gave up on it')
+  assert.ok(quit.city.foe === null, 'and let it go')
+  assert.ok(state.entities.includes(bear), 'it lives')
+  // the way opens at once, but he leaves it alone for the 5 s
+  for (const [cell, tile] of ring) cell.tile = tile
+  relay()
+  run(ctx, 4.8, { each: () => assert.ok(quit.city.foe !== bear, `${quit.cityKey} leaves it alone for now`) })
+  let retaken = false, dead = false
+  run(ctx, 20, { each: () => {
+    if (quit.city.foe === bear) retaken = true
+    dead = !state.entities.includes(bear)
+    return !dead
+  } })
+  assert.ok(retaken, `${quit.cityKey} takes it on again`)
+  assert.ok(dead, 'and it dies')
+  assert.ok(blows.some(b => b.target === bear && b.from === quit), `${quit.cityKey} struck it`)
+  assert.ok(quit.city.lost === null, 'nothing is left given up')
 })
 
 test('the defend goal closes to sword reach and strikes every 0.8 s', () => {

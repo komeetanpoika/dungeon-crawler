@@ -30,7 +30,7 @@
 //
 //   state.cityRun = { people: Map<id, Walker>, animals: Map<id, Animal>, hooks,
 //                     crime, scenes, lights, fx, nearR, swingAt, stats, ... }
-//   e.city = { next: window tile | null, entry, person, passed, foe, lost }
+//   e.city = { next: window tile | null, entry, person, passed, foe, lost, lostT }
 import { cityFor } from './build.js'
 import { isCityPiece } from './geometry.js'
 import { scheduleFor, entryAt } from './schedule.js'
@@ -288,7 +288,7 @@ export function tickCity(state, world, delta, hooks) {
     if (w.mode === 'near') near(state, run, w, delta, ox, oy)
     else if (w.mode === 'far') stepFar(cc, w, delta)
   }
-  guard(state, run, ox, oy)
+  guard(state, run, delta, ox, oy)
   modes(state, world, run, hooks)
   flush(state, run)
 }
@@ -302,14 +302,16 @@ export function tickCity(state, world, delta, hooks) {
 // be long, so the straight-line WARD_GUARD only decides whom he takes on).
 // With none he goes back to his day (follow_city; one a fight drew off his
 // post walks back to it, see near). A foe npc.js defend found no way to is
-// not taken on again. Far and indoor watchmen fight nothing, and the player
-// is never a foe here.
-function guard(state, run, ox, oy) {
+// left alone for its LOST_TIME (e.city.lostT, counted down here), then it
+// may be taken on again like any other. Far and indoor watchmen fight
+// nothing, and the player is never a foe here.
+function guard(state, run, delta, ox, oy) {
   let foes = null
   for (const f of state.entities) if (f.hp > 0 && f.px !== undefined && isWarded(f)) (foes ??= []).push(f)
   for (const w of run.people.values()) {
     if (w.mode !== 'near' || w.species !== 'watchman') continue
-    const e = w.entity
+    const e = w.entity, c = e.city
+    if (c.lost && (c.lostT -= delta) <= 0) { c.lost = null; c.lostT = 0 }
     const foe = foes ? foeOf(state, run, w, e, foes, ox, oy) : null
     if (foe) w.fought = true
     e.city.foe = foe

@@ -33,6 +33,7 @@ const SIDESTEP_TIME = 1.5           // s at most spent stepping round the player
 export const STRIKE_REACH = 36      // px within which a watchman's sword reaches his foe
 export const STRIKE_INTERVAL = 0.8  // s between a watchman's blows
 export const STRIKE_DMG = 3         // damage per blow, through the city's hurt hook
+export const LOST_TIME = 5          // s a watchman leaves a foe he found no way to before he may take it on again
 
 export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
   const def = NPC_SPECIES[species]
@@ -193,8 +194,8 @@ export const GOALS = {
   // hurt hook, which is game.js's enemy damage path, so what he kills dies as
   // it would to the player. He never turns hostile for it: the foe is the
   // runtime's word, not the enemy brain's. The swing is drawn only. A foe he
-  // finds no way to for GIVE_UP_TIME is let go (e.city.lost), so he is not
-  // left pushing at a wall.
+  // finds no way to for GIVE_UP_TIME is let go for LOST_TIME (e.city.lost,
+  // counted down by the runtime), so he is not left pushing at a wall.
   defend: {
     when: e => !!e.city?.foe,
     enter: e => { e.ai.strikeT = 0; e.ai.giveUp = 0 },
@@ -205,7 +206,7 @@ export const GOALS = {
       if (Math.hypot(foe.px - e.px, foe.py - e.py) > STRIKE_REACH) {
         const target = { x: foe.x, y: foe.y }
         e.ai.giveUp = isStuckOn(e, target) ? (e.ai.giveUp ?? 0) + dt : 0
-        if (e.ai.giveUp >= GIVE_UP_TIME) { e.city.lost = foe; e.city.foe = null; return { mode: 'hold' } }
+        if (e.ai.giveUp >= GIVE_UP_TIME) { e.city.lost = foe; e.city.lostT = LOST_TIME; e.city.foe = null; return { mode: 'hold' } }
         return { mode: 'patrol', target, speed: ctx.cfg.speed }
       }
       e.facing = foe.px < e.px ? 'west' : 'east'
