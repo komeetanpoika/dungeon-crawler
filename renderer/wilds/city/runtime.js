@@ -3,7 +3,12 @@
 // import: game.js passes its own hooks.
 //
 //   hooks = { spawn(spawns) -> entities, clock() -> seconds, day() -> integer,
-//             viewHalf() -> { w, h } in tiles, sfx(name, pos), hurt(target, amount, from) }
+//             viewHalf() -> { w, h } in tiles, sfx(name, pos), hurt(target, amount, from),
+//             now?() -> ms }
+//
+// `now` (the game passes performance.now) lets the route requests of a frame
+// stop once ROUTE_MS is spent. Without it the budget is ROUTES_PER_TICK alone,
+// so tests and the headless tools run the same however loaded the machine is.
 //
 // Everyone is in exactly one of three modes (R1):
 //   near     within the near radius (the visible half-width + 6 tiles): an npc
@@ -66,7 +71,7 @@ const S = 32
 const HYSTERESIS = 2        // tiles beyond the near radius before a near person turns far
 const MAX_NEAR = 50         // the window reaches 56 tiles past a player 24 tiles into a city piece
 const REACH = 0.6           // tiles from a waypoint that count as reaching it
-const ROUTES_PER_TICK = 8   // route requests served a frame (the bell sends half the town at once)
+export const ROUTES_PER_TICK = 8   // route requests served a frame (the bell sends half the town at once)
 const ROUTE_MS = 1          // ... and the time they may take, after the first
 const PLACE_PER_TICK = 12   // people placed by the clock a frame, when the city comes into the window on a walk
 const REROUTE_AFTER = 4     // s a near walker may make no headway before it is routed again
@@ -279,10 +284,10 @@ export function tickCity(state, world, delta, hooks) {
   }
   if (run.swingAt) shy(state, run, ox, oy)
   run.shyT = Math.max(0, run.shyT - delta)
-  // routes on order: a few a frame, and no more once a millisecond is spent (a
-  // patrol pair crossing the town asks for two long ones at once)
-  const t0 = performance.now()
-  for (let k = 0; k < ROUTES_PER_TICK && run.queue.length && (k === 0 || performance.now() - t0 < ROUTE_MS); k++) {
+  // routes on order: a few a frame, and (with a timer) no more once a
+  // millisecond is spent (a patrol pair crossing the town asks for two long ones at once)
+  const now = hooks.now, t0 = now ? now() : 0
+  for (let k = 0; k < ROUTES_PER_TICK && run.queue.length && (k === 0 || !now || now() - t0 < ROUTE_MS); k++) {
     const w = run.queue.shift()
     if (!w.needRoute || w.out) continue
     if (routeWalker(cc, w, run.stats) === 'indoors' && w.entity) { run.remove.add(w.entity); w.entity = null }

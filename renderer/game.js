@@ -354,6 +354,8 @@ const cityHooks = {
   // hook, anything else in place), so a kill culls, drops and is recorded as
   // a player's would be. The blow sounds its own 'melee-hit'.
   hurt: (target, amount) => hurtEntity(target, amount, { source: 'watch', hitCue: null }),
+  // the frame's route requests stop once a millisecond is spent (tests run without, by count)
+  now: () => performance.now(),
 }
 
 function persistRun() {

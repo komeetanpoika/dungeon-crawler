@@ -90,6 +90,8 @@ test('the city runtime is wired in beside the tales, with the screen and the swi
   assert.ok(upd.indexOf('tickCity(state, wildsWorld, delta, cityHooks)') > tales && upd.indexOf('tickCity(') < tales + 200, 'tickCity beside tickTales, on the surface')
   // the near radius comes from the real screen, at 32 px a tile
   assert.match(SRC, /viewHalf: \(\) => \(renderer \? \{ w: renderer\.viewW \/ \(2 \* TILE_SIZE\), h: renderer\.viewH \/ \(2 \* TILE_SIZE\) \}/)
+  // the game's route requests stop once a millisecond is spent (the tests' go by count)
+  assert.match(SRC, /now: \(\) => performance\.now\(\),\n\}/)
   // a swing, a shot and a cast each make the townsfolk flinch
   assert.equal((SRC.match(/noteCitySwing\(state, wildsWorld\)/g) ?? []).length, 3)
 })

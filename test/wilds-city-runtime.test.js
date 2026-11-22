@@ -4,7 +4,7 @@
 // only buildEntities is a stand-in, making npcs the way game.js does.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { arriveCity, tickCity, cityPeople, occupantsOf, noteCitySwing, nearRadius, FAR_SPEED } from '../renderer/wilds/city/runtime.js'
+import { arriveCity, tickCity, cityPeople, occupantsOf, noteCitySwing, nearRadius, FAR_SPEED, ROUTES_PER_TICK } from '../renderer/wilds/city/runtime.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { fromCity } from '../renderer/wilds/city/geometry.js'
 import { rollTownsfolk } from '../renderer/wilds/city/folk.js'
@@ -530,4 +530,25 @@ test('a watchman whose city has no barracks door is out of sight off duty, at hi
     if (w.mode === 'far') stepFar(cc, w, 0.005 * DAY_LENGTH)
   }
   assert.equal(w.mode, 'indoors'); assert.equal(w.door, null)
+})
+
+// The route requests a frame serves are counted (ROUTES_PER_TICK); only a
+// game that hands the runtime a timer (hooks.now) also stops them once a
+// millisecond is spent, so a test or a headless tool runs alike however
+// loaded the machine is.
+test('route requests a frame: by count without a timer, and a timer stops them after a millisecond', () => {
+  const served = now => {
+    const ctx = setup({ at: NORTH_GATE })
+    const run0 = ctx.state.cityRun
+    run0.queue.length = 0
+    const asked = [...run0.people.values()].filter(w => w.mode === 'far' && !w.out && !w.pending && w.goal).slice(0, 20)
+    assert.equal(asked.length, 20)
+    for (const w of asked) { w.needRoute = true; run0.queue.push(w) }
+    tickCity(ctx.state, ctx.world, DT, now ? { ...ctx.hooks, now } : ctx.hooks)
+    return asked.filter(w => !w.needRoute).length
+  }
+  assert.equal(served(null), ROUTES_PER_TICK, 'no timer: the count alone')
+  let t = 0
+  assert.equal(served(() => (t += 5)), 1, 'a slow frame: the first route, then the millisecond is spent')
+  assert.equal(served(() => 0), ROUTES_PER_TICK, 'a quick one: the count')
 })
