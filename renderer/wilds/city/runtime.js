@@ -59,6 +59,7 @@ import { makeCrime } from './crime.js'
 import { tickLaw, rouseEntity, cityMercy, carryCrime, bringCrime } from './law.js'
 import { makeStage, tickScenes, sceneStep, endScenes } from './scenes.js'
 import { makeFx, tickCityFx } from './fx.js'
+import { tickAmbience } from './ambience.js'
 
 export { FAR_SPEED }
 const S = 32
@@ -309,6 +310,7 @@ export function tickCity(state, world, delta, hooks) {
   modes(state, world, run, hooks)
   flush(state, run)
   tickCityFx(state, run, delta, ox, oy)
+  tickAmbience(state, run, delta, hooks.sfx)
 }
 
 // The watch at work. A near watchman takes on the nearest hostile the city

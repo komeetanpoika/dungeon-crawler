@@ -80,6 +80,25 @@ export const RECIPES = {
   // Kalevanlinna's stocks: a low falling hoot from the crowd, a soft wet thud
   'jeer':           { kind: 'swoosh', f0: 520, f1: 220, dur: 0.45, vol: 0.5 },
   'splat':          { kind: 'burst',  freq: 240,  q: 0.7,  dur: 0.12, vol: 0.6 },
+  // Kalevanlinna's town (wilds/city/ambience.js). All quieter than a blow, and
+  // positioned: they fade out over FAR_PX like everything else. Not heard, only
+  // shaped from the nearest recipes; tune them with tools/sfx-audition.
+  // a murmur is a train of these: short low breathy puffs of crowd (pitch jitters per play)
+  'city-murmur':    { kind: 'burst',  freq: 320,  q: 0.5,  dur: 0.10, vol: 0.22 },
+  // the smith's hammer on iron: a short bright clink
+  'hammer':         { kind: 'burst',  freq: 1100, q: 2.5,  dur: 0.09, vol: 0.55 },
+  // a gull's mew: a thin falling cry
+  'gull':           { kind: 'blip',   wave: 'triangle', f0: 1500, f1: 1000, dur: 0.35, vol: 0.3 },
+  // pigeons lifting: a quick papery flutter
+  'wings':          { kind: 'swoosh', f0: 2400, f1: 900, dur: 0.22, vol: 0.3 },
+  // the inn at night: a muffled rattle of voices and mugs
+  'tavern':         { kind: 'burst',  freq: 520,  q: 0.4,  dur: 0.22, vol: 0.25 },
+  // the crier's hand bell: a small bright ding, higher and shorter than the church bell
+  'crier-bell':     { kind: 'blip',   wave: 'triangle', f0: 1900, f1: 1850, dur: 0.25, vol: 0.4 },
+  // a patrol's boots on cobbles: a soft low thud
+  'boots':          { kind: 'burst',  freq: 140,  q: 1.0,  dur: 0.06, vol: 0.3 },
+  // a dog's bark: a short falling yap
+  'bark':           { kind: 'blip',   wave: 'square', f0: 420, f1: 220, dur: 0.12, vol: 0.4 },
 }
 
 export function falloffGain(distPx) {
