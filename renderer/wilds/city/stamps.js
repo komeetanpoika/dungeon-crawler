@@ -91,54 +91,46 @@ export function wallRun(G, walls, towers, noFace = () => false) {
     lay(G, x, y + 1, l && r ? F.lr : l ? F.l : r ? F.r : h(x, y, 4) % 6 === 0 ? F.m2 : F.m)
   }
 }
-// Where the wall meets a 3x3 tower centred on (x, y): the sides whose
-// neighbour just beyond its footprint is wall or a gate in it, not another
-// tower; east and west looked for on the wall line `wallY` (a row below y for
-// a tower on an east-west wall). `masonry`: keys (y * N + x) of walls and gates.
-export function towerJoins(masonry, towers, x, y, wallY = y) {
+// Where the wall meets a tower on the wall line y, its rows `top`..`bottom`:
+// the sides whose neighbour just beyond it is wall or a gate in it, not
+// another tower (east and west on the wall line). `masonry`: keys (y * N + x)
+// of walls and gates.
+export function towerJoins(masonry, towers, x, y, top = y - 1, bottom = y + 1) {
   const on = (a, b) => masonry.has(b * N + a) && !towers.has(b * N + a)
-  return { w: on(x - 2, wallY), e: on(x + 2, wallY), n: on(x, y - 2), s: on(x, y + 2) }
+  return { w: on(x - 2, y), e: on(x + 2, y), n: on(x, top - 1), s: on(x, bottom + 1) }
 }
 // What lies under a tower's cell: the wall running on behind it where it
-// meets one, so the masonry shows round the tower's body, not the ground.
-// `i` the column (0..2), `dy` the row from the wall line (its walk), `top`
-// and `bottom` the tower's first and last rows on that count.
-function behindTower(joins, i, dy, top, bottom) {
+// meets one, so the masonry shows round the tower's body, not the ground:
+// the walk behind its side on the wall line, the face behind its foot, a
+// north-south wall's walk behind the middle of its top row (a wall coming
+// in from the north) or of the wall line (one going on south from its foot).
+// `i` the column (0..2), `dy` the row from the wall line, `top` the first row.
+function behindTower(joins, i, dy, top) {
   if (!joins) return null
   if ((i === 0 && joins.w) || (i === 2 && joins.e)) return dy === 0 ? WALL.top[10] : dy > 0 ? WALL.lower.m : null
-  if (i === 1 && ((dy === bottom && joins.s) || (dy === top && joins.n))) return WALL.top[5]
+  if (i === 1 && ((dy === top && joins.n) || (dy === 0 && joins.s))) return WALL.top[5]
   return null
 }
-// A 3x3 tower centred on (x, y) (plan.js towerCentre): its cap's two rows,
-// `body` more rows, its foot. `joins` (towerJoins): the sides the wall meets
-// it on; `wallY` the row of the wall line, a row below y for a tower on an
-// east-west wall (its foot on the wall's walk).
-export function tower(G, x, y, kind, body = 0, joins = null, wallY = y) {
+// A tower on the wall line y (plan.js towerRect): its cap's two rows, `body`
+// more rows, its foot on the row below the wall line, beside the wall's own
+// foot (its face). `joins` (towerJoins): the sides the wall meets it on. A
+// wall going on south starts in the middle of its foot: there it lays its
+// walk instead of the foot, so it reads as coming out of the tower.
+export function tower(G, x, y, kind, body = 0, joins = null) {
   const t = TOWER[kind]
-  const rows = [...t.cap, ...Array(body).fill(t.body), t.base]
-  const top = y - 1 - body, bottom = y + 1
+  layTower(G, x, y, [...t.cap, ...Array(body).fill(t.body), t.base], joins)
+}
+export function harbourTower(G, x, y, joins = null, body = 0) {
+  const t = HARBOUR.tower
+  layTower(G, x, y, [...t.head, ...Array(body).fill(t.body), t.base], joins)
+}
+function layTower(G, x, y, rows, joins) {
+  const top = y + 2 - rows.length
   rows.forEach((r, j) => r.forEach((n, i) => {
     const row = top + j
-    lay(G, x - 1 + i, row, n, { deco: behindTower(joins, i, row - wallY, top - wallY, bottom - wallY) })
+    const art = i === 1 && row === y + 1 && joins?.s ? WALL.top[5] : n
+    lay(G, x - 1 + i, row, art, { deco: behindTower(joins, i, row - y, top - y) })
   }))
-}
-export function harbourTower(G, x, y, joins = null, wallY = y) {
-  const t = HARBOUR.tower
-  ;[...t.head, t.base].forEach((r, j) => r.forEach((n, i) => {
-    const row = y - 1 + j
-    lay(G, x - 1 + i, row, n, { deco: behindTower(joins, i, row - wallY, y - 1 - wallY, y + 1 - wallY) })
-  }))
-}
-// Under the foot of a tower that stands on an east-west wall's walk, the
-// wall's face runs on and slices into it: the face cell under each side the
-// wall meets, and under the middle too where the wall runs right through
-// (a wall turning down from a corner tower keeps its own walk there).
-export function towerSlice(G, x, wallY, joins) {
-  const cols = []
-  if (joins.w) cols.push(x - 1)
-  if (joins.e) cols.push(x + 1)
-  if (joins.w && joins.e && !joins.s) cols.push(x)
-  for (const c of cols) lay(G, c, wallY + 1, WALL.lower.m)
 }
 // A gate in a wall running east-west, three wide at x-1..x+1: its arch over
 // the wall row and the face row below; walked through on the street's cobbles.

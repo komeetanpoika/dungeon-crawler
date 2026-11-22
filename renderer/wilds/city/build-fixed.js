@@ -4,11 +4,11 @@
 // the fish market, the warehouses and the windmill (PLAN in plan.js says
 // where). Then, after the blocks are in, what dresses the streets: lamps,
 // benches, stalls and kerbs.
-import { PLAN, wallCells, insideWalls, streetCellsById, towerCentre } from './plan.js'
+import { PLAN, wallCells, insideWalls, streetCellsById, towerRect } from './plan.js'
 import { HARBOUR, PROPS, PAVE, CASTLE, HOUSE_FRONT } from './kit.js'
 import { hashInt } from '../rand.js'
 import {
-  N, TAG, lay, pave, cobble, flag, alley, squareStone, wallRun, towerJoins, tower, harbourTower, towerSlice, gateArch, gateSide,
+  N, TAG, lay, pave, cobble, flag, alley, squareStone, wallRun, towerJoins, tower, harbourTower, gateArch, gateSide,
   house, stall, windmill, lamp, bench, keep, church, addDoor,
 } from './stamps.js'
 
@@ -52,7 +52,7 @@ export function layFixed(G, rec) {
 function layWalls(G) {
   const walls = wallCells()
   const towers = new Set()
-  for (const t of PLAN.towers) { const c = towerCentre(t); rect(c.x - 1, c.y - 1, c.x + 1, c.y + 1, (a, b) => towers.add(K(a, b))) }
+  for (const t of PLAN.towers) { const r = towerRect(t); rect(r.x0, r.y0, r.x1, r.y1, (a, b) => towers.add(K(a, b))) }
   // no face falls on a gate: its arch, and the north gate's lower row
   const gates = new Set()
   for (const g of [...Object.values(PLAN.gates), ...PLAN.waterGates]) for (let d = -1; d <= 1; d++) gates.add(g.dir === 'N' ? K(g.x + d, g.y) : K(g.x, g.y + d))
@@ -62,11 +62,10 @@ function layWalls(G) {
   // the wall runs on behind each tower it meets, gates counting as wall
   const masonry = new Set([...walls, ...gates])
   for (const t of PLAN.towers) {
-    const c = towerCentre(t)
-    const joins = towerJoins(masonry, towers, c.x, c.y, t.y)
-    if (t.y === mouth.y && (t.x < mouth.x0 || t.x > mouth.x1)) harbourTower(G, c.x, c.y, joins, t.y)
-    else tower(G, c.x, c.y, t.kind === 'round' ? 'round3' : 'square3', 0, joins, t.y)
-    if (c.y !== t.y) towerSlice(G, c.x, t.y, joins)
+    const r = towerRect(t)
+    const joins = towerJoins(masonry, towers, t.x, t.y, r.y0, r.y1)
+    if (t.y === mouth.y && (t.x < mouth.x0 || t.x > mouth.x1)) harbourTower(G, t.x, t.y, joins, r.body)
+    else tower(G, t.x, t.y, t.kind === 'round' ? 'round3' : 'square3', r.body, joins)
   }
   for (const g of PLAN.waterGates) gateSide(G, g.x, g.y, (x, y) => HARBOUR.mole[(x + y) & 1])
   gateArch(G, PLAN.gates.N.x, PLAN.gates.N.y)
@@ -126,17 +125,16 @@ function layCastle(G, rec) {
   rect(C.x0, C.y0, C.x0, C.y1, (x, y) => walls.add(K(x, y))); rect(C.x1, C.y0, C.x1, C.y1, (x, y) => walls.add(K(x, y)))
   for (let d = -1; d <= 1; d++) { walls.delete(K(C.gate + d, C.y1)); gate.add(K(C.gate + d, C.y1)); gate.add(K(C.gate + d, C.y1 + 1)) }
   const tw = [[C.x0, C.y0], [C.x1, C.y0], [C.x0, C.y1], [C.x1, C.y1], [C.gate - 3, C.y1], [C.gate + 3, C.y1], [120, C.y0], [C.x0, 40], [C.x1, 40]]
-  // a tower on the north or south wall stands a tile north of it (plan.js towerCentre)
-  const cyOf = y => y === C.y0 || y === C.y1 ? y - 1 : y
-  for (const [x, y] of tw) rect(x - 1, cyOf(y) - 1, x + 1, cyOf(y) + 1, (a, b) => { towers.add(K(a, b)); walls.add(K(a, b)) })
+  // a tower on the north or south wall is a row taller (plan.js towerRect)
+  const bodyOf = y => y === C.y0 || y === C.y1 ? 1 : 0
+  for (const [x, y] of tw) rect(x - 1, y - 1 - bodyOf(y), x + 1, y + 1, (a, b) => { towers.add(K(a, b)); walls.add(K(a, b)) })
   // the courtyard
   rect(C.x0 + 1, C.y0 + 1, C.x1 - 1, C.y1 - 1, (x, y) => pave(G, x, y, flag(x, y)))
   wallRun(G, walls, towers, (x, y) => gate.has(K(x, y)))
   const masonry = new Set([...walls, ...gate])
   for (const [x, y] of tw) {
-    const joins = towerJoins(masonry, towers, x, cyOf(y), y)
-    tower(G, x, cyOf(y), x === C.x0 || x === C.x1 ? 'round3' : 'square3', 0, joins, y)
-    if (cyOf(y) !== y) towerSlice(G, x, y, joins)
+    const joins = towerJoins(masonry, towers, x, y, y - 1 - bodyOf(y), y + 1)
+    tower(G, x, y, x === C.x0 || x === C.x1 ? 'round3' : 'square3', bodyOf(y), joins)
   }
   // the gate: the portcullis down, the door a word with the guard
   CASTLE.gate2.forEach((r, j) => r.forEach((n, i) => lay(G, C.gate - 1 + i, C.y1 + j, n, { ground: cobble(C.gate - 1 + i, C.y1 + j) })))

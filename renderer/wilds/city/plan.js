@@ -182,8 +182,7 @@ const DISTRICTS = [
 ]
 
 // The districts' rects with every tower's footprint cut out: a tower on an
-// east-west wall stands a tile north of it (towerCentre), into the land
-// inside the south wall.
+// east-west wall is a row taller (towerRect), into the land inside the south wall.
 function carveTowers(districts, towers) {
   const minus = (r, b) => {
     const [x0, y0, x1, y1] = r
@@ -195,43 +194,25 @@ function carveTowers(districts, towers) {
     if (b.x1 < x1) out.push([b.x1 + 1, my0, x1, my1])
     return out
   }
-  const boxes = towers.map(t => { const c = towerCentre(t); return { x0: c.x - 1, y0: c.y - 1, x1: c.x + 1, y1: c.y + 1 } })
-  const carved = districts.map(d => ({ ...d, rects: boxes.reduce((rects, b) => rects.flatMap(r => minus(r, b)), d.rects) }))
-  // the row a moved tower stood on before (under its foot now, the wall's
-  // face) is land of the district beside it on that row, as the rest of the
-  // face row is; a wall turning down from a corner tower keeps its line
-  const idAt = (x, y) => carved.find(d => d.rects.some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1))
-  const onLine = (x, y) => wall.some((a, i) => {
-    const b = wall[(i + 1) % wall.length]
-    return x >= Math.min(a[0], b[0]) && x <= Math.max(a[0], b[0]) && y >= Math.min(a[1], b[1]) && y <= Math.max(a[1], b[1])
-  })
-  for (const t of towers) {
-    if (towerCentre(t).y === t.y) continue
-    const row = t.y + 1
-    for (const x of [t.x - 1, t.x, t.x + 1]) {
-      if (onLine(x, row)) continue
-      const d = x < t.x ? idAt(t.x - 2, row) : x > t.x ? idAt(t.x + 2, row) : (idAt(t.x - 2, row) ?? idAt(t.x + 2, row))
-      if (d) d.rects.push([x, row, x, row])
-    }
-  }
-  return carved
+  const boxes = towers.map(towerRect)
+  return districts.map(d => ({ ...d, rects: boxes.reduce((rects, b) => rects.flatMap(r => minus(r, b)), d.rects) }))
 }
 const TOWERS = makeTowers()
 export const PLAN = deepFreeze({ wall, towers: TOWERS, gates, waterGates, harbour, streets, places, districts: carveTowers(DISTRICTS, TOWERS), posts, patrols })
 
 const key = (x, y) => y * S + x
-const TOWER_HALF = 1
-// Where a tower stands. One on a wall running east-west stands a tile north
-// of the wall line: its foot on the wall's walk, the wall's face running on
-// under it (stamps.js tower, towerSlice), so the wall reads as passing into
-// the tower rather than past its front. One on a north-south wall only stays
-// centred on it.
-export function towerCentre(t) {
+// The cells a tower stands on, centred on its wall line. One on a wall running
+// east-west is a row taller (cap, cap, body, foot: `body` 1): its body on the
+// wall's walk, its foot on the wall's face row beside the wall's own foot,
+// its roof rising a row above the walk. One on a north-south wall only stays
+// three rows (cap, cap, foot), two cells from a side gate's arch.
+export function towerRect(t) {
   const eastWest = wall.some((a, i) => {
     const b = wall[(i + 1) % wall.length]
     return a[1] === t.y && b[1] === t.y && [t.x - 2, t.x + 2].some(x => x >= Math.min(a[0], b[0]) && x <= Math.max(a[0], b[0]))
   })
-  return eastWest ? { x: t.x, y: t.y - 1 } : { x: t.x, y: t.y }
+  const body = eastWest ? 1 : 0
+  return { x0: t.x - 1, x1: t.x + 1, y0: t.y - 1 - body, y1: t.y + 1, body }
 }
 
 let wallSet = null
@@ -249,8 +230,8 @@ export function wallCells() {
     }
   }
   for (const t of PLAN.towers) {
-    const c = towerCentre(t)
-    for (let y = c.y - TOWER_HALF; y <= c.y + TOWER_HALF; y++) for (let x = c.x - TOWER_HALF; x <= c.x + TOWER_HALF; x++) set.add(key(x, y))
+    const r = towerRect(t)
+    for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) set.add(key(x, y))
   }
   wallSet = set
   return set
