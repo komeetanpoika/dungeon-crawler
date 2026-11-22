@@ -79,7 +79,8 @@ test('the tales are wired in: arrival after every new window, a tick after the W
 test('the city runtime is wired in beside the tales, with the screen and the swing', () => {
   assert.match(SRC, /import \{ arriveCity, tickCity, noteCitySwing \} from '\.\/wilds\/city\/runtime\.js'/)
   // every arrival of the tales is one of the city's too: entering, waking, every re-centre
-  assert.equal((SRC.match(/arriveCity\(state, wildsWorld, cityHooks, \{ fresh: true \}\)/g) ?? []).length, 2, 'after entering and after waking')
+  assert.equal((SRC.match(/arriveCity\(state, wildsWorld, cityHooks, \{ fresh: true \}\)/g) ?? []).length, 3,
+    'after entering, after waking, and for a window built round the stocks')
   for (const at of [...SRC.matchAll(/arriveTales\(state, wildsWorld, taleHooks(, \{ fresh: true \})?\)/g)]) {
     const next = SRC.slice(at.index, at.index + 160)
     assert.match(next, /arriveCity\(state, wildsWorld, cityHooks/, 'arriveCity follows arriveTales')
@@ -91,6 +92,25 @@ test('the city runtime is wired in beside the tales, with the screen and the swi
   assert.match(SRC, /viewHalf: \(\) => \(renderer \? \{ w: renderer\.viewW \/ \(2 \* TILE_SIZE\), h: renderer\.viewH \/ \(2 \* TILE_SIZE\) \}/)
   // a swing, a shot and a cast each make the townsfolk flinch
   assert.equal((SRC.match(/noteCitySwing\(state, wildsWorld\)/g) ?? []).length, 3)
+})
+
+// Kalevanlinna's law (wilds/city/law.js); its behaviour is test/wilds-city-crime.test.js
+test("the city's law is wired in: violence from npcStruck, the arrest's fade, a key jeers, a wake forgets", () => {
+  assert.match(SRC, /import \{ cityViolence, arrest, seat, clearCrime, stocksWorld \} from '\.\/wilds\/city\/law\.js'/)
+  // every npc the player strikes reaches the law, with the hit path's source (the watch's own blows say 'watch')
+  assert.match(SRC, /function npcStruck\(e, alive = e\.hp > 0, source = 'player'\)/)
+  assert.match(SRC, /if \(e\.cityKey !== undefined && wildsWorld\) cityViolence\(state, wildsWorld, e, \{ killed: !alive, source \}\)/)
+  assert.match(SRC, /npcStruck\(e, e\.hp > 0, source\)/)
+  assert.match(SRC, /hurt: \(target, amount\) => hurtEntity\(target, amount, \{ source: 'watch', hitCue: null \}\)/)
+  // the arrest follows the town's tick: fade, and the stocks at its darkest
+  const upd = SRC.slice(SRC.indexOf('tickCity(state, wildsWorld, delta, cityHooks)'))
+  assert.ok(upd.indexOf('if (state.arrest) arrest(state)') > 0 && upd.indexOf('if (state.arrest) arrest(state)') < 300, 'the arrest beside tickCity')
+  assert.match(upd.slice(0, 700), /ARREST_FADE \/ 2[\s\S]*toStocks\(\)/)
+  assert.match(SRC, /function toStocks\(\) \{[\s\S]{0,120}seat\(state, wildsWorld\)/)
+  // in the stocks a key press only jeers
+  assert.match(SRC, /if \(state\.player\.stocks\) \{ sfx\(state, 'jeer'[^}]*\}\); return \}\s*struggle\(state\.player\)/)
+  // a wake and a load forget
+  assert.equal((SRC.match(/arriveCity\(state, wildsWorld, cityHooks, \{ fresh: true \}\)\s*clearCrime\(state\)/g) ?? []).length, 2)
 })
 
 test('a story house in the Wilds takes its things from the tale', () => {

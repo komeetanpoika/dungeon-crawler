@@ -1,14 +1,18 @@
-// The two states that take the hero's controls away: frozen solid (Monsteri's
-// frost breath) and held in a monster's grip. While either lasts the hero
-// cannot walk, turn, sprint, swing, cast, raise a shield or drink — game.js
-// asks playerBound once a frame and gates every control on it. A grip is
-// escaped by mashing: every key press is one struggle, and the monster that
-// holds the hero decides how many it takes (systems/monsters/monsteri.js).
+// The states that take the hero's controls away: frozen solid (Monsteri's
+// frost breath), held in a monster's grip, and sat in Kalevanlinna's stocks.
+// While any lasts the hero cannot walk, turn, sprint, swing, cast, raise a
+// shield or drink — game.js asks playerBound once a frame and gates every
+// control on it. A grip is escaped by mashing: every key press is one
+// struggle, and the monster that holds the hero decides how many it takes
+// (systems/monsters/monsteri.js). In the stocks a key press does nothing but
+// make the crowd jeer; the city lets the hero go (wilds/city/law.js).
 // Pure — game.js ticks it and feeds it the key presses.
 //
-//   player.ice  = { t, dur }                        seconds left / at the start
-//   player.held = { by, presses, jolt, side }       the holder, struggles so far,
+//   player.ice    = { t, dur }                      seconds left / at the start
+//   player.held   = { by, presses, jolt, side }     the holder, struggles so far,
 //                                                   and the shake each press gives
+//   player.stocks = { t, fade, seated }             seconds left, the arrest's fade,
+//                                                   in the stocks yet
 export const JOLT_TIME = 0.15   // s a press shakes the held hero for
 
 export function freezePlayer(player, dur) {
@@ -55,4 +59,4 @@ export function tickBinds(player, delta, entities = null) {
   if (!(h.by.hp > 0) || (entities && !entities.includes(h.by))) player.held = null
 }
 
-export const playerBound = player => !!(player.ice || player.held)
+export const playerBound = player => !!(player.ice || player.held || player.stocks)

@@ -77,6 +77,9 @@ export const RECIPES = {
   'erupt':          { kind: 'rumble', freq: 85,  dur: 0.40, vol: 0.9 },
   'wraith-touch':   { kind: 'swoosh', f0: 900,  f1: 200,  dur: 0.20, vol: 0.3 },
   'wraith-burn':    { kind: 'burst', freq: 1800, q: 0.7, dur: 0.30, vol: 0.35 },
+  // Kalevanlinna's stocks: a low falling hoot from the crowd, a soft wet thud
+  'jeer':           { kind: 'swoosh', f0: 520, f1: 220, dur: 0.45, vol: 0.5 },
+  'splat':          { kind: 'burst',  freq: 240,  q: 0.7,  dur: 0.12, vol: 0.6 },
 }
 
 export function falloffGain(distPx) {

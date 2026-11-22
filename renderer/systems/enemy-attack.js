@@ -81,7 +81,9 @@ function strike(e, state) {
   // (blocked, then i-framed elsewhere) can never be misread as this swing's
   // own outcome — only tryBlock (via damagePlayer, just below) can set it true.
   player.blockedHit = false
-  const landed = connects && damagePlayer(state, w.damage, 'hit', { px: e.px, py: e.py })
+  // the striker itself is the blow's source: its position for a shield, and
+  // who it is for anyone sparing the player (Kalevanlinna's watch)
+  const landed = connects && damagePlayer(state, w.damage, 'hit', e)
   let blocked = false
   if (connects && !landed) {
     if (player.blockedHit) {

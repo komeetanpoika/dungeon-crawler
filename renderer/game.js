@@ -49,6 +49,8 @@ import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
+import { cityViolence, arrest, seat, clearCrime, stocksWorld } from './wilds/city/law.js'
+import { ARREST_FADE } from './wilds/city/crime.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
@@ -212,11 +214,13 @@ window.addEventListener('keydown', e => {
 
 // Held in a monster's grip (systems/player-bind.js), every key press is a
 // struggle against it — Escape still only pauses. The touch buttons send
-// keys too, so tapping them counts the same.
+// keys too, so tapping them counts the same. In Kalevanlinna's stocks a key
+// press does nothing but make the crowd jeer.
 window.addEventListener('keydown', e => {
   if (e.target?.tagName === 'INPUT') return
   if (e.repeat || e.key === 'Escape') return
   if (phase !== PHASE.PLAYING || !state) return
+  if (state.player.stocks) { sfx(state, 'jeer', { px: state.player.px, py: state.player.py }); return }
   struggle(state.player)
 })
 
@@ -432,12 +436,15 @@ function rulesetTileNames(rs) {
 // A blow landed on an npc: hurt cue + species reaction + village wrath (once).
 // An animal that survives yelps; villagers keep the human cue the hit site
 // already plays. `alive` is passed explicitly by the splash path, where the
-// snapshot entity still carries its pre-blast hp.
+// snapshot entity still carries its pre-blast hp. `source` is the hit path's
+// (hurtEntity's meta): every blow but the watch's own ('watch') is the
+// player's, and on one of Kalevanlinna's people inside the walls it is
+// violence the city answers (wilds/city/law.js).
 // Drops rolled for NPCs that died this frame. Damage sites run inside
 // state.entities rebuilds, so pushing a pickup there would be lost — they
 // queue here and land after the frame's final cull.
 let pendingDrops = []
-function npcStruck(e, alive = e.hp > 0) {
+function npcStruck(e, alive = e.hp > 0, source = 'player') {
   if (e.type !== 'npc') return
   npcDirty = true
   if (alive && !NPC_SPECIES[e.species]?.walker) sfx(state, 'npc-hurt', { px: e.px, py: e.py })
@@ -451,6 +458,7 @@ function npcStruck(e, alive = e.hp > 0) {
   }
   const r = onNpcHit(e, state)
   if (r.wrath) { announce(state, 'The village turns on you!'); sfx(state, 'npc-wrath') }
+  if (e.cityKey !== undefined && wildsWorld) cityViolence(state, wildsWorld, e, { killed: !alive, source })
 }
 
 // Animals die with their own small cue; villagers keep the human one.
@@ -527,7 +535,7 @@ function hurtEntity(e, damage, meta) {
   addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${damage}`, kind: 'dealt' })
   e.hp -= damage
   e.inCombat = true
-  npcStruck(e)
+  npcStruck(e, e.hp > 0, source)
   const cue = e.hp <= 0 ? deathCue(e) : meta?.hitCue !== undefined ? meta.hitCue : 'projectile-hit'
   if (cue) sfx(state, cue, { px: e.px, py: e.py })
   return e
@@ -885,6 +893,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
     enterWilds(state, wildsWorld, wildsWorld.pos ?? wildsWorld.lastVillage, wildsHooks)
     arriveTales(state, wildsWorld, taleHooks, { fresh: true })
     arriveCity(state, wildsWorld, cityHooks, { fresh: true })
+    clearCrime(state)   // a load starts calm with Kalevanlinna's watch (never saved)
     if (fresh) persistRun()
   }
   if (runMode === 'adventure' && OPEN_MAPS[depth]) recordVisit(activeSave.progress, OPEN_MAPS[depth].name)
@@ -1424,6 +1433,19 @@ function answerTheCall() {
   sfx(state, 'rite', { px: state.player.px, py: state.player.py })
 }
 
+// The arrest's darkest moment: the player is put in the stocks on the square.
+// Taken where the square is beyond the window (by the west gate, the window
+// still round the land outside it), the window is built round the stocks
+// first, the town anew with the record carried over.
+function toStocks() {
+  if (!wildsWorld || !state.cityRun || seat(state, wildsWorld)) return
+  const { crime } = state.cityRun
+  enterWilds(state, wildsWorld, stocksWorld(wildsWorld), wildsHooks)
+  arriveTales(state, wildsWorld, taleHooks, { fresh: true })
+  arriveCity(state, wildsWorld, cityHooks, { fresh: true })
+  if (state.cityRun) { state.cityRun.crime = crime; seat(state, wildsWorld) }
+}
+
 function update(delta) {
   if (!state) return
   if (!state.sfx) state.sfx = makeSfx(loadMutedPref())
@@ -1483,6 +1505,15 @@ function update(delta) {
     if (!state.cave) {
       tickTales(state, wildsWorld, delta, taleHooks)
       tickCity(state, wildsWorld, delta, cityHooks)
+      // Kalevanlinna's watch took the player alive (damagePlayer spared the
+      // last blow): the screen fades, and at its darkest they sit in the stocks
+      if (state.arrest) arrest(state)
+      const st = state.player.stocks
+      if (st && st.fade < ARREST_FADE) {
+        const was = st.fade
+        st.fade = Math.min(ARREST_FADE, st.fade + delta)
+        if (was < ARREST_FADE / 2 && st.fade >= ARREST_FADE / 2) toStocks()
+      }
     }
   }
   const { player, map } = state
@@ -2273,6 +2304,7 @@ function update(delta) {
       const village = wildsRespawn(state, wildsWorld, wildsHooks)
       arriveTales(state, wildsWorld, taleHooks, { fresh: true })
       arriveCity(state, wildsWorld, cityHooks, { fresh: true })
+      clearCrime(state)   // Kalevanlinna forgets: no warning, no wanted, no stocks
       state.npcWrath = false
       persistRun()
       queueToast(state, { title: `You awaken in ${village?.name ?? 'the village'}…`, lines: ['The dark took its toll — but you are alive.'] })

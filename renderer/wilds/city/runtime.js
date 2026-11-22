@@ -28,6 +28,10 @@
 // hooks.hurt (kept on the run for it). The old shift keeps a post until its
 // relief stands there.
 //
+// The law (law.js): the player's violence, the hunters it sets on them, the
+// stocks and the crowd round it. A hunter (w.hunt) or a gawker (w.gawk) is
+// out of their day until let go; then the schedule takes them back.
+//
 //   state.cityRun = { people: Map<id, Walker>, animals: Map<id, Animal>, hooks,
 //                     crime, scenes, lights, fx, nearR, swingAt, stats, ... }
 //   e.city = { next: window tile | null, entry, person, passed, foe, lost, lostT }
@@ -45,6 +49,8 @@ import {
   cityToWorld, CITY_OX as OX, CITY_OY as OY,
 } from './walkers.js'
 import { makeAnimals } from './animals.js'
+import { makeCrime } from './crime.js'
+import { tickLaw, rouseEntity, stepGawker, cityMercy, carryCrime, bringCrime } from './law.js'
 
 export { FAR_SPEED }
 const S = 32
@@ -120,7 +126,7 @@ function makeRun(state, world, hooks, lazy) {
   const day = hooks.day(), frac = fracOf(hooks.clock())
   const run = {
     seed: world.seed, cc, people: new Map(), animals: new Map(), hooks,
-    crime: null, scenes: null, lights: null, fx: null,
+    crime: makeCrime(), scenes: null, lights: null, fx: { turnips: [] },
     nearR: nearRadius(hooks.viewHalf()), day, frac, swingAt: null, shyT: 0,
     queue: [], pending: [], tick: 0, remove: new Set(), stats: { noRoute: [], rerouted: 0 },
   }
@@ -167,7 +173,7 @@ function keepsPost(w, nx, frac) {
 function holdPosts(run, frac) {
   for (const w of run.people.values()) {
     const r = w.relief
-    if (!r || w.out || w.pending || w.mode === 'near' || r.out || atPost(r)) continue
+    if (!r || w.out || w.pending || w.hunt || w.mode === 'near' || r.out || atPost(r)) continue
     if (w.entry.act === 'post' || w.sched[w.ei - 1]?.act !== 'post' || frac - w.entry.at >= HOLD_MAX) continue
     placeByClock(run.cc, w, w.entry.at - 1e-6, run.stats)
   }
@@ -177,11 +183,16 @@ function holdPosts(run, frac) {
 // Idempotent; call after every enterWilds, re-centre and respawn (`fresh`
 // for a window built anew: a load, a wake after death).
 export function arriveCity(state, world, hooks, { fresh = false } = {}) {
-  if (!cityInWindow(world)) { dropCity(state); return }
+  if (!cityInWindow(world)) { carryCrime(state, nowOf(hooks)); dropCity(state); return }
   if (fresh || !state.cityRun || state.cityRun.seed !== world.seed) {
     dropCity(state)
     state.cityRun = makeRun(state, world, hooks, !fresh)
+    // a warning or the wanted taken along on a walk comes back with the town; a load or a wake drops it
+    if (fresh) delete state.cityAway
+    else bringCrime(state, state.cityRun, nowOf(hooks))
   }
+  // the watch takes a wanted player alive (damagePlayer asks)
+  state.mercy = cityMercy
   const run = state.cityRun
   run.hooks = hooks
   reconcile(state, world, run)
@@ -193,7 +204,11 @@ export function arriveCity(state, world, hooks, { fresh = false } = {}) {
 function dropCity(state) {
   if (state.entities?.some(e => e.cityKey !== undefined)) state.entities = state.entities.filter(e => e.cityKey === undefined)
   delete state.cityRun
+  delete state.mercy
 }
+
+// seconds since the world's first day began: the clock the time away is counted by
+const nowOf = hooks => hooks.day() * DAY_LENGTH + hooks.clock()
 
 // Every city entity in state.entities must be the one its walker holds, and
 // every near walker's entity must still be there. Fire and the shockwave hand
@@ -236,6 +251,7 @@ function reconcile(state, world, run) {
 function knockedDown(run, w) {
   if (w.entity?.hp > 0) run.remove.add(w.entity)
   w.entity = null
+  w.hunt = false; w.gawk = null
   if (w.animal) { w.mode = 'far'; w.gone = true; return }
   // a route on order must not walk them anywhere; no home door (a city with
   // no barracks for the watch) leaves them out of sight all the same
@@ -278,9 +294,9 @@ export function tickCity(state, world, delta, hooks) {
 
   for (const w of run.people.values()) {
     if (w.out || w.pending) continue
-    // the schedule moved on
+    // the schedule moved on (a hunter or a gawker catches up when let go)
     const nx = w.sched[w.ei + 1]
-    if (nx && frac >= nx.at && !keepsPost(w, nx, frac)) {
+    if (nx && frac >= nx.at && !w.hunt && !w.gawk && !keepsPost(w, nx, frac)) {
       setEntry(cc, w, entryAt(w.sched, frac))
       if (w.needRoute) run.queue.push(w)
       if (w.entity) w.entity.city.entry = w.entry
@@ -289,6 +305,7 @@ export function tickCity(state, world, delta, hooks) {
     else if (w.mode === 'far') stepFar(cc, w, delta)
   }
   guard(state, run, delta, ox, oy)
+  tickLaw(state, world, run, delta)
   modes(state, world, run, hooks)
   flush(state, run)
 }
@@ -311,6 +328,7 @@ function guard(state, run, delta, ox, oy) {
   for (const w of run.people.values()) {
     if (w.mode !== 'near' || w.species !== 'watchman') continue
     const e = w.entity, c = e.city
+    if (w.hunt) { c.foe = null; continue }   // after the player (law.js)
     if (c.lost && (c.lostT -= delta) <= 0) { c.lost = null; c.lostT = 0 }
     const foe = foes ? foeOf(state, run, w, e, foes, ox, oy) : null
     if (foe) w.fought = true
@@ -350,6 +368,7 @@ function newDay(run, day, frac) {
       placeByClock(cc, w, frac, run.stats)
       continue
     }
+    if (w.hunt || w.gawk) continue   // the new day's schedule takes them back when let go
     w.ei = 0
     setEntry(cc, w, entryAt(w.sched, frac))
     if (w.needRoute) run.queue.push(w)
@@ -369,6 +388,8 @@ function near(state, run, w, dt, ox, oy) {
   if (e.hp <= 0) { knockedDown(run, w); return }
   w.X = e.px / S - 0.5 + ox; w.Y = e.py / S - 0.5 + oy
   const c = e.city
+  if (w.hunt) return   // the enemy brain drives a hunter (law.js)
+  if (w.gawk) { stepGawker(w, e, ox, oy); return }
   if (w.shy) {
     w.shy.t -= dt
     if (w.shy.t > 0 && Math.hypot(w.shy.X - w.X, w.shy.Y - w.Y) > 0.4) { setNext(e, w.shy.X - ox, w.shy.Y - oy); return }
@@ -467,7 +488,7 @@ function spawn(state, run, w, hooks, ox, oy) {
     if (!found) return   // walled in: stays far this frame
     x = found.x; y = found.y; fx = x; fy = y
   }
-  const [e] = hooks.spawn([{ kind: 'npc', species: w.species, id: w.id, x, y, lines: w.lines, hostile: false }])
+  const [e] = hooks.spawn([{ kind: 'npc', species: w.species, id: w.id, x, y, lines: w.lines, hostile: !!w.hunt }])
   if (!e) return
   e.px = (fx + 0.5) * S; e.py = (fy + 0.5) * S
   e.x = Math.floor(e.px / S); e.y = Math.floor(e.py / S)
@@ -480,6 +501,7 @@ function spawn(state, run, w, hooks, ox, oy) {
   } else {
     e.city = { next: null, entry: w.entry, person: w.person, passed: false }
     w.homed = false; w.sx = w.X; w.sy = w.Y; w.still = 0
+    if (w.hunt) rouseEntity(e, state.player)   // one of the hunters comes near: after the player
   }
   state.entities.push(e)
   w.entity = e; w.mode = 'near'
@@ -540,7 +562,7 @@ export function cityPeople(state) {
   for (const w of run.people.values()) out.push({
     id: w.id, mode: w.mode, X: w.X, Y: w.Y, door: w.mode === 'indoors' ? w.door : null,
     entry: w.ei, act: w.entry?.act ?? null, going: w.mode !== 'indoors' && w.phase === 'go', there: w.phase === 'there',
-    goal: w.goal?.kind ?? null, still: w.still, out: w.out, pending: !!w.pending,
+    goal: w.goal?.kind ?? null, still: w.still, out: w.out, pending: !!w.pending, hunt: !!w.hunt, gawk: !!w.gawk,
   })
   return out
 }

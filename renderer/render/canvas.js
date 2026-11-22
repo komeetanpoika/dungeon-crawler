@@ -26,6 +26,7 @@ import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer, CHUNK } from './tile-layer.js'
 import { drawComboFx, drawArrowTrail, drawBuffSpot, drawBuffUnder, drawBuffOver } from './pvp-fx.js'
 import { BUFF_COLORS } from '../data/pvp.js'
+import { arrestFade } from '../wilds/city/crime.js'
 
 const TILE_SIZE = 32
 
@@ -277,7 +278,9 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     const flip = entity.facing === 'west'
     if (def?.sheet) { drawNpcSheet(ctx, entity, def.sheet, px, py, S, flip); return }
     const key = spriteKeyFor(entity)
-    const s = (entity.hostile && def?.walker ? sprites.guard_alert : null) ?? sprites[key]
+    // a hostile walker looks alert, but the city's people keep their own look
+    // (a watchman after the player is still the watch)
+    const s = (entity.hostile && def?.walker && def.faction !== 'city' ? sprites.guard_alert : null) ?? sprites[key]
     if (!s) return
     if (def?.walker) { drawWalker(ctx, s, px, py, S, flip, walkTilt(entity)); return }
     const rt = entity.ai?.reactTimer ?? 0
@@ -1465,6 +1468,15 @@ export class Renderer {
     }
     drawRainbow(ctx, this.tranceLayer, fx?.rainbow, { W, H })
     drawWash(ctx, fx?.wash ?? 0, { W, H })
+    // Kalevanlinna's watch takes the player: black, then the stocks
+    const dark = arrestFade(state.player?.stocks)
+    if (dark > 0) {
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, dark)
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, W, H)
+      ctx.restore()
+    }
 
     this._drawFeedback(state)
 
