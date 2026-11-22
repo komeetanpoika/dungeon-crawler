@@ -128,6 +128,11 @@ export async function frameRate(page, secs) {
     const step = t => { ts.push(t); if (t - t0 < secs * 1000) requestAnimationFrame(step); else res(ts) }
     requestAnimationFrame(step)
   }), secs)
+  return frameStats(ts)
+}
+
+// rAF timestamps -> { fps, p50, p95, frames } (ms)
+export function frameStats(ts) {
   const d = ts.slice(1).map((t, i) => t - ts[i]).sort((a, b) => a - b)
-  return { fps: +(1000 * (ts.length - 1) / (ts.at(-1) - ts[0])).toFixed(1), p50: +d[d.length >> 1].toFixed(1), p95: +d[Math.floor(d.length * 0.95)].toFixed(1) }
+  return { fps: +(1000 * (ts.length - 1) / (ts.at(-1) - ts[0])).toFixed(1), p50: +d[d.length >> 1].toFixed(1), p95: +d[Math.floor(d.length * 0.95)].toFixed(1), frames: ts.length - 1 }
 }

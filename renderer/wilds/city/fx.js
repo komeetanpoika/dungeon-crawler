@@ -14,10 +14,11 @@
 //     (markTileDirty); takes the banners, pennants and windmill sails off the
 //     baked layer once (their overlay cleared), for the screen draws them a
 //     frame at a time (fxThingsOf(city).anim, with the gate towers' pennants)
-//   - lists the light sources on screen (run.lights.sources, window pixels):
-//     lit lamps (LAMP_R), the windows of houses someone is home in at night
-//     (WINDOW_R, one light to a run of up to three windows of a house, the runs
-//     in run.lights.windows), the forge while the smith works
+//   - lists the light sources out to LIGHT_SLACK tiles round the screen (as
+//     far as the night wash's kept mask may reach; run.lights.sources, window
+//     pixels): lit lamps (LAMP_R), the windows of houses someone is home in at
+//     night (WINDOW_R, one light to a run of up to three windows of a house,
+//     the runs on screen in run.lights.windows), the forge while the smith works
 //   - lets out smoke from the chimneys on screen of houses someone is home in,
 //     no more than a puff a chimney every PUFF_EVERY, and drops the smoke of a
 //     chimney that leaves the screen; sparks off the anvil at each of the
@@ -33,7 +34,7 @@
 //   run.fx.sparks    [{ X, Y, vx, vy, t }] (moving: X, Y where it is now)
 //   run.fx.splats    [{ X, Y, t }] (scene-things.js stepTurnips lays them)
 //   run.fx.ringAt    town time of the crier's last ring
-//   run.lights.sources  [{ px, py, r, strength, grey, glow }] the city's lights on screen
+//   run.lights.sources  [{ px, py, r, strength, grey, glow }] the city's lights round the screen
 //   run.lights.windows  [WindowRun] the lit window runs on screen
 //
 // flockSprites(run, view) is the birds of the flocks on screen as sprites;
@@ -69,6 +70,15 @@ const WINDOW_RUN = 3               // windows of a house's row to one light
 const windowsLit = frac => frac >= DAY.dusk || frac < DAY.dawn + 0.04
 export const FLOCK_R = 3           // tiles round a flock its birds may be drawn
 const VIEW_SLACK = 1               // tiles round the screen counted as on it
+// The night wash (render/weather.js) keeps a mask of the view and NIGHT_PAD
+// (160 px, 5 tiles) round it, built anew when a light it holds comes, goes
+// or changes; the view may wander the pad either way before it leaves that
+// mask, so a light the mask holds can lie twice the pad off screen. The
+// lights are listed that far out (plus their own reach): walking then never
+// lists or drops one inside a kept mask, which would rebuild it every few
+// steps (the screen's own things, panes and smoke, keep to VIEW_SLACK).
+const NIGHT_PAD_TILES = 5
+export const LIGHT_SLACK = VIEW_SLACK + 2 * NIGHT_PAD_TILES
 
 const LAMP_NAMES = new Set([PROPS.lamp, PROPS.lampLit])
 const LINE_NAMES = [new Set([PROPS.washing[0], PROPS.line[0]]), new Set([PROPS.washing[1], PROPS.line[1]])]
@@ -187,13 +197,16 @@ function light(run, n, px, py, r, strength, glow) {
   return n + 1
 }
 
+// The lights out to LIGHT_SLACK round the screen (v reaches VIEW_SLACK past
+// it), and the lit window runs on the screen itself (their panes are drawn).
 function lights(run, v, home, ox, oy) {
   const city = run.cc.city, lit = run.lights.lit, things = fxThingsOf(city)
+  const far = LIGHT_SLACK - VIEW_SLACK
   let n = 0
   for (let i = 0; i < city.lamps.length; i++) {
     if (!lit[i]) continue
     const X = city.lamps[i].x + OX, Y = city.lamps[i].y + OY
-    if (!inView(v, X, Y, LAMP_R)) continue
+    if (!inView(v, X, Y, far + LAMP_R)) continue
     n = light(run, n, (X - ox) * S + LANTERN.x, (Y - oy) * S + LANTERN.y, LAMP_R, LAMP_STRENGTH, LAMP_GLOW)
   }
   const wins = run.lights.windows
@@ -201,13 +214,13 @@ function lights(run, v, home, ox, oy) {
   if (windowsLit(run.frac)) {
     for (const r of things.runs) {
       const X = (r.X0 + r.X1) / 2
-      if (!inView(v, X, r.Y, WINDOW_R) || !home.has(r.door)) continue
-      wins.push(r)
+      if (!home.has(r.door) || !inView(v, X, r.Y, far + WINDOW_R)) continue
+      if (inView(v, X, r.Y, WINDOW_R)) wins.push(r)
       n = light(run, n, (X - ox) * S + S / 2, (r.Y - oy) * S + S / 2, WINDOW_R, WINDOW_STRENGTH, WINDOW_GLOW)
     }
   }
   const sm = run.fx.smithy
-  if (sm && sm.state !== 'idle' && inView(v, sm.forge.X, sm.forge.Y, FORGE_R)) {
+  if (sm && sm.state !== 'idle' && inView(v, sm.forge.X, sm.forge.Y, far + FORGE_R)) {
     n = light(run, n, (sm.forge.X - ox) * S + S / 2, (sm.forge.Y - oy) * S + S / 2, FORGE_R, FORGE_STRENGTH)
   }
   run.lights.sources.length = n

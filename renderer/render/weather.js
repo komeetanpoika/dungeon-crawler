@@ -15,7 +15,10 @@ const GLOW_RADIUS = 0.6      // × the light's hole radius
 const FOG_FLOOR = 0.02
 const NIGHT_CELL = 32        // CSS px: the grid the night layer is blitted on, where a light reaches
 const NIGHT_MARGIN = 2 / LAYER_SCALE   // CSS px past a hole that the smoothed blit still reads it
-const NIGHT_PAD = 160        // CSS px the kept night mask reaches past the view on every side
+// CSS px the kept night mask reaches past the view on every side; the view may
+// wander this far either way inside it, so wilds/city/fx.js lists the city's
+// lights twice this far off screen (LIGHT_SLACK) and none comes or goes in it
+export const NIGHT_PAD = 160
 const NIGHT_REBUILD_GAP = 6  // frames at least between two builds of the kept mask ...
 const NIGHT_GAP_MAX = 64     // ... doubled up to this while each build is undone at once
 const STRENGTH_STEPS = 32    // a light's strength as the kept mask is keyed and punched
@@ -207,7 +210,11 @@ export function drawNight(ctx, layer, look, { camX, camY }, { W, H }, S) {
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(N.full, N.x0 - camX, N.y0 - camY)
     ctx.restore()
-  } else drawLayer(ctx, layer, look, visible, ambient, camX, camY, W, H, S)
+  } else {
+    // counted, as the builds are, for the tests and tools/city/perf.mjs
+    N.straight = (N.straight ?? 0) + 1
+    drawLayer(ctx, layer, look, visible, ambient, camX, camY, W, H, S)
+  }
   drawGlows(ctx, look, visible, camX, camY, S)
 }
 

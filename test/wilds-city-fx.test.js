@@ -386,3 +386,67 @@ test('the church bell rings out from the belfry', async () => {
     assert.match(cell.overlay ?? '', /church_belfry/, `round the belfry, not ${cell.overlay ?? cell.skin}`)
   }
 })
+
+// The night wash (render/weather.js) keeps a mask of the view and NIGHT_PAD
+// px round it, built anew when a light it holds comes, goes or changes. The
+// city's lights stand still at night, so walking must rebuild it only when
+// the view leaves it: every lamp and window whose light reaches the mask has
+// to be listed wherever in the mask the view is, or each one listed on the
+// way changes the mask's key and the frame falls back to the costly wash
+// (seen in the final review: lamps were listed one tile past the screen).
+test('walking at night, the kept night mask is built anew only when the view leaves it', async t => {
+  const { makeWeatherLayer, drawNight, NIGHT_PAD } = await import('../renderer/render/weather.js')
+  const fx = await import('../renderer/wilds/city/fx.js')
+  const W = 1024, H = 704
+  const ctx = setup({ frac: 0.92, view: { w: W / (2 * S), h: H / (2 * S) } })
+  const { state, world } = ctx
+  const run_ = state.cityRun
+  assert.ok(run_.lights.lit.every(v => v === 1), 'every lamp lit at night')
+  // a canvas that only remembers what was drawn on it
+  let drawn = []
+  const fakeCanvas = () => {
+    const c = { width: 0, height: 0 }
+    const g = new Proxy({}, {
+      get: (t, k) => k in t ? t[k] : k === 'drawImage' ? img => drawn.push(img) : k === 'createRadialGradient' ? () => ({ addColorStop() {} }) : () => {},
+      set: (t, k, v) => { t[k] = v; return true },
+    })
+    c.getContext = () => g
+    return c
+  }
+  const layer = makeWeatherLayer(fakeCanvas)
+  layer.resize(W, H)
+  const frame = fakeCanvas().getContext()
+  const ox = world.origin.wx * PIECE, oy = world.origin.wy * PIECE
+  // round a block of the town: south down market street to the square, east, north, west
+  const p = state.player
+  const legs = [[0, 1, 40], [1, 0, 30], [0, -1, 40], [-1, 0, 30]]
+  let frames = 0, lit = 0, keyBuilds = 0, straight = 0, most = 0
+  for (const [dx, dy, tiles] of legs) {
+    for (let k = 0; k < tiles * S / 3; k++) {
+      p.px += 3 * dx; p.py += 3 * dy
+      p.x = Math.floor(p.px / S); p.y = Math.floor(p.py / S)
+      fx.tickCityFx(state, run_, 0, ox, oy)
+      const lights = lightSources(state)
+      most = Math.max(most, lights.length)
+      const camX = p.px - W / 2, camY = p.py - H / 2
+      const N = layer.night
+      const inside = !!N?.key && camX >= N.x0 && camY >= N.y0 && camX + W <= N.x0 + N.w && camY + H <= N.y0 + N.h
+      const before = N?.builds ?? 0
+      drawn = []
+      drawNight(frame, layer, { dark: 0.85, ambient: [40, 60, 120], fog: 1, t: frames / 60, lights }, { camX, camY }, { W, H }, S)
+      frames++
+      if (!layer.night) continue
+      lit++
+      if (inside && layer.night.builds > before) keyBuilds++
+      if (drawn.includes(layer.canvas)) straight++
+    }
+  }
+  assert.ok(lit > frames * 0.9 && most >= 10, `lights about all the way (${lit} of ${frames} frames lit, up to ${most} lights)`)
+  assert.equal(keyBuilds, 0, `no build while the view was still inside the kept mask (${layer.night.builds} builds in ${frames} frames)`)
+  assert.equal(straight, 0, 'no frame drawn straight on')
+  const walked = 140 * S
+  t.diagnostic(`${layer.night.builds} builds in ${frames} frames, ${walked} px walked, up to ${most} lights listed`)
+  assert.ok(layer.night.builds <= Math.ceil(walked / NIGHT_PAD) + legs.length + 1, `${layer.night.builds} builds for ${walked} px walked`)
+  // the view may wander the pad either way inside a kept mask, so a light it holds lies up to twice the pad off screen
+  assert.ok(fx.LIGHT_SLACK * S >= 2 * NIGHT_PAD + S / 2, `lights listed ${fx.LIGHT_SLACK} tiles past the view cover twice the mask's pad (${NIGHT_PAD} px) and a shake`)
+})

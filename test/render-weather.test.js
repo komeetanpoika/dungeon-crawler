@@ -311,6 +311,7 @@ describe('drawNight', () => {
     }
     assert.ok(layer.night.builds <= 8, `a light changing every frame: ${layer.night.builds} builds in 200 frames`)
     assert.equal(direct, 200 - layer.night.builds, 'every other frame straight on')
+    assert.equal(layer.night.straight, direct, 'and counted')
     // then the lights hold: built once more and kept
     const before = layer.night.builds
     for (let n = 0; n < 80; n++) drawNight(recordingCtx(), layer, look({ lights: [lamp] }), cam, view, S)

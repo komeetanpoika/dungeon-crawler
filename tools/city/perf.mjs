@@ -8,25 +8,40 @@
 //      add ≤ 4 ms JS a frame on average (canvas raster per frame shown too);
 //   3. the web build (npm run web) in headless Chromium with the CPU
 //      throttled 4x on the square for `--web-secs` seconds: above 30 fps
-//      (and the same on a plain Wilds piece, for comparison).
+//      (and the same on a plain Wilds piece, for comparison);
+//   4. walking at night on the web build, throttled the same: the player
+//      walks the market street north of the square down and up for
+//      `--walk-secs` seconds with the clock at `--night-frac` (0.92: every
+//      lamp lit, the windows of who is home), then the same walk at
+//      `--frac` for comparison. Gated: above 30 fps, and no rebuild storm of
+//      the kept night mask (render/weather.js): no more builds than the view
+//      can leave it (one per NIGHT_PAD px walked) plus a few for lights that
+//      really change, and almost no frame drawn straight on.
 //
 // Both runs start from a Wilds save (throwaway profile / localStorage) at the
 // square with the clock at `--frac` of the day (0.47: noon). Exits non-zero
-// when a gate fails. About 2 minutes with the defaults.
+// when a gate fails. About 2.5 minutes with the defaults.
 //
-//   node tools/city/perf.mjs [--pairs 3] [--secs 5] [--web-secs 10] [--rate 4]
-//        [--frac 0.47] [--seed 7] [--port 8080] [--shots <dir>] [--no-build] [--no-electron] [--no-web] [--no-web-plain]
+//   node tools/city/perf.mjs [--pairs 3] [--secs 5] [--web-secs 10] [--walk-secs 10] [--rate 4]
+//        [--frac 0.47] [--night-frac 0.92] [--seed 7] [--port 8080] [--shots <dir>]
+//        [--no-build] [--no-electron] [--no-web] [--no-web-plain] [--no-walk]
 import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { APP_DIR, SQUARE, sleep, citySave, driver, launchGame, startWeb, launchWeb, enterWilds, noDamage, frameRate } from './live.mjs'
+import { APP_DIR, SQUARE, sleep, citySave, driver, launchGame, startWeb, launchWeb, enterWilds, noDamage, frameRate, frameStats } from './live.mjs'
+import { NIGHT_PAD } from '../../renderer/render/weather.js'
 
 const argv = process.argv.slice(2)
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? Number(argv[i + 1]) : d }
 const PAIRS = opt('--pairs', 3), SECS = opt('--secs', 5), WEB_SECS = opt('--web-secs', 10), RATE = opt('--rate', 4)
 const FRAC = opt('--frac', 0.47), SEED = opt('--seed', 7), PORT = opt('--port', 8080)
-const GATE = { addMs: 4, fps: 30, buildMs: 200, pieceMs: 10 }
+const WALK_SECS = opt('--walk-secs', WEB_SECS), NIGHT_FRAC = opt('--night-frac', 0.92)
+// walking: builds of the kept night mask beyond one per NIGHT_PAD px walked,
+// and the share of lit frames drawn straight on (each one costs the full wash)
+const GATE = { addMs: 4, fps: 30, buildMs: 200, pieceMs: 10, extraBuilds: 4, straight: 0.02 }
+// the market street north of the square (world tiles), walked down and up
+const STREET = { X: 80, Y: 202 }
 const PROFILE = path.join(os.tmpdir(), 'dc-city-perf')
 const fails = []
 const SHOTS = argv.includes('--shots') ? path.resolve(argv[argv.indexOf('--shots') + 1]) : null
@@ -140,6 +155,54 @@ if (!argv.includes('--no-electron')) {
 }
 
 // ---- 3. the web build, CPU throttled ------------------------------------------------
+// The nearest open cell to a world tile, and the player put on it (never a
+// door: stepping on one goes in).
+const placeOpen = (page, X, Y) => page.evaluate(([X, Y]) => {
+  const s = window.__dc.state, o = window.__dc.wilds.origin, p = s.player
+  const doors = new Set((s.houseDoors ?? []).map(d => `${d.x},${d.y}`))
+  for (let r = 0; r < 10; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+    const x = X - o.wx * 80 + dx, y = Y - o.wy * 80 + dy
+    if (s.map[y]?.[x]?.tile === 1 && !doors.has(`${x},${y}`)) { p.x = x; p.y = y; p.px = x * 32 + 16; p.py = y * 32 + 16; return { X: X + dx, Y: Y + dy } }
+  }
+  return null
+}, [X, Y])
+
+// `secs` seconds walking down and up (3 s each way) with the CPU throttled:
+// the frame rate, the path walked (px, both axes summed: the view can leave
+// the kept night mask at most once per NIGHT_PAD px of it) and the mask's
+// builds and frames drawn straight on (render/weather.js counts them).
+async function walkRate(page, cdp, secs) {
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: RATE })
+  await sleep(1500)
+  const measured = page.evaluate(secs => new Promise(res => {
+    const dc = window.__dc, night = () => dc.renderer?.weatherLayer?.night
+    const b0 = night()?.builds ?? 0, s0 = night()?.straight ?? 0
+    const ts = [], t0 = performance.now()
+    let path = 0, last = null
+    const step = t => {
+      ts.push(t)
+      const p = dc.state.player, o = dc.wilds.origin
+      const X = p.px + o.wx * 2560, Y = p.py + o.wy * 2560
+      if (last) path += Math.abs(X - last.X) + Math.abs(Y - last.Y)
+      last = { X, Y }
+      if (t - t0 < secs * 1000) requestAnimationFrame(step)
+      else res({ ts, path, builds: (night()?.builds ?? 0) - b0, straight: (night()?.straight ?? 0) - s0, lights: dc.state.weather?.look?.lights?.length ?? 0 })
+    }
+    requestAnimationFrame(step)
+  }), secs)
+  const t0 = Date.now()
+  for (let i = 0; Date.now() - t0 < secs * 1000; i++) {
+    const key = i % 2 ? 'ArrowUp' : 'ArrowDown'
+    await page.keyboard.down(key)
+    await sleep(Math.max(0, Math.min(3000, secs * 1000 - (Date.now() - t0))))
+    await page.keyboard.up(key)
+  }
+  const m = await measured
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 })
+  return { ...frameStats(m.ts), path: Math.round(m.path), builds: m.builds, straight: m.straight, lights: m.lights }
+}
+
 if (!argv.includes('--no-web')) {
   const errors = []
   const srv = await startWeb(PORT)
@@ -174,6 +237,33 @@ if (!argv.includes('--no-web')) {
       console.log(`  (for comparison, a plain Wilds piece: ${p.fps} fps, frame p50 ${p.p50} ms, p95 ${p.p95} ms; city runtime up: ${await d.ev(() => !!window.__dc.state.cityRun)})`)
     }
     if (!(r.fps > GATE.fps)) fails.push(`web build ${r.fps} fps at ${RATE}x throttle <= ${GATE.fps}`)
+    // ---- 4. walking the market street, at night and at noon ----
+    if (!argv.includes('--no-walk')) {
+      const walk = async (frac, name) => {
+        // out of the city's reach and back with the clock set: everyone stands where it says
+        await d.goTo(-120, 40)
+        await d.setFrac(frac)
+        await sleep(1000)
+        await d.goTo(STREET.X, STREET.Y)
+        await placeOpen(page, STREET.X, STREET.Y)
+        await d.setFrac(frac)
+        await sleep(3000)
+        await d.setFrac(frac)
+        const w = await walkRate(page, cdp, WALK_SECS)
+        await shot(page, `web-walk-${name}`)
+        const allowed = Math.floor(w.path / NIGHT_PAD) + 1 + GATE.extraBuilds
+        console.log(`web build, CPU ${RATE}x throttled, walking the market street at ${frac} (${name}): ${w.fps} fps (frame p50 ${w.p50} ms, p95 ${w.p95} ms), `
+          + `${w.path} px walked; kept night mask: ${w.builds} builds (the view can leave it ${Math.floor(w.path / NIGHT_PAD) + 1} times), ${w.straight} of ${w.frames} frames drawn straight on, ${w.lights} lights listed at the end`)
+        return { ...w, allowed }
+      }
+      const night = await walk(NIGHT_FRAC, 'night')
+      const noon = await walk(FRAC, 'noon')
+      if (!(night.fps > GATE.fps)) fails.push(`walking at night ${night.fps} fps at ${RATE}x throttle <= ${GATE.fps}`)
+      if (night.path < 32 * 10) fails.push(`walking at night: only ${night.path} px walked (blocked?)`)
+      if (night.builds > night.allowed) fails.push(`walking at night: ${night.builds} builds of the night mask > ${night.allowed} (a rebuild storm)`)
+      if (night.straight > GATE.straight * night.frames) fails.push(`walking at night: ${night.straight} of ${night.frames} frames drawn straight on > ${GATE.straight * 100} %`)
+      if (!(noon.fps > GATE.fps)) fails.push(`walking at noon ${noon.fps} fps at ${RATE}x throttle <= ${GATE.fps}`)
+    }
     if (errors.length) fails.push(`web errors: ${errors.slice(0, 3).join(' | ')}`)
   } finally {
     await browser?.close()

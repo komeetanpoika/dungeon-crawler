@@ -293,7 +293,7 @@ let bench = null
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
 if (new URLSearchParams(location.search).has('dcdebug')) {
-  window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld }, get sprites() { return renderer?.sprites } }
+  window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld }, get sprites() { return renderer?.sprites }, get renderer() { return renderer } }
 }
 let inventoryOpen = false
 let meta = null
