@@ -30,6 +30,9 @@ export const BITE_DMG = 2           // damage per bite, via hurtCreature
 export const GIVE_WAY_WAIT = 1      // s a townsperson waits for the player to step off their way
 const GIVE_WAY_NEAR = 1.6 * S       // px: how close they come before they wait
 const SIDESTEP_TIME = 1.5           // s at most spent stepping round the player
+export const STRIKE_REACH = 36      // px within which a watchman's sword reaches his foe
+export const STRIKE_INTERVAL = 0.8  // s between a watchman's blows
+export const STRIKE_DMG = 3         // damage per blow, through the city's hurt hook
 
 export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
   const def = NPC_SPECIES[species]
@@ -182,6 +185,42 @@ export const GOALS = {
         e.ai.giveUp = 0
       }
       return { mode: 'patrol', target: e.objective, speed: ctx.cfg.speed }
+    },
+  },
+  // Kalevanlinna's watch: the runtime names a foe (e.city.foe, a hostile the
+  // city keeps out, near his post or inside the walls) and he closes to sword
+  // reach and strikes every STRIKE_INTERVAL. The blow goes through the city's
+  // hurt hook, which is game.js's enemy damage path, so what he kills dies as
+  // it would to the player. He never turns hostile for it: the foe is the
+  // runtime's word, not the enemy brain's. The swing is drawn only. A foe he
+  // finds no way to for GIVE_UP_TIME is let go (e.city.lost), so he is not
+  // left pushing at a wall.
+  defend: {
+    when: e => !!e.city?.foe,
+    enter: e => { e.ai.strikeT = 0; e.ai.giveUp = 0 },
+    run: (e, ctx, dt) => {
+      const foe = e.city.foe, state = ctx.state
+      e.ai.strikeT = Math.max(0, (e.ai.strikeT ?? 0) - dt)
+      if (!(foe.hp > 0)) return { mode: 'hold' }
+      if (Math.hypot(foe.px - e.px, foe.py - e.py) > STRIKE_REACH) {
+        const target = { x: foe.x, y: foe.y }
+        e.ai.giveUp = isStuckOn(e, target) ? (e.ai.giveUp ?? 0) + dt : 0
+        if (e.ai.giveUp >= GIVE_UP_TIME) { e.city.lost = foe; e.city.foe = null; return { mode: 'hold' } }
+        return { mode: 'patrol', target, speed: ctx.cfg.speed }
+      }
+      e.facing = foe.px < e.px ? 'west' : 'east'
+      if (e.ai.strikeT <= 0) {
+        e.ai.strikeT = STRIKE_INTERVAL
+        state.cityRun?.hooks?.hurt(foe, STRIKE_DMG, e)
+        state.hitEffects?.push({ x: foe.x, y: foe.y })
+        sfx(state, 'melee-hit', { px: foe.px, py: foe.py })
+        const w = WEAPONS.sword
+        e.attack = {
+          weaponId: 'sword', phase: 'swing', timer: w.duration, duration: w.duration,
+          angle: Math.atan2(foe.py - e.py, foe.px - e.px),
+        }
+      }
+      return { mode: 'hold' }
     },
   },
   // Kalevanlinna's people (wilds/city/runtime.js): walk to the next waypoint

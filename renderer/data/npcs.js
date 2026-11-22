@@ -136,8 +136,8 @@ export const NPC_SPECIES = {
     priorities: ['flee_hurt', 'follow_city', 'wander'],
     lines: ['Good day.', 'Busy, busy.'],
   },
-  // `defend` is the watch's answer to monsters in town (a later goal; until
-  // then selectGoal passes over the name).
+  // `defend` is the watch's answer to monsters at the gates and in town: the
+  // city runtime names the foe (e.city.foe), npc.js fights it.
   watchman: {
     faction: 'city', sprite: 'guard', walker: true, weapon: 'sword',
     hp: 30, onHit: 'stand', fleeHp: 0,

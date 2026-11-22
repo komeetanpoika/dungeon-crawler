@@ -344,7 +344,11 @@ const cityHooks = {
   day: () => wildsWorld?.day ?? 0,
   viewHalf: () => (renderer ? { w: renderer.viewW / (2 * TILE_SIZE), h: renderer.viewH / (2 * TILE_SIZE) } : { w: 20, h: 12 }),
   sfx: (name, pos) => sfx(state, name, pos),
-  hurt: (target, amount, from) => hurtEntity(target, amount, { source: from }),
+  // a watchman's blow (npc.js defend) on a monster: the projectiles' hit path,
+  // which is the player's melee path too (a registry monster through its own
+  // hook, anything else in place), so a kill culls, drops and is recorded as
+  // a player's would be. The blow sounds its own 'melee-hit'.
+  hurt: (target, amount) => hurtEntity(target, amount, { source: 'watch', hitCue: null }),
 }
 
 function persistRun() {
@@ -509,7 +513,8 @@ function detonateFireball(px, py, blastTiles, { fireOnly = false } = {}) {
 // because the zone and lightning tickers ignore the return value — only
 // stepProjectiles uses it, and there `struck === target` is a no-op swap.
 // `meta` is whatever the caller had to hand (a projectile, or lightning's
-// `{ source }`); only `source` is read from it.
+// `{ source }`); only `source` is read from it, and `hitCue` (a blow that
+// sounds its own hit: null) in place of the projectile's thud.
 function hurtEntity(e, damage, meta) {
   const source = meta?.source ?? 'player'
   if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
@@ -523,7 +528,8 @@ function hurtEntity(e, damage, meta) {
   e.hp -= damage
   e.inCombat = true
   npcStruck(e)
-  sfx(state, e.hp <= 0 ? deathCue(e) : 'projectile-hit', { px: e.px, py: e.py })
+  const cue = e.hp <= 0 ? deathCue(e) : meta?.hitCue !== undefined ? meta.hitCue : 'projectile-hit'
+  if (cue) sfx(state, cue, { px: e.px, py: e.py })
   return e
 }
 

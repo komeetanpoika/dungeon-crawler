@@ -22,9 +22,15 @@
 // back puts everyone where the clock says (the schedules are pure in the
 // seed and the day). state.cityRun is never saved.
 //
-//   state.cityRun = { people: Map<id, Walker>, animals: Map<id, Animal>,
+// The watch: a near watchman's foe (e.city.foe) is the nearest hostile the
+// city keeps out within POST_GUARD tiles of his post, or standing inside the
+// walls within WARD_GUARD tiles of him; npc.js defend fights it through
+// hooks.hurt (kept on the run for it). The old shift keeps a post until its
+// relief stands there.
+//
+//   state.cityRun = { people: Map<id, Walker>, animals: Map<id, Animal>, hooks,
 //                     crime, scenes, lights, fx, nearR, swingAt, stats, ... }
-//   e.city = { next: window tile | null, entry, person, passed }
+//   e.city = { next: window tile | null, entry, person, passed, foe, lost }
 import { cityFor } from './build.js'
 import { isCityPiece } from './geometry.js'
 import { scheduleFor, entryAt } from './schedule.js'
@@ -32,6 +38,7 @@ import { WIN, WIN_TILES } from '../window.js'
 import { PIECE } from '../layout.js'
 import { TILE } from '../../systems/entities.js'
 import { speakFrom } from '../../systems/feedback.js'
+import { isWarded } from '../../systems/ward.js'
 import { DAY_LENGTH } from '../../data/weather.js'
 import {
   FAR_SPEED, cityCtx, makeWalker, setEntry, routeWalker, placeByClock, stepFar, advance, lastWaypoint,
@@ -53,6 +60,10 @@ const SHY_REACH = 3         // tiles from a swing that make a townsperson step b
 const SHY_TIME = 1.5        // s spent stepping back
 const SHY_SAY_EVERY = 4     // s between two 'Careful with that!'
 const SHY_LINE = 'Careful with that!'
+const POST_GUARD = 6        // tiles from his post within which a watchman on duty there takes on a hostile, in the walls or out
+const WARD_GUARD = 12       // tiles from a watchman within which he takes on a hostile standing inside the walls
+const FOE_SLACK = 2         // tiles beyond POST_GUARD before a foe at the gate is let go (so the edge does not flicker)
+const HOLD_MAX = 0.25       // of the day: the longest the old shift keeps a post waiting for its relief
 
 export const nearRadius = view => Math.min(MAX_NEAR, Math.ceil(Math.max(view.w, view.h)) + 6)
 
@@ -108,7 +119,7 @@ function makeRun(state, world, hooks, lazy) {
   const cc = cityCtx(city, world.seed)
   const day = hooks.day(), frac = fracOf(hooks.clock())
   const run = {
-    seed: world.seed, cc, people: new Map(), animals: new Map(),
+    seed: world.seed, cc, people: new Map(), animals: new Map(), hooks,
     crime: null, scenes: null, lights: null, fx: null,
     nearR: nearRadius(hooks.viewHalf()), day, frac, swingAt: null, shyT: 0,
     queue: [], pending: [], tick: 0, remove: new Set(), stats: { noRoute: [], rerouted: 0 },
@@ -124,8 +135,42 @@ function makeRun(state, world, hooks, lazy) {
     w.sched = scheduleFor(p, city, world.seed, day); w.day = day
     placeByClock(cc, w, frac, run.stats)
   })
+  // the day and night man of a post relieve each other
+  const byPost = new Map()
+  for (const w of run.people.values()) {
+    const post = w.person.post
+    if (!post) continue
+    const o = byPost.get(post)
+    if (o && o.person.shift !== w.person.shift) { o.relief = w; w.relief = o } else byPost.set(post, w)
+  }
+  if (!lazy) holdPosts(run, frac)
   for (const a of makeAnimals(cc)) run.animals.set(a.id, a)
   return run
+}
+
+// a post watchman standing at his post
+const atPost = w => w.mode !== 'indoors' && !w.out && w.phase === 'there' && w.entry?.act === 'post'
+
+// The schedule sends the old shift home when its relief sets out, but the
+// walk from the barracks to a far gate takes longer than that: the old shift
+// keeps the post until the relief stands there (or HOLD_MAX has passed, or
+// the relief was struck down).
+function keepsPost(w, nx, frac) {
+  const r = w.relief
+  if (!r || w.entry?.act !== 'post' || nx.act === 'post' || r.out || frac - nx.at >= HOLD_MAX) return false
+  return r.pending || !atPost(r)
+}
+
+// After everyone was placed by the clock: an old shift the schedule has on
+// its way home is put back at the post while its relief is not there yet, as
+// if it had waited (keepsPost then holds it there).
+function holdPosts(run, frac) {
+  for (const w of run.people.values()) {
+    const r = w.relief
+    if (!r || w.out || w.pending || w.mode === 'near' || r.out || atPost(r)) continue
+    if (w.entry.act === 'post' || w.sched[w.ei - 1]?.act !== 'post' || frac - w.entry.at >= HOLD_MAX) continue
+    placeByClock(run.cc, w, w.entry.at - 1e-6, run.stats)
+  }
 }
 
 // Make sure every person is an entity, a far walker or indoors, never two.
@@ -138,6 +183,7 @@ export function arriveCity(state, world, hooks, { fresh = false } = {}) {
     state.cityRun = makeRun(state, world, hooks, !fresh)
   }
   const run = state.cityRun
+  run.hooks = hooks
   reconcile(state, world, run)
   run.nearR = nearRadius(hooks.viewHalf())
   modes(state, world, run, hooks)
@@ -201,6 +247,7 @@ export function tickCity(state, world, delta, hooks) {
   const run = state.cityRun
   if (!run || !world.origin) return
   const { cc } = run
+  run.hooks = hooks
   reconcile(state, world, run)
   const day = hooks.day(), frac = fracOf(hooks.clock())
   run.nearR = nearRadius(hooks.viewHalf())
@@ -209,11 +256,14 @@ export function tickCity(state, world, delta, hooks) {
   run.frac = frac
   const ox = world.origin.wx * PIECE, oy = world.origin.wy * PIECE
 
-  for (let k = 0; k < PLACE_PER_TICK && run.pending.length; k++) {
-    const w = run.pending.pop()
-    w.sched = scheduleFor(w.person, cc.city, run.seed, run.day); w.day = run.day
-    placeByClock(cc, w, frac, run.stats)
-    w.pending = false
+  if (run.pending.length) {
+    for (let k = 0; k < PLACE_PER_TICK && run.pending.length; k++) {
+      const w = run.pending.pop()
+      w.sched = scheduleFor(w.person, cc.city, run.seed, run.day); w.day = run.day
+      placeByClock(cc, w, frac, run.stats)
+      w.pending = false
+    }
+    if (!run.pending.length) holdPosts(run, frac)
   }
   if (run.swingAt) shy(state, run, ox, oy)
   run.shyT = Math.max(0, run.shyT - delta)
@@ -230,7 +280,7 @@ export function tickCity(state, world, delta, hooks) {
     if (w.out || w.pending) continue
     // the schedule moved on
     const nx = w.sched[w.ei + 1]
-    if (nx && frac >= nx.at) {
+    if (nx && frac >= nx.at && !keepsPost(w, nx, frac)) {
       setEntry(cc, w, entryAt(w.sched, frac))
       if (w.needRoute) run.queue.push(w)
       if (w.entity) w.entity.city.entry = w.entry
@@ -238,8 +288,50 @@ export function tickCity(state, world, delta, hooks) {
     if (w.mode === 'near') near(state, run, w, delta, ox, oy)
     else if (w.mode === 'far') stepFar(cc, w, delta)
   }
+  guard(state, run, ox, oy)
   modes(state, world, run, hooks)
   flush(state, run)
+}
+
+// The watch at work. A near watchman takes on the nearest hostile the city
+// keeps out (ward.js) within POST_GUARD tiles of his post, while he is on
+// duty at one, inside the walls or out; or standing on a warded cell within
+// WARD_GUARD tiles of him, whoever he is. He keeps it until it dies, stops
+// being hostile, or is neither inside the walls nor near his post (a hostile
+// inside cannot walk off warded ground, and the way round a block to it can
+// be long, so the straight-line WARD_GUARD only decides whom he takes on).
+// With none he goes back to his day (follow_city; one a fight drew off his
+// post walks back to it, see near). A foe npc.js defend found no way to is
+// not taken on again. Far and indoor watchmen fight nothing, and the player
+// is never a foe here.
+function guard(state, run, ox, oy) {
+  let foes = null
+  for (const f of state.entities) if (f.hp > 0 && f.px !== undefined && isWarded(f)) (foes ??= []).push(f)
+  for (const w of run.people.values()) {
+    if (w.mode !== 'near' || w.species !== 'watchman') continue
+    const e = w.entity
+    const foe = foes ? foeOf(state, run, w, e, foes, ox, oy) : null
+    if (foe) w.fought = true
+    e.city.foe = foe
+  }
+}
+
+function foeOf(state, run, w, e, foes, ox, oy) {
+  const post = w.entry?.act === 'post' ? run.cc.city.spots[w.entry.where.spot] : null
+  const px = post ? post.x + OX - ox : 0, py = post ? post.y + OY - oy : 0
+  const fromPost = f => post ? Math.max(Math.abs(f.px / S - 0.5 - px), Math.abs(f.py / S - 0.5 - py)) : Infinity
+  const inside = f => !!state.map[f.y]?.[f.x]?.ward
+  const cur = e.city.foe
+  if (cur && foes.includes(cur) && (inside(cur) || fromPost(cur) <= POST_GUARD + FOE_SLACK)) return cur
+  const ex = e.px / S - 0.5, ey = e.py / S - 0.5
+  let best = null, bestD = Infinity
+  for (const f of foes) {
+    if (f === e.city.lost) continue
+    const d = Math.max(Math.abs(f.px / S - 0.5 - ex), Math.abs(f.py / S - 0.5 - ey))
+    if (d >= bestD) continue
+    if (fromPost(f) <= POST_GUARD || (d <= WARD_GUARD && inside(f))) { best = f; bestD = d }
+  }
+  return best
 }
 
 // A new day: everyone's schedule for it. At midnight the place is the same
@@ -284,10 +376,17 @@ function near(state, run, w, dt, ox, oy) {
     // gone round the player on the way: on to the next waypoint. A player
     // standing on the very spot they were making for: about here will do.
     c.passed = false
+    if (!w.path) w.fought = false   // back from a fight to a post the player stands on
     if (w.path && (!lastWaypoint(w) || w.goal.kind === 'spot') && advance(run.cc, w) === 'there' && !w.loop) { c.next = null; return }
   }
   const walking = w.path && (w.phase === 'go' || w.loop)
   if (!walking) {
+    // a watchman a fight drew off his post walks back to it
+    if (w.fought && w.phase === 'there' && w.goal?.kind === 'spot') {
+      const tx = w.goal.tile.x + OX, ty = w.goal.tile.y + OY
+      if (Math.hypot(tx - w.X, ty - w.Y) > REACH) { setNext(e, tx - ox, ty - oy); return }
+      w.fought = false
+    }
     c.next = null
     // about a spot: potter round it (the species' wander, from here)
     if (w.phase === 'there' && !w.homed && w.goal?.kind === 'spot') {
@@ -322,11 +421,12 @@ function near(state, run, w, dt, ox, oy) {
   const t = { X: nx + ox, Y: ny + oy }
   setNext(e, nx, ny)
   // headway: a walker that makes none for a while, or strays far off its way, is routed again
-  const waiting = e.ai.wait > 0 || !!e.ai.side || e.ai.fleeTimer > 0
+  // (a watchman at a fight is not lost either)
+  const waiting = e.ai.wait > 0 || !!e.ai.side || e.ai.fleeTimer > 0 || !!c.foe
   if (Math.hypot(w.X - w.sx, w.Y - w.sy) > 0.4) { w.sx = w.X; w.sy = w.Y; w.still = 0; w.rerouted = false }
   else if (!waiting) w.still += dt
   const stuck = w.still > REROUTE_AFTER && !w.rerouted
-  const drift = !(e.ai.fleeTimer > 0) && Math.hypot(t.X - w.X, t.Y - w.Y) > DRIFT
+  const drift = !(e.ai.fleeTimer > 0) && !c.foe && Math.hypot(t.X - w.X, t.Y - w.Y) > DRIFT
   // a route that could not be found is not asked for again every frame
   w.retry = Math.max(0, (w.retry ?? 0) - dt)
   if ((stuck || drift) && !w.needRoute && w.retry <= 0) {
