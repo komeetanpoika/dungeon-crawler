@@ -13,6 +13,12 @@ const FOG_ALPHA = 0.85       // × look.fog
 const GLOW_ALPHA = 0.22
 const GLOW_RADIUS = 0.6      // × the light's hole radius
 const FOG_FLOOR = 0.02
+const NIGHT_CELL = 32        // CSS px: the grid the night layer is blitted on, where a light reaches
+const NIGHT_MARGIN = 2 / LAYER_SCALE   // CSS px past a hole that the smoothed blit still reads it
+const NIGHT_PAD = 160        // CSS px the kept night mask reaches past the view on every side
+const NIGHT_REBUILD_GAP = 6  // frames at least between two builds of the kept mask ...
+const NIGHT_GAP_MAX = 64     // ... doubled up to this while each build is undone at once
+const STRENGTH_STEPS = 32    // a light's strength as the kept mask is keyed and punched
 
 // Two offscreen canvases: `canvas` receives the paint, `mask` the blurred
 // cell weights that clip the fog. `createCanvas` is injected so the renderer
@@ -21,7 +27,7 @@ export function makeWeatherLayer(createCanvas) {
   const canvas = createCanvas(), mask = createCanvas()
   const layer = {
     canvas, ctx: canvas.getContext('2d'), mask, maskCtx: mask.getContext('2d'),
-    w: 0, h: 0, k: LAYER_SCALE,
+    w: 0, h: 0, k: LAYER_SCALE, createCanvas, night: null,
     resize(viewW, viewH) {
       layer.w = Math.ceil(viewW * LAYER_SCALE)
       layer.h = Math.ceil(viewH * LAYER_SCALE)
@@ -62,6 +68,105 @@ function blit(ctx, layer, gco, alpha, W, H) {
   ctx.restore()
 }
 
+// Where the night layer must be blitted: the cells of a grid over the view
+// that a light's hole (plus the smoothed blit's reach) touches, as bands of
+// rows that share one pattern, each with its lit runs of columns:
+//   [{ y0, y1, runs: [[x0, x1], ...] }]   CSS px, top to bottom, covering 0..H
+// Everywhere else the layer holds the flat ambient colour, so a multiply fill
+// there looks the same and costs far less than the smoothed upscale (on a
+// software canvas the full-screen blit was most of a night frame's cost).
+// The grid is cut on whole device pixels (`dpr`), so a fill and a blit that
+// meet share no half-covered pixel. `holes`: [{ x, y, r }] in CSS px.
+export function nightBands(holes, W, H, dpr = 1) {
+  const cellDev = Math.max(1, Math.round(NIGHT_CELL * dpr)), cell = cellDev / dpr
+  const cols = Math.ceil(W / cell), rows = Math.ceil(H / cell)
+  const at = (n, max) => Math.min(max, n * cell)
+  const lit = new Uint8Array(cols * rows)
+  for (const h of holes) {
+    const R = h.r + NIGHT_MARGIN
+    const r0 = Math.max(0, Math.floor((h.y - R) / cell)), r1 = Math.min(rows - 1, Math.floor((h.y + R) / cell))
+    for (let row = r0; row <= r1; row++) {
+      const top = row * cell, bot = top + cell
+      const dy = h.y < top ? top - h.y : h.y > bot ? h.y - bot : 0
+      if (dy > R) continue
+      const half = Math.sqrt(R * R - dy * dy)
+      const c0 = Math.max(0, Math.floor((h.x - half) / cell)), c1 = Math.min(cols - 1, Math.floor((h.x + half) / cell))
+      for (let c = c0; c <= c1; c++) lit[row * cols + c] = 1
+    }
+  }
+  const bands = []
+  let prev = null
+  for (let row = 0; row < rows; row++) {
+    const runs = []
+    let key = ''
+    for (let c = 0; c < cols; c++) {
+      if (!lit[row * cols + c]) continue
+      const c0 = c
+      while (c + 1 < cols && lit[row * cols + c + 1]) c++
+      runs.push([at(c0, W), at(c + 1, W)])
+      key += c0 + '-' + c + ','
+    }
+    if (prev && prev.key === key) { prev.band.y1 = at(row + 1, H); continue }
+    const band = { y0: at(row, H), y1: at(row + 1, H), runs }
+    bands.push(band)
+    prev = { key, band }
+  }
+  return bands
+}
+
+// The lights a kept mask over the window-px rect (x0, y0, w, h) holds, as a
+// key: what it must be built anew for when it changes.
+function nightKey(lights, x0, y0, w, h, S, ambient) {
+  let key = ambient
+  for (const l of lights) {
+    const rad = l.r * S
+    if (l.px + rad < x0 || l.py + rad < y0 || l.px - rad > x0 + w || l.py - rad > y0 + h) continue
+    key += `|${l.px},${l.py},${l.r},${Math.round(l.strength * STRENGTH_STEPS)}`
+  }
+  return key
+}
+
+// The kept night mask: the night layer, quarter resolution as ever, for the
+// view plus NIGHT_PAD each way, scaled up (smoothed) once into a canvas of
+// CSS px anchored in window px. The lights of the night stand still in the
+// world (lamps, lit windows, a campfire), so while none comes, goes or
+// changes, and the colour holds, every frame is one plain 1:1 multiply blit
+// of it at the camera's offset. That smoothed scale-up was most of a lit
+// night frame's cost on a software canvas (3 ms of a 1024 x 693 frame, about
+// 2 ms more than a 1:1 blit). Built at most every NIGHT_REBUILD_GAP frames,
+// and less often while each build is undone within a few frames by a light
+// that changes every frame (a fire burning down): between builds the layer is
+// drawn straight onto the frame, as before.
+function buildNightMask(N, createCanvas, lights, ambient, camX, camY, W, H, S) {
+  const k = LAYER_SCALE
+  // a whole number of layer pixels, so the scale-up is exactly 1/k
+  const w = Math.ceil((W + 2 * NIGHT_PAD) * k) / k, h = Math.ceil((H + 2 * NIGHT_PAD) * k) / k
+  const x0 = Math.floor(camX) - NIGHT_PAD, y0 = Math.floor(camY) - NIGHT_PAD
+  N.q ??= createCanvas(); N.full ??= createCanvas()
+  if (N.q.width !== w * k || N.q.height !== h * k) { N.q.width = w * k; N.q.height = h * k }
+  if (N.full.width !== w || N.full.height !== h) { N.full.width = w; N.full.height = h }
+  const Q = N.q.getContext('2d'), F = N.full.getContext('2d')
+  prep(Q, w * k, h * k)
+  Q.fillStyle = ambient
+  Q.fillRect(0, 0, w * k, h * k)
+  Q.globalCompositeOperation = 'destination-out'
+  for (const l of lights) {
+    const x = (l.px - x0) * k, y = (l.py - y0) * k, rad = l.r * S * k
+    if (x + rad < 0 || y + rad < 0 || x - rad > w * k || y - rad > h * k) continue
+    const a = Math.round(l.strength * STRENGTH_STEPS) / STRENGTH_STEPS
+    Q.fillStyle = radial(Q, x, y, rad, `rgba(0,0,0,${a})`, 'rgba(0,0,0,0)')
+    Q.fillRect(x - rad, y - rad, 2 * rad, 2 * rad)
+  }
+  Q.globalCompositeOperation = 'source-over'
+  prep(F, w, h)
+  F.imageSmoothingEnabled = true
+  F.drawImage(N.q, 0, 0, w * k, h * k, 0, 0, w, h)
+  N.x0 = x0; N.y0 = y0; N.w = w; N.h = h
+  N.key = nightKey(lights, x0, y0, w, h, S, ambient)
+  N.since = 0; N.uses = 0; N.stale = false
+  N.builds = (N.builds ?? 0) + 1
+}
+
 export function drawNight(ctx, layer, look, { camX, camY }, { W, H }, S) {
   if (!(look.dark > 0)) return
   const k = layer.k
@@ -84,6 +189,32 @@ export function drawNight(ctx, layer, look, { camX, camY }, { W, H }, S) {
     ctx.restore()
     return
   }
+  const N = layer.night ??= { since: Infinity, key: null, gap: NIGHT_REBUILD_GAP }
+  N.since++
+  const inside = N.key !== null && camX >= N.x0 && camY >= N.y0 && camX + W <= N.x0 + N.w && camY + H <= N.y0 + N.h
+  const kept = inside && nightKey(look.lights, N.x0, N.y0, N.w, N.h, S, ambient) === N.key
+  if (kept) N.uses++
+  else if (N.key !== null && !N.stale) {
+    // undone: by its lights within a few frames of the build (wait longer next time), or by use
+    N.stale = true
+    N.gap = inside && N.uses < 3 ? Math.min(NIGHT_GAP_MAX, N.gap * 2) : NIGHT_REBUILD_GAP
+  }
+  if (!kept && N.since >= N.gap && layer.createCanvas) buildNightMask(N, layer.createCanvas, look.lights, ambient, camX, camY, W, H, S)
+  if (kept || N.since === 0) {
+    ctx.save()
+    ctx.globalCompositeOperation = 'multiply'
+    ctx.globalAlpha = look.dark
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(N.full, N.x0 - camX, N.y0 - camY)
+    ctx.restore()
+  } else drawLayer(ctx, layer, look, visible, ambient, camX, camY, W, H, S)
+  drawGlows(ctx, look, visible, camX, camY, S)
+}
+
+// The night layer drawn straight onto the frame, for this frame only: the
+// layer where a light reaches (nightBands), the flat colour everywhere else.
+function drawLayer(ctx, layer, look, visible, ambient, camX, camY, W, H, S) {
+  const k = layer.k
   const L = layer.ctx
   prep(L, layer.w, layer.h)
   L.fillStyle = ambient
@@ -95,8 +226,30 @@ export function drawNight(ctx, layer, look, { camX, camY }, { W, H }, S) {
     L.fillRect(x - rad, y - rad, 2 * rad, 2 * rad)
   }
   L.globalCompositeOperation = 'source-over'
-  blit(ctx, layer, 'multiply', look.dark, W, H)
+  // the layer where a light reaches, the flat colour everywhere else
+  const holes = visible.map(l => ({ x: l.px - camX, y: l.py - camY, r: l.r * S }))
+  const dpr = ctx.getTransform?.()?.a || 1
+  const sx = layer.w / W, sy = layer.h / H
+  ctx.save()
+  ctx.globalCompositeOperation = 'multiply'
+  ctx.globalAlpha = look.dark
+  ctx.fillStyle = ambient
+  ctx.imageSmoothingEnabled = true
+  for (const { y0, y1, runs } of nightBands(holes, W, H, dpr)) {
+    let x = 0
+    for (const [x0, x1] of runs) {
+      if (x0 > x) ctx.fillRect(x, y0, x0 - x, y1 - y0)
+      ctx.drawImage(layer.canvas, x0 * sx, y0 * sy, (x1 - x0) * sx, (y1 - y0) * sy, x0, y0, x1 - x0, y1 - y0)
+      x = x1
+    }
+    if (x < W) ctx.fillRect(x, y0, W - x, y1 - y0)
+  }
+  ctx.imageSmoothingEnabled = false   // explicit, not just via restore: the rest of the frame is nearest-neighbour
+  ctx.restore()
+}
 
+// Each light's warm glow over the washed frame.
+function drawGlows(ctx, look, visible, camX, camY, S) {
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const l of visible) {
