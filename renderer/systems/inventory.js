@@ -33,6 +33,7 @@ const STACKABLE_KINDS = {
   sampo_marsh:    { name: 'Sampo Hopper',     emoji: '🏺', extra: { quest: true } },
   pike_jaw:       { name: "Pike's Jawbone",   emoji: '🦴', extra: { quest: true } },
   sampo:          { name: 'The Sampo',        emoji: '✨', extra: { quest: true } },
+  herring:        { name: 'Salt Herring',     emoji: '🐟', extra: { heal: 2 } },   // what the Sampo ground for the Count
 }
 
 export function makeItem(kind, count = 1) {

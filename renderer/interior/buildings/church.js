@@ -16,7 +16,7 @@
 //           breathing crack, shut until the story opens it (project 3)
 import { VERSIONS } from '../versions.js'
 
-const CRACK = 'Warm air breathes up through the crack.'
+export const CRACK = 'Warm air breathes up through the crack.'
 
 const nave = {
   id: 'nave', palette: 'pale', entry: 'nave',
@@ -167,4 +167,51 @@ function seat(person, act) {
   return { floor: 'nave', spot: 'pew' }
 }
 
-export const CHURCH = { floors: [nave, tower, crypt], ground: 'nave', theme: VERSIONS.home.theme, seat }
+// Under the crypt: the belly of Antero Vipunen, the giant asleep beneath the
+// town, reached through the crack once the Sampo's story has opened it
+// (wilds/city/sampo.js passageFor; no stair leads down, the way back up comes
+// out by the crypt's own stair). Ribs for columns, a red floor, an anvil a
+// swallowed smith left, and room beside it for a fire (sampo-end.js).
+const belly = {
+  id: 'belly', palette: 'grey', entry: 'gut',
+  rooms: [{ id: 'gut', x0: 1, x1: 14, y0: 1, y1: 9, floor: 'greyflags' }],
+  rows: [
+    '################',
+    '#uuuuuuuuuuuuuu#',
+    '#llllllllllllll#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '################',
+  ],
+  things: [
+    '                ',
+    '   t   t   t    ',
+    '                ',
+    ' <1   o      o  ',
+    '                ',
+    '   o     A      ',
+    '                ',
+    '  o    o     o  ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+  legend: {
+    t: { item: 'torch' },
+    o: { item: 'column' },
+    A: { item: 'anvil' },
+    '<': { stair: 'out', to: ['crypt', 'up'], dir: 'up', say: 'Up, and out, into cold stone and candle smoke.' },
+    1: { land: 'out' },
+  },
+  rugs: [{ colour: 'red', x0: 2, y0: 4, x1: 13, y1: 8 }],
+  // round the anvil: the forge's place, and room to swing
+  clear: [{ x0: 6, y0: 4, x1: 10, y1: 6 }],
+  dress: [{ item: 'bones', n: [3, 5] }, { item: 'skull', n: [1, 2] }, { item: 'rubble', n: [1, 2] }],
+}
+
+export const CHURCH = { floors: [nave, tower, crypt, belly], ground: 'nave', theme: VERSIONS.home.theme, seat }

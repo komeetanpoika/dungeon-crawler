@@ -1,7 +1,7 @@
 // Builds the Sampo story's small art into renderer/assets/tiles/: the three
 // lost pieces of the mill (the sea's wheel, the mountain's grindstone, the
-// marsh's hopper), the great pike's jawbone, the jawbone kantele, and the
-// Sampo made whole. Pixel maps, as make-lalli-tiles.mjs.
+// marsh's hopper), the great pike's jawbone, a salt herring, and the Sampo
+// made whole. Pixel maps, as make-lalli-tiles.mjs.
 //
 //   node tools/make-sampo-tiles.mjs
 import { writePng } from './png-write.mjs'
@@ -100,6 +100,26 @@ tile('item_pike_jaw', [
   '................',
   '................',
 ], { k: INK, b: '#e8e0c8', w: '#ffffff' })
+
+// a salt herring
+tile('item_herring', [
+  '................',
+  '................',
+  '................',
+  '................',
+  '.kk.....kkkkk...',
+  '.ksk..kkssssskk.',
+  '.kssk.ksswsssbsk',
+  '..ksskssssssssk.',
+  '..ksskssssssssk.',
+  '.kssk.kssssssk..',
+  '.ksk...kkkkkk...',
+  '.kk.............',
+  '................',
+  '................',
+  '................',
+  '................',
+], { k: INK, s: '#9fb4c8', w: '#e8f0f6', b: '#22303c' })
 
 // the Sampo whole: the bright lid over the mill
 tile('item_sampo', [

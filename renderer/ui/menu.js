@@ -332,6 +332,12 @@ export function showTextEntry({ title, subtitle, value = '', maxLength = 12, aut
 }
 
 // A message with one button (connection lost, refused, web-only).
+// A choice put to the player in the middle of play (the Sampo's last home):
+// a title, a line or two, and a button for each answer. Escape is the last.
+export function showChoice({ title, lines = [], buttons }) {
+  renderScreen({ title, lines, buttons, onEscape: buttons.at(-1)?.onSelect })
+}
+
 export function showMessage({ title, lines = [], onOk, okLabel = 'OK' }) {
   renderScreen({ title, lines, buttons: [{ label: okLabel, onSelect: onOk }] })
 }

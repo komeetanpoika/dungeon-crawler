@@ -133,8 +133,8 @@ function build(person, night, crime, quest) {
   const own = JOB_LINES[person.job] ?? ANYONE
   if (person.job === 'watch') return [...own, ...(WATCH_TEMPER[t] ?? WATCH_TEMPER.gruff)]
   if (child) return [...own, ...CHILD_TEMPER[t]]
-  // while the Sampo is dim the town talks of it (the story's whole length so far)
-  return quest ? [...own, ...TEMPER_LINES[t], luckLine(t)] : [...own, ...TEMPER_LINES[t]]
+  // the town talks of the Sampo: dim, stolen, or where it ended up
+  return quest ? [...own, ...TEMPER_LINES[t], luckLine(t, quest)] : [...own, ...TEMPER_LINES[t]]
 }
 
 const memo = new Map()

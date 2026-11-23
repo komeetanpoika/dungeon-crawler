@@ -49,7 +49,7 @@ import { cityFor } from './build.js'
 import { isCityPiece } from './geometry.js'
 import { scheduleFor, entryAt, DAY } from './schedule.js'
 import { linesFor, moodKey } from './lines.js'
-import { questKey } from './sampo.js'
+import { questKey, goneFrom } from './sampo.js'
 import { WIN, WIN_TILES } from '../window.js'
 import { PIECE } from '../layout.js'
 import { TILE } from '../../systems/entities.js'
@@ -98,7 +98,13 @@ const nightAt = frac => frac >= DAY.night || frac < DAY.dawn
 // run.quest is the Sampo's quest key (sampo.js questKey: its stage and what is in hand), read from the world
 // whenever the run meets it (questOf).
 export const moodOf = run => ({ night: nightAt(run.frac), crime: run.crime.level, quest: run.quest ?? null })
-const questOf = (run, world) => { run.quest = questKey(world) }
+// Whoever the story has taken out of the city (sampo.js goneFrom: Granny
+// Pohjanen, once she has flown) is out of every day, as one struck down is
+// out of this one.
+function questOf(run, world) {
+  run.quest = questKey(world)
+  for (const id of goneFrom(world)) { const w = run.people.get(id); if (w && !w.out) knockedDown(run, w) }
+}
 function keepLines(run) {
   const night = nightAt(run.frac), crime = run.crime.level, quest = run.quest ?? null
   if (night === run.linesNight && crime === run.linesCrime && quest === run.linesQuest) return   // every frame: nothing new

@@ -1,0 +1,9 @@
+{
+  "name": "louhi", "placedBy": "story",
+  "rig": "eagle",
+  "params": { "span": 5, "flap": 3, "lift": 1.2 },
+  "stats": { "hp": 18, "dmg": 2, "speed": 0 },
+  "behavior": { "taxon": "beast", "driver": "hook", "passive": true, "sightRange": 0 },
+  "spawn": null,
+  "hooks": true
+}
