@@ -53,13 +53,27 @@ export function cityViolence(state, world, e, { killed = false, source = 'player
   if (!state.map?.[e.y]?.[e.x]?.ward) return null
   const r = onViolence(run.crime, { killed })
   scatter(run, e)
+  if (r === 'wanted') run.reinforceT = 0
   if (r) {
     // the nearest of the watch shouts it; with none about, the struck themselves
     // (a person, alive: a splash's snapshot of the killed still carries its old hp)
     const by = nearest(run, e.px, e.py, 'watchman') ?? (!killed && e.hp > 0 && run.people.has(e.cityKey) ? e : null)
     if (by) speakFrom(state, by, r === 'warn' ? CRIME_LINES.warn : CRIME_LINES.wanted)
-    if (r === 'wanted') run.reinforceT = 0
   }
+  return r
+}
+
+// A blow struck where the street does not see it (inside the church or the
+// castle; game.js has the player out on the doorstep by now): it counts as a
+// blow in the street, but the warning's grace window (which only folds one
+// area attack into one act) does not swallow it, for the town's clock does not
+// run indoors and any blow inside is a separate act. A blow while warned is
+// the second offence. Returns 'warn' | 'wanted' | null.
+export function violenceUnseen(state, { killed = false } = {}) {
+  const run = state.cityRun
+  if (!run) return null
+  const r = onViolence(run.crime, { killed: killed || run.crime.level === 'warned' })
+  if (r === 'wanted') run.reinforceT = 0
   return r
 }
 

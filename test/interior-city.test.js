@@ -7,7 +7,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { arriveCity, tickCity, occupantsOf, occupantsWithActs, householdOf, cityPeople } from '../renderer/wilds/city/runtime.js'
-import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, struckInBuilding, spareStruck, blowInside } from '../renderer/wilds/city/indoors.js'
+import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, struckInBuilding, spareStruck } from '../renderer/wilds/city/indoors.js'
+import { violenceUnseen } from '../renderer/wilds/city/law.js'
+import { tickCrime } from '../renderer/wilds/city/crime.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
 import { buildBuilding } from '../renderer/interior/buildings/index.js'
 import { makeBuilding } from '../renderer/interior/floors.js'
@@ -363,8 +365,9 @@ test('a blow in a building: spared and not struck down; counted as a blow in the
   assert.equal(cityPeople(surface).find(q => q.id === 'named:vicar').out, false)
   // the act is counted like a street blow
   assert.equal(surface.cityRun.crime.level, 'calm')
-  assert.equal(blowInside(surface), 'warn')
+  assert.equal(violenceUnseen(surface), 'warn')
   assert.equal(surface.cityRun.crime.level, 'warned')
-  assert.equal(blowInside(surface, { killed: true }), 'wanted')
+  tickCrime(surface.cityRun.crime, 0.3)   // street time only: well inside the warning's grace
+  assert.equal(violenceUnseen(surface), 'wanted')
   assert.equal(surface.cityRun.crime.level, 'wanted')
 })

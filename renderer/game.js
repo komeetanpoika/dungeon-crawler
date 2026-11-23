@@ -52,8 +52,9 @@ import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
-import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut, struckInBuilding, spareStruck, blowInside } from './wilds/city/indoors.js'
+import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut, struckInBuilding, spareStruck } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
+import { violenceUnseen } from './wilds/city/law.js'
 import { ARREST_FADE } from './wilds/city/crime.js'
 import { isShutGate, GATE_SHUT_LINE } from './wilds/city/fx.js'
 import { playTune, tickTune } from './systems/tune.js'
@@ -464,7 +465,7 @@ function npcStruck(e, alive = e.hp > 0, source = 'player') {
       px: e.px, py: e.py, progress: 0, duration: 0.3,
     })
   }
-  if (source === 'player' && state.cave && struckInBuilding(state)) {
+  if (source !== 'watch' && state.cave && struckInBuilding(state)) {
     // church or castle: no one falls here; the player is put out after the frame
     pendingOut ??= { hit: [], killed: false }
     pendingOut.hit.push(e)
@@ -2440,9 +2441,8 @@ function update(delta) {
     if (state.cave && struckInBuilding(state)) {
       for (const e of out.hit) spareStruck(state, e)
       exitCave()
-      blowInside(state, { killed: out.killed })
-      speak(state, 'Out!')
-      state.entranceHold = true
+      violenceUnseen(state, { killed: out.killed })
+      announce(state, 'Out!')   // said to the player: replaces "You step back out."
     }
   }
 
