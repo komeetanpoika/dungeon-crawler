@@ -116,11 +116,15 @@ test('two townsfolk talking stop, face each other and take turns', () => {
   assert.ok(Math.hypot(a.px - pa.px, a.py - pa.py) < 3 && Math.hypot(b.px - pb.px, b.py - pb.py) < 3, 'they stand')
   assert.equal(a.ai.current, 'talk'); assert.equal(b.ai.current, 'talk')
   // side by side: their spots two cells next to each other, each standing on
-  // their own (within the 0.6 tiles a scene's spot counts for, scenes.js REACH)
+  // their own (on its tile, or within the 0.6 tiles of its middle a scene's
+  // spot counts for, scenes.js REACH: act walks no further within a tile)
   const spotOf = id => state.cityRun.people.get(id).scene.spot
   const sa = spotOf(ia), sb = spotOf(ib)
   assert.ok(Math.abs(sa.X - sb.X) === 1 && sa.Y === sb.Y, 'side by side')
-  for (const [e, s] of [[a, sa], [b, sb]]) { const p = entityWorld(world, e); assert.ok(Math.hypot(p.X - s.X, p.Y - s.Y) <= 0.6 + 1e-9, 'each on their spot') }
+  for (const [e, s] of [[a, sa], [b, sb]]) {
+    const p = entityWorld(world, e), { x, y } = toWindow(world.origin, s.X, s.Y)
+    assert.ok((e.x === x && e.y === y) || Math.hypot(p.X - s.X, p.Y - s.Y) <= 0.6 + 1e-9, 'each on their spot')
+  }
   assert.equal(a.facing, b.px > a.px ? 'east' : 'west')
   assert.equal(b.facing, a.px > b.px ? 'east' : 'west')
   // the lines alternate, in order, until the last

@@ -6,6 +6,11 @@ export const HOUSE_WALL_PREFIX = 'ow_house_wall'
 export const SAFE_RADIUS = 10          // Chebyshev tiles from the village/camp POI
 export const STORY_RADIUS = 4          // door ↔ story POI distance
 
+// The door a walked-onto cell opens: a door record stands on its west cell and
+// covers `span` cells eastward (Kalevanlinna's keep and church draw double
+// doors, two cells, one record each); any other door is one cell.
+export const doorAt = (doors, x, y) => doors?.find(d => d.y === y && x >= d.x && x < d.x + (d.span ?? 1)) ?? null
+
 export const isHouseDoorArt = name => typeof name === 'string' && HOUSE_DOOR_PREFIXES.some(p => name.startsWith(p))
 export const isHouseWallArt = name => typeof name === 'string' && name.startsWith(HOUSE_WALL_PREFIX)
 const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by))

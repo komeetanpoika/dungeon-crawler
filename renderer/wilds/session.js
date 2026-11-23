@@ -13,6 +13,7 @@ import { getPiece, recordFor, sweep, exportWorld } from './world.js'
 import { admit } from './tales.js'
 import { applyFelled, STUMP } from '../systems/lumber.js'
 import { TILE } from '../systems/entities.js'
+import { doorAt } from '../systems/houses.js'
 import { isCityPiece, toCity } from './city/geometry.js'
 import { insideWalls } from './city/plan.js'
 
@@ -165,7 +166,7 @@ export function enterWilds(state, world, target, { buildEntities }) {
   // Waking on a cave mouth or a doorstep (a save made underground puts you
   // there) must not walk you straight back in: hold until you step off.
   const on = t => t.x === at.x && t.y === at.y
-  state.entranceHold = state.caveEntrances.some(on) || state.houseDoors.some(on)
+  state.entranceHold = state.caveEntrances.some(on) || !!doorAt(state.houseDoors, at.x, at.y)
 }
 
 // Step the window by (dx, dy) pieces: record and drop what leaves, shift

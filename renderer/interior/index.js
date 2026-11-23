@@ -12,6 +12,7 @@ import { layPuzzle, findSun, solveSun } from './sunroom.js'
 import { MISC } from './kit.js'
 import { HOME, TRADES } from './recipes.js'
 import { VERSIONS, TRADE_LIST, GLASSMAKER, occupants, loot, dress } from './versions.js'
+import { markCasts } from './casts.js'
 import { mulberry32, shuffle } from './rng.js'
 import { TILE } from '../systems/entities.js'
 
@@ -62,6 +63,8 @@ export function generateInterior(spec, { solved = false, looted = false } = {}) 
     if (!looted) reward = { ...sun.alcove }
     else map[sun.alcove.y][sun.alcove.x].overlay = MISC.chestOpen
   }
+
+  markCasts(map)
 
   const key = c => `${c.x},${c.y}`
   const free = []

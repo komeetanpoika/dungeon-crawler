@@ -55,6 +55,7 @@ test('every schedule covers the whole day and starts at home', () => {
 test('everyone has at least three different places in a day, and no one stays put outdoors all day', () => {
   for (const { seed, city, folk } of worlds) for (const day of DAYS) for (const p of folk) {
     if (p.job === 'watch') continue // a post is a post by design
+    if (p.job === 'count') continue // the Count keeps to his keep, by design (below)
     const s = scheduleFor(p, city, seed, day)
     const time = new Map()
     s.forEach((e, i) => time.set(key(e.where), (time.get(key(e.where)) ?? 0) + ((s[i + 1]?.at ?? 1) - e.at)))
@@ -95,6 +96,53 @@ test('the bell fills the church door and the square empties toward it', () => {
     assert.ok(n < 5, `${n} on the steps before the bell`)
     // and it is over by the time the afternoon is half gone
     assert.ok(folk.filter(p => { const s = scheduleFor(p, city, seed, day); return s[entryAt(s, DAY.bell + 0.09)].where.spot === 'church-steps' }).length < 5)
+  }
+})
+
+// The church is open by day, so most of the bell crowd goes in; elders,
+// beggars and the crier keep the steps (Väinö plays the organ inside).
+test('at the bell most churchgoers go inside; elders, beggars and the crier keep the steps', () => {
+  let inside = 0, going = 0
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const city = cityFor(seed)
+    const door = city.doors.find(d => d.kind === 'church').label
+    const folk = rollTownsfolk(seed, city)
+    for (const day of [0, 1, 2]) for (const p of folk) {
+      const bell = scheduleFor(p, city, seed, day).find(e => e.act === 'church')
+      if (!bell) continue
+      if (p.age === 'elder' || p.job === 'beggar' || p.job === 'crier') {
+        if (p.job !== 'organist') assert.equal(bell.where.spot, 'church-steps', `${p.id} (${p.job}, ${p.age}) on the steps`)
+        continue
+      }
+      if (p.age !== 'adult') continue
+      going++
+      if (bell.where.door === door) inside++
+    }
+  }
+  const share = inside / going
+  assert.ok(share >= 0.55 && share <= 0.85, `${inside}/${going} = ${share.toFixed(2)} of the adults at the bell go in`)
+})
+
+// The Count keeps to his keep, so his chair in the great hall is never empty
+// (interior/buildings/castle.js): no errand, no inn and no bell either (the
+// walk to the church is a fifth of the day each way).
+test('the Count is only ever at the castle', () => {
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const city = cityFor(seed)
+    const castle = city.doors.find(d => d.kind === 'castle').label
+    const count = rollTownsfolk(seed, city).find(p => p.job === 'count')
+    assert.ok(count, `seed ${seed} has a Count`)
+    for (const day of [0, 1, 2]) {
+      const s = scheduleFor(count, city, seed, day)
+      for (const e of s) {
+        assert.ok(e.where.door === castle && (e.act === 'home' || e.act === 'work'), `seed ${seed} day ${day}: the Count ${e.act} at ${JSON.stringify(e.where)} at ${e.at.toFixed(3)}`)
+      }
+      // in his chair from dawn, home in the evening
+      const at = f => s[entryAt(s, f)].act
+      assert.equal(at(DAY.dawn - 0.02), 'home')
+      for (const f of [DAY.dawn + 0.05, DAY.noon, DAY.bell + 0.03, DAY.dusk - 0.02]) assert.equal(at(f), 'work', `seed ${seed} day ${day} at ${f}`)
+      assert.equal(at(DAY.dusk + 0.02), 'home')
+    }
   }
 })
 

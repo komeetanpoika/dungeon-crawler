@@ -6,8 +6,13 @@
 // wilds/city/indoors.js and systems/cave.js do here.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { arriveCity, tickCity, occupantsOf, householdOf, cityPeople } from '../renderer/wilds/city/runtime.js'
-import { cityHouseSpec, leaveCityHouse } from '../renderer/wilds/city/indoors.js'
+import { arriveCity, tickCity, occupantsOf, occupantsWithActs, householdOf, cityPeople } from '../renderer/wilds/city/runtime.js'
+import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, struckInBuilding, spareStruck } from '../renderer/wilds/city/indoors.js'
+import { violenceUnseen } from '../renderer/wilds/city/law.js'
+import { tickCrime } from '../renderer/wilds/city/crime.js'
+import { DAY } from '../renderer/wilds/city/schedule.js'
+import { buildBuilding } from '../renderer/interior/buildings/index.js'
+import { makeBuilding } from '../renderer/interior/floors.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { generateInterior, houseSpec, INTERIOR_SKINS } from '../renderer/interior/index.js'
 import { makeWorld } from '../renderer/wilds/world.js'
@@ -15,8 +20,8 @@ import { enterWilds } from '../renderer/wilds/session.js'
 import { makeNpc } from '../renderer/systems/npc.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { buildCaveState, restoreSurface } from '../renderer/systems/cave.js'
-import { INTERIOR_DEPTH } from '../renderer/systems/houses.js'
-import { isWalkable } from '../renderer/systems/entities.js'
+import { INTERIOR_DEPTH, doorAt } from '../renderer/systems/houses.js'
+import { isWalkable, TILE } from '../renderer/systems/entities.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
 
 const SEED = 7
@@ -55,7 +60,8 @@ function setup({ clock = NIGHT, day = 0 } = {}) {
 function at(ctx, clock) { ctx.T.clock = clock; arriveCity(ctx.state, ctx.world, ctx.hooks, { fresh: true }) }
 
 const city = cityFor(SEED)
-const open = city.doors.filter(d => !d.closed)
+// the doors built as houses: not the hand-laid church and keep
+const open = city.doors.filter(d => !d.closed && !d.building)
 const ids = list => list.map(p => p.id).sort()
 const npcsOf = g => g.entitySpawns.filter(s => s.kind === 'npc')
 
@@ -235,4 +241,139 @@ test('one struck down indoors is out until the next day', () => {
   tickCity(surface, world, 0.05, hooks)
   assert.equal(me().out, false)
   assert.ok(occupantsOf(surface, door.label).some(p => p.id === victim.id), 'home again the next night')
+})
+
+// ---- the church: a building of floors (interior/buildings/church.js) -----------------------------
+const BELL = (DAY.bell + 0.025) * DAY_LENGTH
+const churchIn = state => state.houseDoors.find(d => d.kind === 'church')
+// what game.js enterBuilding does, minus the art
+function enterChurch(state, door, spec) {
+  const built = buildBuilding(spec.kind, spec)
+  const floors = built.floors.map(f => ({
+    id: f.id, map: f.map, entities: buildEntities(f.entitySpawns), stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit,
+  }))
+  const building = makeBuilding(floors, built.ground)
+  const ground = building.floors.get(built.ground)
+  const cave = buildCaveState(state, { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }, {
+    map: ground.map, entities: ground.entities, playerSpawn: ground.spawn, exit: ground.exit, theme: built.theme,
+  })
+  cave.cave.building = building
+  cave.cave.city = true
+  return cave
+}
+
+test('the church door reaches the window with its building and hours', () => {
+  const { state } = setup({ clock: NOON })
+  const rec = city.doors.find(d => d.kind === 'church')
+  const door = churchIn(state)
+  assert.ok(door, 'the church door is among the window\'s doors')
+  assert.equal(door.label, rec.label)
+  assert.equal(door.building, 'church')
+  assert.deepEqual(door.hours, { from: DAY.dawn, to: DAY.dusk, shut: 'The church is locked for the night.' })
+  // its double door: either half is walked onto and opens it (game.js doorAt)
+  for (const x of [door.x, door.x + 1]) {
+    assert.equal(state.map[door.y][x].tile, TILE.FLOOR, `the door's cell ${x - door.x} is walked onto`)
+    assert.ok(doorAt(state.houseDoors, x, door.y) === door, `the door's cell ${x - door.x} opens the church`)
+  }
+  assert.equal(doorAt(state.houseDoors, door.x + 2, door.y), null, 'and the wall beside it does not')
+})
+
+test('at the bell the church holds whoever the schedules put in it, each where their act seats them', () => {
+  const { state, world } = setup({ clock: BELL })
+  const door = churchIn(state)
+  const inside = occupantsOf(state, door.label)
+  const withActs = occupantsWithActs(state, door.label)
+  assert.deepEqual(withActs.map(p => p.person.id).sort(), ids(inside))
+  for (const { person, act } of withActs) {
+    const w = state.cityRun.people.get(person.id)
+    assert.ok(w.person === person, 'the Person record itself')
+    assert.equal(act, w.entry.act)
+  }
+  const spec = cityBuildingSpec(state, door, world.seed)
+  assert.equal(spec.kind, 'church')
+  assert.equal(typeof spec.seed, 'number')
+  assert.equal(cityBuildingSpec(state, door, world.seed).seed, spec.seed, 'the same church every visit')
+  assert.deepEqual(spec.people.map(p => p.person.id).sort(), ids(inside))
+  for (const p of spec.people) {
+    assert.equal(p.spawn.kind, 'npc'); assert.equal(p.spawn.id, p.person.id); assert.equal(p.spawn.look, p.person.look)
+    assert.equal(p.spawn.hostile, false); assert.ok(p.spawn.lines.length >= 1)
+  }
+  // the church's own people are in at the bell (the congregation walks to it
+  // and may not be in yet: test/interior-church.test.js seats a full one)
+  const actOf = id => spec.people.find(p => p.person.id === id)?.act
+  assert.equal(actOf('named:vicar'), 'church')
+  assert.equal(actOf('named:vaino'), 'church')
+  assert.ok(spec.people.some(p => p.act === 'ring' && p.person.job === 'bell-ringer'), 'the bell-ringer')
+  // built, everyone appears once; the vicar by the altar, Väinö at the organ, the ringer up the tower
+  const b = buildBuilding(spec.kind, spec)
+  const placed = b.floors.flatMap(f => f.entitySpawns.map(s => ({ f, s })))
+  assert.deepEqual(placed.map(({ s }) => s.id).sort(), ids(inside))
+  const on = (id, floor, spot) => {
+    const at = placed.find(({ s }) => s.id === id)
+    assert.equal(at.f.id, floor, id)
+    if (spot) assert.ok(at.f.spots.get(spot).some(c => c.x === at.s.x && c.y === at.s.y), `${id} on ${spot}`)
+  }
+  on('named:vicar', 'nave', 'altar-side')
+  on('named:vaino', 'nave', 'organ')
+  for (const p of spec.people.filter(q => q.act === 'ring')) on(p.person.id, 'tower', 'bell')
+  // at night the door is shut and nobody is seen: an empty church is still a church
+  assert.ok(buildBuilding('church', { seed: spec.seed, people: [] }).floors.length === 3)
+})
+
+test('leaving the church: those on the other floors were not struck down; one gone from the tower was', () => {
+  const { state, world } = setup({ clock: BELL })
+  const door = churchIn(state)
+  const spec = cityBuildingSpec(state, door, world.seed)
+  const ringer = spec.people.find(p => p.act === 'ring')
+  assert.ok(ringer, 'the bell-ringer is up the tower at the bell')
+  const out = id => cityPeople(state).find(q => q.id === id).out
+  let cave = enterChurch(state, door, spec)
+  assert.ok(cave.cave.building.floors.get('tower').entities.some(e => e.id === ringer.person.id), 'in the tower, not on the nave')
+  assert.equal(cave.entities.some(e => e.id === ringer.person.id), false)
+  leaveCityHouse(cave)
+  restoreSurface(cave)
+  for (const p of spec.people) assert.equal(out(p.person.id), false, `${p.person.id} is not struck down`)
+  // struck down up the tower (culled from that floor), and the vicar on the nave
+  cave = enterChurch(state, door, spec)
+  const tower = cave.cave.building.floors.get('tower')
+  tower.entities = tower.entities.filter(e => e.id !== ringer.person.id)
+  assert.ok(cave.entities.some(e => e.id === 'named:vicar'))
+  cave.entities = cave.entities.filter(e => e.id !== 'named:vicar')
+  leaveCityHouse(cave)
+  restoreSurface(cave)
+  assert.equal(out(ringer.person.id), true, 'the ringer is out until tomorrow')
+  assert.equal(out('named:vicar'), true)
+  assert.equal(spec.people.filter(p => out(p.person.id)).length, 2, 'nobody else')
+})
+
+test('a blow in a building: spared and not struck down; counted as a blow in the street (warn, then wanted)', () => {
+  const { state, world } = setup({ clock: BELL })
+  const door = churchIn(state)
+  const spec = cityBuildingSpec(state, door, world.seed)
+  let cave = enterChurch(state, door, spec)
+  assert.equal(struckInBuilding(cave), true)
+  // an ordinary house is not a building: the old path
+  const home = open.find(d => d.kind === 'home')
+  const house = generateInterior(cityHouseSpec(state, home, world.seed))
+  const hcave = buildCaveState(state, { x: home.x, y: home.y, caveDepth: INTERIOR_DEPTH, label: home.label }, {
+    map: house.map, entities: buildEntities(house.entitySpawns), playerSpawn: house.playerSpawn, exit: house.exit, theme: house.theme,
+  })
+  assert.equal(struckInBuilding(hcave), false)
+  assert.equal(struckInBuilding(state), false)
+  // the vicar is killed outright and culled; still not struck down
+  const vicar = cave.entities.find(e => e.id === 'named:vicar')
+  vicar.hp = 0
+  cave.entities = cave.entities.filter(e => e !== vicar)
+  spareStruck(cave, vicar)
+  assert.equal(vicar.hp, vicar.maxHp, 'healed to full')
+  leaveCityHouse(cave)
+  const surface = restoreSurface(cave)
+  assert.equal(cityPeople(surface).find(q => q.id === 'named:vicar').out, false)
+  // the act is counted like a street blow
+  assert.equal(surface.cityRun.crime.level, 'calm')
+  assert.equal(violenceUnseen(surface), 'warn')
+  assert.equal(surface.cityRun.crime.level, 'warned')
+  tickCrime(surface.cityRun.crime, 0.3)   // street time only: well inside the warning's grace
+  assert.equal(violenceUnseen(surface), 'wanted')
+  assert.equal(surface.cityRun.crime.level, 'wanted')
 })

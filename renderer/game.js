@@ -10,6 +10,7 @@ import { getInitialMeta, applyRunResult, getStartingItems, validateMeta, firstTi
 import { decorateMap, pruneMissingTiles, rulesetHasOverlays, skinFloors } from './systems/decorate.js'
 import { Renderer, BLINK_DUR } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
+import { shadeSprites } from './render/interior-shade.js'
 import { tickWalk } from './systems/walk.js'
 import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG, OVERWORLD_DEPTH, ADVENTURE_DEPTH, WILDS_DEPTH } from './data/levels.js'
 import { countBosses, spawnBossDrop } from './systems/progression.js'
@@ -39,8 +40,10 @@ import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
+import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
+import { buildBuilding } from './interior/buildings/index.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
-import { INTERIOR_DEPTH } from './systems/houses.js'
+import { INTERIOR_DEPTH, doorAt } from './systems/houses.js'
 import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems/interior.js'
 import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
@@ -49,9 +52,12 @@ import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
-import { cityHouseSpec, leaveCityHouse } from './wilds/city/indoors.js'
+import { fracOf } from './wilds/city/runtime.js'
+import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut, struckInBuilding, spareStruck } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
+import { violenceUnseen } from './wilds/city/law.js'
 import { ARREST_FADE } from './wilds/city/crime.js'
+import { isShutGate, GATE_SHUT_LINE } from './wilds/city/fx.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
@@ -447,6 +453,7 @@ function rulesetTileNames(rs) {
 // state.entities rebuilds, so pushing a pickup there would be lost — they
 // queue here and land after the frame's final cull.
 let pendingDrops = []
+let pendingOut = null   // blows struck inside a building this frame: { hit: [npc], killed }
 function npcStruck(e, alive = e.hp > 0, source = 'player') {
   if (e.type !== 'npc') return
   npcDirty = true
@@ -458,6 +465,13 @@ function npcStruck(e, alive = e.hp > 0, source = 'player') {
       startPx: e.px, startPy: e.py, targetPx: e.x * TILE_SIZE + TILE_SIZE / 2, targetPy: e.y * TILE_SIZE + TILE_SIZE / 2,
       px: e.px, py: e.py, progress: 0, duration: 0.3,
     })
+  }
+  if (source !== 'watch' && state.cave && struckInBuilding(state)) {
+    // church or castle: no one falls here; the player is put out after the frame
+    pendingOut ??= { hit: [], killed: false }
+    pendingOut.hit.push(e)
+    if (!alive) pendingOut.killed = true
+    return
   }
   const r = onNpcHit(e, state)
   if (r.wrath) { announce(state, 'The village turns on you!'); sfx(state, 'npc-wrath') }
@@ -1190,9 +1204,11 @@ function netFrame() {
 // house interiors' tiles (renderer/interior/) come with them, and before the
 // other modes that have houses.
 let wildsSprites = null
-const loadWildsSprites = () => wildsSprites ??= renderer.addSprites([...WILDS_SKINS, ...INTERIOR_SKINS])
+// Furniture gets its lit and shaded edges and shadows once its tiles are in.
+const shadeInterior = () => { try { shadeSprites(renderer.sprites, { makeCanvas: (width, height) => Object.assign(document.createElement('canvas'), { width, height }) }) } catch (e) { console.warn('Furniture shading failed', e) } }
+const loadWildsSprites = () => wildsSprites ??= renderer.addSprites([...WILDS_SKINS, ...INTERIOR_SKINS]).then(shadeInterior)
 let interiorSprites = null
-const loadInteriorSprites = () => interiorSprites ??= renderer.addSprites(INTERIOR_SKINS)
+const loadInteriorSprites = () => interiorSprites ??= renderer.addSprites(INTERIOR_SKINS).then(shadeInterior)
 let beginning = false
 
 async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = null) {
@@ -1558,6 +1574,8 @@ function update(delta) {
   if (sprinting) spendStamina(player, profile.drain * delta)
   const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
+  // the castle gate let down for the night (wilds/city/fx.js): walking into it says so
+  if (vy < 0 && player.py === walkedFrom.py && !state.cave && isShutGate(map[player.y - 1]?.[player.x])) throttledThink('castle-gate', GATE_SHUT_LINE)
   // Päivölä: walking into a mirror turns it (systems/sunroom-run.js)
   if (state.cave?.label?.startsWith('house:')) {
     const sun = tickSunroom(state, { vx, vy, blockedX: vx !== 0 && player.px === walkedFrom.px, blockedY: vy !== 0 && player.py === walkedFrom.py })
@@ -1662,16 +1680,39 @@ function update(delta) {
     } else { enterCave(arch); return }
   }
   // House doors — same walk-onto/hold pattern as arches, no gate to check.
-  const door = !state.cave && state.houseDoors?.find(d => d.x === player.x && d.y === player.y)
+  const door = !state.cave && doorAt(state.houseDoors, player.x, player.y)
   if (door && !state.entranceHold) {
-    // the church and the castle are shut: the door says so, and never opens
-    if (typeof door.closed === 'string') { think(state, door.closed); state.entranceHold = true } else { enterHouse(door); return }
+    // a shut door says so (the castle always, the church at night) and stays shut;
+    // the hours go by the clock the town keeps (cityHooks.clock)
+    const clock = cityHooks.clock()
+    const shut = doorShut(door, fracOf(clock))
+    if (shut !== null) { think(state, shut); state.entranceHold = true } else { enterHouse(door); return }
   }
   if (!arch && !door) state.entranceHold = false
   if (state.cave) {
     const onStairs = player.x === state.cave.stairs.x && player.y === state.cave.stairs.y
     if (!onStairs) state.cave.offStairs = true
     else if (state.cave.offStairs) { exitCave(); return }
+  }
+  // A building's stairs and shut doors fire once per step-on (stairHold).
+  const building = state.cave?.building
+  if (building) {
+    const stair = stairAt(building, player.x, player.y)
+    const shut = stair ? null : shutAt(building, player.x, player.y)
+    if (!stair && !shut) state.cave.stairHold = false
+    else if (!state.cave.stairHold) {
+      state.cave.stairHold = true
+      const line = shut ? shut.line : blockedBy(building, stair, state.entities)
+      if (line !== null) think(state, line)
+      else {
+        const say = sayNow(building, stair)
+        if (say) building.said.add(sayKey(building, stair))
+        state = travelFloor(state, stair)
+        if (say) think(state, say)
+        sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
+        return
+      }
+    }
   }
 
   // Waystone. Timewarp: a resolved episode's runestone leads back to the
@@ -2399,6 +2440,15 @@ function update(delta) {
   // records — so there a struck animal is no reason to write the save.)
   if (npcDirty && !state.cave && mapDataFor(state.level)) { npcDirty = false; if (runMode !== 'wilds') persistRun() }
   if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
+  if (pendingOut) {
+    const out = pendingOut; pendingOut = null
+    if (state.cave && struckInBuilding(state)) {
+      for (const e of out.hit) spareStruck(state, e)
+      exitCave()
+      violenceUnseen(state, { killed: out.killed })
+      announce(state, 'Out!')   // said to the player: replaces "You step back out."
+    }
+  }
 
   // Hit flashes fade out over their HIT_LIFE (they used to be wiped here,
   // before the render ever drew them)
@@ -2462,8 +2512,15 @@ function enterCave(entrance) {
 // in when the door resolves to one. An instance stored by the old generator
 // has no front door of its own and is built afresh. A Kalevanlinna door is
 // built afresh at every visit and never kept: inside are exactly the people
-// the town's schedules put there now (wilds/city/indoors.js).
+// the town's schedules put there now (wilds/city/indoors.js). A door with a
+// building laid by hand behind it (door.building: the church) opens onto its
+// floors, peopled the same way.
 function enterHouse(door) {
+  if (door.building) {
+    const spec = cityBuildingSpec(state, door, wildsWorld && state.wilds ? wildsWorld.seed : 0)
+    enterBuilding(door, buildBuilding(spec.kind, { ...spec, strict: false }))
+    return
+  }
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
   let inst = door.city ? null : state.caveInstances?.[door.label]
   let version = null
@@ -2491,6 +2548,28 @@ function enterHouse(door) {
     version = house.version
   }
   announce(state, (version && VERSIONS[version]?.enter) || 'You step inside.')
+  sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
+}
+
+// A building of several floors (renderer/interior/floors.js), entered like a
+// house. built = { floors: [{ id, map, entitySpawns, stairs, shut, playerSpawn?,
+// exit? }], ground, theme }. Only the ground floor is the state's map; the
+// others wait in state.cave.building with their own entities. Never kept as a
+// cave instance: it is built afresh at every visit.
+function enterBuilding(door, built) {
+  const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
+  const floors = built.floors.map(f => ({
+    id: f.id, map: f.map, entities: buildEntities(f.entitySpawns, f.map, INTERIOR_DEPTH),
+    stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit,
+  }))
+  const building = makeBuilding(floors, built.ground)
+  const ground = building.floors.get(built.ground)
+  state = buildCaveState(state, entrance, {
+    map: ground.map, entities: ground.entities, playerSpawn: ground.spawn, exit: ground.exit, theme: built.theme,
+  })
+  state.cave.building = building
+  state.cave.city = true
+  announce(state, 'You step inside.')
   sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
 }
 

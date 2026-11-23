@@ -52,7 +52,7 @@ test('multi-cell pieces are rectangles of the footprint they say', () => {
     assert.equal(t.body.length, w); assert.equal(t.base.length, w)
   }
   rect(GATE.arch2, 3, 2, 'gate arch2'); rect(GATE.arch3, 3, 3, 'gate arch3'); assert.equal(GATE.side.length, 3)
-  rect(CASTLE.gate2, 3, 2, 'castle gate2'); rect(CASTLE.gate3, 3, 3, 'castle gate3')
+  rect(CASTLE.gate2, 3, 2, 'castle gate2'); rect(CASTLE.gate3, 3, 3, 'castle gate3'); rect(CASTLE.gate2Open, 3, 2, 'castle gate2Open')
   rect(PROPS.windmill.base, 3, 3, 'windmill')
   assert.equal(PROPS.windmill.sails.length, 4)
   for (const f of PROPS.windmill.sails) rect(f, 3, 3, 'windmill sails')

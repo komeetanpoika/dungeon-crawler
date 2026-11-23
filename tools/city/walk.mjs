@@ -11,7 +11,18 @@
 //   busker   the busker playing (his notes)
 //   gulls    the harbour gulls, settled and lifting as the player comes
 //   noon     the square at noon
+//   castle   through the open castle gate into the courtyard; into the keep
+//            by the right half of its double door: the Count on his throne,
+//            the lid beside him, the hall guards, the cook and the servant;
+//            down to the cells and back (the hall as left); the guarded stair
+//            (the guard's line, no travel); a blow on a hall guard (out on the
+//            doorstep, "Out!", warned), back in and a second (wanted)
+//   church   in by the door: the vicar at his pulpit; up the tower and down;
+//            down to the crypt, onto the crack (its line); out; a blow inside
+//            (out, "Out!", warned)
 //   bell     the church bell ringing
+//   church   at the service: the pews full, the sitters still in them five
+//            seconds on, the vicar by the altar and Väinö at the organ
 //   cart     day 4's morning cart and its carter, followed down to its stall
 //            and back out (south, a turn, north)
 //   dusk     the square at dusk
@@ -22,12 +33,17 @@
 //   crime    a townsperson hit twice: the warning, the pursuit, the stocks
 //            and its crowd and turnips, freed
 //   wolf     a wolf led to the north gate stops outside the walls
+//   castle   at 0.90 the gate is down and says so when walked into
+//   church   at 0.90 the door is locked and says so
 //   night    the square at night (lamps lit)
 //
 // and all along watches for anyone standing in a doorway. One line per check,
 // screenshots of each (city-*.png) in the directory given; exits non-zero if
-// anything is wrong. About three minutes; `--only a,b` runs some sections
-// (the clock only goes forward, so they still run in the order above).
+// anything is wrong. About three minutes, and the castle and the church about
+// a minute and three quarters more (most of it the wait by the church for the
+// service); `--only a,b` runs some sections
+// (the clock only goes forward, so they still run in the order above; a name
+// listed twice, castle and church, runs all its parts).
 //
 //   node tools/city/walk.mjs [shots-dir] [--only gate,inn,...] [--seed 7] [--day 1]
 import * as fs from 'node:fs'
@@ -36,6 +52,8 @@ import * as path from 'node:path'
 import { W, sleep, citySave, driver, launchGame, enterWilds, noDamage } from './live.mjs'
 import { cityFor } from '../../renderer/wilds/city/build.js'
 import { sceneWindows } from '../../renderer/wilds/city/scenes.js'
+import { PLAN } from '../../renderer/wilds/city/plan.js'
+import { buildBuilding } from '../../renderer/interior/buildings/index.js'
 
 const argv = process.argv.slice(2)
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d }
@@ -69,7 +87,7 @@ const until = async (fn, secs, arg, every = 250) => {
 // (never a door, a cave mouth or the waystone: stepping on one goes in)
 const placeOpen = (X, Y) => ev(([X, Y]) => {
   const s = window.__dc.state, o = window.__dc.wilds.origin, p = s.player
-  const into = new Set([...(s.houseDoors ?? []), ...(s.caveEntrances ?? []), ...(s.mapExit ? [s.mapExit] : [])].map(d => `${d.x},${d.y}`))
+  const into = new Set([...(s.houseDoors ?? []), ...(s.caveEntrances ?? []), ...(s.mapExit ? [s.mapExit] : [])].flatMap(d => Array.from({ length: d.span ?? 1 }, (_, i) => `${d.x + i},${d.y}`)))
   for (let r = 0; r < 10; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
     const x = X - o.wx * 80 + dx, y = Y - o.wy * 80 + dy
@@ -78,11 +96,14 @@ const placeOpen = (X, Y) => ev(([X, Y]) => {
   return null
 }, [X, Y])
 const goOpen = async (X, Y, settle = 600) => { await d.goTo(X, Y, { settle: 350 }); const at = await placeOpen(X, Y); await sleep(settle); return at }
-// out of the city's reach and back: everyone stands where the clock says
-const replace = async () => {
+// out of the city's reach and back: everyone stands where the clock says (set
+// to `frac` while the town is let go, if given); a warning or the wanted comes
+// back with the town (law.js carryCrime), see forgive
+const replace = async (frac = null) => {
   const at = await d.playerWorld()
   await d.goTo(80, 40, { settle: 300 })   // piece (1,0): the window then holds no city piece
   check(!!(await until(() => !window.__dc.state.cityRun, 3)), 'the town is let go when no city piece is in the window')
+  if (frac !== null) await d.setFrac(frac)
   await goOpen(at.X, at.Y, 1200)
 }
 // a swing at one of the city's people (cityKey) or an npc (id), from the cell west of them
@@ -104,15 +125,92 @@ const leave = async () => {
   await ev(() => { const s = window.__dc.state, st = s.cave.stairs, p = s.player; s.cave.offStairs = true; p.x = st.x; p.y = st.y; p.px = st.x * 32 + 16; p.py = st.y * 32 + 16 })
   return until(() => !window.__dc.state.cave, 3)
 }
-const section = async (name, fn) => {
+const section = async (name, fn, label = name) => {
   if (ONLY && !ONLY.includes(name)) return
   const s0 = Date.now()
   // every section starts in the street (a house stops the clock and the town)
   if (await ev(() => !!window.__dc.state.cave)) { check(false, `${name}: the player was left indoors; out first`); await leave() }
   try { await fn() } catch (err) { check(false, `${name}: ${err.message.split('\n')[0]}`) }
-  noErrors(`in ${name}`)
-  note(`(${name}: ${((Date.now() - s0) / 1000).toFixed(1)} s, clock ${(await frac()).toFixed(3)})`)
+  noErrors(`in ${label}`)
+  note(`(${label}: ${((Date.now() - s0) / 1000).toFixed(1)} s, clock ${(await frac()).toFixed(3)})`)
 }
+
+// ---- the castle and the church: buildings of floors (interior/buildings/) ----------------
+// Laid by hand, the same in every world: their stairs, spots and shut cells
+// are read from the building itself. Inside, positions are the floor's cells.
+const BUILT = { castle: buildBuilding('castle', { seed: 0 }), church: buildBuilding('church', { seed: 0 }) }
+const floorOf = (kind, id) => BUILT[kind].floors.find(f => f.id === id)
+const spotCells = (kind, floor, ...names) => names.flatMap(n => floorOf(kind, floor).spots.get(n) ?? [])
+const doorOf = kind => { const r = city.doors.find(x => x.kind === kind); return W(r.x, r.y) }
+const KEEP = doorOf('castle'), CHURCH = doorOf('church')
+const GATE = PLAN.places.castleGate   // the middle of the castle gate's lower row
+const KEY = { '0,-1': 'ArrowUp', '0,1': 'ArrowDown', '-1,0': 'ArrowLeft', '1,0': 'ArrowRight' }
+const thought = () => ev(() => window.__dc.state.feedback?.bubble?.text ?? null)
+const banner = () => ev(() => window.__dc.state.feedback?.banner?.text ?? null)
+const crimeLevel = () => ev(() => window.__dc.state.cityRun?.crime.level ?? null)
+const playerFloorCell = () => ev(() => { const p = window.__dc.state.player; return { x: p.x, y: p.y } })
+// the living npcs of the floor the player is on, `id@x,y`, sorted
+const npcCells = () => ev(() => window.__dc.state.entities.filter(e => e.type === 'npc' && e.hp > 0).map(e => `${e.id}@${e.x},${e.y}`).sort())
+const npcAt = id => ev(id => { const e = window.__dc.state.entities.find(e => e.id === id && e.hp > 0); return e ? { x: e.x, y: e.y } : null }, id)
+const onCells = (at, cells) => !!at && cells.some(c => c.x === at.x && c.y === at.y)
+// stand on cell (x, y) of the floor for a look round (what the player sees is lit)
+const lookFrom = async (x, y) => { await ev(([x, y]) => { const p = window.__dc.state.player; p.x = x; p.y = y; p.px = x * 32 + 16; p.py = y * 32 + 16 }, [x, y]); await sleep(500) }
+// A step by key from the cell the player stands in, (fx, fy) of the floor or
+// window, onto its neighbour (x, y): stood 12 px short of the edge, a 100 ms
+// tap, so a stair taken leaves the player still on the landing they arrive at.
+const stepOnto = async (fx, fy, x, y, settle = 300) => {
+  const dx = x - fx, dy = y - fy
+  await ev(([fx, fy, dx, dy]) => { const p = window.__dc.state.player; p.x = fx; p.y = fy; p.px = fx * 32 + 16 + dx * 12; p.py = fy * 32 + 16 + dy * 12 }, [fx, fy, dx, dy])
+  await sleep(300)
+  await page.keyboard.down(KEY[`${dx},${dy}`]); await sleep(100); await page.keyboard.up(KEY[`${dx},${dy}`])
+  await sleep(settle)
+}
+// resolves at the first frame on floor `to`, with who stands where there (null after 2 s)
+const arrival = to => page.evaluate(to => new Promise(res => {
+  const t0 = performance.now()
+  const look = () => {
+    const s = window.__dc.state
+    if (s.cave?.building?.at === to) return res(s.entities.filter(e => e.type === 'npc' && e.hp > 0).map(e => `${e.id}@${e.x},${e.y}`).sort())
+    if (performance.now() - t0 > 2000) return res(null)
+    requestAnimationFrame(look)
+  }
+  look()
+}), to)
+// up or down the stair of floor `from` that leads to `to`, stepped onto from its landing
+const takeStair = async (kind, from, to) => {
+  const st = floorOf(kind, from).stairs.find(s => s.to.floor === to)
+  const got = arrival(to)
+  await stepOnto(st.land.x, st.land.y, st.x, st.y, 0)
+  return got
+}
+// walk into a building by a door cell (world tile X, Y) from the street cell south of it
+const walkInto = async (X, Y, floor) => {
+  await d.goTo(X, Y + 1, { settle: 350 })
+  const o = await ev(() => window.__dc.wilds.origin)
+  const got = arrival(floor)
+  await stepOnto(X - o.wx * 80, Y + 1 - o.wy * 80, X - o.wx * 80, Y - o.wy * 80, 0)
+  return got
+}
+// a blow on npc `id` inside a building: struck at until the town puts the
+// player out (null if it never does)
+const blowInside = async id => {
+  for (let i = 0; i < 6; i++) {
+    if (!(await strike(id, 'id'))) return null
+    await swing()
+    const out = await until(() => !window.__dc.state.cave, 0.6, null, 50)
+    if (out) return out
+  }
+  return null
+}
+// the law forgets the player, as a load or a wake makes it (law.js clearCrime:
+// no warning, no wanted, the hunters called off)
+const forgive = () => ev(async () => {
+  const { clearCrime } = await import(new URL('./wilds/city/law.js', location.href).href)
+  clearCrime(window.__dc.state)
+  const run = window.__dc.state.cityRun
+  return { level: run?.crime.level ?? null, hunting: run ? [...run.people.values()].filter(w => w.hunt).length : null }
+})
+const outside = () => ev(() => { const s = window.__dc.state, o = window.__dc.wilds.origin; return s.cave ? null : { X: s.player.x + o.wx * 80, Y: s.player.y + o.wy * 80 } })
 
 try {
   await enterWilds(page)
@@ -260,6 +358,129 @@ try {
     await shot('square-noon')
   })
 
+  // ---- the castle by day: the gate, the keep, the cells, the guarded stair, the law inside ------------
+  const gateCells = () => ev(([gx, gy]) => {
+    const o = window.__dc.wilds.origin, m = window.__dc.state.map, out = []
+    for (const y of [gy - 1, gy]) for (const x of [gx - 1, gx, gx + 1]) { const c = m[y + 160 - o.wy * 80]?.[x - o.wx * 80]; out.push({ tile: c?.tile, overlay: c?.overlay ?? null }) }
+    return out
+  }, [GATE.x, GATE.y])
+  await section('castle', async () => {
+    // noon, the town placed by the clock (as the noon section leaves it)
+    if (await frac() < 0.47) await replace(0.47)
+    // through the open gate into the courtyard
+    const before = W(GATE.x, GATE.y + 2)
+    await d.goTo(before.X, before.Y, { settle: 500 })
+    const g = await gateCells()
+    check(g.every(c => c.tile === 1 && /^ow_city_castle_gate2open_/.test(c.overlay ?? '')), 'by day the castle gate is up and walked on', JSON.stringify(g.map(c => c.overlay)))
+    await page.keyboard.down('ArrowUp')
+    const through = await until(([gy]) => { const s = window.__dc.state, o = window.__dc.wilds.origin, Y = s.player.y + o.wy * 80 - 160; return Y <= gy - 4 ? Y : null }, 4, [GATE.y], 100)
+    await page.keyboard.up('ArrowUp')
+    await sleep(300)
+    await shot('castle-gate-noon')
+    check(through !== null, 'walking north passes the gate into the courtyard', `to city row ${through}`)
+    // into the keep by the right half of its double door
+    const hall = await walkInto(KEEP.X + 1, KEEP.Y, 'hall')
+    const via = await ev(() => { const s = window.__dc.state, o = window.__dc.wilds.origin, p = s.cave?.surface?.player; return p ? { X: p.x + o.wx * 80, Y: p.y + o.wy * 80 } : null })
+    if (!check(!!hall && via?.X === KEEP.X + 1 && via?.Y === KEEP.Y, 'into the keep by the right half of its double door', JSON.stringify({ via, door: KEEP }))) return
+    await sleep(600)
+    const throne = spotCells('castle', 'hall', 'throne')[0]
+    const count = await npcAt('named:count')
+    const lid = await ev(([x, y]) => [window.__dc.state.map[y][x - 1]?.overlay, window.__dc.state.map[y][x + 1]?.overlay].includes('in_sampo_lid'), [throne.x, throne.y])
+    check(onCells(count, [throne]) && lid, 'the Count on his throne, the Sampo\'s lid beside him', JSON.stringify({ count, throne, lid }))
+    const folk = await npcCells()
+    for (const id of ['castle:hall-guard-1', 'castle:hall-guard-2', 'castle:stair-guard', 'castle:cook', 'castle:servant'])
+      check(folk.some(f => f.startsWith(`${id}@`)), `${id.slice(7)} in the hall`)
+    await lookFrom(8, 12)                       // the entrance hall: the guards, the kitchen
+    await shot('castle-hall')
+    await lookFrom(throne.x, throne.y + 3)      // up the aisle: the throne, the lid, the tables
+    await shot('castle-throne')
+    // down to the cells and back up: the hall as left
+    const cells = await takeStair('castle', 'hall', 'cells')
+    check(!!cells, 'down the stair to the cells')
+    const asLeft = await ev(() => window.__dc.state.cave.building.floors.get('hall').entities.filter(e => e.type === 'npc' && e.hp > 0).map(e => `${e.id}@${e.x},${e.y}`).sort())
+    await lookFrom(8, 9)
+    await shot('castle-cells')
+    const back = await takeStair('castle', 'cells', 'hall')
+    check(!!back && JSON.stringify(back) === JSON.stringify(asLeft), 'up again: the hall as left, the same people on the same cells', back ? '' : 'not back in the hall')
+    if (!back) return
+    // the stair up is held by its guard
+    const up = floorOf('castle', 'hall').stairs.find(s => s.to.floor === 'count')
+    await stepOnto(up.land.x, up.land.y, up.x, up.y)
+    const held = { line: await thought(), floor: await ev(() => window.__dc.state.cave?.building?.at), at: await playerFloorCell() }
+    await shot('castle-stair-guard')
+    check(held.line === "The Count's rooms are private." && held.floor === 'hall', 'the stair up is held: the guard\'s line, and no way up', JSON.stringify(held))
+    // a blow on a hall guard: out on the doorstep, "Out!", the town warned
+    const out1 = await blowInside('castle:hall-guard-1')
+    const after1 = { at: await outside(), banner: await banner(), crime: await crimeLevel() }
+    await sleep(150)
+    await shot('castle-out')
+    check(!!out1 && after1.at?.X === KEEP.X && after1.at?.Y === KEEP.Y, 'a blow on a hall guard puts the player out on the doorstep', JSON.stringify(after1.at))
+    check(after1.banner === 'Out!', 'and "Out!" is said to them', String(after1.banner))
+    check(after1.crime === 'warned', 'the town is warned', String(after1.crime))
+    // straight back in (off the step and on again), a second blow: wanted
+    await d.placeWorld(KEEP.X, KEEP.Y + 1); await sleep(300)
+    const again = await walkInto(KEEP.X, KEEP.Y, 'hall')
+    if (!check(!!again, 'back into the keep')) return
+    await sleep(400)
+    const out2 = await blowInside('castle:hall-guard-1')
+    const after2 = { at: await outside(), banner: await banner(), crime: await crimeLevel() }
+    await sleep(150)
+    await shot('castle-wanted')
+    check(!!out2 && after2.banner === 'Out!' && after2.crime === 'wanted', 'a second blow inside: out again, and wanted', JSON.stringify(after2))
+    // the walk goes on with the law forgotten
+    const calm = await forgive()
+    check(calm.level === 'calm' && calm.hunting === 0, 'forgiven (as a load would): calm, nobody hunting', JSON.stringify(calm))
+  }, 'castle by day')
+
+  // ---- the church by day: the nave, the tower, the crypt and its crack, the law inside ------------------
+  await section('church', async () => {
+    const nave = await walkInto(CHURCH.X, CHURCH.Y, 'nave')
+    if (!check(!!nave, 'in by the church door: the nave')) return
+    await sleep(600)
+    const vicar = await npcAt('named:vicar'), vaino = await npcAt('named:vaino')
+    check(onCells(vicar, spotCells('church', 'nave', 'pulpit', 'altar-side')), 'the vicar at his pulpit', JSON.stringify(vicar))
+    // Väinö is checked at the organ at the service: at noon he may be at his lunch at the inn
+    note(`Väinö ${vaino ? `in, at ${vaino.x},${vaino.y}${onCells(vaino, spotCells('church', 'nave', 'organ')) ? ' (the organ bench)' : ''}` : 'not in (his day has him elsewhere)'}`)
+    await lookFrom(12, 7)                       // the aisle: the pews, the windows, the altar
+    await shot('church-nave')
+    // up the tower and down
+    const tower = await takeStair('church', 'nave', 'tower')
+    check(!!tower, 'up the tower stair', JSON.stringify(tower))
+    await sleep(500)
+    await shot('church-tower')
+    check(!!(await takeStair('church', 'tower', 'nave')), 'and down to the nave again')
+    // down to the crypt, onto the crack
+    await sleep(300)
+    const crypt = await takeStair('church', 'nave', 'crypt')
+    check(!!crypt, 'down to the crypt')
+    await lookFrom(8, 6)                        // the walk between the tombs
+    await shot('church-crypt')
+    const crack = floorOf('church', 'crypt').shut[0]
+    await stepOnto(crack.x - 1, crack.y, crack.x, crack.y)
+    const said = await thought()
+    await shot('church-crack')
+    check(said === 'Warm air breathes up through the crack.', 'onto the crack: its line', String(said))
+    // up and out by the door
+    check(!!(await takeStair('church', 'crypt', 'nave')), 'up from the crypt')
+    await sleep(300)
+    check(!!(await leave()), 'out by the church door')
+    const struck = await ev(() => [...window.__dc.state.cityRun.people.values()].filter(w => w.out).map(w => w.id))
+    check(struck.length === 0, 'nobody struck down by going in and out', struck.join(' '))
+    // a blow inside: out, "Out!", warned
+    await d.placeWorld(CHURCH.X, CHURCH.Y + 1); await sleep(300)
+    if (!check(!!(await walkInto(CHURCH.X, CHURCH.Y, 'nave')), 'back into the church')) return
+    await sleep(400)
+    const victim = vicar ? 'named:vicar' : (await npcCells())[0]?.split('@')[0]
+    const out = await blowInside(victim)
+    const after = { at: await outside(), banner: await banner(), crime: await crimeLevel() }
+    await sleep(150)
+    await shot('church-out')
+    check(!!out && !!after.at && after.banner === 'Out!', 'a blow inside the church puts the player out, "Out!"', JSON.stringify(after))
+    check(after.crime === 'warned', 'and the town is warned', String(after.crime))
+    const calm = await forgive()
+    check(calm.level === 'calm', 'forgiven (as a load would)', JSON.stringify(calm))
+  }, 'church by day')
+
   // ---- the church bell -------------------------------------------------------------------------------------
   await section('bell', async () => {
     const s = slot('church')
@@ -271,6 +492,38 @@ try {
     await shot('church-bell')
     check(!!ringing, 'the church bell rings')
   })
+
+  // ---- the church at the service: the pews full, and still ---------------------------------------------
+  await section('church', async () => {
+    // the congregation walks to the service (they set out at 0.575 and stay to
+    // 0.71): the town placed by the clock before it, if it is still earlier,
+    // the player waits by the church until 0.69 as the town walks in (placed
+    // by the clock at 0.685 instead, seed 7 has only ten or so in: the rest
+    // are put still on their way)
+    await goOpen(CHURCH.X + 2, CHURCH.Y + 4, 300)
+    if (await frac() < 0.555) await replace(0.555)
+    // (the game's clock runs slower than the wall's when frames are slow: a
+    // day's 0.135 can take well over a minute here)
+    const waited = await until(() => ((window.__dc.save.clock % 360) + 360) % 360 / 360 >= 0.69, 150, null, 500)
+    if (!check(!!waited, 'waited by the church until 0.69')) return
+    if (!check(!!(await walkInto(CHURCH.X, CHURCH.Y, 'nave')), 'in by the church door at the service')) return
+    await sleep(800)
+    const pews = spotCells('church', 'nave', 'pew', 'school')
+    const seated = (await npcCells()).filter(f => { const [x, y] = f.split('@')[1].split(',').map(Number); return pews.some(c => c.x === x && c.y === y) })
+    note(`at ${(await frac()).toFixed(3)}: ${seated.length} in the pews, ${(await npcCells()).length} in the nave`)
+    await lookFrom(12, 7)
+    await shot('church-service')
+    check(seated.length >= 15, 'the pews hold the congregation (15 or more)', `${seated.length}`)
+    const vicar = await npcAt('named:vicar'), vaino = await npcAt('named:vaino')
+    check(onCells(vicar, spotCells('church', 'nave', 'altar-side')), 'the vicar by the altar', JSON.stringify(vicar))
+    check(onCells(vaino, spotCells('church', 'nave', 'organ')), 'Väinö at the organ', JSON.stringify(vaino))
+    await sleep(5000)
+    const now = await npcCells()
+    const moved = seated.filter(f => !now.includes(f))
+    await shot('church-service-later')
+    check(seated.length > 0 && moved.length === 0, 'five seconds on, every one of them still in their seat', moved.join(' '))
+    await leave()
+  }, 'church at the service')
 
   // ---- the cart (day 4's morning: the whole trip, in and back out) ------------------------
   await section('cart', async () => {
@@ -531,6 +784,29 @@ try {
     note(`a watchman took it on: ${last?.foe ?? 'gone (killed?)'}`)
     await shot('wolf-after')
   })
+
+  // ---- the castle gate and the church door at night -----------------------------------------------------------
+  await section('castle', async () => {
+    await atLeast(0.90)
+    const before = W(GATE.x, GATE.y + 4)
+    await d.goTo(before.X, before.Y, { settle: 800 })
+    const g = await gateCells()
+    check(g.every(c => c.tile === 0 && /^ow_city_castle_gate2_/.test(c.overlay ?? '')), 'at 0.90 the castle gate is down', JSON.stringify(g.map(c => c.overlay)))
+    await page.keyboard.down('ArrowUp'); await sleep(2000); await page.keyboard.up('ArrowUp')
+    const at = await d.playerWorld(), said = await thought()
+    await shot('castle-gate-night')
+    check(at.Y - 160 > GATE.y, 'walking north stops at the gate', `at city row ${at.Y - 160}`)
+    check(said === 'The gate is shut for the night.', 'and the gate says so', String(said))
+  }, 'castle at night')
+  await section('church', async () => {
+    await atLeast(0.90)
+    await d.goTo(CHURCH.X, CHURCH.Y + 1, { settle: 500 })
+    const o = await ev(() => window.__dc.wilds.origin)
+    await stepOnto(CHURCH.X - o.wx * 80, CHURCH.Y + 1 - o.wy * 80, CHURCH.X - o.wx * 80, CHURCH.Y - o.wy * 80, 400)
+    const said = await thought(), out = await outside()
+    await shot('church-night')
+    check(!!out && said === 'The church is locked for the night.', 'at 0.90 the church door is locked, and says so', JSON.stringify({ said, outside: !!out }))
+  }, 'church at night')
 
   await section('night', async () => {
     await atLeast(0.92)

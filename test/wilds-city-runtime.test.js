@@ -4,7 +4,7 @@
 // only buildEntities is a stand-in, making npcs the way game.js does.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { arriveCity, tickCity, cityPeople, occupantsOf, noteCitySwing, nearRadius, FAR_SPEED, ROUTES_PER_TICK } from '../renderer/wilds/city/runtime.js'
+import { arriveCity, tickCity, cityPeople, occupantsOf, noteCitySwing, nearRadius, FAR_SPEED, ROUTES_PER_TICK, fracOf } from '../renderer/wilds/city/runtime.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { fromCity } from '../renderer/wilds/city/geometry.js'
 import { rollTownsfolk } from '../renderer/wilds/city/folk.js'
@@ -24,6 +24,10 @@ import { DAY_LENGTH } from '../renderer/data/weather.js'
 import { applyBurst, updateFireZones, makeFireZone, FIRE_TICK_DAMAGE } from '../renderer/systems/fire.js'
 import { applyShockwave } from '../renderer/systems/shockwave.js'
 import { cityCtx, makeWalker, placeByClock, setEntry, routeWalker, stepFar } from '../renderer/wilds/city/walkers.js'
+import { buildCaveState, restoreSurface, adventureRespawn } from '../renderer/systems/cave.js'
+import { snapshotWilds } from '../renderer/wilds/session.js'
+import { buildBuilding } from '../renderer/interior/buildings/index.js'
+import { makeBuilding, stairAt, travel as travelFloor } from '../renderer/interior/floors.js'
 import { entryAt } from '../renderer/wilds/city/schedule.js'
 
 const SEED = 7
@@ -236,6 +240,24 @@ test('people go indoors and come out by their schedule', () => {
   }
 })
 
+// The service (schedule.js SERVICE): those going into the church set out as
+// the bell starts ringing, arrive from across the town over the next minute
+// and stay until just before the door shuts at dusk.
+test('the bell fills the church: the pews full late in the service, empty after dusk', t => {
+  for (const seed of [7, 1, 4242]) {
+    const ctx = setup({ clock: 0.55 * DAY_LENGTH, world: makeWorld(null, { seed }) })
+    const church = cityFor(seed).doors.find(d => d.kind === 'church').label
+    const inside = () => occupantsOf(ctx.state, church).length
+    run(ctx, (0.69 - 0.55) * DAY_LENGTH)
+    const service = inside()
+    assert.ok(service >= 15, `seed ${seed}: ${service} in the church at 0.69`)
+    run(ctx, (0.76 - 0.69) * DAY_LENGTH)
+    const after = inside()
+    t.diagnostic(`seed ${seed}: ${service} in the church at 0.69, ${after} at 0.76`)
+    assert.ok(after < 5, `seed ${seed}: ${after} still in at 0.76`)
+  }
+})
+
 test('save inside a house, load: the doorstep, the town rebuilt once', () => {
   const city = cityFor(SEED)
   const door = city.doors.find(d => d.kind === 'home' && Math.abs(d.x - 79) < 30 && Math.abs(d.y - 74) < 30)
@@ -250,6 +272,35 @@ test('save inside a house, load: the doorstep, the town rebuilt once', () => {
   assertOnce(state)
   run(ctx, 1)
   assertOnce(state)
+})
+
+test('save inside a building, on another floor: the record is the doorstep, a wake has no cave', () => {
+  const ctx = setup()
+  const { state, world } = ctx
+  const doorstep = toWorld(world.origin, state.player.x, state.player.y)
+  const built = buildBuilding('church', { seed: SEED, people: [] })
+  const floors = built.floors.map(f => ({
+    id: f.id, map: f.map, entities: buildEntities(f.entitySpawns),
+    stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit,
+  }))
+  const building = makeBuilding(floors, built.ground)
+  const ground = building.floors.get(built.ground)
+  let inside = buildCaveState(state, { x: state.player.x, y: state.player.y, caveDepth: 19, label: 'house:test' }, {
+    map: ground.map, entities: ground.entities, playerSpawn: ground.spawn, exit: ground.exit, theme: built.theme,
+  })
+  inside.cave.building = building
+  inside = travelFloor(inside, ground.stairs.find(s => s.to.floor === 'tower'))
+  assert.equal(inside.cave.building.at, 'tower', 'the player stands on another floor')
+  assert.notDeepEqual([inside.player.x, inside.player.y], [state.player.x, state.player.y])
+  // the save reads the surface, not the floor
+  assert.deepEqual(snapshotWilds(inside, world).pos, doorstep)
+  // leaving, and a wake or respawn, give a surface state with no cave
+  const out = restoreSurface(inside)
+  assert.equal(out.cave, undefined)
+  assert.deepEqual([out.player.x, out.player.y], [state.player.x, state.player.y])
+  const woken = adventureRespawn(inside, { x: state.player.x, y: state.player.y })
+  assert.equal(woken.cave, undefined)
+  assert.equal(woken.map, state.map, 'the surface map, not a floor')
 })
 
 test('the near radius follows the screen', () => {
@@ -551,4 +602,12 @@ test('route requests a frame: by count without a timer, and a timer stops them a
   let t = 0
   assert.equal(served(() => (t += 5)), 1, 'a slow frame: the first route, then the millisecond is spent')
   assert.equal(served(() => 0), ROUTES_PER_TICK, 'a quick one: the count')
+})
+
+test('fracOf: how far through the day a clock is, past a day or set back', () => {
+  assert.equal(fracOf(0), 0)
+  assert.equal(fracOf(DAY_LENGTH / 4), 0.25)
+  assert.equal(fracOf(DAY_LENGTH * 3 + DAY_LENGTH / 2), 0.5)
+  assert.equal(fracOf(-DAY_LENGTH / 4), 0.75)
+  assert.equal(fracOf(DAY_LENGTH), 0)
 })

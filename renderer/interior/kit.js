@@ -158,6 +158,29 @@ export const ITEMS = {
   books_floor: it('floor', [['in_books_floor']], { block: false }),
   puddle: it('floor', [['in_puddle']], { block: false }),
   eggs: it('floor', [['in_eggs']], { block: false }),
+  // ---- the church and the castle (interior/buildings/)
+  organ: it('face', [['in_organ_tl', 'in_organ_tr'], ['in_organ_bl', 'in_organ_br']]),
+  fireplace: it('face', [['in_fireplace_tl', 'in_fireplace_tr'], ['in_fireplace_bl', 'in_fireplace_br']]),
+  banner_red: it('face', [['in_banner_red_t'], ['in_banner_red_b']]),
+  banner_blue: it('face', [['in_banner_blue_t'], ['in_banner_blue_b']]),   // the cross: for the church
+  window_glass_a: it('face', [['in_window_glass_a_t'], ['in_window_glass_a_b']]),   // red
+  window_glass_b: it('face', [['in_window_glass_b_t'], ['in_window_glass_b_b']]),   // blue
+  window_glass_c: it('face', [['in_window_glass_c_t'], ['in_window_glass_c_b']]),   // gold
+  drape: it('face', [['in_drape_t'], ['in_drape_b']]),
+  // a pew is seen from the side, its back to the west: who sits on it faces east
+  pew: it('floor', [['in_pew']], { block: false }),
+  altar: it('floor', [['in_altar_l', 'in_altar_r']]),
+  pulpit: it('floor', [['in_pulpit']]),
+  font: it('floor', [['in_font']]),
+  organ_bench: it('floor', [['in_organ_bench']], { block: false }),
+  bell: it('floor', [['in_bell']]),
+  tomb: it('floor', [['in_tomb_t'], ['in_tomb_b']]),
+  sampo_lid: it('floor', [['in_sampo_lid']]),
+  throne: it('floor', [['in_throne']], { block: false }),
+  candle: it('floor', [['in_candle']], { block: false }),
+  // a barred door: solid, seen through (losClear, as every blocking floor item)
+  celldoor: it('floor', [['in_celldoor']]),
+  longtable: it('floor', [['in_longtable_l', 'in_longtable_m', 'in_longtable_r']]),
 }
 
 // Single pictures with a job of their own.
@@ -169,6 +192,10 @@ export const MISC = {
   mirror: { '/': 'in_sunmirror_a', '\\': 'in_sunmirror_b' },
   seed: 'in_sunseed', bloom: 'in_sunbloom',
   panel: 'in_panel', nicheTop: 'in_niche_top', nicheFloor: 'in_niche_floor', chestOpen: 'tile_0091',
+  // hand-laid buildings (interior/buildings/): stairs between floors (laid as
+  // a cell's overlay), the crypt's crack (a deco: its lines over the floor)
+  // and the keep's barred battlements door (a deco on its shut doorway)
+  stairUp: 'in_stair_up', stairDown: 'in_stair_down', crack: 'in_crack', barredDoor: 'in_door_barred',
 }
 
 const itemNames = Object.values(ITEMS).flatMap(i => {
@@ -184,7 +211,24 @@ export const INTERIOR_SKINS = [...new Set([
   ...itemNames,
   MISC.void, MISC.doormat, ...MISC.flowers, MISC.mirror['/'], MISC.mirror['\\'], MISC.seed, MISC.bloom,
   MISC.panel, MISC.nicheTop, MISC.nicheFloor, MISC.chestOpen,
+  MISC.stairUp, MISC.stairDown, MISC.crack, MISC.barredDoor,
 ])]
+
+// Which tiles get the furniture shading (render/interior-shade.js): 'cast'
+// stands on the floor and throws a shadow, 'rim' hangs on a wall and only gets
+// lit and shaded edges. Flat things lying on the floor (bedrolls, bones, webs)
+// and the room itself are absent.
+export const SHADE_LEVEL = 'medium'
+const FLAT_ITEMS = new Set(['bedroll', 'bedroll2', 'rubble', 'bones', 'skull'])
+export const SHADE_KIND = new Map()
+for (const [key, item] of Object.entries(ITEMS)) {
+  if (FLAT_ITEMS.has(key) || /^web/.test(key)) continue
+  item.tiles.forEach((row, r) => row.forEach(name => {
+    const kind = item.on === 'faceUpper' || (item.on === 'face' && r === 0) ? 'rim' : 'cast'
+    if (!SHADE_KIND.has(name)) SHADE_KIND.set(name, kind)
+    if (item.dusty && !SHADE_KIND.has(`${name}_d`)) SHADE_KIND.set(`${name}_d`, SHADE_KIND.get(name))
+  }))
+}
 
 // The dusty twin of an item tile, when there is one.
 export const dusty = name => `${name}_d`

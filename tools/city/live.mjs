@@ -74,7 +74,7 @@ export async function launchGame({ profile, save, errors = [], width = 1024, hei
   })
   const page = await app.firstWindow()
   page.on('pageerror', e => errors.push('pageerror: ' + e.message))
-  page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()) })
+  page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text() + (m.location()?.url ? ` (${m.location().url})` : '')) })
   await app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0]?.setContentSize(w, h), [width, height])
   await page.waitForFunction(() => !!window.saveAPI?.saveWilds, null, { timeout: 30_000 })
   await page.evaluate(s => window.saveAPI.saveWilds(s), save)

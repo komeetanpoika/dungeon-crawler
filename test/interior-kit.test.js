@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readPng } from '../tools/png-read.mjs'
-import { WALLS, FLOORS, RUGS, ITEMS, INTERIOR_SKINS, PALETTES } from '../renderer/interior/kit.js'
+import { WALLS, FLOORS, RUGS, ITEMS, MISC, SHADE_KIND, INTERIOR_SKINS, PALETTES } from '../renderer/interior/kit.js'
 
 const file = name => new URL(`../renderer/assets/tiles/${name}.png`, import.meta.url)
 
@@ -48,5 +48,54 @@ describe('interior tile kit', () => {
       if (item.on !== 'face' && item.on !== 'floor') assert.equal(item.tiles.length, 1, `${id}: a one-row face item`)
     }
     for (const [c, r] of Object.entries(RUGS)) { assert.equal(r.length, 3, c); assert.ok(r.every(row => row.length === 3), c) }
+  })
+  it('has the church and castle pieces in the footprint and footing the buildings lay them by', () => {
+    // key: [on, width, height, blocks]
+    const want = {
+      pew: ['floor', 1, 1, false], altar: ['floor', 2, 1, true], pulpit: ['floor', 1, 1, true], font: ['floor', 1, 1, true],
+      organ: ['face', 2, 2], organ_bench: ['floor', 1, 1, false], bell: ['floor', 1, 1, true], tomb: ['floor', 1, 2, true],
+      sampo_lid: ['floor', 1, 1, true], throne: ['floor', 1, 1, false], banner_red: ['face', 1, 2], banner_blue: ['face', 1, 2],
+      window_glass_a: ['face', 1, 2], window_glass_b: ['face', 1, 2], window_glass_c: ['face', 1, 2],
+      candle: ['floor', 1, 1, false], torch: ['faceUpper', 1, 1], celldoor: ['floor', 1, 1, true],
+      fireplace: ['face', 2, 2], longtable: ['floor', 3, 1, true], drape: ['face', 1, 2],
+    }
+    for (const [key, [on, w, h, blocks]] of Object.entries(want)) {
+      const item = ITEMS[key]
+      assert.ok(item, key)
+      assert.equal(item.on, on, key)
+      assert.equal(item.tiles[0].length, w, `${key} width`); assert.equal(item.tiles.length, h, `${key} height`)
+      if (on === 'floor') assert.equal(item.block !== false, blocks, `${key} blocks`)
+      for (const n of item.tiles.flat()) assert.ok(n.startsWith(`in_${key}`), `${n} is named for ${key}`)
+    }
+    for (const n of [MISC.stairUp, MISC.stairDown, MISC.crack]) assert.ok(INTERIOR_SKINS.includes(n), `${n} is loaded`)
+  })
+})
+
+describe('furniture shading kinds', () => {
+  it('every item tile has a shade kind, flat things and the room itself have none', () => {
+    for (const [key, item] of Object.entries(ITEMS)) {
+      const flat = ['bedroll', 'bedroll2', 'rubble', 'bones', 'skull'].includes(key) || /^web/.test(key)
+      for (const name of item.tiles.flat()) {
+        if (flat) assert.equal(SHADE_KIND.get(name), undefined, name)
+        else assert.ok(['cast', 'rim'].includes(SHADE_KIND.get(name)), name)
+        if (item.dusty && !flat) assert.equal(SHADE_KIND.get(name + '_d'), SHADE_KIND.get(name), name + '_d')
+      }
+    }
+    assert.equal(SHADE_KIND.get(ITEMS.window.tiles[0][0]), 'rim')
+    assert.equal(SHADE_KIND.get(ITEMS.table.tiles[0][0]), 'cast')
+    assert.equal(SHADE_KIND.get(ITEMS.wardrobe.tiles[0][0]), 'rim', 'the upper tile of a face item')
+    assert.equal(SHADE_KIND.get(ITEMS.wardrobe.tiles[1][0]), 'cast', 'its foot')
+    for (const n of [MISC.doormat, MISC.void, FLOORS.planks[0], RUGS.red[0][0], WALLS.plaster.top[0]]) assert.equal(SHADE_KIND.get(n), undefined, n)
+  })
+
+  it('no tile name is given two different shade kinds by two items', () => {
+    const seen = new Map()
+    for (const [key, item] of Object.entries(ITEMS)) {
+      item.tiles.forEach((row, r) => row.forEach(name => {
+        const kind = item.on === 'faceUpper' || (item.on === 'face' && r === 0) ? 'rim' : 'cast'
+        if (seen.has(name) && seen.get(name).kind !== kind) assert.fail(`${name}: ${seen.get(name).kind} by ${seen.get(name).key}, ${kind} by ${key}`)
+        seen.set(name, { kind, key })
+      }))
+    }
   })
 })

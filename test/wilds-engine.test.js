@@ -163,7 +163,7 @@ test('loadMoreSprites fetches only the pictures it does not have yet', async () 
     const had = { ow_grass_0: 'kept' }
     const out = await loadMoreSprites(had, ['ow_grass_0', 'ow_roof_blue_l', 'ow_roof_blue_l', 'ow_broken'])
     assert.equal(out, had, 'it fills the set it was given')
-    assert.deepEqual(asked, ['./assets/tiles/ow_roof_blue_l.png', './assets/tiles/ow_broken.png'])
+    assert.deepEqual(asked, ['./assets/tiles/ow_roof_blue_l.png', './assets/tiles/ow_broken.png', './assets/tiles/ow_broken.png'], 'the broken one is tried a second time')
     assert.equal(had.ow_grass_0, 'kept')
     assert.ok(had.ow_roof_blue_l instanceof globalThis.Image)
     assert.ok(!('ow_broken' in had), 'a missing file is not a picture')

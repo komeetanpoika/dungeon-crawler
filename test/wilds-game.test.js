@@ -155,14 +155,30 @@ test('with the flute in hand the off hand never swings', () => {
   assert.match(SRC, /const offBlade = off\?\.kind === 'weapon' && !isChargeWeapon\(meleeWT\) && !player\.weapon\?\.tune \? off : null/)
 })
 
-test('the city in the running game: closed doors, day counter, build at entry', () => {
-  assert.match(SRC, /door\.closed/)
+// the castle gate let down at night (wilds/city/fx.js): walking into it from
+// the street says so, on a cooldown like the other blocked ways
+test('walking into the shut castle gate says it is shut for the night', () => {
+  assert.match(SRC, /import \{[^}]*\bisShutGate\b[^}]*\} from '.\/wilds\/city\/fx.js'/)
+  const i = SRC.indexOf('isShutGate(')
+  const at = SRC.slice(i - 200, i + 120)
+  assert.match(at, /vy < 0 && player\.py === walkedFrom\.py/, 'pushing north and held')
+  assert.match(at, /isShutGate\(map\[player\.y - 1\]\?\.\[player\.x\]\)/, 'the cell ahead is the shut gate')
+  assert.match(at, /throttledThink\('castle-gate', GATE_SHUT_LINE\)/)
+})
+
+test('the city in the running game: shut doors, day counter, build at entry', () => {
+  // a door's hours (the church, the keep) by the town's clock
+  assert.match(SRC, /doorShut\(door, /)
   assert.match(SRC, /state\.entranceHold = true/)
   assert.match(SRC, /wildsWorld\.day\s*\+=\s*1/)
   assert.match(SRC, /import \{[^}]*\bcityFor\b[^}]*\} from '.\/wilds\/city\/build.js'/)
   // built during Wilds entry, before the window is
   assert.ok(SRC.indexOf('cityFor(wildsWorld.seed)') > 0 && SRC.indexOf('cityFor(wildsWorld.seed)') < SRC.indexOf('enterWilds(state, wildsWorld'))
-  // a closed door never reaches enterHouse
-  const i = SRC.indexOf('door.closed')
-  assert.match(SRC.slice(i, i + 200), /else \{ enterHouse\(door\); return \}/)
+  // a shut door never reaches enterHouse
+  const i = SRC.indexOf('doorShut(door, ')
+  assert.match(SRC.slice(i - 120, i), /cityHooks\.clock\(\)/)
+  // the day's fraction as the town reckons it (runtime.js fracOf), not a copy
+  assert.match(SRC.slice(i, i + 40), /^doorShut\(door, fracOf\(clock\)\)/)
+  assert.match(SRC, /import \{[^}]*\bfracOf\b[^}]*\} from '.\/wilds\/city\/runtime.js'/)
+  assert.match(SRC.slice(i, i + 250), /if \(shut !== null\) \{ think\(state, shut\); state\.entranceHold = true \} else \{ enterHouse\(door\); return \}/)
 })
