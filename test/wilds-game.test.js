@@ -177,5 +177,8 @@ test('the city in the running game: shut doors, day counter, build at entry', ()
   // a shut door never reaches enterHouse
   const i = SRC.indexOf('doorShut(door, ')
   assert.match(SRC.slice(i - 120, i), /cityHooks\.clock\(\)/)
+  // the day's fraction as the town reckons it (runtime.js fracOf), not a copy
+  assert.match(SRC.slice(i, i + 40), /^doorShut\(door, fracOf\(clock\)\)/)
+  assert.match(SRC, /import \{[^}]*\bfracOf\b[^}]*\} from '.\/wilds\/city\/runtime.js'/)
   assert.match(SRC.slice(i, i + 250), /if \(shut !== null\) \{ think\(state, shut\); state\.entranceHold = true \} else \{ enterHouse\(door\); return \}/)
 })

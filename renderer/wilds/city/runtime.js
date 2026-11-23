@@ -116,7 +116,9 @@ function cityInWindow(world) {
   return false
 }
 
-const fracOf = clock => (((clock % DAY_LENGTH) + DAY_LENGTH) % DAY_LENGTH) / DAY_LENGTH
+// how far through the day the clock is, 0 <= frac < 1 (the clock may run past
+// a day or be set back): the town's hours, and game.js's door hours
+export const fracOf = clock => (((clock % DAY_LENGTH) + DAY_LENGTH) % DAY_LENGTH) / DAY_LENGTH
 
 // `lazy`: the city came into the window on a walk (the player is then a piece
 // away, out of reach of the near radius): people are placed by the clock a

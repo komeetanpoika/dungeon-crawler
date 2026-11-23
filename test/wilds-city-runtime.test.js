@@ -4,7 +4,7 @@
 // only buildEntities is a stand-in, making npcs the way game.js does.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { arriveCity, tickCity, cityPeople, occupantsOf, noteCitySwing, nearRadius, FAR_SPEED, ROUTES_PER_TICK } from '../renderer/wilds/city/runtime.js'
+import { arriveCity, tickCity, cityPeople, occupantsOf, noteCitySwing, nearRadius, FAR_SPEED, ROUTES_PER_TICK, fracOf } from '../renderer/wilds/city/runtime.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { fromCity } from '../renderer/wilds/city/geometry.js'
 import { rollTownsfolk } from '../renderer/wilds/city/folk.js'
@@ -569,4 +569,12 @@ test('route requests a frame: by count without a timer, and a timer stops them a
   let t = 0
   assert.equal(served(() => (t += 5)), 1, 'a slow frame: the first route, then the millisecond is spent')
   assert.equal(served(() => 0), ROUTES_PER_TICK, 'a quick one: the count')
+})
+
+test('fracOf: how far through the day a clock is, past a day or set back', () => {
+  assert.equal(fracOf(0), 0)
+  assert.equal(fracOf(DAY_LENGTH / 4), 0.25)
+  assert.equal(fracOf(DAY_LENGTH * 3 + DAY_LENGTH / 2), 0.5)
+  assert.equal(fracOf(-DAY_LENGTH / 4), 0.75)
+  assert.equal(fracOf(DAY_LENGTH), 0)
 })

@@ -52,6 +52,7 @@ import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
+import { fracOf } from './wilds/city/runtime.js'
 import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut, struckInBuilding, spareStruck } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
 import { violenceUnseen } from './wilds/city/law.js'
@@ -101,7 +102,7 @@ import { tickBinds, playerBound, struggle } from './systems/player-bind.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
 import { makeWeather, advanceClock, weatherLook, isNight } from './systems/weather.js'
-import { DAY_START, DAY_LENGTH } from './data/weather.js'
+import { DAY_START } from './data/weather.js'
 import { canMoveTo, moveEntity, PLAYER_HALF, PLAYER_SPEED } from './systems/movement.js'
 import { applyLoadout, handPayload } from './systems/loadout.js'
 
@@ -1684,7 +1685,7 @@ function update(delta) {
     // a shut door says so (the castle always, the church at night) and stays shut;
     // the hours go by the clock the town keeps (cityHooks.clock)
     const clock = cityHooks.clock()
-    const shut = doorShut(door, (((clock % DAY_LENGTH) + DAY_LENGTH) % DAY_LENGTH) / DAY_LENGTH)
+    const shut = doorShut(door, fracOf(clock))
     if (shut !== null) { think(state, shut); state.entranceHold = true } else { enterHouse(door); return }
   }
   if (!arch && !door) state.entranceHold = false
