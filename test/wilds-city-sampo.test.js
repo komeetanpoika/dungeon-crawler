@@ -17,7 +17,8 @@ import { cityCtx } from '../renderer/wilds/city/walkers.js'
 import { makeWorld, exportWorld, GEN } from '../renderer/wilds/world.js'
 import { enterWilds } from '../renderer/wilds/session.js'
 import { buildBuilding } from '../renderer/interior/buildings/index.js'
-import { makeNpc, interactNpc } from '../renderer/systems/npc.js'
+import { makeNpc, interactNpc, updateNpc, selectGoal } from '../renderer/systems/npc.js'
+import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { makeFeedback, tickFeedback, sayDuration, BUBBLE_DUR } from '../renderer/systems/feedback.js'
 import { isWalkable } from '../renderer/systems/entities.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
@@ -263,13 +264,21 @@ test('in the town: Seppo at his anvil denies it, then owns up, and says the thre
   world.sampo.flags.mark = true
   state.player.x = w.entity.x; state.player.y = w.entity.y + 1
   assert.equal(startTelling(state, w.entity, world), true)
+  // his day calls him away mid-telling: he stays and finishes (npc.js goal `tell`)
+  const teller = w.entity
+  const stood = { x: teller.px, y: teller.py }
+  assert.equal(selectGoal(teller, { def: NPC_SPECIES.townsfolk, state }), 'tell')
+  teller.city.next = { x: teller.x - 6, y: teller.y }
   const sampoHooks = { spawn: hooks.spawn, persist: () => {} }
   for (let t = 0; t < 60 && !world.sampo.flags.gift; t += DT) {
     tickSampo(state, world, DT, sampoHooks)
     tickCity(state, world, DT, hooks)
+    for (const e of [...state.entities]) if (e.type === 'npc') updateNpc(e, state, DT)
+    if (state.telling) assert.ok(w.entity === teller && Math.hypot(teller.px - stood.x, teller.py - stood.y) < 1, 'he stands while he tells')
     tickFeedback(state.feedback, DT)
     state.sfx.cues = []
   }
+  assert.notEqual(selectGoal(teller, { def: NPC_SPECIES.townsfolk, state }), 'tell', 'told: his day goes on')
   assert.equal(world.sampo.flags.smith, true)
   assert.equal(world.sampo.flags.gift, true)
   assert.equal(state.cityRun.quest, 'pieces')

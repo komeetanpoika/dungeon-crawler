@@ -130,13 +130,14 @@ export const NPC_SPECIES = {
   // tf_<look>) and their own lines; `sprite` and `lines` here are stand-ins.
   // follow_city walks their day; `wander` (roam) potters about a spot; the
   // scene goals (talk, play_tag, gawk, carry, stagger, at_scene) are what they
-  // do in a scene (wilds/city/scenes.js). A dog's go_to is the pigeons scene's
+  // do in a scene (wilds/city/scenes.js); `tell` holds them while they tell the
+  // player a part of the Sampo's story (wilds/city/sampo-run.js). A dog's go_to is the pigeons scene's
   // run at the flock.
   townsfolk: {
     faction: 'city', sprite: 'npc_villager', walker: true,
     hp: 3, onHit: 'flee', fleeHp: 1,
     speed: 70, wanderSpeed: 45, roam: 2,
-    priorities: ['flee_hurt', 'play_tag', 'talk', 'gawk', 'carry', 'stagger', 'follow_city', 'at_scene', 'wander'],
+    priorities: ['flee_hurt', 'tell', 'play_tag', 'talk', 'gawk', 'carry', 'stagger', 'follow_city', 'at_scene', 'wander'],
     lines: ['Good day.', 'Busy, busy.'],
   },
   // `defend` is the watch's answer to monsters at the gates and in town: the

@@ -319,6 +319,13 @@ export const GOALS = {
       return { mode: 'patrol', target, speed: ctx.cfg.speed * 0.6 }
     },
   },
+  // Telling the player their part of the Sampo's story (wilds/city/sampo-run.js,
+  // state.telling): they stand and face the player until it is told or the
+  // player walks off, whatever their day or a scene wants of them.
+  tell: {
+    when: (e, ctx) => ctx.state.telling?.id === e.id,
+    run: (e, ctx) => { e.facing = ctx.state.player.px < e.px ? 'west' : 'east'; return { mode: 'hold' } },
+  },
   // In a scene and at one's place in it (the smith at the anvil, the busker,
   // a listener, the crier at his box, the beggar at the church door...):
   // stand, facing what the scene is about.
