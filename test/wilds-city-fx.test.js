@@ -553,7 +553,7 @@ test('at night one of the town in the courtyard keeps the gate up until they are
   const c = PLAN.places.castle, inCastle = q => q.x >= c.x0 && q.x <= c.x1 && q.y >= c.y0 && q.y <= c.y1
   // the player leaves; the one who came in after him walks out
   placePlayer(ctx, GATE_FRONT.X, GATE_FRONT.Y)
-  let shutIn = false, out = null
+  let shutIn = false, out = null, outAs = null
   run(ctx, 40, {
     npcs: true,
     each: t => {
@@ -563,11 +563,15 @@ test('at night one of the town in the courtyard keeps the gate up until they are
         const cell = o.hp > 0 ? state.map[o.y]?.[o.x] : null
         if (cell && isShutGate(cell)) shutIn = true
       }
-      if (!inside && out === null) out = t
+      // out on foot through the gate: still the same entity, still near (not
+      // turned far, which would also end `inside`)
+      if (!inside && out === null) { out = t; outAs = { same: w.entity === e, mode: w.mode } }
       if (out !== null && t > out + 1) return false
     },
   })
   assert.ok(!shutIn, 'never shut in, nor the portcullis down on anyone')
   assert.ok(out !== null, `out of the castle again (last at ${JSON.stringify(city(e))}, ${w.mode})`)
+  assert.ok(outAs.same, 'they walked out as the entity that came in')
+  assert.equal(outAs.mode, 'near', 'walked out, not turned far')
   assert.ok(gate.shut(), 'and down once they are out')
 })
