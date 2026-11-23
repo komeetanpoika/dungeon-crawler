@@ -130,6 +130,7 @@ export function refreshInventory(state) {
 // names shown beside the labels where there is a keyboard.
 export function showInventory(state, handlerSet, options = {}) {
   handlers = handlerSet
+  document.body.classList.add('pad-panel')
   opts = options
   sel = { area: 'sack', index: 0 }
   chooser = null
@@ -170,6 +171,7 @@ export function hideInventory() {
   if (keyUpHandler) { window.removeEventListener('keyup', keyUpHandler, true); keyUpHandler = null }
   cancelDrop()
   handlers = null
+  document.body.classList.remove('pad-panel')
   chooser = null
   const root = el()
   root.style.display = 'none'

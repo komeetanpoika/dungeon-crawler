@@ -61,6 +61,7 @@ export function showMap(world, hero, { onClose }, opts = {}) {
   root.className = opts.touch ? 'touch' : ''
   root.innerHTML = '<canvas></canvas><div class="inv-what"></div>'
   root.style.display = 'block'
+  document.body.classList.add('pad-panel')
   open = { world, hero, cx: hero.X + 0.5, cy: hero.Y + 0.5, zoom: ZOOMS.length - 1, held: new Set(), t: performance.now(), opts, onClose }
   const swallow = e => { e.preventDefault(); e.stopImmediatePropagation() }
   open.down = (e) => {
@@ -102,6 +103,7 @@ export function hideMap() {
   window.removeEventListener('resize', open.resize)
   cancelAnimationFrame(open.raf)
   open = null
+  document.body.classList.remove('pad-panel')
   const root = el()
   root.style.display = 'none'
   root.innerHTML = ''
