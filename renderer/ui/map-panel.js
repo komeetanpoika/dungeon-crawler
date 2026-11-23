@@ -23,7 +23,7 @@ function labels() {
   const key = name => (opts.touch || !opts.keys?.[name] ? '' : `<kbd>${opts.keys[name]}</kbd>`)
   const one = (name, text, off) => `<span class="inv-btn ${name}${off ? ' off' : ''}" data-btn="${name}"><b></b><em>${text}</em>${key(name)}</span>`
   el().querySelector('.inv-what').innerHTML =
-    one('blue', '—', true) + one('red', 'Zoom in', zoom === ZOOMS.length - 1) + one('green', 'Zoom out', zoom === 0) + one('yellow', 'Find me', false)
+    one('red', 'Zoom in', zoom === ZOOMS.length - 1) + one('green', 'Zoom out', zoom === 0) + one('yellow', 'Find me', false)
     + (opts.touch ? '' : `<span class="inv-close">Close<kbd>${opts.keys?.close ?? 'M'}</kbd></span>`)
   el().querySelectorAll('[data-btn]').forEach(n => n.addEventListener('click', () => press(n.dataset.btn)))
   el().querySelector('.inv-close')?.addEventListener('click', () => open?.onClose())
@@ -68,7 +68,7 @@ export function showMap(world, hero, { onClose }, opts = {}) {
     else if (e.key === ' ' || e.key === 'Enter') { if (!e.repeat) press('red') }
     else if (e.key === 'q' || e.key === 'Q') { if (!e.repeat) press('green') }
     else if (e.key === 'Shift') { if (!e.repeat) press('yellow') }
-    else if (e.key === 'f' || e.key === 'F') { /* the blue button does nothing here */ }
+    else if (e.key === 'f' || e.key === 'F') { /* the blue button has no job here, and must not act in the world */ }
     else return   // the map key and Escape close it, in game.js
     swallow(e)
   }
