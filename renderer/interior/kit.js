@@ -169,6 +169,8 @@ export const MISC = {
   mirror: { '/': 'in_sunmirror_a', '\\': 'in_sunmirror_b' },
   seed: 'in_sunseed', bloom: 'in_sunbloom',
   panel: 'in_panel', nicheTop: 'in_niche_top', nicheFloor: 'in_niche_floor', chestOpen: 'tile_0091',
+  // hand-laid buildings (interior/buildings/); names only until the pictures exist
+  stairUp: 'in_stair_up', stairDown: 'in_stair_down', crack: 'in_crack',
 }
 
 const itemNames = Object.values(ITEMS).flatMap(i => {
