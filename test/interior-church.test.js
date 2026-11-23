@@ -13,6 +13,8 @@ import { DAY } from '../renderer/wilds/city/schedule.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { rollTownsfolk, rollWatch } from '../renderer/wilds/city/folk.js'
 import { scheduleFor, entryAt } from '../renderer/wilds/city/schedule.js'
+import { makeNpc, updateNpc } from '../renderer/systems/npc.js'
+import { mulberry32 } from '../renderer/interior/rng.js'
 
 const CRACK_LINE = 'Warm air breathes up through the crack.'
 const NIGHT_LINE = 'The church is locked for the night.'
@@ -230,4 +232,39 @@ test('the most people the schedules put in the church at once all find a place',
   const crowd = Array.from({ length: peak }, (_, i) => entry(person(`tf:${i}`), 'church'))
   const b = buildBuilding('church', { seed: 7, people: crowd })
   assert.equal(b.floors.reduce((n, f) => n + f.entitySpawns.length, 0), peak)
+})
+
+// Ruling 2 (Task 6 follow-up): people in a building keep their place.
+test('someone seated in the church stays on their pew; an ordinary resident would wander', () => {
+  const people = [entry(person('tf:sitter'), 'church'), ...Array.from({ length: 50 }, (_, i) => entry(person(`tf:${i}`), 'church'))]
+  const b = buildBuilding('church', { seed: 7, people })
+  const nave = floorOf(b, 'nave')
+  const sitter = nave.entitySpawns.find(s => s.id === 'tf:sitter')
+  const stander = nave.entitySpawns.find(s => s.id === 'tf:49')   // one of the overflow, on free floor
+  assert.equal(sitter.roam, 0, 'a seated spawn keeps its place')
+  assert.equal(stander.roam, 0, 'and so does one put on free floor')
+  assert.ok(nave.spots.get('pew').some(c => c.x === sitter.x && c.y === sitter.y))
+  // ticked for 20 s with a seeded Math.random: still on the cell
+  const tick = spawn => {
+    const e = makeNpc(spawn)
+    const state = { map: nave.map, player: { type: 'player', x: nave.exit.x, y: nave.exit.y, px: nave.exit.x * 32 + 16, py: nave.exit.y * 32 + 16, hp: 5, maxHp: 5 }, entities: [e], feedback: null, sfx: { cues: [], muted: false } }
+    const random = Math.random
+    Math.random = mulberry32(11)
+    let strayed = 0
+    try {
+      for (let t = 0; t < 20; t += 1 / 30) {
+        updateNpc(e, state, 1 / 30)
+        strayed = Math.max(strayed, Math.abs(e.x - spawn.x), Math.abs(e.y - spawn.y))
+      }
+    } finally { Math.random = random }
+    return { e, strayed }
+  }
+  for (const s of [sitter, stander]) {
+    const { e, strayed } = tick(s)
+    assert.equal(strayed, 0, `${s.id} never left ${key(s)}`)
+    assert.deepEqual([e.x, e.y], [s.x, s.y])
+  }
+  // the same person without the building's roam wanders off (the test can tell)
+  const { strayed } = tick({ ...sitter, roam: undefined })
+  assert.ok(strayed >= 1, 'an ordinary resident roams')
 })

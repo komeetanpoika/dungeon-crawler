@@ -236,6 +236,24 @@ test('people go indoors and come out by their schedule', () => {
   }
 })
 
+// The service (schedule.js SERVICE): those going into the church set out as
+// the bell starts ringing, arrive from across the town over the next minute
+// and stay until just before the door shuts at dusk.
+test('the bell fills the church: the pews full late in the service, empty after dusk', t => {
+  for (const seed of [7, 1, 4242]) {
+    const ctx = setup({ clock: 0.55 * DAY_LENGTH, world: makeWorld(null, { seed }) })
+    const church = cityFor(seed).doors.find(d => d.kind === 'church').label
+    const inside = () => occupantsOf(ctx.state, church).length
+    run(ctx, (0.69 - 0.55) * DAY_LENGTH)
+    const service = inside()
+    assert.ok(service >= 15, `seed ${seed}: ${service} in the church at 0.69`)
+    run(ctx, (0.76 - 0.69) * DAY_LENGTH)
+    const after = inside()
+    t.diagnostic(`seed ${seed}: ${service} in the church at 0.69, ${after} at 0.76`)
+    assert.ok(after < 5, `seed ${seed}: ${after} still in at 0.76`)
+  }
+})
+
 test('save inside a house, load: the doorstep, the town rebuilt once', () => {
   const city = cityFor(SEED)
   const door = city.doors.find(d => d.kind === 'home' && Math.abs(d.x - 79) < 30 && Math.abs(d.y - 74) < 30)

@@ -30,7 +30,8 @@ export function buildBuilding(kind, { seed, people = [] }, registry = BUILDINGS)
     }
     if (!c) throw new Error(`${kind}: no free cell on floor "${fid}" for ${p.person?.id ?? 'a person'}`)
     used.add(`${c.x},${c.y}`)
-    f.entitySpawns.push({ ...p.spawn, x: c.x, y: c.y })
+    // whoever is placed keeps their place: no wandering off a pew (npc.js makeNpc roam)
+    f.entitySpawns.push({ ...p.spawn, x: c.x, y: c.y, roam: 0 })
   }
   return { floors, ground: def.ground, theme: def.theme }
 }

@@ -35,6 +35,11 @@ export const ACTS = ['home', 'work', 'stall', 'shop', 'unload', 'nets', 'inn', '
 
 const MIN_GAP = 0.03
 const BELL_LEN = 0.05
+// the service: those who go inside the church set out when the bell starts
+// ringing (the ringer goes up the tower then, scenes.js BELL), sit through a
+// service long enough for those from across the town to arrive, and go home
+// just before the church door shuts at dusk; their evening goes on from there
+const SERVICE = { from: DAY.bell - 0.025, to: DAY.dusk - 0.01 }
 
 const ctxCache = new WeakMap()
 function ctxOf(city) {
@@ -133,12 +138,18 @@ export function scheduleFor(person, city, seed, day) {
     if (H(40) < innP) E.push([0.78, inn, 'inn'], [0.93 + H(41) * 0.04, home, 'home'])
   }
   // the bell: who goes, and of the adults who go most step inside (the church
-  // is open by day); elders keep the steps, and the beggars and the crier,
-  // who go straight to the steps, never come here
+  // is open by day) for the service, and home after it; elders keep the steps
+  // for the bell's length, and the beggars and the crier, who go straight to
+  // the steps, never come here. Returns whether this one is at the service.
   const bell = (back, o = {}) => {
     const goes = o.always || H(30) < (o.p ?? 0.6)
-    if (goes) E.push([DAY.bell, o.inside ? churchDoor : (!o.noInside && p.age === 'adult' && H(31) < 0.7) ? churchDoor : steps, 'church'])
-    E.push([DAY.bell + BELL_LEN, back.where, back.act])
+    const inside = goes && (o.inside || (!o.noInside && p.age === 'adult' && H(31) < 0.7))
+    if (inside) E.push([SERVICE.from, churchDoor, 'church'], [SERVICE.to, home, 'home'])
+    else {
+      if (goes) E.push([DAY.bell, steps, 'church'])
+      E.push([DAY.bell + BELL_LEN, back.where, back.act])
+    }
+    return inside
   }
   const errandSpot = (avoid, salt) => {
     const list = ctx.errands.filter(s => s !== avoid)
@@ -205,7 +216,8 @@ export function scheduleFor(person, city, seed, day) {
   const jobEvening = { fisher: 0.6, sailor: 0.6, 'net-mender': 0.35, washer: 0.15 }
   const sameHome = p.home === p.work
   const churchAlways = p.age === 'elder' || p.job === 'stallholder' || p.job === 'vicar' || p.job === 'count' || sameHome
-  const indoorBell = p.job === 'organist'
+  // the organist plays, the vicar leads the service, the Count has his pew
+  const indoorBell = p.job === 'organist' || p.job === 'vicar' || p.job === 'count'
   // the errand: a fisher sells at the market, a porter works the quay, the smithy's people at the anvil, the Captain rounds a post
   let errand
   if (p.job === 'stallholder') errand = null
@@ -221,9 +233,10 @@ export function scheduleFor(person, city, seed, day) {
   const awayLunch = outdoor || p.job === 'stallholder'
   if (H(10) < lunchInnP) E.push([DAY.noon, inn, 'inn'], [DAY.afternoon + 0.01, W, wAct])
   else if (awayLunch) E.push([DAY.noon, home, 'home'], [DAY.afternoon + 0.01, W, wAct])
-  if (p.job !== 'bell-ringer') bell({ where: W, act: wAct }, { always: churchAlways, inside: indoorBell, p: 0.6, noInside: p.age === 'elder' })
-  if (p.job === 'bell-ringer') E.push([0.575, churchDoor, 'ring'], [0.64, W, wAct])
-  E.push([0.67, W, wAct])
+  const atService = p.job !== 'bell-ringer' && bell({ where: W, act: wAct }, { always: churchAlways, inside: indoorBell, p: 0.6, noInside: p.age === 'elder' })
+  if (p.job === 'bell-ringer') E.push([SERVICE.from, churchDoor, 'ring'], [0.64, W, wAct])
+  // back at work after the bell (one at the service goes home from it)
+  if (!atService) E.push([0.67, W, wAct])
   eveningTail(jobEvening[p.job] ?? 0.2)
   return finish(E, seed, idx, day)
 }

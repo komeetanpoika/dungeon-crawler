@@ -37,12 +37,16 @@ export const LOST_TIME = 5          // s a watchman leaves a foe he found no way
 export const TALK_BEAT = 2.4        // s a line in a street talk stands before the other answers
 export const TALK_SHOW = TALK_BEAT - 0.2   // s at most a street-talk line's bubble shows: gone before the answer's
 
-export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
+// `roam` (optional) overrides the species' wander box for this one: 0 keeps
+// them on the cell they were made on (someone seated in the church), walking
+// back to it after a flee or a talk.
+export function makeNpc({ species, id, x, y, hostile = undefined, role = null, roam = undefined }) {
   const def = NPC_SPECIES[species]
   if (!def) { console.warn(`npc: unknown species "${species}"`); return null }
   return {
     type: 'npc', species, id, faction: def.faction,
     ...(role ? { role } : {}),
+    ...(roam !== undefined ? { roam } : {}),
     x, y, px: x * S + S / 2, py: y * S + S / 2,
     hp: def.hp, maxHp: def.hp, hostile: hostile === undefined ? !!def.hostile : !!hostile,
     home: { x, y }, objective: null, facing: 'east', inCombat: false,
@@ -103,7 +107,7 @@ function wanderReach(e, nav, roam) {
 // isStuckOn give-up in wander handle a route that does not work out.
 function pickWanderPoint(e, ctx) {
   const nav = buildNavGrid(ctx.state.map)
-  const reach = wanderReach(e, nav, ctx.def.roam)
+  const reach = wanderReach(e, nav, e.roam ?? ctx.def.roam)
   if (!reach.length) return null
   let i = Math.floor(Math.random() * reach.length)
   if (reach[i].x === e.x && reach[i].y === e.y) i = (i + 1) % reach.length
