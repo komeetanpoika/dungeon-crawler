@@ -1000,7 +1000,7 @@ function goTitle() {
     onWilds: () => beginRun(WILDS_DEPTH, 'wilds'),
     onRush: () => beginRun(1, 'rush'),
     onPvpArena: () => (window.saveAPI?.isWeb ? goOnline() : goPvpPicker()),
-    onSettings: () => menu.showSettings({ onSound: () => openSound(goTitle), onControls: coarsePointer() ? null : () => openControls(goTitle), onBack: goTitle }),
+    onSettings: openSettings,
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
@@ -1311,6 +1311,15 @@ function showPauseMenu() {
     onSound: () => openSound(showPauseMenu),
     onControls: coarsePointer() ? null : () => openControls(showPauseMenu),
     onRestart: () => beginRun(restartDepth, runMode), onQuitToTitle: goTitle,
+  })
+}
+
+// The title's Settings; Sound and Controls come back here.
+function openSettings() {
+  menu.showSettings({
+    onSound: () => openSound(openSettings),
+    onControls: coarsePointer() ? null : () => openControls(openSettings),
+    onBack: goTitle,
   })
 }
 
