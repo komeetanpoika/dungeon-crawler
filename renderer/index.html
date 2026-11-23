@@ -204,6 +204,23 @@
       padding-top: 12vh; box-sizing: border-box;
       background: rgba(8, 8, 12, 0.88); font-family: monospace;
     }
+    /* The corner minimap (render/minimap.js); the offhand and tool badges
+       move over to make room for it. */
+    #minimap {
+      position: absolute; right: max(14px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top));
+      width: 160px; height: 160px; image-rendering: pixelated; box-sizing: content-box;
+      border: 2px solid rgba(232,184,75,0.55); background: #12141a; box-shadow: 0 2px 8px rgba(0,0,0,0.7); opacity: 0.93;
+    }
+    #minimap[hidden] { display: none; }
+    body.has-minimap #hud-offhand, body.has-minimap #hud-ammo { right: calc(max(14px, env(safe-area-inset-right)) + 178px); }
+    /* The full map (ui/map-panel.js) */
+    #map-overlay { position: fixed; inset: 0; display: none; z-index: 9; background: #12141a; font-family: monospace; }
+    #map-overlay canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; cursor: grab; }
+    #map-overlay .inv-what { position: absolute; right: 16px; top: 16px; padding: 10px 12px; background: rgba(16,16,22,0.82); border: 1px solid #3a3a44; }
+    @media (pointer: coarse) {
+      #map-overlay.touch .inv-what { right: max(14px, env(safe-area-inset-right)); top: calc(max(10px, env(safe-area-inset-top)) + 54px);
+        width: 192px; box-sizing: border-box; gap: 10px 4px; font-size: 12px; background: rgba(16,16,22,0.6); border: 0; padding: 6px; }
+    }
     #sign-overlay {
       position: fixed; inset: 0; display: none; z-index: 9;
       align-items: center; justify-content: center;
@@ -284,6 +301,7 @@
   </div>
   <div id="menu-overlay"></div>
   <div id="hud-overlay">
+    <canvas id="minimap" hidden></canvas>
     <div id="hud-status">
       <span id="hud-hearts"></span>
       <span id="hud-stamina"><span id="hud-stamina-fill"></span></span>
@@ -308,6 +326,7 @@
     </div>
   </div>
   <div id="inv-overlay"></div>
+  <div id="map-overlay"></div>
   <div id="sign-overlay"></div>
   <div id="toast-overlay"></div>
   <div id="rotate-overlay">Rotate your device ↺<br>This dungeon is landscape-only</div>

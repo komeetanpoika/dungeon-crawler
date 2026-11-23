@@ -42,6 +42,9 @@ import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
+import { showMap, hideMap } from './ui/map-panel.js'
+import { updateMinimap } from './render/minimap.js'
+import { toWorld } from './wilds/window.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
@@ -227,6 +230,7 @@ window.addEventListener('keydown', e => {
       return
     }
     if (inventoryOpen) closeInventory()
+    else if (mapOpen) closeMap()
     else if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
   }
@@ -239,6 +243,20 @@ window.addEventListener('keydown', e => {
   if (pvp || net) return
   if (phase === PHASE.PLAYING) { if (!playerBound(state.player)) openInventory() }
   else if (inventoryOpen) closeInventory()
+})
+
+// M (and the touch map icon) opens and shuts the map of the Wilds; Tab
+// shows and hides the corner minimap.
+window.addEventListener('keydown', e => {
+  if (e.target?.tagName === 'INPUT' || e.repeat || pvp || net) return
+  if (e.key === 'm' || e.key === 'M') {
+    if (mapOpen) closeMap()
+    else if (phase === PHASE.PLAYING && state && !playerBound(state.player)) openMap()
+  } else if (e.key === 'Tab' && phase === PHASE.PLAYING && state && runMode === 'wilds') {
+    e.preventDefault()
+    settings.minimap = !settings.minimap
+    keepSettings()
+  }
 })
 
 // Q (and the green touch button): use whatever the active offhand holds.
@@ -335,6 +353,7 @@ if (new URLSearchParams(location.search).has('dcdebug')) {
   window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld }, get sprites() { return renderer?.sprites }, get renderer() { return renderer } }
 }
 let inventoryOpen = false
+let mapOpen = false
 let meta = null
 let renderer = null
 let lastTime = 0
@@ -993,6 +1012,8 @@ function goTitle() {
   // not carry into a real Adventure or Rush, so Quit to Title starts the
   // bench over (unsaved panel values survive the reload).
   if (bench) { location.reload(); return }
+  if (mapOpen) { mapOpen = false; hideMap() }
+  updateMinimap(null, null, false)
   phase = PHASE.TITLE
   menu.showTitle(meta, {
     // Adventure is the Wilds. The old Adventure chain and Timewarp have no
@@ -1418,6 +1439,38 @@ function closeInventory() {
   hideInventory()
   setPhase(PHASE.PLAYING)
   for (const k of [' ', 'q', 'Q', 'f', 'F', 'Shift']) keys[k] = false   // nothing pressed in the bag acts in the world
+}
+
+// Where the hero is on the map of the Wilds, in world tiles: where they
+// stand, or the door they went in by. Null anywhere that has no map.
+function heroOnMap() {
+  if (runMode !== 'wilds' || !wildsWorld?.origin || !state) return null
+  const surface = state.cave ? state.cave.surface : state
+  return toWorld(wildsWorld.origin, surface.player.x, surface.player.y)
+}
+
+// The full map: pauses like the bag; its own key handler pans and zooms.
+function openMap() {
+  const hero = heroOnMap()
+  if (!hero) { think(state, 'I have no map of this place.'); return }
+  setPhase(PHASE.PAUSED)
+  mapOpen = true
+  sfx(state, 'ui-open')
+  showMap(wildsWorld, hero, { onClose: closeMap }, {
+    touch: coarsePointer(),
+    keys: {
+      red: keysLabel(settings.bindings, 'attack'), green: keysLabel(settings.bindings, 'offhand'),
+      yellow: keysLabel(settings.bindings, 'swap'), close: keysLabel(settings.bindings, 'map'),
+    },
+  })
+}
+
+function closeMap() {
+  sfx(state, 'ui-close')
+  mapOpen = false
+  hideMap()
+  setPhase(PHASE.PLAYING)
+  for (const k of [' ', 'q', 'Q', 'f', 'F', 'Shift']) keys[k] = false
 }
 
 // Signpost panel: pauses like the inventory; the panel's own capture-phase
@@ -2622,6 +2675,8 @@ function render() {
   renderer.render(state, fx)
   bench?.drawOverlay(renderer.ctx, state, renderer)
   updateHUD(state)
+  // the corner minimap: out of doors in the Wilds, where there is a keyboard
+  updateMinimap(wildsWorld, state.cave ? null : heroOnMap(), settings.minimap && !coarsePointer())
 }
 
 function enterCave(entrance) {
