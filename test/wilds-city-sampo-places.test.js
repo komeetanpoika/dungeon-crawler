@@ -137,15 +137,17 @@ test('Iku-Turso rises beside whoever walks his pier, bites, and can be struck on
   assert.deepEqual(hurtCreature(state, e, 3), { absorbed: true, cue: null, think: undefined, killed: false })
   assert.equal(e.hp, 14)
   state.player.x = 5; state.player.px = 5 * S + 16
-  runFor(e, state, 1.2 + cfg.rise)
+  runFor(e, state, cfg.rise + 0.1)
   assert.equal(e.lurk.state, 'up')
   assert.ok(e.x === 6 && e.y === 5, 'at the lair cell nearest the player')
   assert.equal(e.sink, 0)
-  assert.equal(state.player.hp, 9 - cfg.bite, 'he bites as he comes up')
+  assert.equal(state.player.hp, 9, 'a moment to step back before he bites')
+  runFor(e, state, cfg.biteAfter)
+  assert.equal(state.player.hp, 9 - cfg.bite, 'then he bites whoever is still beside him')
   assert.equal(hurtCreature(state, e, 2).absorbed, false)
   assert.equal(e.hp, 12)
   assert.equal(e.lurk.state, 'up', 'a light blow does not send him down')
-  hurtCreature(state, e, 3)
+  hurtCreature(state, e, 2)
   assert.equal(e.lurk.state, 'sinking', 'enough for one rising')
   assert.equal(hurtCreature(state, e, 3).absorbed, true)
   runFor(e, state, SINK_TIME + 0.1)
@@ -156,6 +158,12 @@ test('Iku-Turso rises beside whoever walks his pier, bites, and can be struck on
   e.hp = 2
   const r = hurtCreature(state, e, 2)
   assert.ok(r.killed && state.creatureKills.ikuturso)
+  // two steps back along the planks is out of his reach
+  const far = lurker('ikuturso', 14), s3 = water()
+  runFor(far, s3, 1.2 + cfg.rise)
+  s3.player.x = 3; s3.player.px = 3 * S + 16
+  runFor(far, s3, cfg.up - 0.2)
+  assert.equal(s3.player.hp, 9)
   // left alone he goes down by himself
   const f = lurker('ikuturso', 14), s2 = water()
   s2.player.hp = 99

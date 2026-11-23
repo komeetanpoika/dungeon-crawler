@@ -20,10 +20,12 @@ const S = 32
 export const SINK_TIME = 0.6
 export const LURKERS = {
   // rise/up/down: seconds rising, up and under; wake: tiles (Chebyshev) from a
-  // lair cell at which he comes; reach: tiles his bite carries; diveAt: what
-  // he takes in one rising before he goes down again
-  ikuturso: { rise: 0.7, up: 3.2, down: 2.2, wake: 2, reach: 2.4, bite: 2, biteEvery: 1.3, shove: 28, diveAt: 5, bait: null, oneHit: false },
-  hauki: { rise: 0.5, up: 2.6, down: 1.5, wake: 0, reach: 0, bite: 0, biteEvery: 0, shove: 0, diveAt: 0, bait: 'meat', oneHit: true },
+  // lair cell at which he comes; reach: tiles his bite carries (two steps
+  // back along the planks is out of it); biteAfter: seconds up before the
+  // first bite (time to step back or raise a shield); diveAt: what he takes
+  // in one rising before he goes down again
+  ikuturso: { rise: 0.7, up: 3.2, down: 2.2, wake: 2, reach: 1.8, bite: 1, biteAfter: 0.6, biteEvery: 1.6, shove: 28, diveAt: 4, bait: null, oneHit: false },
+  hauki: { rise: 0.5, up: 2.6, down: 1.5, wake: 0, reach: 0, bite: 0, biteAfter: 0, biteEvery: 0, shove: 0, diveAt: 0, bait: 'meat', oneHit: true },
 }
 
 export function ensureLurker(e) {
@@ -67,7 +69,7 @@ export function updateLurker(e, state, delta) {
     }
   } else if (L.state === 'rising') {
     e.sink = L.t / cfg.rise
-    if (L.t <= 0) { L.state = 'up'; L.t = cfg.up; L.taken = 0; L.biteT = 0 }
+    if (L.t <= 0) { L.state = 'up'; L.t = cfg.up; L.taken = 0; L.biteT = cfg.biteAfter }
   } else if (L.state === 'up') {
     e.sink = 0
     if (cfg.bite) {

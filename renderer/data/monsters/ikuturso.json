@@ -2,7 +2,7 @@
   "name": "ikuturso", "placedBy": "story",
   "rig": "serpent",
   "params": { "width": 6, "shift": 1.4, "waterline": 0.45, "idleFps": 5, "swimFps": 8, "bob": 0.4 },
-  "stats": { "hp": 14, "dmg": 2, "speed": 0 },
+  "stats": { "hp": 12, "dmg": 1, "speed": 0 },
   "behavior": { "taxon": "beast", "driver": "hook", "passive": true, "sightRange": 0 },
   "spawn": null,
   "hooks": true
