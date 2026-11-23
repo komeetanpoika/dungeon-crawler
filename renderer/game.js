@@ -43,7 +43,7 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { makeBuilding, stairAt, shutAt, blockedBy, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
-import { INTERIOR_DEPTH } from './systems/houses.js'
+import { INTERIOR_DEPTH, doorAt } from './systems/houses.js'
 import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems/interior.js'
 import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
@@ -1679,7 +1679,7 @@ function update(delta) {
     } else { enterCave(arch); return }
   }
   // House doors — same walk-onto/hold pattern as arches, no gate to check.
-  const door = !state.cave && state.houseDoors?.find(d => d.x === player.x && d.y === player.y)
+  const door = !state.cave && doorAt(state.houseDoors, player.x, player.y)
   if (door && !state.entranceHold) {
     // a shut door says so (the castle always, the church at night) and stays shut;
     // the hours go by the clock the town keeps (cityHooks.clock)

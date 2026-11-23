@@ -20,8 +20,8 @@ import { enterWilds } from '../renderer/wilds/session.js'
 import { makeNpc } from '../renderer/systems/npc.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { buildCaveState, restoreSurface } from '../renderer/systems/cave.js'
-import { INTERIOR_DEPTH } from '../renderer/systems/houses.js'
-import { isWalkable } from '../renderer/systems/entities.js'
+import { INTERIOR_DEPTH, doorAt } from '../renderer/systems/houses.js'
+import { isWalkable, TILE } from '../renderer/systems/entities.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
 
 const SEED = 7
@@ -270,6 +270,12 @@ test('the church door reaches the window with its building and hours', () => {
   assert.equal(door.label, rec.label)
   assert.equal(door.building, 'church')
   assert.deepEqual(door.hours, { from: DAY.dawn, to: DAY.dusk, shut: 'The church is locked for the night.' })
+  // its double door: either half is walked onto and opens it (game.js doorAt)
+  for (const x of [door.x, door.x + 1]) {
+    assert.equal(state.map[door.y][x].tile, TILE.FLOOR, `the door's cell ${x - door.x} is walked onto`)
+    assert.ok(doorAt(state.houseDoors, x, door.y) === door, `the door's cell ${x - door.x} opens the church`)
+  }
+  assert.equal(doorAt(state.houseDoors, door.x + 2, door.y), null, 'and the wall beside it does not')
 })
 
 test('at the bell the church holds whoever the schedules put in it, each where their act seats them', () => {

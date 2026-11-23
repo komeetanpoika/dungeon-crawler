@@ -69,7 +69,7 @@ const until = async (fn, secs, arg, every = 250) => {
 // (never a door, a cave mouth or the waystone: stepping on one goes in)
 const placeOpen = (X, Y) => ev(([X, Y]) => {
   const s = window.__dc.state, o = window.__dc.wilds.origin, p = s.player
-  const into = new Set([...(s.houseDoors ?? []), ...(s.caveEntrances ?? []), ...(s.mapExit ? [s.mapExit] : [])].map(d => `${d.x},${d.y}`))
+  const into = new Set([...(s.houseDoors ?? []), ...(s.caveEntrances ?? []), ...(s.mapExit ? [s.mapExit] : [])].flatMap(d => Array.from({ length: d.span ?? 1 }, (_, i) => `${d.x + i},${d.y}`)))
   for (let r = 0; r < 10; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
     const x = X - o.wx * 80 + dx, y = Y - o.wy * 80 + dy

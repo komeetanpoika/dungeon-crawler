@@ -12,6 +12,8 @@ import { TILE } from '../renderer/systems/entities.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
 import { makeWorld, getPiece } from '../renderer/wilds/world.js'
 import { taleOf } from '../renderer/wilds/tales.js'
+import { CASTLE, CHURCH } from '../renderer/wilds/city/kit.js'
+import { doorAt } from '../renderer/systems/houses.js'
 
 const N = 160
 const SEEDS = [1, 7, 4242]
@@ -296,6 +298,28 @@ test('every lot has its door, and the church and the keep keep hours', () => {
     assert.equal(city.doors.filter(d => d.closed).length, 0, 'no door is shut for good')
     assert.equal(new Set(city.doors.map(d => d.label)).size, city.doors.length, 'one door per cell')
     assert.ok(city.doors.some(d => d.kind === 'inn') && city.doors.some(d => d.kind === 'smithy') && city.doors.some(d => d.kind === 'barracks'))
+  }
+})
+
+// The keep and the church draw a double door, two cells wide: either half is
+// walked onto and opens the building, and each keeps one door record (the
+// schedules and the street graph know the building by it).
+test('both halves of the keep\'s and the church\'s double doors lead in, one door each', () => {
+  for (const seed of SEEDS) {
+    const city = cityFor(seed)
+    for (const [kind, art] of [['castle', CASTLE.lower.door], ['church', CHURCH.lower.door]]) {
+      const doors = city.doors.filter(d => d.kind === kind)
+      assert.equal(doors.length, 1, `seed ${seed}: one ${kind} door`)
+      const drawn = []
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (art.includes(city.cells[y][x].overlay)) drawn.push([x, y])
+      assert.equal(drawn.length, 2, `seed ${seed}: the ${kind}'s door is drawn two cells wide`)
+      for (const [x, y] of drawn) {
+        assert.equal(city.cells[y][x].tile, TILE.FLOOR, `seed ${seed}: the ${kind}'s door at ${x},${y} is walked onto`)
+        assert.equal(city.cells[y][x].ward, true, `seed ${seed}: the ${kind}'s door at ${x},${y} is warded`)
+        assert.ok(doorAt(city.doors, x, y) === doors[0], `seed ${seed}: ${x},${y} opens the ${kind}`)
+        assert.ok(!city.streets.lane[y * N + x], `seed ${seed}: the ${kind}'s door at ${x},${y} is no street`)
+      }
+    }
   }
 })
 

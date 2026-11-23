@@ -26,7 +26,8 @@ const isLaneCell = c => (typeof c.skin === 'string' && /^ow_(city_pave|dirt_|pat
 export function buildStreetGraph(city) {
   const walk = new Uint8Array(N * N)
   const lane = new Uint8Array(N * N)
-  const doorAt = new Set(city.doors.map(d => idx(d.x, d.y)))
+  // every cell of a door (a double door is two): an end, never a lane
+  const doorAt = new Set(city.doors.flatMap(d => Array.from({ length: d.span ?? 1 }, (_, i) => idx(d.x + i, d.y))))
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const c = city.cells[y][x]
     if (!isWalkable(c.tile, c)) continue

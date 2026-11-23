@@ -145,11 +145,12 @@ function layCastle(G, rec) {
   // (interior/buildings/castle.js), barred at night
   const k = P.keep
   const kd = keep(G, k.x0 + 3, k.y1, k.x1 - k.x0 - 5).door
+  // the double door: either half opens it (one record, two cells)
   addDoor(rec, kd.x, kd.y, {
-    kind: 'castle', look: { w: 5, storeys: 2, wall: 'stone' }, building: 'castle',
+    kind: 'castle', look: { w: 5, storeys: 2, wall: 'stone' }, building: 'castle', span: 2,
     hours: { from: DAY.dawn, to: DAY.night, shut: 'The keep is barred for the night.' },
   })
-  G.setWalk(kd.x, kd.y, true)
+  G.setWalk(kd.x, kd.y, true); G.setWalk(kd.x + 1, kd.y, true)
   rect(k.x0 + 5, k.y1 + 1, k.x0 + 8, C.y1 - 2, (x, y) => pave(G, x, y, cobble(x, y)))
   // and a cobbled walk from the gate along the garden's south edge to it: the
   // street graph (streets.js lanes are paving) takes the Count home this way
@@ -173,11 +174,12 @@ function layChurch(G, rec) {
   const c = church(G, P.church.x0, d.y, P.church.x1 - P.church.x0 - 1, d.x)
   for (const [x, y] of [[29, 57], [36, 56], [44, 57], [50, 59]]) lay(G, x, y, 'ow_tree_small')
   // open by day (interior/buildings/church.js), locked at night
+  // its double door: either half opens it (one record, two cells)
   addDoor(rec, d.x, d.y, {
-    kind: 'church', look: { w: 5, storeys: 2, wall: 'stone' }, building: 'church',
+    kind: 'church', look: { w: 5, storeys: 2, wall: 'stone' }, building: 'church', span: 2,
     hours: { from: DAY.dawn, to: DAY.dusk, shut: 'The church is locked for the night.' },
   })
-  G.setWalk(d.x, d.y, true)
+  G.setWalk(d.x, d.y, true); G.setWalk(d.x + 1, d.y, true)
   rec.spots['church-door'] = { x: d.x, y: d.y + 1 }
   rec.spots['church-steps'] = { x: d.x + 3, y: d.y + 2 }
   rec.spots.bell = { x: c.bell.x, y: c.bell.y }
