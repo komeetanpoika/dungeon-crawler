@@ -20,7 +20,7 @@ import { hash, hashInt } from '../rand.js'
 import { TALES, TALE_IDS } from '../../data/tales.js'
 import { rollTownsfolk } from './folk.js'
 import { cityFor } from './build.js'
-import { crierItem, firstCall } from './sampo.js'
+import { crierItem, crierDeeds, firstCall } from './sampo.js'
 
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -112,6 +112,7 @@ export function crierNews(world, seed, day) {
     if (word) out.push(taleNews(word))
   }
   if (world.solved?.size) out.push(SUN_NEWS)
+  out.push(...crierDeeds(world))
   out.push(...stocksNews(world, day))
   return out
 }

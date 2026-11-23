@@ -53,6 +53,9 @@ export const SPRITES = {
   item_fleece:      'item_fleece',       // placeholders drawn by tools/npc-placeholders.mjs
   // the Lalli tale (tools/make-lalli-tiles.mjs); its people's pictures load with the Wilds' tiles
   item_beer:        'item_beer',
+  // the Sampo story's things (tools/make-sampo-tiles.mjs)
+  item_sampo_sea: 'item_sampo_sea', item_sampo_mountain: 'item_sampo_mountain', item_sampo_marsh: 'item_sampo_marsh',
+  item_pike_jaw: 'item_pike_jaw', item_sampo: 'item_sampo',
   item_sausage:     'item_sausage',
   ow_stump:         'ow_stump',          // felled-tree cell overlay (systems/lumber.js)
   prop_campfire:    'prop_campfire',     // campfire entity (systems/campfire.js)

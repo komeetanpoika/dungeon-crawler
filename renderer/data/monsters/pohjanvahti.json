@@ -1,0 +1,10 @@
+{
+  "name": "pohjanvahti", "placedBy": "story",
+  "rig": "manticore",
+  "params": { "armSwing": 7, "attackReach": 10, "legSwing": 22, "tailSway": 10 },
+  "stats": { "hp": 16, "dmg": 2, "speed": 62 },
+  "behavior": { "weapon": "dragon_claw" },
+  "spawn": null,
+  "hooks": true,
+  "tuning": {}
+}

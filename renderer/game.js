@@ -54,6 +54,7 @@ import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
 import { fracOf } from './wilds/city/runtime.js'
 import { startTelling, tickSampo } from './wilds/city/sampo-run.js'
+import { tickSampoPlaces } from './wilds/city/sampo-places.js'
 import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut, struckInBuilding, spareStruck } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
 import { violenceUnseen } from './wilds/city/law.js'
@@ -369,6 +370,7 @@ const cityHooks = {
 const sampoHooks = {
   spawn: spawns => buildEntities(spawns, state.map, 0),
   persist: () => persistRun(),
+  refreshInventory: () => afterInventoryChange(),
 }
 
 function persistRun() {
@@ -1532,6 +1534,7 @@ function update(delta) {
     if (!state.cave) {
       tickTales(state, wildsWorld, delta, taleHooks)
       tickCity(state, wildsWorld, delta, cityHooks)
+      tickSampoPlaces(state, wildsWorld, delta, sampoHooks)
       // Kalevanlinna's watch took the player alive (damagePlayer spared the
       // last blow): the screen fades, and at its darkest they sit in the stocks
       if (state.arrest) arrest(state)

@@ -8,7 +8,7 @@
 //            "x,y" keys of felled trees and cleared rocks, and the play time
 //            the piece was last in the window
 //   deals    key -> how many times the piece has been forgotten
-import { makeSampo, loadSampo, exportSampo } from './city/sampo.js'
+import { makeSampo, loadSampo, exportSampo, SAMPO_PLACES } from './city/sampo.js'
 import { generatePiece } from './piece.js'
 import { generateCityPiece } from './city/piece.js'
 import { pieceKey, isPermanent, villageAt } from './layout.js'
@@ -63,7 +63,7 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
       ...(typeof t.special === 'boolean' && { special: t.special }) })
   }
   for (const [key, p] of Object.entries(isObj(saved.places) ? saved.places : {})) {
-    if (!isObj(p) || !TALE_IDS.includes(p.id) || typeof p.village !== 'string') continue
+    if (!isObj(p) || !(TALE_IDS.includes(p.id) || SAMPO_PLACES.includes(p.id)) || typeof p.village !== 'string') continue
     world.places.set(key, { id: p.id, village: p.village, done: p.done === true })
   }
   // a saved place on a city piece (R2) is released; its tale keeps its flags

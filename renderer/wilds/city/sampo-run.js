@@ -21,7 +21,8 @@
 // this roof here (they were built with the old ones).
 import { speakFrom, think, sayDuration, queueToast } from '../../systems/feedback.js'
 import { isWalkable, weaponContents } from '../../systems/entities.js'
-import { tellingFor, stageOf, LID_TILE, LID_REMARK, GIFT, GIFT_TOAST } from './sampo.js'
+import { sfx } from '../../systems/sfx.js'
+import { tellingFor, stageOf, questKey, PIECES, PIECE_KINDS, handover, JAW, JAW_LINE, LID_TILE, LID_REMARK, GIFT, GIFT_TOAST } from './sampo.js'
 import { linesFor } from './lines.js'
 import { moodOf } from './runtime.js'
 
@@ -46,14 +47,15 @@ export function tickSampo(state, world, delta, hooks) {
   tell(state, world, delta, hooks)
   lid(state, world, hooks)
   gift(state, world, hooks)
+  handovers(state, world, hooks)
 }
 
 // ---- the tellings ---------------------------------------------------------------------
 
-function setFlag(state, world, flag, hooks) {
+export function setFlag(state, world, flag, hooks) {
   world.sampo.flags[flag] = true
   const run = runOf(state)
-  if (run) run.quest = stageOf(world)
+  if (run) run.quest = questKey(world)
   relineIndoors(state, world, run)
   hooks.persist?.()
 }
@@ -62,7 +64,7 @@ function setFlag(state, world, flag, hooks) {
 function relineIndoors(state, world, run) {
   const cave = state.cave
   if (!cave || !run) return
-  const mood = { ...moodOf(run), quest: stageOf(world) }
+  const mood = { ...moodOf(run), quest: questKey(world) }
   const lists = [state.entities]
   if (cave.building) for (const [id, f] of cave.building.floors) if (id !== cave.building.at) lists.push(f.entities)
   for (const list of lists) for (const e of list) {
@@ -95,6 +97,46 @@ function tell(state, world, delta, hooks) {
   e.facing = state.player.px < e.px ? 'west' : 'east'
   if (e.ai) { e.ai.wanderPt = null; e.ai.dwell = Math.max(e.ai.dwell ?? 0, tl.dur + 0.5) }
   if (tl.i === tl.lines.length - 1) setFlag(state, world, tl.sets, hooks)
+}
+
+// ---- the pieces change hands ----------------------------------------------------------
+
+// Coming up to Seppo with a piece of the Sampo in the sack hands it over (no
+// key: he sees it), one at a time; the third begins what he has to say about
+// the words. Väinö takes the pike's jawbone the same way. Not while anyone is
+// telling or a line is up, and never from a warned or wanted player.
+const beside = (state, id) => state.entities.find(e => e.id === id && e.type === 'npc' && !e.hostile && e.hp > 0 && cheb(e, state.player) <= 1)
+function takeAll(player, kind) {
+  for (let i = player.inventory.length - 1; i >= 0; i--) if (player.inventory[i].kind === kind) player.inventory.splice(i, 1)
+}
+function handovers(state, world, hooks) {
+  const f = world.sampo.flags, { player } = state
+  if (!f.smith || state.telling || state.feedback?.bubble || !player.inventory?.length) return
+  const run = runOf(state)
+  if (run && run.crime.level !== 'calm') return
+  const has = kind => player.inventory.some(i => i.kind === kind)
+  const seppo = beside(state, 'named:seppo')
+  const kind = seppo && PIECE_KINDS.find(k => !f[k] && has(PIECES[k].item))
+  if (kind) {
+    takeAll(player, PIECES[kind].item)
+    for (const p of world.places?.values() ?? []) if (p.id === PIECES[kind].place) p.done = true   // its place may be forgotten now
+    setFlag(state, world, kind, hooks)
+    sfx(state, 'pickup', { px: player.px, py: player.py })
+    hooks.refreshInventory?.()
+    const said = handover(kind), three = tellingFor('named:seppo', world)
+    // the third: his word on it runs straight into what the Sampo still wants
+    if (three) state.telling = { id: seppo.id, lines: [said, ...three.lines], sets: three.sets, i: -1, t: 0, dur: 0 }
+    else speakFrom(state, seppo, said, sayDuration(said))
+    return
+  }
+  const vaino = !f.jaw && has(JAW) && beside(state, 'named:vaino')
+  if (vaino) {
+    takeAll(player, JAW)
+    setFlag(state, world, 'jaw', hooks)
+    sfx(state, 'pickup', { px: player.px, py: player.py })
+    hooks.refreshInventory?.()
+    speakFrom(state, vaino, JAW_LINE, sayDuration(JAW_LINE))
+  }
 }
 
 // ---- the lid --------------------------------------------------------------------------

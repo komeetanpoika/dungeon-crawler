@@ -26,6 +26,13 @@ const STACKABLE_KINDS = {
   // The Lalli tale (wilds/tale-lalli.js): what the piper asks for his flute.
   beer:        { name: 'Pint of Beer', emoji: '🍺', extra: { quest: true } },
   sausage:     { name: 'Boar Sausage', emoji: '🌭', extra: { quest: true } },
+  // The Sampo of Kalevanlinna (wilds/city/sampo.js): the mill's three lost
+  // pieces, the great pike's jawbone, and the Sampo made whole.
+  sampo_sea:      { name: 'Sampo Wheel',      emoji: '⚙', extra: { quest: true } },
+  sampo_mountain: { name: 'Sampo Grindstone', emoji: '🪨', extra: { quest: true } },
+  sampo_marsh:    { name: 'Sampo Hopper',     emoji: '🏺', extra: { quest: true } },
+  pike_jaw:       { name: "Pike's Jawbone",   emoji: '🦴', extra: { quest: true } },
+  sampo:          { name: 'The Sampo',        emoji: '✨', extra: { quest: true } },
 }
 
 export function makeItem(kind, count = 1) {

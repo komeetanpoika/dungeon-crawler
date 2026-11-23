@@ -6,7 +6,8 @@ import { SPRITES } from './sprites.js'
 
 const KIND_ICONS = { potion: 'potion', mushroom: 'ow_mushroom', meat: 'item_meat',
   cooked_meat: 'item_meat_cooked', lumber: 'item_lumber', deadwood: 'item_deadwood', greywood: 'item_deadwood',
-  clapper: 'item_clapper', fleece: 'item_fleece', beer: 'item_beer', sausage: 'item_sausage' }
+  clapper: 'item_clapper', fleece: 'item_fleece', beer: 'item_beer', sausage: 'item_sausage',
+  sampo_sea: 'item_sampo_sea', sampo_mountain: 'item_sampo_mountain', sampo_marsh: 'item_sampo_marsh', pike_jaw: 'item_pike_jaw', sampo: 'item_sampo' }
 
 // The quiver/pouch shows one icon per ammo kind, not per bow.
 const AMMO_ICONS = { arrow: 'item_arrows', bolt: 'item_bolts', stone: 'item_stones' }
