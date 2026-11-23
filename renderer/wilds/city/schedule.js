@@ -207,6 +207,15 @@ export function scheduleFor(person, city, seed, day) {
     return finish(E, seed, idx, day)
   }
 
+  // The Count keeps to his keep, so his chair in the great hall is never
+  // empty (interior/buildings/castle.js): there from dawn, home in the
+  // evening, nothing else; not even the bell (the walk to the church is a
+  // fifth of the day each way)
+  if (p.job === 'count') {
+    E.push([DAY.dawn + 0.01 + startOff, place(p.work), 'work'], [DAY.dusk, home, 'home'])
+    return finish(E, seed, idx, day)
+  }
+
   // the worker template: home, work, an errand, lunch, the bell, work, home, an evening
   const W = place(p.work)
   const outdoor = !!W.spot
@@ -215,15 +224,12 @@ export function scheduleFor(person, city, seed, day) {
   const startAct = p.job === 'fisher' || p.job === 'sailor' ? 'unload' : wAct
   const jobEvening = { fisher: 0.6, sailor: 0.6, 'net-mender': 0.35, washer: 0.15 }
   const sameHome = p.home === p.work
-  const churchAlways = p.age === 'elder' || p.job === 'stallholder' || p.job === 'vicar' || p.job === 'count' || sameHome
-  // the organist plays, the vicar leads the service, the Count has his pew
-  const indoorBell = p.job === 'organist' || p.job === 'vicar' || p.job === 'count'
-  // the Count keeps to his keep by day, so his chair in the great hall is not
-  // empty (interior/buildings/castle.js): no errand, no inn, only the church
-  const count = p.job === 'count'
+  const churchAlways = p.age === 'elder' || p.job === 'stallholder' || p.job === 'vicar' || sameHome
+  // the organist plays, the vicar leads the service
+  const indoorBell = p.job === 'organist' || p.job === 'vicar'
   // the errand: a fisher sells at the market, a porter works the quay, the smithy's people at the anvil, the Captain rounds a post
   let errand
-  if (p.job === 'stallholder' || count) errand = null
+  if (p.job === 'stallholder') errand = null
   else if (p.job === 'smith' || p.job === 'apprentice') errand = { where: { spot: 'smithy-anvil' }, act: 'work' }
   else if (p.job === 'captain') errand = { where: { spot: pick(PLAN.posts.map(q => q.id), 21) }, act: 'work' }
   else if (p.job === 'porter' && H(22) < 0.6) errand = { where: { spot: pick(ctx.quays, 23) }, act: 'unload' }
@@ -234,13 +240,13 @@ export function scheduleFor(person, city, seed, day) {
   if (errand) E.push([0.34, errand.where, errand.act], [0.40, W, wAct])
   else E.push([0.40, W, wAct])
   const awayLunch = outdoor || p.job === 'stallholder'
-  if (!count && H(10) < lunchInnP) E.push([DAY.noon, inn, 'inn'], [DAY.afternoon + 0.01, W, wAct])
+  if (H(10) < lunchInnP) E.push([DAY.noon, inn, 'inn'], [DAY.afternoon + 0.01, W, wAct])
   else if (awayLunch) E.push([DAY.noon, home, 'home'], [DAY.afternoon + 0.01, W, wAct])
   const atService = p.job !== 'bell-ringer' && bell({ where: W, act: wAct }, { always: churchAlways, inside: indoorBell, p: 0.6, noInside: p.age === 'elder' })
   if (p.job === 'bell-ringer') E.push([SERVICE.from, churchDoor, 'ring'], [0.64, W, wAct])
   // back at work after the bell (one at the service goes home from it)
   if (!atService) E.push([0.67, W, wAct])
-  eveningTail(count ? 0 : jobEvening[p.job] ?? 0.2)
+  eveningTail(jobEvening[p.job] ?? 0.2)
   return finish(E, seed, idx, day)
 }
 

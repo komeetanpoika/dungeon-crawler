@@ -55,7 +55,7 @@ test('every schedule covers the whole day and starts at home', () => {
 test('everyone has at least three different places in a day, and no one stays put outdoors all day', () => {
   for (const { seed, city, folk } of worlds) for (const day of DAYS) for (const p of folk) {
     if (p.job === 'watch') continue // a post is a post by design
-    if (p.job === 'count') continue // the Count keeps to his keep but for the church, by design (below)
+    if (p.job === 'count') continue // the Count keeps to his keep, by design (below)
     const s = scheduleFor(p, city, seed, day)
     const time = new Map()
     s.forEach((e, i) => time.set(key(e.where), (time.get(key(e.where)) ?? 0) + ((s[i + 1]?.at ?? 1) - e.at)))
@@ -123,28 +123,25 @@ test('at the bell most churchgoers go inside; elders, beggars and the crier keep
   assert.ok(share >= 0.55 && share <= 0.85, `${inside}/${going} = ${share.toFixed(2)} of the adults at the bell go in`)
 })
 
-// The Count keeps to the keep by day, so his chair in the great hall is not
-// empty (interior/buildings/castle.js): no errand, no lunch at the inn, no
-// evening out; the bell takes him into the church and home after.
-test('the Count is only ever at the castle or in the church', () => {
+// The Count keeps to his keep, so his chair in the great hall is never empty
+// (interior/buildings/castle.js): no errand, no inn and no bell either (the
+// walk to the church is a fifth of the day each way).
+test('the Count is only ever at the castle', () => {
   for (const seed of [1, 2, 3, 4, 5]) {
     const city = cityFor(seed)
-    const castle = city.doors.find(d => d.kind === 'castle').label, church = city.doors.find(d => d.kind === 'church').label
+    const castle = city.doors.find(d => d.kind === 'castle').label
     const count = rollTownsfolk(seed, city).find(p => p.job === 'count')
     assert.ok(count, `seed ${seed} has a Count`)
     for (const day of [0, 1, 2]) {
       const s = scheduleFor(count, city, seed, day)
       for (const e of s) {
-        const ok = (e.where.door === castle && (e.act === 'home' || e.act === 'work')) || (e.where.door === church && e.act === 'church')
-        assert.ok(ok, `seed ${seed} day ${day}: the Count ${e.act} at ${JSON.stringify(e.where)} at ${e.at.toFixed(3)}`)
+        assert.ok(e.where.door === castle && (e.act === 'home' || e.act === 'work'), `seed ${seed} day ${day}: the Count ${e.act} at ${JSON.stringify(e.where)} at ${e.at.toFixed(3)}`)
       }
-      // at the castle from dawn, at church through the service, home after it
-      const at = f => s[entryAt(s, f)]
-      assert.equal(at(DAY.dawn + 0.05).where.door, castle)
-      assert.equal(at(DAY.noon).where.door, castle)
-      assert.equal(at(DAY.bell + 0.03).where.door, church)
-      assert.equal(at(DAY.dusk + 0.02).where.door, castle)
-      assert.equal(at(DAY.night + 0.05).where.door, castle)
+      // in his chair from dawn, home in the evening
+      const at = f => s[entryAt(s, f)].act
+      assert.equal(at(DAY.dawn - 0.02), 'home')
+      for (const f of [DAY.dawn + 0.05, DAY.noon, DAY.bell + 0.03, DAY.dusk - 0.02]) assert.equal(at(f), 'work', `seed ${seed} day ${day} at ${f}`)
+      assert.equal(at(DAY.dusk + 0.02), 'home')
     }
   }
 })

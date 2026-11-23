@@ -15,6 +15,7 @@ import { thingsOf } from '../renderer/wilds/city/scene-things.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
 import { PROPS, CASTLE } from '../renderer/wilds/city/kit.js'
 import { gateShut, isShutGate } from '../renderer/wilds/city/fx.js'
+import { PLAN } from '../renderer/wilds/city/plan.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { cityCtx, CITY_OX as OX, CITY_OY as OY } from '../renderer/wilds/city/walkers.js'
@@ -532,36 +533,41 @@ test('at night the portcullis comes down, never while the player is in the castl
   assert.ok(gate.open(), 'up at dawn')
 })
 
-// The Count walks home from the church after the bell, and when he is late
-// (the town placed by the clock at 0.80 has him half way home) he comes
-// through the gate after nightfall: the watch raises it for him as he comes
-// near, and it never shuts on anyone.
-test('the Count comes home through the courtyard after nightfall, the gate raised for him', () => {
-  const ctx = setup({ at: GATE_FRONT, frac: 0.8 })
-  const { state } = ctx, gate = gateOf(ctx)
-  const door = cityFor(SEED).doors.find(d => d.kind === 'castle').label
-  const count = [...state.cityRun.people.values()].find(w => w.person.job === 'count')
-  assert.ok(count, 'the town has its Count')
-  let near = false, home = false, shutOnSomeone = false
-  const gateCity = GATE.map(g => `${g.x},${g.y}`)
-  run(ctx, 0.19 * DAY_LENGTH, {
+// At night the gate is up only while the player is in the castle; one of the
+// town who came in after him (a watchman hunting a wanted player, someone
+// running from his blow) is not shut in when he leaves: the portcullis stays
+// up until they are out again, and never comes down on anyone.
+test('at night one of the town in the courtyard keeps the gate up until they are out', () => {
+  const ctx = setup({ at: GATE_FRONT, frac: 0.83 })
+  const { state, world } = ctx, gate = gateOf(ctx)
+  run(ctx, DT)
+  assert.ok(gate.shut(), 'down at night')
+  placePlayer(ctx, 120 + OX, 45 + OY); run(ctx, DT)
+  assert.ok(gate.open(), 'up while the player is in the courtyard')
+  // someone on their way about the town, in the courtyard with him
+  const w = [...state.cityRun.people.values()].find(w => w.mode === 'near' && w.entity && w.phase === 'go' && !w.scene && !w.hunt)
+  assert.ok(w, 'someone near on their way')
+  const e = w.entity, at = winOf(ctx, 116 + OX, 50 + OY)
+  e.x = at.x; e.y = at.y; e.px = at.x * S + 16; e.py = at.y * S + 16; e.ai.path = undefined
+  const city = t => ({ x: t.x + world.origin.wx * PIECE - OX, y: t.y + world.origin.wy * PIECE - OY })
+  const c = PLAN.places.castle, inCastle = q => q.x >= c.x0 && q.x <= c.x1 && q.y >= c.y0 && q.y <= c.y1
+  // the player leaves; the one who came in after him walks out
+  placePlayer(ctx, GATE_FRONT.X, GATE_FRONT.Y)
+  let shutIn = false, out = null
+  run(ctx, 40, {
     npcs: true,
-    each: () => {
-      // in sight, after nightfall, in the gateway
-      const e = count.entity
-      if (e && frac(ctx) >= DAY.night && gateCity.includes(`${e.x + ctx.world.origin.wx * PIECE - OX},${e.y + ctx.world.origin.wy * PIECE - OY}`)) near = true
-      for (const e of state.entities) {
-        if (!(e.hp > 0)) continue
-        const c = state.map[e.y]?.[e.x]
-        if (c && isShutGate(c) && !isWalkable(c.tile, c)) shutOnSomeone = true
+    each: t => {
+      const inside = w.entity === e && inCastle(city(e))
+      if (inside && gate.shut()) shutIn = true
+      for (const o of state.entities) {
+        const cell = o.hp > 0 ? state.map[o.y]?.[o.x] : null
+        if (cell && isShutGate(cell)) shutIn = true
       }
-      if (count.mode === 'indoors' && count.door === door) { home = true; return false }
+      if (!inside && out === null) out = t
+      if (out !== null && t > out + 1) return false
     },
   })
-  assert.ok(home, `the Count got home (last seen ${count.mode} at ${count.X.toFixed(1)},${count.Y.toFixed(1)}, ${frac(ctx).toFixed(3)} of the day)`)
-  assert.ok(near, 'and walked through the gateway in sight, after nightfall')
-  assert.ok(frac(ctx) >= DAY.night, `after nightfall (${frac(ctx).toFixed(3)})`)
-  assert.ok(!shutOnSomeone, 'the gate never shut on anyone')
-  run(ctx, 1, { npcs: true })
-  assert.ok(gate.shut(), 'and down again once he is in')
+  assert.ok(!shutIn, 'never shut in, nor the portcullis down on anyone')
+  assert.ok(out !== null, `out of the castle again (last at ${JSON.stringify(city(e))}, ${w.mode})`)
+  assert.ok(gate.shut(), 'and down once they are out')
 })

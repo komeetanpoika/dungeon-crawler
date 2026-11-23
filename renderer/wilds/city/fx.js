@@ -193,7 +193,6 @@ export function syncCityTiles(state, run, ox, oy) {
 const CG = PLAN.places.castleGate
 const GATE_CELLS = [0, 1].flatMap(j => [0, 1, 2].map(i => ({ x: CG.x - 1 + i, y: CG.y - 1 + j, i, j })))
 const GATE_DOWN = new Set(CASTLE.gate2.flat())
-const GATE_HOLD = 4                 // tiles from the gate within which the watch raises it for the Count coming home
 export const GATE_SHUT_LINE = 'The gate is shut for the night.'
 
 const inCastle = c => { const p = PLAN.places.castle; return c.x >= p.x0 && c.x <= p.x1 && c.y >= p.y0 && c.y <= p.y1 }
@@ -222,25 +221,13 @@ function underGate(state, dx, dy) {
   return state.entities.some(e => e.hp > 0 && over(e.px, e.py, e.aiHalf ?? 4))
 }
 
-// The keep's door (the castle building's), found once per city.
-const keepDoor = new WeakMap()
-const keepDoorOf = city => {
-  if (!keepDoor.has(city)) keepDoor.set(city, city.doors.find(d => d.building === 'castle')?.label ?? null)
-  return keepDoor.get(city)
-}
-
-// The Count on his way home through the gate at night, near (an entity, who
-// walks by collision) and close to it or already in the courtyard: the watch
-// raises the portcullis for him. A far Count needs no gate.
-function countComing(run, dx, dy) {
-  const door = keepDoorOf(run.cc.city)
-  if (!door) return false
-  for (const w of run.people.values()) {
-    if (w.mode !== 'near' || w.out || !w.entity || w.goal?.kind !== 'door' || w.goal.door !== door) continue
-    const at = { x: w.entity.x - dx, y: w.entity.y - dy }
-    if (inCastle(at) || GATE_CELLS.some(c => Math.max(Math.abs(c.x - at.x), Math.abs(c.y - at.y)) <= GATE_HOLD)) return true
-  }
-  return false
+// One of the town's people (a near entity: he walks by collision) in the
+// castle at night, where only the player brings them while the gate is up
+// for him: a watchman after a wanted player, a townsperson running from his
+// blow. The portcullis stays up until they are out again, or they would be
+// shut in the courtyard, cut off from their way about the town.
+function townInCastle(state, dx, dy) {
+  return state.entities.some(e => e.cityKey !== undefined && e.hp > 0 && inCastle({ x: e.x - dx, y: e.y - dy }))
 }
 
 // The gate as the clock says, laid only when that changes, and never let
@@ -250,7 +237,7 @@ function syncGate(state, run, ox, oy) {
   const cellAt = c => map[c.y + dy]?.[c.x + dx]
   if (!GATE_CELLS.every(cellAt)) return   // not in the window
   const p = state.player
-  const down = gateShut(run.frac, { x: p.x - dx, y: p.y - dy }) && !countComing(run, dx, dy)
+  const down = gateShut(run.frac, { x: p.x - dx, y: p.y - dy }) && !townInCastle(state, dx, dy)
   const art = down ? CASTLE.gate2 : CASTLE.gate2Open
   if (GATE_CELLS.every(c => cellAt(c).overlay === art[c.j][c.i])) return
   if (down && underGate(state, dx, dy)) return
