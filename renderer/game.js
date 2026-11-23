@@ -53,6 +53,7 @@ import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstance
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
 import { fracOf } from './wilds/city/runtime.js'
+import { startTelling, tickSampo } from './wilds/city/sampo-run.js'
 import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut, struckInBuilding, spareStruck } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
 import { violenceUnseen } from './wilds/city/law.js'
@@ -362,6 +363,12 @@ const cityHooks = {
   hurt: (target, amount) => hurtEntity(target, amount, { source: 'watch', hitCue: null }),
   // the frame's route requests stop once a millisecond is spent (tests run without, by count)
   now: () => performance.now(),
+}
+
+// The Sampo's story (wilds/city/sampo-run.js): what it lays on the ground and when it saves.
+const sampoHooks = {
+  spawn: spawns => buildEntities(spawns, state.map, 0),
+  persist: () => persistRun(),
 }
 
 function persistRun() {
@@ -1535,6 +1542,8 @@ function update(delta) {
         if (was < ARREST_FADE / 2 && st.fade >= ARREST_FADE / 2) seatInStocks()
       }
     }
+    // the Sampo's story is told in the street and under a roof alike
+    tickSampo(state, wildsWorld, delta, sampoHooks)
   }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
@@ -1788,7 +1797,8 @@ function update(delta) {
     if (sun) { onSunroom(sun); return }
     const sign = basin ? null : signNearby(state.signs, player.x, player.y)
     const npc = (basin || sign) ? null : nearestPeacefulNpc(state)
-    if (npc) { interactNpc(state, npc); return }
+    // someone with a part of the Sampo's story to tell tells it; anyone else says their line
+    if (npc) { if (!(wildsWorld && state.wilds && startTelling(state, npc, wildsWorld))) interactNpc(state, npc); return }
     if (sign) { openSign(sign); return }
     if (basin) {
       basin.flowing = !basin.flowing

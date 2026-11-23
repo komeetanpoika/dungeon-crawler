@@ -39,10 +39,13 @@ const freshState = () => ({
   fireZones: [], lightning: [], strikes: [], shockwaves: [], arcs: [], hitEffects: [], feedback: makeFeedback(),
   caveInstances: {}, sfx: { cues: [], muted: false },
 })
+// The town as it speaks of itself: a world without the Sampo's record tells
+// none of its story (city/sampo.js; test/wilds-city-sampo.test.js has the story).
+const plainWorld = () => { const w = makeWorld(null, { seed: SEED }); delete w.sampo; return w }
 const FOUNTAIN = { X: 79, Y: 236 }   // a step south of the fountain, the crier's box in sight
 
 // `world`: a world from before (a town freshly in the window of it)
-function setup({ at = FOUNTAIN, frac = 0.5, day = 0, view = { w: 20, h: 12 }, world = makeWorld(null, { seed: SEED }) } = {}) {
+function setup({ at = FOUNTAIN, frac = 0.5, day = 0, view = { w: 20, h: 12 }, world = plainWorld() } = {}) {
   world.day = day
   const state = freshState()
   enterWilds(state, world, at, { buildEntities })
@@ -162,7 +165,7 @@ test('named characters say their own', () => {
 })
 
 test('the crier reports a finished tale', () => {
-  const world = makeWorld(null, { seed: SEED })
+  const world = plainWorld()
   const base = crierNews(world, SEED, 2)
   assert.equal(base.length, 3, 'the market, the weather and a townsperson')
   assert.ok(base.every(isLine) && base.every(l => l.startsWith('Hear ye! ')), JSON.stringify(base))

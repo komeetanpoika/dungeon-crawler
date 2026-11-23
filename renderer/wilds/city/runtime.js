@@ -49,6 +49,7 @@ import { cityFor } from './build.js'
 import { isCityPiece } from './geometry.js'
 import { scheduleFor, entryAt, DAY } from './schedule.js'
 import { linesFor, moodKey } from './lines.js'
+import { stageOf } from './sampo.js'
 import { WIN, WIN_TILES } from '../window.js'
 import { PIECE } from '../layout.js'
 import { TILE } from '../../systems/entities.js'
@@ -94,12 +95,15 @@ export const nearRadius = view => Math.min(MAX_NEAR, Math.ceil(Math.max(view.w, 
 // warned or wanted player. Every walker's lines (w.lines, and its entity's)
 // follow the mood: asked anew whenever what they depend on changes.
 const nightAt = frac => frac >= DAY.night || frac < DAY.dawn
-export const moodOf = run => ({ night: nightAt(run.frac), crime: run.crime.level })
+// run.quest is the Sampo's stage (sampo.js stageOf), read from the world
+// whenever the run meets it (questOf).
+export const moodOf = run => ({ night: nightAt(run.frac), crime: run.crime.level, quest: run.quest ?? null })
+const questOf = (run, world) => { run.quest = stageOf(world) }
 function keepLines(run) {
-  const night = nightAt(run.frac), crime = run.crime.level
-  if (night === run.linesNight && crime === run.linesCrime) return   // every frame: nothing new
-  run.linesNight = night; run.linesCrime = crime
-  const mood = { night, crime }, key = moodKey(mood)
+  const night = nightAt(run.frac), crime = run.crime.level, quest = run.quest ?? null
+  if (night === run.linesNight && crime === run.linesCrime && quest === run.linesQuest) return   // every frame: nothing new
+  run.linesNight = night; run.linesCrime = crime; run.linesQuest = quest
+  const mood = { night, crime, quest }, key = moodKey(mood)
   if (key === run.linesKey) return
   run.linesKey = key
   for (const w of run.people.values()) {
@@ -159,6 +163,7 @@ function makeRun(state, world, hooks, lazy) {
   if (!lazy) holdPosts(run, frac)
   for (const a of makeAnimals(cc)) run.animals.set(a.id, a)
   makeFx(run)
+  questOf(run, world)
   keepLines(run)
   return run
 }
@@ -206,6 +211,7 @@ export function arriveCity(state, world, hooks, { fresh = false } = {}) {
   run.hooks = hooks
   reconcile(state, world, run)
   run.nearR = nearRadius(hooks.viewHalf())
+  questOf(run, world)
   keepLines(run)
   modes(state, world, run, hooks)
   flush(state, run)
@@ -321,6 +327,7 @@ export function tickCity(state, world, delta, hooks) {
   guard(state, run, delta, ox, oy)
   tickLaw(state, world, run, delta)
   tickScenes(state, world, run, delta, ox, oy)
+  questOf(run, world)
   keepLines(run)
   modes(state, world, run, hooks)
   flush(state, run)
