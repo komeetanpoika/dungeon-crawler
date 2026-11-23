@@ -238,7 +238,7 @@ const count = {
     e: { item: 'painting_teal' },
     '>': { stair: 'down', to: ['hall', 'up'], dir: 'down' },
     2: { land: 'down' },
-    x: { shut: BATTLEMENTS },
+    x: { shut: BATTLEMENTS, deco: 'barredDoor' },
   },
   rugs: [{ colour: 'blue', x0: 3, y0: 3, x1: 6, y1: 5 }, { colour: 'green', x0: 11, y0: 3, x1: 13, y1: 5 }],
   dress: [{ item: 'candle', n: [1, 2] }, { item: 'books_floor', n: [0, 1] }],

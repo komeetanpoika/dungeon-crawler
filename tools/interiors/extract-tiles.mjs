@@ -632,6 +632,9 @@ src('in_celldoor', cell(33, 3))
 // the crypt's crack: only the lines of the pack's cracked flagstone, deepened,
 // laid over whatever floor is there
 src('in_crack', cell(19, 19), ['deep'])
+// the keep's battlements door: the pack's arched plank door with an iron bar
+// across (rows 8-11), the planks darkened to oak so it stands out of a wood wall
+src('in_door_barred', [cell(34, 0, { f: 'brightness(0.68) saturate(1.15)' }), part(34, 0, [0, 8, 16, 4], [0, 8])])
 
 // ---- every name the kit uses needs a source; dusty twins follow ------------
 const dustyNames = new Set(Object.values(ITEMS).filter(i => i.dusty).flatMap(i => i.tiles.flat()))

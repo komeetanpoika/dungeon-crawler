@@ -10,7 +10,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { isWalkable } from '../renderer/systems/entities.js'
-import { INTERIOR_SKINS } from '../renderer/interior/kit.js'
+import { INTERIOR_SKINS, MISC } from '../renderer/interior/kit.js'
 import { buildBuilding, BUILDINGS } from '../renderer/interior/buildings/index.js'
 import { makeBuilding, blockedBy } from '../renderer/interior/floors.js'
 import { makeNpc } from '../renderer/systems/npc.js'
@@ -209,6 +209,10 @@ test('the Count\'s floor: his chamber and his study off a corridor, the battleme
   const count = floorOf(built, 'count')
   assert.equal(count.shut.length, 1)
   assert.equal(count.shut[0].line, BATTLEMENTS_LINE)
+  // drawn as a door, not a gap in the wall: a heavy one with an iron bar across
+  const [bar] = count.shut
+  assert.equal(count.map[bar.y][bar.x].deco, MISC.barredDoor)
+  assert.ok(INTERIOR_SKINS.includes(MISC.barredDoor), 'its picture is loaded with the kit')
   const def = defOf('count')
   const room = re => {
     const c = overlays(count, re)[0]

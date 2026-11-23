@@ -193,8 +193,9 @@ export const MISC = {
   seed: 'in_sunseed', bloom: 'in_sunbloom',
   panel: 'in_panel', nicheTop: 'in_niche_top', nicheFloor: 'in_niche_floor', chestOpen: 'tile_0091',
   // hand-laid buildings (interior/buildings/): stairs between floors (laid as
-  // a cell's overlay) and the crypt's crack (a deco: its lines over the floor)
-  stairUp: 'in_stair_up', stairDown: 'in_stair_down', crack: 'in_crack',
+  // a cell's overlay), the crypt's crack (a deco: its lines over the floor)
+  // and the keep's barred battlements door (a deco on its shut doorway)
+  stairUp: 'in_stair_up', stairDown: 'in_stair_down', crack: 'in_crack', barredDoor: 'in_door_barred',
 }
 
 const itemNames = Object.values(ITEMS).flatMap(i => {
@@ -210,7 +211,7 @@ export const INTERIOR_SKINS = [...new Set([
   ...itemNames,
   MISC.void, MISC.doormat, ...MISC.flowers, MISC.mirror['/'], MISC.mirror['\\'], MISC.seed, MISC.bloom,
   MISC.panel, MISC.nicheTop, MISC.nicheFloor, MISC.chestOpen,
-  MISC.stairUp, MISC.stairDown, MISC.crack,
+  MISC.stairUp, MISC.stairDown, MISC.crack, MISC.barredDoor,
 ])]
 
 // Which tiles get the furniture shading (render/interior-shade.js): 'cast'
