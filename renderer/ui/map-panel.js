@@ -18,13 +18,15 @@ function draw() {
   drawMap(canvas.getContext('2d'), open.world, { cx: open.cx, cy: open.cy, scale: ZOOMS[open.zoom], w, h, hero: open.hero, names: true, edge: true })
 }
 
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
 function labels() {
   const { opts, zoom } = open
-  const key = name => (opts.touch || !opts.keys?.[name] ? '' : `<kbd>${opts.keys[name]}</kbd>`)
+  const key = name => (opts.touch || !opts.keys?.[name] ? '' : `<kbd>${esc(opts.keys[name])}</kbd>`)
   const one = (name, text, off) => `<span class="inv-btn ${name}${off ? ' off' : ''}" data-btn="${name}"><b></b><em>${text}</em>${key(name)}</span>`
   el().querySelector('.inv-what').innerHTML =
     one('red', 'Zoom in', zoom === ZOOMS.length - 1) + one('green', 'Zoom out', zoom === 0) + one('yellow', 'Find me', false)
-    + (opts.touch ? '' : `<span class="inv-close">Close<kbd>${opts.keys?.close ?? 'M'}</kbd></span>`)
+    + (opts.touch ? '' : `<span class="inv-close">Close<kbd>${esc(opts.keys?.close ?? 'M')}</kbd></span>`)
   el().querySelectorAll('[data-btn]').forEach(n => n.addEventListener('click', () => press(n.dataset.btn)))
   el().querySelector('.inv-close')?.addEventListener('click', () => open?.onClose())
 }

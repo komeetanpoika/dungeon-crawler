@@ -26,7 +26,7 @@ import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues, setVolume } from './render/audio.js'
-import { loadSettings, saveSettings, stepVolume, VOLUME_STEPS } from './systems/settings.js'
+import { loadSettings, saveSettings, stepVolume } from './systems/settings.js'
 import { ACTIONS, route, rebind, keysLabel, defaultBindings, bindable } from './systems/bindings.js'
 import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './pvp/local.js'
 import { stepMatch, setClass } from './pvp/sim.js'
@@ -246,9 +246,11 @@ window.addEventListener('keydown', e => {
 })
 
 // M (and the touch map icon) opens and shuts the map of the Wilds; Tab
-// shows and hides the corner minimap.
+// shows and hides the corner minimap. The arena and online rooms have no
+// map and no pause menu, so there the key still turns the sound on and off.
 window.addEventListener('keydown', e => {
-  if (e.target?.tagName === 'INPUT' || e.repeat || pvp || net) return
+  if (e.target?.tagName === 'INPUT' || e.repeat) return
+  if (pvp || net) { if (e.key === 'm' || e.key === 'M') setMuted(!settings.muted); return }
   if (e.key === 'm' || e.key === 'M') {
     if (mapOpen) closeMap()
     else if (phase === PHASE.PLAYING && state && !playerBound(state.player)) openMap()
