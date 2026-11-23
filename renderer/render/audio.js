@@ -121,6 +121,7 @@ export function makeAudio() {
     voices: [],         // active { stop } handles, oldest first
     warned: {},         // name -> true (one warning per unknown cue)
     muted: false,
+    volume: 1,          // the player's setting, 0..1, over MASTER_VOL
     disabled: false,
   }
   const unlock = () => {
@@ -139,7 +140,7 @@ function ensureCtx(audio) {
   try {
     audio.ctx = new AudioContext()
     audio.master = audio.ctx.createGain()
-    audio.master.gain.value = audio.muted ? 0 : MASTER_VOL
+    audio.master.gain.value = gainOf(audio)
     audio.master.connect(audio.ctx.destination)
     const len = audio.ctx.sampleRate           // 1 s of white noise, shared
     audio.noiseBuf = audio.ctx.createBuffer(1, len, audio.ctx.sampleRate)
@@ -151,16 +152,28 @@ function ensureCtx(audio) {
   }
 }
 
+const gainOf = audio => (audio.muted ? 0 : MASTER_VOL * audio.volume)
+function rampMaster(audio) {
+  if (!audio.master) return
+  const t = audio.ctx.currentTime             // ~20 ms ramp, no clicks
+  audio.master.gain.cancelScheduledValues(t)
+  audio.master.gain.setValueAtTime(audio.master.gain.value, t)
+  audio.master.gain.linearRampToValueAtTime(gainOf(audio), t + 0.02)
+}
+
+// The player's volume setting, 0..1.
+export function setVolume(audio, volume) {
+  const v = Math.min(1, Math.max(0, Number(volume) || 0))
+  if (v === audio.volume) return
+  audio.volume = v
+  rampMaster(audio)
+}
+
 export function playCues(audio, cues, player, muted = false) {
   if (audio.disabled) return
   if (muted !== audio.muted) {
     audio.muted = muted
-    if (audio.master) {                        // ~20 ms ramp, no clicks
-      const t = audio.ctx.currentTime
-      audio.master.gain.cancelScheduledValues(t)
-      audio.master.gain.setValueAtTime(audio.master.gain.value, t)
-      audio.master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, t + 0.02)
-    }
+    rampMaster(audio)
   }
   if (!cues.length || muted) return
   ensureCtx(audio)

@@ -487,3 +487,58 @@ describe('class picker hints (2a)', () => {
     }
   })
 })
+
+import { showPause, showSound, showControls, showSettings, volumeLabel } from '../renderer/ui/menu.js'
+
+// the stub keeps every screen ever shown: the last panel is the one on show
+const latest = overlay => overlay.children.at(-1).children.filter(c => c.tag === 'button')
+
+describe('the settings screens', () => {
+  it('the pause menu offers Sound, and Controls only where there are keys', () => {
+    const overlay = stubDom()
+    try {
+      const f = () => {}
+      showPause({ onResume: f, onSound: f, onControls: f, onRestart: f, onQuitToTitle: f })
+      assert.deepEqual(latest(overlay).map(b => b.textContent), ['Resume', 'Sound', 'Controls', 'Restart', 'Quit to Title'])
+      showPause({ onResume: f, onSound: f, onControls: null, onRestart: f, onQuitToTitle: f })
+      assert.deepEqual(latest(overlay).map(b => b.textContent), ['Resume', 'Sound', 'Restart', 'Quit to Title'])
+      showSettings({ onSound: f, onControls: null, onBack: f })
+      assert.deepEqual(latest(overlay).map(b => b.textContent), ['Sound', 'Back'])
+    } finally { hide(); delete globalThis.document; delete globalThis.window }
+  })
+
+  it('left and right turn the volume, a tap steps it up and round', () => {
+    assert.equal(navActionFor('ArrowLeft'), 'left')
+    assert.equal(navActionFor('d'), 'right')
+    assert.equal(volumeLabel(0.3), 'Volume  ███░░░░░░░  3')
+    const overlay = stubDom()
+    let handler = null
+    globalThis.window.addEventListener = (ev, fn) => { if (ev === 'keydown') handler = fn }
+    try {
+      const got = []
+      const show = v => showSound({ volume: v, muted: false }, { onVolume: by => got.push(by), onMute: () => got.push('mute'), onBack: () => got.push('back') })
+      show(0.5)
+      const press = key => handler({ key, preventDefault() {}, repeat: false })
+      press('ArrowLeft'); press('ArrowRight'); press('Enter')
+      press('ArrowDown'); press('Enter'); press('ArrowLeft')
+      assert.deepEqual(got, [-1, 1, 1, 'mute', 'mute'])
+      assert.deepEqual(latest(overlay).map(b => b.textContent), ['Volume  █████░░░░░  5', 'Sound: on', 'Back'])
+      got.length = 0
+      show(1); press('Enter')
+      assert.deepEqual(got, [-10])
+    } finally { hide(); delete globalThis.document; delete globalThis.window }
+  })
+
+  it('Controls lists every action with its keys and marks the one waiting', () => {
+    const overlay = stubDom()
+    try {
+      const picks = []
+      showControls({ rows: [{ label: 'Attack', keys: 'Space' }, { label: 'Bag', keys: 'I' }], waiting: 1, selected: 1 },
+        { onPick: i => picks.push(i), onReset: () => picks.push('reset'), onBack: () => picks.push('back') })
+      const btns = latest(overlay)
+      assert.deepEqual(btns.map(b => b.textContent), ['Attack:  Space', 'Bag:  …', 'Reset to defaults', 'Back'])
+      btns[0].listeners.click(); btns[2].listeners.click()
+      assert.deepEqual(picks, [0, 'reset'])
+    } finally { hide(); delete globalThis.document; delete globalThis.window }
+  })
+})

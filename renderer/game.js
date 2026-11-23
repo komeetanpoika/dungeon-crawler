@@ -25,7 +25,9 @@ import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
-import { makeAudio, playCues } from './render/audio.js'
+import { makeAudio, playCues, setVolume } from './render/audio.js'
+import { loadSettings, saveSettings, stepVolume, VOLUME_STEPS } from './systems/settings.js'
+import { ACTIONS, route, rebind, keysLabel, defaultBindings, bindable } from './systems/bindings.js'
 import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './pvp/local.js'
 import { stepMatch, setClass } from './pvp/sim.js'
 import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel, respawnLine, buffRowModel, updateBuffRow } from './ui/pvp-hud.js'
@@ -137,12 +139,52 @@ const DRAGON_CONE_HALF       = Math.PI * 0.21
 const keys = {}
 const audio = makeAudio()
 
-function loadMutedPref() {
-  try { return localStorage.getItem('dc-muted') === '1' } catch { return false }
+// The player's settings (systems/settings.js): sound, keys, the minimap.
+const settingsStore = { getItem: k => localStorage.getItem(k), setItem: (k, v) => localStorage.setItem(k, v) }
+const settings = loadSettings(settingsStore)
+const keepSettings = () => saveSettings(settingsStore, settings)
+setVolume(audio, settings.volume)
+const loadMutedPref = () => settings.muted
+// Sound on or off, wherever the player is: a run, the arena, an online room.
+function setMuted(m) {
+  settings.muted = m
+  keepSettings()
+  if (pvp) pvp.match.sfx.muted = m
+  if (net) net.muted = m
+  if (state?.sfx) state.sfx.muted = m
 }
-function saveMutedPref(m) {
-  try { localStorage.setItem('dc-muted', m ? '1' : '0') } catch {}
+
+// One listener ahead of every other turns the key the player pressed into
+// the key the game reads for that action (systems/bindings.js). Keys the
+// touch layer sends are already the game's own and pass; so does typing in a
+// field, and the title screen, where cheats are typed. `keyGrab` takes the
+// next real key for the Controls screen.
+let keyGrab = null
+const sentFor = new Map()   // real key held -> the key sent in its place
+function routeKey(e) {
+  if (!e.isTrusted || e.target?.tagName === 'INPUT') return
+  const swallow = () => { e.stopImmediatePropagation(); e.preventDefault() }
+  if (keyGrab) {
+    swallow()
+    if (e.type === 'keydown' && !e.repeat) keyGrab(e.key)
+    return
+  }
+  if (phase === PHASE.TITLE) return
+  if (e.type === 'keyup' && sentFor.has(e.key)) {
+    swallow()
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: sentFor.get(e.key) }))
+    sentFor.delete(e.key)
+    return
+  }
+  const r = route(settings.bindings, e.key)
+  if (r.type === 'pass') { if (e.key === 'Tab') e.preventDefault(); return }
+  swallow()
+  if (r.type !== 'send') return
+  if (e.type === 'keydown') sentFor.set(e.key, r.key)
+  window.dispatchEvent(new KeyboardEvent(e.type, { key: r.key, repeat: e.repeat }))
 }
+window.addEventListener('keydown', routeKey, true)
+window.addEventListener('keyup', routeKey, true)
 window.addEventListener('keydown', e => { if (e.repeat && (e.key === 'f' || e.key === 'F')) return; keys[e.key] = true })   // a held F is one press (it turns Päivölä's mirrors)
 window.addEventListener('keyup',   e => { keys[e.key] = false })
 // Focus loss never delivers the keyup, so a key held over an Alt-Tab would
@@ -197,19 +239,6 @@ window.addEventListener('keydown', e => {
   if (pvp || net) return
   if (phase === PHASE.PLAYING) { if (!playerBound(state.player)) openInventory() }
   else if (inventoryOpen) closeInventory()
-})
-
-// M toggles sound. The muted flag lives on state.sfx; the audio engine
-// ramps its master gain when it sees the flag change in playCues.
-window.addEventListener('keydown', e => {
-  if (e.target?.tagName === 'INPUT') return
-  if ((e.key !== 'm' && e.key !== 'M') || e.repeat) return
-  if (pvp) { pvp.match.sfx.muted = !pvp.match.sfx.muted; saveMutedPref(pvp.match.sfx.muted); return }
-  if (net) { net.muted = !net.muted; saveMutedPref(net.muted); return }
-  if (!state?.sfx) return
-  state.sfx.muted = !state.sfx.muted
-  saveMutedPref(state.sfx.muted)
-  think(state, state.sfx.muted ? 'Sound muted.' : 'Sound on.')
 })
 
 // Q (and the green touch button): use whatever the active offhand holds.
@@ -971,6 +1000,7 @@ function goTitle() {
     onWilds: () => beginRun(WILDS_DEPTH, 'wilds'),
     onRush: () => beginRun(1, 'rush'),
     onPvpArena: () => (window.saveAPI?.isWeb ? goOnline() : goPvpPicker()),
+    onSettings: () => menu.showSettings({ onSound: () => openSound(goTitle), onControls: coarsePointer() ? null : () => openControls(goTitle), onBack: goTitle }),
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
@@ -1261,6 +1291,7 @@ async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = n
 }
 
 function resumeGame() {
+  keyGrab = null
   setPhase(PHASE.PLAYING)
   menu.hide()
   keys[' '] = false
@@ -1271,8 +1302,55 @@ function pauseGame() {
   // change or waystone hop to do it for you.
   if (runMode === 'wilds' && state && !state.gameOver) persistRun()
   setPhase(PHASE.PAUSED)
+  showPauseMenu()
+}
+function showPauseMenu() {
   const restartDepth = state?.cave ? state.cave.surface.level : state?.level ?? 1
-  menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth, runMode), onQuitToTitle: goTitle })
+  menu.showPause({
+    onResume: resumeGame,
+    onSound: () => openSound(showPauseMenu),
+    onControls: coarsePointer() ? null : () => openControls(showPauseMenu),
+    onRestart: () => beginRun(restartDepth, runMode), onQuitToTitle: goTitle,
+  })
+}
+
+// The Sound screen: every change is kept at once and heard at once.
+function openSound(back, selected = 0) {
+  menu.showSound({ volume: settings.volume, muted: settings.muted, selected }, {
+    onVolume: by => {
+      settings.volume = stepVolume(settings.volume, by)
+      setVolume(audio, settings.volume)
+      keepSettings()
+      playCues(audio, [{ name: 'ui-move' }], null, settings.muted)
+      openSound(back, 0)
+    },
+    onMute: () => { setMuted(!settings.muted); playCues(audio, [{ name: 'ui-move' }], null, settings.muted); openSound(back, 1) },
+    onBack: back,
+  })
+}
+
+// The Controls screen. Picking an action hands the next real key press to
+// `keyGrab` (routeKey): a usable key becomes that action's key, anything
+// else leaves things as they were.
+function openControls(back, selected = 0, waiting = null) {
+  if (waiting === null) keyGrab = null
+  menu.showControls({ rows: ACTIONS.map(a => ({ label: a.label, keys: keysLabel(settings.bindings, a.id) })), waiting, selected }, {
+    onPick: i => {
+      keyGrab = key => {
+        keyGrab = null
+        if (bindable(key)) {
+          settings.bindings = rebind(settings.bindings, ACTIONS[i].id, key)
+          keepSettings()
+          for (const k of Object.keys(keys)) keys[k] = false   // nothing stays held across a change
+          sentFor.clear()
+        }
+        openControls(back, i)
+      }
+      openControls(back, i, i)
+    },
+    onReset: () => { settings.bindings = defaultBindings(); keepSettings(); sentFor.clear(); openControls(back, ACTIONS.length) },
+    onBack: () => { keyGrab = null; back() },
+  })
 }
 
 function openWaystoneMenu(dests) {
