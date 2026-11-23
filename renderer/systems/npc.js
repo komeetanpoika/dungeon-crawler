@@ -10,10 +10,10 @@ import { buildNavGrid, passable } from './nav.js'
 import { act } from './act.js'
 import { updateBrain } from './brain.js'
 import { tryStartEnemyAttack, WEAPONS } from './enemy-attack.js'
-import { speakFrom } from './feedback.js'
+import { speakFrom, sayDuration } from './feedback.js'
 import { sfx } from './sfx.js'
 import { hurtCreature } from './creatures.js'
-import { tickNpcAnim } from './npc-anim.js'
+import { tickNpcAnim, stepFrame } from './npc-anim.js'
 
 const S = 32
 export const FLEE_TIME = 3          // s a hit `flee` species keeps running
@@ -27,6 +27,15 @@ export const HUNT_RANGE = 8 * S     // px a `prey` species will chase a target w
 export const BITE_REACH = 30        // px within which hunt_prey stops closing and bites
 export const BITE_INTERVAL = 0.8    // s between bites once in reach
 export const BITE_DMG = 2           // damage per bite, via hurtCreature
+export const GIVE_WAY_WAIT = 1      // s a townsperson waits for the player to step off their way
+const GIVE_WAY_NEAR = 1.6 * S       // px: how close they come before they wait
+const SIDESTEP_TIME = 1.5           // s at most spent stepping round the player
+export const STRIKE_REACH = 36      // px within which a watchman's sword reaches his foe
+export const STRIKE_INTERVAL = 0.8  // s between a watchman's blows
+export const STRIKE_DMG = 3         // damage per blow, through the city's hurt hook
+export const LOST_TIME = 5          // s a watchman leaves a foe he found no way to before he may take it on again
+export const TALK_BEAT = 2.4        // s a line in a street talk stands before the other answers
+export const TALK_SHOW = TALK_BEAT - 0.2   // s at most a street-talk line's bubble shows: gone before the answer's
 
 export function makeNpc({ species, id, x, y, hostile = undefined, role = null }) {
   const def = NPC_SPECIES[species]
@@ -181,6 +190,138 @@ export const GOALS = {
       return { mode: 'patrol', target: e.objective, speed: ctx.cfg.speed }
     },
   },
+  // Kalevanlinna's watch: the runtime names a foe (e.city.foe, a hostile the
+  // city keeps out, near his post or inside the walls) and he closes to sword
+  // reach and strikes every STRIKE_INTERVAL. The blow goes through the city's
+  // hurt hook, which is game.js's enemy damage path, so what he kills dies as
+  // it would to the player. He never turns hostile for it: the foe is the
+  // runtime's word, not the enemy brain's. The swing is drawn only. A foe he
+  // finds no way to for GIVE_UP_TIME is let go for LOST_TIME (e.city.lost,
+  // counted down by the runtime), so he is not left pushing at a wall.
+  defend: {
+    when: e => !!e.city?.foe,
+    enter: e => { e.ai.strikeT = 0; e.ai.giveUp = 0 },
+    run: (e, ctx, dt) => {
+      const foe = e.city.foe, state = ctx.state
+      e.ai.strikeT = Math.max(0, (e.ai.strikeT ?? 0) - dt)
+      if (!(foe.hp > 0)) return { mode: 'hold' }
+      if (Math.hypot(foe.px - e.px, foe.py - e.py) > STRIKE_REACH) {
+        const target = { x: foe.x, y: foe.y }
+        e.ai.giveUp = isStuckOn(e, target) ? (e.ai.giveUp ?? 0) + dt : 0
+        if (e.ai.giveUp >= GIVE_UP_TIME) { e.city.lost = foe; e.city.lostT = LOST_TIME; e.city.foe = null; return { mode: 'hold' } }
+        return { mode: 'patrol', target, speed: ctx.cfg.speed }
+      }
+      e.facing = foe.px < e.px ? 'west' : 'east'
+      if (e.ai.strikeT <= 0) {
+        e.ai.strikeT = STRIKE_INTERVAL
+        state.cityRun?.hooks?.hurt(foe, STRIKE_DMG, e)
+        state.hitEffects?.push({ x: foe.x, y: foe.y })
+        sfx(state, 'melee-hit', { px: foe.px, py: foe.py })
+        const w = WEAPONS.sword
+        e.attack = {
+          weaponId: 'sword', phase: 'swing', timer: w.duration, duration: w.duration,
+          angle: Math.atan2(foe.py - e.py, foe.px - e.px),
+        }
+      }
+      return { mode: 'hold' }
+    },
+  },
+  // Kalevanlinna's people (wilds/city/runtime.js): walk to the next waypoint
+  // of their day. The runtime sets e.city.next (a window tile) and moves it
+  // on as they reach it. A player standing on that waypoint is waited for a
+  // second, then walked round: a step aside, and e.city.passed tells the
+  // runtime to take the waypoint after it.
+  follow_city: {
+    when: e => !!e.city?.next,
+    enter: e => { e.ai.wait = 0; e.ai.side = null },
+    run: (e, ctx, dt) => {
+      const c = e.city, ai = e.ai, p = ctx.state.player
+      const speed = ctx.cfg.speed
+      if (ai.side) {
+        ai.side.t -= dt
+        const there = Math.hypot(ai.side.x * S + S / 2 - e.px, ai.side.y * S + S / 2 - e.py) < S * 0.25
+        if (ai.side.t > 0 && !there) return { mode: 'patrol', target: ai.side, speed }
+        ai.side = null
+        c.passed = true
+      }
+      const blocked = c.next.x === p.x && c.next.y === p.y && Math.hypot(p.px - e.px, p.py - e.py) <= GIVE_WAY_NEAR
+      if (!blocked) { ai.wait = 0; return { mode: 'patrol', target: c.next, speed } }
+      ai.wait = (ai.wait ?? 0) + dt
+      if (ai.wait < GIVE_WAY_WAIT) return { mode: 'hold' }
+      ai.wait = 0
+      const side = sidestep(e, ctx.state, c.next)
+      if (!side) { c.passed = true; return { mode: 'hold' } }
+      ai.side = { x: side.x, y: side.y, t: SIDESTEP_TIME }
+      return { mode: 'patrol', target: ai.side, speed }
+    },
+  },
+  // Kalevanlinna's scenes (wilds/city/scenes.js): the runtime casts people
+  // into a scene (e.city.scene) and walks them to their place in it; these
+  // goals are what they do once there. The runtime moves the scene on.
+  //
+  // Two people stop, face each other and take turns: e.city.talk = { lines,
+  // me (0 or 1), conv } with conv = { i, t, go, done, said } shared by both.
+  // Whoever's turn it is (i % 2) says line i and counts TALK_BEAT down, then
+  // it is the other's; done after the last line.
+  talk: {
+    when: e => e.city?.scene?.id === 'talk' && !e.city.next && !!e.city.talk,
+    run: (e, ctx, dt) => {
+      const tk = e.city.talk, cv = tk.conv
+      face(e)
+      if (!cv.go || cv.done || cv.i % 2 !== tk.me) return { mode: 'hold' }
+      if (cv.said !== cv.i) { cv.said = cv.i; sceneSay(ctx.state, e, tk.lines[cv.i], Math.min(TALK_SHOW, sayDuration(tk.lines[cv.i]))) }
+      if ((cv.t -= dt) <= 0) {
+        cv.i++; cv.t = TALK_BEAT
+        if (cv.i >= tk.lines.length) cv.done = true
+      }
+      return { mode: 'hold' }
+    },
+  },
+  // Children's tag: the runtime says who is "it" and where each runs to
+  // (e.city.scene.target, a window tile); "it" stands and counts first.
+  play_tag: {
+    when: e => e.city?.scene?.id === 'tag',
+    run: (e, ctx) => {
+      const sc = e.city.scene
+      if (sc.freeze > 0 || !sc.target) return { mode: 'hold' }
+      return { mode: 'patrol', target: sc.target, speed: ctx.cfg.speed * (sc.role === 'it' ? 1.1 : 1) }
+    },
+  },
+  // Standing round the stocks, facing them.
+  gawk: {
+    when: e => e.city?.scene?.id === 'gawk' && !e.city.next,
+    run: e => { face(e); return { mode: 'hold' } },
+  },
+  // A fisher or porter on the way between the boat and the fish market, a
+  // crate in their arms on the way up (e.city.carry); a moment at either end.
+  carry: {
+    when: e => e.city?.scene?.id === 'unload',
+    run: (e, ctx, dt) => e.city.next ? GOALS.follow_city.run(e, ctx, dt) : { mode: 'hold' },
+  },
+  // A drunk on the way home: wide of each waypoint, one side and the other,
+  // and slower; straight on when near it (so it is reached).
+  stagger: {
+    when: e => e.city?.scene?.id === 'drunk' && !!e.city.next,
+    run: (e, ctx, dt) => {
+      const n = e.city.next, ai = e.ai
+      ai.weave = (ai.weave ?? 0) + dt
+      const dx = Math.sign(n.x - e.x), dy = Math.sign(n.y - e.y)
+      let target = n
+      if (Math.max(Math.abs(n.x - e.x), Math.abs(n.y - e.y)) > 2) {
+        const s = Math.sin(ai.weave * 2.2) > 0 ? 1 : -1
+        const t = { x: n.x - dy * s, y: n.y + dx * s }
+        if (passable(buildNavGrid(ctx.state.map), t.x, t.y, 1)) target = t
+      }
+      return { mode: 'patrol', target, speed: ctx.cfg.speed * 0.6 }
+    },
+  },
+  // In a scene and at one's place in it (the smith at the anvil, the busker,
+  // a listener, the crier at his box, the beggar at the church door...):
+  // stand, facing what the scene is about.
+  at_scene: {
+    when: e => !!e.city?.scene && !e.city.next,
+    run: e => { face(e); return { mode: 'hold' } },
+  },
   // rooted to the spot (Lalli up his tree): nothing moves him
   stay: {
     when: () => true,
@@ -205,6 +346,37 @@ export const GOALS = {
       return { mode: 'patrol', target: ai.wanderPt, speed: ctx.cfg.wanderSpeed }
     },
   },
+}
+
+// A scene's facing (east or west; a sprite has no other), held while standing.
+function face(e) {
+  const f = e.city.scene?.facing
+  if (f) e.facing = f
+}
+
+// A line said in a scene (wilds/city/scenes.js): kept on the speaker
+// (e.city.say = { text, n, t, dur }), whose own bubble the renderer draws
+// while t (aged by the city runtime) is under dur: long enough to read it
+// (feedback.js sayDuration), or `dur` given (a street talk's lines are gone
+// before the answer comes). The single speech bubble is never a scene's: a
+// scene never talks over what the player or a tale is saying, nor one scene
+// over another (feedback.js ambientSpeakers).
+export function sceneSay(state, e, text, dur = sayDuration(text)) {
+  const c = e.city
+  if (c) c.say = { text, n: (c.say?.n ?? 0) + 1, t: 0, dur }
+}
+
+// The tile beside `e` square to its way towards `to`: the right hand first,
+// then the left, never the player's. null when both are walls.
+function sidestep(e, state, to) {
+  const dx = Math.sign(to.x - e.x), dy = Math.sign(to.y - e.y)
+  const [ax, ay] = Math.abs(to.x - e.x) >= Math.abs(to.y - e.y) ? [dx || 1, 0] : [0, dy || 1]
+  const nav = buildNavGrid(state.map)
+  for (const [sx, sy] of [[-ay, ax], [ay, -ax]]) {
+    const x = e.x + sx, y = e.y + sy
+    if (passable(nav, x, y, 1) && !(x === state.player.x && y === state.player.y)) return { x, y }
+  }
+  return null
 }
 
 // First goal in the species list whose `when` holds. Runs `enter` on a change.
@@ -239,12 +411,14 @@ export function updateNpc(e, state, delta) {
 
 // Called by every damage site right after an NPC's hp drops. Flee species run;
 // fight species turn hostile; any blow on a villager rouses the village.
+// A `stand` species (the city's watch) does neither: the city's own rules on
+// violence decide what follows. The city shares no wrath.
 export function onNpcHit(e, state) {
   const def = NPC_SPECIES[e.species]
   if (!def) return { hostile: false, wrath: false }
   e.inCombat = true
   if (def.onHit === 'fight') e.hostile = true
-  else e.ai.fleeTimer = Math.max(e.ai.fleeTimer ?? 0, FLEE_TIME)
+  else if (def.onHit !== 'stand') e.ai.fleeTimer = Math.max(e.ai.fleeTimer ?? 0, FLEE_TIME)
   let wrath = false
   if (def.faction === 'village') {
     for (const o of state.entities) {
@@ -267,6 +441,8 @@ export function rollNpcDrop(e, rng = Math.random) {
 // The returned local is the exception: they get one fixed face of their own,
 // so the person who walks back in is visibly not a neighbour.
 export function spriteKeyFor(e) {
+  // Kalevanlinna's people and animals carry a look: tf_<look>, tf_<look>_step.
+  if (e.look) return stepFrame(e) ? `tf_${e.look}_step` : `tf_${e.look}`
   const def = NPC_SPECIES[e.species]
   if (!def) return null
   if (e.species !== 'villager') return def.sprite
@@ -298,6 +474,8 @@ export function interactNpc(state, e, rng = Math.random) {
   // was built from (wilds/tale-run.js); a tale's own stand-in carries linesKey.
   // Someone at home in a house carries the household's own lines (renderer/interior/).
   const lines = e.lines ?? state.villageLines?.[e.linesKey ?? e.wildsKey]?.[e.species] ?? state.villagerLines?.[e.species] ?? def.lines
+  // no lines at all (Kalevanlinna's Count, who is not spoken to): no answer
+  if (lines && !lines.length) return null
   if (lines) {
     e.facing = player.px < e.px ? 'west' : 'east'
     e.ai.wanderPt = null

@@ -20,7 +20,9 @@ const area = r => (r.x1 - r.x0 + 1) * (r.y1 - r.floorY0 + 1)
 const count = (rng, n) => Array.isArray(n) ? int(rng, n[0], n[1]) : n ?? 1
 
 // roomId -> role. `story` ({ role }) puts that role on the biggest room past
-// the hall; a house of one room is a cottage whatever it is for.
+// the hall; a house of one room is a cottage whatever it is for. A trade with
+// a `hallRole` (the inn's taproom) names the room by the door and its `rooms`
+// the rest, biggest first.
 export function assignRoles(plan, { version = 'home', trade = null, story = null, rng }) {
   const roles = new Map()
   const others = plan.rooms.filter(r => r.id !== plan.entry).sort((a, b) => area(b) - area(a) || a.id - b.id)
@@ -35,12 +37,14 @@ export function assignRoles(plan, { version = 'home', trade = null, story = null
     return roles
   }
   if (!others.length) { roles.set(plan.entry, 'cottage'); return roles }
-  roles.set(plan.entry, version === 'sunroom' ? 'sunhall' : 'hall')
+  const T = TRADES[trade]
+  roles.set(plan.entry, version === 'sunroom' ? 'sunhall' : T?.hallRole ?? 'hall')
   if (version === 'sunroom') {   // the glassmaker reads, sleeps and cooks
     others.forEach((r, i) => roles.set(r.id, ['study', 'bedroom', 'kitchen', 'larder'][i] ?? 'larder'))
     return roles
   }
-  const work = TRADES[trade]?.workshopRole ?? (TRADES[trade] ? 'workshop' : null)
+  if (T?.rooms) { others.forEach((r, i) => roles.set(r.id, T.rooms[i] ?? 'larder')); return roles }
+  const work = T?.workshopRole ?? (T ? 'workshop' : null)
   let want = ['bedroom', 'kitchen', 'larder', 'bedroom', 'study', 'larder']
   if (work && others.length >= 3) want.splice(2, 0, work)
   else if (work && others.length === 2 && rng() < 0.4) want = ['bedroom', work, 'kitchen', 'larder']
@@ -183,9 +187,42 @@ function makeFurnisher(map, plan, rng, reserve) {
     }
   }
 
+  // A taproom's tables: spread about the floor, each with a bench along both
+  // long sides. A table keeps a row clear of the face and of the south wall
+  // and a cell off the side walls, three cells from the spawn, and a cell
+  // clear of the next table's benches; each next table is the free place
+  // farthest from those laid (a little jitter), so they spread out.
+  function tables(room, G) {
+    const id = pick(rng, G.table), item = ITEMS[id], tw = item.tiles[0].length, th = item.tiles.length
+    const want = Math.max(G.tables[0], Math.min(G.tables[1], Math.floor(area(room) / G.per)))
+    const cand = []
+    for (let y = room.floorY0 + 2; y + th + 1 <= room.y1 - 1; y++) for (let x = room.x0 + 1; x + tw <= room.x1; x++) {
+      if (Math.max(Math.abs(x + (tw - 1) / 2 - plan.spawn.x), Math.abs(y + th - plan.spawn.y)) < 3.5) continue
+      cand.push({ x, y, j: rng() })
+    }
+    const laid = []
+    // the footprints (table and benches) of two tables keep a cell between them
+    const clear = c => laid.every(t => c.x + tw < t.x || t.x + tw < c.x || c.y + th + 2 < t.y || t.y + th + 2 < c.y)
+    const gap = c => laid.length ? Math.min(...laid.map(t => Math.max(Math.abs(c.x - t.x), Math.abs(c.y - t.y)))) : -Math.hypot(c.x + tw / 2 - (room.x0 + room.x1 + 1) / 2, c.y - (room.floorY0 + room.y1) / 2)
+    while (laid.length < want) {
+      const free = cand.filter(clear)
+      if (!free.length) break
+      free.sort((a, b) => gap(b) + b.j - (gap(a) + a.j))
+      let done = false
+      for (const c of free) {
+        if (!putFloor(room, id, c.x, c.y)) continue
+        for (const by of [c.y - 1, c.y + th]) putFloor(room, G.bench, c.x, by)
+        laid.push(c); done = true
+        break
+      }
+      if (!done) break
+    }
+  }
+
   function group(room, kind, recipe) {
     const G = GROUPS[kind]
     if (!G) return
+    if (G.tables) { tables(room, G); return }
     const rw = room.x1 - room.x0 + 1, rh = room.y1 - room.floorY0 + 1
     const cx = (room.x0 + room.x1) / 2, cy = (room.floorY0 + room.y1) / 2
     if (G.rugOnly) {

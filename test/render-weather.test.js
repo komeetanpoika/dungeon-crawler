@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeWeatherLayer, fogBlobs, drawNight, drawFog } from '../renderer/render/weather.js'
+import { makeWeatherLayer, fogBlobs, drawNight, drawFog, nightBands } from '../renderer/render/weather.js'
 
 // Records every draw with the composite op / alpha / smoothing in force at
 // the time. Unknown methods are recorded generically via the Proxy.
@@ -37,8 +37,26 @@ function layerWith(viewW = 400, viewH = 300) {
   layer.resize(viewW, viewH)
   return layer
 }
+// a layer that cannot keep a night mask: every lit frame draws the layer straight on
+function directLayer(viewW, viewH) {
+  const layer = layerWith(viewW, viewH)
+  layer.createCanvas = null
+  return layer
+}
 
 const cam = { camX: 0, camY: 0 }
+// How many times each pixel of a 400 x 300 frame is washed (a fill or a blit of the layer) by the night's ops on ctx.
+function washCountOf(ctx, layer) {
+  const n = new Uint8Array(400 * 300)
+  for (const o of ctx.ops) {
+    const isBlit = o.name === 'drawImage' && o.img === layer.canvas
+    const isFill = o.name === 'fillRect' && o.gco === 'multiply'
+    if (!isBlit && !isFill) continue
+    const [x, y, w, h] = isBlit ? o.a.slice(4) : o.a
+    for (let j = Math.round(y); j < Math.round(y + h); j++) for (let i = Math.round(x); i < Math.round(x + w); i++) n[j * 400 + i]++
+  }
+  return n
+}
 const view = { W: 400, H: 300 }
 const S = 32
 
@@ -94,18 +112,39 @@ describe('drawNight', () => {
     assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
   })
 
-  it('with a light in view, fills the layer with the ambient colour and blits it with multiply at the dark alpha, smoothed', () => {
-    const ctx = recordingCtx(), layer = layerWith()
+  const washCount = (ctx, layer) => washCountOf(ctx, layer)
+
+  it('drawn straight on (no kept mask), a light fills the layer with the ambient colour and blits it with multiply at the dark alpha, smoothed, where the light reaches', () => {
+    const ctx = recordingCtx(), layer = directLayer()
     drawNight(ctx, layer, look({ lights: [{ px: 100, py: 100, r: 4.5, strength: 1, grey: false }] }), cam, view, S)
     const fill = layer.ctx.ops.find(o => o.name === 'fillRect')
     assert.equal(fill.fillStyle, 'rgb(40,60,120)')
     assert.deepEqual(fill.a, [0, 0, 100, 75])
-    const blit = ctx.ops.find(o => o.name === 'drawImage')
-    assert.equal(blit.img, layer.canvas)
-    assert.equal(blit.gco, 'multiply')
-    assert.equal(blit.alpha, 0.85)
-    assert.equal(blit.smooth, true)
-    assert.deepEqual(blit.a, [0, 0, 100, 75, 0, 0, 400, 300])
+    const blits = ctx.ops.filter(o => o.name === 'drawImage')
+    assert.ok(blits.length > 0)
+    for (const blit of blits) {
+      assert.equal(blit.img, layer.canvas)
+      assert.equal(blit.gco, 'multiply')
+      assert.equal(blit.alpha, 0.85)
+      assert.equal(blit.smooth, true)
+      // the layer's part under it, at the whole frame's scale (layer 100 x 75 over 400 x 300)
+      const [sx, sy, sw, sh, dx, dy, dw, dh] = blit.a
+      assert.deepEqual([sx, sy, sw, sh], [dx / 4, dy / 4, dw / 4, dh / 4])
+    }
+    // the rest of the frame is the flat colour the layer holds there, at the same alpha
+    const fills = ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'multiply')
+    assert.ok(fills.length > 0)
+    for (const f of fills) { assert.equal(f.fillStyle, 'rgb(40,60,120)'); assert.equal(f.alpha, 0.85) }
+    // every pixel washed exactly once; every pixel the light's hole reaches by the layer
+    const n = washCount(ctx, layer)
+    assert.ok(n.every(v => v === 1), 'fills and blits cover the frame once')
+    const blitted = new Uint8Array(view.W * view.H)
+    for (const b of blits) { const [x, y, w, h] = b.a.slice(4); for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) blitted[j * view.W + i] = 1 }
+    const R = 4.5 * 32 + 8
+    for (let j = 0; j < view.H; j++) for (let i = 0; i < view.W; i++) {
+      if (Math.hypot(i + 0.5 - 100, j + 0.5 - 100) <= R) assert.equal(blitted[j * view.W + i], 1, `pixel ${i},${j} in the light is blitted`)
+    }
+    assert.ok(blitted.reduce((a, v) => a + v, 0) < 0.6 * view.W * view.H, 'a light in a corner blits well under the frame')
     assert.equal(ctx.imageSmoothingEnabled, false, 'smoothing restored')
     assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
     assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
@@ -113,7 +152,7 @@ describe('drawNight', () => {
   })
 
   it('punches a destination-out hole per light in the layer and adds a lighter glow on the frame', () => {
-    const ctx = recordingCtx(), layer = layerWith()
+    const ctx = recordingCtx(), layer = directLayer()
     const light = { px: 100, py: 100, r: 4.5, strength: 1, grey: false }
     drawNight(ctx, layer, look({ lights: [light] }), cam, view, S)
     const hole = layer.ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'destination-out')
@@ -139,6 +178,149 @@ describe('drawNight', () => {
     assert.ok(bb > br + 80 && bb > bg, `blue glow, got ${glow[0]}`)
     const [or, og, ob] = glow[1].match(/rgba\((\d+),(\d+),(\d+)/).slice(1).map(Number)
     assert.ok(or > ob && og > ob, `orange glow, got ${glow[1]}`)
+  })
+
+  it('a light\'s glow says how far its warm glow reaches (tiles), 0 none: the hole is punched all the same', () => {
+    const ctx = recordingCtx(), layer = directLayer()
+    const lights = [{ px: 100, py: 100, r: 3, strength: 1, grey: false, glow: 1 }, { px: 200, py: 100, r: 1.5, strength: 0.7, grey: false, glow: 0 }]
+    drawNight(ctx, layer, look({ lights }), cam, view, S)
+    assert.equal(layer.ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'destination-out').length, 2, 'both punch their hole')
+    const glow = ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'lighter')
+    assert.equal(glow.length, 1, 'only the first glows')
+    assert.deepEqual(glow[0].a, [100 - 32, 100 - 32, 64, 64], 'a glow of one tile round it')
+  })
+
+  it('lights all over the frame still wash every pixel once', () => {
+    const ctx = recordingCtx(), layer = directLayer()
+    const lights = []
+    for (let i = 0; i < 12; i++) lights.push({ px: (i * 97) % 400, py: (i * 61) % 300, r: i % 2 ? 3 : 1.5, strength: 1, grey: false, glow: 0 })
+    drawNight(ctx, layer, look({ lights }), cam, view, S)
+    assert.ok(washCount(ctx, layer).every(v => v === 1))
+  })
+
+  it('cuts the bands on whole device pixels, top to bottom, with runs inside the frame', () => {
+    for (const dpr of [1, 1.25, 1.5, 2, 1.1]) {
+      const W = 1023, H = 701
+      const bands = nightBands([{ x: 300, y: 200, r: 96 }, { x: 900, y: 650, r: 48 }, { x: 310, y: 260, r: 48 }], W, H, dpr)
+      assert.equal(bands[0].y0, 0); assert.equal(bands.at(-1).y1, H)
+      const whole = v => v === W || v === H || Math.abs(v * dpr - Math.round(v * dpr)) < 1e-6
+      for (let i = 0; i < bands.length; i++) {
+        const b = bands[i]
+        if (i) assert.equal(b.y0, bands[i - 1].y1, 'bands follow on')
+        assert.ok(whole(b.y0) && whole(b.y1), `band edge on a device pixel at dpr ${dpr}`)
+        let x = 0
+        for (const [x0, x1] of b.runs) {
+          assert.ok(x0 >= x && x1 > x0 && x1 <= W)
+          assert.ok(whole(x0) && whole(x1), `run edge on a device pixel at dpr ${dpr}`)
+          x = x1
+        }
+      }
+      // two bands in a row never have the same runs (they are one band then)
+      for (let i = 1; i < bands.length; i++) assert.notDeepEqual(bands[i].runs, bands[i - 1].runs)
+    }
+    assert.deepEqual(nightBands([], 400, 300), [{ y0: 0, y1: 300, runs: [] }], 'no hole: one band, all flat')
+  })
+
+  // The kept night mask: the layer for the view and a pad of 160 px, scaled up once.
+  const lamp = { px: 100, py: 100, r: 3, strength: 1, grey: false, glow: 0 }
+  const opsOf = c => c ? c.ctx.ops.length : 0
+
+  it('a lit frame keeps a night mask: the layer for the view and a pad, scaled up once, blitted 1:1 with multiply', () => {
+    const ctx = recordingCtx(), layer = layerWith()
+    drawNight(ctx, layer, look({ lights: [lamp] }), { camX: 10.5, camY: 20 }, view, S)
+    const N = layer.night
+    // 400 + 320 by 300 + 320 css px over a quarter-resolution layer of 180 x 155
+    assert.deepEqual([N.full.width, N.full.height, N.q.width, N.q.height], [720, 620, 180, 155])
+    assert.deepEqual([N.x0, N.y0], [10 - 160, 20 - 160])
+    const fill = N.q.ctx.ops.find(o => o.name === 'fillRect')
+    assert.equal(fill.fillStyle, 'rgb(40,60,120)'); assert.deepEqual(fill.a, [0, 0, 180, 155])
+    const holes = N.q.ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'destination-out')
+    assert.equal(holes.length, 1)
+    const r = 3 * 32 * 0.25, hx = (100 - N.x0) * 0.25, hy = (100 - N.y0) * 0.25
+    assert.deepEqual(holes[0].a, [hx - r, hy - r, 2 * r, 2 * r])
+    const up = N.full.ctx.ops.filter(o => o.name === 'drawImage')
+    assert.equal(up.length, 1)
+    assert.equal(up[0].img, N.q); assert.equal(up[0].smooth, true)
+    assert.deepEqual(up[0].a, [0, 0, 180, 155, 0, 0, 720, 620], 'exactly four times')
+    const blits = ctx.ops.filter(o => o.name === 'drawImage')
+    assert.equal(blits.length, 1)
+    assert.equal(blits[0].img, N.full)
+    assert.equal(blits[0].gco, 'multiply'); assert.equal(blits[0].alpha, 0.85); assert.equal(blits[0].smooth, false)
+    assert.deepEqual(blits[0].a, [N.x0 - 10.5, N.y0 - 20])
+    assert.equal(layer.ctx.ops.length, 0, 'the view layer is not drawn')
+    assert.equal(ctx.ops.filter(o => o.name === 'fillRect' && o.gco === 'multiply').length, 0)
+    assert.equal(ctx.imageSmoothingEnabled, false); assert.equal(ctx.globalCompositeOperation, 'source-over'); assert.equal(ctx.globalAlpha, 1)
+  })
+
+  it('the next frames blit the kept mask at the camera\'s offset while the lights hold and the view stays inside it', () => {
+    const layer = layerWith()
+    drawNight(recordingCtx(), layer, look({ lights: [lamp] }), cam, view, S)
+    const N = layer.night, q = opsOf(N.q), full = opsOf(N.full)
+    for (const [camX, camY] of [[40, 0], [160, 160], [-160, -100], [7.25, 3]]) {
+      const ctx = recordingCtx()
+      // the same lights, made anew as every frame does
+      drawNight(ctx, layer, look({ lights: [{ ...lamp }], t: camX }), { camX, camY }, view, S)
+      assert.equal(opsOf(N.q), q, 'not built again'); assert.equal(opsOf(N.full), full)
+      const b = ctx.ops.filter(o => o.name === 'drawImage')
+      assert.equal(b.length, 1); assert.equal(b[0].img, N.full)
+      assert.deepEqual(b[0].a, [N.x0 - camX, N.y0 - camY])
+    }
+    assert.equal(N.builds, 1)
+  })
+
+  it('the view leaving the mask, a light that comes or changes, or a new colour builds it anew', () => {
+    const cases = [
+      ['the view leaves it', { camX: 161, camY: 0 }, look({ lights: [lamp] })],
+      ['a light comes', cam, look({ lights: [lamp, { ...lamp, px: 300 }] })],
+      ['a light changes', cam, look({ lights: [{ ...lamp, strength: 0.5 }] })],
+      ['the colour changes', cam, look({ lights: [lamp], ambient: [41, 60, 120] })],
+    ]
+    for (const [what, c, lk] of cases) {
+      const layer = layerWith()
+      drawNight(recordingCtx(), layer, look({ lights: [lamp] }), cam, view, S)
+      for (let i = 0; i < 6; i++) drawNight(recordingCtx(), layer, look({ lights: [lamp] }), cam, view, S)
+      const ctx = recordingCtx()
+      drawNight(ctx, layer, lk, c, view, S)
+      assert.equal(layer.night.builds, 2, what)
+      assert.equal(ctx.ops.filter(o => o.name === 'drawImage')[0].img, layer.night.full, what)
+    }
+    // a light far outside the mask changes nothing
+    const layer = layerWith()
+    drawNight(recordingCtx(), layer, look({ lights: [lamp] }), cam, view, S)
+    for (let i = 0; i < 8; i++) drawNight(recordingCtx(), layer, look({ lights: [lamp, { ...lamp, px: 3000, strength: i / 8 }] }), cam, view, S)
+    assert.equal(layer.night.builds, 1)
+    // nor does the darkness alone (it is the blit's alpha)
+    const ctx = recordingCtx()
+    drawNight(ctx, layer, look({ lights: [lamp], dark: 0.4 }), cam, view, S)
+    assert.equal(layer.night.builds, 1)
+    assert.equal(ctx.ops.find(o => o.name === 'drawImage').alpha, 0.4)
+  })
+
+  it('built at most every six frames, and less often while each build is undone at once: the frames between draw the layer straight on', () => {
+    const layer = layerWith()
+    // a light that is never the same two frames running
+    const frame = n => { const ctx = recordingCtx(); drawNight(ctx, layer, look({ lights: [{ ...lamp, px: 100 + n / 2, strength: 1 - n / 400 }] }), cam, view, S); return ctx }
+    let direct = 0
+    for (let n = 0; n < 200; n++) {
+      const ctx = frame(n)
+      const b = ctx.ops.filter(o => o.name === 'drawImage')
+      if (b.length && b[0].img === layer.canvas) {
+        direct++
+        assert.ok(washCountOf(ctx, layer).every(v => v === 1), 'a straight frame washes every pixel once')
+      } else assert.equal(b[0].img, layer.night.full)
+    }
+    assert.ok(layer.night.builds <= 8, `a light changing every frame: ${layer.night.builds} builds in 200 frames`)
+    assert.equal(direct, 200 - layer.night.builds, 'every other frame straight on')
+    assert.equal(layer.night.straight, direct, 'and counted')
+    // then the lights hold: built once more and kept
+    const before = layer.night.builds
+    for (let n = 0; n < 80; n++) drawNight(recordingCtx(), layer, look({ lights: [lamp] }), cam, view, S)
+    assert.equal(layer.night.builds, before + 1)
+    // and a mask that was kept a while is built anew within six frames of the next change
+    const moved = { ...lamp, px: 140 }
+    let n = 0
+    while (layer.night.builds === before + 1 && n < 20) { drawNight(recordingCtx(), layer, look({ lights: [moved] }), cam, view, S); n++ }
+    assert.ok(n <= 6, `built again after ${n} frames`)
   })
 
   it('skips lights that are off the layer', () => {

@@ -7,6 +7,7 @@
 import { TALES, TALE_IDS } from '../data/tales.js'
 import { villageAt, villagesNear, pieceBiome, pieceKey } from './layout.js'
 import { hash, hashInt } from './rand.js'
+import { isCityPiece } from './city/geometry.js'
 
 export const REACH = 3       // pieces (Chebyshev) from the village
 export const SPACING = 3     // pieces between two places of one kind: never two of a kind in one window
@@ -50,6 +51,7 @@ export function fitsOf(seed, v, reach = REACH) {
 const taleCache = new Map()
 export function taleOf(seed, v) {
   if (isHome(v)) return 'elk'
+  if (isCityPiece(v.wx, v.wy)) return null   // the city is no village with a tale
   const key = `${seed}:${v.wx},${v.wy}`
   if (taleCache.has(key)) return taleCache.get(key)
   const fits = fitsOf(seed, v)
@@ -132,7 +134,7 @@ export function eligible(world, v, id, wx, wy, reach = REACH) {
 // never left with directions to a place that cannot come.
 function openTo(world, v, id) {
   for (let reach = REACH; reach <= WIDEST; reach++) {
-    const open = fitsOf(world.seed, v, reach)[id].filter(p => eligible(world, v, id, p.wx, p.wy, reach))
+    const open = fitsOf(world.seed, v, reach)[id].filter(p => !isCityPiece(p.wx, p.wy) && eligible(world, v, id, p.wx, p.wy, reach))
     if (open.length) return open
   }
   return []

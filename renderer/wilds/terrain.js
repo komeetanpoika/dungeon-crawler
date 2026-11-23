@@ -11,6 +11,7 @@
 //
 // Local cell (x, y), 0..PIECE-1, is builder cell (x + MARGIN, y + MARGIN).
 import { PIECE, FRAME, BLEND, MARGIN, biomeSampler, gateAt } from './layout.js'
+import { inBay } from './city/geometry.js'
 import { hash, hashInt, noise2, mulberry32 } from './rand.js'
 import { MapBuilder, shoreline, WATER_SKINS, isWaterSkin, isSandySkin, RIM_TILES, TREE_PAIRS } from '../terrain/lib.js'
 import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, LAT_PX, LAT_PY } from '../terrain/mountain.js'
@@ -18,6 +19,8 @@ import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
 import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
+import { CITY_SKINS } from './city/kit.js'
+import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
@@ -58,12 +61,18 @@ export const FEATURE_SKINS = [
   ...SITE_SKINS,
   'ow_mushroom', 'ow_boat', 'ow_stump', 'ow_tree_apple', 'ow_tree_small', 'ow_pond_11', 'ow_bush_berry',
 ]
-export const WILDS_SKINS = [...new Set([...TERRAIN_SKINS, ...FEATURE_SKINS])]
+// Kalevanlinna (city/kit.js) is laid with the same art and these; its people
+// and animals (data/townsfolk-looks.js) are loaded with them.
+export const WILDS_SKINS = [...new Set([...TERRAIN_SKINS, ...FEATURE_SKINS, ...CITY_SKINS, ...TOWNSFOLK_SKINS])]
 
 const mod = (n, m) => ((n % m) + m) % m
 const smooth = t => t * t * (3 - 2 * t)
 
-export function makeTerrain(seed, wx, wy, deal = 0) {
+// `blank(x, y)` (local cells): cells nobody will look at, laid as plain grass
+// without working out what grows there. Kalevanlinna passes the inside of its
+// wall, which it lays itself: those cells lie over a dozen tiles from any
+// piece edge it keeps, further than any rule or art pass looks.
+export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   const X0 = wx * PIECE, Y0 = wy * PIECE
   const dealSeed = hashInt(seed, wx, wy, 9000 + deal)
 
@@ -114,6 +123,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
 
   // What the land is before gates, paths and features: 'land', 'water', 'mass'.
   const rawKind = memo((x, y) => {
+    if (inBay(X0 + x, Y0 + y)) return 'water'   // pure in the world tile, so neighbours agree
     switch (biome(x, y)) {
       case 'sea': return fWater(x, y) > 0.47 ? 'water' : 'land'
       case 'forest': return fWater(x, y) > 0.75 ? 'water' : 'land'
@@ -233,6 +243,7 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
     b.walkG[by][bx] = walk
   }
   for (let y = -MARGIN; y < PIECE + MARGIN; y++) for (let x = -MARGIN; x < PIECE + MARGIN; x++) {
+    if (blank?.(x, y)) { put(x, y, GRASS[0], null, true); continue }
     const k = rawKind(x, y), cor = corridor(x, y)
     if (k === 'water') {
       if (cor) put(x, y, waterSkin(x, y), PIER[cor], true)
@@ -439,6 +450,8 @@ export function makeTerrain(seed, wx, wy, deal = 0) {
   return {
     seed, wx, wy, deal, b,
     biome: (x, y) => biome(x, y),
+    // what the land is before anything is laid on it ('land', 'water', 'mass'), up to EXT cells beyond the piece
+    rawKind: (x, y) => rawKind(x, y),
     kind, free, inside, open, claim, clear: openCell, path, gates, gateInner, finish,
     // a walkable line one cell wide with no path art: a way through the trees
     // for something that must be reachable but not signposted

@@ -12,14 +12,15 @@ const DIRS = [
 
 // Pixel-space AABB corner check — the same rule game.js/crab.js/cyclops.js
 // have each been duplicating locally.
-export function canMoveTo(map, px, py, half) {
+// With `ward` true a warded city cell (cell.ward) counts as a wall.
+export function canMoveTo(map, px, py, half, ward = false) {
   const corners = [
     [px - half, py - half], [px + half, py - half],
     [px - half, py + half], [px + half, py + half],
   ]
   return corners.every(([cx, cy]) => {
     const t = map[Math.floor(cy / S)]?.[Math.floor(cx / S)]
-    return t && isWalkable(t.tile, t)
+    return t && isWalkable(t.tile, t) && !(ward && t.ward)
   })
 }
 
@@ -31,7 +32,11 @@ export function clearanceFor(half) {
 
 // clear[i] = chebyshev distance (tiles) to the nearest blocked tile or map
 // edge; blocked tiles are 0. Multi-source BFS over 8 neighbours.
-export function buildNavGrid(map) {
+// `{ ward: true }` is the grid for warded entities (monsters): cells with
+// cell.ward are blocked like walls. Cached on map._navWard; a map with no
+// warded cells shares the plain grid.
+export function buildNavGrid(map, { ward = false } = {}) {
+  if (ward) return map._navWard ?? (map._navWard = buildWardGrid(map))
   if (map._nav) return map._nav
   const h = map.length, w = map[0].length
   const walk = new Uint8Array(w * h)
@@ -60,6 +65,35 @@ export function buildNavGrid(map) {
   }
   map._nav = { w, h, walk, clear }
   return map._nav
+}
+
+function buildWardGrid(map) {
+  if (!map.some(row => row.some(c => c.ward))) return buildNavGrid(map)
+  const h = map.length, w = map[0].length
+  const walk = new Uint8Array(w * h)
+  const clear = new Int16Array(w * h).fill(-1)
+  const qx = [], qy = []
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, c = map[y][x]
+    walk[i] = isWalkable(c.tile, c) && !c.ward ? 1 : 0
+    if (!walk[i]) { clear[i] = 0; qx.push(x); qy.push(y) }
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (x === 0 || y === 0 || x === w - 1 || y === h - 1) {
+      const i = y * w + x
+      if (walk[i] && clear[i] === -1) { clear[i] = 1; qx.push(x); qy.push(y) }
+    }
+  }
+  for (let head = 0; head < qx.length; head++) {
+    const x = qx[head], y = qy[head], d = clear[y * w + x]
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+      const ni = ny * w + nx
+      if (clear[ni] === -1) { clear[ni] = d + 1; qx.push(nx); qy.push(ny) }
+    }
+  }
+  return { w, h, walk, clear }
 }
 
 export function passable(nav, x, y, clearance = 1) {

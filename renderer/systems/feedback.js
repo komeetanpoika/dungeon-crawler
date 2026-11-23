@@ -7,6 +7,17 @@ export const FLOAT_DUR = 0.8
 export const BUBBLE_DUR = 2.0
 export const BANNER_DUR = 2.5
 
+// A hit flash (state.hitEffects: { x, y } tiles, pushed by a blow) stays up
+// HIT_LIFE seconds, counted by the update, so the frame after the blow draws it.
+export const HIT_LIFE = 0.15
+export function ageHitEffects(state, dt) {
+  const list = state.hitEffects
+  if (!list?.length) return
+  let n = 0
+  for (const h of list) if ((h.t = (h.t ?? 0) + dt) < HIT_LIFE) list[n++] = h
+  list.length = n
+}
+
 export function makeFeedback() {
   return { floats: [], bubble: null, banner: null, toasts: [] }
 }
@@ -35,6 +46,36 @@ export function think(state, text) { bubble(state, text, 'thought') }
 // anchorId against state.entities and falls back to the player.
 export function speakFrom(state, entity, text) {
   if (state.feedback) state.feedback.bubble = { text, kind: 'speech', t: 0, anchorId: entity.id }
+}
+
+// How long a line said in a scene stays up: time to read it at an easy pace
+// (2 s, and a second for every 15 letters), never under BUBBLE_DUR and never
+// over SAY_MAX (well inside the crier's 20 s between calls).
+export const SAY_MAX = 9
+export const sayDuration = text => Math.min(SAY_MAX, Math.max(BUBBLE_DUR, 2 + text.length / 15))
+
+// Kalevanlinna's people speak their scene lines over their own heads, apart
+// from the single bubble above (which stays the player's and the tales'):
+// e.city.say = { text, n, t, dur } (npc.js sceneSay; the city runtime ages t).
+// Which of them draw a bubble now: a line younger than its dur (BUBBLE_DUR
+// without one), a speaker on its feet within `view` (a pixel rect { x0, y0,
+// x1, y1 }), and of those the `max` nearest `focus` (the player), nearest
+// first; never `skip` (the id the single bubble is over). Pure.
+export const AMBIENT_MAX = 4
+export function ambientSpeakers(entities, view, focus, { max = AMBIENT_MAX, skip = null } = {}) {
+  const out = [], d2 = []
+  for (const e of entities) {
+    const s = e.city?.say
+    if (!s || !(s.t < (s.dur ?? BUBBLE_DUR)) || e.hp <= 0 || (skip !== null && e.id === skip)) continue
+    if (e.px < view.x0 || e.px > view.x1 || e.py < view.y0 || e.py > view.y1) continue
+    const d = (e.px - focus.px) ** 2 + (e.py - focus.py) ** 2
+    let i = out.length
+    while (i > 0 && d2[i - 1] > d) i--
+    if (i >= max) continue
+    out.splice(i, 0, e); d2.splice(i, 0, d)
+    if (out.length > max) { out.pop(); d2.pop() }
+  }
+  return out
 }
 
 export function announce(state, text) {

@@ -6,6 +6,11 @@
 // player.blockedHit for the striker). `soak` (PvP's Ward, 2b) may take some
 // or all of what gets past the block and the outfit before hp does: it
 // returns what is left. Single-player never passes one.
+//
+// `state.mercy(from, state)` (set by Kalevanlinna, wilds/city/law.js) may
+// spare the player's life: a blow it spares that would take hp to 0 or below
+// leaves 1 hp and sets state.arrest instead (the watch takes a wanted player
+// alive, to the stocks).
 import { addFloat } from './feedback.js'
 import { sfx } from './sfx.js'
 import { tryBlock } from './shield.js'
@@ -27,7 +32,9 @@ export function damagePlayer(state, amount, kind, from = null, hero = state.play
   if (kind === 'hit') amount = Math.max(0, amount - (outfitOf(player, player.attackMode ?? 'melee')?.protect ?? 0))
   if (soak) amount = soak(player, amount)
   const taken = observer ? observer(state, player, amount, kind) : amount
-  player.hp -= Number.isFinite(taken) ? taken : amount
+  const loss = Number.isFinite(taken) ? taken : amount
+  if (loss > 0 && player.hp - loss <= 0 && state.mercy?.(from, state)) { player.hp = 1; state.arrest = true }
+  else player.hp -= loss
   if (kind === 'hit') player.invulnTimer = INVULN_DURATION
   addFloat(state.feedback, { px: player.px, py: player.py, text: amount > 0 ? `-${amount}` : '0', kind: 'taken' })
   sfx(state, 'player-hurt', { px: player.px, py: player.py })

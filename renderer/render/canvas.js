@@ -10,7 +10,7 @@ import { WEAPONS, getEnemyWeapon } from '../systems/enemy-attack.js'
 import { getSwingArc, CHARGE } from '../systems/melee.js'
 import { GUST_CHARGE } from '../systems/magic.js'
 import { DRAW_CHARGE } from '../systems/ranged.js'
-import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR } from '../systems/feedback.js'
+import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR, HIT_LIFE, ambientSpeakers } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
 import { drawNpcSheet } from './npc-sheets.js'
 import { NPC_SPECIES } from '../data/npcs.js'
@@ -26,6 +26,8 @@ import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer, CHUNK } from './tile-layer.js'
 import { drawComboFx, drawArrowTrail, drawBuffSpot, drawBuffUnder, drawBuffOver } from './pvp-fx.js'
 import { BUFF_COLORS } from '../data/pvp.js'
+import { arrestFade } from '../wilds/city/crime.js'
+import { drawCityGround, drawCityAir, drawCityGlow } from './city-fx.js'
 
 const TILE_SIZE = 32
 
@@ -277,7 +279,9 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     const flip = entity.facing === 'west'
     if (def?.sheet) { drawNpcSheet(ctx, entity, def.sheet, px, py, S, flip); return }
     const key = spriteKeyFor(entity)
-    const s = (entity.hostile && def?.walker ? sprites.guard_alert : null) ?? sprites[key]
+    // a hostile walker looks alert, but the city's people keep their own look
+    // (a watchman after the player is still the watch)
+    const s = (entity.hostile && def?.walker && def.faction !== 'city' ? sprites.guard_alert : null) ?? sprites[key]
     if (!s) return
     if (def?.walker) { drawWalker(ctx, s, px, py, S, flip, walkTilt(entity)); return }
     const rt = entity.ai?.reactTimer ?? 0
@@ -357,9 +361,12 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
   if (s) drawImg(ctx, s, px, py, S, S, flip)
 }
 
-function drawHitEffect(ctx, x, y, camX, camY, S) {
+// A blow's flash, fading over its HIT_LIFE (systems/feedback.js ageHitEffects)
+function drawHitEffect(ctx, x, y, camX, camY, S, t = 0) {
   const px = Math.round(x * S - camX)
   const py = Math.round(y * S - camY)
+  ctx.save()
+  ctx.globalAlpha = Math.max(0.25, 1 - t / HIT_LIFE)
   ctx.fillStyle = 'rgba(255, 70, 0, 0.72)'
   ctx.fillRect(px, py, S, S)
   ctx.strokeStyle = '#fff'
@@ -369,6 +376,7 @@ function drawHitEffect(ctx, x, y, camX, camY, S) {
   ctx.moveTo(px + 5, py + 5); ctx.lineTo(px + S - 5, py + S - 5)
   ctx.moveTo(px + S - 5, py + 5); ctx.lineTo(px + 5, py + S - 5)
   ctx.stroke()
+  ctx.restore()
 }
 
 // The icy tint a frozen enemy wears: desaturated and lifted, then a pale sheen
@@ -1291,6 +1299,9 @@ export class Renderer {
     drawLightningMarks(ctx, state.lightning, camX, camY, S)
     // Päivölä's sunbeam lies on the floor too (render/sunbeam.js)
     if (state.cave?.sun) drawSunbeam(ctx, state.cave.sun, map, camX, camY, S, (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000)
+    // Kalevanlinna's banners, sails, birds on the ground and carts: with the
+    // floor, under the people (render/city-fx.js)
+    if (state.cityRun && !state.cave) drawCityGround(ctx, state, sprites, camX, camY, S, W, H)
 
     for (const e of entities) {
       const margin = getMonsterDef(e.type) ? 3 : e.type === 'dragon' ? 5 : e.type === 'dragon_boss' ? 6 : e.type === 'cyclops' ? 2 : 0
@@ -1374,6 +1385,10 @@ export class Renderer {
       }
     }
 
+    // Kalevanlinna's smoke, birds in the air, turnips, notes and bells: over
+    // the people, under the night
+    if (state.cityRun && !state.cave) drawCityAir(ctx, state, sprites, camX, camY, S, W, H)
+
     // Rite ceremony: blur the finished frame onto itself, wash it green.
     if (fx && (fx.blur > 0 || fx.greenAlpha > 0)) {
       if (fx.blur > 0) {
@@ -1394,6 +1409,8 @@ export class Renderer {
     if (look && this.weatherLayer) {
       drawNight(ctx, this.weatherLayer, look, { camX, camY }, { W, H }, S)
     }
+    // Kalevanlinna's lit windows and the smith's sparks stay bright in the dark
+    if (state.cityRun && !state.cave) drawCityGlow(ctx, state, sprites, look, camX, camY, S)
 
     // Fireball zones: flickering flames per burning tile. Deterministic
     // flicker seeded by zone age + tile coords (no wall-clock), fading over
@@ -1434,9 +1451,9 @@ export class Renderer {
     }
 
     if (state.hitEffects?.length > 0) {
-      for (const { x, y } of state.hitEffects) {
+      for (const { x, y, t } of state.hitEffects) {
         if (x < c0 || x >= c1 || y < r0 || y >= r1) continue
-        drawHitEffect(ctx, x, y, camX, camY, S)
+        drawHitEffect(ctx, x, y, camX, camY, S, t)
       }
     }
 
@@ -1465,14 +1482,24 @@ export class Renderer {
     }
     drawRainbow(ctx, this.tranceLayer, fx?.rainbow, { W, H })
     drawWash(ctx, fx?.wash ?? 0, { W, H })
+    // Kalevanlinna's watch takes the player: black, then the stocks
+    const dark = arrestFade(state.player?.stocks)
+    if (dark > 0) {
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, dark)
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, W, H)
+      ctx.restore()
+    }
 
     this._drawFeedback(state)
 
     if (this.debug) this._drawDebug(state, c0, c1, r0, r1)
   }
 
-  // Prominent message layer: rising damage/heal numbers, one speech/thought
-  // bubble above the player, and a centered banner for milestone events.
+  // Prominent message layer: rising damage/heal numbers, the city people's
+  // own speech bubbles, one speech/thought bubble above the player (or the
+  // one speaking to them), and a centered banner for milestone events.
   _drawFeedback(state) {
     const { ctx, camX, camY } = this
     const fb = state.feedback
@@ -1494,6 +1521,17 @@ export class Renderer {
       }
       ctx.restore()
     }
+    // Kalevanlinna's people say their scene lines over their own heads: the
+    // nearest few on screen, nearest drawn last (on top), under the single bubble
+    if (state.cityRun && state.entities) {
+      const v = this._sayView ??= { x0: 0, y0: 0, x1: 0, y1: 0 }
+      v.x0 = camX - 32; v.x1 = camX + this.viewW + 32; v.y0 = camY; v.y1 = camY + this.viewH + 48
+      const near = ambientSpeakers(state.entities, v, state.player, { skip: fb.bubble?.anchorId ?? null })
+      for (let i = near.length - 1; i >= 0; i--) {
+        const s = near[i].city.say
+        this._drawBubble(near[i], { text: s.text, kind: 'speech', t: s.t, dur: s.dur })
+      }
+    }
     if (fb.bubble) {
       const anchor = (fb.bubble.anchorId && state.entities.find(e => e.id === fb.bubble.anchorId)) || state.player
       this._drawBubble(anchor, fb.bubble)
@@ -1505,7 +1543,7 @@ export class Renderer {
     const { ctx, camX, camY, viewW } = this
     const px = Math.round(anchor.px - camX), py = Math.round(anchor.py - camY)
     ctx.save()
-    ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.12, (BUBBLE_DUR - b.t) / 0.3))
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.12, ((b.dur ?? BUBBLE_DUR) - b.t) / 0.3))
     ctx.font = '12px monospace'
     const lines = ['']
     for (const w of b.text.split(' ')) {

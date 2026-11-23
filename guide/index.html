@@ -232,9 +232,9 @@ td.wrap code { white-space: normal; }
       <ul class="legend">
         <li><i style="background: var(--forest)"></i>forest</li><li><i style="background: var(--autumn)"></i>autumn woods</li><li><i style="background: var(--marsh)"></i>marsh</li>
         <li><i style="background: var(--mountain)"></i>mountains</li><li><i style="background: var(--desert)"></i>desert</li><li><i style="background: var(--sea)"></i>the sea</li>
-        <li><i style="background: var(--ink)"></i>village</li><li>dashed rings: toughness 2, 3, 4</li>
+        <li><i style="background: var(--ink)"></i>village</li><li>outlined block: Kalevanlinna</li><li>dashed rings: toughness 2, 3, 4</li>
       </ul>
-      <figcaption>The hash, the value noise, the pocket blobs, the village pick and the main-thing table are ported line for line. North is up. The square at the centre is Koivula, with the mushroom ring to its east and the first cave to its north.</figcaption>
+      <figcaption>The hash, the value noise, the pocket blobs, the village pick and the main-thing table are ported line for line. North is up. The square at the centre is Koivula, with the mushroom ring to its east and the first cave to its north. The outlined block of four pieces south of it is Kalevanlinna, the walled city, cut from one city built once per world; the sea of its bay is laid over whatever country is there.</figcaption>
     </figure>
   </div>
 
@@ -274,12 +274,12 @@ td.wrap code { white-space: normal; }
 
   <div class="sub">
     <h3>The game still runs on an ordinary map</h3>
-    <p>No system knows the world is endless. The game sees a 240 × 240 map: a 3 × 3 <em>window</em> of pieces whose rows share the pieces' own cell objects. When the player is eight tiles into a neighbouring piece the window steps over. <code>shiftState</code> then moves every tile and pixel position it can find in the state by 80 tiles, and the baked tile chunks are re-keyed instead of redrawn. Click or tap to walk.</p>
+    <p>No system knows the world is endless. The game sees a 240 × 240 map: a 3 × 3 <em>window</em> of pieces whose rows share the pieces' own cell objects. When the player is eight tiles into a neighbouring piece the window steps over (24 in Kalevanlinna, so the square, where its four pieces meet, holds still). <code>shiftState</code> then moves every tile and pixel position it can find in the state by 80 tiles, and the baked tile chunks are re-keyed instead of redrawn. Click or tap to walk.</p>
     <figure class="demo">
       <div class="demo-head"><span class="tag">Live</span><strong>The window re-centring</strong><button type="button" id="win-play" style="margin-left: auto"></button></div>
       <canvas id="cv-window" style="aspect-ratio: 1 / 1" role="img" aria-label="A three by three window of pieces following the player across the world"></canvas>
       <p class="readout" id="win-read" aria-live="off"></p>
-      <figcaption>Solid outline: the window. Dashed: the zone the player can roam without a re-centre; its eight-tile margin stops the window flipping back and forth on a boundary. Dots mark pieces with a record. A record is dropped, and the deal goes up by one, once a piece has been more than five pieces away for twenty minutes of play; villages and the ring round home are never forgotten.</figcaption>
+      <figcaption>Solid outline: the window. Dashed: the zone the player can roam without a re-centre; its eight-tile margin (24 in the city's four pieces) stops the window flipping back and forth on a boundary. Dots mark pieces with a record. A record is dropped, and the deal goes up by one, once a piece has been more than five pieces away for twenty minutes of play; villages, the ring round home and the city are never forgotten.</figcaption>
     </figure>
   </div>
   <p class="where">Lives in <code>renderer/wilds/</code>: <code>layout.js</code> <code>terrain.js</code> <code>features.js</code> <code>sites.js</code> <code>piece.js</code> <code>window.js</code> <code>shift.js</code> <code>session.js</code> <code>world.js</code></p>
@@ -605,6 +605,11 @@ function noise2(seed, x, y, freq = 0.08, octaves = 3) {
   for (let o = 0; o < octaves; o++) { sum += valueAt(seed + o * 101, x * f, y * f) * amp; tot += amp; amp *= 0.5; f *= 2 }
   return sum / tot
 }
+// renderer/wilds/city/geometry.js: Kalevanlinna's four pieces south of home, and its bay
+const CITY = { wx0: 0, wy0: 2, pieces: 2 }
+const isCityPiece = (wx, wy) => wx >= CITY.wx0 && wx < CITY.wx0 + CITY.pieces && wy >= CITY.wy0 && wy < CITY.wy0 + CITY.pieces
+const BAY = { X: 80, Y: 310, rx: 34, ry: 20 }
+const inBay = (X, Y, scale = 1) => ((X - BAY.X) / (BAY.rx * scale)) ** 2 + ((Y - BAY.Y) / (BAY.ry * scale)) ** 2 <= 1
 // renderer/wilds/layout.js
 const PIECE = 80, BIOMES = ['forest', 'autumn', 'mountain', 'desert', 'sea', 'marsh']
 const BIOME_NAMES = { forest: 'forest', autumn: 'autumn woods', mountain: 'mountains', desert: 'desert', sea: 'the sea', marsh: 'marsh' }
@@ -626,6 +631,7 @@ function blobsFor(seed, x0, y0, x1, y1) {
   return out
 }
 function countryAt(seed, X, Y, blobs) {
+  if (inBay(X, Y, 1.4)) return 'sea'   // the bay, with sandy shores round it
   const dx = X - HOME, dy = Y - HOME, r = Math.hypot(dx, dy) / PIECE
   let wobble = -1
   const bend = () => wobble < 0 ? (wobble = noise2(seed + 1, X, Y, 1 / (1.5 * PIECE), 3)) : wobble
@@ -671,7 +677,7 @@ function blockVillage(seed, bx, by) {
   let i = hashInt(seed, bx, by, 310) % 16
   for (let n = 0; n < 16; n++, i = (i + 1) % 16) {
     const wx = bx * 4 + (i % 4), wy = by * 4 + (i >> 2)
-    if (!fixedMain(wx, wy)) return { wx, wy }
+    if (!fixedMain(wx, wy) && !isCityPiece(wx, wy)) return { wx, wy }
   }
   return null
 }
@@ -851,6 +857,10 @@ safe(() => {
       ctx.fillStyle = '#fff'; ctx.fillRect(x + 6, y + 6, 12, 12)
       ctx.fillStyle = home ? p.accent : '#15232b'; ctx.fillRect(x + 8, y + 8, 8, 8)
     }
+    // Kalevanlinna: the four pieces south of home
+    const cx0 = (CITY.wx0 + R) * PX, cy0 = (CITY.wy0 + R) * PX, cw = CITY.pieces * PX
+    ctx.strokeStyle = '#15232b'; ctx.lineWidth = 5; ctx.strokeRect(cx0 + 3, cy0 + 3, cw - 6, cw - 6)
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.strokeRect(cx0 + 3, cy0 + 3, cw - 6, cw - 6)
     // the home trio: ring east of home, first cave north of it
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc((1 + R + 0.5) * PX, hx, 6, 0, Math.PI * 2); ctx.stroke()
     ctx.fillStyle = '#fff'; ctx.beginPath(); const cx = hx, cy = (R - 1 + 0.5) * PX; ctx.moveTo(cx, cy - 7); ctx.lineTo(cx + 7, cy + 6); ctx.lineTo(cx - 7, cy + 6); ctx.closePath(); ctx.fill()
@@ -859,7 +869,7 @@ safe(() => {
   function describe(wx, wy) {
     const v = villageAt(worldSeed, wx, wy), main = mainKind(worldSeed, wx, wy)
     const parts = [`piece (${wx}, ${wy})`, BIOME_NAMES[pieceBiome(worldSeed, wx, wy)], `toughness ${tierAt(wx, wy)}`,
-      v ? `village ${wx === 0 && wy === 0 ? 'Koivula' : v.name}` : `main thing: ${main === 'ring' ? 'mushroom ring' : main}`,
+      isCityPiece(wx, wy) ? 'Kalevanlinna, the walled city' : v ? `village ${wx === 0 && wy === 0 ? 'Koivula' : v.name}` : `main thing: ${main === 'ring' ? 'mushroom ring' : main}`,
       `gates N ${gateAt(worldSeed, wx, wy, 'N')} · E ${gateAt(worldSeed, wx, wy, 'E')} · S ${gateAt(worldSeed, wx, wy, 'S')} · W ${gateAt(worldSeed, wx, wy, 'W')}`]
     return parts.join(' · ')
   }
@@ -886,14 +896,16 @@ safe(() => {
   mark()
   seedListeners.push(() => { biomes = new Map(); s.draw() })
   const sx = v => (v + R * PIECE) * K
+  const margin = () => isCityPiece(Math.floor(X / PIECE), Math.floor(Y / PIECE)) ? 24 : 8
   function tick(dt) {
     t += dt; flash = Math.max(0, flash - dt)
     const goal = target ?? { X: 40 + Math.cos(t * 0.32) * 205, Y: 40 + Math.sin(t * 0.47) * 190 }
     const dx = goal.X - X, dy = goal.Y - Y, d = Math.hypot(dx, dy), sp = 46 * dt
     if (d > 0.5) { X += dx / d * Math.min(sp, d); Y += dy / d * Math.min(sp, d) }
     X = clamp(X, -3 * PIECE + 4, 4 * PIECE - 5); Y = clamp(Y, -3 * PIECE + 4, 4 * PIECE - 5)
-    // window.js recentreStep, margin 8
-    const step = v => v < PIECE - 8 ? -1 : v >= 2 * PIECE + 8 ? 1 : 0
+    // window.js recentreStep: margin 8, and session.js CITY_MARGIN 24 in the city
+    const m = margin()
+    const step = v => v < PIECE - m ? -1 : v >= 2 * PIECE + m ? 1 : 0
     const dxs = step(X - origin.wx * PIECE), dys = step(Y - origin.wy * PIECE)
     if (dxs || dys) { origin = { wx: origin.wx + dxs, wy: origin.wy + dys }; flash = 0.5; count++; lastStep = { dx: dxs, dy: dys }; mark() }
   }
@@ -913,7 +925,8 @@ safe(() => {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeRect(wx0, wy0, 3 * PX - 1, 3 * PX - 1)
     ctx.strokeStyle = p.accent; ctx.lineWidth = 2; ctx.strokeRect(wx0, wy0, 3 * PX - 1, 3 * PX - 1)
     ctx.setLineDash([5, 4]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5
-    ctx.strokeRect(wx0 + (PIECE - 8) * K, wy0 + (PIECE - 8) * K, (PIECE + 16) * K, (PIECE + 16) * K); ctx.setLineDash([])
+    const m = margin()
+    ctx.strokeRect(wx0 + (PIECE - m) * K, wy0 + (PIECE - m) * K, (PIECE + 2 * m) * K, (PIECE + 2 * m) * K); ctx.setLineDash([])
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx(X), sx(Y), 7, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = '#15232b'; ctx.beginPath(); ctx.arc(sx(X), sx(Y), 4.5, 0, Math.PI * 2); ctx.fill()
     const fx = Math.floor(X), fy = Math.floor(Y)

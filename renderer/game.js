@@ -22,7 +22,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
-import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts } from './systems/feedback.js'
+import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues } from './render/audio.js'
 import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './pvp/local.js'
@@ -45,8 +45,13 @@ import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems
 import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
+import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
+import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
+import { cityHouseSpec, leaveCityHouse } from './wilds/city/indoors.js'
+import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
+import { ARREST_FADE } from './wilds/city/crime.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
@@ -210,11 +215,13 @@ window.addEventListener('keydown', e => {
 
 // Held in a monster's grip (systems/player-bind.js), every key press is a
 // struggle against it — Escape still only pauses. The touch buttons send
-// keys too, so tapping them counts the same.
+// keys too, so tapping them counts the same. In Kalevanlinna's stocks a key
+// press does nothing but make the crowd jeer.
 window.addEventListener('keydown', e => {
   if (e.target?.tagName === 'INPUT') return
   if (e.repeat || e.key === 'Escape') return
   if (phase !== PHASE.PLAYING || !state) return
+  if (state.player.stocks) { sfx(state, 'jeer', { px: state.player.px, py: state.player.py }); return }
   struggle(state.player)
 })
 
@@ -286,7 +293,7 @@ let bench = null
 // --dcdebug (main.cjs passes it through as a ?dcdebug query param), so a
 // normal run never exposes internal state.
 if (new URLSearchParams(location.search).has('dcdebug')) {
-  window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld }, get sprites() { return renderer?.sprites } }
+  window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld }, get sprites() { return renderer?.sprites }, get renderer() { return renderer } }
 }
 let inventoryOpen = false
 let meta = null
@@ -332,6 +339,23 @@ const taleHooks = {
   save: () => activeSave,
   isNight: () => isNight(activeSave.clock ?? DAY_START),
   grantTalent: id => grantTalent(state, id),
+}
+// Kalevanlinna's townsfolk (wilds/city/runtime.js): the clock and the day run
+// their schedules, and the screen's size sets who is near enough to be a
+// real entity (the visible half-width + 6 tiles).
+const cityHooks = {
+  spawn: spawns => buildEntities(spawns, state.map, 0),
+  clock: () => activeSave.clock ?? DAY_START,
+  day: () => wildsWorld?.day ?? 0,
+  viewHalf: () => (renderer ? { w: renderer.viewW / (2 * TILE_SIZE), h: renderer.viewH / (2 * TILE_SIZE) } : { w: 20, h: 12 }),
+  sfx: (name, pos) => sfx(state, name, pos),
+  // a watchman's blow (npc.js defend) on a monster: the projectiles' hit path,
+  // which is the player's melee path too (a registry monster through its own
+  // hook, anything else in place), so a kill culls, drops and is recorded as
+  // a player's would be. The blow sounds its own 'melee-hit'.
+  hurt: (target, amount) => hurtEntity(target, amount, { source: 'watch', hitCue: null }),
+  // the frame's route requests stop once a millisecond is spent (tests run without, by count)
+  now: () => performance.now(),
 }
 
 function persistRun() {
@@ -415,12 +439,15 @@ function rulesetTileNames(rs) {
 // A blow landed on an npc: hurt cue + species reaction + village wrath (once).
 // An animal that survives yelps; villagers keep the human cue the hit site
 // already plays. `alive` is passed explicitly by the splash path, where the
-// snapshot entity still carries its pre-blast hp.
+// snapshot entity still carries its pre-blast hp. `source` is the hit path's
+// (hurtEntity's meta): every blow but the watch's own ('watch') is the
+// player's, and on one of Kalevanlinna's people inside the walls it is
+// violence the city answers (wilds/city/law.js).
 // Drops rolled for NPCs that died this frame. Damage sites run inside
 // state.entities rebuilds, so pushing a pickup there would be lost — they
 // queue here and land after the frame's final cull.
 let pendingDrops = []
-function npcStruck(e, alive = e.hp > 0) {
+function npcStruck(e, alive = e.hp > 0, source = 'player') {
   if (e.type !== 'npc') return
   npcDirty = true
   if (alive && !NPC_SPECIES[e.species]?.walker) sfx(state, 'npc-hurt', { px: e.px, py: e.py })
@@ -434,6 +461,7 @@ function npcStruck(e, alive = e.hp > 0) {
   }
   const r = onNpcHit(e, state)
   if (r.wrath) { announce(state, 'The village turns on you!'); sfx(state, 'npc-wrath') }
+  if (e.cityKey !== undefined && wildsWorld) cityViolence(state, wildsWorld, e, { killed: !alive, source })
 }
 
 // Animals die with their own small cue; villagers keep the human one.
@@ -496,21 +524,24 @@ function detonateFireball(px, py, blastTiles, { fireOnly = false } = {}) {
 // because the zone and lightning tickers ignore the return value — only
 // stepProjectiles uses it, and there `struck === target` is a no-op swap.
 // `meta` is whatever the caller had to hand (a projectile, or lightning's
-// `{ source }`); only `source` is read from it.
+// `{ source }`); only `source` is read from it, and `hitCue` (a blow that
+// sounds its own hit: null) in place of the projectile's thud.
 function hurtEntity(e, damage, meta) {
   const source = meta?.source ?? 'player'
   if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
     const r = hurtCreature(state, e, damage, { source })
     if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
-    if (r.think) think(state, r.think)
+    // a watchman's blow is not the player's: the creature's reaction line is no thought of theirs
+    if (r.think && source !== 'watch') think(state, r.think)
     if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${damage}`, kind: 'dealt' })
     return e
   }
   addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${damage}`, kind: 'dealt' })
   e.hp -= damage
   e.inCombat = true
-  npcStruck(e)
-  sfx(state, e.hp <= 0 ? deathCue(e) : 'projectile-hit', { px: e.px, py: e.py })
+  npcStruck(e, e.hp > 0, source)
+  const cue = e.hp <= 0 ? deathCue(e) : meta?.hitCue !== undefined ? meta.hitCue : 'projectile-hit'
+  if (cue) sfx(state, cue, { px: e.px, py: e.py })
   return e
 }
 
@@ -535,6 +566,7 @@ const GUST_RING = 44   // px: the ring radius a tap-tier cone draws
 function showCast(cast) {
   const player = state.player
   sfx(state, 'magic-cast', { px: player.px, py: player.py })
+  noteCitySwing(state, wildsWorld)   // the townsfolk flinch at a spell cast near them
   if (cast.projectiles) state.projectiles.push(...cast.projectiles)
   if (cast.caught !== undefined) {
     // A cone tier states its reach either as a multiplier of the gust's
@@ -644,6 +676,7 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       case 'npc': {
         const n = makeNpc(s.species === 'wolf' && hasTalent(player, 'tapio_peace') ? { ...s, hostile: false } : s)
         if (n && s.lines) n.lines = s.lines   // someone at home says what that household says
+        if (n && s.look) n.look = s.look      // one of Kalevanlinna's people at home, as they look outside
         return n ? [n] : []
       }
       // a Wilds camp's fire (wilds/sites.js): it never burns down, and cooks like any other
@@ -861,8 +894,11 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (wilds) {
     const fresh = !activeSave.wilds
     wildsWorld = makeWorld(activeSave.wilds, { seed: randomSeed() })
+    cityFor(wildsWorld.seed)   // the city's one-time build is paid here, not mid-walk
     enterWilds(state, wildsWorld, wildsWorld.pos ?? wildsWorld.lastVillage, wildsHooks)
     arriveTales(state, wildsWorld, taleHooks, { fresh: true })
+    arriveCity(state, wildsWorld, cityHooks, { fresh: true })
+    clearCrime(state)   // a load starts calm with Kalevanlinna's watch (never saved)
     if (fresh) persistRun()
   }
   if (runMode === 'adventure' && OPEN_MAPS[depth]) recordVisit(activeSave.progress, OPEN_MAPS[depth].name)
@@ -1402,6 +1438,18 @@ function answerTheCall() {
   sfx(state, 'rite', { px: state.player.px, py: state.player.py })
 }
 
+// The arrest's darkest moment: the player is put in the stocks on the square
+// (wilds/city/law.js). Where the square is beyond the window, the window is
+// built round the stocks first, the tales and the town anew.
+function seatInStocks() {
+  if (!wildsWorld) return
+  toStocks(state, wildsWorld, at => {
+    enterWilds(state, wildsWorld, at, wildsHooks)
+    arriveTales(state, wildsWorld, taleHooks, { fresh: true })
+    arriveCity(state, wildsWorld, cityHooks, { fresh: true })
+  })
+}
+
 function update(delta) {
   if (!state) return
   if (!state.sfx) state.sfx = makeSfx(loadMutedPref())
@@ -1454,9 +1502,23 @@ function update(delta) {
     if (recentred) {
       renderer.rekeyTiles(before, state.map, -recentred.dx * PIECE, -recentred.dy * PIECE)
       arriveTales(state, wildsWorld, taleHooks)
+      arriveCity(state, wildsWorld, cityHooks)
     }
-    // the tales rest underground, as the Adventure quests do
-    if (!state.cave) tickTales(state, wildsWorld, delta, taleHooks)
+    // the tales rest underground, as the Adventure quests do, and the town
+    // with them (the clock stops indoors)
+    if (!state.cave) {
+      tickTales(state, wildsWorld, delta, taleHooks)
+      tickCity(state, wildsWorld, delta, cityHooks)
+      // Kalevanlinna's watch took the player alive (damagePlayer spared the
+      // last blow): the screen fades, and at its darkest they sit in the stocks
+      if (state.arrest) arrest(state)
+      const st = state.player.stocks
+      if (st && st.fade < ARREST_FADE) {
+        const was = st.fade
+        st.fade = Math.min(ARREST_FADE, st.fade + delta)
+        if (was < ARREST_FADE / 2 && st.fade >= ARREST_FADE / 2) seatInStocks()
+      }
+    }
   }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
@@ -1569,7 +1631,11 @@ function update(delta) {
   // clock when the map has a cycle. Underground both hold.
   if (state.weather && !state.cave) {
     state.weather.t += delta
-    if (state.weather.dayCycle) advanceClock(activeSave, delta)
+    if (state.weather.dayCycle) {
+      const before = activeSave.clock ?? DAY_START
+      // a clock that comes out smaller has wrapped: a new day
+      if (advanceClock(activeSave, delta) < before && wildsWorld) wildsWorld.day += 1
+    }
   }
 
   // Campfire cooking — standing on a fire cooks every raw meat carried.
@@ -1597,7 +1663,10 @@ function update(delta) {
   }
   // House doors — same walk-onto/hold pattern as arches, no gate to check.
   const door = !state.cave && state.houseDoors?.find(d => d.x === player.x && d.y === player.y)
-  if (door && !state.entranceHold) { enterHouse(door); return }
+  if (door && !state.entranceHold) {
+    // the church and the castle are shut: the door says so, and never opens
+    if (typeof door.closed === 'string') { think(state, door.closed); state.entranceHold = true } else { enterHouse(door); return }
+  }
   if (!arch && !door) state.entranceHold = false
   if (state.cave) {
     const onStairs = player.x === state.cave.stairs.x && player.y === state.cave.stairs.y
@@ -1770,6 +1839,7 @@ function update(delta) {
     player.attackStyle = atk.style
     player.attackFacing = player.facing
     sfx(state, 'melee-swing', { px: player.px, py: player.py })
+    noteCitySwing(state, wildsWorld)
     player.attackReachMul = mods.reachMul
     const dmg = Math.max(1, Math.round((wpn.damage ?? 1) * mods.dmgMul))
     const fa = FACING_ANGLE[player.facing] ?? 0
@@ -1787,6 +1857,8 @@ function update(delta) {
     const zap = hammer && mods.tier === 'over'
     const collect = miekka || hammer
     const struck = []   // enemies hit this swing (for the Maunonmiekka's shockwave)
+    // a blow's flash on what it lands on (state.hitEffects, aged over HIT_LIFE)
+    const slash = e => state.hitEffects?.push({ x: e.x, y: e.y })
     state.entities = state.entities
       .map(e => {
         if (!isHittable(e)) return e
@@ -1802,6 +1874,7 @@ function update(delta) {
           const bossHit = { ...e, hp: e.hp - bossDmg, inCombat: true }
           addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${bossDmg}`, kind: 'dealt' })
           sfx(state, 'melee-hit', { px: e.px, py: e.py })
+          slash(e)
           if (collect) struck.push(bossHit)
           return bossHit
         }
@@ -1809,6 +1882,7 @@ function update(delta) {
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
           const r = hurtCreature(state, e, dmg, { source: 'player' })
+          slash(e)
           if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
           if (r.think) think(state, r.think)
           if (!r.absorbed) addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${dmg}`, kind: 'dealt' })
@@ -1823,6 +1897,7 @@ function update(delta) {
         // before the copy is taken, so the cleared `frozen` rides along.
         const total = dmg + shatterBonus(e)
         const hitEnemy = { ...e, hp: e.hp - total, inCombat: true }
+        slash(e)
         npcStruck(hitEnemy)
         addFloat(state.feedback, { px: e.px, py: e.py - 10, text: `-${total}`, kind: 'dealt' })
         sfx(state, hitEnemy.hp <= 0 ? deathCue(hitEnemy) : 'melee-hit', { px: e.px, py: e.py })
@@ -1870,7 +1945,6 @@ function update(delta) {
         applyRain(player)
       }
     }
-    state.hitEffects = [{ x: player.x, y: player.y }]
     // Harvesting: a hatchet/axe swing lands on the nearest tree in the
     // wedge, a pick's mine also lands on the nearest rock. Damage is silent
     // bar-less chopHp on the cell; the fall/clear is what you hear and see,
@@ -1882,7 +1956,7 @@ function update(delta) {
       const spot = findHarvestHit(state.map, player, hitAt, arc.reach * mods.reachMul, wpn)
       if (spot) {
         const res = harvest(state.map, spot.x, spot.y, tool)
-        state.hitEffects.push({ x: spot.x, y: spot.y })
+        // no hit flash here: chopping and mining show by the fall, as they always have
         const spx = spot.x * TILE_SIZE + TILE_SIZE / 2, spy = spot.y * TILE_SIZE + TILE_SIZE / 2
         const cue = res.kind === 'rock' ? 'wall-slam' : res.felled ? 'tree-fall' : 'chop'
         sfx(state, cue, { px: spx, py: spy })
@@ -1981,6 +2055,7 @@ function update(delta) {
     if (shot.explodes) { proj.explodes = true; proj.blastTiles = shot.blastTiles; if (shot.fireOnly) proj.fireOnly = true }
     state.projectiles.push(proj)
     sfx(state, 'ranged-shot', { px: player.px, py: player.py })
+    noteCitySwing(state, wildsWorld)
   }
 
   // A `draw` bow (the longbow) winds up while Space is held and looses on
@@ -2236,6 +2311,8 @@ function update(delta) {
       state = adventureRespawn(state, { x: state.player.x, y: state.player.y })
       const village = wildsRespawn(state, wildsWorld, wildsHooks)
       arriveTales(state, wildsWorld, taleHooks, { fresh: true })
+      arriveCity(state, wildsWorld, cityHooks, { fresh: true })
+      clearCrime(state)   // Kalevanlinna forgets: no warning, no wanted, no stocks
       state.npcWrath = false
       persistRun()
       queueToast(state, { title: `You awaken in ${village?.name ?? 'the village'}…`, lines: ['The dark took its toll — but you are alive.'] })
@@ -2323,8 +2400,9 @@ function update(delta) {
   if (npcDirty && !state.cave && mapDataFor(state.level)) { npcDirty = false; if (runMode !== 'wilds') persistRun() }
   if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
 
-  // Clear hit flash — it fires once per swing
-  if (state.hitEffects?.length > 0) state.hitEffects = []
+  // Hit flashes fade out over their HIT_LIFE (they used to be wiped here,
+  // before the render ever drew them)
+  ageHitEffects(state, delta)
 
   // Tier-A toasts: open one pausing panel per frame; the rest stay queued.
   const pending = drainToasts(state)
@@ -2382,10 +2460,12 @@ function enterCave(entrance) {
 // build the house behind the door (renderer/interior/): the same house every
 // time, from the world's seed and the door, with a story house's things laid
 // in when the door resolves to one. An instance stored by the old generator
-// has no front door of its own and is built afresh.
+// has no front door of its own and is built afresh. A Kalevanlinna door is
+// built afresh at every visit and never kept: inside are exactly the people
+// the town's schedules put there now (wilds/city/indoors.js).
 function enterHouse(door) {
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
-  let inst = state.caveInstances?.[door.label]
+  let inst = door.city ? null : state.caveInstances?.[door.label]
   let version = null
   const world = wildsWorld && state.wilds ? wildsWorld : null
   const owed = inst?.exit && inst.spawn ? storedSunroom(inst.map, inst.entities, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) }) : null
@@ -2399,12 +2479,14 @@ function enterHouse(door) {
   } else {
     // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
     const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
-    const spec = houseSpec(door, { worldSeed: wildsWorld && state.wilds ? wildsWorld.seed : 0, story: storyEp?.houses?.[door.story] ?? null })
+    const worldSeed = wildsWorld && state.wilds ? wildsWorld.seed : 0
+    const spec = door.city ? cityHouseSpec(state, door, worldSeed) : houseSpec(door, { worldSeed, story: storyEp?.houses?.[door.story] ?? null })
     const house = generateInterior(spec, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) })
     state = buildCaveState(state, entrance, {
       map: house.map, entities: buildEntities(house.entitySpawns, house.map, INTERIOR_DEPTH),
       playerSpawn: house.playerSpawn, exit: house.exit, theme: house.theme,
     })
+    if (door.city) state.cave.city = true
     if (house.reward) state.entities.push(sunRewardChest(house.reward))
     version = house.version
   }
@@ -2435,7 +2517,12 @@ function exitCave() {
   const isHouse = state.cave.label.startsWith('house:')
   const mapJustCompleted = runMode === 'adventure' && !isHouse && state.cave.mapJustCompleted
   const next = nextMapDepth(state.cave.surface.level)
+  const city = state.cave.city ? state.cave.label : null
+  // a Kalevanlinna house: whoever was struck down in it is out until tomorrow,
+  // and nothing of it is kept (it is built afresh at the next visit)
+  if (city) leaveCityHouse(state)
   state = restoreSurface(state)
+  if (city) delete state.caveInstances[city]
   persistRun()
   if (isHouse) {
     announce(state, 'You step back out.')

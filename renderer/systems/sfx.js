@@ -27,6 +27,10 @@ export const CUE_NAMES = [
   'flute-0', 'flute-1', 'flute-2', 'flute-3',
   // Päivölä's mirrors and seed (systems/sunroom-run.js)
   'mirror-turn', 'sun-bloom',
+  // Kalevanlinna's stocks: the crowd's jeer at a key press, a turnip landing (wilds/city/law.js)
+  'jeer', 'splat',
+  // the town's ambience (wilds/city/ambience.js)
+  'city-murmur', 'hammer', 'gull', 'wings', 'tavern', 'crier-bell', 'boots', 'bark',
 ]
 
 export function makeSfx(muted = false) {

@@ -76,6 +76,11 @@ export const RPG = {
   // grey stone ruins
   ow_ruin_stub_0: [20, 18], ow_ruin_stub_1: [21, 18],
   ow_ruin_col_0: [20, 19], ow_ruin_col_1: [21, 19], ow_ruin_col_base_0: [20, 20], ow_ruin_col_base_1: [21, 20],
+  // Kalevanlinna (renderer/wilds/city/kit.js; the rest of its art is drawn by
+  // tools/city/make-city-tiles.mjs): the smithy's anvil and forge, crates of
+  // greens, apples and roots for the stalls
+  ow_prop_city_anvil: [15, 0], ow_city_forge: [13, 0],
+  ow_prop_city_produce_0: [14, 6], ow_prop_city_produce_1: [15, 6], ow_prop_city_produce_2: [16, 6],
 }
 
 // --- Tiny Town copies: name -> tile number ---
@@ -126,6 +131,8 @@ export const TT = {
   // a dirt patch with its own grass edge (field, yard)
   ow_patch_tl: 12, ow_patch_t: 13, ow_patch_tr: 14, ow_patch_l: 24, ow_patch_m: 25, ow_patch_r: 26,
   ow_patch_bl: 36, ow_patch_b: 37, ow_patch_br: 38,
+  // Kalevanlinna: a one-cell turret, the battlemented top Tiny Town draws alone
+  ow_city_wall_turret: 102,
 }
 
 const pad = n => String(n).padStart(4, '0')

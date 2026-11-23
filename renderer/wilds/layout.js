@@ -7,6 +7,7 @@
 // Coordinates: a piece is PIECE x PIECE tiles at integer (wx, wy), home is
 // (0, 0), north is negative wy. A world tile is (X, Y) = (wx * PIECE + x, …).
 import { hash, hashInt, noise2 } from './rand.js'
+import { isCityPiece, inBay } from './city/geometry.js'
 
 export const PIECE = 80
 // The outer FRAME tiles of a piece never depend on its deal; terrain blends
@@ -53,6 +54,7 @@ function blobsFor(seed, x0, y0, x1, y1) {
 }
 
 function countryAt(seed, X, Y, blobs) {
+  if (inBay(X, Y, 1.4)) return 'sea'   // the bay, with sandy shores round it
   const dx = X - HOME, dy = Y - HOME
   const r = Math.hypot(dx, dy) / PIECE
   // far from home the forest test cannot pass and the bend is only needed
@@ -151,7 +153,7 @@ function blockVillage(seed, bx, by) {
   let i = hashInt(seed, bx, by, 310) % 16
   for (let n = 0; n < 16; n++, i = (i + 1) % 16) {
     const wx = bx * 4 + (i % 4), wy = by * 4 + (i >> 2)
-    if (!fixedMain(wx, wy)) return { wx, wy }
+    if (!fixedMain(wx, wy) && !isCityPiece(wx, wy)) return { wx, wy }
   }
   return null
 }
@@ -174,9 +176,9 @@ export function villagesNear(seed, wx, wy, r) {
   return out.sort((a, b) => d(a) - d(b))
 }
 
-// Pieces that are never forgotten: villages and the ring around home.
+// Pieces that are never forgotten: villages, the ring around home and the city.
 export function isPermanent(seed, wx, wy) {
-  return Math.max(Math.abs(wx), Math.abs(wy)) <= 1 || !!villageAt(seed, wx, wy)
+  return Math.max(Math.abs(wx), Math.abs(wy)) <= 1 || isCityPiece(wx, wy) || !!villageAt(seed, wx, wy)
 }
 
 // Where the path crosses a piece edge, as an offset along that edge. It is a

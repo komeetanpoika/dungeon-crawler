@@ -6,13 +6,22 @@
 // else trots — and a claw swing shows the bite for its duration.
 export const RUN_GOALS = new Set(['hunt_prey', 'attack_hostile', 'flee_hurt'])
 export const STRIDE = { walk: 8, run: 14 }     // px of travel per frame
-const STILL_AFTER = 0.1                        // s without motion before the pose settles
+export const STILL_AFTER = 0.1                 // s without motion before the pose settles
 
 export function tickNpcAnim(e, movedPx, delta) {
   const a = e.anim ??= { dist: 0, still: 0 }
   if (movedPx > 0.01) { a.dist += movedPx; a.still = 0 }
   else a.still += delta
   return a
+}
+
+// Townsfolk and town animals (a `look`, data/townsfolk-looks.js) have two
+// frames: 0 standing, 1 a step. A walker shows its step on every other stride
+// and both feet down once it has stood still a moment.
+export function stepFrame(e) {
+  const a = e.anim
+  if (!a || a.still >= STILL_AFTER) return 0
+  return Math.floor(a.dist / STRIDE.walk) % 2
 }
 
 // { row, frame } into `sheet.rows`. A missing row degrades to `walk`, so a

@@ -4,6 +4,7 @@
 // while brain.js owns the WHAT (chase, hunt, patrol, flee).
 import { buildNavGrid, buildFlowField, findPath, fieldStep, canMoveTo, clearanceFor, nearestPassable } from './nav.js'
 import { hasLineOfSight } from './entities.js'
+import { isWarded } from './ward.js'
 
 const S = 32
 const SEP_RADIUS = 20        // px within which enemies push each other apart
@@ -14,17 +15,18 @@ const WILDS_FIELD = 48       // path-tiles from the player the flow field reache
 
 // Player flow field, cached on state and rebuilt only when the player's tile
 // (or the map) changes — the maybeComputeFOV trick applied to navigation.
-export function getPlayerField(state, clearance = 1) {
-  const nav = buildNavGrid(state.map)
+export function getPlayerField(state, clearance = 1, ward = false) {
+  const nav = buildNavGrid(state.map, { ward })
   const p = state.player
   const cache = state._flowFields ?? (state._flowFields = {})
-  const c = cache[clearance]
+  const key = ward ? `${clearance}w` : clearance   // the two grids never share a field
+  const c = cache[key]
   if (!c || c.x !== p.x || c.y !== p.y || c.nav !== nav) {
     // In the Wilds (a 240x240 window) the field covers the neighbourhood only.
     const limit = state.wilds ? WILDS_FIELD : Infinity
-    cache[clearance] = { x: p.x, y: p.y, nav, field: buildFlowField(nav, p.x, p.y, clearance, limit) }
+    cache[key] = { x: p.x, y: p.y, nav, field: buildFlowField(nav, p.x, p.y, clearance, limit) }
   }
-  return cache[clearance].field
+  return cache[key].field
 }
 
 // Push-apart vector from nearby living enemies so groups fan out.
@@ -47,17 +49,18 @@ function separation(e, state) {
 function moveDir(e, state, delta, dx, dy, speed) {
   const half = e.aiHalf ?? 4
   const map = state.map
+  const ward = isWarded(e)
   const len = Math.hypot(dx, dy)
   if (len < 1e-6 || speed <= 0) return false
-  if (!canMoveTo(map, e.px, e.py, half)) { escapeMove(e, state, delta, speed); return true }
+  if (!canMoveTo(map, e.px, e.py, half, ward)) { escapeMove(e, state, delta, speed); return true }
   const [sx, sy] = separation(e, state)
   const vx = dx / len + sx * SEP_WEIGHT, vy = dy / len + sy * SEP_WEIGHT
   const vlen = Math.hypot(vx, vy) || 1
   const mx = (vx / vlen) * speed * delta, my = (vy / vlen) * speed * delta
   let moved = false
   // 1e-6 px threshold: cos(PI/2) leaves ~1e-17 residue that must not count as movement
-  if (Math.abs(mx) > 1e-6 && canMoveTo(map, e.px + mx, e.py, half)) { e.px += mx; moved = true }
-  if (Math.abs(my) > 1e-6 && canMoveTo(map, e.px, e.py + my, half)) { e.py += my; moved = true }
+  if (Math.abs(mx) > 1e-6 && canMoveTo(map, e.px + mx, e.py, half, ward)) { e.px += mx; moved = true }
+  if (Math.abs(my) > 1e-6 && canMoveTo(map, e.px, e.py + my, half, ward)) { e.py += my; moved = true }
   e.x = Math.floor(e.px / S); e.y = Math.floor(e.py / S)
   return moved
 }
@@ -65,7 +68,7 @@ function moveDir(e, state, delta, dx, dy, speed) {
 // Wedged in geometry (bad spawn / knockback): walk toward the nearest
 // passable tile centre ignoring collision — reducing penetration is always OK.
 function escapeMove(e, state, delta, speed) {
-  const nav = buildNavGrid(state.map)
+  const nav = buildNavGrid(state.map, { ward: isWarded(e) })
   const t = nearestPassable(nav, e.x, e.y, clearanceFor(e.aiHalf ?? 4)) ?? { x: e.x, y: e.y }
   const cx = t.x * S + S / 2, cy = t.y * S + S / 2
   const d = Math.hypot(cx - e.px, cy - e.py) || 1
@@ -79,7 +82,8 @@ function escapeMove(e, state, delta, speed) {
 // e.ai.path === null (brain's give-up timer reads this) and steers directly.
 function followPath(e, state, delta, target, speed) {
   const ai = e.ai
-  const nav = buildNavGrid(state.map)
+  const ward = isWarded(e)
+  const nav = buildNavGrid(state.map, { ward })
   const clearance = clearanceFor(e.aiHalf ?? 4)
   ai.repath = Math.max(0, (ai.repath ?? 0) - delta)
   const targetMoved = !ai.pathTarget || ai.pathTarget.x !== target.x || ai.pathTarget.y !== target.y
@@ -101,7 +105,7 @@ function followPath(e, state, delta, target, speed) {
   // the diagonal to it clips the wall, and per-axis movement then stalls.
   // Small entities only — a wide body could clip the corner the skip cuts.
   while (clearance === 1 && ai.path.length >= 2 &&
-         segmentWalkable(state.map, e.px, e.py, ai.path[1].x * S + S / 2, ai.path[1].y * S + S / 2, e.aiHalf ?? 4)) {
+         segmentWalkable(state.map, e.px, e.py, ai.path[1].x * S + S / 2, ai.path[1].y * S + S / 2, e.aiHalf ?? 4, ward)) {
     ai.path.shift()
   }
   if (!ai.path.length) return false
@@ -111,12 +115,12 @@ function followPath(e, state, delta, target, speed) {
 
 // Whether a body of half-size `half` can slide straight from (x1,y1) to
 // (x2,y2): canMoveTo sampled every half-body along the segment, end included.
-function segmentWalkable(map, x1, y1, x2, y2, half) {
+function segmentWalkable(map, x1, y1, x2, y2, half, ward = false) {
   const len = Math.hypot(x2 - x1, y2 - y1)
   const steps = Math.max(1, Math.ceil(len / Math.max(1, half)))
   for (let i = 1; i <= steps; i++) {
     const t = i / steps
-    if (!canMoveTo(map, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, half)) return false
+    if (!canMoveTo(map, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, half, ward)) return false
   }
   return true
 }
@@ -124,8 +128,9 @@ function segmentWalkable(map, x1, y1, x2, y2, half) {
 // One flow-field step: move toward the best downhill/uphill neighbour tile.
 function followField(e, state, delta, speed, dir) {
   const clearance = clearanceFor(e.aiHalf ?? 4)
-  const nav = buildNavGrid(state.map)
-  const field = getPlayerField(state, clearance)
+  const ward = isWarded(e)
+  const nav = buildNavGrid(state.map, { ward })
+  const field = getPlayerField(state, clearance, ward)
   const step = fieldStep(field, nav, e.x, e.y, clearance, dir)
   if (!step) return false
   return moveDir(e, state, delta, step.x * S + S / 2 - e.px, step.y * S + S / 2 - e.py, speed)
@@ -175,7 +180,7 @@ export function act(e, state, delta, intent) {
       // endpoint check is sufficient: the main loop clamps delta to 100ms, so max step = speed*0.1 (30px at cyclops charge speed) < one 32px tile — no tunneling
       const mx = Math.cos(intent.angle) * speed * delta
       const my = Math.sin(intent.angle) * speed * delta
-      if (!canMoveTo(map, e.px + mx, e.py + my, e.aiHalf ?? 4)) return false
+      if (!canMoveTo(map, e.px + mx, e.py + my, e.aiHalf ?? 4, isWarded(e))) return false
       e.px += mx; e.py += my
       e.x = Math.floor(e.px / S); e.y = Math.floor(e.py / S)
       return true

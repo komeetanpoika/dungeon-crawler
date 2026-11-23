@@ -44,7 +44,9 @@ export const RUGS = { green: rug('green'), orange: rug('orange'), red: rug('red'
 //   faceLower  stands against the wall on the lower face row (a dresser, a stove)
 //   floor      stands on the floor; `block` (default true) makes the cell solid
 // `tiles` are rows of names, top row first. `dusty`: has `_d` twins for
-// abandoned houses (every name in tiles + '_d').
+// abandoned houses (every name in tiles + '_d'). A name may serve more than
+// one item (the bar is shelves and worktops); it then belongs to the first
+// item listed (interior/versions.js dress).
 const it = (on, tiles, extra = {}) => ({ on, tiles, ...extra })
 export const ITEMS = {
   // ---- on the face, two rows
@@ -97,6 +99,10 @@ export const ITEMS = {
   jars: it('faceLower', [['in_jars']], { dusty: true }),
   worktop: it('faceLower', [['in_worktop']], { dusty: true }),
   wallchest: it('faceLower', [['in_chest']], { dusty: true }),
+  // ---- on the face, two rows, from pieces above
+  // the taproom's bar: a counter three cells long, bottles on the shelf
+  // above it (the pack has no counter: kitchen worktops and shelves)
+  bar: it('face', [['in_bottleshelf', 'in_plateshelf', 'in_bottleshelf'], ['in_worktop', 'in_worktop', 'in_worktop']], { dusty: true }),
   // ---- floor
   bed_v: it('floor', [['in_bed_v_t'], ['in_bed_v_b']], { dusty: true }),
   bed_v2: it('floor', [['in_bed_v2_t'], ['in_bed_v2_b']], { dusty: true }),
@@ -119,6 +125,8 @@ export const ITEMS = {
   stool: it('floor', [['in_stool']], { dusty: true, block: false }),
   armchair: it('floor', [['in_armchair']], { dusty: true }),
   bench: it('floor', [['in_bench']], { dusty: true }),
+  // a bench along a taproom table, sat on and walked over like a chair
+  bench_seat: it('floor', [['in_bench', 'in_bench']], { dusty: true, block: false }),
   barrel: it('floor', [['in_barrel']], { dusty: true }),
   barrel2: it('floor', [['in_barrel2']], { dusty: true }),
   barrel3: it('floor', [['in_barrel3']], { dusty: true }),

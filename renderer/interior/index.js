@@ -2,13 +2,15 @@
 // houseSpec): a plan cut for it, walls and floors, rooms furnished for their
 // purpose, the version's finish, and who lives there. Pure in spec.seed — the
 // same door is the same house on every visit; only what lives and lies in it
-// resets with the cave instance (systems/cave.js).
+// resets with the cave instance (systems/cave.js). A Kalevanlinna house
+// (versions.js citySpec) brings its people along (`residents`, in place of
+// the version's occupants) and has nothing lying about (`noLoot`).
 import { makePlan } from './plan.js'
 import { buildCells } from './walls.js'
 import { assignRoles, floorsFor, furnish, bareOf } from './furnish.js'
 import { layPuzzle, findSun, solveSun } from './sunroom.js'
 import { MISC } from './kit.js'
-import { HOME } from './recipes.js'
+import { HOME, TRADES } from './recipes.js'
 import { VERSIONS, TRADE_LIST, GLASSMAKER, occupants, loot, dress } from './versions.js'
 import { mulberry32, shuffle } from './rng.js'
 import { TILE } from '../systems/entities.js'
@@ -37,7 +39,8 @@ export function specFor({ version = 'home', size = 'medium', seed = 1, label = `
 export function generateInterior(spec, { solved = false, looted = false } = {}) {
   const rng = mulberry32(spec.seed)
   const sunroom = spec.version === 'sunroom'
-  const plan = makePlan(spec.size, rng, { hall: sunroom })
+  // the sunlit hall and the taproom are big halls by the door
+  const plan = makePlan(spec.size, rng, { hall: sunroom || !!TRADES[spec.trade]?.hallRole })
   const roles = assignRoles(plan, { version: spec.version, trade: spec.trade, story: spec.story, rng })
   const floors = floorsFor(plan, roles, rng, spec.version)
   const map = buildCells(plan, { palette: spec.palette, floorOf: id => floors.get(id) })
@@ -76,12 +79,15 @@ export function generateInterior(spec, { solved = false, looted = false } = {}) 
     for (const contents of spec.story.pickups) { const c = take(pool); if (c) entitySpawns.push({ kind: 'floating_pickup', x: c.x, y: c.y, contents }) }
   }
   const far = shuffle(rng, free.filter(c => Math.abs(c.x - plan.spawn.x) + Math.abs(c.y - plan.spawn.y) > DOOR_CLEARANCE))
-  for (const s of occupants(spec, rng)) {
-    const c = take(far)
+  // residents are all placed: away from the door while there is room, then anywhere
+  for (const s of spec.residents ?? occupants(spec, rng)) {
+    const c = take(far) ?? (spec.residents ? take(free) : undefined)
     if (c) entitySpawns.push({ ...s, x: c.x, y: c.y, ...(s.role === 'glassmaker' && solved ? { lines: GLASSMAKER.solved } : {}) })
   }
-  const anywhere = [...far, ...shuffle(rng, free)]
-  for (const contents of loot(spec, rng)) { const c = take(anywhere); if (c) entitySpawns.push({ kind: 'floating_pickup', x: c.x, y: c.y, contents }) }
+  if (!spec.noLoot) {
+    const anywhere = [...far, ...shuffle(rng, free)]
+    for (const contents of loot(spec, rng)) { const c = take(anywhere); if (c) entitySpawns.push({ kind: 'floating_pickup', x: c.x, y: c.y, contents }) }
+  }
 
   return {
     map, entitySpawns, playerSpawn: { ...plan.spawn }, exit: { ...plan.exit },

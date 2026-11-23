@@ -9,13 +9,15 @@
 //            the piece was last in the window
 //   deals    key -> how many times the piece has been forgotten
 import { generatePiece } from './piece.js'
+import { generateCityPiece } from './city/piece.js'
 import { pieceKey, isPermanent, villageAt } from './layout.js'
+import { isCityPiece } from './city/geometry.js'
 import { kindOf } from './tales.js'
 import { TALE_IDS } from '../data/tales.js'
 
 // Bump when the generator's output changes: spawn indices and the ground
 // itself in an older save no longer match, so its records are dropped.
-export const GEN = 8
+export const GEN = 9
 export const FORGET_PIECES = 5      // Chebyshev pieces from the player
 export const FORGET_SECONDS = 1200  // of play since the piece was last in the window
 export const CACHE_MAX = 49
@@ -27,7 +29,7 @@ const parseKey = key => { const [wx, wy] = key.split(',').map(Number); return { 
 export function makeWorld(saved = null, { seed = 1 } = {}) {
   const ok = saved && typeof saved === 'object' && !Array.isArray(saved) && isInt(saved.seed)
   const world = {
-    seed: ok ? saved.seed : seed, gen: GEN, playtime: 0, origin: null,
+    seed: ok ? saved.seed : seed, gen: GEN, playtime: 0, day: 0, origin: null,
     pieces: new Map(), records: new Map(), deals: new Map(),
     // key -> spawn indices alive in the window while their home piece is out
     // of it (session.js); never saved — a load puts everyone back at home
@@ -38,10 +40,14 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     // Päivölä (renderer/interior/sunroom.js): door labels of puzzle houses
     // solved, and of those whose reward was taken
     solved: new Set(), looted: new Set(),
+    // Kalevanlinna (city/law.js seat): the day the player last sat in the
+    // stocks, for the crier's news the day after (city/crier.js); null never
+    stocksDay: null,
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
   }
   if (!ok) return world
   if (Number.isFinite(saved.playtime) && saved.playtime >= 0) world.playtime = saved.playtime
+  if (isInt(saved.day) && saved.day >= 0) world.day = saved.day
   if (isPieceRef(saved.lastVillage)) world.lastVillage = { wx: saved.lastVillage.wx, wy: saved.lastVillage.wy }
   if (Array.isArray(saved.visited)) world.visited = [...new Set(['0,0', ...saved.visited.filter(k => typeof k === 'string')])]
   for (const [key, n] of Object.entries(saved.deals ?? {})) if (isInt(n) && n > 0) world.deals.set(key, n)
@@ -57,9 +63,17 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     if (!isObj(p) || !TALE_IDS.includes(p.id) || typeof p.village !== 'string') continue
     world.places.set(key, { id: p.id, village: p.village, done: p.done === true })
   }
+  // a saved place on a city piece (R2) is released; its tale keeps its flags
+  for (const key of [...world.places.keys()]) {
+    const { wx, wy } = parseKey(key)
+    if (!isCityPiece(wx, wy)) continue
+    world.places.delete(key)
+    for (const t of world.tales.values()) if (t.place === key) t.place = null
+  }
   if (Array.isArray(saved.paid)) for (const id of saved.paid) if (TALE_IDS.includes(id)) world.paid.add(id)
   // a solved house stays solved, as a told tale stays told
   for (const k of ['solved', 'looted']) if (Array.isArray(saved[k])) for (const label of saved[k]) if (typeof label === 'string') world[k].add(label)
+  if (isInt(saved.stocksDay) && saved.stocksDay >= 0) world.stocksDay = saved.stocksDay
   if (saved.gen !== GEN) return world
   for (const [key, rec] of Object.entries(saved.records ?? {})) {
     if (!rec || typeof rec !== 'object') continue
@@ -81,6 +95,13 @@ export function getPiece(world, wx, wy) {
   const key = pieceKey(wx, wy)
   let piece = world.pieces.get(key)
   if (piece) return piece
+  // Kalevanlinna's four pieces are cut from the city, built once per world
+  if (isCityPiece(wx, wy)) {
+    piece = generateCityPiece(world.seed, wx, wy)
+    world.pieces.set(key, piece)
+    if (world.pieces.size > CACHE_MAX) evict(world)
+    return piece
+  }
   // a village is built for the tale it carries, a tale's place for its tale
   const village = (wx === 0 && wy === 0) || villageAt(world.seed, wx, wy)
   piece = generatePiece(world.seed, wx, wy, world.deals.get(key) ?? 0, world.places.get(key)?.id ?? null,
@@ -137,7 +158,7 @@ export function exportWorld(world) {
   const records = {}
   for (const [key, rec] of world.records) records[key] = { gone: [...rec.gone], felled: [...rec.felled], lastSeen: rec.lastSeen }
   return {
-    seed: world.seed, gen: GEN, playtime: world.playtime,
+    seed: world.seed, gen: GEN, playtime: world.playtime, day: world.day,
     pos: world.pos ? { ...world.pos } : null,
     lastVillage: { ...world.lastVillage }, visited: [...world.visited],
     records, deals: Object.fromEntries(world.deals),
@@ -145,5 +166,6 @@ export function exportWorld(world) {
     places: Object.fromEntries([...world.places].map(([key, p]) => [key, { ...p }])),
     paid: [...world.paid],
     solved: [...world.solved], looted: [...world.looted],
+    stocksDay: world.stocksDay,
   }
 }
