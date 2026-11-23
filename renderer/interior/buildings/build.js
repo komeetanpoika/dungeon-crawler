@@ -44,22 +44,34 @@ export function buildFloor(def, { rng }) {
   for (const c of [...parsed.shut, ...parsed.spawns]) bare.add(key(c.x, c.y))
 
   const walk = c => c.tile !== TILE.WALL
-  const origin = plan.spawn ?? parsed.stairs[0] ?? firstWalkable(map)
-  const reachCount = () => {
+  const origin = plan.spawn ?? parsed.stairs[0]?.land
+  if (!origin) throw new Error(`${def.id}: a floor needs a way out (E) or a stair to start from (the spawn)`)
+  const isFloor = (x, y) => '.dE'.includes(plan.grid[y][x])
+  // the cells the origin reaches on foot
+  const reach = () => {
     const seen = new Uint8Array(W * H), q = [origin.y * W + origin.x]
     seen[q[0]] = 1
-    let n = 0
     while (q.length) {
-      const i = q.pop(); n++
+      const i = q.pop()
       const x = i % W, y = (i / W) | 0
       for (const [dx, dy] of NEIGHBOURS) {
         const nx = x + dx, ny = y + dy
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue
         const j = ny * W + nx
-        if (!seen[j] && walk(map[ny][nx])) { seen[j] = 1; q.push(j) }
+        if (!seen[j] && isFloor(nx, ny) && walk(map[ny][nx])) { seen[j] = 1; q.push(j) }
       }
     }
-    return n
+    return seen
+  }
+  const reachCount = () => reach().reduce((n, v) => n + v, 0)
+  // a hand-written map that cannot be walked fails here, not in the game
+  const seen = reach()
+  const must = [
+    ...map.flatMap((row, y) => row.map((c, x) => ({ x, y })).filter(c => isFloor(c.x, c.y) && walk(map[c.y][c.x]))),
+    ...parsed.stairs, ...parsed.stairs.map(s => s.land), ...[...parsed.spots.values()].flat(), ...parsed.shut, ...parsed.spawns,
+  ]
+  for (const c of must) {
+    if (!seen[c.y * W + c.x]) throw new Error(`${def.id} ${c.x},${c.y}: not reached on foot from the ${plan.spawn ? 'spawn' : 'first stair'} (${origin.x},${origin.y})`)
   }
   let walkable = reachCount()
 
@@ -106,14 +118,10 @@ export function buildFloor(def, { rng }) {
     // bare walkable floor left, for seating people
     free: [],
   }
+  const marked = new Set([...parsed.spawns, ...parsed.shut, ...[...parsed.spots.values()].flat()].map(c => key(c.x, c.y)))
   map.forEach((row, y) => row.forEach((c, x) => {
-    if (plan.grid[y][x] === '.' && walk(c) && !c.overlay && !parsed.spawns.some(s => s.x === x && s.y === y)) out.free.push({ x, y })
+    if (plan.grid[y][x] === '.' && walk(c) && !c.overlay && !marked.has(key(x, y))) out.free.push({ x, y })
   }))
   if (plan.spawn) { out.playerSpawn = { ...plan.spawn }; out.exit = { ...plan.exit } }
   return out
-}
-
-function firstWalkable(map) {
-  for (let y = 0; y < map.length; y++) for (let x = 0; x < map[0].length; x++) if (map[y][x].tile !== TILE.WALL && map[y][x].skin !== MISC.void && map[y][x].tile === TILE.FLOOR_WOOD) return { x, y }
-  return { x: 0, y: 0 }
 }

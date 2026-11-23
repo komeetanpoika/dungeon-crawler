@@ -72,11 +72,13 @@ export function parseFloor(def) {
         used[y + dy][x + dx] = true
         if (e.spot) addSpot(e.spot, x + dx, y + dy)
       }
+      if (e.spot && (item.on !== 'floor' || item.block !== false)) fail(x, y, `item "${e.item}" blocks, so nobody can stand on it as a spot`)
       items.push({ item: e.item, x, y })
       continue
     }
     used[y][x] = true
     const onFloor = () => { if (g(x, y) !== '.') fail(x, y, `"${c}" needs floor ('.') under it, found "${g(x, y)}"`) }
+    const seat = () => { if (spawn && x === spawn.x && y === spawn.y) fail(x, y, `a spot cannot be on the spawn cell`) }
     if (e.shut !== undefined) {
       if (g(x, y) !== '.' && g(x, y) !== 'd') fail(x, y, `shut cell needs floor or a doorway under it, found "${g(x, y)}"`)
       shut.push({ x, y, line: e.shut })
@@ -95,10 +97,11 @@ export function parseFloor(def) {
     } else if (e.spawn) {
       onFloor()
       spawns.push({ kind: 'npc', ...e.spawn, x, y })
-      if (e.spot) addSpot(e.spot, x, y)
+      if (e.spot) { seat(); addSpot(e.spot, x, y) }
       if (e.guards) guards.push({ stair: e.guards, id: e.spawn.id, line: e.line, x, y })
     } else if (e.spot) {
       onFloor()
+      seat()
       addSpot(e.spot, x, y)
     }
   }

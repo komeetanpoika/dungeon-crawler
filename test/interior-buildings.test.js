@@ -102,10 +102,10 @@ test('parse: a guard puts its id and line on its stair', () => {
 
 test('parse: an item and a spot may share a character', () => {
   const def = edit(hall, 'things', 5, 6, 'K')
-  def.legend = { ...def.legend, K: { item: 'barrel', spot: 'throne' } }
+  def.legend = { ...def.legend, K: { item: 'stool', spot: 'throne' } }
   const p = parseFloor(def)
   assert.deepEqual(p.spots.get('throne'), [{ x: 6, y: 5 }])
-  assert.ok(p.items.some(i => i.item === 'barrel' && i.x === 6 && i.y === 5))
+  assert.ok(p.items.some(i => i.item === 'stool' && i.x === 6 && i.y === 5))
 })
 
 test('parse: broken definitions throw, naming the floor and the cell', () => {
@@ -186,4 +186,63 @@ test('buildBuilding: people take the spot cells, then free floor away from the w
   assert.equal(f.map[third.y][third.x].overlay, undefined)
   assert.throws(() => buildBuilding('nope', { seed: 1, people: [] }, registry), /unknown building/)
   assert.deepEqual(BUILDINGS, {})
+})
+
+const withLegend = (def, extra) => ({ ...def, legend: { ...def.legend, ...extra } })
+
+test('parse: a spot must be somewhere a person can stand', () => {
+  const S = { S: { spot: 'seat' } }
+  assert.throws(() => parseFloor(withLegend(edit(hall, 'things', 7, 5, 'S'), S)), /hall 5,7.*spawn/)
+  assert.throws(() => parseFloor(withLegend(edit(hall, 'things', 8, 5, 'S'), S)), /hall 5,8/)
+  const blocking = withLegend(edit(hall, 'things', 5, 6, 'K'), { K: { item: 'barrel', spot: 'throne' } })
+  assert.throws(() => parseFloor(blocking), /hall 6,5.*blocks/)
+  const face = withLegend(edit(edit(hall, 'things', 1, 4, 'W'), 'things', 2, 4, 'W'), { W: { item: 'wardrobe', spot: 'throne' } })
+  assert.throws(() => parseFloor(face), /hall 4,1.*blocks/)
+  const open = withLegend(edit(hall, 'things', 5, 6, 'K'), { K: { item: 'stool', spot: 'throne' } })
+  assert.deepEqual(parseFloor(open).spots.get('throne'), [{ x: 6, y: 5 }])
+})
+
+test('parse: items on the wrong cells, two landings, a things grid of another size', () => {
+  const on = (ch, y, x, item) => withLegend(edit(hall, 'things', y, x, ch), { [ch]: { item } })
+  assert.throws(() => parseFloor(on('D', 4, 6, 'dresser')), /hall 6,4.*needs "l"/)
+  assert.throws(() => parseFloor(on('N', 4, 6, 'window')), /hall 6,4.*needs "u"/)
+  assert.throws(() => parseFloor(on('W', 2, 6, 'wardrobe')), /hall 6,2.*(2x1|needs)/)
+  assert.throws(() => parseFloor(on('D', 1, 6, 'dresser')), /hall 6,1.*needs "l"/)
+  assert.throws(() => parseFloor(on('W', 4, 6, 'wardrobe')), /hall 6,4.*2x1|hall 6,4.*1x2/)
+  assert.throws(() => parseFloor(edit(hall, 'things', 5, 9, '1')), /hall 9,5.*more than one landing/)
+  assert.throws(() => parseFloor({ ...hall, things: hall.things.slice(1) }), /hall.*things has 8 rows/)
+  assert.throws(() => parseFloor({ ...hall, things: hall.things.map((r, i) => i === 2 ? r + ' ' : r) }), /hall 0,2.*things row/)
+})
+
+test('buildFloor: a hand-laid wall that cuts a stair off throws, naming the floor and cell', () => {
+  let def = hall
+  for (const [y, x] of [[3, 8], [4, 8], [5, 9]]) def = edit(def, 'things', y, x, 'B')
+  def = withLegend(def, { B: { item: 'barrel' } })
+  assert.throws(() => buildFloor(def, { rng: mulberry32(1) }), /hall 9,3.*not reached/)
+  assert.doesNotThrow(() => buildFloor(hall, { rng: mulberry32(1) }))
+  // a floor without a way in has nowhere to start
+  assert.throws(() => buildFloor({ ...upper, things: upper.things.map(r => r.replace(/[>2]/g, ' ')) }, { rng: mulberry32(1) }), /upper.*way out/)
+})
+
+test('buildBuilding: fallback seating never uses a shut cell or any spot cell', () => {
+  let def = edit(edit(hall, 'things', 5, 6, 'c'), 'things', 5, 7, 'c')
+  def = withLegend(def, { c: { spot: 'cellar' } })
+  const registry = {
+    test: {
+      floors: [def, upper], ground: 'hall', theme: {},
+      seat: p => ({ floor: 'hall', spot: p.id === 'last' ? 'cellar' : 'bench' }),
+    },
+  }
+  const people = [...Array.from({ length: 12 }, (_, i) => `p${i}`), 'last'].map(id => ({ spawn: { kind: 'npc', species: 'villager', id }, person: { id }, act: 'sit' }))
+  const f = buildBuilding('test', { seed: 2, people }, registry).floors[0]
+  const placed = f.entitySpawns
+  assert.equal(placed.length, 13)
+  assert.equal(new Set(placed.map(s => `${s.x},${s.y}`)).size, 13)
+  const cell = s => `${s.x},${s.y}`
+  const last = placed.find(s => s.id === 'last')
+  assert.ok(['6,5', '7,5'].includes(cell(last)), 'the last person sits on their own spot')
+  for (const s of placed.filter(s => s.id !== 'last')) {
+    assert.notEqual(cell(s), '2,7', 'not on the shut cell')
+    assert.ok(!['6,5', '7,5'].includes(cell(s)), 'not on the unused spot')
+  }
 })
