@@ -271,13 +271,17 @@ export function maybeComputeFOV(map, player, radius = 8, opts = {}) {
   return true
 }
 
+// How many things the bag holds before any `extra_slot` bonus. It was 10
+// until the bag was rebuilt (2026-11-23); adventure.js lifts older saves.
+export const SACK_BASE = 24
+
 export function makePlayer(x, y, bonuses = []) {
   const quietSteps = bonuses.filter(b => b === 'quiet_step').length
   const extraSlots = bonuses.filter(b => b === 'extra_slot').length
   return {
     type: 'player', x, y,
     hp: 10, maxHp: 10,
-    inventory: [], maxInventory: 10 + extraSlots,
+    inventory: [], maxInventory: SACK_BASE + extraSlots,
     noiseFootprint: Math.max(0, 2 - quietSteps),
     // Three loadouts of one body: the main hands live here (melee / bow /
     // wand — combat code reads them directly), each loadout's offhand and

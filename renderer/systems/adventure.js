@@ -6,7 +6,7 @@ import { OPEN_MAPS } from '../data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../data/levels.js'
 import { DAY_START } from '../data/weather.js'
 import { WAND_TYPES, RANGED_WEAPON_TYPES, makeWandContents, makeRangedContents, emptyAmmo,
-  OUTFIT_TYPES, makeOutfitContents, defaultGear, WEAPON_TYPES, weaponContents, SHIELD_TYPES, makeShieldContents } from './entities.js'
+  OUTFIT_TYPES, makeOutfitContents, defaultGear, WEAPON_TYPES, weaponContents, SHIELD_TYPES, makeShieldContents, SACK_BASE } from './entities.js'
 import { itemFromContents, OFFHAND_KINDS, offhandItem } from './inventory.js'
 import { migrateTalentsToOutfits } from './outfits.js'
 
@@ -36,6 +36,8 @@ export function normalizeBody(body) {
   if (body == null) return null
   const out = { ...body }
   out.wand ??= null
+  // The bag grew from 10 to SACK_BASE: a save from before keeps its bonus slots on top.
+  if (Number.isFinite(out.maxInventory) && out.maxInventory < SACK_BASE) out.maxInventory += SACK_BASE - 10
   out.ammo = { ...emptyAmmo(), ...(out.ammo ?? {}) }
   if (out.ranged) {
     const wt = out.ranged.weaponType

@@ -1,133 +1,174 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { gearStrip, sackActions, gearAction, moveSelection } from '../renderer/ui/inventory-panel-model.js'
-import { makePlayer, weaponContents, makeOutfitContents } from '../renderer/systems/entities.js'
+import { gearPanel, placesFor, refusal, buttonsFor, describe as tell, moveSelection, settle, edible, GEAR_SLOTS, GEAR_ROOM } from '../renderer/ui/inventory-panel-model.js'
+import { makePlayer, weaponContents, makeRangedContents, makeOutfitContents, SACK_BASE } from '../renderer/systems/entities.js'
 import { makeItem, addItem, itemFromContents } from '../renderer/systems/inventory.js'
 import { gearWearing } from './helpers/outfits.js'
 
 const mk = over => ({ ...makePlayer(1, 1), ...over })
+const give = (p, contents) => { const item = itemFromContents(contents); p.inventory.push(item); return item }
+const blade = type => ({ type: 'weapon', ...weaponContents(type) })
+const sack = i => ({ area: 'sack', index: i })
+const gear = slot => ({ area: 'gear', index: GEAR_SLOTS.indexOf(slot) })
 
-describe('gearStrip', () => {
-  it('lists Warrior, Archer, Mage with locks that follow the outfits', () => {
-    const strip = gearStrip(mk({ gear: gearWearing('robe') }))
-    assert.deepEqual(strip.map(c => [c.name, c.locked]), [['Warrior', false], ['Archer', true], ['Mage', false]])
-    assert.deepEqual(strip.map(c => c.active), [true, false, false])
-  })
-  it('shows the main hand, the resolved pointer and the outfit per column', () => {
-    const p = mk({ weapon: weaponContents('sword'), gear: gearWearing('plate') })
+describe('gearPanel', () => {
+  it('shows only the character being played: main, off, outfit and the shared belt', () => {
+    const p = mk({ weapon: weaponContents('sword'), belt: weaponContents('pick'), gear: gearWearing('plate', 'ranger') })
     addItem(p, makeItem('potion', 2))
-    const [warrior] = gearStrip(p)
-    assert.equal(warrior.tiles[0].item.payload.weaponType, 'sword')
-    assert.deepEqual(warrior.tiles[1].item, { kind: 'consumable', item: 'potion', name: 'Potion', emoji: '🧪', count: 2 })
-    assert.equal(warrior.tiles[2].item.payload.outfitType, 'plate')
+    const g = gearPanel(p)
+    assert.equal(g.name, 'Warrior')
+    assert.deepEqual(g.tiles.map(t => t.slot), ['main', 'off', 'outfit', 'belt'])
+    assert.equal(g.tiles[0].item.payload.weaponType, 'sword')
+    assert.deepEqual(g.tiles[1].item, { kind: 'consumable', item: 'potion', name: 'Potion', emoji: '🧪', count: 2 })
+    assert.equal(g.tiles[2].item.payload.outfitType, 'plate')
+    assert.equal(g.tiles[3].item.payload.weaponType, 'pick')
+    p.attackMode = 'ranged'
+    const a = gearPanel(p)
+    assert.equal(a.name, 'Archer')
+    assert.equal(a.tiles[0].item, null)
+    assert.equal(a.tiles[3].item.payload.weaponType, 'pick')   // the belt comes along
   })
-  it('an empty pointer still shows the kind at count 0; a null offhand is null', () => {
+  it('there is room for eight slots and four are in use', () => {
+    assert.equal(GEAR_SLOTS.length, 4)
+    assert.equal(GEAR_ROOM, 8)
+  })
+})
+
+describe('placesFor: where Equip puts a thing', () => {
+  it('a longsword has one place, a dagger two, a hatchet three', () => {
+    const p = mk({ gear: gearWearing('plate') })   // the longsword is heavy: it takes the plate
+    assert.deepEqual(placesFor(p, give(p, blade('longsword'))).map(x => x.slot), ['main'])
+    assert.equal(refusal(mk(), p.inventory[0]), 'Too heavy — I lack the strength.')
+    assert.deepEqual(placesFor(p, give(p, blade('dagger'))).map(x => x.slot), ['main', 'off'])
+    assert.deepEqual(placesFor(p, give(p, blade('hatchet'))).map(x => [x.slot, x.fn]), [['main', 'onEquip'], ['off', 'onEquipOff'], ['belt', 'onEquipBelt']])
+  })
+  it('food and potions go to the offhand', () => {
     const p = mk()
-    assert.equal(gearStrip(p)[0].tiles[1].item.count, 0)
+    assert.deepEqual(placesFor(p, makeItem('potion', 1)).map(x => [x.slot, x.fn]), [['off', 'onEquipOff']])
+    assert.deepEqual(placesFor(p, makeItem('meat', 1)).map(x => x.slot), ['off'])
+  })
+  it('a bow is the Archer\'s: no place while the Warrior is played, the main hand once switched', () => {
+    const p = mk({ gear: gearWearing('ranger') })
+    const bow = give(p, makeRangedContents('shortbow'))
+    assert.deepEqual(placesFor(p, bow), [])
+    assert.equal(refusal(p, bow), 'The Archer carries this.')
+    p.attackMode = 'ranged'
+    assert.deepEqual(placesFor(p, bow).map(x => x.slot), ['main'])
+    assert.equal(refusal(p, bow), null)
+  })
+  it('a bow with no Archer yet says why', () => {
+    const p = mk()
+    assert.equal(refusal(p, give(p, makeRangedContents('shortbow'))), "I don't know how to use this.")
+  })
+  it('an outfit can always be worn: that is how its character is opened', () => {
+    const p = mk()
+    const coat = give(p, makeOutfitContents('ranger'))
+    assert.deepEqual(placesFor(p, coat).map(x => [x.slot, x.fn]), [['outfit', 'onEquip']])
+  })
+  it('a quest thing and plain lumber go nowhere', () => {
+    const p = mk()
+    assert.deepEqual(placesFor(p, { ...makeItem('lumber', 3) }), [])
+    assert.deepEqual(placesFor(p, { ...give(p, blade('sword')), quest: true }), [])
+  })
+})
+
+describe('buttonsFor', () => {
+  it('a longsword in the bag: red equips, green is off, blue drops on a hold, yellow needs another character', () => {
+    const p = mk({ gear: gearWearing('plate') })
+    give(p, blade('longsword'))
+    const b = buttonsFor(p, sack(0))
+    assert.deepEqual([b.red.label, b.red.fn, b.red.places.length], ['Equip', 'onEquip', 1])
+    assert.deepEqual(b.green, { label: 'Use', fn: null })
+    assert.deepEqual([b.blue.fn, b.blue.hold], ['onDrop', 0.5])
+    assert.equal(b.yellow.fn, null)
+  })
+  it('yellow switches once a second character is open', () => {
+    const p = mk({ gear: gearWearing('ranger') })
+    assert.equal(buttonsFor(p, sack(0)).yellow.fn, 'onSwap')
+  })
+  it('green eats, drinks and builds', () => {
+    const p = mk()
+    addItem(p, makeItem('potion', 1)); addItem(p, makeItem('meat', 2)); addItem(p, makeItem('lumber', 3)); addItem(p, makeItem('herring', 12)); addItem(p, makeItem('mushroom', 1))
+    assert.deepEqual(p.inventory.map((_, i) => buttonsFor(p, sack(i)).green), [
+      { label: 'Drink', fn: 'onUse' }, { label: 'Eat', fn: 'onUse' }, { label: 'Build fire', fn: 'onBuild' }, { label: 'Eat', fn: 'onUse' }, { label: 'Eat', fn: 'onUse' },
+    ])
+    assert.equal(edible(makeItem('herring', 1)), true)
+    assert.equal(edible(makeItem('lumber', 1)), false)
+  })
+  it('an outfit is worn, not equipped', () => {
+    const p = mk()
+    give(p, makeOutfitContents('leather'))
+    assert.equal(buttonsFor(p, sack(0)).red.label, 'Wear')
+  })
+  it('on the character: red unequips what is there, and nothing else is offered', () => {
+    const p = mk({ weapon: weaponContents('sword') })
+    const b = buttonsFor(p, gear('main'))
+    assert.deepEqual([b.red.label, b.red.fn, b.red.slot], ['Unequip', 'onUnequip', 'main'])
+    assert.equal(b.green.fn, null)
+    assert.equal(b.blue.fn, null)
+    assert.equal(buttonsFor(p, gear('belt')).red.fn, null)
+    assert.equal(buttonsFor(p, gear('off')).red.label, 'Clear')   // the potion pointer
     p.gear.melee.off = null
-    assert.equal(gearStrip(p)[0].tiles[1].item, null)
+    assert.equal(buttonsFor(p, gear('off')).red.fn, null)
+  })
+  it('an empty bag offers nothing but the switch', () => {
+    const p = mk()
+    const b = buttonsFor(p, sack(0))
+    assert.deepEqual([b.red.fn, b.green.fn, b.blue.fn], [null, null, null])
   })
 })
 
-describe('sackActions', () => {
-  it('a potion drinks, can be pointed at, and drops', () => {
-    assert.deepEqual(sackActions(mk(), makeItem('potion')).map(a => a.label), ['Drink', 'Offhand', 'Drop'])
+describe('describe', () => {
+  it('names the thing, its numbers and why it cannot be equipped', () => {
+    const p = mk()
+    give(p, blade('sword')); addItem(p, makeItem('meat', 4)); give(p, makeRangedContents('shortbow'))
+    const sword = tell(p, sack(0))
+    assert.equal(sword.title, 'Sword')
+    assert.ok(sword.lines.some(l => /damage/.test(l)))
+    assert.equal(tell(p, sack(1)).title, 'Meat ×4')
+    assert.deepEqual(tell(p, sack(1)).lines, ['Heals 1.'])
+    assert.equal(tell(p, sack(2)).warn, "I don't know how to use this.")
   })
-  it('an outfit wears; a weapon equips; a quest item only drops', () => {
-    assert.deepEqual(sackActions(mk(), itemFromContents(makeOutfitContents('ranger'))).map(a => [a.label, a.fn]), [['Wear', 'onEquip'], ['Drop', 'onDrop']])
-    assert.deepEqual(sackActions(mk(), itemFromContents({ type: 'weapon', ...weaponContents('dagger') })).map(a => a.label), ['Equip', 'Offhand', 'Drop'])
-    assert.deepEqual(sackActions(mk(), makeItem('clapper')).map(a => a.label), ['Drop'])
-  })
-})
-
-describe('gearAction', () => {
-  it('unequips a filled hand or outfit, clears a pointer, nothing on empty or locked', () => {
-    const p = mk({ weapon: weaponContents('sword'), gear: gearWearing('plate') })
-    assert.deepEqual(gearAction(p, 'melee', 'main'), { label: 'Unequip', fn: 'onUnequip' })
-    assert.deepEqual(gearAction(p, 'melee', 'outfit'), { label: 'Unequip', fn: 'onUnequip' })
-    assert.deepEqual(gearAction(p, 'melee', 'off'), { label: 'Clear', fn: 'onUnequip' })
-    assert.equal(gearAction(p, 'ranged', 'main'), null)     // locked
-    assert.equal(gearAction(p, 'magic', 'outfit'), null)    // locked and empty
+  it('an empty slot on the character says so', () => {
+    assert.deepEqual(tell(mk(), gear('main')), { title: 'Main', lines: ['Nothing here.'] })
   })
 })
 
 describe('moveSelection', () => {
-  const counts = { sack: 7, gear: 9 }
-  it('moves within the sack grid as before', () => {
-    assert.deepEqual(moveSelection({ area: 'sack', index: 0 }, 'ArrowRight', counts), { area: 'sack', index: 1 })
-    assert.deepEqual(moveSelection({ area: 'sack', index: 1 }, 'ArrowDown', counts), { area: 'sack', index: 6 })
-    assert.deepEqual(moveSelection({ area: 'sack', index: 6 }, 'ArrowRight', counts), { area: 'sack', index: 6 })
+  const c = { sack: 12, cols: 8 }
+  it('moves about the bag and stops at its edges', () => {
+    assert.deepEqual(moveSelection(sack(0), 'ArrowRight', c), sack(1))
+    assert.deepEqual(moveSelection(sack(11), 'ArrowRight', c), sack(11))
+    assert.deepEqual(moveSelection(sack(2), 'ArrowDown', c), sack(10))
+    assert.deepEqual(moveSelection(sack(6), 'ArrowDown', c), sack(11))   // the last row is short: its last thing
+    assert.deepEqual(moveSelection(sack(10), 'ArrowDown', c), sack(10))
+    assert.deepEqual(moveSelection(sack(10), 'ArrowUp', c), sack(2))
+    assert.deepEqual(moveSelection(sack(2), 'ArrowUp', c), sack(2))
   })
-  it('Up from the top row enters the strip; Down from the strip returns to the sack', () => {
-    assert.deepEqual(moveSelection({ area: 'sack', index: 2 }, 'ArrowUp', counts, 'melee'), { area: 'gear', index: 0 })
-    assert.deepEqual(moveSelection({ area: 'sack', index: 2 }, 'ArrowUp', counts, 'magic'), { area: 'gear', index: 6 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 2 }, 'ArrowDown', counts), { area: 'sack', index: 0 })
+  it('left from the first column goes to the gear, right from the gear comes back to that row', () => {
+    const g = moveSelection(sack(8), 'ArrowLeft', c)
+    assert.deepEqual([g.area, g.index], ['gear', 3])
+    assert.deepEqual(moveSelection(g, 'ArrowRight', c), sack(8))
+    const left = moveSelection(g, 'ArrowLeft', c)
+    assert.deepEqual([left.area, left.index], ['gear', 2])
+    assert.equal(moveSelection({ area: 'gear', index: 0 }, 'ArrowLeft', c).index, 0)
+    assert.equal(moveSelection({ area: 'gear', index: 1 }, 'ArrowUp', c).index, 1)
   })
-  it('within the strip, Left/Right change column and Up/Down change tile', () => {
-    assert.deepEqual(moveSelection({ area: 'gear', index: 0 }, 'ArrowRight', counts), { area: 'gear', index: 3 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 3 }, 'ArrowDown', counts), { area: 'gear', index: 4 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 8 }, 'ArrowRight', counts), { area: 'gear', index: 9 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 0 }, 'ArrowUp', counts), { area: 'gear', index: 0 })
+  it('with an empty bag the cursor stays on the gear', () => {
+    assert.deepEqual(moveSelection({ area: 'gear', index: 3 }, 'ArrowRight', { sack: 0, cols: 8 }), { area: 'gear', index: 3 })
+    assert.deepEqual(settle(sack(0), 0), { area: 'gear', index: 0 })
+    assert.deepEqual(settle(sack(5), 3), sack(2))
   })
-  it('an empty sack keeps Up/Down between strip and a zero-index sack', () => {
-    assert.deepEqual(moveSelection({ area: 'gear', index: 2 }, 'ArrowDown', { sack: 0, gear: 9 }), { area: 'sack', index: 0 })
-  })
-})
-
-import { makeShieldContents } from '../renderer/systems/entities.js'
-describe('offhand items in the strip and the actions', () => {
-  it('an item offhand shows as a sack-shaped tile', () => {
-    const p = mk()
-    p.gear.melee.off = { kind: 'shield', weaponType: 'buckler', name: 'Buckler', blockCost: 8 }
-    const tile = gearStrip(p)[0].tiles[1].item
-    assert.equal(tile.kind, 'shield')
-    assert.equal(tile.payload.weaponType, 'buckler')
-  })
-  it('Offhand appears only where the item may go', () => {
-    const shield = itemFromContents(makeShieldContents('buckler'))
-    assert.deepEqual(sackActions(mk(), shield).map(a => a.label), ['Offhand', 'Drop'])
-    const archer = mk({ gear: gearWearing('ranger'), attackMode: 'ranged' })
-    assert.deepEqual(sackActions(archer, shield).map(a => a.label), ['Drop'])
-    const dagger = itemFromContents({ type: 'weapon', ...weaponContents('dagger') })
-    assert.deepEqual(sackActions(mk(), dagger).map(a => a.label), ['Equip', 'Offhand', 'Drop'])
-    const longsword = itemFromContents({ type: 'weapon', ...weaponContents('longsword') })
-    assert.deepEqual(sackActions(mk({ gear: gearWearing('plate') }), longsword).map(a => a.label), ['Equip', 'Drop'])
-  })
-  it('an item offhand unequips, a pointer clears', () => {
-    const p = mk()
-    p.gear.melee.off = { kind: 'weapon', weaponType: 'dagger', name: 'Dagger', damage: 1 }
-    assert.deepEqual(gearAction(p, 'melee', 'off'), { label: 'Unequip', fn: 'onUnequip' })
+  it('a narrower grid moves by its own width', () => {
+    assert.deepEqual(moveSelection(sack(1), 'ArrowDown', { sack: 12, cols: 5 }), sack(6))
+    assert.equal(moveSelection(sack(5), 'ArrowLeft', { sack: 12, cols: 5 }).area, 'gear')
   })
 })
 
-import { beltTile, gearAt } from '../renderer/ui/inventory-panel-model.js'
-describe('the belt in the panel', () => {
-  it('shows the worn tool as a weapon tile, or nothing', () => {
-    assert.equal(beltTile(mk()).item, null)
-    const t = beltTile(mk({ belt: weaponContents('hatchet') }))
-    assert.equal(t.slot, 'belt')
-    assert.equal(t.item.kind, 'weapon')
-    assert.equal(t.item.payload.weaponType, 'hatchet')
-  })
-  it('sits at gear index 9, right of the Mage column', () => {
-    assert.deepEqual(gearAt(9), { stance: 'belt', slot: 'belt' })
-    const counts = { sack: 3, gear: 10 }
-    assert.deepEqual(moveSelection({ area: 'gear', index: 6 }, 'ArrowRight', counts), { area: 'gear', index: 9 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 8 }, 'ArrowRight', counts), { area: 'gear', index: 9 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 9 }, 'ArrowLeft', counts), { area: 'gear', index: 6 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 9 }, 'ArrowDown', counts), { area: 'sack', index: 0 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 9 }, 'ArrowUp', counts), { area: 'gear', index: 9 })
-    assert.deepEqual(moveSelection({ area: 'gear', index: 9 }, 'ArrowRight', counts), { area: 'gear', index: 9 })
-  })
-  it('offers Belt to tools the player can wear, Unequip on the tile', () => {
-    const hatchet = itemFromContents({ type: 'weapon', ...weaponContents('hatchet') })
-    assert.deepEqual(sackActions(mk(), hatchet).map(a => a.label), ['Equip', 'Offhand', 'Belt', 'Drop'])
-    const axe = itemFromContents({ type: 'weapon', ...weaponContents('axe') })
-    assert.deepEqual(sackActions(mk(), axe).map(a => a.label), ['Equip', 'Drop'])
-    assert.deepEqual(sackActions(mk({ gear: gearWearing('plate') }), axe).map(a => a.label), ['Equip', 'Belt', 'Drop'])
-    const sword = itemFromContents({ type: 'weapon', ...weaponContents('sword') })
-    assert.deepEqual(sackActions(mk(), sword).map(a => a.label), ['Equip', 'Offhand', 'Drop'])
-    assert.equal(gearAction(mk(), 'belt', 'belt'), null)
-    assert.deepEqual(gearAction(mk({ belt: weaponContents('pick') }), 'belt', 'belt'), { label: 'Unequip', fn: 'onUnequip' })
+describe('the bag holds 24', () => {
+  it('a new player has 24 slots, and bonus slots come on top', () => {
+    assert.equal(SACK_BASE, 24)
+    assert.equal(makePlayer(1, 1).maxInventory, 24)
+    assert.equal(makePlayer(1, 1, ['extra_slot', 'extra_slot']).maxInventory, 26)
   })
 })

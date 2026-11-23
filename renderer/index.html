@@ -195,10 +195,14 @@
     @media (orientation: portrait) and (pointer: coarse) {
       #rotate-overlay { display: flex; }
     }
+    /* The bag (ui/inventory-panel.js): gear, bag and button labels side by
+       side with a keyboard; on a phone the gear stands above the stick, the
+       labels above the buttons and the bag takes the middle. */
     #inv-overlay {
       position: fixed; inset: 0; display: none; z-index: 9;
-      align-items: center; justify-content: center;
-      background: rgba(8, 8, 12, 0.85);
+      align-items: flex-start; justify-content: center; gap: 14px;
+      padding-top: 12vh; box-sizing: border-box;
+      background: rgba(8, 8, 12, 0.88); font-family: monospace;
     }
     #sign-overlay {
       position: fixed; inset: 0; display: none; z-index: 9;
@@ -216,31 +220,61 @@
     .sign-title { color: #e8b84b; font-size: 18px; margin-bottom: 12px; letter-spacing: 3px; }
     .sign-line { margin: 6px 0; line-height: 1.5; }
     .sign-hint { margin-top: 14px; font-size: 11px; color: #9a8a6a; }
-    .inv-panel { background: #1a1a22; border: 1px solid #3a3a44; padding: 16px 20px;
-      min-width: 340px; max-width: 90vw; font-size: 14px; }
-    .inv-title { color: #e8b84b; font-size: 18px; margin-bottom: 10px; letter-spacing: 2px; }
-    .inv-strip { display: flex; gap: 10px; margin-bottom: 10px; }
-    .inv-col { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid #3a3a44; }
-    .inv-col.active { border-color: #f6ad55; }
-    .inv-col.locked { opacity: 0.35; filter: grayscale(1); }
-    .inv-col-name { color: #f6ad55; font-size: 12px; letter-spacing: 1px; text-align: center; }
-    .inv-tile { width: 44px; height: 44px; border: 1px solid #3a3a44; background: #14141a; position: relative;
-      display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; }
-    .inv-tile.selected { border-color: #e8b84b; background: #2a2a36; }
-    .inv-grid { display: grid; grid-template-columns: repeat(5, 52px); gap: 6px; }
-    .inv-slot { width: 52px; height: 52px; border: 1px solid #3a3a44; background: #14141a;
-      display: flex; align-items: center; justify-content: center; font-size: 22px;
-      position: relative; cursor: pointer; }
-    .inv-slot.selected { border-color: #e8b84b; background: #2a2a36; }
-    .inv-icon { width: 40px; height: 40px; image-rendering: pixelated; }
-    .inv-tile .inv-icon { width: 32px; height: 32px; }
-    .inv-count { position: absolute; right: 3px; bottom: 1px; font-size: 11px; color: #ccc; }
-    .inv-detail { margin-top: 10px; min-height: 34px; color: #ccc; }
-    .inv-detail .warn { color: #f87171; }
-    .inv-actions { margin-top: 6px; display: flex; gap: 8px; }
-    .inv-actions button { font-family: monospace; font-size: 13px; color: #ccc;
-      background: #1a1a22; border: 1px solid #3a3a44; padding: 4px 14px; cursor: pointer; }
-    .inv-actions button:hover { border-color: #e8b84b; color: #fff; }
+    .inv-gear, .inv-bag { background: #1a1a22; border: 1px solid #3a3a44; padding: 10px 12px; box-sizing: border-box; }
+    .inv-gear { width: 236px; }
+    .inv-who { display: flex; align-items: center; gap: 10px; color: #f6ad55; font-size: 16px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; }
+    .inv-who img { width: 48px; height: 48px; image-rendering: pixelated; }
+    .inv-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 6px; justify-items: center; }
+    .inv-slot-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .inv-slot-wrap small { font-size: 10px; color: #9a927f; }
+    .inv-tile, .inv-slot { width: 46px; height: 46px; border: 1px solid #3a3a44; background: #14141a; position: relative;
+      display: flex; align-items: center; justify-content: center; box-sizing: border-box; cursor: pointer; }
+    .inv-tile.selected, .inv-slot.selected { border: 2px solid #e8b84b; background: #2a2a36; }
+    .inv-tile.spare { border-style: dashed; opacity: 0.45; cursor: default; }
+    .inv-bag { width: 452px; position: relative; display: flex; flex-direction: column; gap: 8px; }
+    .inv-title { color: #e8b84b; font-size: 14px; letter-spacing: 2px; }
+    .inv-grid { display: grid; grid-template-columns: repeat(8, 46px); gap: 6px; }
+    .inv-icon { width: 36px; height: 36px; image-rendering: pixelated; pointer-events: none; }
+    .inv-emoji { font-size: 22px; }
+    .inv-count { position: absolute; right: 2px; bottom: 0; font-size: 11px; color: #ccc; }
+    .inv-desc { border-top: 1px solid #3a3a44; padding-top: 8px; min-height: 84px; color: #ccc; font-size: 13px; line-height: 1.5; }
+    .inv-desc b { display: block; color: #e8b84b; letter-spacing: 2px; text-transform: uppercase; min-height: 1.5em; }
+    .inv-desc .warn { color: #f87171; }
+    .inv-chooser { position: absolute; left: 50%; top: 86px; transform: translateX(-50%); background: #22222c; border: 2px solid #e8b84b;
+      padding: 6px 4px; font-size: 14px; color: #ccc; box-shadow: 0 6px 20px #000; z-index: 1; }
+    .inv-chooser div { padding: 4px 14px 4px 26px; cursor: pointer; position: relative; }
+    .inv-chooser .selected { color: #e8b84b; }
+    .inv-chooser .selected::before { content: '▸'; position: absolute; left: 10px; }
+    /* the four labels, laid out like the buttons: blue over red and green over yellow */
+    .inv-what { width: 200px; display: grid; grid-template: auto auto auto auto / 1fr 1fr; gap: 14px 6px; font-size: 13px; color: #eee; align-items: center; padding-top: 6px; }
+    .inv-btn { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; position: relative; }
+    .inv-btn b { width: 16px; height: 16px; border-radius: 50%; flex: none; }
+    .inv-btn em { font-style: normal; }
+    .inv-btn kbd, .inv-close kbd { font-family: monospace; font-size: 11px; color: #9a927f; border: 1px solid #3a3a44; padding: 0 4px; margin-left: 2px; }
+    .inv-btn.red b { background: rgb(248,113,113); } .inv-btn.green b { background: rgb(74,222,128); }
+    .inv-btn.blue b { background: rgb(125,211,252); } .inv-btn.yellow b { background: rgb(232,184,75); }
+    .inv-btn.blue, .inv-btn.yellow { grid-column: 1 / 3; justify-content: center; }
+    .inv-btn.green { justify-content: flex-end; flex-direction: row-reverse; }
+    .inv-btn.off { opacity: 0.3; cursor: default; }
+    /* Drop is held: the label fills while the hold runs */
+    .inv-btn.blue::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: -5px; height: 3px; background: rgb(125,211,252); transform: scaleX(0); transform-origin: left; }
+    .inv-btn.blue.holding::after { transform: scaleX(1); transition: transform 0.5s linear; }
+    .inv-close { grid-column: 1 / 3; justify-self: center; color: #9a927f; cursor: pointer; margin-top: 10px; }
+    @media (pointer: coarse) {
+      #inv-overlay.touch { display: block; padding: 0; }
+      #inv-overlay.touch .inv-gear { position: absolute; left: max(10px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top)); width: 196px; padding: 8px; }
+      #inv-overlay.touch .inv-who { margin-bottom: 6px; font-size: 14px; }
+      #inv-overlay.touch .inv-who img { width: 36px; height: 36px; }
+      #inv-overlay.touch .inv-tile { width: 40px; height: 40px; }
+      #inv-overlay.touch .inv-tile .inv-icon, #inv-overlay.touch .inv-slot .inv-icon { width: 32px; height: 32px; }
+      #inv-overlay.touch .inv-bag { position: absolute; top: max(8px, env(safe-area-inset-top)); bottom: max(8px, env(safe-area-inset-bottom));
+        left: calc(max(10px, env(safe-area-inset-left)) + 204px); right: calc(max(14px, env(safe-area-inset-right)) + 200px); width: auto; }
+      #inv-overlay.touch .inv-grid { grid-template-columns: repeat(auto-fill, 42px); gap: 5px; overflow-y: auto; flex: none; max-height: 60%; }
+      #inv-overlay.touch .inv-slot { width: 42px; height: 42px; }
+      #inv-overlay.touch .inv-desc { flex: 1; min-height: 0; overflow: hidden; }
+      #inv-overlay.touch .inv-what { position: absolute; right: max(14px, env(safe-area-inset-right)); top: calc(max(10px, env(safe-area-inset-top)) + 54px);
+        width: 192px; gap: 10px 4px; padding: 0; font-size: 12px; }
+    }
   </style>
 </head>
 <body>

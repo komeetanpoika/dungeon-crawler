@@ -1,177 +1,176 @@
-// Pause-overlay loot sack panel: a gear strip (three loadouts × main / off /
-// outfit, plus a fourth narrow belt column) above the sack grid. All
-// mutations happen in game.js via handlers; what to show and where the
-// cursor goes comes from inventory-panel-model.js.
-import { canEquip, EQUIP_FAIL_MESSAGES } from '../systems/inventory.js'
-import { gearStrip, sackActions, gearAction, gearAt, moveSelection, beltTile, BELT_INDEX } from './inventory-panel-model.js'
+// The bag: a pause overlay worked with the stick (or the arrows) and the
+// four coloured buttons. The character being played and its gear stand on
+// the left (above the stick on a phone), the bag and the chosen thing's
+// description in the middle, and what the four buttons do on the right
+// (above the buttons). All changes happen in game.js through handlers; what
+// to show and what each button does comes from inventory-panel-model.js.
+import { gearPanel, buttonsFor, describe, moveSelection, settle, GEAR_SLOTS, GEAR_ROOM, SLOT_NAMES, SACK_COLS, DROP_HOLD } from './inventory-panel-model.js'
+import { gearOf } from '../systems/inventory.js'
 import { sfx } from '../systems/sfx.js'
 import { iconSrcFor } from '../render/icons.js'
-import { SPELLS } from '../systems/spells.js'
 
 let keyHandler = null
+let keyUpHandler = null
 let sel = { area: 'sack', index: 0 }
 let lastState = null
-let lastHandlers = null
+let handlers = null
+let opts = {}
+let chooser = null     // { places, index } while Equip asks where the thing goes
+let dropTimer = null
+let cols = SACK_COLS   // what the grid really shows (a narrow phone has fewer)
 
 const el = () => document.getElementById('inv-overlay')
+const BUTTONS = ['blue', 'red', 'green', 'yellow']   // drawn like the diamond: top, left, right, bottom
 
-function detailText(player, item) {
-  if (!item) return ' '
-  if (item.kind === 'consumable') return `${item.name} ×${item.count}`
-  // Ammo is a shared pool, not a per-item count (Wands and Bows redesign) —
-  // a sacked bow shows its damage only, never a stale per-item ammo figure.
-  const stats = item.payload?.blockCost != null ? ` (block ${item.payload.blockCost} st)`
-    : item.payload?.damage != null ? ` (${item.payload.damage} dmg)`
-    : item.payload?.spell ? ` (${SPELLS[item.payload.spell]?.name ?? item.payload.spell})`
-    : item.payload?.protect != null ? ` (protect ${item.payload.protect})` : ''
-  const slot = item.kind === 'outfit' ? 'outfit' : item.kind === 'shield' ? 'off' : 'main'
-  const gated = ['weapon', 'ranged', 'wand', 'outfit', 'shield'].includes(item.kind)
-  const gate = gated ? canEquip(player, item, slot) : { ok: true }
-  const warn = gate.ok ? '' : ` — <span class="warn">${EQUIP_FAIL_MESSAGES[gate.reason]}</span>`
-  return `${item.name}${stats}${warn}`
-}
-
-function iconHtml(item, cls = 'inv-icon') {
+function iconHtml(item) {
   if (!item) return ''
   const src = iconSrcFor(item.kind === 'consumable' ? { kind: item.item } : item)
-  return src ? `<img class="${cls}" src="${src}" alt="${item.name}">` : (item.emoji ?? '')
+  return src ? `<img class="inv-icon" src="${src}" alt="">` : `<span class="inv-emoji">${item.emoji ?? ''}</span>`
 }
 
-function selectedItem(player) {
-  if (sel.area === 'sack') return player.inventory[sel.index] ?? null
-  const { stance, slot } = gearAt(sel.index)
-  if (stance === 'belt') return beltTile(player).item
-  return gearStrip(player).find(c => c.stance === stance).tiles.find(t => t.slot === slot).item
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+function cancelDrop() {
+  if (dropTimer !== null) { clearTimeout(dropTimer); dropTimer = null }
+  el()?.querySelector('.inv-btn.holding')?.classList.remove('holding')
+}
+
+function startDrop() {
+  if (dropTimer !== null || !handlers) return
+  const b = buttonsFor(lastState.player, sel).blue
+  if (!b.fn) return
+  el().querySelector('.inv-btn.blue')?.classList.add('holding')
+  dropTimer = setTimeout(() => { dropTimer = null; handlers?.onDrop(sel.index) }, DROP_HOLD * 1000)
+}
+
+function fire(b) {
+  if (b.fn === 'onUnequip') handlers.onUnequip(lastState.player.attackMode ?? 'melee', b.slot)
+  else if (b.fn === 'onSwap') handlers.onSwap()
+  else handlers[b.fn](sel.index)
+}
+
+function press(name) {
+  if (!handlers) return
+  const b = buttonsFor(lastState.player, sel)[name]
+  if (!b?.fn) return
+  if (name === 'blue') return   // Drop is a hold, never a press
+  // more than one place it fits: ask where
+  if (name === 'red' && b.places?.length > 1) { chooser = { places: b.places, index: 0 }; refreshInventory(lastState); return }
+  fire(b)
+}
+
+function pick() {
+  const place = chooser?.places[chooser.index]
+  chooser = null
+  if (place) handlers[place.fn](sel.index)
+  else refreshInventory(lastState)
 }
 
 export function refreshInventory(state) {
-  if (!lastHandlers) return
+  if (!handlers) return
   const { player } = state
   lastState = state
-  if (sel.area === 'sack') sel.index = Math.min(sel.index, Math.max(0, player.inventory.length - 1))
+  cancelDrop()
+  sel = settle(sel, player.inventory.length)
   const root = el()
-  root.innerHTML = ''
-  const panel = document.createElement('div')
-  panel.className = 'inv-panel'
-  panel.innerHTML = `<div class="inv-title">PACK ${player.inventory.length}/${player.maxInventory}</div>`
+  root.className = opts.touch ? 'touch' : ''
 
-  // Gear strip — one column per loadout. A locked column is greyed and inert:
-  // no hint of how it opens (the world is the clue).
-  const strip = document.createElement('div')
-  strip.className = 'inv-strip'
-  gearStrip(player).forEach((col, c) => {
-    const colEl = document.createElement('div')
-    colEl.className = 'inv-col' + (col.active ? ' active' : '') + (col.locked ? ' locked' : '')
-    colEl.innerHTML = `<div class="inv-col-name">${col.name}</div>`
-    col.tiles.forEach((t, i) => {
-      const idx = c * 3 + i
-      const tile = document.createElement('div')
-      tile.className = 'inv-tile' + (sel.area === 'gear' && sel.index === idx ? ' selected' : '')
-      tile.dataset.slot = t.slot
-      tile.innerHTML = iconHtml(t.item) + (t.item?.kind === 'consumable' ? `<span class="inv-count">×${t.item.count}</span>` : '')
-      if (!col.locked) tile.addEventListener('click', () => { sel = { area: 'gear', index: idx }; refreshInventory(lastState) })
-      colEl.appendChild(tile)
-    })
-    strip.appendChild(colEl)
-  })
+  const gear = gearPanel(player)
+  const worn = gearOf(player, gear.stance).outfit
+  const who = iconSrcFor(worn ? { kind: 'outfit', payload: worn } : null) ?? './assets/tiles/tile_0088.png'
+  const tile = (t, i) => `<div class="inv-slot-wrap"><div class="inv-tile${sel.area === 'gear' && sel.index === i ? ' selected' : ''}" data-gear="${i}">${iconHtml(t.item)}${t.item?.kind === 'consumable' ? `<span class="inv-count">×${t.item.count}</span>` : ''}</div><small>${SLOT_NAMES[t.slot]}</small></div>`
+  const spare = '<div class="inv-slot-wrap"><div class="inv-tile spare"></div><small>&nbsp;</small></div>'.repeat(GEAR_ROOM - GEAR_SLOTS.length)
 
-  // The belt: one shared tool, its own narrow column, never locked.
-  const belt = beltTile(player)
-  const beltCol = document.createElement('div')
-  beltCol.className = 'inv-col'
-  beltCol.innerHTML = `<div class="inv-col-name">Belt</div>`
-  const beltEl = document.createElement('div')
-  beltEl.className = 'inv-tile' + (sel.area === 'gear' && sel.index === BELT_INDEX ? ' selected' : '')
-  beltEl.dataset.slot = 'belt'
-  beltEl.innerHTML = iconHtml(belt.item)
-  beltEl.addEventListener('click', () => { sel = { area: 'gear', index: BELT_INDEX }; refreshInventory(lastState) })
-  beltCol.appendChild(beltEl)
-  strip.appendChild(beltCol)
-
-  panel.appendChild(strip)
-
-  const grid = document.createElement('div')
-  grid.className = 'inv-grid'
+  const slots = []
   for (let i = 0; i < player.maxInventory; i++) {
-    const slot = document.createElement('div')
-    slot.className = 'inv-slot' + (sel.area === 'sack' && i === sel.index ? ' selected' : '')
     const item = player.inventory[i]
-    if (item) {
-      slot.innerHTML = iconHtml(item)
-      if (item.stackable && item.count > 1) {
-        const cnt = document.createElement('span'); cnt.className = 'inv-count'; cnt.textContent = `×${item.count}`
-        slot.appendChild(cnt)
-      }
-      slot.addEventListener('click', () => { sel = { area: 'sack', index: i }; refreshInventory(lastState) })
-    }
-    grid.appendChild(slot)
+    const count = item?.stackable && item.count > 1 ? `<span class="inv-count">×${item.count}</span>` : ''
+    slots.push(`<div class="inv-slot${sel.area === 'sack' && i === sel.index ? ' selected' : ''}"${item ? ` data-sack="${i}"` : ''}>${iconHtml(item)}${count}</div>`)
   }
-  panel.appendChild(grid)
 
-  const detail = document.createElement('div')
-  detail.className = 'inv-detail'
-  detail.innerHTML = detailText(player, selectedItem(player))
-  panel.appendChild(detail)
-
-  const actions = document.createElement('div')
-  actions.className = 'inv-actions'
-  for (const a of currentActions(player)) {
-    const b = document.createElement('button')
-    b.textContent = a.label
-    b.addEventListener('click', () => fire(a))
-    actions.appendChild(b)
+  const d = describe(player, sel)
+  const buttons = buttonsFor(player, sel)
+  const keyOf = name => (opts.touch || !opts.keys?.[name] ? '' : `<kbd>${esc(opts.keys[name])}</kbd>`)
+  const label = name => {
+    const b = buttons[name]
+    return `<span class="inv-btn ${name}${b.fn ? '' : ' off'}" data-btn="${name}"><b></b><em>${esc(b.label)}${b.hold ? ' (hold)' : ''}</em>${keyOf(name)}</span>`
   }
-  const close = document.createElement('button')
-  close.textContent = 'Close (I)'
-  close.addEventListener('click', () => lastHandlers.onClose())
-  actions.appendChild(close)
-  panel.appendChild(actions)
-  root.appendChild(panel)
+  const ask = chooser ? `<div class="inv-chooser">${chooser.places.map((p, i) => `<div class="${i === chooser.index ? 'selected' : ''}" data-place="${i}">${esc(p.label)}</div>`).join('')}</div>` : ''
+
+  root.innerHTML = `
+    <div class="inv-gear"><div class="inv-who"><img src="${who}" alt=""><span>${esc(gear.name)}</span></div>
+      <div class="inv-slots">${gear.tiles.map(tile).join('')}${spare}</div></div>
+    <div class="inv-bag"><div class="inv-title">BAG ${player.inventory.length}/${player.maxInventory}</div>
+      <div class="inv-grid">${slots.join('')}</div>
+      <div class="inv-desc"><b>${esc(d.title)}</b>${d.lines.map(l => `<div>${esc(l)}</div>`).join('')}${d.warn ? `<div class="warn">${esc(d.warn)}</div>` : ''}</div>${ask}</div>
+    <div class="inv-what">${BUTTONS.map(label).join('')}${opts.touch ? '' : `<span class="inv-close">Close<kbd>${esc(opts.keys?.close ?? 'I')}</kbd></span>`}</div>`
   root.style.display = 'flex'
+
+  // taps and clicks: a tile chooses, a label does what its button does
+  root.querySelectorAll('[data-gear]').forEach(n => n.addEventListener('click', () => { chooser = null; sel = { area: 'gear', index: +n.dataset.gear }; refreshInventory(lastState) }))
+  root.querySelectorAll('[data-sack]').forEach(n => n.addEventListener('click', () => { chooser = null; sel = { area: 'sack', index: +n.dataset.sack }; refreshInventory(lastState) }))
+  root.querySelectorAll('[data-place]').forEach(n => n.addEventListener('click', () => { chooser.index = +n.dataset.place; pick() }))
+  root.querySelectorAll('[data-btn]').forEach(n => {
+    const name = n.dataset.btn
+    if (name === 'blue') {
+      n.addEventListener('pointerdown', startDrop)
+      n.addEventListener('pointerup', cancelDrop)
+      n.addEventListener('pointerleave', cancelDrop)
+    } else n.addEventListener('click', () => press(name))
+  })
+  root.querySelector('.inv-close')?.addEventListener('click', () => handlers?.onClose())
+
+  const grid = root.querySelector('.inv-grid')
+  const shown = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length
+  cols = shown > 0 ? shown : SACK_COLS
+  root.querySelector('.inv-slot.selected')?.scrollIntoView?.({ block: 'nearest' })
 }
 
-function currentActions(player) {
-  if (sel.area === 'sack') return sackActions(player, player.inventory[sel.index])
-  const { stance, slot } = gearAt(sel.index)
-  const a = gearAction(player, stance, slot)
-  return a ? [a] : []
-}
-
-function fire(action) {
-  if (sel.area === 'sack') lastHandlers[action.fn](sel.index)
-  else { const { stance, slot } = gearAt(sel.index); lastHandlers[action.fn](stance, slot) }
-}
-
-export function showInventory(state, handlers) {
-  lastHandlers = handlers
+// `options`: { touch, keys: { red, green, blue, yellow, close } } — the key
+// names shown beside the labels where there is a keyboard.
+export function showInventory(state, handlerSet, options = {}) {
+  handlers = handlerSet
+  opts = options
   sel = { area: 'sack', index: 0 }
+  chooser = null
   refreshInventory(state)
+  const swallow = e => { e.preventDefault(); e.stopImmediatePropagation() }
   keyHandler = (e) => {
-    // Normalize the stick's synthetic wasd to the arrow keys this handler
-    // already understands.
+    // The stick sends wasd: the same as the arrows here.
     const key = ({ d: 'ArrowRight', a: 'ArrowLeft', s: 'ArrowDown', w: 'ArrowUp' })[e.key] ?? e.key
     const player = state.player
+    if (chooser) {
+      if (key === 'ArrowDown' || key === 'ArrowUp') {
+        chooser.index = (chooser.index + (key === 'ArrowDown' ? 1 : chooser.places.length - 1)) % chooser.places.length
+        refreshInventory(state)
+      } else if (key === 'Enter' || key === ' ') { if (!e.repeat) pick() }
+      else { chooser = null; refreshInventory(state) }   // anything else backs out
+      swallow(e)
+      return
+    }
     if (key.startsWith('Arrow')) {
-      const next = moveSelection(sel, key, { sack: player.inventory.length }, player.attackMode ?? 'melee')
+      const next = moveSelection(sel, key, { sack: player.inventory.length, cols })
       if (next.area !== sel.area || next.index !== sel.index) sfx(lastState, 'ui-move')
       sel = next
-    } else if (key === 'Enter' || key === ' ') {
-      // Enter fires the selection's primary action, but never a Drop: X is the
-      // deliberate key for letting something go.
-      const [first] = currentActions(player)
-      if (first && first.fn !== 'onDrop') fire(first)
-    } else if (key === 'x' || key === 'X') {
-      if (sel.area === 'sack' && player.inventory[sel.index]) lastHandlers.onDrop(sel.index)
-    } else return
-    e.preventDefault(); e.stopPropagation()
-    refreshInventory(state)
+      refreshInventory(state)
+    } else if (key === 'Enter' || key === ' ') { if (!e.repeat) press('red') }
+    else if (key === 'q' || key === 'Q') { if (!e.repeat) press('green') }
+    else if (key === 'f' || key === 'F') { if (!e.repeat) startDrop() }
+    else if (key === 'Shift') { if (!e.repeat) press('yellow') }
+    else return   // the bag key and Escape close it, in game.js
+    swallow(e)
   }
+  keyUpHandler = (e) => { if (e.key === 'f' || e.key === 'F') cancelDrop() }
   window.addEventListener('keydown', keyHandler, true)   // capture: outrank game key handlers
+  window.addEventListener('keyup', keyUpHandler, true)
 }
 
 export function hideInventory() {
   if (keyHandler) { window.removeEventListener('keydown', keyHandler, true); keyHandler = null }
-  lastHandlers = null
+  if (keyUpHandler) { window.removeEventListener('keyup', keyUpHandler, true); keyUpHandler = null }
+  cancelDrop()
+  handlers = null
+  chooser = null
   const root = el()
   root.style.display = 'none'
   root.innerHTML = ''

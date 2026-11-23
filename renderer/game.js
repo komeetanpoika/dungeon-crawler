@@ -85,7 +85,7 @@ import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose,
 import { cullDead, tickDying } from './systems/dying.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
-import { startStanceSwitch, tickStanceSwitch, tryFire, DRAW_CHARGE, resolveDrawTier, shouldAutoReleaseDraw, FIRE_FAIL_MESSAGES, noAmmoMessage } from './systems/ranged.js'
+import { startStanceSwitch, tickStanceSwitch, nextStance, tryFire, DRAW_CHARGE, resolveDrawTier, shouldAutoReleaseDraw, FIRE_FAIL_MESSAGES, noAmmoMessage } from './systems/ranged.js'
 import { castCone, GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust } from './systems/magic.js'
 import { spellFor, tryCast } from './systems/spells.js'
 import { tickZones } from './systems/zones.js'
@@ -157,7 +157,7 @@ function setMuted(m) {
 // One listener ahead of every other turns the key the player pressed into
 // the key the game reads for that action (systems/bindings.js). Keys the
 // touch layer sends are already the game's own and pass; so does typing in a
-// field, and the title screen, where cheats are typed. `keyGrab` takes the
+// field, and the title's own menus, where cheats are typed. `keyGrab` takes the
 // next real key for the Controls screen.
 let keyGrab = null
 const sentFor = new Map()   // real key held -> the key sent in its place
@@ -169,7 +169,7 @@ function routeKey(e) {
     if (e.type === 'keydown' && !e.repeat) keyGrab(e.key)
     return
   }
-  if (phase === PHASE.TITLE) return
+  if (phase === PHASE.TITLE && !pvp && !net) { sentFor.clear(); return }   // the arena and online rooms run under the title phase
   if (e.type === 'keyup' && sentFor.has(e.key)) {
     swallow()
     window.dispatchEvent(new KeyboardEvent('keyup', { key: sentFor.get(e.key) }))
@@ -1390,7 +1390,25 @@ function openInventory() {
     onUse: i => useInventoryItem(i),
     onDrop: i => dropInventoryItem(i),
     onBuild: slot => buildCampfire(state.player.inventory[slot]?.kind ?? 'lumber'),
+    // The yellow button: the same switch as in play, done at once since the
+    // game stands still while the bag is open.
+    onSwap: () => {
+      const to = nextStance(state.player)
+      if (!to) return
+      state.player.attackMode = to
+      state.player.stanceSwitch = null
+      state.player.charging = null
+      sfx(state, 'stance-switch')
+      afterInventoryChange()
+    },
     onClose: closeInventory,
+  }, {
+    touch: coarsePointer(),
+    keys: {
+      red: keysLabel(settings.bindings, 'attack'), green: keysLabel(settings.bindings, 'offhand'),
+      blue: keysLabel(settings.bindings, 'interact'), yellow: keysLabel(settings.bindings, 'swap'),
+      close: keysLabel(settings.bindings, 'bag'),
+    },
   })
 }
 
@@ -1399,7 +1417,7 @@ function closeInventory() {
   inventoryOpen = false
   hideInventory()
   setPhase(PHASE.PLAYING)
-  keys[' '] = false
+  for (const k of [' ', 'q', 'Q', 'f', 'F', 'Shift']) keys[k] = false   // nothing pressed in the bag acts in the world
 }
 
 // Signpost panel: pauses like the inventory; the panel's own capture-phase
@@ -1445,7 +1463,8 @@ function afterInventoryChange() {
 function useInventoryItem(i) {
   const item = state.player.inventory[i]
   if (!item) return
-  if (item.kind === 'potion' || item.kind === 'meat' || item.kind === 'cooked_meat') {
+  // a potion, or anything that heals when eaten (meat, cooked meat, herring)
+  if (item.kind === 'potion' || (item.kind !== 'mushroom' && Number.isFinite(item.heal))) {
     const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'potion' ? item.amount : item.heal)
     if (healed <= 0) { think(state, 'Already full.'); return }
     removeItem(state.player, i)
