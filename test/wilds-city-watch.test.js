@@ -360,8 +360,10 @@ test('the shift change looks the same near: the north gate is never left empty',
   assert.ok(night.every(w => w.mode === 'indoors' && w.door === label), 'the night men went in at the barracks')
 })
 
-test('patrols walk their routes in pairs', () => {
-  // early evening: the night pair is out on its first route, the market street
+// Early evening: the night pair is out on its first route, the market street,
+// with the player beside the street halfway along it (out of their way, the
+// whole route near). `ents()` gives the pair's two npcs.
+function patrolPair() {
   const clock = 0.72 * DAY_LENGTH
   const probe = setup({ clock, view: { w: 2, h: 2 } })
   const pair = watchOf(probe.state).filter(w => w.person.patrol && w.person.shift === 'night')
@@ -371,12 +373,34 @@ test('patrols walk their routes in pairs', () => {
   assert.ok(pair.every(w => w.loop && w.phase === 'there'), 'walking it, not on the way to it')
   assert.ok(cheb(pair[0], pair[1]) < 1, 'far, they walk together')
   const path = patrolPath(cityCtx(city, SEED), id).map(t => fromCity(t.x, t.y))
-  // the player stands beside the street, halfway along it: out of their way, the whole route near
   const mid = path[path.length >> 1]
   const ctx = setup({ clock, at: { X: mid.X - 3, Y: mid.Y } })
-  const { state, world } = ctx
-  const ents = () => pair.map(w => cityEntities(state).find(e => e.cityKey === w.id))
+  const ents = () => pair.map(w => cityEntities(ctx.state).find(e => e.cityKey === w.id))
   assert.ok(ents().every(Boolean), 'both near')
+  return { ctx, pair, id, path, ents }
+}
+// Math.random (the townsfolk's wander) seeded for one test, put back after
+function withRandom(seed, fn) {
+  const real = Math.random
+  let s = seed
+  Math.random = () => {
+    s = s + 0x6D2B79F5 | 0
+    let t = Math.imul(s ^ s >>> 15, 1 | s)
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t
+    return ((t ^ t >>> 14) >>> 0) / 4294967296
+  }
+  try { return fn() } finally { Math.random = real }
+}
+// An npc kept where it stands now, as a passer-by in its way would: the
+// returned function undoes the frame's moves (run it after every frame).
+function pinned(e) {
+  const px = e.px, py = e.py
+  return () => { e.px = px; e.py = py; e.x = Math.floor(px / S); e.y = Math.floor(py / S) }
+}
+
+test('patrols walk their routes in pairs', () => {
+  const { ctx, pair, id, path, ents } = patrolPair()
+  const { world } = ctx
   // how far a point stands from the route's line (its waypoints are a few tiles apart)
   const offRoute = p => Math.min(...path.slice(1).map((b, i) => {
     const a = path[i], dx = b.X - a.X, dy = b.Y - a.Y, L2 = dx * dx + dy * dy
@@ -402,3 +426,39 @@ test('patrols walk their routes in pairs', () => {
   assert.ok(walked >= 30, `walking it (${walked.toFixed(1)} tiles in 20 s)`)
   assert.ok(pair.every(w => w.entry.where.patrol === id && w.loop))
 })
+
+// A passer-by holds one of the pair back: the other waits for him instead of
+// walking the rest of the route a few tiles ahead, and they go on together.
+test('a patrolman held back is waited for, and the pair walks on side by side', () => withRandom(1, () => {
+  const { ctx, ents } = patrolPair()
+  const { world } = ctx
+  const gap = () => { const [a, b] = ents(); return cheb(entityWorld(world, a), entityWorld(world, b)) }
+  run(ctx, 3, { each: pinned(ents()[1]) })
+  assert.ok(gap() < 2.5, `his partner waited for him (${gap().toFixed(1)} tiles apart)`)
+  let apart = 0, frames = 0, walked = 0, last = entityWorld(world, ents()[0])
+  run(ctx, 6, { each: () => {
+    frames++
+    if (gap() > 2.5) apart++
+    const pa = entityWorld(world, ents()[0])
+    walked += cheb(pa, last)
+    last = pa
+  } })
+  assert.ok(apart / frames < 0.1, `side by side again (apart ${apart} of ${frames} frames)`)
+  assert.ok(walked >= 8, `and on along the route (${walked.toFixed(1)} tiles in 6 s)`)
+}))
+
+// ... but one who does not come is not waited for for ever.
+test('a patrolman whose partner does not come walks on alone', () => withRandom(1, () => {
+  const { ctx, ents } = patrolPair()
+  const { world } = ctx
+  const pin = pinned(ents()[1])
+  run(ctx, 4, { each: pin })
+  let walked = 0, last = entityWorld(world, ents()[0])
+  run(ctx, 10, { each: () => {
+    pin()
+    const pa = entityWorld(world, ents()[0])
+    walked += cheb(pa, last)
+    last = pa
+  } })
+  assert.ok(walked >= 6, `he went on (${walked.toFixed(1)} tiles in the last 10 s)`)
+}))

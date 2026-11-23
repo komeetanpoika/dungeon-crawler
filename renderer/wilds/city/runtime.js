@@ -84,6 +84,9 @@ const POST_GUARD = 6        // tiles from his post within which a watchman on du
 const WARD_GUARD = 12       // tiles from a watchman within which he takes on a hostile standing inside the walls
 const FOE_SLACK = 2         // tiles beyond POST_GUARD before a foe at the gate is let go (so the edge does not flicker)
 const HOLD_MAX = 0.25       // of the day: the longest the old shift keeps a post waiting for its relief
+const PAIR_GAP = 1.5        // tiles a patrolman may get ahead of his partner along their route before he waits for him
+const PAIR_CLOSE = 1        // ... and how near his partner comes before he walks on (a step behind, as they walk)
+const PAIR_WAIT_MAX = 8     // s the longest he waits (a partner who is not coming)
 
 export const nearRadius = view => Math.min(MAX_NEAR, Math.ceil(Math.max(view.w, view.h)) + 6)
 
@@ -128,11 +131,16 @@ function makeRun(state, world, hooks, lazy) {
     nearR: nearRadius(hooks.viewHalf()), day, frac, swingAt: null, shyT: 0,
     queue: [], pending: [], tick: 0, remove: new Set(), stats: { noRoute: [], rerouted: 0 },
   }
-  // patrol pairs walk side by side: the second of each pair keeps a step to its partner's right
+  // patrol pairs walk side by side: the second of each pair keeps a step to its
+  // partner's right, and each knows the other (waitsForPartner)
   const pairs = new Map()
   cc.folk.forEach((p, n) => {
     const w = makeWalker(cc, p, n)
-    if (p.patrol) { const k = `${p.shift}:${p.patrol}`; w.side = pairs.has(k) ? 1 : 0; pairs.set(k, true) }
+    if (p.patrol) {
+      const k = `${p.shift}:${p.patrol}`, first = pairs.get(k)
+      w.side = first ? 1 : 0
+      if (first) { w.partner = first; first.partner = w } else pairs.set(k, w)
+    }
     run.people.set(p.id, w)
     if (lazy) { w.pending = true; run.pending.push(w); return }
     w.sched = scheduleFor(p, city, world.seed, day); w.day = day
@@ -306,7 +314,7 @@ export function tickCity(state, world, delta, hooks) {
       const say = w.entity.city.say
       if (say && say.t < (say.dur ?? BUBBLE_DUR)) say.t += delta   // a scene line's bubble over them stays its time
       near(state, run, w, delta, ox, oy)
-    } else if (w.mode === 'far') stepFar(cc, w, delta)
+    } else if (w.mode === 'far' && !waitsForPartner(w, delta)) stepFar(cc, w, delta)
   }
   guard(state, run, delta, ox, oy)
   tickLaw(state, world, run, delta)
@@ -391,6 +399,44 @@ const setNext = (e, x, y) => {
   if (c.next) { c.next.x = x; c.next.y = y } else c.next = { x, y }
 }
 
+// How far along his patrol route a patrolman stands, in tiles from its first
+// waypoint: on the segment he walks towards waypoint wi on, not held to it (a
+// waypoint counts as reached up to REACH early, so he may still stand short
+// of the segment he is on).
+const routeLengths = new WeakMap()
+function alongRoute(w) {
+  const p = w.path
+  let cum = routeLengths.get(p)
+  if (!cum) {
+    cum = [0]
+    for (let i = 1; i < p.length; i++) cum.push(cum[i - 1] + Math.hypot(p[i].x - p[i - 1].x, p[i].y - p[i - 1].y))
+    routeLengths.set(p, cum)
+  }
+  const i = Math.max(0, Math.min(p.length - 2, w.dir === 1 ? w.wi - 1 : w.wi))
+  const a = p[i], b = p[i + 1], len = cum[i + 1] - cum[i]
+  const x = w.X - OX - a.x, y = w.Y - OY - a.y
+  return cum[i] + (len ? (x * (b.x - a.x) + y * (b.y - a.y)) / len : 0)
+}
+
+// A patrol pair keeps together. The one who got ahead along the route (a
+// passer-by held the other back) waits until his partner draws level, but no
+// longer than PAIR_WAIT_MAX at a time. Only while both walk the same way: at
+// a turn, one turned and the other not yet, neither waits (each turns up to
+// REACH short of the end, so the gap there means little). True while he waits.
+function waitsForPartner(w, dt) {
+  const q = w.partner
+  const walking = v => v.loop && !!v.path && !v.hunt && !v.scene && !v.out && v.mode !== 'indoors'
+  if (!q || !walking(w) || !walking(q) || q.path !== w.path || q.dir !== w.dir || w.path.length < 2) {
+    w.pairWait = 0; w.pairGaveUp = false; return false
+  }
+  const gap = (alongRoute(w) - alongRoute(q)) * w.dir
+  if (gap <= (w.pairWait > 0 ? PAIR_CLOSE : PAIR_GAP)) { w.pairWait = 0; w.pairGaveUp = false; return false }
+  if (w.pairGaveUp) return false
+  w.pairWait = (w.pairWait ?? 0) + dt
+  if (w.pairWait > PAIR_WAIT_MAX) { w.pairWait = 0; w.pairGaveUp = true; return false }
+  return true
+}
+
 // A near walker: read where its entity stands, take it through its route.
 function near(state, run, w, dt, ox, oy) {
   const e = w.entity
@@ -431,6 +477,8 @@ function near(state, run, w, dt, ox, oy) {
     }
     return
   }
+  // ahead of his patrol partner: he stands and waits for him (no headway lost)
+  if (waitsForPartner(w, dt)) { c.next = null; return }
   // the window tile the entity walks to: the waypoint, or for a patrol
   // partner a step to the right of the way
   const aim = () => {
