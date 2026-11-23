@@ -26,7 +26,9 @@ import { makeNpc, updateNpc } from '../renderer/systems/npc.js'
 import * as feedback from '../renderer/systems/feedback.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
 
-const SEED = 7
+// a world whose market street has people living along it (whose houses are
+// home to anyone at night is the town's roll, folk.js)
+const SEED = 1
 const S = 32
 const DT = 0.1
 const buildEntities = spawns => spawns.flatMap(s => {

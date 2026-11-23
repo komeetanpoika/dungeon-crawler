@@ -274,7 +274,7 @@ export function layFarms(G, land, rec) {
       if (!rect2(G, cx - 1, yFace - 3, x1 + 1, yFace + 1).every(([x, y]) => G.tagAt(x, y) === TAG.LAND && !isWaterSkin(G.ground(x, y)))) continue
       for (const [x, y] of rect2(G, cx - 1, yFace - 2, x1 + 1, yFace + 1)) clearWhole(G, x, y)
       const door = { x: cx + 1, y: yFace }
-      house(G, rec, { x0: cx, x1, top: yFace - 2, storeys: 1, view: 'front', wall: 'wood', roof, door, chim: cx + 1 + (w > 3 && rng() < 0.5 ? 1 : 0),
+      house(G, rec, { x0: cx, x1, top: yFace - 2, storeys: 1, wall: 'wood', roof, door, chim: cx + 1 + (w > 3 && rng() < 0.5 ? 1 : 0),
         info: { kind: 'home', look: { w, storeys: 1, wall: 'wood' } } })
       farmCell(G, cx - 1, yFace, 'ow_prop_woodpile', false)
       for (let i = 0; i < 2; i++) animal('chicken', x1 + 1, yFace - 1, x1 + 2, yFace + 1)

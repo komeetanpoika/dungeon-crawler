@@ -4,13 +4,17 @@
 //
 // Output of `cutBlocks(seed)`, all in city tiles (0..159), rects inclusive:
 //   lots    { id, district, x0, y0, x1, y1, front, kind, storeys, wall, roof, sign, door }
-//           `front` is the side facing the street or alley; `door` is the lot's
-//           front-face cell, and the cell in front of it is a street or alley cell.
+//           `front` is the side facing the street or alley: S, E or W, never N
+//           (the town is seen from the south, so a door is in a house's south
+//           face); `door` is a front-face cell on the lot's south row, and the
+//           cell in front of it is a street or alley cell.
 //           Lots in a row share walls (terraced); frontage 3-5, depth 4-7.
 //   alleys  { pts: [[x0, y0], [x1, y1]], w: 1 | 2 } rastered like streets (w 2 =
 //           the given cell and the next one, to the east or south). Each alley
 //           joins a street or another alley at both ends. There are no dead-end
-//           alleys at all (stricter than "ends at a door").
+//           alleys at all (stricter than "ends at a door"). Some are lanes: cut
+//           a row of houses below an east-west street, so the land on that
+//           street's south side faces south onto the lane, its roofs to the street.
 //   yards, gardens  rects of leftover land behind lots (never covering lots or alleys)
 // `reserved()` lists the footprints no lot, yard or garden may cover (the point
 // places); the windmill also keeps a one-tile clear ring (`clear`).
@@ -32,7 +36,7 @@ export function reserved() {
   ]
 }
 
-const FRONTS = { S: [0, 1], N: [0, -1], E: [1, 0], W: [-1, 0] }
+const FRONTS = { S: [0, 1], E: [1, 0], W: [-1, 0] }
 const pick = (rng, a) => a[Math.floor(rng() * a.length)]
 const int = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1))
 const weighted = (rng, table) => {
@@ -115,6 +119,42 @@ export function cutBlocks(seed) {
     }
   }
 
+  // ---- lanes behind the land on the south side of every east-west street ----
+  // That land would face north, its door on the roof's edge as the town is
+  // seen, so a lane is cut along it a house's depth (4-6) below the street and
+  // its houses face south onto the lane. Top to bottom, so deep land below a
+  // new lane gets a lane of its own. Where no lane fits, the land goes to the
+  // houses below it, or to yards.
+  const lane = (p0, p1, line) => {
+    const deep = x => spanFree(x, line - 1, 0, 1)
+    let least = 99
+    for (let x = p0; x <= p1; x++) least = Math.min(least, deep(x))
+    const depths = [4, 5, 6].filter(d => d + 5 <= least)
+    for (let i = depths.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [depths[i], depths[j]] = [depths[j], depths[i]] }
+    for (const d of depths) {
+      const r = line + d
+      let xa = p0, xb = p1
+      while (at(xa - 1, r) === FREE) xa--
+      while (at(xb + 1, r) === FREE) xb++
+      if (!open(xa - 1, r) || !open(xb + 1, r)) continue
+      let fits = true   // houses fit above and below it all along, and no street runs beside it
+      for (let x = xa; x <= xb && fits; x++) fits = spanFree(x, r, 0, -1) >= 4 && spanFree(x, r, 0, 1) >= 4
+      if (!fits) continue
+      for (let x = xa; x <= xb; x++) g[key(x, r)] = ALLEY
+      alleys.push({ pts: [[xa, r], [xb, r]], w: 1 })
+      return
+    }
+  }
+  for (let line = 1; line < S; line++) {
+    for (let x = 0; x < S; x++) {
+      const backs = x => at(x, line) === FREE && open(x, line - 1)
+      if (!backs(x)) continue
+      let e = x; while (backs(e + 1)) e++
+      if (e - x + 1 >= 3) lane(x, e, line)
+      x = e
+    }
+  }
+
   // ---- lots along every street and alley face ----
   const lots = []
   const raw = []
@@ -127,7 +167,7 @@ export function cutBlocks(seed) {
     }
     return out
   }
-  for (const front of ['S', 'N', 'E', 'W']) {
+  for (const front of ['S', 'E', 'W']) {
     const [fx, fy] = FRONTS[front]
     const horizFront = fy !== 0 // the frontage runs along x
     const ax = horizFront ? 1 : 0, ay = horizFront ? 0 : 1
@@ -165,7 +205,7 @@ export function cutBlocks(seed) {
   const byDistrict = new Map()
   for (const r of raw) {
     r.district = districtAt((r.x0 + r.x1) >> 1, (r.y0 + r.y1) >> 1) || districtAt(r.x0, r.y0)
-    r.street = sc.has(key(r.x0 + (r.front === 'E' ? r.x1 - r.x0 + 1 : r.front === 'W' ? -1 : 0), r.y0 + (r.front === 'S' ? r.y1 - r.y0 + 1 : r.front === 'N' ? -1 : 0)))
+    r.street = sc.has(key(r.x0 + (r.front === 'E' ? r.x1 - r.x0 + 1 : r.front === 'W' ? -1 : 0), r.y0 + (r.front === 'S' ? r.y1 - r.y0 + 1 : 0)))
     r.roll = rng()
     if (!byDistrict.has(r.district)) byDistrict.set(r.district, [])
     byDistrict.get(r.district).push(r)
@@ -217,12 +257,12 @@ export function cutBlocks(seed) {
   return { lots, alleys, yards, gardens }
 }
 
+// on the south row: along it on a south front, at its street end on a side front
 function doorOf(r, rng) {
   const along = int(rng, 0, r.w - 1)
   switch (r.front) {
     case 'S': return { x: r.x0 + along, y: r.y1 }
-    case 'N': return { x: r.x0 + along, y: r.y0 }
-    case 'E': return { x: r.x1, y: r.y0 + along }
-    default: return { x: r.x0, y: r.y0 + along }
+    case 'E': return { x: r.x1, y: r.y1 }
+    default: return { x: r.x0, y: r.y1 }
   }
 }

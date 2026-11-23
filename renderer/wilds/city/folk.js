@@ -10,7 +10,10 @@
 // Keepers: every shop door gets its keeper, who lives in a home door elsewhere
 // (never in the shop itself); the workshops nearest the fountain take the
 // people left over. The named characters live where NAMED says; those without
-// a `home` take a home door like anyone.
+// a `home` take a home door like anyone. The lamplighter's household then
+// swaps homes with whoever has the one nearest the fountain (never a named
+// character): his round starts there at dusk and at dawn, and from across
+// the town he would come when the lamps had already gone by the clock.
 import { hash, hashInt } from '../rand.js'
 import { LOOKS, NAMED_LOOKS, WATCH_LOOKS } from '../../data/townsfolk-looks.js'
 import { PLAN } from './plan.js'
@@ -146,6 +149,13 @@ export function rollTownsfolk(seed, city) {
     const home = freeHome(posOf(lead.work)); if (!home) throw new Error('out of home doors')
     used.add(home)
     for (const m of members) m.home = home
+  }
+  const lamplighter = rolled.find(p => p.job === 'lamplighter')
+  const namedHomes = new Set(named.map(p => p.home))
+  const byLamps = byFountain(homes.filter(h => !namedHomes.has(h)).map(h => doorOf[h]))[0]?.label
+  if (lamplighter && byLamps && lamplighter.home !== byLamps) {
+    const was = lamplighter.home
+    for (const p of rolled) p.home = p.home === was ? byLamps : p.home === byLamps ? was : p.home
   }
   return [...rolled, ...named]
 }

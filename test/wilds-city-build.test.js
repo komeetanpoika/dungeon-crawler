@@ -187,6 +187,21 @@ test('every door, gate, post and spot is reachable from the square', () => {
   }
 })
 
+// Seen from the south: a door stands in its building's south face (the building
+// over it, never open ground, or the door would sit on the roof's edge) and
+// opens onto the street graph.
+test('every door stands in the south face of its building and opens onto the streets', () => {
+  for (const seed of SEEDS) {
+    const city = cityFor(seed), G = city.streets
+    for (const d of city.doors) {
+      const at = `door ${d.label} (${d.kind}) seed ${seed}`
+      assert.ok(!walk(city, d.x, d.y - 1), `${at}: open ground north of it`)
+      const s = G.snapDist[d.y * N + d.x]
+      assert.ok(s >= 1 && s <= 2, `${at}: ${s} steps from a street`)
+    }
+  }
+})
+
 test('the spots the townsfolk will need are all there', () => {
   const city = cityFor(7)
   const want = [...PLAN.posts.map(p => p.id), 'crier', 'stocks', 'fountain', 'bell', 'fish-market', 'church-steps', 'quay-1', 'quay-2', 'quay-3',

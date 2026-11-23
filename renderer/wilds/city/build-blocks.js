@@ -7,11 +7,11 @@
 // no two neighbours match. A lot deeper than its house keeps a back yard.
 //
 // The view is from above and to the south, so a house is seen as kit.js
-// draws it: roof over front. A lot whose front is on a street to its south
-// shows that front with its door; one whose front faces north shows its
-// back to the viewer and its roof to the street, the door let into the
-// roof's edge; one whose front faces east or west is seen from the side,
-// its ground floor along the lot's south edge and its door at the street end.
+// draws it: roof over front, its door in the south face. A lot whose front
+// is on a street or lane to its south shows that front with its door (no lot
+// faces north: the land below an east-west street faces a lane behind it,
+// blocks.js); one whose front faces east or west is seen from the side, its
+// ground floor along the lot's south edge and its door at the street end.
 import { cutBlocks } from './blocks.js'
 import { PLAN, districtAt, streetCells } from './plan.js'
 import { mulberry32, hashInt } from '../rand.js'
@@ -28,14 +28,14 @@ const rect = (r, fn) => { for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; 
 function rowsOf(lots) {
   const groups = new Map()
   for (const l of lots) {
-    const line = l.front === 'S' ? l.y1 : l.front === 'N' ? l.y0 : l.front === 'E' ? l.x1 : l.x0
+    const line = l.front === 'S' ? l.y1 : l.front === 'E' ? l.x1 : l.x0
     const k = `${l.front}${line}`
     if (!groups.has(k)) groups.set(k, [])
     groups.get(k).push(l)
   }
   const rows = []
   for (const list of groups.values()) {
-    const horiz = list[0].front === 'S' || list[0].front === 'N'
+    const horiz = list[0].front === 'S'
     list.sort((a, b) => horiz ? a.x0 - b.x0 : a.y0 - b.y0)
     let row = [list[0]]
     for (let i = 1; i < list.length; i++) {
@@ -112,25 +112,23 @@ export function layBlocks(G, rec, seed) {
 }
 
 function layLot(G, rec, l, { wall, roof }, rng) {
-  const horiz = l.front === 'S' || l.front === 'N'
+  const horiz = l.front === 'S'
   const width = l.x1 - l.x0 + 1, depth = horiz ? l.y1 - l.y0 + 1 : width
   const frontage = horiz ? width : l.y1 - l.y0 + 1
   const most = Math.min(3, (horiz ? depth : frontage) - 2)
   let storeys = l.kind === 'cottage' ? 1 : Math.max(1, Math.min(l.storeys, most))
   if (l.kind === 'shop') storeys = Math.max(Math.min(2, most), storeys)
   const inner = x => Math.max(l.x0 + 1, Math.min(l.x1 - 1, x))
-  let top = l.y1 - 1 - storeys, view = 'front', door
-  if (l.front === 'S') door = { x: inner(l.door.x), y: l.y1 }
-  else if (l.front === 'N') { top = l.y0; view = 'back'; door = { x: inner(l.door.x), y: l.y0 } }
-  else door = { x: l.front === 'E' ? l.x1 : l.x0, y: l.y1 }
+  const top = l.y1 - 1 - storeys
+  const door = l.front === 'S' ? { x: inner(l.door.x), y: l.y1 } : { x: l.front === 'E' ? l.x1 : l.x0, y: l.y1 }
   // the house's rows, and the back yard if the lot is deeper
   const h0 = top, h1 = top + 1 + storeys
   rect(l, (x, y) => { if (y < h0 || y > h1) pave(G, x, y, l.district === 'crafts' ? flag(x, y) : GRASS(x, y)) })
   const chimCols = []
-  for (let x = l.x0 + 1; x <= l.x1 - 1; x++) if (!(view === 'back' && x === door.x)) chimCols.push(x)
+  for (let x = l.x0 + 1; x <= l.x1 - 1; x++) chimCols.push(x)
   const chim = chimCols.length && rng() < 0.85 ? chimCols[Math.floor(rng() * chimCols.length)] : null
   house(G, rec, {
-    x0: l.x0, x1: l.x1, top, storeys, view, wall, roof, door, chim,
+    x0: l.x0, x1: l.x1, top, storeys, wall, roof, door, chim,
     shop: l.kind === 'shop' ? (hashInt(0, l.x0, l.y0, 5) % 2 ? 'red' : 'green') : null,
     sign: l.sign, flowers: l.district === 'gardens' && rng() < 0.5,
     info: { kind: KIND[l.kind], lot: l.id, look: { w: width, storeys, wall: l.wall } },

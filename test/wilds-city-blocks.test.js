@@ -83,7 +83,7 @@ test('every door opens onto street or alley, and every alley joins streets at bo
     for (const l of b.lots) {
       const [dx, dy] = front[l.front]
       assert.ok(inRect(l, l.door.x, l.door.y), 'door in lot ' + l.id)
-      const onFace = l.front === 'S' ? l.door.y === l.y1 : l.front === 'N' ? l.door.y === l.y0 : l.front === 'E' ? l.door.x === l.x1 : l.door.x === l.x0
+      const onFace = l.front === 'S' ? l.door.y === l.y1 : l.front === 'E' ? l.door.x === l.x1 : l.door.x === l.x0
       assert.ok(onFace, 'door on the front face ' + l.id)
       const k = key(l.door.x + dx, l.door.y + dy)
       assert.ok(sc.has(k) || ac.has(k), `door of ${l.id} faces nothing (seed ${seed})`)
@@ -97,6 +97,26 @@ test('every door opens onto street or alley, and every alley joins streets at bo
       }
       assert.ok(a.w === 1 || a.w === 2)
     }
+  }
+})
+
+// The town is seen from the south, so a door is drawn in a house's south face.
+// A lot on the south side of an east-west street turns its back (its roof) to
+// that street and faces a lane cut behind it.
+test('no lot faces north: every door is on its lot\'s south row', () => {
+  for (const seed of SEEDS) for (const l of cutBlocks(seed).lots) {
+    assert.notEqual(l.front, 'N', `${l.id} faces north (seed ${seed})`)
+    assert.equal(l.door.y, l.y1, `door of ${l.id} on the south row (seed ${seed})`)
+  }
+})
+
+test('the land south of an east-west street is still built on, its houses facing a lane behind', () => {
+  for (const seed of SEEDS) {
+    const b = cutBlocks(seed), sc = streetCells(), ac = alleyCells(b)
+    const open = (x, y) => sc.has(key(x, y)) || ac.has(key(x, y))
+    const backing = b.lots.filter(l => l.front === 'S' && open(l.x0, l.y0 - 1) && open(l.x1, l.y0 - 1))
+    assert.ok(backing.length >= 45, `seed ${seed}: only ${backing.length} lots back onto a street or lane`)
+    assert.ok(b.lots.length >= 180, `seed ${seed}: only ${b.lots.length} lots`)
   }
 })
 

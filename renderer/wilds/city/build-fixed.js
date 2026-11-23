@@ -112,7 +112,7 @@ function layHarbour(G, rec) {
   const wh = PLAN.places.warehouses
   for (const [x0, x1] of [[wh.x0, wh.x0 + 5], [wh.x1 - 5, wh.x1]]) {
     const dx = x0 + 2
-    house(G, rec, { x0, x1, top: wh.y0, storeys: 3, roofRows: 3, view: 'front', wall: 'stone', roof: 'dark', door: { x: dx, y: wh.y1 }, chim: null, gable: false,
+    house(G, rec, { x0, x1, top: wh.y0, storeys: 3, roofRows: 3, wall: 'stone', roof: 'dark', door: { x: dx, y: wh.y1 }, chim: null, gable: false,
       info: { kind: 'warehouse', look: { w: 5, storeys: 2, wall: 'stone' } } })
   }
   rect(wh.x0 + 6, wh.y0, wh.x1 - 6, wh.y1, (x, y) => pave(G, x, y, alley(x, y)))
@@ -197,7 +197,7 @@ function layPlaces(G, rec) {
   // the Golden Pike on the north side of the square, its yard behind
   const inn = P.inn
   rect(inn.x0, inn.y0, inn.x1, inn.y1, (x, y) => pave(G, x, y, alley(x, y)))
-  house(G, rec, { x0: inn.x0, x1: inn.x1, top: inn.door.y - 4, storeys: 3, view: 'front', wall: 'ochre', roof: 'red', door: inn.door, chim: inn.x0 + 2, sign: 'inn', flowers: true,
+  house(G, rec, { x0: inn.x0, x1: inn.x1, top: inn.door.y - 4, storeys: 3, wall: 'ochre', roof: 'red', door: inn.door, chim: inn.x0 + 2, sign: 'inn', flowers: true,
     info: { kind: 'inn', look: { w: 5, storeys: 3, wall: 'plaster' } } })
   const innLabel = rec.doors[rec.doors.length - 1].label
   lay(G, inn.x1 - 2, inn.door.y - 4, HOUSE_FRONT.roofs.red.chim); rec.chimneys.push({ x: inn.x1 - 2, y: inn.door.y - 4, door: innLabel })
@@ -210,21 +210,23 @@ function layPlaces(G, rec) {
   // Seppo's smithy on the east side of the square, its work yard open to it
   const sm = P.smithy
   rect(sm.x0, sm.y0, sm.x1, sm.y1, (x, y) => pave(G, x, y, alley(x, y)))
-  house(G, rec, { x0: sm.x0, x1: sm.x1, top: sm.y0, storeys: 2, view: 'front', wall: 'stone', roof: 'dark', door: { x: sm.x0 + 3, y: sm.y0 + 3 }, chim: sm.x0 + 1, sign: 'smith',
+  house(G, rec, { x0: sm.x0, x1: sm.x1, top: sm.y0, storeys: 2, wall: 'stone', roof: 'dark', door: { x: sm.x0 + 3, y: sm.y0 + 3 }, chim: sm.x0 + 1, sign: 'smith',
     info: { kind: 'smithy', look: { w: 5, storeys: 2, wall: 'stone' } } })
   lay(G, sm.x1 - 1, sm.y0 + 5, PROPS.forge); lay(G, sm.x0 + 3, sm.y0 + 5, PROPS.anvil)
   lay(G, sm.x1, sm.y1, 'ow_prop_woodpile'); lay(G, sm.x1, sm.y0 + 4, PROPS.barrels[1])
   rec.spots['smithy-anvil'] = { x: sm.x0 + 2, y: sm.y0 + 5 }
 
-  // the barracks by the north gate, its front on the street along the wall
+  // the barracks by the north gate, its roof to the street along the wall and
+  // its door on the drill yard behind, the yard open to that street by a
+  // paved way down the barracks' east end
   const br = P.barracks
   rect(br.x0, br.y0, br.x1, br.y1, (x, y) => pave(G, x, y, flag(x, y)))
-  const bx = (br.x0 + br.x1) >> 1
-  house(G, rec, { x0: br.x0, x1: br.x1, top: br.y0, storeys: 2, view: 'back', wall: 'stone', roof: 'dark', door: { x: bx, y: br.y0 }, chim: br.x0 + 2,
+  const hx1 = br.x1 - 2, bx = (br.x0 + hx1) >> 1
+  house(G, rec, { x0: br.x0, x1: hx1, top: br.y0, storeys: 2, wall: 'stone', roof: 'dark', door: { x: bx, y: br.y0 + 3 }, chim: br.x0 + 2,
     info: { kind: 'barracks', look: { w: 5, storeys: 2, wall: 'stone' } } })
   lay(G, br.x0 + 2, br.y1 - 1, 'ow_prop_target'); lay(G, br.x1 - 2, br.y1 - 1, 'ow_prop_target')
-  lay(G, br.x1, br.y0 + 4, PROPS.barrels[0]); lay(G, br.x0, br.y0 + 4, PROPS.crates[1])
-  rec.spots['barracks-door'] = { x: bx, y: br.y0 - 1 }
+  lay(G, br.x1, br.y0 + 6, PROPS.barrels[0]); lay(G, br.x0, br.y0 + 4, PROPS.crates[1])
+  rec.spots['barracks-door'] = { x: bx, y: br.y0 + 4 }
 
   // the square: the dry Sampo fountain, the crier's box, the stocks
   const f = P.fountain

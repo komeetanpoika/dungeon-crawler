@@ -187,14 +187,11 @@ export function gateSide(G, x, y, ground = cobble) {
 }
 
 // ---- buildings -----------------------------------------------------------------
-// A house as kit.js lays one: a roof row (chimney), an eave row (a gable over
-// the door), then a wall row per storey, the ground floor last. `view`:
-//   front  seen from the street to the south: the ground floor with its
-//          door is the last row
-//   back   seen from behind, its front on a street to the north: the roof's
-//          top row runs along that street with the door let into it, the
-//          back wall (windows, no door) below
-// spec: { x0, x1, top, storeys, view, wall, roof, door: { x, y } | null,
+// A house as kit.js lays one, seen from the south: a roof row (chimney), an
+// eave row (a gable over the door), then a wall row per storey, the ground
+// floor with its door last. A door is always in that south face: a house
+// never shows its back, so a door never sits on a roof's edge.
+// spec: { x0, x1, top, storeys, wall, roof, door: { x, y } | null,
 //         chim: column | null, shop: awning | null, sign: name | null,
 //         flowers, gable, roofRows (1), info: addDoor's options }
 // Returns the door, if it has one.
@@ -204,18 +201,17 @@ export function house(G, rec, s) {
   const d = s.door && s.info ? addDoor(rec, s.door.x, s.door.y, s.info) : null
   const label = d?.label ?? null
   const end = (i, l, m, r) => i === 0 ? l : i === w - 1 ? r : m
-  const back = s.view === 'back'
   const eave = s.top + (s.roofRows ?? 1)
   const ground = eave + s.storeys
   for (let i = 0; i < w; i++) {
     const x = s.x0 + i
-    const chim = s.chim === x && !(back && s.door?.x === x)
+    const chim = s.chim === x
     for (let y = s.top; y < eave; y++) lay(G, x, y, end(i, R.l, chim && y === s.top ? R.chim : R.m, R.r))
     if (chim && label) rec.chimneys.push({ x, y: s.top, door: label })
-    const gable = s.gable !== false && !back && s.door && s.door.x === x && i > 0 && i < w - 1
+    const gable = s.gable !== false && s.door && s.door.x === x && i > 0 && i < w - 1
     lay(G, x, eave, end(i, R.el, gable ? R.gable : R.em, R.er))
     for (let y = eave + 1; y <= ground; y++) {
-      const groundFloor = y === ground && !back
+      const groundFloor = y === ground
       let n
       if (groundFloor && s.shop) {
         const S = HOUSE_FRONT.shop[s.shop]
@@ -226,19 +222,17 @@ export function house(G, rec, s) {
     }
   }
   if (d) {
-    const sh = s.shop && !back && s.door.y === ground ? HOUSE_FRONT.shop[s.shop].door : W.door
+    const sh = s.shop && s.door.y === ground ? HOUSE_FRONT.shop[s.shop].door : W.door
     lay(G, s.door.x, s.door.y, sh, { walk: true })
     rec.windows = rec.windows.filter(o => o.x !== s.door.x || o.y !== s.door.y)
   }
-  // the sign hangs beside the door: on the storey over a shop front, or by a back door on the roof's edge
-  if (s.sign && d) {
-    const row = back ? s.top : ground - 1
-    if (back || s.storeys >= 2) {
-      const sx = s.door.x + 1 <= s.x1 - (back ? 1 : 0) ? s.door.x + 1 : s.door.x - 1
-      if (sx >= s.x0 && sx <= s.x1 && !(back && s.chim === sx)) {
-        G.setDeco(sx, row, G.prop(sx, row))
-        G.setProp(sx, row, HOUSE_FRONT.signs[s.sign], false)
-      }
+  // the sign hangs beside the door, on the storey over it
+  if (s.sign && d && s.storeys >= 2) {
+    const row = ground - 1
+    const sx = s.door.x + 1 <= s.x1 ? s.door.x + 1 : s.door.x - 1
+    if (sx >= s.x0 && sx <= s.x1) {
+      G.setDeco(sx, row, G.prop(sx, row))
+      G.setProp(sx, row, HOUSE_FRONT.signs[s.sign], false)
     }
   }
   return d
