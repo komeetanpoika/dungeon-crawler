@@ -252,7 +252,8 @@ export const PROPS = {
   barrels: ['ow_prop_barrel_0', 'ow_prop_barrel_1'],
   crates: ['ow_prop_crate_0', 'ow_prop_crate_1', 'ow_prop_crate_2'],
   well: ['ow_well_top', 'ow_well'],
-  fountain: { empty: 'ow_fountain_basin_empty', full: 'ow_fountain_basin_full' },
+  // (sampo: the running basin with the Sampo standing in it, the fountain ending of its story)
+  fountain: { empty: 'ow_fountain_basin_empty', full: 'ow_fountain_basin_full', sampo: 'ow_fountain_basin_sampo' },
   turnip: 'ow_deco_city_turnip', turnips: 'ow_prop_city_turnips',
   bed: grid('ow_prop_city_bed_', ['t', 'm', 'b'], ['l', 'c', 'r']),
   produce: ['ow_prop_city_produce_0', 'ow_prop_city_produce_1', 'ow_prop_city_produce_2'],

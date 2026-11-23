@@ -339,6 +339,7 @@ test('the copper mountain: dark at noon, braziers that light for whoever comes b
   c.tick(0.5)
   const fires = onBraziers()
   assert.ok(fires.length === 1 && fires[0].x === b.x && fires[0].y === b.y && !fires[0].eternal && !fires[0].hearth, 'one fire on the brazier, an ordinary one')
+  assert.equal(fires[0].brazier, true, 'drawn as the lit bowl')
   assert.ok(inLight({ px: b.x * S + 16, py: (b.y + 2) * S + 16 }, state))
   c.slay()
   c.tick()

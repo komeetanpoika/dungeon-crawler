@@ -66,6 +66,22 @@ function takeAll(player, kind) {
   for (let i = (player.inventory?.length ?? 0) - 1; i >= 0; i--) if (player.inventory[i].kind === kind) player.inventory.splice(i, 1)
 }
 
+// The lid in the great hall shows what is under it: bright with the Sampo
+// there (set and not yet stolen, or set for good), dim without.
+export const LID_BRIGHT = 'in_sampo_lid_bright'
+function lidOf(map) {
+  const at = cellOf(map, LID_TILE) ?? cellOf(map, LID_BRIGHT)
+  if (at) for (const t of [LID_TILE, LID_BRIGHT]) FOUND.get(map).set(t, at)   // whichever it shows from now on
+  return at
+}
+function showLid(state, world) {
+  const f = world.sampo.flags, at = lidOf(state.map)
+  if (!at) return
+  const want = (f.set && !f.stolen) || f.castle ? LID_BRIGHT : LID_TILE
+  const cell = state.map[at.y][at.x]
+  if (cell.overlay !== want) { cell.overlay = want; markTileDirty(state.map, at.x, at.y) }
+}
+
 // Where a piece of furniture stands on a floor, found once a map.
 const FOUND = new WeakMap()
 function cellOf(map, tile) {
@@ -163,7 +179,7 @@ const npc = (state, id) => state.entities.find(e => e.id === id && e.type === 'n
 
 function hall(state, world, hooks) {
   const f = world.sampo.flags, { player } = state
-  const lid = cellOf(state.map, LID_TILE)
+  const lid = lidOf(state.map)
   if (!lid || !f.forged || f.eagle) return
   const quiet = !state.telling && !state.feedback?.bubble
   if (!f.set) {
@@ -269,7 +285,7 @@ function settle(state, world, hooks, kind) {
 function choice(state, world, hooks) {
   const f = world.sampo.flags, { player } = state
   if (!f.eagle || f.castle || f.fountain) return
-  const lid = floorOf(state) === 'hall' ? cellOf(state.map, LID_TILE) : null
+  const lid = floorOf(state) === 'hall' ? lidOf(state.map) : null
   const fountain = fountainAt(state, world)
   const at = lid && manhattan(lid, player) === 1 ? 'castle' : fountain && cheb(fountain, player) <= 2 ? 'fountain' : null
   if (!at) { state.sampoAsked = null; return }
@@ -284,7 +300,7 @@ function fountainRuns(state, world, delta) {
   const at = fountainAt(state, world)
   if (!at) return
   const cell = state.map[at.y][at.x]
-  if (cell.overlay === PROPS.fountain.empty) { cell.overlay = PROPS.fountain.full; markTileDirty(state.map, at.x, at.y) }
+  if (cell.overlay !== PROPS.fountain.sampo) { cell.overlay = PROPS.fountain.sampo; markTileDirty(state.map, at.x, at.y) }
   const { player } = state
   if (cheb(at, player) > FOUNTAIN_REST.tiles || !(player.hp < player.maxHp)) { state.sampoRest = 0; return }
   state.sampoRest = (state.sampoRest ?? 0) + delta
@@ -314,7 +330,7 @@ export function tickSampoEnd(state, world, delta, hooks) {
       speakFrom(state, seppo, SAMPO_AGAIN, sayDuration(SAMPO_AGAIN))
     }
   }
-  if (floor === 'hall') hall(state, world, hooks)
+  if (floor === 'hall') { hall(state, world, hooks); showLid(state, world) }
   if (floor === 'battlements') battlements(state, world, hooks)
   choice(state, world, hooks)
   if (f.fountain) fountainRuns(state, world, delta)

@@ -155,7 +155,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     return
   }
   if (entity.type === 'campfire') {
-    const s = sprites.prop_campfire
+    // a fire in a brazier (the copper mountain's) is the lit bowl, not logs on the ground
+    const s = (entity.brazier && sprites.prop_brazier_lit) || sprites.prop_campfire
     if (!s) return
     const prev = ctx.globalAlpha, prevF = ctx.filter
     ctx.globalAlpha = prev * campfireAlpha(entity)

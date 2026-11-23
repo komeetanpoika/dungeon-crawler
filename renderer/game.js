@@ -2600,7 +2600,7 @@ function enterBuilding(door, built) {
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
   const floors = built.floors.map(f => ({
     id: f.id, map: f.map, entities: buildEntities(f.entitySpawns, f.map, INTERIOR_DEPTH),
-    stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit,
+    stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit, ...(f.theme && { theme: f.theme }),
   }))
   const building = makeBuilding(floors, built.ground)
   const ground = building.floors.get(built.ground)

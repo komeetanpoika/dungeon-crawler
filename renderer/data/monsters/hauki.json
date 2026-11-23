@@ -1,9 +1,24 @@
 {
-  "name": "hauki", "placedBy": "story",
-  "rig": "serpent",
-  "params": { "width": 3, "shift": 0.9, "waterline": 0.45, "idleFps": 6, "swimFps": 10, "bob": 0.3 },
-  "stats": { "hp": 3, "dmg": 0, "speed": 0 },
-  "behavior": { "taxon": "beast", "driver": "hook", "passive": true, "sightRange": 0 },
+  "name": "hauki",
+  "placedBy": "story",
+  "rig": "pike",
+  "params": {
+    "width": 3.5,
+    "shift": 0.7,
+    "waterline": 0.45,
+    "snap": 2
+  },
+  "stats": {
+    "hp": 3,
+    "dmg": 0,
+    "speed": 0
+  },
+  "behavior": {
+    "taxon": "beast",
+    "driver": "hook",
+    "passive": true,
+    "sightRange": 0
+  },
   "spawn": null,
   "hooks": true
 }

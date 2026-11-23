@@ -683,7 +683,7 @@ export function makeSites(c) {
       t.setFloor(cx + dx, cy + dy, { roads: true })
     }
     const braziers = [[0, -5], [-5, 3], [5, 3]].map(([dx, dy], i) => ({ label: `brazier ${i + 1}`, x: cx + dx, y: cy + dy }))
-    for (const b of braziers) { put(b.x, b.y, 'prop_hearth_cold'); hold(b.x, b.y) }
+    for (const b of braziers) { put(b.x, b.y, 'prop_brazier_cold'); hold(b.x, b.y) }
     for (const [dx, dy] of [[0, 0], [0, -2], [1, 1], [-1, 1]]) hold(cx + dx, cy + dy)
     scatter(cx, cy, 2, 7, 6, ['ow_deco_skull'])
     for (let i = 0; i < 11; i++) {

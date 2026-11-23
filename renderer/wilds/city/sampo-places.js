@@ -180,7 +180,7 @@ const PLAY = {
       if (!label.startsWith('brazier ')) continue
       const b = pts[label]
       if (cheb(b, player) > 1 || state.entities.some(e => e.type === 'campfire' && e.x === b.x && e.y === b.y)) continue
-      state.entities.push(makeCampfire(b.x, b.y))
+      state.entities.push({ ...makeCampfire(b.x, b.y), brazier: true })
       sfx(state, 'campfire-light', { px: b.x * 32 + 16, py: b.y * 32 + 16 })
     }
     if (!guardian(state, c, pts.den) && c.r.up) win(state, world, c, pts.vault)

@@ -9,7 +9,16 @@ import assert from 'node:assert/strict'
 import { stageOf, questKey, namedLines, luckLine, tellingFor, crierItem, passageFor, guardWaves, goneFrom, SAMPO_FLAGS,
   BLOWS, VIPUNEN, BELLY, SAMPO, SAMPO_AGAIN, HERRING, FLOOD, HALL, EAGLE_WON, ENDINGS, FOUNTAIN_REST, LID_TILE } from '../renderer/wilds/city/sampo.js'
 import { tickSampo, startTelling } from '../renderer/wilds/city/sampo-run.js'
-import { tickSampoEnd, noteSampoSwing, ANVIL_TILE, BLOW_GAP, COUGH_AFTER } from '../renderer/wilds/city/sampo-end.js'
+import { tickSampoEnd, noteSampoSwing, ANVIL_TILE, BLOW_GAP, COUGH_AFTER, LID_BRIGHT } from '../renderer/wilds/city/sampo-end.js'
+import { makeBuilding, travel } from '../renderer/interior/floors.js'
+import { INTERIOR_SKINS, WALLS, FLOORS } from '../renderer/interior/kit.js'
+import { CITY_SKINS } from '../renderer/wilds/city/kit.js'
+import { SPRITES } from '../renderer/render/sprites.js'
+import * as eagleRig from '../renderer/render/monster-rigs/eagle.js'
+import * as pikeRig from '../renderer/render/monster-rigs/pike.js'
+import * as tursoRig from '../renderer/render/monster-rigs/turso.js'
+import * as vahtiRig from '../renderer/render/monster-rigs/pohjanvahti.js'
+import { existsSync, readFileSync } from 'node:fs'
 import { linesFor } from '../renderer/wilds/city/lines.js'
 import { arriveCity, tickCity } from '../renderer/wilds/city/runtime.js'
 import { PROPS } from '../renderer/wilds/city/kit.js'
@@ -233,6 +242,7 @@ test('the great hall: under the lid, the Count\'s turn, herring on the floor, an
   c.tick()
   assert.equal(world.sampo.flags.set, true)
   assert.ok(!state.player.inventory.length, 'out of the sack')
+  assert.equal(state.map[lid.y][lid.x].overlay, LID_BRIGHT, 'the lid takes colour')
   assert.equal(state.feedback.bubble.text, HALL.set)
   // the Count takes his turn without being asked, when the thought has passed
   for (let t = 0; t < 20 && !state.telling; t += DT) c.tick()
@@ -257,6 +267,7 @@ test('the great hall: under the lid, the Count\'s turn, herring on the floor, an
   c.tick(0)
   assert.equal(state.feedback.bubble?.text ?? HALL.up, HALL.up)
   assert.equal(stageOf(world), 'eagle')
+  assert.equal(state.map[lid.y][lid.x].overlay, LID_TILE, 'and the lid is dim again')
   assert.equal(c.lies(HERRING).length, FLOOD, 'the herring stays')
   assert.equal(c.log.asks.length, 0)
   // walked out before she had done: she is there again on coming back
@@ -360,6 +371,8 @@ test('the castle end: asked at the lid, once a coming; yes sets it there for goo
   assert.equal(world.sampo.flags.castle, undefined)
   c.log.asks[1].onYes()
   assert.equal(world.sampo.flags.castle, true)
+  c.tick()
+  assert.equal(state.map[lid.y][lid.x].overlay, LID_BRIGHT, 'bright for good')
   assert.equal(world.sampo.flags.paid, true)
   assert.equal(stageOf(world), 'castle')
   assert.ok(!state.player.inventory.some(i => i.kind === SAMPO))
@@ -406,7 +419,7 @@ test('the fountain end: asked on the square; yes, and the fountain runs, the tow
   assert.ok(!state.player.inventory.some(i => i.kind === SAMPO))
   assert.deepEqual(state.feedback.toasts, [ENDINGS.fountain.toast])
   tick()
-  assert.equal(basin().overlay, PROPS.fountain.full, 'the fountain runs')
+  assert.equal(basin().overlay, PROPS.fountain.sampo, 'the fountain runs, the Sampo standing in it')
   assert.equal(state.cityRun.quest, 'fountain/jaw')
   const anyone = [...state.cityRun.people.values()].find(w => w.person.id.startsWith('tf:') && w.person.age !== 'child' && w.person.job !== 'watch')
   assert.ok(anyone.lines.includes(luckLine(anyone.person.temperament, 'fountain')), 'the town talks of it')
@@ -417,4 +430,65 @@ test('the fountain end: asked on the square; yes, and the fountain runs, the tow
   Object.assign(state.player, { y: fy + 8, py: (fy + 8) * S + 16 })
   tick(FOUNTAIN_REST.every * 2)
   assert.equal(state.player.hp, hp + 1, 'not from across the square')
+})
+
+// ---- the story's own art ---------------------------------------------------------------
+
+test('the story\'s places and creatures have art of their own, and every name of it is a file', () => {
+  const tile = name => existsSync(new URL(`../renderer/assets/tiles/${name}.png`, import.meta.url))
+  const sheet = name => existsSync(new URL(`../renderer/assets/monsters/${name}.png`, import.meta.url))
+  // the belly and the battlements: palettes of their own, loaded with the interiors
+  for (const p of ['flesh', 'roof']) {
+    assert.equal(WALLS[p].top.length, 16)
+    for (const n of [...WALLS[p].top, ...Object.values(WALLS[p].faceU), ...Object.values(WALLS[p].faceL)]) assert.ok(tile(n) && INTERIOR_SKINS.includes(n), n)
+  }
+  assert.ok(WALLS.flesh.faceU.m.includes('flesh') && WALLS.roof.top[10] === 'in_wall_roof_10')
+  for (const n of [...FLOORS.flesh, 'in_rib', 'in_gullet', LID_BRIGHT]) assert.ok(tile(n) && INTERIOR_SKINS.includes(n), n)
+  const belly = church().floors.find(f => f.id === 'belly'), roof = castle().floors.find(f => f.id === 'battlements')
+  const skins = f => new Set(f.map.flat().flatMap(c => [c.skin, c.overlay]).filter(Boolean))
+  assert.ok([...skins(belly)].some(n => n.startsWith('in_wall_flesh_')) && skins(belly).has('in_floor_flesh') && skins(belly).has('in_rib') && skins(belly).has('in_gullet'))
+  assert.ok(![...skins(belly)].some(n => /grey|column|stair/.test(n)), 'nothing of the crypt\'s stone down there')
+  assert.ok([...skins(roof)].some(n => n.startsWith('in_wall_roof_')) && ![...skins(roof)].some(n => n.startsWith('in_face')), 'a parapet from above, no wall face')
+  // each has a light of its own, put on and taken off by the stairs
+  assert.ok(belly.theme.bgColor !== roof.theme.bgColor)
+  const built = church(), base = { bgColor: '#000', tint: null, fogAlpha: 0.65 }
+  const building = makeBuilding(built.floors.map(f => ({ id: f.id, map: f.map, entities: [], stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit, ...(f.theme && { theme: f.theme }) })), 'nave')
+  let state = { map: building.floors.get('nave').map, entities: [], player: { x: 1, y: 1, px: 48, py: 48 }, cave: { building }, theme: base }
+  state = travel(state, { id: 'story', to: { floor: 'belly', stair: 'out' } })
+  assert.deepEqual(state.theme, belly.theme)
+  state = travel(state, building.floors.get('belly').stairs[0])
+  assert.deepEqual(state.theme, base, 'the church\'s own light again in the crypt')
+  // the fountain with the Sampo in it, the braziers
+  assert.ok(tile(PROPS.fountain.sampo) && CITY_SKINS.includes(PROPS.fountain.sampo))
+  for (const n of ['prop_brazier_cold', 'prop_brazier_lit']) assert.ok(tile(n) && SPRITES[n] === n, n)
+  // the creatures: each monster names a rig of its own, each rig a sheet that is there
+  const def = name => JSON.parse(readFileSync(new URL(`../renderer/data/monsters/${name}.json`, import.meta.url), 'utf8'))
+  assert.deepEqual(['ikuturso', 'hauki', 'pohjanvahti', 'louhi'].map(n => def(n).rig), ['turso', 'pike', 'pohjanvahti', 'eagle'])
+  for (const [rig, id] of [[eagleRig, 'eagle'], [pikeRig, 'pike'], [tursoRig, 'turso'], [vahtiRig, 'pohjanvahti']]) {
+    assert.equal(rig.RIG_ID, id)
+    assert.ok(Array.isArray(rig.PARAM_SCHEMA) && typeof rig.drawMonster === 'function' && typeof rig.hitShape === 'function')
+  }
+  for (const n of ['eagle', 'pike', 'ikuturso', 'pohjanvahti-parts']) assert.ok(sheet(n), `${n}.png`)
+  for (const [name, rig] of [['louhi', eagleRig], ['hauki', pikeRig], ['ikuturso', tursoRig]]) {
+    const keys = rig.PARAM_SCHEMA.map(p => p.key)
+    for (const k of Object.keys(def(name).params)) assert.ok(keys.includes(k), `${name}: param ${k}`)
+  }
+  // the eagle's frames: on the ground, the stoop, and the beat of her wings
+  const ep = Object.fromEntries(eagleRig.PARAM_SCHEMA.map(p => [p.key, p.default]))
+  assert.equal(eagleRig.frameFor(ep, { sink: 0, t: 0.3 }), eagleRig.FRAMES.ground)
+  assert.equal(eagleRig.frameFor(ep, { sink: 0.2, flicker: 1, t: 0.3 }), eagleRig.FRAMES.stoop)
+  const beat = new Set(); for (let t = 0; t < 1; t += 0.02) beat.add(eagleRig.frameFor(ep, { sink: 1, t }))
+  assert.deepEqual([...beat].sort(), [0, 1, 2])
+  // the pike snaps only when it is right up
+  const pp = Object.fromEntries(pikeRig.PARAM_SCHEMA.map(p => [p.key, p.default]))
+  assert.equal(pikeRig.frameFor(pp, { sink: 0.5, t: 0.3 }), 0)
+  const snap = new Set(); for (let t = 0; t < 1; t += 0.02) snap.add(pikeRig.frameFor(pp, { sink: 0, t }))
+  assert.deepEqual([...snap].sort(), [0, 1])
+  // they draw on a bare context without a sheet (Node): a stand-in, never a throw
+  const calls = []
+  const ctx = new Proxy({}, { get: (t, k) => k in t ? t[k] : (...a) => { calls.push(k) }, set: (t, k, v) => { t[k] = v; return true } })
+  for (const [rig, p] of [[eagleRig, ep], [pikeRig, pp], [tursoRig, Object.fromEntries(tursoRig.PARAM_SCHEMA.map(q => [q.key, q.default]))]]) {
+    for (const pose of [{ sink: 0, t: 0.1, facing: 0 }, { sink: 0.6, t: 0.4, facing: Math.PI, state: 'hit' }, { sink: 1, t: 1 }]) rig.drawMonster(ctx, p, pose, 32)
+  }
+  assert.ok(calls.includes('fillRect'))
 })

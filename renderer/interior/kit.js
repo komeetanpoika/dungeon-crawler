@@ -22,6 +22,13 @@ const wallSet = p => ({
   faceL: { l: `in_facel_${p}_l`, m: `in_facel_${p}_m`, r: `in_facel_${p}_r`, lr: `in_facel_${p}_lr` },
 })
 export const WALLS = Object.fromEntries(PALETTES.map(p => [p, wallSet(p)]))
+// The Sampo story's two places (tools/make-sampo-tiles.mjs), never dealt to a
+// house: `flesh` is the giant Vipunen's belly; `roof` is the keep's
+// battlements, a parapet seen from above with no wall face of its own (a
+// floor of that palette has no face rows).
+WALLS.flesh = wallSet('flesh')
+WALLS.roof = { ...wallSet('roof'), faceU: WALLS.grey.faceU, faceL: WALLS.grey.faceL }
+const STORY_PALETTES = ['flesh', 'roof']
 
 // Floors: each has a worn twin for houses nobody keeps.
 export const FLOORS = {
@@ -31,6 +38,7 @@ export const FLOORS = {
   greyflags: ['in_floor_greyflags', 'in_floor_greyflags_worn'],
   cream: ['in_floor_cream', 'in_floor_cream_worn'],
   earth: ['in_floor_earth', 'in_floor_earth_worn'],
+  flesh: ['in_floor_flesh', 'in_floor_flesh_worn'],   // the belly's
 }
 
 // Bordered rugs, 3x3: rows top/middle/bottom, columns left/middle/right. A
@@ -176,6 +184,9 @@ export const ITEMS = {
   bell: it('floor', [['in_bell']]),
   tomb: it('floor', [['in_tomb_t'], ['in_tomb_b']]),
   sampo_lid: it('floor', [['in_sampo_lid']]),
+  // the lid with the Sampo under it (wilds/city/sampo-end.js swaps the one for the other), and a rib of the giant's
+  sampo_lid_bright: it('floor', [['in_sampo_lid_bright']]),
+  rib: it('floor', [['in_rib']]),
   throne: it('floor', [['in_throne']], { block: false }),
   candle: it('floor', [['in_candle']], { block: false }),
   // a barred door: solid, seen through (losClear, as every blocking floor item)
@@ -196,6 +207,8 @@ export const MISC = {
   // a cell's overlay), the crypt's crack (a deco: its lines over the floor)
   // and the keep's barred battlements door (a deco on its shut doorway)
   stairUp: 'in_stair_up', stairDown: 'in_stair_down', crack: 'in_crack', barredDoor: 'in_door_barred',
+  // a stair drawn as something else (a legend stair's `art`): the way up out of the giant's belly
+  gullet: 'in_gullet',
 }
 
 const itemNames = Object.values(ITEMS).flatMap(i => {
@@ -205,13 +218,13 @@ const itemNames = Object.values(ITEMS).flatMap(i => {
 
 // Every name above, once: what the game must load before a house is drawn.
 export const INTERIOR_SKINS = [...new Set([
-  ...PALETTES.flatMap(p => [...WALLS[p].top, ...Object.values(WALLS[p].faceU), ...Object.values(WALLS[p].faceL)]),
+  ...[...PALETTES, ...STORY_PALETTES].flatMap(p => [...WALLS[p].top, ...Object.values(WALLS[p].faceU), ...Object.values(WALLS[p].faceL)]),
   ...Object.values(FLOORS).flat(),
   ...Object.values(RUGS).flatMap(r => r.flat()),
   ...itemNames,
   MISC.void, MISC.doormat, ...MISC.flowers, MISC.mirror['/'], MISC.mirror['\\'], MISC.seed, MISC.bloom,
   MISC.panel, MISC.nicheTop, MISC.nicheFloor, MISC.chestOpen,
-  MISC.stairUp, MISC.stairDown, MISC.crack, MISC.barredDoor,
+  MISC.stairUp, MISC.stairDown, MISC.crack, MISC.barredDoor, MISC.gullet,
 ])]
 
 // Which tiles get the furniture shading (render/interior-shade.js): 'cast'

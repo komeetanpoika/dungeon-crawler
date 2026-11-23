@@ -3,7 +3,8 @@
 // hangs a moment over where the player stands, stoops on that spot, and then
 // sits winded where she landed, which is when she can be struck. Walls mean
 // nothing to her; she keeps inside the floor's edge. `e.sink` is her height
-// for the rig (render/monster-rigs/eagle.js). Pure: no browser imports.
+// and `e.flicker` her stoop, for the rig (render/monster-rigs/eagle.js). Pure:
+// no browser imports.
 //
 //   e.wing = { state: 'aloft' | 'stoop' | 'dive' | 'down', t, a, aim: { px, py }, hit }
 import { CREATURE_HIT, CREATURE_UPDATE } from '../creatures.js'
@@ -40,6 +41,7 @@ const ease = (v, to, rate) => v + Math.max(-rate, Math.min(rate, to - v))
 export function updateEagle(e, state, delta) {
   const W = ensureEagle(e), { player } = state
   W.t -= delta
+  e.flicker = W.state === 'dive' ? 1 : 0   // the rig's stoop frame
   if (W.state === 'aloft') {
     e.sink = ease(e.sink, 1, delta * 2.5)
     W.a += delta * 0.9

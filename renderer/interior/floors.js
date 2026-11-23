@@ -12,7 +12,7 @@ const LAND_RADIUS = 3
 export function makeBuilding(floors, ground) {
   const byId = new Map()
   for (const f of floors) byId.set(f.id, { ...f, stairs: f.stairs ?? [], shut: f.shut ?? [] })
-  return { floors: byId, ground, at: ground, said: new Set() }
+  return { floors: byId, ground, at: ground, said: new Set() }   // + theme: the building's own (travel keeps it the first time it leaves the ground)
 }
 
 const here = building => building?.floors.get(building.at) ?? null
@@ -81,8 +81,11 @@ export function travel(state, stair) {
   const onGround = to.id === building.ground
   const out = onGround ? (to.exit ?? to.spawn ?? { x: -1, y: -1 }) : { x: -1, y: -1 }
   const spawn = onGround ? (to.spawn ?? out) : { x: -1, y: -1 }
+  // a floor may have a light of its own (`theme`); every other has the building's
+  building.theme ??= state.theme
   return {
     ...state,
+    ...((to.theme ?? building.theme) && { theme: to.theme ?? building.theme }),
     map: to.map,
     entities: to.entities,
     projectiles: [], zones: [], fireZones: [], lightning: [], strikes: [], shockwaves: [], hitEffects: [],

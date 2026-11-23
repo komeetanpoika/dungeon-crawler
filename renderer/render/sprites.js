@@ -61,6 +61,8 @@ export const SPRITES = {
   prop_campfire:    'prop_campfire',     // campfire entity (systems/campfire.js)
   prop_hearth_cold: 'prop_hearth_cold',  // placeholders drawn by tools/npc-placeholders.mjs
   prop_hearth_lit:  'prop_hearth_lit',
+  // the copper mountain's braziers (tools/make-sampo-tiles.mjs): a fire on one is drawn as the lit bowl
+  prop_brazier_cold: 'prop_brazier_cold', prop_brazier_lit: 'prop_brazier_lit',
   // floor variants
   sand:                'tile_0048',
   // props — civilisation gradient

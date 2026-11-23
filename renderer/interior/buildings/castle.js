@@ -254,14 +254,17 @@ function seat(person) {
 // The battlements: the keep's roof, where the eagle takes the Sampo
 // (wilds/city/sampo-end.js). Reached through the barred door on the Count's
 // floor once the story has opened it (sampo.js passageFor); the way down
-// comes out by that floor's stair. An open floor to fight on.
+// comes out by that floor's stair. Open to the sky: flagstones inside a
+// parapet seen from above (kit.js palette `roof`, no wall face), and beyond
+// it nothing but the day. An open floor to fight on.
 const battlements = {
-  id: 'battlements', palette: 'grey', entry: 'roof',
+  id: 'battlements', palette: 'roof', entry: 'roof',
+  theme: { bgColor: '#9ccbe8', tint: null, fogAlpha: 0.35 },
   rooms: [{ id: 'roof', x0: 1, x1: 19, y0: 1, y1: 11, floor: 'greyflags' }],
   rows: [
     '#####################',
-    '#uuuuuuuuuuuuuuuuuuu#',
-    '#lllllllllllllllllll#',
+    '#...................#',
+    '#...................#',
     '#...................#',
     '#...................#',
     '#...................#',
@@ -275,8 +278,8 @@ const battlements = {
   ],
   things: [
     '                     ',
-    '  B   t    B    t  B ',
-    '  B        B       B ',
+    '                     ',
+    '                     ',
     '                     ',
     '                     ',
     '                     ',
@@ -289,12 +292,10 @@ const battlements = {
     '                     ',
   ],
   legend: {
-    B: { item: 'banner_red' },
-    t: { item: 'torch' },
     '>': { stair: 'door', to: ['count', 'down'], dir: 'down' },
     1: { land: 'door' },
   },
-  clear: [{ x0: 1, y0: 3, x1: 19, y1: 11 }],
+  clear: [{ x0: 1, y0: 1, x1: 19, y1: 11 }],
 }
 
 export const CASTLE = { floors: [hall, cells, count, battlements], ground: 'hall', theme: VERSIONS.home.theme, seat }

@@ -10,6 +10,7 @@
 //   { spot }                          a named place people are seated at
 //   { stair, to: [floor, stair], dir: 'up'|'down' }   a stair cell
 //   { stair, to, dir, say }           the same, with a line thought the first time it is climbed
+//   { stair, to, dir, art }           (with or without say) drawn with MISC[art] instead of a stair
 //   { land }                          the landing of the stair of that id
 //   { shut }                          a shut door cell, `shut` is its line
 //   { shut, deco }                    the same, drawn with MISC[deco]
@@ -33,7 +34,7 @@ import { ITEMS, MISC, RUGS } from '../kit.js'
 
 const GRID = new Set([...'#ul.dE '])
 const COMBOS = [
-  ['item'], ['item', 'spot'], ['spot'], ['stair', 'dir', 'to'], ['say', 'stair', 'dir', 'to'], ['land'], ['shut'], ['deco', 'shut'], ['deco'],
+  ['item'], ['item', 'spot'], ['spot'], ['stair', 'dir', 'to'], ['say', 'stair', 'dir', 'to'], ['art', 'stair', 'dir', 'to'], ['art', 'say', 'stair', 'dir', 'to'], ['land'], ['shut'], ['deco', 'shut'], ['deco'],
   ['spawn'], ['spawn', 'spot'], ['guards', 'line', 'spawn'], ['guards', 'line', 'spawn', 'spot'],
 ].map(k => [...k].sort().join('+'))
 
@@ -102,7 +103,7 @@ export function parseFloor(def) {
     } else if (e.stair) {
       onFloor()
       if (stairs.has(e.stair)) fail(x, y, `stair "${e.stair}" stands twice (first at ${stairs.get(e.stair).x},${stairs.get(e.stair).y})`)
-      stairs.set(e.stair, { id: e.stair, x, y, to: { floor: e.to[0], stair: e.to[1] }, dir: e.dir, ...(e.say ? { say: e.say } : {}) })
+      stairs.set(e.stair, { id: e.stair, x, y, to: { floor: e.to[0], stair: e.to[1] }, dir: e.dir, ...(e.say ? { say: e.say } : {}), ...(e.art ? { art: e.art } : {}) })
     } else if (e.land) {
       onFloor()
       if (lands.has(e.land)) fail(x, y, `stair "${e.land}" has more than one landing`)

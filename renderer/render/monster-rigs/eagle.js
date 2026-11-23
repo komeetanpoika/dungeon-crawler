@@ -1,83 +1,67 @@
 // The great eagle (Louhi of Pohjola with the Sampo in her claws, the end of
-// the Sampo's story: systems/monsters/louhi.js). Drawn from shapes in art
-// pixels, with fillRect alone so it draws on any context. `pose.sink` is her
-// height (the hook's channel: 0 on the ground with wings half folded, 1
-// aloft and beating); the shadow stays on the ground under her.
-import { withPixelStage } from './pixel.js'
+// the Sampo's story: systems/monsters/louhi.js). A sheet of five frames,
+// renderer/assets/monsters/eagle.png, painted by tools/make-sampo-creatures.mjs:
+// wings up, level, down (the beat), the stoop, and on the ground. The hook's
+// channels choose: `pose.sink` is her height (0 on the ground, 1 aloft; the
+// shadow stays on the ground under her) and `pose.flicker` is set while she
+// stoops. Without a DOM Image (Node tests) or before the sheet has loaded a
+// plain dark shape stands in so she never vanishes.
+import { drawSheetCell } from './pixel.js'
 
 export const RIG_ID = 'eagle'
 
 export const PARAM_SCHEMA = [
   { key: 'span', label: 'Wingspan (tiles)', group: 'body',   type: 'range', min: 2.0, max: 7.0, step: 0.25, default: 5 },
-  { key: 'flap', label: 'Wingbeats a second', group: 'motion', type: 'range', min: 0.5, max: 6.0, step: 0.5, default: 3 },
+  { key: 'flap', label: 'Wingbeats a second', group: 'motion', type: 'range', min: 0.5, max: 6.0, step: 0.5, default: 2.5 },
   { key: 'lift', label: 'Height aloft (tiles)', group: 'motion', type: 'range', min: 0.0, max: 2.0, step: 0.1, default: 1.2 },
 ]
 
+export const CELL = { w: 96, h: 64, spanPx: 88, feetY: 58, bodyY: 33 }
+export const FRAMES = { beat: [0, 1, 2, 1], stoop: 3, ground: 4 }
 const R = Math.round
 const WHITE = '#f8f8f8'
+const SHEET_URL = new URL('../../assets/monsters/eagle.png', import.meta.url).href
+
+let sheet = null
+function sheetImage() {
+  if (sheet === null && typeof Image !== 'undefined') { sheet = new Image(); sheet.src = SHEET_URL }
+  return sheet && sheet.complete && sheet.naturalWidth > 0 ? sheet : null
+}
+// Test seam: swap in any drawable with naturalWidth > 0 / complete = true.
+export function _setSheetImage(img) { sheet = img }
+
 export const hitHalf = () => 14
 export const hitShape = () => ({ r: 14 })
-// the bar goes over her head wherever she is
-export const drawnTop = (p, S) => R(S * 1.2)
+// the bar goes over her head at her highest
+export const drawnTop = (p, S) => R(S * (1.3 + p.lift))
 
-// a convex polygon, a row of art pixels at a time
-function poly(c, pts) {
-  const ys = pts.map(p => p[1]), y0 = Math.ceil(Math.min(...ys)), y1 = Math.floor(Math.max(...ys))
-  for (let y = y0; y <= y1; y++) {
-    let lo = Infinity, hi = -Infinity
-    for (let i = 0; i < pts.length; i++) {
-      const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length]
-      if ((ay <= y && by >= y) || (by <= y && ay >= y)) {
-        const x = ay === by ? ax : ax + (bx - ax) * (y - ay) / (by - ay)
-        lo = Math.min(lo, x, ay === by ? bx : x); hi = Math.max(hi, x, ay === by ? bx : x)
-      }
-    }
-    if (hi >= lo) c.fillRect(R(lo), y, Math.max(1, R(hi) - R(lo)), 1)
-  }
-}
-function oval(c, cx, cy, rx, ry) {
-  for (let y = -ry; y <= ry; y++) {
-    const w = R(rx * Math.sqrt(Math.max(0, 1 - (y * y) / (ry * ry))))
-    if (w > 0) c.fillRect(cx - w, cy + y, 2 * w, 1)
-  }
+// Which frame a pose shows. Exported for tests.
+export function frameFor(p, pose) {
+  const h = Math.max(0, Math.min(1, pose.sink ?? 0))
+  if (h < 0.12) return FRAMES.ground
+  if ((pose.flicker ?? 0) > 0.5) return FRAMES.stoop
+  return FRAMES.beat[Math.floor((pose.t ?? 0) * p.flap * FRAMES.beat.length) % FRAMES.beat.length]
 }
 
 export function drawMonster(ctx, p, pose, S) {
-  const half = R(p.span * 8)
-  const artW = Math.ceil((2 * half + 8) / 16) * 16, artH = 80
   const h = Math.max(0, Math.min(1, pose.sink ?? 0))
+  const k = p.span * S / CELL.spanPx
+  const w = R(CELL.w * k), hh = R(CELL.h * k)
+  const ground = R(S * 0.3)                      // where her feet stand, below the entity's centre
+  const lift = R(h * p.lift * S)
   const hit = pose.state === 'hit'
-  const beat = Math.sin((pose.t ?? 0) * p.flap * 2 * Math.PI)
-  const reach = half * (0.4 + 0.6 * h)            // half folded on the ground
-  const lift = R(h * p.lift * 16)
-  const flip = Math.cos(pose.facing ?? 0) < 0
-  const col = hit ? { wing: WHITE, dark: WHITE, body: WHITE, head: WHITE, gold: WHITE, eye: WHITE }
-    : { wing: '#3a3f4d', dark: '#23262f', body: '#2c303a', head: '#c9ccd4', gold: '#e2b64a', eye: '#b3261e' }
-  withPixelStage(ctx, artW, artH, 0, S, c => {
-    // her shadow, smaller the higher she is
-    c.fillStyle = 'rgba(0,0,0,0.28)'
-    oval(c, 0, 12, R(9 - 3 * h), 3)
-    c.save()
-    c.translate(0, -lift)
-    if (flip) c.scale(-1, 1)
-    const tipY = -3 - R(beat * 9 * h)
-    for (const side of [-1, 1]) {
-      c.fillStyle = col.dark
-      poly(c, [[side * 3, -4], [side * reach, tipY], [side * reach * 0.82, tipY + 7], [side * reach * 0.45, 7], [side * 3, 5]])
-      c.fillStyle = col.wing
-      poly(c, [[side * 3, -4], [side * reach * 0.9, tipY + 1], [side * reach * 0.5, 3], [side * 3, 2]])
-    }
-    c.fillStyle = col.dark
-    poly(c, [[-4, 7], [4, 7], [6, 15], [0, 13], [-6, 15]])      // tail
-    c.fillStyle = col.body
-    oval(c, 0, 2, 5, 8)
-    c.fillStyle = col.head
-    oval(c, 2, -8, 4, 4)
-    c.fillStyle = col.gold
-    poly(c, [[5, -9], [10, -7], [5, -5]])                        // beak
-    if (h < 0.5) { c.fillRect(-4, 10, 3, 2); c.fillRect(2, 10, 3, 2) }   // talons, on the ground
-    c.fillStyle = col.eye
-    c.fillRect(3, -9, 1, 1)
-    c.restore()
-  })
+  // her shadow, smaller the higher she is
+  ctx.fillStyle = 'rgba(0,0,0,0.28)'
+  const sw = R((22 - 8 * h) * k)
+  for (let y = -2; y <= 2; y++) { const half = R(sw * Math.sqrt(1 - (y * y) / 6.5) / 2); ctx.fillRect(-half, ground + y * Math.max(1, R(k)), 2 * half, Math.max(1, R(k))) }
+  const dx = -R(w / 2), dy = ground - R(CELL.feetY * k) - lift
+  const img = sheetImage()
+  ctx.save()
+  ctx.imageSmoothingEnabled = false
+  if (!img) {
+    ctx.fillStyle = hit ? WHITE : '#3d4252'
+    ctx.fillRect(-R(7 * k), dy + R(20 * k), R(14 * k), R(30 * k))
+    if (h >= 0.12) ctx.fillRect(-R(40 * k), dy + R(26 * k), R(80 * k), R(8 * k))
+  } else drawSheetCell(ctx, img, frameFor(p, pose) * CELL.w, 0, CELL.w, CELL.h, dx, dy, w, hh, hit ? { color: WHITE, alpha: 1 } : null)
+  ctx.restore()
 }
