@@ -24,6 +24,10 @@
 // `clear` (optional): [{ x0, y0, x1, y1 }], floor kept clear: nothing is
 // dressed there and nobody stands there for want of a seat (an aisle, the
 // space before an altar). Spots in it are still sat at.
+// `sealed` (optional): [{ x0, y0, x1, y1 }], floor behind a locked door (a
+// prison cell behind its bars): seen through, never walked on, nothing
+// dressed there and nobody seated. An item may stand in it (a cot); a spot,
+// stair, landing, shut cell or spawn may not (they must be reached).
 import { ITEMS, MISC, RUGS } from '../kit.js'
 
 const GRID = new Set([...'#ul.dE '])
@@ -148,6 +152,22 @@ export function parseFloor(def) {
     }
   }
 
+  const reached = [
+    ...[...spots].flatMap(([name, list]) => list.map(c => ({ ...c, what: `spot "${name}"` }))),
+    ...[...stairs.values()].flatMap(s => [{ x: s.x, y: s.y, what: `stair "${s.id}"` }, { ...s.land, what: `the landing of stair "${s.id}"` }]),
+    ...shut.map(c => ({ ...c, what: 'shut cell' })), ...spawns.map(c => ({ ...c, what: 'spawn' })),
+  ]
+  const sealed = []
+  for (const [i, r] of (def.sealed ?? []).entries()) {
+    if (!(r.x1 >= r.x0 && r.y1 >= r.y0)) failFloor(`sealed ${i}: x0..x1 and y0..y1 run the wrong way`)
+    for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
+      if (g(x, y) !== '.') fail(x, y, `sealed ${i} needs floor ('.') under it, found "${g(x, y)}"`)
+      const hit = reached.find(c => c.x === x && c.y === y)
+      if (hit) fail(x, y, `sealed ${i} lies on a ${hit.what}, which must be reached`)
+      sealed.push({ x, y })
+    }
+  }
+
   const rooms = def.rooms.map(r => ({ id: r.id, x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1, floorY0: r.y0 + 2, floor: r.floor }))
   if (!rooms.some(r => r.id === def.entry)) failFloor(`entry "${def.entry}" is not a room`)
   const doors = []
@@ -155,7 +175,7 @@ export function parseFloor(def) {
   const plan = { w, h, grid: [...rows], rooms, doors, entry: def.entry }
   if (exit) { plan.exit = exit; plan.spawn = spawn }
   return {
-    plan, items, spots, stairs: [...stairs.values()], shut, decos, rugs, clear, spawns,
+    plan, items, spots, stairs: [...stairs.values()], shut, decos, rugs, clear, sealed, spawns,
     guards: guards.map(({ stair, id: gid, line }) => ({ stair, id: gid, line })),
   }
 }

@@ -8,7 +8,8 @@
 // --building draws every floor of a hand-laid building (interior/buildings/)
 // side by side, each with its name; --people N sends N made-up adults to the
 // building's service (act 'church'), plus the building's own cast (the
-// church: the vicar, the organist and the bell-ringer at ring time), seated
+// church: the vicar, the organist and the bell-ringer at ring time; the keep:
+// the Count; its household is laid with the building), seated
 // as buildBuilding seats the people the city's schedules send.
 // --shade sets the furniture shading (default subtle); compare draws every seed four times in a row:
 // off, subtle, medium, strong.
@@ -91,6 +92,9 @@ const CAST = {
     { person: { id: 'named:vicar', age: 'adult', job: 'vicar', look: 'vicar' }, act: 'church' },
     { person: { id: 'named:vaino', age: 'elder', job: 'organist', look: 'vaino' }, act: 'church' },
     { person: { id: 'render:ringer', age: 'adult', job: 'bell-ringer', look: 'a04' }, act: 'ring' },
+  ],
+  castle: [
+    { person: { id: 'named:count', age: 'adult', job: 'count', look: 'count' }, act: 'work' },
   ],
 }
 async function buildFloors(kind, seed) {

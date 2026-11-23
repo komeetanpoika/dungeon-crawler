@@ -13,7 +13,9 @@ import assert from 'node:assert/strict'
 import { arriveCity, tickCity, occupantsOf, struckIndoors } from '../renderer/wilds/city/runtime.js'
 import { thingsOf } from '../renderer/wilds/city/scene-things.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
-import { PROPS } from '../renderer/wilds/city/kit.js'
+import { PROPS, CASTLE } from '../renderer/wilds/city/kit.js'
+import { gateShut, isShutGate } from '../renderer/wilds/city/fx.js'
+import { TILE, isWalkable } from '../renderer/systems/entities.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { cityCtx, CITY_OX as OX, CITY_OY as OY } from '../renderer/wilds/city/walkers.js'
 import { makeWorld } from '../renderer/wilds/world.js'
@@ -451,4 +453,115 @@ test('walking at night, the kept night mask is built anew only when the view lea
   assert.ok(layer.night.builds <= Math.ceil(walked / NIGHT_PAD) + legs.length + 1, `${layer.night.builds} builds for ${walked} px walked`)
   // the view may wander the pad either way inside a kept mask, so a light it holds lies up to twice the pad off screen
   assert.ok(fx.LIGHT_SLACK * S >= 2 * NIGHT_PAD + S / 2, `lights listed ${fx.LIGHT_SLACK} tiles past the view cover twice the mask's pad (${NIGHT_PAD} px) and a shake`)
+})
+
+// ---- the castle gate: the portcullis up by day, down at night -----------------------------
+
+test('the castle gate is shut at night, unless the player is in the castle or its gateway', () => {
+  assert.equal(gateShut(0.5, null), false)
+  assert.equal(gateShut(0.9, null), true)
+  assert.equal(gateShut(0.9, { x: 120, y: 45 }), false)   // in the courtyard
+  assert.equal(gateShut(0.9, { x: 110, y: 56 }), false)   // in the gateway
+  assert.equal(gateShut(0.1, { x: 80, y: 74 }), true)
+  // open from dawn until nightfall
+  assert.equal(gateShut(DAY.dawn, null), false)
+  assert.equal(gateShut(DAY.night - 1e-6, { x: 80, y: 74 }), false)
+  assert.equal(gateShut(DAY.night, { x: 80, y: 74 }), true)
+  assert.equal(gateShut(DAY.dawn - 1e-6, null), true)
+  assert.equal(gateShut(0.9, { x: 110, y: 57 }), true, 'on the street before it is outside')
+})
+
+// city tiles of the gate (the castle wall's row and the row below it, three
+// wide) and its art there, as kit.js CASTLE.gate2 / gate2Open lay it
+const GATE = [-1, 0, 1].flatMap(d => [{ x: 110 + d, y: 55, i: d + 1, j: 0 }, { x: 110 + d, y: 56, i: d + 1, j: 1 }])
+const GATE_FRONT = { X: 110 + OX, Y: 59 + OY }   // on the castle street before it
+function gateOf(ctx) {
+  const at = g => { const { x, y } = winOf(ctx, g.x + OX, g.y + OY); return { x, y, c: ctx.state.map[y][x] } }
+  return {
+    cells: () => GATE.map(at),
+    open: () => GATE.every(g => { const { c } = at(g); return c.tile === TILE.FLOOR && c.overlay === CASTLE.gate2Open[g.j][g.i] && !isShutGate(c) }),
+    shut: () => GATE.every(g => { const { c } = at(g); return c.tile === TILE.WALL && c.overlay === CASTLE.gate2[g.j][g.i] && isShutGate(c) }),
+  }
+}
+const marked = (map, cells) => {
+  const list = takeDirtyTiles(map) ?? [], set = new Set()
+  for (let i = 0; i < list.length; i += 2) set.add(`${list[i]},${list[i + 1]}`)
+  return cells.filter(c => set.has(`${c.x},${c.y}`)).length
+}
+
+// Review Focus 5: never down on the player inside, nor on anyone in the gateway
+test('at night the portcullis comes down, never while the player is in the castle or anyone stands in the gateway', () => {
+  const ctx = setup({ at: GATE_FRONT, frac: 0.5 })
+  const { state } = ctx, gate = gateOf(ctx)
+  assert.ok(gate.open(), 'open by day')
+  takeDirtyTiles(state.map)
+  ctx.T.clock = 0.83 * DAY_LENGTH
+  run(ctx, DT)
+  assert.ok(gate.shut(), 'down at night with the player outside')
+  assert.equal(marked(state.map, gate.cells()), 6, 'its six cells laid again on the baked layer')
+  run(ctx, 2)
+  assert.equal(marked(state.map, gate.cells()), 0, 'and nothing laid again while it stays down')
+  // the player in the courtyard or in the gateway at night: it stays up for them
+  placePlayer(ctx, 120 + OX, 45 + OY); run(ctx, DT)
+  assert.ok(gate.open(), 'up while the player is in the courtyard')
+  placePlayer(ctx, 110 + OX, 56 + OY); run(ctx, 1)
+  assert.ok(gate.open(), 'up while the player is in the gateway')
+  // the player out on the street but still under the arch's edge: it waits
+  const p = state.player
+  placePlayer(ctx, 110 + OX, 57 + OY); p.py = p.y * S + 2; run(ctx, 1)
+  assert.ok(gate.open(), 'not down on the player\'s shoulders')
+  placePlayer(ctx, GATE_FRONT.X, GATE_FRONT.Y); run(ctx, DT)
+  assert.ok(gate.shut(), 'down once the player is clear')
+  // someone standing in the gateway: it waits for them
+  placePlayer(ctx, 120 + OX, 45 + OY); run(ctx, DT)
+  assert.ok(gate.open())
+  const { x, y } = winOf(ctx, 111 + OX, 56 + OY)
+  const cat = { type: 'npc', species: 'cat', x, y, px: x * S + 16, py: y * S + 16, hp: 1, aiHalf: 4 }
+  state.entities.push(cat)
+  placePlayer(ctx, GATE_FRONT.X, GATE_FRONT.Y); run(ctx, 2)
+  assert.ok(gate.open(), 'not down on the cat in the gateway')
+  cat.py = (y + 1) * S + 2; cat.y = Math.floor(cat.py / S)   // stepped out onto the street, its edge still under the portcullis
+  run(ctx, 1)
+  assert.ok(gate.open(), 'nor on its tail')
+  state.entities = state.entities.filter(e => e !== cat)
+  run(ctx, DT)
+  assert.ok(gate.shut(), 'down once the way is clear')
+  // up again at dawn
+  ctx.T.clock = (DAY.dawn + 0.005) * DAY_LENGTH
+  run(ctx, DT)
+  assert.ok(gate.open(), 'up at dawn')
+})
+
+// The Count walks home from the church after the bell, and when he is late
+// (the town placed by the clock at 0.80 has him half way home) he comes
+// through the gate after nightfall: the watch raises it for him as he comes
+// near, and it never shuts on anyone.
+test('the Count comes home through the courtyard after nightfall, the gate raised for him', () => {
+  const ctx = setup({ at: GATE_FRONT, frac: 0.8 })
+  const { state } = ctx, gate = gateOf(ctx)
+  const door = cityFor(SEED).doors.find(d => d.kind === 'castle').label
+  const count = [...state.cityRun.people.values()].find(w => w.person.job === 'count')
+  assert.ok(count, 'the town has its Count')
+  let near = false, home = false, shutOnSomeone = false
+  const gateCity = GATE.map(g => `${g.x},${g.y}`)
+  run(ctx, 0.19 * DAY_LENGTH, {
+    npcs: true,
+    each: () => {
+      // in sight, after nightfall, in the gateway
+      const e = count.entity
+      if (e && frac(ctx) >= DAY.night && gateCity.includes(`${e.x + ctx.world.origin.wx * PIECE - OX},${e.y + ctx.world.origin.wy * PIECE - OY}`)) near = true
+      for (const e of state.entities) {
+        if (!(e.hp > 0)) continue
+        const c = state.map[e.y]?.[e.x]
+        if (c && isShutGate(c) && !isWalkable(c.tile, c)) shutOnSomeone = true
+      }
+      if (count.mode === 'indoors' && count.door === door) { home = true; return false }
+    },
+  })
+  assert.ok(home, `the Count got home (last seen ${count.mode} at ${count.X.toFixed(1)},${count.Y.toFixed(1)}, ${frac(ctx).toFixed(3)} of the day)`)
+  assert.ok(near, 'and walked through the gateway in sight, after nightfall')
+  assert.ok(frac(ctx) >= DAY.night, `after nightfall (${frac(ctx).toFixed(3)})`)
+  assert.ok(!shutOnSomeone, 'the gate never shut on anyone')
+  run(ctx, 1, { npcs: true })
+  assert.ok(gate.shut(), 'and down again once he is in')
 })

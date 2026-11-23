@@ -4,8 +4,9 @@
 import { buildFloor } from './build.js'
 import { hashStr, mulberry32, shuffle } from '../rng.js'
 import { CHURCH } from './church.js'
+import { CASTLE } from './castle.js'
 
-export const BUILDINGS = { church: CHURCH }
+export const BUILDINGS = { church: CHURCH, castle: CASTLE }
 
 const SEAT_CLEARANCE = 2   // people off the way in/out and the stairs: farther than this (Chebyshev)
 

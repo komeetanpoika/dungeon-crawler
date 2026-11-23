@@ -1,7 +1,7 @@
 // One hand-laid floor (parse.js) built into game cells: walls and floors from
-// walls.js, the items as furnish.js lays them, stairs, pictures and rugs, then the
-// floor's `dress` entries scattered by the rng on free floor. Pure in
-// (def, rng).
+// walls.js, the items as furnish.js lays them, stairs, pictures and rugs, the
+// sealed floor made solid but seen through, then the floor's `dress` entries
+// scattered by the rng on free floor. Pure in (def, rng).
 import { TILE } from '../../systems/entities.js'
 import { ITEMS, FLOORS, MISC, RUGS } from '../kit.js'
 import { buildCells } from '../walls.js'
@@ -35,6 +35,8 @@ export function buildFloor(def, { rng }) {
   for (const r of parsed.rugs) for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
     map[y][x].deco = RUGS[r.colour][y === r.y0 ? 0 : y === r.y1 ? 2 : 1][x === r.x0 ? 0 : x === r.x1 ? 2 : 1]
   }
+  // floor behind bars: solid as a piece of furniture is, and seen through like one
+  for (const c of parsed.sealed) { map[c.y][c.x].tile = TILE.WALL; map[c.y][c.x].losClear = true }
 
   // dressing: never on a spot, a landing, a stair, a shut cell, a legend
   // spawn, a cell kept clear, the way in or out, a doorway or the cells beside one
@@ -44,7 +46,7 @@ export function buildFloor(def, { rng }) {
   for (const c of [plan.spawn, plan.exit, ...plan.doors.flatMap(d => d.cells)]) if (c) keep(c)
   for (const list of parsed.spots.values()) for (const c of list) bare.add(key(c.x, c.y))
   for (const s of parsed.stairs) { bare.add(key(s.x, s.y)); bare.add(key(s.land.x, s.land.y)) }
-  for (const c of [...parsed.shut, ...parsed.spawns, ...parsed.clear]) bare.add(key(c.x, c.y))
+  for (const c of [...parsed.shut, ...parsed.spawns, ...parsed.clear, ...parsed.sealed]) bare.add(key(c.x, c.y))
 
   const walk = c => c.tile !== TILE.WALL
   const origin = plan.spawn ?? parsed.stairs[0]?.land

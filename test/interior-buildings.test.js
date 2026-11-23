@@ -286,3 +286,31 @@ test('parse and build: rugs lie under what stands on them; cells kept clear take
   assert.throws(() => parseFloor({ ...hall, rugs: [{ colour: 'red', x0: 1, y0: 6, x1: 3, y1: 7 }] }), /hall 2,7: rug 0.*picture/)
   assert.throws(() => parseFloor({ ...hall, clear: [{ x0: 1, y0: 2, x1: 3, y1: 3 }] }), /hall 1,2: clear 0/)
 })
+
+// A prison cell behind its barred door: floor the player sees through the
+// bars but never walks on (the keep's cells, interior/buildings/castle.js).
+test('parse and build: sealed floor is seen but never walked, and takes no dressing and no one', () => {
+  const def = { ...hall, sealed: [{ x0: 6, y0: 6, x1: 8, y1: 7 }], dress: [{ item: 'barrel', n: 8 }] }
+  const p = parseFloor(def)
+  assert.equal(p.sealed.length, 6)
+  for (const seed of [1, 2, 3, 4]) {
+    const f = buildFloor(def, { rng: mulberry32(seed) })
+    for (let y = 6; y <= 7; y++) for (let x = 6; x <= 8; x++) {
+      const c = f.map[y][x]
+      assert.equal(c.tile, TILE.WALL, `${x},${y} is not walked on`)
+      assert.equal(c.losClear, true, `${x},${y} is seen into`)
+      assert.match(c.skin, /^in_floor_planks/, `${x},${y} is drawn as floor`)
+      assert.equal(c.overlay, undefined, `${x},${y} takes no dressing (seed ${seed})`)
+      assert.ok(!f.free.some(o => o.x === x && o.y === y), `${x},${y} is no seat`)
+    }
+  }
+  // an item may stand in it (a cot in a cell); nothing a person or the player must reach may
+  const withCot = edit(def, 'things', 6, 7, 'b')
+  withCot.legend = { ...def.legend, b: { item: 'bedroll' } }
+  assert.equal(buildFloor(withCot, { rng: mulberry32(1) }).map[6][7].overlay, 'in_bedroll')
+  assert.throws(() => parseFloor({ ...hall, sealed: [{ x0: 1, y0: 2, x1: 3, y1: 3 }] }), /hall 1,2: sealed 0/)
+  assert.throws(() => parseFloor({ ...hall, sealed: [{ x0: 1, y0: 7, x1: 3, y1: 7 }] }), /hall 2,7: sealed 0.*shut/)
+  assert.throws(() => parseFloor({ ...hall, sealed: [{ x0: 7, y0: 4, x1: 8, y1: 5 }] }), /hall 7,4: sealed 0.*spot/)
+  assert.throws(() => parseFloor({ ...hall, sealed: [{ x0: 9, y0: 3, x1: 9, y1: 4 }] }), /hall 9,3: sealed 0.*stair/)
+  assert.throws(() => parseFloor({ ...hall, sealed: [{ x0: 4, y0: 6, x1: 3, y1: 7 }] }), /hall: sealed 0/)
+})

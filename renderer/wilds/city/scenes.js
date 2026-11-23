@@ -364,7 +364,11 @@ export function sceneStep(run, w, e, ox, oy) {
   if (r.how === 'free') { c.next = null; return true }
   if (r.how === 'step') {
     const d = Math.hypot(r.spot.X - w.X, r.spot.Y - w.Y)
-    if (d > (r.there ? 1.2 : REACH)) { r.there = false; setNext(c, r.spot.X - ox, r.spot.Y - oy); return true }
+    // on the spot's tile is standing on it, as a waypoint is reached in
+    // runtime.js: act walks no further within a tile, so one who came in at
+    // a corner (farther than REACH from its middle) would stand there for ever
+    const on = e.x === r.spot.X - ox && e.y === r.spot.Y - oy
+    if (!on && d > (r.there ? 1.2 : REACH)) { r.there = false; setNext(c, r.spot.X - ox, r.spot.Y - oy); return true }
     r.there = true; c.next = null; c.passed = false
     return true
   }

@@ -46,6 +46,8 @@ import { CITY_OX as OX, CITY_OY as OY } from './walkers.js'
 import { LIFT_TIME, CIRCLE_TIME } from './scene-things.js'
 import { PLAN, towerRect } from './plan.js'
 import { markTileDirty } from '../../systems/tile-dirty.js'
+import { TILE } from '../../systems/entities.js'
+import { PLAYER_HALF } from '../../systems/movement.js'
 
 const S = 32
 export const LAMP_R = 3, WINDOW_R = 1.5, FORGE_R = 2.5
@@ -178,6 +180,89 @@ export function syncCityTiles(state, run, ox, oy) {
     cell.overlay = null
     markTileDirty(map, x, y)
   }
+  syncGate(state, run, ox, oy)
+}
+
+// ---- the castle gate --------------------------------------------------------------
+// Three cells wide in the castle wall's row and the row below it, round
+// PLAN.places.castleGate (the middle of the lower row); the city's cells lay
+// it open (build-fixed.js layCastle). From nightfall to dawn the portcullis
+// is down: CASTLE.gate2 art, not walkable, for the player, the near townsfolk
+// (they walk by collision) and monsters alike (the ward stays on the cells).
+// Far walkers pass along their routes without collision as ever.
+const CG = PLAN.places.castleGate
+const GATE_CELLS = [0, 1].flatMap(j => [0, 1, 2].map(i => ({ x: CG.x - 1 + i, y: CG.y - 1 + j, i, j })))
+const GATE_DOWN = new Set(CASTLE.gate2.flat())
+const GATE_HOLD = 4                 // tiles from the gate within which the watch raises it for the Count coming home
+export const GATE_SHUT_LINE = 'The gate is shut for the night.'
+
+const inCastle = c => { const p = PLAN.places.castle; return c.x >= p.x0 && c.x <= p.x1 && c.y >= p.y0 && c.y <= p.y1 }
+
+// Is the castle gate down at `frac` of the day? Only at night, and never
+// while the player is inside the castle's plot or in the gateway (city
+// tiles; null: not in the city), so nobody is shut in.
+export function gateShut(frac, playerCity) {
+  const night = !(frac >= DAY.dawn && frac < DAY.night)
+  return night && !(playerCity && inCastle(playerCity))
+}
+
+// a cell carrying the gate's portcullis down (game.js: walking into it says GATE_SHUT_LINE)
+export const isShutGate = cell => !!cell && GATE_DOWN.has(cell.overlay)
+
+// someone standing under the portcullis: the player or a living thing with
+// any part of it over a gate cell (positions in window pixels; dx, dy take a
+// city tile to its window tile)
+function underGate(state, dx, dy) {
+  const over = (px, py, half) => GATE_CELLS.some(c => {
+    const x = (c.x + dx) * S, y = (c.y + dy) * S
+    return px + half > x && px - half < x + S && py + half > y && py - half < y + S
+  })
+  const p = state.player
+  if (over(p.px, p.py, PLAYER_HALF)) return true
+  return state.entities.some(e => e.hp > 0 && over(e.px, e.py, e.aiHalf ?? 4))
+}
+
+// The keep's door (the castle building's), found once per city.
+const keepDoor = new WeakMap()
+const keepDoorOf = city => {
+  if (!keepDoor.has(city)) keepDoor.set(city, city.doors.find(d => d.building === 'castle')?.label ?? null)
+  return keepDoor.get(city)
+}
+
+// The Count on his way home through the gate at night, near (an entity, who
+// walks by collision) and close to it or already in the courtyard: the watch
+// raises the portcullis for him. A far Count needs no gate.
+function countComing(run, dx, dy) {
+  const door = keepDoorOf(run.cc.city)
+  if (!door) return false
+  for (const w of run.people.values()) {
+    if (w.mode !== 'near' || w.out || !w.entity || w.goal?.kind !== 'door' || w.goal.door !== door) continue
+    const at = { x: w.entity.x - dx, y: w.entity.y - dy }
+    if (inCastle(at) || GATE_CELLS.some(c => Math.max(Math.abs(c.x - at.x), Math.abs(c.y - at.y)) <= GATE_HOLD)) return true
+  }
+  return false
+}
+
+// The gate as the clock says, laid only when that changes, and never let
+// down onto anyone (it waits a frame and asks again).
+function syncGate(state, run, ox, oy) {
+  const map = state.map, dx = OX - ox, dy = OY - oy
+  const cellAt = c => map[c.y + dy]?.[c.x + dx]
+  if (!GATE_CELLS.every(cellAt)) return   // not in the window
+  const p = state.player
+  const down = gateShut(run.frac, { x: p.x - dx, y: p.y - dy }) && !countComing(run, dx, dy)
+  const art = down ? CASTLE.gate2 : CASTLE.gate2Open
+  if (GATE_CELLS.every(c => cellAt(c).overlay === art[c.j][c.i])) return
+  if (down && underGate(state, dx, dy)) return
+  for (const c of GATE_CELLS) {
+    const cell = cellAt(c)
+    cell.overlay = art[c.j][c.i]
+    cell.tile = down ? TILE.WALL : TILE.FLOOR
+    markTileDirty(map, c.x + dx, c.y + dy)
+  }
+  // the way changed: the nav grids cached on the map are stale (systems/nav.js)
+  delete map._nav
+  delete map._navWard
 }
 
 // Who is home: the doors someone is inside of (not those struck down).

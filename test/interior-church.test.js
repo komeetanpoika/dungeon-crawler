@@ -189,9 +189,9 @@ test('a full church: everyone once, each on a cell of their own, the overflow of
   assert.equal(at('tf:0').s.look, 'a01', 'the spawn is the one given')
 })
 
-test('the church door: open from dawn to dusk, the castle gate still shut by its line', () => {
+test('the church door: open from dawn to dusk', () => {
   const city = cityFor(7)
-  const church = city.doors.find(d => d.kind === 'church'), castle = city.doors.find(d => d.kind === 'castle')
+  const church = city.doors.find(d => d.kind === 'church')
   assert.equal(church.building, 'church')
   assert.deepEqual(church.hours, { from: DAY.dawn, to: DAY.dusk, shut: NIGHT_LINE })
   assert.ok(!church.closed, 'no shut line by day')
@@ -202,8 +202,7 @@ test('the church door: open from dawn to dusk, the castle gate still shut by its
   assert.equal(doorShut(church, 0.10), NIGHT_LINE)
   // a shut line always wins
   assert.equal(doorShut({ ...church, closed: 'Not today.' }, 0.45), 'Not today.')
-  assert.equal(doorShut(castle, 0.45), castle.closed)
-  assert.equal(typeof castle.closed, 'string')
+  assert.equal(doorShut({ ...church, closed: 'Not today.' }, 0.95), 'Not today.')
   // an ordinary door keeps no hours
   assert.equal(doorShut(city.doors.find(d => d.kind === 'home'), 0.95), null)
 })

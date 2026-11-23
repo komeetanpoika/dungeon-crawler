@@ -55,6 +55,7 @@ import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
 import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
 import { ARREST_FADE } from './wilds/city/crime.js'
+import { isShutGate, GATE_SHUT_LINE } from './wilds/city/fx.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
@@ -1563,6 +1564,8 @@ function update(delta) {
   if (sprinting) spendStamina(player, profile.drain * delta)
   const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
+  // the castle gate let down for the night (wilds/city/fx.js): walking into it says so
+  if (vy < 0 && player.py === walkedFrom.py && !state.cave && isShutGate(map[player.y - 1]?.[player.x])) throttledThink('castle-gate', GATE_SHUT_LINE)
   // Päivölä: walking into a mirror turns it (systems/sunroom-run.js)
   if (state.cave?.label?.startsWith('house:')) {
     const sun = tickSunroom(state, { vx, vy, blockedX: vx !== 0 && player.px === walkedFrom.px, blockedY: vy !== 0 && player.py === walkedFrom.py })

@@ -218,9 +218,12 @@ export function scheduleFor(person, city, seed, day) {
   const churchAlways = p.age === 'elder' || p.job === 'stallholder' || p.job === 'vicar' || p.job === 'count' || sameHome
   // the organist plays, the vicar leads the service, the Count has his pew
   const indoorBell = p.job === 'organist' || p.job === 'vicar' || p.job === 'count'
+  // the Count keeps to his keep by day, so his chair in the great hall is not
+  // empty (interior/buildings/castle.js): no errand, no inn, only the church
+  const count = p.job === 'count'
   // the errand: a fisher sells at the market, a porter works the quay, the smithy's people at the anvil, the Captain rounds a post
   let errand
-  if (p.job === 'stallholder') errand = null
+  if (p.job === 'stallholder' || count) errand = null
   else if (p.job === 'smith' || p.job === 'apprentice') errand = { where: { spot: 'smithy-anvil' }, act: 'work' }
   else if (p.job === 'captain') errand = { where: { spot: pick(PLAN.posts.map(q => q.id), 21) }, act: 'work' }
   else if (p.job === 'porter' && H(22) < 0.6) errand = { where: { spot: pick(ctx.quays, 23) }, act: 'unload' }
@@ -231,13 +234,13 @@ export function scheduleFor(person, city, seed, day) {
   if (errand) E.push([0.34, errand.where, errand.act], [0.40, W, wAct])
   else E.push([0.40, W, wAct])
   const awayLunch = outdoor || p.job === 'stallholder'
-  if (H(10) < lunchInnP) E.push([DAY.noon, inn, 'inn'], [DAY.afternoon + 0.01, W, wAct])
+  if (!count && H(10) < lunchInnP) E.push([DAY.noon, inn, 'inn'], [DAY.afternoon + 0.01, W, wAct])
   else if (awayLunch) E.push([DAY.noon, home, 'home'], [DAY.afternoon + 0.01, W, wAct])
   const atService = p.job !== 'bell-ringer' && bell({ where: W, act: wAct }, { always: churchAlways, inside: indoorBell, p: 0.6, noInside: p.age === 'elder' })
   if (p.job === 'bell-ringer') E.push([SERVICE.from, churchDoor, 'ring'], [0.64, W, wAct])
   // back at work after the bell (one at the service goes home from it)
   if (!atService) E.push([0.67, W, wAct])
-  eveningTail(jobEvening[p.job] ?? 0.2)
+  eveningTail(count ? 0 : jobEvening[p.job] ?? 0.2)
   return finish(E, seed, idx, day)
 }
 

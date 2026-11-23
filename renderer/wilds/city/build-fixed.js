@@ -138,19 +138,28 @@ function layCastle(G, rec) {
     const joins = towerJoins(masonry, towers, x, y, y - 1 - bodyOf(y), y + 1)
     tower(G, x, y, x === C.x0 || x === C.x1 ? 'round3' : 'square3', bodyOf(y), joins)
   }
-  // the gate: the portcullis down, the door a word with the guard
-  CASTLE.gate2.forEach((r, j) => r.forEach((n, i) => lay(G, C.gate - 1 + i, C.y1 + j, n, { ground: cobble(C.gate - 1 + i, C.y1 + j) })))
-  const door = addDoor(rec, C.gate, C.y1 + 1, { kind: 'castle', look: { w: 5, storeys: 2, wall: 'stone' }, closed: '"The Count receives no one today," says the guard.' })
-  G.setWalk(door.x, door.y, true)
-  // the keep at the head of the courtyard
+  // the gate: walked through on the street's cobbles, the portcullis up; at
+  // night fx.js lets it down (gateShut), the art and the way with it
+  CASTLE.gate2Open.forEach((r, j) => r.forEach((n, i) => lay(G, C.gate - 1 + i, C.y1 + j, n, { walk: true, ground: cobble(C.gate - 1 + i, C.y1 + j) })))
+  // the keep at the head of the courtyard: its door open by day
+  // (interior/buildings/castle.js), barred at night
   const k = P.keep
-  keep(G, k.x0 + 3, k.y1, k.x1 - k.x0 - 5)
+  const kd = keep(G, k.x0 + 3, k.y1, k.x1 - k.x0 - 5).door
+  addDoor(rec, kd.x, kd.y, {
+    kind: 'castle', look: { w: 5, storeys: 2, wall: 'stone' }, building: 'castle',
+    hours: { from: DAY.dawn, to: DAY.night, shut: 'The keep is barred for the night.' },
+  })
+  G.setWalk(kd.x, kd.y, true)
   rect(k.x0 + 5, k.y1 + 1, k.x0 + 8, C.y1 - 2, (x, y) => pave(G, x, y, cobble(x, y)))
+  // and a cobbled walk from the gate along the garden's south edge to it: the
+  // street graph (streets.js lanes are paving) takes the Count home this way
+  rect(C.gate - 1, C.y1 - 4, C.gate + 1, C.y1 - 1, (x, y) => pave(G, x, y, cobble(x, y)))
+  rect(C.gate + 2, C.y1 - 4, k.x0 + 4, C.y1 - 3, (x, y) => pave(G, x, y, cobble(x, y)))
   // the Count's garden: beds, trees and benches west of the courtyard
-  rect(C.x0 + 2, 40, C.x0 + 10, 52, (x, y) => pave(G, x, y, GRASS(x, y)))
+  rect(C.x0 + 2, 40, C.x0 + 10, 50, (x, y) => pave(G, x, y, GRASS(x, y)))
   for (const [bx, by] of [[C.x0 + 3, 41], [C.x0 + 7, 41], [C.x0 + 3, 47], [C.x0 + 7, 47]])
     PROPS.bed.forEach((r, j) => r.forEach((n, i) => lay(G, bx + i, by + j, n)))
-  for (const [x, y] of [[C.x0 + 2, 40], [C.x0 + 10, 40], [C.x0 + 2, 52], [C.x0 + 10, 52], [C.x0 + 6, 45]]) lay(G, x, y, 'ow_tree_small')
+  for (const [x, y] of [[C.x0 + 2, 40], [C.x0 + 10, 40], [C.x0 + 2, 50], [C.x0 + 10, 50], [C.x0 + 6, 45]]) lay(G, x, y, 'ow_tree_small')
   bench(G, C.x0 + 4, 45); bench(G, C.x0 + 8, 45)
   lay(G, C.x1 - 3, C.y1 - 3, PROPS.well[0]); lay(G, C.x1 - 3, C.y1 - 2, PROPS.well[1])
 }

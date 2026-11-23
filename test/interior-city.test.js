@@ -58,7 +58,7 @@ function setup({ clock = NIGHT, day = 0 } = {}) {
 function at(ctx, clock) { ctx.T.clock = clock; arriveCity(ctx.state, ctx.world, ctx.hooks, { fresh: true }) }
 
 const city = cityFor(SEED)
-// the doors built as houses: not the shut castle, not the hand-laid church
+// the doors built as houses: not the hand-laid church and keep
 const open = city.doors.filter(d => !d.closed && !d.building)
 const ids = list => list.map(p => p.id).sort()
 const npcsOf = g => g.entitySpawns.filter(s => s.kind === 'npc')

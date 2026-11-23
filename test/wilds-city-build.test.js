@@ -270,7 +270,7 @@ test('the inn piece holds the village record and the doorstep spawn', () => {
   assert.notEqual(generateCityPiece(7, 0, 2).cells[10][10], generateCityPiece(7, 0, 2).cells[10][10])
 })
 
-test('every lot has its door, the church keeps hours and the castle door is shut', () => {
+test('every lot has its door, and the church and the keep keep hours', () => {
   for (const seed of SEEDS) {
     const city = cityFor(seed)
     const lots = cutBlocks(seed).lots
@@ -289,10 +289,46 @@ test('every lot has its door, the church keeps hours and the castle door is shut
     assert.equal(church.closed ?? null, null)
     assert.equal(church.building, 'church')
     assert.deepEqual(church.hours, { from: DAY.dawn, to: DAY.dusk, shut: 'The church is locked for the night.' })
-    assert.equal(castle.closed, '"The Count receives no one today," says the guard.')
-    assert.ok(city.doors.filter(d => d.closed).length === 1)
+    // the keep is open by day too (interior/buildings/castle.js), barred at night
+    assert.equal(castle.closed ?? null, null)
+    assert.equal(castle.building, 'castle')
+    assert.deepEqual(castle.hours, { from: DAY.dawn, to: DAY.night, shut: 'The keep is barred for the night.' })
+    assert.equal(city.doors.filter(d => d.closed).length, 0, 'no door is shut for good')
     assert.equal(new Set(city.doors.map(d => d.label)).size, city.doors.length, 'one door per cell')
     assert.ok(city.doors.some(d => d.kind === 'inn') && city.doors.some(d => d.kind === 'smithy') && city.doors.some(d => d.kind === 'barracks'))
+  }
+})
+
+// The castle gate (PLAN.places.castleGate, the middle of its lower row) is
+// walked through: its portcullis is up in the city's cells (fx.js lets it down
+// at night); the door is the keep's, at the head of the courtyard.
+const CASTLE_GATE = [-1, 0, 1].flatMap(d => [[PLAN.places.castleGate.x + d, PLAN.places.castleGate.y - 1], [PLAN.places.castleGate.x + d, PLAN.places.castleGate.y]])
+test('the castle gate is open ground into the courtyard; the castle\'s door is the keep\'s', () => {
+  for (const seed of SEEDS) {
+    const city = cityFor(seed), G = city.streets
+    const gate = new Set(CASTLE_GATE.map(([x, y]) => `${x},${y}`))
+    assert.ok(!city.doors.some(d => d.kind === 'castle' && gate.has(`${d.x},${d.y}`)), `seed ${seed}: no door on the gate`)
+    const castle = city.doors.filter(d => d.kind === 'castle')
+    assert.equal(castle.length, 1, `seed ${seed}: one castle door`)
+    const [door] = castle, k = PLAN.places.keep
+    assert.ok(door.x >= k.x0 && door.x <= k.x1 && door.y >= k.y0 && door.y <= k.y1, `seed ${seed}: the door in the keep (${door.x},${door.y})`)
+    const s = G.snapDist[door.y * N + door.x]
+    assert.ok(s >= 1 && s <= 2, `seed ${seed}: the keep door ${s} steps from a street`)
+    const f = city.spots.fountain
+    assert.equal(reach(city, f.x, f.y)[door.y * N + door.x], 1, `seed ${seed}: the keep door is reached from the square`)
+    for (const [x, y] of CASTLE_GATE) {
+      const c = city.cells[y][x]
+      assert.equal(c.tile, TILE.FLOOR, `seed ${seed}: the gate at ${x},${y} is walked through`)
+      assert.match(c.overlay ?? '', /^ow_city_castle_gate2open_/, `seed ${seed}: the portcullis up at ${x},${y}`)
+      assert.equal(c.ward, true, `seed ${seed}: the gate at ${x},${y} is warded as the streets are`)
+      assert.ok(G.lane[y * N + x], `seed ${seed}: the gate at ${x},${y} is on the street graph`)
+    }
+    // the courtyard: every walkable cell inside the castle's wall keeps its ward
+    const c = PLAN.places.castle
+    for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) {
+      const cell = city.cells[y][x]
+      if (cell.tile === TILE.FLOOR) assert.equal(cell.ward, true, `seed ${seed}: ${x},${y} in the castle is warded`)
+    }
   }
 })
 
