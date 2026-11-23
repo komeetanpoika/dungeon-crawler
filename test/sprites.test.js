@@ -163,3 +163,20 @@ describe('leap creature sprites', () => {
     assert.deepEqual(leftover, [])
   })
 })
+
+describe('loadOne', () => {
+  it('tries a failed tile once more, then warns once', async () => {
+    const { loadOne } = await import('../renderer/render/sprites.js')
+    const made = []
+    const makeImage = (failures) => () => { const img = { fail: made.length < failures }; made.push(img); Object.defineProperty(img, 'src', { set() { queueMicrotask(() => img.fail ? img.onerror() : img.onload()) } }); return img }
+    const warn = console.warn, warns = []
+    console.warn = m => warns.push(m)
+    try {
+      const a = {}; await loadOne(a, 'k', 'n', makeImage(1))
+      assert.equal(made.length, 2); assert.ok('k' in a); assert.equal(warns.length, 0)
+      made.length = 0
+      const b = {}; await loadOne(b, 'k', 'n', makeImage(9))
+      assert.equal(made.length, 2); assert.ok(!('k' in b)); assert.equal(warns.length, 1)
+    } finally { console.warn = warn }
+  })
+})

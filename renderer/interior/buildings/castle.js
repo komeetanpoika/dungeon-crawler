@@ -92,9 +92,9 @@ const hall = {
     r: { item: 'barrel' },
     e: { item: 'crate_bread' },
     n: { item: 'crate_greens' },
-    '<': { stair: 'up', to: ['count', 'down'], dir: 'up' },
+    '<': { stair: 'up', to: ['count', 'down'], dir: 'up', say: "You climb to the Count's rooms." },
     1: { land: 'up' },
-    '>': { stair: 'down', to: ['cells', 'up'], dir: 'down' },
+    '>': { stair: 'down', to: ['cells', 'up'], dir: 'down', say: 'You go down to the cells.' },
     2: { land: 'down' },
     G: {
       ...guard('castle:stair-guard', 'w03', [

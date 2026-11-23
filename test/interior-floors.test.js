@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { makeBuilding, stairAt, shutAt, blockedBy, travel } from '../renderer/interior/floors.js'
+import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel } from '../renderer/interior/floors.js'
 
 const room = () => {
   const map = createMap(5, 5)
@@ -100,4 +100,16 @@ test('shut cells belong to their floor; no building finds nothing', () => {
   assert.equal(shutAt(building, 0, 0), null)
   assert.equal(stairAt(undefined, 1, 1), null)
   assert.equal(shutAt(undefined, 1, 1), null)
+})
+
+test('a stair\'s line is said once per visit: the kept key stops a repeat, the other stair is not affected', () => {
+  const { building, a, b } = setup()
+  const up = { ...a.stairs[0], say: 'You climb.' }
+  assert.equal(sayNow(building, up), 'You climb.')
+  assert.equal(sayNow(building, b.stairs[0]), null, 'a stair with no line says nothing')
+  building.said.add(sayKey(building, up))
+  assert.equal(sayNow(building, up), null, 'said already')
+  building.at = 'b'
+  assert.equal(sayNow(building, { ...up, id: 'other' }), 'You climb.', 'the key is per floor and stair')
+  assert.equal(sayNow({ at: 'a' }, up), 'You climb.', 'a building without a record says it')
 })

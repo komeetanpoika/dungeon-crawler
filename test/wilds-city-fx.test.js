@@ -533,6 +533,21 @@ test('at night the portcullis comes down, never while the player is in the castl
   assert.ok(gate.open(), 'up at dawn')
 })
 
+test('a dropped item lying in the gateway keeps the portcullis up until it is taken', () => {
+  const ctx = setup({ at: GATE_FRONT, frac: 0.5 })
+  const { state } = ctx, gate = gateOf(ctx)
+  placePlayer(ctx, 120 + OX, 45 + OY); run(ctx, DT)
+  const { x, y } = winOf(ctx, 111 + OX, 56 + OY)
+  const item = { type: 'floating_item', contents: { type: 'lumber', count: 1 }, x, y, progress: 1 }
+  state.entities.push(item)
+  ctx.T.clock = 0.83 * DAY_LENGTH
+  placePlayer(ctx, GATE_FRONT.X, GATE_FRONT.Y); run(ctx, 2)
+  assert.ok(gate.open(), 'not down on the item in the gateway')
+  state.entities = state.entities.filter(e => e !== item)
+  run(ctx, DT)
+  assert.ok(gate.shut(), 'down once it is taken')
+})
+
 // At night the gate is up only while the player is in the castle; one of the
 // town who came in after him (a watchman hunting a wanted player, someone
 // running from his blow) is not shut in when he leaves: the portcullis stays

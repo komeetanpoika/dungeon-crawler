@@ -148,11 +148,19 @@ export async function loadSprites(extraNames = []) {
   return loaded
 }
 
-const loadOne = (loaded, key, name) => new Promise(resolve => {
-  const img = new Image()
-  img.onload = () => { loaded[key] = img; resolve() }
-  img.onerror = () => { console.warn(`Missing sprite: ${name}`); resolve() }
-  img.src = `./assets/tiles/${name}.png`
+// A failed load is tried once more before the tile is given up for the session.
+export const loadOne = (loaded, key, name, makeImage = () => new Image()) => new Promise(resolve => {
+  let tries = 0
+  const attempt = () => {
+    const img = makeImage()
+    img.onload = () => { loaded[key] = img; resolve() }
+    img.onerror = () => {
+      if (++tries < 2) return attempt()
+      console.warn(`Missing sprite: ${name}`); resolve()
+    }
+    img.src = `./assets/tiles/${name}.png`
+  }
+  attempt()
 })
 
 // The file names in `names` that `loaded` has no picture for yet.

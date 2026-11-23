@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { runPixels } from '../static-overworld/px.mjs'
 import { SPRITES } from '../../renderer/render/sprites.js'
 import { SHADE, rimShade, castShadow } from '../../renderer/render/interior-shade.js'
-import { SHADE_KIND } from '../../renderer/interior/kit.js'
+import { SHADE_KIND, SHADE_LEVEL } from '../../renderer/interior/kit.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TILES = path.resolve(HERE, '../../renderer/assets/tiles')
@@ -31,7 +31,7 @@ const args = process.argv.slice(2)
 const flag = (name, dflt) => { const i = args.indexOf(name); if (i < 0) return dflt; const v = args[i + 1]; args.splice(i, 2); return v }
 const has = name => { const i = args.indexOf(name); if (i < 0) return false; args.splice(i, 1); return true }
 const stage = flag('--stage', 'full'), version = flag('--version', 'home'), size = flag('--size', null), tradeArg = flag('--trade', null)
-const shadeArg = flag('--shade', 'subtle')
+const shadeArg = flag('--shade', SHADE_LEVEL)
 if (!['off', 'subtle', 'medium', 'strong', 'compare'].includes(shadeArg)) throw new Error(`--shade: ${shadeArg}`)
 const colsArg = flag('--cols', null)
 const buildingArg = flag('--building', null), peopleArg = Number(flag('--people', 0)), seedOne = flag('--seed', null)

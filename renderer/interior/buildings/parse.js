@@ -9,6 +9,7 @@
 //   { item, spot }                    the same, and its cells are also a spot
 //   { spot }                          a named place people are seated at
 //   { stair, to: [floor, stair], dir: 'up'|'down' }   a stair cell
+//   { stair, to, dir, say }           the same, with a line thought the first time it is climbed
 //   { land }                          the landing of the stair of that id
 //   { shut }                          a shut door cell, `shut` is its line
 //   { shut, deco }                    the same, drawn with MISC[deco]
@@ -32,7 +33,7 @@ import { ITEMS, MISC, RUGS } from '../kit.js'
 
 const GRID = new Set([...'#ul.dE '])
 const COMBOS = [
-  ['item'], ['item', 'spot'], ['spot'], ['stair', 'dir', 'to'], ['land'], ['shut'], ['deco', 'shut'], ['deco'],
+  ['item'], ['item', 'spot'], ['spot'], ['stair', 'dir', 'to'], ['say', 'stair', 'dir', 'to'], ['land'], ['shut'], ['deco', 'shut'], ['deco'],
   ['spawn'], ['spawn', 'spot'], ['guards', 'line', 'spawn'], ['guards', 'line', 'spawn', 'spot'],
 ].map(k => [...k].sort().join('+'))
 
@@ -50,6 +51,7 @@ export function parseFloor(def) {
     if (!COMBOS.includes(Object.keys(e).sort().join('+'))) failFloor(`legend "${c}" mixes roles that do not go together (${Object.keys(e).join(', ')})`)
     if (e.item && !ITEMS[e.item]) failFloor(`legend "${c}": unknown item "${e.item}"`)
     if (e.deco && typeof MISC[e.deco] !== 'string') failFloor(`legend "${c}": unknown deco "${e.deco}"`)
+    if (e.say !== undefined && (typeof e.say !== 'string' || !e.say)) failFloor(`legend "${c}": a stair's say is a line of text`)
     if (e.stair && e.dir !== 'up' && e.dir !== 'down') failFloor(`legend "${c}": a stair's dir is 'up' or 'down'`)
   }
 
@@ -100,7 +102,7 @@ export function parseFloor(def) {
     } else if (e.stair) {
       onFloor()
       if (stairs.has(e.stair)) fail(x, y, `stair "${e.stair}" stands twice (first at ${stairs.get(e.stair).x},${stairs.get(e.stair).y})`)
-      stairs.set(e.stair, { id: e.stair, x, y, to: { floor: e.to[0], stair: e.to[1] }, dir: e.dir })
+      stairs.set(e.stair, { id: e.stair, x, y, to: { floor: e.to[0], stair: e.to[1] }, dir: e.dir, ...(e.say ? { say: e.say } : {}) })
     } else if (e.land) {
       onFloor()
       if (lands.has(e.land)) fail(x, y, `stair "${e.land}" has more than one landing`)

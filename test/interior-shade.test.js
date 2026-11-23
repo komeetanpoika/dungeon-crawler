@@ -77,3 +77,38 @@ test('off the tile is not an open side: a tile that runs to its borders has no r
     assert.deepEqual(px(out, 4, 3, y), px(out, 4, 2, y), `right border, row ${y}`)
   }
 })
+
+const quiet = fn => { const w = console.warn, calls = []; console.warn = (...a) => calls.push(a.join(' ')); try { return [fn(), calls] } finally { console.warn = w } }
+
+test('a tile whose readback throws stays as it was; the others are shaded and nothing throws', () => {
+  const sprites = { in_a: fakeCanvas(6, 6, BOX.a.slice()), in_b: fakeCanvas(6, 6, BOX.a.slice()) }
+  const bad = sprites.in_a, before = bad.data.slice()
+  const kinds = new Map([['in_a', 'cast'], ['in_b', 'rim']])
+  // in_a's own readback happens on a fresh canvas, so make that canvas throw only when drawing from `bad`
+  const make = (w, h) => {
+    const c = fakeCanvas(w, h), g = c.getContext
+    c.getContext = function () { const ctx = g.call(this); const d = ctx.drawImage; ctx.drawImage = src => { if (src === bad) throw new Error('tainted'); d(src) }; return ctx }
+    return c
+  }
+  const [n, warns] = quiet(() => shadeSprites(sprites, { kinds, level: SHADE.medium, makeCanvas: make }))
+  assert.equal(n, 1)
+  assert.ok(sprites.in_a === bad && bad.data.every((v, i) => v === before[i]), 'the failing tile is as it was')
+  assert.equal(sprites['in_a#cast'], undefined)
+  assert.notDeepEqual([...sprites.in_b.data], [...BOX.a], 'the other tile is shaded')
+  assert.equal(warns.length, 1)
+})
+
+test('a canvas that does not give back what was drawn skips the whole pass', () => {
+  const sprites = { in_a: fakeCanvas(6, 6, BOX.a.slice()) }
+  const before = sprites.in_a
+  const lying = (w, h) => {
+    const c = fakeCanvas(w, h)
+    c.getContext = () => ({ drawImage() {}, getImageData: () => ({ data: new Uint8ClampedArray(w * h * 4).fill(128) }), putImageData() {} })
+    return c
+  }
+  const [n, warns] = quiet(() => shadeSprites(sprites, { kinds: new Map([['in_a', 'cast']]), level: SHADE.medium, makeCanvas: lying }))
+  assert.equal(n, 0)
+  assert.ok(sprites.in_a === before)
+  assert.equal(sprites['in_a#cast'], undefined)
+  assert.equal(warns.length, 1)
+})

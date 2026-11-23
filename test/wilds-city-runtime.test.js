@@ -24,6 +24,10 @@ import { DAY_LENGTH } from '../renderer/data/weather.js'
 import { applyBurst, updateFireZones, makeFireZone, FIRE_TICK_DAMAGE } from '../renderer/systems/fire.js'
 import { applyShockwave } from '../renderer/systems/shockwave.js'
 import { cityCtx, makeWalker, placeByClock, setEntry, routeWalker, stepFar } from '../renderer/wilds/city/walkers.js'
+import { buildCaveState, restoreSurface, adventureRespawn } from '../renderer/systems/cave.js'
+import { snapshotWilds } from '../renderer/wilds/session.js'
+import { buildBuilding } from '../renderer/interior/buildings/index.js'
+import { makeBuilding, stairAt, travel as travelFloor } from '../renderer/interior/floors.js'
 import { entryAt } from '../renderer/wilds/city/schedule.js'
 
 const SEED = 7
@@ -268,6 +272,35 @@ test('save inside a house, load: the doorstep, the town rebuilt once', () => {
   assertOnce(state)
   run(ctx, 1)
   assertOnce(state)
+})
+
+test('save inside a building, on another floor: the record is the doorstep, a wake has no cave', () => {
+  const ctx = setup()
+  const { state, world } = ctx
+  const doorstep = toWorld(world.origin, state.player.x, state.player.y)
+  const built = buildBuilding('church', { seed: SEED, people: [] })
+  const floors = built.floors.map(f => ({
+    id: f.id, map: f.map, entities: buildEntities(f.entitySpawns),
+    stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit,
+  }))
+  const building = makeBuilding(floors, built.ground)
+  const ground = building.floors.get(built.ground)
+  let inside = buildCaveState(state, { x: state.player.x, y: state.player.y, caveDepth: 19, label: 'house:test' }, {
+    map: ground.map, entities: ground.entities, playerSpawn: ground.spawn, exit: ground.exit, theme: built.theme,
+  })
+  inside.cave.building = building
+  inside = travelFloor(inside, ground.stairs.find(s => s.to.floor === 'tower'))
+  assert.equal(inside.cave.building.at, 'tower', 'the player stands on another floor')
+  assert.notDeepEqual([inside.player.x, inside.player.y], [state.player.x, state.player.y])
+  // the save reads the surface, not the floor
+  assert.deepEqual(snapshotWilds(inside, world).pos, doorstep)
+  // leaving, and a wake or respawn, give a surface state with no cave
+  const out = restoreSurface(inside)
+  assert.equal(out.cave, undefined)
+  assert.deepEqual([out.player.x, out.player.y], [state.player.x, state.player.y])
+  const woken = adventureRespawn(inside, { x: state.player.x, y: state.player.y })
+  assert.equal(woken.cave, undefined)
+  assert.equal(woken.map, state.map, 'the surface map, not a floor')
 })
 
 test('the near radius follows the screen', () => {

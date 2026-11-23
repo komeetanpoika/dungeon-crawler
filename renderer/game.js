@@ -40,7 +40,7 @@ import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
-import { makeBuilding, stairAt, shutAt, blockedBy, travel as travelFloor } from './interior/floors.js'
+import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, doorAt } from './systems/houses.js'
@@ -1205,7 +1205,7 @@ function netFrame() {
 // other modes that have houses.
 let wildsSprites = null
 // Furniture gets its lit and shaded edges and shadows once its tiles are in.
-const shadeInterior = () => shadeSprites(renderer.sprites, { makeCanvas: (width, height) => Object.assign(document.createElement('canvas'), { width, height }) })
+const shadeInterior = () => { try { shadeSprites(renderer.sprites, { makeCanvas: (width, height) => Object.assign(document.createElement('canvas'), { width, height }) }) } catch (e) { console.warn('Furniture shading failed', e) } }
 const loadWildsSprites = () => wildsSprites ??= renderer.addSprites([...WILDS_SKINS, ...INTERIOR_SKINS]).then(shadeInterior)
 let interiorSprites = null
 const loadInteriorSprites = () => interiorSprites ??= renderer.addSprites(INTERIOR_SKINS).then(shadeInterior)
@@ -1705,7 +1705,10 @@ function update(delta) {
       const line = shut ? shut.line : blockedBy(building, stair, state.entities)
       if (line !== null) think(state, line)
       else {
+        const say = sayNow(building, stair)
+        if (say) building.said.add(sayKey(building, stair))
         state = travelFloor(state, stair)
+        if (say) think(state, say)
         sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
         return
       }
@@ -2515,7 +2518,7 @@ function enterCave(entrance) {
 function enterHouse(door) {
   if (door.building) {
     const spec = cityBuildingSpec(state, door, wildsWorld && state.wilds ? wildsWorld.seed : 0)
-    enterBuilding(door, buildBuilding(spec.kind, spec))
+    enterBuilding(door, buildBuilding(spec.kind, { ...spec, strict: false }))
     return
   }
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }

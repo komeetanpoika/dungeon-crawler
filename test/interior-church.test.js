@@ -267,3 +267,11 @@ test('someone seated in the church stays on their pew; an ordinary resident woul
   const { strayed } = tick({ ...sitter, roam: undefined })
   assert.ok(strayed >= 1, 'an ordinary resident roams')
 })
+
+test('the stairs from the nave carry their lines; the ways back say nothing', () => {
+  const [nave, tower, crypt] = ['nave', 'tower', 'crypt'].map(id => built.floors.find(f => f.id === id))
+  assert.equal(nave.stairs.find(s => s.to.floor === 'tower').say, 'You climb the tower stairs.')
+  assert.equal(nave.stairs.find(s => s.to.floor === 'crypt').say, 'You go down into the crypt.')
+  assert.equal(tower.stairs.every(s => s.say === undefined), true)
+  assert.equal(crypt.stairs.every(s => s.say === undefined), true)
+})

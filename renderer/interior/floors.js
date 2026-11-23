@@ -12,7 +12,7 @@ const LAND_RADIUS = 3
 export function makeBuilding(floors, ground) {
   const byId = new Map()
   for (const f of floors) byId.set(f.id, { ...f, stairs: f.stairs ?? [], shut: f.shut ?? [] })
-  return { floors: byId, ground, at: ground }
+  return { floors: byId, ground, at: ground, said: new Set() }
 }
 
 const here = building => building?.floors.get(building.at) ?? null
@@ -23,6 +23,15 @@ export function stairAt(building, x, y) {
 
 export function shutAt(building, x, y) {
   return here(building)?.shut.find(s => s.x === x && s.y === y) ?? null
+}
+
+// The line a stair gives the first time it is climbed in this visit, or null:
+// `building.said` holds "floor/stair" for the ones already said (the caller adds
+// the key with `sayKey` once it has shown the line).
+export const sayKey = (building, stair) => `${building.at}/${stair.id}`
+export function sayNow(building, stair) {
+  if (!stair?.say || building.said?.has(sayKey(building, stair))) return null
+  return stair.say
 }
 
 // The guard's line while a living entity with the guard's id is on the floor.

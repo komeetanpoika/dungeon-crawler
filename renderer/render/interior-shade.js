@@ -67,27 +67,51 @@ export function shadeSprites(sprites, { kinds = SHADE_KIND, level = SHADE[SHADE_
   if (!sprites.__shaded) Object.defineProperty(sprites, '__shaded', { value: new Set() })
   const paint = (rgba, w, h) => {
     const c = makeCanvas(w, h), g = c.getContext('2d')
-    const img = g.getImageData(0, 0, w, h)
-    img.data.set(rgba)
+    // a real ImageData when the platform has one; else the canvas's own (Node tests)
+    const img = typeof ImageData === 'function' ? new ImageData(rgba, w, h) : g.getImageData(0, 0, w, h)
+    if (img.data !== rgba) img.data.set(rgba)
     g.putImageData(img, 0, 0)
     return c
   }
-  let n = 0
+  // Browsers that block or fake canvas readback (Tor, resistFingerprinting) hand back
+  // placeholder pixels: shading those would paint over every furniture tile.
+  try {
+    const probe = makeCanvas(1, 1), pg = probe.getContext('2d')
+    const known = [12, 200, 77, 255]
+    const img = pg.getImageData(0, 0, 1, 1)
+    img.data.set(known)
+    pg.putImageData(img, 0, 0)
+    const back = pg.getImageData(0, 0, 1, 1).data
+    if (!known.every((v, i) => back[i] === v)) throw new Error('canvas readback does not return what was drawn')
+  } catch (e) {
+    console.warn(`Furniture shading skipped: ${e.message}`)
+    return 0
+  }
+  let n = 0, failed = 0
   for (const [name, kind] of kinds) {
     const src = sprites[name]
     if (!src || sprites.__shaded.has(name)) continue
-    const w = src.width, h = src.height
-    const read = makeCanvas(w, h), rg = read.getContext('2d')
-    rg.drawImage(src, 0, 0)
-    const rgba = rg.getImageData(0, 0, w, h).data
-    if (kind === 'cast') {
-      const { self, below } = castShadow(rgba, w, h, level)
-      sprites[`${name}#cast`] = paint(self, w, h)
-      if (below) sprites[`${name}#below`] = paint(below, w, h)
+    try {
+      const w = src.width, h = src.height
+      const read = makeCanvas(w, h), rg = read.getContext('2d')
+      rg.drawImage(src, 0, 0)
+      const rgba = rg.getImageData(0, 0, w, h).data
+      const parts = {}
+      if (kind === 'cast') {
+        const { self, below } = castShadow(rgba, w, h, level)
+        parts[`${name}#cast`] = paint(self, w, h)
+        if (below) parts[`${name}#below`] = paint(below, w, h)
+      }
+      const shaded = paint(rimShade(rgba, w, h, level), w, h)
+      // swapped in only when every piece is made: a tile that fails stays as it was
+      Object.assign(sprites, parts)
+      sprites[name] = shaded
+      sprites.__shaded.add(name)
+      n++
+    } catch {
+      failed++
     }
-    sprites[name] = paint(rimShade(rgba, w, h, level), w, h)
-    sprites.__shaded.add(name)
-    n++
   }
+  if (failed) console.warn(`Furniture shading: ${failed} tile(s) left unshaded`)
   return n
 }

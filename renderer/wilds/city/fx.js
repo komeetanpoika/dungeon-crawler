@@ -209,7 +209,7 @@ export function gateShut(frac, playerCity) {
 export const isShutGate = cell => !!cell && GATE_DOWN.has(cell.overlay)
 
 // someone standing under the portcullis: the player or a living thing with
-// any part of it over a gate cell (positions in window pixels; dx, dy take a
+// any part of it over a gate cell, or an item lying on one (positions in window pixels; dx, dy take a
 // city tile to its window tile)
 function underGate(state, dx, dy) {
   const over = (px, py, half) => GATE_CELLS.some(c => {
@@ -218,7 +218,9 @@ function underGate(state, dx, dy) {
   })
   const p = state.player
   if (over(p.px, p.py, PLAYER_HALF)) return true
-  return state.entities.some(e => e.hp > 0 && over(e.px, e.py, e.aiHalf ?? 4))
+  // a dropped item lying in the gateway is in the way too (it has a cell, no hp)
+  const lies = e => e.type === 'floating_item' && GATE_CELLS.some(c => e.x === c.x + dx && e.y === c.y + dy)
+  return state.entities.some(e => lies(e) || (e.hp > 0 && over(e.px, e.py, e.aiHalf ?? 4)))
 }
 
 // One of the town's people (a near entity: he walks by collision) in the

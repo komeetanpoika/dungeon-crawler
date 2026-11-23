@@ -280,3 +280,11 @@ test('the keep\'s door: open from dawn to nightfall, barred after; it stands in 
     assert.equal(doorShut(door, 0.1), NIGHT_LINE)
   }
 })
+
+test('the stairs from the hall carry their lines; the ways back say nothing', () => {
+  const floor = id => built.floors.find(f => f.id === id)
+  const hall = floor('hall')
+  assert.equal(hall.stairs.find(s => s.to.floor === 'cells').say, 'You go down to the cells.')
+  assert.equal(hall.stairs.find(s => s.to.floor === 'count').say, "You climb to the Count's rooms.")
+  for (const id of ['cells', 'count']) assert.equal(floor(id).stairs.every(s => s.say === undefined), true)
+})

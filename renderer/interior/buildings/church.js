@@ -64,9 +64,9 @@ const nave = {
     q: { spot: 'pulpit' },
     v: { spot: 'altar-side' },
     F: { item: 'font' },
-    '<': { stair: 'tower', to: ['tower', 'down'], dir: 'up' },
+    '<': { stair: 'tower', to: ['tower', 'down'], dir: 'up', say: 'You climb the tower stairs.' },
     1: { land: 'tower' },
-    '>': { stair: 'crypt', to: ['crypt', 'up'], dir: 'down' },
+    '>': { stair: 'crypt', to: ['crypt', 'up'], dir: 'down', say: 'You go down into the crypt.' },
     2: { land: 'crypt' },
   },
   // the dais at the east end, and a runner down the aisle to it

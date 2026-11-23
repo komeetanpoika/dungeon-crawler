@@ -116,6 +116,11 @@ test('parse: broken definitions throw, naming the floor and the cell', () => {
   assert.throws(() => parseFloor(edit(hall, 'things', 4, 9, ' ')), /hall 9,3.*landing/)
   assert.throws(() => parseFloor(edit(hall, 'rows', 8, 7, 'E')), /hall 7,8.*more than one E/)
   assert.throws(() => parseFloor({ ...hall, legend: { ...hall.legend, T: { item: 'table', stair: 'up' } } }), /hall.*mixes roles/)
+  const withSay = say => parseFloor({ ...hall, legend: { ...hall.legend, '<': { ...hall.legend['<'], say } } })
+  assert.equal(withSay('Up you go.').stairs[0].say, 'Up you go.')
+  assert.throws(() => withSay(''), /say is a line of text/)
+  assert.throws(() => withSay(3), /say is a line of text/)
+  assert.throws(() => parseFloor({ ...hall, legend: { ...hall.legend, T: { item: 'table', say: 'x' } } }), /mixes roles/)
 })
 
 test('buildFloor: items block and cast, stairs and shut cells walk, floor stays connected', () => {
@@ -313,4 +318,19 @@ test('parse and build: sealed floor is seen but never walked, and takes no dress
   assert.throws(() => parseFloor({ ...hall, sealed: [{ x0: 7, y0: 4, x1: 8, y1: 5 }] }), /hall 7,4: sealed 0.*spot/)
   assert.throws(() => parseFloor({ ...hall, sealed: [{ x0: 9, y0: 3, x1: 9, y1: 4 }] }), /hall 9,3: sealed 0.*stair/)
   assert.throws(() => parseFloor({ ...hall, sealed: [{ x0: 4, y0: 6, x1: 3, y1: 7 }] }), /hall: sealed 0/)
+})
+
+test('buildBuilding: a crowd that does not fit throws by default and is trimmed with strict: false', () => {
+  const registry = { test: { floors: [hall, upper], ground: 'hall', theme: { bgColor: '#000' }, seat: () => ({ floor: 'hall', spot: 'bench' }) } }
+  const people = Array.from({ length: 400 }, (_, i) => ({ spawn: { kind: 'npc', species: 'villager', id: `p${i}` }, person: { id: `p${i}` }, act: 'sit' }))
+  assert.throws(() => buildBuilding('test', { seed: 3, people }, registry), /no free cell/)
+  const warn = console.warn, warns = []
+  console.warn = m => warns.push(m)
+  let b
+  try { b = buildBuilding('test', { seed: 3, people, strict: false }, registry) } finally { console.warn = warn }
+  const placed = b.floors[0].entitySpawns.filter(s => /^p/.test(s.id))
+  assert.ok(placed.length > 0 && placed.length < 400)
+  assert.equal(new Set(placed.map(s => `${s.x},${s.y}`)).size, placed.length, 'nobody shares a cell')
+  assert.equal(warns.length, 1)
+  assert.match(warns[0], new RegExp(`${400 - placed.length} people left out`))
 })
