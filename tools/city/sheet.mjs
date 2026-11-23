@@ -18,7 +18,7 @@ export function panels() {
   add('WALL top by mask (N1 E2 S4 W8), turret', [WALL.top.slice(0, 8), [...WALL.top.slice(8), WALL.turret]], { labels: true })
   add('WALL faces: upper (l m r lr m2 slit) / lower (l m r lr m2)', [Object.values(WALL.upper), Object.values(WALL.lower)], { labels: true })
   add('TOWER round3 round4 square3 square4 (cap, body, base); HARBOUR tower', joinH([tower(TOWER.round3), tower(TOWER.round4), tower(TOWER.square3), tower(TOWER.square4), [...HARBOUR.tower.head, HARBOUR.tower.body, HARBOUR.tower.base]]))
-  add('GATE arch2, arch3, side; CASTLE gate2, gate3', joinH([GATE.arch2, GATE.arch3, GATE.side.map(n => [n]), CASTLE.gate2, CASTLE.gate3]), { ground: 'ow_city_pave_cobble_0' })
+  add('GATE arch2, arch3, side; CASTLE gate2, gate2Open, gate3', joinH([GATE.arch2, GATE.arch3, GATE.side.map(n => [n]), CASTLE.gate2, CASTLE.gate2Open, CASTLE.gate3]), { ground: 'ow_city_pave_cobble_0' })
   add('HARBOUR chain l m float r over water; quay n e s w ne nw se sw, face, mole, bollard', [
     [HARBOUR.chain.l, HARBOUR.chain.m, HARBOUR.chain.float, HARBOUR.chain.m, HARBOUR.chain.r].map(n => ['ow_water_0', n]),
     Object.values(HARBOUR.quay), [['ow_water_0', HARBOUR.face], ...HARBOUR.mole, ['ow_city_pave_flag_0', HARBOUR.bollard]]], { labels: true })

@@ -49,6 +49,26 @@ describe('interior tile kit', () => {
     }
     for (const [c, r] of Object.entries(RUGS)) { assert.equal(r.length, 3, c); assert.ok(r.every(row => row.length === 3), c) }
   })
+  it('has the church and castle pieces in the footprint and footing the buildings lay them by', () => {
+    // key: [on, width, height, blocks]
+    const want = {
+      pew: ['floor', 1, 1, false], altar: ['floor', 2, 1, true], pulpit: ['floor', 1, 1, true], font: ['floor', 1, 1, true],
+      organ: ['face', 2, 2], organ_bench: ['floor', 1, 1, false], bell: ['floor', 1, 1, true], tomb: ['floor', 1, 2, true],
+      sampo_lid: ['floor', 1, 1, true], throne: ['floor', 1, 1, false], banner_red: ['face', 1, 2], banner_blue: ['face', 1, 2],
+      window_glass_a: ['face', 1, 2], window_glass_b: ['face', 1, 2], window_glass_c: ['face', 1, 2],
+      candle: ['floor', 1, 1, false], torch: ['faceUpper', 1, 1], celldoor: ['floor', 1, 1, true],
+      fireplace: ['face', 2, 2], longtable: ['floor', 3, 1, true], drape: ['face', 1, 2],
+    }
+    for (const [key, [on, w, h, blocks]] of Object.entries(want)) {
+      const item = ITEMS[key]
+      assert.ok(item, key)
+      assert.equal(item.on, on, key)
+      assert.equal(item.tiles[0].length, w, `${key} width`); assert.equal(item.tiles.length, h, `${key} height`)
+      if (on === 'floor') assert.equal(item.block !== false, blocks, `${key} blocks`)
+      for (const n of item.tiles.flat()) assert.ok(n.startsWith(`in_${key}`), `${n} is named for ${key}`)
+    }
+    for (const n of [MISC.stairUp, MISC.stairDown, MISC.crack]) assert.ok(INTERIOR_SKINS.includes(n), `${n} is loaded`)
+  })
 })
 
 describe('furniture shading kinds', () => {

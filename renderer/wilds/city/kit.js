@@ -112,7 +112,10 @@ export const HARBOUR = {
 //           `door` the great door, two cells wide (lower row only)
 //   gate2, gate3  the castle gate, three wide and as tall as its wall (as
 //           GATE.arch2 and arch3): the portcullis let down, for it is shut;
-//           solid
+//           solid. gate2Open: gate2 with the portcullis drawn up into the
+//           vault (its teeth show under the arch), the passage dark under
+//           the vault and see-through below it, so the paving laid under it
+//           shows (as GATE.arch2)
 //   banner  two frames of a hanging banner, see-through (an overlay on a
 //           face or a tower body); pennant: two frames of a flag on a pole,
 //           the overlay for a 3-wide tower's cap[0][1]
@@ -123,6 +126,7 @@ export const CASTLE = {
   upper: { l: 'ow_city_castle_upper_l', m: 'ow_city_castle_upper_m', r: 'ow_city_castle_upper_r', win: 'ow_city_castle_upper_win' },
   lower: { l: 'ow_city_castle_lower_l', m: 'ow_city_castle_lower_m', r: 'ow_city_castle_lower_r', win: 'ow_city_castle_lower_win', door: ['ow_city_castle_door_l', 'ow_city_castle_door_r'] },
   gate2: [rowOf('ow_city_castle_gate2_u', ['l', 'm', 'r']), rowOf('ow_city_castle_gate2_b', ['l', 'm', 'r'])],
+  gate2Open: [rowOf('ow_city_castle_gate2open_u', ['l', 'm', 'r']), rowOf('ow_city_castle_gate2open_b', ['l', 'm', 'r'])],
   gate3: [rowOf('ow_city_castle_gate3_t', ['l', 'm', 'r']), rowOf('ow_city_castle_gate3_u', ['l', 'm', 'r']), rowOf('ow_city_castle_gate3_b', ['l', 'm', 'r'])],
   banner: ['ow_city_banner_a', 'ow_city_banner_b'],
   pennant: ['ow_city_pennant_a', 'ow_city_pennant_b'],

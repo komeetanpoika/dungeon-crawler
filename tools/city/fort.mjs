@@ -244,6 +244,9 @@ function squareTower(w, rows, roofPal = DARK_ROOF) {
   p.rect(sx, sy, 4, 7, S1).rect(sx + 1, sy + 1, 2, 5, NAVY).hline(sx, sx + 3, sy + 7, S4)
   return p
 }
+// portcullis: false (a land gate, open), 'down' (the castle gate shut) or
+// 'up' (drawn up into the vault: its lowest rail and teeth show under the
+// arch, the passage dark beneath them and lit nearer, so the paving shows)
 function archFace(rows, { portcullis = false } = {}) {
   const Wd = 3 * T, Hh = rows * T
   const p = new Pic(Wd, Hh).each((_, x, y) => brickAt(x + 3, y))
@@ -281,7 +284,21 @@ function archFace(rows, { portcullis = false } = {}) {
   }
   // springers: a light block where the ring meets each jamb
   for (const sx of [x0 - ringT - 1, x1 + 2]) p.rect(sx, spring - 1, ringT, 3, S1).hline(sx, sx + ringT - 1, spring + 2, S4)
-  if (portcullis) {
+  if (portcullis === 'up') {
+    // drawn up into the vault: the foot of its grille, its lowest rail and its
+    // iron-shod teeth hang under the arch; under them the passage is in
+    // shadow, and below that the paving laid under the gate shows
+    const rail = spring - 5, bar = x => (x - x0) % 6 === 2 || (x - x0) % 6 === 3
+    for (let y = 0; y < Hh; y++) for (let x = x0; x <= x1; x++) {
+      if (!inOpen(x, y)) continue
+      const oak = (x - x0) % 6 === 2 ? W2 : W3
+      if (y < rail) p.set(x, y, bar(x) ? oak : NAVY)
+      else if (y < rail + 2) p.set(x, y, bar(x) ? S2 : y === rail ? S3 : S4)
+      else if (y === rail + 2 && bar(x)) p.set(x, y, oak)
+      else if (y === rail + 3 && (x - x0) % 6 === 2) p.set(x, y, S4)
+      else p.set(x, y, y < rail + 4 ? INK : y < rail + 6 ? NAVY : null)
+    }
+  } else if (portcullis) {
     // let down: oak bars bound with iron, its teeth in the ground
     for (let y = 0; y < Hh; y++) for (let x = x0; x <= x1; x++) {
       if (!inOpen(x, y)) continue
@@ -327,8 +344,9 @@ export function draw(ctx) {
   // so the street shows, the vault dark above it.
   putGrid(GATE.arch2, archFace(2))
   putGrid(GATE.arch3, archFace(3))
-  putGrid(CASTLE.gate2, archFace(2, { portcullis: true }))
-  putGrid(CASTLE.gate3, archFace(3, { portcullis: true }))
+  putGrid(CASTLE.gate2, archFace(2, { portcullis: 'down' }))
+  putGrid(CASTLE.gate2Open, archFace(2, { portcullis: 'up' }))
+  putGrid(CASTLE.gate3, archFace(3, { portcullis: 'down' }))
   // a gate in a north-south wall, from above: the road under the vault, the
   // arches at either end seen from above as stone bands, the vault's shadow
   {
