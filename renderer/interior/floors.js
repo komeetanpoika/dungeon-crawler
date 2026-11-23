@@ -25,11 +25,12 @@ export function shutAt(building, x, y) {
   return here(building)?.shut.find(s => s.x === x && s.y === y) ?? null
 }
 
-// The guard's line while a living entity with the guard's id is on this floor.
-export function blockedBy(building, stair) {
+// The guard's line while a living entity with the guard's id is on the floor.
+// `entities` is the live list of the floor the player stands on (the game
+// reassigns state.entities all the time, so the stored list is stale there).
+export function blockedBy(building, stair, entities) {
   if (!stair?.guard) return null
-  const floor = here(building)
-  const alive = floor?.entities.some(e => e.id === stair.guard && (e.hp === undefined || e.hp > 0))
+  const alive = entities.some(e => e.id === stair.guard && (e.hp === undefined || e.hp > 0))
   return alive ? (stair.line ?? '') : null
 }
 
@@ -64,9 +65,10 @@ export function travel(state, stair) {
   from.map = state.map
   from.entities = state.entities
   const to = building.floors.get(stair.to.floor)
+  const arrival = to?.stairs.find(s => s.id === stair.to.stair)
+  if (!arrival) throw new Error(`stair ${stair.id} leads to a missing floor or stair: ${stair.to.floor}/${stair.to.stair}`)
   building.at = to.id
-  const arrival = to.stairs.find(s => s.id === stair.to.stair)
-  const at = landingFor(to, arrival?.land ?? to.spawn ?? { x: stair.x, y: stair.y })
+  const at = landingFor(to, arrival.land)
   const onGround = to.id === building.ground
   const out = onGround ? (to.exit ?? to.spawn ?? { x: -1, y: -1 }) : { x: -1, y: -1 }
   const spawn = onGround ? (to.spawn ?? out) : { x: -1, y: -1 }

@@ -71,17 +71,26 @@ test('a living thing on the landing moves the arrival to a free neighbour, never
   assert.deepEqual([again.player.x, again.player.y], [2, 3])
 })
 
-test('a guard blocks while it lives', () => {
-  const { a, building } = setup()
+test('a guard is looked for in the live entity list, not the stored one', () => {
+  const { a, building, state } = setup()
   const stair = { ...a.stairs[0], guard: 'g', line: 'Private.' }
   const g = { id: 'g', hp: 3 }
-  a.entities.push(g)
-  assert.equal(blockedBy(building, stair), 'Private.')
-  g.hp = 0
-  assert.equal(blockedBy(building, stair), null)
-  a.entities.length = 0
-  assert.equal(blockedBy(building, stair), null)
-  assert.equal(blockedBy(building, a.stairs[0]), null)
+  state.entities.push(g)
+  assert.equal(blockedBy(building, stair, state.entities), 'Private.')
+  state.entities = state.entities.filter(e => e !== g)
+  assert.equal(blockedBy(building, stair, state.entities), null)
+  state.entities = [{ id: 'g', hp: 0 }]
+  assert.equal(blockedBy(building, stair, state.entities), null)
+  state.entities = [{ id: 'g', hp: 2 }]
+  assert.equal(blockedBy(building, stair, state.entities), 'Private.')
+  assert.equal(blockedBy(building, a.stairs[0], state.entities), null)
+})
+
+test('travel names a stair that leads nowhere', () => {
+  const { building, state } = setup()
+  assert.throws(() => travel(state, { id: 'bad', x: 1, y: 1, to: { floor: 'zz', stair: 'q' } }), /bad.*zz\/q/)
+  assert.throws(() => travel(state, { id: 'bad2', x: 1, y: 1, to: { floor: 'b', stair: 'q' } }), /bad2/)
+  assert.equal(building.at, 'a')
 })
 
 test('shut cells belong to their floor; no building finds nothing', () => {

@@ -1685,7 +1685,7 @@ function update(delta) {
     if (!stair && !shut) state.cave.stairHold = false
     else if (!state.cave.stairHold) {
       state.cave.stairHold = true
-      const line = shut ? shut.line : blockedBy(building, stair)
+      const line = shut ? shut.line : blockedBy(building, stair, state.entities)
       if (line !== null) think(state, line)
       else {
         state = travelFloor(state, stair)
