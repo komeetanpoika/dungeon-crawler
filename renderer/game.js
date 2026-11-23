@@ -52,7 +52,7 @@ import { cityFor } from './wilds/city/build.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
-import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut } from './wilds/city/indoors.js'
+import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut, struckInBuilding, spareStruck, blowInside } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
 import { ARREST_FADE } from './wilds/city/crime.js'
 import { isShutGate, GATE_SHUT_LINE } from './wilds/city/fx.js'
@@ -451,6 +451,7 @@ function rulesetTileNames(rs) {
 // state.entities rebuilds, so pushing a pickup there would be lost — they
 // queue here and land after the frame's final cull.
 let pendingDrops = []
+let pendingOut = null   // blows struck inside a building this frame: { hit: [npc], killed }
 function npcStruck(e, alive = e.hp > 0, source = 'player') {
   if (e.type !== 'npc') return
   npcDirty = true
@@ -462,6 +463,13 @@ function npcStruck(e, alive = e.hp > 0, source = 'player') {
       startPx: e.px, startPy: e.py, targetPx: e.x * TILE_SIZE + TILE_SIZE / 2, targetPy: e.y * TILE_SIZE + TILE_SIZE / 2,
       px: e.px, py: e.py, progress: 0, duration: 0.3,
     })
+  }
+  if (source === 'player' && state.cave && struckInBuilding(state)) {
+    // church or castle: no one falls here; the player is put out after the frame
+    pendingOut ??= { hit: [], killed: false }
+    pendingOut.hit.push(e)
+    if (!alive) pendingOut.killed = true
+    return
   }
   const r = onNpcHit(e, state)
   if (r.wrath) { announce(state, 'The village turns on you!'); sfx(state, 'npc-wrath') }
@@ -2427,6 +2435,16 @@ function update(delta) {
   // records — so there a struck animal is no reason to write the save.)
   if (npcDirty && !state.cave && mapDataFor(state.level)) { npcDirty = false; if (runMode !== 'wilds') persistRun() }
   if (pendingDrops.length) { state.entities.push(...pendingDrops); pendingDrops = [] }
+  if (pendingOut) {
+    const out = pendingOut; pendingOut = null
+    if (state.cave && struckInBuilding(state)) {
+      for (const e of out.hit) spareStruck(state, e)
+      exitCave()
+      blowInside(state, { killed: out.killed })
+      speak(state, 'Out!')
+      state.entranceHold = true
+    }
+  }
 
   // Hit flashes fade out over their HIT_LIFE (they used to be wiped here,
   // before the render ever drew them)

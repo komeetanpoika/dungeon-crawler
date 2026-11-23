@@ -17,6 +17,7 @@ import { hashStr } from '../../interior/rng.js'
 import { occupantsOf, occupantsWithActs, householdOf, struckIndoors, moodOf } from './runtime.js'
 import { speciesOf } from './walkers.js'
 import { linesFor } from './lines.js'
+import { onViolence } from './crime.js'
 
 // A person as a spawn in their house (game.js buildEntities makes the npc),
 // saying what they would in the street in that mood (runtime.js moodOf).
@@ -71,5 +72,32 @@ export function leaveCityHouse(caveState) {
   if (building) for (const [id, f] of building.floors) if (id !== building.at) lists.push(f.entities)
   const standing = new Set()
   for (const list of lists) for (const e of list) if (e.type === 'npc' && e.hp > 0) standing.add(e.id)
+  for (const id of caveState.cave.spared ?? []) standing.add(id)
   for (const p of occupantsOf(caveState, label)) if (!standing.has(p.id)) struckIndoors(caveState, p.id)
+}
+
+// ---- a blow inside a building (the church, the castle keep) -------------------------------------
+
+// Inside a building of floors a blow counts as one in the street. An ordinary
+// city house has no `building`: nothing indoors there is a crime.
+export const struckInBuilding = caveState => !!caveState?.cave?.building
+
+// Nobody is struck down in a building: the person hit is healed to full and
+// stands, and is remembered (cave.spared) even if the blow already culled
+// them, so leaveCityHouse does not send them home until tomorrow.
+export function spareStruck(caveState, e) {
+  if (e.maxHp) e.hp = e.maxHp
+  ;(caveState.cave.spared ??= new Set()).add(e.id)
+}
+
+// The player is out on the doorstep (the surface state): count the act with the
+// town's record as a blow in the street, 'warn' for a first, 'wanted' for a
+// second or a killing one (crime.js). The watch is roused as law.js cityViolence
+// does; its shout is left out, for the player's own "Out!" is the line seen.
+export function blowInside(surface, { killed = false } = {}) {
+  const run = surface.cityRun
+  if (!run) return null
+  const r = onViolence(run.crime, { killed })
+  if (r === 'wanted') run.reinforceT = 0
+  return r
 }

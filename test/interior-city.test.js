@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { arriveCity, tickCity, occupantsOf, occupantsWithActs, householdOf, cityPeople } from '../renderer/wilds/city/runtime.js'
-import { cityHouseSpec, cityBuildingSpec, leaveCityHouse } from '../renderer/wilds/city/indoors.js'
+import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, struckInBuilding, spareStruck, blowInside } from '../renderer/wilds/city/indoors.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
 import { buildBuilding } from '../renderer/interior/buildings/index.js'
 import { makeBuilding } from '../renderer/interior/floors.js'
@@ -336,4 +336,35 @@ test('leaving the church: those on the other floors were not struck down; one go
   assert.equal(out(ringer.person.id), true, 'the ringer is out until tomorrow')
   assert.equal(out('named:vicar'), true)
   assert.equal(spec.people.filter(p => out(p.person.id)).length, 2, 'nobody else')
+})
+
+test('a blow in a building: spared and not struck down; counted as a blow in the street (warn, then wanted)', () => {
+  const { state, world } = setup({ clock: BELL })
+  const door = churchIn(state)
+  const spec = cityBuildingSpec(state, door, world.seed)
+  let cave = enterChurch(state, door, spec)
+  assert.equal(struckInBuilding(cave), true)
+  // an ordinary house is not a building: the old path
+  const home = open.find(d => d.kind === 'home')
+  const house = generateInterior(cityHouseSpec(state, home, world.seed))
+  const hcave = buildCaveState(state, { x: home.x, y: home.y, caveDepth: INTERIOR_DEPTH, label: home.label }, {
+    map: house.map, entities: buildEntities(house.entitySpawns), playerSpawn: house.playerSpawn, exit: house.exit, theme: house.theme,
+  })
+  assert.equal(struckInBuilding(hcave), false)
+  assert.equal(struckInBuilding(state), false)
+  // the vicar is killed outright and culled; still not struck down
+  const vicar = cave.entities.find(e => e.id === 'named:vicar')
+  vicar.hp = 0
+  cave.entities = cave.entities.filter(e => e !== vicar)
+  spareStruck(cave, vicar)
+  assert.equal(vicar.hp, vicar.maxHp, 'healed to full')
+  leaveCityHouse(cave)
+  const surface = restoreSurface(cave)
+  assert.equal(cityPeople(surface).find(q => q.id === 'named:vicar').out, false)
+  // the act is counted like a street blow
+  assert.equal(surface.cityRun.crime.level, 'calm')
+  assert.equal(blowInside(surface), 'warn')
+  assert.equal(surface.cityRun.crime.level, 'warned')
+  assert.equal(blowInside(surface, { killed: true }), 'wanted')
+  assert.equal(surface.cityRun.crime.level, 'wanted')
 })
