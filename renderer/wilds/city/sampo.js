@@ -351,6 +351,7 @@ export const VIPUNEN = [
 ]
 export const BELLY = {
   cold: 'An anvil, of all things, and a cold forge beside it. Somebody was here before.',
+  unarmed: 'It wants hitting, and you have nothing to hit it with.',
   lit: 'The forge catches. Far overhead, something enormous stops snoring.',
   words: 'Every word of it. A kantele answers from far above, string for string.',
   out: 'He coughs.',
@@ -380,6 +381,7 @@ export const goneFrom = world => world?.sampo?.flags?.stolen ? GONE : []
 // ---- the things, and the two ends -----------------------------------------------------
 
 export const SAMPO = 'sampo'
+export const SAMPO_AGAIN = 'Lost it? Three hundred years to find the pieces and you lose the lot. Here. I kept the knack.'
 export const HERRING = 'herring'
 export const FLOOD = 12        // herring on the hall floor when the Count has had his turn
 export const HALL = {

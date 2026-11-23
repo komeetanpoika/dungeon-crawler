@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { stageOf, questKey, namedLines, luckLine, tellingFor, crierItem, passageFor, guardWaves, goneFrom, SAMPO_FLAGS,
-  BLOWS, VIPUNEN, BELLY, SAMPO, HERRING, FLOOD, HALL, EAGLE_WON, ENDINGS, FOUNTAIN_REST, LID_TILE } from '../renderer/wilds/city/sampo.js'
+  BLOWS, VIPUNEN, BELLY, SAMPO, SAMPO_AGAIN, HERRING, FLOOD, HALL, EAGLE_WON, ENDINGS, FOUNTAIN_REST, LID_TILE } from '../renderer/wilds/city/sampo.js'
 import { tickSampo, startTelling } from '../renderer/wilds/city/sampo-run.js'
 import { tickSampoEnd, noteSampoSwing, ANVIL_TILE, BLOW_GAP, COUGH_AFTER } from '../renderer/wilds/city/sampo-end.js'
 import { linesFor } from '../renderer/wilds/city/lines.js'
@@ -149,6 +149,12 @@ test('the giant\'s belly: a lit forge and five blows on the anvil, and he sings 
   assert.equal(state.feedback.bubble?.text, BELLY.lit)
   c.tick(1)
   assert.equal(state.entities.filter(e => e.type === 'campfire').length, 1, 'lit once')
+  // empty hands at the anvil get a word about it, once
+  c.tick(6)
+  c.put(anvil.x, anvil.y + 1); c.tick()
+  assert.equal(state.feedback.bubble?.text, BELLY.unarmed)
+  state.player.weapon = { weaponType: 'sword' }
+  c.tick(6)
   // blows: beside the anvil only, and one counted every so often
   c.put(anvil.x - 4, anvil.y + 2)
   noteSampoSwing(state, world, c.hooks)
@@ -199,6 +205,18 @@ test('Seppo makes it whole when he hears the words, and it is the player\'s to c
   c.tick(2)
   assert.equal(state.player.inventory.length, 1, 'one Sampo')
   assert.equal(stageOf(world), 'whole')
+  // lost before it reached its lid: he makes good at his elbow, not across the yard, and only then
+  state.player.inventory.length = 0
+  c.put(seppo.x + 6, seppo.y + 4); c.tick(8)
+  assert.equal(state.player.inventory.length, 0)
+  c.put(seppo.x, seppo.y + 1); c.tick()
+  assert.deepEqual(state.player.inventory.map(i => i.kind), [SAMPO])
+  assert.equal(state.feedback.bubble.text, SAMPO_AGAIN)
+  c.tick(12)
+  assert.equal(state.player.inventory.length, 1)
+  state.player.inventory.length = 0; world.sampo.flags.set = true
+  c.tick(1)
+  assert.equal(state.player.inventory.length, 0, 'under its lid, there is nothing to make good')
 })
 
 test('the great hall: under the lid, the Count\'s turn, herring on the floor, and Louhi away with it', () => {

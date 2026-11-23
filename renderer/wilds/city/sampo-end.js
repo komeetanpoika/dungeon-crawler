@@ -22,7 +22,8 @@
 //                  seconds) draws a bellow from Vipunen, the fifth his song:
 //                  the words. He then coughs the player out into the crypt.
 //   Seppo          when he has said his piece over the words (sampo-run.js
-//                  tells it), the Sampo is in the player's sack.
+//                  tells it), the Sampo is in the player's sack; lost before
+//                  it is under its lid, he hands over another at his elbow.
 //   the great hall carried beside the lid, the Sampo goes under it; the Count
 //                  turns it (his telling), herring covers the floor, Granny
 //                  Pohjanen comes with her thanks (hers) and is gone as an
@@ -45,7 +46,7 @@ import { PLAN } from './plan.js'
 import { PROPS } from './kit.js'
 import { residentOf } from './indoors.js'
 import { setFlag, startTelling, TELL_REACH } from './sampo-run.js'
-import { LID_TILE, BLOWS, VIPUNEN, BELLY, SAMPO, HERRING, FLOOD, HALL, EAGLE_WON, ENDINGS, FOUNTAIN_REST } from './sampo.js'
+import { LID_TILE, BLOWS, VIPUNEN, BELLY, SAMPO, SAMPO_AGAIN, HERRING, FLOOD, HALL, EAGLE_WON, ENDINGS, FOUNTAIN_REST } from './sampo.js'
 
 export const ANVIL_TILE = 'in_anvil'
 export const BLOW_GAP = 1.6     // seconds between two blows that count (time to read what he bellows)
@@ -122,7 +123,12 @@ function belly(state, world, delta, hooks) {
     }
     return false
   }
-  if (f.words || forgeLit(state, anvil)) return false
+  if (f.words) return false
+  if (forgeLit(state, anvil)) {
+    // beside the anvil with empty hands: once a visit
+    if (!cave.bellyBare && !player.weapon && cheb(anvil, player) <= 1 && !state.feedback?.bubble) { cave.bellyBare = true; think(state, BELLY.unarmed) }
+    return false
+  }
   const forge = forgeOf(anvil)
   if (cheb(forge, player) <= 1) {
     state.entities.push(makeCampfire(forge.x, forge.y, { eternal: true }))
@@ -299,6 +305,14 @@ export function tickSampoEnd(state, world, delta, hooks) {
     f.forged = true
     hand(state, hooks, SAMPO)
     hooks.persist?.()
+  }
+  // made, handed over and lost before it reached its lid: Seppo makes good, at his elbow
+  if (f.forged && !f.set && !state.telling && !state.feedback?.bubble && !carrying(state.player, SAMPO) && !lying(state, SAMPO)) {
+    const seppo = npc(state, 'named:seppo')
+    if (seppo && cheb(seppo, state.player) <= 1) {
+      hand(state, hooks, SAMPO)
+      speakFrom(state, seppo, SAMPO_AGAIN, sayDuration(SAMPO_AGAIN))
+    }
   }
   if (floor === 'hall') hall(state, world, hooks)
   if (floor === 'battlements') battlements(state, world, hooks)
