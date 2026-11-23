@@ -40,6 +40,7 @@ import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
+import { makeBuilding, stairAt, shutAt, blockedBy, travel as travelFloor } from './interior/floors.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH } from './systems/houses.js'
 import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems/interior.js'
@@ -1676,6 +1677,23 @@ function update(delta) {
     if (!onStairs) state.cave.offStairs = true
     else if (state.cave.offStairs) { exitCave(); return }
   }
+  // A building's stairs and shut doors fire once per step-on (stairHold).
+  const building = state.cave?.building
+  if (building) {
+    const stair = stairAt(building, player.x, player.y)
+    const shut = stair ? null : shutAt(building, player.x, player.y)
+    if (!stair && !shut) state.cave.stairHold = false
+    else if (!state.cave.stairHold) {
+      state.cave.stairHold = true
+      const line = shut ? shut.line : blockedBy(building, stair)
+      if (line !== null) think(state, line)
+      else {
+        state = travelFloor(state, stair)
+        sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
+        return
+      }
+    }
+  }
 
   // Waystone. Timewarp: a resolved episode's runestone leads back to the
   // episode select. Adventure: the arch opens a destination menu — every
@@ -2494,6 +2512,28 @@ function enterHouse(door) {
     version = house.version
   }
   announce(state, (version && VERSIONS[version]?.enter) || 'You step inside.')
+  sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
+}
+
+// A building of several floors (renderer/interior/floors.js), entered like a
+// house. built = { floors: [{ id, map, entitySpawns, stairs, shut, playerSpawn?,
+// exit? }], ground, theme }. Only the ground floor is the state's map; the
+// others wait in state.cave.building with their own entities. Never kept as a
+// cave instance: it is built afresh at every visit.
+function enterBuilding(door, built) {
+  const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
+  const floors = built.floors.map(f => ({
+    id: f.id, map: f.map, entities: buildEntities(f.entitySpawns, f.map, INTERIOR_DEPTH),
+    stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit,
+  }))
+  const building = makeBuilding(floors, built.ground)
+  const ground = building.floors.get(built.ground)
+  state = buildCaveState(state, entrance, {
+    map: ground.map, entities: ground.entities, playerSpawn: ground.spawn, exit: ground.exit, theme: built.theme,
+  })
+  state.cave.building = building
+  state.cave.city = true
+  announce(state, 'You step inside.')
   sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
 }
 
