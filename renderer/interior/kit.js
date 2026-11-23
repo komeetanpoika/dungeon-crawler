@@ -218,7 +218,7 @@ export const INTERIOR_SKINS = [...new Set([
 // stands on the floor and throws a shadow, 'rim' hangs on a wall and only gets
 // lit and shaded edges. Flat things lying on the floor (bedrolls, bones, webs)
 // and the room itself are absent.
-export const SHADE_LEVEL = 'subtle'
+export const SHADE_LEVEL = 'medium'
 const FLAT_ITEMS = new Set(['bedroll', 'bedroll2', 'rubble', 'bones', 'skull'])
 export const SHADE_KIND = new Map()
 for (const [key, item] of Object.entries(ITEMS)) {
