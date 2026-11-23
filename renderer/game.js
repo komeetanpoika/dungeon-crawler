@@ -53,6 +53,10 @@ import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstance
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
 import { fracOf } from './wilds/city/runtime.js'
+import { startTelling, tickSampo } from './wilds/city/sampo-run.js'
+import { tickSampoPlaces } from './wilds/city/sampo-places.js'
+import { passageFor, guardWaves } from './wilds/city/sampo.js'
+import { noteSampoSwing, tickSampoEnd } from './wilds/city/sampo-end.js'
 import { cityHouseSpec, cityBuildingSpec, leaveCityHouse, doorShut, struckInBuilding, spareStruck } from './wilds/city/indoors.js'
 import { cityViolence, arrest, toStocks, clearCrime } from './wilds/city/law.js'
 import { violenceUnseen } from './wilds/city/law.js'
@@ -362,6 +366,26 @@ const cityHooks = {
   hurt: (target, amount) => hurtEntity(target, amount, { source: 'watch', hitCue: null }),
   // the frame's route requests stop once a millisecond is spent (tests run without, by count)
   now: () => performance.now(),
+}
+
+// The Sampo's story (wilds/city/sampo-run.js): what it lays on the ground and when it saves.
+const sampoHooks = {
+  spawn: spawns => buildEntities(spawns, state.map, 0),
+  persist: () => persistRun(),
+  refreshInventory: () => afterInventoryChange(),
+  rollLoot: depth => rollChestLoot(depth, Math.random, state.player),
+  getState: () => state,
+  // between the floors of a building, where the story says (out of the giant's belly)
+  travel: to => { state = travelFloor(state, { id: 'story', to }) },
+  // a question in the middle of play: ask = { title, lines, yes, no }
+  choose: (ask, onYes) => {
+    setPhase(PHASE.PAUSED)
+    sfx(state, 'ui-open')
+    menu.showChoice({ title: ask.title, lines: ask.lines, buttons: [
+      { label: ask.yes, onSelect: () => { resumeGame(); onYes() } },
+      { label: ask.no, onSelect: resumeGame },
+    ] })
+  },
 }
 
 function persistRun() {
@@ -1525,6 +1549,7 @@ function update(delta) {
     if (!state.cave) {
       tickTales(state, wildsWorld, delta, taleHooks)
       tickCity(state, wildsWorld, delta, cityHooks)
+      tickSampoPlaces(state, wildsWorld, delta, sampoHooks)
       // Kalevanlinna's watch took the player alive (damagePlayer spared the
       // last blow): the screen fades, and at its darkest they sit in the stocks
       if (state.arrest) arrest(state)
@@ -1535,6 +1560,9 @@ function update(delta) {
         if (was < ARREST_FADE / 2 && st.fade >= ARREST_FADE / 2) seatInStocks()
       }
     }
+    // the Sampo's story is told in the street and under a roof alike
+    tickSampo(state, wildsWorld, delta, sampoHooks)
+    tickSampoEnd(state, wildsWorld, delta, sampoHooks)
   }
   const { player, map } = state
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
@@ -1702,7 +1730,17 @@ function update(delta) {
     if (!stair && !shut) state.cave.stairHold = false
     else if (!state.cave.stairHold) {
       state.cave.stairHold = true
-      const line = shut ? shut.line : blockedBy(building, stair, state.entities)
+      // the Sampo's story opens a shut way (the crypt's crack, the battlements' door) and waves a guard aside
+      const world = wildsWorld && state.wilds ? wildsWorld : null
+      const through = shut ? passageFor(world, shut.line) : null
+      const held = shut ? shut.line : blockedBy(building, stair, state.entities)
+      const line = held !== null && !shut && guardWaves(world, stair.guard) ? null : held
+      if (through) {
+        state = travelFloor(state, { id: 'story', to: through.to })
+        think(state, through.say)
+        sfx(state, 'door-open', { px: state.player.px, py: state.player.py })
+        return
+      }
       if (line !== null) think(state, line)
       else {
         const say = sayNow(building, stair)
@@ -1788,7 +1826,8 @@ function update(delta) {
     if (sun) { onSunroom(sun); return }
     const sign = basin ? null : signNearby(state.signs, player.x, player.y)
     const npc = (basin || sign) ? null : nearestPeacefulNpc(state)
-    if (npc) { interactNpc(state, npc); return }
+    // someone with a part of the Sampo's story to tell tells it; anyone else says their line
+    if (npc) { if (!(wildsWorld && state.wilds && startTelling(state, npc, wildsWorld))) interactNpc(state, npc); return }
     if (sign) { openSign(sign); return }
     if (basin) {
       basin.flowing = !basin.flowing
@@ -1881,6 +1920,7 @@ function update(delta) {
     player.attackFacing = player.facing
     sfx(state, 'melee-swing', { px: player.px, py: player.py })
     noteCitySwing(state, wildsWorld)
+    if (wildsWorld && state.wilds) noteSampoSwing(state, wildsWorld, sampoHooks)   // a blow on the anvil in the giant's belly
     player.attackReachMul = mods.reachMul
     const dmg = Math.max(1, Math.round((wpn.damage ?? 1) * mods.dmgMul))
     const fa = FACING_ANGLE[player.facing] ?? 0
@@ -2560,7 +2600,7 @@ function enterBuilding(door, built) {
   const entrance = { x: door.x, y: door.y, caveDepth: INTERIOR_DEPTH, label: door.label }
   const floors = built.floors.map(f => ({
     id: f.id, map: f.map, entities: buildEntities(f.entitySpawns, f.map, INTERIOR_DEPTH),
-    stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit,
+    stairs: f.stairs, shut: f.shut, spawn: f.playerSpawn, exit: f.exit, ...(f.theme && { theme: f.theme }),
   }))
   const building = makeBuilding(floors, built.ground)
   const ground = building.floors.get(built.ground)

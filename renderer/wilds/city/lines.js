@@ -7,13 +7,18 @@
 //     named characters say their own (project 3 replaces them; the Count is not
 //     spoken to in project 1: none); by night the townsfolk have night lines;
 //     a warned or wanted player hears wary ones (crime: crime.js's level)
-//   moodKey({ night, crime })          what of the mood the lines depend on (the
+//     with `quest` (the Sampo's stage, sampo.js; the runtime passes it) the
+//     named say what the story has them say, the Count answers, and by day
+//     every grown townsperson has a word about the dim Sampo
+//   moodKey({ night, crime, quest })   what of the mood the lines depend on (the
 //                                      runtime asks anew when it changes)
 //   talkFor(a, b, { night, k })        an exchange, a first: by a's temperament,
 //                                      b's trade, or the town's; at night the
 //                                      inn door's. k picks (a hash of the pair)
 //
 // The arrays handed out are shared and frozen: one per kind of person and mood.
+
+import { namedLines, luckLine } from './sampo.js'
 
 const freeze = a => Object.freeze(a)
 
@@ -110,11 +115,11 @@ const WATCH_WARY = ['One more and it is the stocks.', 'Sheathe it. Now.']
 const WATCH_WANTED = ['You are wanted, stranger. Come quietly.']
 
 const wary = crime => crime === 'warned' || crime === 'wanted'
-export const moodKey = ({ night = false, crime = 'calm' } = {}) => (night ? 'n' : 'd') + (wary(crime) ? crime : '')
+export const moodKey = ({ night = false, crime = 'calm', quest = null } = {}) => (night ? 'n' : 'd') + (wary(crime) ? crime : '') + (quest ? `|${quest}` : '')
 
-function build(person, night, crime) {
+function build(person, night, crime, quest) {
   const id = person.id?.startsWith('named:') ? person.id.slice(6) : null
-  if (person.job === 'count') return NAMED_LINES.count
+  if (person.job === 'count') return (quest && namedLines('count', quest)) || NAMED_LINES.count
   const t = TEMPERS.includes(person.temperament) ? person.temperament : 'cheerful'
   const watch = person.job === 'watch' || person.job === 'captain'
   const child = person.age === 'child'
@@ -123,21 +128,22 @@ function build(person, night, crime) {
     if (child) return CHILD_WARY
     return crime === 'wanted' ? [...WARY_LINES[t], WANTED_LINE] : WARY_LINES[t]
   }
-  if (id && NAMED_LINES[id]) return NAMED_LINES[id]
+  if (id && NAMED_LINES[id]) return (quest && namedLines(id, quest)) || NAMED_LINES[id]
   if (night) return person.job === 'watch' ? WATCH_NIGHT : child ? CHILD_NIGHT : NIGHT_LINES[t]
   const own = JOB_LINES[person.job] ?? ANYONE
   if (person.job === 'watch') return [...own, ...(WATCH_TEMPER[t] ?? WATCH_TEMPER.gruff)]
   if (child) return [...own, ...CHILD_TEMPER[t]]
-  return [...own, ...TEMPER_LINES[t]]
+  // the town talks of the Sampo: dim, stolen, or where it ended up
+  return quest ? [...own, ...TEMPER_LINES[t], luckLine(t, quest)] : [...own, ...TEMPER_LINES[t]]
 }
 
 const memo = new Map()
 export function linesFor(person, mood = {}) {
-  const night = !!mood.night, crime = mood.crime ?? 'calm'
+  const night = !!mood.night, crime = mood.crime ?? 'calm', quest = mood.quest ?? null
   const named = person.id?.startsWith('named:') ? person.id : ''
-  const key = `${named || person.job}|${person.age}|${person.temperament}|${moodKey({ night, crime })}`
+  const key = `${named || person.job}|${person.age}|${person.temperament}|${moodKey({ night, crime, quest })}`
   let lines = memo.get(key)
-  if (!lines) memo.set(key, lines = freeze(build(person, night, crime).slice()))
+  if (!lines) memo.set(key, lines = freeze(build(person, night, crime, quest).slice()))
   return lines
 }
 

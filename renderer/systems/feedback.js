@@ -31,7 +31,7 @@ export function tickFeedback(fb, dt) {
   if (!fb) return
   for (const f of fb.floats) f.t += dt
   fb.floats = fb.floats.filter(f => f.t < FLOAT_DUR)
-  if (fb.bubble && (fb.bubble.t += dt) >= BUBBLE_DUR) fb.bubble = null
+  if (fb.bubble && (fb.bubble.t += dt) >= (fb.bubble.dur ?? BUBBLE_DUR)) fb.bubble = null
   if (fb.banner && (fb.banner.t += dt) >= BANNER_DUR) fb.banner = null
 }
 
@@ -40,12 +40,13 @@ function bubble(state, text, kind) {
 }
 
 export function speak(state, text) { bubble(state, text, 'speech') }
-export function think(state, text) { bubble(state, text, 'thought') }
+export function think(state, text, dur) { bubble(state, text, 'thought'); if (dur && state.feedback) state.feedback.bubble.dur = dur }
 
 // A speech bubble above another entity (an NPC). The renderer resolves
 // anchorId against state.entities and falls back to the player.
-export function speakFrom(state, entity, text) {
-  if (state.feedback) state.feedback.bubble = { text, kind: 'speech', t: 0, anchorId: entity.id }
+// `dur`: how long it stays (a line of a telling: time to read it); BUBBLE_DUR without.
+export function speakFrom(state, entity, text, dur) {
+  if (state.feedback) state.feedback.bubble = { text, kind: 'speech', t: 0, anchorId: entity.id, ...(dur && { dur }) }
 }
 
 // How long a line said in a scene stays up: time to read it at an easy pace

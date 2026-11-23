@@ -14,12 +14,13 @@
 //     of the day, before the round goes on
 //
 // The crier scene (scenes.js) calls the next item at each call, a call every
-// 20 s while he is at his box; the round carries on from day to day. From
-// project 3 on the questline adds items.
+// 20 s while he is at his box; the round carries on from day to day. The
+// Sampo's story (sampo.js) heads the round with the call for its stage.
 import { hash, hashInt } from '../rand.js'
 import { TALES, TALE_IDS } from '../../data/tales.js'
 import { rollTownsfolk } from './folk.js'
 import { cityFor } from './build.js'
+import { crierItem, crierDeeds, firstCall } from './sampo.js'
 
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -95,10 +96,15 @@ const taleNews = word => `Hear ye! ${cap(word)} is safe again, they say, thanks 
 export const SUN_NEWS = 'Hear ye! The sun is back in Päivölä, they say, thanks to a stranger.'
 export const STOCKS_NEWS = 'A ruffian sat in the stocks yesterday! Mind your manners in Kalevanlinna.'
 
-export const datedNews = (world, day) => Number.isInteger(world.stocksDay) && day - world.stocksDay === 1 ? [STOCKS_NEWS] : []
+// The Sampo's call (sampo.js) is the first of the round at every stage, and
+// until the Count has been heard it is the crier's first call of every day
+// and of every coming into town.
+const stocksNews = (world, day) => Number.isInteger(world.stocksDay) && day - world.stocksDay === 1 ? [STOCKS_NEWS] : []
+export const datedNews = (world, day) => [...(firstCall(world) ? [crierItem(world)] : []), ...stocksNews(world, day)]
 
 export function crierNews(world, seed, day) {
-  const out = [market(seed, day), weather(seed, day), townsperson(seed, day)]
+  const quest = crierItem(world)
+  const out = [...(quest ? [quest] : []), market(seed, day), weather(seed, day), townsperson(seed, day)]
   const done = new Set()
   for (const t of world.tales?.values() ?? []) if (t.done) done.add(t.id)
   for (const id of TALE_IDS) {
@@ -106,6 +112,7 @@ export function crierNews(world, seed, day) {
     if (word) out.push(taleNews(word))
   }
   if (world.solved?.size) out.push(SUN_NEWS)
-  out.push(...datedNews(world, day))
+  out.push(...crierDeeds(world))
+  out.push(...stocksNews(world, day))
   return out
 }

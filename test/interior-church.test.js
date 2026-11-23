@@ -37,7 +37,8 @@ const overlays = (f, re) => f.map.flatMap((row, y) => row.map((c, x) => ({ x, y,
 
 test('the church has a nave, a bell tower and a crypt, each walkable from its way in', () => {
   assert.equal(built.ground, 'nave')
-  assert.deepEqual(built.floors.map(f => f.id), ['nave', 'tower', 'crypt'])
+  // (the belly is the Sampo story's: reached through the crypt's crack once the story opens it, never by a stair)
+  assert.deepEqual(built.floors.map(f => f.id), ['nave', 'tower', 'crypt', 'belly'])
   for (const f of built.floors) {
     const origin = f.playerSpawn ?? f.stairs[0].land
     const seen = reach(f.map, origin)
@@ -54,7 +55,9 @@ test('the church has a nave, a bell tower and a crypt, each walkable from its wa
 })
 
 test('every stair leads to a stair that leads back, and every floor is reached from the nave', () => {
-  for (const f of built.floors) for (const s of f.stairs) {
+  // the belly's way out comes up by the crypt's stair: one way, as its way down is the story's
+  assert.deepEqual(floorOf(built, 'belly').stairs.map(s => s.to), [{ floor: 'crypt', stair: 'up' }])
+  for (const f of built.floors.filter(f => f.id !== 'belly')) for (const s of f.stairs) {
     const to = floorOf(built, s.to.floor)
     assert.ok(to, `${f.id}/${s.id} leads to a floor that exists`)
     const back = to.stairs.find(t => t.id === s.to.stair)

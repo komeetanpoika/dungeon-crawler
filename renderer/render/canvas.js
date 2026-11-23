@@ -155,7 +155,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     return
   }
   if (entity.type === 'campfire') {
-    const s = sprites.prop_campfire
+    // a fire in a brazier (the copper mountain's) is the lit bowl, not logs on the ground
+    const s = (entity.brazier && sprites.prop_brazier_lit) || sprites.prop_campfire
     if (!s) return
     const prev = ctx.globalAlpha, prevF = ctx.filter
     ctx.globalAlpha = prev * campfireAlpha(entity)
@@ -205,7 +206,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     } else {
       const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
                     deadwood: 'item_deadwood', greywood: 'item_deadwood', clapper: 'item_clapper', fleece: 'item_fleece',
-                    beer: 'item_beer', sausage: 'item_sausage' }[c.type]
+                    beer: 'item_beer', sausage: 'item_sausage', sampo_sea: 'item_sampo_sea', sampo_mountain: 'item_sampo_mountain',
+                    sampo_marsh: 'item_sampo_marsh', pike_jaw: 'item_pike_jaw', sampo: 'item_sampo', herring: 'item_herring' }[c.type]
       const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
       else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }

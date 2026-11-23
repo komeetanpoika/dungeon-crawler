@@ -8,6 +8,7 @@
 //            "x,y" keys of felled trees and cleared rocks, and the play time
 //            the piece was last in the window
 //   deals    key -> how many times the piece has been forgotten
+import { makeSampo, loadSampo, exportSampo, SAMPO_PLACES } from './city/sampo.js'
 import { generatePiece } from './piece.js'
 import { generateCityPiece } from './city/piece.js'
 import { pieceKey, isPermanent, villageAt } from './layout.js'
@@ -43,6 +44,8 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     // Kalevanlinna (city/law.js seat): the day the player last sat in the
     // stocks, for the crier's news the day after (city/crier.js); null never
     stocksDay: null,
+    // the Sampo of Kalevanlinna (city/sampo.js): the city's long story
+    sampo: makeSampo(),
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
   }
   if (!ok) return world
@@ -60,7 +63,7 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
       ...(typeof t.special === 'boolean' && { special: t.special }) })
   }
   for (const [key, p] of Object.entries(isObj(saved.places) ? saved.places : {})) {
-    if (!isObj(p) || !TALE_IDS.includes(p.id) || typeof p.village !== 'string') continue
+    if (!isObj(p) || !(TALE_IDS.includes(p.id) || SAMPO_PLACES.includes(p.id)) || typeof p.village !== 'string') continue
     world.places.set(key, { id: p.id, village: p.village, done: p.done === true })
   }
   // a saved place on a city piece (R2) is released; its tale keeps its flags
@@ -74,6 +77,8 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   // a solved house stays solved, as a told tale stays told
   for (const k of ['solved', 'looted']) if (Array.isArray(saved[k])) for (const label of saved[k]) if (typeof label === 'string') world[k].add(label)
   if (isInt(saved.stocksDay) && saved.stocksDay >= 0) world.stocksDay = saved.stocksDay
+  // the long story stays told across a generator change, as the tales do
+  world.sampo = loadSampo(saved.sampo)
   if (saved.gen !== GEN) return world
   for (const [key, rec] of Object.entries(saved.records ?? {})) {
     if (!rec || typeof rec !== 'object') continue
@@ -167,5 +172,6 @@ export function exportWorld(world) {
     paid: [...world.paid],
     solved: [...world.solved], looted: [...world.looted],
     stocksDay: world.stocksDay,
+    sampo: exportSampo(world.sampo),
   }
 }

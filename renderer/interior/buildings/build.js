@@ -30,7 +30,7 @@ export function buildFloor(def, { rng }) {
     }))
   }
   for (const it of parsed.items) lay(it.item, it.x, it.y)
-  for (const s of parsed.stairs) map[s.y][s.x].overlay = s.dir === 'up' ? MISC.stairUp : MISC.stairDown
+  for (const s of parsed.stairs) map[s.y][s.x].overlay = s.art ? MISC[s.art] : s.dir === 'up' ? MISC.stairUp : MISC.stairDown
   for (const d of parsed.decos) map[d.y][d.x].deco = MISC[d.deco]
   for (const r of parsed.rugs) for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
     map[y][x].deco = RUGS[r.colour][y === r.y0 ? 0 : y === r.y1 ? 2 : 1][x === r.x0 ? 0 : x === r.x1 ? 2 : 1]
@@ -129,5 +129,7 @@ export function buildFloor(def, { rng }) {
     if (plan.grid[y][x] === '.' && walk(c) && !c.overlay && !marked.has(key(x, y))) out.free.push({ x, y })
   }))
   if (plan.spawn) { out.playerSpawn = { ...plan.spawn }; out.exit = { ...plan.exit } }
+  // a floor with a light of its own (the giant's belly, the open roof): floors.js travel puts it on
+  if (def.theme) out.theme = def.theme
   return out
 }

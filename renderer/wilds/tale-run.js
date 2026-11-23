@@ -46,7 +46,8 @@ function talesInWindow(world) {
     const key = pieceKey(wx, wy)
     if (getPiece(world, wx, wy).village) out.set(key, { v: { wx, wy }, villageIn: true, placeIn: false })
     const place = world.places.get(key)
-    if (place && !out.has(place.village)) out.set(place.village, { v: parseKey(place.village), villageIn: false, placeIn: false })
+    // (a place of the Sampo's is no village's: city/sampo-places.js plays it)
+    if (place && place.village !== 'sampo' && !out.has(place.village)) out.set(place.village, { v: parseKey(place.village), villageIn: false, placeIn: false })
   }
   for (const [vKey, t] of out) {
     const rec = world.tales.get(vKey)

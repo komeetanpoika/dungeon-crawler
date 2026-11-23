@@ -317,7 +317,7 @@ test('at the bell the church holds whoever the schedules put in it, each where t
   on('named:vaino', 'nave', 'organ')
   for (const p of spec.people.filter(q => q.act === 'ring')) on(p.person.id, 'tower', 'bell')
   // at night the door is shut and nobody is seen: an empty church is still a church
-  assert.ok(buildBuilding('church', { seed: spec.seed, people: [] }).floors.length === 3)
+  assert.ok(buildBuilding('church', { seed: spec.seed, people: [] }).floors.length === 4)
 })
 
 test('leaving the church: those on the other floors were not struck down; one gone from the tower was', () => {

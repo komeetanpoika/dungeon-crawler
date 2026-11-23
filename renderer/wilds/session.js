@@ -11,6 +11,7 @@ import { assemble, toWindow, toWorld, recentreStep, WIN, WIN_TILES } from './win
 import { shiftState } from './shift.js'
 import { getPiece, recordFor, sweep, exportWorld } from './world.js'
 import { admit } from './tales.js'
+import { admitSampo } from './city/sampo-places.js'
 import { applyFelled, STUMP } from '../systems/lumber.js'
 import { TILE } from '../systems/entities.js'
 import { doorAt } from '../systems/houses.js'
@@ -35,7 +36,8 @@ const TRANSIENT = ['projectiles', 'zones', 'fireZones', 'lightning', 'strikes', 
 const windowGrid = world => Array.from({ length: WIN }, (_, r) =>
   Array.from({ length: WIN }, (_, c) => getPiece(world, world.origin.wx + c, world.origin.wy + r)))
 // The nine pieces of the window at `origin`: given to the tales before the
-// window is built, so new land can become a tale's place (tales.js admit).
+// window is built, so new land can become a tale's place (tales.js admit)
+// or the place of one of the Sampo's pieces (city/sampo-places.js admitSampo).
 const nineAt = origin => Array.from({ length: WIN * WIN }, (_, i) => ({ wx: origin.wx + i % WIN, wy: origin.wy + Math.floor(i / WIN) }))
 const eachPiece = (grid, fn) => { for (let r = 0; r < WIN; r++) for (let c = 0; c < WIN; c++) fn(grid[r][c], c, r) }
 
@@ -148,6 +150,7 @@ export function enterWilds(state, world, target, { buildEntities }) {
   const { wx: cwx, wy: cwy } = pieceOf(goal.X, goal.Y)
   world.origin = { wx: cwx - 1, wy: cwy - 1 }
   admit(world, nineAt(world.origin))
+  admitSampo(world, nineAt(world.origin))
   const grid = windowGrid(world)
   state.map = assemble(grid)
   state.entities = []
@@ -203,6 +206,7 @@ function recentre(state, world, dx, dy, buildEntities) {
   shiftState(state, -dx * PIECE, -dy * PIECE)
   world.origin = next
   admit(world, nineAt(next))
+  admitSampo(world, nineAt(next))
   const grid = windowGrid(world)
   state.map = assemble(grid)
   const wasIn = (wx, wy) => wx >= old.wx && wx <= old.wx + 2 && wy >= old.wy && wy <= old.wy + 2

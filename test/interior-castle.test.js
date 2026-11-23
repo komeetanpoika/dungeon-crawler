@@ -46,7 +46,8 @@ const overlays = (f, re) => f.map.flatMap((row, y) => row.map((c, x) => ({ x, y,
 
 test('the keep has the hall, the cells and the Count\'s floor, each walkable from its way in', () => {
   assert.equal(built.ground, 'hall')
-  assert.deepEqual(built.floors.map(f => f.id), ['hall', 'cells', 'count'])
+  // (the battlements are the Sampo story's: reached through the barred door once the story opens it, never by a stair)
+  assert.deepEqual(built.floors.map(f => f.id), ['hall', 'cells', 'count', 'battlements'])
   for (const f of built.floors) {
     const origin = f.playerSpawn ?? f.stairs[0].land
     const seen = reach(f.map, origin)
@@ -69,7 +70,10 @@ test('the keep has the hall, the cells and the Count\'s floor, each walkable fro
 })
 
 test('every stair leads to a stair that leads back; down to the cells from the entrance hall, up from the great hall', () => {
-  for (const f of built.floors) for (const s of f.stairs) {
+  // the battlements' way down comes out by the Count's stair: one way, as its way up is the story's
+  const down1 = floorOf(built, 'battlements').stairs
+  assert.deepEqual(down1.map(s => s.to), [{ floor: 'count', stair: 'down' }])
+  for (const f of built.floors.filter(f => f.id !== 'battlements')) for (const s of f.stairs) {
     const to = floorOf(built, s.to.floor)
     assert.ok(to, `${f.id}/${s.id} leads to a floor that exists`)
     const back = to.stairs.find(t => t.id === s.to.stair)

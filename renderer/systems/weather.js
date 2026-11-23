@@ -117,6 +117,7 @@ export function lightSources(state) {
 }
 
 const DAYLIGHT = { dark: 0, ambient: [255, 255, 255], fog: 1 }
+const GLOOM = { dark: 0.85, ambient: [40, 60, 120] }   // the night's own
 
 // The per-frame object the renderer paints from. Null off weather maps.
 export function weatherLook(state, save) {
@@ -128,6 +129,11 @@ export function weatherLook(state, save) {
   // is dark to punch a hole in). The keyframe colour and the fog stay — only
   // the darkness blinks. lightning.js counts w.lightningT down, because this
   // module builds a look and never ticks anything itself.
-  const dark = w.lightningT > 0 ? 0 : ph.dark
-  return { dark, ambient: ph.ambient, fog: ph.fog, t: w.t, lights: dark > 0 ? lightSources(state) : [] }
+  // state.gloom (0..1): a place dark at any hour (the copper mountain of the
+  // Sampo's story, wilds/city/sampo-places.js) is night as far as it reaches.
+  const g = Math.max(0, Math.min(1, state.gloom ?? 0))
+  const lit = g > 0 && GLOOM.dark * g > ph.dark
+  const dark = w.lightningT > 0 ? 0 : lit ? GLOOM.dark * g : ph.dark
+  const ambient = lit ? ph.ambient.map((c, i) => Math.round(c + (GLOOM.ambient[i] - c) * g)) : ph.ambient
+  return { dark, ambient, fog: ph.fog, t: w.t, lights: dark > 0 ? lightSources(state) : [] }
 }

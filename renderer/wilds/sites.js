@@ -57,7 +57,9 @@ export const SITE_SKINS = [...new Set([
 //   hub    where the roads from the gates meet
 //   keep   circles nothing else of the piece is dealt into
 //   ways   cells opened as an unmarked way through the trees; nothing is built on them
-export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16, fold: 8, flame: 9, lalli: 8 }
+export const TALE_PAD = { elk: 7, tar: 15, kivihiisi: 9, nakki: 16, fold: 8, flame: 9, lalli: 8,
+  // the Sampo's three pieces (city/sampo.js PIECES): Turso's bay, the copper mountain's bowl, the pike's pond
+  sampo_sea: 14, sampo_mountain: 10, sampo_marsh: 9 }
 // The cells of a one-wide walkable line, each a step along x or y from the last.
 export function wayCells(x0, y0, x1, y1) {
   const out = [{ x: x0, y: y0 }]
@@ -110,6 +112,15 @@ export function layoutTale(tale, rng, gateInner = null) {
     const hub = { x: cx, y: cy + 4 }, bank = { x: pond.x - 6, y: pond.y }
     const ways = [...wayCells(hub.x, hub.y, bank.x, bank.y), ...wayCells(hub.x, hub.y, camp.x + 2, camp.y)]
     return { cx, cy, hub, pond, camp, bank, ways, keep: [{ x: pond.x, y: pond.y, r: 7 }, { x: camp.x, y: camp.y, r: 5 }] }
+  }
+  if (tale === 'sampo_sea' || tale === 'sampo_marsh') {
+    // water in the middle, the bank and the pier's foot a walk west of it
+    const cx = ri(36, 52), cy = ri(28, 50), r = tale === 'sampo_sea' ? 12 : 7
+    return { cx, cy, r, hub: { x: cx - r - 3, y: cy }, keep: [{ x: cx - r - 4, y: cy, r: 4 }] }
+  }
+  if (tale === 'sampo_mountain') {
+    const cx = ri(28, 50), cy = ri(28, 48)
+    return { cx, cy, hub: { x: cx, y: cy + 9 }, keep: [] }
   }
   if (tale === 'nakki') {
     const cx = ri(36, 52), cy = ri(26, 50)
@@ -631,6 +642,59 @@ export function makeSites(c) {
     return []
   }
 
-  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree }
+  // ---- the Sampo's three pieces (city/sampo.js, city/sampo-places.js) ---------------
+  // Water with a pier out from the west bank: Iku-Turso's bay (the sea piece)
+  // and the great pike's pond (the marsh piece). The guardian rises at a
+  // `lair` cell, each a step off the planks; the piece is laid at the pier's end.
+  function pierWater(g, salt, dress) {
+    const { cx, cy, r } = g
+    for (let dy = -r - 3; dy <= r + 3; dy++) for (let dx = -r - 3; dx <= r + 3; dx++) {
+      const d = Math.hypot(dx, dy)
+      if (d + wob(cx + dx, cy + dy, salt) <= r) { t.setWater(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+      else if (d <= r + 2.6) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+    }
+    const bank = { x: cx - r - 2, y: cy }, end = { x: cx - 2, y: cy }
+    // made ground at the pier's foot: by the sea the bank would otherwise be open water
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -4; dx <= 0; dx++) { t.clear(bank.x + dx, cy + dy); hold(bank.x + dx, cy + dy) }
+    for (let x = bank.x + 1; x <= end.x; x++) { t.setWater(x, cy); t.setProp(x, cy, 'ow_pier_log', { walkable: true }); hold(x, cy) }
+    // open water round the planks, whatever the shore's wobble did
+    const lairs = [[1, 0], [-1, -1], [-1, 1], [-4, -1], [-4, 1]].map(([dx, dy]) => ({ x: end.x + dx, y: cy + dy })).filter(c => c.x > bank.x + 2)
+    for (const c of lairs) { t.setWater(c.x, c.y); hold(c.x, c.y) }
+    dress(bank)
+    return [{ label: 'pier end', ...end }, { label: 'pier bank', ...bank }, ...lairs.map((c, i) => ({ label: `lair ${i + 1}`, ...c }))]
+  }
+  const tursoBay = g => pierWater(g, 560, bank => {
+    put(bank.x - 3, bank.y - 2, 'ow_prop_fishrack_l'); put(bank.x - 2, bank.y - 2, 'ow_prop_fishrack_r')
+    low(bank.x - 3, bank.y + 2, 'ow_prop_barrel_1'); low(bank.x - 1, bank.y + 2, 'ow_prop_bucket')
+  })
+  const pikePond = g => {
+    const points = pierWater(g, 570, bank => { low(bank.x - 2, bank.y - 2, 'ow_prop_stump_0'); low(bank.x - 3, bank.y + 2, 'ow_prop_log') })
+    lilies(g.cx + 2, g.cy, g.r - 2, 6)
+    return points
+  }
+  // The copper mountain's foot: a bare bowl of scorched stone ringed with old
+  // stones, three cold braziers in it, and the vault's place in the middle.
+  function copperBowl(g) {
+    const { cx, cy } = g
+    for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) {
+      const d2 = dx * dx + dy * dy
+      if (d2 > 81) continue
+      if (d2 <= 68) t.clear(cx + dx, cy + dy)
+      t.setFloor(cx + dx, cy + dy, { roads: true })
+    }
+    const braziers = [[0, -5], [-5, 3], [5, 3]].map(([dx, dy], i) => ({ label: `brazier ${i + 1}`, x: cx + dx, y: cy + dy }))
+    for (const b of braziers) { put(b.x, b.y, 'prop_brazier_cold'); hold(b.x, b.y) }
+    for (const [dx, dy] of [[0, 0], [0, -2], [1, 1], [-1, 1]]) hold(cx + dx, cy + dy)
+    scatter(cx, cy, 2, 7, 6, ['ow_deco_skull'])
+    for (let i = 0; i < 11; i++) {
+      const a = i / 11 * Math.PI * 2 + 0.2
+      const x = cx + Math.round(Math.cos(a) * 9), y = cy + Math.round(Math.sin(a) * 9)
+      if (!t.onPath(x, y) && !(Math.abs(x - g.hub.x) <= 1 && y > cy)) put(x, y, pick(OLD_STONES))
+    }
+    return [{ label: 'vault', x: cx, y: cy }, { label: 'den', x: cx, y: cy - 2 }, ...braziers]
+  }
+
+  const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree,
+    sampo_sea: tursoBay, sampo_mountain: copperBowl, sampo_marsh: pikePond }
   return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing }
 }

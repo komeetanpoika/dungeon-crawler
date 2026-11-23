@@ -26,7 +26,7 @@
 import { VERSIONS } from '../versions.js'
 
 const STAIR_LINE = "The Count's rooms are private."
-const BATTLEMENTS = 'The door to the battlements is barred.'
+export const BATTLEMENTS = 'The door to the battlements is barred.'
 
 const guard = (id, look, lines) => ({ spawn: { species: 'watchman', id, look, lines } })
 const servant = (id, look, lines) => ({ spawn: { species: 'townsfolk', id, look, lines } })
@@ -251,4 +251,51 @@ function seat(person) {
   return { floor: 'hall' }
 }
 
-export const CASTLE = { floors: [hall, cells, count], ground: 'hall', theme: VERSIONS.home.theme, seat }
+// The battlements: the keep's roof, where the eagle takes the Sampo
+// (wilds/city/sampo-end.js). Reached through the barred door on the Count's
+// floor once the story has opened it (sampo.js passageFor); the way down
+// comes out by that floor's stair. Open to the sky: flagstones inside a
+// parapet seen from above (kit.js palette `roof`, no wall face), and beyond
+// it nothing but the day. An open floor to fight on.
+const battlements = {
+  id: 'battlements', palette: 'roof', entry: 'roof',
+  theme: { bgColor: '#9ccbe8', tint: null, fogAlpha: 0.35 },
+  rooms: [{ id: 'roof', x0: 1, x1: 19, y0: 1, y1: 11, floor: 'greyflags' }],
+  rows: [
+    '#####################',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#...................#',
+    '#####################',
+  ],
+  things: [
+    '                     ',
+    '                     ',
+    '                     ',
+    '                     ',
+    '                     ',
+    '                     ',
+    ' >1                  ',
+    '                     ',
+    '                     ',
+    '                     ',
+    '                     ',
+    '                     ',
+    '                     ',
+  ],
+  legend: {
+    '>': { stair: 'door', to: ['count', 'down'], dir: 'down' },
+    1: { land: 'door' },
+  },
+  clear: [{ x0: 1, y0: 1, x1: 19, y1: 11 }],
+}
+
+export const CASTLE = { floors: [hall, cells, count, battlements], ground: 'hall', theme: VERSIONS.home.theme, seat }

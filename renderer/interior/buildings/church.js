@@ -16,7 +16,7 @@
 //           breathing crack, shut until the story opens it (project 3)
 import { VERSIONS } from '../versions.js'
 
-const CRACK = 'Warm air breathes up through the crack.'
+export const CRACK = 'Warm air breathes up through the crack.'
 
 const nave = {
   id: 'nave', palette: 'pale', entry: 'nave',
@@ -167,4 +167,52 @@ function seat(person, act) {
   return { floor: 'nave', spot: 'pew' }
 }
 
-export const CHURCH = { floors: [nave, tower, crypt], ground: 'nave', theme: VERSIONS.home.theme, seat }
+// Under the crypt: the belly of Antero Vipunen, the giant asleep beneath the
+// town, reached through the crack once the Sampo's story has opened it
+// (wilds/city/sampo.js passageFor; no stair leads down, and the way back up,
+// his gullet, comes out by the crypt's own stair). Walls and floor of meat
+// (kit.js palette `flesh`), his ribs standing in it, the bones of those he
+// swallowed, an anvil one of them left, and room beside it for a fire
+// (sampo-end.js). Its own light: a red dark.
+const belly = {
+  id: 'belly', palette: 'flesh', entry: 'gut',
+  theme: { bgColor: '#1c0a10', tint: 'rgba(150, 30, 40, 0.10)', fogAlpha: 0.65 },
+  rooms: [{ id: 'gut', x0: 1, x1: 14, y0: 1, y1: 9, floor: 'flesh' }],
+  rows: [
+    '################',
+    '#uuuuuuuuuuuuuu#',
+    '#llllllllllllll#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '################',
+  ],
+  things: [
+    '                ',
+    '                ',
+    '                ',
+    ' <1  o   o   o  ',
+    '                ',
+    '   o     A      ',
+    '                ',
+    '                ',
+    '   o   o   o  o ',
+    '                ',
+    '                ',
+  ],
+  legend: {
+    o: { item: 'rib' },
+    A: { item: 'anvil' },
+    '<': { stair: 'out', to: ['crypt', 'up'], dir: 'up', art: 'gullet', say: 'Up, and out, into cold stone and candle smoke.' },
+    1: { land: 'out' },
+  },
+  // round the anvil: the forge's place, and room to swing
+  clear: [{ x0: 6, y0: 4, x1: 10, y1: 6 }],
+  dress: [{ item: 'bones', n: [3, 5] }, { item: 'skull', n: [1, 2] }, { item: 'rubble', n: [0, 1] }],
+}
+
+export const CHURCH = { floors: [nave, tower, crypt, belly], ground: 'nave', theme: VERSIONS.home.theme, seat }
