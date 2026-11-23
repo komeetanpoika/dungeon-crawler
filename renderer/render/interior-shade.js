@@ -19,8 +19,9 @@ export function rimShade(rgba, w, h, level) {
     if (rgba[i + 3] < 128) return 0
     return 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2] < 70 ? 1 : 2
   }
-  // an "open" neighbour is transparent, off the tile, or outline
-  const open = (x, y) => kind(x, y) !== 2
+  // an "open" neighbour is transparent or outline; off the tile is not open,
+  // so the tiles of one piece of furniture join without a seam
+  const open = (x, y) => x >= 0 && y >= 0 && x < w && y < h && kind(x, y) !== 2
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (kind(x, y) !== 2) continue

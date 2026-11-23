@@ -67,4 +67,15 @@ describe('furniture shading kinds', () => {
     assert.equal(SHADE_KIND.get(ITEMS.wardrobe.tiles[1][0]), 'cast', 'its foot')
     for (const n of [MISC.doormat, MISC.void, FLOORS.planks[0], RUGS.red[0][0], WALLS.plaster.top[0]]) assert.equal(SHADE_KIND.get(n), undefined, n)
   })
+
+  it('no tile name is given two different shade kinds by two items', () => {
+    const seen = new Map()
+    for (const [key, item] of Object.entries(ITEMS)) {
+      item.tiles.forEach((row, r) => row.forEach(name => {
+        const kind = item.on === 'faceUpper' || (item.on === 'face' && r === 0) ? 'rim' : 'cast'
+        if (seen.has(name) && seen.get(name).kind !== kind) assert.fail(`${name}: ${seen.get(name).kind} by ${seen.get(name).key}, ${kind} by ${key}`)
+        seen.set(name, { kind, key })
+      }))
+    }
+  })
 })

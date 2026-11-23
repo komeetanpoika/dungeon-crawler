@@ -64,3 +64,16 @@ test('shadeSprites swaps the shaded tile in, adds the shadow parts, and does it 
   assert.deepEqual(sprites.in_table_l.data, once)
   assert.ok(!Object.keys(sprites).includes('__shaded'))
 })
+
+test('off the tile is not an open side: a tile that runs to its borders has no rim there', () => {
+  const full = tile(['oooo', 'oooo', 'oooo', 'oooo'])
+  assert.deepEqual(rimShade(full.a, 4, 4, SHADE.medium), full.a)
+  const bar = tile(['####', 'oooo', 'oooo', '####'])
+  const out = rimShade(bar.a, 4, 4, SHADE.medium)
+  assert.ok(px(out, 4, 1, 1)[0] > 160, 'the row under the top outline is lit')
+  assert.ok(px(out, 4, 1, 2)[0] < 160, 'the row over the bottom outline is shaded')
+  for (const y of [1, 2]) {
+    assert.deepEqual(px(out, 4, 0, y), px(out, 4, 1, y), `left border, row ${y}`)
+    assert.deepEqual(px(out, 4, 3, y), px(out, 4, 2, y), `right border, row ${y}`)
+  }
+})
