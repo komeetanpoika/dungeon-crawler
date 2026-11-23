@@ -7,6 +7,7 @@
 import { PLAN, wallCells, insideWalls, streetCellsById, towerRect } from './plan.js'
 import { HARBOUR, PROPS, PAVE, CASTLE, HOUSE_FRONT } from './kit.js'
 import { hashInt } from '../rand.js'
+import { DAY } from './schedule.js'
 import {
   N, TAG, lay, pave, cobble, flag, alley, squareStone, wallRun, towerJoins, tower, harbourTower, gateArch, gateSide,
   house, stall, windmill, lamp, bench, keep, church, addDoor,
@@ -162,7 +163,11 @@ function layChurch(G, rec) {
   rect(P.belltower.x0, P.church.y0, P.church.x1, P.church.y1, (x, y) => pave(G, x, y, GRASS(x, y)))
   const c = church(G, P.church.x0, d.y, P.church.x1 - P.church.x0 - 1, d.x)
   for (const [x, y] of [[29, 57], [36, 56], [44, 57], [50, 59]]) lay(G, x, y, 'ow_tree_small')
-  addDoor(rec, d.x, d.y, { kind: 'church', look: { w: 5, storeys: 2, wall: 'stone' }, closed: 'The vicar is preparing his sermon. The door is shut.' })
+  // open by day (interior/buildings/church.js), locked at night
+  addDoor(rec, d.x, d.y, {
+    kind: 'church', look: { w: 5, storeys: 2, wall: 'stone' }, building: 'church',
+    hours: { from: DAY.dawn, to: DAY.dusk, shut: 'The church is locked for the night.' },
+  })
   G.setWalk(d.x, d.y, true)
   rec.spots['church-door'] = { x: d.x, y: d.y + 1 }
   rec.spots['church-steps'] = { x: d.x + 3, y: d.y + 2 }

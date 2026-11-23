@@ -639,6 +639,17 @@ export function occupantsOf(state, doorLabel) {
   return out
 }
 
+// The same people with what they are there for (their schedule entry's act:
+// 'church' at the bell, 'ring' up the tower...), for a building that seats
+// people by what they do (interior/buildings/).
+export function occupantsWithActs(state, doorLabel) {
+  const run = state.cityRun ?? state.cave?.surface?.cityRun
+  if (!run) return []
+  const out = []
+  for (const w of run.people.values()) if (w.mode === 'indoors' && !w.out && w.door === doorLabel) out.push({ person: w.person, act: w.entry?.act ?? null })
+  return out
+}
+
 // Whose house that door is: the people who work behind it, then those who
 // live there, in or out (the Person records; wilds/city/indoors.js takes the
 // house's trade from their jobs).

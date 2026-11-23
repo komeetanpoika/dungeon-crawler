@@ -17,7 +17,14 @@
 //   { spawn, spot }                   the same, on a spot
 //   { spawn, guards, line }           the spawn guards the stair of that id
 //   { spawn, spot, guards, line }
-import { ITEMS, MISC } from '../kit.js'
+//
+// `rugs` (optional): [{ colour, x0, y0, x1, y1 }], bordered rugs (kit RUGS)
+// laid on the floor under whatever stands there, at least 2x2, never on a
+// cell with a picture of its own (a legend deco).
+// `clear` (optional): [{ x0, y0, x1, y1 }], floor kept clear: nothing is
+// dressed there and nobody stands there for want of a seat (an aisle, the
+// space before an altar). Spots in it are still sat at.
+import { ITEMS, MISC, RUGS } from '../kit.js'
 
 const GRID = new Set([...'#ul.dE '])
 const COMBOS = [
@@ -121,6 +128,26 @@ export function parseFloor(def) {
     s.guard = gd.id; s.line = gd.line
   }
 
+  const rugs = (def.rugs ?? []).map((r, i) => {
+    const where = `rug ${i} (${r.colour})`
+    if (!RUGS[r.colour]) failFloor(`${where}: unknown colour`)
+    if (!(r.x1 > r.x0 && r.y1 > r.y0)) failFloor(`${where}: a rug is at least 2x2`)
+    for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
+      if (g(x, y) !== '.') fail(x, y, `${where} needs floor ('.') under it, found "${g(x, y)}"`)
+      if (decos.some(d => d.x === x && d.y === y)) fail(x, y, `${where} lies on a picture of its own`)
+    }
+    return { colour: r.colour, x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 }
+  })
+
+  const clear = []
+  for (const [i, r] of (def.clear ?? []).entries()) {
+    if (!(r.x1 >= r.x0 && r.y1 >= r.y0)) failFloor(`clear ${i}: x0..x1 and y0..y1 run the wrong way`)
+    for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
+      if (g(x, y) !== '.') fail(x, y, `clear ${i} needs floor ('.') under it, found "${g(x, y)}"`)
+      clear.push({ x, y })
+    }
+  }
+
   const rooms = def.rooms.map(r => ({ id: r.id, x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1, floorY0: r.y0 + 2, floor: r.floor }))
   if (!rooms.some(r => r.id === def.entry)) failFloor(`entry "${def.entry}" is not a room`)
   const doors = []
@@ -128,7 +155,7 @@ export function parseFloor(def) {
   const plan = { w, h, grid: [...rows], rooms, doors, entry: def.entry }
   if (exit) { plan.exit = exit; plan.spawn = spawn }
   return {
-    plan, items, spots, stairs: [...stairs.values()], shut, decos, spawns,
+    plan, items, spots, stairs: [...stairs.values()], shut, decos, rugs, clear, spawns,
     guards: guards.map(({ stair, id: gid, line }) => ({ stair, id: gid, line })),
   }
 }

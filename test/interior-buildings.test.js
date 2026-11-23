@@ -185,7 +185,7 @@ test('buildBuilding: people take the spot cells, then free floor away from the w
   }
   assert.equal(f.map[third.y][third.x].overlay, undefined)
   assert.throws(() => buildBuilding('nope', { seed: 1, people: [] }, registry), /unknown building/)
-  assert.deepEqual(BUILDINGS, {})
+  assert.equal(Object.hasOwn(BUILDINGS, 'test'), false, 'the registry passed in is the one used')
 })
 
 const withLegend = (def, extra) => ({ ...def, legend: { ...def.legend, ...extra } })
@@ -245,4 +245,44 @@ test('buildBuilding: fallback seating never uses a shut cell or any spot cell', 
     assert.notEqual(cell(s), '2,7', 'not on the shut cell')
     assert.ok(!['6,5', '7,5'].includes(cell(s)), 'not on the unused spot')
   }
+})
+
+test('buildFloor: dressing hangs wall things on the face rows too', () => {
+  const def = { ...upper, dress: [{ item: 'web_wall', n: 2 }, { item: 'dresser', n: 1 }] }
+  for (let s = 1; s <= 6; s++) {
+    const f = buildFloor(def, { rng: mulberry32(s) })
+    const on = name => f.map.flatMap((row, y) => row.map((c, x) => ({ x, y, o: c.overlay }))).filter(c => c.o === name)
+    assert.equal(on('in_web_wall').length, 2, `seed ${s}: webs on the wall`)
+    assert.ok(on('in_web_wall').every(c => upper.rows[c.y][c.x] === 'u'), 'on the upper face row')
+    assert.ok(on('in_dresser').length === 1 && upper.rows[on('in_dresser')[0].y][on('in_dresser')[0].x] === 'l', 'a dresser against the lower face')
+  }
+})
+
+test('parse and build: rugs lie under what stands on them; cells kept clear take no dressing and no one seated for want of a seat', () => {
+  const def = {
+    ...hall,
+    rugs: [{ colour: 'red', x0: 2, y0: 4, x1: 5, y1: 6 }],
+    clear: [{ x0: 1, y0: 3, x1: 9, y1: 3 }],
+    dress: [{ item: 'barrel', n: 6 }],
+  }
+  const p = parseFloor(def)
+  assert.deepEqual(p.rugs, [{ colour: 'red', x0: 2, y0: 4, x1: 5, y1: 6 }])
+  assert.equal(p.clear.length, 9)
+  const f = buildFloor(def, { rng: mulberry32(3) })
+  assert.equal(f.map[4][2].deco, 'in_rug_red_tl')
+  assert.equal(f.map[4][3].deco, 'in_rug_red_tm')
+  assert.equal(f.map[4][3].overlay, 'in_table_l', 'the table on the rug')
+  assert.equal(f.map[5][3].deco, 'in_rug_red_mm')
+  assert.equal(f.map[6][5].deco, 'in_rug_red_br')
+  for (let x = 1; x <= 9; x++) {
+    if (x === 9) continue // the stair
+    assert.equal(f.map[3][x].overlay, undefined, `${x},3 kept clear`)
+    assert.ok(!f.free.some(c => c.x === x && c.y === 3), `${x},3 is not free floor for seating`)
+  }
+  // broken rugs and clear runs throw, naming the floor and the cell
+  assert.throws(() => parseFloor({ ...hall, rugs: [{ colour: 'purple', x0: 2, y0: 4, x1: 3, y1: 5 }] }), /hall: rug 0.*unknown colour/)
+  assert.throws(() => parseFloor({ ...hall, rugs: [{ colour: 'red', x0: 2, y0: 4, x1: 2, y1: 5 }] }), /hall: rug 0.*2x2/)
+  assert.throws(() => parseFloor({ ...hall, rugs: [{ colour: 'red', x0: 0, y0: 4, x1: 2, y1: 5 }] }), /hall 0,4: rug 0/)
+  assert.throws(() => parseFloor({ ...hall, rugs: [{ colour: 'red', x0: 1, y0: 6, x1: 3, y1: 7 }] }), /hall 2,7: rug 0.*picture/)
+  assert.throws(() => parseFloor({ ...hall, clear: [{ x0: 1, y0: 2, x1: 3, y1: 3 }] }), /hall 1,2: clear 0/)
 })

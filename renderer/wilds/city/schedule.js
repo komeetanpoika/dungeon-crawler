@@ -132,9 +132,12 @@ export function scheduleFor(person, city, seed, day) {
     E.push([DAY.dusk, home, 'home'])
     if (H(40) < innP) E.push([0.78, inn, 'inn'], [0.93 + H(41) * 0.04, home, 'home'])
   }
+  // the bell: who goes, and of the adults who go most step inside (the church
+  // is open by day); elders keep the steps, and the beggars and the crier,
+  // who go straight to the steps, never come here
   const bell = (back, o = {}) => {
     const goes = o.always || H(30) < (o.p ?? 0.6)
-    if (goes) E.push([DAY.bell, o.inside ? churchDoor : (!o.noInside && p.age === 'adult' && H(31) < 0.2) ? churchDoor : steps, 'church'])
+    if (goes) E.push([DAY.bell, o.inside ? churchDoor : (!o.noInside && p.age === 'adult' && H(31) < 0.7) ? churchDoor : steps, 'church'])
     E.push([DAY.bell + BELL_LEN, back.where, back.act])
   }
   const errandSpot = (avoid, salt) => {

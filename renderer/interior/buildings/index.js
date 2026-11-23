@@ -3,8 +3,9 @@
 // floor from the seed and seats everyone exactly once. Pure in its inputs.
 import { buildFloor } from './build.js'
 import { hashStr, mulberry32, shuffle } from '../rng.js'
+import { CHURCH } from './church.js'
 
-export const BUILDINGS = {}
+export const BUILDINGS = { church: CHURCH }
 
 const SEAT_CLEARANCE = 2   // people off the way in/out and the stairs: farther than this (Chebyshev)
 

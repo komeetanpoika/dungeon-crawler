@@ -3,7 +3,13 @@
 //
 //   node tools/interiors/render.mjs [--stage walls|furnish|full] [--version home|...] [--size small|medium|large|grand]
 //        [--trade farmer|...|innkeeper] [--seeds 1,2,3 | --seeds 1..12] [--cols 3] [--scale 2] [--shade off|subtle|medium|strong|compare] [--solved] [--out interiors.png]
+//   node tools/interiors/render.mjs --building church [--seed 7] [--people 45] [--scale 3] [--out church.png]
 //
+// --building draws every floor of a hand-laid building (interior/buildings/)
+// side by side, each with its name; --people N sends N made-up adults to the
+// building's service (act 'church'), plus the building's own cast (the
+// church: the vicar, the organist and the bell-ringer at ring time), seated
+// as buildBuilding seats the people the city's schedules send.
 // --shade sets the furniture shading (default subtle); compare draws every seed four times in a row:
 // off, subtle, medium, strong.
 // --stage walls draws plans with walls and floors only; --stage furnish adds
@@ -27,10 +33,11 @@ const stage = flag('--stage', 'full'), version = flag('--version', 'home'), size
 const shadeArg = flag('--shade', 'subtle')
 if (!['off', 'subtle', 'medium', 'strong', 'compare'].includes(shadeArg)) throw new Error(`--shade: ${shadeArg}`)
 const colsArg = flag('--cols', null)
-const cols = Number(colsArg ?? (shadeArg === 'compare' ? 4 : 3)), scale = Number(flag('--scale', 2)), out = flag('--out', 'interiors.png')
-const solved = has('--solved')
+const buildingArg = flag('--building', null), peopleArg = Number(flag('--people', 0)), seedOne = flag('--seed', null)
 const VARIANTS = shadeArg === 'compare' ? ['off', 'subtle', 'medium', 'strong'] : [shadeArg]
-const seedArg = flag('--seeds', '1..6')
+const scale = Number(flag('--scale', 2)), out = flag('--out', 'interiors.png')
+const solved = has('--solved')
+const seedArg = flag('--seeds', seedOne ?? (buildingArg ? '7' : '1..6'))
 const seeds = seedArg.includes('..') ? (([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i))(seedArg.split('..').map(Number)) : seedArg.split(',').map(Number)
 const SIZES = ['small', 'medium', 'large', 'grand']
 
@@ -78,8 +85,29 @@ const SPAWN_ART = s => {
   return null
 }
 
+// a hand-laid building: one board per floor
+const CAST = {
+  church: [
+    { person: { id: 'named:vicar', age: 'adult', job: 'vicar', look: 'vicar' }, act: 'church' },
+    { person: { id: 'named:vaino', age: 'elder', job: 'organist', look: 'vaino' }, act: 'church' },
+    { person: { id: 'render:ringer', age: 'adult', job: 'bell-ringer', look: 'a04' }, act: 'ring' },
+  ],
+}
+async function buildFloors(kind, seed) {
+  const { buildBuilding } = await import('../../renderer/interior/buildings/index.js')
+  const { LOOKS } = await import('../../renderer/data/townsfolk-looks.js')
+  const adults = LOOKS.filter(l => l.age === 'adult')
+  const crowd = Array.from({ length: peopleArg }, (_, i) => ({ person: { id: `render:${i}`, age: 'adult', job: 'weaver', look: adults[i % adults.length].id }, act: 'church' }))
+  const people = [...crowd, ...(peopleArg ? CAST[kind] ?? [] : [])]
+    .map(p => ({ ...p, spawn: { kind: 'npc', species: 'townsfolk', id: p.person.id, look: p.person.look } }))
+  const b = buildBuilding(kind, { seed, people })
+  return b.floors.map(f => ({ map: f.map, spawns: f.entitySpawns, label: `${kind} ${f.id}${f.id === b.ground ? ' (ground)' : ''} #${seed}${people.length ? `, ${f.entitySpawns.length} people` : ''}` }))
+}
+
 const boards = []
-for (let i = 0; i < seeds.length; i++) boards.push(await build(seeds[i], i))
+if (buildingArg) for (const seed of seeds) boards.push(...await buildFloors(buildingArg, seed))
+else for (let i = 0; i < seeds.length; i++) boards.push(await build(seeds[i], i))
+const cols = Number(colsArg ?? (buildingArg ? boards.length / seeds.length * VARIANTS.length : shadeArg === 'compare' ? 4 : 3))
 const names = new Set()
 const jobs = boards.flatMap(b => VARIANTS.map(v => ({
   label: shadeArg === 'compare' ? `${v} ${b.label}` : b.label, beam: b.beam, shade: v,

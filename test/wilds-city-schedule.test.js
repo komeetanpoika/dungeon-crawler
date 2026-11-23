@@ -98,6 +98,30 @@ test('the bell fills the church door and the square empties toward it', () => {
   }
 })
 
+// The church is open by day, so most of the bell crowd goes in; elders,
+// beggars and the crier keep the steps (Väinö plays the organ inside).
+test('at the bell most churchgoers go inside; elders, beggars and the crier keep the steps', () => {
+  let inside = 0, going = 0
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const city = cityFor(seed)
+    const door = city.doors.find(d => d.kind === 'church').label
+    const folk = rollTownsfolk(seed, city)
+    for (const day of [0, 1, 2]) for (const p of folk) {
+      const bell = scheduleFor(p, city, seed, day).find(e => e.act === 'church')
+      if (!bell) continue
+      if (p.age === 'elder' || p.job === 'beggar' || p.job === 'crier') {
+        if (p.job !== 'organist') assert.equal(bell.where.spot, 'church-steps', `${p.id} (${p.job}, ${p.age}) on the steps`)
+        continue
+      }
+      if (p.age !== 'adult') continue
+      going++
+      if (bell.where.door === door) inside++
+    }
+  }
+  const share = inside / going
+  assert.ok(share >= 0.55 && share <= 0.85, `${inside}/${going} = ${share.toFixed(2)} of the adults at the bell go in`)
+})
+
 test('lunch at the inn: about a third of workers round noon; children play and go to school in the church on even days', () => {
   const { seed, city, folk } = worlds[1]
   const innDoor = city.doors.find(d => d.kind === 'inn').label

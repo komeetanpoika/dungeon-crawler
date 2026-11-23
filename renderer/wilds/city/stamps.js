@@ -58,8 +58,14 @@ export function makeRecord() {
   return { doors: [], signs: [], lamps: [], chimneys: [], windows: [], spots: {}, spawns: [], yards: [] }
 }
 export const doorLabel = (x, y) => `house:city:${x},${y + 160}`
-export function addDoor(rec, x, y, { kind, lot = null, look, closed = null }) {
+// `closed`: a line said instead of opening, always; `building`: a building
+// laid by hand behind it (interior/buildings/); `hours`: { from, to, shut },
+// open from `from` to `to` of the day, else `shut` is said (indoors.js
+// doorShut). Plain values only: the record is copied into the pieces.
+export function addDoor(rec, x, y, { kind, lot = null, look, closed = null, building = null, hours = null }) {
   const d = { x, y, label: doorLabel(x, y), tier: 'safe', look, lot, kind, closed, city: true }
+  if (building) d.building = building
+  if (hours) d.hours = { from: hours.from, to: hours.to, shut: hours.shut }
   rec.doors.push(d)
   return d
 }

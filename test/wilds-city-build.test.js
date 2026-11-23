@@ -9,6 +9,7 @@ import { CITY, CITY_KEYS, isCityPiece, fromCity } from '../renderer/wilds/city/g
 import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
 import { PIECE, FRAME } from '../renderer/wilds/layout.js'
 import { TILE } from '../renderer/systems/entities.js'
+import { DAY } from '../renderer/wilds/city/schedule.js'
 import { makeWorld, getPiece } from '../renderer/wilds/world.js'
 import { taleOf } from '../renderer/wilds/tales.js'
 
@@ -269,7 +270,7 @@ test('the inn piece holds the village record and the doorstep spawn', () => {
   assert.notEqual(generateCityPiece(7, 0, 2).cells[10][10], generateCityPiece(7, 0, 2).cells[10][10])
 })
 
-test('every lot has its door, and the church and castle doors are shut', () => {
+test('every lot has its door, the church keeps hours and the castle door is shut', () => {
   for (const seed of SEEDS) {
     const city = cityFor(seed)
     const lots = cutBlocks(seed).lots
@@ -284,9 +285,12 @@ test('every lot has its door, and the church and castle doors are shut', () => {
       assert.ok(['home', 'shop', 'workshop', 'inn', 'smithy', 'barracks', 'church', 'castle', 'warehouse'].includes(d.kind), d.kind)
     }
     const church = city.doors.find(d => d.kind === 'church'), castle = city.doors.find(d => d.kind === 'castle')
-    assert.equal(church.closed, 'The vicar is preparing his sermon. The door is shut.')
+    // the church is open by day (interior/buildings/church.js), locked at night
+    assert.equal(church.closed ?? null, null)
+    assert.equal(church.building, 'church')
+    assert.deepEqual(church.hours, { from: DAY.dawn, to: DAY.dusk, shut: 'The church is locked for the night.' })
     assert.equal(castle.closed, '"The Count receives no one today," says the guard.')
-    assert.ok(city.doors.filter(d => d.closed).length === 2)
+    assert.ok(city.doors.filter(d => d.closed).length === 1)
     assert.equal(new Set(city.doors.map(d => d.label)).size, city.doors.length, 'one door per cell')
     assert.ok(city.doors.some(d => d.kind === 'inn') && city.doors.some(d => d.kind === 'smithy') && city.doors.some(d => d.kind === 'barracks'))
   }

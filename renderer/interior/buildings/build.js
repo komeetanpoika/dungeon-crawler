@@ -1,9 +1,9 @@
 // One hand-laid floor (parse.js) built into game cells: walls and floors from
-// walls.js, the items as furnish.js lays them, stairs, pictures, then the
+// walls.js, the items as furnish.js lays them, stairs, pictures and rugs, then the
 // floor's `dress` entries scattered by the rng on free floor. Pure in
 // (def, rng).
 import { TILE } from '../../systems/entities.js'
-import { ITEMS, FLOORS, MISC } from '../kit.js'
+import { ITEMS, FLOORS, MISC, RUGS } from '../kit.js'
 import { buildCells } from '../walls.js'
 import { markCasts } from '../casts.js'
 import { int, pick, shuffle } from '../rng.js'
@@ -32,16 +32,19 @@ export function buildFloor(def, { rng }) {
   for (const it of parsed.items) lay(it.item, it.x, it.y)
   for (const s of parsed.stairs) map[s.y][s.x].overlay = s.dir === 'up' ? MISC.stairUp : MISC.stairDown
   for (const d of parsed.decos) map[d.y][d.x].deco = MISC[d.deco]
+  for (const r of parsed.rugs) for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
+    map[y][x].deco = RUGS[r.colour][y === r.y0 ? 0 : y === r.y1 ? 2 : 1][x === r.x0 ? 0 : x === r.x1 ? 2 : 1]
+  }
 
   // dressing: never on a spot, a landing, a stair, a shut cell, a legend
-  // spawn, the way in or out, a doorway or the cells beside one
+  // spawn, a cell kept clear, the way in or out, a doorway or the cells beside one
   const key = (x, y) => `${x},${y}`
   const bare = new Set()
   const keep = c => { bare.add(key(c.x, c.y)); for (const [dx, dy] of NEIGHBOURS) bare.add(key(c.x + dx, c.y + dy)) }
   for (const c of [plan.spawn, plan.exit, ...plan.doors.flatMap(d => d.cells)]) if (c) keep(c)
   for (const list of parsed.spots.values()) for (const c of list) bare.add(key(c.x, c.y))
   for (const s of parsed.stairs) { bare.add(key(s.x, s.y)); bare.add(key(s.land.x, s.land.y)) }
-  for (const c of [...parsed.shut, ...parsed.spawns]) bare.add(key(c.x, c.y))
+  for (const c of [...parsed.shut, ...parsed.spawns, ...parsed.clear]) bare.add(key(c.x, c.y))
 
   const walk = c => c.tile !== TILE.WALL
   const origin = plan.spawn ?? parsed.stairs[0]?.land
@@ -83,8 +86,9 @@ export function buildFloor(def, { rng }) {
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) spots.push({ x, y })
     for (const p of shuffle(rng, spots)) {
       const cells = cellsOf(name, p.x, p.y)
+      // a wall thing hangs on the face (never walked on); a floor thing needs walkable floor
       const ok = cells.every(c => plan.grid[c.y]?.[c.x] === want[item.on === 'face' ? c.dy : 0] &&
-        !bare.has(key(c.x, c.y)) && !map[c.y][c.x].overlay && walk(map[c.y][c.x]))
+        !bare.has(key(c.x, c.y)) && !map[c.y][c.x].overlay && (item.on !== 'floor' || walk(map[c.y][c.x])))
       if (!ok) continue
       for (const c of cells) {
         const m = map[c.y][c.x]
@@ -118,7 +122,7 @@ export function buildFloor(def, { rng }) {
     // bare walkable floor left, for seating people
     free: [],
   }
-  const marked = new Set([...parsed.spawns, ...parsed.shut, ...[...parsed.spots.values()].flat()].map(c => key(c.x, c.y)))
+  const marked = new Set([...parsed.spawns, ...parsed.shut, ...parsed.clear, ...[...parsed.spots.values()].flat()].map(c => key(c.x, c.y)))
   map.forEach((row, y) => row.forEach((c, x) => {
     if (plan.grid[y][x] === '.' && walk(c) && !c.overlay && !marked.has(key(x, y))) out.free.push({ x, y })
   }))
