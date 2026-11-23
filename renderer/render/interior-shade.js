@@ -2,6 +2,8 @@
 // Light comes from the upper left. Both functions are self-contained (no imports,
 // no module state) so tools can pass their source into a browser page.
 
+import { SHADE_KIND, SHADE_LEVEL } from '../interior/kit.js'
+
 export const SHADE = {
   subtle: { light: 0.10, dark: 0.14, cast: 0.18, dx: 1, dy: 2 },
   medium: { light: 0.16, dark: 0.22, cast: 0.26, dx: 1, dy: 2 },
@@ -52,4 +54,39 @@ export function castShadow(rgba, w, h, level) {
     }
   }
   return { self, below }
+}
+
+// Shades the loaded furniture sprites in place of the plain pictures. For each
+// name in `kinds` that `sprites` holds: the sprite becomes a canvas of the
+// rim-shaded pixels; a 'cast' name also gets `name#cast` (its shadow on its own
+// cell) and `name#below` (what spills into the cell under it, when anything).
+// Done names are remembered in the non-enumerable `sprites.__shaded`, so a
+// second pass does nothing. Returns how many it shaded.
+export function shadeSprites(sprites, { kinds = SHADE_KIND, level = SHADE[SHADE_LEVEL], makeCanvas }) {
+  if (!sprites.__shaded) Object.defineProperty(sprites, '__shaded', { value: new Set() })
+  const paint = (rgba, w, h) => {
+    const c = makeCanvas(w, h), g = c.getContext('2d')
+    const img = g.getImageData(0, 0, w, h)
+    img.data.set(rgba)
+    g.putImageData(img, 0, 0)
+    return c
+  }
+  let n = 0
+  for (const [name, kind] of kinds) {
+    const src = sprites[name]
+    if (!src || sprites.__shaded.has(name)) continue
+    const w = src.width, h = src.height
+    const read = makeCanvas(w, h), rg = read.getContext('2d')
+    rg.drawImage(src, 0, 0)
+    const rgba = rg.getImageData(0, 0, w, h).data
+    if (kind === 'cast') {
+      const { self, below } = castShadow(rgba, w, h, level)
+      sprites[`${name}#cast`] = paint(self, w, h)
+      if (below) sprites[`${name}#below`] = paint(below, w, h)
+    }
+    sprites[name] = paint(rimShade(rgba, w, h, level), w, h)
+    sprites.__shaded.add(name)
+    n++
+  }
+  return n
 }

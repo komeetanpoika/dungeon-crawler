@@ -2,8 +2,10 @@
 // plans, furniture and versions without running the game.
 //
 //   node tools/interiors/render.mjs [--stage walls|furnish|full] [--version home|...] [--size small|medium|large|grand]
-//        [--trade farmer|...|innkeeper] [--seeds 1,2,3 | --seeds 1..12] [--cols 3] [--scale 2] [--solved] [--out interiors.png]
+//        [--trade farmer|...|innkeeper] [--seeds 1,2,3 | --seeds 1..12] [--cols 3] [--scale 2] [--shade off|subtle|medium|strong|compare] [--solved] [--out interiors.png]
 //
+// --shade sets the furniture shading (default subtle); compare draws every seed four times in a row:
+// off, subtle, medium, strong.
 // --stage walls draws plans with walls and floors only; --stage furnish adds
 // furniture without a version's finish or people; full is the real house.
 // --trade sets every house's trade (innkeeper: the inn, with its taproom).
@@ -13,6 +15,8 @@ import * as fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { runPixels } from '../static-overworld/px.mjs'
 import { SPRITES } from '../../renderer/render/sprites.js'
+import { SHADE, rimShade, castShadow } from '../../renderer/render/interior-shade.js'
+import { SHADE_KIND } from '../../renderer/interior/kit.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TILES = path.resolve(HERE, '../../renderer/assets/tiles')
@@ -20,8 +24,12 @@ const args = process.argv.slice(2)
 const flag = (name, dflt) => { const i = args.indexOf(name); if (i < 0) return dflt; const v = args[i + 1]; args.splice(i, 2); return v }
 const has = name => { const i = args.indexOf(name); if (i < 0) return false; args.splice(i, 1); return true }
 const stage = flag('--stage', 'full'), version = flag('--version', 'home'), size = flag('--size', null), tradeArg = flag('--trade', null)
-const cols = Number(flag('--cols', 3)), scale = Number(flag('--scale', 2)), out = flag('--out', 'interiors.png')
+const shadeArg = flag('--shade', 'subtle')
+if (!['off', 'subtle', 'medium', 'strong', 'compare'].includes(shadeArg)) throw new Error(`--shade: ${shadeArg}`)
+const colsArg = flag('--cols', null)
+const cols = Number(colsArg ?? (shadeArg === 'compare' ? 4 : 3)), scale = Number(flag('--scale', 2)), out = flag('--out', 'interiors.png')
 const solved = has('--solved')
+const VARIANTS = shadeArg === 'compare' ? ['off', 'subtle', 'medium', 'strong'] : [shadeArg]
 const seedArg = flag('--seeds', '1..6')
 const seeds = seedArg.includes('..') ? (([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i))(seedArg.split('..').map(Number)) : seedArg.split(',').map(Number)
 const SIZES = ['small', 'medium', 'large', 'grand']
@@ -73,12 +81,12 @@ const SPAWN_ART = s => {
 const boards = []
 for (let i = 0; i < seeds.length; i++) boards.push(await build(seeds[i], i))
 const names = new Set()
-const jobs = boards.map(b => ({
-  label: b.label, beam: b.beam,
+const jobs = boards.flatMap(b => VARIANTS.map(v => ({
+  label: shadeArg === 'compare' ? `${v} ${b.label}` : b.label, beam: b.beam, shade: v,
   w: b.map[0].length, h: b.map.length,
   cells: b.map.map(row => row.map(c => [c.skin ?? null, c.deco ?? null, c.overlay ?? null])),
   spawns: b.spawns.map(s => ({ x: s.x, y: s.y, art: SPAWN_ART(s), tag: s.kind[0].toUpperCase() })),
-}))
+})))
 for (const j of jobs) {
   for (const row of j.cells) for (const l of row) for (const n of l) if (n) names.add(n)
   for (const s of j.spawns) if (s.art) names.add(s.art)
@@ -86,7 +94,29 @@ for (const j of jobs) {
 const files = {}
 for (const n of names) { const f = path.join(TILES, `${n}.png`); if (fs.existsSync(f)) files[n] = f; else console.warn('no picture:', n) }
 
-const result = await runPixels(files, (images, { jobs, cols, scale }) => {
+const shadeFns = { rim: rimShade.toString(), cast: castShadow.toString(), kinds: [...SHADE_KIND], levels: SHADE }
+const result = await runPixels(files, (images, { jobs, cols, scale, shadeFns }) => {
+  // the game's furniture shading, rebuilt in the page: each variant gets its own shaded copies
+  const rim = new Function(`return (${shadeFns.rim})`)(), cast = new Function(`return (${shadeFns.cast})`)()
+  const kinds = new Map(shadeFns.kinds)
+  const variants = {}
+  const variantOf = v => variants[v] ??= (() => {
+    const set = { img: {}, cast: {}, below: {} }
+    if (v === 'off') return set
+    const lv = shadeFns.levels[v]
+    for (const [name, im] of Object.entries(images)) {
+      const kind = kinds.get(name)
+      if (!kind) continue
+      const w = im.width, h = im.height
+      const mk = () => Object.assign(document.createElement('canvas'), { width: w, height: h })
+      const src = mk(), sg = src.getContext('2d'); sg.drawImage(im, 0, 0)
+      const rgba = sg.getImageData(0, 0, w, h).data
+      const paint = d => { const c = mk(), g = c.getContext('2d'), id = g.createImageData(w, h); id.data.set(d); g.putImageData(id, 0, 0); return c }
+      if (kind === 'cast') { const r = cast(rgba, w, h, lv); set.cast[name] = paint(r.self); if (r.below) set.below[name] = paint(r.below) }
+      set.img[name] = paint(rim(rgba, w, h, lv))
+    }
+    return set
+  })()
   const S = 16 * scale, PAD = 10, LABEL = 18
   const cw = Math.max(...jobs.map(j => j.w)) * S + PAD * 2, ch = Math.max(...jobs.map(j => j.h)) * S + PAD * 2 + LABEL
   const rows = Math.ceil(jobs.length / cols)
@@ -96,7 +126,14 @@ const result = await runPixels(files, (images, { jobs, cols, scale }) => {
   jobs.forEach((j, k) => {
     const ox = (k % cols) * cw + PAD, oy = Math.floor(k / cols) * ch + PAD + LABEL
     g.fillStyle = '#e8e2d0'; g.font = '13px monospace'; g.fillText(j.label, ox, oy - 6)
-    for (let y = 0; y < j.h; y++) for (let x = 0; x < j.w; x++) for (const n of j.cells[y][x]) if (n && images[n]) g.drawImage(images[n], ox + x * S, oy + y * S, S, S)
+    const V = variantOf(j.shade)
+    const put = (im, x, y) => { if (im) g.drawImage(im, ox + x * S, oy + y * S, S, S) }
+    for (let y = 0; y < j.h; y++) for (let x = 0; x < j.w; x++) {
+      const [skin, deco, over] = j.cells[y][x], above = j.cells[y - 1]?.[x]?.[2]
+      put(images[skin], x, y); put(images[deco], x, y)
+      if (above && skin !== 'in_void') put(V.below[above], x, y)
+      if (over) { put(V.cast[over], x, y); put(V.img[over] ?? images[over], x, y) }
+    }
     if (j.beam?.length) {
       g.save(); g.globalCompositeOperation = 'lighter'; g.strokeStyle = 'rgba(255,214,120,0.75)'; g.lineWidth = scale * 3
       g.beginPath(); j.beam.forEach((p, i) => { const px = ox + p.x * S + S / 2, py = oy + p.y * S + S / 2; if (i) g.lineTo(px, py); else g.moveTo(px, py) }); g.stroke(); g.restore()
@@ -107,6 +144,6 @@ const result = await runPixels(files, (images, { jobs, cols, scale }) => {
     }
   })
   return { files: { 'sheet.png': c.toDataURL('image/png') } }
-}, { jobs, cols, scale }, path.dirname(path.resolve(out)))
+}, { jobs, cols, scale, shadeFns }, path.dirname(path.resolve(out)))
 fs.renameSync(path.join(path.dirname(path.resolve(out)), 'sheet.png'), path.resolve(out))
 console.log(`wrote ${out} (${jobs.length} interiors)`)

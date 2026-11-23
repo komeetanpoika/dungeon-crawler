@@ -41,6 +41,15 @@ function recordingCtx() {
 
 const SPR = { floor: 'FLOOR', fl: 'SKIN_FL', br: 'OVERLAY_BR' }
 
+describe('drawTile furniture shadows', () => {
+  it('draws deco, the shadow from above, its own shadow, then the thing', () => {
+    const ctx = recordingCtx()
+    const spr = { s: 'S', d: 'D', 'a#below': 'A_BELOW', 'o#cast': 'O_CAST', o: 'O' }
+    drawTile(ctx, TILE.FLOOR, 0, 0, 32, spr, { skin: 's', deco: 'd', castAbove: 'a', overlay: 'o' })
+    assert.deepEqual(ctx.calls, ['S', 'D', 'A_BELOW', 'O_CAST', 'O'])
+  })
+})
+
 describe('drawTile overlay', () => {
   it('draws the overlay on top of the skin', () => {
     const ctx = recordingCtx()

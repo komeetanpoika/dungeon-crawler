@@ -7,6 +7,10 @@ function drawOverlay(ctx, tileObj, px, py, S, sprites) {
   // A house floor carries a third layer between its ground and what stands
   // on it: the rug under a table (renderer/interior/).
   if (tileObj?.deco && sprites[tileObj.deco]) ctx.drawImage(sprites[tileObj.deco], px, py, S, S)
+  // furniture shadows (render/interior-shade.js): what stands above falls on
+  // this cell, then this cell's own thing throws its shadow, then it stands
+  if (tileObj?.castAbove && sprites[`${tileObj.castAbove}#below`]) ctx.drawImage(sprites[`${tileObj.castAbove}#below`], px, py, S, S)
+  if (tileObj?.overlay && sprites[`${tileObj.overlay}#cast`]) ctx.drawImage(sprites[`${tileObj.overlay}#cast`], px, py, S, S)
   if (tileObj?.overlay && sprites[tileObj.overlay]) {
     ctx.drawImage(sprites[tileObj.overlay], px, py, S, S)
   }

@@ -10,6 +10,7 @@ import { getInitialMeta, applyRunResult, getStartingItems, validateMeta, firstTi
 import { decorateMap, pruneMissingTiles, rulesetHasOverlays, skinFloors } from './systems/decorate.js'
 import { Renderer, BLINK_DUR } from './render/canvas.js'
 import { updateHUD } from './render/hud.js'
+import { shadeSprites } from './render/interior-shade.js'
 import { tickWalk } from './systems/walk.js'
 import { FINAL_DEPTH, DEPTH_THEMES, LEVEL_CONFIG, OVERWORLD_DEPTH, ADVENTURE_DEPTH, WILDS_DEPTH } from './data/levels.js'
 import { countBosses, spawnBossDrop } from './systems/progression.js'
@@ -1190,9 +1191,11 @@ function netFrame() {
 // house interiors' tiles (renderer/interior/) come with them, and before the
 // other modes that have houses.
 let wildsSprites = null
-const loadWildsSprites = () => wildsSprites ??= renderer.addSprites([...WILDS_SKINS, ...INTERIOR_SKINS])
+// Furniture gets its lit and shaded edges and shadows once its tiles are in.
+const shadeInterior = () => shadeSprites(renderer.sprites, { makeCanvas: (width, height) => Object.assign(document.createElement('canvas'), { width, height }) })
+const loadWildsSprites = () => wildsSprites ??= renderer.addSprites([...WILDS_SKINS, ...INTERIOR_SKINS]).then(shadeInterior)
 let interiorSprites = null
-const loadInteriorSprites = () => interiorSprites ??= renderer.addSprites(INTERIOR_SKINS)
+const loadInteriorSprites = () => interiorSprites ??= renderer.addSprites(INTERIOR_SKINS).then(shadeInterior)
 let beginning = false
 
 async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = null) {

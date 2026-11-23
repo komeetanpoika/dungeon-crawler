@@ -3,7 +3,8 @@
 // them. The parts are tested on their own in test/interior-*.test.js.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateInterior, houseSpec, INTERIOR_SKINS } from '../renderer/systems/interior.js'
+import { generateInterior, houseSpec, specFor, INTERIOR_SKINS } from '../renderer/systems/interior.js'
+import { SHADE_KIND, MISC } from '../renderer/interior/kit.js'
 import { houseDoorsForMap, INTERIOR_DEPTH } from '../renderer/systems/houses.js'
 import { OPEN_MAPS } from '../renderer/data/open-maps.js'
 import { EPISODES } from '../renderer/data/leaps.js'
@@ -68,4 +69,20 @@ describe('the story houses of the leap maps', () => {
       }
     })
   }
+})
+
+describe('furniture shadows', () => {
+  it('the cell under a standing thing is marked for its shadow, and only that cell', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const { map } = generateInterior(specFor({ version: 'home', size: 'large', seed }))
+      let marks = 0
+      map.forEach((row, y) => row.forEach((c, x) => {
+        const above = map[y - 1]?.[x]
+        const casts = !!above?.overlay && SHADE_KIND.get(above.overlay) === 'cast' && c.skin !== MISC.void
+        assert.equal(c.castAbove, casts ? above.overlay : undefined, `seed ${seed} at ${x},${y}`)
+        if (casts) marks++
+      }))
+      assert.ok(marks > 5, `seed ${seed}: ${marks} shadows`)
+    }
+  })
 })

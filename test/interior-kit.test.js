@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readPng } from '../tools/png-read.mjs'
-import { WALLS, FLOORS, RUGS, ITEMS, INTERIOR_SKINS, PALETTES } from '../renderer/interior/kit.js'
+import { WALLS, FLOORS, RUGS, ITEMS, MISC, SHADE_KIND, INTERIOR_SKINS, PALETTES } from '../renderer/interior/kit.js'
 
 const file = name => new URL(`../renderer/assets/tiles/${name}.png`, import.meta.url)
 
@@ -48,5 +48,23 @@ describe('interior tile kit', () => {
       if (item.on !== 'face' && item.on !== 'floor') assert.equal(item.tiles.length, 1, `${id}: a one-row face item`)
     }
     for (const [c, r] of Object.entries(RUGS)) { assert.equal(r.length, 3, c); assert.ok(r.every(row => row.length === 3), c) }
+  })
+})
+
+describe('furniture shading kinds', () => {
+  it('every item tile has a shade kind, flat things and the room itself have none', () => {
+    for (const [key, item] of Object.entries(ITEMS)) {
+      const flat = ['bedroll', 'bedroll2', 'rubble', 'bones', 'skull'].includes(key) || /^web/.test(key)
+      for (const name of item.tiles.flat()) {
+        if (flat) assert.equal(SHADE_KIND.get(name), undefined, name)
+        else assert.ok(['cast', 'rim'].includes(SHADE_KIND.get(name)), name)
+        if (item.dusty && !flat) assert.equal(SHADE_KIND.get(name + '_d'), SHADE_KIND.get(name), name + '_d')
+      }
+    }
+    assert.equal(SHADE_KIND.get(ITEMS.window.tiles[0][0]), 'rim')
+    assert.equal(SHADE_KIND.get(ITEMS.table.tiles[0][0]), 'cast')
+    assert.equal(SHADE_KIND.get(ITEMS.wardrobe.tiles[0][0]), 'rim', 'the upper tile of a face item')
+    assert.equal(SHADE_KIND.get(ITEMS.wardrobe.tiles[1][0]), 'cast', 'its foot')
+    for (const n of [MISC.doormat, MISC.void, FLOORS.planks[0], RUGS.red[0][0], WALLS.plaster.top[0]]) assert.equal(SHADE_KIND.get(n), undefined, n)
   })
 })

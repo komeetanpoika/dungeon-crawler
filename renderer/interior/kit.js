@@ -186,5 +186,21 @@ export const INTERIOR_SKINS = [...new Set([
   MISC.panel, MISC.nicheTop, MISC.nicheFloor, MISC.chestOpen,
 ])]
 
+// Which tiles get the furniture shading (render/interior-shade.js): 'cast'
+// stands on the floor and throws a shadow, 'rim' hangs on a wall and only gets
+// lit and shaded edges. Flat things lying on the floor (bedrolls, bones, webs)
+// and the room itself are absent.
+export const SHADE_LEVEL = 'subtle'
+const FLAT_ITEMS = new Set(['bedroll', 'bedroll2', 'rubble', 'bones', 'skull'])
+export const SHADE_KIND = new Map()
+for (const [key, item] of Object.entries(ITEMS)) {
+  if (FLAT_ITEMS.has(key) || /^web/.test(key)) continue
+  item.tiles.forEach((row, r) => row.forEach(name => {
+    const kind = item.on === 'faceUpper' || (item.on === 'face' && r === 0) ? 'rim' : 'cast'
+    if (!SHADE_KIND.has(name)) SHADE_KIND.set(name, kind)
+    if (item.dusty && !SHADE_KIND.has(`${name}_d`)) SHADE_KIND.set(`${name}_d`, SHADE_KIND.get(name))
+  }))
+}
+
 // The dusty twin of an item tile, when there is one.
 export const dusty = name => `${name}_d`

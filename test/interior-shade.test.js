@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { SHADE, rimShade, castShadow } from '../renderer/render/interior-shade.js'
+import { SHADE, rimShade, castShadow, shadeSprites } from '../renderer/render/interior-shade.js'
 
 // a w×h tile from rows of characters: '.' transparent, '#' outline (20,20,20), 'o' body (160,120,80)
 const tile = rows => {
@@ -44,4 +44,23 @@ test('the shadow is the silhouette moved down and right, split at the tile\'s lo
 test('a tile whose shadow stays inside has no part below', () => {
   const low = tile(['....', '.##.', '....', '....'])
   assert.equal(castShadow(low.a, 4, 4, SHADE.subtle).below, null)
+})
+
+// a fake canvas good enough for shadeSprites: getImageData / putImageData over an RGBA array
+const fakeCanvas = (w, h, data = new Uint8ClampedArray(w * h * 4)) => ({
+  width: w, height: h, data,
+  getContext() { const c = this; return { drawImage(src) { c.data.set(src.data) }, getImageData: () => ({ data: c.data, width: w, height: h }), putImageData(img) { c.data = img.data } } },
+})
+test('shadeSprites swaps the shaded tile in, adds the shadow parts, and does it once', () => {
+  const sprites = { in_table_l: fakeCanvas(6, 6, BOX.a.slice()), in_window: fakeCanvas(6, 6, BOX.a.slice()), in_floor_planks: fakeCanvas(6, 6, BOX.a.slice()) }
+  const kinds = new Map([['in_table_l', 'cast'], ['in_window', 'rim']])
+  const floor = sprites.in_floor_planks
+  assert.equal(shadeSprites(sprites, { kinds, level: SHADE.medium, makeCanvas: fakeCanvas }), 2)
+  assert.ok(sprites['in_table_l#cast'] && sprites['in_table_l#below'], 'a standing thing casts')
+  assert.equal(sprites['in_window#cast'], undefined, 'a window only gets its rim')
+  assert.ok(sprites.in_floor_planks === floor, 'the floor is not touched')
+  const once = sprites.in_table_l.data.slice()
+  assert.equal(shadeSprites(sprites, { kinds, level: SHADE.medium, makeCanvas: fakeCanvas }), 0, 'a second pass shades nothing')
+  assert.deepEqual(sprites.in_table_l.data, once)
+  assert.ok(!Object.keys(sprites).includes('__shaded'))
 })
