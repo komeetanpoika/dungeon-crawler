@@ -170,8 +170,12 @@ const outranks = (seed, a, b) => {
 
 const nameMemo = new Map()
 export function clearNameMemo() { nameMemo.clear() }
+// test hook: how many times a village name was asked for (hits and misses)
+let nameAsks = 0
+export const nameAskCount = () => nameAsks
 
 export function villageName(seed, wx, wy) {
+  nameAsks++
   if (wx === 0 && wy === 0) return 'Koivula'
   const key = `${seed},${wx},${wy}`
   let name = nameMemo.get(key)
@@ -184,7 +188,7 @@ export function villageName(seed, wx, wy) {
     if (v && !(v.wx === wx && v.wy === wy) && outranks(seed, v, me)) taken.add(villageName(seed, v.wx, v.wy))
   }
   name = nameCandidates(seed, wx, wy).find(n => !taken.has(n))
-  if (nameMemo.size > 2000) nameMemo.clear()
+  if (nameMemo.size > 20000) nameMemo.clear()
   nameMemo.set(key, name)
   return name
 }
@@ -213,7 +217,7 @@ export function villagesNear(seed, wx, wy, r) {
     for (let bx = Math.floor((wx - r) / 4); bx <= Math.floor((wx + r) / 4); bx++) {
       const v = blockVillage(seed, bx, by)
       if (!v || Math.max(Math.abs(v.wx - wx), Math.abs(v.wy - wy)) > r) continue
-      out.push({ ...v, name: villageName(seed, v.wx, v.wy) })
+      out.push({ ...v, get name() { return villageName(seed, v.wx, v.wy) } })
     }
   const d = v => Math.hypot(v.wx - wx, v.wy - wy)
   return out.sort((a, b) => d(a) - d(b))

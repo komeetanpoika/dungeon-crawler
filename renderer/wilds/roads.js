@@ -5,9 +5,11 @@
 //
 // Brickwork: every block's village is linked to the village of the block east
 // of it; in every row one block in three (and others with odds EXTRA_SOUTH) is
-// linked to the block south of it. Block (0,0) holds two towns, Koivula and the
-// city; a link into or out of it ends at whichever of Koivula and the city's
-// three land gates it reaches in fewest pieces.
+// linked to the block south of it. Koivula is an ordinary village of this
+// brickwork. Block (0,0) also holds the city, which has three roads: from its N
+// door to Koivula, and from its W and E doors to the villages of the blocks
+// beside the home block. The home block's own south link starts at Koivula or
+// at a city side door, whichever route is fewer pieces.
 import { hash, hashInt } from './rand.js'
 import { blockVillage, villageAt, pieceBiome, fixedMain, pieceKey } from './layout.js'
 import { isCityPiece, CITY } from './city/geometry.js'
@@ -19,13 +21,17 @@ export const CITY_DOORS = Object.freeze([
   Object.freeze({ gate: 'E', wx: 1, wy: 2, side: 'E' }),
 ])
 const CITY_TOWN = Object.freeze({ key: 'city', name: CITY.name, wx: 0, wy: 2 })
+
+// a town carries its name as a getter: working it out costs a lot of villages and almost nobody reads it
 const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
 const OPPOSITE = { N: 'S', E: 'W', S: 'N', W: 'E' }
 const mod = (n, m) => ((n % m) + m) % m
 const CACHE_MAX = 400
 // The search box is the two ends' bounding box grown by up to MAX_GROW pieces.
-// A link owned by block B (ends in B and the block east or south of it) then
-// lies within blocks B-1 .. B+2, so a piece sees every link that can cross it
+// A link owned by block B (one end in B, the other in the block east or south
+// of it; the city's west road, owned by (0,0), ends in the block to its west,
+// which is as near as a link can reach on that side) then lies within blocks
+// B-1 .. B+2, so a piece sees every link that can cross it
 // by gathering the blocks within GATHER of its own. Raise MAX_GROW and GATHER
 // follows; a link not routable within the cap is left out (the connectivity
 // and east-link tests would notice).
@@ -37,7 +43,7 @@ export function townOf(seed, key) {
   const [wx, wy] = String(key).split(',').map(Number)
   if (!Number.isInteger(wx) || !Number.isInteger(wy)) return null
   const v = villageAt(seed, wx, wy)
-  return v ? Object.freeze({ key: pieceKey(wx, wy), name: v.name, wx, wy }) : null
+  return v ? Object.freeze({ key: pieceKey(wx, wy), get name() { return villageAt(seed, wx, wy).name }, wx, wy }) : null
 }
 
 const blockTown = (seed, bx, by) => {

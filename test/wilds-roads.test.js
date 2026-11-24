@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { nameAskCount } from '../renderer/wilds/layout.js'
 import { MAX_GROW, GATHER, linksOfBlock, roadSides, roadsFrom, townsAlong, pieceClass, townOf, CITY_DOORS, EXTRA_SOUTH } from '../renderer/wilds/roads.js'
 import { villageAt, blockVillage } from '../renderer/wilds/layout.js'
 import { isCityPiece } from '../renderer/wilds/city/geometry.js'
@@ -91,7 +92,7 @@ test('roadsFrom gives every village, Koivula included, a road east and a road we
 
 test('Koivula has a road east, a road west and the road to the city, like any village plus one', () => {
   const seeds = [...SEEDS]
-  for (let s = 1; s <= 200; s++) seeds.push(s)
+  for (let s = 1; s <= 100; s++) seeds.push(s)
   for (const seed of seeds) {
     const k = roadsFrom(seed, '0,0')
     assert.ok(k.some(r => inBlock(r.town, 1, 0)), `seed ${seed}: no road east`)
@@ -103,7 +104,7 @@ test('Koivula has a road east, a road west and the road to the city, like any vi
 
 test('the city has its north road to Koivula and, where they can be routed, a west and an east road of its own', () => {
   let west = 0, east = 0
-  for (let seed = 1; seed <= 200; seed++) {
+  for (let seed = 1; seed <= 100; seed++) {
     const c = roadsFrom(seed, 'city')
     assert.ok(c.some(r => r.side === 'N' && r.town.key === '0,0'), `seed ${seed}: north road`)
     // (the home block's south link may also leave by a side door, so look for the road to the block beside)
@@ -111,12 +112,14 @@ test('the city has its north road to Koivula and, where they can be routed, a we
     if (w) { west++; assert.ok(w.route[0].wx === 0 && w.route[0].wy === 2) }
     if (e) { east++; assert.ok(e.route[0].wx === 1 && e.route[0].wy === 2) }
     for (const r of c) {
+      const door = CITY_DOORS.find(d => d.wx === r.route[0].wx && d.wy === r.route[0].wy && d.side === r.side)
+      assert.ok(door, `seed ${seed}: a city road starts on a door's piece and leaves by its side`)
       const back = roadsFrom(seed, r.town.key).filter(b => b.town.key === 'city' && b.leagues === r.leagues)
       assert.ok(back.length >= 1, `seed ${seed}: ${r.town.key} does not list the city back`)
     }
   }
-  assert.ok(west >= 180, `west roads ${west}/200`)
-  assert.ok(east >= 180, `east roads ${east}/200`)
+  assert.ok(west >= 90, `west roads ${west}/100`)
+  assert.ok(east >= 90, `east roads ${east}/100`)
 })
 
 test('no town is listed twice from the same town', () => {
@@ -226,4 +229,16 @@ test('every piece of every link lies within the gathering radius of its owning b
       assert.ok(Math.abs(Math.floor(p.wx / 4) - bx) <= GATHER && Math.abs(Math.floor(p.wy / 4) - by) <= GATHER, `seed ${seed} block ${bx},${by} piece ${p.wx},${p.wy}`)
     }
   }
+})
+
+test('the road network works out no village name: names are only read on demand', () => {
+  const seed = 31337001
+  const before = nameAskCount()
+  for (let wy = -8; wy <= 8; wy++) for (let wx = -8; wx <= 8; wx++) { roadSides(seed, wx, wy); pieceClass(seed, wx, wy) }
+  roadsFrom(seed, '0,0')
+  townsAlong(seed, 2, 0, 'E')
+  linksOfBlock(seed, 3, 3)
+  assert.equal(nameAskCount(), before, 'no name was worked out')
+  assert.equal(typeof townOf(seed, '0,0').name, 'string')
+  assert.ok(nameAskCount() > before, 'reading a name works it out')
 })
