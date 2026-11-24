@@ -305,6 +305,36 @@ test('the three passes draw the town\'s small life, only on screen', async () =>
   assert.ok(drawn.every(d => d.x > -2 * S && d.x < W + S && d.y > -2 * S && d.y < H + S), 'nothing drawn off the screen')
 })
 
+// A pennant on a tower's cap stands on a cell that is walked under
+// (wilds/over.js): it is drawn with that cell's art, over the people.
+test('what flies from a walked-under cell is drawn over the people, the rest under them', async () => {
+  const { drawCityGround, drawCityOver } = await import('../renderer/render/city-fx.js')
+  const { computePlayerFOV } = await import('../renderer/systems/entities.js')
+  const ctx0 = setup({ at: { X: 80 + OX, Y: 26 + OY }, frac: 0.5 })   // just inside the north gate
+  const { state } = ctx0
+  run(ctx0, 1)
+  computePlayerFOV(state.map, state.player, 40, { los: false })
+  const W = 1024, H = 693
+  const camX = state.player.px - W / 2, camY = state.player.py - H / 2
+  const record = () => {
+    const drawn = []
+    const ctx = new Proxy({ globalAlpha: 1 }, {
+      get(t, k) { if (k in t) return t[k]; return k === 'drawImage' ? (img, x, y) => drawn.push({ name: img.name, cell: state.map[Math.round((y + camY) / S)]?.[Math.round((x + camX) / S)] }) : () => {} },
+      set(t, k, v) { t[k] = v; return true },
+    })
+    return { ctx, drawn }
+  }
+  const img = {}
+  const sprites = new Proxy({}, { get: (_, k) => typeof k === 'string' ? (img[k] ??= { name: k }) : undefined })
+  const ground = record(), over = record()
+  drawCityGround(ground.ctx, state, sprites, camX, camY, S, W, H)
+  drawCityOver(over.ctx, state, sprites, camX, camY, S, W, H)
+  const flags = d => CASTLE.pennant.includes(d.name) || CASTLE.banner.includes(d.name)
+  assert.ok(over.drawn.length >= 2, `the gate towers' pennants: ${over.drawn.length}`)
+  assert.ok(over.drawn.every(d => flags(d) && d.cell?.over === true), 'only what stands on a walked-under cell')
+  assert.ok(ground.drawn.filter(flags).every(d => !d.cell?.over), 'and none of those under the people')
+})
+
 // Indoors the game's state is the cave state, which carries the surface's
 // city run along (systems/cave.js copies the surface) on the house's own map:
 // nothing of the street may be drawn over it, lit in it, or swapped in it.
@@ -495,10 +525,12 @@ test('at night the portcullis comes down, never while the player is in the castl
   const ctx = setup({ at: GATE_FRONT, frac: 0.5 })
   const { state } = ctx, gate = gateOf(ctx)
   assert.ok(gate.open(), 'open by day')
+  assert.ok(gate.cells().every(g => g.c.over === true), 'its arch is drawn over whoever walks through')
   takeDirtyTiles(state.map)
   ctx.T.clock = 0.83 * DAY_LENGTH
   run(ctx, DT)
   assert.ok(gate.shut(), 'down at night with the player outside')
+  assert.ok(gate.cells().every(g => g.c.over === true), 'still drawn over the people (wilds/over.js)')
   assert.equal(marked(state.map, gate.cells()), 6, 'its six cells laid again on the baked layer')
   run(ctx, 2)
   assert.equal(marked(state.map, gate.cells()), 0, 'and nothing laid again while it stays down')
