@@ -16,6 +16,10 @@
 // gate's arch) are baked in two parts: their ground with the rest, and what
 // stands on them into a second image of the chunk, its `top`, which
 // drawOver blits after the people. A chunk without such a cell has no top.
+// Only the strips of the top that hold anything are blitted (`top.rects`, one
+// per run of such cells along a row): a roof's first row is a few cells of a
+// chunk, and a blit of the whole see-through image cost a street of houses a
+// fifth of its frames on the software canvas.
 // Their fog is laid in drawOver too, once over ground and top together.
 import { TILE } from '../systems/entities.js'
 import { takeDirtyTiles } from '../systems/tile-dirty.js'
@@ -107,7 +111,14 @@ function bakeTop(chunk, tops, S, sprites, createCanvas) {
   }
   top.ctx.imageSmoothingEnabled = false
   top.ctx.clearRect(0, 0, CHUNK * S, CHUNK * S)
-  for (let i = 0; i < tops.length; i += 3) drawTile(top.ctx, tops[i + 2].tile, tops[i] * S, tops[i + 1] * S, S, sprites, tops[i + 2], 'over')
+  // (the cells come row by row, west to east: a run is cells side by side)
+  const rects = top.rects = []
+  for (let i = 0; i < tops.length; i += 3) {
+    const c = tops[i], r = tops[i + 1], last = rects.at(-1)
+    drawTile(top.ctx, tops[i + 2].tile, c * S, r * S, S, sprites, tops[i + 2], 'over')
+    if (last && last.y === r * S && last.x + last.w === c * S) last.w += S
+    else rects.push({ x: c * S, y: r * S, w: S, h: S })
+  }
   top.explored = chunk.explored   // (what its trip colour is checked against)
   top.huedAt = -1
 }
@@ -257,7 +268,8 @@ export function makeTileLayer(createCanvas) {
           const img = hue > 0
             ? tripColour(top, hue, sat, CS, createCanvas, { left: chunk.hued && chunk.hueStep === step && chunk.huedAt === chunk.explored ? 1 : 0 })
             : dropColour(top)
-          ctx.drawImage(img, Math.round(cx * CS - camX), Math.round(cy * CS - camY))
+          const ox = Math.round(cx * CS - camX), oy = Math.round(cy * CS - camY)
+          for (const r of top.rects) ctx.drawImage(img, r.x, r.y, r.w, r.h, ox + r.x, oy + r.y, r.w, r.h)
         }
       }
       if (any) drawFogRuns(ctx, map, S, camX, camY, viewCells(map, S, camX, camY, W, H), fogAlpha, true)

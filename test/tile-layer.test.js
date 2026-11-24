@@ -280,7 +280,20 @@ describe('tile layer tops', () => {
     assert.deepEqual(blits(chunk.top.ctx)[0].a.slice(0, 2), [2 * S, 1 * S])
     assert.equal(blits(ctx).length, 2, 'draw blits the ground only')
     assert.deepEqual(imgs(over), [chunk.top.canvas])
-    assert.deepEqual(blits(over)[0].a.slice(0, 2), [0, 0])
+    assert.deepEqual(blits(over)[0].a, [2 * S, S, S, S, 2 * S, S, S, S], 'only the strip that holds the roof')
+  })
+
+  it('blits a top as one strip per run of cells along a row, at the camera\'s offset', () => {
+    const { layer, map } = setup()
+    for (const [x, y] of [[1, 1], [2, 1], [3, 1], [1, 2], [4, 2]]) roofAt(map, x, y)
+    layer.draw(recordingCtx(), map, TOP, S, 5, 7, 640, 480, 0.65)
+    const over = recordingCtx()
+    layer.drawOver(over, map, TOP, S, 5, 7, 640, 480, 0.65)
+    assert.deepEqual(blits(over).map(b => b.a), [
+      [S, S, 3 * S, S, S - 5, S - 7, 3 * S, S],
+      [S, 2 * S, S, S, S - 5, 2 * S - 7, S, S],
+      [4 * S, 2 * S, S, S, 4 * S - 5, 2 * S - 7, S, S],
+    ])
   })
 
   it('keeps no second image for a chunk without one, and drawOver draws nothing', () => {
