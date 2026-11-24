@@ -45,6 +45,7 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
+import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
@@ -534,9 +535,11 @@ function npcStruck(e, alive = e.hp > 0, source = 'player') {
   if (alive && !NPC_SPECIES[e.species]?.walker) sfx(state, 'npc-hurt', { px: e.px, py: e.py })
   if (!alive) {
     const contents = rollNpcDrop(e)
+    // (what falls under a roof's edge lands beside it, in sight: wilds/over.js)
+    const at = clearOfTops(state.map, e.x, e.y)
     if (contents) pendingDrops.push({
-      type: 'floating_item', contents, x: e.x, y: e.y,
-      startPx: e.px, startPy: e.py, targetPx: e.x * TILE_SIZE + TILE_SIZE / 2, targetPy: e.y * TILE_SIZE + TILE_SIZE / 2,
+      type: 'floating_item', contents, x: at.x, y: at.y,
+      startPx: e.px, startPy: e.py, targetPx: at.x * TILE_SIZE + TILE_SIZE / 2, targetPy: at.y * TILE_SIZE + TILE_SIZE / 2,
       px: e.px, py: e.py, progress: 0, duration: 0.3,
     })
   }
@@ -1541,7 +1544,7 @@ function useInventoryItem(i) {
 function freeAdjacentTile(x, y) {
   const { map } = state
   return [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({ x: x+dx, y: y+dy }))
-    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !state.entities.some(e => e.x===t.x && e.y===t.y)) ?? null
+    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !map[t.y][t.x].over && !state.entities.some(e => e.x===t.x && e.y===t.y)) ?? null
 }
 
 // An outfit landing next to a fallen boss (or on the tile itself when nothing

@@ -30,11 +30,13 @@ export function spendLumber(player, fuel = 'lumber', count = CAMPFIRE_COST) {
   })
 }
 
-// First free orthogonal walkable tile — the same search item drops use.
+// First free orthogonal walkable tile — the same search item drops use. Never
+// one that is walked under (wilds/over.js): a fire under a roof's edge would
+// burn out of sight.
 export function buildSpot(map, entities, player) {
   return [[-1, 0], [1, 0], [0, -1], [0, 1]]
     .map(([dx, dy]) => ({ x: player.x + dx, y: player.y + dy }))
-    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !entities.some(e => occupiesCell(e) && e.x === t.x && e.y === t.y)) ?? null
+    .find(t => isWalkable(map[t.y]?.[t.x]?.tile, map[t.y]?.[t.x]) && !map[t.y][t.x].over && !entities.some(e => occupiesCell(e) && e.x === t.x && e.y === t.y)) ?? null
 }
 
 // `eternal` fires (the blue village hearths) never burn out, are always
