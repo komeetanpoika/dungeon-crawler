@@ -148,7 +148,7 @@ function villageName(seed, wx, wy) {
 }
 
 // The one village of the 4x4 block of pieces (bx, by).
-function blockVillage(seed, bx, by) {
+export function blockVillage(seed, bx, by) {
   if (bx === 0 && by === 0) return { wx: 0, wy: 0 }
   let i = hashInt(seed, bx, by, 310) % 16
   for (let n = 0; n < 16; n++, i = (i + 1) % 16) {
