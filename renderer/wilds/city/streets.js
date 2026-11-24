@@ -11,7 +11,7 @@
 // MAX_LEG tiles at most, each leg a straight line (orthogonal or diagonal)
 // over lane cells.
 import { isWalkable } from '../../systems/entities.js'
-import { isGate } from '../over.js'
+import { isTop } from '../over.js'
 
 const N = 160
 const MAX_LEG = 6
@@ -34,7 +34,7 @@ export function buildStreetGraph(city) {
     if (!isWalkable(c.tile, c)) continue
     // the row under a roof's or a wall's top (over.js) is no street: the town
     // keeps to the ways it had (a gate's arch is `over` too, and is one)
-    if (c.over && !isGate(c.overlay)) continue
+    if (isTop(c)) continue
     walk[idx(x, y)] = 1
     if (isLaneCell(c) && !doorAt.has(idx(x, y))) lane[idx(x, y)] = 1
   }

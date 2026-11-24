@@ -55,6 +55,7 @@ import { PIECE } from '../layout.js'
 import { TILE } from '../../systems/entities.js'
 import { speakFrom, BUBBLE_DUR } from '../../systems/feedback.js'
 import { isWarded } from '../../systems/ward.js'
+import { isTop } from '../over.js'
 import { DAY_LENGTH } from '../../data/weather.js'
 import {
   FAR_SPEED, cityCtx, makeWalker, setEntry, routeWalker, placeByClock, stepFar, advance, lastWaypoint,
@@ -502,7 +503,7 @@ function near(state, run, w, dt, ox, oy) {
     if (w.side) {
       const p = w.path[w.wi - w.dir] ?? q
       const dx = Math.sign(q.x - p.x), dy = Math.sign(q.y - p.y)
-      if (walkable(state.map, nx - dy, ny + dx)) { nx -= dy; ny += dx }
+      if (standable(state.map, nx - dy, ny + dx)) { nx -= dy; ny += dx }
     }
     return { nx, ny }
   }
@@ -549,6 +550,8 @@ function modes(state, world, run, hooks) {
 }
 
 const walkable = (map, x, y) => map[y]?.[x]?.tile === TILE.FLOOR
+// ... and a place to stand or step to: not under a roof's or a wall's top (wilds/over.js)
+const standable = (map, x, y) => walkable(map, x, y) && !isTop(map[y][x])
 function spawn(state, run, w, hooks, ox, oy) {
   let x = Math.round(w.X) - ox, y = Math.round(w.Y) - oy
   let fx = w.X - ox, fy = w.Y - oy
@@ -556,7 +559,7 @@ function spawn(state, run, w, hooks, ox, oy) {
   if (!walkable(state.map, x, y)) {
     let found = null
     for (let r = 1; r <= 2 && !found; r++) for (let dy = -r; dy <= r && !found; dy++) for (let dx = -r; dx <= r; dx++) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) === r && walkable(state.map, x + dx, y + dy)) { found = { x: x + dx, y: y + dy }; break }
+      if (Math.max(Math.abs(dx), Math.abs(dy)) === r && standable(state.map, x + dx, y + dy)) { found = { x: x + dx, y: y + dy }; break }
     }
     if (!found) return   // walled in: stays far this frame
     x = found.x; y = found.y; fx = x; fy = y
@@ -625,7 +628,7 @@ function stepBack(map, x, y, dx, dy) {
   const tries = [[dx, dy], [dx, 0], [0, dy]].filter(([a, b]) => a || b)
   for (const n of [2, 1]) for (const [a, b] of tries) {
     let ok = true
-    for (let k = 1; k <= n && ok; k++) ok = walkable(map, x + a * k, y + b * k)
+    for (let k = 1; k <= n && ok; k++) ok = standable(map, x + a * k, y + b * k)
     if (ok) return { x: x + a * n, y: y + b * n }
   }
   return null

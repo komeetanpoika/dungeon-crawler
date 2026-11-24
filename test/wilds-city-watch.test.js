@@ -462,3 +462,36 @@ test('a patrolman whose partner does not come walks on alone', () => withRandom(
   } })
   assert.ok(walked >= 6, `he went on (${walked.toFixed(1)} tiles in the last 10 s)`)
 }))
+
+// The partner walks a step to the right of the route. Where that step is a
+// cell that is walked under (wilds/over.js: along the street inside the north
+// wall it is the first row of the houses' roofs) he falls in behind instead.
+test('a patrolman\'s partner does not step aside under a roof', async () => withRandom(1, async () => {
+  const { isTop } = await import('../renderer/wilds/over.js')
+  const { ctx, path, ents } = patrolPair()
+  const { state, world } = ctx
+  // the cells either side of the route, as if roofs' first rows ran along it
+  const marked = []
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i], n = Math.max(Math.abs(b.X - a.X), Math.abs(b.Y - a.Y))
+    const dx = Math.sign(b.X - a.X), dy = Math.sign(b.Y - a.Y)
+    for (let k = 0; k <= n; k++) for (const s of [-1, 1]) {
+      const { x, y } = toWindow(world.origin, a.X + dx * k - dy * s, a.Y + dy * k + dx * s)
+      const c = state.map[y]?.[x]
+      if (c?.tile === TILE.FLOOR && !c.over) { c.over = true; marked.push(c) }
+    }
+  }
+  assert.ok(marked.length > 20 && marked.every(isTop))
+  let frames = 0, under = 0, walked = 0, last = entityWorld(world, ents()[0])
+  run(ctx, 12, { each: () => {
+    const [a, b] = ents()
+    frames++
+    if (isTop(state.map[a.y][a.x]) || isTop(state.map[b.y][b.x])) under++
+    const pa = entityWorld(world, a)
+    walked += cheb(pa, last)
+    last = pa
+  } })
+  for (const c of marked) delete c.over
+  assert.ok(under / frames < 0.1, `neither walks under a roof (${under} of ${frames} frames)`)
+  assert.ok(walked >= 15, `and they still walk their route (${walked.toFixed(1)} tiles)`)
+}))

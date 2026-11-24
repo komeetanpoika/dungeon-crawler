@@ -22,7 +22,7 @@ function drawOverlay(ctx, tileObj, px, py, S, sprites) {
 export function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null, part = 'all') {
   if (part !== 'all') {
     if (part === 'over') { if (tileObj?.over) drawOverlay(ctx, tileObj, px, py, S, sprites); return }
-    if (tileObj?.over) { if (sprites[tileObj.skin]) ctx.drawImage(sprites[tileObj.skin], px, py, S, S); return }
+    if (tileObj?.over) { const g = sprites[tileObj.skin] ?? sprites.floor; if (g) ctx.drawImage(g, px, py, S, S); return }
   }
   if (tileId === TILE.STAIR) {
     const w   = tileObj?.stairWidth ?? 1

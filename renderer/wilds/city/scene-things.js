@@ -4,6 +4,7 @@
 // them. Plain data on the run in world tiles (the shapes are in scenes.js's
 // header) for the drawing and the sound to read. DOM-free; pure in the city,
 // the seed, the day and the clock.
+import { isTop } from '../over.js'
 import { hash, hashInt } from '../rand.js'
 import { DAY } from './schedule.js'
 import { PLAN } from './plan.js'
@@ -29,7 +30,9 @@ export const TURNIP_FLIGHT = 0.6   // s a turnip is in the air
 export const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by))
 export const toWorld = t => ({ X: t.x + OX, Y: t.y + OY })
 // a window cell one can walk on, by world tile
-export const walkableAt = (c, X, Y) => c.state.map[Math.round(Y) - c.oy]?.[Math.round(X) - c.ox]?.tile === TILE.FLOOR
+// a cell to stand on or run to: floor, and not under a roof's or a wall's top (wilds/over.js)
+const standable = cell => cell?.tile === TILE.FLOOR && !isTop(cell)
+export const walkableAt = (c, X, Y) => standable(c.state.map[Math.round(Y) - c.oy]?.[Math.round(X) - c.ox])
 export const entityW = (c, e) => ({ X: e.px / S - 0.5 + c.ox, Y: e.py / S - 0.5 + c.oy })
 
 // What the scenes need of a city, found once: the square's open cells (where
@@ -131,7 +134,7 @@ export function fleeTile(c, e, it, mid) {
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
     for (const n of [3, 2]) {
       const x = e.x + dx * n, y = e.y + dy * n
-      if (Math.max(Math.abs(x - box.x), Math.abs(y - box.y)) > TAG_BOX || c.state.map[y]?.[x]?.tile !== TILE.FLOOR) continue
+      if (Math.max(Math.abs(x - box.x), Math.abs(y - box.y)) > TAG_BOX || !standable(c.state.map[y]?.[x])) continue
       const d = Math.max(Math.abs(x - it.x), Math.abs(y - it.y))
       if (d > bd) { best = { x, y }; bd = d }
       break

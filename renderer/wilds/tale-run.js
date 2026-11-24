@@ -268,7 +268,8 @@ function pay(state, world, vKey, run, hooks) {
   const spots = []
   for (let r = 1; r <= 2 && spots.length < 2; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || spots.length >= 2) continue
-    if (state.map[player.y + dy]?.[player.x + dx]?.tile === TILE.FLOOR) spots.push({ x: player.x + dx, y: player.y + dy })
+    const c = state.map[player.y + dy]?.[player.x + dx]
+    if (c?.tile === TILE.FLOOR && !c.over) spots.push({ x: player.x + dx, y: player.y + dy })   // (never under a roof's edge: wilds/over.js)
   }
   run.ctx.spawn(spots.map(at => ({ kind: 'floating_pickup', contents: hooks.rollLoot(village.lootDepth), ...at })))
   queueToast(state, { title: village.village?.name ?? run.tale.title, lines: ['The village pays what it can.', 'Take it.'] })

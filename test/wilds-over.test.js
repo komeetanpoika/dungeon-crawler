@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { isStructure, isGate, openTops, clearOfTops } from '../renderer/wilds/over.js'
+import { isStructure, isGate, isTop, openTops, clearOfTops } from '../renderer/wilds/over.js'
 import { cellOf } from '../renderer/wilds/piece.js'
 import { TILE } from '../renderer/systems/entities.js'
 
@@ -139,7 +139,52 @@ describe('opening the top row', () => {
   })
 })
 
+describe('gates', () => {
+  it('a tower south of a gate down the wall line keeps its cap shut: no way round the gate', () => {
+    // a side gate: three cells down a north-south wall, a tower's cap row under it
+    const cells = grid([
+      '...C...',
+      '...G...',
+      '...G...',
+      '...G...',
+      '..CCC..',
+      '..CCC..',
+      '...C...',
+    ])
+    openTops(cells)
+    assert.deepEqual(shape(cells).slice(4), ['..o#o..', '..###..', '...#...'])
+    // with the gate shut, west and east are apart
+    for (const y of [1, 2, 3]) cells[y][3].tile = TILE.WALL
+    assert.ok(!flood(cells, 0, 3).has('6,3'))
+  })
+  it('regions are counted with the gates shut: a walk that would join inside and outside stays shut', () => {
+    // outside north, inside south, joined only by the gate at the east end;
+    // the west run's last cell has outside above it and inside east of it
+    const cells = grid([
+      '.......',
+      '...CCCG',
+      '...FFFG',
+      'CCC....',
+      'FFF....',
+      '.......',
+    ])
+    openTops(cells)
+    assert.deepEqual(shape(cells), ['.......', '...oooo', '...###o', 'oo#....', '###....', '.......'])
+    for (const row of cells) for (const c of row) if (isGate(c.overlay)) c.tile = TILE.WALL
+    const out = flood(cells, 0, 0)
+    assert.ok(!out.has('0,5') && !out.has('3,3'), 'no way in but the gate')
+  })
+})
+
 describe('clear of the tops', () => {
+  it('goes by foot, not as the crow flies: never to the far side of the building', () => {
+    // a top whose north is a tree: the nearest open cell by distance is south of the house
+    const cells = grid(['TTTTT', 'TRRRT', '.WWW.', '.....'])
+    for (const c of cells[1]) if (c.overlay === 'ow_roof_red_m') { c.tile = TILE.FLOOR; c.over = true }
+    assert.deepEqual(clearOfTops(cells, 2, 1), { x: 2, y: 1 }, 'nowhere to go on foot: it stays')
+    cells[1][0] = LEGEND['.']()
+    assert.deepEqual(clearOfTops(cells, 2, 1), { x: 0, y: 1 })
+  })
   it('a cell under a top gives the nearest open cell that is not', () => {
     const cells = grid(['.....', '.RRR.', '.RRR.', '.WWW.', '.....'])
     openTops(cells)
@@ -252,6 +297,21 @@ describe('Kalevanlinna', () => {
       assert.ok(!insideWalls(x, y), `${x},${y} is inside the walls`)
       assert.ok(was[y * N + x] === 1 || city.cells[y][x].over, `${x},${y} became reachable from outside`)
     }
+  })
+
+  it('with its gates shut, there is no way through the wall', () => {
+    const shut = c => c.tile === TILE.FLOOR && !isGate(c.overlay) && !isGate(c.deco)
+    const from = { x: PLAN.gates.N.x, y: 2 }
+    const seen = floodAll(city.cells, from, shut)
+    let outside = 0
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      if (!seen[y * N + x]) continue
+      outside++
+      assert.ok(!insideWalls(x, y), `${x},${y} is inside the walls`)
+    }
+    assert.ok(outside > 3000, `the country round the town: ${outside} cells`)
+    // and the patrols' side cells are not under a roof (runtime.js steps the partner one to the right)
+    assert.ok(city.cells.flat().some(c => isTop(c)) && city.cells.flat().filter(c => c.over && !isTop(c)).length >= 24)
   })
 
   it('joins nothing on foot either, and lays the same doors, spots and streets', () => {

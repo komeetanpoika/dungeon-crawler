@@ -350,20 +350,25 @@ describe('tile layer tops', () => {
     assert.ok(layer.chunks.size <= MAX_CHUNKS / 2)
   })
 
-  it('turns colour with the ground in a trip, within the frame\'s budget', () => {
+  it('turns colour in a trip in the same frame as its chunk\'s ground', () => {
     const layer = makeTileLayer(fakeCanvas)
     const map = floorMap()
     explore(map, 0, 0, 40, 20)
     roofAt(map, 2, 1)
-    const built = () => [...layer.chunks.values()].flatMap(c => [c.hued, c.top?.hued]).filter(Boolean).length
-    frame(layer, map, 90)
-    assert.equal(built(), HUE_BUDGET, 'ground and tops share the budget')
-    for (let i = 0; i < 4; i++) frame(layer, map, 90)
-    const chunk = layer.chunks.get('0,0')
-    assert.ok(chunk.top.hued && chunk.top.hueStep === chunk.hueStep)
-    assert.deepEqual(imgs(frame(layer, map, 90).over), [chunk.top.hued])
+    const chunk = layer.chunks.get.bind(layer.chunks)
+    for (let i = 0; i < 5; i++) {
+      frame(layer, map, 90)
+      assert.equal(!!chunk('0,0').top.hued, !!chunk('0,0').hued, `frame ${i}: the roof is never two colours`)
+      assert.ok([...layer.chunks.values()].filter(c => c.hued).length <= HUE_BUDGET * (i + 1), 'the ground keeps to its budget')
+    }
+    const c = chunk('0,0')
+    assert.ok(c.top.hued && c.top.hueStep === c.hueStep)
+    assert.deepEqual(imgs(frame(layer, map, 90).over), [c.top.hued])
+    // the hue moves a step: the top keeps its old colour until the ground has the new one
+    frame(layer, map, 120)
+    assert.equal(c.top.hueStep, c.hueStep)
     frame(layer, map, 0)
-    assert.equal(chunk.top.hued, null)
+    assert.equal(c.top.hued, null)
   })
 })
 

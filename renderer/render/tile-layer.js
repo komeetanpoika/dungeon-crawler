@@ -190,7 +190,7 @@ export function makeTileLayer(createCanvas) {
           if (chunk) chunk.explored = -1   // keep the canvas, force a rebake
         }
       }
-      const budget = layer.budget = { left: HUE_BUDGET }   // (drawOver spends what is left of it)
+      const budget = { left: HUE_BUDGET }
       const CS = CHUNK * S
       const cx0 = Math.max(0, Math.floor(camX / CS))
       const cx1 = Math.min(Math.ceil(map[0].length / CHUNK), Math.ceil((camX + W) / CS))
@@ -240,8 +240,10 @@ export function makeTileLayer(createCanvas) {
     // just baked (call it after draw, in the same frame), then their fog.
     drawOver(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
       if (map !== layer.map) return
-      const budget = layer.budget ?? { left: 0 }
       const CS = CHUNK * S
+      // in a trip a top turns colour in the frame its chunk's ground does (so
+      // a roof is never two colours), and waits with it otherwise
+      const step = Math.round(hue / STEP_DEG) % HUE_STEPS
       const cx0 = Math.max(0, Math.floor(camX / CS))
       const cx1 = Math.min(Math.ceil(map[0].length / CHUNK), Math.ceil((camX + W) / CS))
       const cy0 = Math.max(0, Math.floor(camY / CS))
@@ -249,11 +251,11 @@ export function makeTileLayer(createCanvas) {
       let any = false
       for (let cy = cy0; cy < cy1; cy++) {
         for (let cx = cx0; cx < cx1; cx++) {
-          const top = layer.chunks.get(`${cx},${cy}`)?.top
+          const chunk = layer.chunks.get(`${cx},${cy}`), top = chunk?.top
           if (!top) continue
           any = true
           const img = hue > 0
-            ? tripColour(top, hue, sat, CS, createCanvas, budget)
+            ? tripColour(top, hue, sat, CS, createCanvas, { left: chunk.hued && chunk.hueStep === step && chunk.huedAt === chunk.explored ? 1 : 0 })
             : dropColour(top)
           ctx.drawImage(img, Math.round(cx * CS - camX), Math.round(cy * CS - camY))
         }
