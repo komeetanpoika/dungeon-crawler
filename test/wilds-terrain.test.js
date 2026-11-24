@@ -262,26 +262,53 @@ test('t.road lays ROAD_WIDTH-wide road ground, deck over water, and reports it t
       t.road(40, 40, to.x, to.y)
       t.finish()
       const at = (x, y) => `${w} wide, ${country} ${p.wx},${p.wy} seed ${seed} at ${x},${y}`
-      let n = 0
+      let n = 0, off = 0
       for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+        const s = skinsOf(t, x, y)
+        // nothing else is laid here, so inside the piece a cell is on the road
+        // exactly when it wears the road's ground or the deck it laid
+        if (t.inside(x, y) && !t.onRoad(x, y)) { off++; assert.ok(!isRoad(s.ground) && !isDeckSkin(s.prop), `${at(x, y)}: ${s.ground} / ${s.prop} off the road`) }
         if (!t.onRoad(x, y)) continue
         n++
-        const s = skinsOf(t, x, y)
         assert.ok(t.onPath(x, y) && t.inside(x, y) && t.walkable(x, y), at(x, y))
         if (isDeckSkin(s.prop)) { decks++; continue }
         const m = /^ow_road_([a-z]+)_\d$/.exec(s.ground)
         assert.ok(m && SET[t.biome(x, y)].includes(m[1]), `${at(x, y)}: ${s.ground} in ${t.biome(x, y)}`)
       }
-      assert.ok(n > 0)
+      assert.ok(n > 0 && off > 0)
       // every column the road crosses holds a full road's width of it
       for (let x = FRAME; x < PIECE - FRAME; x++) {
         let col = 0
         for (let y = 0; y < PIECE; y++) if (t.onRoad(x, y)) col++
         assert.ok(col >= w, `${at(x, '*')}: ${col} road cells in the column`)
       }
-      assert.equal(t.onRoad(40, 3), false, 'a cell off the road')
     }
     assert.ok(decks > 0, 'no road crossed water on a deck')
+  })
+})
+
+// Found in review: a step held inside at a border still laid part of its
+// square in the frame, so the road thinned to a lane or two there.
+test('a road keeps its full width along every border of the interior, three or four wide', () => {
+  const IN0 = FRAME, IN1 = PIECE - 1 - FRAME
+  // along each border's last interior line, and wandering a few cells off it
+  const ROUTES = {
+    N: [[IN0, IN0, IN1, IN0], [IN0, IN0 + 3, IN1, IN0 + 7]],
+    S: [[IN0, IN1, IN1, IN1], [IN0, IN1 - 3, IN1, IN1 - 7]],
+    W: [[IN0, IN0, IN0, IN1], [IN0 + 3, IN0, IN0 + 7, IN1]],
+    E: [[IN1, IN0, IN1, IN1], [IN1 - 3, IN0, IN1 - 7, IN1]],
+  }
+  for (const w of [3, 4]) withRoadWidth(w, () => {
+    for (const seed of SEEDS) for (const deal of [0, 2]) for (const [side, routes] of Object.entries(ROUTES)) for (const [x0, y0, x1, y1] of routes) {
+      const t = makeTerrain(seed, 5, 5, deal)
+      t.road(x0, y0, x1, y1)
+      const eastWest = side === 'N' || side === 'S'   // count every column it crosses, else every row
+      for (let a = IN0; a <= IN1; a++) {
+        let k = 0
+        for (let c = 0; c < PIECE; c++) if (eastWest ? t.onRoad(a, c) : t.onRoad(c, a)) k++
+        assert.ok(k >= w, `${w} wide, seed ${seed} deal ${deal}, along the ${side} border (${x0},${y0} to ${x1},${y1}): ${k} road cells in ${eastWest ? 'column' : 'row'} ${a}`)
+      }
+    }
   })
 })
 

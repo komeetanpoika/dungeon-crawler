@@ -396,11 +396,19 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   }
   const clampIn = v => Math.max(FRAME, Math.min(PIECE - 1 - FRAME, v))
   // A gently wandering path between two interior cells: at each step a
-  // width x width square of path cells, `lo` from the step's cell.
+  // width x width square of path cells, `lo` from the step's cell. A road's
+  // step is held where its whole square stays inside, so the road keeps its
+  // width along a border; a path's keeps the old rule (clampIn), and with it
+  // every piece laid before roads.
   const wander = (x0, y0, x1, y1, width, lo, road) => {
+    const hold = road ? v => Math.max(FRAME - lo, Math.min(PIECE - FRAME - width - lo, v)) : clampIn
     const dx = x1 - x0, dy = y1 - y0
     const len = Math.hypot(dx, dy)
-    if (len < 1) { for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) pathCell(x0 + lo + a, y0 + lo + c, PIER.h, road); return }
+    if (len < 1) {
+      const sx = road ? hold(x0) : x0, sy = road ? hold(y0) : y0
+      for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) pathCell(sx + lo + a, sy + lo + c, PIER.h, road)
+      return
+    }
     const nx = -dy / len, ny = dx / len
     const s1 = (hash(dealSeed, x0 * 131 + x1, y0 * 131 + y1, 60) - 0.5) * 2
     const s2 = (hash(dealSeed, x0 * 131 + x1, y0 * 131 + y1, 61) - 0.5) * 2
@@ -412,7 +420,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       const off = amp * (s1 * Math.sin(Math.PI * t) + 0.5 * s2 * Math.sin(2 * Math.PI * t))
       // a bulge that would leave the interior slides along its edge instead,
       // so the path never breaks
-      const px = clampIn(Math.round(x0 + dx * t + nx * off)), py = clampIn(Math.round(y0 + dy * t + ny * off))
+      const px = hold(Math.round(x0 + dx * t + nx * off)), py = hold(Math.round(y0 + dy * t + ny * off))
       for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) pathCell(px + lo + a, py + lo + c, pier, road)
     }
   }
