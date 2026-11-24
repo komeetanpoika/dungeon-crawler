@@ -148,3 +148,119 @@ describe('clear of the tops', () => {
     assert.deepEqual(clearOfTops(cells, 9, 9), { x: 9, y: 9 })
   })
 })
+
+// ---- the real generators ---------------------------------------------------------
+import { generatePiece } from '../renderer/wilds/piece.js'
+import { setOpenTops } from '../renderer/wilds/over.js'
+import { buildCity } from '../renderer/wilds/city/build.js'
+import { insideWalls, PLAN } from '../renderer/wilds/city/plan.js'
+import { isCityPiece } from '../renderer/wilds/city/geometry.js'
+import { GATE, CASTLE } from '../renderer/wilds/city/kit.js'
+
+const without = fn => { setOpenTops(false); try { return fn() } finally { setOpenTops(true) } }
+const floodAll = (cells, from, pass) => {
+  const H = cells.length, W = cells[0].length, seen = new Uint8Array(W * H), stack = [from.y * W + from.x]
+  if (!pass(cells[from.y][from.x])) return seen
+  seen[stack[0]] = 1
+  while (stack.length) {
+    const i = stack.pop(), x = i % W, y = (i / W) | 0
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue
+      const k = ny * W + nx
+      if (!seen[k] && pass(cells[ny][nx])) { seen[k] = 1; stack.push(k) }
+    }
+  }
+  return seen
+}
+
+describe('the pieces of the Wilds', () => {
+  const spots = []
+  for (const seed of [1, 7, 4242]) for (let wy = -2; wy <= 2; wy++) for (let wx = -2; wx <= 2; wx++)
+    if (!isCityPiece(wx, wy)) spots.push({ seed, wx, wy })
+
+  it('a top opens only over more of its building, and joins nothing', () => {
+    let opened = 0
+    for (const { seed, wx, wy } of spots) {
+      const piece = generatePiece(seed, wx, wy)
+      const cells = piece.cells, W = cells[0].length
+      const old = floodAll(cells, piece.spawnPoint, c => c.tile === TILE.FLOOR && !c.over)
+      const now = floodAll(cells, piece.spawnPoint, c => c.tile === TILE.FLOOR)
+      for (let y = 0; y < cells.length; y++) for (let x = 0; x < W; x++) {
+        const c = cells[y][x]
+        if (c.over) {
+          opened++
+          assert.ok(cells[y + 1][x].tile === TILE.WALL, `${seed} ${piece.key} ${x},${y}: something solid south of a top`)
+          assert.ok(isStructure(c.overlay) || isStructure(c.deco), `${seed} ${piece.key} ${x},${y}: ${c.overlay}`)
+        } else if (now[y * W + x]) assert.ok(old[y * W + x] === 1, `${seed} ${piece.key} ${x},${y} became reachable`)
+      }
+    }
+    assert.ok(opened > 100, `tops opened: ${opened}`)
+  })
+
+  it('the home village has roofs to walk under', () => {
+    const piece = generatePiece(7, 0, 0)
+    assert.ok(piece.cells.flat().filter(c => c.over).length >= 6)
+  })
+
+  it('places everything where it did before', () => {
+    for (const { seed, wx, wy } of spots.filter((_, i) => i % 3 === 0)) {
+      const a = generatePiece(seed, wx, wy), b = without(() => generatePiece(seed, wx, wy))
+      for (const k of ['spawns', 'doors', 'caves', 'packs', 'points', 'signs', 'spawnPoint', 'gates'])
+        assert.ok(JSON.stringify(a[k]) === JSON.stringify(b[k]), `${seed} ${a.key}: ${k} differ`)
+      // and no cell differs but the opened ones
+      for (let y = 0; y < 80; y++) for (let x = 0; x < 80; x++) {
+        const ca = a.cells[y][x], cb = b.cells[y][x]
+        assert.ok(ca.skin === cb.skin && ca.overlay === cb.overlay, `${seed} ${a.key} ${x},${y}: art`)
+        if (!ca.over) assert.ok(ca.tile === cb.tile, `${seed} ${a.key} ${x},${y}: tile`)
+      }
+    }
+  })
+})
+
+describe('Kalevanlinna', () => {
+  const city = buildCity(7), plain = without(() => buildCity(7))
+  buildCity(7)   // (leave the kept city the real one)
+  const N = city.cells.length
+
+  it('opens the top of its walls and houses', () => {
+    const over = city.cells.flat().filter(c => c.over).length
+    assert.ok(over > 300, `over cells: ${over}`)
+  })
+
+  it('every gate arch is walked under', () => {
+    const names = new Set([...GATE.arch2.flat(), ...GATE.arch3.flat(), ...GATE.side, ...CASTLE.gate2Open.flat(), ...CASTLE.gate2.flat()])
+    let gates = 0
+    for (const row of city.cells) for (const c of row) if (names.has(c.overlay)) { gates++; assert.ok(c.over === true) }
+    assert.ok(gates >= 6 * 2 + 3 * 2 + 6, `gate cells: ${gates}`)
+  })
+
+  it('wards what it opens inside the walls', () => {
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const c = city.cells[y][x]
+      if (c.over && c.tile === TILE.FLOOR && insideWalls(x, y)) assert.ok(c.ward === true, `${x},${y}`)
+    }
+  })
+
+  it('keeps monsters out as before: no way in that is not warded', () => {
+    const from = { x: PLAN.gates.N.x, y: 2 }
+    assert.ok(city.cells[from.y][from.x].tile === TILE.FLOOR && !city.cells[from.y][from.x].ward)
+    const seen = floodAll(city.cells, from, c => c.tile === TILE.FLOOR && !c.ward)
+    const was = floodAll(plain.cells, from, c => c.tile === TILE.FLOOR && !c.ward)
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      if (!seen[y * N + x]) continue
+      assert.ok(!insideWalls(x, y), `${x},${y} is inside the walls`)
+      assert.ok(was[y * N + x] === 1 || city.cells[y][x].over, `${x},${y} became reachable from outside`)
+    }
+  })
+
+  it('joins nothing on foot either, and lays the same doors, spots and streets', () => {
+    const from = city.inn.doorstep
+    const now = floodAll(city.cells, from, c => c.tile === TILE.FLOOR)
+    const was = floodAll(plain.cells, from, c => c.tile === TILE.FLOOR)
+    for (let i = 0; i < N * N; i++) if (now[i] && !was[i]) assert.ok(city.cells[(i / N) | 0][i % N].over, `${i % N},${(i / N) | 0} became reachable`)
+    for (const k of ['doors', 'signs', 'lamps', 'chimneys', 'windows', 'spots', 'inn', 'spawns', 'yards'])
+      assert.ok(JSON.stringify(city[k]) === JSON.stringify(plain[k]), `${k} differ`)
+    assert.ok(JSON.stringify(city.streets) === JSON.stringify(plain.streets), 'the street graph differs')
+  })
+})

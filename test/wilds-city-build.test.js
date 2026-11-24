@@ -236,7 +236,8 @@ test('every walkable cell inside the walls is warded and none outside is', () =>
     let warded = 0
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const c = city.cells[y][x]
-      const want = c.tile === TILE.FLOOR && insideWalls(x, y)
+      // (a wall's walk opened from the inside, like the south wall's, is warded with the street it opens onto)
+      const want = c.tile === TILE.FLOOR && (insideWalls(x, y) || (!!c.over && !!city.cells[y - 1][x].ward))
       assert.equal(!!c.ward, want, `${x},${y} seed ${seed}`)
       if (want) warded++
     }

@@ -11,8 +11,10 @@
 // A Cell is piece.js cellOf(ground, prop, walkable) with `deco` where a sign
 // or a banner hangs over another tile, and `ward: true` on every walkable
 // cell inside the walls (the gate arches included): enemies keep out.
+// `over: true` marks a cell whose art is drawn over whoever stands there.
 // A door's and a chimney's `door` is the door's label.
 import { cellOf } from '../piece.js'
+import { openTops } from '../over.js'
 import { insideWalls } from './plan.js'
 import { makeGrid, makeRecord, stoneUnderMasonry } from './stamps.js'
 import { terrainUnder, layTerrain, layOutskirts, layRoads, clearRound, layFarms, finishLand } from './build-land.js'
@@ -44,6 +46,10 @@ export function buildCity(seed) {
     if (G.walkable(x, y) && insideWalls(x, y)) c.ward = true
     return c
   }))
+  // the top row of every building and wall, and the gate arches, are walked
+  // under (over.js); inside the walls, and where the way under is from
+  // inside (the south wall's walk), they are warded like any street
+  openTops(cells, { ward: (x, y) => insideWalls(x, y) || !!cells[y - 1][x].ward })
   const city = {
     seed, cells, doors: rec.doors, signs: rec.signs, lamps: rec.lamps, chimneys: rec.chimneys, windows: rec.windows,
     spots: rec.spots, inn: rec.inn, spawns: rec.spawns, yards: rec.yards,
