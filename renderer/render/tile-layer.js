@@ -11,6 +11,12 @@
 // Fog of war (explored but out of sight) still draws per frame, since it
 // moves with the player — but as one rect per horizontal run of fogged
 // cells instead of one per cell.
+//
+// Cells that are walked under (`over`, wilds/over.js: a roof's top row, a
+// gate's arch) are baked in two parts: their ground with the rest, and what
+// stands on them into a second image of the chunk, its `top`, which
+// drawOver blits after the people. A chunk without such a cell has no top.
+// Their fog is laid in drawOver too, once over ground and top together.
 import { TILE } from '../systems/entities.js'
 import { takeDirtyTiles } from '../systems/tile-dirty.js'
 import { drawTile } from './tiles.js'
@@ -18,7 +24,8 @@ import { drawTile } from './tiles.js'
 export const CHUNK = 16   // cells per chunk side; 512 px at S = 32
 // A baked chunk is a megabyte of canvas. Every map before the Wilds had at
 // most a few dozen chunks; a 240x240 window has 225, so the cache drops the
-// ones farthest from the view once it holds more than this.
+// ones farthest from the view once it holds more than this (counted in
+// canvases: a chunk with a top is two).
 export const MAX_CHUNKS = 64
 const KEEP_CHUNKS = 48
 
@@ -46,14 +53,15 @@ function viewCells(map, S, camX, camY, W, H) {
   }
 }
 
-function drawFogRuns(ctx, map, S, camX, camY, { c0, c1, r0, r1 }, fogAlpha) {
+// `over`: the fog of the cells walked under (drawOver) or of all the others (draw)
+function drawFogRuns(ctx, map, S, camX, camY, { c0, c1, r0, r1 }, fogAlpha, over = false) {
   ctx.fillStyle = `rgba(0,0,0,${fogAlpha})`
   for (let row = r0; row < r1; row++) {
     const cells = map[row]
     let run = -1
     for (let col = c0; col < c1; col++) {
       const t = cells[col]
-      const fogged = t.explored && !t.visible && !isStair(t.tile)
+      const fogged = t.explored && !t.visible && !isStair(t.tile) && !t.over === !over
       if (fogged) { if (run < 0) run = col; continue }
       if (run >= 0) { ctx.fillRect(Math.round(run * S - camX), Math.round(row * S - camY), (col - run) * S, S); run = -1 }
     }
@@ -64,11 +72,11 @@ function drawFogRuns(ctx, map, S, camX, camY, { c0, c1, r0, r1 }, fogAlpha) {
 // Bake one chunk: explored cells (and stairs) drawn at chunk-local
 // coordinates over a cleared, transparent canvas so the theme background
 // shows through unexplored cells. Returns the explored count it was baked at.
-function bake(chunk, map, cx, cy, S, sprites) {
+function bake(chunk, map, cx, cy, S, sprites, createCanvas) {
   const ctx = chunk.ctx
   ctx.imageSmoothingEnabled = false
   ctx.clearRect(0, 0, CHUNK * S, CHUNK * S)
-  let explored = 0
+  let explored = 0, tops = null
   for (let r = 0; r < CHUNK; r++) {
     const cells = map[cy * CHUNK + r]
     if (!cells) break
@@ -77,11 +85,31 @@ function bake(chunk, map, cx, cy, S, sprites) {
       if (!t) break
       if (t.explored) explored++
       else if (!isStair(t.tile)) continue
-      drawTile(ctx, t.tile, c * S, r * S, S, sprites, t)
+      drawTile(ctx, t.tile, c * S, r * S, S, sprites, t, 'under')
+      if (t.over) (tops ??= []).push(c, r, t)
     }
   }
   chunk.explored = explored
   chunk.huedAt = -1   // any trip colour over this bake is now stale
+  bakeTop(chunk, tops, S, sprites, createCanvas)
+}
+
+// The chunk's second image: what stands on its walked-under cells. Kept only
+// while the chunk has such a cell in view of memory.
+function bakeTop(chunk, tops, S, sprites, createCanvas) {
+  if (!tops) { chunk.top = null; return }
+  let top = chunk.top
+  if (!top) {
+    const canvas = createCanvas()
+    canvas.width = CHUNK * S
+    canvas.height = CHUNK * S
+    top = chunk.top = { canvas, ctx: canvas.getContext('2d') }
+  }
+  top.ctx.imageSmoothingEnabled = false
+  top.ctx.clearRect(0, 0, CHUNK * S, CHUNK * S)
+  for (let i = 0; i < tops.length; i += 3) drawTile(top.ctx, tops[i + 2].tile, tops[i] * S, tops[i + 1] * S, S, sprites, tops[i + 2], 'over')
+  top.explored = chunk.explored   // (what its trip colour is checked against)
+  top.huedAt = -1
 }
 
 function countExplored(map, cx, cy) {
@@ -162,7 +190,7 @@ export function makeTileLayer(createCanvas) {
           if (chunk) chunk.explored = -1   // keep the canvas, force a rebake
         }
       }
-      const budget = { left: HUE_BUDGET }
+      const budget = layer.budget = { left: HUE_BUDGET }   // (drawOver spends what is left of it)
       const CS = CHUNK * S
       const cx0 = Math.max(0, Math.floor(camX / CS))
       const cx1 = Math.min(Math.ceil(map[0].length / CHUNK), Math.ceil((camX + W) / CS))
@@ -179,14 +207,15 @@ export function makeTileLayer(createCanvas) {
             chunk = { canvas, ctx: canvas.getContext('2d'), explored: -1 }
             layer.chunks.set(key, chunk)
           }
-          if (chunk.explored !== countExplored(map, cx, cy)) bake(chunk, map, cx, cy, S, sprites)
+          if (chunk.explored !== countExplored(map, cx, cy)) bake(chunk, map, cx, cy, S, sprites, createCanvas)
           const img = hue > 0
             ? tripColour(chunk, hue, sat, CS, createCanvas, budget)
             : dropColour(chunk)
           ctx.drawImage(img, Math.round(cx * CS - camX), Math.round(cy * CS - camY))
         }
       }
-      if (layer.chunks.size > MAX_CHUNKS) {
+      let held = layer.canvases()
+      if (held > MAX_CHUNKS) {
         // keep what is nearest the view
         const mx = (cx0 + cx1 - 1) / 2, my = (cy0 + cy1 - 1) / 2
         const far = [...layer.chunks.keys()].map(key => {
@@ -194,11 +223,42 @@ export function makeTileLayer(createCanvas) {
           return { key, d: Math.max(Math.abs(x - mx), Math.abs(y - my)) }
         }).sort((a, b) => b.d - a.d)
         for (const { key } of far) {
-          if (layer.chunks.size <= KEEP_CHUNKS) break
+          if (held <= KEEP_CHUNKS) break
+          held -= layer.chunks.get(key).top ? 2 : 1
           layer.chunks.delete(key)
         }
       }
       drawFogRuns(ctx, map, S, camX, camY, viewCells(map, S, camX, camY, W, H), fogAlpha)
+    },
+    // how many chunk images are held
+    canvases() {
+      let n = 0
+      for (const chunk of layer.chunks.values()) n += chunk.top ? 2 : 1
+      return n
+    },
+    // What is walked under, over the people: the tops of the chunks draw()
+    // just baked (call it after draw, in the same frame), then their fog.
+    drawOver(ctx, map, sprites, S, camX, camY, W, H, fogAlpha, hue = 0, sat = 1) {
+      if (map !== layer.map) return
+      const budget = layer.budget ?? { left: 0 }
+      const CS = CHUNK * S
+      const cx0 = Math.max(0, Math.floor(camX / CS))
+      const cx1 = Math.min(Math.ceil(map[0].length / CHUNK), Math.ceil((camX + W) / CS))
+      const cy0 = Math.max(0, Math.floor(camY / CS))
+      const cy1 = Math.min(Math.ceil(map.length / CHUNK), Math.ceil((camY + H) / CS))
+      let any = false
+      for (let cy = cy0; cy < cy1; cy++) {
+        for (let cx = cx0; cx < cx1; cx++) {
+          const top = layer.chunks.get(`${cx},${cy}`)?.top
+          if (!top) continue
+          any = true
+          const img = hue > 0
+            ? tripColour(top, hue, sat, CS, createCanvas, budget)
+            : dropColour(top)
+          ctx.drawImage(img, Math.round(cx * CS - camX), Math.round(cy * CS - camY))
+        }
+      }
+      if (any) drawFogRuns(ctx, map, S, camX, camY, viewCells(map, S, camX, camY, W, H), fogAlpha, true)
     },
   }
   return layer
@@ -216,10 +276,23 @@ export function makeDirectTileLayer() {
         for (let col = cells.c0; col < cells.c1; col++) {
           const t = map[row][col]
           if (!t.explored && !isStair(t.tile)) continue
-          drawTile(ctx, t.tile, Math.round(col * S - camX), Math.round(row * S - camY), S, sprites, t)
+          drawTile(ctx, t.tile, Math.round(col * S - camX), Math.round(row * S - camY), S, sprites, t, 'under')
         }
       }
       drawFogRuns(ctx, map, S, camX, camY, cells, fogAlpha)
+    },
+    drawOver(ctx, map, sprites, S, camX, camY, W, H, fogAlpha) {
+      const cells = viewCells(map, S, camX, camY, W, H)
+      let any = false
+      for (let row = cells.r0; row < cells.r1; row++) {
+        for (let col = cells.c0; col < cells.c1; col++) {
+          const t = map[row][col]
+          if (!t.over || !t.explored) continue
+          any = true
+          drawTile(ctx, t.tile, Math.round(col * S - camX), Math.round(row * S - camY), S, sprites, t, 'over')
+        }
+      }
+      if (any) drawFogRuns(ctx, map, S, camX, camY, cells, fogAlpha, true)
     },
   }
 }
