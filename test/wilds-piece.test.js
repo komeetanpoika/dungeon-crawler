@@ -332,7 +332,9 @@ test('a house is whole: a door in a wall under two rows of roof, three to five w
         for (let y = h.top; y <= d.y; y++) {
           const skin = over(p, x, y)
           assert.ok(y < h.top + 2 ? skin.startsWith('ow_roof_') : isHouse(skin), `${at}: ${skin || 'nothing'} at row ${y - h.top}`)
-          if (!(x === d.x && y === d.y)) assert.equal(p.cells[y][x].tile, TILE.WALL, `${at}: a house cell is walkable`)
+          // (the top row of the roof is walked under: wilds/over.js)
+          if (y === h.top) assert.ok(p.cells[y][x].over === true && p.cells[y][x].tile === TILE.FLOOR, `${at}: the top of the roof is not walked under`)
+          else if (!(x === d.x && y === d.y)) assert.equal(p.cells[y][x].tile, TILE.WALL, `${at}: a house cell is walkable`)
         }
         // nothing built against the front of the house
         assert.ok(!isHouse(over(p, x, d.y + 1)) && !over(p, x, d.y + 1).startsWith('ow_roof_'), `${at}: another house at its feet`)
@@ -741,7 +743,8 @@ test('the pieces are cell for cell what they were before doors told their looks'
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)
     const h = createHash('sha1')
-    for (const row of p.cells) for (const c of row) h.update(`${c.tile}|${c.skin}|${c.overlay ?? ''};`)
+    // (a cell that is walked under since wilds/over.js was a wall then, with the art it still has)
+    for (const row of p.cells) for (const c of row) h.update(`${c.over ? TILE.WALL : c.tile}|${c.skin}|${c.overlay ?? ''};`)
     h.update(JSON.stringify(p.spawns.map(s => [s.kind, s.x, s.y])))
     h.update(JSON.stringify(p.doors.map(d => [d.x, d.y, d.tier, d.story])))
     assert.equal(h.digest('hex').slice(0, 16), want, `piece ${key} changed`)

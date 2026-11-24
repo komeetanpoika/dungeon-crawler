@@ -4,6 +4,8 @@
 // It walks in, then, the clock set through the debug hooks (--dcdebug):
 //
 //   gate     walks in through the north gate
+//   tops     under the wall's walk, the gate's arch and a roof's first row: walked
+//            under, hidden there, and what falls there lands beside it
 //   dawn     the square at dawn
 //   crier    the crier at his box: his hand bell and his news
 //   talk     two talking pairs on the square at once, each with its own bubbles
@@ -261,6 +263,75 @@ try {
     check(!!inside && inside.ward && inside.run, 'walking south passes the north gate into the city', JSON.stringify(inside))
     await sleep(300)
     await shot('gate')
+  })
+
+  // ---- under the tops: the wall's walk, a roof's first row, the gate's arch ---------
+  // (wilds/over.js; a walked-under cell's art is drawn over the people)
+  await section('tops', async () => {
+    await atLeast(0.4)
+    const cellAt = (X, Y) => ev(([X, Y]) => { const s = window.__dc.state, o = window.__dc.wilds.origin, c = s.map[Y - o.wy * 80]?.[X - o.wx * 80]; return c ? { over: !!c.over, tile: c.tile, overlay: c.overlay ?? null, seen: !!c.visible } : null }, [X, Y])
+    const rowY = () => ev(() => window.__dc.state.player.y + window.__dc.wilds.origin.wy * 80)
+    // the hero is always at the middle of the view: the cell he stands on, and its neighbour to the east
+    const box = await page.locator('canvas').first().boundingBox()
+    const mid = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) }
+    const clip = dx => page.screenshot({ clip: { x: mid.x - 16 + dx * 32, y: mid.y - 16, width: 32, height: 32 } })
+    const walkSouth = async (to, secs = 4) => {
+      await page.keyboard.down('ArrowDown')
+      const got = await until(Y => window.__dc.state.player.y + window.__dc.wilds.origin.wy * 80 >= Y, secs, to, 60)
+      await sleep(700)   // and on against whatever blocks beyond it
+      await page.keyboard.up('ArrowDown')
+      await sleep(250)
+      return got
+    }
+    // the north wall, between the gate's west tower and the next: walk row 180, face row 181
+    await placeOpen(74, 177)
+    await sleep(400)
+    const walkCell = await cellAt(74, 180), east = await cellAt(75, 180), face = await cellAt(74, 181)
+    check(walkCell.over && walkCell.tile === 1 && face.tile === 0 && !face.over, 'the wall\'s walk is walked under, its face still blocks', JSON.stringify({ walkCell, face }))
+    check(!!(await walkSouth(180)) && await rowY() === 180, 'walking south from outside goes under the walk and no further', `row ${await rowY()}`)
+    const under = await ev(() => { const s = window.__dc.state; return { ward: !!s.map[s.player.y][s.player.x].ward, over: !!s.map[s.player.y][s.player.x].over } })
+    check(under.over && !under.ward, 'outside the ward still', JSON.stringify(under))
+    await ev(() => { const p = window.__dc.state.player; p.px = p.x * 32 + 16; p.py = p.y * 32 + 16 })
+    await sleep(300)
+    await shot('tops-wall')
+    if (check(walkCell.overlay === east.overlay && east.seen, 'the next cell of the walk is the same tile, in sight', JSON.stringify(east))) {
+      // (a bird or a wisp of smoke may cross either cell: three looks, one clean one is enough)
+      let same = false
+      for (let i = 0; i < 3 && !same; i++) { same = Buffer.compare(await clip(0), await clip(1)) === 0; if (!same) await sleep(500) }
+      check(same, 'under the walk the hero is hidden: his cell looks like the one beside it')
+    }
+    await ev(() => { const p = window.__dc.state.player; p.py -= 16 })
+    await sleep(300)
+    check(Buffer.compare(await clip(0), await clip(1)) !== 0, 'half under it, he shows above the wall')
+    await shot('tops-wall-half')
+    // the gate: every cell of its arch is drawn over whoever walks through
+    const arch = await Promise.all([79, 80, 81].flatMap(X => [180, 181].map(Y => cellAt(X, Y))))
+    check(arch.every(c => c.over && c.tile === 1 && /^ow_city_gate_arch2_/.test(c.overlay ?? '')), 'the gate\'s arch is drawn over whoever passes', JSON.stringify(arch.map(c => c.overlay)))
+    await placeOpen(80, 178)
+    await sleep(300)
+    check(!!(await walkSouth(183)), 'and is walked through as before', `row ${await rowY()}`)
+    // a roof: the first house row south of the wall street, west of the gate street
+    const roofs = await ev(() => {
+      const s = window.__dc.state, o = window.__dc.wilds.origin, out = []
+      for (let X = 68; X <= 78; X++) for (let Y = 182; Y <= 186; Y++) {
+        const c = s.map[Y - o.wy * 80]?.[X - o.wx * 80], n = s.map[Y - 1 - o.wy * 80]?.[X - o.wx * 80], b = s.map[Y + 1 - o.wy * 80]?.[X - o.wx * 80]
+        if (c?.over && /roof/.test(c.overlay ?? '') && n?.tile === 1 && !n.over && b?.tile === 0) out.push({ X, Y })
+      }
+      return out
+    })
+    if (!check(roofs.length > 0, 'a roof by the wall street has its first row open', `${roofs.length} cells`)) return
+    const r = roofs[Math.floor(roofs.length / 2)]
+    await placeOpen(r.X, r.Y - 1)
+    await sleep(300)
+    check(!!(await walkSouth(r.Y)) && await rowY() === r.Y, 'walking south goes under the roof\'s edge and stops at its second row', `row ${await rowY()} (roof ${r.Y})`)
+    await shot('tops-roof')
+    // nothing that falls is left under a top
+    const drop = await ev(async ([X, Y]) => {
+      const { clearOfTops } = await import(new URL('./wilds/over.js', location.href).href)
+      const s = window.__dc.state, o = window.__dc.wilds.origin, at = clearOfTops(s.map, X - o.wx * 80, Y - o.wy * 80)
+      return { over: !!s.map[at.y][at.x].over, tile: s.map[at.y][at.x].tile, d: Math.abs(at.x - (X - o.wx * 80)) + Math.abs(at.y - (Y - o.wy * 80)) }
+    }, [r.X, r.Y])
+    check(!drop.over && drop.tile === 1 && drop.d === 1, 'what falls under the roof lands beside it', JSON.stringify(drop))
   })
 
   // ---- the square at dawn ---------------------------------------------------------

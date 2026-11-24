@@ -27,7 +27,7 @@ import { makeTileLayer, makeDirectTileLayer, CHUNK } from './tile-layer.js'
 import { drawComboFx, drawArrowTrail, drawBuffSpot, drawBuffUnder, drawBuffOver } from './pvp-fx.js'
 import { BUFF_COLORS } from '../data/pvp.js'
 import { arrestFade } from '../wilds/city/crime.js'
-import { drawCityGround, drawCityAir, drawCityGlow } from './city-fx.js'
+import { drawCityGround, drawCityOver, drawCityAir, drawCityGlow } from './city-fx.js'
 
 const TILE_SIZE = 32
 
@@ -1351,7 +1351,6 @@ export class Renderer {
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)
     const cyclops = entities.find(e => e.type === 'cyclops')
     if (cyclops) drawCyclopsEffects(ctx, cyclops, camX, camY)
-    drawHealthBars(ctx, entities, map, camX, camY, S, state)
 
     // Draw projectiles. Arrows and crossbow quarrels are elongated along their
     // travel axis (the quarrel shorter and fatter); sparks trail; stones, wand
@@ -1386,6 +1385,15 @@ export class Renderer {
         ctx.fillRect(bpx - 2, bpy - 2, 4, 4)
       }
     }
+
+    // What is walked under goes over all of the above: the top row of a roof
+    // or a wall, a gate's arch (wilds/over.js), and the pennants that fly from
+    // them. Whoever stands there is behind it.
+    this.tileLayer.drawOver?.(ctx, map, baseSprites, S, camX, camY, W, H, theme.fogAlpha,
+      worldHue, 1 + 0.6 * colour)
+    if (state.cityRun && !state.cave) drawCityOver(ctx, state, sprites, camX, camY, S, W, H)
+    // Health bars after that, so the bar of someone under a roof still shows above it.
+    drawHealthBars(ctx, entities, map, camX, camY, S, state)
 
     // Kalevanlinna's smoke, birds in the air, turnips, notes and bells: over
     // the people, under the night

@@ -176,7 +176,7 @@ function gift(state, world, hooks) {
   for (let r = 1; r <= 3 && !spot; r++) for (let dy = -r; dy <= r && !spot; dy++) for (let dx = -r; dx <= r; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
     const x = player.x + dx, y = player.y + dy, cell = map[y]?.[x]
-    if (cell && isWalkable(cell.tile, cell) && !taken.has(`${x},${y}`)) { spot = { x, y }; break }
+    if (cell && isWalkable(cell.tile, cell) && !cell.over && !taken.has(`${x},${y}`)) { spot = { x, y }; break }
   }
   if (!spot) return   // hemmed in: the next frame with room
   state.entities.push(...hooks.spawn([{ kind: 'floating_pickup', contents: { type: 'weapon', ...weaponContents(GIFT) }, ...spot }]))

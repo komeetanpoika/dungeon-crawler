@@ -103,7 +103,7 @@ function openCell(state, at, r = 3) {
   for (let d = 0; d <= r; d++) for (let dy = -d; dy <= d; dy++) for (let dx = -d; dx <= d; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy)) !== d) continue
     const x = at.x + dx, y = at.y + dy, cell = state.map[y]?.[x]
-    if (cell && isWalkable(cell.tile, cell) && !busy.has(`${x},${y}`)) return { x, y }
+    if (cell && isWalkable(cell.tile, cell) && !cell.over && !busy.has(`${x},${y}`)) return { x, y }
   }
   return null
 }

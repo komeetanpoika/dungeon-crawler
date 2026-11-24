@@ -77,26 +77,29 @@ const isStuckOn = (e, target) => e.ai.path === null && e.ai.pathTarget &&
 // from home without stepping outside that box. One bounded 4-neighbour BFS,
 // cached on the NPC and keyed by the nav grid object (a new map builds a new
 // grid, which invalidates it), replaces a fistful of A* searches per repick.
-function wanderReach(e, nav, roam) {
+// A cell that is walked under (wilds/over.js: the row beneath a roof's top) is
+// passed through but never a place to wander to: nobody idles out of sight.
+function wanderReach(e, nav, roam, map) {
   const goals = e.ai.goals ?? (e.ai.goals = {})
   const w = goals.wander ?? (goals.wander = {})
   if (w.reach && w.nav === nav) return w.reach
   const { x: hx, y: hy } = e.home
   const inBox = (x, y) => Math.abs(x - hx) <= roam && Math.abs(y - hy) <= roam
-  const reach = []
+  const queue = []
   if (passable(nav, hx, hy, 1)) {
     const seen = new Set([`${hx},${hy}`])
-    reach.push({ x: hx, y: hy })
-    for (let i = 0; i < reach.length; i++) {
-      const t = reach[i]
+    queue.push({ x: hx, y: hy })
+    for (let i = 0; i < queue.length; i++) {
+      const t = queue[i]
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const x = t.x + dx, y = t.y + dy, k = `${x},${y}`
         if (seen.has(k) || !inBox(x, y) || !passable(nav, x, y, 1)) continue
         seen.add(k)
-        reach.push({ x, y })
+        queue.push({ x, y })
       }
     }
   }
+  const reach = queue.some(t => map?.[t.y]?.[t.x]?.over) ? queue.filter(t => !map[t.y][t.x].over) : queue
   w.nav = nav; w.reach = reach
   return reach
 }
@@ -107,7 +110,7 @@ function wanderReach(e, nav, roam) {
 // isStuckOn give-up in wander handle a route that does not work out.
 function pickWanderPoint(e, ctx) {
   const nav = buildNavGrid(ctx.state.map)
-  const reach = wanderReach(e, nav, e.roam ?? ctx.def.roam)
+  const reach = wanderReach(e, nav, e.roam ?? ctx.def.roam, ctx.state.map)
   if (!reach.length) return null
   let i = Math.floor(Math.random() * reach.length)
   if (reach[i].x === e.x && reach[i].y === e.y) i = (i + 1) % reach.length

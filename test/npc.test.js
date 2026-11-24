@@ -115,6 +115,18 @@ describe('wander', () => {
       assert.ok(findPath(nav, 3, 3, pt.x, pt.y, 1), 'unreachable point')
     }
   })
+  it('passes through a walked-under cell but never wanders to one', () => {
+    const map = field()
+    // a row under a roof's top across the chicken's box, with ground beyond it
+    for (let x = 0; x <= 7; x++) map[2][x].over = true
+    const e = npcAt('chicken', 3, 3)          // roam 3
+    const state = makeState(map, { x: 17, y: 11 }, [e])
+    selectGoal(e, buildCtx(e, state, 1 / 60))
+    GOALS.wander.run(e, buildCtx(e, state, 1 / 60), 5)
+    const reach = e.ai.goals.wander.reach
+    assert.ok(reach.length > 0 && reach.every(t => t.y !== 2), 'no point under the roof')
+    assert.ok(reach.some(t => t.y < 2), 'the ground beyond it is still wandered to')
+  })
   it('caches a reach set that stops at the wall block and never leaves the roam box', () => {
     const map = field()
     const nav = buildNavGrid(map)

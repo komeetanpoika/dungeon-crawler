@@ -5,6 +5,7 @@ import { makeTerrain } from './terrain.js'
 import { placeFeatures } from './features.js'
 import { TILE } from '../systems/entities.js'
 import { LOS_CLEAR_PREFIXES, LOS_SOFT_PREFIXES, LOS_TALL_PREFIXES } from '../systems/openmap.js'
+import { openTops } from './over.js'
 
 const startsWithAny = (s, prefixes) => prefixes.some(p => s.startsWith(p))
 // Low things a sight line passes over, like open water: the site dressing
@@ -82,5 +83,9 @@ export function generatePiece(seed, wx, wy, deal = 0, tale = null, villageTale =
   piece.caves = piece.caves.filter(ok)
   for (const [side, g] of Object.entries(piece.gates))
     if (!ok(g)) console.warn(`wilds: gate ${side} of piece ${piece.key} (deal ${deal}) is cut off`)
+  // Last, when everything is placed: the top row of each building is walked
+  // under (over.js). It joins no two places, so what was reachable still is
+  // and nothing else has become so.
+  openTops(cells)
   return piece
 }

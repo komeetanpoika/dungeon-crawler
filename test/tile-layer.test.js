@@ -226,3 +226,177 @@ describe('tile layer under a trip', () => {
     assert.ok(chunk.hued.ctx.calls.length > before, 'the felled tree shows in its new colour too')
   })
 })
+
+// ---- cells that are walked under (wilds/over.js) ---------------------------------
+import { makeDirectTileLayer, MAX_CHUNKS } from '../renderer/render/tile-layer.js'
+import { drawTile } from '../renderer/render/tiles.js'
+
+const TOP = { ...SPR, grass: 'GRASS', roof: 'ROOF', masonry: 'MASONRY' }
+// a floor map whose cell (x, y) is a roof's top row: grass under, roof over
+function roofAt(map, x, y, extra = {}) {
+  Object.assign(map[y][x], { tile: TILE.FLOOR, skin: 'grass', overlay: 'roof', over: true, ...extra })
+  return map[y][x]
+}
+const imgs = ctx => blits(ctx).map(c => c.img)
+
+describe('drawTile by part', () => {
+  const cell = { tile: TILE.FLOOR, skin: 'grass', deco: 'masonry', overlay: 'roof', over: true }
+  const draw = (c, part) => { const ctx = recordingCtx(); drawTile(ctx, c.tile, 0, 0, S, TOP, c, part); return imgs(ctx) }
+  it('a cell walked under: its ground under, its art over, all of it by default', () => {
+    assert.deepEqual(draw(cell, 'under'), ['GRASS'])
+    assert.deepEqual(draw(cell, 'over'), ['MASONRY', 'ROOF'])
+    assert.deepEqual(draw(cell), ['GRASS', 'MASONRY', 'ROOF'])
+  })
+  it('any other cell: whole under, nothing over', () => {
+    const plain = { tile: TILE.WALL, skin: 'grass', overlay: 'roof' }
+    assert.deepEqual(draw(plain, 'under'), ['GRASS', 'ROOF'])
+    assert.deepEqual(draw(plain, 'over'), [])
+    assert.deepEqual(draw({ tile: TILE.FLOOR }, 'over'), [])
+  })
+})
+
+describe('tile layer tops', () => {
+  const setup = () => {
+    const layer = makeTileLayer(fakeCanvas)
+    const map = floorMap()
+    explore(map, 0, 0, 5, 3)
+    return { layer, map }
+  }
+  const frame = (layer, map, hue = 0) => {
+    const ctx = recordingCtx(), over = recordingCtx()
+    layer.draw(ctx, map, TOP, S, 0, 0, 640, 480, 0.65, hue)
+    layer.drawOver(over, map, TOP, S, 0, 0, 640, 480, 0.65, hue)
+    return { ctx, over }
+  }
+
+  it('bakes the art of a walked-under cell into a second image, drawn by drawOver', () => {
+    const { layer, map } = setup()
+    roofAt(map, 2, 1)
+    const { ctx, over } = frame(layer, map)
+    const chunk = layer.chunks.get('0,0')
+    assert.ok(!imgs(chunk.ctx).includes('ROOF'), 'the roof is not in the ground')
+    assert.equal(imgs(chunk.ctx).filter(i => i === 'GRASS').length, 1)
+    assert.deepEqual(imgs(chunk.top.ctx), ['ROOF'])
+    assert.deepEqual(blits(chunk.top.ctx)[0].a.slice(0, 2), [2 * S, 1 * S])
+    assert.equal(blits(ctx).length, 2, 'draw blits the ground only')
+    assert.deepEqual(imgs(over), [chunk.top.canvas])
+    assert.deepEqual(blits(over)[0].a, [2 * S, S, S, S, 2 * S, S, S, S], 'only the strip that holds the roof')
+  })
+
+  it('blits a top as one strip per run of cells along a row, at the camera\'s offset', () => {
+    const { layer, map } = setup()
+    for (const [x, y] of [[1, 1], [2, 1], [3, 1], [1, 2], [4, 2]]) roofAt(map, x, y)
+    layer.draw(recordingCtx(), map, TOP, S, 5, 7, 640, 480, 0.65)
+    const over = recordingCtx()
+    layer.drawOver(over, map, TOP, S, 5, 7, 640, 480, 0.65)
+    assert.deepEqual(blits(over).map(b => b.a), [
+      [S, S, 3 * S, S, S - 5, S - 7, 3 * S, S],
+      [S, 2 * S, S, S, S - 5, 2 * S - 7, S, S],
+      [4 * S, 2 * S, S, S, 4 * S - 5, 2 * S - 7, S, S],
+    ])
+  })
+
+  it('keeps no second image for a chunk without one, and drawOver draws nothing', () => {
+    const { layer, map } = setup()
+    const { over } = frame(layer, map)
+    assert.equal(layer.chunks.get('0,0').top, null)
+    assert.equal(over.calls.length, 0)
+  })
+
+  it('leaves an unexplored one out of both', () => {
+    const { layer, map } = setup()
+    roofAt(map, 8, 8)
+    frame(layer, map)
+    assert.equal(layer.chunks.get('0,0').top, null)
+  })
+
+  it('fogs a walked-under cell once, after its top', () => {
+    const { layer, map } = setup()
+    roofAt(map, 2, 1, { visible: false })
+    roofAt(map, 3, 1, { visible: false })
+    map[1][0].visible = false
+    const { ctx, over } = frame(layer, map)
+    assert.deepEqual(fogs(ctx).map(c => c.a), [[0, S, S, S]], 'the ground pass fogs only the plain cell')
+    assert.deepEqual(fogs(over).map(c => c.a), [[2 * S, S, 2 * S, S]])
+    assert.ok(over.calls.findIndex(c => c.name === 'fillRect') > over.calls.findIndex(c => c.name === 'drawImage'), 'fog after the top')
+    map[1][2].visible = map[1][3].visible = true
+    assert.equal(fogs(frame(layer, map).over).length, 0)
+  })
+
+  it('rebakes the top when its cell is marked dirty, and drops it when the last one goes', () => {
+    const { layer, map } = setup()
+    const cell = roofAt(map, 2, 1)
+    frame(layer, map)
+    const top = layer.chunks.get('0,0').top
+    cell.overlay = 'masonry'
+    markTileDirty(map, 2, 1)
+    frame(layer, map)
+    assert.ok(layer.chunks.get('0,0').top === top, 'the same canvas')
+    assert.equal(imgs(top.ctx).at(-1), 'MASONRY')
+    delete cell.over
+    markTileDirty(map, 2, 1)
+    frame(layer, map)
+    assert.equal(layer.chunks.get('0,0').top, null)
+  })
+
+  it('moves with its chunk when the window re-centres', () => {
+    const layer = makeTileLayer(fakeCanvas)
+    const map = floorMap()
+    explore(map, 0, 0, 40, 20)
+    roofAt(map, 2, 1)
+    frame(layer, map)
+    const top = layer.chunks.get('0,0').top
+    layer.rekey(map, map, 1, 0)
+    assert.ok(layer.chunks.get('1,0').top === top)
+  })
+
+  it('counts a top as a canvas of the cache', () => {
+    const layer = makeTileLayer(fakeCanvas)
+    const map = createMap(CHUNK * 12, CHUNK * 12)
+    for (const row of map) for (const t of row) { t.tile = TILE.FLOOR; t.explored = true; t.visible = true }
+    for (let cy = 0; cy < 12; cy++) for (let cx = 0; cx < 12; cx++) roofAt(map, cx * CHUNK + 1, cy * CHUNK + 1)
+    const CS = CHUNK * S
+    for (let cy = 0; cy < 12; cy++) for (let cx = 0; cx < 11; cx++) {
+      layer.draw(recordingCtx(), map, TOP, S, cx * CS, cy * CS, 640, 480, 0.65)
+      assert.ok(layer.canvases() <= MAX_CHUNKS, `canvases held: ${layer.canvases()}`)
+    }
+    assert.ok(layer.chunks.size <= MAX_CHUNKS / 2)
+  })
+
+  it('turns colour in a trip in the same frame as its chunk\'s ground', () => {
+    const layer = makeTileLayer(fakeCanvas)
+    const map = floorMap()
+    explore(map, 0, 0, 40, 20)
+    roofAt(map, 2, 1)
+    const chunk = layer.chunks.get.bind(layer.chunks)
+    for (let i = 0; i < 5; i++) {
+      frame(layer, map, 90)
+      assert.equal(!!chunk('0,0').top.hued, !!chunk('0,0').hued, `frame ${i}: the roof is never two colours`)
+      assert.ok([...layer.chunks.values()].filter(c => c.hued).length <= HUE_BUDGET * (i + 1), 'the ground keeps to its budget')
+    }
+    const c = chunk('0,0')
+    assert.ok(c.top.hued && c.top.hueStep === c.hueStep)
+    assert.deepEqual(imgs(frame(layer, map, 90).over), [c.top.hued])
+    // the hue moves a step: the top keeps its old colour until the ground has the new one
+    frame(layer, map, 120)
+    assert.equal(c.top.hueStep, c.hueStep)
+    frame(layer, map, 0)
+    assert.equal(c.top.hued, null)
+  })
+})
+
+describe('the direct tile layer', () => {
+  it('draws a walked-under cell in the same two parts', () => {
+    const layer = makeDirectTileLayer()
+    const map = floorMap()
+    explore(map, 0, 0, 5, 3)
+    roofAt(map, 2, 1, { visible: false })
+    const ctx = recordingCtx(), over = recordingCtx()
+    layer.draw(ctx, map, TOP, S, 0, 0, 640, 480, 0.65)
+    layer.drawOver(over, map, TOP, S, 0, 0, 640, 480, 0.65)
+    assert.ok(!imgs(ctx).includes('ROOF') && imgs(ctx).includes('GRASS'))
+    assert.equal(fogs(ctx).length, 0)
+    assert.deepEqual(imgs(over), ['ROOF'])
+    assert.deepEqual(fogs(over).map(c => c.a), [[2 * S, S, S, S]])
+  })
+})

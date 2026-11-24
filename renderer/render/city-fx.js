@@ -5,10 +5,13 @@
 // swapped in it by fx.js; what moves was taken off it and is drawn here).
 // Nothing is drawn in a cave or a house: the cave state carries the surface's
 // run along (systems/cave.js copies the surface), not its map.
-// Three passes, by where they sit among the rest of the frame (canvas.js):
+// Four passes, by where they sit among the rest of the frame (canvas.js):
 //   drawCityGround  with the floor, under the people: the banners, pennants
 //                   and windmill sails (what was baked under them before),
 //                   the birds on the ground, the horse and cart with its carter
+//   drawCityOver    over the people, with the tile layer's tops: the pennants
+//                   and sails that stand on a cell that is walked under
+//                   (wilds/over.js: a tower's cap, the mill's top row)
 //   drawCityAir     after the people, before the night wash: smoke and steam,
 //                   birds in the air, turnips flying and bursting, the
 //                   busker's notes, the crier's bell, the church bell ringing
@@ -47,16 +50,17 @@ function blit(ctx, img, x, y, S, flip = false) {
   ctx.save(); ctx.translate(x + S, y); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0, S, S); ctx.restore()
 }
 
-export function drawCityGround(ctx, state, sprites, camX, camY, S, W, H) {
-  const run = state.cityRun
-  if (!run?.fx || !state.map || state.cave) return
-  const v = viewOf(run, camX, camY, S, W, H), t = run.fx.t
+// What turns and stirs on the castle, the gate towers and the mill, a frame
+// at a time. `over`: those on a cell that is walked under (a pennant on a
+// tower's cap: wilds/over.js), which go over the people with that cell's
+// art, or all the others, which go under them.
+function drawAnims(ctx, state, run, sprites, v, camX, camY, S, over) {
+  const t = run.fx.t
   const fog = state.theme?.fogAlpha ?? 0.65
-  // what turns and stirs on the castle, the gate towers and the mill
   for (const a of fxThingsOf(run.cc.city).anim) {
     if (!on(v, a.X, a.Y)) continue
     const cell = cellAt(state, run, a.X, a.Y)
-    if (!cell?.explored) continue
+    if (!cell?.explored || !cell.over !== !over) continue
     const f = a.kind === 'sails' ? Math.floor(t / SAIL_STEP) % 4
       : (Math.floor(t / (a.kind === 'banner' ? BANNER_STEP : PENNANT_STEP) + (a.X * 7 + a.Y * 3) % 5 * 0.37) + a.k) % 2
     const img = sprites[a.frames[f]]
@@ -64,6 +68,21 @@ export function drawCityGround(ctx, state, sprites, camX, camY, S, W, H) {
     if (cell.visible) ctx.drawImage(img, sx(run, a.X, camX, S), sy(run, a.Y, camY, S), S, S)
     else { ctx.globalAlpha = 1 - fog; ctx.drawImage(img, sx(run, a.X, camX, S), sy(run, a.Y, camY, S), S, S); ctx.globalAlpha = 1 }
   }
+}
+
+// Over the people and over the tops they walk under (canvas.js draws it
+// right after the tile layer's drawOver).
+export function drawCityOver(ctx, state, sprites, camX, camY, S, W, H) {
+  const run = state.cityRun
+  if (!run?.fx || !state.map || state.cave) return
+  drawAnims(ctx, state, run, sprites, viewOf(run, camX, camY, S, W, H), camX, camY, S, true)
+}
+
+export function drawCityGround(ctx, state, sprites, camX, camY, S, W, H) {
+  const run = state.cityRun
+  if (!run?.fx || !state.map || state.cave) return
+  const v = viewOf(run, camX, camY, S, W, H), t = run.fx.t
+  drawAnims(ctx, state, run, sprites, v, camX, camY, S, false)
   // the birds: those on the ground now, the rest after the people
   flockSprites(run, v, BIRDS)
   for (const b of BIRDS) {

@@ -16,7 +16,14 @@ function drawOverlay(ctx, tileObj, px, py, S, sprites) {
   }
 }
 
-export function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null) {
+// `part`: 'all' draws the whole cell. A cell that is walked under
+// (`over`, wilds/over.js) is drawn in two goes round the people: 'under' its
+// ground, 'over' what stands on it; 'over' draws nothing of any other cell.
+export function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null, part = 'all') {
+  if (part !== 'all') {
+    if (part === 'over') { if (tileObj?.over) drawOverlay(ctx, tileObj, px, py, S, sprites); return }
+    if (tileObj?.over) { const g = sprites[tileObj.skin] ?? sprites.floor; if (g) ctx.drawImage(g, px, py, S, S); return }
+  }
   if (tileId === TILE.STAIR) {
     const w   = tileObj?.stairWidth ?? 1
     const col = tileObj?.stairCol   ?? 0
