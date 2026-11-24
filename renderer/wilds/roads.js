@@ -23,6 +23,14 @@ const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
 const OPPOSITE = { N: 'S', E: 'W', S: 'N', W: 'E' }
 const mod = (n, m) => ((n % m) + m) % m
 const CACHE_MAX = 400
+// The search box is the two ends' bounding box grown by up to MAX_GROW pieces.
+// A link owned by block B (ends in B and the block east or south of it) then
+// lies within blocks B-1 .. B+2, so a piece sees every link that can cross it
+// by gathering the blocks within GATHER of its own. Raise MAX_GROW and GATHER
+// follows; a link not routable within the cap is left out (the connectivity
+// and east-link tests would notice).
+export const MAX_GROW = 4
+export const GATHER = 1 + Math.ceil(MAX_GROW / 4)
 
 export function townOf(seed, key) {
   if (key === 'city') return CITY_TOWN
@@ -84,7 +92,7 @@ function search(seed, from, to, grow) {
 }
 
 function findRoute(seed, from, to) {
-  for (let grow = 1; grow <= 8; grow++) {
+  for (let grow = 1; grow <= MAX_GROW; grow++) {
     const r = search(seed, from, to, grow)
     if (r) return r
   }
@@ -100,6 +108,8 @@ function routeIntoHome(seed, v) {
   if (koivula) best = { town: townOf(seed, '0,0'), route: koivula }
   for (const d of CITY_DOORS) {
     const out = { wx: d.wx + DIRS[d.side][0], wy: d.wy + DIRS[d.side][1] }
+    // a gate whose outside piece is another village would route through it
+    if (villageAt(seed, out.wx, out.wy) && !(out.wx === v.wx && out.wy === v.wy)) continue
     const r = findRoute(seed, v, out)
     if (!r) continue
     const route = [...r, { wx: d.wx, wy: d.wy }]
@@ -176,7 +186,7 @@ function infoOfBlock(seed, bx, by) {
 function nearbyInfos(seed, wx, wy) {
   const [bx, by] = blockOfPiece(wx, wy)
   const out = []
-  for (let y = by - 2; y <= by + 2; y++) for (let x = bx - 2; x <= bx + 2; x++) out.push(infoOfBlock(seed, x, y))
+  for (let y = by - GATHER; y <= by + GATHER; y++) for (let x = bx - GATHER; x <= bx + GATHER; x++) out.push(infoOfBlock(seed, x, y))
   return out
 }
 
@@ -210,7 +220,7 @@ export function townsAlong(seed, wx, wy, side) {
     const cur = best.get(town.key)
     if (!cur || leagues < cur.leagues) best.set(town.key, { town, leagues })
   }
-  for (let y = by - 2; y <= by + 2; y++) for (let x = bx - 2; x <= bx + 2; x++) {
+  for (let y = by - GATHER; y <= by + GATHER; y++) for (let x = bx - GATHER; x <= bx + GATHER; x++) {
     for (const l of linksOfBlock(seed, x, y)) {
       const r = l.route, n = r.length
       for (let i = 0; i < n; i++) {

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { linksOfBlock, roadSides, roadsFrom, townsAlong, pieceClass, townOf, CITY_DOORS, EXTRA_SOUTH } from '../renderer/wilds/roads.js'
+import { MAX_GROW, GATHER, linksOfBlock, roadSides, roadsFrom, townsAlong, pieceClass, townOf, CITY_DOORS, EXTRA_SOUTH } from '../renderer/wilds/roads.js'
 import { villageAt, blockVillage } from '../renderer/wilds/layout.js'
 import { isCityPiece } from '../renderer/wilds/city/geometry.js'
 
@@ -164,5 +164,25 @@ test('about half the world stays wild', () => {
     for (let wy = -20; wy < 20; wy++) for (let wx = -20; wx < 20; wx++) if (pieceClass(seed, wx, wy) === 'wild') wild++
     const share = wild / 1600
     assert.ok(share >= 0.45 && share <= 0.7, `seed ${seed}: wild share ${share}`)
+  }
+})
+
+test('no route of the home blocks passes through a village except at its two ends, over seeds 1..600 (and seed 245)', () => {
+  for (let seed = 1; seed <= 600; seed++) for (const [bx, by] of [[0, 0], [-1, 0], [1, 0], [0, -1]]) {
+    for (const l of linksOfBlock(seed, bx, by)) l.route.forEach((p, i) => {
+      if (i > 0 && i < l.route.length - 1) assert.ok(!villageAt(seed, p.wx, p.wy), `seed ${seed} block ${bx},${by}: village ${p.wx},${p.wy} mid-route`)
+    })
+  }
+  for (const l of linksOfBlock(245, 0, 0)) l.route.slice(1, -1).forEach(p => assert.ok(!villageAt(245, p.wx, p.wy)))
+})
+
+test('every piece of every link lies within the gathering radius of its owning block, and every block still has its east link', () => {
+  assert.equal(GATHER, 1 + Math.ceil(MAX_GROW / 4))
+  for (let seed = 1; seed <= 150; seed++) for (let by = -4; by < 4; by++) for (let bx = -4; bx < 4; bx++) {
+    const links = linksOfBlock(seed, bx, by)
+    assert.ok(links.some(l => inBlock(l.a, bx, by) || inBlock(l.b, bx, by)), `block ${bx},${by} lost its east link`)
+    for (const l of links) for (const p of l.route) {
+      assert.ok(Math.abs(Math.floor(p.wx / 4) - bx) <= GATHER && Math.abs(Math.floor(p.wy / 4) - by) <= GATHER, `seed ${seed} block ${bx},${by} piece ${p.wx},${p.wy}`)
+    }
   }
 })
