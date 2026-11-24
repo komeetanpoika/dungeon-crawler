@@ -13,12 +13,12 @@ import { blockVillage, villageAt, pieceBiome, fixedMain, pieceKey } from './layo
 import { isCityPiece, CITY } from './city/geometry.js'
 
 export const EXTRA_SOUTH = 0.1
-export const CITY_DOORS = [
-  { gate: 'N', wx: 0, wy: 2, side: 'N' },
-  { gate: 'W', wx: 0, wy: 2, side: 'W' },
-  { gate: 'E', wx: 1, wy: 2, side: 'E' },
-]
-const CITY_TOWN = { key: 'city', name: CITY.name, wx: 0, wy: 2 }
+export const CITY_DOORS = Object.freeze([
+  Object.freeze({ gate: 'N', wx: 0, wy: 2, side: 'N' }),
+  Object.freeze({ gate: 'W', wx: 0, wy: 2, side: 'W' }),
+  Object.freeze({ gate: 'E', wx: 1, wy: 2, side: 'E' }),
+])
+const CITY_TOWN = Object.freeze({ key: 'city', name: CITY.name, wx: 0, wy: 2 })
 const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
 const OPPOSITE = { N: 'S', E: 'W', S: 'N', W: 'E' }
 const mod = (n, m) => ((n % m) + m) % m
@@ -37,7 +37,7 @@ export function townOf(seed, key) {
   const [wx, wy] = String(key).split(',').map(Number)
   if (!Number.isInteger(wx) || !Number.isInteger(wy)) return null
   const v = villageAt(seed, wx, wy)
-  return v ? { key: pieceKey(wx, wy), name: v.name, wx, wy } : null
+  return v ? Object.freeze({ key: pieceKey(wx, wy), name: v.name, wx, wy }) : null
 }
 
 const blockTown = (seed, bx, by) => {
@@ -99,53 +99,62 @@ function findRoute(seed, from, to) {
   return null
 }
 
-// The route from a village piece to a town of block (0,0): Koivula or one of
-// the city's gates, whichever is fewest pieces (a tie goes to Koivula).
-// Returns { town, route } with the route running village -> town.
-function routeIntoHome(seed, v) {
-  let best = null
-  const koivula = findRoute(seed, v, { wx: 0, wy: 0 })
-  if (koivula) best = { town: townOf(seed, '0,0'), route: koivula }
-  for (const d of CITY_DOORS) {
-    const out = { wx: d.wx + DIRS[d.side][0], wy: d.wy + DIRS[d.side][1] }
-    // a gate whose outside piece is another village would route through it
-    if (villageAt(seed, out.wx, out.wy) && !(out.wx === v.wx && out.wy === v.wy)) continue
-    const r = findRoute(seed, v, out)
-    if (!r) continue
-    const route = [...r, { wx: d.wx, wy: d.wy }]
-    if (!best || route.length < best.route.length) best = { town: CITY_TOWN, route }
-  }
-  return best
+// The route from the village piece v to a city door, ending on the door's
+// piece (entered through the door's side); null when the door's outside piece
+// is another village or nothing is found.
+function routeToDoor(seed, v, d) {
+  const out = { wx: d.wx + DIRS[d.side][0], wy: d.wy + DIRS[d.side][1] }
+  if (villageAt(seed, out.wx, out.wy) && !(out.wx === v.wx && out.wy === v.wy)) return null
+  const r = findRoute(seed, v, out)
+  return r ? [...r, { wx: d.wx, wy: d.wy }] : null
 }
+
+const frozenRoute = route => Object.freeze(route.map(p => Object.freeze({ wx: p.wx, wy: p.wy })))
+const makeLink = (a, b, route) => Object.freeze({ a, b, route: frozenRoute(route) })
+const DOOR = Object.fromEntries(CITY_DOORS.map(d => [d.gate, d]))
 
 const linkCache = new Map()
 // The links owned by block (bx, by): its east link, its south link if it has
-// one, and for block (0,0) Koivula to the city. `a` is the end in the owning
-// block; the route runs a -> b.
+// one, and for block (0,0) Koivula to the city (N door) and the city's own
+// roads from its W and E doors to the villages of the blocks beside the home
+// block. `a` is the end in the owning block; the route runs a -> b. Koivula is
+// an ordinary village for the brickwork.
 export function linksOfBlock(seed, bx, by) {
   const key = `${seed}:${bx},${by}`
   let links = linkCache.get(key)
   if (links) return links
-  links = []
+  const out = []
   const own = bx === 0 && by === 0
   const ownVillage = blockTown(seed, bx, by)
   const joins = (tx, ty) => {
     const target = blockTown(seed, tx, ty)
     if (!ownVillage || !target) return
-    if (own) {
-      const r = routeIntoHome(seed, target)
-      if (r) links.push({ a: r.town, b: target, route: r.route.slice().reverse() })
-    } else if (tx === 0 && ty === 0) {
-      const r = routeIntoHome(seed, ownVillage)
-      if (r) links.push({ a: ownVillage, b: r.town, route: r.route })
+    if (own && tx === bx && ty === by + 1) {
+      // south of home: Koivula or a city side door, fewest pieces; ties W, E, Koivula
+      let best = null
+      for (const gate of ['W', 'E']) {
+        const route = routeToDoor(seed, target, DOOR[gate])
+        if (route && (!best || route.length < best.route.length)) best = { town: CITY_TOWN, route }
+      }
+      const k = findRoute(seed, target, { wx: 0, wy: 0 })
+      if (k && (!best || k.length < best.route.length)) best = { town: ownVillage, route: k }
+      if (best) out.push(makeLink(best.town, target, [...best.route].reverse()))
     } else {
       const route = findRoute(seed, ownVillage, target)
-      if (route) links.push({ a: ownVillage, b: target, route })
+      if (route) out.push(makeLink(ownVillage, target, route))
     }
   }
   joins(bx + 1, by)
   if (mod(bx, 3) === hashInt(seed, by, 0, 330) % 3 || hash(seed, bx, by, 331) < EXTRA_SOUTH) joins(bx, by + 1)
-  if (own) links.push({ a: townOf(seed, '0,0'), b: CITY_TOWN, route: [{ wx: 0, wy: 0 }, { wx: 0, wy: 1 }, { wx: 0, wy: 2 }] })
+  if (own) {
+    out.push(makeLink(ownVillage, CITY_TOWN, [{ wx: 0, wy: 0 }, { wx: 0, wy: 1 }, { wx: 0, wy: 2 }]))
+    for (const [gate, tx] of [['W', -1], ['E', 1]]) {
+      const target = blockTown(seed, tx, 0)
+      const route = target && routeToDoor(seed, target, DOOR[gate])
+      if (route) out.push(makeLink(CITY_TOWN, target, [...route].reverse()))
+    }
+  }
+  links = Object.freeze(out)
   if (linkCache.size > CACHE_MAX) linkCache.clear()
   linkCache.set(key, links)
   return links
@@ -198,18 +207,26 @@ export function roadSides(seed, wx, wy) {
 
 export function roadsFrom(seed, townKey) {
   const town = townOf(seed, townKey)
-  if (!town) return []
+  if (!town) return Object.freeze([])
   const bx = Math.floor(town.wx / 4), by = Math.floor(town.wy / 4)
-  const out = []
-  for (const [x, y] of [[bx, by], [bx - 1, by], [bx, by - 1]]) {
+  // owners: this block, the one west and north (their links end here) and the one east (the home block's city road ends in block -1,0)
+  const all = []
+  for (const [x, y] of [[bx, by], [bx - 1, by], [bx, by - 1], [bx + 1, by]]) {
     for (const l of linksOfBlock(seed, x, y)) {
       const fwd = l.a.key === townKey, back = l.b.key === townKey
       if (!fwd && !back) continue
-      const route = fwd ? l.route : [...l.route].reverse()
-      out.push({ town: fwd ? l.b : l.a, side: sideOfStep(route[0], route[1]), leagues: route.length - 1, route })
+      const route = fwd ? l.route : frozenRoute([...l.route].reverse())
+      all.push(Object.freeze({ town: fwd ? l.b : l.a, side: sideOfStep(route[0], route[1]), leagues: route.length - 1, route }))
     }
   }
-  return out.sort((p, q) => 'NESW'.indexOf(p.side) - 'NESW'.indexOf(q.side) || p.leagues - q.leagues)
+  // one road per town: the shorter, ties the first by N, E, S, W
+  all.sort((p, q) => 'NESW'.indexOf(p.side) - 'NESW'.indexOf(q.side) || p.leagues - q.leagues)
+  const best = new Map()
+  for (const r of all) {
+    const cur = best.get(r.town.key)
+    if (!cur || r.leagues < cur.leagues) best.set(r.town.key, r)
+  }
+  return Object.freeze(all.filter(r => best.get(r.town.key) === r))
 }
 
 export function townsAlong(seed, wx, wy, side) {
@@ -230,7 +247,7 @@ export function townsAlong(seed, wx, wy, side) {
       }
     }
   }
-  return [...best.values()].sort((p, q) => p.leagues - q.leagues || (p.town.key < q.town.key ? -1 : 1)).slice(0, 2)
+  return Object.freeze([...best.values()].sort((p, q) => p.leagues - q.leagues || (p.town.key < q.town.key ? -1 : 1)).slice(0, 2).map(t => Object.freeze(t)))
 }
 
 export function pieceClass(seed, wx, wy) {

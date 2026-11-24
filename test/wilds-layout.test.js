@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { hash, hashInt, noise2 } from '../renderer/wilds/rand.js'
 import {
   PIECE, BIOMES, biomeAt, pieceBiome, tierAt, lootDepthFor, caveDepthFor, fixedMain,
-  villageAt, villagesNear, isPermanent, gateAt, pieceKey, pieceOf,
+  villageAt, villagesNear, villageName, blockVillage, NAME_REACH, clearNameMemo, isPermanent, gateAt, pieceKey, pieceOf,
 } from '../renderer/wilds/layout.js'
 
 const SEEDS = [1, 7, 42, 1234, 987654]
@@ -147,4 +147,59 @@ test('piece helpers', () => {
   assert.equal(pieceKey(-2, 3), '-2,3')
   assert.deepEqual(pieceOf(-1, 80), { wx: -1, wy: 1 })
   assert.deepEqual(pieceOf(79, -80), { wx: 0, wy: -1 })
+})
+
+const villagesOf = (seed, r) => {
+  const out = []
+  for (let by = -r; by <= r; by++) for (let bx = -r; bx <= r; bx++) { const v = blockVillage(seed, bx, by); if (v) out.push({ ...v, bx, by }) }
+  return out
+}
+const nameSeeds = [...SEEDS]
+for (let s = 1; s <= 60; s++) nameSeeds.push(s)
+
+test('no two villages within two blocks of each other share a name', () => {
+  assert.equal(NAME_REACH, 2)
+  for (const seed of nameSeeds) {
+    const vs = villagesOf(seed, 8)
+    for (const a of vs) for (const b of vs) {
+      if (a === b || Math.max(Math.abs(a.bx - b.bx), Math.abs(a.by - b.by)) > NAME_REACH) continue
+      assert.notEqual(villageName(seed, a.wx, a.wy), villageName(seed, b.wx, b.wy), `seed ${seed}: ${a.wx},${a.wy} and ${b.wx},${b.wy}`)
+    }
+  }
+})
+
+test('a village name does not depend on what was asked first', () => {
+  for (const seed of SEEDS) {
+    const vs = villagesOf(seed, 4)
+    clearNameMemo()
+    const forward = vs.map(v => villageName(seed, v.wx, v.wy))
+    clearNameMemo()
+    const backward = vs.slice().reverse().map(v => villageName(seed, v.wx, v.wy)).reverse()
+    assert.deepEqual(forward, backward)
+  }
+})
+
+test('most villages keep their old name', () => {
+  const STEMS = ['Koivu', 'Hauki', 'Kuusi', 'Mänty', 'Karhu', 'Suo', 'Kivi', 'Meri', 'Hiekka', 'Ruska', 'Kaisla', 'Louhi',
+    'Honka', 'Lehto', 'Vaara', 'Salo', 'Kuura', 'Sammal', 'Terva', 'Ahma']
+  const ENDS = ['la', 'niemi', 'koski', 'ranta', 'mäki', 'järvi', 'salo', 'kylä']
+  for (const seed of SEEDS) {
+    let kept = 0, total = 0
+    for (const v of villagesOf(seed, 8)) {
+      if (v.wx === 0 && v.wy === 0) continue
+      const stem = STEMS[hashInt(seed, v.wx, v.wy, 311) % STEMS.length]
+      let end = ENDS[hashInt(seed, v.wx, v.wy, 312) % ENDS.length]
+      if (/[äöy]/.test(stem)) end = end.replace('la', 'lä')
+      const old = stem + end === 'Koivula' ? 'Koivuniemi' : stem + end
+      total++
+      if (villageName(seed, v.wx, v.wy) === old) kept++
+    }
+    assert.ok(kept / total >= 0.8, `seed ${seed}: ${kept}/${total} kept`)
+  }
+})
+
+test('only the home village is called Koivula', () => {
+  for (const seed of nameSeeds) for (const v of villagesOf(seed, 8)) {
+    assert.equal(villageName(seed, v.wx, v.wy) === 'Koivula', v.wx === 0 && v.wy === 0)
+  }
 })

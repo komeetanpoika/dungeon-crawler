@@ -137,14 +137,56 @@ const STEMS = ['Koivu', 'Hauki', 'Kuusi', 'Mänty', 'Karhu', 'Suo', 'Kivi', 'Mer
   'Honka', 'Lehto', 'Vaara', 'Salo', 'Kuura', 'Sammal', 'Terva', 'Ahma']
 const ENDS = ['la', 'niemi', 'koski', 'ranta', 'mäki', 'järvi', 'salo', 'kylä']
 
-function villageName(seed, wx, wy) {
-  if (wx === 0 && wy === 0) return 'Koivula'
-  const stem = STEMS[hashInt(seed, wx, wy, 311) % STEMS.length]
-  let end = ENDS[hashInt(seed, wx, wy, 312) % ENDS.length]
+// No two villages within NAME_REACH blocks of each other share a name. Every
+// village has a base name and a priority; it keeps its base name unless a
+// village of higher priority in reach ends up with the same one, and then takes
+// the first free name of its own sequence of candidates. Pure in the seed.
+export const NAME_REACH = 2
+
+function makeName(stem, end) {
   // vowel harmony, roughly: a front-vowel stem takes the front ending
-  if (/[äöy]/.test(stem)) end = end.replace('la', 'lä').replace('ranta', 'ranta').replace('salo', 'salo')
-  const name = stem + end
-  return name === 'Koivula' ? 'Koivuniemi' : name
+  if (/[äöy]/.test(stem)) end = end.replace('la', 'lä')
+  return stem + end
+}
+
+// The names a village may take, in order: its base name, then its stem with
+// each of the other endings, then the following stems with its ending first.
+function nameCandidates(seed, wx, wy) {
+  const s0 = hashInt(seed, wx, wy, 311) % STEMS.length
+  const e0 = hashInt(seed, wx, wy, 312) % ENDS.length
+  const out = []
+  for (let ds = 0; ds < STEMS.length; ds++) for (let j = 0; j < ENDS.length; j++) {
+    const name = makeName(STEMS[(s0 + ds) % STEMS.length], ENDS[(e0 + j) % ENDS.length])
+    if (name !== 'Koivula') out.push(name)
+  }
+  return out
+}
+
+const priorityOf = (seed, wx, wy) => wx === 0 && wy === 0 ? Infinity : hashInt(seed, wx, wy, 313)
+const outranks = (seed, a, b) => {
+  const pa = priorityOf(seed, a.wx, a.wy), pb = priorityOf(seed, b.wx, b.wy)
+  return pa !== pb ? pa > pb : a.wx !== b.wx ? a.wx > b.wx : a.wy > b.wy
+}
+
+const nameMemo = new Map()
+export function clearNameMemo() { nameMemo.clear() }
+
+export function villageName(seed, wx, wy) {
+  if (wx === 0 && wy === 0) return 'Koivula'
+  const key = `${seed},${wx},${wy}`
+  let name = nameMemo.get(key)
+  if (name) return name
+  const me = { wx, wy }
+  const bx = Math.floor(wx / 4), by = Math.floor(wy / 4)
+  const taken = new Set()
+  for (let y = by - NAME_REACH; y <= by + NAME_REACH; y++) for (let x = bx - NAME_REACH; x <= bx + NAME_REACH; x++) {
+    const v = blockVillage(seed, x, y)
+    if (v && !(v.wx === wx && v.wy === wy) && outranks(seed, v, me)) taken.add(villageName(seed, v.wx, v.wy))
+  }
+  name = nameCandidates(seed, wx, wy).find(n => !taken.has(n))
+  if (nameMemo.size > 2000) nameMemo.clear()
+  nameMemo.set(key, name)
+  return name
 }
 
 // The one village of the 4x4 block of pieces (bx, by).
@@ -160,7 +202,8 @@ export function blockVillage(seed, bx, by) {
 
 export function villageAt(seed, wx, wy) {
   const v = blockVillage(seed, Math.floor(wx / 4), Math.floor(wy / 4))
-  return v && v.wx === wx && v.wy === wy ? { name: villageName(seed, wx, wy) } : null
+  // the name is worked out on first use: villageAt is asked far more often than the name
+  return v && v.wx === wx && v.wy === wy ? { get name() { return villageName(seed, wx, wy) } } : null
 }
 
 // Villages within Chebyshev r pieces of (wx, wy), nearest first.

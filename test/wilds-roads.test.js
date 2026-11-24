@@ -73,15 +73,13 @@ test('every village is reached from every other along road edges inside a 12x12-
   }
 })
 
-test('roadsFrom gives every village a road east and a road west, and each road back', () => {
+test('roadsFrom gives every village, Koivula included, a road east and a road west, and each road back', () => {
   for (const seed of SEEDS) for (let by = -5; by < 5; by++) for (let bx = -5; bx < 5; bx++) {
     const v = blockVillage(seed, bx, by)
     const key = `${v.wx},${v.wy}`
     const roads = roadsFrom(seed, key)
-    if (key !== '0,0') {
-      assert.ok(roads.some(r => inBlock(r.town, bx + 1, by)), `${key} has no road east`)
-      assert.ok(roads.some(r => inBlock(r.town, bx - 1, by)), `${key} has no road west`)
-    }
+    assert.ok(roads.some(r => inBlock(r.town, bx + 1, by)), `${key} has no road east`)
+    assert.ok(roads.some(r => inBlock(r.town, bx - 1, by)), `${key} has no road west`)
     for (const r of roads) {
       assert.equal(r.leagues, r.route.length - 1)
       assert.ok(r.route[0].wx === v.wx && r.route[0].wy === v.wy)
@@ -89,18 +87,61 @@ test('roadsFrom gives every village a road east and a road west, and each road b
       assert.ok(back.length >= 1, `${r.town.key} does not list ${key} back`)
     }
   }
-  for (const seed of SEEDS) {
-    const k = roadsFrom(seed, '0,0'), c = roadsFrom(seed, 'city')
-    assert.ok(k.some(r => r.town.key === 'city'))
-    for (const dir of [1, -1]) {
-      assert.ok([...k, ...c].some(r => inBlock(r.town, dir, 0)), `home block has a road to block ${dir},0`)
-    }
-    for (const r of c) assert.ok(['N', 'W', 'E'].includes(r.side), `city road leaves by ${r.side}`)
+})
+
+test('Koivula has a road east, a road west and the road to the city, like any village plus one', () => {
+  const seeds = [...SEEDS]
+  for (let s = 1; s <= 200; s++) seeds.push(s)
+  for (const seed of seeds) {
+    const k = roadsFrom(seed, '0,0')
+    assert.ok(k.some(r => inBlock(r.town, 1, 0)), `seed ${seed}: no road east`)
+    assert.ok(k.some(r => inBlock(r.town, -1, 0)), `seed ${seed}: no road west`)
+    const c = k.find(r => r.town.key === 'city')
+    assert.ok(c && c.leagues === 2 && c.side === 'S', `seed ${seed}: the city road`)
+  }
+})
+
+test('the city has its north road to Koivula and, where they can be routed, a west and an east road of its own', () => {
+  let west = 0, east = 0
+  for (let seed = 1; seed <= 200; seed++) {
+    const c = roadsFrom(seed, 'city')
+    assert.ok(c.some(r => r.side === 'N' && r.town.key === '0,0'), `seed ${seed}: north road`)
+    // (the home block's south link may also leave by a side door, so look for the road to the block beside)
+    const w = c.find(r => r.side === 'W' && inBlock(r.town, -1, 0)), e = c.find(r => r.side === 'E' && inBlock(r.town, 1, 0))
+    if (w) { west++; assert.ok(w.route[0].wx === 0 && w.route[0].wy === 2) }
+    if (e) { east++; assert.ok(e.route[0].wx === 1 && e.route[0].wy === 2) }
     for (const r of c) {
       const back = roadsFrom(seed, r.town.key).filter(b => b.town.key === 'city' && b.leagues === r.leagues)
-      assert.ok(back.length >= 1)
+      assert.ok(back.length >= 1, `seed ${seed}: ${r.town.key} does not list the city back`)
     }
   }
+  assert.ok(west >= 180, `west roads ${west}/200`)
+  assert.ok(east >= 180, `east roads ${east}/200`)
+})
+
+test('no town is listed twice from the same town', () => {
+  for (const seed of SEEDS) for (let by = -6; by < 6; by++) for (let bx = -6; bx < 6; bx++) {
+    const v = blockVillage(seed, bx, by)
+    const keys = roadsFrom(seed, `${v.wx},${v.wy}`).map(r => r.town.key)
+    assert.equal(new Set(keys).size, keys.length, `seed ${seed} ${v.wx},${v.wy}: ${keys}`)
+  }
+  for (const seed of SEEDS) {
+    const keys = roadsFrom(seed, 'city').map(r => r.town.key)
+    assert.equal(new Set(keys).size, keys.length)
+  }
+})
+
+test('what the network hands out is frozen', () => {
+  const links = linksOfBlock(7, 0, 0)
+  assert.ok(Object.isFrozen(links))
+  for (const l of links) {
+    assert.ok(Object.isFrozen(l) && Object.isFrozen(l.a) && Object.isFrozen(l.b) && Object.isFrozen(l.route) && Object.isFrozen(l.route[0]))
+  }
+  const r = roadsFrom(7, '0,0')
+  assert.ok(Object.isFrozen(r) && Object.isFrozen(r[0]) && Object.isFrozen(r[0].route) && Object.isFrozen(r[0].town))
+  assert.ok(Object.isFrozen(townOf(7, 'city')))
+  assert.ok(Object.isFrozen(CITY_DOORS) && Object.isFrozen(CITY_DOORS[0]))
+  assert.ok(Object.isFrozen(townsAlong(7, 0, 1, 'S')))
 })
 
 test('Koivula and the city are one road apart', () => {
