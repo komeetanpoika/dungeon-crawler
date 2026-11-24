@@ -1,5 +1,5 @@
 import { drawSunbeam } from './sunbeam.js'
-import { FACING_ANGLE } from '../systems/entities.js'
+import { FACING_ANGLE, isWalkable } from '../systems/entities.js'
 import { canWieldHeavy } from '../systems/inventory.js'
 import { loadSprites, loadMoreSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
@@ -1257,6 +1257,27 @@ export class Renderer {
     })
   }
 
+  // Someone standing on a cell that is walked under (wilds/over.js) is behind
+  // that building: the tile layer's top covers what of him is on such cells,
+  // but a sprite reaches a few pixels onto the solid cells beside and below
+  // (pushed up against the wall's face from behind, his feet would show on
+  // it). Clip him at every side whose neighbour is solid and not walked under.
+  // Returns true if the context was saved and clipped (restore it after).
+  clipBehind(map, x, y) {
+    if (!map[y]?.[x]?.over) return false
+    const shut = (dx, dy) => { const c = map[y + dy]?.[x + dx]; return !!c && !c.over && !isWalkable(c.tile, c) }
+    const w = shut(-1, 0), e = shut(1, 0), n = shut(0, -1), s = shut(0, 1)
+    if (!w && !e && !n && !s) return false
+    const { ctx, S, camX, camY } = this, FAR = 1e5
+    const l = w ? Math.round(x * S - camX) : -FAR, r = e ? Math.round((x + 1) * S - camX) : FAR
+    const t = n ? Math.round(y * S - camY) : -FAR, b = s ? Math.round((y + 1) * S - camY) : FAR
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(l, t, r - l, b - t)
+    ctx.clip()
+    return true
+  }
+
   render(state, fx = null) {
     const { ctx, S, camX, camY } = this
     const { map, entities: rawEntities, player } = state
@@ -1313,6 +1334,7 @@ export class Renderer {
       const epy = e.py !== undefined ? Math.round(e.py - S/2 - camY) : Math.round(e.y * S - camY)
       // Rime's freeze tints whatever the enemy is drawn by, so it wraps the
       // whole draw rather than living inside drawEntity.
+      const behind = this.clipBehind(map, e.x, e.y)
       const prevFilter = e.frozen ? ctx.filter : null
       if (e.frozen) ctx.filter = FROZEN_FILTER
       if (getMonsterDef(e.type)) {
@@ -1325,6 +1347,7 @@ export class Renderer {
       if (e.attack) drawEnemySwing(ctx, e, sprites, camX, camY, S)
       if (e.stunTimer > 0) drawStunStars(ctx, epx + S / 2, epy - 4, e.stunTimer)
       if (e.shock) drawShockCloud(ctx, epx + S / 2, epy - 14, S, e.shock.tickT + e.shock.left)
+      if (behind) ctx.restore()
     }
     const lift = Math.round(fx?.lift ?? 0)
     if (fx?.wizards?.length) {
@@ -1344,8 +1367,10 @@ export class Renderer {
       }
     }
     // The blink ghosts belong with the player: behind him, in front of the floor.
+    const heroBehind = this.clipBehind(map, player.x, player.y)
     drawHero(ctx, player, sprites, camX, camY, S,
       { lift, trail: player.blinkTrail ?? state.blinkTrail, greenAlpha: fx?.greenAlpha ?? 0 })
+    if (heroBehind) ctx.restore()
     drawMonsterFx(ctx, entities, map, camX, camY, S)
     const dragon = entities.find(e => e.type === 'dragon')
     if (dragon) drawDragonBreath(ctx, dragon, camX, camY)

@@ -274,7 +274,7 @@ try {
     // the hero is always at the middle of the view: the cell he stands on, and its neighbour to the east
     const box = await page.locator('canvas').first().boundingBox()
     const mid = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) }
-    const clip = dx => page.screenshot({ clip: { x: mid.x - 16 + dx * 32, y: mid.y - 16, width: 32, height: 32 } })
+    const clip = (dx, dy = 0) => page.screenshot({ clip: { x: mid.x - 16 + dx * 32, y: mid.y - 16 + dy * 32, width: 32, height: 32 } })
     const walkSouth = async (to, secs = 4) => {
       await page.keyboard.down('ArrowDown')
       const got = await until(Y => window.__dc.state.player.y + window.__dc.wilds.origin.wy * 80 >= Y, secs, to, 60)
@@ -291,6 +291,19 @@ try {
     check(!!(await walkSouth(180)) && await rowY() === 180, 'walking south from outside goes under the walk and no further', `row ${await rowY()}`)
     const under = await ev(() => { const s = window.__dc.state; return { ward: !!s.map[s.player.y][s.player.x].ward, over: !!s.map[s.player.y][s.player.x].over } })
     check(under.over && !under.ward, 'outside the ward still', JSON.stringify(under))
+    // pushed up against the face from behind, nothing of him shows on it:
+    // the strip of the face row under his cell is the same as under the next
+    // one (the hero is at the middle of the view, a little south of his cell's middle)
+    {
+      const off = await ev(() => { const p = window.__dc.state.player; return { dx: p.px - (p.x * 32 + 16), dy: p.py - (p.y * 32 + 16) } })
+      const strip = dx => page.screenshot({ clip: { x: mid.x - 16 - off.dx + dx * 32, y: mid.y + 16 - off.dy, width: 32, height: 12 } })
+      const faceEast = await cellAt(75, 181)
+      let same = false
+      for (let i = 0; i < 3 && !same; i++) { same = Buffer.compare(await strip(0), await strip(1)) === 0; if (!same) await sleep(400) }
+      if (face.overlay === faceEast.overlay) check(same && off.dy > 0, 'pushed against the face from behind, his feet do not show on it', JSON.stringify(off))
+      else note(`(the face tiles differ here, ${face.overlay} / ${faceEast.overlay}: the feet check is skipped)`)
+      await shot('tops-wall-pushed')
+    }
     await ev(() => { const p = window.__dc.state.player; p.px = p.x * 32 + 16; p.py = p.y * 32 + 16 })
     await sleep(300)
     await shot('tops-wall')
