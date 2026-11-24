@@ -188,7 +188,7 @@ td.wrap code { white-space: normal; }
       <li><strong>Projectiles and ground</strong><code>stepProjectiles</code>, bramble and fire zones, lightning marks.</li>
       <li><strong>Everyone else</strong>Villagers, then for each enemy <code>act(e, updateBrain(e))</code>, then enemy attacks.</li>
       <li><strong>Sight</strong><code>maybeComputeFOV</code>: radius 8 with line of sight underground, 14 and open on the surface.</li>
-      <li><strong>Draw</strong>Tile chunks, entities, monster effects, health bars, night wash, HUD.</li>
+      <li><strong>Draw</strong>Tile chunks, entities, monster effects, the tiles that are walked under, health bars, night wash, HUD.</li>
     </ol>
   </div>
 </section>
@@ -296,6 +296,7 @@ td.wrap code { white-space: normal; }
     <figcaption>The outlined rectangle is the camera. A chunk flashes when it is baked. Dim chunks sit in the cache but are not drawn this frame. Click a tree to fell it: that is <code>markTileDirty</code>, and only its chunk is baked again. Fog over cells that are explored but out of sight is one rectangle per horizontal run.</figcaption>
   </figure>
   <p>The Wilds window holds 225 chunks at a megabyte each, so the cache keeps at most 64 and drops the farthest from the view. During a mushroom trip each chunk keeps a hue-rotated copy, and only two copies are rebuilt per frame.</p>
+  <p>The view is from above and to the south, so the top row of a roof or a wall is height, not ground. <code>wilds/over.js</code> opens that row when a piece is generated and marks its cells <code>over</code>, as it does a gate's arch. The tile layer bakes the ground of such a cell with the rest and its art into a second image of the chunk, which is drawn after the people: whoever stands there is behind it. A chunk without such a cell has no second image, and the cache counts canvases, so its ceiling is the same.</p>
   <p class="where">Lives in <code>renderer/render/tile-layer.js</code> · <code>renderer/systems/tile-dirty.js</code> · measure with <code>node tools/perf/trace.mjs &lt;depth&gt;</code></p>
 </section>
 

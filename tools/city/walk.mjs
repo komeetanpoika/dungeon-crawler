@@ -4,6 +4,8 @@
 // It walks in, then, the clock set through the debug hooks (--dcdebug):
 //
 //   gate     walks in through the north gate
+//   tops     under the wall's walk, the gate's arch and a roof's first row: walked
+//            under, hidden there, and what falls there lands beside it
 //   dawn     the square at dawn
 //   crier    the crier at his box: his hand bell and his news
 //   talk     two talking pairs on the square at once, each with its own bubbles
