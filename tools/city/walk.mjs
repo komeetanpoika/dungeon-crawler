@@ -294,8 +294,12 @@ try {
     await ev(() => { const p = window.__dc.state.player; p.px = p.x * 32 + 16; p.py = p.y * 32 + 16 })
     await sleep(300)
     await shot('tops-wall')
-    if (check(walkCell.overlay === east.overlay && east.seen, 'the next cell of the walk is the same tile, in sight', JSON.stringify(east)))
-      check(Buffer.compare(await clip(0), await clip(1)) === 0, 'under the walk the hero is hidden: his cell looks like the one beside it')
+    if (check(walkCell.overlay === east.overlay && east.seen, 'the next cell of the walk is the same tile, in sight', JSON.stringify(east))) {
+      // (a bird or a wisp of smoke may cross either cell: three looks, one clean one is enough)
+      let same = false
+      for (let i = 0; i < 3 && !same; i++) { same = Buffer.compare(await clip(0), await clip(1)) === 0; if (!same) await sleep(500) }
+      check(same, 'under the walk the hero is hidden: his cell looks like the one beside it')
+    }
     await ev(() => { const p = window.__dc.state.player; p.py -= 16 })
     await sleep(300)
     check(Buffer.compare(await clip(0), await clip(1)) !== 0, 'half under it, he shows above the wall')
