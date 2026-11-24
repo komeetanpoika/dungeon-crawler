@@ -738,7 +738,8 @@ test('a door tells what the house looks like outside, and how tough the land is'
 
 test('the pieces are cell for cell what they were before doors told their looks', async () => {
   const { createHash } = await import('node:crypto')
-  const BEFORE = { '0,0': '7d23a0869838e613', '1,0': 'cf3286888989fa92', '0,-1': 'cbef23c92f5261e9', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': 'f05d2b5bc40f9214', '6,1': '04fd70d97186adb6' }
+  // (pinned again at GEN 10: 0,0 1,0 0,-1 and -5,-5 have road edges, whose frame lanes wear the road)
+  const BEFORE = { '0,0': 'fa875deb75077e70', '1,0': '60602f1722fecfa6', '0,-1': '0ddc7ece0f3fcc45', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': 'fe1dd3f570f06b72', '6,1': '04fd70d97186adb6' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

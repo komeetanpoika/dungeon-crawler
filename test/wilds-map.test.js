@@ -64,6 +64,21 @@ test('classes by tile name: what stands on a cell beats what it is made of', () 
   assert.ok(CLASSES.length <= 26, 'a class is one letter in a save')
 })
 
+test('road ground has a colour class of its own', () => {
+  for (const ground of ['grass', 'sand', 'mtn', 'marsh']) assert.equal(classOf({ tile: TILE.FLOOR, skin: `ow_road_${ground}_1` }), CLASS.road)
+  assert.notEqual(CLASS.road, CLASS.path)
+  assert.notEqual(MAP_COLOURS[CLASS.road], MAP_COLOURS[CLASS.path])
+  // the new class comes last, so the letters of older saves keep their meaning
+  assert.equal(CLASS.road, CLASSES.length - 1)
+  assert.deepEqual(['path', 'pave', 'deck', 'building', 'wall'].map(n => CLASS[n]), [11, 12, 13, 14, 15])
+  // and a road beside a path shows as road in their block
+  const w = world(), p = getPiece(w, 3, 0)
+  for (const [x, y] of [[30, 30], [31, 30], [30, 31], [31, 31]]) Object.assign(p.cells[y][x], { explored: true, skin: 'ow_dirt_0', overlay: null, tile: TILE.FLOOR })
+  p.cells[30][31].skin = 'ow_road_grass_2'
+  fold(w, p)
+  assert.equal(w.map.get(p.key)[15 * MAP_N + 15], CLASS.road)
+})
+
 test('a path one tile wide still shows in its block', () => {
   const w = world(), p = getPiece(w, 3, 0)
   for (const [x, y] of [[30, 30], [31, 30], [30, 31], [31, 31]]) Object.assign(p.cells[y][x], { explored: true, skin: 'ow_grass_0', overlay: null, tile: TILE.FLOOR })

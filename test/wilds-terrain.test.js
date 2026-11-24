@@ -3,10 +3,14 @@ import assert from 'node:assert/strict'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
+import { makeTerrain, WILDS_SKINS, TERRAIN_SKINS, ROAD_WIDTH, setRoadWidth } from '../renderer/wilds/terrain.js'
 import { PIECE, FRAME, MARGIN, biomeAt, pieceBiome, gateAt } from '../renderer/wilds/layout.js'
 import { hashInt } from '../renderer/wilds/rand.js'
 import { TREE_PAIRS } from '../renderer/terrain/lib.js'
+import { isMountainGround } from '../renderer/terrain/mountain.js'
+import { roadSides } from '../renderer/wilds/roads.js'
+import { isDeckSkin } from '../renderer/wilds/bridge-art.js'
+import { isCityPiece } from '../renderer/wilds/city/geometry.js'
 
 const TILES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer/assets/tiles')
 const SEEDS = [3, 77, 2024]
@@ -165,4 +169,140 @@ test('open and path make walkable ground through anything', () => {
     for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++)
       if (dx * dx + dy * dy <= 25) assert.ok(t.free(40 + dx, 40 + dy), `pad cell ${dx},${dy} not free in ${b}`)
   }
+})
+
+// ---- roads ------------------------------------------------------------------------
+// The lanes a road wears where it crosses a piece edge, as offsets from the
+// gate: g..g+2 at three wide, the whole corridor g-1..g+2 at four.
+const roadLanes = (g, w = ROAD_WIDTH) => Array.from({ length: w }, (_, i) => g + 1 - (w >> 1) + i)
+const isRoad = s => (s ?? '').startsWith('ow_road_')
+// The skip-th piece with (or without) a road on its `side`, searched outward
+// from home, away from the city.
+function roadEdge(seed, side, want, skip = 0) {
+  for (let r = 1; r < 30; r++) for (let wy = -r; wy <= r; wy++) for (let wx = -r; wx <= r; wx++) {
+    if (Math.max(Math.abs(wx), Math.abs(wy)) !== r || isCityPiece(wx, wy) || isCityPiece(wx + 1, wy) || isCityPiece(wx, wy + 1)) continue
+    if (roadSides(seed, wx, wy)[side] === want && skip-- <= 0) return { wx, wy }
+  }
+  throw new Error(`no piece with road ${side} = ${want} for seed ${seed}`)
+}
+const withRoadWidth = (w, fn) => { setRoadWidth(w); try { fn() } finally { setRoadWidth(3) } }
+
+test('the road is three wide unless a tool asks for four, and has a ground of its own on four grounds', () => {
+  assert.equal(ROAD_WIDTH, 3)
+  withRoadWidth(4, () => assert.equal(ROAD_WIDTH, 4))
+  assert.equal(ROAD_WIDTH, 3)
+  assert.throws(() => setRoadWidth(5))
+  assert.equal(ROAD_WIDTH, 3)
+  for (const ground of ['grass', 'sand', 'mtn', 'marsh']) for (let i = 0; i < 4; i++) assert.ok(TERRAIN_SKINS.includes(`ow_road_${ground}_${i}`), `ow_road_${ground}_${i}`)
+})
+
+test('a road edge wears road lanes in the frame, the same on both sides of the edge, whatever the deal', () => {
+  for (const w of [3, 4]) withRoadWidth(w, () => {
+    for (const seed of SEEDS) for (const side of ['E', 'S']) for (const skip of [0, 3]) {
+      const { wx, wy } = roadEdge(seed, side, true, skip)
+      const [nx, ny] = side === 'E' ? [wx + 1, wy] : [wx, wy + 1]
+      const g = gateAt(seed, wx, wy, side)
+      const lanes = roadLanes(g)
+      // o is the lane (an offset along the edge), d the depth from the edge into a piece
+      const mine = (o, d) => side === 'E' ? [PIECE - 1 - d, o] : [o, PIECE - 1 - d]
+      const theirs = (o, d) => side === 'E' ? [d, o] : [o, d]
+      const looks = {}
+      for (const deal of [0, 3]) {
+        const A = built(seed, wx, wy, deal), B = built(seed, nx, ny, deal)
+        const seen = []
+        for (const o of [g - 1, g, g + 1, g + 2]) for (let d = 0; d < FRAME; d++) {
+          for (const [t, [x, y]] of [[A, mine(o, d)], [B, theirs(o, d)]]) {
+            const s = skinsOf(t, x, y)
+            const at = `${w} wide, seed ${seed} ${wx},${wy} ${side} deal ${deal}: lane ${o - g} depth ${d} at ${x},${y} (${s.ground} / ${s.prop})`
+            assert.ok(t.walkable(x, y), at)
+            if (!lanes.includes(o)) { assert.ok(!isRoad(s.ground), at); continue }
+            assert.ok(isRoad(s.ground) || isDeckSkin(s.prop), at)
+            seen.push(isRoad(s.ground) ? s.ground : 'deck')
+          }
+          // A's margin past the edge is B's frame, and B's margin is A's frame
+          if (d < MARGIN && lanes.includes(o)) {
+            for (const [P, [px, py], Q, [qx, qy]] of [[A, mine(o, -1 - d), B, theirs(o, d)], [B, theirs(o, -1 - d), A, mine(o, d)]]) {
+              const p = skinsOf(P, px, py).ground, q = skinsOf(Q, qx, qy).ground
+              if (isRoad(p) || isRoad(q)) assert.equal(p, q, `${w} wide, seed ${seed} ${wx},${wy} ${side}: lane ${o - g} depth ${d} seen from both pieces`)
+            }
+          }
+        }
+        looks[deal] = seen.join(',')
+      }
+      assert.equal(looks[0], looks[3], `seed ${seed} ${wx},${wy} ${side}: the deal moved the road`)
+    }
+  })
+})
+
+test('an edge without a road keeps its two worn lanes', () => {
+  const worn = s => /^ow_(dirt|path_sand)_/.test(s.ground) || isMountainGround(s.ground) || isDeckSkin(s.prop)
+  for (const seed of SEEDS) for (const side of ['E', 'S']) for (const skip of [0, 2]) {
+    const { wx, wy } = roadEdge(seed, side, false, skip)
+    const A = built(seed, wx, wy, 0)
+    const g = gateAt(seed, wx, wy, side)
+    for (const o of [g - 1, g, g + 1, g + 2]) for (let d = 0; d < FRAME; d++) {
+      const [x, y] = side === 'E' ? [PIECE - 1 - d, o] : [o, PIECE - 1 - d]
+      const s = skinsOf(A, x, y), at = `seed ${seed} ${wx},${wy} ${side}: lane ${o - g} depth ${d} (${s.ground} / ${s.prop})`
+      assert.ok(!isRoad(s.ground), at)
+      if (o === g || o === g + 1) assert.ok(worn(s), at)
+    }
+  }
+})
+
+test('t.road lays ROAD_WIDTH-wide road ground, deck over water, and reports it through onRoad and onPath', () => {
+  // the road's ground by the country under the cell
+  const SET = { forest: ['grass'], autumn: ['grass'], mountain: ['mtn'], marsh: ['marsh'], desert: ['sand'], sea: ['grass', 'sand'] }
+  for (const w of [3, 4]) withRoadWidth(w, () => {
+    let decks = 0
+    for (const seed of SEEDS) for (const country of Object.keys(SET)) {
+      const p = pieceIn(seed, country)
+      const t = makeTerrain(seed, p.wx, p.wy, 0)
+      const from = t.gateInner('W'), to = t.gateInner('E')
+      t.road(from.x, from.y, 40, 40)
+      t.road(40, 40, to.x, to.y)
+      t.finish()
+      const at = (x, y) => `${w} wide, ${country} ${p.wx},${p.wy} seed ${seed} at ${x},${y}`
+      let n = 0
+      for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+        if (!t.onRoad(x, y)) continue
+        n++
+        const s = skinsOf(t, x, y)
+        assert.ok(t.onPath(x, y) && t.inside(x, y) && t.walkable(x, y), at(x, y))
+        if (isDeckSkin(s.prop)) { decks++; continue }
+        const m = /^ow_road_([a-z]+)_\d$/.exec(s.ground)
+        assert.ok(m && SET[t.biome(x, y)].includes(m[1]), `${at(x, y)}: ${s.ground} in ${t.biome(x, y)}`)
+      }
+      assert.ok(n > 0)
+      // every column the road crosses holds a full road's width of it
+      for (let x = FRAME; x < PIECE - FRAME; x++) {
+        let col = 0
+        for (let y = 0; y < PIECE; y++) if (t.onRoad(x, y)) col++
+        assert.ok(col >= w, `${at(x, '*')}: ${col} road cells in the column`)
+      }
+      assert.equal(t.onRoad(40, 3), false, 'a cell off the road')
+    }
+    assert.ok(decks > 0, 'no road crossed water on a deck')
+  })
+})
+
+test('a road from a road gate meets the frame\'s road lanes, three or four wide', () => {
+  for (const w of [3, 4]) withRoadWidth(w, () => {
+    for (const seed of SEEDS) for (const side of ['N', 'E', 'S', 'W']) for (const skip of [0, 1, 4]) {
+      const { wx, wy } = roadEdge(seed, side, true, skip)
+      const t = makeTerrain(seed, wx, wy, skip)
+      const from = t.gateInner(side)
+      t.road(from.x, from.y, 40, 40)
+      t.finish()
+      const g = gateAt(seed, wx, wy, side)
+      for (const o of roadLanes(g)) {
+        // the first cell inside the piece, and the last of the frame beside it
+        const [ix, iy, fx, fy] = side === 'N' ? [o, FRAME, o, FRAME - 1] : side === 'S' ? [o, PIECE - 1 - FRAME, o, PIECE - FRAME]
+          : side === 'W' ? [FRAME, o, FRAME - 1, o] : [PIECE - 1 - FRAME, o, PIECE - FRAME, o]
+        const at = `${w} wide, seed ${seed} ${wx},${wy} ${side}: lane ${o - g}`
+        assert.ok(t.onRoad(ix, iy), `${at}: no road inside at ${ix},${iy}`)
+        const s = skinsOf(t, fx, fy)
+        assert.ok(isRoad(s.ground) || isDeckSkin(s.prop), `${at}: the frame at ${fx},${fy} is ${s.ground}`)
+      }
+    }
+  })
 })

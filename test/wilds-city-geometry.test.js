@@ -43,6 +43,6 @@ test('a saved tale place on a city piece is released, its flags kept', () => {
 })
 
 test('the day counter is saved and survives a GEN bump', () => {
-  const w = makeWorld({ seed: 1, gen: 8, day: 5 }); assert.equal(w.day, 5); assert.equal(exportWorld(w).day, 5); assert.equal(GEN, 9)
+  const w = makeWorld({ seed: 1, gen: 8, day: 5 }); assert.equal(w.day, 5); assert.equal(exportWorld(w).day, 5); assert.equal(GEN, 10)
   assert.equal(makeWorld(null).day, 0)
 })

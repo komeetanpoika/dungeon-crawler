@@ -717,10 +717,13 @@ test('paths: dirt on grass, the same dirt on sand, and a sand-coloured rim where
   }
   assert.ok(sandPath > 300, `only ${sandPath} cells of path over sand`)
   assert.ok(shore > 500)
-  // the desert gate road: the lane cells of a corridor over sand wear the sand path
+  // the desert gates: the lane cells of a corridor over sand wear the sand
+  // path (the west gate), or the road's sand ground where a road crosses (the north)
   const desert = piece(7, 6, 5)
-  const lane = [0, 1].map(o => desert.cells[0][desert.gates.N.x + o].skin)
-  for (const s of lane) assert.ok(/^ow_(path_sand|dirt)_/.test(s), `the north gate's lane is ${s}`)
+  const lane = [0, 1].map(o => desert.cells[desert.gates.W.y + o][0].skin)
+  for (const s of lane) assert.ok(/^ow_(path_sand|dirt)_/.test(s), `the west gate's lane is ${s}`)
+  const road = [0, 1, 2].map(o => desert.cells[0][desert.gates.N.x + o].skin)
+  for (const s of road) assert.ok(/^ow_road_sand_/.test(s), `the north gate's road is ${s}`)
 })
 
 test('every skin the sample pieces use is loaded with the Wilds and has its tile', () => {

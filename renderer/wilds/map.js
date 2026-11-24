@@ -17,13 +17,15 @@ export const SEE_RADIUS = 16         // tiles round the hero looked at each time
 export const FOUND_REACH = 24        // tiles from a place's middle that count as having stood in it
 
 // Colour classes, in the order they win a block: the higher beats the lower,
-// so a one-tile path or stream still shows.
+// so a one-tile path or stream still shows. A class's index is its letter in
+// a save, so a new class goes at the end (the road, which then wins every
+// block it is in: a walked road is a line on the map).
 export const CLASSES = [
   ['unseen', null],
   ['grass', '#5f8f3f'], ['sand', '#d8c27c'], ['mtnground', '#8f8777'], ['marsh', '#5d6b3b'],
   ['wood', '#2f6d30'], ['pine', '#20563a'], ['autumn', '#b8692b'], ['deadwood', '#6d6358'],
   ['rock', '#75716a'], ['water', '#2f70b3'], ['path', '#b38d58'], ['pave', '#9d978b'],
-  ['deck', '#7c5432'], ['building', '#aa462f'], ['wall', '#cbc7bc'],
+  ['deck', '#7c5432'], ['building', '#aa462f'], ['wall', '#cbc7bc'], ['road', '#eee2c2'],
 ]
 export const CLASS = Object.fromEntries(CLASSES.map(([name], i) => [name, i]))
 export const MAP_COLOURS = CLASSES.map(([, colour]) => colour)
@@ -40,6 +42,7 @@ const OVERLAY = [
 ]
 const SKIN = [
   [/^ow_(water|pond)/, 'water'],
+  [/^ow_road_/, 'road'],
   [/^ow_(dirt|path)/, 'path'],
   [/^ow_(city_pave|ruin_crack)/, 'pave'],
   [/^ow_(sand|hardpan)/, 'sand'],

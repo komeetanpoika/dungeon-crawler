@@ -144,8 +144,10 @@ export function fillGrassPockets(b, { maxSize = 12 } = {}) {
 // Fray the mountain floor into the grass (edges.mjs): every mountain-ground
 // cell with other ground on a side wears the edge tile for that open-side
 // mask, nibbled at the concave corners; off the map counts as rock. Run last.
+// A Wilds road (ow_road_*) is no grass: the floor meets it with no fringe.
+const besideFloor = n => isMountainGround(n) || (!!n && n.startsWith('ow_road_'))
 export function stampGroundEdge(b) {
-  return stampEdges(b, { base: isMountainGround, inside: isMountainGround, prefix: 'ow_mtn_edge', variants: EDGE_VARIANTS, plain: (x, y) => MTN.ground[hash(x, y, 3) % 7] })
+  return stampEdges(b, { base: isMountainGround, inside: besideFloor, prefix: 'ow_mtn_edge', variants: EDGE_VARIANTS, plain: (x, y) => MTN.ground[hash(x, y, 3) % 7] })
 }
 
 // Shape for a mass cell from its neighbourhood: f = which of the four sides
