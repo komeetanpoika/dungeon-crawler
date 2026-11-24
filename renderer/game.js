@@ -25,7 +25,9 @@ import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
 import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
-import { makeAudio, playCues } from './render/audio.js'
+import { makeAudio, playCues, setVolume } from './render/audio.js'
+import { loadSettings, saveSettings, stepVolume } from './systems/settings.js'
+import { ACTIONS, route, rebind, keysLabel, defaultBindings, bindable } from './systems/bindings.js'
 import { makeLocalMatch, localInputs, viewOf, LOCAL_ID, inputFromKeys } from './pvp/local.js'
 import { stepMatch, setClass } from './pvp/sim.js'
 import { pvpHudModel, updatePvpHud, hidePvpHud, netHudModel, respawnLine, buffRowModel, updateBuffRow } from './ui/pvp-hud.js'
@@ -40,6 +42,9 @@ import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
+import { showMap, hideMap } from './ui/map-panel.js'
+import { updateMinimap } from './render/minimap.js'
+import { toWorld } from './wilds/window.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
@@ -83,7 +88,7 @@ import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose,
 import { cullDead, tickDying } from './systems/dying.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
-import { startStanceSwitch, tickStanceSwitch, tryFire, DRAW_CHARGE, resolveDrawTier, shouldAutoReleaseDraw, FIRE_FAIL_MESSAGES, noAmmoMessage } from './systems/ranged.js'
+import { startStanceSwitch, tickStanceSwitch, nextStance, tryFire, DRAW_CHARGE, resolveDrawTier, shouldAutoReleaseDraw, FIRE_FAIL_MESSAGES, noAmmoMessage } from './systems/ranged.js'
 import { castCone, GUST, GUST_CHARGE, GUST_TIERS, resolveGustTier, shouldAutoReleaseGust } from './systems/magic.js'
 import { spellFor, tryCast } from './systems/spells.js'
 import { tickZones } from './systems/zones.js'
@@ -137,12 +142,52 @@ const DRAGON_CONE_HALF       = Math.PI * 0.21
 const keys = {}
 const audio = makeAudio()
 
-function loadMutedPref() {
-  try { return localStorage.getItem('dc-muted') === '1' } catch { return false }
+// The player's settings (systems/settings.js): sound, keys, the minimap.
+const settingsStore = { getItem: k => localStorage.getItem(k), setItem: (k, v) => localStorage.setItem(k, v) }
+const settings = loadSettings(settingsStore)
+const keepSettings = () => saveSettings(settingsStore, settings)
+setVolume(audio, settings.volume)
+const loadMutedPref = () => settings.muted
+// Sound on or off, wherever the player is: a run, the arena, an online room.
+function setMuted(m) {
+  settings.muted = m
+  keepSettings()
+  if (pvp) pvp.match.sfx.muted = m
+  if (net) net.muted = m
+  if (state?.sfx) state.sfx.muted = m
 }
-function saveMutedPref(m) {
-  try { localStorage.setItem('dc-muted', m ? '1' : '0') } catch {}
+
+// One listener ahead of every other turns the key the player pressed into
+// the key the game reads for that action (systems/bindings.js). Keys the
+// touch layer sends are already the game's own and pass; so does typing in a
+// field, and the title's own menus, where cheats are typed. `keyGrab` takes the
+// next real key for the Controls screen.
+let keyGrab = null
+const sentFor = new Map()   // real key held -> the key sent in its place
+function routeKey(e) {
+  if (!e.isTrusted || e.target?.tagName === 'INPUT') return
+  const swallow = () => { e.stopImmediatePropagation(); e.preventDefault() }
+  if (keyGrab) {
+    swallow()
+    if (e.type === 'keydown' && !e.repeat) keyGrab(e.key)
+    return
+  }
+  if (phase === PHASE.TITLE && !pvp && !net) { sentFor.clear(); return }   // the arena and online rooms run under the title phase
+  if (e.type === 'keyup' && sentFor.has(e.key)) {
+    swallow()
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: sentFor.get(e.key) }))
+    sentFor.delete(e.key)
+    return
+  }
+  const r = route(settings.bindings, e.key)
+  if (r.type === 'pass') { if (e.key === 'Tab') e.preventDefault(); return }
+  swallow()
+  if (r.type !== 'send') return
+  if (e.type === 'keydown') sentFor.set(e.key, r.key)
+  window.dispatchEvent(new KeyboardEvent(e.type, { key: r.key, repeat: e.repeat }))
 }
+window.addEventListener('keydown', routeKey, true)
+window.addEventListener('keyup', routeKey, true)
 window.addEventListener('keydown', e => { if (e.repeat && (e.key === 'f' || e.key === 'F')) return; keys[e.key] = true })   // a held F is one press (it turns Päivölä's mirrors)
 window.addEventListener('keyup',   e => { keys[e.key] = false })
 // Focus loss never delivers the keyup, so a key held over an Alt-Tab would
@@ -185,6 +230,7 @@ window.addEventListener('keydown', e => {
       return
     }
     if (inventoryOpen) closeInventory()
+    else if (mapOpen) closeMap()
     else if (phase === PHASE.PLAYING) pauseGame()
     else if (phase === PHASE.PAUSED) resumeGame()
   }
@@ -199,17 +245,20 @@ window.addEventListener('keydown', e => {
   else if (inventoryOpen) closeInventory()
 })
 
-// M toggles sound. The muted flag lives on state.sfx; the audio engine
-// ramps its master gain when it sees the flag change in playCues.
+// M (and the touch map icon) opens and shuts the map of the Wilds; Tab
+// shows and hides the corner minimap. The arena and online rooms have no
+// map and no pause menu, so there the key still turns the sound on and off.
 window.addEventListener('keydown', e => {
-  if (e.target?.tagName === 'INPUT') return
-  if ((e.key !== 'm' && e.key !== 'M') || e.repeat) return
-  if (pvp) { pvp.match.sfx.muted = !pvp.match.sfx.muted; saveMutedPref(pvp.match.sfx.muted); return }
-  if (net) { net.muted = !net.muted; saveMutedPref(net.muted); return }
-  if (!state?.sfx) return
-  state.sfx.muted = !state.sfx.muted
-  saveMutedPref(state.sfx.muted)
-  think(state, state.sfx.muted ? 'Sound muted.' : 'Sound on.')
+  if (e.target?.tagName === 'INPUT' || e.repeat) return
+  if (pvp || net) { if (e.key === 'm' || e.key === 'M') setMuted(!settings.muted); return }
+  if (e.key === 'm' || e.key === 'M') {
+    if (mapOpen) closeMap()
+    else if (phase === PHASE.PLAYING && state && !playerBound(state.player)) openMap()
+  } else if (e.key === 'Tab' && phase === PHASE.PLAYING && state && runMode === 'wilds') {
+    e.preventDefault()
+    settings.minimap = !settings.minimap
+    keepSettings()
+  }
 })
 
 // Q (and the green touch button): use whatever the active offhand holds.
@@ -306,6 +355,7 @@ if (new URLSearchParams(location.search).has('dcdebug')) {
   window.__dc = { get state() { return state }, get save() { return activeSave }, get wilds() { return wildsWorld }, get sprites() { return renderer?.sprites }, get renderer() { return renderer } }
 }
 let inventoryOpen = false
+let mapOpen = false
 let meta = null
 let renderer = null
 let lastTime = 0
@@ -964,6 +1014,8 @@ function goTitle() {
   // not carry into a real Adventure or Rush, so Quit to Title starts the
   // bench over (unsaved panel values survive the reload).
   if (bench) { location.reload(); return }
+  if (mapOpen) { mapOpen = false; hideMap() }
+  updateMinimap(null, null, false)
   phase = PHASE.TITLE
   menu.showTitle(meta, {
     // Adventure is the Wilds. The old Adventure chain and Timewarp have no
@@ -971,6 +1023,7 @@ function goTitle() {
     onWilds: () => beginRun(WILDS_DEPTH, 'wilds'),
     onRush: () => beginRun(1, 'rush'),
     onPvpArena: () => (window.saveAPI?.isWeb ? goOnline() : goPvpPicker()),
+    onSettings: openSettings,
     onOpenEditor: () => window.saveAPI.openEditor(),
     onQuit: () => window.saveAPI.quitApp(),
     onCheat: (depth) => beginRun(depth),
@@ -1261,6 +1314,7 @@ async function beginRun(depth = 1, mode = modeForDepth(depth), arenaOverride = n
 }
 
 function resumeGame() {
+  keyGrab = null
   setPhase(PHASE.PLAYING)
   menu.hide()
   keys[' '] = false
@@ -1271,8 +1325,64 @@ function pauseGame() {
   // change or waystone hop to do it for you.
   if (runMode === 'wilds' && state && !state.gameOver) persistRun()
   setPhase(PHASE.PAUSED)
+  showPauseMenu()
+}
+function showPauseMenu() {
   const restartDepth = state?.cave ? state.cave.surface.level : state?.level ?? 1
-  menu.showPause({ onResume: resumeGame, onRestart: () => beginRun(restartDepth, runMode), onQuitToTitle: goTitle })
+  menu.showPause({
+    onResume: resumeGame,
+    onSound: () => openSound(showPauseMenu),
+    onControls: coarsePointer() ? null : () => openControls(showPauseMenu),
+    onRestart: () => beginRun(restartDepth, runMode), onQuitToTitle: goTitle,
+  })
+}
+
+// The title's Settings; Sound and Controls come back here.
+function openSettings() {
+  menu.showSettings({
+    onSound: () => openSound(openSettings),
+    onControls: coarsePointer() ? null : () => openControls(openSettings),
+    onBack: goTitle,
+  })
+}
+
+// The Sound screen: every change is kept at once and heard at once.
+function openSound(back, selected = 0) {
+  menu.showSound({ volume: settings.volume, muted: settings.muted, selected }, {
+    onVolume: by => {
+      settings.volume = stepVolume(settings.volume, by)
+      setVolume(audio, settings.volume)
+      keepSettings()
+      playCues(audio, [{ name: 'ui-move' }], null, settings.muted)
+      openSound(back, 0)
+    },
+    onMute: () => { setMuted(!settings.muted); playCues(audio, [{ name: 'ui-move' }], null, settings.muted); openSound(back, 1) },
+    onBack: back,
+  })
+}
+
+// The Controls screen. Picking an action hands the next real key press to
+// `keyGrab` (routeKey): a usable key becomes that action's key, anything
+// else leaves things as they were.
+function openControls(back, selected = 0, waiting = null) {
+  if (waiting === null) keyGrab = null
+  menu.showControls({ rows: ACTIONS.map(a => ({ label: a.label, keys: keysLabel(settings.bindings, a.id) })), waiting, selected }, {
+    onPick: i => {
+      keyGrab = key => {
+        keyGrab = null
+        if (bindable(key)) {
+          settings.bindings = rebind(settings.bindings, ACTIONS[i].id, key)
+          keepSettings()
+          for (const k of Object.keys(keys)) keys[k] = false   // nothing stays held across a change
+          sentFor.clear()
+        }
+        openControls(back, i)
+      }
+      openControls(back, i, i)
+    },
+    onReset: () => { settings.bindings = defaultBindings(); keepSettings(); sentFor.clear(); openControls(back, ACTIONS.length) },
+    onBack: () => { keyGrab = null; back() },
+  })
 }
 
 function openWaystoneMenu(dests) {
@@ -1303,7 +1413,25 @@ function openInventory() {
     onUse: i => useInventoryItem(i),
     onDrop: i => dropInventoryItem(i),
     onBuild: slot => buildCampfire(state.player.inventory[slot]?.kind ?? 'lumber'),
+    // The yellow button: the same switch as in play, done at once since the
+    // game stands still while the bag is open.
+    onSwap: () => {
+      const to = nextStance(state.player)
+      if (!to) return
+      state.player.attackMode = to
+      state.player.stanceSwitch = null
+      state.player.charging = null
+      sfx(state, 'stance-switch')
+      afterInventoryChange()
+    },
     onClose: closeInventory,
+  }, {
+    touch: coarsePointer(),
+    keys: {
+      red: keysLabel(settings.bindings, 'attack'), green: keysLabel(settings.bindings, 'offhand'),
+      blue: keysLabel(settings.bindings, 'interact'), yellow: keysLabel(settings.bindings, 'swap'),
+      close: keysLabel(settings.bindings, 'bag'),
+    },
   })
 }
 
@@ -1312,7 +1440,39 @@ function closeInventory() {
   inventoryOpen = false
   hideInventory()
   setPhase(PHASE.PLAYING)
-  keys[' '] = false
+  for (const k of [' ', 'q', 'Q', 'f', 'F', 'Shift']) keys[k] = false   // nothing pressed in the bag acts in the world
+}
+
+// Where the hero is on the map of the Wilds, in world tiles: where they
+// stand, or the door they went in by. Null anywhere that has no map.
+function heroOnMap() {
+  if (runMode !== 'wilds' || !wildsWorld?.origin || !state) return null
+  const surface = state.cave ? state.cave.surface : state
+  return toWorld(wildsWorld.origin, surface.player.x, surface.player.y)
+}
+
+// The full map: pauses like the bag; its own key handler pans and zooms.
+function openMap() {
+  const hero = heroOnMap()
+  if (!hero) { think(state, 'I have no map of this place.'); return }
+  setPhase(PHASE.PAUSED)
+  mapOpen = true
+  sfx(state, 'ui-open')
+  showMap(wildsWorld, hero, { onClose: closeMap }, {
+    touch: coarsePointer(),
+    keys: {
+      red: keysLabel(settings.bindings, 'attack'), green: keysLabel(settings.bindings, 'offhand'),
+      yellow: keysLabel(settings.bindings, 'swap'), close: keysLabel(settings.bindings, 'map'),
+    },
+  })
+}
+
+function closeMap() {
+  sfx(state, 'ui-close')
+  mapOpen = false
+  hideMap()
+  setPhase(PHASE.PLAYING)
+  for (const k of [' ', 'q', 'Q', 'f', 'F', 'Shift']) keys[k] = false
 }
 
 // Signpost panel: pauses like the inventory; the panel's own capture-phase
@@ -1358,7 +1518,8 @@ function afterInventoryChange() {
 function useInventoryItem(i) {
   const item = state.player.inventory[i]
   if (!item) return
-  if (item.kind === 'potion' || item.kind === 'meat' || item.kind === 'cooked_meat') {
+  // a potion, or anything that heals when eaten (meat, cooked meat, herring)
+  if (item.kind === 'potion' || (item.kind !== 'mushroom' && Number.isFinite(item.heal))) {
     const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'potion' ? item.amount : item.heal)
     if (healed <= 0) { think(state, 'Already full.'); return }
     removeItem(state.player, i)
@@ -2516,6 +2677,8 @@ function render() {
   renderer.render(state, fx)
   bench?.drawOverlay(renderer.ctx, state, renderer)
   updateHUD(state)
+  // the corner minimap: out of doors in the Wilds, where there is a keyboard
+  updateMinimap(wildsWorld, state.cave ? null : heroOnMap(), settings.minimap && !coarsePointer())
 }
 
 function enterCave(entrance) {

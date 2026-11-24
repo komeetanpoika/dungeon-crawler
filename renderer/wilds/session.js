@@ -11,6 +11,7 @@ import { assemble, toWindow, toWorld, recentreStep, WIN, WIN_TILES } from './win
 import { shiftState } from './shift.js'
 import { getPiece, recordFor, sweep, exportWorld } from './world.js'
 import { admit } from './tales.js'
+import { noteSeen } from './map.js'
 import { admitSampo } from './city/sampo-places.js'
 import { applyFelled, STUMP } from '../systems/lumber.js'
 import { TILE } from '../systems/entities.js'
@@ -29,6 +30,7 @@ export const asleep = (e, player) => e.taleKey === undefined && e.cityKey === un
 // open, 24 in the city, so the square (where four pieces meet) holds still.
 export const CITY_MARGIN = 24
 const SWEEP_EVERY = 10       // seconds between forgetting sweeps
+const MAP_EVERY = 0.2       // seconds between looks at what the hero has seen, for the map
 const PREGEN_EVERY = 0.25    // seconds between pieces generated ahead of the player
 const VILLAGE_REACH = 10     // tiles from a village's centre that count as being in it
 const TRANSIENT = ['projectiles', 'zones', 'fireZones', 'lightning', 'strikes', 'shockwaves', 'arcs', 'hitEffects']
@@ -247,6 +249,10 @@ export function tickWilds(state, world, delta, { buildEntities, onVillage } = {}
       if (!world.visited.includes(piece.key)) { world.visited.push(piece.key); onVillage?.(piece.village) }
     }
   }
+
+  // the map takes in what the hero has seen, a few times a second
+  world._mapT = (world._mapT ?? MAP_EVERY) + delta
+  if (world._mapT >= MAP_EVERY) { world._mapT = 0; noteSeen(world, X, Y) }
 
   world._sweepT = (world._sweepT ?? 0) + delta
   if (world._sweepT >= SWEEP_EVERY) {

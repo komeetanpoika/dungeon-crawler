@@ -1,8 +1,8 @@
-// Mobile touch layer: fixed thumbstick + diamond action cluster + start/
-// select pills. Emits synthetic KeyboardEvents on window so the game's
+// Mobile touch layer: fixed thumbstick + diamond action cluster + three
+// icons (bag, map, menu). Emits synthetic KeyboardEvents on window so the game's
 // existing key listeners and keys{} map work unchanged. Self-gating: does
 // nothing on fine-pointer devices.
-import { joystickDirs, diffDirs } from './touch-input.js'
+import { joystickDirs, diffDirs, makeTapSprint } from './touch-input.js'
 
 const NUB_RADIUS = 34   // px the nub may travel from the stick center
 
@@ -29,6 +29,10 @@ function initTouchControls() {
   let stickId = null
   let centerX = 0, centerY = 0
   let dirs = []
+  // Sprint is a double tap: tap the stick, touch it again and hold. Pushing
+  // the stick to its rim is only walking.
+  const tapSprint = makeTapSprint()
+  const now = () => performance.now() / 1000
 
   const setDirs = next => {
     const { press: p, release: r } = diffDirs(dirs, next)
@@ -40,11 +44,11 @@ function initTouchControls() {
     const dx = x - centerX
     const dy = y - centerY
     const len = Math.hypot(dx, dy) || 1
-    if (len >= NUB_RADIUS * 0.9) press('sprint')
-    else release('sprint')
     const clamp = Math.min(len, NUB_RADIUS) / len
     nub.style.transform = `translate(${dx * clamp}px, ${dy * clamp}px)`
     setDirs(joystickDirs(dx, dy))
+    if (tapSprint.sprinting() && dirs.length) press('sprint')
+    else release('sprint')
   }
 
   zone.addEventListener('pointerdown', e => {
@@ -54,6 +58,7 @@ function initTouchControls() {
     centerX = rect.left + rect.width / 2
     centerY = rect.top + rect.height / 2
     zone.setPointerCapture(e.pointerId)
+    tapSprint.down(now())
     steer(e.clientX, e.clientY)
   })
   zone.addEventListener('pointermove', e => {
@@ -64,6 +69,7 @@ function initTouchControls() {
     if (e.pointerId !== stickId) return
     stickId = null
     nub.style.transform = 'translate(0, 0)'
+    tapSprint.up(now())
     release('sprint')
     setDirs([])
   }
@@ -95,8 +101,9 @@ function initTouchControls() {
   bindHold(document.getElementById('touch-stance'), 'Shift')
   bindHold(document.getElementById('touch-fountain'), 'f')
   bindHold(document.getElementById('touch-quickuse'), 'q')
-  bindHold(document.getElementById('touch-select'), 'i')
-  bindHold(document.getElementById('touch-start'), 'Escape')
+  bindHold(document.getElementById('touch-bag'), 'i')
+  bindHold(document.getElementById('touch-map'), 'm')
+  bindHold(document.getElementById('touch-menu'), 'Escape')
 
   // --- The offhand button mirrors the badge the HUD publishes on
   // #hud-offhand rather than reaching into game state: grey when the active
@@ -112,6 +119,7 @@ function initTouchControls() {
     stickId = null
     nub.style.transform = 'translate(0, 0)'
     dirs = []
+    tapSprint.reset()
     buttonResets.forEach(reset => reset())
     releaseAll()
   }

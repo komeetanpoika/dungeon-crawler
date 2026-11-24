@@ -24,3 +24,17 @@ export function diffDirs(prev, next) {
     release: prev.filter(k => !next.includes(k)),
   }
 }
+
+// Sprint by double tap on the stick: a short touch, then another within
+// `gap` seconds of its lifting, sprints for as long as that second touch is
+// held. A long touch let go and taken up again is only walking on. Times in
+// seconds, passed in.
+export function makeTapSprint(gap = 0.3, tap = 0.3) {
+  let downAt = -Infinity, tapUpAt = -Infinity, on = false
+  return {
+    down(t) { on = t - tapUpAt <= gap; downAt = t; return on },
+    up(t) { tapUpAt = !on && t - downAt <= tap ? t : -Infinity; on = false },
+    sprinting: () => on,
+    reset() { downAt = -Infinity; tapUpAt = -Infinity; on = false },
+  }
+}

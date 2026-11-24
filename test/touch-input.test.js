@@ -56,3 +56,44 @@ describe('diffDirs', () => {
     assert.deepEqual(diffDirs(['d', 's'], []), { press: [], release: ['d', 's'] })
   })
 })
+
+import { makeTapSprint } from '../renderer/ui/touch-input.js'
+
+describe('makeTapSprint', () => {
+  it('a tap and a second touch soon after sprints while that touch lasts', () => {
+    const s = makeTapSprint()
+    assert.equal(s.down(1.00), false)
+    s.up(1.10)
+    assert.equal(s.down(1.30), true)
+    assert.equal(s.sprinting(), true)
+    s.up(4.00)
+    assert.equal(s.sprinting(), false)
+  })
+  it('one long push never sprints, wherever the stick is', () => {
+    const s = makeTapSprint()
+    s.down(1)
+    assert.equal(s.sprinting(), false)
+  })
+  it('a long walk let go and taken up again is only walking', () => {
+    const s = makeTapSprint()
+    s.down(1); s.up(3)
+    assert.equal(s.down(3.1), false)
+  })
+  it('a second touch that comes too late is only walking', () => {
+    const s = makeTapSprint()
+    s.down(1); s.up(1.1)
+    assert.equal(s.down(1.5), false)
+  })
+  it('after a sprint it takes a new tap to sprint again', () => {
+    const s = makeTapSprint()
+    s.down(1); s.up(1.1); s.down(1.2); s.up(1.25)
+    assert.equal(s.down(1.3), false)
+    s.up(1.4)
+    assert.equal(s.down(1.5), true)
+  })
+  it('reset forgets a tap', () => {
+    const s = makeTapSprint()
+    s.down(1); s.up(1.1); s.reset()
+    assert.equal(s.down(1.2), false)
+  })
+})

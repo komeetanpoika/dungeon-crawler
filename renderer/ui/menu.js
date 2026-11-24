@@ -20,7 +20,10 @@ function overlayEl() { return document.getElementById('menu-overlay') }
 
 // Menu navigation accepts the touch controls' synthetic keys alongside the
 // desktop ones: stick w/s move, Space (the red button) confirms.
-const NAV_ACTIONS = { ArrowDown: 'down', s: 'down', ArrowUp: 'up', w: 'up', Enter: 'confirm', ' ': 'confirm' }
+const NAV_ACTIONS = {
+  ArrowDown: 'down', s: 'down', ArrowUp: 'up', w: 'up', Enter: 'confirm', ' ': 'confirm',
+  ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right',   // a row with a value to turn up or down
+}
 export const navActionFor = key => NAV_ACTIONS[key] ?? null
 
 export function formatMetaSummary(meta) {
@@ -41,13 +44,13 @@ function highlight() {
   currentButtons.forEach((b, i) => b.classList.toggle('selected', i === selectedIndex))
 }
 
-function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, onNet, input, onEscape }) {
+function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, onNet, input, onEscape, selected = 0, compact = false }) {
   const el = overlayEl()
   el.innerHTML = ''
   currentInput = null
 
   const panel = document.createElement('div')
-  panel.className = 'menu-panel'
+  panel.className = compact ? 'menu-panel compact' : 'menu-panel'
 
   const h = document.createElement('h1')
   h.className = 'menu-title'
@@ -106,12 +109,11 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
   // While a text field is up the touch layer steps aside (index.html CSS),
   // so no stick or pill can sit over the field or swallow its taps.
   document.body?.classList.toggle('menu-typing', !!input)
-  // While any menu overlay is visible, the touch SELECT/START pills (which
-  // sit UNDER it, z-index-wise, but at a screen position a panel's own
-  // buttons can cover) are hidden by index.html CSS — a tap meant for a
-  // menu button must not fall through to a pill underneath it.
+  // While any menu overlay is visible the touch icons (bag, map, menu) are
+  // hidden by index.html CSS: a tap meant for a menu button must not land on
+  // an icon instead.
   document.body?.classList.toggle('menu-open', true)
-  selectedIndex = 0
+  selectedIndex = Math.min(Math.max(0, selected), buttons.length - 1)
   cheatBuffer = ''
   clearCheatTimer()
   highlight()
@@ -133,6 +135,9 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
       selectedIndex = (selectedIndex - 1 + buttons.length) % buttons.length; highlight(); e.preventDefault()
     } else if (action === 'confirm') {
       buttons[selectedIndex].onSelect(); e.preventDefault()
+    } else if (action === 'left' || action === 'right') {
+      const turn = buttons[selectedIndex][action === 'left' ? 'onLeft' : 'onRight']
+      if (turn) { turn(); e.preventDefault() }
     }
     // A cheat letter is folded into the buffer independently of any nav
     // action above — "host"'s "s" is also the down-nav key, and typing it
@@ -157,7 +162,7 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
   window.addEventListener('keydown', keyHandler)
 }
 
-export function showTitle(meta, { onWilds, onRush, onPvpArena, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
+export function showTitle(meta, { onWilds, onRush, onPvpArena, onSettings, onOpenEditor, onQuit, onCheat, onPvp, onNet }) {
   // Adventure is the Wilds (2026-11-15): the old map-by-map Adventure and
   // Timewarp left the title, their maps still answer to the level<N> cheats.
   // The web release has no tile editor and nothing to quit to.
@@ -169,6 +174,7 @@ export function showTitle(meta, { onWilds, onRush, onPvpArena, onOpenEditor, onQ
       { label: 'Adventure', onSelect: onWilds },
       { label: 'Dungeon Rush', onSelect: onRush },
       { label: 'PvP arena', onSelect: onPvpArena },
+      ...(onSettings ? [{ label: 'Settings', onSelect: onSettings }] : []),
       ...(isWeb ? [] : [
         { label: 'Open Editor', onSelect: onOpenEditor },
         { label: 'Quit', onSelect: onQuit },
@@ -242,14 +248,66 @@ export function showDestinations(entries, { onPick, onCancel }) {
   })
 }
 
-export function showPause({ onResume, onRestart, onQuitToTitle }) {
+export function showPause({ onResume, onSound, onControls, onRestart, onQuitToTitle }) {
   renderScreen({
     title: 'Paused',
     buttons: [
       { label: 'Resume', onSelect: onResume },
+      ...(onSound ? [{ label: 'Sound', onSelect: onSound }] : []),
+      ...(onControls ? [{ label: 'Controls', onSelect: onControls }] : []),
       { label: 'Restart', onSelect: onRestart },
       { label: 'Quit to Title', onSelect: onQuitToTitle },
     ],
+  })
+}
+
+// The title's Settings: the same two screens the pause menu opens.
+export function showSettings({ onSound, onControls, onBack }) {
+  renderScreen({
+    title: 'Settings',
+    buttons: [
+      { label: 'Sound', onSelect: onSound },
+      ...(onControls ? [{ label: 'Controls', onSelect: onControls }] : []),
+      { label: 'Back', onSelect: onBack },
+    ],
+    onEscape: onBack,
+  })
+}
+
+export const volumeLabel = (volume, steps = 10) => {
+  const n = Math.round(volume * steps)
+  return `Volume  ${'█'.repeat(n)}${'░'.repeat(steps - n)}  ${n}`
+}
+
+// Sound: a volume turned with left and right (a tap or Enter steps it up and
+// round again), and sound on or off.
+export function showSound({ volume, muted, selected = 0 }, { onVolume, onMute, onBack }) {
+  renderScreen({
+    title: 'Sound',
+    selected,
+    buttons: [
+      { label: volumeLabel(volume), onSelect: () => onVolume(volume >= 1 ? -10 : 1), onLeft: () => onVolume(-1), onRight: () => onVolume(1) },
+      { label: muted ? 'Sound: off' : 'Sound: on', onSelect: onMute, onLeft: onMute, onRight: onMute },
+      { label: 'Back', onSelect: onBack },
+    ],
+    onEscape: onBack,
+  })
+}
+
+// Controls: every action with its keys. Picking one waits for a key (the
+// game takes the next press, Escape backs out).
+export function showControls({ rows, waiting = null, selected = 0 }, { onPick, onReset, onBack }) {
+  renderScreen({
+    title: 'Controls',
+    subtitle: waiting === null ? 'Pick an action, then press its new key.' : 'Press a key. Escape leaves it as it was.',
+    selected,
+    compact: true,
+    buttons: [
+      ...rows.map((r, i) => ({ label: `${r.label}:  ${waiting === i ? '…' : r.keys}`, onSelect: () => onPick(i) })),
+      { label: 'Reset to defaults', onSelect: onReset },
+      { label: 'Back', onSelect: onBack },
+    ],
+    onEscape: onBack,
   })
 }
 

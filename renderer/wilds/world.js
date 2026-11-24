@@ -9,6 +9,7 @@
 //            the piece was last in the window
 //   deals    key -> how many times the piece has been forgotten
 import { makeSampo, loadSampo, exportSampo, SAMPO_PLACES } from './city/sampo.js'
+import { loadMap, exportMap, forgetMap } from './map.js'
 import { generatePiece } from './piece.js'
 import { generateCityPiece } from './city/piece.js'
 import { pieceKey, isPermanent, villageAt } from './layout.js'
@@ -46,6 +47,9 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     stocksDay: null,
     // the Sampo of Kalevanlinna (city/sampo.js): the city's long story
     sampo: makeSampo(),
+    // the map (map.js): a small picture of every piece seen, its version for
+    // whoever draws it (never saved), and the tale places the player has found
+    map: new Map(), mapVer: new Map(), found: new Set(),
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
   }
   if (!ok) return world
@@ -79,7 +83,11 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   if (isInt(saved.stocksDay) && saved.stocksDay >= 0) world.stocksDay = saved.stocksDay
   // the long story stays told across a generator change, as the tales do
   world.sampo = loadSampo(saved.sampo)
+  // a found place stays marked while its place stands; the pictures of the
+  // land itself go with the generator that drew it
+  if (Array.isArray(saved.found)) for (const key of saved.found) if (world.places.has(key)) world.found.add(key)
   if (saved.gen !== GEN) return world
+  loadMap(world, saved.map)
   for (const [key, rec] of Object.entries(saved.records ?? {})) {
     if (!rec || typeof rec !== 'object') continue
     world.records.set(key, {
@@ -153,6 +161,7 @@ export function sweep(world, cwx, cwy) {
   for (const key of forgotten) {
     world.records.delete(key)
     world.places.delete(key)
+    forgetMap(world, key)   // land that will be dealt anew leaves the map
     world.deals.set(key, (world.deals.get(key) ?? 0) + 1)
     world.pieces.delete(key)
   }
@@ -173,5 +182,6 @@ export function exportWorld(world) {
     solved: [...world.solved], looted: [...world.looted],
     stocksDay: world.stocksDay,
     sampo: exportSampo(world.sampo),
+    map: exportMap(world), found: [...world.found],
   }
 }
