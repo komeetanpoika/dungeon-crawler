@@ -594,6 +594,46 @@ function renderScene(weather, { entities = [], sprites = {}, ...extra } = {}) {
   return { ops: ctx.ops, layer, ctx }
 }
 
+describe('Renderer.render behind a building', () => {
+  // the hero on a walked-under cell (wilds/over.js) at (1,1): a wall's face
+  // south of him, a tower's body west of him, more of the walk east of him
+  function behind({ over = true } = {}) {
+    const map = createMap(4, 3)
+    for (const row of map) for (const c of row) { c.tile = TILE.FLOOR; c.explored = true; c.visible = true }
+    if (over) { map[1][1].over = true; map[1][2].over = true }
+    map[2][1].tile = TILE.WALL
+    map[1][0].tile = TILE.WALL
+    const ctx = orderCtx()
+    const canvas = { width: 128, height: 96, offsetWidth: 128, offsetHeight: 96, getContext: () => ctx }
+    const r = new Renderer(canvas, { weatherLayer: stubLayer() })
+    r.viewW = 128; r.viewH = 96
+    r.sprites = { ...r.sprites, crab: 'CRAB' }
+    const crab = { type: 'crab', x: 2, y: 1 }
+    const state = { ...scene(null, [crab]), map }
+    r.updateCamera(state.player, 0)
+    r.render(state, null)
+    return { ops: ctx.ops, r }
+  }
+  const S = 32
+
+  it('clips whoever stands there at the solid cells beside and below him', () => {
+    const { ops, r } = behind()
+    const rects = ops.filter(o => o.name === 'rect').map(o => o.args)
+    // the crab at (2,1): solid below only (no map row there: nothing), so it is not clipped; the hero is
+    const hero = rects.find(a => a[0] === Math.round(1 * S - r.camX))
+    assert.ok(hero, `clipped at his cell's west edge (${JSON.stringify(rects)})`)
+    assert.equal(hero[1] + hero[3], Math.round(2 * S - r.camY), 'and at its south edge')
+    assert.ok(hero[0] + hero[2] > 1e4 && hero[1] < -1e4, 'open to the east and the north')
+    const clips = ops.filter(o => o.name === 'clip').length, saves = ops.filter(o => o.name === 'rect').length
+    assert.equal(clips, saves)
+  })
+
+  it('clips nobody on ordinary ground', () => {
+    const { ops } = behind({ over: false })
+    assert.equal(ops.filter(o => o.name === 'clip').length, 0)
+  })
+})
+
 describe('Renderer.render weather layers', () => {
 
   // The first flame rect is the fire-zone loop's red '#ef4444' fill.
