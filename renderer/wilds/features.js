@@ -8,11 +8,31 @@
 // stands on a path only on its own site's ground (the opened pad, a tale's
 // circles: terrain.js refuses it anywhere else), where there is room to walk
 // round it; last of all the dressing that still blocks a way is taken up.
+//
+// A piece with a road edge (roads.js roadSides) is laid round its roads. A
+// village's and a tale's place's roads run to its hub. Anywhere else the
+// roads come first, from each road gate to a junction, and the main thing
+// stands beside them, as near the junction as they leave it room; trails one
+// wide join the junction to the main thing, to the gates without a road and
+// to the small things. A piece with no road edge is laid as it always was.
 import { PIECE, FRAME, tierAt, pieceBiome, fixedMain, villageAt, caveDepthFor, pieceKey, BIOME_NAMES } from './layout.js'
 import { hash, hashInt, mulberry32 } from './rand.js'
 import { makeSites, layoutTale, TALE_PAD } from './sites.js'
+import { roadSides } from './roads.js'
 
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7 }
+const SIDES = ['N', 'E', 'S', 'W']
+// where a road piece's junction may lie, on both axes
+const JUNCTION_LO = FRAME + 8, JUNCTION_HI = PIECE - FRAME - 9
+// how far a junction that falls in water or rock may move to find dry land
+const JUNCTION_SHIFT = 10
+// how far the main thing's builders reach past its pad (a den heaps its rock 8.6 tiles out)
+const BUILT_PAST_PAD = 3
+// a village street runs this far out from the middle of the square, and stops
+// where it meets the square
+const STREET_FROM = 14, STREET_TO = 4
+// at toughness 1 and 2, no foe of a pack is posted within this many tiles of a road
+const ROAD_CALM = 10
 const VILLAGERS = ['villager', 'villager', 'villager', 'elder', 'chicken', 'chicken', 'sheep', 'goat']
 const ROCKS = {
   forest: ['ow_rock_gray_moss_0', 'ow_rock_gray_moss_1', 'ow_rock_gray_moss_2'],
@@ -62,6 +82,40 @@ const nearHome = (wx, wy) => Math.max(Math.abs(wx), Math.abs(wy)) <= 1
 const ANIMALS = {
   forest: ['deer', 'deer', 'boar', 'mouse'], autumn: ['deer', 'deer', 'boar', 'mouse'],
   marsh: ['boar', 'mouse', 'mouse'], mountain: ['deer', 'mouse'], sea: ['chicken', 'mouse'],
+}
+
+// The squared distance from every cell of a piece to the nearest cell `on`
+// marks: Felzenszwalb and Huttenlocher's exact transform, along each row and
+// then down each column of the row pass's result.
+function squaredDistances(on) {
+  const N = PIECE, FAR = 1e9
+  const d2 = new Float64Array(N * N)
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) d2[y * N + x] = on(x, y) ? 0 : FAR
+  const f = new Float64Array(N), v = new Int32Array(N), z = new Float64Array(N + 1)
+  const line = (start, stride) => {
+    for (let q = 0; q < N; q++) f[q] = d2[start + q * stride]
+    // the lower envelope of the parabolas rooted at each cell
+    let k = 0
+    v[0] = 0; z[0] = -Infinity; z[1] = Infinity
+    for (let q = 1; q < N; q++) {
+      let s
+      for (;;) {
+        const p = v[k]
+        s = (f[q] + q * q - f[p] - p * p) / (2 * (q - p))
+        if (s > z[k]) break
+        k--
+      }
+      k++; v[k] = q; z[k] = s; z[k + 1] = Infinity
+    }
+    k = 0
+    for (let q = 0; q < N; q++) {
+      while (z[k + 1] < q) k++
+      d2[start + q * stride] = (q - v[k]) * (q - v[k]) + f[v[k]]
+    }
+  }
+  for (let y = 0; y < N; y++) line(y * N, 1)
+  for (let x = 0; x < N; x++) line(x, N)
+  return d2
 }
 
 // The one main thing of a piece: fixed for the home trio and for villages,
@@ -131,6 +185,69 @@ export function placeFeatures(t, piece) {
     }
   }
 
+  // ---- the roads ----------------------------------------------------------------
+  // Which sides carry a road is the edges' and never the deal's.
+  const sides = roadSides(seed, wx, wy)
+  const roadGates = SIDES.filter(side => sides[side])
+  const roadPiece = roadGates.length > 0
+  // How near each cell is to a road laid inside the piece: its squared
+  // distance to the nearest road cell. Asked only once every road is laid.
+  let roadD2 = null
+  const roadNear = () => roadD2 ??= squaredDistances((x, y) => t.onRoad(x, y))
+  // Where a road piece's roads meet: towards the mean of its road gates'
+  // inner points, a few tiles off it by the deal; on the nearest dry land
+  // within JUNCTION_SHIFT if that falls in water or rock, so that the trails
+  // meet the road on the ground and not on a raft of planks.
+  const roadJunction = () => {
+    const inner = roadGates.map(side => t.gateInner(side))
+    const mean = a => Math.round(inner.reduce((sum, g) => sum + g[a], 0) / inner.length)
+    const box = v => Math.max(JUNCTION_LO, Math.min(JUNCTION_HI, v))
+    const j = { x: box(mean('x') + ri(-4, 4)), y: box(mean('y') + ri(-4, 4)) }
+    if (t.rawKind(j.x, j.y) === 'land') return j
+    let best = null
+    for (let dy = -JUNCTION_SHIFT; dy <= JUNCTION_SHIFT; dy++) for (let dx = -JUNCTION_SHIFT; dx <= JUNCTION_SHIFT; dx++) {
+      const x = j.x + dx, y = j.y + dy, d = dx * dx + dy * dy
+      if (d > JUNCTION_SHIFT * JUNCTION_SHIFT || box(x) !== x || box(y) !== y || t.rawKind(x, y) !== 'land') continue
+      if (!best || d < best.d) best = { x, y, d }
+    }
+    return best ? { x: best.x, y: best.y } : j
+  }
+  // Where the main thing stands beside its roads: as near the junction as they
+  // leave room for its pad and what is built round it, never nearer than pad
+  // + 4. Where the roads leave no such room it gives up a tile of that room at
+  // a time.
+  const besideTheRoads = (j, pad) => {
+    const near = roadNear()
+    for (let room = pad + BUILT_PAST_PAD; room >= 0; room--) {
+      const spots = []
+      for (let y = 18; y <= PIECE - 19; y++) for (let x = 18; x <= PIECE - 19; x++) {
+        const d = Math.hypot(x - j.x, y - j.y)
+        if (d >= pad + 4 && near[y * PIECE + x] > room * room) spots.push({ x, y, d })
+      }
+      if (!spots.length) continue
+      const best = Math.min(...spots.map(s => s.d))
+      return pick(spots.filter(s => s.d < best + 2))
+    }
+    return { x: j.x, y: j.y }
+  }
+  // A village is entered by its roads: each comes to the edge of the village
+  // on the side of the square that faces its gate, and goes on as a straight
+  // street to the square (sites.js cobbles what of it lies in the village and
+  // keeps that clear). The street's end is far enough out that the road
+  // wanders to it outside the village. t.road lays its square from a cell one
+  // up and one left of the street's middle line.
+  const street = (g, cx, cy) => {
+    const ox = g.x - cx, oy = g.y - cy
+    const [dx, dy] = Math.abs(ox) >= Math.abs(oy) ? [Math.sign(ox), 0] : [0, Math.sign(oy)]
+    const c = dx ? cx : cy, sign = dx || dy
+    const reach = Math.min(STREET_FROM, sign > 0 ? PIECE - FRAME - 2 - c : c - FRAME - 2)
+    const at = d => ({ x: cx + dx * d - 1, y: cy + dy * d - 1 })
+    const entry = at(reach)
+    t.road(g.x, g.y, entry.x, entry.y)
+    // a tile at a time: so short a step does not wander
+    for (let d = reach; d > STREET_TO; d--) { const a = at(d), b = at(d - 1); t.road(a.x, a.y, b.x, b.y) }
+  }
+
   // ---- the main thing -------------------------------------------------------
   // A tale's place takes the main thing over: its parts are laid out first so
   // roads, small things and packs keep clear of them.
@@ -138,9 +255,22 @@ export function placeFeatures(t, piece) {
   const geo = piece.tale && TALE_PAD[piece.tale] !== undefined ? layoutTale(piece.tale, rng, side => t.gateInner(side)) : null
   const kind = geo ? `tale_${piece.tale}` : mainKind(seed, wx, wy, deal)
   const home = wx === 0 && wy === 0
-  const mx = geo ? geo.cx : home ? 40 : ri(18, PIECE - 19), my = geo ? geo.cy : home ? 40 : ri(18, PIECE - 19)
   const pad = geo ? TALE_PAD[piece.tale] : PAD[kind]
+  // the roads of a road piece that is neither a village nor a tale's place come first
+  const besideRoads = roadPiece && !geo && kind !== 'village'
+  let junction = null
+  if (besideRoads) {
+    junction = roadJunction()
+    for (const side of roadGates) { const g = t.gateInner(side); t.road(g.x, g.y, junction.x, junction.y) }
+  }
+  const spot = besideRoads ? besideTheRoads(junction, pad) : null
+  // (a village on a road keeps room between it and the edges for its streets' ends)
+  const edge = roadPiece && kind === 'village' ? FRAME + STREET_FROM + 1 : 18
+  const mx = geo ? geo.cx : home ? 40 : spot ? spot.x : ri(edge, PIECE - 1 - edge), my = geo ? geo.cy : home ? 40 : spot ? spot.y : ri(edge, PIECE - 1 - edge)
   const hub = geo ? geo.hub : { x: mx, y: my }
+  // a village's and a tale's place's roads meet at its hub
+  if (roadPiece && !junction) junction = { x: hub.x, y: hub.y }
+  piece.road = roadPiece ? { sides, junction } : null
   const keepOut = geo ? geo.keep : []
   const kept = (x, y, margin) => keepOut.some(k => Math.hypot(x - k.x, y - k.y) < k.r + margin) ||
     (geo?.ways ?? []).some(c => Math.abs(c.x - x) <= margin + 1 && Math.abs(c.y - y) <= margin + 1)
@@ -149,7 +279,22 @@ export function placeFeatures(t, piece) {
   // a tale's place is more than its pad: what it builds in its circles may stand on a path
   for (const k of keepOut) for (let dy = -k.r; dy <= k.r; dy++) for (let dx = -k.r; dx <= k.r; dx++)
     if (dx * dx + dy * dy <= k.r * k.r) t.claim(k.x + dx, k.y + dy)
-  for (const side of ['N', 'E', 'S', 'W']) { const g = t.gateInner(side); t.path(g.x, g.y, hub.x, hub.y, 2) }
+  // The ways in. With no road edge, a path two wide from each gate to the hub.
+  // Beside the roads, a trail from the junction to the hub and one from each
+  // gate without a road to the junction. A tale's place: a road from each road
+  // gate to its hub, a path from the others. A village: a street from each
+  // road gate, a trail from the others.
+  if (besideRoads) t.path(junction.x, junction.y, hub.x, hub.y, 1)
+  for (const side of SIDES) {
+    const g = t.gateInner(side)
+    if (!roadPiece) t.path(g.x, g.y, hub.x, hub.y, 2)
+    else if (besideRoads) { if (!sides[side]) t.path(g.x, g.y, junction.x, junction.y, 1) }
+    else if (geo) { if (sides[side]) t.road(g.x, g.y, hub.x, hub.y); else t.path(g.x, g.y, hub.x, hub.y, 2) }
+    else if (sides[side]) street(g, mx, my)
+    else t.path(g.x, g.y, hub.x, hub.y, 1)
+  }
+  // where the small things' trails lead
+  const meet = junction ?? hub
 
   // ---- small things: spots first, then trails -------------------------------
   const here = t.biome(mx, my)
@@ -181,7 +326,7 @@ export function placeFeatures(t, piece) {
     }
   }
   for (const s of piece.small) t.open(s.x, s.y, padOf(s.kind))
-  for (const s of piece.small) t.path(s.x, s.y, hub.x, hub.y, 1)
+  for (const s of piece.small) t.path(s.x, s.y, meet.x, meet.y, 1)
 
   // ---- stamp the main thing ---------------------------------------------------
   const sandy = here === 'desert' || here === 'sea'
@@ -341,20 +486,31 @@ export function placeFeatures(t, piece) {
   // ---- the packs that roam between ---------------------------------------------
   // Two or three in wild land (one more far out), one or two round a village
   // and those well away from it. Half the wild pieces post one on a road.
+  // At toughness 1 and 2 a road is safe to walk: no foe of a pack is posted
+  // on one or within ROAD_CALM tiles of it.
   const village = kind === 'village'
+  const calm = roadPiece && tier <= 2
+  const offRoad = (x, y, r) => !calm || roadNear()[y * PIECE + x] > r * r
   const keep = village ? VILLAGE_CALM : pad + 8
   const rim = FRAME + 4
   const roomy = (x, y) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!t.free(x + dx, y + dy)) return false; return true }
   const clear = (x, y) => x >= rim && y >= rim && x < PIECE - rim && y < PIECE - rim &&
-    Math.hypot(x - mx, y - my) >= keep && !kept(x, y, 6) &&
+    Math.hypot(x - mx, y - my) >= keep && !kept(x, y, 6) && offRoad(x, y, ROAD_CALM + 2) &&
     piece.small.every(s => Math.hypot(x - s.x, y - s.y) >= 8) &&
     piece.packs.every(p => Math.hypot(x - p.x, y - p.y) >= 14)
   const pack = (x, y, road) => {
-    const made = pickPack().map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
+    let made = pickPack().map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
+    // the road's calm is measured to each foe, not to the middle of its pack
+    const strays = made.filter(s => !offRoad(s.x, s.y, ROAD_CALM))
+    if (strays.length) {
+      piece.spawns = piece.spawns.filter(s => !strays.includes(s))
+      made = made.filter(s => !strays.includes(s))
+    }
     // a village's calm is measured to each foe, not to the middle of its pack
     if (made.length) piece.packs.push({ x, y, road })
   }
-  if (!village && rng() < 0.5) {
+  // (on a calm road piece the draw is still made, and nothing posted on its road)
+  if (!village && rng() < 0.5 && !calm) {
     const road = []
     for (let y = rim; y < PIECE - rim; y++) for (let x = rim; x < PIECE - rim; x++) if (t.onPath(x, y) && t.free(x, y) && clear(x, y)) road.push({ x, y })
     if (road.length) { const at = pick(road); pack(at.x, at.y, true) }

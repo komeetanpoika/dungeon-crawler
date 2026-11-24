@@ -26,6 +26,7 @@ const SAND_STONES = ['ow_ruin_pillar', 'ow_ruin_pillar_2', 'ow_ruin_rubble', 'ow
 const SAND_FLOOR = ['ow_ruin_crack_0', 'ow_ruin_crack_1', 'ow_ruin_crack_2']
 const DEAD = ['ow_deadtree_0', 'ow_deadtree_1']
 const LALLI_HOUSE = "Lalli's house"
+const VILLAGE_PAD = 12   // the ground a village is built on (features.js PAD.village)
 
 export const SITE_SKINS = [...new Set([
   ...Object.values(ROOF).flatMap(r => [...r.top, ...r.low, r.chim, r.gable]),
@@ -219,9 +220,18 @@ export function makeSites(c) {
   // ---- the village ------------------------------------------------------------
   // Four to six houses round a cobbled well, no two rows of them touching;
   // everything stays within 11 tiles of the centre, inside the opened pad.
+  // Its roads come in as streets along the square's four axes, where no
+  // house stands (features.js lays them): what of them lies in the village
+  // is cobbled, and nothing lying about is dropped on them.
   // `sunroom`: the big house is the glassmaker's, Päivölä (renderer/interior/sunroom.js)
   function village(cx, cy, tale = null, sunroom = false) {
     cobble(cx, cy, 14)
+    for (let dy = -VILLAGE_PAD; dy <= VILLAGE_PAD; dy++) for (let dx = -VILLAGE_PAD; dx <= VILLAGE_PAD; dx++) {
+      const x = cx + dx, y = cy + dy
+      if (dx * dx + dy * dy > VILLAGE_PAD * VILLAGE_PAD || !t.onRoad(x, y) || t.kind(x, y) === 'water') continue
+      t.setGround(x, y, 'ow_cobble_green'); hold(x, y)
+    }
+    const lying = (x, y, skin) => { if (!t.onRoad(x, y)) low(x, y, skin) }
     put(cx, cy - 1, 'ow_well_top'); put(cx, cy, 'ow_well')
     put(cx - 2, cy + 1, 'ow_sign')
     const big = rng() < 0.5
@@ -251,12 +261,12 @@ export function makeSites(c) {
       row(cx - 4, cy + 6, ['ow_prop_counter_0', 'ow_prop_counter_1', 'ow_prop_counter_2'])
     }
     // things lying about
-    low(cx - 4, cy - 3, 'ow_prop_woodpile'); low(cx - 3, cy - 4, 'ow_prop_stump_axe')
-    low(cx + 3, cy - 4, 'ow_prop_barrel_1'); low(cx + 9, cy - 4, 'ow_prop_crate_0')
-    low(cx + 4, cy + 4, pick(['ow_prop_sack_0', 'ow_prop_sack_1'])); low(cx + 10, cy + 4, 'ow_prop_pot')
-    low(cx + 4, cy, 'ow_prop_cart'); low(cx + 1, cy - 1, 'ow_prop_bucket_water')
-    low(cx - 3, cy - 3, 'ow_prop_torch'); low(cx + 3, cy + 3, 'ow_prop_torch')
-    low(cx + 9, cy + 7, 'ow_prop_target'); low(cx - 10, cy, 'ow_prop_log')
+    lying(cx - 4, cy - 3, 'ow_prop_woodpile'); lying(cx - 3, cy - 4, 'ow_prop_stump_axe')
+    lying(cx + 3, cy - 4, 'ow_prop_barrel_1'); lying(cx + 9, cy - 4, 'ow_prop_crate_0')
+    lying(cx + 4, cy + 4, pick(['ow_prop_sack_0', 'ow_prop_sack_1'])); lying(cx + 10, cy + 4, 'ow_prop_pot')
+    lying(cx + 4, cy, 'ow_prop_cart'); lying(cx + 1, cy - 1, 'ow_prop_bucket_water')
+    lying(cx - 3, cy - 3, 'ow_prop_torch'); lying(cx + 3, cy + 3, 'ow_prop_torch')
+    lying(cx + 9, cy + 7, 'ow_prop_target'); lying(cx - 10, cy, 'ow_prop_log')
     scatter(cx, cy, 4, 11, 8, FLOWERS)
   }
 
