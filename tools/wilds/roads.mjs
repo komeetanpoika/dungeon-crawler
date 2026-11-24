@@ -25,6 +25,30 @@ for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
   pieces.push({ c, r, wx, wy, cls, biome: pieceBiome(seed, wx, wy), sides: roadSides(seed, wx, wy), name: wx === 0 && wy === 0 ? 'Koivula' : v?.name ?? null })
 }
 const total = cols * rows
+
+// Connectivity inside the view: union pieces joined across a shared road edge;
+// the city's pieces count as one place. A network that leaves the view and
+// comes back in counts as separate here.
+const at = (wx, wy) => (wx >= wx0 && wx < wx0 + cols && wy >= wy0 && wy < wy0 + rows) ? pieces[(wy - wy0) * cols + (wx - wx0)] : null
+const parent = new Map(pieces.map(p => [p, p]))
+const find = p => { while (parent.get(p) !== p) { parent.set(p, parent.get(parent.get(p))); p = parent.get(p) } return p }
+const union = (a, b) => { parent.set(find(a), find(b)) }
+const isRoad = p => p.sides.N || p.sides.E || p.sides.S || p.sides.W
+let cityFirst = null
+for (const p of pieces) {
+  if (p.sides.E) { const q = at(p.wx + 1, p.wy); if (q && q.sides.W) union(p, q) }
+  if (p.sides.S) { const q = at(p.wx, p.wy + 1); if (q && q.sides.N) union(p, q) }
+  if (p.cls === 'city') { if (cityFirst) union(p, cityFirst); else cityFirst = p }
+}
+const comps = new Map()
+for (const p of pieces) if (isRoad(p) || p.cls === 'city' || p.cls === 'village') { const r = find(p); comps.set(r, (comps.get(r) ?? 0) + 1) }
+const mainRoot = [...comps.entries()].sort((a, b) => b[1] - a[1])[0][0]
+const roadComps = new Set(pieces.filter(isRoad).map(find))
+const stray = pieces.filter(p => (p.cls === 'village' || (p.cls === 'city' && p === cityFirst)) && find(p) !== mainRoot)
+console.log(`networks in view: ${roadComps.size} (a network that leaves the view and returns counts as separate here); towns off the largest network: ${stray.length}` +
+  stray.map(p => `\n  ${p.cls === 'city' ? 'Kalevanlinna' : p.name} (${p.wx},${p.wy})${isRoad(p) ? '' : ' no road'}`).join(''))
+const roadPieces = pieces.filter(isRoad), seaRoad = roadPieces.filter(p => p.biome === 'sea')
+console.log(`road pieces over the sea: ${seaRoad.length} of ${roadPieces.length} (${(100 * seaRoad.length / roadPieces.length).toFixed(1)}%)`)
 console.log(Object.entries(share).map(([k, n]) => `${k} ${(100 * n / total).toFixed(1)}%`).join('  '))
 
 const file = path.resolve(out)
@@ -41,7 +65,9 @@ await runPixels({}, (_, m) => {
     g.fillRect(x, y, T, T)
     g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, T - 1, T - 1)
   }
-  const road = (p, col, w) => {
+  const road = (p, col, w, sea) => {
+    if ((p.biome === 'sea') !== sea) return
+    g.setLineDash(sea && col !== '#000' ? [6, 4] : [])
     const cx = p.c * T + T / 2, cy = p.r * T + T / 2
     g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round'
     for (const [s, dx, dy] of [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['W', -1, 0]]) {
@@ -49,8 +75,11 @@ await runPixels({}, (_, m) => {
       g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + dx * T / 2, cy + dy * T / 2); g.stroke()
     }
   }
-  for (const p of m.pieces) { road(p, '#000', Math.max(5, T / 5)) }
-  for (const p of m.pieces) { road(p, '#f4efe0', Math.max(3, T / 8)) }
+  for (const sea of [false, true]) {
+    for (const p of m.pieces) road(p, '#000', Math.max(5, T / 5), sea)
+    for (const p of m.pieces) road(p, sea ? '#a0662b' : '#f4efe0', Math.max(3, T / 8), sea)
+  }
+  g.setLineDash([])
   g.font = `bold ${Math.max(10, T * 0.42)}px sans-serif`
   const label = (txt, x, y, col) => {
     g.lineWidth = 3; g.strokeStyle = '#000'; g.strokeText(txt, x, y); g.fillStyle = col; g.fillText(txt, x, y)
@@ -86,8 +115,8 @@ await runPixels({}, (_, m) => {
   let x = 8
   const item = (draw, txt) => { draw(x, ly); g.fillStyle = '#ddd'; g.fillText(txt, x + 18, ly + 11); x += 28 + g.measureText(txt).width }
   for (const [b, col] of Object.entries(m.colors)) item((x, y) => { g.fillStyle = col; g.fillRect(x, y, 14, 14) }, m.names[b])
-  const ly2 = ly + 30; x = 8
-  const item2 = (draw, txt) => { draw(x, ly2); g.fillStyle = '#ddd'; g.fillText(txt, x + 20, ly2 + 11); x += 32 + g.measureText(txt).width }
+  let ly2 = ly + 30; x = 8
+  const item2 = (draw, txt) => { if (x + 40 + g.measureText(txt).width > cv.width) { x = 8; ly2 += 24 }; draw(x, ly2); g.fillStyle = '#ddd'; g.fillText(txt, x + 20, ly2 + 11); x += 32 + g.measureText(txt).width }
   item2((x, y) => { g.fillStyle = '#d33'; g.beginPath(); g.arc(x + 7, y + 7, 6, 0, 7); g.fill() }, 'village')
   item2((x, y) => { g.fillStyle = '#8a2be2'; g.fillRect(x, y, 14, 14) }, 'city')
   item2((x, y) => { g.fillStyle = '#ffe14a'; g.fillRect(x + 4, y + 4, 6, 6) }, 'farmland')
@@ -95,6 +124,7 @@ await runPixels({}, (_, m) => {
   item2((x, y) => { g.strokeStyle = '#0ff'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 12, y + 12); g.moveTo(x + 12, y); g.lineTo(x, y + 12); g.stroke() }, 'fixed (home trio)')
   item2((x, y) => { g.fillStyle = '#555'; g.fillRect(x, y, 14, 14) }, 'wild (dimmed)')
   item2((x, y) => { g.strokeStyle = '#f4efe0'; g.lineWidth = 4; g.beginPath(); g.moveTo(x, y + 7); g.lineTo(x + 14, y + 7); g.stroke() }, 'road')
+  item2((x, y) => { g.strokeStyle = '#a0662b'; g.lineWidth = 4; g.setLineDash([5, 3]); g.beginPath(); g.moveTo(x, y + 7); g.lineTo(x + 14, y + 7); g.stroke(); g.setLineDash([]) }, 'road over sea (planks)')
   item2((x, y) => { g.strokeStyle = '#fff'; g.lineWidth = 3; g.strokeRect(x + 1, y + 1, 12, 12) }, 'home piece (0,0)')
   g.fillStyle = '#aaa'; g.fillText(`seed ${m.seed}, pieces ${m.wx0},${m.wy0} +${m.cols}x${m.rows}`, 8, ly2 + 40)
   return { files: { [m.name]: cv.toDataURL() } }
