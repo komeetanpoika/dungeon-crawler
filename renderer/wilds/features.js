@@ -30,7 +30,8 @@ const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark
 // The main things of the roadside (every road piece that is not farmland:
 // roads.js pieceClass), with the weights they are dealt by: a wayside place
 // more often than a camp or a cave, and never a boss. Where three or more
-// roads meet, the inn is dealt by INN_AT_CROSSROADS.
+// roads meet, the inn is dealt by INN_AT_CROSSROADS. A piece holds a camp or
+// a cave by the checkerboard (dealOffTheBoard), as wild land does.
 const ROADSIDE = [['rest', 18], ['shrine', 12], ['inn', 10], ['tower', 12], ['cave', 16], ['camp', 16], ['ruin', 8], ['landmark', 8]]
 const INN_AT_CROSSROADS = 30
 // The wayside places stand by the junction, their hub within BY_THE_JUNCTION
@@ -203,21 +204,22 @@ export function mainKind(seed, wx, wy, deal = 0) {
     const sides = roadSides(seed, wx, wy)
     const crossroads = SIDES.filter(side => sides[side]).length >= 3
     const table = ROADSIDE.map(([kind, weight]) => [kind, kind === 'inn' && crossroads ? INN_AT_CROSSROADS : weight])
-    let r = hash(seed, wx, wy, 400 + deal) * table.reduce((sum, [, weight]) => sum + weight, 0)
-    for (const [kind, weight] of table) { if (r < weight) return kind; r -= weight }
-    return table[table.length - 1][0]
+    return dealOffTheBoard(table, hash(seed, wx, wy, 400 + deal) * table.reduce((sum, [, weight]) => sum + weight, 0), wx, wy)
   }
   // An open-world boss is common far out, rare in the first country and
-  // never beside home; what it gives up goes to the camps. A camp never
-  // borders a camp, nor a cave a cave, whatever either is dealt: a piece with
-  // even wx + wy deals no cave, the others no camp. A draw that falls in the
-  // share of the kind a piece may not hold deals a ruin in the first half of
-  // that share and a landmark in the second, so every other draw deals what
-  // it always did.
+  // never beside home; what it gives up goes to the camps.
   const boss = tierAt(wx, wy) >= 2 ? 15 : nearHome(wx, wy) ? 0 : 8
-  const banned = ((wx + wy) & 1) === 0 ? 'cave' : 'camp'
   const table = [['cave', 30], ['camp', 45 - boss], ['boss', boss], ['ruin', 12], ['landmark', 13]]
-  let r = hash(seed, wx, wy, 400 + deal) * 100
+  return dealOffTheBoard(table, hash(seed, wx, wy, 400 + deal) * 100, wx, wy)
+}
+// The kind a draw `r` (out of the table's total) deals on the roadside or in
+// wild land, where a camp never borders a camp, nor a cave a cave, whatever
+// either is dealt: a piece with even wx + wy deals no cave, the others no
+// camp. A draw that falls in the share of the kind a piece may not hold deals
+// a ruin in the first half of that share and a landmark in the second, so
+// every other draw deals what it always did.
+function dealOffTheBoard(table, r, wx, wy) {
+  const banned = ((wx + wy) & 1) === 0 ? 'cave' : 'camp'
   for (const [kind, weight] of table) {
     if (r < weight) return kind !== banned ? kind : r < weight / 2 ? 'ruin' : 'landmark'
     r -= weight

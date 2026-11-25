@@ -400,21 +400,29 @@ test('a wayside place stands by the junction, a camp or cave at least PAD + 4 fr
   for (const k of [...WAYSIDE, 'camp', 'cave']) assert.ok(seen[k] >= 6, `only ${seen[k] ?? 0} ${k} in the sample`)
 })
 
+// (fixed pieces, villages, the city and tale or Sampo places keep their own
+// main things; farmland deals neither a camp nor a cave)
 test('a camp never borders a camp and a cave never a cave, whatever the deals', () => {
-  let pairs = 0, camps = 0, caves = 0
-  for (const seed of SEEDS) for (let wy = -12; wy <= 12; wy++) for (let wx = -12; wx <= 12; wx++) {
-    if (pieceClass(seed, wx, wy) !== 'wild') continue
-    for (let deal = 0; deal < 4; deal++) { const k = mainKind(seed, wx, wy, deal); if (k === 'camp') camps++; if (k === 'cave') caves++ }
+  const dealt = cls => cls === 'wild' || cls === 'roadside'
+  const pairs = {}, held = { wild: { camp: 0, cave: 0 }, roadside: { camp: 0, cave: 0 } }
+  for (const seed of [...SEEDS, 7, 42]) for (let wy = -12; wy <= 12; wy++) for (let wx = -12; wx <= 12; wx++) {
+    const cls = pieceClass(seed, wx, wy)
+    if (!dealt(cls)) continue
+    for (let deal = 0; deal < 4; deal++) { const k = mainKind(seed, wx, wy, deal); if (k in held[cls]) held[cls][k]++ }
     for (const [nx, ny] of [[wx + 1, wy], [wx, wy + 1]]) {
-      if (pieceClass(seed, nx, ny) !== 'wild') continue
-      pairs++
+      const other = pieceClass(seed, nx, ny)
+      if (!dealt(other)) continue
+      const pair = [cls, other].sort().join('-')
+      pairs[pair] = (pairs[pair] ?? 0) + 1
       for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) {
         const ka = mainKind(seed, wx, wy, a), kb = mainKind(seed, nx, ny, b)
-        if (ka === kb && (ka === 'camp' || ka === 'cave')) assert.fail(`seed ${seed}: a ${ka} at ${wx},${wy} (deal ${a}) beside a ${kb} at ${nx},${ny} (deal ${b})`)
+        if (ka === kb && (ka === 'camp' || ka === 'cave')) assert.fail(`seed ${seed}: a ${ka} at ${wx},${wy} (${cls}, deal ${a}) beside a ${kb} at ${nx},${ny} (${other}, deal ${b})`)
       }
     }
   }
-  assert.ok(pairs >= 600 && camps >= 300 && caves >= 300, `${pairs} wild neighbours, ${camps} camps and ${caves} caves dealt`)
+  const at = `${JSON.stringify(pairs)} neighbours, ${JSON.stringify(held)} dealt`
+  assert.ok(pairs['wild-wild'] >= 1000 && pairs['roadside-wild'] >= 300 && pairs['roadside-roadside'] >= 200, at)
+  for (const cls of ['wild', 'roadside']) for (const k of ['camp', 'cave']) assert.ok(held[cls][k] >= 100, at)
 })
 
 test('a watchtower is empty at toughness 1 and held from 2', () => {
