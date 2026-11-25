@@ -223,7 +223,7 @@ test('the game\'s cells: no bridge joined at a corner, and nothing a trail leads
 const SIDES = ['N', 'E', 'S', 'W']
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,   // as features.js opens them
   farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6,
-  rest: 5, shrine: 5, inn: 9, tower: 8 }
+  rest: 5, shrine: 5, inn: 10, tower: 8 }
 // the roadside's wayside places stand by the junction, their ground reaching the road (test/wilds-land.test.js)
 const WAYSIDE = ['rest', 'shrine', 'inn', 'tower']
 const CALM = 10   // at toughness 1 and 2, no foe of a pack this near a road

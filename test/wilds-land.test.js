@@ -11,7 +11,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generatePiece } from '../renderer/wilds/piece.js'
-import { makeTerrain } from '../renderer/wilds/terrain.js'
+import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
+import { setOpenTops } from '../renderer/wilds/over.js'
+import { classOf, CLASS } from '../renderer/wilds/map.js'
+import { generateInterior } from '../renderer/interior/index.js'
+import { readPng } from '../tools/png-read.mjs'
 import { placeFeatures, mainKind } from '../renderer/wilds/features.js'
 import { roadsFrom, pieceClass, roadSides, townsAlong, townOf, roadLine, SIDE_WORDS } from '../renderer/wilds/roads.js'
 import { PIECE, FRAME, pieceKey, tierAt, pieceBiome, lootDepthFor, villagesNear, fixedMain, BIOME_NAMES } from '../renderer/wilds/layout.js'
@@ -29,6 +33,8 @@ const FARMS = {
 const PAD = { farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6 }
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+// a piece as it comes with no top opened (wilds/over.js)
+const without = fn => { setOpenTops(false); try { return fn() } finally { setOpenTops(true) } }
 
 // The farmland pieces nearest home, n of them.
 function farmlands(seed, n) {
@@ -271,7 +277,7 @@ test('every farmland piece has a farm with a house, among many', () => {
 // wayside place (rest, shrine, inn, watchtower) standing by the junction, or
 // a cave, camp, ruin or landmark set back on its trail; never a boss.
 const WAYSIDE = ['rest', 'shrine', 'inn', 'tower']
-const ROADSIDE_PAD = { rest: 5, shrine: 5, inn: 9, tower: 8, cave: 5, camp: 6, ruin: 8, landmark: 7 }   // as features.js opens them
+const ROADSIDE_PAD = { rest: 5, shrine: 5, inn: 10, tower: 8, cave: 5, camp: 6, ruin: 8, landmark: 7 }   // as features.js opens them
 const SIDES = ['N', 'E', 'S', 'W']
 const roadCount = (seed, wx, wy) => { const s = roadSides(seed, wx, wy); return SIDES.filter(k => s[k]).length }
 const isFoe = s => s.kind !== 'npc' ? !['chest', 'wild_mushroom', 'campfire', 'weapon', 'floating_pickup'].includes(s.kind) : !!NPC_SPECIES[s.species].hostile && s.hostile !== false
@@ -388,18 +394,195 @@ test('a wayside place stands by the junction, a camp or cave at least PAD + 4 fr
       assert.ok(piece.spawns.some(s => s.kind === 'chest' && near(s)), `${at}: no chest`)
       assert.ok([...props].some(p => p.startsWith('ow_deco_flower_')), `${at}: no flowers`)
     } else if (m.kind === 'inn') {
-      const inn = piece.doors.find(d => d.tier === 'safe' && d.look?.w === 5 && d.look?.storeys === 2 && near(d))
-      assert.ok(inn, `${at}: no inn of five by two storeys`)
+      // (what the inn is like: the crossroads inn's tests below)
+      const inn = piece.doors.find(d => d.kind === 'inn' && near(d))
+      assert.ok(inn, `${at}: no inn`)
       assert.equal(inn.lived, true, `${at}: the inn is not marked lived in`)
       assert.equal(houseSpec(inn, { worldSeed: seed }).version, 'home', `${at}: the inn is not a home`)
       assert.ok(props.has('ow_prop_city_cart_horse') && props.has('ow_prop_city_cart'), `${at}: no cart in the yard`)
-      assert.ok(people.some(s => Array.isArray(s.lines) && s.lines.length >= 2), `${at}: no innkeeper`)
+      assert.ok(people.some(s => Array.isArray(s.lines) && s.lines.length >= 2), `${at}: no stable hand`)
     } else {
       assert.ok(piece.doors.some(d => d.tier === 'ruin' && near(d)), `${at}: no tower`)
       assert.ok(piece.spawns.some(s => s.kind === 'chest' && near(s)), `${at}: no chest`)
     }
   }
   for (const k of [...WAYSIDE, 'camp', 'cave']) assert.ok(seen[k] >= 6, `only ${seen[k] ?? 0} ${k} in the sample`)
+})
+
+// ---- the crossroads inn -------------------------------------------------------------
+// Where the roads leave it room, the inn is a house in Kalevanlinna's style
+// (city/stamps.js house): nine wide and two storeys, plaster with flower
+// boxes, the inn's sign by its door in the south face, with a stable beside
+// it: horses standing in its stalls under a roof, a trough, hay and the cart
+// in the yard, and the stable hand by it. Where they do not, it is the
+// smaller house of before, five wide, with its fenced yard and the cart.
+// Either way the innkeeper is inside (test/interior-versions.test.js), and
+// the stable hand the one outside.
+const HORSE = /^ow_prop_horse_[ew]$/, STALL = /^ow_house_stable_[lmr]$/, ROOF = /^ow_(city_)?roof_/
+const STABLE_TILES = ['ow_prop_horse_w', 'ow_prop_horse_e', 'ow_prop_trough', 'ow_house_stable_l', 'ow_house_stable_m', 'ow_house_stable_r']
+// The first two deals of each roadside piece round home that deal an inn, six
+// pieces a seed; built once.
+let innSample = null
+const innBuilt = () => innSample ??= [1, 3, 7, 2024].flatMap(seed => {
+  const out = []
+  for (const { wx, wy } of roadsides(seed, 200)) {
+    const deals = []
+    for (let deal = 0; deal < 30 && deals.length < 2; deal++) if (mainKind(seed, wx, wy, deal) === 'inn') deals.push(deal)
+    if (deals.length < 2) continue
+    out.push(...deals.map(deal => built(seed, wx, wy, deal)))
+    if (out.length >= 12) break
+  }
+  return out
+})
+// The inn's house read back off the cells, from its door: its ground floor's
+// run of city house front either side of the door, three rows over it.
+function innHouse(t, door) {
+  const prop = (x, y) => t.propAt(x, y) ?? ''
+  let x0 = door.x, x1 = door.x
+  while (prop(x0 - 1, door.y).startsWith('ow_city_house_')) x0--
+  while (prop(x1 + 1, door.y).startsWith('ow_city_house_')) x1++
+  return { x0, x1, top: door.y - 3, w: x1 - x0 + 1 }
+}
+const isBig = ({ piece }) => piece.doors.some(d => d.kind === 'inn' && d.look.w === 9)
+
+test('a crossroads inn is a city house nine wide with a stable beside it, where the roads leave it room', () => {
+  let big = 0
+  const ways = new Set(), small = []
+  for (const { t, piece, walk, at } of innBuilt()) {
+    const m = piece.main, mid = piece.road.mid, pad = ROADSIDE_PAD.inn
+    const prop = (x, y) => t.propAt(x, y) ?? '', deco = (x, y) => t.decoAt(x, y) ?? ''
+    const doors = piece.doors.filter(d => d.kind === 'inn')
+    assert.equal(doors.length, 1, `${at}: ${doors.length} inn doors`)
+    const door = doors[0]
+    assert.ok(door.lived === true && door.tier === 'safe', `${at}: the inn is not a house always lived in`)
+    // by the junction, its doorstep reached from the road, nothing of it on a road or a trail
+    assert.ok(dist(m.hub, mid) <= 3, `${at}: the inn's ground is ${dist(m.hub, mid).toFixed(1)} from the junction's middle`)
+    assert.ok(walk(mid.x, mid.y) && flood(mid, walk)[(door.y + 1) * PIECE + door.x] === 1, `${at}: the inn's door is not reached from the road`)
+    for (let dy = -pad - 7; dy <= pad + 7; dy++) for (let dx = -pad - 7; dx <= pad + 7; dx++) {
+      const x = m.x + dx, y = m.y + dy
+      if (piece.small.some(s => Math.hypot(x - s.x, y - s.y) <= 6)) continue   // (the small things keep their own ground)
+      if (t.onPath(x, y)) assert.ok(walk(x, y), `${at}: ${prop(x, y)} stands on the ${t.onRoad(x, y) ? 'road' : 'trail'} at ${x},${y}`)
+    }
+    // the stable hand is outside with lines of his own; the innkeeper is not
+    const outside = piece.spawns.filter(s => s.kind === 'npc' && dist(s, m) <= pad + 5)
+    assert.ok(!outside.some(s => s.lines?.join('|') === door.inn.keeper.join('|')), `${at}: the innkeeper stands outside`)
+    const hands = outside.filter(s => s.species === 'villager' && Array.isArray(s.lines) && s.lines.length === 2 && !s.hears)
+    assert.equal(hands.length, 1, `${at}: ${hands.length} stable hands`)
+    assert.ok(prop(door.x, door.y + 1) === '' || walk(door.x, door.y + 1), `${at}: the doorstep is blocked`)
+    if (door.look.w !== 9) {
+      // the smaller house of before, and its yard
+      small.push(at)
+      assert.ok(door.look.w === 5 && door.look.storeys === 2, `${at}: an inn ${door.look.w} wide`)
+      continue
+    }
+    big++
+    assert.deepEqual(door.look, { w: 9, storeys: 2, wall: 'plaster' }, `${at}: the inn's look`)
+    // the house, row by row: roof, eaves, the upper storey, the ground floor with the door; nothing of it below
+    const h = innHouse(t, door)
+    assert.equal(h.w, 9, `${at}: the inn is ${h.w} wide`)
+    assert.match(prop(door.x, door.y), /^ow_city_house_(white|ochre|rose|green)_door$/, `${at}: the door`)
+    let boxes = 0
+    for (let x = h.x0; x <= h.x1; x++) {
+      assert.match(prop(x, h.top), ROOF, `${at}: the roof at ${x}`)
+      assert.match(prop(x, h.top + 1), ROOF, `${at}: the eaves at ${x}`)
+      const upper = prop(x, h.top + 2) === 'ow_city_sign_inn' ? deco(x, h.top + 2) : prop(x, h.top + 2)
+      assert.match(upper, /^ow_city_house_/, `${at}: the upper storey at ${x}`)
+      assert.match(prop(x, door.y), /^ow_city_house_/, `${at}: the ground floor at ${x}`)
+      for (const y of [h.top + 2, door.y]) if (/_win2$/.test(prop(x, y)) || /_win2$/.test(deco(x, y))) boxes++
+      assert.ok(!/^ow_(city_house|city_roof|roof)_/.test(prop(x, door.y + 1)), `${at}: something of the house below its door at ${x}`)
+    }
+    assert.ok([door.x - 1, door.x + 1].some(x => prop(x, door.y - 1) === 'ow_city_sign_inn'), `${at}: no inn sign over the door's side`)
+    assert.ok(boxes >= 4, `${at}: ${boxes} flower boxes`)
+    // the stable: horses standing in its stalls under its roof, a trough, hay and the cart in the yard
+    const near = []
+    for (let dy = -pad - 3; dy <= pad + 3; dy++) for (let dx = -pad - 3; dx <= pad + 3; dx++) near.push({ x: m.x + dx, y: m.y + dy })
+    const horses = near.filter(c => HORSE.test(prop(c.x, c.y)))
+    assert.ok(horses.length >= 2 && horses.length <= 3, `${at}: ${horses.length} horses`)
+    for (const c of horses) {
+      assert.match(deco(c.x, c.y), STALL, `${at}: the horse at ${c.x},${c.y} is not in a stall`)
+      assert.match(prop(c.x, c.y - 1), ROOF, `${at}: the horse at ${c.x},${c.y} has no roof over it`)
+      assert.ok(!walk(c.x, c.y), `${at}: the horse at ${c.x},${c.y} can be walked through`)
+    }
+    const stalls = near.filter(c => STALL.test(deco(c.x, c.y)) || STALL.test(prop(c.x, c.y)))
+    assert.ok(stalls.length >= 3 && stalls.every(c => c.y === horses[0].y), `${at}: ${stalls.length} stalls`)
+    assert.ok(near.some(c => prop(c.x, c.y) === 'ow_prop_trough'), `${at}: no trough`)
+    assert.ok(near.some(c => /^ow_prop_hay_/.test(prop(c.x, c.y))), `${at}: no hay`)
+    assert.ok(near.some(c => prop(c.x, c.y) === 'ow_prop_city_cart_horse' && prop(c.x + 1, c.y) === 'ow_prop_city_cart'), `${at}: no cart`)
+    // the stable hand by the stable
+    assert.ok(stalls.some(c => dist(c, hands[0]) <= 4), `${at}: the stable hand is not by the stable`)
+    ways.add(horses[0].y < door.y ? 'the yard north of the house' : 'the house north of the yard')
+  }
+  const n = innBuilt().length
+  assert.ok(n >= 40, `only ${n} inns in the sample`)
+  // the smaller inn only where the roads leave no room for the big one
+  assert.ok(big >= n * 0.75, `${big} of ${n} inns are the big one; the small: ${small.join('; ')}`)
+  assert.equal(ways.size, 2, `the inns all stand one way: ${[...ways]}`)
+})
+
+test("the inn's top row is walked under, and only that; the map shows it as a building", () => {
+  let n = 0
+  for (const { seed, piece } of innBuilt().filter(isBig).slice(0, 8)) {
+    const a = generatePiece(seed, piece.wx, piece.wy, piece.deal), b = without(() => generatePiece(seed, piece.wx, piece.wy, piece.deal))
+    const door = a.doors.find(d => d.kind === 'inn'), at = `seed ${seed} piece ${piece.key} deal ${piece.deal}`
+    const top = door.y - 3
+    for (let x = door.x - 4; x <= door.x + 4; x++) {
+      assert.ok(a.cells[top][x].over === true && a.cells[top][x].tile === TILE.FLOOR, `${at}: the inn's roof at ${x},${top} is not walked under`)
+      assert.ok(!b.cells[top][x].over && b.cells[top][x].tile === TILE.WALL, `${at}: the roof at ${x},${top} is open with the tops shut`)
+      for (let y = top + 1; y <= door.y; y++) if (y !== door.y || x !== door.x) assert.ok(!a.cells[y][x].over && a.cells[y][x].tile === TILE.WALL, `${at}: the inn at ${x},${y}`)
+      // (the sign is drawn over a wall: a block of the map holds wall beside it)
+      for (let y = top; y <= door.y; y++) if (a.cells[y][x].overlay !== 'ow_city_sign_inn') assert.equal(classOf(a.cells[y][x]), CLASS.building, `${at}: the map shows the inn at ${x},${y} as ${classOf(a.cells[y][x])}`)
+    }
+    n++
+  }
+  assert.ok(n >= 6, `only ${n} big inns`)
+})
+
+test('inside, the guests name towns down the roads, and the player hears of them', () => {
+  let told = 0
+  for (const { seed, piece, at } of innBuilt()) {
+    const door = piece.doors.find(d => d.kind === 'inn')
+    const spec = houseSpec(door, { worldSeed: seed })
+    assert.ok(spec.trade === 'innkeeper' && spec.version === 'home' && ['large', 'grand'].includes(spec.size), `${at}: ${spec.trade} ${spec.version} ${spec.size}`)
+    const g = generateInterior(spec)
+    const towns = SIDES.filter(s => piece.road.sides[s]).flatMap(s => townsAlong(seed, piece.wx, piece.wy, s).slice(0, 1).map(a => a.town))
+    const npcs = g.entitySpawns.filter(s => s.kind === 'npc')
+    assert.ok(npcs.some(s => s.id.endsWith(':keeper') && s.lines.join('|') === door.inn.keeper.join('|')), `${at}: no innkeeper inside`)
+    for (const s of npcs.filter(s => s.hears)) {
+      const town = towns.find(c => c.key === s.hears[0])
+      assert.ok(town, `${at}: a guest names ${s.hears}, the next town along none of the roads`)
+      assert.ok(s.lines[0].includes(town.name), `${at}: "${s.lines[0]}" does not name ${town.name}`)
+      told++
+    }
+  }
+  assert.ok(told >= innBuilt().length, `${told} guests name a town in ${innBuilt().length} inns`)
+})
+
+test("the stable's tiles: what stands alone keeps off its edges, the stalls join without a seam", () => {
+  const skins = new Set(WILDS_SKINS)
+  const png = n => readPng(new URL(`../renderer/assets/tiles/${n}.png`, import.meta.url).pathname)
+  for (const n of STABLE_TILES) {
+    assert.ok(skins.has(n), `${n} is not loaded with the Wilds`)
+    assert.ok(!n.endsWith('_d'), `${n} ends in _d`)
+    const p = png(n)
+    assert.ok(p.width === 16 && p.height === 16, `${n} is ${p.width}x${p.height}`)
+  }
+  const alpha = (p, x, y) => p.pixels[(y * 16 + x) * 4 + 3]
+  for (const n of ['ow_prop_horse_w', 'ow_prop_horse_e', 'ow_prop_trough']) {
+    const p = png(n)
+    for (let i = 0; i < 16; i++) for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]]) assert.equal(alpha(p, x, y), 0, `${n}: a pixel on its edge at ${x},${y}`)
+  }
+  // the horse facing east is the one facing west, mirrored
+  const w = png('ow_prop_horse_w'), e = png('ow_prop_horse_e')
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)
+    assert.equal(e.pixels.slice((y * 16 + x) * 4, (y * 16 + x) * 4 + 4).join(), w.pixels.slice((y * 16 + 15 - x) * 4, (y * 16 + 15 - x) * 4 + 4).join(), `the horses differ at ${x},${y}`)
+  // the stalls are the front of a building, solid all over, and any two side by side join pixel for pixel
+  const col = (n, x) => { const p = png(n); return Array.from({ length: 16 }, (_, y) => p.pixels.slice((y * 16 + x) * 4, (y * 16 + x) * 4 + 4).join()).join(';') }
+  for (const n of ['ow_house_stable_l', 'ow_house_stable_m', 'ow_house_stable_r']) {
+    const p = png(n)
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) assert.equal(alpha(p, x, y), 255, `${n}: see-through at ${x},${y}`)
+  }
+  const joint = col('ow_house_stable_l', 15)
+  for (const [n, x] of [['ow_house_stable_m', 0], ['ow_house_stable_m', 15], ['ow_house_stable_r', 0]]) assert.equal(col(n, x), joint, `${n} column ${x} does not join`)
 })
 
 // ---- signposts -------------------------------------------------------------------

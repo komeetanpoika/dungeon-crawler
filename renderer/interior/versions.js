@@ -6,6 +6,7 @@ import { ITEMS, FLOORS, MISC, dusty } from './kit.js'
 import { TRADES } from './recipes.js'
 import { mulberry32, hashStr, int, pick, chance, weighted, shuffle } from './rng.js'
 import { TILE } from '../systems/entities.js'
+import { LOOKS } from '../data/townsfolk-looks.js'
 
 // The light inside, per version (a DEPTH_THEMES-shaped theme for the cave state).
 // `enter` is what the player notices stepping in.
@@ -50,15 +51,17 @@ function paletteOf(door, version) {
   return door.tier === 'hut' ? 'wood' : 'plaster'
 }
 
-// door: { label, tier, story?, kind?, lived?, toughness?, look?, city? }. story: the
+// door: { label, tier, story?, kind?, lived?, toughness?, look?, city?, inn? }. story: the
 // episode's `houses[door.story]` ({ room, pickups }) when the door is a story
 // house. A Kalevanlinna door (door.city) takes `residents` (the spawns of who
 // is in it now) and `household` (the Person records of whose house it is):
-// see citySpec. Returns what generateInterior builds.
+// see citySpec. A crossroads inn's door (kind 'inn', with `inn`): see
+// innSpec. Returns what generateInterior builds.
 export function houseSpec(door, { worldSeed = 0, story = null, residents = [], household = [] } = {}) {
   const seed = hashStr(`${worldSeed}|${door.label}`)
   const rng = mulberry32(seed ^ 0x5eed5eed)
   if (door.city) return citySpec(door, seed, rng, residents, household)
+  if (door.kind === 'inn' && door.inn) return innSpec(door, seed, rng)
   const version = chooseVersion(door, rng, story)
   const trade = version === 'home' || version === 'empty' || version === 'sunroom' ? pick(rng, TRADE_LIST) : null
   // the sunlit hall needs room: the puzzle house is never smaller than large
@@ -94,6 +97,48 @@ function citySpec(door, seed, rng, residents, household) {
     label: door.label, tier: 'safe', version, size, palette: paletteOf(door, version),
     toughness: 1, trade, seed, story: null, city: true,
     residents: residents.map(r => ({ ...r })), noLoot: true,
+  }
+}
+
+// ---- a crossroads inn of the Wilds (wilds/features.js, wilds/inn.js) -------------
+// Its door carries `inn: { keeper, news }`: the innkeeper's lines, and what
+// the guests have heard of the next towns down the roads ({ line, hears }).
+// The house is the innkeeper's, as Kalevanlinna's inn is (the taproom by the
+// door, then the trade's rooms), always lived in and never smaller than
+// large. Inside are the innkeeper, behind the bar (`spot`: generateInterior
+// places them), and three to five guests about the taproom, each with a line
+// of their own and one of the townsfolk's looks (no two the same face); one
+// or two of them tell of a town down the road and carry its `hears`, as the
+// traveller at a rest does. Everyone keeps their place (roam 0). Who and what
+// by the house's rng: the same inn on every visit.
+const GUEST_LINES = [
+  'Third night here. The beds are hard and the beer is soft.',
+  'Rain on the road all day. I am not leaving this bench.',
+  'Every road meets here sooner or later. So does everyone on it.',
+  'I sold my cart two towns back. Now I walk, and I drink.',
+  'The stew is better than it looks. It would have to be.',
+  'Somebody is snoring upstairs. Somebody always is.',
+  'I only stopped for the one. That was yesterday.',
+  'Sit where you like. Not there. That is his seat.',
+]
+// the innkeeper in an apron; the guests grown travellers carrying nothing but a stick
+const KEEPER_LOOKS = LOOKS.filter(l => l.age === 'adult' && l.apron === 'waist' && !l.carry).map(l => l.id)
+const GUEST_LOOKS = LOOKS.filter(l => l.age !== 'child' && !l.apron && (!l.carry || l.carry === 'cane')).map(l => l.id)
+function innSpec(door, seed, rng) {
+  const size = ['large', 'grand'].includes(sizeOf(door)) ? sizeOf(door) : 'large'
+  const npc = (id, lines, look, spot, hears) => ({
+    kind: 'npc', species: 'villager', hostile: false, id: `${door.label}:${id}`, lines, look, roam: 0, spot, ...(hears ? { hears } : {}),
+  })
+  const residents = [npc('keeper', door.inn.keeper, pick(rng, KEEPER_LOOKS), 'bar')]
+  const lines = shuffle(rng, GUEST_LINES), looks = shuffle(rng, GUEST_LOOKS)
+  const news = door.inn.news.slice(0, chance(rng, 0.5) ? 2 : 1)
+  for (let i = 0, n = int(rng, 3, 5); i < n; i++) {
+    const told = news[i]
+    residents.push(npc(`guest${i}`, [told ? told.line : lines[i]], looks[i], 'taproom', told?.hears))
+  }
+  return {
+    label: door.label, tier: 'safe', version: 'home', size, palette: paletteOf(door, 'home'),
+    toughness: door.toughness ?? 1, trade: 'innkeeper', seed, story: null, residents,
   }
 }
 

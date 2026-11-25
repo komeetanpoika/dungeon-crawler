@@ -21,12 +21,13 @@
 import { PIECE, FRAME, tierAt, pieceBiome, fixedMain, villageAt, caveDepthFor, pieceKey, BIOME_NAMES } from './layout.js'
 import { hash, hashInt, mulberry32 } from './rand.js'
 import { makeSites, layoutTale, wayCells, TALE_PAD } from './sites.js'
+import { INN_PAD } from './inn.js'
 import { roadSides, pieceClass, townsAlong, roadsFrom, roadLine, SIDE_WORDS } from './roads.js'
 import { ROAD_WIDTH, roadLane0 } from './terrain.js'
 
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,
   farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6,
-  rest: 5, shrine: 5, inn: 9, tower: 8 }
+  rest: 5, shrine: 5, inn: INN_PAD, tower: 8 }
 // The main things of the roadside (every road piece that is not farmland:
 // roads.js pieceClass), with the weights they are dealt by: a wayside place
 // more often than a camp or a cave, and never a boss. Where three or more
@@ -38,9 +39,18 @@ const INN_AT_CROSSROADS = 30
 // of it; the rest of the roadside's things are set back on their trail.
 const WAYSIDE = new Set(['rest', 'shrine', 'inn', 'tower'])
 const BY_THE_JUNCTION = 3
-// What the innkeeper says, and the traveller at a rest: a line naming the next
-// town along one of the roads (picked by a hash), and one about the road.
+// What the innkeeper says (inside, behind the bar: interior/versions.js) and
+// the stable hand outside; what the inn's guests tell of the next towns along
+// its roads (one line a town, the road picked by a hash); and the traveller at
+// a rest: a line naming the next town along one of the roads (picked by a
+// hash), and one about the road.
 const INN_LINES = ['Beds upstairs, stew by the fire. Pay what you can.', 'The carters stop here on the long road. Mind the horse: she bites.']
+const STABLE_LINES = ['Water, hay and a brush down. The horses eat before the guests do.', 'Leave yours with me if you have one. Not the end stall: that one kicks.']
+const GUEST_TOWN = [
+  (town, far, side) => `I am for ${town} in the morning. ${far[0].toUpperCase()}${far.slice(1)} down the ${side} road, they tell me.`,
+  (town, far, side) => `I came up the ${side} road from ${town}. ${far[0].toUpperCase()}${far.slice(1)}, and the stew here was worth every one.`,
+  (town, far, side) => `${town} is ${far} along the ${side} road. Go by day. The road gets quiet after dark.`,
+]
 const SIDE_NAMES = { N: 'north', E: 'east', S: 'south', W: 'west' }
 const NUMBERS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
 const leagues = n => `${NUMBERS[n] ?? n} league${n === 1 ? '' : 's'}`
@@ -602,7 +612,25 @@ export function placeFeatures(t, piece) {
     const { side, next } = along[Math.floor(hash(seed, wx, wy, 640 + deal) * along.length)]
     return { lines: [say(TRAVELLER_TOWN, 650)(next.town.name, leagues(next.leagues), SIDE_NAMES[side]), road], hears: [next.town.key] }
   }
+  // What the inn's guests have heard of the road: the next town along up to
+  // two of its roads (from a road picked by a hash, two roads to one town
+  // counted once), a line naming it and how far, and its key. The inn's house
+  // (interior/versions.js innSpec) gives one or two of them to guests, who
+  // carry `hears`.
+  const innNews = () => {
+    const along = roadGates.map(side => ({ side, next: townsAlong(seed, wx, wy, side)[0] })).filter(a => a.next)
+    const from = Math.floor(hash(seed, wx, wy, 670 + deal) * along.length)
+    const news = []
+    for (const { side, next } of [...along.slice(from), ...along.slice(0, from)]) {
+      if (news.length === 2 || news.some(n => n.hears[0] === next.town.key)) continue
+      const line = GUEST_TOWN[Math.floor(hash(seed, wx, wy, 700 + news.length + deal) * GUEST_TOWN.length)]
+      news.push({ line: line(next.town.name, leagues(next.leagues), SIDE_NAMES[side]), hears: [next.town.key] })
+    }
+    return news
+  }
   let spawnPoint = null
+  // where the packs keep their distance from: the main thing's middle, or the inn's where it was laid
+  let heart = { x: mx, y: my }
   if (geo) {
     piece.points = sites.tales[piece.tale](geo)
     spawnPoint = hub
@@ -656,7 +684,16 @@ export function placeFeatures(t, piece) {
     place({ kind: 'chest' }, at.x, at.y, 2, 3, offPaths)
     spawnPoint = hub
   } else if (kind === 'inn') {
-    for (const p of sites.inn(mx, my).people) npc(p.species, p.x, p.y, { lines: INN_LINES })
+    // the big inn with its stable where the roads leave it room, else the
+    // smaller one; either way its house is the inn (interior/versions.js:
+    // the innkeeper behind the bar, the guests and what they have heard), and
+    // the one outside is the stable hand, by the stable or the yard
+    // (it keeps off the small things' ground, which is stamped after it)
+    const made = sites.inn(mx, my, (x, y) => piece.small.some(s => Math.hypot(x - s.x, y - s.y) <= padOf(s.kind) + 1))
+    heart = made.at
+    const inn = { keeper: INN_LINES, news: innNews() }
+    for (const d of made.doors) Object.assign(d, { kind: 'inn', inn })
+    for (const p of made.people) npc(p.species, p.x, p.y, { lines: STABLE_LINES })
     spawnPoint = hub
   } else if (kind === 'tower') {
     // held from toughness 2 by whoever would camp at this toughness, empty at 1
@@ -1008,7 +1045,7 @@ export function placeFeatures(t, piece) {
   const rim = FRAME + 4
   const roomy = (x, y) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!t.free(x + dx, y + dy)) return false; return true }
   const clear = (x, y) => x >= rim && y >= rim && x < PIECE - rim && y < PIECE - rim &&
-    Math.hypot(x - mx, y - my) >= keep && !kept(x, y, 6) && offRoad(x, y, ROAD_CALM + 2) &&
+    Math.hypot(x - heart.x, y - heart.y) >= keep && !kept(x, y, 6) && offRoad(x, y, ROAD_CALM + 2) &&
     piece.small.every(s => Math.hypot(x - s.x, y - s.y) >= 8) &&
     piece.packs.every(p => Math.hypot(x - p.x, y - p.y) >= 14)
   const pack = (x, y, road) => {

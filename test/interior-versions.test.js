@@ -169,3 +169,77 @@ describe('how a house is left', () => {
     assert.equal(generateInterior(specFor({ version: 'nest', seed: 1, label: 'n' })).theme, VERSIONS.nest.theme)
   })
 })
+
+// A crossroads inn of the Wilds (wilds/features.js): its door carries the
+// innkeeper's lines and what the guests have heard of the towns down the
+// roads. Inside is the innkeeper's taproom, with the innkeeper at the bar and
+// three to five guests about it, each with a line of their own.
+describe('a crossroads inn', () => {
+  const KEEPER = ['Beds upstairs, stew by the fire.', 'Mind the horse: she bites.']
+  const NEWS = [{ line: 'Haukiniemi is three leagues down the east road.', hears: ['3,0'] }, { line: 'I came up the west road from Koivula.', hears: ['0,0'] }]
+  const inn = (i, over = {}) => door({ label: `house:wilds:${100 + i * 7},${40 + i * 3}`, tier: 'safe', lived: true, kind: 'inn',
+    look: { w: 9, storeys: 2, wall: 'plaster' }, inn: { keeper: KEEPER, news: NEWS }, ...over })
+  // the counter of a taproom: three cells of worktop on its lower face row
+  const barOf = (g, room) => {
+    for (let x = room.x0; x + 2 <= room.x1; x++)
+      if ([0, 1, 2].every(i => (g.map[room.y0 + 1][x + i].overlay ?? '').startsWith('in_worktop'))) return x
+    return null
+  }
+  it("is the innkeeper's house: a home, never smaller than large, whatever it looks like outside", () => {
+    for (const look of [{ w: 9, storeys: 2, wall: 'plaster' }, { w: 5, storeys: 2, wall: 'stone' }, { w: 3, storeys: 1, wall: 'wood' }]) {
+      const spec = houseSpec(inn(0, { look }), { worldSeed: 4 })
+      assert.equal(spec.trade, 'innkeeper')
+      assert.equal(spec.version, 'home')
+      assert.ok(['large', 'grand'].includes(spec.size), `${look.w} wide: ${spec.size}`)
+    }
+  })
+  it('keeps the innkeeper at the bar and three to five guests in the taproom, each with a line of their own', () => {
+    let named = 0
+    for (let i = 0; i < 30; i++) {
+      const g = generateInterior(houseSpec(inn(i), { worldSeed: 9 }))
+      const what = `inn #${i}`
+      assert.equal(g.roles.get(g.plan.entry), 'taproom', what)
+      const room = g.plan.rooms.find(r => r.id === g.plan.entry)
+      const bar = barOf(g, room)
+      assert.ok(bar !== null, `${what}: no bar\n${g.plan.grid.join('\n')}`)
+      const npcs = g.entitySpawns.filter(s => s.kind === 'npc')
+      for (const n of npcs) {
+        assert.equal(n.hostile, false, what)
+        assert.equal(n.roam, 0, `${what}: ${n.id} wanders off`)
+        assert.equal(n.spot, undefined, `${what}: ${n.id} carries its placing`)
+        assert.equal(g.map[n.y][n.x].roomId, g.plan.entry, `${what}: ${n.id} is out of the taproom`)
+      }
+      const keeper = npcs.filter(n => n.id.endsWith(':keeper'))
+      assert.equal(keeper.length, 1, `${what}: ${keeper.length} innkeepers`)
+      assert.equal(keeper[0].lines.join('|'), KEEPER.join('|'), `${what}: the innkeeper says ${keeper[0].lines}`)
+      // behind the bar: on the floor row right under its counter
+      assert.ok(keeper[0].y === room.floorY0 && keeper[0].x >= bar && keeper[0].x <= bar + 2, `${what}: the innkeeper at ${keeper[0].x},${keeper[0].y}, the bar at ${bar}..${bar + 2}`)
+      const guests = npcs.filter(n => n.id.includes(':guest'))
+      assert.ok(guests.length >= 3 && guests.length <= 5, `${what}: ${guests.length} guests`)
+      assert.equal(npcs.length, guests.length + 1, `${what}: someone else in the inn`)
+      const said = guests.map(n => {
+        assert.ok(Array.isArray(n.lines) && n.lines.length >= 1 && n.lines.every(l => typeof l === 'string' && l.length), `${what}: ${n.id} says nothing`)
+        return n.lines.join('|')
+      })
+      assert.equal(new Set(said).size, said.length, `${what}: two guests say the same`)
+      // one or two name a town, and the player hears of it from them
+      const tellers = guests.filter(n => n.hears)
+      assert.ok(tellers.length >= 1 && tellers.length <= 2, `${what}: ${tellers.length} guests name a town`)
+      for (const n of tellers) {
+        const news = NEWS.find(e => e.hears[0] === n.hears[0])
+        assert.ok(news && n.lines.length === 1 && n.lines[0] === news.line, `${what}: ${n.id} hears ${n.hears} saying ${n.lines}`)
+      }
+      if (tellers.length === 2) named++
+    }
+    assert.ok(named >= 5 && named <= 25, `${named}/30 inns with two guests naming a town`)
+  })
+  it('with no town down the roads, nobody names one', () => {
+    const g = generateInterior(houseSpec(inn(1, { inn: { keeper: KEEPER, news: [] } }), { worldSeed: 9 }))
+    const guests = g.entitySpawns.filter(s => s.kind === 'npc' && s.id.includes(':guest'))
+    assert.ok(guests.length >= 3 && guests.every(n => !n.hears))
+  })
+  it('is the same inn on every visit', () => {
+    const a = generateInterior(houseSpec(inn(3), { worldSeed: 9 })), b = generateInterior(houseSpec(inn(3), { worldSeed: 9 }))
+    assert.equal(JSON.stringify(a.entitySpawns), JSON.stringify(b.entitySpawns))
+  })
+})

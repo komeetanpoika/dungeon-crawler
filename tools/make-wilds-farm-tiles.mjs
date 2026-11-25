@@ -10,9 +10,24 @@
 //     ow_roof_mill_l/m/r, ow_roof_mill_el/em/er    its sails and cap
 //     ow_house_mill_l/m/r, ow_house_mill_wl/wr      its tower
 //     ow_house_door_mill                           its door
+//   and the crossroads inn's stable (renderer/wilds/inn.js), under a roof of
+//   Kalevanlinna's (city/kit.js HOUSE_FRONT.roofs):
+//     ow_house_stable_l/m/r    its open front, a stall a tile: the dark back
+//                              wall, straw, a low partition on the west side
+//                              of each stall but the first, the corner posts
+//     ow_prop_horse_w/e        a horse standing side on, facing west / east
+//                              (the city cart's horse, its harness off and
+//                              its tail on; the east one is its mirror)
+//     ow_prop_trough           a wooden water trough
 // Tiny Town's outline and colours (#3f2631; the roof reds, the wall greys) for
 // what stands among its houses; the rack's browns for the nets. The small
 // tiles are pixel maps; the windmill is drawn from shapes and cut into tiles.
+//
+// A tile that stands alone (`clear`) must keep every outer pixel see-through,
+// so it never shows a cut edge; the stalls, which stand side by side, must
+// hold only their row's plain ground on the columns where they join
+// (`joins`), so any two meet without a seam. The tool refuses a stray pixel
+// on either.
 //
 //   node tools/make-wilds-farm-tiles.mjs
 import { writePng } from './png-write.mjs'
@@ -24,8 +39,17 @@ const save = (name, rgba) => {
   writePng(out, 16, 16, rgba)
   console.log(`wrote ${out}`)
 }
-function tile(name, rows, palette) {
+// `clear`: nothing on any outer pixel. `joins`: { w, e, ground } — the west
+// and/or east column must hold, row by row, only `ground[y]`.
+function tile(name, rows, palette, { clear = false, joins = null } = {}) {
   if (rows.length !== 16 || rows.some(r => r.length !== 16)) throw new Error(`${name}: not 16x16 (${rows.map(r => r.length)})`)
+  if (clear) rows.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch !== '.' && (x === 0 || y === 0 || x === 15 || y === 15)) throw new Error(`${name}: a stray pixel on its edge at ${x},${y}`)
+  }))
+  if (joins) for (const [side, x] of [['w', 0], ['e', 15]]) {
+    if (!joins[side]) continue
+    rows.forEach((row, y) => { if (row[x] !== joins.ground[y]) throw new Error(`${name}: "${row[x]}" where it joins its neighbour at ${x},${y} (the row's ground is "${joins.ground[y]}")`) })
+  }
   const rgba = new Uint8Array(16 * 16 * 4)
   rows.forEach((row, y) => [...row].forEach((ch, x) => {
     if (ch === '.') return
@@ -195,6 +219,108 @@ tile('ow_prop_wall_sand', [
   'mmmmmMmmmmmmmMmm',
   'ssssssssssssssss',
 ], { c: '#efe0b9', C: '#d9c08a', m: '#c9a46a', M: '#a8834e', s: '#8a6a3f' })
+
+// ---- the inn's stable: S the shade under the eaves, p the back wall's boards,
+// P a seam between them, z the straw's dark edge against the wall, y straw,
+// Y z its light and dark wisps, w W a partition's board and its lit top, a ink.
+// Every stall's west and east columns hold only STALL_GROUND, row by row.
+const STALL = { a: INK, S: '#4a3036', p: '#6b4436', P: '#53342d', z: '#a3742f', y: '#c99a48', Y: '#e8bf68', w: '#bd6c4a', W: '#eaa56c' }
+const STALL_GROUND = 'SSpppppppzyyyyyy'
+tile('ow_house_stable_l', [
+  'aSSSSSSSSSSSSSSS',
+  'aSSSSSSSSSSSSSSS',
+  'appppPpppppPpppp',
+  'appppPpppppPpppp',
+  'appppPpppppPpppp',
+  'appppPpppppPpppp',
+  'appppPpppppPpppp',
+  'appppPpppppPpppp',
+  'appppPpppppPpppp',
+  'azzzzzzzzzzzzzzz',
+  'ayyyYyyyyyzyyyyy',
+  'ayyzyyyyyYyyyyyy',
+  'ayyyyyyzyyyyYyyy',
+  'ayYyyyyyyyyyyyyy',
+  'ayyyyyzyyyyYyyyy',
+  'ayyyyyyyyyyyyyyy',
+], STALL, { joins: { e: true, ground: STALL_GROUND } })
+tile('ow_house_stable_m', [
+  'SSSSSSSSSSSSSSSS',
+  'SSSSSSSSSSSSSSSS',
+  'pppppPpppppPpppp',
+  'pppppPpppppPpppp',
+  'pppppPpppppPpppp',
+  'pppppPpppppPpppp',
+  'pppppPpppppPpppp',
+  'pppppPpppppPpppp',
+  'paaapPpppppPpppp',
+  'zaWazzzzzzzzzzzz',
+  'yawayyYyyyyyzyyy',
+  'yawayyyyyzyyyyYy',
+  'yawayYyyyyyyYyyy',
+  'yawayyyzyyyyyyyy',
+  'yaaayyyyyYyyyzyy',
+  'yyyyyyyyyyyyyyyy',
+], STALL, { joins: { w: true, e: true, ground: STALL_GROUND } })
+tile('ow_house_stable_r', [
+  'SSSSSSSSSSSSSSSa',
+  'SSSSSSSSSSSSSSSa',
+  'pppppPpppppPpppa',
+  'pppppPpppppPpppa',
+  'pppppPpppppPpppa',
+  'pppppPpppppPpppa',
+  'pppppPpppppPpppa',
+  'pppppPpppppPpppa',
+  'paaapPpppppPpppa',
+  'zaWazzzzzzzzzzza',
+  'yawayyyyzyyyYyya',
+  'yawayYyyyyyyyyya',
+  'yawayyyyyyzyyyya',
+  'yawayyyYyyyyyzya',
+  'yaaayyyyyyyyyyya',
+  'yyyyyyyyyyyyyyya',
+], STALL, { joins: { w: true, ground: STALL_GROUND } })
+// the horse: a bay, h its coat, H the shade, n its mane, t its tail, W its eye
+const HORSE = { a: INK, n: INK, h: '#bd6c4a', H: '#763b36', t: '#5c2e2e', W: '#ffffff' }
+const HORSE_W = [
+  '................',
+  '................',
+  '...aa...........',
+  '..annaa.........',
+  '.aannnhaa.......',
+  '.ahWahhhhaaaa...',
+  '.aahahhhhhhhhaa.',
+  '..aaahhhhhhhhat.',
+  '....ahhhhHHhhat.',
+  '....ahHHHHHHhat.',
+  '....aaHHaaHHaat.',
+  '.....aHa..aHa.t.',
+  '.....aHa..aHa...',
+  '.....aHa..aHa...',
+  '.....aaa..aaa...',
+  '................',
+]
+tile('ow_prop_horse_w', HORSE_W, HORSE, { clear: true })
+tile('ow_prop_horse_e', mirror(HORSE_W), HORSE, { clear: true })
+// the trough: W its lit rim, c b g the water and a glint, w its boards, H the iron bands and legs
+tile('ow_prop_trough', [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '..aaaaaaaaaaaa..',
+  '.aWWWWWWWWWWWWa.',
+  '.aWccgccccccbWa.',
+  '.aWbbbbbbbbbbWa.',
+  '.aaaaaaaaaaaaaa.',
+  '.awwwwwwwwwwwwa.',
+  '.awHwwwwwwwwHwa.',
+  '.aaaaaaaaaaaaaa.',
+  '..aHa......aHa..',
+  '................',
+], { a: INK, W: '#eaa56c', w: '#bd6c4a', H: '#763b36', c: '#76e4ff', b: '#009adc', g: '#ffffff' }, { clear: true })
 
 // ---- the windmill: 48 x 64 pixels, drawn in layers and cut into twelve tiles ----
 const W = 48, H = 64

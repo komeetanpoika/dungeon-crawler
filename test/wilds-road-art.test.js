@@ -26,6 +26,8 @@ import { classOf } from '../renderer/wilds/map.js'
 
 const TILES = path.join(path.dirname(fileURLToPath(import.meta.url)), '../renderer/assets/tiles')
 const without = fn => { setRoadVerges(false); try { return fn() } finally { setRoadVerges(true) } }
+// a deco a site lays itself (wilds/inn.js): a wall behind a sign, a stall behind a horse
+const SITE_DECO = /^ow_(city_house_|house_stable_)/
 const N = 1, E = 2, S = 4, W = 8
 const parse = name => { const m = /^ow_deco_road_([a-z]+)_(\d+)_(\d+)_(\d+)$/.exec(name ?? ''); return m && { set: m[1], M: +m[2], D: +m[3], V: +m[4] } }
 
@@ -168,8 +170,10 @@ describe('the verges of real pieces', () => {
         assert.ok(ca.tile === cb.tile && ca.skin === cb.skin && ca.overlay === cb.overlay, `${at}: cell`)
         assert.ok(ca.losClear === cb.losClear && ca.losSoft === cb.losSoft && ca.losTall === cb.losTall && ca.over === cb.over, `${at}: sight`)
         assert.ok(classOf(ca) === classOf(cb), `${at}: map colour`)
-        assert.ok(cb.deco === undefined, `${at}: a deco with the verges off`)
-        if (ca.deco !== undefined) { assert.ok(isVergeSkin(ca.deco), `${at}: ${ca.deco}`); verges++ }
+        // (with the verges off, only what a site hangs behind a prop is left, as it was:
+        // the wall behind the crossroads inn's sign, the stall a horse stands in)
+        assert.ok(cb.deco === undefined || (SITE_DECO.test(cb.deco) && ca.deco === cb.deco), `${at}: a deco with the verges off`)
+        if (ca.deco !== undefined && cb.deco === undefined) { assert.ok(isVergeSkin(ca.deco), `${at}: ${ca.deco}`); verges++ }
       }
     }
     assert.ok(verges > 2000, `only ${verges} verges in the sample`)

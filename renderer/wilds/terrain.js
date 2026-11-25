@@ -279,7 +279,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   // ---- lay the base terrain ------------------------------------------------
   const b = new MapBuilder('wilds', 'wilds', 'wilds', SIZE, SIZE)
   // a third layer of art between the ground and what stands on it, builder
-  // cell by builder cell: the roads' verges (finish())
+  // cell by builder cell: the roads' verges (finish()), and what a site hangs
+  // behind a prop (setDeco)
   const deco = new Array(SIZE * SIZE).fill(null)
   const put = (x, y, ground, prop, walk) => {
     const bx = x + MARGIN, by = y + MARGIN
@@ -563,6 +564,10 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       b.prop[y + MARGIN][x + MARGIN] = b.skin(skin)
       b.walkG[y + MARGIN][x + MARGIN] = walkable
     },
+    // what hangs behind a cell's prop (the wall behind an inn's sign, the stall
+    // a horse stands in): its deco, drawn between the ground and the prop; a
+    // road's verge (finish()) leaves a deco laid here as it is
+    setDeco: (x, y, skin) => { if (inside(x, y)) deco[(y + MARGIN) * SIZE + x + MARGIN] = skin ?? null },
     // a cell of mountain rock (finish() shapes it), and the stony ground it stands on
     setMass: (x, y) => {
       if (!inside(x, y) || pathKept(x, y)) return
