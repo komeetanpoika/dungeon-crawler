@@ -13,6 +13,7 @@ import { CITY_KEYS } from '../renderer/wilds/city/geometry.js'
 import { insideWalls } from '../renderer/wilds/city/plan.js'
 import { cityFor, coachStopOf, layCityStop } from '../renderer/wilds/city/build.js'
 import { APPROACHES } from '../renderer/wilds/city/build-land.js'
+import { isVergeSkin } from '../renderer/wilds/road-art.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
 import {
@@ -44,10 +45,10 @@ function put(state, at) {
 }
 const stopOf = (state, town) => state.coachStops.find(s => s.town === town)
 
-// Walkable cells of a piece reached from `from`, four ways.
-function reached(piece, from) {
+// Walkable cells of a piece reached from `from`, four ways, never stepping on `avoid`.
+function reached(piece, from, avoid = null) {
   const seen = new Uint8Array(PIECE * PIECE)
-  const walk = (x, y) => piece.cells[y]?.[x]?.tile === TILE.FLOOR
+  const walk = (x, y) => piece.cells[y]?.[x]?.tile === TILE.FLOOR && !(avoid && x === avoid.x && y === avoid.y)
   const stack = [from.y * PIECE + from.x]
   seen[stack[0]] = 1
   while (stack.length) {
@@ -60,8 +61,14 @@ function reached(piece, from) {
   }
   return seen
 }
-// The stop of a piece: walkable, off the road, out of the frame, beside a cart;
-// and a cell beside it to arrive on, walkable and not the stop.
+// The road cells of a piece (its ground, its planks, the cobbles it wears in a
+// village) and the cells beside them that wear its verge: where someone
+// walking the road, or stepping off it, sets foot.
+const roadside = (piece, x, y) => { const c = piece.cells[y]?.[x]; return !!c && (isRoad(c) || isVergeSkin(c.deco)) }
+// The stop of a piece: walkable, off the road and its verge with no road cell
+// round it, out of the frame, beside a cart; and a cell beside it to arrive on,
+// walkable, not the stop and not the coachman's, and reached from the piece's
+// spawn point without crossing the stop.
 function checkStop(world, piece, town, at) {
   const c = piece.coach
   assert.ok(c, `${at}: no stop`)
@@ -70,6 +77,9 @@ function checkStop(world, piece, town, at) {
   assert.equal(cell.tile, TILE.FLOOR, `${at}: the stop is not walkable`)
   assert.ok(!cell.over, `${at}: the stop is under a roof`)
   assert.ok(!isRoad(cell), `${at}: the stop is on the road`)
+  assert.ok(!isVergeSkin(cell.deco), `${at}: the stop wears the road's verge`)
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+    assert.ok(!isRoad(piece.cells[c.y + dy]?.[c.x + dx]), `${at}: the stop touches the road at ${c.x + dx},${c.y + dy}`)
   assert.ok(Math.min(c.x, c.y, PIECE - 1 - c.x, PIECE - 1 - c.y) >= FRAME, `${at}: the stop is in the frame`)
   assert.ok(!piece.doors.some(d => d.x === c.x && d.y === c.y), `${at}: the stop is a doorstep`)
   const carts = N4.map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy })).filter(p => CART.test(piece.cells[p.y]?.[p.x]?.overlay ?? ''))
@@ -80,20 +90,32 @@ function checkStop(world, piece, town, at) {
   assert.equal(Math.abs(lx - c.x) + Math.abs(ly - c.y), 1, `${at}: the arrival cell is not beside the stop`)
   assert.equal(piece.cells[ly][lx].tile, TILE.FLOOR, `${at}: the arrival cell is not walkable`)
   assert.ok(!piece.cells[ly][lx].over, `${at}: the arrival cell is under a roof`)
+  assert.ok(!piece.spawns.some(s => s.coachman && s.x === lx && s.y === ly), `${at}: the player arrives on the coachman`)
+  assert.equal(reached(piece, piece.spawnPoint, c)[ly * PIECE + lx], 1, `${at}: the arrival cell is reached only across the stop`)
   return carts
 }
 
-test('every village and the city has a stop on a walkable cell off the road', () => {
-  let villages = 0
-  // (seed 12345's 0,-12: its one road comes in through rock, and the stop stands farther in)
+// The villages looked at, generated once for the tests that walk them.
+// (seed 12345's 0,-12: its one road comes in through rock, and the stop stands farther in)
+let villageSample = null
+function villages() {
+  if (villageSample) return villageSample
   const extra = { 12345: [{ wx: 0, wy: -12 }] }
+  villageSample = []
   for (const seed of [1, 7, 42, 2024, 12345]) {
     const world = makeWorld(null, { seed })
     for (const v of [...villagesNear(seed, 0, 0, 9), ...(extra[seed] ?? [])]) {
       const piece = getPiece(world, v.wx, v.wy)
-      const at = `seed ${seed} village ${v.wx},${v.wy} (${piece.biome}${piece.villageTale ? ', ' + piece.villageTale : ''})`
-      const carts = checkStop(world, piece, pieceKey(v.wx, v.wy), at)
-      villages++
+      villageSample.push({ seed, world, piece, at: `seed ${seed} village ${v.wx},${v.wy} (${piece.biome}${piece.villageTale ? ', ' + piece.villageTale : ''})` })
+    }
+  }
+  return villageSample
+}
+
+test('every village and the city has a stop on a walkable cell off the road', () => {
+  for (const { world, piece, at } of villages()) {
+    {
+      const carts = checkStop(world, piece, piece.key, at)
       const c = piece.coach
       // the cart is the city kit's horse and cart, horse west, beside the road
       const horse = carts.map(p => piece.cells[p.y][p.x].overlay === 'ow_prop_city_cart_horse' ? p : { x: p.x - 1, y: p.y })[0]
@@ -101,7 +123,6 @@ test('every village and the city has a stop on a walkable cell off the road', ()
       assert.equal(piece.cells[horse.y][horse.x + 1].overlay, 'ow_prop_city_cart', `${at}: no cart behind the horse`)
       const roadTouch = p => N4.some(([dx, dy]) => isRoad(piece.cells[p.y + dy]?.[p.x + dx]))
       assert.ok(roadTouch(horse) || roadTouch({ x: horse.x + 1, y: horse.y }), `${at}: the cart is not beside the road`)
-      assert.ok(roadTouch(c), `${at}: the stop is not beside the road`)
       // the coachman stands by the cart, and he and the stop are reached on foot
       const men = piece.spawns.filter(s => s.coachman)
       assert.equal(men.length, 1, `${at}: ${men.length} coachmen`)
@@ -114,7 +135,7 @@ test('every village and the city has a stop on a walkable cell off the road', ()
       assert.equal(seen[man.y * PIECE + man.x], 1, `${at}: the coachman is cut off`)
     }
   }
-  assert.ok(villages >= 40, `only ${villages} villages looked at`)
+  assert.ok(villages().length >= 40, `only ${villages().length} villages looked at`)
   // Kalevanlinna: beside the inn's cart, inside the walls, on one of its pieces
   for (const seed of [1, 7, 4242]) {
     const world = makeWorld(null, { seed })
@@ -128,6 +149,24 @@ test('every village and the city has a stop on a walkable cell off the road', ()
     const cart = city.inn.cart
     assert.ok([cart, { x: cart.x + 1, y: cart.y }].some(p => Math.abs(p.x - city.coach.x) + Math.abs(p.y - city.coach.y) === 1), `seed ${seed}: the stop is not by the inn's cart`)
   }
+})
+
+test('walking along every road cell and every verge cell beside a road never steps onto a stop', () => {
+  let walked = 0
+  for (const { piece, at } of villages()) {
+    const c = piece.coach
+    for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+      if (!roadside(piece, x, y)) continue
+      walked++
+      assert.ok(!(x === c.x && y === c.y), `${at}: the road or its verge runs over the stop at ${x},${y}`)
+    }
+    // one step off the road, any way, lands next to the stop at the nearest, never on it
+    for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+      if (!isRoad(piece.cells[y][x])) continue
+      assert.ok(Math.max(Math.abs(x - c.x), Math.abs(y - c.y)) >= 2, `${at}: the road at ${x},${y} is a step from the stop`)
+    }
+  }
+  assert.ok(walked > 1000, `only ${walked} road and verge cells walked`)
 })
 
 test('with no room by the inn\'s cart the city\'s stop moves to the north gate, with a cart of its own', () => {

@@ -87,11 +87,12 @@ function stopPiece(seed, townKey) {
 }
 
 const SIDE_STEPS = [[0, 1], [1, 0], [-1, 0], [0, -1]]
+const isRoadCell = cell => (cell.skin ?? '').startsWith('ow_road_') || cell.skin === 'ow_cobble_green' || (cell.overlay ?? '').startsWith('ow_pier')
 // The world tile to arrive on at a town's stop: a walkable cell beside the
-// boarding cell, not under a roof and not a doorway, the road's own where
-// there is one (a village's stop is beside its road: its ground, its planks,
-// or the cobbles it wears in the village), else the first by S, E, W, N.
-// Null if the town has no stop.
+// boarding cell, not under a roof, not a doorway and not where the coachman
+// stands; the first by S, E, W, N from which the road is reached without
+// crossing the stop (the player is not to board again to leave it; the
+// generator makes sure there is one). Null if the town has no stop.
 export function stopTile(world, townKey) {
   const at = stopPiece(world.seed, townKey)
   if (!at) return null
@@ -99,13 +100,27 @@ export function stopTile(world, townKey) {
   const c = piece.coach
   if (!c) return null
   const opening = (x, y) => [...piece.doors, ...piece.caves].some(d => d.x === x && d.y === y)
-  const cells = SIDE_STEPS.map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy })).filter(({ x, y }) => {
+  const walk = (x, y) => {
     const cell = piece.cells[y]?.[x]
-    return !!cell && cell.tile === TILE.FLOOR && !cell.over && !opening(x, y)
-  })
-  const onRoad = ({ x, y }) => { const { skin = '', overlay = '' } = piece.cells[y][x]; return skin.startsWith('ow_road_') || skin === 'ow_cobble_green' || overlay.startsWith('ow_pier') }
-  const road = cells.find(onRoad)
-  const there = road ?? cells[0]
+    return !!cell && cell.tile === TILE.FLOOR && !cell.over && !opening(x, y) && !(x === c.x && y === c.y)
+  }
+  const man = piece.spawns.find(s => s.coachman)
+  const cells = SIDE_STEPS.map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy })).filter(({ x, y }) => walk(x, y) && !(man && man.x === x && man.y === y))
+  const leadsOn = from => {
+    const seen = new Uint8Array(PIECE * PIECE), queue = [from]
+    seen[from.y * PIECE + from.x] = 1
+    for (let q = 0; q < queue.length; q++) {
+      const { x, y } = queue[q]
+      if (isRoadCell(piece.cells[y][x])) return true
+      for (const [dx, dy] of SIDE_STEPS) {
+        const nx = x + dx, ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= PIECE || ny >= PIECE || seen[ny * PIECE + nx] || !walk(nx, ny)) continue
+        seen[ny * PIECE + nx] = 1; queue.push({ x: nx, y: ny })
+      }
+    }
+    return false
+  }
+  const there = cells.find(leadsOn) ?? cells[0]
   return there ? { X: piece.wx * PIECE + there.x, Y: piece.wy * PIECE + there.y } : null
 }
 
