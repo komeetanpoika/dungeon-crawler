@@ -13,6 +13,7 @@ import { loadMap, exportMap, forgetMap } from './map.js'
 import { generatePiece } from './piece.js'
 import { generateCityPiece } from './city/piece.js'
 import { pieceKey, isPermanent, villageAt } from './layout.js'
+import { townOf } from './roads.js'
 import { isCityPiece } from './city/geometry.js'
 import { kindOf } from './tales.js'
 import { TALE_IDS } from '../data/tales.js'
@@ -50,6 +51,9 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     // the map (map.js): a small picture of every piece seen, its version for
     // whoever draws it (never saved), and the tale places the player has found
     map: new Map(), mapVer: new Map(), found: new Set(),
+    // the towns the player has heard of, from a sign or someone met on the
+    // road (village piece keys, or 'city'): the map pencils them in
+    heard: new Set(),
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
   }
   if (!ok) return world
@@ -86,6 +90,8 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   // a found place stays marked while its place stands; the pictures of the
   // land itself go with the generator that drew it
   if (Array.isArray(saved.found)) for (const key of saved.found) if (world.places.has(key)) world.found.add(key)
+  // the towns heard of stay heard of: villages do not move with the generator
+  if (Array.isArray(saved.heard)) hear(world, saved.heard)
   if (saved.gen !== GEN) return world
   loadMap(world, saved.map)
   for (const [key, rec] of Object.entries(saved.records ?? {})) {
@@ -98,6 +104,19 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   }
   if (saved.pos && isInt(saved.pos.X) && isInt(saved.pos.Y)) world.pos = { X: saved.pos.X, Y: saved.pos.Y }
   return world
+}
+
+// Hear of the towns `keys` names (village piece keys, 'city'); anything that
+// is no town of this world is let pass. True if one of them was new.
+export function hear(world, keys) {
+  let news = false
+  for (const key of Array.isArray(keys) ? keys : []) {
+    const town = typeof key === 'string' ? townOf(world.seed, key) : null
+    if (!town || world.heard.has(town.key)) continue
+    world.heard.add(town.key)
+    news = true
+  }
+  return news
 }
 
 const inWindow = (world, wx, wy) => !!world.origin &&
@@ -182,6 +201,6 @@ export function exportWorld(world) {
     solved: [...world.solved], looted: [...world.looted],
     stocksDay: world.stocksDay,
     sampo: exportSampo(world.sampo),
-    map: exportMap(world), found: [...world.found],
+    map: exportMap(world), found: [...world.found], heard: [...world.heard],
   }
 }

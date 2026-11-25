@@ -8,7 +8,7 @@ import { cutBlocks } from '../renderer/wilds/city/blocks.js'
 import { CITY, CITY_KEYS, isCityPiece, fromCity } from '../renderer/wilds/city/geometry.js'
 import { makeTerrain, WILDS_SKINS, ROAD_WIDTH, roadLane0 } from '../renderer/wilds/terrain.js'
 import { RING, APPROACHES } from '../renderer/wilds/city/build-land.js'
-import { roadSides, CITY_DOORS } from '../renderer/wilds/roads.js'
+import { roadSides, roadsFrom, roadLine, SIDE_WORDS, CITY_DOORS } from '../renderer/wilds/roads.js'
 import { PIECE, FRAME, MARGIN } from '../renderer/wilds/layout.js'
 import { isVergeSkin } from '../renderer/wilds/road-art.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -236,6 +236,26 @@ test('all eight edge crossings join a city gate', () => {
       assert.ok(GATE_CELLS.some(([x, y]) => seen[y * N + x]), `crossing ${c.side} of ${c.key} seed ${seed} reaches no gate`)
     }
   }
+})
+
+test('the land gates\' signs name where their roads go, and tell of those towns', () => {
+  let sideRoads = 0
+  for (const seed of SEEDS) {
+    const city = cityFor(seed), roads = roadsFrom(seed, 'city')
+    assert.ok(roads.some(r => r.side === 'N' && r.town.key === '0,0' && r.leagues === 2), `seed ${seed}: no road from the north gate to Koivula`)
+    for (const [gate, x, y, first] of [['N', 77, 17, 'North gate.'], ['W', 18, 65, 'West gate.'], ['E', 142, 72, 'East gate.']]) {
+      const sign = city.signs.find(s => s.x === x && s.y === y)
+      assert.ok(sign, `seed ${seed}: no sign by the ${gate} gate`)
+      const mine = roads.filter(r => r.side === gate)
+      assert.equal(sign.lines[0], first)
+      for (const r of mine) assert.ok(sign.lines.includes(roadLine(SIDE_WORDS[gate], r.town, r.leagues)), `seed ${seed}: the ${gate} gate's sign ${JSON.stringify(sign.lines)} does not name ${r.town.name}`)
+      assert.deepEqual(sign.hears ?? [], mine.map(r => r.town.key), `seed ${seed} ${gate} gate`)
+      if (gate !== 'N') sideRoads += mine.length
+    }
+    assert.ok(city.signs.find(s => s.x === 77 && s.y === 17).lines.includes('North: Koivula, 2 leagues.'))
+    for (const s of city.signs.filter(s => s.lines[0] === 'Harbour gate.')) assert.equal(s.hears, undefined, `seed ${seed}: a harbour gate tells of a town`)
+  }
+  assert.ok(sideRoads >= 2, `only ${sideRoads} roads leave by the side gates`)
 })
 
 test('every walkable cell inside the walls is warded and none outside is', () => {

@@ -13,8 +13,9 @@ import assert from 'node:assert/strict'
 import { generatePiece } from '../renderer/wilds/piece.js'
 import { makeTerrain } from '../renderer/wilds/terrain.js'
 import { placeFeatures, mainKind } from '../renderer/wilds/features.js'
-import { roadsFrom, pieceClass, roadSides, townsAlong } from '../renderer/wilds/roads.js'
-import { PIECE, FRAME, pieceKey, tierAt, pieceBiome, lootDepthFor, villagesNear, fixedMain } from '../renderer/wilds/layout.js'
+import { roadsFrom, pieceClass, roadSides, townsAlong, townOf, roadLine, SIDE_WORDS } from '../renderer/wilds/roads.js'
+import { PIECE, FRAME, pieceKey, tierAt, pieceBiome, lootDepthFor, villagesNear, fixedMain, BIOME_NAMES } from '../renderer/wilds/layout.js'
+import { signNearby } from '../renderer/systems/signs.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { houseSpec } from '../renderer/interior/versions.js'
@@ -355,7 +356,8 @@ test('a wayside place stands by the junction, a camp or cave at least PAD + 4 fr
     // road's square there: a road three wide is laid from its point down and right), on the place's
     // own ground and off the road
     assert.ok(m.hub, `${at}: no hub`)
-    const mid = { x: j.x + 1, y: j.y + 1 }
+    const mid = piece.road.mid
+    assert.ok(mid.x === j.x + 1 && mid.y === j.y + 1, `${at}: the junction's middle ${mid.x},${mid.y} is not the middle of its square at ${j.x},${j.y}`)
     assert.ok(dist(m.hub, mid) <= 3, `${at}: the hub ${m.hub.x},${m.hub.y} is ${dist(m.hub, mid).toFixed(1)} from the junction's middle ${mid.x},${mid.y}`)
     assert.ok(dist(m.hub, m) <= pad, `${at}: the hub is off the place's ground`)
     assert.ok(!t.onRoad(m.hub.x, m.hub.y) && walk(m.hub.x, m.hub.y), `${at}: the hub is on the road or blocked`)
@@ -398,6 +400,120 @@ test('a wayside place stands by the junction, a camp or cave at least PAD + 4 fr
     }
   }
   for (const k of [...WAYSIDE, 'camp', 'cave']) assert.ok(seen[k] >= 6, `only ${seen[k] ?? 0} ${k} in the sample`)
+})
+
+// ---- signposts -------------------------------------------------------------------
+// A road piece names the next towns along each of its roads on a signpost by
+// its junction; a village names the towns its roads go to, then the country
+// on its sides without a road. One league is one piece.
+const LINE = /^(North|East|South|West): [^,]+, (1 league|([2-9]|\d\d+) leagues)\.$/
+
+test('a road line names the side, the town and how many leagues', () => {
+  assert.equal(roadLine('East', { name: 'Haukiniemi' }, 3), 'East: Haukiniemi, 3 leagues.')
+  assert.equal(roadLine('North', { name: 'Koivula' }, 1), 'North: Koivula, 1 league.')
+  assert.deepEqual(SIDE_WORDS, { N: 'North', E: 'East', S: 'South', W: 'West' })
+})
+
+test('a road piece has a signpost by its junction whose lines match townsAlong', () => {
+  // the roadside and farmland samples, and the home trio's pieces that lie on a road
+  const trio = SEEDS.flatMap(seed => [[1, 0], [0, -1]].filter(([wx, wy]) => roadCount(seed, wx, wy) > 0).map(([wx, wy]) => built(seed, wx, wy)))
+  let n = 0, twoOnASide = 0, inMouths = 0
+  for (const { seed, t, piece, at } of [...roadsideBuilt(), ...farmSample(), ...trio]) {
+    const posts = piece.signs.filter(s => s.title === 'Signpost')
+    if (!posts.length && outOnTheWater(t, piece)) continue
+    assert.equal(posts.length, 1, `${at}: ${posts.length} signposts`)
+    assert.equal(piece.signs.length, 1, `${at}: other signs`)
+    const sign = posts[0], mid = piece.road.mid, where = `${at}: the signpost at ${sign.x},${sign.y}`
+    assert.equal(t.propAt(sign.x, sign.y), 'ow_sign', `${where} is not drawn`)
+    assert.ok(!t.walkable(sign.x, sign.y) && t.kind(sign.x, sign.y) === 'land', `${where} is not a post on land`)
+    assert.ok(Math.min(sign.x, sign.y, PIECE - 1 - sign.x, PIECE - 1 - sign.y) >= FRAME, `${where} is in the frame`)
+    assert.ok(dist(sign, mid) <= 5, `${where} is ${dist(sign, mid).toFixed(1)} from the junction's middle ${mid.x},${mid.y}`)
+    // off every road and trail (out of a trail's mouth where it can be), and read from the road beside it
+    assert.ok(!t.onPath(sign.x, sign.y), `${where} stands on a ${t.onRoad(sign.x, sign.y) ? 'road' : 'trail'}`)
+    let mouth = false
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (t.onPath(sign.x + dx, sign.y + dy) && !t.onRoad(sign.x + dx, sign.y + dy)) mouth = true
+    if (mouth) inMouths++
+    const from = N4.map(([dx, dy]) => ({ x: sign.x + dx, y: sign.y + dy })).filter(c => t.onRoad(c.x, c.y) && t.walkable(c.x, c.y))
+    assert.ok(from.length && from.every(c => signNearby(piece.signs, c.x, c.y) === sign), `${where} cannot be read from the road`)
+    assert.ok(!piece.spawns.some(s => s.x === sign.x && s.y === sign.y), `${where} has something dealt onto it`)
+    // a line for each town along each road side, nearest first, by N, E, S, W
+    const along = SIDES.filter(s => piece.road.sides[s]).flatMap(s => townsAlong(seed, piece.wx, piece.wy, s).map(a => ({ s, ...a })))
+    assert.ok(SIDES.filter(s => piece.road.sides[s]).every(s => along.some(a => a.s === s)), `${at}: a road side leads to no town`)
+    assert.deepEqual(sign.lines, along.map(a => roadLine(SIDE_WORDS[a.s], a.town, a.leagues)), at)
+    assert.deepEqual(sign.hears, along.map(a => a.town.key), at)
+    for (const l of sign.lines) assert.match(l, LINE, at)
+    if (along.length > new Set(along.map(a => a.s)).size) twoOnASide++
+    n++
+  }
+  assert.ok(n >= 60, `only ${n} road pieces`)
+  assert.ok(twoOnASide >= 1, 'no signpost names two towns along one road')
+  assert.ok(inMouths / n <= 0.2, `${inMouths} of ${n} signposts stand in a trail's mouth`)
+})
+
+// Where the roads meet out on the water, every cell beside the road near the junction is water or a way.
+const SIGN_REACH = 5
+function outOnTheWater(t, piece) {
+  const m = piece.road.mid
+  for (let dy = -SIGN_REACH; dy <= SIGN_REACH; dy++) for (let dx = -SIGN_REACH; dx <= SIGN_REACH; dx++) {
+    const x = m.x + dx, y = m.y + dy
+    if (dx * dx + dy * dy > SIGN_REACH * SIGN_REACH || t.onRoad(x, y) || !N4.some(([a, b]) => t.onRoad(x + a, y + b))) continue
+    if (!t.onPath(x, y) && t.kind(x, y) !== 'water') return false
+  }
+  return true
+}
+
+test('nearly every road piece that is not a village has its signpost; the rest meet on the water', () => {
+  let n = 0, none = 0
+  for (const seed of [5, 11]) for (let wy = -6; wy <= 6; wy++) for (let wx = -6; wx <= 6; wx++) {
+    const cls = pieceClass(seed, wx, wy)
+    if (cls === 'village' || cls === 'city' || cls === 'wild' || roadCount(seed, wx, wy) === 0) continue
+    const p = generatePiece(seed, wx, wy, 0)
+    n++
+    const posts = p.signs.filter(s => s.title === 'Signpost')
+    assert.ok(posts.length <= 1, `seed ${seed} piece ${wx},${wy}: ${posts.length} signposts`)
+    if (posts.length) { assert.equal(p.cells[posts[0].y][posts[0].x].overlay, 'ow_sign'); continue }
+    none++
+    assert.equal(p.biome, 'sea', `seed ${seed} piece ${wx},${wy} (${p.biome} ${cls}) has no signpost`)
+  }
+  assert.ok(n >= 100, `only ${n} road pieces`)
+  assert.ok(none / n <= 0.04, `${none} of ${n} road pieces have no signpost`)
+})
+
+test("a village's sign lists its roads first, then the country on the roadless sides", () => {
+  const STEP = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
+  let n = 0, shared = 0, country = 0
+  for (const seed of [...SEEDS, 7]) for (const v of villagesNear(seed, 0, 0, 9)) {
+    const p = generatePiece(seed, v.wx, v.wy, 0)
+    const at = `seed ${seed} village ${v.wx},${v.wy}`
+    assert.equal(p.signs.length, 1, at)
+    const sign = p.signs[0], roads = roadsFrom(seed, pieceKey(v.wx, v.wy))
+    assert.equal(sign.title, p.village.name, at)
+    assert.equal(p.cells[sign.y][sign.x].overlay, 'ow_sign', `${at}: the sign is not drawn`)
+    const bare = SIDES.filter(s => !roads.some(r => r.side === s))
+    const want = [
+      ...roads.map(r => roadLine(SIDE_WORDS[r.side], r.town, r.leagues)),
+      ...bare.map(s => `${SIDE_WORDS[s]}: ${BIOME_NAMES[pieceBiome(seed, v.wx + STEP[s][0] * 3, v.wy + STEP[s][1] * 3)]}.`),
+    ]
+    assert.deepEqual(sign.lines, want, at)
+    assert.deepEqual(sign.hears, roads.map(r => r.town.key), at)
+    if (roads.length > new Set(roads.map(r => r.side)).size) shared++
+    country += bare.length
+    n++
+  }
+  assert.ok(n >= 20, `only ${n} villages`)
+  assert.ok(shared >= 1, 'no village with two roads leaving by one side')
+  assert.ok(country >= 1, 'no village with a side without a road')
+})
+
+test("Koivula's sign names Kalevanlinna with its distance", () => {
+  for (const seed of [...SEEDS, 7]) {
+    const sign = generatePiece(seed, 0, 0, 0).signs[0]
+    const city = townOf(seed, 'city')
+    assert.ok(sign.lines.includes(roadLine('South', city, 2)), `seed ${seed}: ${JSON.stringify(sign.lines)}`)
+    assert.equal(roadLine('South', city, 2), 'South: Kalevanlinna, 2 leagues.')
+    assert.ok(!sign.lines.some(l => l.includes('by the sea')), `seed ${seed}: the old line is still there`)
+    assert.ok(sign.hears.includes('city'), `seed ${seed}: the sign does not tell of the city`)
+  }
 })
 
 // (fixed pieces, villages, the city and tale or Sampo places keep their own

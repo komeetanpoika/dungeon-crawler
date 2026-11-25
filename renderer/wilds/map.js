@@ -4,7 +4,8 @@
 // hero has explored, saved with the Wilds record, and thrown away when the
 // world forgets the piece (world.js sweep): land that will be dealt anew
 // must not stay on the map. Landmarks (villages, the city, the places of
-// tales once stood in) are kept for good. DOM-free; render/minimap.js and
+// tales once stood in) are kept for good, and so are the towns heard of but
+// not yet reached, pencilled in. DOM-free; render/minimap.js and
 // ui/map-panel.js draw it.
 import { PIECE, pieceKey, villageAt } from './layout.js'
 import { CITY } from './city/geometry.js'
@@ -169,13 +170,17 @@ export function loadMap(world, saved) {
 const TALE_TITLES = Object.fromEntries(Object.values(TALES).map(t => [t.id, t.title]))
 const PLACE_NAMES = { sampo_sea: "Turso's bay", sampo_mountain: 'The copper mountain', sampo_marsh: "The pike's pond" }
 
+const CITY_X = (CITY.wx0 + CITY.pieces / 2) * PIECE, CITY_Y = (CITY.wy0 + CITY.pieces / 2) * PIECE
+
 // Everything the map marks for good, in world tiles: the villages the player
-// has reached, the city, the places of tales they have stood in.
+// has reached, the city, the places of tales they have stood in, and the
+// towns they have heard of and not reached (kind 'heard', at the middle of
+// the town's piece, or of the city).
 export function landmarks(world) {
   const out = []
   for (const key of world.visited) {
     if (key === 'city') {
-      out.push({ key, kind: 'city', name: CITY.name, X: (CITY.wx0 + CITY.pieces / 2) * PIECE, Y: (CITY.wy0 + CITY.pieces / 2) * PIECE })
+      out.push({ key, kind: 'city', name: CITY.name, X: CITY_X, Y: CITY_Y })
       continue
     }
     const [wx, wy] = key.split(',').map(Number)
@@ -190,6 +195,13 @@ export function landmarks(world) {
     if (!place) continue
     const [wx, wy] = key.split(',').map(Number)
     out.push({ key, kind: 'place', name: PLACE_NAMES[place.id] ?? TALE_TITLES[place.id] ?? 'A place of a tale', X: wx * PIECE + PIECE / 2, Y: wy * PIECE + PIECE / 2 })
+  }
+  for (const key of world.heard) {
+    if (world.visited.includes(key)) continue
+    if (key === 'city') { out.push({ key, kind: 'heard', name: CITY.name, X: CITY_X, Y: CITY_Y }); continue }
+    const [wx, wy] = key.split(',').map(Number)
+    const v = villageAt(world.seed, wx, wy)
+    if (v) out.push({ key, kind: 'heard', name: v.name, X: wx * PIECE + PIECE / 2, Y: wy * PIECE + PIECE / 2 })
   }
   return out
 }

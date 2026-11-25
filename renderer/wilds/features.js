@@ -5,7 +5,7 @@
 // Order matters and is always the same: open the main pad, run a path from
 // each gate to it, pick the small things' spots clear of those paths, run a
 // trail from each to the main thing, then stamp the structures and set the
-// milestones by the roads. A structure stands on a path only on its own
+// signpost and the milestones by the roads. A structure stands on a path only on its own
 // site's ground (the opened pad, a tale's circles: terrain.js refuses it
 // anywhere else), where there is room to walk round it; last of all the
 // dressing that still blocks a way is taken up.
@@ -21,7 +21,7 @@
 import { PIECE, FRAME, tierAt, pieceBiome, fixedMain, villageAt, caveDepthFor, pieceKey, BIOME_NAMES } from './layout.js'
 import { hash, hashInt, mulberry32 } from './rand.js'
 import { makeSites, layoutTale, wayCells, TALE_PAD } from './sites.js'
-import { roadSides, pieceClass, townsAlong } from './roads.js'
+import { roadSides, pieceClass, townsAlong, roadsFrom, roadLine, SIDE_WORDS } from './roads.js'
 import { ROAD_WIDTH, roadLane0 } from './terrain.js'
 
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,
@@ -57,6 +57,10 @@ const TRAVELLER_ROAD = [
 const TRAVELLER_LOST = 'I have walked this road three days and not found the end of it.'
 // A milestone beside the road every MILE tiles along it, counted from the junction, the first MILE / 2 out.
 const MILE = 20
+// how far from the middle of the junction's square its signpost may stand
+const SIGN_REACH = 5
+// what may be cleared for a signpost where nothing open stands beside the road
+const GROWTH = /^ow_(tree|bush|deadtree|shrub|cactus)/
 // The farms of farmland (the first road piece out of a town: roads.js
 // pieceClass), by country, with the weights they are dealt by. A farm that
 // finds no room beside the roads gives way to the next of its country's list,
@@ -367,12 +371,14 @@ export function placeFeatures(t, piece) {
     }
     return { kind: 'field', spot: besideTheRoads(j, PAD.field) }
   }
+  // The middle of the road's square at a junction j (t.road lays a road's
+  // square from its point).
+  const middleOf = j => ({ x: j.x + roadLane0(0) + (ROAD_WIDTH >> 1), y: j.y + roadLane0(0) + (ROAD_WIDTH >> 1) })
   // A wayside place stands by the junction, measured from the middle of the
-  // road's square there (t.road lays a road's square from its point), giving
-  // up room to the roads down to half its pad; where even that does not bring
-  // it within BY_THE_JUNCTION, it stands as near as there is room.
-  const waysideBesideTheRoads = (j, pad) => {
-    const mid = { x: j.x + roadLane0(0) + (ROAD_WIDTH >> 1), y: j.y + roadLane0(0) + (ROAD_WIDTH >> 1) }
+  // road's square there (mid), giving up room to the roads down to half its
+  // pad; where even that does not bring it within BY_THE_JUNCTION, it stands
+  // as near as there is room.
+  const waysideBesideTheRoads = (mid, pad) => {
     const spot = besideTheRoads(mid, pad, { back: 0, by: BY_THE_JUNCTION, least: Math.ceil(pad / 2) })
     if (spot) return spot
     const near = besideTheRoads(mid, pad, { back: 0 })
@@ -445,9 +451,10 @@ export function placeFeatures(t, piece) {
   const home = wx === 0 && wy === 0
   // the roads of a road piece that is neither a village nor a tale's place come first
   const besideRoads = roadPiece && !geo && dealt !== 'village'
-  let junction = null
+  let junction = null, mid = null
   if (besideRoads) {
     junction = roadJunction()
+    mid = middleOf(junction)
     for (const side of roadGates) { const g = t.gateInner(side); t.road(g.x, g.y, junction.x, junction.y) }
   }
   // farmland: the farm of its country that finds room beside the roads (a
@@ -458,13 +465,17 @@ export function placeFeatures(t, piece) {
   // (only the roadside deals one, and a roadside piece always has its roads)
   const wayside = WAYSIDE.has(kind) && besideRoads
   const pad = geo ? TALE_PAD[piece.tale] : PAD[kind]
-  const spot = farm ? farm.spot : wayside ? waysideBesideTheRoads(junction, pad) : besideRoads ? besideTheRoads(junction, pad) : null
+  const spot = farm ? farm.spot : wayside ? waysideBesideTheRoads(mid, pad) : besideRoads ? besideTheRoads(junction, pad) : null
   const mx = geo ? geo.cx : home ? 40 : spot ? spot.x : ri(18, PIECE - 19), my = geo ? geo.cy : home ? 40 : spot ? spot.y : ri(18, PIECE - 19)
   // where the trail from the junction ends: a wayside place's edge nearest the junction, else its middle
   const hub = geo ? geo.hub : wayside ? spot.hub : { x: mx, y: my }
-  // a village's and a tale's place's roads meet at its hub
-  if (roadPiece && !junction) junction = { x: hub.x, y: hub.y }
-  piece.road = roadPiece ? { sides, junction } : null
+  // a village's and a tale's place's roads meet at its hub: a tale's place's
+  // roads are laid to it, a village's streets aim at it, the middle of its square
+  if (roadPiece && !junction) {
+    junction = { x: hub.x, y: hub.y }
+    mid = geo ? middleOf(junction) : { x: hub.x, y: hub.y }
+  }
+  piece.road = roadPiece ? { sides, junction, mid } : null
   const keepOut = geo ? geo.keep : []
   const kept = (x, y, margin) => keepOut.some(k => Math.hypot(x - k.x, y - k.y) < k.r + margin) ||
     (geo?.ways ?? []).some(c => Math.abs(c.x - x) <= margin + 1 && Math.abs(c.y - y) <= margin + 1)
@@ -584,10 +595,16 @@ export function placeFeatures(t, piece) {
     sites.village(mx, my, piece.villageTale, key === '0,0' || hash(seed, wx, wy, 777) < SUNROOM_ODDS)
     // what the village's own tale leaves standing in it
     if (piece.villageTale) piece.villagePoints = sites.villageTrouble(piece.villageTale, mx, my)
-    const toward = (dx, dy) => BIOME_NAMES[pieceBiome(seed, wx + dx * 3, wy + dy * 3)]
+    // its sign: the towns its roads go to (roads.js roadsFrom, one road a
+    // town, two may leave by one side), then the country on the sides no road
+    // leaves by; `hears`: the towns the player hears of from it
+    const roads = roadsFrom(seed, key)
+    const toward = side => BIOME_NAMES[pieceBiome(seed, wx + STEP[side][0] * 3, wy + STEP[side][1] * 3)]
     piece.signs.push({
       x: mx - 2, y: my + 1, title: v.name,
-      lines: [`North: ${toward(0, -1)}.`, `East: ${toward(1, 0)}.`, v.name === 'Koivula' ? 'South: Kalevanlinna, by the sea.' : `South: ${toward(0, 1)}.`, `West: ${toward(-1, 0)}.`],
+      lines: [...roads.map(r => roadLine(SIDE_WORDS[r.side], r.town, r.leagues)),
+        ...SIDES.filter(side => !roads.some(r => r.side === side)).map(side => `${SIDE_WORDS[side]}: ${toward(side)}.`)],
+      hears: roads.map(r => r.town.key),
     })
     piece.village = { name: v.name, x: mx, y: my }
     if (home) spawn({ kind: 'weapon', weaponType: 'hatchet', x: mx + 2, y: my + 1 })
@@ -701,14 +718,70 @@ export function placeFeatures(t, piece) {
       }
     }
   }
+  // ---- what stands beside a road ------------------------------------------------
+  // A signpost or a milestone stands on land inside the frame, off every path
+  // and every site's ground, never where it would part the ground round it,
+  // and out of a trail's mouth (a signpost, where it must, in one).
+  const RING8 = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]
+  // a stone there leaves the walkable cells round it joined to each other (round the ring, by shared edges)
+  const parts = (x, y) => {
+    const open = RING8.map(([dx, dy]) => t.walkable(x + dx, y + dy))
+    let runs = 0
+    for (let k = 0; k < 8; k += 2) {
+      // an edge neighbour starts a run unless the edge neighbour before it is joined to it through their corner
+      if (!open[k]) continue
+      if (!(open[(k + 6) % 8] && open[(k + 7) % 8])) runs++
+    }
+    return runs
+  }
+  const offWays = (x, y) => t.kind(x, y) === 'land' && !t.onPath(x, y) && !t.onSite(x, y) && !taken.has(`${x},${y}`)
+  const outOfMouths = (x, y) => RING8.every(([dx, dy]) => !t.onPath(x + dx, y + dy) || t.onRoad(x + dx, y + dy))
+  const vacant = (x, y) => t.free(x, y) && offWays(x, y) && parts(x, y) <= 1
+  const stands = (x, y) => vacant(x, y) && outOfMouths(x, y)
+  // a cell holding only a tree or a bush: cleared for a signpost, it is blocked before and after, so it parts nothing
+  const overgrown = (x, y) => t.inside(x, y) && !t.walkable(x, y) && GROWTH.test(t.propAt(x, y) ?? '') && offWays(x, y)
+  const besideRoad = (x, y) => !t.onRoad(x, y) && STEP4.some(([dx, dy]) => t.onRoad(x + dx, y + dy))
+
+  // ---- the signpost -------------------------------------------------------------
+  // A road piece that is not a village has a signpost by its junction naming
+  // the next towns along each of its roads (roads.js townsAlong: the nearer
+  // two along a side), nearest first, by N, E, S, W. It stands on a cell
+  // beside the road, so it is read from the road, within SIGN_REACH of the
+  // junction's middle: the nearest open cell out of a trail's mouth; else the
+  // nearest holding a tree or a bush; else the same in a trail's mouth; else,
+  // where the road is cut through a mountain, a cell of its rock. What stood
+  // there is cleared for it (blocked before and after, it parts nothing).
+  // Among the nearest, by a hash, so no draw of the piece's rng is spent.
+  // Where the roads meet out on the water there is no such cell, and no
+  // signpost. `hears`: the towns the player hears of from it.
+  if (roadPiece && kind !== 'village') {
+    const rock = (x, y) => t.inside(x, y) && t.kind(x, y) === 'mass' && !t.onPath(x, y) && !t.onSite(x, y) && !taken.has(`${x},${y}`)
+    let best = null
+    for (const ok of [stands, (x, y) => overgrown(x, y) && outOfMouths(x, y), vacant, overgrown, rock]) {
+      for (let dy = -SIGN_REACH; dy <= SIGN_REACH; dy++) for (let dx = -SIGN_REACH; dx <= SIGN_REACH; dx++) {
+        const x = mid.x + dx, y = mid.y + dy, d = dx * dx + dy * dy
+        if (d > SIGN_REACH * SIGN_REACH || !besideRoad(x, y) || !ok(x, y)) continue
+        const h = hash(seed, wx * PIECE + x, wy * PIECE + y, 690 + deal)
+        if (!best || d < best.d || (d === best.d && h < best.h)) best = { x, y, d, h }
+      }
+      if (best) break
+    }
+    if (best) {
+      t.clear(best.x, best.y); t.setProp(best.x, best.y, 'ow_sign'); hold(best.x, best.y)
+      const along = roadGates.flatMap(side => townsAlong(seed, wx, wy, side).map(a => ({ side, ...a })))
+      piece.signs.push({
+        x: best.x, y: best.y, title: 'Signpost',
+        lines: along.map(a => roadLine(SIDE_WORDS[a.side], a.town, a.leagues)), hears: along.map(a => a.town.key),
+      })
+    }
+  }
+
   // ---- milestones ---------------------------------------------------------------
   // Beside the roads of a piece laid round them (not a village's, nor a tale's
   // place's): a stone about every MILE tiles along the road, counted from the
-  // junction over road cells, the first MILE / 2 out. Each stands on land a
-  // road cell touches, inside the frame, off every path and every site's
-  // ground, out of a trail's mouth, and never where it would part the ground
-  // round it; which of the cells that may hold it, by a hash, so no draw of
-  // the piece's rng is spent.
+  // junction over road cells, the first MILE / 2 out. Each stands as above, on
+  // land a road cell touches; which of the cells that may hold it, by a hash,
+  // so no draw of the piece's rng is spent.
   if (besideRoads && t.onRoad(junction.x, junction.y)) {
     const along = new Int32Array(PIECE * PIECE).fill(-1)
     const queue = [junction.y * PIECE + junction.x]
@@ -721,20 +794,6 @@ export function placeFeatures(t, piece) {
       }
     }
     const far = along[queue[queue.length - 1]]
-    const RING8 = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]
-    // a stone there leaves the walkable cells round it joined to each other (round the ring, by shared edges)
-    const parts = (x, y) => {
-      const open = RING8.map(([dx, dy]) => t.walkable(x + dx, y + dy))
-      let runs = 0
-      for (let k = 0; k < 8; k += 2) {
-        // an edge neighbour starts a run unless the edge neighbour before it is joined to it through their corner
-        if (!open[k]) continue
-        if (!(open[(k + 6) % 8] && open[(k + 7) % 8])) runs++
-      }
-      return runs
-    }
-    const stands = (x, y) => t.free(x, y) && t.kind(x, y) === 'land' && !t.onPath(x, y) && !t.onSite(x, y) && !taken.has(`${x},${y}`) &&
-      RING8.every(([dx, dy]) => !t.onPath(x + dx, y + dy) || t.onRoad(x + dx, y + dy)) && parts(x, y) <= 1
     const done = new Uint8Array(PIECE * PIECE)
     for (let mark = MILE / 2; mark <= far; mark += MILE) for (const i of queue) {
       if (along[i] !== mark || done[i]) continue

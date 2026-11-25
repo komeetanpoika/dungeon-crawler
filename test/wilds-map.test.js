@@ -1,8 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeWorld, getPiece, exportWorld, sweep, recordFor, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
+import { makeWorld, getPiece, exportWorld, sweep, recordFor, hear, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
+import { mapStamp } from '../renderer/render/map-draw.js'
 import { fold, noteSeen, classOf, encodePic, decodePic, landmarks, forgetMap, CLASS, MAP_N, MAP_COLOURS, CLASSES, SEE_RADIUS } from '../renderer/wilds/map.js'
-import { PIECE } from '../renderer/wilds/layout.js'
+import { PIECE, villagesNear } from '../renderer/wilds/layout.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 const world = () => makeWorld(null, { seed: 7 })
@@ -165,4 +166,24 @@ test('landmarks: the villages reached, the city, and a tale place once stood in'
   assert.deepEqual([...makeWorld({ ...saved, found: ['0,5', '7,7', 3] }).found], ['0,5'])
   forgetMap(w, '0,5')
   assert.equal(w.found.size, 0)
+})
+
+test('a heard town is a landmark of kind heard until it is visited', () => {
+  const w = world()
+  const v = villagesNear(w.seed, 0, 0, 8).find(t => t.wx || t.wy)
+  const key = `${v.wx},${v.wy}`
+  const before = mapStamp(w)
+  hear(w, [key, 'city', '0,0'])
+  assert.notEqual(mapStamp(w), before, 'the map does not know it changed')
+  const heard = landmarks(w).filter(l => l.kind === 'heard')
+  // Koivula is visited already: drawn as visited, though heard of
+  assert.deepEqual(heard.map(l => l.key), [key, 'city'])
+  assert.deepEqual(heard.map(l => l.name), [v.name, 'Kalevanlinna'])
+  assert.deepEqual([heard[0].X, heard[0].Y], [v.wx * PIECE + PIECE / 2, v.wy * PIECE + PIECE / 2], 'the middle of its piece')
+  assert.deepEqual([heard[1].X, heard[1].Y], [80, 240], 'the middle of the city')
+  assert.equal(landmarks(w).filter(l => l.key === '0,0').length, 1)
+  w.visited.push(key)
+  assert.deepEqual(landmarks(w).filter(l => l.kind === 'heard').map(l => l.key), ['city'])
+  assert.ok(landmarks(w).some(l => l.kind === 'village' && l.key === key))
+  assert.ok(w.heard.has(key), 'a visited town stays heard of')
 })

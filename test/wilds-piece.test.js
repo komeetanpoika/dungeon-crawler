@@ -50,8 +50,10 @@ test('the home trio', () => {
     assert.ok(safe >= 4 && safe <= 6, `${safe} village houses`)
     assert.equal(home.signs.length, 1)
     assert.equal(home.signs[0].title, 'Koivula')
-    assert.equal(home.signs[0].lines.length, 4)
-    assert.match(home.signs[0].lines[0], /^North: /)
+    // its roads first (the city's among them), then the country on the sides no road leaves by: a line a side at least
+    assert.ok(home.signs[0].lines.length >= 4, `${home.signs[0].lines.length} lines`)
+    for (const l of home.signs[0].lines) assert.match(l, /^(North|East|South|West): /)
+    assert.ok(home.signs[0].lines.includes('South: Kalevanlinna, 2 leagues.'))
 
     const ring = generatePiece(seed, 1, 0)
     assert.equal(ring.main.kind, 'ring')
@@ -757,8 +759,10 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // And again when the roadside got its milestones and wild land its checkerboard: 1,0 0,-1 and -5,-5
   // moved by their milestones alone (0,0 is a village and has none); of the wild four, 2,3 (odd) kept its
   // cave, -3,1 and 4,-2 (even) went from a cave to a ruin and 6,1 (odd) from a camp to a ruin, each on the
-  // same spot with the same paths and small things, what is dealt after the main thing following from it.)
-  const BEFORE = { '0,0': '332986a7ddd50c40', '1,0': '481ccd46fd462a8b', '0,-1': '722a1283cdd122ba', '2,3': '66b77a8606371d51', '-3,1': 'f7270fea10aba69d', '4,-2': '32b65c91bf91bf42', '-5,-5': 'f55d89cb13e5af7a', '6,1': '38168e49d6d9fd1f' }
+  // same spot with the same paths and small things, what is dealt after the main thing following from it.
+  // And again when road pieces got their signposts: 1,0 0,-1 and -5,-5 moved by the post beside their
+  // junction; 0,0's sign only says more, and the wild four have none.)
+  const BEFORE = { '0,0': '332986a7ddd50c40', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '66b77a8606371d51', '-3,1': 'f7270fea10aba69d', '4,-2': '32b65c91bf91bf42', '-5,-5': '33ca9c61e541e030', '6,1': '38168e49d6d9fd1f' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

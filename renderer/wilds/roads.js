@@ -262,6 +262,11 @@ export function townsAlong(seed, wx, wy, side) {
   return Object.freeze([...best.values()].sort((p, q) => p.leagues - q.leagues || (p.town.key < q.town.key ? -1 : 1)).slice(0, 2).map(t => Object.freeze(t)))
 }
 
+// A signpost's line for the road to `town` (it reads the name) leaving by
+// `side`, a word, `leagues` pieces long: "East: Haukiniemi, 3 leagues."
+export const SIDE_WORDS = Object.freeze({ N: 'North', E: 'East', S: 'South', W: 'West' })
+export const roadLine = (side, town, leagues) => `${side}: ${town.name}, ${leagues} league${leagues === 1 ? '' : 's'}.`
+
 export function pieceClass(seed, wx, wy) {
   if (isCityPiece(wx, wy)) return 'city'
   if (villageAt(seed, wx, wy)) return 'village'

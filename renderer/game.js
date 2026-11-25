@@ -69,7 +69,7 @@ import { violenceUnseen } from './wilds/city/law.js'
 import { ARREST_FADE } from './wilds/city/crime.js'
 import { isShutGate, GATE_SHUT_LINE } from './wilds/city/fx.js'
 import { playTune, tickTune } from './systems/tune.js'
-import { makeWorld } from './wilds/world.js'
+import { makeWorld, hear } from './wilds/world.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
 import { randomSeed } from './pvp/rng.js'
@@ -768,6 +768,7 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
         const n = makeNpc(s.species === 'wolf' && hasTalent(player, 'tapio_peace') ? { ...s, hostile: false } : s)
         if (n && s.lines) n.lines = s.lines   // someone at home says what that household says
         if (n && s.look) n.look = s.look      // one of Kalevanlinna's people at home, as they look outside
+        if (n && s.hears) n.hears = s.hears   // a traveller on the road names a town (wilds/world.js hear)
         return n ? [n] : []
       }
       // a Wilds camp's fire (wilds/sites.js): it never burns down, and cooks like any other
@@ -1482,6 +1483,8 @@ function closeMap() {
 // key handler (F/Escape/Enter) routes back through closeSign.
 function openSign(sign) {
   if (phase !== PHASE.PLAYING) return
+  // a Wilds signpost names towns: the map pencils them in (saved, as a village reached is)
+  if (state.wilds && wildsWorld && hear(wildsWorld, sign.hears)) persistRun()
   setPhase(PHASE.PAUSED)
   sfx(state, 'ui-open')
   showSign(sign, closeSign)
@@ -1991,6 +1994,8 @@ function update(delta) {
     const sign = basin ? null : signNearby(state.signs, player.x, player.y)
     const npc = (basin || sign) ? null : nearestPeacefulNpc(state)
     // someone with a part of the Sampo's story to tell tells it; anyone else says their line
+    // (and a traveller who names a town has the map pencil it in)
+    if (npc?.hears && state.wilds && wildsWorld && hear(wildsWorld, npc.hears)) persistRun()
     if (npc) { if (!(wildsWorld && state.wilds && startTelling(state, npc, wildsWorld))) interactNpc(state, npc); return }
     if (sign) { openSign(sign); return }
     if (basin) {

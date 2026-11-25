@@ -30,6 +30,9 @@ export function pruneMapTiles(world) {
 }
 
 const MARK = { village: '#ffd76a', city: '#ffffff', place: '#ff8f6a' }
+// A town heard of and not reached is pencilled in: a hollow ring and its
+// name in pencil (the map has no parchment; a muted grey-brown).
+const PENCIL = '#b3a58c'
 
 // Draw the map into ctx's w×h, world tile (cx, cy) in the middle, `scale`
 // pixels to a tile. `hero` is { X, Y } in world tiles; `names` writes the
@@ -51,18 +54,30 @@ export function drawMap(ctx, world, { cx, cy, scale, w, h, hero = null, names = 
     const off = x < 0 || y < 0 || x > w || y > h
     if (off && !edge) continue
     x = Math.min(w - pad, Math.max(pad, x)); y = Math.min(h - pad, Math.max(pad, y))
+    const heard = m.kind === 'heard'
     const r = m.kind === 'city' ? 4 : 3
-    ctx.fillStyle = '#000'
-    ctx.fillRect(Math.round(x) - r - 1, Math.round(y) - r - 1, 2 * r + 2, 2 * r + 2)
-    ctx.fillStyle = MARK[m.kind]
-    ctx.fillRect(Math.round(x) - r, Math.round(y) - r, 2 * r, 2 * r)
+    if (heard) {
+      ctx.beginPath()
+      ctx.arc(Math.round(x), Math.round(y), r, 0, Math.PI * 2)
+      ctx.lineWidth = 3
+      ctx.strokeStyle = '#000'
+      ctx.stroke()
+      ctx.lineWidth = 1.5
+      ctx.strokeStyle = PENCIL
+      ctx.stroke()
+    } else {
+      ctx.fillStyle = '#000'
+      ctx.fillRect(Math.round(x) - r - 1, Math.round(y) - r - 1, 2 * r + 2, 2 * r + 2)
+      ctx.fillStyle = MARK[m.kind]
+      ctx.fillRect(Math.round(x) - r, Math.round(y) - r, 2 * r, 2 * r)
+    }
     if (names && !off) {
       ctx.font = '12px monospace'
       ctx.textAlign = 'center'
       ctx.lineWidth = 3
       ctx.strokeStyle = '#000'
       ctx.strokeText(m.name, x, y - r - 5)
-      ctx.fillStyle = '#f3ead2'
+      ctx.fillStyle = heard ? PENCIL : '#f3ead2'
       ctx.fillText(m.name, x, y - r - 5)
     }
   }
@@ -77,7 +92,7 @@ export function drawMap(ctx, world, { cx, cy, scale, w, h, hero = null, names = 
 
 // How many map versions are in play: changes whenever any picture or mark does.
 export function mapStamp(world) {
-  let n = world.map.size * 7 + world.found.size * 13 + world.visited.length * 17
+  let n = world.map.size * 7 + world.found.size * 13 + world.visited.length * 17 + world.heard.size * 19
   for (const v of world.mapVer.values()) n += v
   return n
 }

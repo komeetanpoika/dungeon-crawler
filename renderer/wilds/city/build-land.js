@@ -8,7 +8,7 @@
 // grid, and the frame is put back as the terrain finished it; last, every
 // road outside the wall wears its verge (road-art.js), frame and all.
 import { makeTerrain, ROAD_WIDTH, roadLane0 } from '../terrain.js'
-import { roadSides } from '../roads.js'
+import { roadSides, roadsFrom, roadLine, SIDE_WORDS } from '../roads.js'
 import { PIECE, FRAME, MARGIN } from '../layout.js'
 import { CITY_KEYS, inBay, fromCity } from './geometry.js'
 import { PLAN, insideWalls, wallCells } from './plan.js'
@@ -230,11 +230,19 @@ export function layRoads(G, land, rec) {
     const [x0, , x1, y1] = RING[k]
     for (let x = x0; x <= x1; x++) if (isWaterSkin(G.ground(x, y1 + 1)) && G.tagAt(x, y1 + 1) !== TAG.ROAD) lay(G, x, y1 + 1, HARBOUR.face)
   }
-  // signposts by the gates
-  const sign = (x, y, lines) => { lay(G, x, y, 'ow_sign'); rec.signs.push({ x, y, title: 'Kalevanlinna', lines }) }
-  sign(77, 17, ['North gate.', 'The road north goes to Koivula.'])
-  sign(18, 65, ['West gate.', 'The church is just inside.'])
-  sign(142, 72, ['East gate.', 'The crafts quarter and the mill are inside.'])
+  // signposts by the gates; a land gate's names the towns its roads go to
+  // (roads.js roadsFrom: the city's roads leave by the gate they start at),
+  // and `hears` them
+  const sign = (x, y, lines, gate = null) => {
+    lay(G, x, y, 'ow_sign')
+    const roads = gate ? roadsFrom(land.seed, 'city').filter(r => r.side === gate) : []
+    rec.signs.push({ x, y, title: 'Kalevanlinna', lines: [...lines, ...roads.map(r => roadLine(SIDE_WORDS[gate], r.town, r.leagues))],
+      ...(gate && { hears: roads.map(r => r.town.key) }) })
+  }
+  // (the north road to Koivula is its road line)
+  sign(77, 17, ['North gate.'], 'N')
+  sign(18, 65, ['West gate.', 'The church is just inside.'], 'W')
+  sign(142, 72, ['East gate.', 'The crafts quarter and the mill are inside.'], 'E')
   sign(58, 130, ['Harbour gate.', 'Mind the nets.'])
   sign(102, 130, ['Harbour gate.', 'Mind the nets.'])
 }

@@ -22,6 +22,7 @@ import { taleRecord, fillLines } from './tales.js'
 import { PIECE, pieceKey } from './layout.js'
 import { WIN } from './window.js'
 import { getPiece } from './world.js'
+import { roadsFrom } from './roads.js'
 import { makeCtx } from '../systems/story.js'
 import { QUEST_MODULES } from '../systems/quests/index.js'
 import { EPISODE_MODULES } from '../systems/episodes/index.js'
@@ -158,11 +159,19 @@ function makeRun(state, world, vKey, rec, hooks) {
 
 // What the people of a tale say: its village's villagers, and whoever lives at its place.
 const plainLines = (world, vKey) => { const v = parseKey(vKey); return PLAIN_LINES[getPiece(world, v.wx, v.wy).biome] ?? PLAIN_LINES.forest }
+// A village's villagers also name the town its first road goes to (roads.js
+// roadsFrom: the first by N, E, S, W of the sides its roads leave by).
+const SIDE_NAMES = { N: 'north', E: 'east', S: 'south', W: 'west' }
+function withRoad(world, vKey, lines) {
+  const road = roadsFrom(world.seed, vKey)[0]
+  if (!road) return lines
+  return { ...lines, villager: [...(lines.villager ?? []), `The ${SIDE_NAMES[road.side]} road goes to ${road.town.name}.`] }
+}
 function setLines(state, world, vKey, rec) {
   // a tale with nothing to say yet leaves its village talking about its country
   const tale = rec && TALES[rec.id]
   // a village that has shut the player out says only that
-  const lines = (tale?.shut?.(rec.flags) && tale.shutLines) || fillLines(world, vKey) || plainLines(world, vKey)
+  const lines = (tale?.shut?.(rec.flags) && tale.shutLines) || withRoad(world, vKey, fillLines(world, vKey) || plainLines(world, vKey))
   state.villageLines ??= {}
   state.villageLines[vKey] = lines
   if (rec?.place) state.villageLines[rec.place] = lines
@@ -181,7 +190,7 @@ export function arriveTales(state, world, hooks, { fresh = false } = {}) {
     const rec = world.tales.get(vKey) ?? (at.villageIn ? taleRecord(world, at.v) : null)
     if (!rec) {
       // a village with no tale talks about its country
-      if (at.villageIn) state.villageLines[vKey] = plainLines(world, vKey)
+      if (at.villageIn) state.villageLines[vKey] = withRoad(world, vKey, plainLines(world, vKey))
       continue
     }
     setLines(state, world, vKey, rec)
