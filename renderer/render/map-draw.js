@@ -40,8 +40,9 @@ const COACH = '#7fe3ff'
 // pixels to a tile (it may be a fraction: the coach's ride fits its road).
 // `hero` is { X, Y } in world tiles; `names` writes the landmarks' names;
 // marks off the edge are drawn on it when `edge` is set. `ride` is the
-// coach's: { route, X, Y }, its road (pieces, wilds/roads.js) drawn dotted
-// over whatever is or is not seen, and the coach at world tile (X, Y) on top.
+// coach's: { path, X, Y }, its way from stop to stop (world tiles,
+// wilds/coach.js ridePath) drawn dotted over whatever is or is not seen, and
+// the coach at world tile (X, Y) on top.
 export function drawMap(ctx, world, { cx, cy, scale, w, h, hero = null, names = false, edge = false, ride = null }) {
   ctx.imageSmoothingEnabled = false
   ctx.fillStyle = MIST
@@ -98,15 +99,14 @@ export function drawMap(ctx, world, { cx, cy, scale, w, h, hero = null, names = 
   if (ride) drawRide(ctx, ride, left, top, scale)
 }
 
-// The road from the middle of each piece to the next, dotted in pencil over
-// a dark rim, and the coach on it.
-function drawRide(ctx, { route, X, Y }, left, top, scale) {
+// The ride's way, dotted in pencil over a dark rim, and the coach on it.
+function drawRide(ctx, { path, X, Y }, left, top, scale) {
   ctx.save()
   ctx.lineCap = 'round'
   ctx.setLineDash([1, 6])
   ctx.beginPath()
-  route.forEach((p, i) => {
-    const x = (p.wx * PIECE + PIECE / 2 - left) * scale, y = (p.wy * PIECE + PIECE / 2 - top) * scale
+  path.forEach((p, i) => {
+    const x = (p.X - left) * scale, y = (p.Y - top) * scale
     if (i) ctx.lineTo(x, y)
     else ctx.moveTo(x, y)
   })

@@ -19,6 +19,7 @@ import { DAY_LENGTH } from '../renderer/data/weather.js'
 import {
   RIDE_SECONDS, LEAGUE_CLOCK, HOSTILE_REACH, REFUSAL_LINES,
   destinations, refusal, tickCoach, stopTile, arrive, rideAt, passTime,
+  boardingTile, ridePath, pathAt, coachLabel,
 } from '../renderer/wilds/coach.js'
 
 const SEED = 42
@@ -381,6 +382,68 @@ test('rideAt starts on the first town, ends on the second and passes every piece
     assert.deepEqual(rideAt(route, -1), first)
     assert.deepEqual(rideAt(route, 2), last)
   }
+})
+
+// Polish rider: the ride on the map runs from the stop the player boards at
+// to the stop they arrive at, not only between the road's piece middles (the
+// city's stop is some 30 tiles from the middle of the piece its road ends in).
+test('the ride runs from the boarding stop along the road to the far town\'s stop, never doubling back past a stop', () => {
+  const world = makeWorld(null, { seed: SEED })
+  const mid = p => ({ X: p.wx * PIECE + PIECE / 2, Y: p.wy * PIECE + PIECE / 2 })
+  const cell = t => ({ X: t.X + 0.5, Y: t.Y + 0.5 })
+  const rides = [...destinations(world, '0,0').map(d => ['0,0', d]), ...destinations(world, 'city').map(d => ['city', d])]
+  assert.ok(rides.some(([from, d]) => from === '0,0' && d.town.key === 'city') && rides.some(([from, d]) => from === 'city' && d.town.key === '0,0'), 'no ride between Koivula and the city')
+  for (const [from, d] of rides) {
+    const path = ridePath(world, from, d)
+    const at = `${from} -> ${d.town.key}`
+    // the boarding cell: the stop of its piece (piece.coach), in world tiles
+    const a = boardingTile(world, from), b = boardingTile(world, d.town.key)
+    const pa = from === 'city' ? getPiece(world, Math.floor(a.X / PIECE), Math.floor(a.Y / PIECE)) : getPiece(world, d.route[0].wx, d.route[0].wy)
+    assert.deepEqual([a.X - pa.wx * PIECE, a.Y - pa.wy * PIECE], [pa.coach.x, pa.coach.y], `${at}: not the boarding cell`)
+    assert.deepEqual(path[0], cell(a), `${at}: the ride does not start on the boarding stop`)
+    assert.deepEqual(path.at(-1), cell(b), `${at}: the ride does not end on the far town's stop`)
+    // between them, the road's piece middles in order, the first or last left
+    // out only where the coach would go to it and turn back past the stop
+    const inner = path.slice(1, -1), mids = d.route.map(mid)
+    const skip = mids.findIndex(m => m.X === inner[0]?.X && m.Y === inner[0]?.Y)
+    assert.ok(skip === 0 || skip === 1, `${at}: the middles do not start at the road's start`)
+    assert.deepEqual(inner, mids.slice(skip, skip + inner.length), `${at}: the middles are not the road's, in order`)
+    assert.ok(mids.length - (skip + inner.length) <= 1, `${at}: more than the last middle was left out`)
+    const turn = (p, q, r) => (q.X - p.X) * (r.X - q.X) + (q.Y - p.Y) * (r.Y - q.Y)
+    if (path.length > 2) {
+      assert.ok(turn(path[0], path[1], path[2]) >= 0, `${at}: the coach turns back after leaving the stop`)
+      assert.ok(turn(path.at(-3), path.at(-2), path.at(-1)) >= 0, `${at}: the coach turns back before the stop`)
+    }
+    if (skip === 1) assert.ok(turn(path[0], mids[0], mids[1]) < 0, `${at}: a middle was left out that did not turn back`)
+    // the mark: on the boarding stop at the start, on the far stop at the end
+    assert.deepEqual(pathAt(path, 0), path[0])
+    assert.deepEqual(pathAt(path, 1), path.at(-1))
+    assert.deepEqual(pathAt(path, -1), path[0])
+    assert.deepEqual(pathAt(path, 2), path.at(-1))
+  }
+  // Koivula to the city: the city's stop is far from the middle of its road's last piece
+  const toCity = destinations(world, '0,0').find(d => d.town.key === 'city')
+  const end = ridePath(world, '0,0', toCity).at(-1), last = mid(toCity.route.at(-1))
+  assert.ok(Math.hypot(end.X - last.X, end.Y - last.Y) > 10, 'the city\'s stop is the middle of a piece?')
+})
+
+test('the coach\'s mark goes along the ride at an even pace', () => {
+  const path = [{ X: 0, Y: 0 }, { X: 30, Y: 0 }, { X: 30, Y: 10 }]
+  assert.deepEqual(pathAt(path, 0.5), { X: 20, Y: 0 })
+  assert.deepEqual(pathAt(path, 0.75), { X: 30, Y: 0 })
+  assert.deepEqual(pathAt(path, 0.875), { X: 30, Y: 5 })
+  assert.deepEqual(pathAt([{ X: 4, Y: 5 }], 0.3), { X: 4, Y: 5 })
+  assert.deepEqual(pathAt([{ X: 4, Y: 5 }, { X: 4, Y: 5 }], 0.3), { X: 4, Y: 5 })
+})
+
+test('a coach button names the town, the side in lower case, and the leagues ("1 league" for one)', () => {
+  assert.equal(coachLabel({ town: { name: 'Kalevanlinna' }, side: 'S', leagues: 2 }), 'Kalevanlinna, south, 2 leagues')
+  assert.equal(coachLabel({ town: { name: 'Haukiniemi' }, side: 'E', leagues: 8 }), 'Haukiniemi, east, 8 leagues')
+  assert.equal(coachLabel({ town: { name: 'Kiviranta' }, side: 'W', leagues: 1 }), 'Kiviranta, west, 1 league')
+  // a real one-league road: seed 1, Koivula west to its neighbour
+  const one = destinations(makeWorld(null, { seed: 1 }), '0,0').find(d => d.leagues === 1)
+  assert.ok(one, 'seed 1 has no one-league road from Koivula')
+  assert.equal(coachLabel(one), `${one.town.name}, ${{ N: 'north', E: 'east', S: 'south', W: 'west' }[one.side]}, 1 league`)
 })
 
 test('the coachman\'s mark reaches his entity, as lines and hears do', () => {

@@ -70,8 +70,7 @@ import { ARREST_FADE } from './wilds/city/crime.js'
 import { isShutGate, GATE_SHUT_LINE } from './wilds/city/fx.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld, hear } from './wilds/world.js'
-import { tickCoach, refusal, REFUSAL_LINES, destinations, arrive, passTime, rideAt } from './wilds/coach.js'
-import { SIDE_WORDS } from './wilds/roads.js'
+import { tickCoach, refusal, REFUSAL_LINES, destinations, arrive, passTime, ridePath, coachLabel } from './wilds/coach.js'
 import { landmarks } from './wilds/map.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
@@ -1662,8 +1661,6 @@ function seatInStocks() {
 }
 
 // ---- the coach (wilds/coach.js) ------------------------------------------------
-// "Kalevanlinna, south, 2 leagues"
-const coachLabel = d => `${d.town.name}, ${SIDE_WORDS[d.side].toLowerCase()}, ${d.leagues} league${d.leagues === 1 ? '' : 's'}`
 const CART = /^ow_prop_city_cart/
 
 // The player stands on the stop of `town`. The coachman may say no (in the
@@ -1697,18 +1694,17 @@ function coachSays(town, line) {
   speakAt(state, { px: cart.x * TILE_SIZE + TILE_SIZE / 2, py: cart.y * TILE_SIZE + TILE_SIZE / 2 }, line)
 }
 
-// The ride from `town`, the game still stopped: the map shows the coach going
-// down its road between the two towns' marks (ui/map-panel.js showRide; any
-// key, button or tap skips the rest), then the player stands beside the far
-// town's stop, the window built round it as after every jump, the clock on by
-// a twenty-fourth of a day a league.
+// The ride from `town`, the game still stopped: the map, framed on the two
+// towns' marks, shows the coach going from this stop down the road to the far
+// one (ui/map-panel.js showRide; any key, button or tap skips the rest), then
+// the player stands beside the far town's stop, the window built round it as
+// after every jump, the clock on by a twenty-fourth of a day a league.
 function rideCoach(town, d) {
   menu.hide()
   sfx(state, 'coach-go')
-  const marks = landmarks(wildsWorld)
+  const path = ridePath(wildsWorld, town, d), marks = landmarks(wildsWorld)
   const markOf = (key, end) => { const m = marks.find(m => m.key === key); return m ? { X: m.X, Y: m.Y } : end }
-  const from = markOf(town, rideAt(d.route, 0)), to = markOf(d.town.key, rideAt(d.route, 1))
-  showRide(wildsWorld, { route: d.route, from, to }, { onDone: () => {
+  showRide(wildsWorld, { path, from: markOf(town, path[0]), to: markOf(d.town.key, path.at(-1)) }, { onDone: () => {
     arrive(state, wildsWorld, d, { ...wildsHooks, advanceClock: s => passTime(activeSave, s) })
     arriveTales(state, wildsWorld, taleHooks, { fresh: true })
     arriveCity(state, wildsWorld, cityHooks, { fresh: true })
@@ -1718,7 +1714,7 @@ function rideCoach(town, d) {
     persistRun()
     for (const k of Object.keys(keys)) keys[k] = false   // nothing pressed on the way acts on arriving
     setPhase(PHASE.PLAYING)
-  } }, { touch: coarsePointer() })
+  } })
 }
 
 function update(delta) {

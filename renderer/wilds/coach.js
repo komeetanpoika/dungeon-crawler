@@ -12,7 +12,7 @@
 //
 // One league is one piece. A ride takes RIDE_SECONDS however long its road,
 // costs nothing, and moves the day on by LEAGUE_CLOCK of a day per league.
-import { roadsFrom, townOf } from './roads.js'
+import { roadsFrom, townOf, SIDE_WORDS } from './roads.js'
 import { hear, getPiece } from './world.js'
 import { enterWilds } from './session.js'
 import { PIECE, pieceOf } from './layout.js'
@@ -42,6 +42,10 @@ export function destinations(world, townKey) {
   hear(world, list.map(d => d.town.key))
   return Object.freeze(list)
 }
+
+// A destination's button in the coach's menu: "Kalevanlinna, south, 2 leagues"
+// ("1 league" for one).
+export const coachLabel = d => `${d.town.name}, ${SIDE_WORDS[d.side].toLowerCase()}, ${d.leagues} league${d.leagues === 1 ? '' : 's'}`
 
 // Why the coachman will not drive now, or null: the watch is after the player
 // in Kalevanlinna; a living hostile that has noticed them is within
@@ -89,6 +93,13 @@ function stopPiece(seed, townKey) {
   }
   const town = townOf(seed, townKey)
   return town ? { wx: town.wx, wy: town.wy } : null
+}
+
+// The world tile of a town's boarding cell (piece.coach), or null.
+export function boardingTile(world, townKey) {
+  const at = stopPiece(world.seed, townKey)
+  const c = at && getPiece(world, at.wx, at.wy).coach
+  return c ? { X: at.wx * PIECE + c.x, Y: at.wy * PIECE + c.y } : null
 }
 
 const SIDE_STEPS = [[0, 1], [1, 0], [-1, 0], [0, -1]]
@@ -155,8 +166,42 @@ export function passTime(save, seconds) {
   return Math.floor((before + seconds) / DAY_LENGTH)
 }
 
+// The ride on the map, in world tiles (cell middles): from the boarding cell
+// of `fromKey` along the middles of the road's pieces to the boarding cell of
+// the town reached (`dest`, an entry of destinations). The first or last
+// middle is left out where the coach would go to it and turn back past the
+// stop (more than a right angle). A town with no stop starts or ends the ride
+// at its piece's middle.
+export function ridePath(world, fromKey, dest) {
+  const mids = dest.route.map(p => ({ X: p.wx * PIECE + PIECE / 2, Y: p.wy * PIECE + PIECE / 2 }))
+  const cell = t => (t ? { X: t.X + 0.5, Y: t.Y + 0.5 } : null)
+  const a = cell(boardingTile(world, fromKey)), b = cell(boardingTile(world, dest.town.key))
+  const back = (p, q, r) => (q.X - p.X) * (r.X - q.X) + (q.Y - p.Y) * (r.Y - q.Y) < 0
+  const n = mids.length
+  const i = a && n > 1 && back(a, mids[0], mids[1]) ? 1 : 0
+  const j = b && n > 1 && back(mids[n - 2], mids[n - 1], b) ? n - 1 : n
+  return Object.freeze([...(a ? [a] : []), ...mids.slice(i, Math.max(i, j)), ...(b ? [b] : [])].map(p => Object.freeze(p)))
+}
+
+// The point `f` (0..1) of the way along a path (ridePath) by its length: where
+// the coach's mark is on the map during the ride, at an even pace.
+export function pathAt(path, f) {
+  const k = Math.max(0, Math.min(1, f))
+  if (k === 0 || k === 1 || path.length === 1) { const p = k === 1 ? path.at(-1) : path[0]; return { X: p.X, Y: p.Y } }
+  const lens = path.slice(1).map((p, i) => Math.hypot(p.X - path[i].X, p.Y - path[i].Y))
+  let left = k * lens.reduce((t, l) => t + l, 0)
+  for (let i = 0; i < lens.length; i++) {
+    if (left <= lens[i] && lens[i] > 0) {
+      const t = left / lens[i], p = path[i], q = path[i + 1]
+      return { X: p.X + (q.X - p.X) * t, Y: p.Y + (q.Y - p.Y) * t }
+    }
+    left -= lens[i]
+  }
+  return { X: path.at(-1).X, Y: path.at(-1).Y }
+}
+
 // The world tile `f` (0..1) of the way along a route's piece centres, each
-// step a league: where the coach is on the map during the ride.
+// step a league.
 export function rideAt(route, f) {
   const n = route.length - 1
   const centre = p => ({ X: p.wx * PIECE + PIECE / 2, Y: p.wy * PIECE + PIECE / 2 })

@@ -31,8 +31,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { sleep, citySave, driver, launchGame, enterWilds, noDamage } from '../city/live.mjs'
 import { makeWorld, getPiece } from '../../renderer/wilds/world.js'
-import { destinations, stopTile, LEAGUE_CLOCK } from '../../renderer/wilds/coach.js'
-import { SIDE_WORDS } from '../../renderer/wilds/roads.js'
+import { destinations, stopTile, LEAGUE_CLOCK, coachLabel as label } from '../../renderer/wilds/coach.js'
 import { PIECE } from '../../renderer/wilds/layout.js'
 import { DAY_LENGTH } from '../../renderer/data/weather.js'
 
@@ -43,7 +42,6 @@ fs.mkdirSync(SHOTS, { recursive: true })
 
 // ---- what the world says, worked out here (pure in the seed) ------------------------------
 const world = makeWorld(null, { seed: SEED })
-const label = d => `${d.town.name}, ${SIDE_WORDS[d.side].toLowerCase()}, ${d.leagues} league${d.leagues === 1 ? '' : 's'}`
 const HOME = getPiece(world, 0, 0)
 const KOIVULA = { stop: { X: HOME.coach.x, Y: HOME.coach.y }, beside: stopTile(world, '0,0'), sign: HOME.signs.find(s => s.title === 'Koivula'), menu: destinations(world, '0,0').map(label) }
 const CITY = { beside: stopTile(world, 'city'), menu: destinations(world, 'city').map(label) }
