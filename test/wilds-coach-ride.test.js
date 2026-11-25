@@ -3,17 +3,20 @@
 // following, safe and unseen, stepping down beside the far stop.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeWorld, getPiece } from '../renderer/wilds/world.js'
+import { makeWorld, getPiece, recordFor } from '../renderer/wilds/world.js'
 import { enterWilds, tickWilds, snapshotWilds } from '../renderer/wilds/session.js'
 import { toWindow, toWorld } from '../renderer/wilds/window.js'
 import { roadsFrom } from '../renderer/wilds/roads.js'
-import { PIECE, villagesNear, pieceKey } from '../renderer/wilds/layout.js'
+import { PIECE, pieceKey } from '../renderer/wilds/layout.js'
 import { isCityPiece, fromCity, toCity, CITY_KEYS } from '../renderer/wilds/city/geometry.js'
 import { cityFor } from '../renderer/wilds/city/build.js'
 import { PLAN } from '../renderer/wilds/city/plan.js'
 import { destinations, tickCoach, stopTile, boardingTile } from '../renderer/wilds/coach.js'
 import { coachPath, cartOf, crossing, onRoad, CART } from '../renderer/wilds/coach-path.js'
-import { startRide, tickCoachRide, COACH_SPEED } from '../renderer/wilds/coach-ride.js'
+import { startRide, tickCoachRide, admitRide, COACH_SPEED } from '../renderer/wilds/coach-ride.js'
+import { admit } from '../renderer/wilds/tales.js'
+import { admitSampo } from '../renderer/wilds/city/sampo-places.js'
+import { isTop } from '../renderer/wilds/over.js'
 import { damagePlayer } from '../renderer/systems/player-damage.js'
 import { updateBrain } from '../renderer/systems/brain.js'
 import { playerBound } from '../renderer/systems/player-bind.js'
@@ -62,23 +65,82 @@ function rideToEnd(state, world, dt = 1 / 30, max = 20000) {
 
 // ---- the way --------------------------------------------------------------------
 
-// The towns ridden from: Kalevanlinna and the six villages nearest home.
-const TOWNS = seed => ['city', ...villagesNear(seed, 0, 0, 8).slice(0, 6).map(v => pieceKey(v.wx, v.wy))]
+// The fewest cells off the road a way through route piece `p` must cross,
+// from where the road comes in (`a`) to where it goes on (`b`): a 0-1 search,
+// a road cell 0 and any other walkable cell 1, never a doorway, a cave's
+// mouth or a cell walked under (as the coach keeps off them). 0 where the
+// road goes through; more on a tale's place, where each road ends at the place.
+function fewestOffRoad(world, p, a, b) {
+  const piece = getPiece(world, p.wx, p.wy)
+  const local = q => piece.cells[q.Y - p.wy * PIECE]?.[q.X - p.wx * PIECE]
+  const openings = new Set([...piece.doors, ...piece.caves].map(d => `${p.wx * PIECE + d.x},${p.wy * PIECE + d.y}`))
+  const dist = new Map([[`${a.X},${a.Y}`, 0]]), queue = [a]
+  while (queue.length) {
+    const q = queue.shift(), d = dist.get(`${q.X},${q.Y}`)
+    for (const [dx, dy] of N4) {
+      const n = { X: q.X + dx, Y: q.Y + dy }, c = local(n), k = `${n.X},${n.Y}`
+      if (!c || c.tile !== TILE.FLOOR) continue
+      const road = onRoad(c)
+      if (!road && (isTop(c) || openings.has(k))) continue
+      const nd = d + (road ? 0 : 1)
+      if (nd < (dist.get(k) ?? Infinity)) { dist.set(k, nd); if (road) queue.unshift(n); else queue.push(n) }
+    }
+  }
+  return dist.get(`${b.X},${b.Y}`)
+}
 
+// The cells of `path` off the road, outside Kalevanlinna's pieces: those on a
+// route piece that is a tale's or a Sampo piece's place, piece by piece, and
+// the rest. A place crossed off the road must be crossed over the fewest cells
+// it allows (fewestOffRoad); everywhere else the coach is off the road at most
+// 4 cells at each end (a village's cart and the step onto the road).
+function checkOffRoad(world, path, route, name) {
+  const inCity = p => isCityPiece(pieceOfTile(p).wx, pieceOfTile(p).wy)
+  const offRoad = path.map((p, i) => ({ p, i })).filter(({ p }) => !inCity(p) && !onRoad(cellAt(world, p)))
+  const places = []
+  for (let r = 1; r + 1 < route.length; r++) {
+    const q = route[r], key = pieceKey(q.wx, q.wy)
+    if (!world.places.has(key)) continue
+    const on = offRoad.filter(({ p }) => pieceOfTile(p).wx === q.wx && pieceOfTile(p).wy === q.wy).length
+    const fewest = fewestOffRoad(world, q, crossing(world.seed, route[r - 1], q).in, crossing(world.seed, q, route[r + 1]).out)
+    assert.equal(on, fewest, `${name}: ${on} cells off the road on the place ${key} (${world.places.get(key).id}), where ${fewest} would do`)
+    places.push({ key, id: world.places.get(key).id, off: on })
+  }
+  const rest = offRoad.filter(({ p }) => !places.some(pl => pl.key === pieceKey(pieceOfTile(p).wx, pieceOfTile(p).wy)))
+  const head = rest.filter(({ i }) => i < path.length / 2), tail = rest.filter(({ i }) => i >= path.length / 2)
+  assert.ok(head.length <= 4 && head.every(({ i }, k) => i === k), `${name}: off the road at ${head.map(o => at(o.p)).join(' ')}`)
+  assert.ok(tail.length <= 4 && tail.every(({ i }, k) => i === path.length - tail.length + k), `${name}: off the road at ${tail.map(o => at(o.p)).join(' ')}`)
+  return places
+}
+
+// The towns ridden from, as a player riding on from town to town would: from
+// Koivula, each town reached in turn, the first six; each ride's land given
+// its chance of a tale's place first (coach-ride.js admitRide), so places
+// stand on some of the roads, as they come to in play.
 for (const seed of [7, 42]) {
-  test(`seed ${seed}: the coach's way runs cart to cart along the road's middle, through every piece of the road, and through the city's gate`, () => {
+  test(`seed ${seed}: the coach's way runs cart to cart along the road's middle, through every piece of the road, over a tale's place by the fewest cells, and through the city's gate`, () => {
     const world = makeWorld(null, { seed })
     const city = cityFor(seed), G = city.streets
     const doors = new Set(city.doors.flatMap(d => Array.from({ length: d.span ?? 1 }, (_, i) => `${d.x + i},${d.y}`)))
     const castle = PLAN.places.castle
-    const towns = TOWNS(seed)
-    assert.ok(towns.length >= 6, `seed ${seed}: ${towns.length} towns`)
-    // every piece of these roads kept in the cache, as a ride keeps its own (world.held)
-    world.held = new Set([...CITY_KEYS, ...towns.flatMap(t => roadsFrom(seed, t).flatMap(r => r.route.map(p => pieceKey(p.wx, p.wy))))])
+    // entering the Wilds at Koivula: the window round it has had its chance already
+    const nine = []
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) nine.push({ wx: dx, wy: dy })
+    admit(world, nine)
+    admitSampo(world, nine)
+    for (const q of nine) recordFor(world, pieceKey(q.wx, q.wy))
+    // every piece ridden through kept in the cache, as a ride keeps its own (world.held)
+    world.held = new Set(CITY_KEYS)
+    const queue = ['0,0'], towns = [], crossed = []
     let pairs = 0, cityPairs = 0
-    for (const from of towns) {
+    while (queue.length && towns.length < 6) {
+      const from = queue.shift()
+      if (towns.includes(from)) continue
+      towns.push(from)
       for (const road of roadsFrom(seed, from)) {
+        queue.push(road.town.key)
         const to = road.town.key, name = `seed ${seed} ${from} -> ${to}`
+        for (const k of admitRide(world, road.route)) world.held.add(k)
         const path = coachPath(world, from, to)
         assert.ok(Array.isArray(path) && path.length > 1, `${name}: no way`)
         pairs++
@@ -99,12 +161,10 @@ for (const seed of [7, 42]) {
           const man = piece.spawns.find(s => s.coachman)
           assert.ok(!path.some(p => p.X === piece.wx * PIECE + man.x && p.Y === piece.wy * PIECE + man.y), `${name}: over ${key}'s coachman`)
         }
-        // on the road all the way, but for a few cells at a village's cart and the city's own leg
+        // on the road all the way, but for a few cells at a village's cart, a
+        // tale's place the road ends at on either side, and the city's own leg
         const inCity = p => isCityPiece(pieceOfTile(p).wx, pieceOfTile(p).wy)
-        const offRoad = path.map((p, i) => ({ p, i })).filter(({ p }) => !inCity(p) && !onRoad(cellAt(world, p)))
-        const head = offRoad.filter(({ i }) => i < path.length / 2), tail = offRoad.filter(({ i }) => i >= path.length / 2)
-        assert.ok(head.length <= 4 && head.every(({ i }, k) => i === k), `${name}: off the road at ${head.map(o => at(o.p)).join(' ')}`)
-        assert.ok(tail.length <= 4 && tail.every(({ i }, k) => i === path.length - tail.length + k), `${name}: off the road at ${tail.map(o => at(o.p)).join(' ')}`)
+        crossed.push(...checkOffRoad(world, path, road.route, name).filter(pl => pl.off > 0))
         // the city's leg: the street graph's cells (or the inn's cart), no door, nowhere in the castle's plot
         for (const p of path.filter(inCity)) {
           if (carts.some(c => same(c, p))) continue
@@ -138,7 +198,33 @@ for (const seed of [7, 42]) {
         }
       }
     }
+    assert.ok(towns.includes('city') && towns.length >= 6, `seed ${seed}: rode from ${towns.join(' ')}`)
     assert.ok(pairs >= 20 && cityPairs >= 4, `seed ${seed}: ${pairs} rides, ${cityPairs} to or from the city`)
+    // a tale's place stood between two ends of a road on some ride: the place rule was put to use
+    assert.ok(crossed.length >= 1, `seed ${seed}: no ride crossed a tale's place`)
+  })
+}
+
+// A tale's place on a road piece: each road ends at the place (features.js:
+// the place's hub is the piece's junction), so the coach crosses between the
+// two ends off the road, over the fewest cells the piece allows, and keeps to
+// the road everywhere else. Seed 7: the Näkki's lake on -7,3 west of
+// Lehtomäki; Lalli's pond on 6,6 south-east of 5,4.
+for (const [from, to, key, id] of [['-4,3', '-8,2', '-7,3', 'nakki'], ['5,4', '9,7', '6,6', 'lalli']]) {
+  test(`seed 7 ${from} -> ${to}: the coach crosses the ${id} place on ${key} over the fewest cells off the road, and keeps to the road elsewhere`, () => {
+    const world = makeWorld(null, { seed: 7 })
+    world.places.set(key, { id, village: from, done: false })
+    const road = roadsFrom(7, from).find(r => r.town.key === to)
+    const r = road.route.findIndex(q => pieceKey(q.wx, q.wy) === key)
+    assert.ok(r > 0 && r < road.route.length - 1, `${key} is not on the road from ${from} to ${to}`)
+    const q = road.route[r]
+    const fewest = fewestOffRoad(world, q, crossing(7, road.route[r - 1], q).in, crossing(7, q, road.route[r + 1]).out)
+    assert.ok(fewest > 0, `the road goes through ${key}: nothing to cross`)
+    const path = coachPath(world, from, to)
+    const places = checkOffRoad(world, path, road.route, `${from} -> ${to}`)
+    assert.deepEqual(places.map(pl => [pl.key, pl.off]), [[key, fewest]])
+    // every cell of the crossing walkable
+    for (const p of path) if (pieceOfTile(p).wx === q.wx && pieceOfTile(p).wy === q.wy) assert.equal(cellAt(world, p).tile, TILE.FLOOR, `${at(p)} cannot be walked`)
   })
 }
 

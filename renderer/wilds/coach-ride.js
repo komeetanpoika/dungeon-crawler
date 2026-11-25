@@ -78,12 +78,7 @@ const cartCells = cart => (cart ? [cart.H, cart.C] : [])
 // for the bench; the cart at the stop is the coach now.
 export function startRide(state, world, fromKey, dest) {
   if (state.coachRide) return state.coachRide
-  const pieces = ridePieces(dest.route)
-  const refs = pieces.map(k => { const [wx, wy] = parse(k); return { wx, wy } })
-  admit(world, refs)
-  admitSampo(world, refs)
-  // (their chance had: no window is to roll for them again)
-  for (const k of pieces) recordFor(world, k)
+  const pieces = admitRide(world, dest.route)
   world.held = new Set(pieces)
   const ride = {
     from: fromKey, dest, pieces, todo: pieces.filter(k => !world.pieces.has(k)),
@@ -108,6 +103,19 @@ export function startRide(state, world, fromKey, dest) {
   state.coachRide = ride
   seat(state, world, ride)
   return ride
+}
+
+// The land a ride along `route` will see (coach-path.js ridePieces), given
+// its one chance of becoming a tale's or a Sampo piece's place, in the order
+// session.js recentre gives it; then recorded, so no window rolls for it
+// again. Returns its piece keys.
+export function admitRide(world, route) {
+  const pieces = ridePieces(route)
+  const refs = pieces.map(k => { const [wx, wy] = parse(k); return { wx, wy } })
+  admit(world, refs)
+  admitSampo(world, refs)
+  for (const k of pieces) recordFor(world, k)
+  return pieces
 }
 
 // Once a frame on the surface while a ride is up: the next piece of land

@@ -11,7 +11,10 @@
 // Where a road crosses from one piece to the next it does so on the gate's
 // lanes, g..g+ROAD_WIDTH-1 (terrain.js); the coach crosses on the middle one.
 // Inside a piece it keeps to the middle of the road: a road cell beside the
-// road's edge costs more, and so does a turn.
+// road's edge costs more, and so does a turn. Where the road does not go
+// through (on a tale's place the roads each end at the place: features.js),
+// the coach crosses what lies between over as few cells off the road as can
+// be, and keeps to the road everywhere else.
 import { roadsFrom, townOf } from './roads.js'
 import { getPiece } from './world.js'
 import { PIECE, gateAt, pieceKey } from './layout.js'
@@ -20,7 +23,7 @@ import { boardingTile, isRoadCell } from './coach.js'
 import { cityFor } from './city/build.js'
 import { CITY_KEYS, isCityPiece, fromCity, toCity } from './city/geometry.js'
 import { PLAN, insideWalls } from './city/plan.js'
-import { isGate } from './over.js'
+import { isGate, isTop } from './over.js'
 import { TILE } from '../systems/entities.js'
 
 // The horse and the cart a stop stands beside (sites.js coach, city/build-fixed.js
@@ -30,7 +33,10 @@ const EDGE = 4          // a road cell beside the road's edge (one of its four n
 const TURN = 1          // a change of direction
 const NOT_LANE = 6      // a city cell the street graph hangs off a street (a door's front, a yard's way in)
 const AT_STOP = 20      // the city's boarding cell (the coach goes round it where it can)
-const ANY = 30          // where no road leads (it should not happen): any walkable cell
+// A walkable cell off the road: dearer than any way along the road through a
+// piece could be (80 x 80 cells at 1 + EDGE + TURN each), so a way crosses as
+// few of them as it can, and only where the road itself does not go on
+const OFF_ROAD = 1e5
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 
 const cellAt = (world, X, Y) => {
@@ -101,26 +107,30 @@ function townLeg(world, key, piece, next, edge) {
 function roadLeg(world, p, from, to) {
   const piece = getPiece(world, p.wx, p.wy)
   const box = { x0: p.wx * PIECE, y0: p.wy * PIECE, w: PIECE, h: PIECE }
+  return cheapest(box, from, to, wayCost(piece, box)) ?? bend(from, to)
+}
+
+// What entering a cell of `piece` costs: a road cell 1, more beside the
+// road's edge (a cell out of the box is no edge: the road goes on there); a
+// walkable cell off the road OFF_ROAD, but never a doorway, a cave's mouth or
+// a cell walked under (a roof's top row: over.js), nor one `shut` names;
+// Infinity for the rest.
+function wayCost(piece, box, shut = () => false) {
   const local = (X, Y) => piece.cells[Y - box.y0]?.[X - box.x0]
-  return cheapest(box, from, to, roadCost(local)) ?? anyWay(box, from, to, local)
-}
-
-// The road's own cost: a road cell, more beside the road's edge (a cell out
-// of the box is no edge: the road goes on there). Infinity off the road.
-const roadCost = local => (X, Y) => {
-  if (!onRoad(local(X, Y))) return Infinity
-  for (const [dx, dy] of N4) {
-    const c = local(X + dx, Y + dy)
-    if (c && !onRoad(c)) return 1 + EDGE
+  const openings = new Set([...piece.doors, ...piece.caves].map(d => `${box.x0 + d.x},${box.y0 + d.y}`))
+  return (X, Y) => {
+    const c = local(X, Y)
+    if (!c || c.tile !== TILE.FLOOR || shut(X, Y)) return Infinity
+    if (!isRoadCell(c)) return isTop(c) || openings.has(`${X},${Y}`) ? Infinity : OFF_ROAD
+    for (const [dx, dy] of N4) {
+      const n = local(X + dx, Y + dy)
+      if (n && !onRoad(n)) return 1 + EDGE
+    }
+    return 1
   }
-  return 1
 }
 
-// Where no road leads after all: any walkable cell, else a plain bend.
-function anyWay(box, from, to, local) {
-  const walk = (X, Y) => (local(X, Y)?.tile === TILE.FLOOR ? ANY : Infinity)
-  return cheapest(box, from, to, walk) ?? bend(from, to)
-}
+// The last resort, where nothing walkable joins two cells (it should not happen): a plain bend.
 function bend(from, to) {
   const out = [{ X: from.X, Y: from.Y }]
   let { X, Y } = from
@@ -131,18 +141,19 @@ function bend(from, to) {
 
 // A village: from its cart onto the road (the cart stands with the horse or
 // the cart itself beside it: features.js layCoachStop), so off the road only
-// on the cart's own two cells; then the road to `edge`.
+// on the cart's own two cells; then the road to `edge`. Never over the stop
+// or where the coachman stands.
 function villageLeg(world, key, edge) {
   const town = townOf(world.seed, key)
   const piece = getPiece(world, town.wx, town.wy)
   const box = { x0: town.wx * PIECE, y0: town.wy * PIECE, w: PIECE, h: PIECE }
-  const local = (X, Y) => piece.cells[Y - box.y0]?.[X - box.x0]
-  const cart = cartOf(world, key)
-  const road = roadCost(local)
+  const cart = cartOf(world, key), stop = boardingTile(world, key)
+  const man = piece.spawns.find(s => s.coachman)
   const isCart = (X, Y) => !!cart && ((X === cart.H.X && Y === cart.H.Y) || (X === cart.C.X && Y === cart.C.Y))
-  const cost = (X, Y) => (isCart(X, Y) ? 1 : road(X, Y))
-  const from = cart?.C ?? boardingTile(world, key) ?? { X: box.x0 + piece.spawnPoint.x, Y: box.y0 + piece.spawnPoint.y }
-  return cheapest(box, from, edge, cost) ?? anyWay(box, from, edge, local)
+  const way = wayCost(piece, box, (X, Y) => (stop && X === stop.X && Y === stop.Y) || (man && X === box.x0 + man.x && Y === box.y0 + man.y))
+  const cost = (X, Y) => (isCart(X, Y) ? 1 : way(X, Y))
+  const from = cart?.C ?? stop ?? { X: box.x0 + piece.spawnPoint.x, Y: box.y0 + piece.spawnPoint.y }
+  return cheapest(box, from, edge, cost) ?? bend(from, edge)
 }
 
 // Kalevanlinna: from the inn yard's cart along the streets to the arch of
