@@ -739,7 +739,9 @@ test('a door tells what the house looks like outside, and how tough the land is'
 test('the pieces are cell for cell what they were before doors told their looks', async () => {
   const { createHash } = await import('node:crypto')
   // (pinned again at GEN 10: 0,0 1,0 0,-1 and -5,-5 have road edges, whose frame lanes wear the road;
-  // and again when the road was laid inside its pieces: the same four moved, the four with no road did not)
+  // and again when the road was laid inside its pieces: those four moved; and again when villages kept
+  // their houses from main: only 0,0 moved. The sea cost, the city's outside roads and the fold pen's
+  // gap moved none of the eight: their road sides stayed, none is a city piece or a fold village.)
   const BEFORE = { '0,0': 'c64eb265689c1434', '1,0': '0f8536f9f00aa5bc', '0,-1': '4f3bac5b77cb4a54', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': '3a8bd4fd9f44ce4f', '6,1': '04fd70d97186adb6' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)

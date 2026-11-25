@@ -405,6 +405,34 @@ test('a village is entered by its roads: each reaches the square over road cells
   assert.ok(streets >= 40, `${streets} streets`)
 })
 
+// The sheep fold of a fold village stands south-east of the square; where a
+// road gate opens right beside it, the road passes through its corner and the
+// fence leaves a gap there. Seeds 1 (2,13), 42 (2,-2) deal 1 and 11 (11,8)
+// deal 1 are three such villages.
+test('a fold village\'s pen never stands on a road, and every road gate reaches the square', () => {
+  const cases = [[1, 2, 13, 0], [42, 2, -2, 1], [11, 11, 8, 1]]
+  for (const seed of [1, 7, 42]) for (const { wx, wy } of villagePieces(seed, 5)) for (const deal of [0, 1]) cases.push([seed, wx, wy, deal])
+  let fences = 0
+  for (const [seed, wx, wy, deal] of cases) {
+    const { t, piece, walk, at } = built(seed, wx, wy, deal, null, 'fold')
+    const c = piece.main
+    for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+      const p = t.propAt(x, y)
+      if (p?.startsWith('ow_fence')) fences++
+      if (!t.onRoad(x, y)) continue
+      assert.ok(walk(x, y), `${at}: the road at ${x},${y} is blocked (${p ?? t.groundAt(x, y)})`)
+      assert.ok(!p || isPier(p), `${at}: ${p} stands on the road at ${x},${y}`)
+    }
+    for (const s of sidesOf(piece.road.sides)) {
+      const seen = flood(t.gateInner(s), (x, y) => walk(x, y) && (t.onRoad(x, y) || t.groundAt(x, y).startsWith('ow_cobble')))
+      let square = false   // (the well stands in the middle)
+      for (let y = c.y - 4; y <= c.y + 4; y++) for (let x = c.x - 4; x <= c.x + 4; x++) if (Math.hypot(x - c.x, y - c.y) <= 4 && seen[y * PIECE + x]) square = true
+      assert.ok(square, `${at}: the road from gate ${s} does not reach the square`)
+    }
+  }
+  assert.ok(fences > 0, 'no pen was built')
+})
+
 // A house's door label is its name in a save (world.solved and world.looted
 // name the glassmaker's house by it) and seeds what is inside: a village keeps
 // the square and the houses it had before roads. Pinned from main (a39a509):

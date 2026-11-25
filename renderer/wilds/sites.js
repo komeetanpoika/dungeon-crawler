@@ -177,10 +177,11 @@ export function makeSites(c) {
 
   // A fenced rectangle with a gate gap in its top or bottom run. A path
   // through it makes a gap of its own, unless the fence is `whole`: then it
-  // stands across the path, and whoever asks for it leaves a way round.
+  // stands across a trail, and whoever asks for it leaves a way round. A
+  // road is never blocked: where one passes, even a whole fence has a gap.
   function fence(x0, y0, x1, y1, gate = null, whole = false) {
     const rail = whole ? put : low
-    const open = (x, y) => (!whole && t.onPath(x, y)) || (gate && gate.y === y && x === gate.x)
+    const open = (x, y) => (whole ? t.onRoad(x, y) : t.onPath(x, y)) || (gate && gate.y === y && x === gate.x)
     for (let x = x0; x <= x1; x++) for (const y of [y0, y1]) {
       const top = y === y0
       let skin = x === x0 ? (top ? 'ow_fence_l' : 'ow_fence_bl') : x === x1 ? (top ? 'ow_fence_r' : 'ow_fence_br') : 'ow_fence_m'
