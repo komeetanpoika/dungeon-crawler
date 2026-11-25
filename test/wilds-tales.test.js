@@ -276,3 +276,47 @@ test('the Lalli tale: an immediate need with its own module, people who speak at
   assert.ok(t.lines.at(-1).by.kerttu.some(l => /two/.test(l) && /meat/.test(l)), 'Kerttu never says what she needs')
   assert.ok(t.lines.at(-1).by.piper.some(l => /beer/.test(l) && /sausage/.test(l)), 'the piper never names his price')
 })
+
+// ---- farmland (roads.js pieceClass) ------------------------------------------------------
+import { pieceClass } from '../renderer/wilds/roads.js'
+
+test('a new tale place is never admitted onto farmland', () => {
+  let places = 0, farms = 0
+  for (const seed of SEEDS) {
+    const world = makeWorld(null, { seed })
+    for (const v of villages(seed).slice(0, 40)) {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (pieceClass(seed, v.wx + dx, v.wy + dy) === 'farmland') farms++
+      look(world, v.wx, v.wy)
+    }
+    for (const [key, place] of world.places) {
+      const { wx, wy } = parse(key)
+      assert.notEqual(pieceClass(seed, wx, wy), 'farmland', `seed ${seed}: the ${place.id} place of ${place.village} is on farmland at ${key}`)
+      places++
+    }
+  }
+  // the land round a village is much of it farmland, and the places still come
+  assert.ok(farms >= 100, `${farms} farmland pieces round the villages`)
+  assert.ok(places >= 40, `${places} places`)
+})
+
+test('a place recorded on farmland by an older save stays and takes the main thing', () => {
+  const seed = 3
+  let farm = null
+  for (let r = 1; r <= 12 && !farm; r++) for (let wy = -r; wy <= r && !farm; wy++) for (let wx = -r; wx <= r && !farm; wx++)
+    if (Math.max(Math.abs(wx), Math.abs(wy)) === r && pieceClass(seed, wx, wy) === 'farmland') farm = { wx, wy }
+  assert.ok(farm, 'no farmland near home')
+  const key = pieceKey(farm.wx, farm.wy)
+  const v = villagesNear(seed, farm.wx, farm.wy, 3)[0]
+  const vKey = pieceKey(v.wx, v.wy)
+  const saved = JSON.parse(JSON.stringify(exportWorld(makeWorld(null, { seed }))))
+  saved.places = { [key]: { id: 'tar', village: vKey, done: false } }
+  saved.tales = { [vKey]: { id: 'tar', flags: {}, place: key, n: 0, nSide: 0, done: false } }
+  for (const s of [saved, { ...saved, gen: GEN - 1 }]) {
+    const world = makeWorld(s)
+    assert.equal(world.places.get(key)?.id, 'tar', 'the recorded place was dropped')
+    look(world, farm.wx, farm.wy)
+    assert.equal(world.places.get(key)?.id, 'tar', 'the recorded place moved')
+    assert.equal(world.tales.get(vKey).place, key)
+    assert.equal(getPiece(world, farm.wx, farm.wy).main.kind, 'tale_tar')
+  }
+})

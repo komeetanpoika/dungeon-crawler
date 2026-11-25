@@ -14,6 +14,7 @@ import { makeWorld, exportWorld, getPiece, sweep, GEN, FORGET_SECONDS } from '..
 import { enterWilds } from '../renderer/wilds/session.js'
 import { PIECE, pieceBiome, villageAt } from '../renderer/wilds/layout.js'
 import { isCityPiece } from '../renderer/wilds/city/geometry.js'
+import { pieceClass } from '../renderer/wilds/roads.js'
 import { LURKERS, updateLurker, hitLurker, ensureLurker, SINK_TIME } from '../renderer/systems/monsters/lurker.js'
 import { inLight, DARK_THOUGHT } from '../renderer/systems/monsters/pohjanvahti.js'
 import { hurtCreature, creatureAlpha } from '../renderer/systems/creatures.js'
@@ -68,6 +69,23 @@ test('the three places come to be on Seppo\'s sides of the city, once he has nam
     assert.ok(sweep(world, 41, 41).includes(`${p.wx},${p.wy}`), 'forgotten like any land once the piece is home')
   }
   assert.deepEqual(SAMPO_PLACES, ['sampo_sea', 'sampo_mountain', 'sampo_marsh'])
+})
+
+// the first road piece out of a town (roads.js pieceClass) holds a farm, never a guardian
+test('the Sampo places keep off farmland', () => {
+  // the sides of the city, as sampo-places.js reads them
+  const onSide = { south: (wx, wy) => wy >= 5 && wy - 2.5 >= Math.abs(wx - 0.5), north: (wx, wy) => wy <= 0 && 2.5 - wy >= Math.abs(wx - 0.5), west: (wx, wy) => wx <= -2 && 0.5 - wx >= Math.abs(wy - 2.5) }
+  let farms = 0
+  for (const seed of [...SEEDS, 1, 3]) for (const kind of PIECE_KINDS) {
+    const P = PIECES[kind]
+    const land = []
+    for (let wy = -16; wy <= 20; wy++) for (let wx = -16; wx <= 16; wx++)
+      if (pieceClass(seed, wx, wy) === 'farmland' && onSide[P.side](wx, wy) && pieceBiome(seed, wx, wy) === P.land) land.push({ wx, wy })
+    farms += land.length
+    for (const p of land) assert.ok(!fitsPiece(seed, kind, p.wx, p.wy), `seed ${seed}: ${kind} fits the farmland at ${p.wx},${p.wy}`)
+    assert.deepEqual(admitSampo(told(seed), land), [], `seed ${seed}: a ${kind} place came on farmland`)
+  }
+  assert.ok(farms >= 5, `only ${farms} farmland pieces of the pieces' lands on their sides`)
 })
 
 // every walkable cell reachable on foot from `from`

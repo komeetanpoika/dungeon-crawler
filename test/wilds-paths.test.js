@@ -221,7 +221,8 @@ test('the game\'s cells: no bridge joined at a corner, and nothing a trail leads
 // each road gate to a junction beside the main thing, or to the hub of a
 // village or of a tale's place; a piece with no road edge as it always was.
 const SIDES = ['N', 'E', 'S', 'W']
-const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7 }   // as features.js opens them
+const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,   // as features.js opens them
+  farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6 }
 const CALM = 10   // at toughness 1 and 2, no foe of a pack this near a road
 const sidesOf = sides => SIDES.filter(s => sides[s])
 // Road pieces round home that are neither a village nor Kalevanlinna, nearest first.

@@ -14,7 +14,9 @@ import { isDeckSkin } from '../renderer/wilds/bridge-art.js'
 const SEEDS = [3, 77, 2024]
 const MONSTER_NAMES = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/index.json', import.meta.url), 'utf8'))
 const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger', 'campfire', 'floating_pickup']
-const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark', 'tale_elk', 'tale_tar', 'tale_kivihiisi', 'tale_nakki', 'tale_fold', 'tale_flame', 'tale_lalli']
+// (the farms of farmland: features.js FARMS, and the field with a hut that stands where none finds room)
+const FARM_KINDS = ['farmstead', 'orchard', 'mill', 'peat', 'fisher', 'fold', 'quarry', 'well', 'field']
+const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark', 'tale_elk', 'tale_tar', 'tale_kivihiisi', 'tale_nakki', 'tale_fold', 'tale_flame', 'tale_lalli', ...FARM_KINDS]
 // 40 pieces per seed, biased so every tier and country turns up.
 const samplePieces = seed => Array.from({ length: 22 }, (_, i) => ({
   wx: (hashInt(seed, i, 0, 6) % 25) - 12, wy: (hashInt(seed, i, 1, 6) % 25) - 12,
@@ -117,7 +119,9 @@ test('one main thing and two to four small things', () => {
   for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed)) {
     const p = generatePiece(seed, wx, wy)
     assert.ok(MAIN_KINDS.includes(p.main.kind), p.main.kind)
-    assert.equal(p.main.kind, mainKind(seed, wx, wy, 0))
+    // a farm with no room beside the roads gives way to another of its country
+    if (FARM_KINDS.includes(p.main.kind)) assert.ok(FARM_KINDS.includes(mainKind(seed, wx, wy, 0)))
+    else assert.equal(p.main.kind, mainKind(seed, wx, wy, 0))
     assert.ok(p.small.length >= 1 && p.small.length <= 4, `${p.small.length} small things at ${wx},${wy}`)
     for (const s of p.small) { assert.ok(SMALL_KINDS.includes(s.kind), s.kind); kinds.add(s.kind) }
     n++; total += p.small.length
@@ -741,8 +745,9 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // (pinned again at GEN 10: 0,0 1,0 0,-1 and -5,-5 have road edges, whose frame lanes wear the road;
   // and again when the road was laid inside its pieces: those four moved; and again when villages kept
   // their houses from main: only 0,0 moved. The sea cost, the city's outside roads and the fold pen's
-  // gap moved none of the eight: their road sides stayed, none is a city piece or a fold village.)
-  const BEFORE = { '0,0': 'c64eb265689c1434', '1,0': '0f8536f9f00aa5bc', '0,-1': '4f3bac5b77cb4a54', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': '3a8bd4fd9f44ce4f', '6,1': '04fd70d97186adb6' }
+  // gap moved none of the eight: their road sides stayed, none is a city piece or a fold village.
+  // And again when farmland got its farms: -5,-5 is farmland, a marsh farmstead on its dry rise now.)
+  const BEFORE = { '0,0': 'c64eb265689c1434', '1,0': '0f8536f9f00aa5bc', '0,-1': '4f3bac5b77cb4a54', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': '9116e9511b4e36b0', '6,1': '04fd70d97186adb6' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

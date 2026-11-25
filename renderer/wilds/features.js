@@ -18,9 +18,35 @@
 import { PIECE, FRAME, tierAt, pieceBiome, fixedMain, villageAt, caveDepthFor, pieceKey, BIOME_NAMES } from './layout.js'
 import { hash, hashInt, mulberry32 } from './rand.js'
 import { makeSites, layoutTale, wayCells, TALE_PAD } from './sites.js'
-import { roadSides } from './roads.js'
+import { roadSides, pieceClass } from './roads.js'
 
-const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7 }
+const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,
+  farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6 }
+// The farms of farmland (the first road piece out of a town: roads.js
+// pieceClass), by country, with the weights they are dealt by. A farm that
+// finds no room beside the roads gives way to the next of its country's list,
+// and last of all to a fenced field with a hut (sites.js farms).
+const FARMS = {
+  forest: [['farmstead', 50], ['orchard', 25], ['mill', 25]],
+  autumn: [['farmstead', 50], ['orchard', 25], ['mill', 25]],
+  marsh: [['farmstead', 50], ['peat', 50]],
+  sea: [['fisher', 100]],
+  mountain: [['fold', 60], ['quarry', 40]],
+  desert: [['well', 100]],
+}
+const FARM_KINDS = new Set([...Object.values(FARMS).flat().map(([kind]) => kind), 'field'])
+// What the people of a farm say (nothing that names a town).
+const FARM_LINES = {
+  farmstead: ['The rye wants cutting before the rain.', 'Shut the gate behind you. The goat knows how to open it.'],
+  orchard: ['Take one off the ground, not the tree.', 'The bees do the work. I carry the honey.'],
+  mill: ['If the sails stop, so do I.', 'Flour in the bread, flour in the bed.'],
+  peat: ['Cut in spring, stacked by summer, burnt by winter.', 'The bog lends you dry ground. It never gives it.'],
+  fisher: ['Nothing in the nets this morning. Nothing yesterday either.', 'The boat leaks, but it floats.'],
+  fold: ['Count them for me. I keep getting one fewer.', 'Thin grass up here, and stubborn sheep.'],
+  quarry: ['Every stone of the houses down the road came out of this hill.', 'Take a pick to it if you like. The hill has plenty.'],
+  well: ['Drink. Nobody is turned away from the well.', 'The dates are sweet this year. The water is sweeter.'],
+  field: ['Not much of a farm. Enough for us.', 'The crows take their share. We take the rest.'],
+}
 const SIDES = ['N', 'E', 'S', 'W']
 const STEP = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
 const TAU = Math.PI * 2
@@ -125,11 +151,18 @@ function squaredDistances(on) {
 }
 
 // The one main thing of a piece: fixed for the home trio and for villages,
-// otherwise dealt.
+// a farm of its country on farmland, otherwise dealt.
 export function mainKind(seed, wx, wy, deal = 0) {
+  const cls = pieceClass(seed, wx, wy)
   const fixed = fixedMain(wx, wy)
   if (fixed) return fixed
-  if (villageAt(seed, wx, wy)) return 'village'
+  if (cls === 'village') return 'village'
+  if (cls === 'farmland') {
+    let r = hash(seed, wx, wy, 400 + deal) * 100
+    const farms = FARMS[pieceBiome(seed, wx, wy)]
+    for (const [kind, weight] of farms) { if (r < weight) return kind; r -= weight }
+    return farms[0][0]
+  }
   // An open-world boss is common far out, rare in the first country and
   // never beside home; what it gives up goes to the camps.
   const boss = tierAt(wx, wy) >= 2 ? 15 : nearHome(wx, wy) ? 0 : 8
@@ -173,8 +206,10 @@ export function placeFeatures(t, piece) {
   // `extra`: what the house looks like outside ({ look: { w, storeys, wall } })
   // and what it is (kind: 'sunroom'), for the interior built behind it
   const door = (x, y, doorTier, story = null, extra = {}) => {
-    piece.doors.push({ x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story, toughness: tier, ...extra })
+    const rec = { x, y, label: `house:wilds:${wx * PIECE + x},${wy * PIECE + y}`, tier: doorTier, story, toughness: tier, ...extra }
+    piece.doors.push(rec)
     hold(x, y)
+    return rec
   }
   const ring = (cx, cy, r, n, skinOf) => {
     for (let i = 0; i < n; i++) {
@@ -221,10 +256,11 @@ export function placeFeatures(t, piece) {
   // Where the main thing stands beside its roads: as near the junction as they
   // leave room for its pad and what is built round it, never nearer than pad
   // + 4. Where the roads leave no such room it gives up a tile of that room at
-  // a time.
-  const besideTheRoads = (j, pad) => {
+  // a time, down to `least`; null if even that is not to be had (with least
+  // 0 it never fails).
+  const besideTheRoads = (j, pad, least = 0) => {
     const near = roadNear()
-    for (let room = pad + BUILT_PAST_PAD; room >= 0; room--) {
+    for (let room = pad + BUILT_PAST_PAD; room >= least; room--) {
       const spots = []
       for (let y = 18; y <= PIECE - 19; y++) for (let x = 18; x <= PIECE - 19; x++) {
         const d = Math.hypot(x - j.x, y - j.y)
@@ -234,7 +270,17 @@ export function placeFeatures(t, piece) {
       const best = Math.min(...spots.map(s => s.d))
       return pick(spots.filter(s => s.d < best + 2))
     }
-    return { x: j.x, y: j.y }
+    return least > 0 ? null : { x: j.x, y: j.y }
+  }
+  // A farm stands where the roads leave all its pad clear, the dealt farm
+  // first, then the others of its country, then a field and a hut.
+  const farmBesideTheRoads = (j, dealt) => {
+    const list = FARMS[piece.biome].map(([k]) => k), at = Math.max(0, list.indexOf(dealt))
+    for (const kind of [...list.slice(at), ...list.slice(0, at), 'field']) {
+      const spot = besideTheRoads(j, PAD[kind], PAD[kind])
+      if (spot) return { kind, spot }
+    }
+    return { kind: 'field', spot: besideTheRoads(j, PAD.field) }
   }
   // A village is entered by its roads (sites.js village cobbles what of them
   // lies in the village; the village's layout assumes ROAD_WIDTH 3). Each
@@ -299,17 +345,22 @@ export function placeFeatures(t, piece) {
   // roads, small things and packs keep clear of them.
   // (a tale whose place is not built yet is dealt as ordinary land)
   const geo = piece.tale && TALE_PAD[piece.tale] !== undefined ? layoutTale(piece.tale, rng, side => t.gateInner(side)) : null
-  const kind = geo ? `tale_${piece.tale}` : mainKind(seed, wx, wy, deal)
+  const dealt = geo ? `tale_${piece.tale}` : mainKind(seed, wx, wy, deal)
   const home = wx === 0 && wy === 0
-  const pad = geo ? TALE_PAD[piece.tale] : PAD[kind]
   // the roads of a road piece that is neither a village nor a tale's place come first
-  const besideRoads = roadPiece && !geo && kind !== 'village'
+  const besideRoads = roadPiece && !geo && dealt !== 'village'
   let junction = null
   if (besideRoads) {
     junction = roadJunction()
     for (const side of roadGates) { const g = t.gateInner(side); t.road(g.x, g.y, junction.x, junction.y) }
   }
-  const spot = besideRoads ? besideTheRoads(junction, pad) : null
+  // farmland: the farm of its country that finds room beside the roads (a
+  // place recorded on it by an older save keeps it, as above)
+  const farmland = FARM_KINDS.has(dealt)
+  const farm = farmland && besideRoads ? farmBesideTheRoads(junction, dealt) : null
+  const kind = farm ? farm.kind : dealt
+  const pad = geo ? TALE_PAD[piece.tale] : PAD[kind]
+  const spot = farm ? farm.spot : besideRoads ? besideTheRoads(junction, pad) : null
   const mx = geo ? geo.cx : home ? 40 : spot ? spot.x : ri(18, PIECE - 19), my = geo ? geo.cy : home ? 40 : spot ? spot.y : ri(18, PIECE - 19)
   const hub = geo ? geo.hub : { x: mx, y: my }
   // a village's and a tale's place's roads meet at its hub
@@ -343,14 +394,15 @@ export function placeFeatures(t, piece) {
 
   // ---- small things: spots first, then trails -------------------------------
   const here = t.biome(mx, my)
-  const roster = PACKS[nearHome(wx, wy) ? 0 : tier].filter(p => kind !== 'village' || p.every(f => f.kind === 'monster'))
+  // a village and farmland draw spider packs only, farmland the gentle ring's
+  const roster = PACKS[nearHome(wx, wy) || farmland ? 0 : tier].filter(p => (kind !== 'village' && !farmland) || p.every(f => f.kind === 'monster'))
   const common = roster.filter(p => !RARE.has(p))
   const pickPack = () => { const p = pick(roster); return !RARE.has(p) || rng() < RARE_ODDS ? p : pick(common) }
   const smallKinds = ['chest', 'chest', 'rocks', 'hut']
   if (ANIMALS[piece.biome]) smallKinds.push('animals', 'animals')
   if (['forest', 'autumn', 'marsh'].includes(piece.biome)) smallKinds.push('mushrooms')
-  // guarded things: a nest round a chest, old stones with something in them
-  if (kind !== 'village') smallKinds.push('nest', 'nest', 'stones')
+  // guarded things: a nest round a chest, old stones with something in them (not by the houses)
+  if (kind !== 'village' && !farmland) smallKinds.push('nest', 'nest', 'stones')
   const padOf = k => k === 'hut' ? 5 : k === 'stones' ? 3 : 2
   const mainPad = pad
   // A village's small things are dealt as if its ways in were still the
@@ -369,8 +421,8 @@ export function placeFeatures(t, piece) {
     const pad = padOf(k)
     for (let tries = 0; tries < 60; tries++) {
       const x = ri(lo, hi), y = ri(lo, hi)
-      // (a tale's pad may be a lake: nothing small is dealt into it)
-      if (Math.hypot(x - mx, y - my) < pad + 8 || (geo && Math.hypot(x - mx, y - my) < mainPad + pad + 1) || kept(x, y, 6)) continue
+      // (a tale's pad may be a lake, a farm's is fenced: nothing small is dealt into either)
+      if (Math.hypot(x - mx, y - my) < pad + 8 || ((geo || farmland) && Math.hypot(x - mx, y - my) < mainPad + pad + 1) || kept(x, y, 6)) continue
       if (piece.small.some(s => Math.hypot(x - s.x, y - s.y) < 10)) continue
       let crossed = false
       for (let dy = -pad - 1; dy <= pad + 1 && !crossed; dy++) for (let dx = -pad - 1; dx <= pad + 1; dx++) if (onWay(x + dx, y + dy)) { crossed = true; break }
@@ -446,6 +498,12 @@ export function placeFeatures(t, piece) {
     sites.ruin(mx, my)
     place({ kind: 'chest' }, mx, my + 3, 0, 2)
     spawnPoint = { x: mx, y: my + 2 }
+  } else if (farmland) {
+    // a farm round a yard whose middle, where the trail ends, is kept clear
+    hold(mx, my)
+    const made = sites[kind](mx, my)
+    for (const p of made.people) npc(p.species, p.x, p.y, { lines: FARM_LINES[kind] })
+    spawnPoint = { x: mx, y: my }
   } else {
     // landmark: what the country offers
     if (here === 'desert') {
@@ -479,7 +537,7 @@ export function placeFeatures(t, piece) {
     if (s.kind === 'chest') place({ kind: 'chest' }, s.x, s.y, 0, 1)
     else if (s.kind === 'animals') {
       const list = ANIMALS[piece.biome]
-      if (kind !== 'village' && rng() < 0.2) for (let i = 0; i < 2; i++) place({ npc: 'wolf' }, s.x, s.y, 0, 2)
+      if (kind !== 'village' && !farmland && rng() < 0.2) for (let i = 0; i < 2; i++) place({ npc: 'wolf' }, s.x, s.y, 0, 2)
       else for (let i = ri(2, 3); i > 0; i--) place({ npc: pick(list) }, s.x, s.y, 0, 2)
     } else if (s.kind === 'mushrooms') {
       t.setProp(s.x, s.y, 'ow_mushroom'); hold(s.x, s.y)
@@ -544,13 +602,13 @@ export function placeFeatures(t, piece) {
 
   // ---- the packs that roam between ---------------------------------------------
   // Two or three in wild land (one more far out), one or two round a village
-  // and those well away from it. Half the wild pieces post one on a road.
-  // At toughness 1 and 2 a road is safe to walk: no foe of a pack is posted
-  // on one or within ROAD_CALM tiles of it.
+  // or a farm and those well away from it. Half the wild pieces post one on a
+  // road. At toughness 1 and 2, and on farmland at any, a road is safe to
+  // walk: no foe of a pack is posted on one or within ROAD_CALM tiles of it.
   const village = kind === 'village'
-  const calm = roadPiece && tier <= 2
+  const calm = roadPiece && (tier <= 2 || farmland)
   const offRoad = (x, y, r) => !calm || roadNear()[y * PIECE + x] > r * r
-  const keep = village ? VILLAGE_CALM : pad + 8
+  const keep = village || farmland ? VILLAGE_CALM : pad + 8
   const rim = FRAME + 4
   const roomy = (x, y) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!t.free(x + dx, y + dy)) return false; return true }
   const clear = (x, y) => x >= rim && y >= rim && x < PIECE - rim && y < PIECE - rim &&
@@ -559,8 +617,8 @@ export function placeFeatures(t, piece) {
     piece.packs.every(p => Math.hypot(x - p.x, y - p.y) >= 14)
   const pack = (x, y, road) => {
     let made = pickPack().map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
-    // the road's calm is measured to each foe, not to the middle of its pack
-    const strays = made.filter(s => !offRoad(s.x, s.y, ROAD_CALM))
+    // the road's calm is measured to each foe, not to the middle of its pack; so is a farm's
+    const strays = made.filter(s => !offRoad(s.x, s.y, ROAD_CALM) || (farmland && Math.hypot(s.x - mx, s.y - my) < VILLAGE_CALM))
     if (strays.length) {
       piece.spawns = piece.spawns.filter(s => !strays.includes(s))
       made = made.filter(s => !strays.includes(s))
@@ -574,7 +632,7 @@ export function placeFeatures(t, piece) {
     for (let y = rim; y < PIECE - rim; y++) for (let x = rim; x < PIECE - rim; x++) if (t.onPath(x, y) && t.free(x, y) && clear(x, y)) road.push({ x, y })
     if (road.length) { const at = pick(road); pack(at.x, at.y, true) }
   }
-  const wantPacks = village ? ri(1, 2) : ri(2, 3) + (tier >= 3 ? 1 : 0)
+  const wantPacks = village || farmland ? ri(1, 2) : ri(2, 3) + (tier >= 3 ? 1 : 0)
   for (let tries = 0; tries < 400 && piece.packs.length < wantPacks; tries++) {
     const x = ri(rim, PIECE - rim - 1), y = ri(rim, PIECE - rim - 1)
     if (clear(x, y) && roomy(x, y)) pack(x, y, false)

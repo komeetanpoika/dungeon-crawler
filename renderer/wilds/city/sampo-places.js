@@ -5,7 +5,7 @@
 //     `pieces` are about to enter the window (session.js, beside tales.js
 //     admit, before their records are made). Once Seppo has named the three
 //     places, new land of a piece's country on its side of the city, two
-//     pieces or more from the walls and no village, becomes its place: the
+//     pieces or more from the walls, no village and no farmland, becomes its place: the
 //     first such land the player comes to, so Seppo's word is good. A place
 //     is a tale-style place (world.places, id 'sampo_<kind>', village
 //     'sampo'): sites.js builds it, and it is not forgotten until its piece
@@ -28,6 +28,7 @@
 //             end, and takes one blow a rising; its jawbone is for Väinö
 import { PIECE, pieceKey, pieceBiome, isPermanent } from '../layout.js'
 import { getPiece } from '../world.js'
+import { pieceClass } from '../roads.js'
 import { think } from '../../systems/feedback.js'
 import { sfx } from '../../systems/sfx.js'
 import { isWalkable } from '../../systems/entities.js'
@@ -56,9 +57,10 @@ const SIDES = {
 }
 export const placeKeyOf = (world, kind) => { for (const [key, p] of world.places) if (p.id === PIECES[kind].place) return key; return null }
 
+// (farmland, the first road piece out of a town, holds a farm: roads.js pieceClass)
 export function fitsPiece(seed, kind, wx, wy) {
   const P = PIECES[kind]
-  return SIDES[P.side](wx, wy) && !isPermanent(seed, wx, wy) && pieceBiome(seed, wx, wy) === P.land
+  return SIDES[P.side](wx, wy) && !isPermanent(seed, wx, wy) && pieceBiome(seed, wx, wy) === P.land && pieceClass(seed, wx, wy) !== 'farmland'
 }
 
 export function admitSampo(world, pieces) {
