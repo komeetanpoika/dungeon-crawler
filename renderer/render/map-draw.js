@@ -32,29 +32,21 @@ export function pruneMapTiles(world) {
 const MARK = { village: '#ffd76a', city: '#ffffff', place: '#ff8f6a' }
 // A town heard of and not reached is pencilled in: a hollow ring and its
 // name in pencil (the map has no parchment; a muted grey-brown).
-export const PENCIL = '#b3a58c'
-// The coach's mark on a ride: a small block in a colour the land never takes.
-const COACH = '#7fe3ff'
+const PENCIL = '#b3a58c'
 
 // Draw the map into ctx's w×h, world tile (cx, cy) in the middle, `scale`
-// pixels to a tile (it may be a fraction: the coach's ride fits its road).
-// `hero` is { X, Y } in world tiles; `names` writes the landmarks' names;
-// marks off the edge are drawn on it when `edge` is set. `ride` is the
-// coach's: { path, X, Y }, its way from stop to stop (world tiles,
-// wilds/coach.js ridePath) drawn dotted over whatever is or is not seen, and
-// the coach at world tile (X, Y) on top.
-export function drawMap(ctx, world, { cx, cy, scale, w, h, hero = null, names = false, edge = false, ride = null }) {
+// pixels to a tile. `hero` is { X, Y } in world tiles; `names` writes the
+// landmarks' names; marks off the edge are drawn on it when `edge` is set.
+export function drawMap(ctx, world, { cx, cy, scale, w, h, hero = null, names = false, edge = false }) {
   ctx.imageSmoothingEnabled = false
   ctx.fillStyle = MIST
   ctx.fillRect(0, 0, w, h)
-  const left = cx - w / 2 / scale, top = cy - h / 2 / scale
+  const left = cx - w / 2 / scale, top = cy - h / 2 / scale, size = PIECE * scale
   for (const key of world.map.keys()) {
     const [wx, wy] = key.split(',').map(Number)
-    // both edges rounded, so pieces meet without a seam at any scale
     const x = Math.round((wx * PIECE - left) * scale), y = Math.round((wy * PIECE - top) * scale)
-    const x1 = Math.round(((wx + 1) * PIECE - left) * scale), y1 = Math.round(((wy + 1) * PIECE - top) * scale)
-    if (x >= w || y >= h || x1 <= 0 || y1 <= 0) continue
-    ctx.drawImage(pieceCanvas(world, key), x, y, x1 - x, y1 - y)
+    if (x >= w || y >= h || x + size <= 0 || y + size <= 0) continue
+    ctx.drawImage(pieceCanvas(world, key), x, y, size, size)
   }
   const pad = 5
   for (const m of landmarks(world)) {
@@ -96,32 +88,6 @@ export function drawMap(ctx, world, { cx, cy, scale, w, h, hero = null, names = 
     ctx.fillStyle = '#fff'
     ctx.fillRect(x - 2, y - 2, 4, 4)
   }
-  if (ride) drawRide(ctx, ride, left, top, scale)
-}
-
-// The ride's way, dotted in pencil over a dark rim, and the coach on it.
-function drawRide(ctx, { path, X, Y }, left, top, scale) {
-  ctx.save()
-  ctx.lineCap = 'round'
-  ctx.setLineDash([1, 6])
-  ctx.beginPath()
-  path.forEach((p, i) => {
-    const x = (p.X - left) * scale, y = (p.Y - top) * scale
-    if (i) ctx.lineTo(x, y)
-    else ctx.moveTo(x, y)
-  })
-  ctx.lineWidth = 5
-  ctx.strokeStyle = '#000'
-  ctx.stroke()
-  ctx.lineWidth = 3
-  ctx.strokeStyle = PENCIL
-  ctx.stroke()
-  ctx.restore()
-  const x = Math.round((X - left) * scale), y = Math.round((Y - top) * scale)
-  ctx.fillStyle = '#000'
-  ctx.fillRect(x - 6, y - 5, 12, 10)
-  ctx.fillStyle = COACH
-  ctx.fillRect(x - 5, y - 4, 10, 8)
 }
 
 // How many map versions are in play: changes whenever any picture or mark does.

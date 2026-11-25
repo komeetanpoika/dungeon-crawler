@@ -13,6 +13,7 @@ import { getPiece, recordFor, sweep, exportWorld } from './world.js'
 import { admit } from './tales.js'
 import { noteSeen } from './map.js'
 import { admitSampo } from './city/sampo-places.js'
+import { arrivedRecord } from './coach-ride.js'
 import { applyFelled, STUMP } from '../systems/lumber.js'
 import { TILE } from '../systems/entities.js'
 import { doorAt } from '../systems/houses.js'
@@ -44,10 +45,12 @@ const nineAt = origin => Array.from({ length: WIN * WIN }, (_, i) => ({ wx: orig
 const eachPiece = (grid, fn) => { for (let r = 0; r < WIN; r++) for (let c = 0; c < WIN; c++) fn(grid[r][c], c, r) }
 
 // What changed in a piece: spawns with no entity left (or a chest standing
-// open), and felled trees and cleared rocks. Felled keys only ever grow.
+// open), and felled trees and cleared rocks. Felled keys only ever grow. One
+// away from its post for a while (world.away: the coachman on the coach's
+// bench) is not gone.
 function record(world, piece, entities) {
   const rec = recordFor(world, piece.key)
-  const present = new Set()
+  const present = new Set(world.away?.get(piece.key))
   for (const e of entities) if (e.wildsKey === piece.key && !(e.type === 'chest' && e.opening)) present.add(e.wildsIx)
   for (let ix = 0; ix < piece.spawns.length; ix++) if (!present.has(ix)) rec.gone.add(ix)
   for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
@@ -94,6 +97,7 @@ function join(state, world, piece, c, r, buildEntities) {
     if (rec?.gone.has(ix) || present.has(ix)) return
     build(state, piece, ix, c, r, buildEntities)
   })
+  world.away?.delete(piece.key)   // whoever was away is back at their post
 }
 
 // Unfinished caves never age out (only beaten ones reset), and each is a
@@ -299,7 +303,9 @@ export function snapshotWilds(state, world) {
     settleStrays(world, surface.entities)
     world.pos = toWorld(world.origin, surface.player.x, surface.player.y)
   }
-  return exportWorld(world)
+  const rec = exportWorld(world)
+  // on the coach: saved as arrived at the far stop (coach-ride.js)
+  return surface.coachRide ? arrivedRecord(rec, world, surface.coachRide) : rec
 }
 
 // Death: wake in the last village visited. Returns that village.

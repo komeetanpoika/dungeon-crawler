@@ -27,7 +27,7 @@ import { makeTileLayer, makeDirectTileLayer, CHUNK } from './tile-layer.js'
 import { drawComboFx, drawArrowTrail, drawBuffSpot, drawBuffUnder, drawBuffOver } from './pvp-fx.js'
 import { BUFF_COLORS } from '../data/pvp.js'
 import { arrestFade } from '../wilds/city/crime.js'
-import { drawCityGround, drawCityOver, drawCityAir, drawCityGlow } from './city-fx.js'
+import { drawCityGround, drawCityOver, drawCityAir, drawCityGlow, drawCartAt } from './city-fx.js'
 
 const TILE_SIZE = 32
 
@@ -654,6 +654,18 @@ export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = 
   drawComboFx(ctx, hero, camX, camY)
   if (hero.rain) drawRainCloud(ctx, hx + S / 2, hy - 14, S, hero.rain.t, hero.rain.t / hero.rain.dur)
   return { px: hx, py: hy }
+}
+
+// The coach (wilds/coach-ride.js), drawn as Kalevanlinna's carts are
+// (city-fx.js drawCartAt): the cart on the hero's cell, the horse a cell
+// ahead, bobbing while it rolls; on the bench the coachman who left his post
+// for it (a villager's face where none did, from the city), and the hero
+// sitting on top, standing still.
+function drawCoach(ctx, ride, player, sprites, camX, camY, S) {
+  const bob = ride.rolling && Math.floor(ride.t * 7) % 2 ? 1 : 0
+  const x = Math.round(player.px - S / 2 - camX), y = Math.round(player.py - S / 2 - camY) - bob
+  const driver = sprites[(ride.man && spriteKeyFor(ride.man)) || 'npc_villager'] ?? null
+  drawCartAt(ctx, sprites, x, y, ride.dir, bob, driver, S, (rx, ry) => drawEntity(ctx, player, rx, ry, S, sprites))
 }
 
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3) }
@@ -1367,8 +1379,11 @@ export class Renderer {
       }
     }
     // The blink ghosts belong with the player: behind him, in front of the floor.
+    // On the coach he sits on top of it, among the people as he is on foot,
+    // so a gate's arch or a roof's top row goes over him and the coach alike.
     const heroBehind = this.clipBehind(map, player.x, player.y)
-    drawHero(ctx, player, sprites, camX, camY, S,
+    if (state.coachRide) drawCoach(ctx, state.coachRide, player, sprites, camX, camY, S)
+    else drawHero(ctx, player, sprites, camX, camY, S,
       { lift, trail: player.blinkTrail ?? state.blinkTrail, greenAlpha: fx?.greenAlpha ?? 0 })
     if (heroBehind) ctx.restore()
     drawMonsterFx(ctx, entities, map, camX, camY, S)

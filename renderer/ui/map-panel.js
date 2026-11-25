@@ -1,23 +1,13 @@
 // The full map: a pause overlay. The stick or the arrows pan it (so does a
 // drag), red zooms in, green zooms out, yellow comes back to the hero. The
 // map key and Escape close it, in game.js.
-//
-// The coach's ride (showRide) borrows it: the map opens by itself over the
-// road between two towns and the coach's mark travels it from stop to stop;
-// it has no buttons, nothing pans or zooms, and any key, button or tap ends
-// the ride at once.
 import { drawMap } from '../render/map-draw.js'
-import { pathAt, RIDE_SECONDS } from '../wilds/coach.js'
 
 export const ZOOMS = [1, 3]      // pixels to a tile
 const PAN = 420                  // screen pixels a second while a direction is held
 const DIRS = { ArrowLeft: [-1, 0], a: [-1, 0], ArrowRight: [1, 0], d: [1, 0], ArrowUp: [0, -1], w: [0, -1], ArrowDown: [0, 1], s: [0, 1] }
-// screen pixels kept clear round the road on a ride (the towns' names sit above their marks)
-const RIDE_PAD = 48
 
-// open: { world, hero, cx, cy, zoom, held, raf, t, opts, onClose, handlers... },
-// and on a ride also ride: { path, from, to, start, onDone }
-let open = null
+let open = null   // { world, hero, cx, cy, zoom, held, raf, t, handlers... }
 
 const el = () => document.getElementById('map-overlay')
 
@@ -25,15 +15,7 @@ function draw() {
   const canvas = el().querySelector('canvas')
   const w = canvas.clientWidth, h = canvas.clientHeight
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h }
-  const ctx = canvas.getContext('2d')
-  const ride = open.ride
-  if (ride) {
-    const v = rideView(ride.path, ride.from, ride.to, w, h)
-    const at = pathAt(ride.path, (performance.now() - ride.start) / 1000 / RIDE_SECONDS)
-    drawMap(ctx, open.world, { cx: v.cx, cy: v.cy, scale: v.scale, w, h, names: true, edge: true, ride: { path: ride.path, X: at.X, Y: at.Y } })
-    return
-  }
-  drawMap(ctx, open.world, { cx: open.cx, cy: open.cy, scale: ZOOMS[open.zoom], w, h, hero: open.hero, names: true, edge: true })
+  drawMap(canvas.getContext('2d'), open.world, { cx: open.cx, cy: open.cy, scale: ZOOMS[open.zoom], w, h, hero: open.hero, names: true, edge: true })
 }
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -61,12 +43,6 @@ function press(name) {
 
 function tick(now) {
   if (!open) return
-  if (open.ride) {
-    if (now - open.ride.start >= RIDE_SECONDS * 1000) { endRide(); return }
-    draw()
-    open.raf = requestAnimationFrame(tick)
-    return
-  }
   const dt = Math.min(0.1, (now - open.t) / 1000)
   open.t = now
   let dx = 0, dy = 0
@@ -80,31 +56,16 @@ function tick(now) {
   open.raf = requestAnimationFrame(tick)
 }
 
-const swallow = e => { e.preventDefault(); e.stopImmediatePropagation() }
-
-// The overlay put up, empty: a canvas, and the button bar unless `bar` is false.
-function mount(touch, bar = true) {
-  hideMap()
-  const root = el()
-  root.className = touch ? 'touch' : ''
-  root.innerHTML = '<canvas></canvas>' + (bar ? '<div class="inv-what"></div>' : '')
-  root.style.display = 'block'
-  document.body.classList.add('pad-panel')
-  return root
-}
-
-// The key handlers (capture: they outrank the game's), and a redraw on a resize.
-function listen() {
-  window.addEventListener('keydown', open.down, true)
-  window.addEventListener('keyup', open.up, true)
-  open.resize = () => draw()
-  window.addEventListener('resize', open.resize)
-}
-
 // `hero`: { X, Y } in world tiles. `opts`: { touch, keys: { red, green, yellow, close } }.
 export function showMap(world, hero, { onClose }, opts = {}) {
-  const root = mount(opts.touch)
+  hideMap()
+  const root = el()
+  root.className = opts.touch ? 'touch' : ''
+  root.innerHTML = '<canvas></canvas><div class="inv-what"></div>'
+  root.style.display = 'block'
+  document.body.classList.add('pad-panel')
   open = { world, hero, cx: hero.X + 0.5, cy: hero.Y + 0.5, zoom: ZOOMS.length - 1, held: new Set(), t: performance.now(), opts, onClose }
+  const swallow = e => { e.preventDefault(); e.stopImmediatePropagation() }
   open.down = (e) => {
     if (DIRS[e.key]) open.held.add(e.key)
     else if (e.key === ' ' || e.key === 'Enter') { if (!e.repeat) press('red') }
@@ -115,7 +76,10 @@ export function showMap(world, hero, { onClose }, opts = {}) {
     swallow(e)
   }
   open.up = (e) => { open?.held.delete(e.key) }
-  listen()
+  window.addEventListener('keydown', open.down, true)   // capture: outrank game key handlers
+  window.addEventListener('keyup', open.up, true)
+  open.resize = () => draw()
+  window.addEventListener('resize', open.resize)
   // a drag pans
   const canvas = root.querySelector('canvas')
   let grab = null
@@ -132,50 +96,6 @@ export function showMap(world, hero, { onClose }, opts = {}) {
   labels()
   draw()
   open.raf = requestAnimationFrame(tick)
-}
-
-// Where the ride's map looks and how near: centred between the two towns
-// (`from`, `to`: their marks, world tiles), as near as the full map's nearest
-// zoom and no nearer than shows both towns and every point of the ride's
-// `path` (wilds/coach.js ridePath: both stops and the road between) with
-// RIDE_PAD to spare in a w×h canvas. Pure.
-export function rideView(path, from, to, w, h) {
-  const cx = (from.X + to.X) / 2, cy = (from.Y + to.Y) / 2
-  let rx = 1, ry = 1
-  for (const p of [...path, from, to]) {
-    rx = Math.max(rx, Math.abs(p.X - cx))
-    ry = Math.max(ry, Math.abs(p.Y - cy))
-  }
-  const fit = Math.min((w / 2 - RIDE_PAD) / rx, (h / 2 - RIDE_PAD) / ry)
-  return { cx, cy, scale: Math.min(ZOOMS.at(-1), Math.max(0.05, fit)) }
-}
-
-// The coach's ride: `path` its way from stop to stop in world tiles
-// (wilds/coach.js ridePath), `from` and `to` the two towns' marks on the map
-// (wilds/map.js landmarks; else the path's ends). The mark travels the path
-// over RIDE_SECONDS; then, or at once on any key press, button or tap, the
-// map closes and onDone is called. Land not seen stays blank under the dotted
-// way. The map has no buttons while it runs.
-export function showRide(world, { path, from, to }, { onDone }) {
-  const root = mount(false, false)
-  open = { world, hero: null, zoom: ZOOMS.length - 1, held: new Set(), opts: {},
-    ride: { path, from, to, start: performance.now(), onDone } }
-  open.down = (e) => {
-    swallow(e)
-    if (!e.repeat) endRide()   // a key held from before the ride is not a press
-  }
-  open.up = () => {}           // a key let go reaches the game: nothing stays held after the ride
-  listen()
-  root.querySelector('canvas').addEventListener('pointerdown', () => endRide())
-  draw()
-  open.raf = requestAnimationFrame(tick)
-}
-
-function endRide() {
-  const done = open?.ride?.onDone
-  if (!done) return
-  hideMap()
-  done()
 }
 
 export function hideMap() {

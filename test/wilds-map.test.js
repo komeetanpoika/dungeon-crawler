@@ -1,9 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeWorld, getPiece, exportWorld, sweep, recordFor, hear, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
-import { mapStamp, drawMap, PENCIL } from '../renderer/render/map-draw.js'
-import { rideView, ZOOMS } from '../renderer/ui/map-panel.js'
-import { destinations, ridePath, pathAt } from '../renderer/wilds/coach.js'
+import { mapStamp } from '../renderer/render/map-draw.js'
 import { fold, noteSeen, classOf, encodePic, decodePic, landmarks, forgetMap, CLASS, MAP_N, MAP_COLOURS, CLASSES, SEE_RADIUS } from '../renderer/wilds/map.js'
 import { PIECE, villagesNear } from '../renderer/wilds/layout.js'
 import { TILE } from '../renderer/systems/entities.js'
@@ -188,66 +186,4 @@ test('a heard town is a landmark of kind heard until it is visited', () => {
   assert.deepEqual(landmarks(w).filter(l => l.kind === 'heard').map(l => l.key), ['city'])
   assert.ok(landmarks(w).some(l => l.kind === 'village' && l.key === key))
   assert.ok(w.heard.has(key), 'a visited town stays heard of')
-})
-
-// A 2D context that records what is drawn: method calls in order, with the
-// styles in force at each.
-function recordingCtx() {
-  const calls = []
-  const ctx = { fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '', lineCap: '', imageSmoothingEnabled: true, dash: [] }
-  for (const m of ['fillRect', 'drawImage', 'beginPath', 'arc', 'stroke', 'fill', 'fillText', 'strokeText', 'moveTo', 'lineTo', 'save', 'restore'])
-    ctx[m] = (...args) => calls.push({ m, args, fillStyle: ctx.fillStyle, strokeStyle: ctx.strokeStyle, dash: ctx.dash })
-  ctx.setLineDash = d => { ctx.dash = [...d]; calls.push({ m: 'setLineDash', args: [d] }) }
-  return { ctx, calls }
-}
-
-test('a ride is drawn over land never seen: dotted from stop to stop along the road, the coach on top', () => {
-  const w = world()
-  assert.equal(w.map.size, 0, 'nothing seen yet')
-  const d = destinations(w, '0,0').find(r => r.town.key === 'city')
-  const path = ridePath(w, '0,0', d), at = pathAt(path, 0.5)
-  const from = path[0], to = path.at(-1)
-  const view = { cx: (from.X + to.X) / 2, cy: (from.Y + to.Y) / 2, scale: 2, w: 800, h: 600 }
-  const { ctx, calls } = recordingCtx()
-  drawMap(ctx, w, { ...view, names: true, edge: true, ride: { path, X: at.X, Y: at.Y } })
-  assert.equal(calls.filter(c => c.m === 'drawImage').length, 0, 'unseen land was drawn')
-  const screen = (X, Y) => [(X - (view.cx - view.w / 2 / view.scale)) * view.scale, (Y - (view.cy - view.h / 2 / view.scale)) * view.scale]
-  // the ride: one dotted line through every point of its path, the two stops at its ends, in pencil over a dark rim
-  const dotted = calls.filter(c => (c.m === 'lineTo' || c.m === 'moveTo') && c.dash.length > 0)
-  assert.deepEqual(dotted.map(c => c.args), path.map(p => screen(p.X, p.Y)), 'the dotted line does not run along the ride\'s path')
-  assert.ok(calls.some(c => c.m === 'stroke' && c.dash.length > 0 && c.strokeStyle === PENCIL), 'the road is not drawn in pencil')
-  // the coach: the last thing drawn, where pathAt puts it
-  const last = calls.filter(c => c.m === 'fillRect').at(-1)
-  const [mx, my] = screen(at.X, at.Y)
-  const [x, y, rw, rh] = last.args
-  assert.ok(Math.abs(x + rw / 2 - mx) <= 1 && Math.abs(y + rh / 2 - my) <= 1, `the coach is at ${x + rw / 2},${y + rh / 2}, not ${mx},${my}`)
-  assert.ok(calls.indexOf(last) > calls.findLastIndex(c => c.m === 'stroke' || c.m === 'fillText'), 'something is drawn over the coach')
-  // and with no ride, no dotted line
-  const plain = recordingCtx()
-  drawMap(plain.ctx, w, { ...view, names: true, edge: true })
-  assert.equal(plain.calls.filter(c => c.m === 'setLineDash').length, 0)
-})
-
-test('the ride\'s map is centred between the two towns and shows them, both stops and the whole road', () => {
-  const w = world()
-  // where the map draws a town (wilds/map.js landmarks): the city's mark is the
-  // middle of its four pieces, well away from the piece its road ends in
-  const mark = key => landmarks(w).find(m => m.key === key)
-  for (const [home, d] of [...destinations(w, '0,0').map(d => ['0,0', d]), ...destinations(w, 'city').map(d => ['city', d])]) {
-    w.visited.push(home)
-    const from = mark(home), to = mark(d.town.key), path = ridePath(w, home, d)
-    for (const [cw, ch] of [[1024, 720], [640, 400], [1600, 900]]) {
-      const v = rideView(path, from, to, cw, ch)
-      assert.deepEqual([v.cx, v.cy], [(from.X + to.X) / 2, (from.Y + to.Y) / 2])
-      assert.ok(v.scale > 0 && v.scale <= ZOOMS.at(-1), `scale ${v.scale}`)
-      const inView = (X, Y, what) => {
-        const x = (X - v.cx) * v.scale + cw / 2, y = (Y - v.cy) * v.scale + ch / 2
-        assert.ok(x >= 40 && x <= cw - 40 && y >= 40 && y <= ch - 40, `${d.town.name} at ${cw}x${ch}: ${what} at ${x},${y} is off the map`)
-      }
-      // every point the dotted line goes through: the two stops and the road's piece middles between
-      path.forEach((p, i) => inView(p.X, p.Y, i === 0 ? 'the stop left' : i === path.length - 1 ? 'the stop reached' : `the road at ${p.X},${p.Y}`))
-      inView(from.X, from.Y, 'the town left'); inView(to.X, to.Y, 'the town reached')
-    }
-    w.visited.pop()
-  }
 })

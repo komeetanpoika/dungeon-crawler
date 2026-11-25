@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { RECIPES, falloffGain, panFor, NEAR_PX, FAR_PX, PAN_MAX } from '../renderer/render/audio.js'
 import { CUE_NAMES } from '../renderer/systems/sfx.js'
+import { HOOF_EVERY } from '../renderer/wilds/coach-ride.js'
 
 describe('recipe registry', () => {
   it('every cue name has a recipe', () => {
@@ -32,11 +33,14 @@ describe('recipe registry', () => {
     }
   })
 
-  // the coach (game.js, wilds/coach.js): a whip and hooves setting off, hooves
-  // slowing and a creak on arriving; quieter than a blow
-  it('the coach has a cue to set off and one to arrive, quieter than a blow', () => {
+  // the coach (game.js, wilds/coach-ride.js): a whip and hooves setting off,
+  // a clip-clop while it rolls, hooves slowing and a creak on arriving;
+  // quieter than a blow, and the clip-clop quieter still and over before the next
+  it('the coach has a cue to set off, one to roll by and one to arrive, quieter than a blow', () => {
     const loudest = r => (r.kind === 'seq' ? r.vol * Math.max(...r.parts.map(p => p.vol)) : r.vol)
-    for (const name of ['coach-go', 'coach-arrive']) {
+    assert.ok(loudest(RECIPES['coach-hoof']) < loudest(RECIPES['coach-go']), 'the clip-clop is as loud as setting off')
+    assert.ok(RECIPES['coach-hoof'].dur < HOOF_EVERY, 'one clip-clop runs into the next')
+    for (const name of ['coach-go', 'coach-hoof', 'coach-arrive']) {
       assert.ok(CUE_NAMES.includes(name), `${name} missing from CUE_NAMES`)
       assert.ok(RECIPES[name], `no recipe for cue "${name}"`)
       assert.ok(loudest(RECIPES[name]) < loudest(RECIPES['melee-hit']) / 2, `${name} is as loud as a blow`)

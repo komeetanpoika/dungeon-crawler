@@ -93,27 +93,39 @@ export function drawCityGround(ctx, state, sprites, camX, camY, S, W, H) {
 }
 
 // The horse and cart, the horse a cell ahead of the cart, the carter on the
-// box in his own look. Side on going east or west (PROPS.cart, the horse to
-// the west: flipped going east), from behind or the front going north or south.
+// box in his own look.
 function drawCart(ctx, state, run, k, sprites, v, camX, camY, S, t) {
   if (!on(v, k.X, k.Y, 2) || !seen(state, run, k.X, k.Y)) return
   const bob = k.state === 'rolling' && Math.floor(t * 7) % 2 ? 1 : 0
-  const x = sx(run, k.X, camX, S), y = sy(run, k.Y, camY, S) - bob
   const carter = k.look ? sprites[`tf_${k.look}`] : null
+  drawCartAt(ctx, sprites, sx(run, k.X, camX, S), sy(run, k.Y, camY, S) - bob, k.dir, bob, carter, S)
+}
+
+// A horse and cart going `dir`, its cart's cell's top left at screen pixel
+// (x, y) (lifted by `bob`, which the horse's own step undoes), and `carter`
+// (a sprite, or null) on the box. Side on going east or west (PROPS.cart,
+// the horse to the west: flipped going east), from behind or the front going
+// north or south (FX.cartN, FX.cartS). `rider(x, y)`, if given, draws whoever
+// sits on top of the cart at that top left, in its place among the rest: the
+// hero on the coach (canvas.js, wilds/coach-ride.js), which is drawn this way too.
+export function drawCartAt(ctx, sprites, x, y, dir, bob, carter, S, rider = null) {
   const u = S / 16
-  if (k.dir === 'west' || k.dir === 'east') {
-    const east = k.dir === 'east'
+  if (dir === 'west' || dir === 'east') {
+    const east = dir === 'east'
     blit(ctx, carter, x + (east ? 4 : -4) * u, y - 8 * u, S, !east)
     blit(ctx, sprites[PROPS.cart[1]], x, y, S, east)
+    rider?.(x + (east ? -2 : 2) * u, y - 12 * u)
     blit(ctx, sprites[PROPS.cart[0]], x + (east ? S : -S), y + bob, S, east)
-  } else if (k.dir === 'south') {
+  } else if (dir === 'south') {
     blit(ctx, sprites[FX.cartS[1]], x, y + S + bob, S)
     blit(ctx, sprites[FX.cartS[0]], x, y, S)
     blit(ctx, carter, x, y - 5 * u, S)
+    rider?.(x + 4 * u, y - 10 * u)
   } else {
     blit(ctx, sprites[FX.cartN[0]], x, y - S + bob, S)
     blit(ctx, carter, x, y - 8 * u, S)
     blit(ctx, sprites[FX.cartN[1]], x, y, S)
+    rider?.(x, y - 12 * u)
   }
 }
 

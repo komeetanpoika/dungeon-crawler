@@ -103,15 +103,17 @@ export const RECIPES = {
   'boots':          { kind: 'burst',  freq: 140,  q: 1.0,  dur: 0.06, vol: 0.3 },
   // a dog's bark: a short falling yap
   'bark':           { kind: 'blip',   wave: 'square', f0: 420, f1: 220, dur: 0.12, vol: 0.4 },
-  // The coach (game.js, wilds/coach.js), heard over the map: a whip's crack
-  // and the hooves setting off, closer and closer together; and on arriving
-  // the hooves slowing, farther and farther apart, and the cart's creak as it
-  // stops. Quieter than a blow, like the town.
+  // The coach (game.js, wilds/coach-ride.js): a whip's crack and the hooves
+  // setting off, closer and closer together; while it rolls a quiet
+  // clip-clop on the beat (a knock and a lighter one after it, every
+  // HOOF_EVERY s); and on arriving the hooves slowing, farther and farther
+  // apart, and the cart's creak as it stops. Quieter than a blow, like the town.
   'coach-go': { kind: 'seq', dur: 1.25, vol: 0.4, parts: [
     { at: 0, kind: 'swoosh', f0: 600, f1: 3200, dur: 0.06, vol: 0.5 },
     { at: 0.05, kind: 'burst', freq: 2600, q: 3, dur: 0.05, vol: 0.9 },
     hoof(0.35, 0.6), hoof(0.62, 0.65), hoof(0.84, 0.7), hoof(1.0, 0.7), hoof(1.14, 0.7),
   ] },
+  'coach-hoof': { kind: 'seq', dur: 0.2, vol: 0.25, parts: [hoof(0, 0.7), hoof(0.11, 0.45)] },
   'coach-arrive': { kind: 'seq', dur: 1.3, vol: 0.4, parts: [
     hoof(0, 0.7), hoof(0.16, 0.7), hoof(0.36, 0.65), hoof(0.62, 0.55),
     { at: 0.85, kind: 'blip', wave: 'triangle', f0: 340, f1: 210, dur: 0.4, vol: 0.5 },

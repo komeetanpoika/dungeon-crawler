@@ -3,29 +3,25 @@
 // stops are laid by the generator (features.js for a village, city/build.js
 // for the city: piece.coach), session.js gathers them into the window
 // (state.coachStops) and holds a stop the player arrives on (state.coachHold);
-// this module has the rules. game.js shows the menu and the ride.
+// this module has the rules. game.js shows the menu; the ride itself is
+// coach-ride.js, along the way coach-path.js finds.
 //
 //   piece.coach       { x, y, town }   the boarding cell in piece tiles, and the town's key
 //   state.coachStops  { x, y, town }[] the window's stops, in window tiles
 //   state.coachHold   the latch: set when a stop boards, on arriving by coach and on
 //                     waking on a stop; cleared once the player stands on no stop
 //
-// One league is one piece. A ride takes RIDE_SECONDS however long its road,
-// costs nothing, and moves the day on by LEAGUE_CLOCK of a day per league.
+// One league is one piece. A ride costs nothing; the day goes on during it as
+// it does on foot.
 import { roadsFrom, townOf, SIDE_WORDS } from './roads.js'
 import { hear, getPiece } from './world.js'
-import { enterWilds } from './session.js'
 import { PIECE, pieceOf } from './layout.js'
 import { fromCity } from './city/geometry.js'
 import { cityFor } from './city/build.js'
 import { TILE } from '../systems/entities.js'
 import { playerBound } from '../systems/player-bind.js'
 import { isEnemy } from '../systems/factions.js'
-import { advanceClock } from '../systems/weather.js'
-import { DAY_LENGTH, DAY_START } from '../data/weather.js'
 
-export const RIDE_SECONDS = 4
-export const LEAGUE_CLOCK = 1 / 24
 // tiles from the player within which a hostile that has noticed them stops the coach
 export const HOSTILE_REACH = 12
 export const REFUSAL_LINES = Object.freeze({
@@ -72,9 +68,10 @@ const noticed = e => (typeof e.ai?.mode === 'string'
 // Once a frame on the surface: the stop the player has just stepped onto, or
 // null. A stop is latched in state.coachHold until the player stands on no
 // stop, so standing on one boards once, and arriving on one (a load, a wake)
-// boards not at all until the player steps off and on again.
+// boards not at all until the player steps off and on again. Nothing boards
+// from the top of the coach (state.coachRide).
 export function tickCoach(state) {
-  if (state.cave || !state.wilds || !state.coachStops) return null
+  if (state.cave || !state.wilds || !state.coachStops || state.coachRide) return null
   const p = state.player
   const stop = state.coachStops.find(s => s.x === p.x && s.y === p.y)
   if (!stop) { state.coachHold = false; return null }
@@ -103,7 +100,8 @@ export function boardingTile(world, townKey) {
 }
 
 const SIDE_STEPS = [[0, 1], [1, 0], [-1, 0], [0, -1]]
-const isRoadCell = cell => (cell.skin ?? '').startsWith('ow_road_') || cell.skin === 'ow_cobble_green' || (cell.overlay ?? '').startsWith('ow_pier')
+// a road's cell by its art: the road's ground, its planks over water, the cobbles it wears in a village
+export const isRoadCell = cell => (cell.skin ?? '').startsWith('ow_road_') || cell.skin === 'ow_cobble_green' || (cell.overlay ?? '').startsWith('ow_pier')
 // The world tile to arrive on at a town's stop: a walkable cell beside the
 // boarding cell, not under a roof, not a doorway and not where the coachman
 // stands; the first by S, E, W, N from which the road is reached without
@@ -140,74 +138,29 @@ export function stopTile(world, townKey) {
   return there ? { X: piece.wx * PIECE + there.x, Y: piece.wy * PIECE + there.y } : null
 }
 
-// Arrive by coach at `dest` (an entry of destinations): the window is built
-// round the stop and the player stands beside it, held off it; the town is
-// visited and is where the player wakes after a death (what standing inside
-// the walls sets, for the city); the day moves on by a twenty-fourth per
-// league through hooks.advanceClock(seconds), which moves the game's clock and
-// returns how many midnights it passed (passTime does both for a save), each
-// one a day on world.day. world.playtime does not move. The caller saves.
-export function arrive(state, world, dest, hooks) {
+// Arrive by coach at `dest` (an entry of destinations): the player steps down
+// beside the stop (stopTile; the window has come along with the coach, so it
+// holds the stop), held off it; the town is visited and is where the player
+// wakes after a death (what standing inside the walls sets, for the city).
+// The caller saves.
+export function arrive(state, world, dest) {
   const town = dest.town
-  enterWilds(state, world, stopTile(world, town.key) ?? { wx: town.wx, wy: town.wy }, hooks)
+  const at = stopTile(world, town.key)
+  if (at) {
+    const p = state.player
+    p.x = at.X - world.origin.wx * PIECE; p.y = at.Y - world.origin.wy * PIECE
+    p.px = p.x * 32 + 16; p.py = p.y * 32 + 16
+    p._fovMap = null; p._fovLitMap = null
+  }
   state.coachHold = true
-  if (!world.visited.includes(town.key)) world.visited.push(town.key)
-  world.lastVillage = town.key === 'city' ? { wx: 0, wy: 2 } : { wx: town.wx, wy: town.wy }
-  world.day += hooks.advanceClock?.(dest.leagues * LEAGUE_CLOCK * DAY_LENGTH) ?? 0
+  visit(world, town)
   return town
 }
 
-// Move a save's day clock (systems/weather.js: seconds into the day) on by
-// `seconds`; returns how many midnights that passed. What game.js gives
-// arrive as hooks.advanceClock.
-export function passTime(save, seconds) {
-  const before = save.clock ?? DAY_START
-  advanceClock(save, seconds)
-  return Math.floor((before + seconds) / DAY_LENGTH)
+// A town reached: visited, and where the player wakes.
+export function visit(world, town) {
+  if (!world.visited.includes(town.key)) world.visited.push(town.key)
+  world.lastVillage = wakeOf(town)
 }
+export const wakeOf = town => (town.key === 'city' ? { wx: 0, wy: 2 } : { wx: town.wx, wy: town.wy })
 
-// The ride on the map, in world tiles (cell middles): from the boarding cell
-// of `fromKey` along the middles of the road's pieces to the boarding cell of
-// the town reached (`dest`, an entry of destinations). The first or last
-// middle is left out where the coach would go to it and turn back past the
-// stop (more than a right angle). A town with no stop starts or ends the ride
-// at its piece's middle.
-export function ridePath(world, fromKey, dest) {
-  const mids = dest.route.map(p => ({ X: p.wx * PIECE + PIECE / 2, Y: p.wy * PIECE + PIECE / 2 }))
-  const cell = t => (t ? { X: t.X + 0.5, Y: t.Y + 0.5 } : null)
-  const a = cell(boardingTile(world, fromKey)), b = cell(boardingTile(world, dest.town.key))
-  const back = (p, q, r) => (q.X - p.X) * (r.X - q.X) + (q.Y - p.Y) * (r.Y - q.Y) < 0
-  const n = mids.length
-  const i = a && n > 1 && back(a, mids[0], mids[1]) ? 1 : 0
-  const j = b && n > 1 && back(mids[n - 2], mids[n - 1], b) ? n - 1 : n
-  return Object.freeze([...(a ? [a] : []), ...mids.slice(i, Math.max(i, j)), ...(b ? [b] : [])].map(p => Object.freeze(p)))
-}
-
-// The point `f` (0..1) of the way along a path (ridePath) by its length: where
-// the coach's mark is on the map during the ride, at an even pace.
-export function pathAt(path, f) {
-  const k = Math.max(0, Math.min(1, f))
-  if (k === 0 || k === 1 || path.length === 1) { const p = k === 1 ? path.at(-1) : path[0]; return { X: p.X, Y: p.Y } }
-  const lens = path.slice(1).map((p, i) => Math.hypot(p.X - path[i].X, p.Y - path[i].Y))
-  let left = k * lens.reduce((t, l) => t + l, 0)
-  for (let i = 0; i < lens.length; i++) {
-    if (left <= lens[i] && lens[i] > 0) {
-      const t = left / lens[i], p = path[i], q = path[i + 1]
-      return { X: p.X + (q.X - p.X) * t, Y: p.Y + (q.Y - p.Y) * t }
-    }
-    left -= lens[i]
-  }
-  return { X: path.at(-1).X, Y: path.at(-1).Y }
-}
-
-// The world tile `f` (0..1) of the way along a route's piece centres, each
-// step a league.
-export function rideAt(route, f) {
-  const n = route.length - 1
-  const centre = p => ({ X: p.wx * PIECE + PIECE / 2, Y: p.wy * PIECE + PIECE / 2 })
-  if (n <= 0) return centre(route[0])
-  const s = Math.max(0, Math.min(1, f)) * n
-  const i = Math.min(n - 1, Math.floor(s)), k = s - i
-  const a = centre(route[i]), b = centre(route[i + 1])
-  return { X: a.X + (b.X - a.X) * k, Y: a.Y + (b.Y - a.Y) * k }
-}

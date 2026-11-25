@@ -42,7 +42,7 @@ import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
-import { showMap, hideMap, showRide } from './ui/map-panel.js'
+import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
 import { clearOfTops } from './wilds/over.js'
@@ -70,8 +70,8 @@ import { ARREST_FADE } from './wilds/city/crime.js'
 import { isShutGate, GATE_SHUT_LINE } from './wilds/city/fx.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld, hear } from './wilds/world.js'
-import { tickCoach, refusal, REFUSAL_LINES, destinations, arrive, passTime, ridePath, coachLabel } from './wilds/coach.js'
-import { landmarks } from './wilds/map.js'
+import { tickCoach, refusal, REFUSAL_LINES, destinations, coachLabel } from './wilds/coach.js'
+import { startRide, tickCoachRide } from './wilds/coach-ride.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
 import { randomSeed } from './pvp/rng.js'
@@ -389,7 +389,8 @@ let wildsWorld = null
 const wildsBuild = (spawns, map, depth) => buildEntities(spawns, map, depth, state?.player ?? null)
 const wildsHooks = {
   buildEntities: wildsBuild,
-  onVillage: v => { announce(state, `You reach ${v.name}.`); persistRun() },
+  // (on the coach the arrival is the coach's to tell: arriveByCoach)
+  onVillage: v => { if (state.coachRide) return; announce(state, `You reach ${v.name}.`); persistRun() },
 }
 // The villages' tales (wilds/tale-run.js) run the Adventure quest modules
 // through these: the same seams arriveOnMap gives a quest ctx.
@@ -1694,27 +1695,27 @@ function coachSays(town, line) {
   speakAt(state, { px: cart.x * TILE_SIZE + TILE_SIZE / 2, py: cart.y * TILE_SIZE + TILE_SIZE / 2 }, line)
 }
 
-// The ride from `town`, the game still stopped: the map, framed on the two
-// towns' marks, shows the coach going from this stop down the road to the far
-// one (ui/map-panel.js showRide; any key, button or tap skips the rest), then
-// the player stands beside the far town's stop, the window built round it as
-// after every jump, the clock on by a twenty-fourth of a day a league.
+// The ride from `town`: the hero climbs onto the coach and the game goes on
+// (wilds/coach-ride.js: the land ahead is made while the coach waits at the
+// stop, then it rolls along the road; update() ticks it and steps him down
+// at the far stop: arriveByCoach).
 function rideCoach(town, d) {
   menu.hide()
   sfx(state, 'coach-go')
-  const path = ridePath(wildsWorld, town, d), marks = landmarks(wildsWorld)
-  const markOf = (key, end) => { const m = marks.find(m => m.key === key); return m ? { X: m.X, Y: m.Y } : end }
-  showRide(wildsWorld, { path, from: markOf(town, path[0]), to: markOf(d.town.key, path.at(-1)) }, { onDone: () => {
-    arrive(state, wildsWorld, d, { ...wildsHooks, advanceClock: s => passTime(activeSave, s) })
-    arriveTales(state, wildsWorld, taleHooks, { fresh: true })
-    arriveCity(state, wildsWorld, cityHooks, { fresh: true })
-    if (state.feedback) state.feedback.bubble = null   // a line said at the stop left behind is not said here
-    sfx(state, 'coach-arrive')
-    announce(state, `You reach ${d.town.name}.`)
-    persistRun()
-    for (const k of Object.keys(keys)) keys[k] = false   // nothing pressed on the way acts on arriving
-    setPhase(PHASE.PLAYING)
-  } })
+  startRide(state, wildsWorld, town, d)
+  if (state.feedback) state.feedback.bubble = null   // a line said at the stop is left there
+  for (const k of Object.keys(keys)) keys[k] = false   // nothing pressed at the menu acts on the coach
+  setPhase(PHASE.PLAYING)
+}
+
+// The coach has parked at the far stop and the hero stands beside it (the
+// window came along with him; coach.js arrive has him held off the stop and
+// the town visited): said, and saved.
+function arriveByCoach(town) {
+  sfx(state, 'coach-arrive')
+  announce(state, `You reach ${town.name}.`)
+  persistRun()
+  for (const k of Object.keys(keys)) keys[k] = false   // nothing pressed on the way acts on arriving
 }
 
 function update(delta) {
@@ -1790,8 +1791,16 @@ function update(delta) {
     // the Sampo's story is told in the street and under a roof alike
     tickSampo(state, wildsWorld, delta, sampoHooks)
     tickSampoEnd(state, wildsWorld, delta, sampoHooks)
+    // on the coach (wilds/coach-ride.js): it carries the hero on along the road
+    if (state.coachRide) {
+      const town = state.coachRide.dest.town
+      if (tickCoachRide(state, wildsWorld, delta) === 'arrived') arriveByCoach(town)
+    }
   }
   const { player, map } = state
+  // On top of the coach nothing underfoot is opened, picked up, entered or
+  // stepped onto: those wait until the hero is on foot again.
+  const onFoot = !state.coachRide
   state.shake = Math.max(0, (state.shake ?? 0) - 30 * delta)   // px/s decay
   tickMsgCooldowns(delta)
 
@@ -1838,7 +1847,7 @@ function update(delta) {
   }
 
   // Chest interaction (walk onto chest tile)
-  const chestIdx = state.entities.findIndex(e =>
+  const chestIdx = !onFoot ? -1 : state.entities.findIndex(e =>
     e.type === 'chest' && !e.opening && e.x === player.x && e.y === player.y)
   if (chestIdx !== -1) {
     const chest = state.entities[chestIdx]
@@ -1871,7 +1880,7 @@ function update(delta) {
   }
 
   // Floating item pickup (step onto landing tile once arc completes)
-  const floatIdx = state.entities.findIndex(e =>
+  const floatIdx = !onFoot ? -1 : state.entities.findIndex(e =>
     e.type === 'floating_item' && e.progress >= 1 && e.x === player.x && e.y === player.y)
   if (floatIdx !== -1) {
     const item = state.entities[floatIdx]
@@ -1913,7 +1922,7 @@ function update(delta) {
 
   // Campfire cooking — standing on a fire cooks every raw meat carried.
   // cookMeat empties the raw stack, so it can't fire twice for the same meat.
-  const fire = state.entities.find(e => e.type === 'campfire' && e.x === player.x && e.y === player.y)
+  const fire = onFoot && state.entities.find(e => e.type === 'campfire' && e.x === player.x && e.y === player.y)
   if (fire) {
     const n = cookMeat(player)
     if (n) {
@@ -1926,7 +1935,7 @@ function update(delta) {
   // Cave entrance — walking into an arch descends; the hold flag set on
   // emerging keeps the arch from swallowing the player again until they
   // step off it. Inside a cave, returning to the entry stairs retreats.
-  const arch = state.caveEntrances?.find(e => e.x === player.x && e.y === player.y)
+  const arch = onFoot && state.caveEntrances?.find(e => e.x === player.x && e.y === player.y)
   if (arch && !state.entranceHold) {
     const gate = state.gates?.[arch.label]
     if (gate && !gate.open) {
@@ -1935,7 +1944,7 @@ function update(delta) {
     } else { enterCave(arch); return }
   }
   // House doors — same walk-onto/hold pattern as arches, no gate to check.
-  const door = !state.cave && doorAt(state.houseDoors, player.x, player.y)
+  const door = onFoot && !state.cave && doorAt(state.houseDoors, player.x, player.y)
   if (door && !state.entranceHold) {
     // a shut door says so (the castle always, the church at night) and stays shut;
     // the hours go by the clock the town keeps (cityHooks.clock)
@@ -2010,7 +2019,7 @@ function update(delta) {
   }
 
   // Key pickup — walk onto the key the boss dropped
-  const keyIdx = state.entities.findIndex(e => e.type === 'key' && e.x === player.x && e.y === player.y)
+  const keyIdx = !onFoot ? -1 : state.entities.findIndex(e => e.type === 'key' && e.x === player.x && e.y === player.y)
   if (keyIdx !== -1) {
     state.entities = state.entities.filter((_, i) => i !== keyIdx)
     state.hasKey = true
@@ -2019,7 +2028,7 @@ function update(delta) {
   }
 
   // Wild mushrooms: walk-onto pickup into the sack
-  const shroomIdx = state.entities.findIndex(e => e.type === 'wild_mushroom' && e.x === player.x && e.y === player.y)
+  const shroomIdx = !onFoot ? -1 : state.entities.findIndex(e => e.type === 'wild_mushroom' && e.x === player.x && e.y === player.y)
   if (shroomIdx !== -1 && grantContents({ type: 'mushroom' })) {
     state.entities = state.entities.filter((_, i) => i !== shroomIdx)
     persistIfSurface()
@@ -2028,7 +2037,7 @@ function update(delta) {
   // Rite triggers: walking onto the ring mid-trance starts the ceremony there
   // and then. Otherwise the call comes on its own once the minute is up.
   if (tickTrance(player, delta) === 'call') answerTheCall()
-  const trigger = state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
+  const trigger = onFoot && state.entities.find(e => e.type === 'talent_trigger' && e.x === player.x && e.y === player.y)
   if (trigger && (!trigger.outfit || !ownsOutfit(player, trigger.outfit)) && riteConditionMet(trigger.rite, state)) {
     beginRite(trigger.outfit)
   }
@@ -2607,8 +2616,9 @@ function update(delta) {
   state.entities = fires.entities
   for (const f of fires.expired) sfx(state, 'campfire-out', { px: f.px, py: f.py })
 
-  // Walk animation — player + humanoid enemies (guard, wizard)
-  tickWalk(player, delta)
+  // Walk animation — player + humanoid enemies (guard, wizard); none for the
+  // hero sitting on the coach
+  if (onFoot) tickWalk(player, delta)
   tickFeedback(state.feedback, delta)
   if (!state.cave && tickCaveInstances(state, delta)) persistRun()
   for (const e of state.entities) {

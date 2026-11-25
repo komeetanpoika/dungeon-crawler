@@ -55,6 +55,13 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     // road (village piece keys, or 'city'): the map pencils them in
     heard: new Set(),
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
+    // never saved: piece key -> spawn indices taken off their post for a
+    // while (the coachman on the coach's bench, wilds/coach-ride.js), not gone:
+    // built again when their piece is next built (session.js)
+    away: new Map(),
+    // never saved: piece keys kept in the cache whatever its size, and never
+    // forgotten, while a coach ride that runs through them is up (coach-ride.js)
+    held: null,
   }
   if (!ok) return world
   if (Number.isFinite(saved.playtime) && saved.playtime >= 0) world.playtime = saved.playtime
@@ -145,11 +152,12 @@ export function getPiece(world, wx, wy) {
 
 // Drop the cached pieces farthest from the window's centre. Their records
 // stay: a dropped piece is regenerated from its seed and deal and the record
-// re-applied, so only its fog of war is lost.
+// re-applied, so only its fog of war is lost. Pieces a coach ride holds stay
+// (the cache grows past CACHE_MAX for as long as it needs to).
 function evict(world) {
   const cx = (world.origin?.wx ?? 0) + 1, cy = (world.origin?.wy ?? 0) + 1
   const far = [...world.pieces.values()]
-    .filter(p => !inWindow(world, p.wx, p.wy))
+    .filter(p => !inWindow(world, p.wx, p.wy) && !world.held?.has(p.key))
     .sort((a, b) => Math.max(Math.abs(b.wx - cx), Math.abs(b.wy - cy)) - Math.max(Math.abs(a.wx - cx), Math.abs(a.wy - cy)))
   for (const p of far) {
     if (world.pieces.size <= CACHE_MAX) break
@@ -172,7 +180,7 @@ export function sweep(world, cwx, cwy) {
     const { wx, wy } = parseKey(key)
     if (Math.max(Math.abs(wx - cwx), Math.abs(wy - cwy)) <= FORGET_PIECES) continue
     if (world.playtime - rec.lastSeen <= FORGET_SECONDS) continue
-    if (inWindow(world, wx, wy) || isPermanent(world.seed, wx, wy)) continue
+    if (inWindow(world, wx, wy) || isPermanent(world.seed, wx, wy) || world.held?.has(key)) continue
     // a tale's place stays until its tale is done; after that it is land like any other
     if (world.places.has(key) && !world.places.get(key).done) continue
     forgotten.push(key)

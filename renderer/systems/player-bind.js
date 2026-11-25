@@ -5,7 +5,9 @@
 // control on it. A grip is escaped by mashing: every key press is one
 // struggle, and the monster that holds the hero decides how many it takes
 // (systems/monsters/monsteri.js). In the stocks a key press does nothing but
-// make the crowd jeer; the city lets the hero go (wilds/city/law.js).
+// make the crowd jeer; the city lets the hero go (wilds/city/law.js). On top
+// of the coach (wilds/coach-ride.js) the coachman drives: the hero has no
+// controls until he steps down at the far stop.
 // Pure — game.js ticks it and feeds it the key presses.
 //
 //   player.ice    = { t, dur }                      seconds left / at the start
@@ -13,6 +15,7 @@
 //                                                   and the shake each press gives
 //   player.stocks = { t, fade, seated }             seconds left, the arrest's fade,
 //                                                   in the stocks yet
+//   player.riding = true                            on top of the coach
 export const JOLT_TIME = 0.15   // s a press shakes the held hero for
 
 export function freezePlayer(player, dur) {
@@ -59,4 +62,4 @@ export function tickBinds(player, delta, entities = null) {
   if (!(h.by.hp > 0) || (entities && !entities.includes(h.by))) player.held = null
 }
 
-export const playerBound = player => !!(player.ice || player.held || player.stocks)
+export const playerBound = player => !!(player.ice || player.held || player.stocks || player.riding)

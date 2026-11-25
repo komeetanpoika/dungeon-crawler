@@ -10,7 +10,7 @@
 // `state.mercy(from, state)` (set by Kalevanlinna, wilds/city/law.js) may
 // spare the player's life: a blow it spares that would take hp to 0 or below
 // leaves 1 hp and sets state.arrest instead (the watch takes a wanted player
-// alive, to the stocks).
+// alive, to the stocks). The hero riding on top of the coach takes nothing.
 import { addFloat } from './feedback.js'
 import { sfx } from './sfx.js'
 import { tryBlock } from './shield.js'
@@ -27,6 +27,8 @@ export function setDamageObserver(fn) { observer = fn }
 
 export function damagePlayer(state, amount, kind, from = null, hero = state.player, soak = null) {
   const player = hero
+  // on top of the coach (wilds/coach-ride.js) nothing reaches the hero
+  if (player.riding) return false
   if (kind === 'hit' && (player.invulnTimer ?? 0) > 0) return false
   if (kind === 'hit' && tryBlock(state, from, player)) return false
   if (kind === 'hit') amount = Math.max(0, amount - (outfitOf(player, player.attackMode ?? 'melee')?.protect ?? 0))

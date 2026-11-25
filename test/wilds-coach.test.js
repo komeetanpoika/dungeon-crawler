@@ -15,11 +15,9 @@ import { cityFor, coachStopOf, layCityStop } from '../renderer/wilds/city/build.
 import { APPROACHES } from '../renderer/wilds/city/build-land.js'
 import { isVergeSkin } from '../renderer/wilds/road-art.js'
 import { TILE } from '../renderer/systems/entities.js'
-import { DAY_LENGTH } from '../renderer/data/weather.js'
 import {
-  RIDE_SECONDS, LEAGUE_CLOCK, HOSTILE_REACH, REFUSAL_LINES,
-  destinations, refusal, tickCoach, stopTile, arrive, rideAt, passTime,
-  boardingTile, ridePath, pathAt, coachLabel,
+  HOSTILE_REACH, REFUSAL_LINES,
+  destinations, refusal, tickCoach, stopTile, arrive, coachLabel,
 } from '../renderer/wilds/coach.js'
 
 const SEED = 42
@@ -33,13 +31,16 @@ const freshState = () => ({
   player: { x: 0, y: 0, px: 0, py: 0, hp: 5, maxHp: 5 }, entities: [], projectiles: [], zones: [], fireZones: [],
   lightning: [], strikes: [], shockwaves: [], arcs: [], hitEffects: [], feedback: { floats: [] }, caveInstances: {},
 })
-function start(seed = SEED, save = { clock: DAY_LENGTH / 2 }) {
+function start(seed = SEED) {
   const world = makeWorld(null, { seed })
   const state = freshState()
-  const hooks = { buildEntities, advanceClock: s => passTime(save, s) }
+  const hooks = { buildEntities }
   enterWilds(state, world, { wx: 0, wy: 0 }, hooks)
-  return { world, state, hooks, save }
+  return { world, state, hooks }
 }
+// The window round a town's piece, as it stands when a coach parks there
+// (the ride itself is test/wilds-coach-ride.test.js).
+const windowAt = (state, world, hooks, town) => enterWilds(state, world, town.key === 'city' ? { wx: 0, wy: 2 } : { wx: town.wx, wy: town.wy }, hooks)
 function put(state, at) {
   state.player.x = at.x; state.player.y = at.y
   state.player.px = at.x * 32 + 16; state.player.py = at.y * 32 + 16
@@ -207,8 +208,6 @@ test('destinations are the towns one road away, and listing them pencils them on
     // the towns listed, and only those
     assert.equal(world.heard.size, list.length)
   }
-  assert.equal(RIDE_SECONDS, 4)
-  assert.equal(LEAGUE_CLOCK, 1 / 24)
 })
 
 test('stepping on the stop boards once; standing there does not board again; stepping off and on does', () => {
@@ -242,14 +241,18 @@ test('waking on the stop does not board, nor does standing on its cell in a cave
 test('arriving puts the player beside the stop, not on it, and does not board', () => {
   const { world, state, hooks } = start()
   const dest = destinations(world, '0,0').find(d => d.town.key !== 'city')
-  const town = arrive(state, world, dest, hooks)
+  windowAt(state, world, hooks, dest.town)
+  const origin = { ...world.origin }
+  const town = arrive(state, world, dest)
   assert.ok(town === dest.town)
+  assert.deepEqual(world.origin, origin, 'arriving moved the window: it has come along with the coach')
   const stop = stopOf(state, dest.town.key)
   assert.ok(stop, 'the destination\'s stop is not in the window')
   assert.equal(Math.abs(state.player.x - stop.x) + Math.abs(state.player.y - stop.y), 1, 'not beside the stop')
   assert.ok(!state.coachStops.some(s => s.x === state.player.x && s.y === state.player.y), 'standing on a stop')
   const want = stopTile(world, dest.town.key)
   assert.deepEqual(toWindow(world.origin, want.X, want.Y), { x: state.player.x, y: state.player.y })
+  assert.equal(state.coachHold, true)
   assert.equal(tickCoach(state), null)
   assert.equal(tickCoach(state), null)
   put(state, stop)
@@ -259,7 +262,8 @@ test('arriving puts the player beside the stop, not on it, and does not board', 
 test('after a ride to a village the player wakes there', () => {
   const { world, state, hooks } = start()
   const dest = destinations(world, '0,0').find(d => d.town.key !== 'city')
-  arrive(state, world, dest, hooks)
+  windowAt(state, world, hooks, dest.town)
+  arrive(state, world, dest)
   assert.ok(world.visited.includes(dest.town.key))
   assert.deepEqual(world.lastVillage, { wx: dest.town.wx, wy: dest.town.wy })
   const woke = wildsRespawn(state, world, hooks)
@@ -270,37 +274,14 @@ test('after a ride to the city the city is visited and is where the player wakes
   const { world, state, hooks } = start()
   const dest = destinations(world, '0,0').find(d => d.town.key === 'city')
   assert.ok(dest, 'Koivula has no road to the city')
-  arrive(state, world, dest, hooks)
+  windowAt(state, world, hooks, dest.town)
+  arrive(state, world, dest)
   assert.ok(world.visited.includes('city'))
   assert.deepEqual(world.lastVillage, { wx: 0, wy: 2 })
   const stop = stopOf(state, 'city')
   assert.equal(Math.abs(state.player.x - stop.x) + Math.abs(state.player.y - stop.y), 1, 'not beside the city\'s stop')
   const woke = wildsRespawn(state, world, hooks)
   assert.equal(woke.name, 'Kalevanlinna')
-})
-
-test('the clock moves on a twenty-fourth of a day per league and playtime does not jump', () => {
-  const save = { clock: DAY_LENGTH - 5 }
-  const { world, state } = start(SEED, save)
-  const hooks = { buildEntities, advanceClock: s => passTime(save, s) }
-  world.playtime = 123.5
-  world.day = 4
-  const dest = destinations(world, '0,0').find(d => d.town.key !== 'city')
-  arrive(state, world, dest, hooks)
-  const passed = dest.leagues * LEAGUE_CLOCK * DAY_LENGTH
-  assert.ok(Math.abs(save.clock - (DAY_LENGTH - 5 + passed - DAY_LENGTH)) < 1e-9, `the clock reads ${save.clock}`)
-  assert.equal(world.day, 5, 'the midnight on the way was not counted')
-  assert.equal(world.playtime, 123.5)
-  // a ride that does not reach midnight counts none
-  const quiet = { clock: 10 }
-  arrive(state, world, dest, { buildEntities, advanceClock: s => passTime(quiet, s) })
-  assert.ok(Math.abs(quiet.clock - (10 + passed)) < 1e-9)
-  assert.equal(world.day, 5)
-  // every midnight passed is counted
-  const save2 = { clock: DAY_LENGTH - 1 }
-  assert.equal(passTime(save2, 2 * DAY_LENGTH + 2), 3)
-  assert.ok(Math.abs(save2.clock - 1) < 1e-9)
-  assert.equal(passTime({ clock: 0 }, DAY_LENGTH / 2), 0)
 })
 
 test('the coachman refuses a wanted player, a chased one and a bound one', () => {
@@ -361,79 +342,6 @@ test('a foe whose brain has lost the player does not stop the coach, though it o
   assert.equal(refusal(state), 'chased', 'a wolf that bit the player, its brain not yet run')
   state.entities = [{ type: 'npc', species: 'wolf', hostile: true, x: 53, y: 50, hp: 3, inCombat: true, ai: { current: null, goals: {}, mode: 'patrol', lastSeen: null } }]
   assert.equal(refusal(state), null, 'a wolf that has given up')
-})
-
-test('rideAt starts on the first town, ends on the second and passes every piece of the route', () => {
-  const world = makeWorld(null, { seed: SEED })
-  const routes = [...destinations(world, '0,0'), ...destinations(world, 'city')].map(d => d.route)
-  assert.ok(routes.some(r => r.length >= 4), 'no long route to look at')
-  const pieceAt = p => ({ wx: Math.floor(p.X / PIECE), wy: Math.floor(p.Y / PIECE) })
-  for (const route of routes) {
-    const first = rideAt(route, 0), last = rideAt(route, 1)
-    assert.deepEqual(pieceAt(first), { wx: route[0].wx, wy: route[0].wy })
-    assert.deepEqual(pieceAt(last), { wx: route.at(-1).wx, wy: route.at(-1).wy })
-    assert.deepEqual([first.X, first.Y], [route[0].wx * PIECE + PIECE / 2, route[0].wy * PIECE + PIECE / 2], 'not at the first piece\'s centre')
-    const seen = []
-    for (let i = 0; i <= 400; i++) {
-      const p = pieceAt(rideAt(route, i / 400))
-      if (!seen.length || seen.at(-1).wx !== p.wx || seen.at(-1).wy !== p.wy) seen.push(p)
-    }
-    assert.deepEqual(seen, route.map(p => ({ wx: p.wx, wy: p.wy })))
-    assert.deepEqual(rideAt(route, -1), first)
-    assert.deepEqual(rideAt(route, 2), last)
-  }
-})
-
-// Polish rider: the ride on the map runs from the stop the player boards at
-// to the stop they arrive at, not only between the road's piece middles (the
-// city's stop is some 30 tiles from the middle of the piece its road ends in).
-test('the ride runs from the boarding stop along the road to the far town\'s stop, never doubling back past a stop', () => {
-  const world = makeWorld(null, { seed: SEED })
-  const mid = p => ({ X: p.wx * PIECE + PIECE / 2, Y: p.wy * PIECE + PIECE / 2 })
-  const cell = t => ({ X: t.X + 0.5, Y: t.Y + 0.5 })
-  const rides = [...destinations(world, '0,0').map(d => ['0,0', d]), ...destinations(world, 'city').map(d => ['city', d])]
-  assert.ok(rides.some(([from, d]) => from === '0,0' && d.town.key === 'city') && rides.some(([from, d]) => from === 'city' && d.town.key === '0,0'), 'no ride between Koivula and the city')
-  for (const [from, d] of rides) {
-    const path = ridePath(world, from, d)
-    const at = `${from} -> ${d.town.key}`
-    // the boarding cell: the stop of its piece (piece.coach), in world tiles
-    const a = boardingTile(world, from), b = boardingTile(world, d.town.key)
-    const pa = from === 'city' ? getPiece(world, Math.floor(a.X / PIECE), Math.floor(a.Y / PIECE)) : getPiece(world, d.route[0].wx, d.route[0].wy)
-    assert.deepEqual([a.X - pa.wx * PIECE, a.Y - pa.wy * PIECE], [pa.coach.x, pa.coach.y], `${at}: not the boarding cell`)
-    assert.deepEqual(path[0], cell(a), `${at}: the ride does not start on the boarding stop`)
-    assert.deepEqual(path.at(-1), cell(b), `${at}: the ride does not end on the far town's stop`)
-    // between them, the road's piece middles in order, the first or last left
-    // out only where the coach would go to it and turn back past the stop
-    const inner = path.slice(1, -1), mids = d.route.map(mid)
-    const skip = mids.findIndex(m => m.X === inner[0]?.X && m.Y === inner[0]?.Y)
-    assert.ok(skip === 0 || skip === 1, `${at}: the middles do not start at the road's start`)
-    assert.deepEqual(inner, mids.slice(skip, skip + inner.length), `${at}: the middles are not the road's, in order`)
-    assert.ok(mids.length - (skip + inner.length) <= 1, `${at}: more than the last middle was left out`)
-    const turn = (p, q, r) => (q.X - p.X) * (r.X - q.X) + (q.Y - p.Y) * (r.Y - q.Y)
-    if (path.length > 2) {
-      assert.ok(turn(path[0], path[1], path[2]) >= 0, `${at}: the coach turns back after leaving the stop`)
-      assert.ok(turn(path.at(-3), path.at(-2), path.at(-1)) >= 0, `${at}: the coach turns back before the stop`)
-    }
-    if (skip === 1) assert.ok(turn(path[0], mids[0], mids[1]) < 0, `${at}: a middle was left out that did not turn back`)
-    // the mark: on the boarding stop at the start, on the far stop at the end
-    assert.deepEqual(pathAt(path, 0), path[0])
-    assert.deepEqual(pathAt(path, 1), path.at(-1))
-    assert.deepEqual(pathAt(path, -1), path[0])
-    assert.deepEqual(pathAt(path, 2), path.at(-1))
-  }
-  // Koivula to the city: the city's stop is far from the middle of its road's last piece
-  const toCity = destinations(world, '0,0').find(d => d.town.key === 'city')
-  const end = ridePath(world, '0,0', toCity).at(-1), last = mid(toCity.route.at(-1))
-  assert.ok(Math.hypot(end.X - last.X, end.Y - last.Y) > 10, 'the city\'s stop is the middle of a piece?')
-})
-
-test('the coach\'s mark goes along the ride at an even pace', () => {
-  const path = [{ X: 0, Y: 0 }, { X: 30, Y: 0 }, { X: 30, Y: 10 }]
-  assert.deepEqual(pathAt(path, 0.5), { X: 20, Y: 0 })
-  assert.deepEqual(pathAt(path, 0.75), { X: 30, Y: 0 })
-  assert.deepEqual(pathAt(path, 0.875), { X: 30, Y: 5 })
-  assert.deepEqual(pathAt([{ X: 4, Y: 5 }], 0.3), { X: 4, Y: 5 })
-  assert.deepEqual(pathAt([{ X: 4, Y: 5 }, { X: 4, Y: 5 }], 0.3), { X: 4, Y: 5 })
 })
 
 test('a coach button names the town, the side in lower case, and the leagues ("1 league" for one)', () => {
