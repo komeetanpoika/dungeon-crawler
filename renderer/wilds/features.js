@@ -105,6 +105,20 @@ const RING = 15, STREET_TO = 5
 const FOLD_ARC = [Math.PI / 9, Math.PI * 7 / 18]   // 20° to 70°, y down
 // at toughness 1 and 2, no foe of a pack is posted within this many tiles of a road
 const ROAD_CALM = 10
+// A village's coach stop (wilds/coach.js) stands within COACH_REACH of where
+// its road reaches the ring; a cell a tree or a bush must be cleared from for
+// it costs as much as COACH_CLEAR tiles farther off. Where no road of the
+// village has such room, it may stand COACH_FARTHER farther off, and the cart
+// with its horse away from the road (the art has the horse west only), at a
+// cost of COACH_TURNED tiles.
+const COACH_REACH = 8, COACH_CLEAR = 4, COACH_FARTHER = 4, COACH_TURNED = 3
+// A stop in a bend of the road, with road on more than one side of it, lies
+// where someone walking the road cuts the corner and boards by mistake (and
+// the road's verge makes it look like road): a cell of the stop costs
+// COACH_BEND tiles for each step it is into a bend, the boarding cell three times that.
+const COACH_BEND = 1
+// What the coachman says (a ride costs nothing).
+const COACH_LINES = ['Step up beside the cart when you want to ride. She knows every road from here.', 'No fare. The horse wants the work, and I want the company.']
 const VILLAGERS = ['villager', 'villager', 'villager', 'elder', 'chicken', 'chicken', 'sheep', 'goat']
 const ROCKS = {
   forest: ['ow_rock_gray_moss_0', 'ow_rock_gray_moss_1', 'ow_rock_gray_moss_2'],
@@ -718,6 +732,88 @@ export function placeFeatures(t, piece) {
       }
     }
   }
+  // ---- the coach stop -------------------------------------------------------------
+  // A village's stop (wilds/coach.js): the city's horse and cart beside the
+  // first of its roads by N, E, S, W, near where that road reaches the ring
+  // round the village (its first cell within RING + 1 of the square's middle,
+  // walking in along it from its gate). The cart stands beside the road with
+  // the horse towards it, the boarding cell beside the cart and the road (so
+  // whoever arrives steps off the coach onto the road), and the coachman by
+  // the cart, next to the boarding cell or the road, where he is reached. All
+  // of it off every road, path and cobble, off what the village has built
+  // and the small things' ground, out of the frame, on open land or on land
+  // only a tree or a bush stands on (cleared for it, at COACH_CLEAR a cell):
+  // the nearest such place to where the road comes in. A side with none
+  // within COACH_REACH gives way to the next; where no side has any, the
+  // sides are searched again farther out, the horse as it falls. No draw of
+  // the piece's rng is spent, so the village is everything it was.
+  const ringPoint = side => {
+    const g = t.gateInner(side)
+    const seen = new Uint8Array(PIECE * PIECE), queue = []
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const i = (g.y + dy) * PIECE + g.x + dx
+      if (t.onRoad(g.x + dx, g.y + dy) && !seen[i]) { seen[i] = 1; queue.push(i) }
+    }
+    for (let q = 0; q < queue.length; q++) {
+      const i = queue[q], x = i % PIECE, y = (i / PIECE) | 0
+      if (Math.hypot(x - mx, y - my) <= RING + 1) return { x, y }
+      for (const [dx, dy] of STEP4) {
+        const n = (y + dy) * PIECE + x + dx
+        if (t.onRoad(x + dx, y + dy) && !seen[n]) { seen[n] = 1; queue.push(n) }
+      }
+    }
+    return null
+  }
+  const layCoachStop = () => {
+    const near = roadNear()
+    const byRoad = (x, y) => near[y * PIECE + x] === 1
+    const overgrown = (x, y) => !t.walkable(x, y) && GROWTH.test(t.propAt(x, y) ?? '')
+    const usable = (x, y) => Math.min(x, y, PIECE - 1 - x, PIECE - 1 - y) >= FRAME + 2 && t.kind(x, y) === 'land' &&
+      !t.onPath(x, y) && !taken.has(`${x},${y}`) && t.groundAt(x, y) !== 'ow_cobble_green' && (t.free(x, y) || overgrown(x, y)) &&
+      !piece.villagePoints.some(p => Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1) &&
+      !piece.small.some(s => Math.hypot(x - s.x, y - s.y) <= padOf(s.kind) + 2)
+    const cost = (x, y) => t.free(x, y) ? 0 : COACH_CLEAR
+    // how far into a bend: road on more than one of its four sides, round more than three of its eight neighbours
+    const bend = (x, y) => {
+      let n4 = 0, n8 = 0
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if ((dx || dy) && t.onRoad(x + dx, y + dy)) { n8++; if (!dx || !dy) n4++ }
+      }
+      return COACH_BEND * (2 * Math.max(0, n4 - 1) + Math.max(0, n8 - 3))
+    }
+    for (const [reach, turned] of [[COACH_REACH, null], [COACH_REACH + COACH_FARTHER, COACH_TURNED]]) for (const side of roadGates) {
+      const a = ringPoint(side)
+      if (!a) continue
+      let best = null
+      // (hx, hy) the horse, the cart east of it
+      for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+        const hx = a.x + dx, hy = a.y + dy
+        if (!usable(hx, hy) || !usable(hx + 1, hy)) continue
+        const dh = near[hy * PIECE + hx], dc = near[hy * PIECE + hx + 1]
+        if (Math.min(dh, dc) !== 1 || (dh > dc && turned === null)) continue
+        const base = Math.hypot(hx + 0.5 - a.x, hy - a.y) + cost(hx, hy) + cost(hx + 1, hy) + bend(hx, hy) + bend(hx + 1, hy) + (dh > dc ? turned : 0)
+        if (best && base >= best.score) continue
+        for (const [bx, by] of [[hx - 1, hy], [hx + 2, hy], [hx, hy + 1], [hx + 1, hy + 1], [hx, hy - 1], [hx + 1, hy - 1]]) {
+          if (!usable(bx, by) || !byRoad(bx, by)) continue
+          for (let cy = hy - 1; cy <= hy + 1; cy++) for (let cx = hx - 1; cx <= hx + 2; cx++) {
+            if ((cy === hy && (cx === hx || cx === hx + 1)) || (cx === bx && cy === by) || !usable(cx, cy)) continue
+            if (Math.abs(cx - bx) + Math.abs(cy - by) !== 1 && !byRoad(cx, cy)) continue
+            const score = base + cost(bx, by) + 3 * bend(bx, by) + cost(cx, cy) / 2
+            if (!best || score < best.score) best = { score, hx, hy, bx, by, cx, cy }
+          }
+        }
+      }
+      if (!best) continue
+      const { hx, hy, bx, by, cx, cy } = best
+      sites.coach(hx, hy)
+      for (const [x, y] of [[bx, by], [cx, cy]]) { if (!t.free(x, y)) t.clear(x, y); hold(x, y) }
+      npc('villager', cx, cy, { lines: COACH_LINES, coachman: true, roam: 0 })
+      return { x: bx, y: by, town: key }
+    }
+    return null
+  }
+  if (kind === 'village') piece.coach = layCoachStop()
+
   // ---- what stands beside a road ------------------------------------------------
   // A signpost or a milestone stands on land inside the frame, off every path
   // and every site's ground, never where it would part the ground round it,

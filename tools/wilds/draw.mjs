@@ -70,6 +70,7 @@ export function pieceArtOf(p) {
       ...p.spawns.map(s => ({ x: s.x, y: s.y, c: s.kind === 'chest' || s.kind === 'weapon' ? '#facc15' : s.kind === 'npc' ? '#34d399' : s.kind === 'wild_mushroom' ? '#c084fc' : '#e5484d', label: s.species ?? s.kind })),
       ...p.caves.map(c => ({ x: c.x, y: c.y, c: '#111', label: `d${c.caveDepth}` })),
       ...p.doors.map(d => ({ x: d.x, y: d.y, c: '#f5a524', label: d.kind ?? d.tier })),
+      ...(p.coach ? [{ x: p.coach.x, y: p.coach.y, c: '#60a5fa', label: 'coach' }] : []),
     ],
   }
 }

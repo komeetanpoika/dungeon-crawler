@@ -47,9 +47,10 @@ export function generatePiece(seed, wx, wy, deal = 0, tale = null, villageTale =
   const t = makeTerrain(seed, wx, wy, deal)
   const tier = tierAt(wx, wy)
   // cls: what the roads make of the piece (roads.js pieceClass); road: its road
-  // sides and where its roads meet, or null for a piece with no road edge (features.js)
+  // sides and where its roads meet, or null for a piece with no road edge (features.js);
+  // coach: a village's coach stop { x, y, town } (coach.js), else null
   const piece = {
-    key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy), cls: pieceClass(seed, wx, wy), road: null,
+    key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy), cls: pieceClass(seed, wx, wy), road: null, coach: null,
     main: null, small: [], packs: [], tale, points: [], villageTale, villagePoints: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
     spawnPoint: null, gates: t.gates, lootDepth: lootDepthFor(tier),
   }

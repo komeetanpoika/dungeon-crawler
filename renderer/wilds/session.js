@@ -105,16 +105,19 @@ export function capInstances(instances, max = 4) {
   return Object.fromEntries(entries.filter(([, inst]) => inst?.cleared === true || spare-- <= 0))
 }
 
-// The walk-onto triggers and signs of the nine pieces, in window tiles.
+// The walk-onto triggers and signs of the nine pieces, in window tiles; and
+// the coach stops (coach.js), one in each town's piece.
 function setTriggers(state, grid) {
   state.caveEntrances = []
   state.houseDoors = []
   state.signs = []
+  state.coachStops = []
   eachPiece(grid, (piece, c, r) => {
     const at = t => ({ ...t, x: t.x + c * PIECE, y: t.y + r * PIECE })
     state.caveEntrances.push(...piece.caves.map(at))
     state.houseDoors.push(...piece.doors.map(at))
     state.signs.push(...piece.signs.map(at))
+    if (piece.coach) state.coachStops.push(at(piece.coach))
   })
   state.gates = {}
   state.mapExit = null
@@ -169,9 +172,11 @@ export function enterWilds(state, world, target, { buildEntities }) {
     ?? { x: PIECE + centre.spawnPoint.x, y: PIECE + centre.spawnPoint.y }
   putPlayer(state, at.x, at.y)
   // Waking on a cave mouth or a doorstep (a save made underground puts you
-  // there) must not walk you straight back in: hold until you step off.
+  // there) must not walk you straight back in: hold until you step off. Nor
+  // must waking on a coach stop start a ride (coach.js tickCoach).
   const on = t => t.x === at.x && t.y === at.y
   state.entranceHold = state.caveEntrances.some(on) || !!doorAt(state.houseDoors, at.x, at.y)
+  state.coachHold = state.coachStops.some(on)
 }
 
 // Step the window by (dx, dy) pieces: record and drop what leaves, shift

@@ -761,8 +761,10 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // cave, -3,1 and 4,-2 (even) went from a cave to a ruin and 6,1 (odd) from a camp to a ruin, each on the
   // same spot with the same paths and small things, what is dealt after the main thing following from it.
   // And again when road pieces got their signposts: 1,0 0,-1 and -5,-5 moved by the post beside their
-  // junction; 0,0's sign only says more, and the wild four have none.)
-  const BEFORE = { '0,0': '332986a7ddd50c40', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '66b77a8606371d51', '-3,1': 'f7270fea10aba69d', '4,-2': '32b65c91bf91bf42', '-5,-5': '33ca9c61e541e030', '6,1': '38168e49d6d9fd1f' }
+  // junction; 0,0's sign only says more, and the wild four have none.
+  // And again when villages got their coach stops: only 0,0 moved, by its horse and cart and the
+  // coachman (a spawn after the small things'); the other seven are no village.)
+  const BEFORE = { '0,0': '025aeadf98a08b1a', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '66b77a8606371d51', '-3,1': 'f7270fea10aba69d', '4,-2': '32b65c91bf91bf42', '-5,-5': '33ca9c61e541e030', '6,1': '38168e49d6d9fd1f' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

@@ -179,7 +179,7 @@ const FARM_PLANS = {
 //   ['statue', x, y]       the tended statue, its base at (x, y)
 //   ['tower', dx, dy]      the ruined keep's tower, its door at (dx, dy) (ruinTower)
 //   ['cobble', x, y, r2]   cobbles out to r² round (x, y)
-// The cart of the inn's yard is the city's (city/kit.js PROPS.cart: horse west, cart east).
+// The cart of the inn's yard, and of a village's coach, is the city's (city/kit.js PROPS.cart: horse west, cart east).
 const CART = ['ow_prop_city_cart_horse', 'ow_prop_city_cart']
 const WAYSIDE_PLANS = {
   // a tent, the fire, a log to sit on, the traveller's things
@@ -794,6 +794,10 @@ export function makeSites(c) {
   }
   // A stone beside the road; it gives way like any dressing.
   const milestone = (x, y) => low(x, y, MILESTONE)
+  // A village's coach (features.js, wilds/coach.js): the inn's horse and cart,
+  // the horse at (x, y) and the cart east of it. It stays where it is put: it
+  // is no dressing, and nothing takes it up.
+  const coach = (x, y) => { put(x, y, CART[0]); put(x + 1, y, CART[1]) }
 
   // ---- camps -------------------------------------------------------------------
   // look: 'bandits' (tents round a fire), 'graves', 'den' (rocks and bones),
@@ -1196,5 +1200,5 @@ export function makeSites(c) {
 
   const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree,
     sampo_sea: tursoBay, sampo_mountain: copperBowl, sampo_marsh: pikePond }
-  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, ...farms, ...wayside }
+  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, coach, ...farms, ...wayside }
 }

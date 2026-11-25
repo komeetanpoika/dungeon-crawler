@@ -769,6 +769,7 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
         if (n && s.lines) n.lines = s.lines   // someone at home says what that household says
         if (n && s.look) n.look = s.look      // one of Kalevanlinna's people at home, as they look outside
         if (n && s.hears) n.hears = s.hears   // a traveller on the road names a town (wilds/world.js hear)
+        if (n && s.coachman) n.coachman = true   // the coachman by a village's cart, who says why he will not drive (wilds/coach.js)
         return n ? [n] : []
       }
       // a Wilds camp's fire (wilds/sites.js): it never burns down, and cooks like any other

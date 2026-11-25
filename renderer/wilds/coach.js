@@ -1,0 +1,148 @@
+// The coach line: a horse and cart in every village and in Kalevanlinna that
+// takes the player along a road to a town at its other end. DOM-free: the
+// stops are laid by the generator (features.js for a village, city/build.js
+// for the city: piece.coach), session.js gathers them into the window
+// (state.coachStops) and holds a stop the player arrives on (state.coachHold);
+// this module has the rules. game.js shows the menu and the ride.
+//
+//   piece.coach       { x, y, town }   the boarding cell in piece tiles, and the town's key
+//   state.coachStops  { x, y, town }[] the window's stops, in window tiles
+//   state.coachHold   the latch: set when a stop boards, on arriving by coach and on
+//                     waking on a stop; cleared once the player stands on no stop
+//
+// One league is one piece. A ride takes RIDE_SECONDS however long its road,
+// costs nothing, and moves the day on by LEAGUE_CLOCK of a day per league.
+import { roadsFrom, townOf } from './roads.js'
+import { hear, getPiece } from './world.js'
+import { enterWilds } from './session.js'
+import { PIECE, pieceOf } from './layout.js'
+import { fromCity } from './city/geometry.js'
+import { cityFor } from './city/build.js'
+import { TILE } from '../systems/entities.js'
+import { playerBound } from '../systems/player-bind.js'
+import { isEnemy } from '../systems/factions.js'
+import { advanceClock } from '../systems/weather.js'
+import { DAY_LENGTH, DAY_START } from '../data/weather.js'
+
+export const RIDE_SECONDS = 4
+export const LEAGUE_CLOCK = 1 / 24
+// tiles from the player within which a hostile that has noticed them stops the coach
+export const HOSTILE_REACH = 12
+export const REFUSAL_LINES = Object.freeze({
+  wanted: 'Not with the watch after you.',
+  chased: 'Not with that at your heels.',
+  bound: 'Sit up first.',
+})
+
+// The towns a ride from `townKey` goes to, one road each (roads.js roadsFrom):
+// { town, side, leagues, route }. Listing a town is hearing of it (world.js
+// hear: the map pencils it in); the caller saves.
+export function destinations(world, townKey) {
+  const list = roadsFrom(world.seed, townKey).map(r => Object.freeze({ town: r.town, side: r.side, leagues: r.leagues, route: r.route }))
+  hear(world, list.map(d => d.town.key))
+  return Object.freeze(list)
+}
+
+// Why the coachman will not drive now, or null: the watch is after the player
+// in Kalevanlinna; a living hostile that has noticed them is within
+// HOSTILE_REACH tiles; or they are frozen, held, in the stocks, or on a
+// mushroom trip (its climb, its fade, the rite and the pull to the ring).
+export function refusal(state) {
+  if (state.cityRun?.crime?.level === 'wanted') return 'wanted'
+  const p = state.player
+  for (const e of state.entities ?? []) {
+    if (!isEnemy(e) || !(e.hp > 0) || !noticed(e)) continue
+    if (Math.hypot(e.x - p.x, e.y - p.y) <= HOSTILE_REACH) return 'chased'
+  }
+  if (playerBound(p) || p.trance > 0 || p.tranceFade > 0 || state.rite || state.tripPull) return 'bound'
+  return null
+}
+// a foe after the player: chasing them, hunting where it saw them last, or in a fight with them
+const noticed = e => e.ai?.mode === 'chase' || (e.ai?.mode === 'hunt' && !!e.ai.lastSeen) || e.inCombat === true
+
+// Once a frame on the surface: the stop the player has just stepped onto, or
+// null. A stop is latched in state.coachHold until the player stands on no
+// stop, so standing on one boards once, and arriving on one (a load, a wake)
+// boards not at all until the player steps off and on again.
+export function tickCoach(state) {
+  if (state.cave || !state.wilds || !state.coachStops) return null
+  const p = state.player
+  const stop = state.coachStops.find(s => s.x === p.x && s.y === p.y)
+  if (!stop) { state.coachHold = false; return null }
+  if (state.coachHold) return null
+  state.coachHold = true
+  return { town: stop.town }
+}
+
+// The piece that holds a town's stop: the village's own, or the city piece
+// with the stop (city/build.js puts it by the inn's cart).
+function stopPiece(seed, townKey) {
+  if (townKey === 'city') {
+    const c = cityFor(seed).coach
+    const { X, Y } = fromCity(c.x, c.y)
+    return pieceOf(X, Y)
+  }
+  const town = townOf(seed, townKey)
+  return town ? { wx: town.wx, wy: town.wy } : null
+}
+
+const SIDE_STEPS = [[0, 1], [1, 0], [-1, 0], [0, -1]]
+// The world tile to arrive on at a town's stop: a walkable cell beside the
+// boarding cell, not under a roof and not a doorway, the road's own where
+// there is one (a village's stop is beside its road: its ground, its planks,
+// or the cobbles it wears in the village), else the first by S, E, W, N.
+// Null if the town has no stop.
+export function stopTile(world, townKey) {
+  const at = stopPiece(world.seed, townKey)
+  if (!at) return null
+  const piece = getPiece(world, at.wx, at.wy)
+  const c = piece.coach
+  if (!c) return null
+  const opening = (x, y) => [...piece.doors, ...piece.caves].some(d => d.x === x && d.y === y)
+  const cells = SIDE_STEPS.map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy })).filter(({ x, y }) => {
+    const cell = piece.cells[y]?.[x]
+    return !!cell && cell.tile === TILE.FLOOR && !cell.over && !opening(x, y)
+  })
+  const onRoad = ({ x, y }) => { const { skin = '', overlay = '' } = piece.cells[y][x]; return skin.startsWith('ow_road_') || skin === 'ow_cobble_green' || overlay.startsWith('ow_pier') }
+  const road = cells.find(onRoad)
+  const there = road ?? cells[0]
+  return there ? { X: piece.wx * PIECE + there.x, Y: piece.wy * PIECE + there.y } : null
+}
+
+// Arrive by coach at `dest` (an entry of destinations): the window is built
+// round the stop and the player stands beside it, held off it; the town is
+// visited and is where the player wakes after a death (what standing inside
+// the walls sets, for the city); the day moves on by a twenty-fourth per
+// league through hooks.advanceClock(seconds), which moves the game's clock and
+// returns how many midnights it passed (passTime does both for a save), each
+// one a day on world.day. world.playtime does not move. The caller saves.
+export function arrive(state, world, dest, hooks) {
+  const town = dest.town
+  enterWilds(state, world, stopTile(world, town.key) ?? { wx: town.wx, wy: town.wy }, hooks)
+  state.coachHold = true
+  if (!world.visited.includes(town.key)) world.visited.push(town.key)
+  world.lastVillage = town.key === 'city' ? { wx: 0, wy: 2 } : { wx: town.wx, wy: town.wy }
+  world.day += hooks.advanceClock?.(dest.leagues * LEAGUE_CLOCK * DAY_LENGTH) ?? 0
+  return town
+}
+
+// Move a save's day clock (systems/weather.js: seconds into the day) on by
+// `seconds`; returns how many midnights that passed. What game.js gives
+// arrive as hooks.advanceClock.
+export function passTime(save, seconds) {
+  const before = save.clock ?? DAY_START
+  advanceClock(save, seconds)
+  return Math.floor((before + seconds) / DAY_LENGTH)
+}
+
+// The world tile `f` (0..1) of the way along a route's piece centres, each
+// step a league: where the coach is on the map during the ride.
+export function rideAt(route, f) {
+  const n = route.length - 1
+  const centre = p => ({ X: p.wx * PIECE + PIECE / 2, Y: p.wy * PIECE + PIECE / 2 })
+  if (n <= 0) return centre(route[0])
+  const s = Math.max(0, Math.min(1, f)) * n
+  const i = Math.min(n - 1, Math.floor(s)), k = s - i
+  const a = centre(route[i]), b = centre(route[i + 1])
+  return { X: a.X + (b.X - a.X) * k, Y: a.Y + (b.Y - a.Y) * k }
+}

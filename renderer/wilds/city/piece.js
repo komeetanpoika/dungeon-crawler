@@ -42,6 +42,8 @@ export function generateCityPiece(seed, wx, wy) {
     doors: city.doors.filter(mine).map(local),
     signs: city.signs.filter(mine).map(local),
     village, spawnPoint,
+    // the coach stop (wilds/coach.js), on the piece that holds it
+    coach: mine(city.coach) ? { ...local(city.coach), town: 'city' } : null,
     gates: { N: { x: gate('N'), y: 0 }, E: { x: PIECE - 1, y: gate('E') }, S: { x: gate('S'), y: PIECE - 1 }, W: { x: 0, y: gate('W') } },
     lootDepth: lootDepthFor(tierAt(wx, wy)),
   }
