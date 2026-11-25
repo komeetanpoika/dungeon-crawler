@@ -51,9 +51,15 @@ const blockTown = (seed, bx, by) => {
   return v ? townOf(seed, pieceKey(v.wx, v.wy)) : null
 }
 
+// A sea piece costs as much as SEA_COST land pieces, so a road goes round a bay
+// wherever its search box holds a way over land; the crossings left are piers.
+// Measured with tools/wilds/roads.mjs: the share of road pieces over the sea
+// stops falling at about 6 to 10 (seeds 1, 7, 42: 7.2/12.8/13.7 % at 3, 5.5/10.0/11.9 %
+// at 10, no link more than 4 pieces longer). The box is not widened for cost.
+const SEA_COST = 10
 const stepCost = (seed, wx, wy) => {
   const b = pieceBiome(seed, wx, wy)
-  return b === 'sea' ? 3 : b === 'mountain' ? 2 : 1
+  return b === 'sea' ? SEA_COST : b === 'mountain' ? 2 : 1
 }
 
 // Cheapest chain of pieces from `from` to `to` inclusive. City pieces and

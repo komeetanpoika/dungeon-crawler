@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { nameAskCount } from '../renderer/wilds/layout.js'
 import { MAX_GROW, GATHER, linksOfBlock, roadSides, roadsFrom, townsAlong, pieceClass, townOf, CITY_DOORS, EXTRA_SOUTH } from '../renderer/wilds/roads.js'
-import { villageAt, blockVillage } from '../renderer/wilds/layout.js'
+import { villageAt, blockVillage, pieceBiome } from '../renderer/wilds/layout.js'
 import { isCityPiece } from '../renderer/wilds/city/geometry.js'
 
 const SEEDS = [1, 7, 42, 1234, 987654]
@@ -229,6 +229,22 @@ test('every piece of every link lies within the gathering radius of its owning b
       assert.ok(Math.abs(Math.floor(p.wx / 4) - bx) <= GATHER && Math.abs(Math.floor(p.wy / 4) - by) <= GATHER, `seed ${seed} block ${bx},${by} piece ${p.wx},${p.wy}`)
     }
   }
+})
+
+test('roads cross fewer sea pieces where land goes round', () => {
+  // Road pieces whose pieceBiome is 'sea' in the 24x24 pieces round home, over SEEDS
+  // (the share tools/wilds/roads.mjs prints). Sea cost 3: 128 of 1164 (11.0 %; seeds 1, 7, 42
+  // 7.2, 12.8, 13.7 %). Sea cost 10: 108 of 1174 (9.2 %; 5.5, 10.0, 11.9 %). What is left is
+  // mostly villages standing in sea country, the pieces beside them and bays that fill a
+  // link's whole search box, which no cost can route round.
+  let road = 0, sea = 0
+  for (const seed of SEEDS) for (let wy = -12; wy < 12; wy++) for (let wx = -12; wx < 12; wx++) {
+    const s = roadSides(seed, wx, wy)
+    if (!(s.N || s.E || s.S || s.W)) continue
+    road++
+    if (pieceBiome(seed, wx, wy) === 'sea') sea++
+  }
+  assert.ok(sea / road < 0.095, `${sea} of ${road} road pieces over the sea`)
 })
 
 test('the road network works out no village name: names are only read on demand', () => {
