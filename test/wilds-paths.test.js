@@ -222,7 +222,10 @@ test('the game\'s cells: no bridge joined at a corner, and nothing a trail leads
 // village or of a tale's place; a piece with no road edge as it always was.
 const SIDES = ['N', 'E', 'S', 'W']
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,   // as features.js opens them
-  farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6 }
+  farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6,
+  rest: 5, shrine: 5, inn: 9, tower: 8 }
+// the roadside's wayside places stand by the junction, their ground reaching the road (test/wilds-land.test.js)
+const WAYSIDE = ['rest', 'shrine', 'inn', 'tower']
 const CALM = 10   // at toughness 1 and 2, no foe of a pack this near a road
 const sidesOf = sides => SIDES.filter(s => sides[s])
 // Road pieces round home that are neither a village nor Kalevanlinna, nearest first.
@@ -294,8 +297,9 @@ test('the junction keeps clear of the main thing', () => {
   for (const b of roadSample()) {
     const { t, piece, at } = b
     const j = piece.road.junction, m = piece.main, pad = PAD[m.kind]
-    assert.ok(Math.hypot(j.x - m.x, j.y - m.y) >= pad + 4, `${at}: the junction ${j.x},${j.y} is ${Math.hypot(j.x - m.x, j.y - m.y).toFixed(1)} from the ${m.kind} at ${m.x},${m.y}`)
     for (const v of [j.x, j.y]) assert.ok(v >= FRAME + 8 && v <= PIECE - FRAME - 9, `${at}: the junction ${j.x},${j.y} is out of its box`)
+    if (WAYSIDE.includes(m.kind)) continue
+    assert.ok(Math.hypot(j.x - m.x, j.y - m.y) >= pad + 4, `${at}: the junction ${j.x},${j.y} is ${Math.hypot(j.x - m.x, j.y - m.y).toFixed(1)} from the ${m.kind} at ${m.x},${m.y}`)
     // nor does a road run through the main thing's pad
     for (let dy = -pad; dy <= pad; dy++) for (let dx = -pad; dx <= pad; dx++)
       if (dx * dx + dy * dy <= pad * pad) assert.ok(!t.onRoad(m.x + dx, m.y + dy), `${at}: a road runs through the ${m.kind}'s pad at ${m.x + dx},${m.y + dy}`)

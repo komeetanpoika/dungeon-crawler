@@ -1,6 +1,7 @@
 // What the things of a Wilds piece look like: houses of several sizes, a
-// village with a field and a stall, the farms of farmland, a ruined keep,
-// camps dressed for whoever camps there, a cave mouth in an outcrop. Stamps
+// village with a field and a stall, the farms of farmland, the wayside places
+// and milestones of the roads, a ruined keep, camps dressed for whoever camps
+// there, a cave mouth in an outcrop. Stamps
 // only: features.js decides what goes where, opens the ground and lays the
 // paths first.
 //
@@ -169,6 +170,49 @@ const FARM_PLANS = {
     ['folk', -3, 1, 'villager'], ['folk', 3, 2, 'villager'], ['folk', -1, -2, 'elder'],
   ]],
 }
+// ---- the wayside places of the roadside (features.js ROADSIDE) ---------------------
+// Laid as a farm is (lay below), from plans in cells from the place's middle;
+// features.js leads a trail from the junction to the edge of the place
+// nearest it. Besides a farm's items they use
+//   ['tent', x, y, kind]   a tent two by two, its north-west cell at (x, y)
+//   ['fire', x, y]         an eternal campfire (the game builds one from every campfire spawn)
+//   ['statue', x, y]       the tended statue, its base at (x, y)
+//   ['tower', dx, dy]      the ruined keep's tower, its door at (dx, dy) (ruinTower)
+//   ['cobble', x, y, r2]   cobbles out to r² round (x, y)
+// The cart of the inn's yard is the city's (city/kit.js PROPS.cart: horse west, cart east).
+const CART = ['ow_prop_city_cart_horse', 'ow_prop_city_cart']
+const WAYSIDE_PLANS = {
+  // a tent, the fire, a log to sit on, the traveller's things
+  rest: [[
+    ['tent', -3, -3, 'ow_tent'], ['fire', 0, 0], ['low', 2, 0, 'ow_prop_log'], ['low', -1, -2, 'ow_prop_sack_0'],
+    ['low', 2, -2, 'ow_prop_woodpile'], ['low', -2, 1, 'ow_prop_bedroll_0'],
+    ['folk', 1, 1, 'villager'],
+  ], [
+    ['tent', 1, 1, 'ow_tent_tan'], ['fire', -1, -1], ['low', -3, -1, 'ow_prop_log'], ['low', 3, 0, 'ow_prop_sack_1'],
+    ['low', -2, -3, 'ow_prop_woodpile'], ['low', 0, -3, 'ow_prop_bedroll_1'],
+    ['folk', -2, 0, 'villager'],
+  ]],
+  // the statue on its cobbles, a torch at each corner, a pot of offerings (flowers and the chest: shrine())
+  shrine: [[
+    ['cobble', 0, 0, 6], ['statue', 0, 0], ['low', 1, 0, 'ow_prop_pot'],
+    ['low', -2, -2, 'ow_prop_torch'], ['low', 2, -2, 'ow_prop_torch'], ['low', -2, 2, 'ow_prop_torch'], ['low', 2, 2, 'ow_prop_torch'],
+  ]],
+  // a big house, five wide and two storeys, a fenced stable yard with the cart, the innkeeper at the door
+  inn: [[
+    ['house', 0, -2, 5, 2, 'wood'], ['low', -3, -2, 'ow_prop_woodpile'], ['low', -2, 1, 'ow_prop_barrel_1'], ['low', 2, 1, 'ow_prop_crate_0'],
+    ['fence', 4, -4, 8, 1, 4, 0], ['pair', 5, -2, ...CART], ['low', 7, 0, HAY[0]], ['low', 5, 0, 'ow_prop_bucket_water'],
+    ['folk', -1, 0, 'villager'],
+  ], [
+    ['house', 0, -3, 5, 2, 'stone'], ['low', -3, -3, 'ow_prop_woodpile'], ['low', 3, -3, 'ow_prop_barrel_0'], ['low', 4, -3, 'ow_prop_barrel_1'],
+    ['fence', -3, 2, 3, 6, 0, 2], ['pair', -2, 4, ...CART], ['low', 2, 5, HAY[1]], ['low', 2, 3, 'ow_prop_bucket_water'],
+    ['folk', 1, -1, 'villager'],
+  ]],
+  // the tower alone: its broken walls are laid round wherever it settles (tower())
+  tower: [[['tower', 0, 0]]],
+}
+// A milestone (tools/make-wilds-road-tiles.mjs), beside the road (features.js milestones).
+const MILESTONE = 'ow_prop_milestone'
+
 // a house's door column when the plan does not give it, as house() deals it for widths 3 and 5
 const doorCol = (w, dcol) => dcol ?? (w === 4 ? 1 : (w - 1) >> 1)
 // The plan item moved by (sx, sy).
@@ -182,18 +226,25 @@ function mirrored([kind, ...a]) {
   if (kind === 'house') { const [dx, dy, w, storeys, wall, dcol] = a; return [kind, -dx, dy, w, storeys, wall, w - 1 - doorCol(w, dcol)] }
   if (kind === 'fence' || kind === 'wall') return [kind, -a[2], a[1], -a[0], a[3], a[4] === undefined ? undefined : -a[4], a[5]]
   if (kind === 'field' || kind === 'flat') return [kind, -a[2], a[1], -a[0], ...a.slice(3)]
-  if (kind === 'pair') return [kind, -a[0] - 1, ...a.slice(1)]
+  if (kind === 'pair' || kind === 'tent') return [kind, -a[0] - 1, ...a.slice(1)]
   return [kind, -a[0], ...a.slice(1)]
 }
 // The cells a plan item builds on: `solid` stands, `low` is dressing, `rail`
 // a fence or wall (a gap where a path passes), `flat` is walked on, `step` a doorstep.
 function footprint([kind, ...a]) {
   const out = [], add = (x, y, what) => out.push({ x, y, what })
-  if (kind === 'house' || kind === 'mill') {
-    const [dx, dy] = a, w = kind === 'mill' ? 3 : a[2], storeys = kind === 'mill' ? 2 : a[3], dcol = kind === 'mill' ? 1 : doorCol(w, a[5])
+  if (kind === 'house' || kind === 'mill' || kind === 'tower') {
+    const [dx, dy] = a, w = kind === 'house' ? a[2] : 3, storeys = kind === 'house' ? a[3] : 2, dcol = kind === 'house' ? doorCol(w, a[5]) : 1
     for (let i = 0; i < w; i++) for (let y = dy - 1 - storeys; y <= dy; y++) add(dx - dcol + i, y, 'solid')
-    for (let i = -1; i <= 1; i++) add(dx + i, dy + 1, 'step')
-  } else if (kind === 'fence' || kind === 'wall') {
+    // (the tower keeps two rows clear in front of its arch)
+    for (let j = 1; j <= (kind === 'tower' ? 2 : 1); j++) for (let i = -1; i <= 1; i++) add(dx + i, dy + j, 'step')
+  } else if (kind === 'tent') {
+    for (let j = 0; j <= 1; j++) for (let i = 0; i <= 1; i++) add(a[0] + i, a[1] + j, 'solid')
+  } else if (kind === 'cobble') {
+    const [x0, y0, r2] = a
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy < r2) add(x0 + dx, y0 + dy, 'flat')
+  } else if (kind === 'fire') add(a[0], a[1], 'low')
+  else if (kind === 'fence' || kind === 'wall') {
     const [x0, y0, x1, y1, gx, gy] = a
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
       if ((x === x0 || x === x1 || y === y0 || y === y1) && !(x === gx && y === gy)) add(x, y, 'rail')
@@ -202,7 +253,7 @@ function footprint([kind, ...a]) {
   } else if (kind === 'pair') { add(a[0], a[1], 'low'); add(a[0] + 1, a[1], 'low') }
   else if (kind === 'low') add(a[0], a[1], 'low')
   else if (kind === 'put' || kind === 'rock') add(a[0], a[1], 'solid')
-  else if (kind === 'well') { add(a[0], a[1] - 1, 'solid'); add(a[0], a[1], 'solid') }
+  else if (kind === 'well' || kind === 'statue') { add(a[0], a[1] - 1, 'solid'); add(a[0], a[1], 'solid') }
   return out
 }
 // What a plan item costs for each cell of it on a path; on a road, a cell
@@ -240,8 +291,8 @@ export const SITE_SKINS = [...new Set([
   'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small', 'ow_greytree_0', 'ow_greytree_1',
   // the Lalli tale: his pine (not in the lumber table) and the tale's people
   'ow_lalli_pine_top', 'ow_lalli_pine_trunk', 'npc_lalli', 'npc_lalli_tree', 'npc_piper', 'npc_kerttu',
-  // the farms of farmland
-  ...FARM_SKINS,
+  // the farms of farmland, and what stands beside the roads (the inn's cart is the city's: city/kit.js)
+  ...FARM_SKINS, MILESTONE,
 ])]
 
 // ---- the places of the tales (data/tales.js) --------------------------------------
@@ -336,13 +387,16 @@ export function makeSites(c) {
   const low = (x, y, skin) => { put(x, y, skin); dressing.push({ x, y }) }
   const flat = (x, y, skin) => { if (t.free(x, y) && !c.taken(x, y)) { t.setProp(x, y, skin, { walkable: true }); hold(x, y) } }
   const row = (x, y, skins) => skins.forEach((s, i) => { if (s) put(x + i, y, s) })
-  const scatter = (cx, cy, rMin, rMax, n, skins, solid = false) => {
+  // (`ok`: where a spot is wanted; a spot it refuses is left bare)
+  const scatter = (cx, cy, rMin, rMax, n, skins, solid = false, ok = null) => {
     for (let i = 0; i < n; i++) {
       const at = c.freeSpot(cx, cy, rMin, rMax)
       if (!at) return
+      if (ok && !ok(at.x, at.y)) continue
       if (solid) low(at.x, at.y, pick(skins)); else flat(at.x, at.y, pick(skins))
     }
   }
+  const offPaths = (x, y) => !t.onPath(x, y)
 
   // A house whose door is at (dx, dy), `dcol` cells in from its west wall
   // (dealt when not given); `lived`: someone is always at home (the interior
@@ -486,7 +540,9 @@ export function makeSites(c) {
   // it only if there is none and no road runs there; everything else gives
   // way. Its houses are lived in (tier safe, `lived`). Each returns { doors,
   // people }: the door records it made and spots for one to three people
-  // ({ x, y, species }), whom features.js puts there with their lines.
+  // ({ x, y, species }), whom features.js puts there with their lines. The
+  // wayside places of the roadside are laid the same way (WAYSIDE_PLANS), a
+  // tent, the statue or the tower moving as a house does.
   //
   // What the cells of a plan (its footprint) cost moved by (sx, sy):
   function costOf(cx, cy, cells, sx, sy, r) {
@@ -538,10 +594,10 @@ export function makeSites(c) {
       for (const [ox, oy] of MOVES) { const moved = ox || oy ? shifted(item, ox, oy) : item; if (fits(moved)) return moved }
       return footprint(item).some(({ x, y, what }) => what !== 'step' && t.onRoad(cx + x, cy + y)) ? null : item
     }
-    const BUILDINGS = new Set(['house', 'mill', 'well'])
+    const BUILDINGS = new Set(['house', 'mill', 'well', 'tower', 'statue', 'tent'])
     const free = (x, y) => !t.onPath(x, y) && !c.taken(x, y)
     // ground first, then what is fenced in, the buildings, and what stands about
-    const ORDER = ['field', 'flat', 'fence', 'wall', 'house', 'mill', 'well', 'put', 'rock', 'pair', 'low', 'beast', 'herd', 'folk']
+    const ORDER = ['field', 'flat', 'cobble', 'fence', 'wall', 'house', 'mill', 'well', 'tower', 'statue', 'tent', 'put', 'rock', 'pair', 'low', 'fire', 'beast', 'herd', 'folk']
     for (const step of ORDER) for (const item of best) {
       if (item[0] !== step) continue
       const [kind, ...a] = (BUILDINGS.has(step) ? settle(item) : item) ?? []
@@ -578,6 +634,19 @@ export function makeSites(c) {
         doors.push(c.door(X, Y, 'safe', null, { look: { w: 3, storeys: 2, wall: 'stone' }, lived: true }))
       } else if (kind === 'well') {
         put(X, Y - 1, 'ow_well_top'); put(X, Y, 'ow_well')
+      } else if (kind === 'statue') {
+        put(X, Y - 1, 'ow_statue_top'); put(X, Y, 'ow_statue')
+      } else if (kind === 'tent') {
+        tent(X, Y, a[2])
+      } else if (kind === 'tower') {
+        doors.push(ruinTower(X, Y))
+      } else if (kind === 'cobble') {
+        // a trail keeps its own ground across them
+        for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++)
+          if (dx * dx + dy * dy < a[2] && offWay(X + dx, Y + dy)) { t.clear(X + dx, Y + dy); t.setGround(X + dx, Y + dy, 'ow_cobble_green') }
+      } else if (kind === 'fire') {
+        const at = free(X, Y) && t.free(X, Y) ? { x: X, y: Y } : c.freeSpot(X, Y, 1, 2, (x, y) => free(x, y))
+        if (at) fire(at.x, at.y)
       } else if (kind === 'put') {
         if (free(X, Y)) put(X, Y, a[2])
       } else if (kind === 'rock') {
@@ -598,7 +667,8 @@ export function makeSites(c) {
       const at = c.freeSpot(f.x, f.y, 0, 2)
       if (at) { hold(at.x, at.y); people.push({ x: at.x, y: at.y, species: f.species }) }
     }
-    return { doors, people }
+    // `at`: the plan's middle where it was laid
+    return { doors, people, at: { x: cx + chosen.sx, y: cy + chosen.sy } }
   }
   // Grass over a disc, a trail keeping its own ground: a dry rise in the
   // marsh, an oasis in the desert.
@@ -669,12 +739,22 @@ export function makeSites(c) {
   // The tower still stands and its door leads in; of the wall round the yard
   // only runs are left, never across a road.
   function ruin(cx, cy) {
+    ruinTower(cx, cy)
+    ruinYard(cx, cy)
+  }
+  // The tower, its door (returned) at (cx, cy) and two rows clear before it.
+  function ruinTower(cx, cy) {
     row(cx - 1, cy - 3, ['ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r'])
     row(cx - 1, cy - 2, ['ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r'])
     row(cx - 1, cy - 1, ['ow_brick', 'ow_brick', 'ow_brick'])
     row(cx - 1, cy, ['ow_house_wall_stone_l', 'ow_house_arch_stone', 'ow_house_wall_stone_r'])
-    c.door(cx, cy, 'ruin', null, { look: { w: 3, storeys: 2, wall: 'stone' } })
+    const door = c.door(cx, cy, 'ruin', null, { look: { w: 3, storeys: 2, wall: 'stone' } })
     for (let i = -1; i <= 1; i++) for (let j = 1; j <= 2; j++) { t.clear(cx + i, cy + j); hold(cx + i, cy + j) }
+    return door
+  }
+  // What is left of the wall round the tower at (cx, cy), and its yard.
+  // `offWay`: no fallen stone or bone on a trail either (the watchtower).
+  function ruinYard(cx, cy, offWay = false) {
     const wall = (x, y, skin) => { if (!t.onPath(x, y) && !c.taken(x, y)) put(x, y, skin) }
     // north wall: parapet over brick, in runs
     let run = 0
@@ -689,9 +769,31 @@ export function makeSites(c) {
     for (let dy = -4; dy <= 4; dy++) for (let dx = -5; dx <= 5; dx++)
       if (t.free(cx + dx, cy + dy) && !t.onPath(cx + dx, cy + dy) && rng() < 0.3) t.setGround(cx + dx, cy + dy, c.sandy ? pick(SAND_FLOOR) : 'ow_cobble_green')
     const stones = c.sandy ? SAND_STONES : OLD_STONES
-    scatter(cx, cy, 3, 5, 6, stones, true)
-    scatter(cx, cy, 2, 5, 3, ['ow_deco_skull'])
+    const ok = offWay ? offPaths : null
+    scatter(cx, cy, 3, 5, 6, stones, true, ok)
+    scatter(cx, cy, 2, 5, 3, ['ow_deco_skull'], false, ok)
   }
+
+  // ---- the wayside places (WAYSIDE_PLANS) ---------------------------------------
+  // Each returns what lay does ({ doors, people, at }); features.js gives the
+  // people their lines and puts the chests down.
+  const wayside = {
+    rest: (cx, cy) => lay(cx, cy, WAYSIDE_PLANS.rest, 5),
+    shrine: (cx, cy) => {
+      const made = lay(cx, cy, WAYSIDE_PLANS.shrine, 5)
+      scatter(made.at.x, made.at.y, 3, 5, 8, FLOWERS, false, offPaths)
+      return made
+    },
+    inn: (cx, cy) => lay(cx, cy, WAYSIDE_PLANS.inn, 9),
+    // the ruin kit: the tower moved off the trails as a farm's house is, its broken walls round it
+    tower: (cx, cy) => {
+      const made = lay(cx, cy, WAYSIDE_PLANS.tower, 8)
+      if (made.doors.length) ruinYard(made.doors[0].x, made.doors[0].y, true)
+      return made
+    },
+  }
+  // A stone beside the road; it gives way like any dressing.
+  const milestone = (x, y) => low(x, y, MILESTONE)
 
   // ---- camps -------------------------------------------------------------------
   // look: 'bandits' (tents round a fire), 'graves', 'den' (rocks and bones),
@@ -1094,5 +1196,5 @@ export function makeSites(c) {
 
   const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree,
     sampo_sea: tursoBay, sampo_mountain: copperBowl, sampo_marsh: pikePond }
-  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, ...farms }
+  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, ...farms, ...wayside }
 }

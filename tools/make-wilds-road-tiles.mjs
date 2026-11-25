@@ -17,6 +17,11 @@
 // See the verge section below for how one is drawn, and where it reaches
 // its border on purpose.
 //
+// Last, ow_prop_milestone: a squat stone post with a rounded head and a
+// carved mark, on a plinth, see-through round it, that stands beside the road
+// (renderer/wilds/features.js milestones). The Kenney packs' standing stones
+// are gravestones.
+//
 //   node tools/make-wilds-road-tiles.mjs
 import { writePng } from './png-write.mjs'
 import { EDGE_SHAPES } from '../renderer/terrain/edges.js'
@@ -266,3 +271,37 @@ for (const set of ROAD_SETS) for (const [M, D] of EDGE_SHAPES) for (let V = 0; V
   verges++
 }
 console.log(`wrote ${verges} verge tiles`)
+
+// ---- the milestone ------------------------------------------------------------
+// a outline   L l light faces   s body   k shade   c the carved mark   m moss   . see-through
+const MILESTONE = [
+  '................',
+  '................',
+  '................',
+  '.......aaa......',
+  '......aLLsa.....',
+  '.....aLLlska....',
+  '.....aLlsska....',
+  '.....aLscska....',
+  '.....aLcscka....',
+  '.....aLssska....',
+  '.....aLssska....',
+  '.....aLssska....',
+  '.....amsskka....',
+  '....akkkkkkka...',
+  '....aaaaaaaaa...',
+  '................',
+]
+{
+  const palette = { a: '#4f5b73', L: '#e4e9f0', l: '#d3dbe7', s: '#c0cbdc', k: '#8b9bb4', c: '#6f7d96', m: '#65a556' }
+  if (MILESTONE.length !== 16 || MILESTONE.some(r => r.length !== 16)) throw new Error('ow_prop_milestone: not 16x16')
+  const rgba = new Uint8Array(16 * 16 * 4)
+  MILESTONE.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === '.') return
+    if (!palette[ch]) throw new Error(`ow_prop_milestone: no colour for "${ch}"`)
+    rgba.set([...hex(palette[ch]), 255], (y * 16 + x) * 4)
+  }))
+  const out = new URL('../renderer/assets/tiles/ow_prop_milestone.png', import.meta.url).pathname
+  writePng(out, 16, 16, rgba)
+  console.log(`wrote ${out}`)
+}

@@ -1,7 +1,10 @@
 // What the land holds along the roads (features.js, sites.js): the first road
 // piece out of a town is farmland, and holds a farm of its country with its
 // people, gentle packs well away from the farm and the road, and nothing
-// guarded.
+// guarded. Every other road piece is roadside: a wayside place by its
+// junction more often than a camp or a cave, never a boss, and milestones
+// along its road. Wild land never puts a camp beside a camp or a cave beside a
+// cave.
 //
 // Pieces and spawns are compared by identity or by plain numbers and strings,
 // never deep-equal on big graphs.
@@ -10,8 +13,8 @@ import assert from 'node:assert/strict'
 import { generatePiece } from '../renderer/wilds/piece.js'
 import { makeTerrain } from '../renderer/wilds/terrain.js'
 import { placeFeatures, mainKind } from '../renderer/wilds/features.js'
-import { roadsFrom, pieceClass } from '../renderer/wilds/roads.js'
-import { PIECE, pieceKey, tierAt, pieceBiome, lootDepthFor, villagesNear, fixedMain } from '../renderer/wilds/layout.js'
+import { roadsFrom, pieceClass, roadSides, townsAlong } from '../renderer/wilds/roads.js'
+import { PIECE, FRAME, pieceKey, tierAt, pieceBiome, lootDepthFor, villagesNear, fixedMain } from '../renderer/wilds/layout.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { houseSpec } from '../renderer/interior/versions.js'
@@ -259,4 +262,205 @@ test('every farmland piece has a farm with a house, among many', () => {
   }
   assert.equal(n, 80)
   assert.ok(kinds.size >= 6 && mills >= 1, `only ${[...kinds]} among ${n} farms (${mills} mills)`)
+})
+
+// ---- the roadside, and the wild checkerboard ----------------------------------------
+// Every road piece that is not farmland (nor a village, the city or the home
+// trio) is roadside. Its main thing is dealt from the roadside table: a
+// wayside place (rest, shrine, inn, watchtower) standing by the junction, or
+// a cave, camp, ruin or landmark set back on its trail; never a boss.
+const WAYSIDE = ['rest', 'shrine', 'inn', 'tower']
+const ROADSIDE_PAD = { rest: 5, shrine: 5, inn: 9, tower: 8, cave: 5, camp: 6, ruin: 8, landmark: 7 }   // as features.js opens them
+const SIDES = ['N', 'E', 'S', 'W']
+const roadCount = (seed, wx, wy) => { const s = roadSides(seed, wx, wy); return SIDES.filter(k => s[k]).length }
+const isFoe = s => s.kind !== 'npc' ? !['chest', 'wild_mushroom', 'campfire', 'weapon', 'floating_pickup'].includes(s.kind) : !!NPC_SPECIES[s.species].hostile && s.hostile !== false
+// The roadside pieces round home that `keep` takes, nearest first, n of them, out to R pieces.
+function roadsides(seed, n, keep = () => true, R = 16) {
+  const out = []
+  for (let r = 1; r <= R && out.length < n; r++) for (let wy = -r; wy <= r && out.length < n; wy++) for (let wx = -r; wx <= r && out.length < n; wx++)
+    if (Math.max(Math.abs(wx), Math.abs(wy)) === r && pieceClass(seed, wx, wy) === 'roadside' && keep(wx, wy)) out.push({ wx, wy })
+  return out
+}
+// Three roadside pieces a seed of each wayside kind, of camp and of cave,
+// each the first deal of its piece that deals one still wanted; built once.
+let roadsideSample = null
+const roadsideBuilt = () => roadsideSample ??= SEEDS.flatMap(seed => {
+  const want = Object.fromEntries([...WAYSIDE, 'camp', 'cave'].map(k => [k, 3])), out = []
+  for (const { wx, wy } of roadsides(seed, 80)) for (let deal = 0; deal < 12; deal++) {
+    const k = mainKind(seed, wx, wy, deal)
+    if (!want[k]) continue
+    want[k]--
+    out.push(built(seed, wx, wy, deal))
+    break
+  }
+  return out
+})
+
+test('no boss on a road piece', () => {
+  let n = 0, wild = 0, bosses = 0
+  for (const seed of SEEDS) for (let wy = -14; wy <= 14; wy++) for (let wx = -14; wx <= 14; wx++) {
+    const cls = pieceClass(seed, wx, wy)
+    if (cls === 'city') continue
+    for (let deal = 0; deal < 6; deal++) {
+      const kind = mainKind(seed, wx, wy, deal)
+      if (cls === 'wild') { wild++; if (kind === 'boss') bosses++; continue }
+      n++
+      assert.notEqual(kind, 'boss', `seed ${seed} piece ${wx},${wy} (${cls}) deal ${deal}`)
+    }
+  }
+  assert.ok(n >= 3000, `only ${n} road pieces and deals`)
+  // (wild land far out keeps its bosses)
+  assert.ok(bosses / wild >= 0.05, `${bosses} bosses in ${wild} wild pieces and deals`)
+})
+
+test('roadside pieces hold wayside places more often than a camp or a cave', () => {
+  const count = {}
+  let n = 0
+  for (const seed of SEEDS) for (const { wx, wy } of roadsides(seed, 140)) { const k = mainKind(seed, wx, wy, 0); count[k] = (count[k] ?? 0) + 1; n++ }
+  assert.ok(n >= 400, `only ${n} roadside pieces`)
+  const of = kinds => kinds.reduce((sum, k) => sum + (count[k] ?? 0), 0)
+  assert.ok(of(WAYSIDE) > of(['camp', 'cave']), `${of(WAYSIDE)} wayside places, ${of(['camp', 'cave'])} camps and caves in ${n} roadside pieces`)
+  for (const k of Object.keys(ROADSIDE_PAD)) assert.ok(count[k] > 0, `no ${k} dealt on the roadside`)
+  assert.deepEqual(Object.keys(count).filter(k => !(k in ROADSIDE_PAD)), [], 'a main thing from outside the roadside table')
+})
+
+test('a piece where three roads meet is an inn about three times as often', () => {
+  const odds = many => {
+    let inns = 0, n = 0, pieces = 0
+    for (const seed of [...SEEDS, 7, 42]) for (const { wx, wy } of roadsides(seed, 8, (wx, wy) => (roadCount(seed, wx, wy) >= 3) === many)) {
+      pieces++
+      for (let deal = 0; deal < 40; deal++) { n++; if (mainKind(seed, wx, wy, deal) === 'inn') inns++ }
+    }
+    assert.ok(pieces >= 25, `only ${pieces} roadside pieces with ${many ? 'three or more' : 'fewer than three'} roads`)
+    return { odds: inns / (n - inns), share: inns / n }
+  }
+  const many = odds(true), few = odds(false)
+  // weights 30 of 120 against 10 of 100
+  assert.ok(few.share >= 0.07 && few.share <= 0.13, `an inn in ${(few.share * 100).toFixed(1)} % of pieces with two roads`)
+  assert.ok(many.share >= 0.2 && many.share <= 0.3, `an inn in ${(many.share * 100).toFixed(1)} % of pieces where three roads meet`)
+  const ratio = many.odds / few.odds
+  assert.ok(ratio >= 2.2 && ratio <= 4, `the odds of an inn are ${ratio.toFixed(2)} times as high where three roads meet`)
+})
+
+test('a wayside place stands by the junction, a camp or cave at least PAD + 4 from it', () => {
+  const seen = {}
+  for (const { seed, t, piece, walk, at } of roadsideBuilt()) {
+    const m = piece.main, j = piece.road.junction, pad = ROADSIDE_PAD[m.kind]
+    seen[m.kind] = (seen[m.kind] ?? 0) + 1
+    if (!WAYSIDE.includes(m.kind)) {
+      assert.ok(dist(m, j) >= pad + 4, `${at}: the ${m.kind} is ${dist(m, j).toFixed(1)} from the junction ${j.x},${j.y}`)
+      continue
+    }
+    // its hub, where the trail from the junction ends, is within 3 tiles of it (of the middle of the
+    // road's square there: a road three wide is laid from its point down and right), on the place's
+    // own ground and off the road
+    assert.ok(m.hub, `${at}: no hub`)
+    const mid = { x: j.x + 1, y: j.y + 1 }
+    assert.ok(dist(m.hub, mid) <= 3, `${at}: the hub ${m.hub.x},${m.hub.y} is ${dist(m.hub, mid).toFixed(1)} from the junction's middle ${mid.x},${mid.y}`)
+    assert.ok(dist(m.hub, m) <= pad, `${at}: the hub is off the place's ground`)
+    assert.ok(!t.onRoad(m.hub.x, m.hub.y) && walk(m.hub.x, m.hub.y), `${at}: the hub is on the road or blocked`)
+    // no part of it stands on a road or a trail (out to where a building of it may move: the small things keep their own ground)
+    for (let dy = -pad - 7; dy <= pad + 7; dy++) for (let dx = -pad - 7; dx <= pad + 7; dx++) {
+      const x = m.x + dx, y = m.y + dy
+      if (piece.small.some(s => Math.hypot(x - s.x, y - s.y) <= 6)) continue
+      if (t.onPath(x, y)) assert.ok(walk(x, y), `${at}: ${t.propAt(x, y)} stands on the ${t.onRoad(x, y) ? 'road' : 'trail'} at ${x},${y}`)
+    }
+    // and it holds what it is
+    const near = (s, r = pad + 5) => dist(s, m) <= r
+    const props = new Set()
+    for (let dy = -pad - 7; dy <= pad + 7; dy++) for (let dx = -pad - 7; dx <= pad + 7; dx++) { const p = t.propAt(m.x + dx, m.y + dy); if (p) props.add(p) }
+    const people = piece.spawns.filter(s => s.kind === 'npc' && s.species === 'villager' && near(s))
+    if (m.kind === 'rest') {
+      assert.ok(piece.spawns.some(s => s.kind === 'campfire' && near(s, pad)), `${at}: no fire`)
+      assert.ok([...props].some(p => p.startsWith('ow_tent_')), `${at}: no tent`)
+      const traveller = people.find(s => s.hears)
+      assert.ok(traveller, `${at}: no traveller`)
+      assert.ok(Array.isArray(traveller.lines) && traveller.lines.length >= 2 && traveller.lines.every(l => typeof l === 'string' && l.length > 0), `${at}: the traveller has nothing to say`)
+      assert.equal(traveller.hears.length, 1, `${at}: the traveller names ${traveller.hears.length} towns`)
+      const towns = SIDES.filter(s => piece.road.sides[s]).flatMap(s => townsAlong(seed, piece.wx, piece.wy, s).slice(0, 1).map(a => a.town))
+      const town = towns.find(c => c.key === traveller.hears[0])
+      assert.ok(town, `${at}: the traveller names ${traveller.hears[0]}, the next town along none of the roads`)
+      assert.ok(traveller.lines[0].includes(town.name), `${at}: "${traveller.lines[0]}" does not name ${town.name}`)
+    } else if (m.kind === 'shrine') {
+      assert.ok(props.has('ow_statue') && props.has('ow_statue_top'), `${at}: no statue`)
+      assert.ok(piece.spawns.some(s => s.kind === 'chest' && near(s)), `${at}: no chest`)
+      assert.ok([...props].some(p => p.startsWith('ow_deco_flower_')), `${at}: no flowers`)
+    } else if (m.kind === 'inn') {
+      const inn = piece.doors.find(d => d.tier === 'safe' && d.look?.w === 5 && d.look?.storeys === 2 && near(d))
+      assert.ok(inn, `${at}: no inn of five by two storeys`)
+      assert.equal(inn.lived, true, `${at}: the inn is not marked lived in`)
+      assert.equal(houseSpec(inn, { worldSeed: seed }).version, 'home', `${at}: the inn is not a home`)
+      assert.ok(props.has('ow_prop_city_cart_horse') && props.has('ow_prop_city_cart'), `${at}: no cart in the yard`)
+      assert.ok(people.some(s => Array.isArray(s.lines) && s.lines.length >= 2), `${at}: no innkeeper`)
+    } else {
+      assert.ok(piece.doors.some(d => d.tier === 'ruin' && near(d)), `${at}: no tower`)
+      assert.ok(piece.spawns.some(s => s.kind === 'chest' && near(s)), `${at}: no chest`)
+    }
+  }
+  for (const k of [...WAYSIDE, 'camp', 'cave']) assert.ok(seen[k] >= 6, `only ${seen[k] ?? 0} ${k} in the sample`)
+})
+
+test('a camp never borders a camp and a cave never a cave, whatever the deals', () => {
+  let pairs = 0, camps = 0, caves = 0
+  for (const seed of SEEDS) for (let wy = -12; wy <= 12; wy++) for (let wx = -12; wx <= 12; wx++) {
+    if (pieceClass(seed, wx, wy) !== 'wild') continue
+    for (let deal = 0; deal < 4; deal++) { const k = mainKind(seed, wx, wy, deal); if (k === 'camp') camps++; if (k === 'cave') caves++ }
+    for (const [nx, ny] of [[wx + 1, wy], [wx, wy + 1]]) {
+      if (pieceClass(seed, nx, ny) !== 'wild') continue
+      pairs++
+      for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) {
+        const ka = mainKind(seed, wx, wy, a), kb = mainKind(seed, nx, ny, b)
+        if (ka === kb && (ka === 'camp' || ka === 'cave')) assert.fail(`seed ${seed}: a ${ka} at ${wx},${wy} (deal ${a}) beside a ${kb} at ${nx},${ny} (deal ${b})`)
+      }
+    }
+  }
+  assert.ok(pairs >= 600 && camps >= 300 && caves >= 300, `${pairs} wild neighbours, ${camps} camps and ${caves} caves dealt`)
+})
+
+test('a watchtower is empty at toughness 1 and held from 2', () => {
+  const towers = { 1: 0, 2: 0 }
+  for (const seed of SEEDS) for (const tough of [1, 2]) {
+    let n = 0
+    for (const { wx, wy } of roadsides(seed, 30, (wx, wy) => (tierAt(wx, wy) === 1) === (tough === 1), 8)) {
+      if (n >= 2) break
+      const deal = [...Array(24).keys()].find(d => mainKind(seed, wx, wy, d) === 'tower')
+      if (deal === undefined) continue
+      n++
+      const { piece, at } = built(seed, wx, wy, deal)
+      const door = piece.doors.find(d => d.tier === 'ruin')
+      assert.ok(door && dist(door, piece.main) <= ROADSIDE_PAD.tower + 5, `${at}: no tower`)
+      assert.ok(piece.spawns.some(s => s.kind === 'chest' && dist(s, door) <= 6), `${at}: no chest by the tower`)
+      const foes = piece.spawns.filter(s => isFoe(s) && dist(s, door) <= 9)
+      if (tough === 1) assert.equal(foes.length, 0, `${at}: ${foes.map(s => s.species ?? s.kind)} at a tower at toughness 1`)
+      else assert.ok(foes.length >= 3, `${at}: ${foes.length} foes hold the tower at toughness ${piece.tier}`)
+      towers[tough]++
+    }
+  }
+  assert.ok(towers[1] >= 4 && towers[2] >= 4, `${towers[1]} towers at toughness 1, ${towers[2]} beyond`)
+})
+
+test('milestones stand off the road and out of the frame', () => {
+  let stones = 0, roadCells = 0, pieces = 0, bare = 0
+  for (const { t, at } of [...roadsideBuilt(), ...farmSample()]) {
+    let here = 0
+    for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+      if (t.onRoad(x, y)) roadCells++
+      if (t.propAt(x, y) !== 'ow_prop_milestone') continue
+      here++
+      const where = `${at}: the milestone at ${x},${y}`
+      assert.ok(Math.min(x, y, PIECE - 1 - x, PIECE - 1 - y) >= FRAME, `${where} is in the frame`)
+      assert.ok(!t.onPath(x, y), `${where} stands on a ${t.onRoad(x, y) ? 'road' : 'trail'}`)
+      assert.ok(t.kind(x, y) === 'land' && !t.walkable(x, y), `${where} is not a stone on land`)
+      assert.ok(N4.some(([dx, dy]) => t.onRoad(x + dx, y + dy)), `${where} is not beside the road`)
+      // nor in the mouth of a trail
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+        assert.ok(!t.onPath(x + dx, y + dy) || t.onRoad(x + dx, y + dy), `${where} stands in the mouth of the trail at ${x + dx},${y + dy}`)
+    }
+    stones += here; pieces++
+    if (!here) bare++
+  }
+  // about one every 20 tiles of road (a road is three cells wide)
+  const every = roadCells / 3 / stones
+  assert.ok(every >= 14 && every <= 30, `a milestone every ${every.toFixed(1)} tiles of road (${stones} in ${pieces} pieces)`)
+  assert.ok(bare / pieces <= 0.15, `${bare} of ${pieces} road pieces have no milestone`)
 })
