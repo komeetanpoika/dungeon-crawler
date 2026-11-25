@@ -647,9 +647,10 @@ export function makeSites(c) {
     const free = (x, y) => !t.onPath(x, y) && !c.taken(x, y)
     // ground first, then what is fenced in, the buildings, and what stands about
     const ORDER = ['field', 'flat', 'cobble', 'fence', 'wall', 'house', 'inn', 'stable', 'mill', 'well', 'tower', 'statue', 'tent', 'put', 'rock', 'pair', 'low', 'spare', 'fire', 'beast', 'herd', 'folk']
+    // (a plan laid `whole` has every cell checked where it stands: its buildings stay there)
     for (const step of ORDER) for (const item of best) {
       if (item[0] !== step) continue
-      const [kind, ...a] = (BUILDINGS.has(step) ? settle(item) : item) ?? []
+      const [kind, ...a] = (BUILDINGS.has(step) && !whole ? settle(item) : item) ?? []
       if (!kind) continue   // a building with nowhere to go but a road is left out
       const X = cx + a[0], Y = cy + a[1]
       if (kind === 'field') {

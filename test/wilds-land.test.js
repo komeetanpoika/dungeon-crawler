@@ -16,6 +16,7 @@ import { setOpenTops } from '../renderer/wilds/over.js'
 import { classOf, CLASS } from '../renderer/wilds/map.js'
 import { generateInterior } from '../renderer/interior/index.js'
 import { readPng } from '../tools/png-read.mjs'
+import { INN_PLANS } from '../renderer/wilds/inn.js'
 import { placeFeatures, mainKind } from '../renderer/wilds/features.js'
 import { roadsFrom, pieceClass, roadSides, townsAlong, townOf, roadLine, SIDE_WORDS } from '../renderer/wilds/roads.js'
 import { PIECE, FRAME, pieceKey, tierAt, pieceBiome, lootDepthFor, villagesNear, fixedMain, BIOME_NAMES } from '../renderer/wilds/layout.js'
@@ -555,6 +556,68 @@ test('inside, the guests name towns down the roads, and the player hears of them
     }
   }
   assert.ok(told >= innBuilt().length, `${told} guests name a town in ${innBuilt().length} inns`)
+})
+
+// The big inn stands as one of its plans draws it, or not at all: the stable
+// where the plan puts it beside the house (as drawn or mirrored), the yard's
+// things all there, the whole roof walked under; and it stays by the
+// junction, its nearest building within NEAR_JUNCTION of the junction's
+// middle (17 the most measured over these seeds). Over six seeds, the first
+// two inn deals of twelve roadside pieces each, and seed 42's piece 3,2 at
+// deal 4, where the stable was once moved onto the inn's roof.
+const NEAR_JUNCTION = 18
+// where each plan, as drawn and mirrored, puts the stable's first stall from the inn's door
+const STABLE_FROM_DOOR = INN_PLANS.flatMap(plan => {
+  const inn = plan.find(i => i[0] === 'inn'), stable = plan.find(i => i[0] === 'stable')
+  const [, sx, sy, w] = stable, [, dx, dy] = inn
+  return [`${sx - dx},${sy - dy}`, `${dx - (sx + w - 1)},${sy - dy}`]
+})
+let wideInns = null
+const wideInnSample = () => wideInns ??= [...[1, 3, 7, 2024, 42, 9].flatMap(seed => {
+  const out = []
+  for (const { wx, wy } of roadsides(seed, 200)) {
+    const deals = []
+    for (let deal = 0; deal < 30 && deals.length < 2; deal++) if (mainKind(seed, wx, wy, deal) === 'inn') deals.push(deal)
+    if (deals.length < 2) continue
+    out.push(...deals.map(deal => ({ seed, wx, wy, deal })))
+    if (out.length >= 24) break
+  }
+  return out
+}), { seed: 42, wx: 3, wy: 2, deal: 4 }]
+
+test('a big inn stands as its plan draws it: the stable in its place, the yard whole, the roof walked under, by the junction', () => {
+  let big = 0, farthest = 0, pinned = false
+  for (const { seed, wx, wy, deal } of wideInnSample()) {
+    const p = generatePiece(seed, wx, wy, deal), at = `seed ${seed} piece ${wx},${wy} deal ${deal}`
+    const door = p.doors.find(d => d.kind === 'inn')
+    assert.ok(door, `${at}: no inn`)
+    if (seed === 42 && wx === 3 && wy === 2 && deal === 4) { pinned = true; assert.equal(door.look.w, 9, `${at}: not the big inn`) }
+    if (door.look.w !== 9) continue
+    big++
+    const cell = (x, y) => p.cells[y]?.[x] ?? {}
+    const near = []
+    for (let y = door.y - 14; y <= door.y + 14; y++) for (let x = door.x - 14; x <= door.x + 14; x++) if (p.cells[y]?.[x]) near.push({ x, y })
+    // the stable: four stalls in one row, its first stall where a plan puts it from the door
+    const stalls = near.filter(c => STALL.test(cell(c.x, c.y).deco ?? '') || STALL.test(cell(c.x, c.y).overlay ?? ''))
+    assert.ok(stalls.length === 4 && stalls.every(c => c.y === stalls[0].y), `${at}: ${stalls.length} stalls`)
+    const x0 = Math.min(...stalls.map(c => c.x)), row = stalls[0].y
+    assert.ok(STABLE_FROM_DOOR.includes(`${x0 - door.x},${row - door.y}`), `${at}: the stable at ${x0 - door.x},${row - door.y} from the door, none of ${STABLE_FROM_DOOR.join(' ')}`)
+    // the yard's things
+    const has = test => near.some(c => test(cell(c.x, c.y).overlay ?? '', c))
+    assert.ok(has((o, c) => o === 'ow_prop_city_cart_horse' && cell(c.x + 1, c.y).overlay === 'ow_prop_city_cart'), `${at}: no cart`)
+    assert.ok(has(o => o === 'ow_prop_trough'), `${at}: no trough`)
+    assert.ok(has(o => /^ow_prop_hay_/.test(o)), `${at}: no hay`)
+    // the whole roof walked under
+    for (let x = door.x - 4; x <= door.x + 4; x++) assert.ok(cell(x, door.y - 3).over === true, `${at}: the roof at ${x},${door.y - 3} is not walked under`)
+    // by the junction: the nearest cell of the house or the stable
+    const buildingCells = [...stalls.flatMap(c => [0, 1, 2].map(j => ({ x: c.x, y: c.y - j }))),
+      ...Array.from({ length: 36 }, (_, i) => ({ x: door.x - 4 + (i % 9), y: door.y - 3 + Math.floor(i / 9) }))]
+    const nearest = Math.min(...buildingCells.map(c => dist(c, p.road.mid)))
+    farthest = Math.max(farthest, nearest)
+    assert.ok(nearest <= NEAR_JUNCTION, `${at}: the inn's nearest building is ${nearest.toFixed(1)} from the junction's middle`)
+  }
+  assert.ok(pinned, 'seed 42 piece 3,2 deal 4 is not in the sample')
+  assert.ok(big >= 130, `only ${big} big inns in ${wideInnSample().length}`)
 })
 
 test("the stable's tiles: what stands alone keeps off its edges, the stalls join without a seam", () => {
