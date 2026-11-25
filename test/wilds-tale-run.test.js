@@ -43,7 +43,7 @@ before(async () => { clearMonsters(); await registerMonsters([KIVIHIISI_DEF], { 
 function buildEntities(spawns) {
   return spawns.flatMap(s => {
     const at = { x: s.x, y: s.y, px: s.x * S + 16, py: s.y * S + 16 }
-    if (s.kind === 'npc') { const n = makeNpc(s); return n ? [Object.assign(n, at)] : [] }
+    if (s.kind === 'npc') { const n = makeNpc(s); if (n && s.coachman) n.coachman = true; return n ? [Object.assign(n, at)] : [] }   // the coachman's marker, as game.js copies it
     if (s.kind === 'hirvi') return [Object.assign(makeHirvi(s.x, s.y), at)]
     if (s.kind === 'nakki') return [Object.assign(makeNakki(s.x, s.y), at)]
     if (s.kind === 'maahinen') return [Object.assign(makeMaahinen(s.x, s.y), at)]
@@ -828,6 +828,24 @@ test('death with two hearths blue: both burn again on waking', () => {
   assert.equal(blue.length, 2)
   for (const n of [1, 2]) { const h = hearth(t, n); assert.ok(blue.some(f => f.x === h.x && f.y === h.y)) }
   assert.equal(wraiths(t.state).length, 1)
+})
+
+// Task 8's review: the coachman by the village's cart keeps to his horse
+test('the coachman lights no hearth and takes no grey wood for the flame-thief\'s village', () => {
+  const t = setup('flame', '1,1')
+  const man = t.state.entities.find(e => e.type === 'npc' && e.coachman && e.wildsKey === '0,0')
+  assert.ok(man, 'the village has no coachman')
+  // he alone is left of the village's people: nobody else can be sent
+  t.state.entities = t.state.entities.filter(e => e === man || !villagers(t.state).includes(e))
+  t.save.clock = NIGHT
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  tickTales(t.state, t.world, 1, t.hooks)
+  assert.ok(!man.chore, 'the coachman was sent to light a hearth')
+  t.state.player.inventory.push(makeItem('greywood', 3))
+  put(t.state, man, 1, 0)
+  tickTales(t.state, t.world, DELIVERY_COOLDOWN + 0.1, t.hooks)
+  assert.equal(t.state.player.inventory[0]?.count, 3, 'the coachman took the grey wood')
+  assert.ok(!t.flags.wood_1)
 })
 
 // Review Focus 4

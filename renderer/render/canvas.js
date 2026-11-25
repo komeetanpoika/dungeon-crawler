@@ -1568,7 +1568,7 @@ export class Renderer {
       }
     }
     if (fb.bubble) {
-      const anchor = (fb.bubble.anchorId && state.entities.find(e => e.id === fb.bubble.anchorId)) || state.player
+      const anchor = (fb.bubble.anchorId && state.entities.find(e => e.id === fb.bubble.anchorId)) || fb.bubble.at || state.player
       this._drawBubble(anchor, fb.bubble)
     }
     if (fb.banner) this._drawBanner(fb.banner)

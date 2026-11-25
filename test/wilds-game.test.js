@@ -79,8 +79,8 @@ test('the tales are wired in: arrival after every new window, a tick after the W
 test('the city runtime is wired in beside the tales, with the screen and the swing', () => {
   assert.match(SRC, /import \{ arriveCity, tickCity, noteCitySwing \} from '\.\/wilds\/city\/runtime\.js'/)
   // every arrival of the tales is one of the city's too: entering, waking, every re-centre
-  assert.equal((SRC.match(/arriveCity\(state, wildsWorld, cityHooks, \{ fresh: true \}\)/g) ?? []).length, 3,
-    'after entering, after waking, and for a window built round the stocks')
+  assert.equal((SRC.match(/arriveCity\(state, wildsWorld, cityHooks, \{ fresh: true \}\)/g) ?? []).length, 4,
+    'after entering, after waking, for a window built round the stocks, and after a coach ride')
   for (const at of [...SRC.matchAll(/arriveTales\(state, wildsWorld, taleHooks(, \{ fresh: true \})?\)/g)]) {
     const next = SRC.slice(at.index, at.index + 160)
     assert.match(next, /arriveCity\(state, wildsWorld, cityHooks/, 'arriveCity follows arriveTales')
@@ -94,6 +94,26 @@ test('the city runtime is wired in beside the tales, with the screen and the swi
   assert.match(SRC, /now: \(\) => performance\.now\(\),\n\}/)
   // a swing, a shot and a cast each make the townsfolk flinch
   assert.equal((SRC.match(/noteCitySwing\(state, wildsWorld\)/g) ?? []).length, 3)
+})
+
+// The coach (wilds/coach.js); its rules are test/wilds-coach.test.js, the
+// ride's drawing test/wilds-map.test.js, and the whole of it live in
+// tools/wilds/coach-check.mjs
+test('the coach is wired in: a stop boards each surface frame, the ride arrives like every other jump', () => {
+  assert.match(SRC, /import \{[^}]*\btickCoach\b[^}]*\brefusal\b[^}]*\} from '\.\/wilds\/coach\.js'/)
+  assert.match(SRC, /import \{[^}]*\bshowRide\b[^}]*\} from '\.\/ui\/map-panel\.js'/)
+  const upd = SRC.slice(SRC.indexOf('function update(delta)'))
+  assert.match(upd, /if \(wildsWorld && state\.wilds\) \{\s*const stop = tickCoach\(state\)\s*if \(stop\) \{ boardCoach\(stop\.town\)/, 'tickCoach in the frame')
+  const board = SRC.slice(SRC.indexOf('function boardCoach('), SRC.indexOf('function coachSays('))
+  assert.ok(board.indexOf('refusal(state)') < board.indexOf('destinations(wildsWorld, town)'), 'the coachman is asked before the menu opens')
+  assert.match(board, /persistRun\(\)[\s\S]*setPhase\(PHASE\.PAUSED\)[\s\S]*menu\.showChoice\(\{ title: 'The coach', lines: \[\]/, 'heard towns saved, the game stopped, the menu up')
+  assert.match(board, /\{ label: 'Stay', onSelect: resumeGame \}/)
+  const ride = SRC.slice(SRC.indexOf('function rideCoach('), SRC.indexOf('function update(delta)'))
+  for (const [a, b] of [["sfx(state, 'coach-go')", 'showRide('], ['arrive(state, wildsWorld, d,', 'arriveTales(state, wildsWorld, taleHooks, { fresh: true })'],
+    ['arriveTales(', 'arriveCity(state, wildsWorld, cityHooks, { fresh: true })'], ['arriveCity(', "sfx(state, 'coach-arrive')"],
+    ["sfx(state, 'coach-arrive')", 'announce(state, `You reach ${d.town.name}.`)'], ['announce(', 'persistRun()'], ['persistRun()', 'setPhase(PHASE.PLAYING)']])
+    assert.ok(ride.indexOf(a) >= 0 && ride.indexOf(a) < ride.indexOf(b), `${a} before ${b}`)
+  assert.match(ride, /advanceClock: s => passTime\(activeSave, s\)/, 'the clock hook moves the save\'s clock only')
 })
 
 // Kalevanlinna's law (wilds/city/law.js); its behaviour is test/wilds-city-crime.test.js

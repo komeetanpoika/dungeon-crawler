@@ -339,6 +339,29 @@ test('the coachman refuses a wanted player, a chased one and a bound one', () =>
   assert.deepEqual(REFUSAL_LINES, { wanted: 'Not with the watch after you.', chased: 'Not with that at your heels.', bound: 'Sit up first.' })
 })
 
+// Fix round of Task 8's review: inCombat is set by a blow and never cleared,
+// so where a brain keeps watch (ai.mode) its word is the one that counts.
+test('a foe whose brain has lost the player does not stop the coach, though it once fought them', () => {
+  const state = { player: { x: 50, y: 50, px: 50 * 32 + 16, py: 50 * 32 + 16, hp: 5, maxHp: 5 }, entities: [] }
+  const foe = extra => ({ type: 'monster', variant: 'weak', x: 54, y: 50, px: 54 * 32 + 16, py: 50 * 32 + 16, hp: 3, maxHp: 3, inCombat: true, ...extra })
+  state.entities = [foe({ ai: { mode: 'patrol', lastSeen: null } })]
+  assert.equal(refusal(state), null, 'back on its rounds')
+  state.entities = [foe({ ai: { mode: 'hunt', lastSeen: null } })]
+  assert.equal(refusal(state), null, 'wandering with no trace of the player')
+  state.entities = [foe({ ai: { mode: 'chase' }, inCombat: false })]
+  assert.equal(refusal(state), 'chased', 'the brain sees the player')
+  // with no brain to ask, a foe in a fight still counts
+  state.entities = [foe({ ai: undefined })]
+  assert.equal(refusal(state), 'chased', 'a brainless foe in a fight')
+  state.entities = [foe({ ai: undefined, inCombat: false })]
+  assert.equal(refusal(state), null, 'a brainless foe at peace')
+  // an npc's own ai record (npc.js) is no brain until the enemy brain has run on it
+  state.entities = [{ type: 'npc', species: 'wolf', hostile: true, x: 53, y: 50, hp: 3, inCombat: true, ai: { current: null, goals: {} } }]
+  assert.equal(refusal(state), 'chased', 'a wolf that bit the player, its brain not yet run')
+  state.entities = [{ type: 'npc', species: 'wolf', hostile: true, x: 53, y: 50, hp: 3, inCombat: true, ai: { current: null, goals: {}, mode: 'patrol', lastSeen: null } }]
+  assert.equal(refusal(state), null, 'a wolf that has given up')
+})
+
 test('rideAt starts on the first town, ends on the second and passes every piece of the route', () => {
   const world = makeWorld(null, { seed: SEED })
   const routes = [...destinations(world, '0,0'), ...destinations(world, 'city')].map(d => d.route)

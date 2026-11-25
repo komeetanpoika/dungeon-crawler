@@ -16,6 +16,10 @@ export const MASTER_VOL = 0.5
 //   burst  — white noise through a bandpass at freq (q = resonance)
 //   swoosh — white noise through a bandpass sweeping f0→f1
 //   rumble — low sine at freq + filtered noise, longer decay
+//   seq    — a train of the above: `parts`, each starting `at` seconds in, at
+//            its own vol times the cue's; dur covers the whole train
+// A hoof on hard ground in a train: a short low knock (the coach's cues).
+const hoof = (at, vol) => ({ at, kind: 'burst', freq: 260, q: 1.6, dur: 0.07, vol })
 export const RECIPES = {
   'melee-swing':    { kind: 'swoosh', f0: 900,  f1: 300,  dur: 0.12, vol: 0.5 },
   'whirl':          { kind: 'swoosh', f0: 300,  f1: 1400, dur: 0.30, vol: 0.7 },
@@ -99,6 +103,19 @@ export const RECIPES = {
   'boots':          { kind: 'burst',  freq: 140,  q: 1.0,  dur: 0.06, vol: 0.3 },
   // a dog's bark: a short falling yap
   'bark':           { kind: 'blip',   wave: 'square', f0: 420, f1: 220, dur: 0.12, vol: 0.4 },
+  // The coach (game.js, wilds/coach.js), heard over the map: a whip's crack
+  // and the hooves setting off, closer and closer together; and on arriving
+  // the hooves slowing, farther and farther apart, and the cart's creak as it
+  // stops. Quieter than a blow, like the town.
+  'coach-go': { kind: 'seq', dur: 1.25, vol: 0.4, parts: [
+    { at: 0, kind: 'swoosh', f0: 600, f1: 3200, dur: 0.06, vol: 0.5 },
+    { at: 0.05, kind: 'burst', freq: 2600, q: 3, dur: 0.05, vol: 0.9 },
+    hoof(0.35, 0.6), hoof(0.62, 0.65), hoof(0.84, 0.7), hoof(1.0, 0.7), hoof(1.14, 0.7),
+  ] },
+  'coach-arrive': { kind: 'seq', dur: 1.3, vol: 0.4, parts: [
+    hoof(0, 0.7), hoof(0.16, 0.7), hoof(0.36, 0.65), hoof(0.62, 0.55),
+    { at: 0.85, kind: 'blip', wave: 'triangle', f0: 340, f1: 210, dur: 0.4, vol: 0.5 },
+  ] },
 }
 
 export function falloffGain(distPx) {
@@ -223,12 +240,24 @@ function playCue(audio, cue, player) {
 const jitter = () => 0.95 + Math.random() * 0.1   // ±5 % pitch variance
 
 function playRecipe(audio, r, out, gain) {
+  if (r.kind === 'seq') {
+    const stops = r.parts.map(p => playPart(audio, p, out, gain * r.vol, p.at))
+    return () => stops.forEach(stop => stop())
+  }
+  return playPart(audio, r, out, gain, 0)
+}
+
+// One basic sound, `at` seconds from now, through its own envelope into `out`.
+function playPart(audio, r, out, gain, at) {
   const ctx = audio.ctx
-  const t0 = ctx.currentTime
+  const t0 = ctx.currentTime + at
   const t1 = t0 + r.dur
   const j = jitter()
-  out.gain.setValueAtTime(gain * r.vol, t0)
-  out.gain.exponentialRampToValueAtTime(0.001, t1)
+  const env = ctx.createGain()
+  env.gain.setValueAtTime(gain * r.vol, t0)
+  env.gain.exponentialRampToValueAtTime(0.001, t1)
+  env.connect(out)
+  out = env
   const started = []
 
   if (r.kind === 'blip') {

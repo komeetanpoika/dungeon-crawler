@@ -23,7 +23,7 @@ import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
 import { parseWeaponCheat } from './systems/cheats.js'
-import { makeFeedback, tickFeedback, addFloat, speak, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
+import { makeFeedback, tickFeedback, addFloat, speak, speakFrom, speakAt, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues, setVolume } from './render/audio.js'
 import { loadSettings, saveSettings, stepVolume } from './systems/settings.js'
@@ -42,7 +42,7 @@ import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
 import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
-import { showMap, hideMap } from './ui/map-panel.js'
+import { showMap, hideMap, showRide } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
 import { clearOfTops } from './wilds/over.js'
@@ -70,6 +70,9 @@ import { ARREST_FADE } from './wilds/city/crime.js'
 import { isShutGate, GATE_SHUT_LINE } from './wilds/city/fx.js'
 import { playTune, tickTune } from './systems/tune.js'
 import { makeWorld, hear } from './wilds/world.js'
+import { tickCoach, refusal, REFUSAL_LINES, destinations, arrive, passTime, rideAt } from './wilds/coach.js'
+import { SIDE_WORDS } from './wilds/roads.js'
+import { landmarks } from './wilds/map.js'
 import { WILDS_SKINS } from './wilds/terrain.js'
 import { PIECE } from './wilds/layout.js'
 import { randomSeed } from './pvp/rng.js'
@@ -1658,6 +1661,66 @@ function seatInStocks() {
   })
 }
 
+// ---- the coach (wilds/coach.js) ------------------------------------------------
+// "Kalevanlinna, south, 2 leagues"
+const coachLabel = d => `${d.town.name}, ${SIDE_WORDS[d.side].toLowerCase()}, ${d.leagues} league${d.leagues === 1 ? '' : 's'}`
+const CART = /^ow_prop_city_cart/
+
+// The player stands on the stop of `town`. The coachman may say no (in the
+// one speech bubble); else the game stops under the menu of the towns down
+// its roads. Listing them pencils them on the map, kept at once so that
+// "Stay" keeps them too.
+function boardCoach(town) {
+  const why = refusal(state)
+  if (why) { coachSays(town, REFUSAL_LINES[why]); return }
+  const heard = wildsWorld.heard.size
+  const list = destinations(wildsWorld, town)
+  if (wildsWorld.heard.size !== heard) persistRun()
+  if (!list.length) return
+  setPhase(PHASE.PAUSED)
+  sfx(state, 'ui-open')
+  menu.showChoice({ title: 'The coach', lines: [], buttons: [
+    ...list.map(d => ({ label: coachLabel(d), onSelect: () => rideCoach(town, d) })),
+    { label: 'Stay', onSelect: resumeGame },
+  ] })
+}
+
+// A village's coachman says it over his own head; Kalevanlinna's stop has
+// none (its runtime owns everyone inside the walls), so there, and where he is
+// out of the window, it is said over the cart beside the stop.
+function coachSays(town, line) {
+  const man = state.entities.find(e => e.type === 'npc' && e.coachman && e.wildsKey === town && e.hp > 0)
+  if (man) { speakFrom(state, man, line); return }
+  const { x, y } = state.player
+  const cart = [[0, 1], [1, 0], [-1, 0], [0, -1]].map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
+    .find(c => CART.test(state.map[c.y]?.[c.x]?.overlay ?? '')) ?? { x, y }
+  speakAt(state, { px: cart.x * TILE_SIZE + TILE_SIZE / 2, py: cart.y * TILE_SIZE + TILE_SIZE / 2 }, line)
+}
+
+// The ride from `town`, the game still stopped: the map shows the coach going
+// down its road between the two towns' marks (ui/map-panel.js showRide; any
+// key, button or tap skips the rest), then the player stands beside the far
+// town's stop, the window built round it as after every jump, the clock on by
+// a twenty-fourth of a day a league.
+function rideCoach(town, d) {
+  menu.hide()
+  sfx(state, 'coach-go')
+  const marks = landmarks(wildsWorld)
+  const markOf = (key, end) => { const m = marks.find(m => m.key === key); return m ? { X: m.X, Y: m.Y } : end }
+  const from = markOf(town, rideAt(d.route, 0)), to = markOf(d.town.key, rideAt(d.route, 1))
+  showRide(wildsWorld, { route: d.route, from, to }, { onDone: () => {
+    arrive(state, wildsWorld, d, { ...wildsHooks, advanceClock: s => passTime(activeSave, s) })
+    arriveTales(state, wildsWorld, taleHooks, { fresh: true })
+    arriveCity(state, wildsWorld, cityHooks, { fresh: true })
+    if (state.feedback) state.feedback.bubble = null   // a line said at the stop left behind is not said here
+    sfx(state, 'coach-arrive')
+    announce(state, `You reach ${d.town.name}.`)
+    persistRun()
+    for (const k of Object.keys(keys)) keys[k] = false   // nothing pressed on the way acts on arriving
+    setPhase(PHASE.PLAYING)
+  } }, { touch: coarsePointer() })
+}
+
 function update(delta) {
   if (!state) return
   if (!state.sfx) state.sfx = makeSfx(loadMutedPref())
@@ -1941,6 +2004,14 @@ function update(delta) {
       }
     }
   } else state.exitMenuHold = false
+
+  // The coach (wilds/coach.js): stepping onto a town's stop in the Wilds
+  // boards it, once until the player steps off (state.coachHold): the menu
+  // of the towns down its roads, or the coachman says why not.
+  if (wildsWorld && state.wilds) {
+    const stop = tickCoach(state)
+    if (stop) { boardCoach(stop.town); if (phase !== PHASE.PLAYING) return }
+  }
 
   // Key pickup — walk onto the key the boss dropped
   const keyIdx = state.entities.findIndex(e => e.type === 'key' && e.x === player.x && e.y === player.y)

@@ -57,8 +57,13 @@ export function refusal(state) {
   if (playerBound(p) || p.trance > 0 || p.tranceFade > 0 || state.rite || state.tripPull) return 'bound'
   return null
 }
-// a foe after the player: chasing them, hunting where it saw them last, or in a fight with them
-const noticed = e => e.ai?.mode === 'chase' || (e.ai?.mode === 'hunt' && !!e.ai.lastSeen) || e.inCombat === true
+// A foe after the player: where the enemy brain keeps watch (systems/brain.js
+// ai.mode), chasing them or hunting where it saw them last; a foe with no
+// brain, in a fight with them. (inCombat is set by a blow and never cleared:
+// a brain that has since lost the player knows better.)
+const noticed = e => (typeof e.ai?.mode === 'string'
+  ? e.ai.mode === 'chase' || (e.ai.mode === 'hunt' && !!e.ai.lastSeen)
+  : e.inCombat === true)
 
 // Once a frame on the surface: the stop the player has just stepped onto, or
 // null. A stop is latched in state.coachHold until the player stands on no

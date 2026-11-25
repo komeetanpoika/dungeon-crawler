@@ -43,10 +43,17 @@ export function speak(state, text) { bubble(state, text, 'speech') }
 export function think(state, text, dur) { bubble(state, text, 'thought'); if (dur && state.feedback) state.feedback.bubble.dur = dur }
 
 // A speech bubble above another entity (an NPC). The renderer resolves
-// anchorId against state.entities and falls back to the player.
+// anchorId against state.entities and falls back to the bubble's `at`, then
+// to the player.
 // `dur`: how long it stays (a line of a telling: time to read it); BUBBLE_DUR without.
 export function speakFrom(state, entity, text, dur) {
   if (state.feedback) state.feedback.bubble = { text, kind: 'speech', t: 0, anchorId: entity.id, ...(dur && { dur }) }
+}
+
+// The same bubble over a spot where nobody stands (`at`: pixel { px, py }):
+// the coach's cart in Kalevanlinna, which has no coachman of its own.
+export function speakAt(state, at, text, dur) {
+  if (state.feedback) state.feedback.bubble = { text, kind: 'speech', t: 0, at: { px: at.px, py: at.py }, ...(dur && { dur }) }
 }
 
 // How long a line said in a scene stays up: time to read it at an easy pace

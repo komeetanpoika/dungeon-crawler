@@ -15,10 +15,31 @@ describe('recipe registry', () => {
   })
 
   it('every recipe is well-formed', () => {
-    for (const [name, r] of Object.entries(RECIPES)) {
+    const basic = (name, r) => {
       assert.ok(['blip', 'burst', 'swoosh', 'rumble'].includes(r.kind), `${name}: bad kind`)
       assert.ok(r.dur > 0, `${name}: dur must be positive`)
       assert.ok(r.vol > 0 && r.vol <= 1, `${name}: vol out of range`)
+    }
+    for (const [name, r] of Object.entries(RECIPES)) {
+      if (r.kind !== 'seq') { basic(name, r); continue }
+      // a train of the basic sounds, each starting `at` seconds in, all within dur
+      assert.ok(r.dur > 0 && r.vol > 0 && r.vol <= 1, `${name}: dur or vol out of range`)
+      assert.ok(Array.isArray(r.parts) && r.parts.length > 0, `${name}: no parts`)
+      r.parts.forEach((p, i) => {
+        basic(`${name}[${i}]`, p)
+        assert.ok(p.at >= 0 && p.at + p.dur <= r.dur + 1e-9, `${name}[${i}]: outside the cue's ${r.dur} s`)
+      })
+    }
+  })
+
+  // the coach (game.js, wilds/coach.js): a whip and hooves setting off, hooves
+  // slowing and a creak on arriving; quieter than a blow
+  it('the coach has a cue to set off and one to arrive, quieter than a blow', () => {
+    const loudest = r => (r.kind === 'seq' ? r.vol * Math.max(...r.parts.map(p => p.vol)) : r.vol)
+    for (const name of ['coach-go', 'coach-arrive']) {
+      assert.ok(CUE_NAMES.includes(name), `${name} missing from CUE_NAMES`)
+      assert.ok(RECIPES[name], `no recipe for cue "${name}"`)
+      assert.ok(loudest(RECIPES[name]) < loudest(RECIPES['melee-hit']) / 2, `${name} is as loud as a blow`)
     }
   })
 })

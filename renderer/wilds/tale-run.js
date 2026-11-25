@@ -112,7 +112,7 @@ function makeRun(state, world, vKey, rec, hooks) {
       // a short walk from the village instead of at the far corner of a map
       wood: 'greywood',
       runtime: {},
-      isWorker: e => e.wildsKey === vKey,
+      isWorker: e => e.wildsKey === vKey && !e.coachman,   // the coachman keeps to his horse (wilds/coach.js)
       keepClock: true,
       hasWraith: () => hooks.getState().entities.some(e => e.type === 'sammunut' && e.taleKey === taleKey),
       hasCreature: kind => hooks.getState().entities.some(e => e.type === kind && e.taleKey === taleKey),
