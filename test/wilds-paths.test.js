@@ -6,8 +6,9 @@
 // them. A thing the piece could then not reach was silently dropped.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { generatePiece } from '../renderer/wilds/piece.js'
-import { makeTerrain } from '../renderer/wilds/terrain.js'
+import { makeTerrain, ROAD_WIDTH } from '../renderer/wilds/terrain.js'
 import { placeFeatures } from '../renderer/wilds/features.js'
 import { layoutTale } from '../renderer/wilds/sites.js'
 import { roadSides, pieceClass } from '../renderer/wilds/roads.js'
@@ -68,7 +69,7 @@ function built(seed, wx, wy, deal = 0, tale = null, villageTale = null) {
   t.finish()
   const opened = new Set([...piece.doors, ...piece.caves].map(d => d.y * PIECE + d.x))
   const walk = (x, y) => x >= 0 && y >= 0 && x < PIECE && y < PIECE && (t.walkable(x, y) || opened.has(y * PIECE + x))
-  return { t, piece, walk, laid, trailed: piece.small.filter(s => trails.includes(`${s.x},${s.y}`)), at: `seed ${seed} piece ${wx},${wy} deal ${deal}${tale ? ' ' + tale : ''}${villageTale ? ' village of ' + villageTale : ''} (${piece.biome} ${piece.cls} ${piece.main.kind})` }
+  return { seed, t, piece, walk, laid, trailed: piece.small.filter(s => trails.includes(`${s.x},${s.y}`)), at: `seed ${seed} piece ${wx},${wy} deal ${deal}${tale ? ' ' + tale : ''}${villageTale ? ' village of ' + villageTale : ''} (${piece.biome} ${piece.cls} ${piece.main.kind})` }
 }
 // The walk a path promises: on path, in a gate's corridor, or on the ground
 // of the site at either end. Never across the open country beside it.
@@ -301,7 +302,8 @@ test('the junction keeps clear of the main thing', () => {
 })
 
 test('a tale place on a road piece keeps its hub and the road reaches it', () => {
-  const lands = { nakki: ['forest', 'autumn', 'marsh'], tar: ['sea', 'marsh'] }
+  // (a Sampo piece is laid out as a tale's place, and goes the same way)
+  const lands = { nakki: ['forest', 'autumn', 'marsh'], tar: ['sea', 'marsh'], sampo_mountain: ['mountain'] }
   for (const seed of [3, 77]) for (const [id, land] of Object.entries(lands)) {
     const spots = roadPieces(seed, 2, (wx, wy) => pieceClass(seed, wx, wy) === 'roadside' && land.includes(pieceBiome(seed, wx, wy)))
     assert.equal(spots.length, 2, `seed ${seed}: too little roadside ${land} land for ${id}`)
@@ -375,6 +377,8 @@ test('a wild piece is laid out as before', () => {
 })
 
 test('a village is entered by its roads: each reaches the square over road cells, cobbled inside the village', () => {
+  // the village's layout keeps its streets clear for a road three wide (features.js street)
+  assert.equal(ROAD_WIDTH, 3)
   let streets = 0
   for (const b of villageSample()) {
     const { t, piece, walk, laid, at } = b
@@ -399,4 +403,37 @@ test('a village is entered by its roads: each reaches the square over road cells
     }
   }
   assert.ok(streets >= 40, `${streets} streets`)
+})
+
+// A house's door label is its name in a save (world.solved and world.looted
+// name the glassmaker's house by it) and seeds what is inside: a village keeps
+// the square and the houses it had before roads. Pinned from main (a39a509):
+// the village houses of each village in villageSample(), as label, story,
+// kind and look.
+const MAIN_HOUSES = {
+  '1:0,0:0': '24393bc7594f', '1:0,0:1': '5ca4b5ce5c04', '1:1,-1:0': '22c934cf565c', '1:1,-1:1': '0e849a18ffe2',
+  '1:-1,0:0': '88a2e96bd537', '1:-1,0:1': '96c952829b2e', '1:-1,-2:0': '199c11ea64bf', '1:-1,-2:1': 'f29af7d83f45',
+  '3:0,0:0': '39c36c0968b7', '3:0,0:1': '98aba61623d7', '3:3,-4:0': '444497116155', '3:3,-4:1': '670582985d21',
+  '3:-4,-1:0': 'c9a15eea71bc', '3:-4,-1:1': 'fa1ec35cd324', '3:-4,0:0': '74d800a8da06', '3:-4,0:1': 'c3de4fb6c445',
+  '2024:0,0:0': '2f59c8a1d9a5', '2024:0,0:1': '8b383679a58b', '2024:2,-1:0': '40d1c16cc04e', '2024:2,-1:1': '6a90bceac18b',
+  '2024:-2,2:0': '1d2e3fdd55c5', '2024:-2,2:1': 'c7ca8dda9a20', '2024:-2,-3:0': '8f73b53563d9', '2024:-2,-3:1': '7b2a8922b22f',
+}
+test('a village keeps the square and the houses it had before roads', () => {
+  const seen = new Set()
+  for (const { seed, piece, at } of villageSample()) {
+    const { wx, wy, deal } = piece
+    // the square's middle comes from the piece's first two draws, as it always did
+    const r = mulberry32(hashInt(seed, wx, wy, 500 + deal))
+    const want = wx === 0 && wy === 0 ? { x: 40, y: 40 } : { x: 18 + Math.floor(r() * 44), y: 18 + Math.floor(r() * 44) }
+    assert.deepEqual({ x: piece.main.x, y: piece.main.y }, want, `${at}: the square moved`)
+    // the four houses every village has, by label
+    const labels = new Set(piece.doors.map(d => d.label))
+    for (const [dx, dy] of [[-7, -3], [6, -4], [-7, 5], [7, 4]])
+      assert.ok(labels.has(`house:wilds:${wx * PIECE + want.x + dx},${wy * PIECE + want.y + dy}`), `${at}: no house at ${dx},${dy} from the square`)
+    const houses = piece.doors.filter(d => d.tier === 'safe').map(d => [d.label, d.story, d.kind ?? null, d.look.w, d.look.storeys, d.look.wall]).sort()
+    const key = `${seed}:${wx},${wy}:${deal}`
+    assert.equal(createHash('sha1').update(JSON.stringify(houses)).digest('hex').slice(0, 12), MAIN_HOUSES[key], `${at}: its houses are not the ones it had on main`)
+    seen.add(key)
+  }
+  assert.equal(seen.size, Object.keys(MAIN_HOUSES).length)
 })

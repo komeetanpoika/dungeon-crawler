@@ -628,9 +628,11 @@ export function makeSites(c) {
     // waits beside the doorstep. She is the tale's own to put there.
     if (tale === 'lalli') return [{ label: LALLI_HOUSE, x: cx - 7, y: cy + 5 }, { label: 'kerttu', x: cx - 6, y: cy + 6 }]
     if (tale === 'nakki') {
-      // fish racks standing empty since the pier was given up
-      // (a rack is two cells wide and goes whole or not at all)
-      for (const y of [cy - 2, cy - 1]) if (!t.onPath(cx - 11, y) && !t.onPath(cx - 10, y)) { put(cx - 11, y, 'ow_prop_fishrack_l'); put(cx - 10, y, 'ow_prop_fishrack_r') }
+      // up to two fish racks standing empty since the pier was given up,
+      // north of the west street's lanes and off any trail (a rack is two
+      // cells wide and goes whole or not at all)
+      let racks = 0
+      for (const y of [cy - 3, cy - 2, cy - 4]) if (racks < 2 && !t.onPath(cx - 11, y) && !t.onPath(cx - 10, y)) { put(cx - 11, y, 'ow_prop_fishrack_l'); put(cx - 10, y, 'ow_prop_fishrack_r'); racks++ }
     }
     if (tale === 'fold') {
       // the fold the lambs go missing from, south-east of the square; the

@@ -367,20 +367,24 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   const pathKept = (x, y) => pathCells.has(y * PIECE + x) && !siteCells.has(y * PIECE + x)
   // (a gate corridor in the frame is path too, though not this deal's to lay)
   const laid = (x, y) => pathCells.has(y * PIECE + x) || !!corridor(x, y)
+  // Path cells never touch only at a corner: such a joint cannot be walked
+  // over water, through rock or between trees, so a diagonal step takes the
+  // cell between as well. That is what makes a one-wide trail a stair, and
+  // two bridges that brush past each other one deck. (`has`: what is laid;
+  // `add` lays the cell between.)
+  const joinCorners = (has, x, y, pier, add) => {
+    for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      if (!has(x + dx, y + dy) || has(x + dx, y) || has(x, y + dy)) continue
+      const along = pier === PIER.h ? inside(x, y + dy) : !inside(x + dx, y)
+      if (along) add(x, y + dy); else add(x + dx, y)
+    }
+  }
   const pathCell = (x, y, pier, road = false) => {
     if (!inside(x, y)) return
     if (road) roadCells.add(y * PIECE + x)
-    // Path cells never touch only at a corner: such a joint cannot be walked
-    // over water, through rock or between trees, so a diagonal step takes the
-    // cell between as well. That is what makes a one-wide trail a stair, and
-    // two bridges that brush past each other one deck.
     if (!pathCells.has(y * PIECE + x)) {
       pathCells.add(y * PIECE + x)
-      for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-        if (!laid(x + dx, y + dy) || laid(x + dx, y) || laid(x, y + dy)) continue
-        const along = pier === PIER.h ? inside(x, y + dy) : !inside(x + dx, y)
-        if (along) pathCell(x, y + dy, pier, road); else pathCell(x + dx, y, pier, road)
-      }
+      joinCorners(laid, x, y, pier, (cx, cy) => pathCell(cx, cy, pier, road))
     }
     const bx = x + MARGIN, by = y + MARGIN
     const g = b.palette[b.ground[by][bx]]
@@ -399,14 +403,14 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   // width x width square of path cells, `lo` from the step's cell. A road's
   // step is held where its whole square stays inside, so the road keeps its
   // width along a border; a path's keeps the old rule (clampIn), and with it
-  // every piece laid before roads.
-  const wander = (x0, y0, x1, y1, width, lo, road) => {
+  // every piece laid before roads. (`cell` lays one cell: tracePaths only notes it.)
+  const wander = (x0, y0, x1, y1, width, lo, road, cell = pathCell) => {
     const hold = road ? v => Math.max(FRAME - lo, Math.min(PIECE - FRAME - width - lo, v)) : clampIn
     const dx = x1 - x0, dy = y1 - y0
     const len = Math.hypot(dx, dy)
     if (len < 1) {
       const sx = road ? hold(x0) : x0, sy = road ? hold(y0) : y0
-      for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) pathCell(sx + lo + a, sy + lo + c, PIER.h, road)
+      for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) cell(sx + lo + a, sy + lo + c, PIER.h, road)
       return
     }
     const nx = -dy / len, ny = dx / len
@@ -421,10 +425,24 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       // a bulge that would leave the interior slides along its edge instead,
       // so the path never breaks
       const px = hold(Math.round(x0 + dx * t + nx * off)), py = hold(Math.round(y0 + dy * t + ny * off))
-      for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) pathCell(px + lo + a, py + lo + c, pier, road)
+      for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) cell(px + lo + a, py + lo + c, pier, road)
     }
   }
   const path = (x0, y0, x1, y1, width = 2) => wander(x0, y0, x1, y1, width, 0, false)
+  // The cells these paths ([[x0, y0, x1, y1, width], ...], laid in order on a
+  // piece with no other path) would cover, without laying them: for a caller
+  // that must decide as if only they were there.
+  const tracePaths = calls => {
+    const traced = new Set()
+    const has = (x, y) => traced.has(y * PIECE + x) || !!corridor(x, y)
+    const cell = (x, y, pier) => {
+      if (!inside(x, y) || traced.has(y * PIECE + x)) return
+      traced.add(y * PIECE + x)
+      joinCorners(has, x, y, pier, (cx, cy) => cell(cx, cy, pier))
+    }
+    for (const [x0, y0, x1, y1, width] of calls) wander(x0, y0, x1, y1, width, 0, false, cell)
+    return (x, y) => traced.has(y * PIECE + x)
+  }
   // A road: a path ROAD_WIDTH wide wearing the road's ground, set about its
   // line so that from a gate's inner point it covers the frame's road lanes.
   const road = (x0, y0, x1, y1) => wander(x0, y0, x1, y1, ROAD_WIDTH, roadLane0(0), true)
@@ -512,7 +530,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     biome: (x, y) => biome(x, y),
     // what the land is before anything is laid on it ('land', 'water', 'mass'), up to EXT cells beyond the piece
     rawKind: (x, y) => rawKind(x, y),
-    kind, free, inside, open, claim, clear: openCell, path, road, gates, gateInner, finish,
+    kind, free, inside, open, claim, clear: openCell, path, road, tracePaths, gates, gateInner, finish,
     // a walkable line one cell wide with no path art: a way through the trees
     // for something that must be reachable but not signposted
     clearLine: (x0, y0, x1, y1) => {

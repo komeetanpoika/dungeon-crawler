@@ -17,20 +17,26 @@
 // to the small things. A piece with no road edge is laid as it always was.
 import { PIECE, FRAME, tierAt, pieceBiome, fixedMain, villageAt, caveDepthFor, pieceKey, BIOME_NAMES } from './layout.js'
 import { hash, hashInt, mulberry32 } from './rand.js'
-import { makeSites, layoutTale, TALE_PAD } from './sites.js'
+import { makeSites, layoutTale, wayCells, TALE_PAD } from './sites.js'
 import { roadSides } from './roads.js'
 
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7 }
 const SIDES = ['N', 'E', 'S', 'W']
+const STEP = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
+const TAU = Math.PI * 2
 // where a road piece's junction may lie, on both axes
 const JUNCTION_LO = FRAME + 8, JUNCTION_HI = PIECE - FRAME - 9
 // how far a junction that falls in water or rock may move to find dry land
 const JUNCTION_SHIFT = 10
 // how far the main thing's builders reach past its pad (a den heaps its rock 8.6 tiles out)
 const BUILT_PAST_PAD = 3
-// a village street runs this far out from the middle of the square, and stops
-// where it meets the square
-const STREET_FROM = 14, STREET_TO = 4
+// a village's roads come round a ring this far out from the middle of the
+// square (a road three wide on it stays outside the village's pad of 12), and
+// its streets stop where they meet the square
+const RING = 15, STREET_TO = 5
+// the sheep fold of a village built for the fold tale (sites.js villageTrouble)
+// stands south-east of the square out to the ring: no road goes round there
+const FOLD_ARC = [Math.PI / 9, Math.PI * 7 / 18]   // 20° to 70°, y down
 // at toughness 1 and 2, no foe of a pack is posted within this many tiles of a road
 const ROAD_CALM = 10
 const VILLAGERS = ['villager', 'villager', 'villager', 'elder', 'chicken', 'chicken', 'sheep', 'goat']
@@ -230,22 +236,62 @@ export function placeFeatures(t, piece) {
     }
     return { x: j.x, y: j.y }
   }
-  // A village is entered by its roads: each comes to the edge of the village
-  // on the side of the square that faces its gate, and goes on as a straight
-  // street to the square (sites.js cobbles what of it lies in the village and
-  // keeps that clear). The street's end is far enough out that the road
-  // wanders to it outside the village. t.road lays its square from a cell one
-  // up and one left of the street's middle line.
-  const street = (g, cx, cy) => {
-    const ox = g.x - cx, oy = g.y - cy
-    const [dx, dy] = Math.abs(ox) >= Math.abs(oy) ? [Math.sign(ox), 0] : [0, Math.sign(oy)]
-    const c = dx ? cx : cy, sign = dx || dy
-    const reach = Math.min(STREET_FROM, sign > 0 ? PIECE - FRAME - 2 - c : c - FRAME - 2)
-    const at = d => ({ x: cx + dx * d - 1, y: cy + dy * d - 1 })
-    const entry = at(reach)
-    t.road(g.x, g.y, entry.x, entry.y)
-    // a tile at a time: so short a step does not wander
-    for (let d = reach; d > STREET_TO; d--) { const a = at(d), b = at(d - 1); t.road(a.x, a.y, b.x, b.y) }
+  // A village is entered by its roads (sites.js village cobbles what of them
+  // lies in the village; the village's layout assumes ROAD_WIDTH 3). Each
+  // comes from its gate straight at the middle of the square as far as a ring
+  // RING tiles out, outside the village: that leg's wander only takes it
+  // further from the village. It follows the ring to the nearest of the four
+  // axes the ring has room on, the shorter way round that stays inside the
+  // piece, and goes in along that axis as a straight street to the square,
+  // where no house of the village stands. A gate that is itself inside the
+  // ring (a village near that edge) is joined along the border to its own
+  // axis. Points here are the road's middle line; t.road lays its square from
+  // the cell one up and one left of a point. Steps of one tile do not wander.
+  const midIn = v => Math.max(FRAME + 1, Math.min(PIECE - FRAME - 2, v))
+  const fitsIn = p => p.x === midIn(p.x) && p.y === midIn(p.y)
+  const straight = (a, b) => {
+    const cells = wayCells(a.x, a.y, b.x, b.y)
+    for (let i = 1; i < cells.length; i++) t.road(cells[i - 1].x - 1, cells[i - 1].y - 1, cells[i].x - 1, cells[i].y - 1)
+  }
+  const street = (side, g, cx, cy) => {
+    const gm = { x: midIn(g.x + 1), y: midIn(g.y + 1) }
+    const on = (axis, d) => ({ x: cx + axis[0] * d, y: cy + axis[1] * d })
+    const ring = a => ({ x: Math.round(cx + RING * Math.cos(a)), y: Math.round(cy + RING * Math.sin(a)) })
+    const byFold = p => { const a = Math.atan2(p.y - cy, p.x - cx); return piece.villageTale === 'fold' && a > FOLD_ARC[0] && a < FOLD_ARC[1] }
+    const fits = p => fitsIn(p) && !byFold(p)
+    const rg = Math.hypot(gm.x - cx, gm.y - cy)
+    if (rg >= RING - 0.5) {
+      const start = rg >= RING + 2 ? ring(Math.atan2(gm.y - cy, gm.x - cx)) : gm
+      const from = Math.atan2(start.y - cy, start.x - cx)
+      // each axis there is room for, either way round, the shortest first
+      const arcs = []
+      for (const axis of Object.values(STEP)) {
+        if (!fits(on(axis, RING))) continue
+        for (const dir of [1, -1]) arcs.push({ axis, dir, span: ((((Math.atan2(axis[1], axis[0]) - from) * dir) % TAU) + TAU) % TAU })
+      }
+      arcs.sort((p, q) => p.span - q.span)
+      for (const { axis, dir, span } of arcs) {
+        const n = Math.ceil(span * RING / 3)
+        const way = [start, ...Array.from({ length: n }, (_, i) => ring(from + dir * span * (i + 1) / n)), on(axis, RING)]
+        if (!way.every(fits)) continue
+        if (start !== gm) t.road(g.x, g.y, start.x - 1, start.y - 1)
+        for (let i = 1; i < way.length; i++) straight(way[i - 1], way[i])
+        straight(on(axis, RING), on(axis, STREET_TO))
+        return
+      }
+    }
+    // along the border to the gate's own axis; or, where that would cross the
+    // sheep fold, across to the axis on the gate's side of the square
+    const own = STEP[side], across = own[0] ? [0, gm.y > cy ? 1 : -1] : [gm.x > cx ? 1 : -1, 0]
+    const ls = [[own, own[0] ? { x: gm.x, y: cy } : { x: cx, y: gm.y }], [across, own[0] ? { x: cx, y: gm.y } : { x: gm.x, y: cy }]]
+    const penned = p => piece.villageTale === 'fold' && p.x + 1 >= cx + 6 && p.x - 1 <= cx + 12 && p.y + 1 >= cy + 7 && p.y - 1 <= cy + 12
+    const clear = ([axis, corner]) => {
+      const end = on(axis, STREET_TO)
+      return ![...wayCells(gm.x, gm.y, corner.x, corner.y), ...wayCells(corner.x, corner.y, end.x, end.y)].some(penned)
+    }
+    const [axis, corner] = ls.find(clear) ?? ls[0]
+    straight(gm, corner)
+    straight(corner, on(axis, STREET_TO))
   }
 
   // ---- the main thing -------------------------------------------------------
@@ -264,9 +310,7 @@ export function placeFeatures(t, piece) {
     for (const side of roadGates) { const g = t.gateInner(side); t.road(g.x, g.y, junction.x, junction.y) }
   }
   const spot = besideRoads ? besideTheRoads(junction, pad) : null
-  // (a village on a road keeps room between it and the edges for its streets' ends)
-  const edge = roadPiece && kind === 'village' ? FRAME + STREET_FROM + 1 : 18
-  const mx = geo ? geo.cx : home ? 40 : spot ? spot.x : ri(edge, PIECE - 1 - edge), my = geo ? geo.cy : home ? 40 : spot ? spot.y : ri(edge, PIECE - 1 - edge)
+  const mx = geo ? geo.cx : home ? 40 : spot ? spot.x : ri(18, PIECE - 19), my = geo ? geo.cy : home ? 40 : spot ? spot.y : ri(18, PIECE - 19)
   const hub = geo ? geo.hub : { x: mx, y: my }
   // a village's and a tale's place's roads meet at its hub
   if (roadPiece && !junction) junction = { x: hub.x, y: hub.y }
@@ -283,16 +327,17 @@ export function placeFeatures(t, piece) {
   // Beside the roads, a trail from the junction to the hub and one from each
   // gate without a road to the junction. A tale's place: a road from each road
   // gate to its hub, a path from the others. A village: a street from each
-  // road gate, a trail from the others.
+  // road gate, then a trail from the others (laid after the streets, a trail
+  // that meets one corner to corner adds trail and not street).
   if (besideRoads) t.path(junction.x, junction.y, hub.x, hub.y, 1)
   for (const side of SIDES) {
     const g = t.gateInner(side)
     if (!roadPiece) t.path(g.x, g.y, hub.x, hub.y, 2)
     else if (besideRoads) { if (!sides[side]) t.path(g.x, g.y, junction.x, junction.y, 1) }
     else if (geo) { if (sides[side]) t.road(g.x, g.y, hub.x, hub.y); else t.path(g.x, g.y, hub.x, hub.y, 2) }
-    else if (sides[side]) street(g, mx, my)
-    else t.path(g.x, g.y, hub.x, hub.y, 1)
+    else if (sides[side]) street(side, g, mx, my)
   }
+  if (roadPiece && !besideRoads && !geo) for (const side of SIDES) if (!sides[side]) { const g = t.gateInner(side); t.path(g.x, g.y, hub.x, hub.y, 1) }
   // where the small things' trails lead
   const meet = junction ?? hub
 
@@ -308,6 +353,15 @@ export function placeFeatures(t, piece) {
   if (kind !== 'village') smallKinds.push('nest', 'nest', 'stones')
   const padOf = k => k === 'hut' ? 5 : k === 'stones' ? 3 : 2
   const mainPad = pad
+  // A village's small things are dealt as if its ways in were still the
+  // paths it had before roads (two wide, from each gate to the hub): the
+  // draws they take come before the village's houses, which so stay the
+  // houses they were, door for door. One that then lies across a road is
+  // left out.
+  const villageRoads = roadPiece && kind === 'village'
+  const onWay = villageRoads
+    ? t.tracePaths(SIDES.map(side => { const g = t.gateInner(side); return [g.x, g.y, hub.x, hub.y, 2] }))
+    : (x, y) => t.onPath(x, y)
   const want = 2 + Math.floor(rng() * 3)
   const lo = FRAME + 5, hi = PIECE - FRAME - 6
   for (let i = 0; i < want; i++) {
@@ -319,12 +373,17 @@ export function placeFeatures(t, piece) {
       if (Math.hypot(x - mx, y - my) < pad + 8 || (geo && Math.hypot(x - mx, y - my) < mainPad + pad + 1) || kept(x, y, 6)) continue
       if (piece.small.some(s => Math.hypot(x - s.x, y - s.y) < 10)) continue
       let crossed = false
-      for (let dy = -pad - 1; dy <= pad + 1 && !crossed; dy++) for (let dx = -pad - 1; dx <= pad + 1; dx++) if (t.onPath(x + dx, y + dy)) { crossed = true; break }
+      for (let dy = -pad - 1; dy <= pad + 1 && !crossed; dy++) for (let dx = -pad - 1; dx <= pad + 1; dx++) if (onWay(x + dx, y + dy)) { crossed = true; break }
       if (crossed) continue
       piece.small.push({ kind: k, x, y })
       break
     }
   }
+  if (villageRoads) piece.small = piece.small.filter(s => {
+    const r = padOf(s.kind) + 1
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (t.onPath(s.x + dx, s.y + dy)) return false
+    return true
+  })
   for (const s of piece.small) t.open(s.x, s.y, padOf(s.kind))
   for (const s of piece.small) t.path(s.x, s.y, meet.x, meet.y, 1)
 
