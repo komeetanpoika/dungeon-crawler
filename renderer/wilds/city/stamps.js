@@ -152,7 +152,7 @@ function layTower(G, x, y, rows, joins) {
 // of its own, so the stone works inwards, a pass at a time. A cell with grass
 // beside it (a roof against open country, a wall's outer side) keeps its own.
 // The mole's mossy variant would show its moss in a margin: the plain one.
-const NATURAL = /^ow_(grass|water|sand|dirt|shore|mud|pond|bank)/
+const NATURAL = /^ow_(grass|water|sand|dirt|road|shore|mud|pond|bank)/
 const MASONRY = /^ow_city_(wall_|tower_|harbour_tower|gate_|castle_gate)/
 const WATER = 'water'
 export function stoneUnderMasonry(G) {

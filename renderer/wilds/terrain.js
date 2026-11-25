@@ -64,8 +64,9 @@ export function setRoadWidth(n) {
   if (n !== 3 && n !== 4) throw new Error(`a road is 3 or 4 wide, not ${n}`)
   ROAD_WIDTH = n
 }
-// The first lane of a road crossing at gate offset g.
-const roadLane0 = g => g + 1 - (ROAD_WIDTH >> 1)
+// The first lane of a road crossing at gate offset g (the city's road spurs
+// take the same lanes).
+export const roadLane0 = g => g + 1 - (ROAD_WIDTH >> 1)
 
 // Every tile name terrain.js can lay. features.js adds its own (FEATURE_SKINS).
 export const TERRAIN_SKINS = [...new Set([
@@ -577,6 +578,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     onPath: (x, y) => pathCells.has(y * PIECE + x),
     onRoad: (x, y) => inside(x, y) && roadCells.has(y * PIECE + x),
     onSite: (x, y) => siteCells.has(y * PIECE + x),
+    // the road's ground for a local cell whose ground is `ground` (the city lays its outside roads with it)
+    roadGround: (ground, x, y) => roadGround(ground, x, y),
     rnd, dryGround, grassSkin,
   }
 }

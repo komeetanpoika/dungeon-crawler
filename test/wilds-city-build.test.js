@@ -3,10 +3,12 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { buildCity, cityFor } from '../renderer/wilds/city/build.js'
 import { generateCityPiece } from '../renderer/wilds/city/piece.js'
-import { PLAN, insideWalls, towerRect } from '../renderer/wilds/city/plan.js'
+import { PLAN, insideWalls, wallCells, towerRect } from '../renderer/wilds/city/plan.js'
 import { cutBlocks } from '../renderer/wilds/city/blocks.js'
 import { CITY, CITY_KEYS, isCityPiece, fromCity } from '../renderer/wilds/city/geometry.js'
-import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
+import { makeTerrain, WILDS_SKINS, ROAD_WIDTH, roadLane0 } from '../renderer/wilds/terrain.js'
+import { RING, APPROACHES } from '../renderer/wilds/city/build-land.js'
+import { roadSides, CITY_DOORS } from '../renderer/wilds/roads.js'
 import { PIECE, FRAME } from '../renderer/wilds/layout.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
@@ -245,6 +247,68 @@ test('every walkable cell inside the walls is warded and none outside is', () =>
     // the gate arches carry it too
     for (const [x, y] of GATE_CELLS) assert.equal(city.cells[y][x].ward, true)
   }
+})
+
+// A road cell out in the country: the road's own ground on land, a pier over water.
+const roadish = c => c.skin.startsWith('ow_road_') || !!c.overlay?.startsWith('ow_pier')
+const walledCell = (x, y) => insideWalls(x, y) || wallCells().has(y * N + x)
+
+test('the ring road and gate approaches outside the walls wear the road surface', () => {
+  const rects = [...['north', 'west', 'east', 'southW', 'southE', 'shoreW', 'shoreE'].map(k => RING[k]), ...Object.values(APPROACHES)]
+  for (const seed of SEEDS) {
+    const city = cityFor(seed)
+    let land = 0
+    for (const [x0, y0, x1, y1] of rects) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const c = city.cells[y][x]
+      assert.ok(!walledCell(x, y), `${x},${y} of the ring is walled`)
+      assert.ok(c.tile === TILE.FLOOR, `${x},${y} seed ${seed}: the road is blocked`)
+      // on land (rock included: a pass wears the mountain set) the road's ground, over water a pier
+      if (c.overlay?.startsWith('ow_pier')) continue
+      assert.ok(c.skin.startsWith('ow_road_'), `${x},${y} seed ${seed}: ${c.skin}`)
+      land++
+    }
+    assert.ok(land > 1000, `seed ${seed}: ${land} road cells on land`)
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      if (walledCell(x, y)) assert.ok(!city.cells[y][x].skin.startsWith('ow_road_'), `${x},${y} seed ${seed}: road inside the walls`)
+    }
+  }
+})
+
+test('a road door\'s spur continues the frame\'s road lanes without a step', () => {
+  let doors = 0, onLand = 0
+  for (const seed of SEEDS) {
+    const city = cityFor(seed)
+    for (const d of CITY_DOORS) {
+      if (!roadSides(seed, d.wx, d.wy)[d.side]) continue
+      doors++
+      const g = makeTerrain(seed, d.wx, d.wy, 0).gates[d.side]
+      const ox = d.wx * PIECE, oy = (d.wy - 2) * PIECE
+      const a = roadLane0(d.side === 'N' ? g.x : g.y)
+      // depth k in from the city's edge, offset o across the road: a city cell
+      const at = (k, o) => d.side === 'N' ? city.cells[oy + k][ox + o] : d.side === 'W' ? city.cells[oy + o][ox + k] : city.cells[oy + o][ox + PIECE - 1 - k]
+      const ring = d.side === 'N' ? RING.north[1] : d.side === 'W' ? RING.west[0] : N - 1 - RING.east[2]
+      const lanes = Array.from({ length: ROAD_WIDTH }, (_, i) => a + i)
+      const across = [a - 2, a - 1, ...lanes, a + ROAD_WIDTH, a + ROAD_WIDTH + 1]
+      for (let k = 0; k < ring; k++) {
+        const where = `seed ${seed} ${d.side} door, ${k} in`
+        if (k < FRAME) {
+          // the frame's road lanes: its road ground lies on these lanes only, a pier at most one wider
+          const road = across.filter(o => at(k, o).skin.startsWith('ow_road_'))
+          assert.ok(road.every(o => lanes.includes(o)), `${where}: frame road on ${road} (lanes ${lanes})`)
+          assert.ok(lanes.every(o => roadish(at(k, o))), `${where}: a frame lane is no road`)
+          if (road.length === ROAD_WIDTH) onLand++
+        } else {
+          // the spur: the same lanes, road ground or pier, and nothing of the road beside them
+          const got = across.filter(o => roadish(at(k, o)))
+          assert.deepEqual(got, lanes, `${where}: spur on ${got}`)
+          assert.ok(lanes.every(o => at(k, o).tile === TILE.FLOOR), `${where}: the spur is blocked`)
+        }
+      }
+      assert.ok(lanes.every(o => roadish(at(ring, o))), `seed ${seed} ${d.side} door: the spur meets no ring road`)
+    }
+  }
+  assert.ok(doors >= 8, `${doors} road doors`)
+  assert.ok(onLand > 0, 'no frame lane on land to compare with')
 })
 
 test('the inn piece holds the village record and the doorstep spawn', () => {

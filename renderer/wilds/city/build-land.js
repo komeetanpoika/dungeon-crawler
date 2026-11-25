@@ -6,7 +6,8 @@
 // edge crossing, the stone moles along the harbour walls, and the farms.
 // The art passes of terrain.js's finish() run once more over the whole city
 // grid, and the frame is put back as the terrain finished it.
-import { makeTerrain } from '../terrain.js'
+import { makeTerrain, ROAD_WIDTH, roadLane0 } from '../terrain.js'
+import { roadSides } from '../roads.js'
 import { PIECE, FRAME, MARGIN } from '../layout.js'
 import { CITY_KEYS, inBay, fromCity } from './geometry.js'
 import { PLAN, insideWalls, wallCells } from './plan.js'
@@ -157,50 +158,64 @@ export function clearRound(G, r = 2) {
 }
 
 // ---- roads -----------------------------------------------------------------------
-// One road cell out in the country: a trail on land, a pier over water, a
-// pass through rock. Never in the frame.
-function roadCell(G, x, y, along) {
+// One road cell out in the country: a pier over water; on land the road's
+// own ground, chosen as the terrain chooses it for a road (the set by the
+// ground and the country, the variant by the world tile), or with `trail` a
+// trail's dirt or sand; through rock a pass. Never in the frame.
+function roadCell(G, land, x, y, along, trail) {
   if (!own(x, y) || G.tagAt(x, y) === TAG.CITY) return
   const g = G.ground(x, y), p = G.prop(x, y)
   if (isWaterSkin(g)) { if (p && !isPierSkin(p)) G.setProp(x, y, null); G.setProp(x, y, PIER[along], true) }
   else {
     clearWhole(G, x, y)
     if (isMassSkin(G.prop(x, y))) G.setProp(x, y, null, true)
-    const h = hashInt(0, x, y, 42)
-    G.setGround(x, y, g.startsWith('ow_grass') || g.startsWith('ow_dirt') ? DIRT[h % 4]
-      : g.startsWith('ow_sand') || g === 'ow_hardpan_0' ? SAND_PATH[h % 4]
-      : isMountainGround(g) ? g : DIRT[h % 4])
+    if (!trail) { const { T, lx, ly } = land.of(x, y); G.setGround(x, y, T.t.roadGround(g, lx, ly)) }
+    else {
+      const h = hashInt(0, x, y, 42)
+      G.setGround(x, y, g.startsWith('ow_grass') || g.startsWith('ow_dirt') ? DIRT[h % 4]
+        : g.startsWith('ow_sand') || g === 'ow_hardpan_0' ? SAND_PATH[h % 4]
+        : isMountainGround(g) ? g : DIRT[h % 4])
+    }
     G.setProp(x, y, null, true)
   }
   G.setTag(x, y, TAG.ROAD)
 }
 const rect = (G, x0, y0, x1, y1, fn) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) fn(x, y) }
-const roadRect = (G, x0, y0, x1, y1) => rect(G, x0, y0, x1, y1, (x, y) => roadCell(G, x, y, x1 - x0 >= y1 - y0 ? 'h' : 'v'))
+const roadRect = (G, land, x0, y0, x1, y1, trail = false) => rect(G, x0, y0, x1, y1, (x, y) => roadCell(G, land, x, y, x1 - x0 >= y1 - y0 ? 'h' : 'v', trail))
 const moleCell = (G, x, y) => lay(G, x, y, null, { walk: true, ground: HARBOUR.mole[(x + y) & 1] })
 
 // The ring road: round the north of the city outside the wall, down both
 // sides to the farmland, along the south wall to the moles, and along the
 // shore to them; a spur from every edge crossing; the stone moles along the
-// outside of the harbour walls, up to the water gates into the harbour.
+// outside of the harbour walls, up to the water gates into the harbour. The
+// ring, the approaches and the spurs of the road doors wear the road's
+// ground; a spur from an edge without a road is a two-wide trail.
 export const RING = {
   north: [15, 15, 144, 16], west: [15, 15, 16, 144], east: [143, 15, 144, 144],
   southW: [15, 124, 58, 125], southE: [102, 124, 144, 125], shoreW: [15, 143, 58, 144], shoreE: [102, 143, 144, 144],
   moleW: [59, 122, 61, 144], moleE: [99, 122, 101, 144],
 }
+// The approaches from the ring road to the three land gates.
+export const APPROACHES = { N: [79, 17, 81, 19], W: [17, 67, 19, 69], E: [141, 74, 142, 76] }
 export function layRoads(G, land, rec) {
-  for (const k of ['north', 'west', 'east', 'southW', 'southE', 'shoreW', 'shoreE']) roadRect(G, ...RING[k])
-  // the approaches to the three land gates
-  roadRect(G, 79, 17, 81, 19); roadRect(G, 17, 67, 19, 69); roadRect(G, 141, 74, 142, 76)
-  // a spur from every crossing of the city's outer edges to the ring
+  for (const k of ['north', 'west', 'east', 'southW', 'southE', 'shoreW', 'shoreE']) roadRect(G, land, ...RING[k])
+  for (const r of Object.values(APPROACHES)) roadRect(G, land, ...r)
+  // a spur from every crossing of the city's outer edges to the ring: at an
+  // edge that carries a road (roads.js roadSides), straight on along the
+  // frame's road lanes (terrain.js roadLane0, ROAD_WIDTH of them); at any
+  // other edge a trail on the gate's two middle lanes
   for (const { wx, wy, t } of Object.values(land.T)) {
     const ox = wx * PIECE, oy = (wy - 2) * PIECE
+    const sides = roadSides(land.seed, wx, wy)
     for (const side of ['N', 'E', 'S', 'W']) {
       if ((side === 'N' && wy !== 2) || (side === 'S' && wy !== 3) || (side === 'W' && wx !== 0) || (side === 'E' && wx !== 1)) continue
-      const g = t.gateInner(side), x = g.x + ox, y = g.y + oy
-      if (side === 'N') roadRect(G, x, y, x + 1, RING.north[1] - 1)
-      if (side === 'S') roadRect(G, x, RING.shoreW[3] + 1, x + 1, y)
-      if (side === 'W') roadRect(G, x, y, RING.west[0] - 1, y + 1)
-      if (side === 'E') roadRect(G, RING.east[2] + 1, y, x, y + 1)
+      const g = t.gateInner(side), road = sides[side]
+      const lo = road ? roadLane0(0) : 0, w = road ? ROAD_WIDTH : 2
+      const x = g.x + ox + (side === 'N' || side === 'S' ? lo : 0), y = g.y + oy + (side === 'W' || side === 'E' ? lo : 0)
+      if (side === 'N') roadRect(G, land, x, y, x + w - 1, RING.north[1] - 1, !road)
+      if (side === 'S') roadRect(G, land, x, RING.shoreW[3] + 1, x + w - 1, y, !road)
+      if (side === 'W') roadRect(G, land, x, y, RING.west[0] - 1, y + w - 1, !road)
+      if (side === 'E') roadRect(G, land, RING.east[2] + 1, y, x, y + w - 1, !road)
     }
   }
   // the moles: stone along the outside of the harbour walls, right up against
@@ -306,8 +321,8 @@ function cityShoreline(G) {
     repaint.push([x, y, set[ns + ew]])
   }
   for (const [x, y, n] of repaint) G.setGround(x, y, n)
-  // the beach's sand-coloured bank wherever the land beside it is sand
-  const beachy = (x, y) => { const n = G.ground(x, y); return isSandySkin(n) || n === 'ow_hardpan_0' || SAND_PATH.includes(n) }
+  // the beach's sand-coloured bank wherever the land beside it is sand (a road's sand set included, as in terrain.js)
+  const beachy = (x, y) => { const n = G.ground(x, y); return isSandySkin(n) || n === 'ow_hardpan_0' || SAND_PATH.includes(n) || n.startsWith('ow_road_sand_') }
   const bank = b.palette.map(n => /^ow_pond_([012])([012])$/.exec(n))
   for (let y = -M; y < N + M; y++) for (let x = -M; x < N + M; x++) {
     const m = bank[b.ground[y + M][x + M]]
