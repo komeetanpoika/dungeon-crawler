@@ -5,7 +5,8 @@
 // beaches, the bay; then the ring road outside the wall with a spur to every
 // edge crossing, the stone moles along the harbour walls, and the farms.
 // The art passes of terrain.js's finish() run once more over the whole city
-// grid, and the frame is put back as the terrain finished it.
+// grid, and the frame is put back as the terrain finished it; last, every
+// road outside the wall wears its verge (road-art.js), frame and all.
 import { makeTerrain, ROAD_WIDTH, roadLane0 } from '../terrain.js'
 import { roadSides } from '../roads.js'
 import { PIECE, FRAME, MARGIN } from '../layout.js'
@@ -17,6 +18,7 @@ import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, isMountainGround, L
 import { stampSandEdge } from '../../terrain/beach.js'
 import { skinBridges } from '../bridge-art.js'
 import { slopeShores } from '../shore-art.js'
+import { vergeRoads } from '../road-art.js'
 import { HARBOUR } from './kit.js'
 import { N, M, TAG, lay, house } from './stamps.js'
 
@@ -379,4 +381,11 @@ export function finishLand(G, land) {
     G.setProp(x, y, tb.palette[tb.prop[by][bx]] ?? null, tb.walkG[by][bx])
     G.setDeco(x, y, null); G.setTag(x, y, TAG.LAND)
   }
+  // The roads' verges, on the finished grid: within MARGIN of the city's
+  // edge the same as the neighbours lay them in their margins (the cells
+  // there and round them are the terrain's frame, and beyond it the
+  // neighbours' frames as the world lays them), further in beside the
+  // city's own roads too, and nowhere on or inside the wall, on the city's
+  // stone, or under a deco of its own.
+  vergeRoads(b, G.deco, { X0, Y0, seed: land.seed, skip: (bx, by) => walled(bx - M, by - M) || G.tagAt(bx - M, by - M) === TAG.CITY })
 }

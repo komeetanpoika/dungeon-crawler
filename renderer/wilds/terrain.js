@@ -20,6 +20,7 @@ import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
 import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
+import { vergeRoads, VERGE_SKINS } from './road-art.js'
 import { CITY_SKINS } from './city/kit.js'
 import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
 
@@ -74,7 +75,7 @@ export const TERRAIN_SKINS = [...new Set([
   ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, ...SLOPE_SKINS, PIER.h, PIER.v, ...DECK_SKINS, ...DECK_CUT_SKINS, ...DECK_UNDER_SKINS, ...FILLET_SKINS,
   ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
-  ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES,
+  ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES, ...VERGE_SKINS,
 ])]
 // Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks).
 export const FEATURE_SKINS = [
@@ -277,6 +278,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
 
   // ---- lay the base terrain ------------------------------------------------
   const b = new MapBuilder('wilds', 'wilds', 'wilds', SIZE, SIZE)
+  // a third layer of art between the ground and what stands on it, builder
+  // cell by builder cell: the roads' verges (finish())
+  const deco = new Array(SIZE * SIZE).fill(null)
   const put = (x, y, ground, prop, walk) => {
     const bx = x + MARGIN, by = y + MARGIN
     b.ground[by][bx] = b.skin(ground)
@@ -524,6 +528,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
         return cor === 'v' ? 'ns' : cor === 'h' ? 'ew' : null
       },
     })
+    // Last, on the finished ground: every cell beside a road wears its
+    // verge, the road's gravel worn off onto it (road-art.js).
+    vergeRoads(b, deco, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed })
   }
 
   return {
@@ -547,6 +554,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     // for features: the prop and ground art of a local cell
     propAt: (x, y) => skinAt(b.prop, x, y),
     groundAt: (x, y) => skinAt(b.ground, x, y),
+    // the deco of a local cell (a road's verge), up to MARGIN cells beyond the piece; after finish()
+    decoAt: (x, y) => deco[(y + MARGIN) * SIZE + x + MARGIN] ?? null,
     // stamp helpers in local coordinates, for interior cells only
     setGround: (x, y, skin) => { if (inside(x, y)) b.ground[y + MARGIN][x + MARGIN] = b.skin(skin) },
     setProp: (x, y, skin, { walkable = false } = {}) => {

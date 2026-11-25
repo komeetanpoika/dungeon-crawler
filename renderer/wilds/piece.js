@@ -57,7 +57,13 @@ export function generatePiece(seed, wx, wy, deal = 0, tale = null, villageTale =
   t.finish()
 
   const cells = piece.cells = Array.from({ length: PIECE }, (_, y) =>
-    Array.from({ length: PIECE }, (_, x) => cellOf(t.groundAt(x, y), t.propAt(x, y), t.walkable(x, y))))
+    Array.from({ length: PIECE }, (_, x) => {
+      const c = cellOf(t.groundAt(x, y), t.propAt(x, y), t.walkable(x, y))
+      // (art only: a road's verge, road-art.js)
+      const deco = t.decoAt(x, y)
+      if (deco) c.deco = deco
+      return c
+    }))
   // Doors and cave mouths are walk-onto triggers: the art stays, the cell opens.
   for (const d of [...piece.doors, ...piece.caves]) {
     const c = cells[d.y][d.x]

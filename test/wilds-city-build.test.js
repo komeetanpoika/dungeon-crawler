@@ -9,7 +9,8 @@ import { CITY, CITY_KEYS, isCityPiece, fromCity } from '../renderer/wilds/city/g
 import { makeTerrain, WILDS_SKINS, ROAD_WIDTH, roadLane0 } from '../renderer/wilds/terrain.js'
 import { RING, APPROACHES } from '../renderer/wilds/city/build-land.js'
 import { roadSides, CITY_DOORS } from '../renderer/wilds/roads.js'
-import { PIECE, FRAME } from '../renderer/wilds/layout.js'
+import { PIECE, FRAME, MARGIN } from '../renderer/wilds/layout.js'
+import { isVergeSkin } from '../renderer/wilds/road-art.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
 import { makeWorld, getPiece } from '../renderer/wilds/world.js'
@@ -167,7 +168,12 @@ test('the outer frame is ordinary land the neighbours agree with', () => {
       const c = piece.cells[y][x]
       const at = `${x},${y} of ${k} seed ${seed}`
       assert.equal(c.skin, t.groundAt(x, y), at); assert.equal(c.overlay ?? null, t.propAt(x, y) ?? null, at); assert.equal(c.tile === TILE.FLOOR, t.walkable(x, y), at)
-      assert.equal(c.deco ?? null, null, at)
+      // the only deco is a road's verge (road-art.js): within MARGIN of the
+      // city's edge, where the neighbours lay it too, the terrain's own;
+      // deeper in, one may come from the city's own road beside the frame
+      const cx = x + wx * PIECE, cy = y + (wy - 2) * PIECE
+      if (Math.min(cx, cy, N - 1 - cx, N - 1 - cy) < MARGIN) assert.equal(c.deco ?? null, t.decoAt(x, y), at)
+      else assert.ok(c.deco === undefined || isVergeSkin(c.deco), `${at}: ${c.deco}`)
     }
   }
 })

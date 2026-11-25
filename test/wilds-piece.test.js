@@ -746,14 +746,17 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // and again when the road was laid inside its pieces: those four moved; and again when villages kept
   // their houses from main: only 0,0 moved. The sea cost, the city's outside roads and the fold pen's
   // gap moved none of the eight: their road sides stayed, none is a city piece or a fold village.
-  // And again when farmland got its farms: -5,-5 is farmland, a marsh farmstead on its dry rise now.)
-  const BEFORE = { '0,0': 'c64eb265689c1434', '1,0': '0f8536f9f00aa5bc', '0,-1': '4f3bac5b77cb4a54', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': '9116e9511b4e36b0', '6,1': '04fd70d97186adb6' }
+  // And again when farmland got its farms: -5,-5 is farmland, a marsh farmstead on its dry rise now.
+  // And again when roads got their verges (road-art.js), hashed from then on as a cell's deco: the four
+  // with road edges moved by their decos alone; the other four have none, and hash as they did.)
+  const BEFORE = { '0,0': '332986a7ddd50c40', '1,0': '3d4617d7e8b1de59', '0,-1': 'c1c0741c7cbc583a', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': 'e0be0d188a85c145', '6,1': '04fd70d97186adb6' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)
     const h = createHash('sha1')
-    // (a cell that is walked under since wilds/over.js was a wall then, with the art it still has)
-    for (const row of p.cells) for (const c of row) h.update(`${c.over ? TILE.WALL : c.tile}|${c.skin}|${c.overlay ?? ''};`)
+    // (a cell that is walked under since wilds/over.js was a wall then, with the art it still has;
+    // a deco, where a cell has one, after its overlay)
+    for (const row of p.cells) for (const c of row) h.update(`${c.over ? TILE.WALL : c.tile}|${c.skin}|${c.overlay ?? ''}${c.deco ? `|${c.deco}` : ''};`)
     h.update(JSON.stringify(p.spawns.map(s => [s.kind, s.x, s.y])))
     h.update(JSON.stringify(p.doors.map(d => [d.x, d.y, d.tier, d.story])))
     assert.equal(h.digest('hex').slice(0, 16), want, `piece ${key} changed`)
