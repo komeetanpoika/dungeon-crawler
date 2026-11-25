@@ -14,6 +14,7 @@ import { roadsFrom, pieceClass } from '../renderer/wilds/roads.js'
 import { PIECE, pieceKey, tierAt, pieceBiome, lootDepthFor, villagesNear, fixedMain } from '../renderer/wilds/layout.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
+import { houseSpec } from '../renderer/interior/versions.js'
 
 const SEEDS = [1, 3, 2024]
 // the farms of each country, as features.js deals them
@@ -104,7 +105,7 @@ test('farmland has friendly people, a door, no nest or stones, and only spider p
     assert.ok(folk.length >= 1 && folk.length <= 3, `${at}: ${folk.length} people on the farm`)
     for (const s of folk) assert.ok(Array.isArray(s.lines) && s.lines.length >= 1 && s.lines.every(l => typeof l === 'string' && l.length > 0), `${at}: a ${s.species} with nothing to say`)
     people += folk.length
-    const doors = piece.doors.filter(d => dist(d, m) <= pad + 1)
+    const doors = piece.doors.filter(d => dist(d, m) <= pad + 3)   // (a house moved off a path may stand a little out)
     assert.ok(doors.length >= 1, `${at}: the farm has no door`)
     for (const d of doors) {
       assert.equal(d.tier, 'safe', `${at}: the farm's door is ${d.tier}`)
@@ -148,6 +149,12 @@ test('a farm blocks neither the road nor a trail', () => {
     const m = piece.main, pad = PAD[m.kind]
     for (let dy = -pad; dy <= pad; dy++) for (let dx = -pad; dx <= pad; dx++)
       if (dx * dx + dy * dy <= pad * pad) assert.ok(!t.onRoad(m.x + dx, m.y + dy), `${at}: the road runs through the farm at ${m.x + dx},${m.y + dy}`)
+    // nor does anything of the farm stand on a trail on its own ground: a trail may end at a door
+    // or a wall's side, never under one (out to pad + 3, as far as a house may move off a path)
+    for (let dy = -pad - 3; dy <= pad + 3; dy++) for (let dx = -pad - 3; dx <= pad + 3; dx++) {
+      const x = m.x + dx, y = m.y + dy
+      if (Math.hypot(dx, dy) < pad + 3 && t.onPath(x, y)) assert.ok(walk(x, y), `${at}: ${t.propAt(x, y)} stands on the trail at ${x},${y}`)
+    }
     // the game's cells agree, and a fisher's jetty never touches another bridge only at a corner
     const p = generatePiece(seed, piece.wx, piece.wy, piece.deal)
     const floor = (x, y) => p.cells[y]?.[x]?.tile === TILE.FLOOR
@@ -161,11 +168,20 @@ test('a farm blocks neither the road nor a trail', () => {
 })
 
 // The farm's room beside the roads is measured to every road cell; here the
-// terrain reports a grid of road lines `every` cells apart besides its own.
+// terrain reports a grid of road lines `every` cells apart besides its own
+// (each, like any road, a path too). `built`: every cell the features laid
+// something on, which the trees and rocks already growing there are not.
 function crowded(seed, wx, wy, deal, every) {
   const t = makeTerrain(seed, wx, wy, deal)
-  const onRoad = t.onRoad
-  t.onRoad = (x, y) => onRoad(x, y) || (t.inside(x, y) && (x % every === 0 || y % every === 0))
+  const onRoad = t.onRoad, onPath = t.onPath
+  const line = (x, y) => t.inside(x, y) && (x % every === 0 || y % every === 0)
+  t.onRoad = (x, y) => onRoad(x, y) || line(x, y)
+  t.onPath = (x, y) => onPath(x, y) || line(x, y)
+  const built = new Set()
+  for (const lay of ['setProp', 'setWater', 'setMass']) {
+    const was = t[lay]
+    t[lay] = (x, y, ...rest) => { built.add(y * PIECE + x); return was(x, y, ...rest) }
+  }
   const tier = tierAt(wx, wy)
   const piece = {
     key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy), cls: pieceClass(seed, wx, wy), road: null,
@@ -173,7 +189,7 @@ function crowded(seed, wx, wy, deal, every) {
     spawnPoint: null, gates: t.gates, lootDepth: lootDepthFor(tier),
   }
   placeFeatures(t, piece)
-  return piece
+  return { t, piece, built }
 }
 test('a farm with no room beside the roads gives way to the next of its country, and last to a field with a hut', () => {
   let n = 0
@@ -183,13 +199,22 @@ test('a farm with no room beside the roads gives way to the next of its country,
     if (deal === undefined) continue
     // lines 16 apart leave 8 tiles of room at most: no farmstead (10), no orchard (8), a mill (7)
     const mill = crowded(seed, wx, wy, deal, 16)
-    assert.equal(mill.main.kind, 'mill', `seed ${seed} piece ${wx},${wy} deal ${deal}`)
-    // 14 apart leave 7: only the field with its hut (6)
+    assert.equal(mill.piece.main.kind, 'mill', `seed ${seed} piece ${wx},${wy} deal ${deal}`)
+    // 14 apart leave 7: only the field with its hut (6), and every one of its places is beside a road
     const field = crowded(seed, wx, wy, deal, 14)
-    assert.equal(field.main.kind, 'field', `seed ${seed} piece ${wx},${wy} deal ${deal}`)
-    for (const p of [mill, field]) {
-      assert.ok(p.doors.some(d => d.tier === 'safe' && dist(d, p.main) <= PAD[p.main.kind] + 1), `seed ${seed} piece ${wx},${wy}: the ${p.main.kind} has no house`)
-      assert.ok(p.spawns.some(s => s.kind === 'npc' && s.lines), `seed ${seed} piece ${wx},${wy}: nobody lives at the ${p.main.kind}`)
+    assert.equal(field.piece.main.kind, 'field', `seed ${seed} piece ${wx},${wy} deal ${deal}`)
+    // 8 apart: no plan of any farm keeps off them, and the field's hut finds a gap between
+    const hemmed = crowded(seed, wx, wy, deal, 8)
+    assert.equal(hemmed.piece.main.kind, 'field', `seed ${seed} piece ${wx},${wy} deal ${deal}`)
+    for (const { t, piece: p, built } of [mill, field, hemmed]) {
+      const at = `seed ${seed} piece ${wx},${wy} (${p.main.kind})`
+      assert.ok(p.doors.some(d => d.tier === 'safe' && dist(d, p.main) <= PAD[p.main.kind] + 3), `${at}: no house`)
+      assert.ok(p.spawns.some(s => s.kind === 'npc' && s.lines), `${at}: nobody lives there`)
+      // nothing the features built stands on a road, however close the roads come
+      for (const i of built) {
+        const x = i % PIECE, y = (i / PIECE) | 0
+        if (t.onRoad(x, y)) assert.ok(t.walkable(x, y), `${at}: ${t.propAt(x, y)} stands on the road at ${x},${y}`)
+      }
     }
     n++
   }
@@ -220,9 +245,14 @@ test('every farmland piece has a farm with a house, among many', () => {
     const p = generatePiece(seed, wx, wy, 0)
     const at = `seed ${seed} piece ${wx},${wy} (${p.biome} ${p.main.kind})`
     assert.ok([...FARMS[p.biome], 'field'].includes(p.main.kind), `${at}: no farm of its country`)
-    const homes = p.doors.filter(d => d.tier === 'safe' && dist(d, p.main) <= PAD[p.main.kind] + 1)
+    const homes = p.doors.filter(d => d.tier === 'safe' && dist(d, p.main) <= PAD[p.main.kind] + 3)
     assert.ok(homes.length >= 1, `${at}: the farm has no house`)
-    for (const d of homes) wholeHouse(p, d, at)
+    for (const d of homes) {
+      wholeHouse(p, d, at)
+      // somebody always lives there: never an abandoned house inside
+      assert.equal(d.lived, true, `${at}: the house at ${d.x},${d.y} is not marked lived in`)
+      assert.equal(houseSpec(d, { worldSeed: seed }).version, 'home', `${at}: the house at ${d.x},${d.y} is not a home`)
+    }
     if (p.main.kind === 'mill') { mills++; assert.equal(over(p, homes[0].x, homes[0].y), 'ow_house_door_mill', `${at}: the mill's door`) }
     kinds.add(p.main.kind)
     n++

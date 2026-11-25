@@ -211,6 +211,12 @@ function footprint([kind, ...a]) {
 // moved and OFF_PAD_COST for each cell it then builds beyond the farm's pad.
 const PATH_COST = { solid: 20, low: 3, rail: 1, flat: 2, step: 0 }
 const RULED_OUT = 1000, FARM_SHIFT = 2, SHIFT_COST = 0.5, OFF_PAD_COST = 3
+// Where a house, the windmill or a well may go instead when a path runs where
+// its plan puts it: up to MOVE_REACH cells off, the nearest first.
+const MOVE_REACH = 7
+const MOVES = []
+for (let oy = -MOVE_REACH; oy <= MOVE_REACH; oy++) for (let ox = -MOVE_REACH; ox <= MOVE_REACH; ox++) MOVES.push([ox, oy])
+MOVES.sort((p, q) => p[0] * p[0] + p[1] * p[1] - (q[0] * q[0] + q[1] * q[1]))
 
 export const SITE_SKINS = [...new Set([
   ...Object.values(ROOF).flatMap(r => [...r.top, ...r.low, r.chim, r.gable]),
@@ -339,8 +345,10 @@ export function makeSites(c) {
   }
 
   // A house whose door is at (dx, dy), `dcol` cells in from its west wall
-  // (dealt when not given). Returns its box and its door record.
-  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null, dcol: atCol = null } = {}) {
+  // (dealt when not given); `lived`: someone is always at home (the interior
+  // is never an abandoned one: renderer/interior/versions.js). Returns its box
+  // and its door record.
+  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null, dcol: atCol = null, lived = false } = {}) {
     const R = ROOF[roof], W = WALL[wall]
     const dbl = w === 5 && rng() < 0.35
     const dcol = atCol ?? (w === 3 ? 1 : w === 4 ? (rng() < 0.5 ? 1 : 2) : 2)
@@ -359,7 +367,7 @@ export function makeSites(c) {
     }
     // the doorstep stays clear
     for (let i = -1; i <= 1; i++) { t.clear(dx + i, dy + 1); hold(dx + i, dy + 1) }
-    const door = c.door(dx, dy, tier, story, { look: { w, storeys, wall }, ...(kind ? { kind } : {}) })
+    const door = c.door(dx, dy, tier, story, { look: { w, storeys, wall }, ...(kind ? { kind } : {}), ...(lived ? { lived: true } : {}) })
     return { x0, x1: x0 + w - 1, top, w, door }
   }
 
@@ -472,12 +480,13 @@ export function makeSites(c) {
   // The main thing of farmland (features.js). A farm is laid from one of its
   // plans (FARM_PLANS), as drawn or mirrored, moved a cell or two if that
   // keeps it off the paths; whichever costs least (PATH_COST), ties going to
-  // the first from a dealt start. A house, the windmill and a well are built
-  // whatever lies under them (on the farm's own ground there is room to walk
-  // round); everything else gives way to a path. Its houses are lived in
-  // (tier safe). Each returns { doors, people }: the door records it made and
-  // spots for one to three people ({ x, y, species }), whom features.js puts
-  // there with their lines.
+  // the first from a dealt start. Nothing of a farm stands on a road or a
+  // trail: a house, the windmill or a well that a path runs under moves to the
+  // nearest free ground a few cells off (MOVES), and stays where its plan puts
+  // it only if there is none and no road runs there; everything else gives
+  // way. Its houses are lived in (tier safe, `lived`). Each returns { doors,
+  // people }: the door records it made and spots for one to three people
+  // ({ x, y, species }), whom features.js puts there with their lines.
   //
   // What the cells of a plan (its footprint) cost moved by (sx, sy):
   function costOf(cx, cy, cells, sx, sy, r) {
@@ -516,10 +525,27 @@ export function makeSites(c) {
         t.claim(x, y); t.clear(x, y)
       }
     }
+    // Where a building may stand: inside the piece, on nothing the farm has
+    // built, off every path and road and within reach of the yard, its
+    // doorstep free (a trail or a road may pass it).
+    const reach = (r + 3) * (r + 3)
+    const fits = item => footprint(item).every(({ x, y, what }) => {
+      const X = cx + x, Y = cy + y
+      if (!t.inside(X, Y) || c.taken(X, Y)) return false
+      return what === 'step' || (!t.onPath(X, Y) && x * x + y * y <= reach)
+    })
+    const settle = item => {
+      for (const [ox, oy] of MOVES) { const moved = ox || oy ? shifted(item, ox, oy) : item; if (fits(moved)) return moved }
+      return footprint(item).some(({ x, y, what }) => what !== 'step' && t.onRoad(cx + x, cy + y)) ? null : item
+    }
+    const BUILDINGS = new Set(['house', 'mill', 'well'])
+    const free = (x, y) => !t.onPath(x, y) && !c.taken(x, y)
     // ground first, then what is fenced in, the buildings, and what stands about
     const ORDER = ['field', 'flat', 'fence', 'wall', 'house', 'mill', 'well', 'put', 'rock', 'pair', 'low', 'beast', 'herd', 'folk']
-    for (const step of ORDER) for (const [kind, ...a] of best) {
-      if (kind !== step) continue
+    for (const step of ORDER) for (const item of best) {
+      if (item[0] !== step) continue
+      const [kind, ...a] = (BUILDINGS.has(step) ? settle(item) : item) ?? []
+      if (!kind) continue   // a building with nowhere to go but a road is left out
       const X = cx + a[0], Y = cy + a[1]
       if (kind === 'field') {
         // tilled ground with its own grass edge and a crop on every cell; a trail keeps its way through
@@ -542,24 +568,24 @@ export function makeSites(c) {
           if ((x === a[4] && y === a[5]) || !offWay(cx + x, cy + y)) { t.clear(cx + x, cy + y); hold(cx + x, cy + y) } else low(cx + x, cy + y, MUD_WALL)
         }
       } else if (kind === 'house') {
-        const h = house(X, Y, 'safe', { w: a[2], storeys: a[3], wall: a[4], dcol: doorCol(a[2], a[5]) })
+        const h = house(X, Y, 'safe', { w: a[2], storeys: a[3], wall: a[4], dcol: doorCol(a[2], a[5]), lived: true })
         around(h, Y)
         doors.push(h.door)
       } else if (kind === 'mill') {
         WINDMILL.forEach((skins, i) => row(X - 1, Y - 3 + i, skins))
         for (let i = -1; i <= 1; i++) { t.clear(X + i, Y + 1); hold(X + i, Y + 1) }
         around({ x0: X - 1, x1: X + 1, top: Y - 3 }, Y)
-        doors.push(c.door(X, Y, 'safe', null, { look: { w: 3, storeys: 2, wall: 'stone' } }))
+        doors.push(c.door(X, Y, 'safe', null, { look: { w: 3, storeys: 2, wall: 'stone' }, lived: true }))
       } else if (kind === 'well') {
         put(X, Y - 1, 'ow_well_top'); put(X, Y, 'ow_well')
       } else if (kind === 'put') {
-        if (offWay(X, Y)) put(X, Y, a[2])
+        if (free(X, Y)) put(X, Y, a[2])
       } else if (kind === 'rock') {
-        if (offWay(X, Y)) low(X, Y, pick(c.rocks))
+        if (free(X, Y)) low(X, Y, pick(c.rocks))
       } else if (kind === 'pair') {
-        if (offWay(X, Y) && offWay(X + 1, Y)) { low(X, Y, a[2]); low(X + 1, Y, a[3]) }
+        if (free(X, Y) && free(X + 1, Y)) { low(X, Y, a[2]); low(X + 1, Y, a[3]) }
       } else if (kind === 'low') {
-        if (offWay(X, Y)) low(X, Y, a[2])
+        if (free(X, Y)) low(X, Y, a[2])
       } else if (kind === 'beast') {
         const at = t.free(X, Y) && !c.taken(X, Y) ? { x: X, y: Y } : c.freeSpot(X, Y, 0, 2)
         if (at) c.npc(a[2], at.x, at.y)

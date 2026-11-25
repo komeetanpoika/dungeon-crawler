@@ -32,6 +32,19 @@ describe('which house is behind a door', () => {
     assert.deepEqual(Object.keys(t).sort(), ['abandoned', 'home'])
     assert.ok(t.home > 320 && t.abandoned > 20, JSON.stringify(t))
   })
+  it('a house someone always lives in (a farm: lived) is a home every time', () => {
+    const t = tally(doors(400, { tier: 'safe', lived: true }).map(d => houseSpec(d).version))
+    assert.deepEqual(t, { home: 400 })
+    // the puzzle house and a story house are still what they are
+    assert.equal(houseSpec(door({ kind: 'sunroom', tier: 'safe', lived: true })).version, 'sunroom')
+    assert.equal(houseSpec(door({ story: 'x', lived: true }), { story: { room: 'toivo_kitchen', pickups: [] } }).version, 'empty')
+  })
+  it('a door without `lived` is the house it was before the farms (pinned before the field came)', async () => {
+    const { createHash } = await import('node:crypto')
+    const out = []
+    for (const tier of ['safe', 'hut']) for (const d of doors(400, { tier })) { const s = houseSpec(d, { worldSeed: 9 }); out.push([s.version, s.trade, s.size, s.palette]) }
+    assert.equal(createHash('sha1').update(JSON.stringify(out)).digest('hex').slice(0, 16), '7a6c23a125159ab8')
+  })
   it('a hut in the wild is a home, abandoned, a nest or a hideout, more often hostile further out', () => {
     const near = tally(doors(400).map(d => houseSpec(d).version))
     const far = tally(doors(400, { toughness: 3 }).map(d => houseSpec(d).version))

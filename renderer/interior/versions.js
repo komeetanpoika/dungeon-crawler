@@ -28,6 +28,8 @@ export const TRADE_LIST = ['farmer', 'hunter', 'fisher', 'smith', 'baker', 'scho
 function chooseVersion(door, rng, story) {
   if (door.kind === 'sunroom') return 'sunroom'
   if (story) return 'empty'
+  // someone is always at home here (a farm of farmland: wilds/sites.js)
+  if (door.lived) return 'home'
   if (door.tier === 'ruin') return 'ruin'
   if (door.tier === 'safe') return rng() < 0.12 ? 'abandoned' : 'home'
   return (door.toughness ?? 1) <= 1
@@ -48,7 +50,7 @@ function paletteOf(door, version) {
   return door.tier === 'hut' ? 'wood' : 'plaster'
 }
 
-// door: { label, tier, story?, kind?, toughness?, look?, city? }. story: the
+// door: { label, tier, story?, kind?, lived?, toughness?, look?, city? }. story: the
 // episode's `houses[door.story]` ({ room, pickups }) when the door is a story
 // house. A Kalevanlinna door (door.city) takes `residents` (the spawns of who
 // is in it now) and `household` (the Person records of whose house it is):
