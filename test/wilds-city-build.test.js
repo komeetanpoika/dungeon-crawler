@@ -1,13 +1,17 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { buildCity, cityFor } from '../renderer/wilds/city/build.js'
 import { generateCityPiece } from '../renderer/wilds/city/piece.js'
-import { PLAN, insideWalls, towerRect } from '../renderer/wilds/city/plan.js'
+import { PLAN, insideWalls, wallCells, towerRect } from '../renderer/wilds/city/plan.js'
 import { cutBlocks } from '../renderer/wilds/city/blocks.js'
 import { CITY, CITY_KEYS, isCityPiece, fromCity } from '../renderer/wilds/city/geometry.js'
-import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
-import { PIECE, FRAME } from '../renderer/wilds/layout.js'
+import { makeTerrain, WILDS_SKINS, ROAD_WIDTH, roadLane0 } from '../renderer/wilds/terrain.js'
+import { RING, APPROACHES } from '../renderer/wilds/city/build-land.js'
+import { roadSides, roadsFrom, roadLine, SIDE_WORDS, CITY_DOORS } from '../renderer/wilds/roads.js'
+import { PIECE, FRAME, MARGIN } from '../renderer/wilds/layout.js'
+import { isVergeSkin } from '../renderer/wilds/road-art.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { DAY } from '../renderer/wilds/city/schedule.js'
 import { makeWorld, getPiece } from '../renderer/wilds/world.js'
@@ -165,7 +169,12 @@ test('the outer frame is ordinary land the neighbours agree with', () => {
       const c = piece.cells[y][x]
       const at = `${x},${y} of ${k} seed ${seed}`
       assert.equal(c.skin, t.groundAt(x, y), at); assert.equal(c.overlay ?? null, t.propAt(x, y) ?? null, at); assert.equal(c.tile === TILE.FLOOR, t.walkable(x, y), at)
-      assert.equal(c.deco ?? null, null, at)
+      // the only deco is a road's verge (road-art.js): within MARGIN of the
+      // city's edge, where the neighbours lay it too, the terrain's own;
+      // deeper in, one may come from the city's own road beside the frame
+      const cx = x + wx * PIECE, cy = y + (wy - 2) * PIECE
+      if (Math.min(cx, cy, N - 1 - cx, N - 1 - cy) < MARGIN) assert.equal(c.deco ?? null, t.decoAt(x, y), at)
+      else assert.ok(c.deco === undefined || isVergeSkin(c.deco), `${at}: ${c.deco}`)
     }
   }
 })
@@ -230,6 +239,26 @@ test('all eight edge crossings join a city gate', () => {
   }
 })
 
+test('the land gates\' signs name where their roads go, and tell of those towns', () => {
+  let sideRoads = 0
+  for (const seed of SEEDS) {
+    const city = cityFor(seed), roads = roadsFrom(seed, 'city')
+    assert.ok(roads.some(r => r.side === 'N' && r.town.key === '0,0' && r.leagues === 2), `seed ${seed}: no road from the north gate to Koivula`)
+    for (const [gate, x, y, first] of [['N', 77, 17, 'North gate.'], ['W', 18, 65, 'West gate.'], ['E', 142, 72, 'East gate.']]) {
+      const sign = city.signs.find(s => s.x === x && s.y === y)
+      assert.ok(sign, `seed ${seed}: no sign by the ${gate} gate`)
+      const mine = roads.filter(r => r.side === gate)
+      assert.equal(sign.lines[0], first)
+      for (const r of mine) assert.ok(sign.lines.includes(roadLine(SIDE_WORDS[gate], r.town, r.leagues)), `seed ${seed}: the ${gate} gate's sign ${JSON.stringify(sign.lines)} does not name ${r.town.name}`)
+      assert.deepEqual(sign.hears ?? [], mine.map(r => r.town.key), `seed ${seed} ${gate} gate`)
+      if (gate !== 'N') sideRoads += mine.length
+    }
+    assert.ok(city.signs.find(s => s.x === 77 && s.y === 17).lines.includes('North: Koivula, 2 leagues.'))
+    for (const s of city.signs.filter(s => s.lines[0] === 'Harbour gate.')) assert.equal(s.hears, undefined, `seed ${seed}: a harbour gate tells of a town`)
+  }
+  assert.ok(sideRoads >= 2, `only ${sideRoads} roads leave by the side gates`)
+})
+
 test('every walkable cell inside the walls is warded and none outside is', () => {
   for (const seed of SEEDS) {
     const city = cityFor(seed)
@@ -245,6 +274,68 @@ test('every walkable cell inside the walls is warded and none outside is', () =>
     // the gate arches carry it too
     for (const [x, y] of GATE_CELLS) assert.equal(city.cells[y][x].ward, true)
   }
+})
+
+// A road cell out in the country: the road's own ground on land, a pier over water.
+const roadish = c => c.skin.startsWith('ow_road_') || !!c.overlay?.startsWith('ow_pier')
+const walledCell = (x, y) => insideWalls(x, y) || wallCells().has(y * N + x)
+
+test('the ring road and gate approaches outside the walls wear the road surface', () => {
+  const rects = [...['north', 'west', 'east', 'southW', 'southE', 'shoreW', 'shoreE'].map(k => RING[k]), ...Object.values(APPROACHES)]
+  for (const seed of SEEDS) {
+    const city = cityFor(seed)
+    let land = 0
+    for (const [x0, y0, x1, y1] of rects) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const c = city.cells[y][x]
+      assert.ok(!walledCell(x, y), `${x},${y} of the ring is walled`)
+      assert.ok(c.tile === TILE.FLOOR, `${x},${y} seed ${seed}: the road is blocked`)
+      // on land (rock included: a pass wears the mountain set) the road's ground, over water a pier
+      if (c.overlay?.startsWith('ow_pier')) continue
+      assert.ok(c.skin.startsWith('ow_road_'), `${x},${y} seed ${seed}: ${c.skin}`)
+      land++
+    }
+    assert.ok(land > 1000, `seed ${seed}: ${land} road cells on land`)
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      if (walledCell(x, y)) assert.ok(!city.cells[y][x].skin.startsWith('ow_road_'), `${x},${y} seed ${seed}: road inside the walls`)
+    }
+  }
+})
+
+test('a road door\'s spur continues the frame\'s road lanes without a step', () => {
+  let doors = 0, onLand = 0
+  for (const seed of SEEDS) {
+    const city = cityFor(seed)
+    for (const d of CITY_DOORS) {
+      if (!roadSides(seed, d.wx, d.wy)[d.side]) continue
+      doors++
+      const g = makeTerrain(seed, d.wx, d.wy, 0).gates[d.side]
+      const ox = d.wx * PIECE, oy = (d.wy - 2) * PIECE
+      const a = roadLane0(d.side === 'N' ? g.x : g.y)
+      // depth k in from the city's edge, offset o across the road: a city cell
+      const at = (k, o) => d.side === 'N' ? city.cells[oy + k][ox + o] : d.side === 'W' ? city.cells[oy + o][ox + k] : city.cells[oy + o][ox + PIECE - 1 - k]
+      const ring = d.side === 'N' ? RING.north[1] : d.side === 'W' ? RING.west[0] : N - 1 - RING.east[2]
+      const lanes = Array.from({ length: ROAD_WIDTH }, (_, i) => a + i)
+      const across = [a - 2, a - 1, ...lanes, a + ROAD_WIDTH, a + ROAD_WIDTH + 1]
+      for (let k = 0; k < ring; k++) {
+        const where = `seed ${seed} ${d.side} door, ${k} in`
+        if (k < FRAME) {
+          // the frame's road lanes: its road ground lies on these lanes only, a pier at most one wider
+          const road = across.filter(o => at(k, o).skin.startsWith('ow_road_'))
+          assert.ok(road.every(o => lanes.includes(o)), `${where}: frame road on ${road} (lanes ${lanes})`)
+          assert.ok(lanes.every(o => roadish(at(k, o))), `${where}: a frame lane is no road`)
+          if (road.length === ROAD_WIDTH) onLand++
+        } else {
+          // the spur: the same lanes, road ground or pier, and nothing of the road beside them
+          const got = across.filter(o => roadish(at(k, o)))
+          assert.deepEqual(got, lanes, `${where}: spur on ${got}`)
+          assert.ok(lanes.every(o => at(k, o).tile === TILE.FLOOR), `${where}: the spur is blocked`)
+        }
+      }
+      assert.ok(lanes.every(o => roadish(at(ring, o))), `seed ${seed} ${d.side} door: the spur meets no ring road`)
+    }
+  }
+  assert.ok(doors >= 8, `${doors} road doors`)
+  assert.ok(onLand > 0, 'no frame lane on land to compare with')
 })
 
 test('the inn piece holds the village record and the doorstep spawn', () => {
@@ -422,4 +513,20 @@ test('the world hands out city pieces from the city', () => {
   assert.equal(getPiece(world, 2, 2).city, undefined)
   // no tale ever belongs to the city
   for (const k of CITY_KEYS) assert.equal(taleOf(7, { wx: keyOf(k)[0], wy: keyOf(k)[1] }), null)
+})
+
+// Nothing inside Kalevanlinna's walls, nor on them, changes with the roads and
+// settled land around it: a digest of those cells (the same on main before the
+// roads branch, measured cell for cell).
+test('the cells inside and on the walls are as they were before the roads', () => {
+  const city = buildCity(7), wc = wallCells()
+  const h = createHash('sha1')
+  let n = 0
+  for (let y = 0; y < city.cells.length; y++) for (let x = 0; x < city.cells[y].length; x++) {
+    if (!insideWalls(x, y) && !wc.has(y * city.cells.length + x)) continue
+    const c = city.cells[y][x]
+    h.update(`${x},${y}|${c.tile}|${c.skin}|${c.overlay ?? ''}|${c.deco ?? ''}|${c.ward ? 1 : 0}|${c.over ? 1 : 0}|${c.losClear ? 1 : 0}|${c.losTall ? 1 : 0}\n`)
+    n++
+  }
+  assert.equal(`${n} ${h.digest('hex')}`, '13081 ea539530bcf900a52cf7cfc2e89b104d41ffa017')
 })

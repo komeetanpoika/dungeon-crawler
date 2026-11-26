@@ -56,13 +56,16 @@ export function makeNpc({ species, id, x, y, hostile = undefined, role = null, r
   }
 }
 
+// The hero riding on top of the coach (wilds/coach-ride.js) is no one's
+// business: nobody startles at him, faces him, waits for him or hunts him.
 export function buildCtx(e, state, delta) {
   const { player, map } = state
   const def = NPC_SPECIES[e.species]
+  const onFoot = !player.riding
   return {
     state, delta, def, cfg: getAIConfig(e),
-    playerDist: Math.hypot(player.px - e.px, player.py - e.py),
-    canSeePlayer: hasLineOfSight(map, e.y, e.x, player.y, player.x),
+    playerDist: onFoot ? Math.hypot(player.px - e.px, player.py - e.py) : Infinity,
+    canSeePlayer: onFoot && hasLineOfSight(map, e.y, e.x, player.y, player.x),
     hpFrac: e.maxHp ? e.hp / e.maxHp : 1,
   }
 }
@@ -251,7 +254,7 @@ export const GOALS = {
         ai.side = null
         c.passed = true
       }
-      const blocked = c.next.x === p.x && c.next.y === p.y && Math.hypot(p.px - e.px, p.py - e.py) <= GIVE_WAY_NEAR
+      const blocked = !p.riding && c.next.x === p.x && c.next.y === p.y && Math.hypot(p.px - e.px, p.py - e.py) <= GIVE_WAY_NEAR
       if (!blocked) { ai.wait = 0; return { mode: 'patrol', target: c.next, speed } }
       ai.wait = (ai.wait ?? 0) + dt
       if (ai.wait < GIVE_WAY_WAIT) return { mode: 'hold' }

@@ -13,13 +13,14 @@ import { loadMap, exportMap, forgetMap } from './map.js'
 import { generatePiece } from './piece.js'
 import { generateCityPiece } from './city/piece.js'
 import { pieceKey, isPermanent, villageAt } from './layout.js'
+import { townOf } from './roads.js'
 import { isCityPiece } from './city/geometry.js'
 import { kindOf } from './tales.js'
 import { TALE_IDS } from '../data/tales.js'
 
 // Bump when the generator's output changes: spawn indices and the ground
 // itself in an older save no longer match, so its records are dropped.
-export const GEN = 9
+export const GEN = 10
 export const FORGET_PIECES = 5      // Chebyshev pieces from the player
 export const FORGET_SECONDS = 1200  // of play since the piece was last in the window
 export const CACHE_MAX = 49
@@ -50,7 +51,17 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
     // the map (map.js): a small picture of every piece seen, its version for
     // whoever draws it (never saved), and the tale places the player has found
     map: new Map(), mapVer: new Map(), found: new Set(),
+    // the towns the player has heard of, from a sign or someone met on the
+    // road (village piece keys, or 'city'): the map pencils them in
+    heard: new Set(),
     lastVillage: { wx: 0, wy: 0 }, visited: ['0,0'], pos: null,
+    // never saved: piece key -> spawn indices taken off their post for a
+    // while (the coachman on the coach's bench, wilds/coach-ride.js), not gone:
+    // built again when their piece is next built (session.js)
+    away: new Map(),
+    // never saved: piece keys kept in the cache whatever its size, and never
+    // forgotten, while a coach ride that runs through them is up (coach-ride.js)
+    held: null,
   }
   if (!ok) return world
   if (Number.isFinite(saved.playtime) && saved.playtime >= 0) world.playtime = saved.playtime
@@ -86,6 +97,8 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   // a found place stays marked while its place stands; the pictures of the
   // land itself go with the generator that drew it
   if (Array.isArray(saved.found)) for (const key of saved.found) if (world.places.has(key)) world.found.add(key)
+  // the towns heard of stay heard of: villages do not move with the generator
+  if (Array.isArray(saved.heard)) hear(world, saved.heard)
   if (saved.gen !== GEN) return world
   loadMap(world, saved.map)
   for (const [key, rec] of Object.entries(saved.records ?? {})) {
@@ -98,6 +111,19 @@ export function makeWorld(saved = null, { seed = 1 } = {}) {
   }
   if (saved.pos && isInt(saved.pos.X) && isInt(saved.pos.Y)) world.pos = { X: saved.pos.X, Y: saved.pos.Y }
   return world
+}
+
+// Hear of the towns `keys` names (village piece keys, 'city'); anything that
+// is no town of this world is let pass. True if one of them was new.
+export function hear(world, keys) {
+  let news = false
+  for (const key of Array.isArray(keys) ? keys : []) {
+    const town = typeof key === 'string' ? townOf(world.seed, key) : null
+    if (!town || world.heard.has(town.key)) continue
+    world.heard.add(town.key)
+    news = true
+  }
+  return news
 }
 
 const inWindow = (world, wx, wy) => !!world.origin &&
@@ -126,11 +152,12 @@ export function getPiece(world, wx, wy) {
 
 // Drop the cached pieces farthest from the window's centre. Their records
 // stay: a dropped piece is regenerated from its seed and deal and the record
-// re-applied, so only its fog of war is lost.
+// re-applied, so only its fog of war is lost. Pieces a coach ride holds stay
+// (the cache grows past CACHE_MAX for as long as it needs to).
 function evict(world) {
   const cx = (world.origin?.wx ?? 0) + 1, cy = (world.origin?.wy ?? 0) + 1
   const far = [...world.pieces.values()]
-    .filter(p => !inWindow(world, p.wx, p.wy))
+    .filter(p => !inWindow(world, p.wx, p.wy) && !world.held?.has(p.key))
     .sort((a, b) => Math.max(Math.abs(b.wx - cx), Math.abs(b.wy - cy)) - Math.max(Math.abs(a.wx - cx), Math.abs(a.wy - cy)))
   for (const p of far) {
     if (world.pieces.size <= CACHE_MAX) break
@@ -153,7 +180,7 @@ export function sweep(world, cwx, cwy) {
     const { wx, wy } = parseKey(key)
     if (Math.max(Math.abs(wx - cwx), Math.abs(wy - cwy)) <= FORGET_PIECES) continue
     if (world.playtime - rec.lastSeen <= FORGET_SECONDS) continue
-    if (inWindow(world, wx, wy) || isPermanent(world.seed, wx, wy)) continue
+    if (inWindow(world, wx, wy) || isPermanent(world.seed, wx, wy) || world.held?.has(key)) continue
     // a tale's place stays until its tale is done; after that it is land like any other
     if (world.places.has(key) && !world.places.get(key).done) continue
     forgotten.push(key)
@@ -182,6 +209,6 @@ export function exportWorld(world) {
     solved: [...world.solved], looted: [...world.looted],
     stocksDay: world.stocksDay,
     sampo: exportSampo(world.sampo),
-    map: exportMap(world), found: [...world.found],
+    map: exportMap(world), found: [...world.found], heard: [...world.heard],
   }
 }

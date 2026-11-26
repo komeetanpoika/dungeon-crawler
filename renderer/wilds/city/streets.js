@@ -2,7 +2,7 @@
 // them. Pure; built once with the city (City.streets).
 //
 // Lanes are the walkable paved cells (streets, alleys, squares, quays and
-// their piers, the gate arches) and the dirt roads outside, minus the door cells. Every other walkable cell within
+// their piers, the gate arches) and the roads outside, minus the door cells. Every other walkable cell within
 // SNAP_RANGE steps of a lane hangs off the nearest lane by a short chain
 // (a door's front cell, a stall's spot, a gate's -out spot outside the wall),
 // so any tile near a street can be a start or an end. Adjacency is
@@ -20,8 +20,9 @@ const STRAIGHT = 10, DIAG = 14
 const D8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
 const idx = (x, y) => y * N + x
 
-// paving, the quays' piers, and the dirt roads outside the walls (to the farms)
-const isLaneCell = c => (typeof c.skin === 'string' && /^ow_(city_pave|dirt_|path_sand)/.test(c.skin))
+// paving, the quays' piers, and the roads outside the walls (the road's own
+// ground, and the trails' dirt and sand: to the farms and the edges)
+const isLaneCell = c => (typeof c.skin === 'string' && /^ow_(city_pave|dirt_|path_sand|road_)/.test(c.skin))
   || (typeof c.overlay === 'string' && c.overlay.startsWith('ow_pier_deck'))
 
 export function buildStreetGraph(city) {

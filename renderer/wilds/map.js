@@ -4,7 +4,8 @@
 // hero has explored, saved with the Wilds record, and thrown away when the
 // world forgets the piece (world.js sweep): land that will be dealt anew
 // must not stay on the map. Landmarks (villages, the city, the places of
-// tales once stood in) are kept for good. DOM-free; render/minimap.js and
+// tales once stood in) are kept for good, and so are the towns heard of but
+// not yet reached, pencilled in. DOM-free; render/minimap.js and
 // ui/map-panel.js draw it.
 import { PIECE, pieceKey, villageAt } from './layout.js'
 import { CITY } from './city/geometry.js'
@@ -17,13 +18,15 @@ export const SEE_RADIUS = 16         // tiles round the hero looked at each time
 export const FOUND_REACH = 24        // tiles from a place's middle that count as having stood in it
 
 // Colour classes, in the order they win a block: the higher beats the lower,
-// so a one-tile path or stream still shows.
+// so a one-tile path or stream still shows. A class's index is its letter in
+// a save, so a new class goes at the end (the road, which then wins every
+// block it is in: a walked road is a line on the map).
 export const CLASSES = [
   ['unseen', null],
   ['grass', '#5f8f3f'], ['sand', '#d8c27c'], ['mtnground', '#8f8777'], ['marsh', '#5d6b3b'],
   ['wood', '#2f6d30'], ['pine', '#20563a'], ['autumn', '#b8692b'], ['deadwood', '#6d6358'],
   ['rock', '#75716a'], ['water', '#2f70b3'], ['path', '#b38d58'], ['pave', '#9d978b'],
-  ['deck', '#7c5432'], ['building', '#aa462f'], ['wall', '#cbc7bc'],
+  ['deck', '#7c5432'], ['building', '#aa462f'], ['wall', '#cbc7bc'], ['road', '#eee2c2'],
 ]
 export const CLASS = Object.fromEntries(CLASSES.map(([name], i) => [name, i]))
 export const MAP_COLOURS = CLASSES.map(([, colour]) => colour)
@@ -40,6 +43,7 @@ const OVERLAY = [
 ]
 const SKIN = [
   [/^ow_(water|pond)/, 'water'],
+  [/^ow_road_/, 'road'],
   [/^ow_(dirt|path)/, 'path'],
   [/^ow_(city_pave|ruin_crack)/, 'pave'],
   [/^ow_(sand|hardpan)/, 'sand'],
@@ -166,13 +170,17 @@ export function loadMap(world, saved) {
 const TALE_TITLES = Object.fromEntries(Object.values(TALES).map(t => [t.id, t.title]))
 const PLACE_NAMES = { sampo_sea: "Turso's bay", sampo_mountain: 'The copper mountain', sampo_marsh: "The pike's pond" }
 
+const CITY_X = (CITY.wx0 + CITY.pieces / 2) * PIECE, CITY_Y = (CITY.wy0 + CITY.pieces / 2) * PIECE
+
 // Everything the map marks for good, in world tiles: the villages the player
-// has reached, the city, the places of tales they have stood in.
+// has reached, the city, the places of tales they have stood in, and the
+// towns they have heard of and not reached (kind 'heard', at the middle of
+// the town's piece, or of the city).
 export function landmarks(world) {
   const out = []
   for (const key of world.visited) {
     if (key === 'city') {
-      out.push({ key, kind: 'city', name: CITY.name, X: (CITY.wx0 + CITY.pieces / 2) * PIECE, Y: (CITY.wy0 + CITY.pieces / 2) * PIECE })
+      out.push({ key, kind: 'city', name: CITY.name, X: CITY_X, Y: CITY_Y })
       continue
     }
     const [wx, wy] = key.split(',').map(Number)
@@ -187,6 +195,13 @@ export function landmarks(world) {
     if (!place) continue
     const [wx, wy] = key.split(',').map(Number)
     out.push({ key, kind: 'place', name: PLACE_NAMES[place.id] ?? TALE_TITLES[place.id] ?? 'A place of a tale', X: wx * PIECE + PIECE / 2, Y: wy * PIECE + PIECE / 2 })
+  }
+  for (const key of world.heard) {
+    if (world.visited.includes(key)) continue
+    if (key === 'city') { out.push({ key, kind: 'heard', name: CITY.name, X: CITY_X, Y: CITY_Y }); continue }
+    const [wx, wy] = key.split(',').map(Number)
+    const v = villageAt(world.seed, wx, wy)
+    if (v) out.push({ key, kind: 'heard', name: v.name, X: wx * PIECE + PIECE / 2, Y: wy * PIECE + PIECE / 2 })
   }
   return out
 }

@@ -31,6 +31,8 @@ export const CUE_NAMES = [
   'jeer', 'splat',
   // the town's ambience (wilds/city/ambience.js)
   'city-murmur', 'hammer', 'gull', 'wings', 'tavern', 'crier-bell', 'boots', 'bark',
+  // the coach setting off, rolling and arriving (game.js, wilds/coach-ride.js)
+  'coach-go', 'coach-hoof', 'coach-arrive',
 ]
 
 export function makeSfx(muted = false) {

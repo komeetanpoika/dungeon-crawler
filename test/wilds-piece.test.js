@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import * as fs from 'node:fs'
 import { generatePiece } from '../renderer/wilds/piece.js'
 import { mainKind } from '../renderer/wilds/features.js'
+import { pieceClass } from '../renderer/wilds/roads.js'
 import { WILDS_SKINS } from '../renderer/wilds/terrain.js'
 import { PIECE, tierAt, villageAt, isPermanent, lootDepthFor, pieceBiome, BIOMES } from '../renderer/wilds/layout.js'
 import { hashInt } from '../renderer/wilds/rand.js'
@@ -14,7 +15,10 @@ import { isDeckSkin } from '../renderer/wilds/bridge-art.js'
 const SEEDS = [3, 77, 2024]
 const MONSTER_NAMES = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/index.json', import.meta.url), 'utf8'))
 const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger', 'campfire', 'floating_pickup']
-const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark', 'tale_elk', 'tale_tar', 'tale_kivihiisi', 'tale_nakki', 'tale_fold', 'tale_flame', 'tale_lalli']
+// (the farms of farmland: features.js FARMS, and the field with a hut that stands where none finds room)
+const FARM_KINDS = ['farmstead', 'orchard', 'mill', 'peat', 'fisher', 'fold', 'quarry', 'well', 'field']
+// (and the roadside's wayside places: features.js ROADSIDE)
+const MAIN_KINDS = ['village', 'ring', 'cave', 'camp', 'boss', 'ruin', 'landmark', 'tale_elk', 'tale_tar', 'tale_kivihiisi', 'tale_nakki', 'tale_fold', 'tale_flame', 'tale_lalli', ...FARM_KINDS, 'rest', 'shrine', 'inn', 'tower']
 // 40 pieces per seed, biased so every tier and country turns up.
 const samplePieces = seed => Array.from({ length: 22 }, (_, i) => ({
   wx: (hashInt(seed, i, 0, 6) % 25) - 12, wy: (hashInt(seed, i, 1, 6) % 25) - 12,
@@ -46,8 +50,10 @@ test('the home trio', () => {
     assert.ok(safe >= 4 && safe <= 6, `${safe} village houses`)
     assert.equal(home.signs.length, 1)
     assert.equal(home.signs[0].title, 'Koivula')
-    assert.equal(home.signs[0].lines.length, 4)
-    assert.match(home.signs[0].lines[0], /^North: /)
+    // its roads first (the city's among them), then the country on the sides no road leaves by: a line a side at least
+    assert.ok(home.signs[0].lines.length >= 4, `${home.signs[0].lines.length} lines`)
+    for (const l of home.signs[0].lines) assert.match(l, /^(North|East|South|West): /)
+    assert.ok(home.signs[0].lines.includes('South: Kalevanlinna, 2 leagues.'))
 
     const ring = generatePiece(seed, 1, 0)
     assert.equal(ring.main.kind, 'ring')
@@ -117,7 +123,9 @@ test('one main thing and two to four small things', () => {
   for (const seed of SEEDS) for (const { wx, wy } of samplePieces(seed)) {
     const p = generatePiece(seed, wx, wy)
     assert.ok(MAIN_KINDS.includes(p.main.kind), p.main.kind)
-    assert.equal(p.main.kind, mainKind(seed, wx, wy, 0))
+    // a farm with no room beside the roads gives way to another of its country
+    if (FARM_KINDS.includes(p.main.kind)) assert.ok(FARM_KINDS.includes(mainKind(seed, wx, wy, 0)))
+    else assert.equal(p.main.kind, mainKind(seed, wx, wy, 0))
     assert.ok(p.small.length >= 1 && p.small.length <= 4, `${p.small.length} small things at ${wx},${wy}`)
     for (const s of p.small) { assert.ok(SMALL_KINDS.includes(s.kind), s.kind); kinds.add(s.kind) }
     n++; total += p.small.length
@@ -198,16 +206,18 @@ test('the land round home is gentle, and a village keeps its foes at arm\'s leng
 })
 
 test('an open-world boss can turn up two pieces from home, never beside it', () => {
-  let near = 0, bosses = 0
+  // (and never on a road piece: test/wilds-land.test.js)
+  let near = 0, bosses = 0, ogre = null
   for (const seed of SEEDS) for (let wy = -2; wy <= 2; wy++) for (let wx = -2; wx <= 2; wx++) for (let deal = 0; deal < 12; deal++) {
-    if (tierAt(wx, wy) !== 1 || villageAt(seed, wx, wy)) continue
+    // (Kalevanlinna's pieces are the city's own: city/piece.js)
+    if (tierAt(wx, wy) !== 1 || villageAt(seed, wx, wy) || pieceClass(seed, wx, wy) === 'city') continue
     const kind = mainKind(seed, wx, wy, deal)
-    if (Math.max(Math.abs(wx), Math.abs(wy)) <= 1) { assert.notEqual(kind, 'boss'); continue }
+    if (Math.max(Math.abs(wx), Math.abs(wy)) <= 1 || pieceClass(seed, wx, wy) !== 'wild') { assert.notEqual(kind, 'boss'); continue }
     near++
-    if (kind === 'boss') bosses++
+    if (kind === 'boss') { bosses++; ogre ??= { seed, wx, wy, deal } }
   }
   assert.ok(bosses / near >= 0.03 && bosses / near <= 0.15, `${bosses}/${near} bosses at toughness 1`)
-  const p = generatePiece(3, 2, 0, [...Array(60).keys()].find(d => mainKind(3, 2, 0, d) === 'boss'))
+  const p = generatePiece(ogre.seed, ogre.wx, ogre.wy, ogre.deal)
   assert.equal(p.spawns.filter(s => s.kind === 'ogre').length, 1)
 })
 
@@ -416,9 +426,10 @@ test('low things are seen over and flat things are walked on', () => {
 // den sat on the road from the north gate and shut it
 test('rock built on a road never shuts a gate', () => {
   let n = 0
-  for (let wy = -7; wy <= 7; wy++) for (let wx = -7; wx <= 7; wx++) {
+  // (a roadside watchtower is the ruin kit; wild land deals fewer caves and camps since neither borders its own kind)
+  for (let wy = -8; wy <= 8; wy++) for (let wx = -8; wx <= 8; wx++) {
     const kind = mainKind(42, wx, wy, 0)
-    if (kind !== 'cave' && kind !== 'camp' && kind !== 'ruin') continue
+    if (!['cave', 'camp', 'ruin', 'tower'].includes(kind)) continue
     n++
     const p = generatePiece(42, wx, wy)
     const seen = flood(p, p.spawnPoint)
@@ -738,13 +749,30 @@ test('a door tells what the house looks like outside, and how tough the land is'
 
 test('the pieces are cell for cell what they were before doors told their looks', async () => {
   const { createHash } = await import('node:crypto')
-  const BEFORE = { '0,0': '7d23a0869838e613', '1,0': 'cf3286888989fa92', '0,-1': 'cbef23c92f5261e9', '2,3': '66b77a8606371d51', '-3,1': '771ec47c95fd3e55', '4,-2': '4304bf49fc96d546', '-5,-5': 'f05d2b5bc40f9214', '6,1': '04fd70d97186adb6' }
+  // (pinned again at GEN 10: 0,0 1,0 0,-1 and -5,-5 have road edges, whose frame lanes wear the road;
+  // and again when the road was laid inside its pieces: those four moved; and again when villages kept
+  // their houses from main: only 0,0 moved. The sea cost, the city's outside roads and the fold pen's
+  // gap moved none of the eight: their road sides stayed, none is a city piece or a fold village.
+  // And again when farmland got its farms: -5,-5 is farmland, a marsh farmstead on its dry rise now.
+  // And again when roads got their verges (road-art.js), hashed from then on as a cell's deco: the four
+  // with road edges moved by their decos alone; the other four have none, and hash as they did.
+  // And again when the roadside got its milestones and wild land its checkerboard: 1,0 0,-1 and -5,-5
+  // moved by their milestones alone (0,0 is a village and has none); of the wild four, 2,3 (odd) kept its
+  // cave, -3,1 and 4,-2 (even) went from a cave to a ruin and 6,1 (odd) from a camp to a ruin, each on the
+  // same spot with the same paths and small things, what is dealt after the main thing following from it.
+  // And again when road pieces got their signposts: 1,0 0,-1 and -5,-5 moved by the post beside their
+  // junction; 0,0's sign only says more, and the wild four have none.
+  // And again when villages got their coach stops: only 0,0 moved, by its horse and cart and the
+  // coachman (a spawn after the small things'); the other seven are no village. And again when the
+  // stop was moved off the road's edge to the cart's far side: 0,0 alone.)
+  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '66b77a8606371d51', '-3,1': 'f7270fea10aba69d', '4,-2': '32b65c91bf91bf42', '-5,-5': '33ca9c61e541e030', '6,1': '38168e49d6d9fd1f' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)
     const h = createHash('sha1')
-    // (a cell that is walked under since wilds/over.js was a wall then, with the art it still has)
-    for (const row of p.cells) for (const c of row) h.update(`${c.over ? TILE.WALL : c.tile}|${c.skin}|${c.overlay ?? ''};`)
+    // (a cell that is walked under since wilds/over.js was a wall then, with the art it still has;
+    // a deco, where a cell has one, after its overlay)
+    for (const row of p.cells) for (const c of row) h.update(`${c.over ? TILE.WALL : c.tile}|${c.skin}|${c.overlay ?? ''}${c.deco ? `|${c.deco}` : ''};`)
     h.update(JSON.stringify(p.spawns.map(s => [s.kind, s.x, s.y])))
     h.update(JSON.stringify(p.doors.map(d => [d.x, d.y, d.tier, d.story])))
     assert.equal(h.digest('hex').slice(0, 16), want, `piece ${key} changed`)

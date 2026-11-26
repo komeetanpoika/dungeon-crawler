@@ -220,10 +220,10 @@ td.wrap code { white-space: normal; }
 
   <div class="sub">
     <h3>The big picture never moves</h3>
-    <p><code>layout.js</code> decides the country at every tile: forest around home, then one country per compass direction with the borders bent by noise, and a blob of other country in every 3 × 3 pieces. Toughness rises with distance from home, and each 4 × 4 block of pieces holds exactly one village. Change the seed and move over the map.</p>
+    <p><code>layout.js</code> decides the country at every tile: forest around home, then one country per compass direction with the borders bent by noise, and a blob of other country in every 3 × 3 pieces. Toughness rises with distance from home, and each 4 × 4 block of pieces holds exactly one village. <code>roads.js</code> then joins the villages: each block's village to the one in the block east, one block in three (and a tenth of the rest) to the one south, by the cheapest chain of pieces (a sea piece costs ten, a mountain two, one league is one piece), and Koivula to the city. The roads make three kinds of <em>settled land</em>: farmland (the first piece out of a town, with a farm of its country), the roadside (any other road piece, with wayside places and the crossroads inn) and wild land, which has no road. Change the seed and move over the map.</p>
     <figure class="demo">
-      <div class="demo-head"><span class="tag">Live</span><strong>biomeAt(seed, X, Y) over 21 × 21 pieces</strong></div>
-      <canvas id="cv-world" style="aspect-ratio: 1 / 1" role="img" aria-label="Map of the countries of a Wilds world for the chosen seed"></canvas>
+      <div class="demo-head"><span class="tag">Live</span><strong>biomeAt(seed, X, Y) and the road network over 21 × 21 pieces</strong></div>
+      <canvas id="cv-world" style="aspect-ratio: 1 / 1" role="img" aria-label="Map of the countries and roads of a Wilds world for the chosen seed"></canvas>
       <div class="controls">
         <label for="w-seed">Seed <input type="number" id="w-seed" value="1" min="1" max="999999" step="1"></label>
         <button type="button" id="w-roll">Random seed</button>
@@ -232,9 +232,9 @@ td.wrap code { white-space: normal; }
       <ul class="legend">
         <li><i style="background: var(--forest)"></i>forest</li><li><i style="background: var(--autumn)"></i>autumn woods</li><li><i style="background: var(--marsh)"></i>marsh</li>
         <li><i style="background: var(--mountain)"></i>mountains</li><li><i style="background: var(--desert)"></i>desert</li><li><i style="background: var(--sea)"></i>the sea</li>
-        <li><i style="background: var(--ink)"></i>village</li><li>outlined block: Kalevanlinna</li><li>dashed rings: toughness 2, 3, 4</li>
+        <li><i style="background: var(--ink)"></i>village</li><li>dark line: road between towns</li><li>outlined block: Kalevanlinna</li><li>dashed rings: toughness 2, 3, 4</li>
       </ul>
-      <figcaption>The hash, the value noise, the pocket blobs, the village pick and the main-thing table are ported line for line. North is up. The square at the centre is Koivula, with the mushroom ring to its east and the first cave to its north. The outlined block of four pieces south of it is Kalevanlinna, the walled city, cut from one city built once per world; the sea of its bay is laid over whatever country is there.</figcaption>
+      <figcaption>The hash, the value noise, the pocket blobs, the village pick, the road search and the main-thing tables are ported line for line. North is up. The square at the centre is Koivula, with the mushroom ring to its east and the first cave to its north. The outlined block of four pieces south of it is Kalevanlinna, the walled city, cut from one city built once per world; the sea of its bay is laid over whatever country is there.</figcaption>
     </figure>
   </div>
 
@@ -268,7 +268,7 @@ td.wrap code { white-space: normal; }
         <text x="394" y="170">dealt interior</text><text x="394" y="210">gate · one per edge</text><text x="394" y="250">main thing</text><text x="394" y="290">roaming pack · 2–3</text>
       </svg>
       </div>
-      <figcaption>A gate's offset along its edge (20 to 59) is hashed from the edge, so the two pieces that share it always agree. The main thing is a village, cave, camp, boss, ruin or landmark, or a tale's place. Paths run from every gate to it.</figcaption>
+      <figcaption>A gate's offset along its edge (20 to 59) is hashed from the edge, so the two pieces that share it always agree. On a piece with a road, the road comes first: it runs from each road gate to a junction, and the main thing stands beside it (a wayside place right by the junction, a farm on farmland, anything else set back), with one-wide trails to the small things and to the gates the road does not use. The main thing is a village, a farm, a wayside place (rest, shrine, inn, watchtower), a cave, camp, boss, ruin or landmark, or a tale's place. A piece with no road is laid as drawn here, with paths from every gate to it.</figcaption>
     </figure>
   </div>
 
@@ -282,7 +282,7 @@ td.wrap code { white-space: normal; }
       <figcaption>Solid outline: the window. Dashed: the zone the player can roam without a re-centre; its eight-tile margin (24 in the city's four pieces) stops the window flipping back and forth on a boundary. Dots mark pieces with a record. A record is dropped, and the deal goes up by one, once a piece has been more than five pieces away for twenty minutes of play; villages, the ring round home and the city are never forgotten.</figcaption>
     </figure>
   </div>
-  <p class="where">Lives in <code>renderer/wilds/</code>: <code>layout.js</code> <code>terrain.js</code> <code>features.js</code> <code>sites.js</code> <code>piece.js</code> <code>window.js</code> <code>shift.js</code> <code>session.js</code> <code>world.js</code></p>
+  <p class="where">Lives in <code>renderer/wilds/</code>: <code>layout.js</code> <code>roads.js</code> <code>terrain.js</code> <code>road-art.js</code> <code>features.js</code> <code>inn.js</code> <code>sites.js</code> <code>piece.js</code> <code>window.js</code> <code>shift.js</code> <code>session.js</code> <code>world.js</code></p>
 </section>
 
 <!-- ───────────────────────────── tiles ───────────────────────────── -->
@@ -479,6 +479,8 @@ td.wrap code { white-space: normal; }
       <tr><td class="wrap"><code>node tools/monster-cutter/auto.mjs &lt;name&gt; &lt;png&gt;</code></td><td>Headless first cut of a drawing; <code>build.mjs</code> then packs the parts.</td></tr>
       <tr><td class="wrap"><code>node tools/monster-bench/new-monster.mjs &lt;name&gt;</code></td><td>Scaffold a def, a hook and a test.</td></tr>
       <tr><td class="wrap"><code>node tools/wilds/render.mjs &lt;seed&gt; &lt;wx&gt; &lt;wy&gt;</code></td><td>Draw Wilds pieces to a PNG, with <code>--grid</code>, <code>--marks</code> and <code>--deal N</code>.</td></tr>
+      <tr><td class="wrap"><code>node tools/wilds/roads.mjs &lt;seed&gt;</code></td><td>The road network as a picture: countries, road sides, piece classes, town names, and the share of each class.</td></tr>
+      <tr><td class="wrap"><code>node tools/wilds/coach-check.mjs</code></td><td>A live check of the coach line in Electron: signposts, the map, boarding and the ride on top of the coach.</td></tr>
       <tr><td class="wrap"><code>node tools/wilds/walk.mjs</code></td><td>A one-minute live walk of the Wilds in Electron on a throwaway profile.</td></tr>
       <tr><td class="wrap"><code>node tools/perf/trace.mjs &lt;depth&gt;</code></td><td>Frame cost on a depth. <code>pvp-step.mjs</code> times the arena step and <code>tools/pvp-soak.mjs</code> soaks the server.</td></tr>
       <tr><td class="wrap"><code>node tools/map-shots/shoot.mjs</code></td><td>Photograph whole maps for review.</td></tr>
@@ -690,16 +692,171 @@ function gateAt(seed, wx, wy, side) {
   const [ex, ey, salt] = side === 'E' ? [wx, wy, 321] : side === 'W' ? [wx - 1, wy, 321] : side === 'S' ? [wx, wy, 322] : [wx, wy - 1, 322]
   return 20 + hashInt(seed, ex, ey, salt) % 40
 }
-// renderer/wilds/features.js
-function mainKind(seed, wx, wy, deal = 0) {
-  const fixed = fixedMain(wx, wy)
-  if (fixed) return fixed
+// renderer/wilds/roads.js: which towns are joined by road, and the pieces the roads run through
+const CITY_DOORS = { N: { wx: 0, wy: 2, side: 'N' }, W: { wx: 0, wy: 2, side: 'W' }, E: { wx: 1, wy: 2, side: 'E' } }
+const CITY_TOWN = { key: 'city', wx: 0, wy: 2 }
+const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
+const OPPOSITE = { N: 'S', E: 'W', S: 'N', W: 'E' }
+const modN = (n, m) => ((n % m) + m) % m
+const pieceKey = (wx, wy) => `${wx},${wy}`
+const MAX_GROW = 4, GATHER = 1 + Math.ceil(MAX_GROW / 4), EXTRA_SOUTH = 0.1, SEA_COST = 10
+let roadMemo = { seed: 0, links: new Map(), infos: new Map(), cost: new Map() }
+function memo(seed) { if (roadMemo.seed !== seed) roadMemo = { seed, links: new Map(), infos: new Map(), cost: new Map() }; return roadMemo }
+function blockTown(seed, bx, by) { const v = blockVillage(seed, bx, by); return v ? { key: pieceKey(v.wx, v.wy), wx: v.wx, wy: v.wy } : null }
+function stepCost(seed, wx, wy) {
+  const m = memo(seed).cost, k = pieceKey(wx, wy)
+  if (!m.has(k)) { const b = pieceBiome(seed, wx, wy); m.set(k, b === 'sea' ? SEA_COST : b === 'mountain' ? 2 : 1) }
+  return m.get(k)
+}
+// the cheapest chain of pieces between two towns: sea costs 10, mountain 2, a village or the city in the way is a wall
+function search(seed, from, to, grow) {
+  const x0 = Math.min(from.wx, to.wx) - grow, x1 = Math.max(from.wx, to.wx) + grow
+  const y0 = Math.min(from.wy, to.wy) - grow, y1 = Math.max(from.wy, to.wy) + grow
+  const w = x1 - x0 + 1, h = y1 - y0 + 1
+  const idx = (wx, wy) => (wy - y0) * w + (wx - x0), px = i => x0 + i % w, py = i => y0 + Math.floor(i / w)
+  const isEnd = (wx, wy) => (wx === from.wx && wy === from.wy) || (wx === to.wx && wy === to.wy)
+  const wall = (wx, wy) => !isEnd(wx, wy) && (isCityPiece(wx, wy) || !!villageAt(seed, wx, wy))
+  const cost = new Array(w * h).fill(Infinity), prev = new Array(w * h).fill(-1), done = new Array(w * h).fill(false)
+  const tie = (wx, wy) => hashInt(seed, wx, wy, 332)
+  cost[idx(from.wx, from.wy)] = 0
+  for (;;) {
+    let best = -1
+    for (let i = 0; i < cost.length; i++) {
+      if (done[i] || cost[i] === Infinity) continue
+      if (best < 0 || cost[i] < cost[best] || (cost[i] === cost[best] && tie(px(i), py(i)) < tie(px(best), py(best)))) best = i
+    }
+    if (best < 0) return null
+    done[best] = true
+    const cx = px(best), cy = py(best)
+    if (cx === to.wx && cy === to.wy) break
+    for (const side of 'NESW') {
+      const nx = cx + DIRS[side][0], ny = cy + DIRS[side][1]
+      if (nx < x0 || nx > x1 || ny < y0 || ny > y1 || wall(nx, ny)) continue
+      const j = idx(nx, ny)
+      if (done[j]) continue
+      const c = cost[best] + stepCost(seed, nx, ny)
+      if (c < cost[j] || (c === cost[j] && tie(cx, cy) < tie(px(prev[j]), py(prev[j])))) { cost[j] = c; prev[j] = best }
+    }
+  }
+  const route = []
+  for (let i = idx(to.wx, to.wy); i >= 0; i = prev[i]) route.push({ wx: px(i), wy: py(i) })
+  return route.reverse()
+}
+function findRoute(seed, from, to) {
+  for (let grow = 1; grow <= MAX_GROW; grow++) { const r = search(seed, from, to, grow); if (r) return r }
+  return null
+}
+function routeToDoor(seed, v, d) {
+  const out = { wx: d.wx + DIRS[d.side][0], wy: d.wy + DIRS[d.side][1] }
+  if (villageAt(seed, out.wx, out.wy) && !(out.wx === v.wx && out.wy === v.wy)) return null
+  const r = findRoute(seed, v, out)
+  return r ? [...r, { wx: d.wx, wy: d.wy }] : null
+}
+// the links a block owns: its village to the village of the block east, one block in three (and one in ten besides) to the block south;
+// block (0,0) also joins Koivula to the city and the city's side doors to the blocks beside home
+function linksOfBlock(seed, bx, by) {
+  const m = memo(seed).links, key = `${bx},${by}`
+  if (m.has(key)) return m.get(key)
+  const out = [], own = bx === 0 && by === 0, ownVillage = blockTown(seed, bx, by)
+  const joins = (tx, ty) => {
+    const target = blockTown(seed, tx, ty)
+    if (!ownVillage || !target) return
+    if (own && tx === bx && ty === by + 1) {
+      let best = null   // south of home: Koivula or a city side door, whichever is fewer pieces
+      for (const gate of ['W', 'E']) { const route = routeToDoor(seed, target, CITY_DOORS[gate]); if (route && (!best || route.length < best.route.length)) best = { town: CITY_TOWN, route } }
+      const k = findRoute(seed, target, { wx: 0, wy: 0 })
+      if (k && (!best || k.length < best.route.length)) best = { town: ownVillage, route: k }
+      if (best) out.push({ a: best.town, b: target, route: [...best.route].reverse() })
+    } else {
+      const route = findRoute(seed, ownVillage, target)
+      if (route) out.push({ a: ownVillage, b: target, route })
+    }
+  }
+  joins(bx + 1, by)
+  if (modN(bx, 3) === hashInt(seed, by, 0, 330) % 3 || hash(seed, bx, by, 331) < EXTRA_SOUTH) joins(bx, by + 1)
+  if (own) {
+    out.push({ a: ownVillage, b: CITY_TOWN, route: [{ wx: 0, wy: 0 }, { wx: 0, wy: 1 }, { wx: 0, wy: 2 }] })
+    for (const [gate, tx] of [['W', -1], ['E', 1]]) {
+      const target = blockTown(seed, tx, 0), route = target && routeToDoor(seed, target, CITY_DOORS[gate])
+      if (route) out.push({ a: CITY_TOWN, b: target, route: [...route].reverse() })
+    }
+  }
+  m.set(key, out)
+  return out
+}
+const sideOfStep = (from, to) => to.wx > from.wx ? 'E' : to.wx < from.wx ? 'W' : to.wy > from.wy ? 'S' : 'N'
+// per block: every piece edge its roads cross, and its farmland (the second piece out of a village, the last before a city gate)
+function infoOfBlock(seed, bx, by) {
+  const m = memo(seed).infos, key = `${bx},${by}`
+  if (m.has(key)) return m.get(key)
+  const edges = new Set(), farm = new Set()
+  for (const l of linksOfBlock(seed, bx, by)) {
+    const r = l.route, n = r.length
+    for (let i = 0; i + 1 < n; i++) {
+      const s = sideOfStep(r[i], r[i + 1])
+      edges.add(`${r[i].wx},${r[i].wy},${s}`); edges.add(`${r[i + 1].wx},${r[i + 1].wy},${OPPOSITE[s]}`)
+    }
+    if (n > 2) { farm.add(pieceKey(r[1].wx, r[1].wy)); farm.add(pieceKey(r[n - 2].wx, r[n - 2].wy)) }
+  }
+  const info = { edges, farm }
+  m.set(key, info)
+  return info
+}
+// a piece gathers every block within GATHER of its own, so it sees each road that can cross it
+function nearbyInfos(seed, wx, wy) {
+  const bx = Math.floor(wx / 4), by = Math.floor(wy / 4), out = []
+  for (let y = by - GATHER; y <= by + GATHER; y++) for (let x = bx - GATHER; x <= bx + GATHER; x++) out.push(infoOfBlock(seed, x, y))
+  return out
+}
+function roadSides(seed, wx, wy) {
+  const infos = nearbyInfos(seed, wx, wy), has = s => infos.some(i => i.edges.has(`${wx},${wy},${s}`))
+  return { N: has('N'), E: has('E'), S: has('S'), W: has('W') }
+}
+// the settled land: what the roads make of a piece
+function pieceClass(seed, wx, wy) {
+  if (isCityPiece(wx, wy)) return 'city'
   if (villageAt(seed, wx, wy)) return 'village'
+  if (fixedMain(wx, wy)) return 'fixed'
+  if (nearbyInfos(seed, wx, wy).some(i => i.farm.has(pieceKey(wx, wy)))) return 'farmland'
+  const s = roadSides(seed, wx, wy)
+  return s.N || s.E || s.S || s.W ? 'roadside' : 'wild'
+}
+// renderer/wilds/features.js
+const ROADSIDE = [['rest', 18], ['shrine', 12], ['inn', 10], ['tower', 12], ['cave', 16], ['camp', 16], ['ruin', 8], ['landmark', 8]]
+const INN_AT_CROSSROADS = 30
+const FARMS = {
+  forest: [['farmstead', 50], ['orchard', 25], ['mill', 25]], autumn: [['farmstead', 50], ['orchard', 25], ['mill', 25]],
+  marsh: [['farmstead', 50], ['peat', 50]], sea: [['fisher', 100]], mountain: [['fold', 60], ['quarry', 40]], desert: [['well', 100]],
+}
+const KIND_NAMES = { ring: 'mushroom ring', mill: 'windmill', peat: 'peat cutting', fisher: 'fisher’s hut', fold: 'sheepfold', tower: 'watchtower' }
+// the main thing: fixed for the home trio and villages, a farm of its country on farmland, a wayside place or the usual on the roadside, else the wild table
+function mainKind(seed, wx, wy, deal = 0) {
+  const cls = pieceClass(seed, wx, wy), fixed = fixedMain(wx, wy)
+  if (fixed) return fixed
+  if (cls === 'village') return 'village'
+  if (cls === 'farmland') {
+    let r = hash(seed, wx, wy, 400 + deal) * 100
+    const farms = FARMS[pieceBiome(seed, wx, wy)]
+    for (const [kind, weight] of farms) { if (r < weight) return kind; r -= weight }
+    return farms[0][0]
+  }
+  if (cls === 'roadside') {
+    const sides = roadSides(seed, wx, wy), crossroads = 'NESW'.split('').filter(s => sides[s]).length >= 3
+    const table = ROADSIDE.map(([kind, weight]) => [kind, kind === 'inn' && crossroads ? INN_AT_CROSSROADS : weight])
+    return dealOffTheBoard(table, hash(seed, wx, wy, 400 + deal) * table.reduce((sum, [, weight]) => sum + weight, 0), wx, wy)
+  }
   const nearHome = Math.max(Math.abs(wx), Math.abs(wy)) <= 1
   const boss = tierAt(wx, wy) >= 2 ? 15 : nearHome ? 0 : 8
-  let r = hash(seed, wx, wy, 400 + deal) * 100
-  for (const [kind, weight] of [['cave', 30], ['camp', 45 - boss], ['boss', boss], ['ruin', 12], ['landmark', 13]]) { if (r < weight) return kind; r -= weight }
-  return 'camp'
+  return dealOffTheBoard([['cave', 30], ['camp', 45 - boss], ['boss', boss], ['ruin', 12], ['landmark', 13]], hash(seed, wx, wy, 400 + deal) * 100, wx, wy)
+}
+// a camp never borders a camp, nor a cave a cave: a piece with even wx + wy deals no cave, the others no camp
+function dealOffTheBoard(table, r, wx, wy) {
+  const banned = ((wx + wy) & 1) === 0 ? 'cave' : 'camp'
+  for (const [kind, weight] of table) {
+    if (r < weight) return kind !== banned ? kind : r < weight / 2 ? 'ruin' : 'landmark'
+    r -= weight
+  }
+  return 'landmark'
 }
 let worldSeed = 1
 const seedListeners = []
@@ -825,7 +982,7 @@ safe(() => {
   const s = stage('#cv-world', L, L), read = $('#w-read'), input = $('#w-seed')
   const off = document.createElement('canvas'); off.width = off.height = N * SUB
   const octx = off.getContext('2d')
-  let villages = [], hover = null
+  let villages = [], links = [], hover = null
   function build() {
     const p = P(), cols = Object.fromEntries(BIOMES.map(b => [b, rgb(p[b])]))
     const x0 = -R * PIECE, x1 = (R + 1) * PIECE, blobs = blobsFor(worldSeed, x0, x0, x1, x1)
@@ -840,6 +997,8 @@ safe(() => {
       const v = blockVillage(worldSeed, bx, by)
       if (v && Math.abs(v.wx) <= R && Math.abs(v.wy) <= R) villages.push(v)
     }
+    links = []
+    for (let by = -4; by <= 3; by++) for (let bx = -4; bx <= 3; bx++) links.push(...linksOfBlock(worldSeed, bx, by))
   }
   s.onTheme = build
   s.draw = () => {
@@ -853,6 +1012,10 @@ safe(() => {
     ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5
     for (const r of [3, 6, 9]) { ctx.beginPath(); ctx.arc(hx, hx, r * PX, 0, Math.PI * 2); ctx.stroke() }
     ctx.setLineDash([])
+    // the roads: one line through the middle of each piece a link crosses (white under dark, so it reads on any country)
+    const trace = () => { for (const l of links) { ctx.beginPath(); l.route.forEach((q, i) => { const x = (q.wx + R + 0.5) * PX, y = (q.wy + R + 0.5) * PX; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y) }); ctx.stroke() } }
+    ctx.lineJoin = 'round'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4.5; trace()
+    ctx.strokeStyle = '#15232b'; ctx.lineWidth = 2; trace()
     for (const v of villages) {
       const x = (v.wx + R) * PX, y = (v.wy + R) * PX, home = v.wx === 0 && v.wy === 0
       ctx.fillStyle = '#fff'; ctx.fillRect(x + 6, y + 6, 12, 12)
@@ -870,7 +1033,8 @@ safe(() => {
   function describe(wx, wy) {
     const v = villageAt(worldSeed, wx, wy), main = mainKind(worldSeed, wx, wy)
     const parts = [`piece (${wx}, ${wy})`, BIOME_NAMES[pieceBiome(worldSeed, wx, wy)], `toughness ${tierAt(wx, wy)}`,
-      isCityPiece(wx, wy) ? 'Kalevanlinna, the walled city' : v ? `village ${wx === 0 && wy === 0 ? 'Koivula' : v.name}` : `main thing: ${main === 'ring' ? 'mushroom ring' : main}`,
+      isCityPiece(wx, wy) ? 'Kalevanlinna, the walled city' : v ? `village ${wx === 0 && wy === 0 ? 'Koivula' : v.name}` : `${pieceClass(worldSeed, wx, wy)} land, main thing: ${KIND_NAMES[main] ?? main}`,
+      `roads ${'NESW'.split('').filter(d => roadSides(worldSeed, wx, wy)[d]).join(' ') || 'none'}`,
       `gates N ${gateAt(worldSeed, wx, wy, 'N')} · E ${gateAt(worldSeed, wx, wy, 'E')} · S ${gateAt(worldSeed, wx, wy, 'S')} · W ${gateAt(worldSeed, wx, wy, 'W')}`]
     return parts.join(' · ')
   }

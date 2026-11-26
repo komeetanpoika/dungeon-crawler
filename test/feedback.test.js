@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  makeFeedback, addFloat, tickFeedback, speak, think, announce, speakFrom,
+  makeFeedback, addFloat, tickFeedback, speak, think, announce, speakFrom, speakAt,
   queueToast, drainToasts,
   FLOAT_DUR, BUBBLE_DUR, BANNER_DUR,
 } from '../renderer/systems/feedback.js'
@@ -114,5 +114,16 @@ describe('speakFrom', () => {
     const state = { feedback: makeFeedback() }
     speakFrom(state, { id: 'npc:x:1' }, 'Hello.')
     assert.deepEqual(state.feedback.bubble, { text: 'Hello.', kind: 'speech', t: 0, anchorId: 'npc:x:1' })
+  })
+})
+
+describe('speakAt', () => {
+  it('anchors the bubble to a spot where nobody stands, and it times out as any other', () => {
+    const state = { feedback: makeFeedback() }
+    const cart = { px: 70 * 32 + 16, py: 213 * 32 + 16, other: 'not copied' }
+    speakAt(state, cart, 'Sit up first.')
+    assert.deepEqual(state.feedback.bubble, { text: 'Sit up first.', kind: 'speech', t: 0, at: { px: cart.px, py: cart.py } })
+    tickFeedback(state.feedback, BUBBLE_DUR)
+    assert.equal(state.feedback.bubble, null)
   })
 })

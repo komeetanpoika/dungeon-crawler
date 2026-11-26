@@ -13,7 +13,7 @@ import { MISC } from './kit.js'
 import { HOME, TRADES } from './recipes.js'
 import { VERSIONS, TRADE_LIST, GLASSMAKER, occupants, loot, dress } from './versions.js'
 import { markCasts } from './casts.js'
-import { mulberry32, shuffle } from './rng.js'
+import { mulberry32, shuffle, chance } from './rng.js'
 import { TILE } from '../systems/entities.js'
 
 export { houseSpec, VERSIONS, STORY_ROOMS } from './versions.js'
@@ -81,10 +81,34 @@ export function generateInterior(spec, { solved = false, looted = false } = {}) 
     const pool = [...shuffle(rng, free.filter(c => map[c.y][c.x].roomId === roomId)), ...shuffle(rng, free.filter(c => map[c.y][c.x].roomId !== roomId))]
     for (const contents of spec.story.pickups) { const c = take(pool); if (c) entitySpawns.push({ kind: 'floating_pickup', x: c.x, y: c.y, contents }) }
   }
-  const far = shuffle(rng, free.filter(c => Math.abs(c.x - plan.spawn.x) + Math.abs(c.y - plan.spawn.y) > DOOR_CLEARANCE))
+  const awayFromDoor = c => Math.abs(c.x - plan.spawn.x) + Math.abs(c.y - plan.spawn.y) > DOOR_CLEARANCE
+  const far = shuffle(rng, free.filter(awayFromDoor))
+  // An inn's people (versions.js innSpec) have a `spot`, read once and not
+  // kept: the innkeeper behind the bar (on the floor under its counter, the
+  // pack's bar being the face of the north wall), a guest on a bench or about
+  // the taproom's floor, away from the door; each where there is room, else
+  // as anyone else.
+  let spots = null
+  const spotsOf = () => {
+    const room = plan.rooms.find(r => r.id === plan.entry)
+    const mine = c => map[c.y][c.x].roomId === plan.entry && awayFromDoor(c)
+    let bar = []
+    for (let x = room.x0; x + 2 <= room.x1 && !bar.length; x++)
+      if ([0, 1, 2].every(i => (map[room.y0 + 1][x + i].overlay ?? '').startsWith('in_worktop'))) bar = [x + 1, x, x + 2].map(bx => ({ x: bx, y: room.floorY0 }))
+    const benches = []
+    map.forEach((row, y) => row.forEach((c, x) => { if (c.overlay === 'in_bench' && c.tile !== TILE.WALL && mine({ x, y })) benches.push({ x, y }) }))
+    const floor = free.filter(mine)
+    return { bar: bar.filter(b => free.some(c => c.x === b.x && c.y === b.y) && awayFromDoor(b)), benches: shuffle(rng, benches), floor: shuffle(rng, floor) }
+  }
+  const placeOf = spot => {
+    if (!spot) return take(far) ?? (spec.residents ? take(free) : undefined)
+    spots ??= spotsOf()
+    if (spot === 'bar') return take(spots.bar) ?? take(spots.floor) ?? take(far)
+    return (chance(rng, 0.5) ? take(spots.benches) ?? take(spots.floor) : take(spots.floor) ?? take(spots.benches)) ?? take(far)
+  }
   // residents are all placed: away from the door while there is room, then anywhere
-  for (const s of spec.residents ?? occupants(spec, rng)) {
-    const c = take(far) ?? (spec.residents ? take(free) : undefined)
+  for (const { spot, ...s } of spec.residents ?? occupants(spec, rng)) {
+    const c = placeOf(spot)
     if (c) entitySpawns.push({ ...s, x: c.x, y: c.y, ...(s.role === 'glassmaker' && solved ? { lines: GLASSMAKER.solved } : {}) })
   }
   if (!spec.noLoot) {

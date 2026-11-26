@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeWorld, getPiece, recordFor, sweep, exportWorld, GEN, FORGET_PIECES, FORGET_SECONDS } from '../renderer/wilds/world.js'
+import { makeWorld, getPiece, recordFor, sweep, exportWorld, hear, GEN, FORGET_PIECES, FORGET_SECONDS } from '../renderer/wilds/world.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, ACTIVE_TILES, capInstances } from '../renderer/wilds/session.js'
 import { toWorld } from '../renderer/wilds/window.js'
 import { PIECE, villagesNear, isPermanent, villageAt } from '../renderer/wilds/layout.js'
@@ -257,6 +257,26 @@ test('a save from an older generator wakes at the last village with a clean slat
   assert.deepEqual(toWorld(again.origin, st.player.x, st.player.y), { X: v.wx * PIECE + p.spawnPoint.x, Y: v.wy * PIECE + p.spawnPoint.y })
 })
 
+test('heard towns are saved, restored, and kept across a GEN bump', () => {
+  const w = makeWorld(null, { seed: 7 })
+  assert.equal(w.heard.size, 0, 'a new world has heard of nowhere')
+  const village = villagesNear(7, 0, 0, 8).find(v => v.wx || v.wy)
+  const someVillageKey = `${village.wx},${village.wy}`
+  assert.equal(hear(w, [someVillageKey, 'city', 'nonsense']), true)
+  assert.equal(hear(w, [someVillageKey]), false, 'nothing new')
+  assert.equal(hear(w, undefined), false)
+  assert.ok(w.heard.has(someVillageKey) && w.heard.has('city') && !w.heard.has('nonsense'))
+  const saved = JSON.parse(JSON.stringify(exportWorld(w)))
+  assert.ok(Array.isArray(saved.heard))
+  const again = makeWorld(saved, { seed: 7 })
+  assert.ok(again.heard.has(someVillageKey) && again.heard.has('city'))
+  // a generator change keeps them; a key that is no town of this seed is dropped on load
+  const back = makeWorld({ ...saved, heard: [...saved.heard, 'nonsense', '1,1', 5], gen: GEN - 1 }, { seed: 7 })
+  assert.ok(back.heard.has(someVillageKey) && back.heard.has('city') && !back.heard.has('nonsense'))
+  assert.equal(back.heard.size, 2, [...back.heard].join(' '))
+  assert.equal(makeWorld({ ...saved, heard: 'city' }, { seed: 7 }).heard.size, 0)
+})
+
 test('a junk save gives a fresh world', () => {
   for (const junk of ['nope', 7, [], { seed: 'x' }, { seed: 3.5 }, { records: {} }]) {
     const w = makeWorld(junk, { seed: 5 })
@@ -478,7 +498,7 @@ test("the city's people never sleep, and its tiles load with the Wilds' tiles", 
 test("Koivula's sign and the plain villagers point to the city", () => {
   const { world } = start()
   const sign = getPiece(world, 0, 0).signs[0]
-  assert.ok(sign.lines.includes('South: Kalevanlinna, by the sea.'))
+  assert.ok(sign.lines.includes('South: Kalevanlinna, 2 leagues.'))
   assert.ok(PLAIN_LINES.forest.villager.includes('Kalevanlinna has walls and a harbour. Guards, too. Behave there.'))
   assert.ok(PLAIN_LINES.sea.villager.includes('The herring goes to Kalevanlinna. So does everyone, sooner or later.'))
 })

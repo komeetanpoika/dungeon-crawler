@@ -221,7 +221,8 @@ function layPlaces(G, rec) {
   lay(G, inn.x0 + 4, inn.y0 + 1, PROPS.cart[0]); lay(G, inn.x0 + 5, inn.y0 + 1, PROPS.cart[1])
   lay(G, inn.x1 - 1, inn.y0, 'ow_prop_woodpile'); lay(G, inn.x1, inn.y0, PROPS.barrels[0]); lay(G, inn.x1, inn.y0 + 1, PROPS.barrels[1])
   rec.spots['inn-door'] = { x: inn.door.x, y: inn.door.y + 1 }
-  rec.inn = { door: { ...inn.door }, doorstep: { x: inn.door.x, y: inn.door.y + 1 } }
+  // (`cart`: the horse's cell, the cart east of it; the coach stops beside it: build.js)
+  rec.inn = { door: { ...inn.door }, doorstep: { x: inn.door.x, y: inn.door.y + 1 }, cart: { x: inn.x0 + 4, y: inn.y0 + 1 } }
 
   // Seppo's smithy on the east side of the square, its work yard open to it
   const sm = P.smithy

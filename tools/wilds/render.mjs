@@ -2,13 +2,15 @@
 // the generated land without running the game.
 //
 //   node tools/wilds/render.mjs <seed> <wx> <wy> [cols=3] [rows=3]
-//        [--deal N] [--scale 8] [--grid] [--marks] [--out file.png]
+//        [--deal N] [--scale 8] [--grid] [--marks] [--road-width 3|4] [--out file.png]
 //
 // <wx> <wy> is the top-left piece. --grid outlines the pieces, --marks draws
-// each piece's main thing, spawns, cave mouths and doors. Kalevanlinna's four
+// each piece's main thing, spawns, cave mouths and doors. --road-width lays
+// the roads at another width than the game's, to compare. Kalevanlinna's four
 // pieces are cut from the city, as the game does (world.js getPiece).
 import { PIECE, MARGIN } from '../../renderer/wilds/layout.js'
 import { isCityPiece } from '../../renderer/wilds/city/geometry.js'
+import { setRoadWidth } from '../../renderer/wilds/terrain.js'
 import { drawPieces, pieceArtOf } from './draw.mjs'
 
 const args = process.argv.slice(2)
@@ -17,8 +19,10 @@ const has = name => { const i = args.indexOf(name); if (i < 0) return false; arg
 const deal = Number(flag('--deal', 0)), scale = Number(flag('--scale', 8)), out = flag('--out', 'wilds.png')
 const grid = has('--grid'), marks = has('--marks')
 const tale = flag('--tale', null)   // draw every piece as this tale's place: elk | tar | kivihiisi
+const roadWidth = flag('--road-width', null)
+if (roadWidth !== null) setRoadWidth(Number(roadWidth))
 const [seed, wx0, wy0, cols = 3, rows = 3] = args.map(Number)
-if (![seed, wx0, wy0].every(Number.isFinite)) { console.error('usage: render.mjs <seed> <wx> <wy> [cols] [rows] [--deal N] [--scale 8] [--grid] [--marks] [--out file.png]'); process.exit(1) }
+if (![seed, wx0, wy0].every(Number.isFinite)) { console.error('usage: render.mjs <seed> <wx> <wy> [cols] [rows] [--deal N] [--scale 8] [--grid] [--marks] [--road-width 3|4] [--out file.png]'); process.exit(1) }
 
 // One piece as art, from the full generator when it exists and from bare terrain before that.
 async function pieceArt(wx, wy) {

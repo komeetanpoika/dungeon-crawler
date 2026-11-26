@@ -8,6 +8,7 @@ import { TALES, TALE_IDS } from '../data/tales.js'
 import { villageAt, villagesNear, pieceBiome, pieceKey } from './layout.js'
 import { hash, hashInt } from './rand.js'
 import { isCityPiece } from './city/geometry.js'
+import { pieceClass } from './roads.js'
 
 export const REACH = 3       // pieces (Chebyshev) from the village
 export const SPACING = 3     // pieces between two places of one kind: never two of a kind in one window
@@ -86,7 +87,8 @@ export function sideOfPiece(v, wx, wy) {
 export function sideOf(seed, v, taleId) {
   if (TALES[taleId]?.kind !== 'story') return null
   const count = new Array(8).fill(0)
-  for (const p of fitsOf(seed, v)[taleId]) count[sideOfPiece(v, p.wx, p.wy)]++
+  // farmland is never a place (eligible()), so it does not make a side
+  for (const p of fitsOf(seed, v)[taleId]) if (pieceClass(seed, p.wx, p.wy) !== 'farmland') count[sideOfPiece(v, p.wx, p.wy)]++
   const sides = n => count.map((c, i) => c >= n ? i : -1).filter(i => i >= 0)
   const pool = sides(2).length ? sides(2) : sides(1)
   return pool.length ? pool[hashInt(seed, v.wx, v.wy, 711) % pool.length] : null
@@ -118,13 +120,16 @@ export function taleRecord(world, v) {
 }
 
 // May this piece become the place of village v's tale? New land (no record),
-// the tale's home land within reach, and far enough from every other place
-// of its kind that no two are ever in one window: the quest code finds its
-// creature by type. Places of different kinds may be neighbours.
+// the tale's home land within reach, not farmland (the first road piece out of
+// a town holds a farm: roads.js pieceClass), and far enough from every other
+// place of its kind that no two are ever in one window: the quest code finds
+// its creature by type. Places of different kinds may be neighbours. A place
+// already recorded stays wherever it is.
 export function eligible(world, v, id, wx, wy, reach = REACH) {
   const key = pieceKey(wx, wy)
   if (world.records.has(key) || world.places.has(key)) return false
   if (!fitsOf(world.seed, v, reach)[id].some(p => p.wx === wx && p.wy === wy)) return false
+  if (pieceClass(world.seed, wx, wy) === 'farmland') return false
   for (const [other, place] of world.places) if (place.id === id && cheb(parseKey(other), { wx, wy }) < SPACING) return false
   return true
 }

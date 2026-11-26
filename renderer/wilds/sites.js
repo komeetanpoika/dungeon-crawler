@@ -1,7 +1,9 @@
 // What the things of a Wilds piece look like: houses of several sizes, a
-// village with a field and a stall, a ruined keep, camps dressed for whoever
-// camps there, a cave mouth in an outcrop. Stamps only: features.js decides
-// what goes where, opens the ground and lays the paths first.
+// village with a field and a stall, the farms of farmland, the wayside places
+// and milestones of the roads, a ruined keep, camps dressed for whoever camps
+// there, a cave mouth in an outcrop. Stamps
+// only: features.js decides what goes where, opens the ground and lays the
+// paths first.
 //
 // Three kinds of tile art, by name:
 //   ow_prop_*, ow_fence_*   low things: they block the way, a sight line passes over
@@ -10,6 +12,8 @@
 //
 // The house kit is Tiny Town's: two rows of roof (a chimney up top, a gable
 // over the door), then one or two rows of wall with windows and the door.
+// The crossroads inn and its stable are Kalevanlinna's (inn.js).
+import { INN_PLANS, INN_PAD, INN_SHIFT, INN_SKINS, innFootprint, innMirrored, makeInnStamps } from './inn.js'
 
 const ROOF = {
   red: { top: ['ow_roof_red_l', 'ow_roof_red_m', 'ow_roof_red_r'], low: ['ow_roof_red_el', 'ow_roof_red_em', 'ow_roof_red_er'], chim: 'ow_roof_red_chim', gable: 'ow_roof_gable_red' },
@@ -26,6 +30,252 @@ const SAND_STONES = ['ow_ruin_pillar', 'ow_ruin_pillar_2', 'ow_ruin_rubble', 'ow
 const SAND_FLOOR = ['ow_ruin_crack_0', 'ow_ruin_crack_1', 'ow_ruin_crack_2']
 const DEAD = ['ow_deadtree_0', 'ow_deadtree_1']
 const LALLI_HOUSE = "Lalli's house"
+const VILLAGE_PAD = 12   // the ground a village is built on (features.js PAD.village)
+
+// ---- the farms of farmland (features.js FARMS) -------------------------------------
+// Drawn by tools/make-wilds-farm-tiles.mjs: hay, peat, nets, the windmill, the
+// date palm and the desert's mud-brick wall.
+const HAY = ['ow_prop_hay_0', 'ow_prop_hay_1']
+const PEAT = ['ow_prop_peat_0', 'ow_prop_peat_1']
+const NETS = ['ow_prop_nets_l', 'ow_prop_nets_r'], RACK = ['ow_prop_fishrack_l', 'ow_prop_fishrack_r']
+const PALM = 'ow_tree_palm', MUD_WALL = 'ow_prop_wall_sand', CUT_PEAT = 'ow_deco_peat'
+const CUT_STONE = ['ow_ruin_stub_0', 'ow_ruin_stub_1']   // the old stones' blocks (OLD_STONES), here newly cut
+// The windmill, row by row from the tips of its sails: two rows of roof (its
+// cap and sails) over two of tower, its door in the middle of the lowest.
+const WINDMILL = [
+  ['ow_roof_mill_l', 'ow_roof_mill_m', 'ow_roof_mill_r'],
+  ['ow_roof_mill_el', 'ow_roof_mill_em', 'ow_roof_mill_er'],
+  ['ow_house_mill_l', 'ow_house_mill_m', 'ow_house_mill_r'],
+  ['ow_house_mill_wl', 'ow_house_door_mill', 'ow_house_mill_wr'],
+]
+const FARM_SKINS = [...HAY, ...PEAT, ...NETS, PALM, MUD_WALL, CUT_PEAT, ...WINDMILL.flat()]
+// Each farm's plans, in cells from the middle of its yard, where the trail
+// from the roads ends (features.js holds that cell clear); as drawn, nothing
+// stands on it or its four neighbours, and everything within the farm's pad
+// (features.js PAD). A plan is laid as drawn or mirrored east to west, and
+// may be moved a cell or two to keep off the paths (makeSites lay).
+//   ['house', dx, dy, w, storeys, wall, dcol]   its door at (dx, dy), dcol cells in from its west wall
+//   ['mill', dx, dy]                            the windmill, its door at (dx, dy)
+//   ['fence', x0, y0, x1, y1, gx, gy]           a fenced box, its gate at (gx, gy) if given
+//   ['wall', x0, y0, x1, y1, gx, gy]            the same in mud brick
+//   ['field', x0, y0, x1, y1]   ['flat', x0, y0, x1, y1, skin]   ground, walked on
+//   ['low', x, y, skin]   ['pair', x, y, west, east]   ['put', x, y, skin]   ['rock', x, y]   ['well', x, y]
+//   ['spare', x, y, skin]   a low thing that gives way to a trail even where the plan must stand whole (lay)
+//   ['beast', x, y, species]   ['herd', x, y, species, n]   ['folk', x, y, species]
+const trees = (xs, ys, skin) => xs.flatMap(x => ys.map(y => ['put', x, y, skin]))
+const FARM_PLANS = {
+  // a house, a fenced field, a pen of sheep and a goat, hay, hens
+  farmstead: [[
+    ['house', -4, -3, 5, 2, 'wood'], ['low', -7, -3, 'ow_prop_woodpile'], ['low', -1, -3, 'ow_prop_barrel_0'],
+    ['fence', 2, -7, 7, -2, 4, -2], ['field', 3, -6, 6, -3], ['low', 1, -5, 'ow_prop_pitchfork'],
+    ['fence', -8, 2, -4, 6, -6, 2], ['beast', -6, 4, 'sheep'], ['beast', -5, 3, 'sheep'], ['beast', -7, 5, 'goat'],
+    ['low', 3, 3, HAY[0]], ['low', 4, 3, HAY[1]], ['low', 3, 4, HAY[0]], ['low', 6, 1, 'ow_prop_cart'],
+    ['herd', 2, 2, 'chicken', 2],
+    ['folk', -4, -1, 'villager'], ['folk', 4, 0, 'villager'], ['folk', -2, 2, 'elder'],
+  ], [
+    ['house', 5, -3, 4, 1, 'stone', 1], ['low', 8, -3, 'ow_prop_woodpile'], ['low', 3, -3, 'ow_prop_sack_0'],
+    ['fence', -8, -6, -3, -1, -5, -1], ['field', -7, -5, -4, -2], ['low', -2, -4, 'ow_prop_pitchfork'],
+    ['fence', 2, 3, 6, 7, 4, 3], ['beast', 3, 5, 'sheep'], ['beast', 5, 4, 'sheep'], ['beast', 4, 6, 'goat'],
+    ['low', -4, 3, HAY[0]], ['low', -3, 3, HAY[1]], ['low', -6, 2, 'ow_prop_cart'],
+    ['herd', -2, 2, 'chicken', 2],
+    ['folk', 5, -1, 'villager'], ['folk', -5, 1, 'villager'], ['folk', 1, 3, 'elder'],
+  ]],
+  // rows of apple trees, a cottage, a bee yard
+  orchard: [[
+    ['house', -4, -3, 3, 1, 'wood'], ['low', -2, -3, 'ow_prop_crate_1'], ['low', -6, -3, 'ow_prop_sack_1'],
+    ...trees([2, 4, 6], [-5, -3, -1, 1], 'ow_tree_apple'),
+    ['fence', -6, 2, -3, 4], ['low', -5, 3, 'ow_beehive'], ['low', -4, 3, 'ow_beehive'], ['low', 1, 3, 'ow_prop_bucket'],
+    ['folk', -4, -1, 'villager'], ['folk', 3, 0, 'villager'], ['folk', -1, 2, 'elder'],
+  ], [
+    ...trees([-5, -3, -1, 1, 3, 5], [-6, -4], 'ow_tree_apple'),
+    ['house', 4, 4, 3, 1, 'wood'], ['low', 2, 4, 'ow_prop_crate_1'], ['low', 6, 4, 'ow_prop_barrel_1'],
+    ['fence', -6, 1, -3, 3], ['low', -5, 2, 'ow_beehive'], ['low', -4, 2, 'ow_beehive'],
+    ['folk', 4, 6, 'villager'], ['folk', -2, -2, 'villager'], ['folk', -1, 4, 'elder'],
+  ]],
+  // the windmill, sacks of flour, two strips of grain
+  mill: [[
+    ['mill', 0, -3], ['low', 2, -3, 'ow_prop_sack_0'], ['low', 3, -3, 'ow_prop_sack_1'], ['low', -2, -3, 'ow_prop_sack_1'],
+    ['low', 4, -1, 'ow_prop_cart'], ['low', -4, -1, 'ow_prop_crate_0'],
+    ['field', -5, 2, -3, 4], ['field', 3, 2, 5, 4],
+    ['folk', 2, -1, 'villager'], ['folk', -4, 1, 'villager'], ['folk', 1, 3, 'elder'],
+  ], [
+    ['mill', 3, -2], ['low', 5, -2, 'ow_prop_sack_0'], ['low', 1, -2, 'ow_prop_sack_1'],
+    ['field', -6, -3, -3, -1], ['field', -4, 2, -1, 4],
+    ['low', 3, 3, 'ow_prop_cart'], ['low', 4, 2, 'ow_prop_crate_0'],
+    ['folk', 3, 1, 'villager'], ['folk', -5, 1, 'villager'], ['folk', 1, 3, 'elder'],
+  ]],
+  // the cutter's hut, stacks of drying peat, the cut face
+  peat: [[
+    ['house', -3, -3, 3, 1, 'wood'], ['low', -5, -3, 'ow_prop_woodpile'], ['low', -1, -3, 'ow_prop_barrel_0'],
+    ['low', 2, -4, PEAT[0]], ['low', 3, -4, PEAT[1]], ['low', 4, -4, PEAT[0]], ['low', 2, -2, PEAT[1]], ['low', 3, -2, PEAT[0]],
+    ['flat', 1, 2, 4, 4, CUT_PEAT], ['low', 5, 1, 'ow_prop_pitchfork'],
+    ['folk', -3, -1, 'villager'], ['folk', 3, 1, 'villager'], ['folk', -2, 2, 'elder'],
+  ], [
+    ['house', -3, 4, 3, 1, 'wood'], ['low', -5, 4, 'ow_prop_woodpile'],
+    ['low', 1, -5, PEAT[0]], ['low', 2, -5, PEAT[1]], ['low', 3, -5, PEAT[0]], ['low', 2, -3, PEAT[1]], ['low', 3, -3, PEAT[0]],
+    ['flat', -5, -4, -2, -2, CUT_PEAT], ['low', 4, 1, 'ow_prop_pitchfork'],
+    ['folk', -2, 6, 'villager'], ['folk', 3, -1, 'villager'], ['folk', 1, 3, 'elder'],
+  ]],
+  // the fisher's hut, nets and racks drying (the jetty and boat: fisher())
+  fisher: [[
+    ['house', -4, -3, 3, 1, 'wood'], ['low', -2, -3, 'ow_prop_barrel_1'], ['low', -6, -3, 'ow_prop_bucket'],
+    ['pair', 1, -5, ...NETS], ['pair', 4, -4, ...NETS], ['pair', 1, -3, ...RACK], ['low', -3, 2, 'ow_prop_crate_2'],
+    ['folk', -4, -1, 'villager'], ['folk', 3, -1, 'villager'], ['folk', -2, 2, 'elder'],
+  ], [
+    ['house', -4, 5, 3, 1, 'wood'], ['low', -6, 5, 'ow_prop_barrel_1'], ['low', -2, 5, 'ow_prop_crate_2'],
+    ['pair', -2, -5, ...NETS], ['pair', 1, -5, ...RACK], ['low', 4, -3, 'ow_prop_bucket'],
+    ['folk', -1, 6, 'villager'], ['folk', 3, -2, 'villager'], ['folk', 2, 3, 'elder'],
+  ]],
+  // the shepherd's hut and his fold of sheep, goats about, hay
+  fold: [[
+    ['house', -3, -3, 3, 1, 'stone'], ['low', -5, -3, 'ow_prop_woodpile'],
+    ['fence', 1, -5, 4, -1, 2, -1], ['beast', 2, -4, 'sheep'], ['beast', 3, -3, 'sheep'], ['beast', 2, -2, 'sheep'],
+    ['low', 5, 1, HAY[1]], ['low', 5, 2, HAY[0]], ['low', -1, 3, 'ow_prop_bucket_water'],
+    ['herd', -3, 3, 'goat', 2],
+    ['folk', 3, 1, 'villager'], ['folk', -3, -1, 'elder'], ['folk', -4, 1, 'villager'],
+  ], [
+    ['house', 3, -3, 3, 1, 'stone'], ['low', 5, -3, 'ow_prop_woodpile'],
+    ['fence', -2, 2, 2, 6, 0, 2], ['beast', -1, 4, 'sheep'], ['beast', 1, 3, 'sheep'], ['beast', 0, 5, 'sheep'],
+    ['low', -4, -2, HAY[0]], ['low', -3, -2, HAY[1]],
+    ['herd', -4, 1, 'goat', 2],
+    ['folk', 3, -1, 'villager'], ['folk', -3, 1, 'villager'], ['folk', 4, 2, 'elder'],
+  ]],
+  // a hut by an arc of rock to mine, blocks of cut stone waiting for the cart
+  quarry: [[
+    ['house', -3, -3, 3, 1, 'stone'], ['low', -1, -3, 'ow_prop_bucket'],
+    ['rock', 2, -5], ['rock', 3, -5], ['rock', 4, -4], ['rock', 5, -3], ['rock', 5, -2], ['rock', 3, -3], ['rock', 6, -1],
+    ['low', 2, 1, 'ow_prop_cart'], ['low', 4, 1, CUT_STONE[0]], ['low', 5, 1, CUT_STONE[1]], ['low', 4, 2, CUT_STONE[1]],
+    ['folk', 2, -1, 'villager'], ['folk', -3, -1, 'villager'], ['folk', -2, 2, 'elder'],
+  ], [
+    ['house', 3, -3, 3, 1, 'stone'], ['low', 5, -3, 'ow_prop_bucket'],
+    ['rock', -3, 4], ['rock', -2, 5], ['rock', -1, 5], ['rock', 1, 5], ['rock', 2, 4], ['rock', -4, 3], ['rock', 0, 6],
+    ['low', -4, -1, 'ow_prop_cart'], ['low', -5, -2, CUT_STONE[0]], ['low', -4, -2, CUT_STONE[1]], ['low', -5, -1, CUT_STONE[1]],
+    ['folk', 3, -1, 'villager'], ['folk', 0, 3, 'villager'], ['folk', -3, 1, 'elder'],
+  ]],
+  // a well and date palms in a mud-brick wall, the keeper's house inside (on grass: well())
+  well: [[
+    ['wall', -4, -4, 4, 4, 0, 4], ['house', -2, -1, 3, 1, 'stone'], ['well', 2, -2],
+    ['put', 3, 1, PALM], ['put', 2, 3, PALM], ['put', -2, 3, PALM], ['put', -3, 1, PALM],
+    ['folk', 1, -1, 'villager'], ['folk', -1, 2, 'elder'], ['folk', 2, 1, 'villager'],
+  ], [
+    ['wall', -4, -4, 4, 4, 0, 4], ['house', 2, -1, 3, 1, 'stone'], ['well', -2, 2],
+    ['put', -3, -2, PALM], ['put', -1, -3, PALM], ['put', 3, 2, PALM], ['put', 1, 3, PALM],
+    ['folk', -1, -1, 'villager'], ['folk', 2, 2, 'elder'], ['folk', -3, 0, 'villager'],
+  ]],
+  // where no farm of the country finds room: a fenced field and a hut
+  field: [[
+    ['house', -3, -2, 3, 1, 'wood'], ['low', -5, -2, 'ow_prop_woodpile'],
+    ['fence', 1, -4, 4, 0, 2, 0], ['field', 2, -3, 3, -1],
+    ['folk', -3, 0, 'villager'], ['folk', 2, 2, 'villager'], ['folk', -1, 2, 'elder'],
+  ], [
+    ['house', -2, 4, 3, 1, 'wood'], ['low', 0, 4, 'ow_prop_woodpile'],
+    ['fence', 1, -4, 4, 0, 2, 0], ['field', 2, -3, 3, -1],
+    ['folk', -3, 1, 'villager'], ['folk', 3, 2, 'villager'], ['folk', -1, -2, 'elder'],
+  ]],
+}
+// ---- the wayside places of the roadside (features.js ROADSIDE) ---------------------
+// Laid as a farm is (lay below), from plans in cells from the place's middle;
+// features.js leads a trail from the junction to the edge of the place
+// nearest it. Besides a farm's items they use
+//   ['tent', x, y, kind]   a tent two by two, its north-west cell at (x, y)
+//   ['fire', x, y]         an eternal campfire (the game builds one from every campfire spawn)
+//   ['statue', x, y]       the tended statue, its base at (x, y)
+//   ['tower', dx, dy]      the ruined keep's tower, its door at (dx, dy) (ruinTower)
+//   ['cobble', x, y, r2]   cobbles out to r² round (x, y)
+// The cart of the inn's yard, and of a village's coach, is the city's (city/kit.js PROPS.cart: horse west, cart east).
+const CART = ['ow_prop_city_cart_horse', 'ow_prop_city_cart']
+const WAYSIDE_PLANS = {
+  // a tent, the fire, a log to sit on, the traveller's things
+  rest: [[
+    ['tent', -3, -3, 'ow_tent'], ['fire', 0, 0], ['low', 2, 0, 'ow_prop_log'], ['low', -1, -2, 'ow_prop_sack_0'],
+    ['low', 2, -2, 'ow_prop_woodpile'], ['low', -2, 1, 'ow_prop_bedroll_0'],
+    ['folk', 1, 1, 'villager'],
+  ], [
+    ['tent', 1, 1, 'ow_tent_tan'], ['fire', -1, -1], ['low', -3, -1, 'ow_prop_log'], ['low', 3, 0, 'ow_prop_sack_1'],
+    ['low', -2, -3, 'ow_prop_woodpile'], ['low', 0, -3, 'ow_prop_bedroll_1'],
+    ['folk', -2, 0, 'villager'],
+  ]],
+  // the statue on its cobbles, a torch at each corner, a pot of offerings (flowers and the chest: shrine())
+  shrine: [[
+    ['cobble', 0, 0, 6], ['statue', 0, 0], ['low', 1, 0, 'ow_prop_pot'],
+    ['low', -2, -2, 'ow_prop_torch'], ['low', 2, -2, 'ow_prop_torch'], ['low', -2, 2, 'ow_prop_torch'], ['low', 2, 2, 'ow_prop_torch'],
+  ]],
+  // the smaller inn, where the roads leave no room for the big one (inn.js):
+  // a house five wide and two storeys, a fenced stable yard with the cart, the
+  // stable hand by it (the innkeeper is inside)
+  inn: [[
+    ['house', 0, -2, 5, 2, 'wood'], ['low', -3, -2, 'ow_prop_woodpile'], ['low', -2, 1, 'ow_prop_barrel_1'], ['low', 2, 1, 'ow_prop_crate_0'],
+    ['fence', 4, -4, 8, 1, 4, 0], ['pair', 5, -2, ...CART], ['low', 7, 0, HAY[0]], ['low', 5, 0, 'ow_prop_bucket_water'],
+    ['folk', -1, 0, 'villager'],
+  ], [
+    ['house', 0, -3, 5, 2, 'stone'], ['low', -3, -3, 'ow_prop_woodpile'], ['low', 3, -3, 'ow_prop_barrel_0'], ['low', 4, -3, 'ow_prop_barrel_1'],
+    ['fence', -3, 2, 3, 6, 0, 2], ['pair', -2, 4, ...CART], ['low', 2, 5, HAY[1]], ['low', 2, 3, 'ow_prop_bucket_water'],
+    ['folk', 1, -1, 'villager'],
+  ]],
+  // the tower alone: its broken walls are laid round wherever it settles (tower())
+  tower: [[['tower', 0, 0]]],
+}
+// A milestone (tools/make-wilds-road-tiles.mjs), beside the road (features.js milestones).
+const MILESTONE = 'ow_prop_milestone'
+
+// a house's door column when the plan does not give it, as house() deals it for widths 3 and 5
+const doorCol = (w, dcol) => dcol ?? (w === 4 ? 1 : (w - 1) >> 1)
+// The plan item moved by (sx, sy).
+function shifted([kind, ...a], sx, sy) {
+  if (kind === 'fence' || kind === 'wall') return [kind, a[0] + sx, a[1] + sy, a[2] + sx, a[3] + sy, a[4] === undefined ? undefined : a[4] + sx, a[5] === undefined ? undefined : a[5] + sy]
+  if (kind === 'field' || kind === 'flat') return [kind, a[0] + sx, a[1] + sy, a[2] + sx, a[3] + sy, ...a.slice(4)]
+  return [kind, a[0] + sx, a[1] + sy, ...a.slice(2)]
+}
+// The plan item mirrored east to west.
+function mirrored([kind, ...a]) {
+  if (kind === 'inn' || kind === 'stable') return innMirrored([kind, ...a])
+  if (kind === 'house') { const [dx, dy, w, storeys, wall, dcol] = a; return [kind, -dx, dy, w, storeys, wall, w - 1 - doorCol(w, dcol)] }
+  if (kind === 'fence' || kind === 'wall') return [kind, -a[2], a[1], -a[0], a[3], a[4] === undefined ? undefined : -a[4], a[5]]
+  if (kind === 'field' || kind === 'flat') return [kind, -a[2], a[1], -a[0], ...a.slice(3)]
+  if (kind === 'pair' || kind === 'tent') return [kind, -a[0] - 1, ...a.slice(1)]
+  return [kind, -a[0], ...a.slice(1)]
+}
+// The cells a plan item builds on: `solid` stands, `low` is dressing, `rail`
+// a fence or wall (a gap where a path passes), `flat` is walked on, `step` a doorstep.
+function footprint([kind, ...a]) {
+  if (kind === 'inn' || kind === 'stable') return innFootprint([kind, ...a])
+  const out = [], add = (x, y, what) => out.push({ x, y, what })
+  if (kind === 'house' || kind === 'mill' || kind === 'tower') {
+    const [dx, dy] = a, w = kind === 'house' ? a[2] : 3, storeys = kind === 'house' ? a[3] : 2, dcol = kind === 'house' ? doorCol(w, a[5]) : 1
+    for (let i = 0; i < w; i++) for (let y = dy - 1 - storeys; y <= dy; y++) add(dx - dcol + i, y, 'solid')
+    // (the tower keeps two rows clear in front of its arch)
+    for (let j = 1; j <= (kind === 'tower' ? 2 : 1); j++) for (let i = -1; i <= 1; i++) add(dx + i, dy + j, 'step')
+  } else if (kind === 'tent') {
+    for (let j = 0; j <= 1; j++) for (let i = 0; i <= 1; i++) add(a[0] + i, a[1] + j, 'solid')
+  } else if (kind === 'cobble') {
+    const [x0, y0, r2] = a
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy < r2) add(x0 + dx, y0 + dy, 'flat')
+  } else if (kind === 'fire') add(a[0], a[1], 'low')
+  else if (kind === 'fence' || kind === 'wall') {
+    const [x0, y0, x1, y1, gx, gy] = a
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
+      if ((x === x0 || x === x1 || y === y0 || y === y1) && !(x === gx && y === gy)) add(x, y, 'rail')
+  } else if (kind === 'field' || kind === 'flat') {
+    for (let y = a[1]; y <= a[3]; y++) for (let x = a[0]; x <= a[2]; x++) add(x, y, 'flat')
+  } else if (kind === 'pair') { add(a[0], a[1], 'low'); add(a[0] + 1, a[1], 'low') }
+  else if (kind === 'low') add(a[0], a[1], 'low')
+  else if (kind === 'spare') add(a[0], a[1], 'spare')
+  else if (kind === 'put' || kind === 'rock') add(a[0], a[1], 'solid')
+  else if (kind === 'well' || kind === 'statue') { add(a[0], a[1] - 1, 'solid'); add(a[0], a[1], 'solid') }
+  return out
+}
+// What a plan item costs for each cell of it on a path; on a road, a cell
+// already taken or outside the piece's inside, any item costs RULED_OUT. A
+// plan may be moved up to FARM_SHIFT cells either way, at SHIFT_COST a cell
+// moved and OFF_PAD_COST for each cell it then builds beyond the farm's pad.
+const PATH_COST = { solid: 20, low: 3, spare: 3, rail: 1, flat: 2, step: 0 }
+const RULED_OUT = 1000, FARM_SHIFT = 2, SHIFT_COST = 0.5, OFF_PAD_COST = 3
+// Where a house, the windmill or a well may go instead when a path runs where
+// its plan puts it: up to MOVE_REACH cells off, the nearest first.
+const MOVE_REACH = 7
+const MOVES = []
+for (let oy = -MOVE_REACH; oy <= MOVE_REACH; oy++) for (let ox = -MOVE_REACH; ox <= MOVE_REACH; ox++) MOVES.push([ox, oy])
+MOVES.sort((p, q) => p[0] * p[0] + p[1] * p[1] - (q[0] * q[0] + q[1] * q[1]))
 
 export const SITE_SKINS = [...new Set([
   ...Object.values(ROOF).flatMap(r => [...r.top, ...r.low, r.chim, r.gable]),
@@ -49,6 +299,10 @@ export const SITE_SKINS = [...new Set([
   'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small', 'ow_greytree_0', 'ow_greytree_1',
   // the Lalli tale: his pine (not in the lumber table) and the tale's people
   'ow_lalli_pine_top', 'ow_lalli_pine_trunk', 'npc_lalli', 'npc_lalli_tree', 'npc_piper', 'npc_kerttu',
+  // the farms of farmland, and what stands beside the roads (the inn's cart is the city's: city/kit.js)
+  ...FARM_SKINS, MILESTONE,
+  // the crossroads inn's stable (inn.js; its house and the rest are the city's)
+  ...INN_SKINS,
 ])]
 
 // ---- the places of the tales (data/tales.js) --------------------------------------
@@ -130,7 +384,8 @@ export function layoutTale(tale, rng, gateInner = null) {
   return { cx, cy, hub: { x: cx, y: cy + 4 }, keep: [{ x: cx + 11, y: cy + 3, r: 6 }] }
 }
 
-// c: { t, rng, pick, ri, hold, spawn, place, freeSpot, door, rocks, sandy }
+// c: { t, rng, pick, ri, hold, spawn, place, freeSpot, door, npc, hash, taken, rocks, sandy }
+// (door returns the record it made)
 export function makeSites(c) {
   const { t, rng, pick, ri, hold } = c
   // Lay one piece of art, on ground cleared for it.
@@ -142,19 +397,27 @@ export function makeSites(c) {
   const low = (x, y, skin) => { put(x, y, skin); dressing.push({ x, y }) }
   const flat = (x, y, skin) => { if (t.free(x, y) && !c.taken(x, y)) { t.setProp(x, y, skin, { walkable: true }); hold(x, y) } }
   const row = (x, y, skins) => skins.forEach((s, i) => { if (s) put(x + i, y, s) })
-  const scatter = (cx, cy, rMin, rMax, n, skins, solid = false) => {
+  // (`ok`: where a spot is wanted; a spot it refuses is left bare)
+  const scatter = (cx, cy, rMin, rMax, n, skins, solid = false, ok = null) => {
     for (let i = 0; i < n; i++) {
       const at = c.freeSpot(cx, cy, rMin, rMax)
       if (!at) return
+      if (ok && !ok(at.x, at.y)) continue
       if (solid) low(at.x, at.y, pick(skins)); else flat(at.x, at.y, pick(skins))
     }
   }
+  const offPaths = (x, y) => !t.onPath(x, y)
+  // the crossroads inn's house and stable, in Kalevanlinna's style
+  const innStamps = makeInnStamps({ t, put, hold, door: c.door, rng })
 
-  // A house whose door is at (dx, dy). Returns its box.
-  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null } = {}) {
+  // A house whose door is at (dx, dy), `dcol` cells in from its west wall
+  // (dealt when not given); `lived`: someone is always at home (the interior
+  // is never an abandoned one: renderer/interior/versions.js). Returns its box
+  // and its door record.
+  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null, dcol: atCol = null, lived = false } = {}) {
     const R = ROOF[roof], W = WALL[wall]
     const dbl = w === 5 && rng() < 0.35
-    const dcol = w === 3 ? 1 : w === 4 ? (rng() < 0.5 ? 1 : 2) : 2
+    const dcol = atCol ?? (w === 3 ? 1 : w === 4 ? (rng() < 0.5 ? 1 : 2) : 2)
     const x0 = dx - dcol, top = dy - 1 - storeys
     const ends = (kit, mid, i) => i === 0 ? kit[0] : i === w - 1 ? kit[2] : mid ?? kit[1]
     const chim = w === 3 ? (rng() < 0.5 ? 1 : -1) : 1 + Math.floor(rng() * (w - 2))
@@ -170,16 +433,17 @@ export function makeSites(c) {
     }
     // the doorstep stays clear
     for (let i = -1; i <= 1; i++) { t.clear(dx + i, dy + 1); hold(dx + i, dy + 1) }
-    c.door(dx, dy, tier, story, { look: { w, storeys, wall }, ...(kind ? { kind } : {}) })
-    return { x0, x1: x0 + w - 1, top, w }
+    const door = c.door(dx, dy, tier, story, { look: { w, storeys, wall }, ...(kind ? { kind } : {}), ...(lived ? { lived: true } : {}) })
+    return { x0, x1: x0 + w - 1, top, w, door }
   }
 
   // A fenced rectangle with a gate gap in its top or bottom run. A path
   // through it makes a gap of its own, unless the fence is `whole`: then it
-  // stands across the path, and whoever asks for it leaves a way round.
+  // stands across a trail, and whoever asks for it leaves a way round. A
+  // road is never blocked: where one passes, even a whole fence has a gap.
   function fence(x0, y0, x1, y1, gate = null, whole = false) {
     const rail = whole ? put : low
-    const open = (x, y) => (!whole && t.onPath(x, y)) || (gate && gate.y === y && x === gate.x)
+    const open = (x, y) => (whole ? t.onRoad(x, y) : t.onPath(x, y)) || (gate && gate.y === y && x === gate.x)
     for (let x = x0; x <= x1; x++) for (const y of [y0, y1]) {
       const top = y === y0
       let skin = x === x0 ? (top ? 'ow_fence_l' : 'ow_fence_bl') : x === x1 ? (top ? 'ow_fence_r' : 'ow_fence_br') : 'ow_fence_m'
@@ -219,9 +483,18 @@ export function makeSites(c) {
   // ---- the village ------------------------------------------------------------
   // Four to six houses round a cobbled well, no two rows of them touching;
   // everything stays within 11 tiles of the centre, inside the opened pad.
+  // Its roads come in as streets along the square's four axes, where no
+  // house stands (features.js lays them): what of them lies in the village
+  // is cobbled, and nothing lying about is dropped on them.
   // `sunroom`: the big house is the glassmaker's, Päivölä (renderer/interior/sunroom.js)
   function village(cx, cy, tale = null, sunroom = false) {
     cobble(cx, cy, 14)
+    for (let dy = -VILLAGE_PAD; dy <= VILLAGE_PAD; dy++) for (let dx = -VILLAGE_PAD; dx <= VILLAGE_PAD; dx++) {
+      const x = cx + dx, y = cy + dy
+      if (dx * dx + dy * dy > VILLAGE_PAD * VILLAGE_PAD || !t.onRoad(x, y) || t.kind(x, y) === 'water') continue
+      t.setGround(x, y, 'ow_cobble_green'); hold(x, y)
+    }
+    const lying = (x, y, skin) => { if (!t.onRoad(x, y)) low(x, y, skin) }
     put(cx, cy - 1, 'ow_well_top'); put(cx, cy, 'ow_well')
     put(cx - 2, cy + 1, 'ow_sign')
     const big = rng() < 0.5
@@ -251,12 +524,12 @@ export function makeSites(c) {
       row(cx - 4, cy + 6, ['ow_prop_counter_0', 'ow_prop_counter_1', 'ow_prop_counter_2'])
     }
     // things lying about
-    low(cx - 4, cy - 3, 'ow_prop_woodpile'); low(cx - 3, cy - 4, 'ow_prop_stump_axe')
-    low(cx + 3, cy - 4, 'ow_prop_barrel_1'); low(cx + 9, cy - 4, 'ow_prop_crate_0')
-    low(cx + 4, cy + 4, pick(['ow_prop_sack_0', 'ow_prop_sack_1'])); low(cx + 10, cy + 4, 'ow_prop_pot')
-    low(cx + 4, cy, 'ow_prop_cart'); low(cx + 1, cy - 1, 'ow_prop_bucket_water')
-    low(cx - 3, cy - 3, 'ow_prop_torch'); low(cx + 3, cy + 3, 'ow_prop_torch')
-    low(cx + 9, cy + 7, 'ow_prop_target'); low(cx - 10, cy, 'ow_prop_log')
+    lying(cx - 4, cy - 3, 'ow_prop_woodpile'); lying(cx - 3, cy - 4, 'ow_prop_stump_axe')
+    lying(cx + 3, cy - 4, 'ow_prop_barrel_1'); lying(cx + 9, cy - 4, 'ow_prop_crate_0')
+    lying(cx + 4, cy + 4, pick(['ow_prop_sack_0', 'ow_prop_sack_1'])); lying(cx + 10, cy + 4, 'ow_prop_pot')
+    lying(cx + 4, cy, 'ow_prop_cart'); lying(cx + 1, cy - 1, 'ow_prop_bucket_water')
+    lying(cx - 3, cy - 3, 'ow_prop_torch'); lying(cx + 3, cy + 3, 'ow_prop_torch')
+    lying(cx + 9, cy + 7, 'ow_prop_target'); lying(cx - 10, cy, 'ow_prop_log')
     scatter(cx, cy, 4, 11, 8, FLOWERS)
   }
 
@@ -269,16 +542,275 @@ export function makeSites(c) {
     if (rng() < 0.5) for (let i = 0; i < 3; i++) flat(h.x0 - 1 + i, y + 3, 'ow_deco_crop_0')
   }
 
+  // ---- farms ---------------------------------------------------------------------
+  // The main thing of farmland (features.js). A farm is laid from one of its
+  // plans (FARM_PLANS), as drawn or mirrored, moved a cell or two if that
+  // keeps it off the paths; whichever costs least (PATH_COST), ties going to
+  // the first from a dealt start. Nothing of a farm stands on a road or a
+  // trail: a house, the windmill or a well that a path runs under moves to the
+  // nearest free ground a few cells off (MOVES), and stays where its plan puts
+  // it only if there is none and no road runs there; everything else gives
+  // way. Its houses are lived in (tier safe, `lived`). Each returns { doors,
+  // people }: the door records it made and spots for one to three people
+  // ({ x, y, species }), whom features.js puts there with their lines. The
+  // wayside places of the roadside are laid the same way (WAYSIDE_PLANS), a
+  // tent, the statue or the tower moving as a house does; so is the big inn
+  // (inn.js), but only `whole`.
+  //
+  // What the cells of a plan (its footprint) cost moved by (sx, sy):
+  function costOf(cx, cy, cells, sx, sy, r) {
+    let cost = (Math.abs(sx) + Math.abs(sy)) * SHIFT_COST
+    for (const { x: px, y: py, what } of cells) {
+      const x = px + sx, y = py + sy, X = cx + x, Y = cy + y
+      if (!t.inside(X, Y) || c.taken(X, Y) || t.onRoad(X, Y)) cost += RULED_OUT
+      else if (t.onPath(X, Y)) cost += PATH_COST[what]
+      if (what !== 'flat' && x * x + y * y > r * r) cost += OFF_PAD_COST
+    }
+    return cost
+  }
+  // What the plan's cells moved by (sx, sy) cost (as costOf) if they all stand
+  // as drawn: inside the piece, on nothing taken, off every road and what
+  // `avoid` keeps, and nothing on a trail but a doorstep, flat ground or a
+  // spare thing (which gives way there); else Infinity. `seen` keeps what each
+  // cell is (a lay tries hundreds of ways over the same few hundred cells).
+  const OPEN = 1, TRAIL = 2, SHUT = 3
+  const wholeCost = (cx, cy, cells, sx, sy, r, avoid, seen) => {
+    let cost = (Math.abs(sx) + Math.abs(sy)) * SHIFT_COST
+    for (const { x: px, y: py, what } of cells) {
+      const x = px + sx, y = py + sy, X = cx + x, Y = cy + y, k = Y * 4096 + X
+      let s = seen.get(k)
+      if (s === undefined) {
+        s = !t.inside(X, Y) || c.taken(X, Y) || t.onRoad(X, Y) || avoid?.(X, Y) ? SHUT : t.onPath(X, Y) ? TRAIL : OPEN
+        seen.set(k, s)
+      }
+      if (s === SHUT || (s === TRAIL && what !== 'step' && what !== 'flat' && what !== 'spare')) return Infinity
+      if (s === TRAIL) cost += PATH_COST[what]
+      if (what !== 'flat' && x * x + y * y > r * r) cost += OFF_PAD_COST
+    }
+    return cost
+  }
+  // `r`: the farm's pad; what a moved plan builds beyond it costs a little more.
+  // `whole`: lay it only where some way of it stands whole (wholeCost, moved
+  // up to `shift` either way), so nothing of it moves or is left out; where
+  // none does, lay nothing and return null. Its ground, the pad, goes with
+  // it: opened round where it was laid, but for the trails, what is taken and
+  // what `avoid` keeps.
+  function lay(cx, cy, plans, r, { whole = false, shift = FARM_SHIFT, avoid = null } = {}) {
+    const drawn = plans.flatMap(p => [p, p.map(mirrored)])
+    const start = Math.floor(rng() * drawn.length)
+    const seen = whole ? new Map() : null
+    let chosen = null, least = Infinity
+    for (let i = 0; i < drawn.length; i++) {
+      const plan = drawn[(start + i) % drawn.length], cells = plan.flatMap(footprint)
+      for (let sy = -shift; sy <= shift; sy++) for (let sx = -shift; sx <= shift; sx++) {
+        const cost = whole ? wholeCost(cx, cy, cells, sx, sy, r, avoid, seen) : costOf(cx, cy, cells, sx, sy, r)
+        if (cost < least) { chosen = { plan, sx, sy }; least = cost }
+      }
+    }
+    if (!chosen) return null
+    const best = chosen.sx || chosen.sy ? chosen.plan.map(item => shifted(item, chosen.sx, chosen.sy)) : chosen.plan
+    const doors = [], folk = []
+    const offWay = (x, y) => !t.onPath(x, y)
+    if (whole) {
+      const mx = cx + chosen.sx, my = cy + chosen.sy
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const x = mx + dx, y = my + dy
+        if (dx * dx + dy * dy > r * r || !t.inside(x, y) || c.taken(x, y) || t.onPath(x, y) || avoid?.(x, y)) continue
+        t.claim(x, y); t.clear(x, y)
+      }
+    }
+    // A farm house may stand at the edge of its pad: the ground right round it
+    // is opened too, made ground where it was water (what the farm has
+    // already built there stays, and a path is walked already), so no pocket
+    // among the trees or on the shore touches its roof and the walk-behind
+    // pass (over.js) opens the roof's top row as on any house.
+    const around = ({ x0, x1, top }, y1) => {
+      for (let y = top - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+        if ((x >= x0 && x <= x1 && y >= top && y <= y1) || !t.inside(x, y) || c.taken(x, y) || t.onPath(x, y)) continue
+        t.claim(x, y); t.clear(x, y)
+      }
+    }
+    // Where a building may stand: inside the piece, on nothing the farm has
+    // built, off every path and road and within reach of the yard, its
+    // doorstep free (a trail or a road may pass it).
+    const reach = (r + 3) * (r + 3)
+    const fits = item => footprint(item).every(({ x, y, what }) => {
+      const X = cx + x, Y = cy + y
+      if (!t.inside(X, Y) || c.taken(X, Y)) return false
+      return what === 'step' || (!t.onPath(X, Y) && x * x + y * y <= reach)
+    })
+    const settle = item => {
+      for (const [ox, oy] of MOVES) { const moved = ox || oy ? shifted(item, ox, oy) : item; if (fits(moved)) return moved }
+      return footprint(item).some(({ x, y, what }) => what !== 'step' && t.onRoad(cx + x, cy + y)) ? null : item
+    }
+    const BUILDINGS = new Set(['house', 'inn', 'stable', 'mill', 'well', 'tower', 'statue', 'tent'])
+    const free = (x, y) => !t.onPath(x, y) && !c.taken(x, y)
+    // ground first, then what is fenced in, the buildings, and what stands about
+    const ORDER = ['field', 'flat', 'cobble', 'fence', 'wall', 'house', 'inn', 'stable', 'mill', 'well', 'tower', 'statue', 'tent', 'put', 'rock', 'pair', 'low', 'spare', 'fire', 'beast', 'herd', 'folk']
+    // (a plan laid `whole` has every cell checked where it stands: its buildings stay there)
+    for (const step of ORDER) for (const item of best) {
+      if (item[0] !== step) continue
+      const [kind, ...a] = (BUILDINGS.has(step) && !whole ? settle(item) : item) ?? []
+      if (!kind) continue   // a building with nowhere to go but a road is left out
+      const X = cx + a[0], Y = cy + a[1]
+      if (kind === 'field') {
+        // tilled ground with its own grass edge and a crop on every cell; a trail keeps its way through
+        for (let y = a[1]; y <= a[3]; y++) for (let x = a[0]; x <= a[2]; x++) {
+          if (!offWay(cx + x, cy + y)) continue
+          const v = y === a[1] ? 't' : y === a[3] ? 'b' : '', h = x === a[0] ? 'l' : x === a[2] ? 'r' : ''
+          t.clear(cx + x, cy + y)
+          t.setGround(cx + x, cy + y, `ow_patch_${v + h || 'm'}`)
+          t.setProp(cx + x, cy + y, (y - a[1]) % 2 ? 'ow_deco_crop_1' : 'ow_deco_crop_0', { walkable: true })
+          hold(cx + x, cy + y)
+        }
+      } else if (kind === 'flat') {
+        for (let y = a[1]; y <= a[3]; y++) for (let x = a[0]; x <= a[2]; x++) if (offWay(cx + x, cy + y)) flat(cx + x, cy + y, a[4])
+      } else if (kind === 'fence') {
+        fence(cx + a[0], cy + a[1], cx + a[2], cy + a[3], a[4] === undefined ? null : { x: cx + a[4], y: cy + a[5] })
+      } else if (kind === 'wall') {
+        // a gap at the gate and wherever a path passes
+        for (let y = a[1]; y <= a[3]; y++) for (let x = a[0]; x <= a[2]; x++) {
+          if (!(x === a[0] || x === a[2] || y === a[1] || y === a[3])) continue
+          if ((x === a[4] && y === a[5]) || !offWay(cx + x, cy + y)) { t.clear(cx + x, cy + y); hold(cx + x, cy + y) } else low(cx + x, cy + y, MUD_WALL)
+        }
+      } else if (kind === 'house') {
+        const h = house(X, Y, 'safe', { w: a[2], storeys: a[3], wall: a[4], dcol: doorCol(a[2], a[5]), lived: true })
+        around(h, Y)
+        doors.push(h.door)
+      } else if (kind === 'inn') {
+        const h = innStamps.inn(X, Y)
+        around(h, Y)
+        doors.push(h.door)
+      } else if (kind === 'stable') {
+        around(innStamps.stable(X, Y, a[2]), Y)
+      } else if (kind === 'mill') {
+        WINDMILL.forEach((skins, i) => row(X - 1, Y - 3 + i, skins))
+        for (let i = -1; i <= 1; i++) { t.clear(X + i, Y + 1); hold(X + i, Y + 1) }
+        around({ x0: X - 1, x1: X + 1, top: Y - 3 }, Y)
+        doors.push(c.door(X, Y, 'safe', null, { look: { w: 3, storeys: 2, wall: 'stone' }, lived: true }))
+      } else if (kind === 'well') {
+        put(X, Y - 1, 'ow_well_top'); put(X, Y, 'ow_well')
+      } else if (kind === 'statue') {
+        put(X, Y - 1, 'ow_statue_top'); put(X, Y, 'ow_statue')
+      } else if (kind === 'tent') {
+        tent(X, Y, a[2])
+      } else if (kind === 'tower') {
+        doors.push(ruinTower(X, Y))
+      } else if (kind === 'cobble') {
+        // a trail keeps its own ground across them
+        for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++)
+          if (dx * dx + dy * dy < a[2] && offWay(X + dx, Y + dy)) { t.clear(X + dx, Y + dy); t.setGround(X + dx, Y + dy, 'ow_cobble_green') }
+      } else if (kind === 'fire') {
+        const at = free(X, Y) && t.free(X, Y) ? { x: X, y: Y } : c.freeSpot(X, Y, 1, 2, (x, y) => free(x, y))
+        if (at) fire(at.x, at.y)
+      } else if (kind === 'put') {
+        if (free(X, Y)) put(X, Y, a[2])
+      } else if (kind === 'rock') {
+        if (free(X, Y)) low(X, Y, pick(c.rocks))
+      } else if (kind === 'pair') {
+        if (free(X, Y) && free(X + 1, Y)) { low(X, Y, a[2]); low(X + 1, Y, a[3]) }
+      } else if (kind === 'low' || kind === 'spare') {
+        if (free(X, Y)) low(X, Y, a[2])
+      } else if (kind === 'beast') {
+        const at = t.free(X, Y) && !c.taken(X, Y) ? { x: X, y: Y } : c.freeSpot(X, Y, 0, 2)
+        if (at) c.npc(a[2], at.x, at.y)
+      } else if (kind === 'herd') {
+        for (let i = 0; i < a[3]; i++) { const at = c.freeSpot(X, Y, 0, 2); if (at) c.npc(a[2], at.x, at.y) }
+      } else folk.push({ x: X, y: Y, species: a[2] })
+    }
+    const people = []
+    for (const f of folk.slice(0, 1 + Math.floor(rng() * 3))) {
+      const at = c.freeSpot(f.x, f.y, 0, 2)
+      if (at) { hold(at.x, at.y); people.push({ x: at.x, y: at.y, species: f.species }) }
+    }
+    // `at`: the plan's middle where it was laid
+    return { doors, people, at: { x: cx + chosen.sx, y: cy + chosen.sy } }
+  }
+  // Grass over a disc, a trail keeping its own ground: a dry rise in the
+  // marsh, an oasis in the desert.
+  const turf = (cx, cy, r) => {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++)
+      if (dx * dx + dy * dy <= r * r && !t.onPath(cx + dx, cy + dy) && t.kind(cx + dx, cy + dy) === 'land') t.setGround(cx + dx, cy + dy, t.grassSkin(cx + dx, cy + dy))
+  }
+  // The fisher's jetty, on whichever side of the yard it fits best: out over
+  // the nearest open water, a walk cleared to it over the land between; with
+  // none in reach, over a pond dug at the edge of the yard. A boat is moored
+  // beside its end. Nothing wet is laid on a path, nor anything on a road.
+  function jetty(cx, cy, r) {
+    let best = null
+    for (const [ux, uy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const P = (k, s = 0) => ({ x: cx + ux * k - uy * s, y: cy + uy * k + ux * s })
+      let reach = null
+      for (let k = r - 2; k <= r + 6 && reach === null; k++) { const p = P(k); if (t.inside(p.x, p.y) && t.kind(p.x, p.y) === 'water') reach = k }
+      const walk = [], deck = [], pond = []
+      let boat
+      if (reach !== null) {
+        for (let k = 3; k < reach; k++) walk.push(P(k))
+        for (let k = reach; k <= reach + 2; k++) deck.push(P(k))
+        boat = P(reach + 1, 1)
+      } else {
+        const m = P(r - 2)
+        for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dy * dy <= 5) pond.push({ x: m.x + dx, y: m.y + dy })
+        for (let k = r - 5; k <= r - 2; k++) deck.push(P(k))
+        boat = P(r - 1, 1)
+      }
+      // the open water is better than a dug pond; a cell already taken or on a path is a hole in the pond
+      let cost = reach !== null ? 0 : 5
+      for (const p of [...walk, ...deck, boat]) if (!t.inside(p.x, p.y) || t.onRoad(p.x, p.y) || c.taken(p.x, p.y)) cost = Infinity
+      if (t.onPath(boat.x, boat.y)) cost = Infinity
+      // nor does it come beside another bridge, which it would touch at a corner nobody can step across
+      const own = new Set(deck.map(p => `${p.x},${p.y}`))
+      for (const p of deck) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+        if (!own.has(`${p.x + dx},${p.y + dy}`) && (t.propAt(p.x + dx, p.y + dy) ?? '').startsWith('ow_pier')) cost = Infinity
+      for (const p of deck) if (t.onPath(p.x, p.y)) cost += 2
+      for (const p of pond) if (!t.inside(p.x, p.y) || t.onRoad(p.x, p.y)) cost = Infinity; else if (t.onPath(p.x, p.y) || c.taken(p.x, p.y)) cost += 3
+      if (cost < (best?.cost ?? Infinity)) best = { cost, walk, deck, pond, boat, along: ux !== 0 }
+    }
+    if (!best) {
+      // nowhere for it: the boat is drawn up on the shore of the yard
+      const at = c.freeSpot(cx, cy, 2, r - 2)
+      if (at) put(at.x, at.y, 'ow_boat')
+      return
+    }
+    for (const p of best.walk) { t.claim(p.x, p.y); t.clear(p.x, p.y); hold(p.x, p.y) }
+    for (const p of best.pond) if (!t.onPath(p.x, p.y) && !c.taken(p.x, p.y)) { t.claim(p.x, p.y); t.setWater(p.x, p.y); hold(p.x, p.y) }
+    for (const p of best.deck) { t.claim(p.x, p.y); t.setWater(p.x, p.y); t.setProp(p.x, p.y, best.along ? 'ow_pier_log' : 'ow_pier_log_v', { walkable: true }); hold(p.x, p.y) }
+    const b = best.boat
+    t.claim(b.x, b.y); t.setWater(b.x, b.y); t.setProp(b.x, b.y, 'ow_boat'); hold(b.x, b.y)
+  }
+  // (each takes its own pad: features.js PAD)
+  const farms = {
+    farmstead: (cx, cy) => { if (t.biome(cx, cy) === 'marsh') turf(cx, cy, 10); return lay(cx, cy, FARM_PLANS.farmstead, 10) },
+    orchard: (cx, cy) => lay(cx, cy, FARM_PLANS.orchard, 8),
+    mill: (cx, cy) => lay(cx, cy, FARM_PLANS.mill, 7),
+    peat: (cx, cy) => lay(cx, cy, FARM_PLANS.peat, 7),
+    fisher: (cx, cy) => { const made = lay(cx, cy, FARM_PLANS.fisher, 8); jetty(cx, cy, 8); return made },
+    fold: (cx, cy) => lay(cx, cy, FARM_PLANS.fold, 7),
+    quarry: (cx, cy) => lay(cx, cy, FARM_PLANS.quarry, 7),
+    well: (cx, cy) => { turf(cx, cy, 5); return lay(cx, cy, FARM_PLANS.well, 6) },
+    field: (cx, cy) => lay(cx, cy, FARM_PLANS.field, 6),
+  }
+
   // ---- a ruined keep -----------------------------------------------------------
   // The tower still stands and its door leads in; of the wall round the yard
   // only runs are left, never across a road.
   function ruin(cx, cy) {
+    ruinTower(cx, cy)
+    ruinYard(cx, cy)
+  }
+  // The tower, its door (returned) at (cx, cy) and two rows clear before it.
+  function ruinTower(cx, cy) {
     row(cx - 1, cy - 3, ['ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r'])
     row(cx - 1, cy - 2, ['ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r'])
     row(cx - 1, cy - 1, ['ow_brick', 'ow_brick', 'ow_brick'])
     row(cx - 1, cy, ['ow_house_wall_stone_l', 'ow_house_arch_stone', 'ow_house_wall_stone_r'])
-    c.door(cx, cy, 'ruin', null, { look: { w: 3, storeys: 2, wall: 'stone' } })
+    const door = c.door(cx, cy, 'ruin', null, { look: { w: 3, storeys: 2, wall: 'stone' } })
     for (let i = -1; i <= 1; i++) for (let j = 1; j <= 2; j++) { t.clear(cx + i, cy + j); hold(cx + i, cy + j) }
+    return door
+  }
+  // What is left of the wall round the tower at (cx, cy), and its yard.
+  // `offWay`: no fallen stone or bone on a trail either (the watchtower).
+  function ruinYard(cx, cy, offWay = false) {
     const wall = (x, y, skin) => { if (!t.onPath(x, y) && !c.taken(x, y)) put(x, y, skin) }
     // north wall: parapet over brick, in runs
     let run = 0
@@ -293,9 +825,43 @@ export function makeSites(c) {
     for (let dy = -4; dy <= 4; dy++) for (let dx = -5; dx <= 5; dx++)
       if (t.free(cx + dx, cy + dy) && !t.onPath(cx + dx, cy + dy) && rng() < 0.3) t.setGround(cx + dx, cy + dy, c.sandy ? pick(SAND_FLOOR) : 'ow_cobble_green')
     const stones = c.sandy ? SAND_STONES : OLD_STONES
-    scatter(cx, cy, 3, 5, 6, stones, true)
-    scatter(cx, cy, 2, 5, 3, ['ow_deco_skull'])
+    const ok = offWay ? offPaths : null
+    scatter(cx, cy, 3, 5, 6, stones, true, ok)
+    scatter(cx, cy, 2, 5, 3, ['ow_deco_skull'], false, ok)
   }
+
+  // ---- the wayside places (WAYSIDE_PLANS) ---------------------------------------
+  // Each returns what lay does ({ doors, people, at }); features.js gives the
+  // people their lines and puts the chests down.
+  const wayside = {
+    rest: (cx, cy) => lay(cx, cy, WAYSIDE_PLANS.rest, 5),
+    shrine: (cx, cy) => {
+      const made = lay(cx, cy, WAYSIDE_PLANS.shrine, 5)
+      scatter(made.at.x, made.at.y, 3, 5, 8, FLOWERS, false, offPaths)
+      return made
+    },
+    // the big inn and its stable where one of its plans stands whole, else the smaller inn
+    // (`avoid`: ground it must leave alone, the small things' that are stamped after it)
+    // (`small` says it was the smaller one, which has no stable)
+    inn: (cx, cy, avoid = null) => {
+      const big = lay(cx, cy, INN_PLANS, INN_PAD, { whole: true, shift: INN_SHIFT, avoid })
+      if (big) return big
+      const small = lay(cx, cy, WAYSIDE_PLANS.inn, 9)
+      return small && { ...small, small: true }
+    },
+    // the ruin kit: the tower moved off the trails as a farm's house is, its broken walls round it
+    tower: (cx, cy) => {
+      const made = lay(cx, cy, WAYSIDE_PLANS.tower, 8)
+      if (made.doors.length) ruinYard(made.doors[0].x, made.doors[0].y, true)
+      return made
+    },
+  }
+  // A stone beside the road; it gives way like any dressing.
+  const milestone = (x, y) => low(x, y, MILESTONE)
+  // A village's coach (features.js, wilds/coach.js): the inn's horse and cart,
+  // the horse at (x, y) and the cart east of it. It stays where it is put: it
+  // is no dressing, and nothing takes it up.
+  const coach = (x, y) => { put(x, y, CART[0]); put(x + 1, y, CART[1]) }
 
   // ---- camps -------------------------------------------------------------------
   // look: 'bandits' (tents round a fire), 'graves', 'den' (rocks and bones),
@@ -618,9 +1184,11 @@ export function makeSites(c) {
     // waits beside the doorstep. She is the tale's own to put there.
     if (tale === 'lalli') return [{ label: LALLI_HOUSE, x: cx - 7, y: cy + 5 }, { label: 'kerttu', x: cx - 6, y: cy + 6 }]
     if (tale === 'nakki') {
-      // fish racks standing empty since the pier was given up
-      // (a rack is two cells wide and goes whole or not at all)
-      for (const y of [cy - 2, cy - 1]) if (!t.onPath(cx - 11, y) && !t.onPath(cx - 10, y)) { put(cx - 11, y, 'ow_prop_fishrack_l'); put(cx - 10, y, 'ow_prop_fishrack_r') }
+      // up to two fish racks standing empty since the pier was given up,
+      // north of the west street's lanes and off any trail (a rack is two
+      // cells wide and goes whole or not at all)
+      let racks = 0
+      for (const y of [cy - 3, cy - 2, cy - 4]) if (racks < 2 && !t.onPath(cx - 11, y) && !t.onPath(cx - 10, y)) { put(cx - 11, y, 'ow_prop_fishrack_l'); put(cx - 10, y, 'ow_prop_fishrack_r'); racks++ }
     }
     if (tale === 'fold') {
       // the fold the lambs go missing from, south-east of the square; the
@@ -696,5 +1264,5 @@ export function makeSites(c) {
 
   const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree,
     sampo_sea: tursoBay, sampo_mountain: copperBowl, sampo_marsh: pikePond }
-  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing }
+  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, coach, ...farms, ...wayside }
 }

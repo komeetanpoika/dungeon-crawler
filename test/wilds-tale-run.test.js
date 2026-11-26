@@ -11,6 +11,7 @@ import { fillLines } from '../renderer/wilds/tales.js'
 import { makeWorld, getPiece, recordFor, exportWorld } from '../renderer/wilds/world.js'
 import { enterWilds, tickWilds, snapshotWilds, wildsRespawn } from '../renderer/wilds/session.js'
 import { PIECE, villagesNear } from '../renderer/wilds/layout.js'
+import { roadsFrom } from '../renderer/wilds/roads.js'
 import { registerMonsters, clearMonsters, makeMonsterFromDef } from '../renderer/systems/monsters.js'
 import { makeHirvi, FLUSH_TILES } from '../renderer/systems/monsters/hirvi.js'
 import { makeNakki } from '../renderer/systems/monsters/nakki.js'
@@ -42,7 +43,7 @@ before(async () => { clearMonsters(); await registerMonsters([KIVIHIISI_DEF], { 
 function buildEntities(spawns) {
   return spawns.flatMap(s => {
     const at = { x: s.x, y: s.y, px: s.x * S + 16, py: s.y * S + 16 }
-    if (s.kind === 'npc') { const n = makeNpc(s); return n ? [Object.assign(n, at)] : [] }
+    if (s.kind === 'npc') { const n = makeNpc(s); if (n && s.coachman) n.coachman = true; return n ? [Object.assign(n, at)] : [] }   // the coachman's marker, as game.js copies it
     if (s.kind === 'hirvi') return [Object.assign(makeHirvi(s.x, s.y), at)]
     if (s.kind === 'nakki') return [Object.assign(makeNakki(s.x, s.y), at)]
     if (s.kind === 'maahinen') return [Object.assign(makeMaahinen(s.x, s.y), at)]
@@ -171,8 +172,9 @@ test('the hide is handed over in the village with the wood out of the window', (
   assert.ok(t.world.paid.has('elk'))
   assert.ok(t.calls.persist >= 1)
 
-  // the giver has changed for good: the done stage, and no second delivery
-  assert.deepEqual(t.state.villageLines['0,0'], fillLines(t.world, '0,0'))
+  // the giver has changed for good: the done stage (and the road), and no second delivery
+  const told = fillLines(t.world, '0,0')
+  assert.deepEqual(t.state.villageLines['0,0'], { ...told, villager: [...told.villager, roadTalk(t.world.seed, '0,0')] })
   assert.ok(!JSON.stringify(t.state.villageLines['0,0']).includes('shrine'))
   t.state.player.inventory.push(makeItem('elk_hide'))
   tickTales(t.state, t.world, 0.016, t.hooks)
@@ -186,8 +188,10 @@ test('a dead elder is replaced by a stand-in who takes the hide', () => {
   t.state.entities = t.state.entities.filter(e => e !== elder)
   recordFor(t.world, '0,0').gone.add(elder.wildsIx)
   arriveTales(t.state, t.world, t.hooks, { fresh: true })
-  const stand = t.state.entities.find(e => e.type === 'npc' && e.species === 'elder')
-  assert.ok(stand && stand.taleKey === 'tale:0,0', 'no stand-in elder')
+  // (the farms round the village have elders of their own, who are nobody's stand-in)
+  const stand = t.state.entities.find(e => e.type === 'npc' && e.species === 'elder' && e.taleKey === 'tale:0,0')
+  assert.ok(stand, 'no stand-in elder')
+  assert.ok(!t.state.entities.some(e => e.type === 'npc' && e.species === 'elder' && e.wildsKey === '0,0'), 'the dead elder is back')
   t.state.player.inventory.push(makeItem('elk_hide'))
   put(t.state, stand, 1, 0)
   tickTales(t.state, t.world, 0.016, t.hooks)
@@ -346,6 +350,34 @@ test('two villages in one window speak their own lines; one without a tale still
     assert.ok(lines?.villager?.length >= 1 && lines?.elder?.length >= 1, `village ${v.wx},${v.wy} is mute`)
     assert.ok(!/\{\w+\}/.test(JSON.stringify(lines)), 'a placeholder was left in')
   }
+})
+
+// What a village's villagers say of its first road (by N, E, S, W): where it goes.
+const roadTalk = (seed, key) => {
+  const r = roadsFrom(seed, key)[0]
+  return `The ${{ N: 'north', E: 'east', S: 'south', W: 'west' }[r.side]} road goes to ${r.town.name}.`
+}
+test('every village names the town its first road goes to, with the rest of what it says', () => {
+  let n = 0
+  for (const seed of [3, 7, 11]) {
+    const world = makeWorld(null, { seed })
+    const state = { player: { x: 0, y: 0, px: 0, py: 0, hp: 10, maxHp: 10, talents: [], inventory: [], maxInventory: 20 }, entities: [], feedback: makeFeedback(), sfx: makeSfx(), creatureKills: {} }
+    const hooks = { getState: () => state, spawn: s => buildEntities(s), persist: () => {}, refreshInventory: () => {}, rollLoot: () => ({ type: 'potion', amount: 4 }) }
+    for (const v of [{ wx: 0, wy: 0 }, ...villagesNear(seed, 0, 0, 6).filter(v => v.wx || v.wy).slice(0, 2)]) {
+      enterWilds(state, world, v, { buildEntities })
+      arriveTales(state, world, hooks, { fresh: true })
+      const key = `${v.wx},${v.wy}`, lines = state.villageLines[key], at = `seed ${seed} village ${key}`
+      const line = roadTalk(seed, key)
+      assert.equal(lines.villager.filter(l => l === line).length, 1, `${at}: ${JSON.stringify(lines.villager)} lacks "${line}"`)
+      assert.equal(lines.villager.at(-1), line, `${at}: the road comes after the tale`)
+      assert.ok(lines.villager.length >= 2, `${at}: the road is all they say`)
+      assert.ok(!(lines.elder ?? []).includes(line), `${at}: the elder says it too`)
+      n++
+    }
+  }
+  assert.equal(n, 9)
+  // Koivula's first road by N, E, S, W
+  assert.match(roadTalk(3, '0,0'), /^The (north|east|south|west) road goes to [A-Z]/)
 })
 
 // ---- found by the whole-branch review ----------------------------------------------
@@ -796,6 +828,24 @@ test('death with two hearths blue: both burn again on waking', () => {
   assert.equal(blue.length, 2)
   for (const n of [1, 2]) { const h = hearth(t, n); assert.ok(blue.some(f => f.x === h.x && f.y === h.y)) }
   assert.equal(wraiths(t.state).length, 1)
+})
+
+// Task 8's review: the coachman by the village's cart keeps to his horse
+test('the coachman lights no hearth and takes no grey wood for the flame-thief\'s village', () => {
+  const t = setup('flame', '1,1')
+  const man = t.state.entities.find(e => e.type === 'npc' && e.coachman && e.wildsKey === '0,0')
+  assert.ok(man, 'the village has no coachman')
+  // he alone is left of the village's people: nobody else can be sent
+  t.state.entities = t.state.entities.filter(e => e === man || !villagers(t.state).includes(e))
+  t.save.clock = NIGHT
+  tickTales(t.state, t.world, 0.016, t.hooks)
+  tickTales(t.state, t.world, 1, t.hooks)
+  assert.ok(!man.chore, 'the coachman was sent to light a hearth')
+  t.state.player.inventory.push(makeItem('greywood', 3))
+  put(t.state, man, 1, 0)
+  tickTales(t.state, t.world, DELIVERY_COOLDOWN + 0.1, t.hooks)
+  assert.equal(t.state.player.inventory[0]?.count, 3, 'the coachman took the grey wood')
+  assert.ok(!t.flags.wood_1)
 })
 
 // Review Focus 4

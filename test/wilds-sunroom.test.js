@@ -33,7 +33,7 @@ test('about one other village in four has one, and nothing else is ever one', ()
   assert.ok(villages >= 12, `${villages} villages`)
   assert.ok(with_ / villages > 0.1 && with_ / villages < 0.45, `${with_}/${villages}`)
   for (const [wx, wy] of [[1, 0], [0, -1], [2, 3], [-3, 1]]) if (!villageAt(5, wx, wy))
-    assert.ok(!generatePiece(5, wx, wy, 0).doors.some(d => d.kind), `${wx},${wy}`)
+    assert.ok(!generatePiece(5, wx, wy, 0).doors.some(d => d.kind === 'sunroom'), `${wx},${wy}`)
 })
 
 test('a solved house and its taken reward are saved, and outlive a generator change', () => {

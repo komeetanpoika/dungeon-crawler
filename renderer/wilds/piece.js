@@ -6,6 +6,7 @@ import { placeFeatures } from './features.js'
 import { TILE } from '../systems/entities.js'
 import { LOS_CLEAR_PREFIXES, LOS_SOFT_PREFIXES, LOS_TALL_PREFIXES } from '../systems/openmap.js'
 import { openTops } from './over.js'
+import { pieceClass } from './roads.js'
 
 const startsWithAny = (s, prefixes) => prefixes.some(p => s.startsWith(p))
 // Low things a sight line passes over, like open water: the site dressing
@@ -45,8 +46,11 @@ function reachable(cells, from) {
 export function generatePiece(seed, wx, wy, deal = 0, tale = null, villageTale = null) {
   const t = makeTerrain(seed, wx, wy, deal)
   const tier = tierAt(wx, wy)
+  // cls: what the roads make of the piece (roads.js pieceClass); road: its road
+  // sides and where its roads meet, or null for a piece with no road edge (features.js);
+  // coach: a village's coach stop { x, y, town } (coach.js), else null
   const piece = {
-    key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy),
+    key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy), cls: pieceClass(seed, wx, wy), road: null, coach: null,
     main: null, small: [], packs: [], tale, points: [], villageTale, villagePoints: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
     spawnPoint: null, gates: t.gates, lootDepth: lootDepthFor(tier),
   }
@@ -54,7 +58,13 @@ export function generatePiece(seed, wx, wy, deal = 0, tale = null, villageTale =
   t.finish()
 
   const cells = piece.cells = Array.from({ length: PIECE }, (_, y) =>
-    Array.from({ length: PIECE }, (_, x) => cellOf(t.groundAt(x, y), t.propAt(x, y), t.walkable(x, y))))
+    Array.from({ length: PIECE }, (_, x) => {
+      const c = cellOf(t.groundAt(x, y), t.propAt(x, y), t.walkable(x, y))
+      // (art only: a road's verge, road-art.js)
+      const deco = t.decoAt(x, y)
+      if (deco) c.deco = deco
+      return c
+    }))
   // Doors and cave mouths are walk-onto triggers: the art stays, the cell opens.
   for (const d of [...piece.doors, ...piece.caves]) {
     const c = cells[d.y][d.x]

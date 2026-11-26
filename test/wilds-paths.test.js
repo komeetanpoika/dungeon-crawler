@@ -6,11 +6,14 @@
 // them. A thing the piece could then not reach was silently dropped.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { generatePiece } from '../renderer/wilds/piece.js'
-import { makeTerrain } from '../renderer/wilds/terrain.js'
+import { makeTerrain, ROAD_WIDTH } from '../renderer/wilds/terrain.js'
 import { placeFeatures } from '../renderer/wilds/features.js'
+import { layoutTale } from '../renderer/wilds/sites.js'
+import { roadSides, pieceClass } from '../renderer/wilds/roads.js'
 import { PIECE, FRAME, BIOMES, pieceKey, tierAt, pieceBiome, lootDepthFor, villageAt, biomeAt } from '../renderer/wilds/layout.js'
-import { hashInt } from '../renderer/wilds/rand.js'
+import { hashInt, mulberry32 } from '../renderer/wilds/rand.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]]
@@ -44,15 +47,21 @@ function cornerJoints(walk, kind) {
 }
 
 // A piece as piece.js makes it, with its terrain kept so the test can ask
-// what is path and what is a site's own ground, and which small thing got a trail.
+// what is path and what is a site's own ground, which small thing got a
+// trail, and every path and road the features laid.
 function built(seed, wx, wy, deal = 0, tale = null, villageTale = null) {
   const t = makeTerrain(seed, wx, wy, deal)
-  const trails = []
-  const lay = t.path
-  t.path = (x0, y0, x1, y1, width = 2) => { if (width === 1) trails.push(`${x0},${y0}`); return lay(x0, y0, x1, y1, width) }
+  const trails = [], laid = []
+  const lay = t.path, layRoad = t.road
+  t.path = (x0, y0, x1, y1, width = 2) => {
+    if (width === 1) trails.push(`${x0},${y0}`)
+    laid.push({ kind: 'path', x0, y0, x1, y1, width })
+    return lay(x0, y0, x1, y1, width)
+  }
+  t.road = (x0, y0, x1, y1) => { laid.push({ kind: 'road', x0, y0, x1, y1 }); return layRoad(x0, y0, x1, y1) }
   const tier = tierAt(wx, wy)
   const piece = {
-    key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy),
+    key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy), cls: pieceClass(seed, wx, wy), road: null,
     main: null, small: [], packs: [], tale, points: [], villageTale, villagePoints: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
     spawnPoint: null, gates: t.gates, lootDepth: lootDepthFor(tier),
   }
@@ -60,7 +69,7 @@ function built(seed, wx, wy, deal = 0, tale = null, villageTale = null) {
   t.finish()
   const opened = new Set([...piece.doors, ...piece.caves].map(d => d.y * PIECE + d.x))
   const walk = (x, y) => x >= 0 && y >= 0 && x < PIECE && y < PIECE && (t.walkable(x, y) || opened.has(y * PIECE + x))
-  return { t, piece, walk, trailed: piece.small.filter(s => trails.includes(`${s.x},${s.y}`)), at: `seed ${seed} piece ${wx},${wy} deal ${deal}${tale ? ' ' + tale : ''}${villageTale ? ' village of ' + villageTale : ''} (${piece.biome} ${piece.main.kind})` }
+  return { seed, t, piece, walk, laid, trailed: piece.small.filter(s => trails.includes(`${s.x},${s.y}`)), at: `seed ${seed} piece ${wx},${wy} deal ${deal}${tale ? ' ' + tale : ''}${villageTale ? ' village of ' + villageTale : ''} (${piece.biome} ${piece.cls} ${piece.main.kind})` }
 }
 // The walk a path promises: on path, in a gate's corridor, or on the ground
 // of the site at either end. Never across the open country beside it.
@@ -205,4 +214,259 @@ test('the game\'s cells: no bridge joined at a corner, and nothing a trail leads
     }
   }
   assert.ok(huts >= 5, `${huts} huts`)
+})
+
+// ---- the road inside a piece ------------------------------------------------------
+// A piece with a road edge is laid round its roads (features.js): a road from
+// each road gate to a junction beside the main thing, or to the hub of a
+// village or of a tale's place; a piece with no road edge as it always was.
+const SIDES = ['N', 'E', 'S', 'W']
+const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,   // as features.js opens them
+  farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6,
+  rest: 5, shrine: 5, inn: 10, tower: 8 }
+// the roadside's wayside places stand by the junction, their ground reaching the road (test/wilds-land.test.js)
+const WAYSIDE = ['rest', 'shrine', 'inn', 'tower']
+const CALM = 10   // at toughness 1 and 2, no foe of a pack this near a road
+const sidesOf = sides => SIDES.filter(s => sides[s])
+// Road pieces round home that are neither a village nor Kalevanlinna, nearest first.
+function roadPieces(seed, n, keep = () => true) {
+  const out = []
+  for (let r = 0; r <= 30 && out.length < n; r++) for (let wy = -r; wy <= r && out.length < n; wy++) for (let wx = -r; wx <= r && out.length < n; wx++) {
+    if (Math.max(Math.abs(wx), Math.abs(wy)) !== r) continue
+    const cls = pieceClass(seed, wx, wy)
+    if (cls === 'village' || cls === 'city' || cls === 'wild' || sidesOf(roadSides(seed, wx, wy)).length === 0) continue
+    if (keep(wx, wy)) out.push({ wx, wy })
+  }
+  return out
+}
+function villagePieces(seed, n) {
+  const out = []
+  for (let r = 0; r <= 12 && out.length < n; r++) for (let wy = -r; wy <= r && out.length < n; wy++) for (let wx = -r; wx <= r && out.length < n; wx++)
+    if (Math.max(Math.abs(wx), Math.abs(wy)) === r && pieceClass(seed, wx, wy) === 'village') out.push({ wx, wy })
+  return out
+}
+// Ten road pieces a seed, each dealt four times, and four villages a seed
+// dealt twice; built once, shared by the tests below.
+let sample = null, villages = null
+const roadSample = () => sample ??= SEEDS.flatMap(seed => roadPieces(seed, 10).flatMap(({ wx, wy }) => [0, 1, 2, 3].map(deal => built(seed, wx, wy, deal))))
+const villageSample = () => villages ??= SEEDS.flatMap(seed => villagePieces(seed, 4).flatMap(({ wx, wy }) => [0, 1].map(deal => built(seed, wx, wy, deal))))
+
+// Every road gate of the piece reaches every other, and the junction, over
+// walkable road cells alone.
+function checkRoads({ t, piece, walk, at }) {
+  assert.ok(piece.road, `${at}: no road recorded`)
+  const names = sidesOf(piece.road.sides), gates = names.map(s => t.gateInner(s))
+  assert.ok(gates.length >= 1, `${at}: a road piece with no road gate`)
+  const seen = flood(gates[0], (x, y) => t.onRoad(x, y) && walk(x, y))
+  for (const [i, g] of gates.entries()) assert.equal(seen[g.y * PIECE + g.x], 1, `${at}: the road from gate ${names[0]} does not reach gate ${names[i]}`)
+  const j = piece.road.junction
+  assert.equal(seen[j.y * PIECE + j.x], 1, `${at}: the roads do not meet at the junction ${j.x},${j.y}`)
+}
+
+test('in a road piece every road gate reaches every other over road cells alone, for deals 0..3', () => {
+  const pieces = roadSample()
+  assert.equal(pieces.length, 120)
+  const ways = new Set()
+  for (const b of pieces) { checkRoads(b); ways.add(sidesOf(b.piece.road.sides).length) }
+  // through roads and junctions both
+  assert.ok(ways.has(2) && ways.has(3), `only pieces with ${[...ways]} road sides in the sample`)
+})
+
+test('the same holds where the piece is mostly sea or mostly mountain', () => {
+  const seeds = [...SEEDS, 7]
+  for (const biome of ['sea', 'mountain']) {
+    let n = 0, decks = 0, cuts = 0
+    for (const seed of seeds) for (const { wx, wy } of roadPieces(seed, 2, (wx, wy) => pieceBiome(seed, wx, wy) === biome)) for (const deal of [0, 1]) {
+      const b = built(seed, wx, wy, deal)
+      checkRoads(b)
+      n++
+      for (let y = FRAME; y < PIECE - FRAME; y++) for (let x = FRAME; x < PIECE - FRAME; x++) {
+        if (!b.t.onRoad(x, y)) continue
+        if (isPier(b.t.propAt(x, y))) decks++
+        if (/^ow_road_mtn_/.test(b.t.groundAt(x, y))) cuts++
+      }
+    }
+    assert.ok(n >= 8, `found only ${n / 2} road pieces of ${biome} country round home in seeds ${seeds}`)
+    // the sample crosses what it is meant to cross
+    if (biome === 'sea') assert.ok(decks > 50, `${decks} road cells of deck over the sea`)
+    else assert.ok(cuts > 200, `${cuts} road cells of mountain road`)
+  }
+})
+
+test('the junction keeps clear of the main thing', () => {
+  for (const b of roadSample()) {
+    const { t, piece, at } = b
+    const j = piece.road.junction, m = piece.main, pad = PAD[m.kind]
+    for (const v of [j.x, j.y]) assert.ok(v >= FRAME + 8 && v <= PIECE - FRAME - 9, `${at}: the junction ${j.x},${j.y} is out of its box`)
+    if (WAYSIDE.includes(m.kind)) continue
+    assert.ok(Math.hypot(j.x - m.x, j.y - m.y) >= pad + 4, `${at}: the junction ${j.x},${j.y} is ${Math.hypot(j.x - m.x, j.y - m.y).toFixed(1)} from the ${m.kind} at ${m.x},${m.y}`)
+    // nor does a road run through the main thing's pad
+    for (let dy = -pad; dy <= pad; dy++) for (let dx = -pad; dx <= pad; dx++)
+      if (dx * dx + dy * dy <= pad * pad) assert.ok(!t.onRoad(m.x + dx, m.y + dy), `${at}: a road runs through the ${m.kind}'s pad at ${m.x + dx},${m.y + dy}`)
+  }
+})
+
+test('a tale place on a road piece keeps its hub and the road reaches it', () => {
+  // (a Sampo piece is laid out as a tale's place, and goes the same way)
+  const lands = { nakki: ['forest', 'autumn', 'marsh'], tar: ['sea', 'marsh'], sampo_mountain: ['mountain'] }
+  for (const seed of [3, 77]) for (const [id, land] of Object.entries(lands)) {
+    const spots = roadPieces(seed, 2, (wx, wy) => pieceClass(seed, wx, wy) === 'roadside' && land.includes(pieceBiome(seed, wx, wy)))
+    assert.equal(spots.length, 2, `seed ${seed}: too little roadside ${land} land for ${id}`)
+    for (const [deal, { wx, wy }] of spots.entries()) {
+      const b = built(seed, wx, wy, deal, id)
+      const { t, piece, at } = b
+      // the place is laid out as on a piece with no road: its hub is where the roads meet
+      const hub = layoutTale(id, mulberry32(hashInt(seed, wx, wy, 500 + deal)), side => t.gateInner(side)).hub
+      assert.deepEqual(piece.road?.junction, hub, `${at}: the roads meet at ${JSON.stringify(piece.road?.junction)}, not at the hub`)
+      assert.deepEqual(piece.spawnPoint, hub, at)
+      const seen = flood(hub, alongPaths(b))
+      for (const s of sidesOf(piece.road.sides)) {
+        const g = t.gateInner(s)
+        assert.ok(t.onRoad(g.x, g.y), `${at}: gate ${s} carries no road into the piece`)
+        assert.equal(seen[g.y * PIECE + g.x], 1, `${at}: the road from gate ${s} does not reach the hub`)
+      }
+      checkPaths(b)
+    }
+  }
+})
+
+test('every gate and small thing of a road piece is still reached on foot from the spawn point', () => {
+  let small = 0
+  for (const b of [...roadSample(), ...villageSample()]) {
+    const { piece, walk, at } = b
+    const seen = flood(piece.spawnPoint, walk)
+    for (const [side, g] of Object.entries(piece.gates)) assert.equal(seen[g.y * PIECE + g.x], 1, `${at}: gate ${side} cut off`)
+    for (const s of piece.small) { small++; assert.ok(inPad(seen, s), `${at}: the ${s.kind} at ${s.x},${s.y} is cut off`) }
+    checkPaths(b)
+  }
+  assert.ok(small > 200, `${small} small things`)
+})
+
+test('no pack near the road at toughness 1 and 2', () => {
+  let packs = 0, pieces = 0
+  for (const b of [...roadSample(), ...villageSample()]) {
+    const { t, piece, at } = b
+    if (piece.tier > 2) continue
+    pieces++
+    const road = []
+    for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) if (t.onRoad(x, y)) road.push({ x, y })
+    const gap = p => Math.min(...road.map(c => Math.hypot(c.x - p.x, c.y - p.y)))
+    for (const k of piece.packs) {
+      packs++
+      assert.ok(!k.road, `${at}: a pack posted on the road`)
+      for (const s of piece.spawns.filter(s => s.kind !== 'chest' && Math.hypot(s.x - k.x, s.y - k.y) <= 3))
+        assert.ok(gap(s) >= CALM, `${at}: a ${s.species ?? s.kind} of the pack at ${k.x},${k.y} stands ${gap(s).toFixed(1)} tiles from the road`)
+    }
+  }
+  assert.ok(pieces >= 40 && packs >= 20, `${packs} packs in ${pieces} calm road pieces`)
+})
+
+test('a wild piece is laid out as before', () => {
+  let n = 0
+  for (const seed of SEEDS) for (const { wx, wy, deal } of samplePieces(seed)) {
+    if (sidesOf(roadSides(seed, wx, wy)).length) continue
+    const { t, piece, laid, at } = built(seed, wx, wy, deal)
+    n++
+    assert.equal(piece.road, null, at)
+    assert.equal(piece.cls, 'wild', at)
+    assert.ok(!laid.some(l => l.kind === 'road'), `${at}: a road laid on a wild piece`)
+    const hub = { x: piece.main.x, y: piece.main.y }
+    const endsAtHub = l => l.x1 === hub.x && l.y1 === hub.y
+    for (const side of SIDES) {
+      const g = t.gateInner(side)
+      assert.ok(laid.some(l => l.kind === 'path' && l.width === 2 && l.x0 === g.x && l.y0 === g.y && endsAtHub(l)), `${at}: no path two wide from gate ${side} to the hub`)
+    }
+    for (const s of piece.small) for (const l of laid.filter(l => l.x0 === s.x && l.y0 === s.y)) assert.ok(endsAtHub(l), `${at}: the ${s.kind}'s trail leads elsewhere`)
+  }
+  assert.ok(n >= 20, `only ${n} wild pieces in the sample`)
+})
+
+test('a village is entered by its roads: each reaches the square over road cells, cobbled inside the village', () => {
+  // the village's layout keeps its streets clear for a road three wide (features.js street)
+  assert.equal(ROAD_WIDTH, 3)
+  let streets = 0
+  for (const b of villageSample()) {
+    const { t, piece, walk, laid, at } = b
+    const c = piece.main
+    assert.deepEqual(piece.road?.junction, { x: c.x, y: c.y }, `${at}: the roads do not meet at the hub`)
+    for (const s of sidesOf(piece.road.sides)) {
+      const seen = flood(t.gateInner(s), (x, y) => t.onRoad(x, y) && walk(x, y))
+      let square = false
+      for (let y = c.y - 4; y <= c.y + 4; y++) for (let x = c.x - 4; x <= c.x + 4; x++) if (Math.hypot(x - c.x, y - c.y) <= 4 && seen[y * PIECE + x]) square = true
+      assert.ok(square, `${at}: the road from gate ${s} does not reach the square`)
+      streets++
+    }
+    // a gate with no road keeps a trail
+    for (const s of SIDES.filter(s => !piece.road.sides[s])) {
+      const g = t.gateInner(s)
+      assert.ok(laid.some(l => l.kind === 'path' && l.width === 1 && l.x0 === g.x && l.y0 === g.y), `${at}: gate ${s} has no trail`)
+    }
+    for (let y = c.y - 12; y <= c.y + 12; y++) for (let x = c.x - 12; x <= c.x + 12; x++) {
+      if (Math.hypot(x - c.x, y - c.y) > 12 || !t.onRoad(x, y) || t.kind(x, y) === 'water') continue
+      assert.equal(t.groundAt(x, y), 'ow_cobble_green', `${at}: the street at ${x},${y} is not cobbled`)
+      assert.ok(walk(x, y), `${at}: the street at ${x},${y} is built on (${t.propAt(x, y)})`)
+    }
+  }
+  assert.ok(streets >= 40, `${streets} streets`)
+})
+
+// The sheep fold of a fold village stands south-east of the square; where a
+// road gate opens right beside it, the road passes through its corner and the
+// fence leaves a gap there. Seeds 1 (2,13), 42 (2,-2) deal 1 and 11 (11,8)
+// deal 1 are three such villages.
+test('a fold village\'s pen never stands on a road, and every road gate reaches the square', () => {
+  const cases = [[1, 2, 13, 0], [42, 2, -2, 1], [11, 11, 8, 1]]
+  for (const seed of [1, 7, 42]) for (const { wx, wy } of villagePieces(seed, 5)) for (const deal of [0, 1]) cases.push([seed, wx, wy, deal])
+  let fences = 0
+  for (const [seed, wx, wy, deal] of cases) {
+    const { t, piece, walk, at } = built(seed, wx, wy, deal, null, 'fold')
+    const c = piece.main
+    for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+      const p = t.propAt(x, y)
+      if (p?.startsWith('ow_fence')) fences++
+      if (!t.onRoad(x, y)) continue
+      assert.ok(walk(x, y), `${at}: the road at ${x},${y} is blocked (${p ?? t.groundAt(x, y)})`)
+      assert.ok(!p || isPier(p), `${at}: ${p} stands on the road at ${x},${y}`)
+    }
+    for (const s of sidesOf(piece.road.sides)) {
+      const seen = flood(t.gateInner(s), (x, y) => walk(x, y) && (t.onRoad(x, y) || t.groundAt(x, y).startsWith('ow_cobble')))
+      let square = false   // (the well stands in the middle)
+      for (let y = c.y - 4; y <= c.y + 4; y++) for (let x = c.x - 4; x <= c.x + 4; x++) if (Math.hypot(x - c.x, y - c.y) <= 4 && seen[y * PIECE + x]) square = true
+      assert.ok(square, `${at}: the road from gate ${s} does not reach the square`)
+    }
+  }
+  assert.ok(fences > 0, 'no pen was built')
+})
+
+// A house's door label is its name in a save (world.solved and world.looted
+// name the glassmaker's house by it) and seeds what is inside: a village keeps
+// the square and the houses it had before roads. Pinned from main (a39a509):
+// the village houses of each village in villageSample(), as label, story,
+// kind and look.
+const MAIN_HOUSES = {
+  '1:0,0:0': '24393bc7594f', '1:0,0:1': '5ca4b5ce5c04', '1:1,-1:0': '22c934cf565c', '1:1,-1:1': '0e849a18ffe2',
+  '1:-1,0:0': '88a2e96bd537', '1:-1,0:1': '96c952829b2e', '1:-1,-2:0': '199c11ea64bf', '1:-1,-2:1': 'f29af7d83f45',
+  '3:0,0:0': '39c36c0968b7', '3:0,0:1': '98aba61623d7', '3:3,-4:0': '444497116155', '3:3,-4:1': '670582985d21',
+  '3:-4,-1:0': 'c9a15eea71bc', '3:-4,-1:1': 'fa1ec35cd324', '3:-4,0:0': '74d800a8da06', '3:-4,0:1': 'c3de4fb6c445',
+  '2024:0,0:0': '2f59c8a1d9a5', '2024:0,0:1': '8b383679a58b', '2024:2,-1:0': '40d1c16cc04e', '2024:2,-1:1': '6a90bceac18b',
+  '2024:-2,2:0': '1d2e3fdd55c5', '2024:-2,2:1': 'c7ca8dda9a20', '2024:-2,-3:0': '8f73b53563d9', '2024:-2,-3:1': '7b2a8922b22f',
+}
+test('a village keeps the square and the houses it had before roads', () => {
+  const seen = new Set()
+  for (const { seed, piece, at } of villageSample()) {
+    const { wx, wy, deal } = piece
+    // the square's middle comes from the piece's first two draws, as it always did
+    const r = mulberry32(hashInt(seed, wx, wy, 500 + deal))
+    const want = wx === 0 && wy === 0 ? { x: 40, y: 40 } : { x: 18 + Math.floor(r() * 44), y: 18 + Math.floor(r() * 44) }
+    assert.deepEqual({ x: piece.main.x, y: piece.main.y }, want, `${at}: the square moved`)
+    // the four houses every village has, by label
+    const labels = new Set(piece.doors.map(d => d.label))
+    for (const [dx, dy] of [[-7, -3], [6, -4], [-7, 5], [7, 4]])
+      assert.ok(labels.has(`house:wilds:${wx * PIECE + want.x + dx},${wy * PIECE + want.y + dy}`), `${at}: no house at ${dx},${dy} from the square`)
+    const houses = piece.doors.filter(d => d.tier === 'safe').map(d => [d.label, d.story, d.kind ?? null, d.look.w, d.look.storeys, d.look.wall]).sort()
+    const key = `${seed}:${wx},${wy}:${deal}`
+    assert.equal(createHash('sha1').update(JSON.stringify(houses)).digest('hex').slice(0, 12), MAIN_HOUSES[key], `${at}: its houses are not the ones it had on main`)
+    seen.add(key)
+  }
+  assert.equal(seen.size, Object.keys(MAIN_HOUSES).length)
 })

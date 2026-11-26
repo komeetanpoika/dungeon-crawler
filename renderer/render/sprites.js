@@ -149,18 +149,32 @@ export async function loadSprites(extraNames = []) {
   const entries = { ...SPRITES }
   for (const name of extraNames) if (!(name in entries)) entries[name] = name
   const loaded = {}
-  await Promise.all(Object.entries(entries).map(([key, name]) => loadOne(loaded, key, name)))
+  await loadAll(loaded, Object.entries(entries))
   return loaded
 }
 
-// A failed load is tried once more before the tile is given up for the session.
+// Pictures asked for at once. Electron over file:// refuses some of a burst of
+// thousands, so the loads go through a small pool instead.
+export const LOAD_AT_ONCE = 64
+export async function loadAll(loaded, pairs, makeImage) {
+  let next = 0
+  const worker = async () => {
+    while (next < pairs.length) { const [key, name] = pairs[next++]; await loadOne(loaded, key, name, makeImage) }
+  }
+  await Promise.all(Array.from({ length: Math.min(LOAD_AT_ONCE, pairs.length) }, worker))
+}
+
+// A failed load is tried at once, then again after a short wait (outside the
+// burst), before the tile is given up for the session.
 export const loadOne = (loaded, key, name, makeImage = () => new Image()) => new Promise(resolve => {
   let tries = 0
   const attempt = () => {
     const img = makeImage()
     img.onload = () => { loaded[key] = img; resolve() }
     img.onerror = () => {
-      if (++tries < 2) return attempt()
+      tries++
+      if (tries === 1) return attempt()
+      if (tries === 2) { setTimeout(attempt, 100 * tries); return }
       console.warn(`Missing sprite: ${name}`); resolve()
     }
     img.src = `./assets/tiles/${name}.png`
@@ -173,7 +187,7 @@ export const missingSprites = (loaded, names) => [...new Set(names)].filter(name
 
 // Add tiles, by file name, to a set already loaded: a mode's own tiles when
 // that mode is first entered (the Wilds), so the title does not wait for them.
-export async function loadMoreSprites(loaded, names) {
-  await Promise.all(missingSprites(loaded, names).map(name => loadOne(loaded, name, name)))
+export async function loadMoreSprites(loaded, names, makeImage) {
+  await loadAll(loaded, missingSprites(loaded, names).map(name => [name, name]), makeImage)
   return loaded
 }

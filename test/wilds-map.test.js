@@ -1,8 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeWorld, getPiece, exportWorld, sweep, recordFor, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
+import { makeWorld, getPiece, exportWorld, sweep, recordFor, hear, GEN, FORGET_SECONDS } from '../renderer/wilds/world.js'
+import { mapStamp } from '../renderer/render/map-draw.js'
 import { fold, noteSeen, classOf, encodePic, decodePic, landmarks, forgetMap, CLASS, MAP_N, MAP_COLOURS, CLASSES, SEE_RADIUS } from '../renderer/wilds/map.js'
-import { PIECE } from '../renderer/wilds/layout.js'
+import { PIECE, villagesNear } from '../renderer/wilds/layout.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 const world = () => makeWorld(null, { seed: 7 })
@@ -62,6 +63,21 @@ test('classes by tile name: what stands on a cell beats what it is made of', () 
   assert.equal(c('something_new'), CLASS.grass)
   assert.equal(MAP_COLOURS.length, CLASSES.length)
   assert.ok(CLASSES.length <= 26, 'a class is one letter in a save')
+})
+
+test('road ground has a colour class of its own', () => {
+  for (const ground of ['grass', 'sand', 'mtn', 'marsh']) assert.equal(classOf({ tile: TILE.FLOOR, skin: `ow_road_${ground}_1` }), CLASS.road)
+  assert.notEqual(CLASS.road, CLASS.path)
+  assert.notEqual(MAP_COLOURS[CLASS.road], MAP_COLOURS[CLASS.path])
+  // the new class comes last, so the letters of older saves keep their meaning
+  assert.equal(CLASS.road, CLASSES.length - 1)
+  assert.deepEqual(['path', 'pave', 'deck', 'building', 'wall'].map(n => CLASS[n]), [11, 12, 13, 14, 15])
+  // and a road beside a path shows as road in their block
+  const w = world(), p = getPiece(w, 3, 0)
+  for (const [x, y] of [[30, 30], [31, 30], [30, 31], [31, 31]]) Object.assign(p.cells[y][x], { explored: true, skin: 'ow_dirt_0', overlay: null, tile: TILE.FLOOR })
+  p.cells[30][31].skin = 'ow_road_grass_2'
+  fold(w, p)
+  assert.equal(w.map.get(p.key)[15 * MAP_N + 15], CLASS.road)
 })
 
 test('a path one tile wide still shows in its block', () => {
@@ -150,4 +166,24 @@ test('landmarks: the villages reached, the city, and a tale place once stood in'
   assert.deepEqual([...makeWorld({ ...saved, found: ['0,5', '7,7', 3] }).found], ['0,5'])
   forgetMap(w, '0,5')
   assert.equal(w.found.size, 0)
+})
+
+test('a heard town is a landmark of kind heard until it is visited', () => {
+  const w = world()
+  const v = villagesNear(w.seed, 0, 0, 8).find(t => t.wx || t.wy)
+  const key = `${v.wx},${v.wy}`
+  const before = mapStamp(w)
+  hear(w, [key, 'city', '0,0'])
+  assert.notEqual(mapStamp(w), before, 'the map does not know it changed')
+  const heard = landmarks(w).filter(l => l.kind === 'heard')
+  // Koivula is visited already: drawn as visited, though heard of
+  assert.deepEqual(heard.map(l => l.key), [key, 'city'])
+  assert.deepEqual(heard.map(l => l.name), [v.name, 'Kalevanlinna'])
+  assert.deepEqual([heard[0].X, heard[0].Y], [v.wx * PIECE + PIECE / 2, v.wy * PIECE + PIECE / 2], 'the middle of its piece')
+  assert.deepEqual([heard[1].X, heard[1].Y], [80, 240], 'the middle of the city')
+  assert.equal(landmarks(w).filter(l => l.key === '0,0').length, 1)
+  w.visited.push(key)
+  assert.deepEqual(landmarks(w).filter(l => l.kind === 'heard').map(l => l.key), ['city'])
+  assert.ok(landmarks(w).some(l => l.kind === 'village' && l.key === key))
+  assert.ok(w.heard.has(key), 'a visited town stays heard of')
 })

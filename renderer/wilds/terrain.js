@@ -11,6 +11,7 @@
 //
 // Local cell (x, y), 0..PIECE-1, is builder cell (x + MARGIN, y + MARGIN).
 import { PIECE, FRAME, BLEND, MARGIN, biomeSampler, gateAt } from './layout.js'
+import { roadSides } from './roads.js'
 import { inBay } from './city/geometry.js'
 import { hash, hashInt, noise2, mulberry32 } from './rand.js'
 import { MapBuilder, shoreline, WATER_SKINS, isWaterSkin, isSandySkin, RIM_TILES, TREE_PAIRS } from '../terrain/lib.js'
@@ -19,6 +20,7 @@ import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
 import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
+import { vergeRoads, VERGE_SKINS } from './road-art.js'
 import { CITY_SKINS } from './city/kit.js'
 import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
 
@@ -47,14 +49,33 @@ const SAND_PATH = ['ow_path_sand_0', 'ow_path_sand_1', 'ow_path_sand_2', 'ow_pat
 const PIER = { h: 'ow_pier_log', v: 'ow_pier_log_v' }
 const TOP_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [trunk, top]))
 const TRUNK_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [top, trunk]))
+// A road's own ground (tools/make-wilds-road-tiles.mjs), one set for each
+// ground it crosses: a trail's dirt would not show on mountain floor or
+// marsh mud, nor width alone.
+const ROAD = Object.fromEntries(['grass', 'sand', 'mtn', 'marsh'].map(g => [g, [0, 1, 2, 3].map(i => `ow_road_${g}_${i}`)]))
+const isRoadSkin = n => typeof n === 'string' && n.startsWith('ow_road_')
+
+// How many cells wide a road is, in the frame and inside a piece. Its lanes
+// where it crosses a piece edge are the gate corridor's g..g+2 at three
+// wide (g the gate's offset; the corridor is g-1..g+2) and the whole
+// corridor at four. Tools may draw the land at the other width; the game
+// never changes it.
+export let ROAD_WIDTH = 3
+export function setRoadWidth(n) {
+  if (n !== 3 && n !== 4) throw new Error(`a road is 3 or 4 wide, not ${n}`)
+  ROAD_WIDTH = n
+}
+// The first lane of a road crossing at gate offset g (the city's road spurs
+// take the same lanes).
+export const roadLane0 = g => g + 1 - (ROAD_WIDTH >> 1)
 
 // Every tile name terrain.js can lay. features.js adds its own (FEATURE_SKINS).
 export const TERRAIN_SKINS = [...new Set([
-  ...GRASS, ...DIRT, ...SAND, HARDPAN, ...SAND_PATH, ...WATER_SKINS,
+  ...GRASS, ...DIRT, ...SAND, HARDPAN, ...SAND_PATH, ...Object.values(ROAD).flat(), ...WATER_SKINS,
   ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, ...SLOPE_SKINS, PIER.h, PIER.v, ...DECK_SKINS, ...DECK_CUT_SKINS, ...DECK_UNDER_SKINS, ...FILLET_SKINS,
   ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
-  ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES,
+  ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES, ...VERGE_SKINS,
 ])]
 // Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks).
 export const FEATURE_SKINS = [
@@ -159,6 +180,15 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     if (lx >= PIECE - FRAME && inLane(ly, gateOf(pwx, pwy, 'E'))) return 'h'
     return null
   }, () => new Array(ESIZE * ESIZE).fill(undefined))
+  // Which sides of the piece a cell belongs to carry a road: the edge's, so
+  // the neighbour asks the same; never the deal's.
+  const sidesCache = new Map()
+  const sidesOf = (pwx, pwy) => {
+    const k = `${pwx},${pwy}`
+    let s = sidesCache.get(k)
+    if (s === undefined) sidesCache.set(k, s = roadSides(seed, pwx, pwy))
+    return s
+  }
 
   const grassSkin = (x, y) => { const h = hash(seed, X0 + x, Y0 + y, 40); return h < 0.95 ? GRASS[0] : h < 0.975 ? GRASS[1] : GRASS[2] }
   const floorSkin = (x, y) => MTN.ground[hashInt(seed, X0 + x, Y0 + y, 41) % 7]
@@ -232,10 +262,26 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     isGrass(ground) || ground.startsWith('ow_dirt') ? dirtSkin(x, y)
       : ground.startsWith('ow_sand') || ground === HARDPAN ? SAND_PATH[hashInt(seed, X0 + x, Y0 + y, 42) % SAND_PATH.length]
       : ground
+  // A road's ground by what it is laid on: the sand set on sand, the mountain
+  // set on mountain floor and anywhere in the mountains (so the floor beside
+  // it never frays into a strip of grass), the marsh set in the marsh, else
+  // the grass set. Pure in the world tile, as the frame must be.
+  const roadGround = (ground, x, y) => {
+    if (isRoadSkin(ground)) return ground
+    const bm = biome(x, y)
+    const set = ground.startsWith('ow_sand') || ground === HARDPAN || SAND_PATH.includes(ground) ? ROAD.sand
+      : isFloor(ground) || bm === 'mountain' ? ROAD.mtn
+      : bm === 'marsh' ? ROAD.marsh : ROAD.grass
+    return set[hashInt(seed, X0 + x, Y0 + y, 46) % set.length]
+  }
   const waterSkin = (x, y) => WATER_SKINS[mod(X0 + x + Y0 + y, 2)]
 
   // ---- lay the base terrain ------------------------------------------------
   const b = new MapBuilder('wilds', 'wilds', 'wilds', SIZE, SIZE)
+  // a third layer of art between the ground and what stands on it, builder
+  // cell by builder cell: the roads' verges (finish()), and what a site hangs
+  // behind a prop (setDeco)
+  const deco = new Array(SIZE * SIZE).fill(null)
   const put = (x, y, ground, prop, walk) => {
     const bx = x + MARGIN, by = y + MARGIN
     b.ground[by][bx] = b.skin(ground)
@@ -249,11 +295,11 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       if (cor) put(x, y, waterSkin(x, y), PIER[cor], true)
       else put(x, y, waterSkin(x, y), !nearLand(x, y) && rnd(x, y, 26) < 0.006 ? pickBy(SKERRY, x, y, 22) : null, false)
     } else if (k === 'mass') {
-      if (cor) put(x, y, floorSkin(x, y), null, true)
+      if (cor) put(x, y, laneOf(x, y) === 'road' ? roadGround(floorSkin(x, y), x, y) : floorSkin(x, y), null, true)
       else put(x, y, floorSkin(x, y), MTN.lat[0][0], false)
     } else if (cor) {
-      const g = landGround(x, y)
-      put(x, y, laneOf(x, y) ? pathGround(g, x, y) : g, null, true)
+      const g = landGround(x, y), lane = laneOf(x, y)
+      put(x, y, lane === 'road' ? roadGround(g, x, y) : lane ? pathGround(g, x, y) : g, null, true)
     } else {
       const p = propAt(x, y)
       put(x, y, landGround(x, y), p, !p)
@@ -263,17 +309,21 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (rawKind(x + dx, y + dy) !== 'water') return true
     return false
   }
-  // The two middle lanes of a gate corridor wear the path.
+  // How the lanes of a gate corridor are worn: on a side that carries a
+  // road, ROAD_WIDTH lanes of it ('road'); on any other, the two middle
+  // lanes wear the path ('path'). null for the rest of the corridor.
   function laneOf(x, y) {
     const px = Math.floor(x / PIECE), py = Math.floor(y / PIECE)
     const lx = x - px * PIECE, ly = y - py * PIECE
     const pwx = wx + px, pwy = wy + py
-    const mid = (o, g) => o === g || o === g + 1
-    if (ly < FRAME && mid(lx, gateOf(pwx, pwy, 'N'))) return true
-    if (ly >= PIECE - FRAME && mid(lx, gateOf(pwx, pwy, 'S'))) return true
-    if (lx < FRAME && mid(ly, gateOf(pwx, pwy, 'W'))) return true
-    if (lx >= PIECE - FRAME && mid(ly, gateOf(pwx, pwy, 'E'))) return true
-    return false
+    const wear = (o, side) => {
+      const g = gateOf(pwx, pwy, side)
+      if (!sidesOf(pwx, pwy)[side]) return o === g || o === g + 1 ? 'path' : null
+      const a = roadLane0(g)
+      return o >= a && o < a + ROAD_WIDTH ? 'road' : null
+    }
+    return (ly < FRAME && wear(lx, 'N')) || (ly >= PIECE - FRAME && wear(lx, 'S'))
+      || (lx < FRAME && wear(ly, 'W')) || (lx >= PIECE - FRAME && wear(ly, 'E')) || null
   }
 
   // ---- what features build on ---------------------------------------------
@@ -317,24 +367,30 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++)
       if (dx * dx + dy * dy <= r * r) { openCell(cx + dx, cy + dy); claim(cx + dx, cy + dy) }
   }
-  // One path cell: a pier over water, a pass through rock, a trail on land.
-  const pathCells = new Set()
+  // One path cell: a pier over water, a pass through rock, a trail on land;
+  // a road cell is a path cell that wears the road's ground.
+  const pathCells = new Set(), roadCells = new Set()
   const pathKept = (x, y) => pathCells.has(y * PIECE + x) && !siteCells.has(y * PIECE + x)
   // (a gate corridor in the frame is path too, though not this deal's to lay)
   const laid = (x, y) => pathCells.has(y * PIECE + x) || !!corridor(x, y)
-  const pathCell = (x, y, pier) => {
+  // Path cells never touch only at a corner: such a joint cannot be walked
+  // over water, through rock or between trees, so a diagonal step takes the
+  // cell between as well. That is what makes a one-wide trail a stair, and
+  // two bridges that brush past each other one deck. (`has`: what is laid;
+  // `add` lays the cell between.)
+  const joinCorners = (has, x, y, pier, add) => {
+    for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      if (!has(x + dx, y + dy) || has(x + dx, y) || has(x, y + dy)) continue
+      const along = pier === PIER.h ? inside(x, y + dy) : !inside(x + dx, y)
+      if (along) add(x, y + dy); else add(x + dx, y)
+    }
+  }
+  const pathCell = (x, y, pier, road = false) => {
     if (!inside(x, y)) return
-    // Path cells never touch only at a corner: such a joint cannot be walked
-    // over water, through rock or between trees, so a diagonal step takes the
-    // cell between as well. That is what makes a one-wide trail a stair, and
-    // two bridges that brush past each other one deck.
+    if (road) roadCells.add(y * PIECE + x)
     if (!pathCells.has(y * PIECE + x)) {
       pathCells.add(y * PIECE + x)
-      for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-        if (!laid(x + dx, y + dy) || laid(x + dx, y) || laid(x, y + dy)) continue
-        const along = pier === PIER.h ? inside(x, y + dy) : !inside(x + dx, y)
-        if (along) pathCell(x, y + dy, pier); else pathCell(x + dx, y, pier)
-      }
+      joinCorners(laid, x, y, pier, (cx, cy) => pathCell(cx, cy, pier, road))
     }
     const bx = x + MARGIN, by = y + MARGIN
     const g = b.palette[b.ground[by][bx]]
@@ -344,15 +400,25 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       return
     }
     const was = clearCell(x, y)
-    b.ground[by][bx] = b.skin(isMassSkin(was) && !isFloor(g) ? floorSkin(x, y) : pathGround(g, x, y))
+    const cut = isMassSkin(was) && !isFloor(g)
+    b.ground[by][bx] = b.skin(road ? roadGround(cut ? floorSkin(x, y) : g, x, y) : cut ? floorSkin(x, y) : pathGround(g, x, y))
     b.walkG[by][bx] = true
   }
   const clampIn = v => Math.max(FRAME, Math.min(PIECE - 1 - FRAME, v))
-  // A gently wandering path between two interior cells.
-  const path = (x0, y0, x1, y1, width = 2) => {
+  // A gently wandering path between two interior cells: at each step a
+  // width x width square of path cells, `lo` from the step's cell. A road's
+  // step is held where its whole square stays inside, so the road keeps its
+  // width along a border; a path's keeps the old rule (clampIn), and with it
+  // every piece laid before roads. (`cell` lays one cell: tracePaths only notes it.)
+  const wander = (x0, y0, x1, y1, width, lo, road, cell = pathCell) => {
+    const hold = road ? v => Math.max(FRAME - lo, Math.min(PIECE - FRAME - width - lo, v)) : clampIn
     const dx = x1 - x0, dy = y1 - y0
     const len = Math.hypot(dx, dy)
-    if (len < 1) { for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) pathCell(x0 + a, y0 + c, PIER.h); return }
+    if (len < 1) {
+      const sx = road ? hold(x0) : x0, sy = road ? hold(y0) : y0
+      for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) cell(sx + lo + a, sy + lo + c, PIER.h, road)
+      return
+    }
     const nx = -dy / len, ny = dx / len
     const s1 = (hash(dealSeed, x0 * 131 + x1, y0 * 131 + y1, 60) - 0.5) * 2
     const s2 = (hash(dealSeed, x0 * 131 + x1, y0 * 131 + y1, 61) - 0.5) * 2
@@ -364,10 +430,28 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       const off = amp * (s1 * Math.sin(Math.PI * t) + 0.5 * s2 * Math.sin(2 * Math.PI * t))
       // a bulge that would leave the interior slides along its edge instead,
       // so the path never breaks
-      const px = clampIn(Math.round(x0 + dx * t + nx * off)), py = clampIn(Math.round(y0 + dy * t + ny * off))
-      for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) pathCell(px + a, py + c, pier)
+      const px = hold(Math.round(x0 + dx * t + nx * off)), py = hold(Math.round(y0 + dy * t + ny * off))
+      for (let a = 0; a < width; a++) for (let c = 0; c < width; c++) cell(px + lo + a, py + lo + c, pier, road)
     }
   }
+  const path = (x0, y0, x1, y1, width = 2) => wander(x0, y0, x1, y1, width, 0, false)
+  // The cells these paths ([[x0, y0, x1, y1, width], ...], laid in order on a
+  // piece with no other path) would cover, without laying them: for a caller
+  // that must decide as if only they were there.
+  const tracePaths = calls => {
+    const traced = new Set()
+    const has = (x, y) => traced.has(y * PIECE + x) || !!corridor(x, y)
+    const cell = (x, y, pier) => {
+      if (!inside(x, y) || traced.has(y * PIECE + x)) return
+      traced.add(y * PIECE + x)
+      joinCorners(has, x, y, pier, (cx, cy) => cell(cx, cy, pier))
+    }
+    for (const [x0, y0, x1, y1, width] of calls) wander(x0, y0, x1, y1, width, 0, false, cell)
+    return (x, y) => traced.has(y * PIECE + x)
+  }
+  // A road: a path ROAD_WIDTH wide wearing the road's ground, set about its
+  // line so that from a gate's inner point it covers the frame's road lanes.
+  const road = (x0, y0, x1, y1) => wander(x0, y0, x1, y1, ROAD_WIDTH, roadLane0(0), true)
 
   const gates = {
     N: { x: gateOf(wx, wy, 'N'), y: 0 },
@@ -413,7 +497,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     // water got the green bank of a pond in the grass.
     const beachy = (bx, by) => {
       const n = b.palette[b.ground[by]?.[bx]]
-      return isSandySkin(n) || n === HARDPAN || SAND_PATH.includes(n)
+      return isSandySkin(n) || n === HARDPAN || SAND_PATH.includes(n) || ROAD.sand.includes(n)
     }
     // ow_pond_<x><y>: which side the bank is on, 0 west/north, 2 east/south
     const bank = b.palette.map(n => /^ow_pond_([012])([012])$/.exec(n))
@@ -445,6 +529,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
         return cor === 'v' ? 'ns' : cor === 'h' ? 'ew' : null
       },
     })
+    // Last, on the finished ground: every cell beside a road wears its
+    // verge, the road's gravel worn off onto it (road-art.js).
+    vergeRoads(b, deco, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed })
   }
 
   return {
@@ -452,7 +539,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     biome: (x, y) => biome(x, y),
     // what the land is before anything is laid on it ('land', 'water', 'mass'), up to EXT cells beyond the piece
     rawKind: (x, y) => rawKind(x, y),
-    kind, free, inside, open, claim, clear: openCell, path, gates, gateInner, finish,
+    kind, free, inside, open, claim, clear: openCell, path, road, tracePaths, gates, gateInner, finish,
     // a walkable line one cell wide with no path art: a way through the trees
     // for something that must be reachable but not signposted
     clearLine: (x0, y0, x1, y1) => {
@@ -468,6 +555,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     // for features: the prop and ground art of a local cell
     propAt: (x, y) => skinAt(b.prop, x, y),
     groundAt: (x, y) => skinAt(b.ground, x, y),
+    // the deco of a local cell (a road's verge), up to MARGIN cells beyond the piece; after finish()
+    decoAt: (x, y) => deco[(y + MARGIN) * SIZE + x + MARGIN] ?? null,
     // stamp helpers in local coordinates, for interior cells only
     setGround: (x, y, skin) => { if (inside(x, y)) b.ground[y + MARGIN][x + MARGIN] = b.skin(skin) },
     setProp: (x, y, skin, { walkable = false } = {}) => {
@@ -475,6 +564,10 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       b.prop[y + MARGIN][x + MARGIN] = b.skin(skin)
       b.walkG[y + MARGIN][x + MARGIN] = walkable
     },
+    // what hangs behind a cell's prop (the wall behind an inn's sign, the stall
+    // a horse stands in): its deco, drawn between the ground and the prop; a
+    // road's verge (finish()) leaves a deco laid here as it is
+    setDeco: (x, y, skin) => { if (inside(x, y)) deco[(y + MARGIN) * SIZE + x + MARGIN] = skin ?? null },
     // a cell of mountain rock (finish() shapes it), and the stony ground it stands on
     setMass: (x, y) => {
       if (!inside(x, y) || pathKept(x, y)) return
@@ -495,8 +588,12 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       b.walkG[y + MARGIN][x + MARGIN] = false
     },
     walkable: (x, y) => !!b.walkG[y + MARGIN]?.[x + MARGIN],
+    // a cell a path or a road was laid on, and one a road was laid on
     onPath: (x, y) => pathCells.has(y * PIECE + x),
+    onRoad: (x, y) => inside(x, y) && roadCells.has(y * PIECE + x),
     onSite: (x, y) => siteCells.has(y * PIECE + x),
+    // the road's ground for a local cell whose ground is `ground` (the city lays its outside roads with it)
+    roadGround: (ground, x, y) => roadGround(ground, x, y),
     rnd, dryGround, grassSkin,
   }
 }

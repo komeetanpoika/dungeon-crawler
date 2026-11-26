@@ -165,18 +165,39 @@ describe('leap creature sprites', () => {
 })
 
 describe('loadOne', () => {
-  it('tries a failed tile once more, then warns once', async () => {
+  it('tries a failed tile twice more, then warns once', async () => {
     const { loadOne } = await import('../renderer/render/sprites.js')
     const made = []
     const makeImage = (failures) => () => { const img = { fail: made.length < failures }; made.push(img); Object.defineProperty(img, 'src', { set() { queueMicrotask(() => img.fail ? img.onerror() : img.onload()) } }); return img }
     const warn = console.warn, warns = []
     console.warn = m => warns.push(m)
     try {
-      const a = {}; await loadOne(a, 'k', 'n', makeImage(1))
-      assert.equal(made.length, 2); assert.ok('k' in a); assert.equal(warns.length, 0)
+      const a = {}; await loadOne(a, 'k', 'n', makeImage(2))
+      assert.equal(made.length, 3); assert.ok('k' in a); assert.equal(warns.length, 0)
       made.length = 0
       const b = {}; await loadOne(b, 'k', 'n', makeImage(9))
-      assert.equal(made.length, 2); assert.ok(!('k' in b)); assert.equal(warns.length, 1)
+      assert.equal(made.length, 3); assert.ok(!('k' in b)); assert.equal(warns.length, 1)
     } finally { console.warn = warn }
+  })
+  it('loadMoreSprites keeps at most 64 pictures in flight, and a tile that fails twice still loads', async () => {
+    const { loadMoreSprites, LOAD_AT_ONCE } = await import('../renderer/render/sprites.js')
+    assert.equal(LOAD_AT_ONCE, 64)
+    let inFlight = 0, peak = 0
+    const failed = new Set()
+    const makeImage = () => {
+      const img = {}
+      Object.defineProperty(img, 'src', { set(v) {
+        inFlight++; peak = Math.max(peak, inFlight)
+        const flaky = v.endsWith('/t7.png') && !failed.has(img) && failed.size < 2
+        if (flaky) failed.add(img)
+        setTimeout(() => { inFlight--; flaky ? img.onerror() : img.onload() }, 1)
+      } })
+      return img
+    }
+    const names = Array.from({ length: 300 }, (_, i) => `t${i}`)
+    const loaded = {}
+    await loadMoreSprites(loaded, names, makeImage)
+    assert.ok(peak <= 64, `peak ${peak}`)
+    assert.equal(Object.keys(loaded).length, 300)
   })
 })
