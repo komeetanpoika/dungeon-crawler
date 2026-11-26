@@ -660,11 +660,15 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   // May a dune crest lie on builder cell (bx, by)? Only on the desert's
   // rippled sand with nothing standing on it, neither on a way (a path, a
   // road, a trail, a gate's corridor) nor beside one, nor on a site's ground
-  // or ground kept open. layDunes asks two cells beyond the builder too:
-  // those lie in a neighbour's frame, where no deal reaches, so they are what
-  // the frame's own rules make of them. Paths, sites and kept ground lie in the
-  // interior, so a cell within MARGIN of a piece edge is answered the same in
-  // the piece and in its neighbour's margin.
+  // or ground kept open. layDunes asks up to two cells beyond the builder
+  // too: those lie in a neighbour's frame, where no deal reaches, so they are
+  // what the frame's own rules make of them. Paths, sites and kept ground lie
+  // in the interior, so a cell within MARGIN of a piece edge is answered the
+  // same in the piece and in its neighbour's margin. (The way check of a cell
+  // two beyond looks three beyond, into the neighbour's interior, which this
+  // piece cannot see; only the lone corners on the builder's outermost line
+  // depend on it, so only the outermost margin cells may come out otherwise
+  // than the neighbour lays them: see layDunes.)
   const duneOpen = (bx, by) => {
     const x = bx - MARGIN, y = by - MARGIN
     const held = bx >= 0 && by >= 0 && bx < SIZE && by < SIZE
@@ -682,9 +686,11 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   // hardpan, a shore), and a site's ground or ground kept open. (Where the
   // sand frays into another country, layDunes keeps level by the country
   // itself, which a margin cell at the builder's edge cannot see from its
-  // ground.) layDunes asks up to three cells beyond the builder: a neighbour's
-  // frame, answered from the frame's own rules (a corridor lane that wears no
-  // road or path is the land's own ground).
+  // ground.) layDunes asks up to three cells beyond the builder: up to two
+  // beyond is a neighbour's frame, answered from the frame's own rules (a
+  // corridor lane that wears no road or path is the land's own ground); three
+  // beyond is its interior, out of this piece's sight, and asked only for the
+  // lone corners on the builder's outermost line (see layDunes).
   const duneFlat = (bx, by) => {
     const x = bx - MARGIN, y = by - MARGIN
     const held = bx >= 0 && by >= 0 && bx < SIZE && by < SIZE

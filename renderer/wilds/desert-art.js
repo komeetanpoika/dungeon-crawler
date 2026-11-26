@@ -665,6 +665,16 @@ export function layDunes(b, { X0, Y0, seed, open, flat = null, field = null, cou
   // no crest cell drawing round it) would draw as a dithered diamond: it is
   // flat sand instead. Its cells then span a level at most still: a corner at
   // -1 in a shaded cell has cell-mates at -1 or 0.
+  // On the builder's outermost line of corners this asks of the ring of
+  // corners round the builder, which hang on crest cells laid two beyond it
+  // (whose `open` looks three beyond) and on level ground three beyond: past
+  // the frame of the piece beside, in its interior, out of this piece's
+  // sight. So the builder's outermost ring of cells may be shaded otherwise
+  // than the piece beside shades them, at the corners on that line and only
+  // as -1 against 0 (the tests pin it). Nothing drawn reads that ring: a
+  // piece's own cells lie MARGIN in, every corner inside the outermost line
+  // is decided alike in both pieces, and the verges laid after look only at
+  // the roads.
   const lone = []
   for (let y = 0; y <= h; y++) for (let x = 0; x <= w; x++) {
     const k = ki(x, y), se = ci(x, y)

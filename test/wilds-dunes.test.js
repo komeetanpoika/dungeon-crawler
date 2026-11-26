@@ -268,7 +268,8 @@ test('every crest lies where the field says, shaped by the crests round it', () 
   assert.ok(joined > 1000, `only ${joined} brinks between crest cells looked at`)
 })
 
-test('dunes are large', () => {
+test('dunes are large', t => {
+  const spreads = []
   for (const seed of SEEDS) for (const band of BANDS) {
     const { W, X0, Y0, crest, height, inBand } = stretch(seed, band)
     // from a crest along the wind to the next crest beyond it
@@ -291,8 +292,10 @@ test('dunes are large', () => {
     else assert.ok(gap >= 16 && gap <= 40, `seed ${seed}: deep in the desert crests lie a median ${gap} tiles apart along the wind`)
     // and some dunes stand taller than others (heights run 0 to 1)
     const lo = quantile(tall, 0.1), hi = quantile(tall, 0.9)
+    spreads.push(`${seed} ${band} ${(hi - lo).toFixed(3)}`)
     assert.ok(hi - lo >= 0.2, `seed ${seed} ${band}: crest heights ${lo.toFixed(2)} to ${hi.toFixed(2)} (10th to 90th percentile)`)
   }
+  t.diagnostic(`crest height spreads (90th - 10th percentile): ${spreads.join(', ')}`)
 })
 
 test('a dune has a gentle windward side and a steep slip face', () => {
@@ -519,36 +522,98 @@ test('nor on Kalevanlinna, nor within eight tiles of it', () => {
   }
 })
 
-test('crests and their shading are pure in the world tile', () => {
-  let seen = 0, slopes = 0
+// Seed 1's piece 5,0 and its east neighbour 6,0 (5 pieces out, early in the
+// ramp): there 6,0's outermost margin cells at 76,25 and 76,26 of 5,0 lie
+// beside a lone corner of slip face that 5,0 can see is lone (a road seven
+// cells in, past the frame, keeps a crest beside it unlaid) and 6,0 cannot.
+const REGRESSION = { seed: 1, wx: 5, wy: 0, dx: 1, dy: 0 }
+// Desert pieces early in the ramp (centre 3.5 to 5.5 pieces out) with a
+// desert neighbour east or south: the one nearest 4 pieces out and the one
+// nearest 5, scan order breaking ties.
+const earlyRamp = seed => {
+  const ds = desertPieces(seed).filter(p => !inGentleRing(p.wx, p.wy)), keys = new Set(ds.map(p => `${p.wx},${p.wy}`))
+  const cands = ds.map(p => ({ ...p, d: Math.hypot(p.wx, p.wy), dirs: [[1, 0], [0, 1]].filter(([dx, dy]) => keys.has(`${p.wx + dx},${p.wy + dy}`)) }))
+    .filter(p => p.d >= 3.5 && p.d <= 5.5 && p.dirs.length)
+  const out = []
+  for (const target of [4, 5]) {
+    const best = cands.filter(p => !out.some(o => o.wx === p.wx && o.wy === p.wy))
+      .reduce((a, p) => !a || Math.abs(p.d - target) < Math.abs(a.d - target) ? p : a, null)
+    if (best) out.push({ ...best, early: true })
+  }
+  return out
+}
+// A margin cell's corners NW NE SE SW that lie on the outermost line of
+// corners its builder works out, by the side of the piece the margin lies on.
+const OUTER = { E: [1, 2], W: [0, 3], S: [2, 3], N: [0, 1] }
+test('crests and their shading are pure in the world tile', t => {
+  // A piece lays the world tile in its MARGIN as its neighbour lays it: crest
+  // or not, and the crest's ground, in every margin cell, and the slopes'
+  // shading in the three nearest the edge. The outermost margin cell is the
+  // one exemption: whether a corner of slip face on the builder's outermost
+  // line of corners is lone (and laid as flat sand) depends on a crest cell
+  // two beyond, and that on a way three beyond, in the neighbour's interior,
+  // which the piece cannot see. So its shading may differ there, at those
+  // corners alone, by -1 against 0. No cell of a piece's own 80 x 80 reads
+  // that cell (desert-art.js layDunes), and the drawn cells across every
+  // edge meet corner to corner.
+  let seen = 0, slopes = 0, early = 0, regression = 0, exempt = 0, seam = 0
   for (const seed of SEEDS) {
-    // (pieces in the ramp between near and deep, and deep in the desert)
+    // (pieces in the ramp between near and deep, early in the ramp, and deep in the desert)
     const ds = desertPieces(seed).filter(p => !inGentleRing(p.wx, p.wy))
     const keys = new Set(ds.map(p => `${p.wx},${p.wy}`))
+    const both = [[1, 0], [0, 1]]
     const ramp = ds.filter(p => keys.has(`${p.wx + 1},${p.wy}`) && keys.has(`${p.wx},${p.wy + 1}`)).slice(0, 2)
-    const pairs = [...ramp, ...deepPairs(seed).slice(0, 2)]
-    assert.ok(ramp.length === 2 && pairs.length === 4, `seed ${seed}: too few desert pieces with desert neighbours`)
+    const first = earlyRamp(seed)
+    const pairs = [...ramp.map(p => ({ ...p, dirs: both })), ...first, ...deepPairs(seed).slice(0, 2).map(p => ({ ...p, dirs: both }))]
+    if (seed === REGRESSION.seed) pairs.push({ wx: REGRESSION.wx, wy: REGRESSION.wy, dirs: [[REGRESSION.dx, REGRESSION.dy]], regression: true })
+    assert.ok(ramp.length === 2 && first.length === 2, `seed ${seed}: too few desert pieces with desert neighbours`)
     assert.ok(ramp.every(p => pieceDepth(p.wx, p.wy).hi > 0 && pieceDepth(p.wx, p.wy).lo < 1), `seed ${seed}: the first pairs are not in the ramp`)
-    for (const { wx, wy } of pairs) for (const [da, db] of [[0, 3], [3, 0]]) {
-      const A = built(seed, wx, wy, da), E = built(seed, wx + 1, wy, db), S = built(seed, wx, wy + 1, db)
-      for (let i = 0; i < PIECE; i++) for (let k = 0; k < MARGIN; k++) {
-        // the same world tile, as each piece lays it: A's margin is E's (or S's) first cells, and back
-        for (const [[P, px, py], [Q, qx, qy]] of [
-          [[A, PIECE + k, i], [E, k, i]], [[E, -1 - k, i], [A, PIECE - 1 - k, i]],
-          [[A, i, PIECE + k], [S, i, k]], [[S, i, -1 - k], [A, i, PIECE - 1 - k]],
-        ]) {
-          const p = P.dune(px, py), q = Q.dune(qx, qy)
-          assert.equal(p, q, `${A.at}/${Q.at}: a crest in one and not the other at ${qx},${qy} of ${Q.wx},${Q.wy}`)
-          const gp = P.ground(px, py), gq = Q.ground(qx, qy)
-          if (isShadeSkin(gp) || isShadeSkin(gq)) { slopes++; assert.equal(gp, gq, `${A.at}/${Q.at}: two slopes at ${qx},${qy} of ${Q.wx},${Q.wy}`) }
-          if (!p) continue
-          seen++
-          assert.equal(P.ground(px, py), Q.ground(qx, qy), `${A.at}/${Q.at}: two crests at ${qx},${qy} of ${Q.wx},${Q.wy}`)
+    for (const { wx, wy, dirs, early: isEarly, regression: reg } of pairs) for (const [da, db] of reg ? [[0, 3], [3, 0], [1, 2]] : [[0, 3], [3, 0]]) {
+      const A = built(seed, wx, wy, da)
+      if (reg) regression++
+      if (isEarly) early++
+      for (const [dx, dy] of dirs) {
+        const N = built(seed, wx + dx, wy + dy, db)
+        for (let i = 0; i < PIECE; i++) {
+          // the drawn cells across the edge: A's last against N's first
+          const [ax, ay, nx, ny] = dx ? [PIECE - 1, i, 0, i] : [i, PIECE - 1, i, 0]
+          const ca = levels(A.ground(ax, ay)), cn = levels(N.ground(nx, ny))
+          if (!allZero(ca) || !allZero(cn)) seam++
+          assert.ok(dx ? ca[1] === cn[0] && ca[2] === cn[3] : ca[3] === cn[0] && ca[2] === cn[1],
+            `${A.at}/${N.at}: ${A.ground(ax, ay)} at ${ax},${ay} meets ${N.ground(nx, ny)} across the edge`)
+          for (let k = 0; k < MARGIN; k++) {
+            // the same world tile, as each piece lays it: A's margin is N's first cells, and back
+            for (const [[P, px, py], [Q, qx, qy], side] of dx ? [
+              [[A, PIECE + k, i], [N, k, i], 'E'], [[N, -1 - k, i], [A, PIECE - 1 - k, i], 'W'],
+            ] : [
+              [[A, i, PIECE + k], [N, i, k], 'S'], [[N, i, -1 - k], [A, i, PIECE - 1 - k], 'N'],
+            ]) {
+              const p = P.dune(px, py), q = Q.dune(qx, qy)
+              assert.equal(p, q, `${A.at}/${N.at}: a crest in one and not the other at ${qx},${qy} of ${Q.wx},${Q.wy}`)
+              const gp = P.ground(px, py), gq = Q.ground(qx, qy)
+              if (p) {
+                seen++
+                assert.equal(gp, gq, `${A.at}/${N.at}: two crests at ${qx},${qy} of ${Q.wx},${Q.wy}`)
+                continue
+              }
+              if (!isShadeSkin(gp) && !isShadeSkin(gq)) continue
+              slopes++
+              if (gp === gq) continue
+              const at = `${A.at}/${N.at}: two slopes at ${qx},${qy} of ${Q.wx},${Q.wy} (margin cell ${k} from the edge)`
+              assert.ok(k === MARGIN - 1, at)
+              // (the outermost: only the corners on its builder's outer line, and only -1 against 0)
+              const cp = levels(gp), cq = levels(gq)
+              assert.ok(cp.every((l, j) => l === cq[j] || (OUTER[side].includes(j) && l + cq[j] === -1 && l * cq[j] === 0)), `${at}: ${gp} against ${gq}`)
+              exempt++
+            }
+          }
         }
       }
     }
   }
-  assert.ok(seen > 200 && slopes > 300, `only ${seen} margin crest cells and ${slopes} slope cells compared`)
+  assert.ok(early === 12 && regression === 3, `${early} early-ramp and ${regression} regression piece builds compared`)
+  assert.ok(seen > 200 && slopes > 300 && seam > 1000, `only ${seen} margin crest cells, ${slopes} slope cells and ${seam} shaded edge cells compared`)
+  t.diagnostic(`${exempt} outermost margin cells laid apart by a lone corner`)
 })
 
 test('a crest crossing a piece edge is one band', () => {
