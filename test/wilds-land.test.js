@@ -473,6 +473,8 @@ test('a crossroads inn is a city house nine wide with a stable beside it, where 
     if (door.look.w !== 9) {
       // the smaller house of before, and its yard
       small.push(at)
+      // no stalls there: its hand talks of the yard, not of stalls
+      assert.ok(hands.every(h => h.lines.every(l => !/stall|stable|horse/i.test(l))), `${at}: the hand speaks of stalls the small inn does not have`)
       assert.ok(door.look.w === 5 && door.look.storeys === 2, `${at}: an inn ${door.look.w} wide`)
       continue
     }

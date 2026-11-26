@@ -106,7 +106,7 @@ function tickLash(e, state, delta) {
   if (!cell || !isWalkable(cell.tile, cell)) { l.len = Math.max(0, l.len - LASH.speed * delta); l.state = 'retract'; return }
   if (Math.hypot(player.px - tx, player.py - ty) <= LASH.reach) {
     damagePlayer(state, LASH.dmg, 'hit', { px: e.px, py: e.py })
-    startKnockback(player, e.px - player.px, e.py - player.py, LASH.pull)
+    if (!player.riding) startKnockback(player, e.px - player.px, e.py - player.py, LASH.pull)
     sfx(state, 'drag', { px: player.px, py: player.py })
     l.state = 'retract'
     return

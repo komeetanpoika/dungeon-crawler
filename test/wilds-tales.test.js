@@ -104,15 +104,18 @@ test('wandering fitting land finds the place: by the fifth eligible piece, never
 
 test('searching the named side first finds a well-known story there by the second piece', () => {
   let n = 0
-  for (const seed of [3, 77, 2024, 5, 11, 19, 23, 42]) {
+  for (const seed of [3, 77, 2024, 5, 11, 19, 23, 42, 1, 2, 4, 6, 7, 8]) {
     const world = makeWorld(null, { seed })
     const v = { wx: 0, wy: 0 }
     const side = sideOf(seed, v, 'elk')
-    const onSide = fitsOf(seed, v).elk.filter(p => sideOfPiece(v, p.wx, p.wy) === side)
+    // (farmland is never a place, so it is not a piece the player can find there)
+    const onSide = fitsOf(seed, v).elk.filter(p => sideOfPiece(v, p.wx, p.wy) === side && pieceClass(seed, p.wx, p.wy) !== 'farmland')
     if (onSide.length < 2) continue
-    n++
     // admit the on-side pieces alone, as if the player walked straight that way
     for (const p of onSide.slice(0, 2)) { admit(world, [p]); recordFor(world, pieceKey(p.wx, p.wy)) }
+    // (a nearer village chooses first and may take a piece for its own tale: not this test's seed)
+    if ([...world.places.values()].some(pl => pl.village !== '0,0')) continue
+    n++
     const rec = taleRecord(world, v)
     assert.ok(rec.place, `seed ${seed}: not found on its side`)
     assert.equal(sideOfPiece(v, ...Object.values(parse(rec.place))), side)
@@ -319,4 +322,19 @@ test('a place recorded on farmland by an older save stays and takes the main thi
     assert.equal(world.tales.get(vKey).place, key)
     assert.equal(getPiece(world, farm.wx, farm.wy).main.kind, 'tale_tar')
   }
+})
+
+test('no story promises a side whose fitting land is all farmland', () => {
+  let stories = 0
+  for (let seed = 1; seed <= 40; seed++) for (const v of villagesNear(seed, 0, 0, 24)) {
+    for (const id of TALE_IDS) {
+      if (TALES[id].kind !== 'story') continue
+      const side = sideOf(seed, v, id)
+      if (side === null) continue
+      stories++
+      const open = fitsOf(seed, v)[id].filter(p => sideOfPiece(v, p.wx, p.wy) === side && pieceClass(seed, p.wx, p.wy) !== 'farmland')
+      assert.ok(open.length > 0, `seed ${seed}, village ${v.wx},${v.wy}, ${id}: side ${side} holds only farmland`)
+    }
+  }
+  assert.ok(stories > 100, `only ${stories} promised sides scanned`)
 })

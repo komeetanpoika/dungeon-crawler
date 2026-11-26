@@ -45,6 +45,8 @@ const BY_THE_JUNCTION = 3
 // a rest: a line naming the next town along one of the roads (picked by a
 // hash), and one about the road.
 const INN_LINES = ['Beds upstairs, stew by the fire. Pay what you can.', 'The carters stop here on the long road. Mind the horse: she bites.']
+// The smaller inn has a yard and a cart but no stalls.
+const YARD_LINES = ['The road is long. Sit a while, the beer is cold.', 'Mind the cart, it has a way of rolling.']
 const STABLE_LINES = ['Water, hay and a brush down. The horses eat before the guests do.', 'Leave yours with me if you have one. Not the end stall: that one kicks.']
 const GUEST_TOWN = [
   (town, far, side) => `I am for ${town} in the morning. ${far[0].toUpperCase()}${far.slice(1)} down the ${side} road, they tell me.`,
@@ -693,7 +695,7 @@ export function placeFeatures(t, piece) {
     heart = made.at
     const inn = { keeper: INN_LINES, news: innNews() }
     for (const d of made.doors) Object.assign(d, { kind: 'inn', inn })
-    for (const p of made.people) npc(p.species, p.x, p.y, { lines: STABLE_LINES })
+    for (const p of made.people) npc(p.species, p.x, p.y, { lines: made.small ? YARD_LINES : STABLE_LINES })
     spawnPoint = hub
   } else if (kind === 'tower') {
     // held from toughness 2 by whoever would camp at this toughness, empty at 1

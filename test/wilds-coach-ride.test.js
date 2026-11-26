@@ -403,3 +403,43 @@ test('townsfolk take no notice of the rider: none startles at him or waits for h
   GOALS.follow_city.enter(walker, foot)
   assert.equal(GOALS.follow_city.run(walker, foot, 0.1).mode, 'hold')
 })
+
+test('a knock set while riding is gone once the coach parks', () => {
+  const { world, state } = onStop(7)
+  const dest = destinations(world, '0,0').find(d => d.town.key !== 'city')
+  startRide(state, world, '0,0', dest)
+  for (let i = 0; i < 400 && !state.coachRide.path; i++) frame(state, world, 1 / 30)
+  state.player.knockback = { vx: 90, vy: 0, t: 0.4 }
+  rideToEnd(state, world)
+  assert.equal(state.player.knockback, null)
+})
+
+test('no piece off the route is made ahead while the coach rolls, and the ring fills again on foot', () => {
+  const { world, state } = onStop(7)
+  const before = world.pieces.size
+  state.coachRide = {}
+  tickWilds(state, world, 5, hooks)
+  assert.equal(world.pieces.size, before, 'a ring piece was made during the ride')
+  state.coachRide = null
+  tickWilds(state, world, 5, hooks)
+  assert.ok(world.pieces.size > before || before >= 25, 'the ring is not filled once on foot')
+})
+
+test('a save made mid-ride to Kalevanlinna wakes at the inn\'s stop, the city visited', () => {
+  const { world, state } = onStop(7)
+  const dest = destinations(world, '0,0').find(d => d.town.key === 'city')
+  startRide(state, world, '0,0', dest)
+  for (let i = 0; i < 400 && !state.coachRide.path; i++) frame(state, world, 1 / 30)
+  for (let i = 0; i < 45; i++) frame(state, world, 1 / 30)
+  assert.ok(state.coachRide?.path, 'the ride is not under way')
+  const rec = snapshotWilds(state, world)
+  const stop = stopTile(world, 'city')
+  assert.deepEqual(rec.pos, { X: stop.X, Y: stop.Y })
+  assert.ok(rec.visited.includes('city'))
+  assert.deepEqual(rec.lastVillage, { wx: 0, wy: 2 })
+  assert.ok(!world.visited.includes('city'), 'the live world arrived early')
+  const woke = makeWorld(rec)
+  const s2 = freshState()
+  enterWilds(s2, woke, woke.pos, hooks)
+  assert.ok(same(toWorld(woke.origin, s2.player.x, s2.player.y), stop))
+})

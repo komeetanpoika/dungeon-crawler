@@ -87,7 +87,8 @@ export function sideOfPiece(v, wx, wy) {
 export function sideOf(seed, v, taleId) {
   if (TALES[taleId]?.kind !== 'story') return null
   const count = new Array(8).fill(0)
-  for (const p of fitsOf(seed, v)[taleId]) count[sideOfPiece(v, p.wx, p.wy)]++
+  // farmland is never a place (eligible()), so it does not make a side
+  for (const p of fitsOf(seed, v)[taleId]) if (pieceClass(seed, p.wx, p.wy) !== 'farmland') count[sideOfPiece(v, p.wx, p.wy)]++
   const sides = n => count.map((c, i) => c >= n ? i : -1).filter(i => i >= 0)
   const pool = sides(2).length ? sides(2) : sides(1)
   return pool.length ? pool[hashInt(seed, v.wx, v.wy, 711) % pool.length] : null

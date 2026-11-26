@@ -174,6 +174,7 @@ function park(state, world, ride) {
   world.held = null
   const p = state.player
   p.riding = false
+  p.knockback = null
   arrive(state, world, ride.dest)
   // he did not walk here: no sway left over from a walk
   p._wpx = p.px; p._wpy = p.py; p.swayAmp = 0

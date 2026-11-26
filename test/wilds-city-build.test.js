@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { buildCity, cityFor } from '../renderer/wilds/city/build.js'
 import { generateCityPiece } from '../renderer/wilds/city/piece.js'
 import { PLAN, insideWalls, wallCells, towerRect } from '../renderer/wilds/city/plan.js'
@@ -512,4 +513,20 @@ test('the world hands out city pieces from the city', () => {
   assert.equal(getPiece(world, 2, 2).city, undefined)
   // no tale ever belongs to the city
   for (const k of CITY_KEYS) assert.equal(taleOf(7, { wx: keyOf(k)[0], wy: keyOf(k)[1] }), null)
+})
+
+// Nothing inside Kalevanlinna's walls, nor on them, changes with the roads and
+// settled land around it: a digest of those cells (the same on main before the
+// roads branch, measured cell for cell).
+test('the cells inside and on the walls are as they were before the roads', () => {
+  const city = buildCity(7), wc = wallCells()
+  const h = createHash('sha1')
+  let n = 0
+  for (let y = 0; y < city.cells.length; y++) for (let x = 0; x < city.cells[y].length; x++) {
+    if (!insideWalls(x, y) && !wc.has(y * city.cells.length + x)) continue
+    const c = city.cells[y][x]
+    h.update(`${x},${y}|${c.tile}|${c.skin}|${c.overlay ?? ''}|${c.deco ?? ''}|${c.ward ? 1 : 0}|${c.over ? 1 : 0}|${c.losClear ? 1 : 0}|${c.losTall ? 1 : 0}\n`)
+    n++
+  }
+  assert.equal(`${n} ${h.digest('hex')}`, '13081 ea539530bcf900a52cf7cfc2e89b104d41ffa017')
 })

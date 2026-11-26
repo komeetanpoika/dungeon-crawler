@@ -271,7 +271,7 @@ export function tickWilds(state, world, delta, { buildEntities, onVillage } = {}
 
   // generate the ring beyond the window ahead of need, a piece at a time
   world._pregenT = (world._pregenT ?? PREGEN_EVERY) + delta
-  if (!recentred && world._pregenT >= PREGEN_EVERY) {
+  if (!recentred && !state.coachRide && world._pregenT >= PREGEN_EVERY) {
     const cx = world.origin.wx + 1, cy = world.origin.wy + 1
     ring: for (let r = 2; r <= 2; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (world.pieces.has(pieceKey(cx + dx, cy + dy))) continue

@@ -842,7 +842,13 @@ export function makeSites(c) {
     },
     // the big inn and its stable where one of its plans stands whole, else the smaller inn
     // (`avoid`: ground it must leave alone, the small things' that are stamped after it)
-    inn: (cx, cy, avoid = null) => lay(cx, cy, INN_PLANS, INN_PAD, { whole: true, shift: INN_SHIFT, avoid }) ?? lay(cx, cy, WAYSIDE_PLANS.inn, 9),
+    // (`small` says it was the smaller one, which has no stable)
+    inn: (cx, cy, avoid = null) => {
+      const big = lay(cx, cy, INN_PLANS, INN_PAD, { whole: true, shift: INN_SHIFT, avoid })
+      if (big) return big
+      const small = lay(cx, cy, WAYSIDE_PLANS.inn, 9)
+      return small && { ...small, small: true }
+    },
     // the ruin kit: the tower moved off the trails as a farm's house is, its broken walls round it
     tower: (cx, cy) => {
       const made = lay(cx, cy, WAYSIDE_PLANS.tower, 8)
