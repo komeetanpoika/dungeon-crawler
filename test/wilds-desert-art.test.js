@@ -7,7 +7,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   windAt, sandSkinAt, SAND_SKINS, HARDPAN_SKINS, HARDPAN_EDGES, DESERT_SKINS, RIPPLES,
-  isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, isDuneSkin, isWindwardSkin, setDesertDress, desertDress, WIND,
+  isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, isDuneSkin, isWindwardSkin, setDesertDress, desertDress, WIND, nearCity,
 } from '../renderer/wilds/desert-art.js'
 import { makeTerrain, TERRAIN_SKINS, WILDS_SKINS, DESERT_FLORA, DESERT_DECO, OUTCROP_SKINS, isOutcropSkin } from '../renderer/wilds/terrain.js'
 import { PIECE, MARGIN, pieceBiome, pieceKey, tierAt, lootDepthFor } from '../renderer/wilds/layout.js'
@@ -406,6 +406,38 @@ test('an outcrop parts nothing', () => {
     }
   }
   assert.ok(seen > 100, `only ${seen} outcrop cells`)
+})
+
+// Kalevanlinna lays its own outskirts (city/build-land.js): it pairs only
+// the pack's two-tile trees and rims no outcrop. So neither an outcrop nor
+// a two-cell palm stands on the city's pieces or within DUNE.city of them,
+// in the city's grid or in the Wilds pieces round it. (Seeds with desert
+// round the city: the review's 2, 3, 6, 27, 31 and 54, and 8.)
+test('no outcrop or tall palm on Kalevanlinna\'s land', async () => {
+  const { buildCity } = await import('../renderer/wilds/city/build.js')
+  const { CITY } = await import('../renderer/wilds/city/geometry.js')
+  const banned = n => isOutcropSkin(n) || n === 'ow_tree_palm_top' || n === 'ow_tree_palm'
+  const X0 = CITY.wx0 * PIECE, Y0 = CITY.wy0 * PIECE, span = CITY.pieces * PIECE
+  let near = 0
+  for (const seed of [2, 3, 6, 8, 27, 31, 54]) {
+    // the city's country round it is desert, enough for the test to see something
+    let desert = 0
+    for (let Y = Y0 - 8; Y < Y0 + span + 8; Y += 4) for (let X = X0 - 8; X < X0 + span + 8; X += 4) if (isDesert(seed, X, Y)) desert++
+    assert.ok(desert > 50, `seed ${seed}: only ${desert} samples of desert round the city`)
+    const { cells } = buildCity(seed)
+    for (let y = 0; y < cells.length; y++) for (let x = 0; x < cells[y].length; x++)
+      assert.ok(!banned(cells[y][x].overlay), `seed ${seed}: ${cells[y][x].overlay} at city cell ${x},${y}`)
+    for (let wy = CITY.wy0 - 1; wy <= CITY.wy0 + CITY.pieces; wy++) for (let wx = CITY.wx0 - 1; wx <= CITY.wx0 + CITY.pieces; wx++) {
+      if (wx >= CITY.wx0 && wx < CITY.wx0 + CITY.pieces && wy >= CITY.wy0 && wy < CITY.wy0 + CITY.pieces) continue
+      const t = built(seed, wx, wy)
+      for (let y = -MARGIN; y < PIECE + MARGIN; y++) for (let x = -MARGIN; x < PIECE + MARGIN; x++) {
+        if (!nearCity(wx * PIECE + x, wy * PIECE + y)) continue
+        near++
+        assert.ok(!banned(t.propAt(x, y)), `seed ${seed} piece ${wx},${wy}: ${t.propAt(x, y)} at ${x},${y}, by Kalevanlinna`)
+      }
+    }
+  }
+  assert.ok(near > 10000, `only ${near} Wilds cells by the city looked at`)
 })
 
 test('landmarks have a map colour', () => {

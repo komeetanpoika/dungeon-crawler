@@ -224,6 +224,10 @@ const CITY_BOX = {
   x0: CITY.wx0 * PIECE - DUNE.city, x1: (CITY.wx0 + CITY.pieces) * PIECE + DUNE.city,
   y0: CITY.wy0 * PIECE - DUNE.city, y1: (CITY.wy0 + CITY.pieces) * PIECE + DUNE.city,
 }
+// Is world tile (X, Y) on Kalevanlinna's pieces or within DUNE.city of them?
+// The city lays its own outskirts there: no dune, and nothing of the desert
+// the city's art does not know (terrain.js keeps its outcrops and tall palms out).
+export const nearCity = (X, Y) => X >= CITY_BOX.x0 && X < CITY_BOX.x1 && Y >= CITY_BOX.y0 && Y < CITY_BOX.y1
 
 // The wave's phase in [0, 1) at every tile of the w x h rectangle at (x0, y0).
 function dunePhase(seed, x0, y0, w, h) {
@@ -277,7 +281,7 @@ function duneGround(seed, x0, y0, w, h, country) {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const X = x0 + x, Y = y0 + y
     if (inGentleRing(Math.floor(X / PIECE), Math.floor(Y / PIECE))) continue
-    if (X >= CITY_BOX.x0 && X < CITY_BOX.x1 && Y >= CITY_BOX.y0 && Y < CITY_BOX.y1) continue
+    if (nearCity(X, Y)) continue
     // the square of side 2r + 1 round (X, Y): its corners in `sum` are (x, y) and (x + 2r + 1, y + 2r + 1)
     const a = y * (bw + 1) + x, d = (y + 2 * r + 1) * (bw + 1) + x + 2 * r + 1
     const b = y * (bw + 1) + x + 2 * r + 1, c = (y + 2 * r + 1) * (bw + 1) + x

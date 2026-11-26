@@ -21,7 +21,7 @@ import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
 import { vergeRoads, VERGE_SKINS } from './road-art.js'
-import { sandSkinAt, edgeHardpan, isHardpanSkin, isRippleSkin, desertDress, DESERT_SKINS, layDunes, dunesOn, DUNE_SKINS, WINDWARD_SKINS, WINDWARD_LEVELS, DUNE_LOOK, crestField, crestAt } from './desert-art.js'
+import { sandSkinAt, edgeHardpan, isHardpanSkin, isRippleSkin, desertDress, DESERT_SKINS, layDunes, dunesOn, DUNE_SKINS, WINDWARD_SKINS, WINDWARD_LEVELS, DUNE_LOOK, crestField, crestAt, nearCity } from './desert-art.js'
 import { CITY_SKINS } from './city/kit.js'
 import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
 import { DESERT_LANDMARKS } from './desert.js'
@@ -252,7 +252,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     const h = salt => hash(seed, i, j, salt + dealt)
     if (biome(cx, cy) === 'desert' && h(7303) < OUTCROP.odds && noise2(seed + 16, X0 + cx, Y0 + cy, { freq: 1 / 30, octaves: 2 }) < OUTCROP.rocky) {
       const shape = OUTCROP_SHAPES[Math.floor(h(7304) * OUTCROP_SHAPES.length)]
-      const land = (x, y) => biome(x, y) === 'desert' && rawKind(x, y) === 'land' && !corridor(x, y)
+      // (and none of it on Kalevanlinna's land: the city lays its outskirts with art of its own)
+      const land = (x, y) => biome(x, y) === 'desert' && rawKind(x, y) === 'land' && !corridor(x, y) && !nearCity(X0 + x, Y0 + y)
       const fits = shape.cells.every(([dx, dy]) => land(cx + dx, cy + dy)) && shape.ring.every(([dx, dy]) => land(cx + dx, cy + dy))
       if (fits && !rockOnCrest(cx, cy, shape.cells)) sq.shape = shape
     }
@@ -406,7 +407,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       let wet = false
       if (!plant && within(r, G.lush)) plant = fHard(x, y) > 0.6 || (wet = nearWater(x, y, 3))
       if (plant) {
-        if (rnd(x, y, 27) < (t > 0.6 || wet || nearWater(x, y, 3) ? G.palms : G.palmsOpen)) return { kit: PALMS }
+        // a palm; by Kalevanlinna (whose outskirts pair only the pack's two-tile trees) one cell tall
+        if (rnd(x, y, 27) < (t > 0.6 || wet || nearWater(x, y, 3) ? G.palms : G.palmsOpen))
+          return nearCity(X0 + x, Y0 + y) || nearCity(X0 + x, Y0 + y - 1) ? { skin: PALMS.small[0] } : { kit: PALMS }
         return { skin: pickBy(fHard(x, y) > 0.6 ? HARD_FLORA : SAND_FLORA, x, y, 22) }
       }
       // one draw decides between debris, a lone rock and nothing
