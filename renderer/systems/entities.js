@@ -192,12 +192,16 @@ export const occupiesCell = e => e.type !== 'echo'
 // unchanged.
 //
 // The Wilds' desert adds two more (wilds/piece.js cellOf). A dune crest
-// (losDune) is walked over but hides what lies behind it. A line that starts
-// on a crest sees along it and down both sides: while every cell so far, the
-// viewer's own included, is crest, crests do not block; after the line's first
-// cell off the crest any crest blocks, except the target itself. A line to a
-// landmark (losBeacon) passes over crests altogether. A map with neither flag
-// sees exactly as before.
+// (losDune) is walked over but hides what lies behind it: you see the next
+// crest whole, and little beyond. A crest on the line does not block
+// - while every cell so far, the viewer's own included, is crest: a line that
+//   starts on a crest sees along it and down both sides;
+// - when every cell from it to the target is crest: a line that runs along the
+//   crest it looks at reaches it, so a crest in view is seen whole and sight
+//   across a crest's edge is mutual;
+// - when the target is a landmark (losBeacon): it is seen over crests.
+// Any other crest blocks; the target itself never does. A map with neither
+// flag sees exactly as before.
 export const LOS_TREE_BUDGET = 2
 // Rays computePlayerFOV has cast, added up for tests and timing (reset at will).
 export const FOV_STATS = { rays: 0 }
@@ -209,7 +213,9 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
   const to = map[y2]?.[x2]
   const toTall = !!to?.losTall
   const overDunes = !!to?.losBeacon
+  const toDune = !!to?.losDune
   let onCrest = !!map[y1]?.[x1]?.losDune
+  let alongTarget = false   // on a crest that must run on unbroken to the target
   let soft = 0
   for (let i = 1; i <= steps; i++) {
     const y = Math.round(y1 + (dy * i) / steps)
@@ -217,10 +223,13 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
     if (y === y2 && x === x2) break
     const t = map[y]?.[x]
     if (!t) return false
-    if (t.losDune) {                                    // dune crest: blocks once off the viewer's crest
+    if (t.losDune) {                                    // dune crest: see the rules above
       if (onCrest || overDunes) continue
-      return false
+      if (!toDune) return false
+      alongTarget = true
+      continue
     }
+    if (alongTarget) return false                       // that crest did not run on to the target
     onCrest = false
     if (isWalkable(t.tile, t)) continue
     if (t.losClear) continue                            // open water: see across
@@ -235,14 +244,23 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
 // every other cell is see-through, as the radius-only surface sight is.
 // `onCrest` is whether the viewer stands on a crest.
 function duneLine(map, y1, x1, y2, x2, onCrest) {
-  if (map[y2][x2].losBeacon) return true
+  const to = map[y2][x2]
+  if (to.losBeacon) return true
+  const toDune = !!to.losDune
+  let alongTarget = false
   const dy = y2 - y1, dx = x2 - x1
   const steps = Math.max(Math.abs(dy), Math.abs(dx))
   for (let i = 1; i < steps; i++) {                     // the target (i === steps) never blocks
     const t = map[Math.round(y1 + (dy * i) / steps)]?.[Math.round(x1 + (dx * i) / steps)]
     if (!t) return false
-    if (t.losDune) { if (!onCrest) return false }
-    else onCrest = false
+    if (t.losDune) {
+      if (onCrest) continue
+      if (!toDune) return false
+      alongTarget = true
+    } else {
+      if (alongTarget) return false
+      onCrest = false
+    }
   }
   return true
 }

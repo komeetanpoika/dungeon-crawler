@@ -59,6 +59,24 @@ describe('hasLineOfSight over dunes', () => {
     const map = hollow()
     assert.equal(hasLineOfSight(map, 2, 5, 4, 5), true)
     assert.equal(hasLineOfSight(map, 2, 5, 4, 7), true, 'at a slant')
+    assert.equal(hasLineOfSight(map, 2, 5, 4, 10), true, 'along the crest, past crest cells nearer the viewer')
+  })
+
+  it('sight across a crest edge is mutual', () => {
+    // a hero on the crest at (1, 4) and a monster in the hollow just below at
+    // (10, 5): the line runs along the crest, then drops off it
+    const map = hollow()
+    assert.equal(hasLineOfSight(map, 4, 1, 5, 10), true, 'the hero sees the monster')
+    assert.equal(hasLineOfSight(map, 5, 10, 4, 1), true, 'the monster sees the hero')
+  })
+
+  it('a second crest is still hidden behind the first', () => {
+    // viewer in the hollow at (5, 2); crests at y 4 and y 10
+    const map = field(11, 15, crestRow(crestRow({}, 4, 0, 10), 10, 0, 10))
+    assert.equal(hasLineOfSight(map, 2, 5, 10, 5), false, 'the second crest')
+    assert.equal(hasLineOfSight(map, 2, 5, 10, 9), false, 'at a slant')
+    assert.equal(hasLineOfSight(map, 2, 5, 7, 5), false, 'the hollow between')
+    assert.equal(hasLineOfSight(map, 2, 5, 5, 5), false, 'the sand just behind the first crest')
   })
 
   it('standing on a crest you see along it and down both sides', () => {
@@ -114,6 +132,48 @@ describe("the hero's dune-aware sight", () => {
     assert.equal(map[20][39].visible, true, 'open sand at the edge of the radius')
     assert.equal(map[20][0].visible, true)
     assert.equal(map[2][2].visible, false, 'still bounded by the radius')
+  })
+
+  it('a crest in view is seen whole', () => {
+    // hero in the hollow at (22, 20); a straight crest 4 rows below, at y 24
+    const map = field(45, 41, crestRow({}, 24, 0, 44))
+    const hero = { x: 22, y: 20 }
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    const inRadius = (x, y) => (x - hero.x) ** 2 + (y - hero.y) ** 2 <= 400
+    let crest = 0
+    for (let x = 0; x < 45; x++) if (inRadius(x, 24)) { crest++; assert.equal(map[24][x].visible, true, `crest cell ${x}`) }
+    assert.ok(crest >= 35, `${crest} crest cells in the radius`)
+    for (let y = 25; y < 41; y++) for (let x = 0; x < 45; x++) if (inRadius(x, y)) assert.equal(map[y][x].visible, false, `beyond the crest at ${x},${y}`)
+  })
+
+  it('both rows of a two-wide crest are seen from the hollow', () => {
+    const map = field(45, 41, crestRow(crestRow({}, 24, 0, 44), 25, 0, 44))
+    const hero = { x: 22, y: 20 }
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    const inRadius = (x, y) => (x - hero.x) ** 2 + (y - hero.y) ** 2 <= 400
+    for (const y of [24, 25]) for (let x = 0; x < 45; x++) if (inRadius(x, y)) assert.equal(map[y][x].visible, true, `crest cell ${x},${y}`)
+    for (let y = 26; y < 41; y++) for (let x = 0; x < 45; x++) if (inRadius(x, y)) assert.equal(map[y][x].visible, false, `beyond the crest at ${x},${y}`)
+  })
+
+  it('the dune sight agrees with hasLineOfSight on sand and crests', () => {
+    // wavy crests one and two wide; from a hollow and from a crest
+    const laid = {}
+    for (let x = 0; x < 61; x++) {
+      const a = 12 + Math.round(2 * Math.sin(x / 7)), b = 30 + Math.round(3 * Math.sin(x / 11 + 1)), c = 44 + Math.round(2 * Math.sin(x / 5))
+      laid[`${x},${a}`] = '^'; laid[`${x},${b}`] = '^'; laid[`${x},${b + 1}`] = '^'; laid[`${x},${c}`] = '^'
+    }
+    const map = field(61, 61, laid)
+    for (const hero of [{ x: 30, y: 22 }, { x: 20, y: 12 + Math.round(2 * Math.sin(20 / 7)) }]) {
+      computePlayerFOV(map, hero, 20, { los: 'dunes' })
+      let hidden = 0
+      for (let y = hero.y - 20; y <= hero.y + 20; y++) for (let x = hero.x - 20; x <= hero.x + 20; x++) {
+        if ((x - hero.x) ** 2 + (y - hero.y) ** 2 > 400 || !map[y]?.[x]) continue
+        const sees = hasLineOfSight(map, hero.y, hero.x, y, x)
+        if (!sees) hidden++
+        assert.equal(map[y][x].visible, sees, `from ${hero.x},${hero.y} to ${x},${y}`)
+      }
+      assert.ok(hidden > 0, 'something is hidden')
+    }
   })
 
   it('beacons are lit out to far', () => {
