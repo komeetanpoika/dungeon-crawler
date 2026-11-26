@@ -173,14 +173,46 @@ test('the beaches keep their sand, and the dress comes off', () => {
   assert.ok(beach > 100, `only ${beach} beach cells`)
 })
 
-test('Kalevanlinna\'s land frays and cracks its hardpan as the Wilds do', async () => {
+// Kalevanlinna on seed 8, which has desert, hardpan and all, south-west of the
+// city and under its south wall; the digest test's seed 7 has none.
+const cityOf = async (seed, dressed) => {
   const { buildCity } = await import('../renderer/wilds/city/build.js')
-  // seed 8 has desert, hardpan and all, south-west of the city
-  const city = buildCity(8)
+  return dressed ? buildCity(seed) : without(() => buildCity(seed))
+}
+// inside the walls, on them, or the city's masonry anywhere (a wall's lower
+// face, a tower's foot, the harbour): what the city lays itself
+const walled = async () => {
+  const { insideWalls, wallCells } = await import('../renderer/wilds/city/plan.js')
+  const wc = wallCells()
+  return (x, y, n, c) => insideWalls(x, y) || wc.has(y * n + x) || /^ow_city_/.test(c.overlay ?? '') || /^ow_city_/.test(c.deco ?? '')
+}
+
+// The city's land outside its walls: the open ground of its outskirts, where
+// nothing stands (what the city builds there, a farmhouse say, keeps the
+// ground it was built on, as the walls do).
+test('Kalevanlinna\'s land frays and cracks its hardpan as the Wilds do', async () => {
+  const city = await cityOf(8, true), inWalls = await walled(), n = city.cells.length
   let hard = 0
-  for (const row of city.cells) for (const c of row) {
-    assert.notEqual(c.skin, 'ow_hardpan_0', 'the old flat hardpan in the city\'s land')
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const c = city.cells[y][x]
+    if (inWalls(x, y, n, c) || c.overlay || c.deco) continue
+    assert.notEqual(c.skin, 'ow_hardpan_0', `the old flat hardpan in the city's land at ${x},${y}`)
     if (isHardpanSkin(c.skin)) hard++
   }
   assert.ok(hard > 100, `only ${hard} cells of hardpan`)
+})
+
+test('nothing inside or on Kalevanlinna\'s walls, nor its masonry, changes with the desert\'s dress', async () => {
+  const on = await cityOf(8, true), off = await cityOf(8, false), inWalls = await walled(), n = on.cells.length
+  const cell = c => `${c.tile}|${c.skin}|${c.overlay ?? ''}|${c.deco ?? ''}|${c.ward ? 1 : 0}|${c.over ? 1 : 0}|${c.losClear ? 1 : 0}|${c.losTall ? 1 : 0}`
+  let walls = 0, onHardpan = 0
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    if (!inWalls(x, y, n, off.cells[y][x]) && !inWalls(x, y, n, on.cells[y][x])) continue
+    walls++
+    if (off.cells[y][x].skin === 'ow_hardpan_0') onHardpan++
+    assert.equal(cell(on.cells[y][x]), cell(off.cells[y][x]), `seed 8, city cell ${x},${y}`)
+  }
+  assert.ok(walls > 10000, `only ${walls} cells inside and on the walls`)
+  // (the case this holds: masonry standing on hardpan)
+  assert.ok(onHardpan > 10, `only ${onHardpan} wall cells stand on hardpan`)
 })

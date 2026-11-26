@@ -152,6 +152,9 @@ function layTower(G, x, y, rows, joins) {
 // of its own, so the stone works inwards, a pass at a time. A cell with grass
 // beside it (a roof against open country, a wall's outer side) keeps its own.
 // The mole's mossy variant would show its moss in a margin: the plain one.
+// The desert's hardpan counts as stone here (it always has); what a cell takes
+// from it is the plain clay, ow_hardpan_0, whatever edge or crack the clay
+// beside it wears (desert-art.js), so the walls stand on what they always did.
 const NATURAL = /^ow_(grass|water|sand|dirt|road|shore|mud|pond|bank)/
 const MASONRY = /^ow_city_(wall_|tower_|harbour_tower|gate_|castle_gate)/
 const WATER = 'water'
@@ -176,7 +179,7 @@ export function stoneUnderMasonry(G) {
         if (!seen.length) continue
         const stone = seen.find(v => v && v !== WATER)
         // every side seen is stone or water (truthy), at least one stone
-        if (stone && seen.every(Boolean)) take.push([x, y, stone === HARBOUR.mole[1] ? HARBOUR.mole[0] : stone])
+        if (stone && seen.every(Boolean)) take.push([x, y, stone === HARBOUR.mole[1] ? HARBOUR.mole[0] : stone.startsWith('ow_hardpan') ? 'ow_hardpan_0' : stone])
         break
       }
     }

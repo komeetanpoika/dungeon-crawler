@@ -115,16 +115,19 @@ const crackW = (seed, X, Y) => hashInt(seed, X, Y, 7131) / 4294967296 < CRACK_OD
 // clay, crossed by a crack on each side where the cell beyond is cracked
 // clay too and the border's hash says so. Off the builder counts as hardpan
 // but never as cracked clay, so nothing frays or cracks against its border
-// (those cells are a margin no piece draws). Ground only; idempotent.
-// Returns how many cells changed.
-export function edgeHardpan(b, { X0, Y0, seed }) {
+// (those cells are a margin no piece draws). `keep(x, y)`, if given, names
+// builder cells to leave as they are (Kalevanlinna's walls and what they
+// hold): counted like cells off the builder, so the clay beside them neither
+// frays nor ends a crack against masonry. Ground only; idempotent. Returns
+// how many cells changed.
+export function edgeHardpan(b, { X0, Y0, seed, keep = null }) {
   const { w, h } = b
   const hard = b.palette.map(isHardpanSkin)
-  const same = (x, y) => x < 0 || y < 0 || x >= w || y >= h || hard[b.ground[y][x]]
-  // each hardpan cell's shape, (M | D << 4) + 1, or 1 for inner clay; 0 for no hardpan
+  const same = (x, y) => x < 0 || y < 0 || x >= w || y >= h || hard[b.ground[y][x]] || !!keep?.(x, y)
+  // each hardpan cell's shape, (M | D << 4) + 1, or 1 for inner clay; 0 for no hardpan (or kept)
   const shape = new Int16Array(w * h)
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (!hard[b.ground[y][x]]) continue
+    if (!hard[b.ground[y][x]] || keep?.(x, y)) continue
     const M = (same(x, y - 1) ? 0 : 1) | (same(x + 1, y) ? 0 : 2) | (same(x, y + 1) ? 0 : 4) | (same(x - 1, y) ? 0 : 8)
     let D = 0
     if (!(M & 3) && !same(x + 1, y - 1)) D |= 1

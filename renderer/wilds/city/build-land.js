@@ -353,8 +353,13 @@ export function finishLand(G, land) {
     for (let x = FRAME; x < N - FRAME; x++) { used[g[x + M]] = 1; if (p[x + M] >= 0) used[p[x + M]] = 1 }
   }
   const has = test => b.palette.some((n, i) => used[i] && test(n))
-  // the desert's hardpan frays into the sand and cracks, as terrain.js's finish() has it
-  if (desertDress() && has(isHardpanSkin)) edgeHardpan(b, { X0, Y0, seed: land.seed })
+  // the desert's hardpan frays into the sand and cracks, as terrain.js's finish() has it,
+  // on the city's land but not under its walls, nor on what the city owns
+  if (desertDress() && has(isHardpanSkin)) {
+    const wc = wallCells()
+    const keep = (bx, by) => { const x = bx - M, y = by - M; return G.tagAt(x, y) === TAG.CITY || insideWalls(x, y) || wc.has(y * N + x) }
+    edgeHardpan(b, { X0, Y0, seed: land.seed, keep })
+  }
   if (has(n => n.startsWith('ow_sand'))) stampSandEdge(b)
   const rock = has(isMassSkin) || has(isMountainGround)
   if (rock) {
