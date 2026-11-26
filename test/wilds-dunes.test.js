@@ -12,7 +12,7 @@ import { generatePiece, cellOf } from '../renderer/wilds/piece.js'
 import { makeTerrain, TERRAIN_SKINS } from '../renderer/wilds/terrain.js'
 import { placeFeatures } from '../renderer/wilds/features.js'
 import { layoutTale, TALE_PAD } from '../renderer/wilds/sites.js'
-import { crestAt, crestField, setDunes, dunesOn, isDuneSkin, isRippleSkin, isHardpanSkin, DUNE_SKINS } from '../renderer/wilds/desert-art.js'
+import { crestAt, crestField, setDunes, dunesOn, isDuneSkin, isRippleSkin, isHardpanSkin, isWindwardSkin, DUNE_SKINS, WINDWARD_SKINS, WINDWARD_LEVELS } from '../renderer/wilds/desert-art.js'
 import { PIECE, FRAME, MARGIN, pieceBiome, pieceKey, tierAt, lootDepthFor, gateAt } from '../renderer/wilds/layout.js'
 import { pieceClass } from '../renderer/wilds/roads.js'
 import { inGentleRing } from '../renderer/wilds/desert.js'
@@ -68,16 +68,19 @@ function built(seed, wx, wy, deal = 0, tale = null) {
 const each = (fn) => { for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) fn(x, y) }
 const maskOf = n => +/^ow_dune_(\d+)_\d+$/.exec(n)[1]
 
-test('every dune tile exists, and the map shows a dune as sand', () => {
+test('every dune tile exists, and the map shows a dune and its slopes as sand', () => {
   assert.equal(DUNE_SKINS.length, 16 * 3)
+  assert.equal(WINDWARD_SKINS.length, WINDWARD_LEVELS * 8 * 3)
   const names = new Set(TERRAIN_SKINS)
-  for (const n of DUNE_SKINS) {
-    assert.ok(n.startsWith('ow_dune_') && isDuneSkin(n), n)
+  for (const n of [...DUNE_SKINS, ...WINDWARD_SKINS]) {
     assert.ok(!n.endsWith('_d'), `${n} ends in _d`)
     assert.ok(names.has(n), `${n} is not in TERRAIN_SKINS`)
     assert.ok(fs.existsSync(path.join(TILES, n + '.png')), `no tile art for ${n}`)
     assert.equal(classOf({ skin: n }), CLASS.sand, `${n} is not sand on the map`)
   }
+  for (const n of DUNE_SKINS) assert.ok(n.startsWith('ow_dune_') && isDuneSkin(n) && cellOf(n, null, true).losDune, n)
+  // a slope is walked over and seen across like any sand
+  for (const n of WINDWARD_SKINS) assert.ok(isWindwardSkin(n) && !n.startsWith('ow_dune_') && !cellOf(n, null, true).losDune, n)
 })
 
 test('dunes lie in the desert', () => {
@@ -89,7 +92,7 @@ test('dunes lie in the desert', () => {
       each((x, y) => {
         if (t.biome(x, y) !== 'desert' || !t.walkable(x, y) || t.propAt(x, y)) return
         const g = t.groundAt(x, y)
-        if (!isRippleSkin(g) && !isHardpanSkin(g) && !isDuneSkin(g)) return
+        if (!isRippleSkin(g) && !isHardpanSkin(g) && !isDuneSkin(g) && !isWindwardSkin(g)) return
         ground++
         if (dune(x, y)) dunes++
       })
@@ -117,6 +120,36 @@ test('every crest lies where the field says, shaped by the crests round it', () 
       assert.equal(maskOf(t.groundAt(x, y)), want, `${at}: ${t.groundAt(x, y)} at ${x},${y}`)
     }
   }
+})
+
+test('the windward slope climbs to the crest', () => {
+  let slopes = 0
+  for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed).slice(0, 8)) {
+    const { t, dune, X0, Y0, at } = built(seed, wx, wy)
+    const L = WINDWARD_LEVELS, W = PIECE + L
+    const field = crestField(seed, X0, Y0, W, W)
+    const on = (x, y) => field[y * W + x] === 1
+    // the fewest steps south and east to a crest of the field, up to L (0 for none)
+    const steps = (x, y) => { for (let k = 1; k <= L; k++) for (let i = 0; i <= k; i++) if (on(x + i, y + k - i)) return k; return 0 }
+    each((x, y) => {
+      const g = t.groundAt(x, y), k = steps(x, y)
+      if (isWindwardSkin(g)) {
+        slopes++
+        const [, l, o, v] = /^ow_sand_slope_(\d+)_(\d+)_(\d+)$/.exec(g).map(Number)
+        assert.ok(k > 0 && l === L + 1 - k, `${at}: ${g} at ${x},${y}, ${k} steps from a crest`)
+        assert.ok(!dune(x, y), `${at}: a slope that hides what is behind it at ${x},${y}`)
+        assert.ok(o >= 0 && o < 8 && v >= 0 && v < 3, g)
+      } else if (isRippleSkin(g)) {
+        assert.equal(k, 0, `${at}: bare sand ${g} at ${x},${y}, ${k} steps upwind of a crest`)
+      }
+      // beside a crest on its north or west, open sand is the top of the slope
+      if (dune(x, y)) for (const [dx, dy] of [[0, -1], [-1, 0]]) {
+        const n = t.groundAt(x + dx, y + dy)
+        if (x + dx >= 0 && y + dy >= 0 && (isRippleSkin(n) || isWindwardSkin(n))) assert.equal(n.startsWith(`ow_sand_slope_${L}_`), true, `${at}: ${n} upwind of the crest at ${x},${y}`)
+      }
+    })
+  }
+  assert.ok(slopes > 5000, `only ${slopes} slope cells`)
 })
 
 test('a crest band runs edge to edge: no sight line slips between two crest cells', () => {
@@ -211,8 +244,8 @@ test('nor on Kalevanlinna, nor within eight tiles of it', () => {
   }
 })
 
-test('crests are pure in the world tile', () => {
-  let seen = 0
+test('crests and their slopes are pure in the world tile', () => {
+  let seen = 0, slopes = 0
   for (const seed of SEEDS) {
     const ds = desertPieces(seed).filter(p => !inGentleRing(p.wx, p.wy))
     const keys = new Set(ds.map(p => `${p.wx},${p.wy}`))
@@ -228,6 +261,8 @@ test('crests are pure in the world tile', () => {
         ]) {
           const p = P.dune(px, py), q = Q.dune(qx, qy)
           assert.equal(p, q, `${A.at}/${Q.at}: a crest in one and not the other at ${qx},${qy} of ${Q.wx},${Q.wy}`)
+          const gp = P.ground(px, py), gq = Q.ground(qx, qy)
+          if (isWindwardSkin(gp) || isWindwardSkin(gq)) { slopes++; assert.equal(gp, gq, `${A.at}/${Q.at}: two slopes at ${qx},${qy} of ${Q.wx},${Q.wy}`) }
           if (!p) continue
           seen++
           assert.equal(P.ground(px, py), Q.ground(qx, qy), `${A.at}/${Q.at}: two crests at ${qx},${qy} of ${Q.wx},${Q.wy}`)
@@ -235,7 +270,7 @@ test('crests are pure in the world tile', () => {
       }
     }
   }
-  assert.ok(seen > 200, `only ${seen} margin crest cells compared`)
+  assert.ok(seen > 200 && slopes > 300, `only ${seen} margin crest cells and ${slopes} slope cells compared`)
 })
 
 test('a crest crossing a piece edge is one band', () => {
@@ -292,10 +327,32 @@ test('everything the piece offers stays reachable', () => {
     for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
       const a = on.cells[y][x], b = off.cells[y][x]
       assert.equal(a.tile, b.tile, `${at}: tile at ${x},${y}`)
-      if (a.skin !== b.skin) assert.ok(a.losDune && isRippleSkin(b.skin), `${at}: ${b.skin} became ${a.skin} at ${x},${y}`)
+      if (a.skin !== b.skin) assert.ok((a.losDune || isWindwardSkin(a.skin)) && isRippleSkin(b.skin), `${at}: ${b.skin} became ${a.skin} at ${x},${y}`)
     }
   }
   assert.ok(pieces > 40, `only ${pieces} pieces`)
+})
+
+test('a laid band has gaps only at ways, sites and kept ground', () => {
+  // nothing grows or lies on a crest of the field (terrain.js occupant), so a
+  // crest of the field is laid wherever its ground is the desert's sand, off
+  // the ways and what a feature holds
+  let gaps = 0, crests = 0
+  for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed)) {
+    const { t, dune, onWay, at } = built(seed, wx, wy)
+    each((x, y) => {
+      if (!t.onCrest(x, y)) return
+      crests++
+      if (dune(x, y)) return
+      gaps++
+      const g = t.groundAt(x, y)
+      const why = AROUND.some(([dx, dy]) => onWay(x + dx, y + dy)) ? 'way'
+        : t.onSite(x, y) || t.keptOpen(x, y) ? 'site'
+        : !isRippleSkin(g) && !isWindwardSkin(g) ? 'ground' : null
+      assert.ok(why, `${at}: the crest at ${x},${y} is not laid (${g}${t.propAt(x, y) ? ' under ' + t.propAt(x, y) : ''})`)
+    })
+  }
+  assert.ok(crests > 10000 && gaps > 100, `${crests} crest cells of the field, ${gaps} not laid`)
 })
 
 test('a recorded place keeps clear of dunes', () => {
@@ -306,7 +363,7 @@ test('a recorded place keeps clear of dunes', () => {
   for (const seed of SEEDS) {
     const deep = desertPieces(seed).filter(p => !inGentleRing(p.wx, p.wy) && Math.abs(p.wx) + Math.abs(p.wy) > 3).slice(0, 3)
     for (const { wx, wy } of deep) for (const id of TALES) {
-      const { t, piece, dune, at } = built(seed, wx, wy, 0, id)
+      const { t, piece, dune, onWay, at } = built(seed, wx, wy, 0, id)
       const geo = layoutTale(id, mulberry32(hashInt(seed, wx, wy, 500)), side => t.gateInner(side))
       assert.equal(piece.main.kind, `tale_${id}`, at)
       const bad = []
@@ -316,6 +373,7 @@ test('a recorded place keeps clear of dunes', () => {
         for (const k of geo.keep) if (Math.hypot(x - k.x, y - k.y) <= k.r) bad.push(`${x},${y} in the keep at ${k.x},${k.y}`)
         for (const w of geo.ways ?? []) if (Math.abs(w.x - x) <= 1 && Math.abs(w.y - y) <= 1) bad.push(`${x},${y} by the way at ${w.x},${w.y}`)
         for (const p of piece.points) if (Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1) bad.push(`${x},${y} by ${p.label}`)
+        if (AROUND.some(([dx, dy]) => onWay(x + dx, y + dy))) bad.push(`${x},${y} by a road or path`)
         if (Math.hypot(x - geo.cx, y - geo.cy) <= TALE_PAD[id] + 8) near++
       })
       assert.ok(bad.length === 0, `${at}: ${bad.slice(0, 5).join('; ')}`)

@@ -769,8 +769,10 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // 4,-2 and 6,1 hold desert and moved by its ground alone (with the desert's dress off they hash as
   // before); the other five hold none. And again when the desert got its dunes (desert-art.js
   // layDunes): the same three moved by their crests alone (45, 23 and 6 cells; with the dunes off
-  // they hash as before).)
-  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '816623637da9bd98', '-3,1': 'f7270fea10aba69d', '4,-2': '7512a21c90ff6764', '-5,-5': '33ca9c61e541e030', '6,1': 'e6d24ef1f4570aa9' }
+  // they hash as before). And again when the wind was held to the south-east (its ripples turned),
+  // the dunes got their windward slopes and nothing of the desert grows on a crest: the same three,
+  // by their ground and three plants of 2,3; their spawns and doors stayed.)
+  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': 'ddf94fd9cb5c72a4', '-3,1': 'f7270fea10aba69d', '4,-2': '295bba15ed8c367e', '-5,-5': '33ca9c61e541e030', '6,1': '6a177b1321225b5f' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

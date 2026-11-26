@@ -7,10 +7,11 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   windAt, sandSkinAt, SAND_SKINS, HARDPAN_SKINS, HARDPAN_EDGES, DESERT_SKINS, RIPPLES,
-  isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, isDuneSkin, setDesertDress, desertDress,
+  isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, isDuneSkin, isWindwardSkin, setDesertDress, desertDress, WIND,
 } from '../renderer/wilds/desert-art.js'
 import { makeTerrain, TERRAIN_SKINS } from '../renderer/wilds/terrain.js'
 import { PIECE, MARGIN } from '../renderer/wilds/layout.js'
+import { hashInt } from '../renderer/wilds/rand.js'
 import { isDesert } from '../renderer/wilds/desert.js'
 import { classOf, CLASS } from '../renderer/wilds/map.js'
 
@@ -47,6 +48,24 @@ test('sand never lays a checker', () => {
     assert.ok(laid.all > 1000, `seed ${seed} piece ${wx},${wy}: only ${laid.all} windows of sand`)
     assert.ok(laid.bad / laid.all <= 0.02, `seed ${seed} piece ${wx},${wy}: ${laid.bad} of ${laid.all} windows laid as a checker`)
   }
+})
+
+// The wind blows towards the south-east in every desert, so a dune's slip
+// face (downwind of its crest) is always turned from the light, the upper
+// left, which the dune tiles light from (tools/make-wilds-desert-tiles.mjs).
+test('the wind never blows towards the upper left', () => {
+  const lo = WIND.toward - WIND.spread - WIND.swing, hi = WIND.toward + WIND.spread + WIND.swing
+  assert.ok(lo > -Math.PI / 4 && hi < 3 * Math.PI / 4, `the wind may blow from ${(lo * 180 / Math.PI).toFixed(0)} to ${(hi * 180 / Math.PI).toFixed(0)} degrees`)
+  let seen = 0
+  for (let seed = 1; seed <= 60; seed++) for (let i = 0; i < 400; i++) {
+    const X = (hashInt(seed, i, 0, 1) % 20000) - 10000, Y = (hashInt(seed, i, 1, 1) % 20000) - 10000
+    const w = windAt(seed, X, Y)
+    assert.ok(w >= lo && w <= hi, `seed ${seed} tile ${X},${Y}: the wind blows at ${(w * 180 / Math.PI).toFixed(1)} degrees`)
+    // downwind is never towards the light: the slip face looks away from the upper left
+    assert.ok(Math.cos(w) + Math.sin(w) > 0, `seed ${seed} tile ${X},${Y}: the slip face looks towards the light`)
+    seen++
+  }
+  assert.equal(seen, 24000)
 })
 
 test('a stretch of sand is swept one way', () => {
@@ -151,9 +170,10 @@ test('the beaches keep their sand, and the dress comes off', () => {
     let sand = 0
     for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
       const a = groundOf(off, x, y), b = groundOf(on, x, y)
-      assert.ok(!DESERT_SKINS.includes(a) && !isDuneSkin(a), `dress off lays ${a}`)
-      // everything that is not the desert's own ground (its dunes too) is the same
-      if (!DESERT_SKINS.includes(b) && !isDuneSkin(b)) assert.equal(a, b, `seed ${seed} piece ${wx},${wy} at ${x},${y}`)
+      const own = n => DESERT_SKINS.includes(n) || isDuneSkin(n) || isWindwardSkin(n)
+      assert.ok(!own(a), `dress off lays ${a}`)
+      // everything that is not the desert's own ground (its dunes and their slopes too) is the same
+      if (!own(b)) assert.equal(a, b, `seed ${seed} piece ${wx},${wy} at ${x},${y}`)
       else { assert.ok(a === 'ow_sand_0' || a === 'ow_sand_flat' || a === 'ow_hardpan_0', `${a} under ${b}`); sand++ }
       assert.equal(off.walkable(x, y), on.walkable(x, y))
     }

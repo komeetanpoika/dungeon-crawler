@@ -35,7 +35,12 @@
 //                  (the upper left, as for the mountains and the furniture)
 //                  and in shade on the slip face beyond; m the sides 1 N /
 //                  2 E / 4 S / 8 W where the crest runs on into the next
-//                  crest cell. crestAt is the field, layDunes lays it.
+//                  crest cell. The wind blows towards the south-east, so the
+//                  slip face is the side in shade. crestAt is the field,
+//                  layDunes lays it.
+//   slopes         ow_sand_slope_<l>_<o>_<v> upwind of a crest: the rippled
+//                  sand lit a step brighter for each cell nearer the crest,
+//                  walked over and seen across like any sand.
 //
 // Everything here is pure in the world tile (and the seed): the wind, the
 // pick, the dune field, and the hardpan's tiles, which are decided from the
@@ -83,6 +88,14 @@ export const DUNE_VARIANTS = 3
 export const duneSkin = (m, v) => `${DUNE_PREFIX}${m}_${v}`
 export const DUNE_SKINS = Array.from({ length: 16 }, (_, m) => Array.from({ length: DUNE_VARIANTS }, (_, v) => duneSkin(m, v))).flat()
 export const isDuneSkin = n => typeof n === 'string' && n.startsWith(DUNE_PREFIX)
+// A dune's windward slope: the rippled sand of family o, variant v, lit a
+// step brighter for each cell nearer the crest (l 1..WINDWARD_LEVELS, the
+// highest beside it). Walked over and seen across like any sand: only the
+// crest hides what lies behind it.
+export const WINDWARD_LEVELS = 3
+export const windwardSkin = (l, o, v) => `ow_sand_slope_${l}_${o}_${v}`
+export const WINDWARD_SKINS = Array.from({ length: WINDWARD_LEVELS }, (_, l) => RIPPLES.flatMap((_, o) => Array.from({ length: SAND_VARIANTS }, (_, v) => windwardSkin(l + 1, o, v)))).flat()
+export const isWindwardSkin = n => typeof n === 'string' && n.startsWith('ow_sand_slope_')
 
 export const isRippleSkin = n => typeof n === 'string' && n.startsWith('ow_sand_ripple_')
 // any hardpan: the pack's own tiles, the cracked clay and its edges
@@ -101,11 +114,15 @@ export function setDunes(on) { duned = !!on }
 export const dunesOn = () => duned
 
 // The wind, in radians, the way it blows in world tiles (x east, y south):
-// the world's own direction, swung up to WIND.swing either way by a slow
-// field, so that it turns a little over a piece and more over a desert.
-export const WIND = { freq: 1 / 200, swing: 50 * Math.PI / 180 }
+// towards the south-east (WIND.toward) in every desert, turned up to
+// WIND.spread either way for the world by its seed, and swung up to
+// WIND.swing either way by a slow field, so that it turns a little over a
+// piece and more over a desert. It never blows towards the upper left, so a
+// dune's slip face, downwind of its crest, is always turned from the light
+// (the upper left), and its windward slope towards it.
+export const WIND = { freq: 1 / 200, toward: Math.PI / 4, spread: 15 * Math.PI / 180, swing: 50 * Math.PI / 180 }
 export function windAt(seed, X, Y) {
-  const base = hashInt(seed, 0, 0, 7101) / 4294967296 * 2 * Math.PI
+  const base = WIND.toward + WIND.spread * (2 * hashInt(seed, 0, 0, 7101) / 4294967296 - 1)
   return base + WIND.swing * 2 * (noise2(seed + 7100, X, Y, { freq: WIND.freq, octaves: 1 }) - 0.5)
 }
 
@@ -317,21 +334,44 @@ export const crestAt = (seed, X, Y) => crestField(seed, X, Y, 1, 1)[0] === 1
 // asked of builder cells and of the ring of cells just outside the builder,
 // whose crests shape the builder's outer cells: the caller says whether a
 // crest may lie there (on sand, off the ways, the sites and what stands).
-// `country` as for crestField, out to DUNE_LOOK + 1 tiles round the builder.
-// Ground only. Returns how many cells took a crest.
-export function layDunes(b, { X0, Y0, seed, open, country = null }) {
-  const { w, h } = b, W = w + 2
-  const crest = crestField(seed, X0 - 1, Y0 - 1, W, h + 2, { country })
-  if (!crest.includes(1)) return 0
-  const laid = new Uint8Array(crest.length)
-  for (let i = 0; i < crest.length; i++) if (crest[i] && open(i % W - 1, Math.floor(i / W) - 1)) laid[i] = 1
+// Then the rippled sand upwind of a crest takes its windward slope: a cell
+// with a crest of the field WINDWARD_LEVELS or fewer steps to its south and
+// east (k steps, k = 1 beside it) takes slope level WINDWARD_LEVELS + 1 - k,
+// keeping its ripples. The wind blows towards the south-east, so that is the
+// side the crest stands on; the field, not the crests laid, decides it, so a
+// slope runs on where a way cuts its crest and is what the frame makes it.
+// `field(x, y)`, if given, is the crest field for builder cells from one
+// before the builder to WINDWARD_LEVELS after it; else it is worked out here,
+// with `country` as for crestField. Ground only. Returns how many cells took
+// a crest.
+export function layDunes(b, { X0, Y0, seed, open, country = null, field = null }) {
+  const { w, h } = b
+  if (!field) {
+    const fw = w + 1 + WINDWARD_LEVELS, g = crestField(seed, X0 - 1, Y0 - 1, fw, h + 1 + WINDWARD_LEVELS, { country })
+    if (!g.includes(1)) return 0
+    field = (x, y) => g[(y + 1) * fw + x + 1] === 1
+  }
+  const W = w + 2
+  const laid = new Uint8Array(W * (h + 2))
+  let any = false
+  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) if (field(x, y) && open(x, y)) { laid[(y + 1) * W + x + 1] = 1; any = true }
+  const ripple = b.palette.map(n => /^ow_sand_ripple_(\d+)_(\d+)$/.exec(n))
+  const writes = []
   let n = 0
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y + 1) * W + x + 1
-    if (!laid[i]) continue
-    const m = (laid[i - W] ? 1 : 0) | (laid[i + 1] ? 2 : 0) | (laid[i + W] ? 4 : 0) | (laid[i - 1] ? 8 : 0)
-    b.ground[y][x] = b.skin(duneSkin(m, pick(seed, X0 + x, Y0 + y, 7140, DUNE_VARIANTS)))
-    n++
+    if (any && laid[i]) {
+      const m = (laid[i - W] ? 1 : 0) | (laid[i + 1] ? 2 : 0) | (laid[i + W] ? 4 : 0) | (laid[i - 1] ? 8 : 0)
+      writes.push([x, y, duneSkin(m, pick(seed, X0 + x, Y0 + y, 7140, DUNE_VARIANTS))])
+      n++
+      continue
+    }
+    const r = ripple[b.ground[y][x]]
+    if (!r) continue
+    let k = 0
+    for (let s = 1; s <= WINDWARD_LEVELS && !k; s++) for (let i2 = 0; i2 <= s; i2++) if (field(x + i2, y + s - i2)) { k = s; break }
+    if (k) writes.push([x, y, windwardSkin(WINDWARD_LEVELS + 1 - k, +r[1], +r[2])])
   }
+  for (const [x, y, skin] of writes) b.ground[y][x] = b.skin(skin)
   return n
 }
