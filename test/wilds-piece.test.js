@@ -764,8 +764,11 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // junction; 0,0's sign only says more, and the wild four have none.
   // And again when villages got their coach stops: only 0,0 moved, by its horse and cart and the
   // coachman (a spawn after the small things'); the other seven are no village. And again when the
-  // stop was moved off the road's edge to the cart's far side: 0,0 alone.)
-  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '66b77a8606371d51', '-3,1': 'f7270fea10aba69d', '4,-2': '32b65c91bf91bf42', '-5,-5': '33ca9c61e541e030', '6,1': '38168e49d6d9fd1f' }
+  // stop was moved off the road's edge to the cart's far side: 0,0 alone.
+  // And again at GEN 11, when the desert got its rippled sand and cracked hardpan (desert-art.js): 2,3
+  // 4,-2 and 6,1 hold desert and moved by its ground alone (with the desert's dress off they hash as
+  // before); the other five hold none.)
+  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '0e0943c89f9ae687', '-3,1': 'f7270fea10aba69d', '4,-2': '09517c0fdf3a5815', '-5,-5': '33ca9c61e541e030', '6,1': 'c5fb05fa459509a3' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

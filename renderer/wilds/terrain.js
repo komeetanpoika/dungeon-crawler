@@ -21,6 +21,7 @@ import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
 import { vergeRoads, VERGE_SKINS } from './road-art.js'
+import { sandSkinAt, edgeHardpan, isHardpanSkin, desertDress, DESERT_SKINS } from './desert-art.js'
 import { CITY_SKINS } from './city/kit.js'
 import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
 
@@ -40,9 +41,13 @@ const ROCKS_GRAY = ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']
 const SKERRY = ['ow_rock_water_gray_0', 'ow_rock_water_gray_1', 'ow_rock_water_gray_2']
 const GRASS = ['ow_grass_0', 'ow_grass_1', 'ow_grass_2']
 const DIRT = ['ow_dirt_0', 'ow_dirt_1', 'ow_dirt_2', 'ow_dirt_3']
+// A beach's sand; and, with the desert's dress off (desert-art.js), the
+// desert's two sand tiles. Dressed, the desert lays its rippled sand.
 const SAND = ['ow_sand_0', 'ow_sand_flat']
-// (ow_hardpan_1 is the pack's left edge of a hardpan flat, see-through down
-// one side: as fill it left black nicks all over the desert)
+// Where the desert has hardpan; dressed, finish() turns it to cracked clay
+// with edges (desert-art.js edgeHardpan). (ow_hardpan_1 is the pack's left
+// edge of a hardpan flat, see-through down one side: as fill it left black
+// nicks all over the desert)
 const HARDPAN = 'ow_hardpan_0'
 // A path over sand: the dirt of a path over grass, its tufts turned to drifts of sand.
 const SAND_PATH = ['ow_path_sand_0', 'ow_path_sand_1', 'ow_path_sand_2', 'ow_path_sand_3']
@@ -76,6 +81,7 @@ export const TERRAIN_SKINS = [...new Set([
   ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
   ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES, ...VERGE_SKINS,
+  ...DESERT_SKINS,
 ])]
 // Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks).
 export const FEATURE_SKINS = [
@@ -193,7 +199,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   const grassSkin = (x, y) => { const h = hash(seed, X0 + x, Y0 + y, 40); return h < 0.95 ? GRASS[0] : h < 0.975 ? GRASS[1] : GRASS[2] }
   const floorSkin = (x, y) => MTN.ground[hashInt(seed, X0 + x, Y0 + y, 41) % 7]
   const dirtSkin = (x, y) => DIRT[hashInt(seed, X0 + x, Y0 + y, 42) % DIRT.length]
-  const sandSkin = (x, y) => hash(seed, X0 + x, Y0 + y, 43) < 0.8 ? SAND[0] : SAND[1]
+  // the desert's sand: swept by the wind (desert-art.js), pure in the world tile
+  const sandSkin = (x, y) => desertDress() ? sandSkinAt(seed, X0 + x, Y0 + y) : hash(seed, X0 + x, Y0 + y, 43) < 0.8 ? SAND[0] : SAND[1]
 
   // The ground under a land cell.
   const landGround = memo((x, y) => {
@@ -260,7 +267,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
 
   const pathGround = (ground, x, y) =>
     isGrass(ground) || ground.startsWith('ow_dirt') ? dirtSkin(x, y)
-      : ground.startsWith('ow_sand') || ground === HARDPAN ? SAND_PATH[hashInt(seed, X0 + x, Y0 + y, 42) % SAND_PATH.length]
+      : ground.startsWith('ow_sand') || isHardpanSkin(ground) ? SAND_PATH[hashInt(seed, X0 + x, Y0 + y, 42) % SAND_PATH.length]
       : ground
   // A road's ground by what it is laid on: the sand set on sand, the mountain
   // set on mountain floor and anywhere in the mountains (so the floor beside
@@ -269,7 +276,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   const roadGround = (ground, x, y) => {
     if (isRoadSkin(ground)) return ground
     const bm = biome(x, y)
-    const set = ground.startsWith('ow_sand') || ground === HARDPAN || SAND_PATH.includes(ground) ? ROAD.sand
+    const set = ground.startsWith('ow_sand') || isHardpanSkin(ground) || SAND_PATH.includes(ground) ? ROAD.sand
       : isFloor(ground) || bm === 'mountain' ? ROAD.mtn
       : bm === 'marsh' ? ROAD.marsh : ROAD.grass
     return set[hashInt(seed, X0 + x, Y0 + y, 46) % set.length]
@@ -334,7 +341,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
 
   const dryGround = (x, y) => {
     const bm = biome(x, y)
-    return bm === 'sea' || bm === 'desert' ? SAND[0] : bm === 'marsh' ? dirtSkin(x, y) : grassSkin(x, y)
+    return bm === 'sea' ? SAND[0] : bm === 'desert' ? sandSkin(x, y) : bm === 'marsh' ? dirtSkin(x, y) : grassSkin(x, y)
   }
   // Remove whatever stands on a cell. A two-tile tree goes whole: half a
   // tree is the broken look the asset review rejected.
@@ -465,12 +472,18 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       : side === 'W' ? { x: FRAME, y: gates.W.y }
       : { x: PIECE - 1 - FRAME, y: gates.E.y }
 
-  // The art passes, run once after features: sand frays into grass, the
-  // mountain masses take their faces and the floor its edge, water its rim.
+  // The art passes, run once after features: the desert's hardpan frays into
+  // the sand round it, sand frays into grass, the mountain masses take their
+  // faces and the floor its edge, water its rim.
   let finished = false
   const finish = () => {
     if (finished) return
     finished = true
+    // decided from the ground of each cell and of the cells up to two away
+    // (a crack looks at its neighbours' neighbours), and the frame's ground
+    // is the same whatever the deal, so the outer MARGIN rows come out the
+    // same in the piece and in its neighbour's margin
+    if (desertDress()) edgeHardpan(b, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed })
     stampSandEdge(b)
     stampMountainRim(b, mulberry32(hashInt(seed, wx, wy, 70 + deal)))
     // The cone lattice is global: its cell index comes from the world tile,
@@ -497,7 +510,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     // water got the green bank of a pond in the grass.
     const beachy = (bx, by) => {
       const n = b.palette[b.ground[by]?.[bx]]
-      return isSandySkin(n) || n === HARDPAN || SAND_PATH.includes(n) || ROAD.sand.includes(n)
+      return isSandySkin(n) || isHardpanSkin(n) || SAND_PATH.includes(n) || ROAD.sand.includes(n)
     }
     // ow_pond_<x><y>: which side the bank is on, 0 west/north, 2 east/south
     const bank = b.palette.map(n => /^ow_pond_([012])([012])$/.exec(n))

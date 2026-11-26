@@ -19,6 +19,7 @@ import { stampSandEdge } from '../../terrain/beach.js'
 import { skinBridges } from '../bridge-art.js'
 import { slopeShores } from '../shore-art.js'
 import { vergeRoads } from '../road-art.js'
+import { edgeHardpan, isHardpanSkin, desertDress } from '../desert-art.js'
 import { HARBOUR } from './kit.js'
 import { N, M, TAG, lay, house } from './stamps.js'
 
@@ -175,7 +176,7 @@ function roadCell(G, land, x, y, along, trail) {
     else {
       const h = hashInt(0, x, y, 42)
       G.setGround(x, y, g.startsWith('ow_grass') || g.startsWith('ow_dirt') ? DIRT[h % 4]
-        : g.startsWith('ow_sand') || g === 'ow_hardpan_0' ? SAND_PATH[h % 4]
+        : g.startsWith('ow_sand') || isHardpanSkin(g) ? SAND_PATH[h % 4]
         : isMountainGround(g) ? g : DIRT[h % 4])
     }
     G.setProp(x, y, null, true)
@@ -332,7 +333,7 @@ function cityShoreline(G) {
   }
   for (const [x, y, n] of repaint) G.setGround(x, y, n)
   // the beach's sand-coloured bank wherever the land beside it is sand (a road's sand set included, as in terrain.js)
-  const beachy = (x, y) => { const n = G.ground(x, y); return isSandySkin(n) || n === 'ow_hardpan_0' || SAND_PATH.includes(n) || n.startsWith('ow_road_sand_') }
+  const beachy = (x, y) => { const n = G.ground(x, y); return isSandySkin(n) || isHardpanSkin(n) || SAND_PATH.includes(n) || n.startsWith('ow_road_sand_') }
   const bank = b.palette.map(n => /^ow_pond_([012])([012])$/.exec(n))
   for (let y = -M; y < N + M; y++) for (let x = -M; x < N + M; x++) {
     const m = bank[b.ground[y + M][x + M]]
@@ -352,6 +353,8 @@ export function finishLand(G, land) {
     for (let x = FRAME; x < N - FRAME; x++) { used[g[x + M]] = 1; if (p[x + M] >= 0) used[p[x + M]] = 1 }
   }
   const has = test => b.palette.some((n, i) => used[i] && test(n))
+  // the desert's hardpan frays into the sand and cracks, as terrain.js's finish() has it
+  if (desertDress() && has(isHardpanSkin)) edgeHardpan(b, { X0, Y0, seed: land.seed })
   if (has(n => n.startsWith('ow_sand'))) stampSandEdge(b)
   const rock = has(isMassSkin) || has(isMountainGround)
   if (rock) {
