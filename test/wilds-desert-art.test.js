@@ -7,7 +7,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   windAt, sandSkinAt, SAND_SKINS, HARDPAN_SKINS, HARDPAN_EDGES, DESERT_SKINS, RIPPLES,
-  isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, isDuneSkin, isWindwardSkin, setDesertDress, desertDress, WIND, nearCity,
+  isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, isDuneSkin, isShadeSkin, cornersOf, rippleAt, SHADE_FAMILIES, setDesertDress, desertDress, WIND, nearCity,
 } from '../renderer/wilds/desert-art.js'
 import { makeTerrain, TERRAIN_SKINS, WILDS_SKINS, DESERT_FLORA, DESERT_DECO, OUTCROP_SKINS, isOutcropSkin } from '../renderer/wilds/terrain.js'
 import { PIECE, MARGIN, pieceBiome, pieceKey, tierAt, lootDepthFor } from '../renderer/wilds/layout.js'
@@ -67,6 +67,8 @@ test('the wind never blows towards the upper left', () => {
     assert.ok(w >= lo && w <= hi, `seed ${seed} tile ${X},${Y}: the wind blows at ${(w * 180 / Math.PI).toFixed(1)} degrees`)
     // downwind is never towards the light: the slip face looks away from the upper left
     assert.ok(Math.cos(w) + Math.sin(w) > 0, `seed ${seed} tile ${X},${Y}: the slip face looks towards the light`)
+    // and it sweeps only the ripple families the dunes' shading is drawn for
+    assert.ok(SHADE_FAMILIES.includes(rippleAt(seed, X, Y)), `seed ${seed} tile ${X},${Y}: ripple family ${rippleAt(seed, X, Y)} has no shading`)
     seen++
   }
   assert.equal(seen, 24000)
@@ -106,8 +108,16 @@ test('wind and sand are pure in the world tile', () => {
       ]
       for (const [[P, px, py], [Q, qx, qy], X, Y] of pairs) {
         const p = groundOf(P, px, py), q = groundOf(Q, qx, qy)
-        // wherever either lays rippled sand, it is the world tile's own
-        for (const g of [p, q]) if (isRippleSkin(g)) { assert.equal(g, sandSkinAt(seed, X, Y), `seed ${seed} tile ${X},${Y}`); seen++ }
+        // wherever either lays rippled sand, it is the world tile's own; and
+        // shaded on a dune's slope, its ripples are (a level flat in its variant)
+        for (const g of [p, q]) {
+          if (isRippleSkin(g)) { assert.equal(g, sandSkinAt(seed, X, Y), `seed ${seed} tile ${X},${Y}`); seen++ }
+          else if (g?.startsWith('ow_sand_shade_')) {
+            const [, o, v] = /_(\d+)_(\d+)$/.exec(g), [, so, sv] = /_(\d+)_(\d+)$/.exec(sandSkinAt(seed, X, Y)), c = cornersOf(g)
+            assert.ok(o === so && v === (c.every(l => l === c[0]) ? sv : '0'), `seed ${seed} tile ${X},${Y}: ${g} on ${sandSkinAt(seed, X, Y)}`)
+            seen++
+          }
+        }
         // a margin cell whose cells two deep round it both pieces hold (its
         // cracks look at its neighbours' neighbours): the same hardpan, edges and cracks
         if (k < MARGIN - 2 && (isHardpanSkin(p) || isHardpanSkin(q))) assert.equal(p, q, `seed ${seed} tile ${X},${Y}: hardpan ${p} / ${q}`)
@@ -174,9 +184,9 @@ test('the beaches keep their sand, and the dress comes off', () => {
     let sand = 0
     for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
       const a = groundOf(off, x, y), b = groundOf(on, x, y)
-      const own = n => DESERT_SKINS.includes(n) || isDuneSkin(n) || isWindwardSkin(n)
+      const own = n => DESERT_SKINS.includes(n) || isDuneSkin(n) || isShadeSkin(n)
       assert.ok(!own(a), `dress off lays ${a}`)
-      // everything that is not the desert's own ground (its dunes and their slopes too) is the same
+      // everything that is not the desert's own ground (its dunes and their shading too) is the same
       if (!own(b)) assert.equal(a, b, `seed ${seed} piece ${wx},${wy} at ${x},${y}`)
       else { assert.ok(a === 'ow_sand_0' || a === 'ow_sand_flat' || a === 'ow_hardpan_0', `${a} under ${b}`); sand++ }
       assert.equal(off.walkable(x, y), on.walkable(x, y))

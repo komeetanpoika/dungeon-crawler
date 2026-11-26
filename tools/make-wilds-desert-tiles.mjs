@@ -9,14 +9,16 @@
 //                                neighbouring cells meet into a net
 //   ow_hardpan_edge_<M>_<D>_<v>  the clay with sand drifted over it from the
 //                                sides and corners that are not clay
-//   ow_dune_<m>_<v>              a dune's crest, running on into the next crest
-//                                cell across each side in m (1 N / 2 E / 4 S /
-//                                8 W): the top of the windward climb lit by the
-//                                light from the upper left, the crest's edge,
-//                                the slip face in shade beyond it
-//   ow_sand_slope_<l>_<o>_<v>    a dune's windward slope: the rippled sand of
-//                                family o, variant v, a step lighter for each
-//                                cell nearer the crest (l 1..3, 3 beside it)
+//   ow_sand_shade_<c>_<o>_<v>    the rippled sand of family o on a dune's slope,
+//                                shaded from corner to corner: c the levels of
+//                                its corners NW NE SE SW, each the level + 1
+//                                (-1 the slip face, 0 flat sand, 1 a slope
+//                                turned to the light, 2 turned squarely to it)
+//   ow_sand_slip_<v>             a cell of slip face all round: smooth, shaded
+//   ow_dune_<c>_<v>              a cell of a dune's crest band, c its corners
+//                                (-1, 0 or 1): the brink across it, the lit
+//                                top of the climb on one side, the slip face
+//                                in shade on the other
 //
 // and what grows, lies and stands on it (renderer/wilds/terrain.js lays the
 // plants, debris and outcrops, features.js the spires and cairns), each a
@@ -57,34 +59,35 @@
 //             Past the sand the clay is dusted, thinning out over three
 //             pixels, and a hairline crack under it is silted up. The check
 //             below holds every tile to that.
-//   crests    a crest leaves a tile at the middle of a side in m, square to
-//             it, its slopes the same width there in every tile, so it runs
-//             on into the next; on a side not in m the tile is flat sand to
-//             the border. Its shape: straight across for two opposite sides,
-//             a 45-degree chord between two that meet (square to each side
-//             for its first pixels), a spur from the side to the middle that
-//             dies away for one, a low mound for none; three or four sides
-//             join those. Turned to the light, the upper left, the crest's
-//             side wears the top of the climb and, away from the crest, the
-//             top slope's tone, which the windward cells beyond its north
-//             and west sides wear; turned away, the slip face, paling to the
-//             sand's own tone, which the cells beyond its south and east
-//             sides wear. The wind blows towards the south-east, so the slip
-//             face is the shaded side (renderer/wilds/desert-art.js windAt).
-//   slopes    a ripple tile with every tone lifted alike: its ripples join
-//             the bare sand's and one another's.
+//   shading   a pixel takes the level its corners blend to at its middle,
+//             dithered between the two levels it lies between, and that
+//             level's sand: the ripple tile with every tone lifted alike, or
+//             the smooth slip face. Two cells that share an edge share its
+//             corners (desert-art.js layDunes), so the gradient runs on across
+//             it, and the ripples run on as they do on bare sand.
+//   crests    the brink leaves a tile at the middle of a side whose corners
+//             are 1 and -1, square to it, its edge, lit climb and slip face
+//             the same there in every tile, so it runs on into the next crest
+//             cell. Its shape: straight across for two opposite sides, a
+//             45-degree chord between two that meet (square to each side for
+//             its first pixels), a spur that dies away for one (where the
+//             band ends), a cross for four, a low mound for none. Its windward
+//             side is the lit level and its lee side the slip face, easing to
+//             the blend of the corners where a spur dies away, so every side
+//             the brink does not cross is what a shading tile draws there.
 //
 //   node tools/make-wilds-desert-tiles.mjs [--sheet sheet.png]
 //
-// --sheet also writes a contact sheet at 4x: every tile, a field of each
-// ripple family in its mixed variants, a flat of hardpan in sand laid by
-// desert-art.js's own edgeHardpan, a stretch of desert with its dunes laid by
-// layDunes, and what stands on the sand, over the sand.
+// --sheet also writes a contact sheet at 4x: every tile (the shading of one
+// ripple family), a field of each ripple family in its mixed variants, a flat
+// of hardpan in sand laid by desert-art.js's own edgeHardpan, a stretch of
+// desert with its dunes laid by layDunes, and what stands on the sand, over
+// the sand.
 import { writePng } from './png-write.mjs'
 import { EDGE_SHAPES } from '../renderer/terrain/edges.js'
 import { MapBuilder } from '../renderer/terrain/lib.js'
 import {
-  RIPPLES, SAND_VARIANTS, HARDPAN_VARIANTS, DUNE_VARIANTS, WINDWARD_LEVELS, rippleSkin, crackedSkin, hardpanEdgeSkin, duneSkin, windwardSkin, edgeHardpan, layDunes, sandSkinAt,
+  RIPPLES, SAND_VARIANTS, HARDPAN_VARIANTS, DUNE_SKINS, SHADE_SKINS, rippleSkin, crackedSkin, hardpanEdgeSkin, cornersOf, edgeHardpan, layDunes, sandSkinAt,
 } from '../renderer/wilds/desert-art.js'
 
 const T = 16
@@ -153,7 +156,7 @@ function crests(f, v) {
   return { cells, lit }
 }
 
-function rippleTile(f, v, pal = SAND) {
+function rippleColours(f, v, pal = SAND) {
   const col = new Array(T * T).fill(pal.base)
   const { cells, lit } = crests(f, v)
   for (const [x, y] of lit) col[y * T + x] = pal.lit
@@ -169,8 +172,9 @@ function rippleTile(f, v, pal = SAND) {
   // and a line leaving the tile along its run enters the next where one of its lines begins
   const starts = new Set(Array.from({ length: lines }, (_, k) => at(k, 0)))
   for (let k = 0; k < lines; k++) if (!starts.has(at(k, T))) throw new Error(`${rippleSkin(f, v)}: line ${k} does not run on into the next tile`)
-  return paint(col)
+  return col
 }
+const rippleTile = (f, v) => paint(rippleColours(f, v))
 
 for (let f = 0; f < RIPPLES.length; f++) for (let v = 0; v < SAND_VARIANTS; v++) save(rippleSkin(f, v), rippleTile(f, v))
 
@@ -351,165 +355,183 @@ function edgeTile(M, D, v) {
 let edges = 0
 for (const [M, D] of EDGE_SHAPES) for (let v = 0; v < HARDPAN_VARIANTS; v++) { save(hardpanEdgeSkin(M, D, v), edgeTile(M, D, v)); edges++ }
 
-// ---- dune crests and their windward slopes ------------------------------------------
-// The sand lit towards a near-white for the slopes and the crest, darkened
-// towards a deep tan for the slip face. A windward slope is the rippled sand
-// of its family a step lighter for each cell nearer the crest, ripples and
-// all (every tone of the ripple tile lifted alike); the crest cell carries the
-// rest of the climb, its edge, and the slip face below it.
+// ---- the dunes: their shading and their crests ---------------------------------------
+// A level's sand: flat sand is ow_sand_0's (SAND); a slope turned to the
+// light is the same lit towards a near-white, a step more for level 2,
+// ripples and all (every tone of the ripple tile lifted alike); the slip face,
+// -1, is smooth sand darkened towards a deep tan, its ripples blown off.
 const toHex = c => '#' + c.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')
 const mixTo = (h, to, t) => toHex(hex(h).map((v, i) => v + (to[i] - v) * t))
 const HIGH = [252, 249, 240], DARK = [150, 124, 82]
-const SLOPE_T = [0.14, 0.28, 0.42]   // levels 1..3, the highest beside the crest
-const slopePalette = l => ({ base: mixTo(SAND.base, HIGH, SLOPE_T[l - 1]), shade: mixTo(SAND.shade, HIGH, SLOPE_T[l - 1]), lit: mixTo(SAND.lit, HIGH, SLOPE_T[l - 1]) })
-// the windward side of a crest cell, away from its crest, is the top slope
-const TOP = slopePalette(WINDWARD_LEVELS)
-const DUNE_TONE = {
-  edge: mixTo(SAND.base, HIGH, 0.9), lit: mixTo(SAND.base, HIGH, 0.72), lit2: mixTo(SAND.base, HIGH, 0.56),
-  under: mixTo(SAND.base, DARK, 0.62), deep: mixTo(SAND.base, DARK, 0.45), mid: mixTo(SAND.base, DARK, 0.3), shade: mixTo(SAND.base, DARK, 0.15),
+const LIFT = { 1: 0.26, 2: 0.52 }
+const lifted = l => l === 0 ? SAND : { base: mixTo(SAND.base, HIGH, LIFT[l]), shade: mixTo(SAND.shade, HIGH, LIFT[l]), lit: mixTo(SAND.lit, HIGH, LIFT[l]) }
+const SLIP = { base: mixTo(SAND.base, DARK, 0.32), speck: mixTo(SAND.base, DARK, 0.4) }
+// a 4x4 ordered dither: a pixel takes the higher of two levels where its threshold lies below the weight
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(k => (k + 0.5) / 16)
+// The level a pixel takes between the corner levels c (NW NE SE SW): their
+// bilinear blend, from the corners at the corner pixels, so that a border
+// pixel's blend is its side's own and the cell beyond draws the same beside
+// it; dithered between the two levels it lies between.
+const blend = (c, x, y) => {
+  const u = x / (T - 1), v = y / (T - 1)
+  return c[0] * (1 - u) * (1 - v) + c[1] * u * (1 - v) + c[2] * u * v + c[3] * (1 - u) * v
 }
-for (let l = 1; l <= WINDWARD_LEVELS; l++) for (let f = 0; f < RIPPLES.length; f++) for (let v = 0; v < SAND_VARIANTS; v++) save(windwardSkin(l, f, v), rippleTile(f, v, slopePalette(l)))
+const dither = (f, x, y) => { const lo = Math.floor(f); return lo + (BAYER[(y % 4) * 4 + x % 4] < f - lo ? 1 : 0) }
+// the slip face's speckled sand, the same in every tile at a pixel (of variant v)
+const slipAt = (v, x, y) => unit(v, 95, x, y) < 0.06 ? SLIP.speck : SLIP.base
 
-// A crest cell's crest line, as segments [x0, y0, x1, y1, bow] in the tile's
-// pixels (bow: px it is bowed by between its ends, never at them). It leaves
-// the tile at the middle of each side in m, square to it, so it runs on
-// into the next crest cell; on a side not in m the tile is flat to the border.
-//   two opposite sides   straight across, bowed by the variant
-//   two sides that meet  LEAD pixels in square from each, and a 45-degree
-//                        chord between: a crest that steps a cell at a time
-//                        (the common way, the wind being south-east) runs on
-//                        as a slant through the cells of its band
-//   one side             a spur to the middle that dies away
-//   none                 a low mound
-//   three, four          a straight crest across and a spur, two straights
+// A shading tile: every pixel the sand of the level it is dithered to, the
+// ripples of family f (variant v) on the levels that keep them. Two tiles
+// that share an edge share its corners, so the gradient runs on across it,
+// and the ripples run on as they do on bare sand.
+function shadeTile(c, f, v) {
+  const ripples = { 0: rippleColours(f, v, lifted(0)), 1: rippleColours(f, v, lifted(1)), 2: rippleColours(f, v, lifted(2)) }
+  const col = new Array(T * T)
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    const l = dither(blend(c, x, y), x, y)
+    col[y * T + x] = l < 0 ? slipAt(v, x, y) : ripples[l][y * T + x]
+  }
+  return paint(col)
+}
+let shades = 0
+for (const name of SHADE_SKINS) {
+  const c = cornersOf(name)
+  const m = /_(\d+)_(\d+)$/.exec(name)
+  if (name.startsWith('ow_sand_slip_')) save(name, paint(Array.from({ length: T * T }, (_, i) => slipAt(+/(\d+)$/.exec(name)[1], i % T, (i / T) | 0))))
+  else save(name, shadeTile(c, +m[1], +m[2]))
+  shades++
+}
+
+// A crest cell. Its brink runs through the middle of every side whose
+// corners are 1 and -1 (a crossing), square to it for the first LEAD pixels
+// so that it runs on into the next crest cell:
+//   two opposite sides   straight across, bowed a pixel by the variant
+//   two sides that meet  a 45-degree chord between the leads: a brink that
+//                        steps a cell at a time runs on as a slant
+//   one side             a spur to the middle that dies away (the band ends)
+//   four (a saddle)      a cross, its four arms apart
+//   none                 a low mound in the middle
+// On the brink's windward side (where its corners are 1) the ground is the
+// lit level, on the lee side the slip face, both easing to the plain blend of
+// the corners where a spur dies away, so that every side the brink does not
+// cross is the blend a shading tile draws there; along the brink the edge
+// catches the light, and the slip face is darkest just under it.
 const MID = { 1: [8, 0], 2: [16, 8], 4: [8, 16], 8: [0, 8] }
 const INWARD = { 1: [0, 1], 2: [-1, 0], 4: [0, -1], 8: [1, 0] }
+// each side's two corners, the first the one a turn anticlockwise (NW NE SE SW = 0 1 2 3)
+const SIDE_CORNERS = { 1: [0, 1], 2: [1, 2], 4: [3, 2], 8: [0, 3] }
+const CORNER_AT = [[0, 0], [16, 0], [16, 16], [0, 16]]
 const LEAD = 3
-function crestPath(m, A) {
-  const bits = [1, 2, 4, 8].filter(b => m & b)
-  const across = horizontal => horizontal ? [[0, 8, 16, 8, A]] : [[8, 0, 8, 16, A]]
-  const spur = b => [{ spur: true, from: MID[b], dir: INWARD[b] }]
-  if (bits.length === 0) return [{ mound: true }]
-  if (bits.length === 1) return spur(bits[0])
-  if (m === 5) return across(false)
-  if (m === 10) return across(true)
-  if (bits.length === 2) {
-    const [a, c] = bits.map(b => [MID[b], [MID[b][0] + INWARD[b][0] * LEAD, MID[b][1] + INWARD[b][1] * LEAD]])
-    return [[...a[0], ...a[1], 0], [...a[1], ...c[1], A], [...c[1], ...c[0], 0]]
+// The brink's segments [x0, y0, x1, y1] with `bow` (pixels it is bowed by
+// between its ends), `spur` (it dies away from its start), and the unit
+// normal (px, py) to the windward side.
+function brinkPath(c, A) {
+  const bits = [1, 2, 4, 8].filter(b => c[SIDE_CORNERS[b][0]] * c[SIDE_CORNERS[b][1]] === -1)
+  // the normal of a segment pointing to the side a corner lies on
+  const towards = (s, k) => {
+    const [x0, y0, x1, y1] = s, len = Math.hypot(x1 - x0, y1 - y0), nx = -(y1 - y0) / len, ny = (x1 - x0) / len
+    const [cx, cy] = CORNER_AT[k], side = (cx - x0) * nx + (cy - y0) * ny >= 0 ? 1 : -1
+    return [nx * side, ny * side]
   }
-  if (bits.length === 4) return [...across(true), ...across(false)]
-  const third = { 1: 4, 4: 1, 2: 8, 8: 2 }[15 & ~m]
-  return [...across(third === 1 || third === 4), ...spur(third)]
+  // the windward normal of a segment that leaves side b: towards that side's corner at 1
+  const fromSide = (s, b) => { const [i, j] = SIDE_CORNERS[b]; return towards(s, c[i] === 1 ? i : j) }
+  const seg = (x0, y0, x1, y1, extra = {}) => ({ s: [x0, y0, x1, y1], bow: 0, ...extra })
+  const lead = b => [MID[b][0] + INWARD[b][0] * LEAD, MID[b][1] + INWARD[b][1] * LEAD]
+  if (bits.length === 0) return []
+  if (bits.length === 1) {
+    const b = bits[0], [x0, y0] = MID[b], p = seg(x0, y0, x0 + INWARD[b][0] * 8, y0 + INWARD[b][1] * 8, { spur: true })
+    p.n = fromSide(p.s, b)
+    return [p]
+  }
+  if (bits.length === 4) {
+    // four arms from the middle, each windward towards its own side's corner at 1
+    return bits.map(b => { const p = seg(MID[b][0], MID[b][1], 8, 8); p.n = fromSide(p.s, b); return p })
+  }
+  const [a, b] = bits
+  if (a * 4 === b || b * 4 === a) {
+    // straight across
+    const p = seg(...MID[a], ...MID[b], { bow: A })
+    p.n = fromSide(p.s, a)
+    return [p]
+  }
+  // a bend: the corner between the two sides is the one it cuts off
+  const cut = [0, 1, 2, 3].find(k => SIDE_CORNERS[a].includes(k) && SIDE_CORNERS[b].includes(k))
+  const la = lead(a), lb = lead(b)
+  const parts = [seg(...MID[a], ...la), seg(...la, ...lb), seg(...lb, ...MID[b])]
+  for (const p of parts) { const n = towards(p.s, cut); p.n = c[cut] === 1 ? n : [-n[0], -n[1]] }
+  return parts
 }
-// For a point: how far it lies from the crest line (d), the unit normal from
-// the line to it (nx, ny), and the share of the crest's height it is near
-// (lift: 1, less where a spur dies away, a mound's 0.6).
-function nearest(path, x, y) {
+// For a point: its distance d from the brink, which side it lies on (1
+// windward, -1 lee), and how much of the brink's height it is near (lift: 1,
+// less where a spur dies away).
+function nearestBrink(path, x, y) {
   let best = null
-  const take = p => { if (!best || p.d / Math.max(0.05, p.lift) < best.d / Math.max(0.05, best.lift)) best = p }
-  for (const s of path) {
-    if (s.mound) { const vx = x - 8, vy = y - 8, r = Math.hypot(vx, vy) || 1e-9; take({ d: r, nx: vx / r, ny: vy / r, lift: 0.6 }); continue }
-    if (s.spur) {
-      const [ex, ey] = s.from, [ux, uy] = s.dir
-      const t = (x - ex) * ux + (y - ey) * uy, o = (x - ex) * -uy + (y - ey) * ux, end = 8
-      const k = Math.min(1, Math.max(0, (t - 2) / 8.5)), lift = 1 - k * k * (3 - 2 * k)
-      if (t <= end) { const sg = o < 0 ? -1 : 1; take({ d: Math.abs(o), nx: -uy * sg, ny: ux * sg, lift }); continue }
-      const vx = x - (ex + ux * end), vy = y - (ey + uy * end), r = Math.hypot(vx, vy) || 1e-9
-      take({ d: r, nx: vx / r, ny: vy / r, lift }); continue
-    }
-    const [x0, y0, x1, y1, bow] = s, len = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / len, uy = (y1 - y0) / len
-    const t = (x - x0) * ux + (y - y0) * uy
-    if (t < 0 || t > len) {
-      // past an end: from the end (a joint with the next segment, or a side's middle)
-      const [cx, cy] = t < 0 ? [x0, y0] : [x1, y1], vx = x - cx, vy = y - cy, r = Math.hypot(vx, vy) || 1e-9
-      take({ d: r, nx: vx / r, ny: vy / r, lift: 1 }); continue
-    }
-    const off = (x - x0) * -uy + (y - y0) * ux - bow * Math.sin(Math.PI * t / len) ** 2
-    const sg = off < 0 ? -1 : 1
-    take({ d: Math.abs(off), nx: -uy * sg, ny: ux * sg, lift: 1 })
+  for (const p of path) {
+    const [x0, y0, x1, y1] = p.s, len = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / len, uy = (y1 - y0) / len
+    const t = Math.max(0, Math.min(len, (x - x0) * ux + (y - y0) * uy))
+    const bow = p.bow * Math.sin(Math.PI * t / len) ** 2
+    // the nearest point of the segment (bowed towards its windward side by `bow`)
+    const qx = x0 + ux * t + p.n[0] * bow, qy = y0 + uy * t + p.n[1] * bow
+    const d = Math.hypot(x - qx, y - qy)
+    const k = Math.min(1, Math.max(0, (t - 1) / 6)), lift = p.spur ? 1 - k * k * (3 - 2 * k) : 1
+    const side = (x - qx) * p.n[0] + (y - qy) * p.n[1] >= 0 ? 1 : -1
+    const cand = { d, side, lift }
+    if (!best || d / Math.max(0.05, lift) < best.d / Math.max(0.05, best.lift)) best = cand
   }
   return best
 }
-// The tone a point takes from the crest line near it, or null for flat
-// sand. a is how squarely its side of the line faces the light, the upper
-// left (-nx - ny, kept within 1 either way): 1 square to a side of the tile,
-// where a crest leaves it, and on a slant. Turned to the light: the edge
-// along the crest line, then the lit top of the climb. Turned away: the slip
-// face, darkest under the edge, paling towards the sand's own tone. A side
-// the light only grazes keeps a thin line of shade. Square to a side a band
-// ends between two pixels (the line lies between two), and every band ends
-// within 6 px of the line, so none reaches a side the crest does not cross,
-// bowed by a pixel or not.
-const BAND = { edge: 1, lit: 2, lit2: 4, under: 2, deep: 4, mid: 5, shade: 5 }
-function tone({ d, nx, ny, lift }) {
-  const a = Math.max(-1, Math.min(1, -nx - ny))
-  if (lift < 0.3) return null
-  if (a >= 0) {
-    if (d < BAND.edge) return DUNE_TONE.edge
-    if (d < BAND.edge + BAND.lit * a * lift) return DUNE_TONE.lit
-    if (d < BAND.edge + BAND.lit2 * a * lift) return DUNE_TONE.lit2
-    return null
-  }
-  const t = -a
-  if (d < BAND.under * t * lift) return DUNE_TONE.under
-  if (d < BAND.deep * t * lift) return DUNE_TONE.deep
-  if (d < BAND.mid * t * lift) return DUNE_TONE.mid
-  if (d < (1 + BAND.shade * t) * lift) return DUNE_TONE.shade
-  return null
+const CREST = {
+  edge: mixTo(SAND.base, HIGH, 0.9), lit: mixTo(SAND.base, HIGH, 0.65),
+  under: mixTo(SAND.base, DARK, 0.62), deep: mixTo(SAND.base, DARK, 0.46),
 }
-// a 4x4 ordered dither: a pixel takes the lighter of two tones where its threshold lies below the weight
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(k => (k + 0.5) / 16)
-function duneTile(m, v) {
-  const path = crestPath(m, [0, 1, -1][v])
-  const col = new Array(T * T).fill(SAND.base)
-  const banded = new Uint8Array(T * T)
+// the smooth sand of a level on a crest cell (no ripples on a crest)
+const smoothAt = (l, v, x, y) => l < 0 ? slipAt(v, x, y) : unit(l, v, 96, x, y) < 0.05 ? lifted(l).shade : lifted(l).base
+function crestTile(c, v) {
+  const path = brinkPath(c, [0, 1, -1][v])
+  const side = s => c.map(l => (l === -s ? s : l))   // the corners as seen from one side of the brink
+  const col = new Array(T * T), label = new Array(T * T)   // label: what a pixel is, specks aside
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-    const near = nearest(path, x + 0.5, y + 0.5)
-    const i = y * T + x
-    const c = tone(near)
-    if (c) { col[i] = c; banded[i] = 1; continue }
-    // flat: on the side turned to the light the top slope's tone (what the
-    // windward cells beyond the north and west sides wear), beyond the slip
-    // face the sand's own (what the cells beyond the south and east wear),
-    // dithered from one to the other where the light only grazes the crest
-    // (round a mound, past a spur's end), so no hard line runs across the
-    // flat; within 3 px of a side the crest does not cross, that side's tone
-    const a = -near.nx - near.ny, cx = x + 0.5, cy = y + 0.5
-    const toTop = Math.min(m & 1 ? T : cy, m & 8 ? T : cx), toSand = Math.min(m & 4 ? T : T - cy, m & 2 ? T : T - cx)
-    let w = Math.min(1, Math.max(0, 0.5 + a / 0.8))
-    if (Math.min(toTop, toSand) < 3 && toTop !== toSand) w = toTop < toSand ? 1 : 0
-    const pal = BAYER[(y % 4) * 4 + x % 4] < w ? TOP : SAND
-    col[i] = near.d > 4 && unit(m, v, 90, x, y) < 0.05 ? pal.shade : pal.base   // a speck, as on ow_sand_0
+    const i = y * T + x, f = blend(c, x, y)
+    let l, tone = null
+    if (!path.length) {
+      // a band cell with no brink across it: the blend, with a low mound in the middle
+      l = dither(f, x, y)
+      const r = Math.hypot(x + 0.5 - 8, y + 0.5 - 8)
+      tone = r < 1.6 ? 'edge' : r < 2.6 ? (x + y < 15 ? 'lit' : 'under') : null
+    } else {
+      const near = nearestBrink(path, x + 0.5, y + 0.5)
+      l = dither(f + near.lift * (blend(side(near.side), x, y) - f), x, y)
+      if (near.lift >= 0.3) {
+        if (near.side > 0) tone = near.d < 1 ? 'edge' : near.d < 1 + 2 * near.lift ? 'lit' : null
+        else tone = near.d < 2 * near.lift ? 'under' : near.d < 4 * near.lift ? 'deep' : null
+      }
+    }
+    col[i] = tone ? CREST[tone] : smoothAt(l, v, x, y)
+    label[i] = tone ?? `level ${l}`
   }
-  // on a side the crest does not cross, flat to the border: the top slope's
-  // tone on the north and west, the sand's own on the south and east (the
-  // north-east and south-west corner pixels lie on one of each: either)
-  for (let i = 0; i < T; i++) for (const [bit, x, y, pal] of [[1, i, 0, TOP], [2, T - 1, i, SAND], [4, i, T - 1, SAND], [8, 0, i, TOP]]) {
-    if (m & bit || (x === T - 1 && y === 0) || (x === 0 && y === T - 1)) continue
-    const c = col[y * T + x]
-    if (banded[y * T + x] || (c !== pal.base && c !== pal.shade)) throw new Error(`${duneSkin(m, v)}: ${c} on the open border pixel ${x},${y}`)
-  }
-  return { rgba: paint(col), col, banded }
+  return { rgba: paint(col), label }
 }
-// Where a crest crosses a side, every tile that crosses it draws the same
-// border pixels within CORE px of the side's middle (the edge, the lit
-// climb, the slip face), specks aside: what leaves one tile is what enters
-// the next.
+// Where a brink crosses a side, every tile that crosses it the same way
+// draws the same border pixels within CORE px of the side's middle (the edge,
+// the lit climb, the slip face), specks aside: what leaves one tile is what
+// enters the next.
 const CORE = 4
-const crossings = new Map()
-for (let m = 0; m < 16; m++) for (let v = 0; v < DUNE_VARIANTS; v++) {
-  const { rgba, col, banded } = duneTile(m, v)
+const crossingSeen = new Map()
+for (const name of DUNE_SKINS) {
+  const c = cornersOf(name), v = +/_(\d+)$/.exec(name)[1]
+  const { rgba, label } = crestTile(c, v)
   for (const [bit, at] of [[1, i => i], [2, i => i * T + T - 1], [4, i => (T - 1) * T + i], [8, i => i * T]]) {
-    if (!(m & bit)) continue
-    const line = Array.from({ length: T }, (_, i) => banded[at(i)] && Math.abs(i + 0.5 - T / 2) < CORE ? col[at(i)] : '-').join(' ')
-    const was = crossings.get(bit)
-    if (was === undefined) crossings.set(bit, { line, name: duneSkin(m, v) })
-    else if (was.line !== line) throw new Error(`${duneSkin(m, v)} crosses side ${bit} unlike ${was.name}:\n  ${line}\n  ${was.line}`)
+    const [p, q] = SIDE_CORNERS[bit]
+    if (c[p] * c[q] !== -1) continue
+    const line = Array.from({ length: T }, (_, i) => Math.abs(i + 0.5 - T / 2) < CORE ? label[at(i)] : '-').join(', ')
+    const key = `${bit}:${c[p]}`, was = crossingSeen.get(key)
+    if (was === undefined) crossingSeen.set(key, { line, name })
+    else if (was.line !== line) throw new Error(`${name} crosses side ${bit} unlike ${was.name}:\n  ${line}\n  ${was.line}`)
   }
-  save(duneSkin(m, v), rgba)
+  save(name, rgba)
 }
 
-console.log(`wrote ${RIPPLES.length * SAND_VARIANTS} sand, ${16 * HARDPAN_VARIANTS} cracked hardpan, ${edges} hardpan edge, ${16 * DUNE_VARIANTS} dune and ${WINDWARD_LEVELS * RIPPLES.length * SAND_VARIANTS} slope tiles`)
+console.log(`wrote ${RIPPLES.length * SAND_VARIANTS} sand, ${16 * HARDPAN_VARIANTS} cracked hardpan, ${edges} hardpan edge, ${DUNE_SKINS.length} crest and ${shades} shading tiles`)
 
 // ---- what grows and lies on the sand ------------------------------------------------
 // Drawn on a see-through 16x16 grid of colours (null for nothing). The
@@ -1120,14 +1142,15 @@ if (sheetAt >= 0) {
   edgeHardpan(b, { X0: 0, Y0: 0, seed: 1 })
   grid(b.ground.map(r => r.map(i => b.palette[i])))
   cy += FLAT.length + 0.5
-  // the dune crests, a shape a column
-  for (let v = 0; v < DUNE_VARIANTS; v++) row(Array.from({ length: 16 }, (_, m) => duneSkin(m, v)))
+  // the crest cells, 27 a row
+  for (let i = 0; i < DUNE_SKINS.length; i += 27) row(DUNE_SKINS.slice(i, i + 27))
   cy += 0.5
-  // the windward slopes, a level a row (the highest beside the crest last), a ripple family a column
-  for (let l = 1; l <= WINDWARD_LEVELS; l++) row(RIPPLES.flatMap((_, f) => [windwardSkin(l, f, 0), windwardSkin(l, f, 1)]))
+  // the shading of ripple family 2, 24 a row, and the slip face
+  const shading = [...SHADE_SKINS.filter(n => /^ow_sand_shade_\d{4}_2_/.test(n)), ...SHADE_SKINS.filter(n => n.startsWith('ow_sand_slip_'))]
+  for (let i = 0; i < shading.length; i += 24) row(shading.slice(i, i + 24))
   cy += 0.5
-  // dunes as layDunes lays them, crests and slopes, on a stretch of seed 7's desert (render 7 8 -1 2 2)
-  const D = { X0: 660, Y0: -60, w: 32, h: 20 }
+  // dunes as layDunes lays them, crests and shading, on a stretch of seed 7's desert (render 7 8 -1 2 2)
+  const D = { X0: 700, Y0: -40, w: 48, h: 32 }
   const d = new MapBuilder('sheet', 'sheet', 'sheet', D.w, D.h)
   for (let y = 0; y < D.h; y++) for (let x = 0; x < D.w; x++) d.ground[y][x] = d.skin(sandSkinAt(7, D.X0 + x, D.Y0 + y))
   layDunes(d, { X0: D.X0, Y0: D.Y0, seed: 7, open: () => true })

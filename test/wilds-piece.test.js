@@ -774,8 +774,11 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // by their ground and three plants of 2,3; their spawns and doors stayed. And again when the desert
   // got its own plants, debris and outcrops (terrain.js): the same three, by what grows and lies on
   // their desert (91, 20 and 19 cells; in 2,3 a site by the water dressed a step aside for it); their
-  // spawns and doors stayed, and none holds a desert piece's spires.)
-  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': 'c6997454bcfa723b', '-3,1': 'f7270fea10aba69d', '4,-2': '88b6eb6d8b07a000', '-5,-5': '33ca9c61e541e030', '6,1': '706ab5e6437d060a' }
+  // spawns and doors stayed, and none holds a desert piece's spires. And again when the dunes became
+  // a height field of large dunes shaded from corner to corner (desert-art.js duneField, layDunes): the
+  // same three, by the shading of their sand (576, 263 and 77 cells) and the plants that follow the
+  // new crests (22, 4 and 4 cells); their spawns and doors stayed.)
+  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '90d40a416879ba6a', '-3,1': 'f7270fea10aba69d', '4,-2': 'b5448598f2d3c4be', '-5,-5': '33ca9c61e541e030', '6,1': '7598196cb999745e' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

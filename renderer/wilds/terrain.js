@@ -21,20 +21,20 @@ import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
 import { vergeRoads, VERGE_SKINS } from './road-art.js'
-import { sandSkinAt, edgeHardpan, isHardpanSkin, isRippleSkin, desertDress, DESERT_SKINS, layDunes, dunesOn, DUNE_SKINS, WINDWARD_SKINS, WINDWARD_LEVELS, DUNE_LOOK, crestField, crestAt, nearCity } from './desert-art.js'
+import { sandSkinAt, edgeHardpan, isHardpanSkin, isRippleSkin, desertDress, DESERT_SKINS, layDunes, dunesOn, DUNE_SKINS, SHADE_SKINS, DUNE_LOOK, duneField, crestField, crestAt, nearCity } from './desert-art.js'
 import { CITY_SKINS } from './city/kit.js'
 import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
 import { DESERT_LANDMARKS } from './desert.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
-// The dune field (desert-art.js crestField), worked out once a piece over
+// The dune field (desert-art.js duneField), worked out once a piece over
 // local cells FIELD_LO..FIELD_HI-1: what grows in the desert keeps off its
 // crests out to two cells beyond the builder (a two-tile tree looks one
-// further), and grows thinner within two of one; a windward slope looks
-// WINDWARD_LEVELS south and east of it. (An outcrop whose rock lies beyond
+// further), and grows thinner within two of one; the shading of the
+// builder's cells looks three beyond it. (An outcrop whose rock lies beyond
 // it works out its own few cells.)
-const FIELD_LO = -MARGIN - 4, FIELD_HI = PIECE + MARGIN + Math.max(WINDWARD_LEVELS, 4)
+const FIELD_LO = -MARGIN - 4, FIELD_HI = PIECE + MARGIN + 4
 // a rule's neighbours may themselves look REACH further; the dune field asks
 // the country DUNE_LOOK round its own cells
 const EXT = Math.max(MARGIN + 2 * REACH + 1, -FIELD_LO + DUNE_LOOK, FIELD_HI - PIECE + DUNE_LOOK)
@@ -157,7 +157,7 @@ export const TERRAIN_SKINS = [...new Set([
   ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA, ...DESERT_DECO, ...OUTCROP_SKINS,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
   ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES, ...VERGE_SKINS,
-  ...DESERT_SKINS, ...DUNE_SKINS, ...WINDWARD_SKINS,
+  ...DESERT_SKINS, ...DUNE_SKINS, ...SHADE_SKINS,
 ])]
 // Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks,
 // the desert's spires and cairns).
@@ -214,13 +214,16 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   const fMud = memo((x, y) => field(13, x, y, { freq: 1 / 14, octaves: 2 }))
   const fHard = memo((x, y) => field(14, x, y, { freq: 1 / 16, octaves: 2 }))
   const fTree = memo((x, y) => field(15, x, y, { freq: 0.07, octaves: 3 }))
-  // Is local cell (x, y) on a crest of the dune field? Pure in the world tile.
-  let crestGrid = null
+  // The dune field over local cells FIELD_LO..FIELD_HI-1, worked out when
+  // first asked; and whether local cell (x, y) is on a crest of it. Pure in
+  // the world tile.
+  let duneGrid = null
   const FW = FIELD_HI - FIELD_LO
+  const dunes = () => duneGrid ??= duneField(seed, X0 + FIELD_LO, Y0 + FIELD_LO, FW, FW, { country: (X, Y) => biome(X - X0, Y - Y0) })
+  const fieldAt = (x, y) => (y - FIELD_LO) * FW + x - FIELD_LO
   const onCrest = (x, y) => {
     if (x < FIELD_LO || y < FIELD_LO || x >= FIELD_HI || y >= FIELD_HI) return crestAt(seed, X0 + x, Y0 + y)
-    crestGrid ??= crestField(seed, X0 + FIELD_LO, Y0 + FIELD_LO, FW, FW, { country: (X, Y) => biome(X - X0, Y - Y0) })
-    return crestGrid[(y - FIELD_LO) * FW + x - FIELD_LO] === 1
+    return dunes().crest[fieldAt(x, y)] === 1
   }
   // A dune's crest within two cells: the open dunes, where little grows.
   const nearCrest = (x, y) => {
@@ -674,6 +677,20 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     }
     return true
   }
+  // Must builder cell (bx, by) stay level, the dunes' shading easing to
+  // nothing round it? Any ground but the desert's rippled sand (a way, the
+  // hardpan, a shore), and a site's ground or ground kept open. (Where the
+  // sand frays into another country, layDunes keeps level by the country
+  // itself, which a margin cell at the builder's edge cannot see from its
+  // ground.) layDunes asks up to two cells beyond the builder: a neighbour's
+  // frame, answered from the frame's own rules (a corridor lane that wears no
+  // road or path is the land's own ground).
+  const duneFlat = (bx, by) => {
+    const x = bx - MARGIN, y = by - MARGIN
+    const held = bx >= 0 && by >= 0 && bx < SIZE && by < SIZE
+    const ground = held ? b.palette[b.ground[by][bx]] : rawKind(x, y) === 'land' && !(corridor(x, y) && laneOf(x, y)) ? landGround(x, y) : null
+    return !isRippleSkin(ground) || (inside(x, y) && (siteCells.has(y * PIECE + x) || keptOpen.has(y * PIECE + x)))
+  }
 
   // The art passes, run once after features: the desert's hardpan frays into
   // the sand round it, sand frays into grass, the mountain masses take their
@@ -757,12 +774,17 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       },
     })
     // The dunes, on the sand every other pass has left bare (desert-art.js):
-    // a crest drawn on a cell is drawn last there, and none lies by a road;
-    // then the windward slope on the bare sand upwind of each crest
-    // (only where the builder holds desert: a crest lies on desert, and so does the sand of its slopes)
+    // their crests, none by a road, and the shading of their slopes, level
+    // round every way, site and other ground (only where the builder holds
+    // desert: a dune stands on desert)
     let desert = false
     for (let y = -MARGIN; y < PIECE + MARGIN && !desert; y++) for (let x = -MARGIN; x < PIECE + MARGIN; x++) if (biome(x, y) === 'desert') { desert = true; break }
-    if (desert && desertDress() && dunesOn()) layDunes(b, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed, open: duneOpen, field: (bx, by) => onCrest(bx - MARGIN, by - MARGIN) })
+    if (desert && desertDress() && dunesOn()) {
+      layDunes(b, {
+        X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed, open: duneOpen, flat: duneFlat,
+        field: { ...dunes(), x0: FIELD_LO + MARGIN, y0: FIELD_LO + MARGIN, w: FW },
+      })
+    }
     // Last, on the finished ground: every cell beside a road wears its
     // verge, the road's gravel worn off onto it (road-art.js).
     vergeRoads(b, deco, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed })

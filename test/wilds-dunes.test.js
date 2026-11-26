@@ -1,7 +1,11 @@
-// The desert's dunes (renderer/wilds/desert-art.js crestAt, layDunes): crest
-// bands one or two cells wide, walked over but not seen past, laid by
-// terrain.js on the desert's bare sand and kept off every way, site and
-// place, the same in a piece and in its neighbour's margin whatever either's
+// The desert's dunes (renderer/wilds/desert-art.js duneField, layDunes): a
+// height field of large dune bodies, each a long gentle windward slope up to
+// a brink and a short steep slip face beyond, shaded by how each slope faces
+// the light from the upper left with tiles keyed by their corners. The brink
+// of a dune tall enough is a crest band one or two cells wide, walked over but
+// not seen past, laid by terrain.js on the desert's bare sand and kept off
+// every way, site and place; the shading eases to level ground round them. All
+// of it is the same in a piece and in its neighbour's margin whatever either's
 // deal.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -12,7 +16,10 @@ import { generatePiece, cellOf } from '../renderer/wilds/piece.js'
 import { makeTerrain, TERRAIN_SKINS } from '../renderer/wilds/terrain.js'
 import { placeFeatures } from '../renderer/wilds/features.js'
 import { layoutTale, TALE_PAD } from '../renderer/wilds/sites.js'
-import { crestAt, crestField, setDunes, dunesOn, isDuneSkin, isRippleSkin, isHardpanSkin, isWindwardSkin, DUNE_SKINS, WINDWARD_SKINS, WINDWARD_LEVELS } from '../renderer/wilds/desert-art.js'
+import {
+  crestAt, crestField, duneField, duneHeight, windAt, setDunes, dunesOn, isDuneSkin, isRippleSkin, isHardpanSkin, isShadeSkin,
+  cornersOf, DUNE_SKINS, SHADE_SKINS, DUNE, LIGHT,
+} from '../renderer/wilds/desert-art.js'
 import { PIECE, FRAME, MARGIN, pieceBiome, pieceKey, tierAt, lootDepthFor, gateAt } from '../renderer/wilds/layout.js'
 import { pieceClass } from '../renderer/wilds/roads.js'
 import { inGentleRing } from '../renderer/wilds/desert.js'
@@ -66,21 +73,43 @@ function built(seed, wx, wy, deal = 0, tale = null) {
   return b
 }
 const each = (fn) => { for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) fn(x, y) }
-const maskOf = n => +/^ow_dune_(\d+)_\d+$/.exec(n)[1]
+// The corner levels a cell's ground is drawn with (desert-art.js cornersOf),
+// NW NE SE SW: anything that is not the dunes' own ground meets them level.
+const levels = n => cornersOf(n) ?? [0, 0, 0, 0]
+const allZero = c => c.every(l => l === 0)
+// A crossing: an edge whose two corners are the windward (+1) and the lee (-1) side of a brink.
+const SIDES = [[0, -1, 0, 1], [1, 0, 1, 2], [0, 1, 2, 3], [-1, 0, 3, 0]]   // dx, dy, and the two corners on that side
+const crossings = c => SIDES.filter(([, , i, j]) => c[i] * c[j] === -1)
 
-test('every dune tile exists, and the map shows a dune and its slopes as sand', () => {
-  assert.equal(DUNE_SKINS.length, 16 * 3)
-  assert.equal(WINDWARD_SKINS.length, WINDWARD_LEVELS * 8 * 3)
+// A stretch of desert two pieces square on each seed (its top-left piece), with the field over it.
+const stretch = seed => {
+  const all = new Set(desertPieces(seed).map(p => `${p.wx},${p.wy}`))
+  const { wx, wy } = desertPieces(seed).find(p => !inGentleRing(p.wx, p.wy) && [[1, 0], [0, 1], [1, 1]].every(([dx, dy]) => all.has(`${p.wx + dx},${p.wy + dy}`)))
+  const W = 2 * PIECE, X0 = wx * PIECE, Y0 = wy * PIECE, F = duneField(seed, X0, Y0, W, W)
+  const crest = (x, y) => x >= 0 && y >= 0 && x < W && y < W && F.crest[y * W + x] === 1
+  const height = (x, y) => F.height[y * W + x]
+  return { W, X0, Y0, F, crest, height, inside: (x, y) => x >= 0 && y >= 0 && x < W && y < W }
+}
+const quantile = (v, p) => { const s = [...v].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))] }
+
+test('every dune tile exists, and the map shows a dune and its shading as sand', () => {
+  assert.ok(DUNE_SKINS.length >= 81, `${DUNE_SKINS.length} crest tiles`)
+  assert.ok(SHADE_SKINS.length > 100, `${SHADE_SKINS.length} shading tiles`)
   const names = new Set(TERRAIN_SKINS)
-  for (const n of [...DUNE_SKINS, ...WINDWARD_SKINS]) {
+  for (const n of [...DUNE_SKINS, ...SHADE_SKINS]) {
     assert.ok(!n.endsWith('_d'), `${n} ends in _d`)
     assert.ok(names.has(n), `${n} is not in TERRAIN_SKINS`)
     assert.ok(fs.existsSync(path.join(TILES, n + '.png')), `no tile art for ${n}`)
     assert.equal(classOf({ skin: n }), CLASS.sand, `${n} is not sand on the map`)
+    assert.equal(cornersOf(n)?.length, 4, `${n} names no corners`)
   }
   for (const n of DUNE_SKINS) assert.ok(n.startsWith('ow_dune_') && isDuneSkin(n) && cellOf(n, null, true).losDune, n)
-  // a slope is walked over and seen across like any sand
-  for (const n of WINDWARD_SKINS) assert.ok(isWindwardSkin(n) && !n.startsWith('ow_dune_') && !cellOf(n, null, true).losDune, n)
+  // a slope is walked over and seen across like any sand, and steps by at most one level corner to corner
+  for (const n of SHADE_SKINS) {
+    const c = cornersOf(n)
+    assert.ok(isShadeSkin(n) && !n.startsWith('ow_dune_') && !cellOf(n, null, true).losDune, n)
+    assert.ok(Math.max(...c) - Math.min(...c) <= 1 && !allZero(c), `${n}: corners ${c}`)
+  }
 })
 
 test('dunes lie in the desert', () => {
@@ -92,13 +121,14 @@ test('dunes lie in the desert', () => {
       each((x, y) => {
         if (t.biome(x, y) !== 'desert' || !t.walkable(x, y) || t.propAt(x, y)) return
         const g = t.groundAt(x, y)
-        if (!isRippleSkin(g) && !isHardpanSkin(g) && !isDuneSkin(g) && !isWindwardSkin(g)) return
+        if (!isRippleSkin(g) && !isHardpanSkin(g) && !isDuneSkin(g) && !isShadeSkin(g)) return
         ground++
         if (dune(x, y)) dunes++
       })
     }
     assert.ok(ground > 20000, `seed ${seed}: only ${ground} cells of open desert ground`)
-    assert.ok(dunes / ground >= 0.05, `seed ${seed}: ${dunes} of ${ground} cells of open desert ground (${(100 * dunes / ground).toFixed(1)} %) are crests`)
+    // (fewer than the old ridges' 5 %: a dune is two to three times as wide now, and only a tall one has a crest)
+    assert.ok(dunes / ground >= 0.015, `seed ${seed}: ${dunes} of ${ground} cells of open desert ground (${(100 * dunes / ground).toFixed(1)} %) are crests`)
   }
 })
 
@@ -116,40 +146,139 @@ test('every crest lies where the field says, shaped by the crests round it', () 
       if (!dune(x, y)) continue
       assert.ok(fieldAt(x, y), `${at}: a crest at ${x},${y} off the field`)
       if (x === -MARGIN || y === -MARGIN || x === PIECE + MARGIN - 1 || y === PIECE + MARGIN - 1) continue
-      const want = (dune(x, y - 1) ? 1 : 0) | (dune(x + 1, y) ? 2 : 0) | (dune(x, y + 1) ? 4 : 0) | (dune(x - 1, y) ? 8 : 0)
-      assert.equal(maskOf(t.groundAt(x, y)), want, `${at}: ${t.groundAt(x, y)} at ${x},${y}`)
+      // the brink runs on only into another crest cell: where it leaves a cell, a crest cell takes it up
+      for (const [dx, dy] of crossings(levels(t.groundAt(x, y))))
+        assert.ok(dune(x + dx, y + dy), `${at}: ${t.groundAt(x, y)} at ${x},${y} runs its brink into ${t.groundAt(x + dx, y + dy)}`)
     }
   }
 })
 
-test('the windward slope climbs to the crest', () => {
-  let slopes = 0
-  for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed).slice(0, 8)) {
-    const { t, dune, X0, Y0, at } = built(seed, wx, wy)
-    const L = WINDWARD_LEVELS, W = PIECE + L
-    const field = crestField(seed, X0, Y0, W, W)
-    const on = (x, y) => field[y * W + x] === 1
-    // the fewest steps south and east to a crest of the field, up to L (0 for none)
-    const steps = (x, y) => { for (let k = 1; k <= L; k++) for (let i = 0; i <= k; i++) if (on(x + i, y + k - i)) return k; return 0 }
-    each((x, y) => {
-      const g = t.groundAt(x, y), k = steps(x, y)
-      if (isWindwardSkin(g)) {
-        slopes++
-        const [, l, o, v] = /^ow_sand_slope_(\d+)_(\d+)_(\d+)$/.exec(g).map(Number)
-        assert.ok(k > 0 && l === L + 1 - k, `${at}: ${g} at ${x},${y}, ${k} steps from a crest`)
-        assert.ok(!dune(x, y), `${at}: a slope that hides what is behind it at ${x},${y}`)
-        assert.ok(o >= 0 && o < 8 && v >= 0 && v < 3, g)
-      } else if (isRippleSkin(g)) {
-        assert.equal(k, 0, `${at}: bare sand ${g} at ${x},${y}, ${k} steps upwind of a crest`)
+test('dunes are large', () => {
+  for (const seed of SEEDS) {
+    const { W, X0, Y0, crest, height } = stretch(seed)
+    // from a crest along the wind to the next crest beyond it
+    const gaps = [], tall = []
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      if (!crest(x, y)) continue
+      tall.push(height(x, y))
+      if ((x * 7 + y * 13) % 3) continue
+      const a = windAt(seed, X0 + x, Y0 + y), ux = Math.cos(a), uy = Math.sin(a)
+      for (let s = 4; s <= 80; s++) {
+        const px = Math.round(x + ux * s), py = Math.round(y + uy * s)
+        if (px < 0 || py < 0 || px >= W || py >= W) break
+        if (crest(px, py)) { gaps.push(s); break }
       }
-      // beside a crest on its north or west, open sand is the top of the slope
-      if (dune(x, y)) for (const [dx, dy] of [[0, -1], [-1, 0]]) {
-        const n = t.groundAt(x + dx, y + dy)
-        if (x + dx >= 0 && y + dy >= 0 && (isRippleSkin(n) || isWindwardSkin(n))) assert.equal(n.startsWith(`ow_sand_slope_${L}_`), true, `${at}: ${n} upwind of the crest at ${x},${y}`)
+    }
+    assert.ok(gaps.length > 30, `seed ${seed}: only ${gaps.length} crests with another downwind`)
+    const gap = quantile(gaps, 0.5)
+    assert.ok(gap >= 20 && gap <= 40, `seed ${seed}: crests lie a median ${gap} tiles apart along the wind`)
+    // and some dunes stand taller than others
+    const lo = quantile(tall, 0.1), hi = quantile(tall, 0.9)
+    assert.ok(hi >= 1.5 * lo, `seed ${seed}: crest heights ${lo.toFixed(2)} to ${hi.toFixed(2)} (10th to 90th percentile)`)
+  }
+})
+
+test('a dune has a gentle windward side and a steep slip face', () => {
+  for (const seed of SEEDS) {
+    const { W, X0, Y0, crest, height, inside } = stretch(seed)
+    const rises = [], falls = []
+    let longer = 0
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      if (!crest(x, y) || (x * 5 + y * 3) % 7) continue
+      const a = windAt(seed, X0 + x, Y0 + y), ux = Math.cos(a), uy = Math.sin(a), top = height(x, y)
+      // how many cells the ground keeps going down from the crest, upwind and downwind, before it is low
+      const run = dir => {
+        let n = 0, last = top
+        for (let s = 1; s < 60; s++) {
+          const px = Math.round(x + dir * ux * s), py = Math.round(y + dir * uy * s)
+          if (!inside(px, py)) return null
+          const h = height(px, py)
+          if (h > last + 0.02 * top || h <= 0.1 * top) return n
+          n++; last = h
+        }
+        return n
+      }
+      const rise = run(-1), fall = run(1)
+      if (rise === null || fall === null) continue
+      rises.push(rise); falls.push(fall)
+      if (rise > fall) longer++
+    }
+    assert.ok(rises.length > 30, `seed ${seed}: only ${rises.length} crests looked at`)
+    const r = quantile(rises, 0.5), f = quantile(falls, 0.5)
+    assert.ok(r >= 2 * f, `seed ${seed}: the windward side rises over a median ${r} cells, the slip face falls over ${f}`)
+    assert.ok(longer >= 0.85 * rises.length, `seed ${seed}: the windward side is the longer at only ${longer} of ${rises.length} crests`)
+  }
+})
+
+test('shading follows the slope', () => {
+  // in the open desert (where the height does not ease off), off the crests
+  // (whose two sides the crest tiles draw) and away from anything level
+  // (ways, sites, other ground), a cell is drawn lighter where its slope
+  // faces the light from the upper left and darker where it faces away
+  const flatGround = g => !isRippleSkin(g) && !isShadeSkin(g) && !isDuneSkin(g)
+  let lit = 0, litOk = 0, dark = 0, darkOk = 0, wrong = 0
+  for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed).filter(p => !inGentleRing(p.wx, p.wy)).slice(0, 8)) {
+    const { t, X0, Y0 } = built(seed, wx, wy)
+    const N = PIECE + 4, F = duneField(seed, X0 - 2, Y0 - 2, N, N), at = (x, y) => (y + 2) * N + x + 2
+    const h = (x, y) => F.height[at(x, y)], band = (x, y) => F.crest[at(x, y)] === 1
+    for (let y = 2; y < PIECE - 2; y++) for (let x = 2; x < PIECE - 2; x++) {
+      if (band(x, y)) continue
+      let near = false
+      for (let dy = -2; dy <= 2 && !near; dy++) for (let dx = -2; dx <= 2; dx++) {
+        if (F.ease[at(x + dx, y + dy)] < 1 || flatGround(t.groundAt(x + dx, y + dy)) || t.keptOpen(x + dx, y + dy) || t.onSite(x + dx, y + dy)) { near = true; break }
+      }
+      if (near) continue
+      const s = (h(x + 1, y + 1) - h(x - 1, y - 1)) / (2 * Math.SQRT2)
+      const c = levels(t.groundAt(x, y)), m = c.reduce((a, b) => a + b, 0) / 4
+      if (s >= 1.5 * LIGHT.lit) { lit++; if (m > 0) litOk++; if (m < 0) wrong++ }
+      else if (s <= -1.5 * LIGHT.shade) { dark++; if (m < 0) darkOk++; if (m > 0) wrong++ }
+    }
+  }
+  assert.ok(lit > 2000 && dark > 50, `only ${lit} cells facing the light and ${dark} facing away`)
+  assert.ok(litOk >= 0.95 * lit, `${litOk} of ${lit} cells facing the light are drawn lighter`)
+  assert.ok(darkOk >= 0.9 * dark, `${darkOk} of ${dark} cells facing away are drawn darker`)
+  assert.ok(wrong <= 0.005 * (lit + dark), `${wrong} cells drawn against their slope`)
+})
+
+test('no cell squares: the corners of neighbouring cells agree', () => {
+  let shaded = 0, pairs = 0
+  for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed)) {
+    const { t, at } = built(seed, wx, wy)
+    const c = Array.from({ length: PIECE }, (_, y) => Array.from({ length: PIECE }, (_, x) => levels(t.groundAt(x, y))))
+    each((x, y) => {
+      const a = c[y][x]
+      if (!allZero(a)) shaded++
+      if (x + 1 < PIECE) {
+        const b = c[y][x + 1]
+        if (!allZero(a) || !allZero(b)) pairs++
+        assert.ok(a[1] === b[0] && a[2] === b[3], `${at}: ${t.groundAt(x, y)} at ${x},${y} beside ${t.groundAt(x + 1, y)}`)
+      }
+      if (y + 1 < PIECE) {
+        const b = c[y + 1][x]
+        if (!allZero(a) || !allZero(b)) pairs++
+        assert.ok(a[3] === b[0] && a[2] === b[1], `${at}: ${t.groundAt(x, y)} at ${x},${y} above ${t.groundAt(x, y + 1)}`)
       }
     })
   }
-  assert.ok(slopes > 5000, `only ${slopes} slope cells`)
+  assert.ok(shaded > 50000 && pairs > 100000, `only ${shaded} shaded cells, ${pairs} pairs`)
+})
+
+test('low swells do not block sight', () => {
+  for (const seed of SEEDS) {
+    const { W, crest, height } = stretch(seed)
+    let body = 0, open = 0
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      const h = height(x, y)
+      if (crest(x, y)) assert.ok(h >= DUNE.crest, `seed ${seed}: a crest only ${h.toFixed(2)} high at ${x},${y}`)
+      if (h < 0.1) continue
+      body++
+      let near = false
+      for (let dy = -6; dy <= 6 && !near; dy++) for (let dx = -6; dx <= 6; dx++) if (crest(x + dx, y + dy)) { near = true; break }
+      if (!near) open++
+    }
+    // and there are dunes low enough to have none
+    assert.ok(open >= 0.05 * body, `seed ${seed}: only ${open} of ${body} cells of dune lie away from a crest`)
+  }
 })
 
 test('a crest band runs edge to edge: no sight line slips between two crest cells', () => {
@@ -165,7 +294,7 @@ test('a crest band runs edge to edge: no sight line slips between two crest cell
       crests++
       for (const dx of [1, -1]) if (on(x + dx, y + 1)) assert.ok(on(x + dx, y) || on(x, y + 1), `seed ${seed}: crest cells ${wx * PIECE + x},${wy * PIECE + y} and ${wx * PIECE + x + dx},${wy * PIECE + y + 1} touch only at a corner`)
     }
-    assert.ok(crests > 1000, `seed ${seed}: only ${crests} crest cells`)
+    assert.ok(crests > 300, `seed ${seed}: only ${crests} crest cells`)
   }
   // as laid: where two crest cells touch only at a corner, the band was cut
   // there (a way, a site, something standing): a cell between them is crest in
@@ -207,10 +336,16 @@ test('no dune on a way', () => {
   assert.ok(ways > 10000, `only ${ways} way cells looked at`)
 })
 
-test('no dune on a site', () => {
-  let looked = 0
+test('no dune on a site, and a site stands on level sand', () => {
+  let looked = 0, level = 0
   for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed)) {
-    const { piece, dune, at } = built(seed, wx, wy)
+    const { t, piece, dune, at } = built(seed, wx, wy)
+    // the ground a site is built on and the ground kept open round what a feature holds is level
+    each((x, y) => {
+      if (!t.onSite(x, y) && !t.keptOpen(x, y)) return
+      level++
+      assert.ok(allZero(levels(t.groundAt(x, y))), `${at}: ${t.groundAt(x, y)} on a site's ground at ${x},${y}`)
+    })
     for (const d of piece.doors) {
       looked++
       assert.ok(!dune(d.x, d.y) && !dune(d.x, d.y + 1), `${at}: a crest at the door ${d.label} or its doorstep`)
@@ -221,30 +356,32 @@ test('no dune on a site', () => {
     for (let dy = -pad; dy <= pad; dy++) for (let dx = -pad; dx <= pad; dx++)
       if (dx * dx + dy * dy <= pad * pad) assert.ok(!dune(m.x + dx, m.y + dy), `${at}: a crest on the ${m.kind}'s pad at ${m.x + dx},${m.y + dy}`)
   }
-  assert.ok(looked > 300, `only ${looked} doors and spawns looked at`)
+  assert.ok(looked > 300 && level > 20000, `only ${looked} doors and spawns and ${level} cells of site ground looked at`)
 })
 
 test('no dunes near home', () => {
   for (const seed of SEEDS) {
     for (let wy = -1; wy <= 1; wy++) for (let wx = -1; wx <= 1; wx++) {
-      const { dune, at } = built(seed, wx, wy)
-      each((x, y) => assert.ok(!dune(x, y), `${at}: a crest at ${x},${y}`))
+      const { t, dune, at } = built(seed, wx, wy)
+      each((x, y) => assert.ok(!dune(x, y) && allZero(levels(t.groundAt(x, y))), `${at}: ${t.groundAt(x, y)} at ${x},${y}`))
     }
-    // nor anywhere in the field there
-    const f = crestField(seed, -PIECE, -PIECE, 3 * PIECE, 3 * PIECE)
-    assert.ok(!f.includes(1), `seed ${seed}: the field has a crest round home`)
+    // nor anywhere in the field there: the ground round home is level
+    const f = duneField(seed, -PIECE, -PIECE, 3 * PIECE, 3 * PIECE)
+    assert.ok(!f.crest.includes(1), `seed ${seed}: the field has a crest round home`)
+    assert.ok(f.height.every(h => h === 0), `seed ${seed}: the ground round home is not level`)
   }
 })
 
 test('nor on Kalevanlinna, nor within eight tiles of it', () => {
   // the city's pieces are (0..1, 2..3): tiles (0..159, 160..319)
   for (const seed of [...SEEDS, 8]) {
-    const f = crestField(seed, -8, 152, 176, 176)
-    assert.ok(!f.includes(1), `seed ${seed}: a crest by the city`)
+    const f = duneField(seed, -8, 152, 176, 176)
+    assert.ok(!f.crest.includes(1), `seed ${seed}: a crest by the city`)
+    assert.ok(f.height.every(h => h === 0), `seed ${seed}: the ground by the city is not level`)
   }
 })
 
-test('crests and their slopes are pure in the world tile', () => {
+test('crests and their shading are pure in the world tile', () => {
   let seen = 0, slopes = 0
   for (const seed of SEEDS) {
     const ds = desertPieces(seed).filter(p => !inGentleRing(p.wx, p.wy))
@@ -262,7 +399,7 @@ test('crests and their slopes are pure in the world tile', () => {
           const p = P.dune(px, py), q = Q.dune(qx, qy)
           assert.equal(p, q, `${A.at}/${Q.at}: a crest in one and not the other at ${qx},${qy} of ${Q.wx},${Q.wy}`)
           const gp = P.ground(px, py), gq = Q.ground(qx, qy)
-          if (isWindwardSkin(gp) || isWindwardSkin(gq)) { slopes++; assert.equal(gp, gq, `${A.at}/${Q.at}: two slopes at ${qx},${qy} of ${Q.wx},${Q.wy}`) }
+          if (isShadeSkin(gp) || isShadeSkin(gq)) { slopes++; assert.equal(gp, gq, `${A.at}/${Q.at}: two slopes at ${qx},${qy} of ${Q.wx},${Q.wy}`) }
           if (!p) continue
           seen++
           assert.equal(P.ground(px, py), Q.ground(qx, qy), `${A.at}/${Q.at}: two crests at ${qx},${qy} of ${Q.wx},${Q.wy}`)
@@ -327,19 +464,27 @@ test('everything the piece offers stays reachable', () => {
     for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
       const a = on.cells[y][x], b = off.cells[y][x]
       assert.equal(a.tile, b.tile, `${at}: tile at ${x},${y}`)
-      if (a.skin !== b.skin) assert.ok((a.losDune || isWindwardSkin(a.skin)) && isRippleSkin(b.skin), `${at}: ${b.skin} became ${a.skin} at ${x},${y}`)
+      if (a.skin !== b.skin) assert.ok((a.losDune || isShadeSkin(a.skin)) && isRippleSkin(b.skin), `${at}: ${b.skin} became ${a.skin} at ${x},${y}`)
     }
   }
   assert.ok(pieces > 40, `only ${pieces} pieces`)
 })
 
-test('a laid band has gaps only at ways, sites and kept ground', () => {
+test('a laid band has gaps only at ways, sites, kept ground and level ground', () => {
   // nothing grows or lies on a crest of the field (terrain.js occupant), so a
   // crest of the field is laid wherever its ground is the desert's sand, off
-  // the ways and what a feature holds
+  // the ways and what a feature holds; where level ground beside it (a way's,
+  // a site's, other ground, other country) has smoothed its brink away; and at
+  // a band's end, where the band is shaded but no brink crosses it (a hole a
+  // plant punched in a band would be level all round instead)
+  const levelGround = (t, x, y) => {
+    const g = t.groundAt(x, y)
+    return (!isRippleSkin(g) && !isShadeSkin(g) && !isDuneSkin(g)) || t.onSite(x, y) || t.keptOpen(x, y) || t.biome(x, y) !== 'desert'
+  }
   let gaps = 0, crests = 0
   for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed)) {
     const { t, dune, onWay, at } = built(seed, wx, wy)
+    const near = (x, y, r, test) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (test(x + dx, y + dy)) return true; return false }
     each((x, y) => {
       if (!t.onCrest(x, y)) return
       crests++
@@ -348,14 +493,16 @@ test('a laid band has gaps only at ways, sites and kept ground', () => {
       const g = t.groundAt(x, y)
       const why = AROUND.some(([dx, dy]) => onWay(x + dx, y + dy)) ? 'way'
         : t.onSite(x, y) || t.keptOpen(x, y) ? 'site'
-        : !isRippleSkin(g) && !isWindwardSkin(g) ? 'ground' : null
+        : !isRippleSkin(g) && !isShadeSkin(g) ? 'ground'
+        : near(x, y, 2, (a, b) => levelGround(t, a, b) || onWay(a, b)) ? 'level'
+        : !allZero(levels(g)) && crossings(levels(g)).length === 0 ? 'end' : null
       assert.ok(why, `${at}: the crest at ${x},${y} is not laid (${g}${t.propAt(x, y) ? ' under ' + t.propAt(x, y) : ''})`)
     })
   }
   assert.ok(crests > 10000 && gaps > 100, `${crests} crest cells of the field, ${gaps} not laid`)
 })
 
-test('a recorded place keeps clear of dunes', () => {
+test('a recorded place keeps clear of dunes, on level sand', () => {
   // tales whose places have keep-outs and ways of their own, forced onto
   // deep desert as a recorded place is laid whatever the land (world.places)
   const TALES = ['elk', 'tar', 'lalli', 'fold', 'nakki', 'sampo_sea']
@@ -368,6 +515,8 @@ test('a recorded place keeps clear of dunes', () => {
       assert.equal(piece.main.kind, `tale_${id}`, at)
       const bad = []
       each((x, y) => {
+        // the place's pad is level ground
+        if (Math.hypot(x - geo.cx, y - geo.cy) <= TALE_PAD[id] && !allZero(levels(t.groundAt(x, y)))) bad.push(`${t.groundAt(x, y)} at ${x},${y} on the pad`)
         if (!dune(x, y)) return
         if (Math.hypot(x - geo.cx, y - geo.cy) <= TALE_PAD[id]) bad.push(`${x},${y} on the pad`)
         for (const k of geo.keep) if (Math.hypot(x - k.x, y - k.y) <= k.r) bad.push(`${x},${y} in the keep at ${k.x},${k.y}`)
