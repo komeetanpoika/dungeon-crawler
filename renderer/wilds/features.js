@@ -24,6 +24,7 @@ import { makeSites, layoutTale, wayCells, TALE_PAD } from './sites.js'
 import { INN_PAD } from './inn.js'
 import { roadSides, pieceClass, townsAlong, roadsFrom, roadLine, SIDE_WORDS } from './roads.js'
 import { ROAD_WIDTH, roadLane0 } from './terrain.js'
+import { inGentleRing } from './desert.js'
 
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,
   farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6,
@@ -182,7 +183,6 @@ const PACKS = [
 ]
 const SUNROOM_ODDS = 0.25   // a village beyond home with Päivölä in it
 const VILLAGE_CALM = 24   // tiles round a village centre no pack is dealt into
-const nearHome = (wx, wy) => Math.max(Math.abs(wx), Math.abs(wy)) <= 1
 
 const ANIMALS = {
   forest: ['deer', 'deer', 'boar', 'mouse'], autumn: ['deer', 'deer', 'boar', 'mouse'],
@@ -245,7 +245,7 @@ export function mainKind(seed, wx, wy, deal = 0) {
   }
   // An open-world boss is common far out, rare in the first country and
   // never beside home; what it gives up goes to the camps.
-  const boss = tierAt(wx, wy) >= 2 ? 15 : nearHome(wx, wy) ? 0 : 8
+  const boss = tierAt(wx, wy) >= 2 ? 15 : inGentleRing(wx, wy) ? 0 : 8
   const table = [['cave', 30], ['camp', 45 - boss], ['boss', boss], ['ruin', 12], ['landmark', 13]]
   return dealOffTheBoard(table, hash(seed, wx, wy, 400 + deal) * 100, wx, wy)
 }
@@ -544,7 +544,7 @@ export function placeFeatures(t, piece) {
   // ---- small things: spots first, then trails -------------------------------
   const here = t.biome(mx, my)
   // a village and farmland draw spider packs only, farmland the gentle ring's
-  const roster = PACKS[nearHome(wx, wy) || farmland ? 0 : tier].filter(p => (kind !== 'village' && !farmland) || p.every(f => f.kind === 'monster'))
+  const roster = PACKS[inGentleRing(wx, wy) || farmland ? 0 : tier].filter(p => (kind !== 'village' && !farmland) || p.every(f => f.kind === 'monster'))
   const common = roster.filter(p => !RARE.has(p))
   const pickPack = () => { const p = pick(roster); return !RARE.has(p) || rng() < RARE_ODDS ? p : pick(common) }
   const smallKinds = ['chest', 'chest', 'rocks', 'hut']

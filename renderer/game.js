@@ -45,6 +45,7 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
+import { heroSight, isDesert, BEACON_RANGE } from './wilds/desert.js'
 import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
@@ -2746,15 +2747,32 @@ function update(delta) {
   if (pending.length) { openToast(pending[0]); state.feedback.toasts.push(...pending.slice(1)) }
 }
 
+// Whether the hero stands in desert country, asked again only when his
+// world tile changes.
+let heroDesert = null
+function heroInDesert() {
+  const { X, Y } = toWorld(wildsWorld.origin, state.player.x, state.player.y)
+  const seed = wildsWorld.seed
+  if (heroDesert?.X !== X || heroDesert.Y !== Y || heroDesert.seed !== seed) heroDesert = { X, Y, seed, desert: isDesert(seed, X, Y) }
+  return heroDesert.desert
+}
+
 function render() {
   // Open country sees almost twice as far as a dungeon or cave — 14 tiles
   // matches the audio falloff edge, so what you hear you can usually see.
   // Open-map surfaces see the whole radius; dungeons, caves and interiors
   // keep line of sight.
   const surface = !state.cave && !!mapDataFor(state.level)
-  // The bench lights its whole arena: the monster spawns 11 tiles out and
-  // its wind-ups must read from across the room.
-  maybeComputeFOV(state.map, state.player, bench ? 40 : surface ? 14 : 8, { los: !surface })
+  if (surface && !bench && state.wilds && wildsWorld?.origin) {
+    // The Wilds out of doors see by the dune rule: the whole radius but what
+    // lies behind a dune crest, further in desert country, and the landmarks
+    // out to BEACON_RANGE (wilds/desert.js).
+    maybeComputeFOV(state.map, state.player, heroSight({ desert: heroInDesert() }), { los: 'dunes', far: BEACON_RANGE })
+  } else {
+    // The bench lights its whole arena: the monster spawns 11 tiles out and
+    // its wind-ups must read from across the room.
+    maybeComputeFOV(state.map, state.player, bench ? 40 : surface ? 14 : 8, { los: !surface })
+  }
   const fx = riteVisuals(state)
   if (state.weather) state.weather.look = state.cave ? null : weatherLook(state, activeSave)
   // a house is framed whole in the window when it fits

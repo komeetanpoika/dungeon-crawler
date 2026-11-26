@@ -7,6 +7,7 @@ import { TILE } from '../systems/entities.js'
 import { LOS_CLEAR_PREFIXES, LOS_SOFT_PREFIXES, LOS_TALL_PREFIXES } from '../systems/openmap.js'
 import { openTops } from './over.js'
 import { pieceClass } from './roads.js'
+import { DUNE_PREFIX, BEACON_PREFIX } from './desert.js'
 
 const startsWithAny = (s, prefixes) => prefixes.some(p => s.startsWith(p))
 // Low things a sight line passes over, like open water: the site dressing
@@ -15,10 +16,14 @@ const LOW_PREFIXES = ['ow_prop_', 'ow_fence_', 'ow_lily_']
 
 // The same cell the hand-made open maps use (systems/openmap.js): ground art
 // as the skin, anything standing on it as the overlay, and for a blocking
-// cell the sight class of whatever blocks.
+// cell the sight class of whatever blocks. A walkable dune crest blocks sight
+// to what lies behind it (`losDune`); a landmark is seen over crests and from
+// afar (`losBeacon`): systems/entities.js hasLineOfSight.
 export function cellOf(ground, prop, walkable) {
   const c = { tile: walkable ? TILE.FLOOR : TILE.WALL, dirty: true, roomId: null, visible: false, explored: false, skin: ground, locked: true }
   if (prop) c.overlay = prop
+  if (walkable && ground?.startsWith(DUNE_PREFIX)) c.losDune = true
+  if (!walkable && prop?.startsWith(BEACON_PREFIX)) c.losBeacon = true
   if (!walkable) {
     const blocker = prop ?? ground
     if (startsWithAny(blocker, LOS_CLEAR_PREFIXES) || startsWithAny(blocker, LOW_PREFIXES)) c.losClear = true

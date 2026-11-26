@@ -190,13 +190,26 @@ export const occupiesCell = e => e.type !== 'echo'
 // peaks behind peaks are seen, the ground behind them is not. All three flags
 // are stamped by buildOpenMap — dungeon tiles carry none, so dungeon LOS is
 // unchanged.
+//
+// The Wilds' desert adds two more (wilds/piece.js cellOf). A dune crest
+// (losDune) is walked over but hides what lies behind it. A line that starts
+// on a crest sees along it and down both sides: while every cell so far, the
+// viewer's own included, is crest, crests do not block; after the line's first
+// cell off the crest any crest blocks, except the target itself. A line to a
+// landmark (losBeacon) passes over crests altogether. A map with neither flag
+// sees exactly as before.
 export const LOS_TREE_BUDGET = 2
+// Rays computePlayerFOV has cast, added up for tests and timing (reset at will).
+export const FOV_STATS = { rays: 0 }
 
 export function hasLineOfSight(map, y1, x1, y2, x2) {
   const dy = y2 - y1, dx = x2 - x1
   const steps = Math.max(Math.abs(dy), Math.abs(dx))
   if (steps === 0) return true
-  const toTall = !!map[y2]?.[x2]?.losTall
+  const to = map[y2]?.[x2]
+  const toTall = !!to?.losTall
+  const overDunes = !!to?.losBeacon
+  let onCrest = !!map[y1]?.[x1]?.losDune
   let soft = 0
   for (let i = 1; i <= steps; i++) {
     const y = Math.round(y1 + (dy * i) / steps)
@@ -204,6 +217,11 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
     if (y === y2 && x === x2) break
     const t = map[y]?.[x]
     if (!t) return false
+    if (t.losDune) {                                    // dune crest: blocks once off the viewer's crest
+      if (onCrest || overDunes) continue
+      return false
+    }
+    onCrest = false
     if (isWalkable(t.tile, t)) continue
     if (t.losClear) continue                            // open water: see across
     if (t.losSoft && ++soft <= LOS_TREE_BUDGET) continue // foliage: shallow only
@@ -213,10 +231,44 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
   return true
 }
 
-// `los: false` lights the whole radius with no ray test — the open maps
-// (Adventure, Timewarp) show everything around the player; dungeons, caves
-// and interiors keep line of sight.
-export function computePlayerFOV(map, player, radius = 8, { los = true } = {}) {
+// The dune rule of hasLineOfSight alone, for the hero's `los: 'dunes'` sight:
+// every other cell is see-through, as the radius-only surface sight is.
+// `onCrest` is whether the viewer stands on a crest.
+function duneLine(map, y1, x1, y2, x2, onCrest) {
+  if (map[y2][x2].losBeacon) return true
+  const dy = y2 - y1, dx = x2 - x1
+  const steps = Math.max(Math.abs(dy), Math.abs(dx))
+  for (let i = 1; i < steps; i++) {                     // the target (i === steps) never blocks
+    const t = map[Math.round(y1 + (dy * i) / steps)]?.[Math.round(x1 + (dx * i) / steps)]
+    if (!t) return false
+    if (t.losDune) { if (!onCrest) return false }
+    else onCrest = false
+  }
+  return true
+}
+
+// Whether a dune crest lies within the radius: with none, the dune rule can
+// hide nothing and no ray is cast.
+function duneWithin(map, px, py, radius) {
+  const r2 = radius * radius
+  for (let dy = -radius; dy <= radius; dy++) {
+    const row = map[py + dy]
+    if (!row) continue
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy <= r2 && row[px + dx]?.losDune) return true
+    }
+  }
+  return false
+}
+
+// `los` is the sight rule. `true` keeps line of sight: dungeons, caves and
+// interiors. `false` lights the whole radius with no ray test: the open maps
+// (Adventure, Timewarp) show everything around the player. `'dunes'` is the
+// Wilds out of doors: the whole radius but the cells behind a dune crest, and
+// with no crest within the radius no ray test at all. `far` (beyond the
+// radius) lights and explores the landmarks (losBeacon) out to that range
+// whose line passes. The eight cells round the player are always lit.
+export function computePlayerFOV(map, player, radius = 8, { los = true, far = 0 } = {}) {
   // Reset visibility before recomputing. Clearing the *whole* map is O(W×H),
   // which is fine for a dungeon room but dominates on large / open-world maps.
   // So on a repeat call for the SAME map we clear only the tiles we lit last
@@ -230,6 +282,22 @@ export function computePlayerFOV(map, player, radius = 8, { los = true } = {}) {
   }
   const lit = []
   const { x: px, y: py } = player
+  const light = (t, tx, ty) => {
+    t.visible = true
+    t.explored = true
+    lit.push(t)
+    // a house's lower wall face lights the face row and wall top above it,
+    // which no ray reaches past it (renderer/interior/walls.js)
+    for (let k = 1; k <= (t.seeUp ?? 0); k++) {
+      const a = map[ty - k]?.[tx]
+      if (a && !a.visible) { a.visible = true; a.explored = true; lit.push(a) }
+    }
+  }
+  const onCrest = !!map[py]?.[px]?.losDune
+  const ray = los === true ? (ty, tx) => hasLineOfSight(map, py, px, ty, tx)
+    : los === 'dunes' && duneWithin(map, px, py, radius) ? (ty, tx) => duneLine(map, py, px, ty, tx, onCrest)
+    : null
+  let rays = 0
   const r2 = radius * radius
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -237,37 +305,60 @@ export function computePlayerFOV(map, player, radius = 8, { los = true } = {}) {
       const tx = px + dx, ty = py + dy
       const t = map[ty]?.[tx]
       if (!t) continue
-      if (!los || hasLineOfSight(map, py, px, ty, tx)) {
-        t.visible = true
-        t.explored = true
-        lit.push(t)
-        // a house's lower wall face lights the face row and wall top above it,
-        // which no ray reaches past it (renderer/interior/walls.js)
-        for (let k = 1; k <= (t.seeUp ?? 0); k++) {
-          const a = map[ty - k]?.[tx]
-          if (a && !a.visible) { a.visible = true; a.explored = true; lit.push(a) }
-        }
+      if (ray) { rays++; if (!ray(ty, tx)) continue }
+      light(t, tx, ty)
+    }
+  }
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const t = map[py + dy]?.[px + dx]
+      if (t && !t.visible) light(t, px + dx, py + dy)
+    }
+  }
+  if (far > radius) {
+    // the ring between the radius and `far`, row by row: |dx| up to `outer`,
+    // skipping the |dx| <= `inner` already in the radius (rows past the
+    // radius skip nothing)
+    const f2 = far * far
+    for (let dy = -far; dy <= far; dy++) {
+      const row = map[py + dy]
+      if (!row) continue
+      const outer = Math.floor(Math.sqrt(f2 - dy * dy))
+      const inRadius = dy * dy <= r2
+      const inner = inRadius ? Math.floor(Math.sqrt(r2 - dy * dy)) : 0
+      for (let dx = -outer; dx <= outer; dx++) {
+        if (inRadius && dx === -inner) { dx = inner; continue }
+        const t = row[px + dx]
+        if (!t?.losBeacon || t.visible) continue
+        if (ray) { rays++; if (!ray(py + dy, px + dx)) continue }
+        light(t, px + dx, py + dy)
       }
     }
   }
+  FOV_STATS.rays += rays
   player._fovLitMap = map
   player._fovLit = lit
 }
 
-// FOV only changes when the player's *tile* (player.x/y) or the map changes —
-// not on every sub-tile pixel of movement. Cache the last inputs on the player
-// and skip the full-map clear + raycast when nothing relevant has moved.
+// FOV only changes when the player's *tile* (player.x/y), the map or the
+// sight asked for (radius, rule, far) changes — not on every sub-tile pixel
+// of movement. Cache the last inputs on the player and skip the full-map
+// clear + raycast when nothing relevant has moved.
 // Returns true if it recomputed, false if it reused the cached visibility.
 export function maybeComputeFOV(map, player, radius = 8, opts = {}) {
   const los = opts.los ?? true
-  if (player._fovMap === map && player._fovX === player.x && player._fovY === player.y && player._fovLos === los) {
+  const far = opts.far ?? 0
+  if (player._fovMap === map && player._fovX === player.x && player._fovY === player.y && player._fovLos === los
+    && player._fovRadius === radius && player._fovFar === far) {
     return false
   }
-  computePlayerFOV(map, player, radius, { los })
+  computePlayerFOV(map, player, radius, { los, far })
   player._fovMap = map
   player._fovX = player.x
   player._fovY = player.y
   player._fovLos = los
+  player._fovRadius = radius
+  player._fovFar = far
   return true
 }
 
