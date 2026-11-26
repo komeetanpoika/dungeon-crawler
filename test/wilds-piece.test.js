@@ -777,8 +777,11 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // spawns and doors stayed, and none holds a desert piece's spires. And again when the dunes became
   // a height field of large dunes shaded from corner to corner (desert-art.js duneField, layDunes): the
   // same three, by the shading of their sand (576, 263 and 77 cells) and the plants that follow the
-  // new crests (22, 4 and 4 cells); their spawns and doors stayed.)
-  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': '90d40a416879ba6a', '-3,1': 'f7270fea10aba69d', '4,-2': 'b5448598f2d3c4be', '-5,-5': '33ca9c61e541e030', '6,1': '7598196cb999745e' }
+  // new crests (22, 4 and 4 cells); their spawns and doors stayed. And again when the dunes closed in
+  // with distance from home (desert.js deep, desert-art.js DUNE.deep): the same three lie 3.6, 4.5 and
+  // 6.1 pieces out, in the ramp, and moved by their shading (59, 151 and 96 cells) and one cactus of
+  // 2,3; the lone-slip-corner fix of the same change moved none of them; spawns and doors stayed.)
+  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': 'a70a0017d3a88a61', '-3,1': 'f7270fea10aba69d', '4,-2': 'c6f49faf72d5cb18', '-5,-5': '33ca9c61e541e030', '6,1': 'a4fe92c5c238b8e4' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

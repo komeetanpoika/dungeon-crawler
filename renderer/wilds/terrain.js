@@ -32,7 +32,7 @@ const REACH = 2          // how far a cell's rules look at its neighbours
 // local cells FIELD_LO..FIELD_HI-1: what grows in the desert keeps off its
 // crests out to two cells beyond the builder (a two-tile tree looks one
 // further), and grows thinner within two of one; the shading of the
-// builder's cells looks three beyond it. (An outcrop whose rock lies beyond
+// builder's cells looks four beyond it. (An outcrop whose rock lies beyond
 // it works out its own few cells.)
 const FIELD_LO = -MARGIN - 4, FIELD_HI = PIECE + MARGIN + 4
 // a rule's neighbours may themselves look REACH further; the dune field asks
@@ -660,9 +660,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   // May a dune crest lie on builder cell (bx, by)? Only on the desert's
   // rippled sand with nothing standing on it, neither on a way (a path, a
   // road, a trail, a gate's corridor) nor beside one, nor on a site's ground
-  // or ground kept open. layDunes asks one cell beyond the builder too: that
-  // cell lies in a neighbour's frame, where no deal reaches, so it is what
-  // the frame's own rules make of it. Paths, sites and kept ground lie in the
+  // or ground kept open. layDunes asks two cells beyond the builder too:
+  // those lie in a neighbour's frame, where no deal reaches, so they are what
+  // the frame's own rules make of them. Paths, sites and kept ground lie in the
   // interior, so a cell within MARGIN of a piece edge is answered the same in
   // the piece and in its neighbour's margin.
   const duneOpen = (bx, by) => {
@@ -682,7 +682,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   // hardpan, a shore), and a site's ground or ground kept open. (Where the
   // sand frays into another country, layDunes keeps level by the country
   // itself, which a margin cell at the builder's edge cannot see from its
-  // ground.) layDunes asks up to two cells beyond the builder: a neighbour's
+  // ground.) layDunes asks up to three cells beyond the builder: a neighbour's
   // frame, answered from the frame's own rules (a corridor lane that wears no
   // road or path is the land's own ground).
   const duneFlat = (bx, by) => {

@@ -46,10 +46,13 @@ test('sand never lays a checker', () => {
     for (let y = Y0; y < Y0 + 40; y++) for (let x = X0; x < X0 + 40; x++) assert.ok(isDesert(seed, x, y), `${x},${y} is not desert`)
     const pure = checkers((x, y) => sandSkinAt(seed, x, y), X0, Y0, 40, 40)
     assert.ok(pure.bad / pure.all <= 0.02, `seed ${seed} at ${X0},${Y0}: ${pure.bad} of ${pure.all} windows are a checker`)
-    // and as laid, over the whole piece, among the sand it lays
+    // and as laid, over the whole piece, among the sand it lays (bare, or
+    // shaded level on a dune's slope, which takes the same variant pick)
     const t = built(seed, wx, wy)
-    const laid = checkers((x, y) => { const g = groundOf(t, x, y); return isRippleSkin(g) ? g : null }, 0, 0, PIECE, PIECE)
-    assert.ok(laid.all > 1000, `seed ${seed} piece ${wx},${wy}: only ${laid.all} windows of sand`)
+    const level = g => { const c = isShadeSkin(g) && cornersOf(g); return !!c && c.every(l => l === c[0]) }
+    const laid = checkers((x, y) => { const g = groundOf(t, x, y); return isRippleSkin(g) || level(g) ? g : null }, 0, 0, PIECE, PIECE)
+    // (piece 8,0 lies deep in the desert, mostly on dune slopes: some 970 windows)
+    assert.ok(laid.all > 500, `seed ${seed} piece ${wx},${wy}: only ${laid.all} windows of sand`)
     assert.ok(laid.bad / laid.all <= 0.02, `seed ${seed} piece ${wx},${wy}: ${laid.bad} of ${laid.all} windows laid as a checker`)
   }
 })

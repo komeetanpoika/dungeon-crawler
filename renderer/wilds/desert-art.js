@@ -51,7 +51,7 @@ import { EDGE_SHAPES } from '../terrain/edges.js'
 import { hashInt, noise2 } from './rand.js'
 import { PIECE, biomeSampler } from './layout.js'
 import { CITY } from './city/geometry.js'
-import { DUNE_PREFIX, inGentleRing } from './desert.js'
+import { DUNE_PREFIX, inGentleRing, deep, leastDeep, mostDeep, DEEP } from './desert.js'
 
 // The ripple families: crest lines a*x + b*y = c (mod P) in a tile's pixels,
 // P a whole fraction of 16 so that the lines run on unbroken from tile to
@@ -272,30 +272,54 @@ export function edgeHardpan(b, { X0, Y0, seed, keep = null }) {
 // end) the sum is weak against its weights and the dune dies down there. Down
 // the wind from its brink the ground drops over the slip face (DUNE.slip of
 // the wave on a dune tall enough for a crest, the gentle DUNE.lee on a low
-// swell, steepening over the DUNE.steep of height below DUNE.crest), lies flat
-// for DUNE.flat, and climbs the windward slope again, from a gentle foot,
-// steepest two thirds of the way up and rounding a little towards the brink.
+// swell, steepening over the DUNE.steep of height below the crest height),
+// lies flat for DUNE.flat, and climbs the windward slope again, from a gentle
+// foot, steepest two thirds of the way up and rounding a little towards the
+// brink.
 // The height eases to nothing towards the desert's edge (over DUNE.desert
 // tiles), the gentle ring round home and Kalevanlinna (over DUNE.ease tiles
 // beyond its own margin).
 //
 // A crest cell is a cell on the high side of a wrap (phase at least half) with
 // any of its eight neighbours on the low side (the phase drops by more than
-// half to it), at least DUNE.crest high: the brink of a dune tall enough, one to
-// two cells wide, two where it runs slantwise, and always edge to edge, so no
-// sight line slips between two crest cells that touch only at a corner. Where
+// half to it), as high as a crest needs there (DUNE.crest near home): the
+// brink of a dune tall enough, one to two cells wide, two where it runs
+// slantwise, and always edge to edge, so no sight line slips between two
+// crest cells that touch only at a corner. Where
 // a band would still do so (at a fork, or where it is cut off) the cell
 // between them that lies higher on the wave is filled; where neither may be,
 // the lower of the two crest cells goes. Crests lie only where every tile
 // within DUNE.desert is desert, so the desert's edge stays open, never in the
 // gentle ring round home, and never within DUNE.city of Kalevanlinna's pieces
 // (the city lays its own outskirts).
+//
+// Far from home the dunes close in (desert.js deep, 0 near home to 1 far
+// out): the spacing, the heights, the coherence a dune needs and the height
+// that gives it a crest ramp from the values here to those in DUNE.deep, so
+// that near home the desert is open dune country and deep in it one can get
+// lost. A kernel takes its spacing and height by where it stands (over the
+// stretch of the ramp where every tile it reaches agrees), a tile its
+// coherence and crest height by where it lies: all by world position.
 export const DUNE = {
   lattice: 24, reach: 40, spacing: [22, 34], turn: 15 * Math.PI / 180,
   amp: { freq: 1 / 90, lo: 0.12, hi: 0.45, jitter: 0.4 }, coherence: [0.2, 0.5],
   slip: 0.11, lee: 0.3, steep: 0.06, flat: 0.08,
   crest: 0.35, desert: 4, city: 8, ease: 8,
+  deep: { spacing: [15, 21], amp: { lo: 0, hi: 0.3 }, coherence: [0.08, 0.25], crest: 0.1 },
 }
+const mix = (a, b, t) => t === 0 ? a : a + (b - a) * t
+// How deep a kernel stands, for its spacing and height: it reaches DUNE.reach
+// tiles, so it ramps only where every tile it reaches lies past DEEP.from and
+// is deep wherever every tile it reaches lies past DEEP.to; a tile at depth 0
+// sums near kernels only, one at depth 1 deep ones only.
+const kernelDepth = (cx, cy) => {
+  const r = DUNE.reach / PIECE, d = Math.hypot((cx - PIECE / 2) / PIECE, (cy - PIECE / 2) / PIECE)
+  const t = (d - DEEP.from - r) / (DEEP.to - DEEP.from - 2 * r)
+  return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t)
+}
+// the height that gives a crest at depth t (0 near, 1 deep), and at world tile (X, Y)
+const crestAtDepth = t => mix(DUNE.crest, DUNE.deep.crest, t)
+export const crestHeightAt = (X, Y) => crestAtDepth(deep(X, Y))
 // The light on a slope, as the rise in height per tile along the way the
 // light runs (from the upper left to the lower right): a slope rising `lit`
 // or more is turned to the light and takes level 1, rising `bright` or more
@@ -321,7 +345,11 @@ const smooth = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t)
 // The waves at every tile of the w x h rectangle at (x0, y0): the phase in
 // [0, 1), and the height a dune stands to there (its brink's), 0..1.
 function duneWaves(seed, x0, y0, w, h) {
-  const { lattice: L, reach: R, spacing: [lo, hi], turn, amp: A, coherence: [c0, c1] } = DUNE
+  // (every number read once, so the loops below touch no object)
+  const L = DUNE.lattice, R = DUNE.reach, turn = DUNE.turn, D = DUNE.deep
+  const sLo = DUNE.spacing[0], sHi = DUNE.spacing[1], dsLo = D.spacing[0], dsHi = D.spacing[1]
+  const aFreq = DUNE.amp.freq, aLo = DUNE.amp.lo, aHi = DUNE.amp.hi, aJit = DUNE.amp.jitter, daLo = D.amp.lo, daHi = D.amp.hi
+  const cLo = DUNE.coherence[0], cHi = DUNE.coherence[1], dcLo = D.coherence[0], dcHi = D.coherence[1]
   const n = w * h, re = new Float64Array(n), im = new Float64Array(n), ws = new Float64Array(n), as = new Float64Array(n)
   for (let j = Math.floor((y0 - R) / L); j <= Math.floor((y0 + h + R) / L); j++)
     for (let i = Math.floor((x0 - R) / L); i <= Math.floor((x0 + w + R) / L); i++) {
@@ -330,11 +358,14 @@ function duneWaves(seed, x0, y0, w, h) {
       const ya = Math.max(y0, Math.ceil(cy - R)), yb = Math.min(y0 + h - 1, Math.floor(cy + R))
       if (ya > yb || cx + R < x0 || cx - R > x0 + w - 1) continue
       const wind = windAt(seed, cx, cy) + (2 * hashInt(seed, i, j, 7203) / 4294967296 - 1) * turn
+      // (the kernel's spacing and height by how deep it stands)
+      const t = kernelDepth(cx, cy)
+      const lo = mix(sLo, dsLo, t), hi = mix(sHi, dsHi, t), alo = mix(aLo, daLo, t), ahi = mix(aHi, daHi, t)
       const k = TAU / (lo + (hi - lo) * noise2(seed + 7204, cx, cy, { freq: 1 / 120, octaves: 1 }))
       const kx = Math.cos(wind) * k, ky = Math.sin(wind) * k
       const ph = hashInt(seed, i, j, 7205) / 4294967296 * TAU
-      const tall = Math.max(0, Math.min(1, (noise2(seed + 7206, cx, cy, { freq: A.freq, octaves: 2 }) - A.lo) / (A.hi - A.lo)))
-        * (1 - A.jitter * hashInt(seed, i, j, 7207) / 4294967296)
+      const tall = Math.max(0, Math.min(1, (noise2(seed + 7206, cx, cy, { freq: aFreq, octaves: 2 }) - alo) / (ahi - alo)))
+        * (1 - aJit * hashInt(seed, i, j, 7207) / 4294967296)
       // along a row the wave turns by kx a tile: rotate rather than call cos
       // and sin, always from the row's first tile in the kernel's reach, so a
       // tile's phase and height are the same to the last bit whatever
@@ -354,11 +385,16 @@ function duneWaves(seed, x0, y0, w, h) {
         }
       }
     }
-  const phase = new Float64Array(n), peak = new Float64Array(n)
-  for (let o = 0; o < n; o++) {
+  // (the coherence a dune needs by how deep each tile lies; once for a
+  // rectangle all at one depth)
+  const phase = new Float64Array(n), peak = new Float64Array(n), least = leastDeep(x0, y0, w, h), one = least === mostDeep(x0, y0, w, h)
+  let c0 = mix(cLo, dcLo, least), c1 = mix(cHi, dcHi, least)
+  for (let y = 0, o = 0; y < h; y++) for (let x = 0; x < w; x++, o++) {
     const a = Math.atan2(im[o], re[o]) / TAU
     phase[o] = a < 0 ? a + 1 : a
-    if (ws[o] > 0) peak[o] = as[o] / ws[o] * smooth((Math.hypot(re[o], im[o]) / ws[o] - c0) / (c1 - c0))
+    if (ws[o] === 0) continue
+    if (!one) { const t = deep(x0 + x, y0 + y); c0 = mix(cLo, dcLo, t); c1 = mix(cHi, dcHi, t) }
+    peak[o] = as[o] / ws[o] * smooth((Math.hypot(re[o], im[o]) / ws[o] - c0) / (c1 - c0))
   }
   return { phase, peak }
 }
@@ -367,8 +403,8 @@ function duneWaves(seed, x0, y0, w, h) {
 // `peak`: the slip face from the brink (q = 0, just downwind of it), steeper
 // the taller the dune, then flat sand, then the windward slope rising to the
 // brink (q near 1).
-function profile(q, peak) {
-  const { slip, lee, steep, flat, crest } = DUNE
+function profile(q, peak, crest) {
+  const { slip, lee, steep, flat } = DUNE
   const s = slip + (lee - slip) * (1 - smooth((peak - crest + steep) / steep))
   if (q < s) { const u = 1 - q / s; return u * u }
   if (q < s + flat) return 0
@@ -437,13 +473,17 @@ export function duneField(seed, x0, y0, w, h, { country = null } = {}) {
   if (!ease.some(e => e > 0)) return out
   const { phase: q, peak } = duneWaves(seed, x0 - 2, y0 - 2, pw, h + 4)
   const Q = (x, y) => q[(y + 2) * pw + x + 2]   // x, y from -2
-  const relief = new Float64Array(gw * gh), height = new Float64Array(gw * gh)
+  // (the height that gives a crest, by how deep each tile lies; once for a
+  // rectangle all at one depth)
+  const relief = new Float64Array(gw * gh), height = new Float64Array(gw * gh), crestH = new Float64Array(gw * gh)
+  const least = leastDeep(x0 - 1, y0 - 1, gw, gh), one = least === mostDeep(x0 - 1, y0 - 1, gw, gh), flatH = crestAtDepth(least)
   for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) {
     const o = (y + 2) * pw + x + 2, g = (y + 1) * gw + x + 1
-    relief[g] = peak[o] * profile(q[o], peak[o])
+    crestH[g] = one ? flatH : crestAtDepth(deep(x0 + x, y0 + y))
+    relief[g] = peak[o] * profile(q[o], peak[o], crestH[g])
     height[g] = ease[g] * relief[g]
   }
-  const G = (x, y) => ok[(y + 1) * gw + x + 1] === 1 && height[(y + 1) * gw + x + 1] >= DUNE.crest   // from -1
+  const G = (x, y) => { const g = (y + 1) * gw + x + 1; return ok[g] === 1 && height[g] >= crestH[g] }   // from -1
   const raw = new Uint8Array(gw * gh)
   for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) {
     const c = Q(x, y)
@@ -485,12 +525,12 @@ export const duneHeight = (seed, X, Y) => duneField(seed, X, Y, 1, 1).height[0]
 // tile of builder cell (0, 0). Ground only. Returns how many cells took a crest.
 //
 // Every crest cell of the field for which `open(x, y)` holds takes a crest's
-// ground (`open` is asked of builder cells and of the ring of cells just
+// ground (`open` is asked of builder cells and of the two rings of cells
 // outside: the caller says whether a crest may lie there, on sand, off the
 // ways, the sites and what stands). Every other cell of rippled sand is
 // shaded from its four corners. A corner's level:
 //   - 0 where it touches a cell that must stay level: one `flat(x, y)` names
-//     (other ground, a way, a site; asked of cells up to two beyond the
+//     (other ground, a way, a site; asked of cells up to three beyond the
 //     builder), one beside another country, or a crest cell of the field
 //     not laid;
 //   - on a crest band of the field, 1 if the cells off the band round it lie
@@ -503,18 +543,20 @@ export const duneHeight = (seed, X, Y) => duneField(seed, X, Y, 1, 1).height[0]
 //     down where it would stand more than a level, or two, over a corner one,
 //     or two, away (a low swell's brink, which has no crest to draw it), then
 //     kept within a level of the band's corners and the level ones round it,
-//     whatever they turn out to be.
+//     whatever they turn out to be; and a lone corner of slip face, with no
+//     other beside it along a side, is flat sand (it would draw as a dithered
+//     diamond).
 // So every shaded cell's corners lie a level apart at most, and a crest
 // cell's brink runs from the middle of each side whose corners are 1 and -1:
 // only ever into another crest cell. A crest cell left with no brink across
 // it (level ground beside it smoothed it away) and its corners a level apart
 // is not laid: it is shaded like the sand round it, and hides nothing.
 // `field`, if given, is a duneField result over builder cells from (x0, y0),
-// w wide, holding the cells from three before the builder to three after it;
+// w wide, holding the cells from four before the builder to four after it;
 // else it is worked out here, with `country` as for duneField.
 export function layDunes(b, { X0, Y0, seed, open, flat = null, field = null, country = null }) {
   const { w, h } = b
-  const P = 3
+  const P = 4
   field ??= { ...duneField(seed, X0 - P, Y0 - P, w + 2 * P, h + 2 * P, { country }), x0: -P, y0: -P, w: w + 2 * P }
   const ripple = b.palette.map(n => /^ow_sand_ripple_(\d+)_(\d+)$/.exec(n))
   flat ??= (x, y) => x >= 0 && y >= 0 && x < w && y < h && !ripple[b.ground[y][x]]
@@ -531,11 +573,11 @@ export function layDunes(b, { X0, Y0, seed, open, flat = null, field = null, cou
     }
   }
   if (!any) return 0
-  // The corners, from two before the builder's first to two after its last:
+  // The corners, from three before the builder's first to three after its last:
   // corner (x, y) is the north-west corner of cell (x, y), at
   // (y + V) * VW + x + V; its cells NW, NE, SW, SE at c - CW - 1, c - CW, c - 1, c
   // for c = ci(x, y).
-  const V = 2, VW = w + 1 + 2 * V, VH = h + 1 + 2 * V, VN = VW * VH
+  const V = 3, VW = w + 1 + 2 * V, VH = h + 1 + 2 * V, VN = VW * VH
   const FREE = 9
   const cls = new Int8Array(VN).fill(FREE)   // a band corner's level, or FREE
   const lit = new Int8Array(VN).fill(3)      // a free corner's light level; 3 (above any) on the band
@@ -557,13 +599,13 @@ export function layDunes(b, { X0, Y0, seed, open, flat = null, field = null, cou
       lit[v] = L >= LIGHT.bright ? 2 : L >= LIGHT.lit ? 1 : L <= -LIGHT.shade ? -1 : 0
     }
   }
-  // the cells that must stay level, from two before the builder to two after
+  // the cells that must stay level, from three before the builder to three after
   const level = new Uint8Array(N)
-  for (let y = -2; y < h + 2; y++) {
+  for (let y = -3; y < h + 3; y++) {
     const from = (y - field.y0) * field.w - field.x0
-    for (let x = -2; x < w + 2; x++) if (field.rim[from + x] || flat(x, y)) level[ci(x, y)] = 1
+    for (let x = -3; x < w + 3; x++) if (field.rim[from + x] || flat(x, y)) level[ci(x, y)] = 1
   }
-  for (let y = -1; y <= h + 1; y++) for (let x = -1; x <= w + 1; x++) {
+  for (let y = -2; y <= h + 2; y++) for (let x = -2; x <= w + 2; x++) {
     const se = ci(x, y)
     if (level[se] | level[se - 1] | level[se - CW] | level[se - CW - 1]) marks[(y + V) * VW + x + V] |= 8
   }
@@ -581,12 +623,13 @@ export function layDunes(b, { X0, Y0, seed, open, flat = null, field = null, cou
     }
     rowMin1[i] = m1; rowMin2[i] = m2; rowOr1[i] = o1; rowOr2[i] = o2
   }
-  // the crest cells laid, the builder's and the ring's round it
+  // the crest cells laid, the builder's and the two rings round it
   const laid = new Uint8Array(N)
-  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) if (band[ci(x, y)] && open(x, y)) laid[ci(x, y)] = 1
-  // every corner of the builder's cells
-  const W1 = w + 1, corner = new Int8Array(W1 * (h + 1))
-  for (let y = 0; y <= h; y++) for (let x = 0; x <= w; x++) {
+  for (let y = -2; y <= h + 1; y++) for (let x = -2; x <= w + 1; x++) if (band[ci(x, y)] && open(x, y)) laid[ci(x, y)] = 1
+  // every corner of the builder's cells and the ring of corners round them,
+  // at (y + 1) * W1 + x + 1
+  const W1 = w + 3, ki = (x, y) => (y + 1) * W1 + x + 1, corner = new Int8Array(W1 * (h + 3))
+  for (let y = -1; y <= h + 1; y++) for (let x = -1; x <= w + 1; x++) {
     const v = (y + V) * VW + x + V
     let l
     if (marks[v] & 8) l = 0
@@ -607,24 +650,39 @@ export function layDunes(b, { X0, Y0, seed, open, flat = null, field = null, cou
       const hi = near1 & 2 ? 0 : near2 & 2 || near1 & 12 ? 1 : 2, lo = near1 & 1 ? 0 : -1
       l = l > hi ? hi : l < lo ? lo : l
     }
-    corner[y * W1 + x] = l
+    corner[ki(x, y)] = l
   }
+  // A crest cell whose brink level ground has smoothed away, every side of it
+  // level with the next, hides nothing: it is shaded like the rest. (Decided
+  // for the ring of cells round the builder too, for the corners below.)
+  const crested = new Uint8Array(N)
+  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) {
+    if (!laid[ci(x, y)]) continue
+    const k = ki(x, y), nw = corner[k], ne = corner[k + 1], se = corner[k + W1 + 1], sw = corner[k + W1]
+    if (crosses([nw, ne, se, sw]) || Math.max(nw, ne, se, sw) - Math.min(nw, ne, se, sw) > 1) crested[ci(x, y)] = 1
+  }
+  // A lone corner of slip face (a -1 with no -1 beside it along a side, and
+  // no crest cell drawing round it) would draw as a dithered diamond: it is
+  // flat sand instead. Its cells then span a level at most still: a corner at
+  // -1 in a shaded cell has cell-mates at -1 or 0.
+  const lone = []
+  for (let y = 0; y <= h; y++) for (let x = 0; x <= w; x++) {
+    const k = ki(x, y), se = ci(x, y)
+    if (corner[k] !== -1 || corner[k - 1] === -1 || corner[k + 1] === -1 || corner[k - W1] === -1 || corner[k + W1] === -1) continue
+    if (!(crested[se] | crested[se - 1] | crested[se - CW] | crested[se - CW - 1])) lone.push(k)
+  }
+  for (const k of lone) corner[k] = 0
   // (each cell reads only its own ground, so it is written in place; the
   // palette index of each shading tile is kept by its corners and ripples)
   const shadeIndex = new Map()
   let n = 0
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const k = y * W1 + x, nw = corner[k], ne = corner[k + 1], se = corner[k + W1 + 1], sw = corner[k + W1]
+    const k = ki(x, y), nw = corner[k], ne = corner[k + 1], se = corner[k + W1 + 1], sw = corner[k + W1]
     const g = b.ground[y][x], i = ci(x, y)
-    if (laid[i]) {
-      const c = [nw, ne, se, sw]
-      // (a crest cell whose brink level ground has smoothed away, every side
-      // of it level with the next, hides nothing: it is shaded like the rest)
-      if (crosses(c) || Math.max(nw, ne, se, sw) - Math.min(nw, ne, se, sw) > 1) {
-        b.ground[y][x] = b.skin(duneSkin(c, pick(seed, X0 + x, Y0 + y, 7140, DUNE_VARIANTS)))
-        n++
-        continue
-      }
+    if (crested[i]) {
+      b.ground[y][x] = b.skin(duneSkin([nw, ne, se, sw], pick(seed, X0 + x, Y0 + y, 7140, DUNE_VARIANTS)))
+      n++
+      continue
     }
     const r = ripple[g]
     if (!r || !(nw | ne | se | sw)) continue
