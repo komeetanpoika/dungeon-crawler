@@ -18,6 +18,20 @@
 //                                family o, variant v, a step lighter for each
 //                                cell nearer the crest (l 1..3, 3 beside it)
 //
+// and what grows, lies and stands on it (renderer/wilds/terrain.js lays the
+// plants, debris and outcrops, features.js the spires and cairns), each a
+// see-through tile over the ground:
+//   ow_tree_palm_top, ow_tree_palm   the palm, two cells tall (its crown over its trunk)
+//   ow_cactus_barrel, _pear, _column three cacti beside the pack's ow_cactus
+//   ow_shrub_dry_0..2                a twiggy bush, a sage, a thorn in flower
+//   ow_deco_drygrass_0..2, ow_deco_tumbleweed, ow_deco_bones_0..1,
+//   ow_deco_ribs, ow_deco_pottery_0..1   debris, walked over
+//   ow_outcrop_<m>                   a cell of sandstone outcrop, running on into
+//                                    the next outcrop cell across each side in m
+//                                    (1 N / 2 E / 4 S / 8 W)
+//   ow_landmark_spire_top, ow_landmark_spire, ow_landmark_cairn
+//                                    a sandstone spire two cells tall, and a cairn
+//
 // In the colours of the Kenney tiles beside them: the sand of ow_sand_0
 // (#e6dabf, #d9caa9) with one paler tone for a ripple's lit face, and the
 // clay of ow_hardpan_0/1 (#c66527 and its shades, #914a1e for a crack).
@@ -64,8 +78,8 @@
 //
 // --sheet also writes a contact sheet at 4x: every tile, a field of each
 // ripple family in its mixed variants, a flat of hardpan in sand laid by
-// desert-art.js's own edgeHardpan, and a stretch of desert with its dunes
-// laid by layDunes.
+// desert-art.js's own edgeHardpan, a stretch of desert with its dunes laid by
+// layDunes, and what stands on the sand, over the sand.
 import { writePng } from './png-write.mjs'
 import { EDGE_SHAPES } from '../renderer/terrain/edges.js'
 import { MapBuilder } from '../renderer/terrain/lib.js'
@@ -497,6 +511,580 @@ for (let m = 0; m < 16; m++) for (let v = 0; v < DUNE_VARIANTS; v++) {
 
 console.log(`wrote ${RIPPLES.length * SAND_VARIANTS} sand, ${16 * HARDPAN_VARIANTS} cracked hardpan, ${edges} hardpan edge, ${16 * DUNE_VARIANTS} dune and ${WINDWARD_LEVELS * RIPPLES.length * SAND_VARIANTS} slope tiles`)
 
+// ---- what grows and lies on the sand ------------------------------------------------
+// Drawn on a see-through 16x16 grid of colours (null for nothing). The
+// desert's own props stand in the style of the pack's cactus, dead trees,
+// shrubs and rocks beside them (renderer/assets/tiles/ow_cactus.png and
+// the rest): no outline, three tones, lit from the upper left. The palm is
+// a tree, in the trees' style: Tiny Town's outline (#3f2631) round its
+// leaves and trunk, as the one-cell date palm of the walled well
+// (tools/make-wilds-farm-tiles.mjs, ow_tree_palm_small).
+const grid = () => Array.from({ length: T }, () => new Array(T).fill(null))
+const gridRgba = (g, shadow = null) => {
+  const rgba = new Uint8Array(T * T * 4)
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    const c = g[y][x]
+    if (c) rgba.set([...hex(c), 255], (y * T + x) * 4)
+    else if (shadow?.[y]?.[x]) rgba.set([...hex(SHADOW.col), SHADOW.alpha], (y * T + x) * 4)
+  }
+  return rgba
+}
+// the shadow a thing casts on the sand at its foot: the sand's slip-face tone, half seen
+const SHADOW = { col: '#967c52', alpha: 90 }
+// A shape from a pixel map ('#' in it) shaded by its own outline: lit where
+// the pixel above or to the left is not of the shape, in shade where the
+// pixel below or to the right is not (two deep on the right with `deep`),
+// the base tone between. Painted over what is there already, so a shape laid
+// later stands in front.
+function shadeShape(g, rows, pal, { deep = false } = {}) {
+  const on = (x, y) => rows[y]?.[x] === '#'
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    if (!on(x, y)) continue
+    const lit = !on(x - 1, y) || !on(x, y - 1)
+    const shade = !on(x + 1, y) || !on(x, y + 1) || (deep && !on(x + 2, y))
+    g[y][x] = shade ? pal.shade : lit ? pal.light : pal.base
+  }
+}
+// A shape from an ellipse, shaded like a pixel map.
+const ellipseRows = (cx, cy, rx, ry) => Array.from({ length: T }, (_, y) => Array.from({ length: T }, (_, x) => ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1 ? '#' : '.').join(''))
+// Details laid over a drawing from a pixel map: each character its colour in `pal`, '.' leaves the pixel as it is.
+const detail = (g, rows, pal) => rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') g[y][x] = pal[ch] }))
+// Tiny Town's outline round everything drawn, on the pixels beside it (four ways) that are empty.
+const INK = '#3f2631'
+function outline(g) {
+  const add = []
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    if (g[y][x]) continue
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => g[y + dy]?.[x + dx] && g[y + dy][x + dx] !== INK)) add.push([x, y])
+  }
+  for (const [x, y] of add) g[y][x] = INK
+}
+// A thing that stands alone keeps every outer pixel see-through (`clear`),
+// so it never shows a cut edge; the sides named in `joins` may carry it on.
+function standsAlone(name, g, joins = '') {
+  for (let i = 0; i < T; i++) for (const [side, x, y] of [['N', i, 0], ['S', i, T - 1], ['W', 0, i], ['E', T - 1, i]]) {
+    if (joins.includes(side)) continue
+    if (g[y][x]) throw new Error(`${name}: a stray pixel on its ${side} edge at ${x},${y}`)
+  }
+}
+const drawn = []
+const keep = (name, g, { joins = '', shadow = null } = {}) => { standsAlone(name, g, joins); save(name, gridRgba(g, shadow)); drawn.push(name) }
+// where a thing stands on the sand: a shadow along the row below its foot, to the lower right
+const footShadow = (g, row, from, to) => { const s = grid(); for (let x = from; x <= to; x++) if (!g[row][x]) s[row][x] = 1; return s }
+
+// The pack's own tones: the cactus's greens, the dead trees' wood, the rocks' browns.
+const CACTUS = { shade: '#648c32', base: '#7bad2c', light: '#88bd32' }
+const BLOOM = { p: '#e86a92', P: '#f7b3c5', y: '#ffc90e', r: '#c43a3a', s: '#a7d65a' }
+
+// a barrel cactus: a ribbed ball, a flower on top
+{
+  const g = grid()
+  shadeShape(g, ellipseRows(8, 10.5, 4.6, 4.1), CACTUS, { deep: true })
+  detail(g, [
+    '................', '................', '................', '................', '................',
+    '................',
+    '.......pPp......',
+    '......s.p.......',
+    '.....s.s..s.....',
+    '....s..s...s....',
+    '....s..s...s....',
+    '....s..s...s....',
+    '.....s.s..s.....',
+    '................',
+    '................',
+    '................',
+  ], { ...BLOOM, s: CACTUS.shade })
+  keep('ow_cactus_barrel', g, { shadow: footShadow(g, 15, 6, 12) })
+}
+// a prickly pear: flat pads, one growing out of the next, red fruit on their rims
+{
+  const g = grid()
+  shadeShape(g, ellipseRows(4.5, 8.5, 2.6, 3.3), CACTUS)
+  shadeShape(g, ellipseRows(11.5, 7.5, 2.6, 3.2), CACTUS)
+  shadeShape(g, ellipseRows(7.5, 5.5, 2.4, 3.2), CACTUS)
+  shadeShape(g, ellipseRows(8, 11.5, 3.4, 3.2), CACTUS)
+  detail(g, [
+    '................', '................',
+    '.......r........',
+    '................',
+    '...r.......r....',
+    '................', '................', '................',
+    '.........s......',
+    '......s.........',
+    '...........s....',
+    '................', '................', '................', '................', '................',
+  ], { ...BLOOM, s: CACTUS.light })
+  keep('ow_cactus_pear', g, { shadow: footShadow(g, 15, 6, 11) })
+}
+// a column cactus, taller than the pack's, with one arm
+{
+  const g = grid()
+  shadeShape(g, [
+    '................',
+    '................',
+    '.....###........',
+    '....#####.......',
+    '....#####.......',
+    '....#####..##...',
+    '....#####.####..',
+    '....#####.####..',
+    '....#####.####..',
+    '....##########..',
+    '....#########...',
+    '....#####.......',
+    '....#####.......',
+    '....#####.......',
+    '...#######......',
+    '................',
+  ], CACTUS, { deep: true })
+  detail(g, [
+    '................', '................', '................',
+    '......s.........', '......s.........', '......s.........', '......s.....s...', '......s.....s...',
+    '......s.........', '......s.........', '................', '......s.........', '......s.........',
+    '................', '................', '................',
+  ], { s: CACTUS.shade })
+  detail(g, ['................', '................', '.....y..........'].concat(Array(13).fill('................')), BLOOM)
+  keep('ow_cactus_column', g, { shadow: footShadow(g, 15, 4, 10) })
+}
+
+// The dry shrubs: a twiggy brown bush, a grey-green sage, a bare thorn in flower.
+const DRYBUSH = { shade: '#7e6f3b', base: '#a39255', light: '#c2b277' }
+const SAGE = { shade: '#6f7752', base: '#949c72', light: '#b6bd92' }
+const THORN = { shade: '#7a5634', base: '#997048', light: '#b48355' }
+{
+  const g = grid()
+  shadeShape(g, [
+    '................', '................', '................', '................', '................',
+    '................', '................',
+    '......#...#.....',
+    '...#...#.##..#..',
+    '....#.#####.#...',
+    '..#.#########...',
+    '...##########.#.',
+    '..############..',
+    '...##########...',
+    '....########....',
+    '................',
+  ], DRYBUSH)
+  keep('ow_shrub_dry_0', g, { shadow: footShadow(g, 15, 5, 11) })
+}
+{
+  const g = grid()
+  shadeShape(g, [
+    '................', '................', '................', '................', '................',
+    '................',
+    '......####......',
+    '....########....',
+    '...##########...',
+    '..############..',
+    '..############..',
+    '.##############.',
+    '..############..',
+    '...##########...',
+    '.....######.....',
+    '................',
+  ], SAGE, { deep: true })
+  detail(g, [
+    '................', '................', '................', '................', '................',
+    '................', '................',
+    '.....l...l......',
+    '...l...l....l...',
+    '......d....d....',
+    '....d....d......',
+    '..l....l.....d..',
+    '.....d....d.....',
+    '................', '................', '................',
+  ], { l: SAGE.light, d: SAGE.shade })
+  keep('ow_shrub_dry_1', g, { shadow: footShadow(g, 15, 4, 12) })
+}
+{
+  const g = grid()
+  shadeShape(g, [
+    '................', '................', '................', '................',
+    '..#.........#...',
+    '...#...#...#....',
+    '....#..#..#..#..',
+    '.#...#.#.#..#...',
+    '..#...###..#....',
+    '...#...##.#.....',
+    '....##.####.....',
+    '......####......',
+    '.......##.......',
+    '.......##.......',
+    '......####......',
+    '................',
+  ], THORN)
+  detail(g, [
+    '................', '................', '................',
+    '..y.........y...',
+    '.......y........',
+    '.............y..',
+    '.y..............',
+    '................', '................', '................', '................', '................',
+    '................', '................', '................', '................',
+  ], BLOOM)
+  keep('ow_shrub_dry_2', g, { shadow: footShadow(g, 15, 6, 10) })
+}
+
+// The palm: a crown of fronds over the top of its trunk (ow_tree_palm_top),
+// and the trunk down to its foot (ow_tree_palm); drawn as one picture two
+// cells tall and cut in two, so the trunk runs on across the seam.
+// (the crown is the date palm's, its outline touching the sides as that one's
+// does: an outline, not a cut edge)
+{
+  const P = { a: INK, G: '#84c669', g: '#479f4a', k: '#b48355', K: '#8f673f', o: '#c66527' }
+  const top = grid(), foot = grid()
+  detail(top, [
+    '................',
+    '...aaa....aaa...',
+    '..aGGGa..aGGGa..',
+    '.aGGgGGaaGGgGGa.',
+    'aGGgaaGGGGaagGGa',
+    'aGga.aGGGGa.agGa',
+    'aga.aGGggGGa.aga',
+    '.a.aGGgaagGGa.a.',
+    '..aGGga..agGGa..',
+    '..aGga.kK.agGa..',
+    '..aga.okKo.aga..',
+    '...a..oKko..a...',
+    '......akKa......',
+    '......aKKa......',
+    '......akKa......',
+    '......akKa......',
+  ], P)
+  detail(foot, [
+    '......aKKa......',
+    '......akKa......',
+    '......akKa......',
+    '.....akKKa......',
+    '.....akKa.......',
+    '.....aKKa.......',
+    '.....akKa.......',
+    '.....akKa.......',
+    '....akKKa.......',
+    '....akKa........',
+    '....aKKa........',
+    '....akKa........',
+    '...akkKKa.......',
+    '...aaaaaa.......',
+    '................',
+    '................',
+  ], P)
+  const shadow = grid()
+  for (const x of [9, 10, 11]) shadow[13][x] = 1
+  keep('ow_tree_palm_top', top, { joins: 'SWE' })
+  keep('ow_tree_palm', foot, { joins: 'N', shadow })
+}
+
+// ---- debris on the sand, walked over ------------------------------------------------
+const STRAW = { d: '#8c7238', s: '#b39550', l: '#dcc684' }
+// bleached white, whiter than the sand, with the skull's grey in its shade (ow_deco_skull)
+const BONE = { l: '#fbf9f3', b: '#ece8de', s: '#a8a08c', d: '#7f7663' }
+const POT = { l: '#e39a5e', b: '#c66527', s: '#9e4d1c', d: '#7a3812', D: '#3f1d0b' }
+const DRIFT = { a: SAND.shade, A: '#cbb88f' }
+// a tuft of dry grass: blades fanning out of a dark heart
+const TUFT = ['l..l..l', '.l.s.l.', '.sl.ls.', '..sds..', '.ddsdd.']
+const tufts = (spots, name) => {
+  const g = grid()
+  for (const [x0, y0, flip] of spots) TUFT.forEach((r, dy) => [...(flip ? [...r].reverse().join('') : r)].forEach((ch, dx) => { if (ch !== '.') g[y0 + dy][x0 + dx] = STRAW[ch] }))
+  keep(name, g)
+}
+tufts([[1, 2, false], [8, 9, true]], 'ow_deco_drygrass_0')
+tufts([[7, 1, true], [1, 8, false], [8, 10, false]], 'ow_deco_drygrass_1')
+tufts([[4, 6, false]], 'ow_deco_drygrass_2')
+// tumbleweed: a loose ball of dry twigs, lit on its upper left
+{
+  const g = grid()
+  detail(g, [
+    '................',
+    '................',
+    '................',
+    '.....lblbl......',
+    '...ll.b..lbb....',
+    '..l..bl.lb..b...',
+    '..l.b..lb..b.s..',
+    '.l..b.bl.bb..s..',
+    '.l.b..lb.b..bs..',
+    '.lb..b..bb.bs.s.',
+    '..b.b.bb..bs..s.',
+    '..bs..b.bbs..s..',
+    '...sbb..sb..ss..',
+    '.....sssss.s....',
+    '................',
+    '................',
+  ], { l: '#c49a62', b: '#a07a4a', s: '#7d5a36' })
+  keep('ow_deco_tumbleweed', g, { shadow: footShadow(g, 14, 5, 12) })
+}
+// bleached bones: a long bone and a short one, half in the sand
+{
+  const g = grid()
+  detail(g, [
+    '................',
+    '................',
+    '..ll............',
+    '.lbbl...........',
+    '..lbbb..........',
+    '...sbbb.........',
+    '....sbbb........',
+    '.....sbbb.......',
+    '......sbbb......',
+    '.......sbbl.....',
+    '........sbbl....',
+    '.lbbbl.lbbbbl...',
+    '.sbbbs..sdsAa...',
+    '..aAa....aAa....',
+    '................',
+    '................',
+  ], { ...BONE, ...DRIFT })
+  keep('ow_deco_bones_0', g)
+}
+{
+  const g = grid()
+  detail(g, [
+    '................',
+    '................',
+    '................',
+    '..lbl...........',
+    '..sbs.....lbbl..',
+    '...b......sbbs..',
+    '...b............',
+    '..lbl...........',
+    '..sds.......l...',
+    '.aAa.......lbl..',
+    '...........sbs..',
+    '.....lbbbl..s...',
+    '.....sbbbs......',
+    '......aAAa......',
+    '................',
+    '................',
+  ], { ...BONE, ...DRIFT })
+  keep('ow_deco_bones_1', g)
+}
+// a ribcage, the ribs curving up out of the sand from a buried spine
+{
+  const g = grid()
+  detail(g, [
+    '................',
+    '................',
+    '................',
+    '....lb...lb.....',
+    '...lb..lb..lb...',
+    '..lb..lb..lb.b..',
+    '..b..lb..lb..bs.',
+    '..b..b...b...bs.',
+    '..bs.bs..bs..bs.',
+    '..bs.bs..bs..bs.',
+    '.aAsaAsaaAsaaAsa',
+    '.AaaAaaAAaaAAaaA',
+    '..AaaaAaaaaAaaA.',
+    '................',
+    '................',
+    '................',
+  ], { ...BONE, ...DRIFT })
+  // (the drift runs to the tile's sides only inside: a row the tile does not
+  // join keeps its outer pixels clear)
+  for (let y = 0; y < T; y++) { g[y][0] = null; g[y][T - 1] = null }
+  keep('ow_deco_ribs', g)
+}
+// broken pottery: a jar on its side with its neck snapped off, half buried; and shards
+{
+  const g = grid()
+  detail(g, [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '.......lllbDD...',
+    '.....llbbbbDDs..',
+    '....lbbbbbbbbs..',
+    '..dd.lbbbbbbbss.',
+    '.dDDdlbbbbbbbbs.',
+    '.dDDdbbbbbbbbss.',
+    '..ddsbbbbbbbss..',
+    '.aAAaaAAAaaAAa..',
+    '..aAaaaaAaaa....',
+    '................',
+    '................',
+  ], { ...POT, ...DRIFT })
+  keep('ow_deco_pottery_0', g)
+}
+{
+  const g = grid()
+  detail(g, [
+    '................',
+    '................',
+    '................',
+    '..lb............',
+    '..bbs.....lbb...',
+    '...ss......bbs..',
+    '............s...',
+    '................',
+    '......lb........',
+    '.....lbbs.......',
+    '.....bbbs.......',
+    '......ss...lbs..',
+    '...........sd...',
+    '................',
+    '................',
+    '................',
+  ], POT)
+  keep('ow_deco_pottery_1', g)
+}
+
+// ---- sandstone: the outcrops, the spires and the cairns --------------------------------
+// One sandstone in every piece of it, redder and darker than the sand, so a
+// rock reads against the ground round it and a spire against the dark of
+// land not yet seen: lit along its edges towards the light (the upper left),
+// in shade along the others, its south face banded where the layers show.
+const STONE = { rim: '#e3b98a', top: '#cc9a68', body: '#b98352', face: '#a06a42', band: '#8b5838', shade: '#7c4c30', foot: '#5f3822', crack: '#a8744a' }
+
+// An outcrop cell, ow_outcrop_<m>: m the sides 1 N / 2 E / 4 S / 8 W where
+// the rock runs on into the next outcrop cell, to the border there; on the
+// others it ends inside the tile, rounded where two such sides meet. On a
+// side it runs on, the border pixels are the same in every tile that runs
+// on there (an inset at a border is the same in every tile, the bands lie
+// in the same rows), so cells of one outcrop meet without a seam. Its top is
+// the rock's flat top; where it ends to the south, the face drops to its foot
+// and casts a shadow on the sand below.
+const INSET = { N: new Array(T).fill(1), S: 2, W: [1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 2, 2, 1, 1], E: [1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1] }
+const FACE_FROM = 6   // where a south face begins, in every tile that ends to the south
+const BANDS = [8, 11]
+const ROUND = 3       // how far a corner where two ends meet is rounded off
+const outcropSkin = m => `ow_outcrop_${m}`
+function outcropTile(m) {
+  const g = grid(), shadow = grid()
+  const open = { N: !(m & 1), E: !(m & 2), S: !(m & 4), W: !(m & 8) }
+  const top = x => open.N ? INSET.N[x] : 0
+  const bottom = open.S ? T - 1 - INSET.S : T - 1   // the foot's row
+  const left = y => open.W ? INSET.W[y] : 0
+  const right = y => open.E ? T - 1 - INSET.E[y] : T - 1
+  const inside = (x, y) => {
+    if (x < 0 || y < 0 || x >= T || y >= T) return false
+    if (y < top(x) || y > bottom || x < left(y) || x > right(y)) return false
+    // a corner where two ends meet is rounded off
+    const dl = x - left(y), dr = right(y) - x, dt = y - top(x), db = bottom - y
+    if (open.N && open.W && dl + dt < ROUND) return false
+    if (open.N && open.E && dr + dt < ROUND) return false
+    if (open.S && open.W && dl + db < ROUND) return false
+    if (open.S && open.E && dr + db < ROUND) return false
+    return true
+  }
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    if (!inside(x, y)) continue
+    // how it is lit: an end towards the light catches it, the others are in shade
+    const edgeN = open.N && !inside(x, y - 1), edgeW = open.W && !inside(x - 1, y)
+    const edgeS = open.S && !inside(x, y + 1), edgeE = open.E && !inside(x + 1, y), nearE = open.E && !inside(x + 2, y)
+    const face = open.S && y >= FACE_FROM
+    let c = face ? STONE.face : STONE.top
+    if (face && BANDS.includes(y)) c = STONE.band
+    if (face && y === FACE_FROM) c = STONE.body   // the lip of the face
+    if (nearE) c = face ? STONE.band : STONE.body
+    if (edgeE) c = face ? STONE.foot : STONE.shade
+    if (edgeW) c = face ? STONE.body : STONE.rim
+    if (edgeN) c = STONE.rim
+    if (edgeS) c = STONE.foot
+    g[y][x] = c
+  }
+  // grit and a few cracks on the top, and the odd crack down the face, kept
+  // two pixels from every border
+  const lowest = open.S ? FACE_FROM - 2 : T - 3
+  for (let k = 0; k < 7; k++) {
+    const x = 2 + Math.floor(unit(m, 303, k) * 12), y = 2 + Math.floor(unit(m, 304, k) * (lowest - 1))
+    if (g[y][x] === STONE.top) g[y][x] = STONE.rim
+  }
+  for (let k = 0; k < 4; k++) {
+    const x = 2 + Math.floor(unit(m, 300, k) * 11), y = 2 + Math.floor(unit(m, 301, k) * (lowest - 1))
+    if (g[y][x] === STONE.top && g[y][x + 1] === STONE.top) { g[y][x] = STONE.crack; if (unit(m, 302, k) < 0.6) g[y][x + 1] = STONE.crack }
+  }
+  if (open.S) for (let k = 0; k < 2; k++) {
+    const x = 3 + Math.floor(unit(m, 305, k) * 10)
+    for (let y = FACE_FROM + 2; y < bottom - 1; y++) if (g[y][x] === STONE.face || g[y][x] === STONE.band) g[y][x] = unit(m, 306, k, y) < 0.7 ? STONE.band : STONE.face
+  }
+  // its shadow on the sand below the foot, a pixel towards the lower right
+  // (on to the border where the next cell's foot carries it on, short of it where the rock ends)
+  if (open.S) for (let x = 0; x < T; x++) {
+    const under = x > 0 ? g[bottom][x - 1] : !open.W && g[bottom][0]
+    if (under && (x < T - 1 || !open.E)) shadow[bottom + 1][x] = 1
+  }
+  const joins = (m & 1 ? 'N' : '') + (m & 2 ? 'E' : '') + (m & 4 ? 'S' : '') + (m & 8 ? 'W' : '')
+  return { g, shadow, joins }
+}
+// On a side two outcrop cells share, both draw the same border pixels.
+const outcropBorders = new Map()
+for (let m = 0; m < 16; m++) {
+  const { g, shadow, joins } = outcropTile(m)
+  for (const [bit, side, at] of [[1, 'N', i => g[0][i]], [2, 'E', i => g[i][T - 1]], [4, 'S', i => g[T - 1][i]], [8, 'W', i => g[i][0]]]) {
+    if (!(m & bit)) continue
+    // what the next cell across this side draws on its own border there
+    const line = Array.from({ length: T }, (_, i) => at(i) ?? '-').join(' ')
+    const key = `${side}:${(m & ~bit) & (side === 'N' || side === 'S' ? 10 : 5)}`
+    const was = outcropBorders.get(key)
+    if (was === undefined) outcropBorders.set(key, { line, name: outcropSkin(m) })
+    else if (was.line !== line) throw new Error(`${outcropSkin(m)} draws side ${side} unlike ${was.name}:\n  ${line}\n  ${was.line}`)
+  }
+  keep(outcropSkin(m), g, { joins, shadow })
+}
+
+// A spire of sandstone two cells tall (ow_landmark_spire_top over
+// ow_landmark_spire): a column under a cap of harder rock, standing on the
+// heap of what has fallen from it, its layers showing in bands; drawn as one
+// picture and cut in two. A cairn (ow_landmark_cairn): stones piled in a cell.
+{
+  const S = { T: STONE.top, R: STONE.rim, B: STONE.body, D: STONE.band, S: STONE.shade, F: STONE.foot, u: STONE.crack, f: STONE.face }
+  const top = grid(), foot = grid()
+  detail(top, [
+    '................',
+    '................',
+    '.....RTTTTT.....',
+    '....RTTTTTTS....',
+    '....fFFFFFFF....',
+    '......FBBSF.....',
+    '......RBBSS.....',
+    '......RBBBS.....',
+    '......RDDDS.....',
+    '......RBBBS.....',
+    '......RBBBS.....',
+    '.....RRBBBS.....',
+    '.....RBDDBSS....',
+    '.....RBBBBBS....',
+    '.....RBBBBBS....',
+    '.....RBBBBBS....',
+  ], S)
+  detail(foot, [
+    '.....RBDDDBS....',
+    '.....RBBBBBS....',
+    '....RRBBBBBSS...',
+    '....RBBBBBBBS...',
+    '....RBDDDDBBS...',
+    '....RBBBBBBBS...',
+    '...RRuBBBBBuSS..',
+    '...RBBuBBBuBBS..',
+    '..RRBuBBuBBBuSS.',
+    '..RBBBBuBBuBBBS.',
+    '.RRuBBuBBBBuBBS.',
+    '.RBBuBBBuBBBuBS.',
+    '.fFFFFFFFFFFFFF.',
+    '................',
+    '................',
+    '................',
+  ], S)
+  const shadow = grid()
+  for (let x = 3; x <= 14; x++) shadow[13][x] = 1
+  keep('ow_landmark_spire_top', top, { joins: 'S' })
+  keep('ow_landmark_spire', foot, { joins: 'N', shadow })
+}
+{
+  const g = grid()
+  const CAIRN = { shade: '#6f675e', base: '#9a9184', light: '#c4bcae' }
+  shadeShape(g, ellipseRows(8, 12.6, 5.2, 2.4), CAIRN, { deep: true })
+  shadeShape(g, ellipseRows(7.6, 9.6, 3.9, 2.0), CAIRN, { deep: true })
+  shadeShape(g, ellipseRows(8.1, 6.9, 2.8, 1.8), CAIRN)
+  shadeShape(g, ellipseRows(7.8, 4.5, 1.8, 1.4), CAIRN)
+  keep('ow_landmark_cairn', g, { shadow: footShadow(g, 15, 4, 13) })
+}
+console.log(`wrote ${drawn.length} tiles of what grows, lies and stands in the desert`)
+
 // ---- the contact sheet ------------------------------------------------------------
 const sheetAt = process.argv.indexOf('--sheet')
 if (sheetAt >= 0) {
@@ -544,7 +1132,9 @@ if (sheetAt >= 0) {
   for (let y = 0; y < D.h; y++) for (let x = 0; x < D.w; x++) d.ground[y][x] = d.skin(sandSkinAt(7, D.X0 + x, D.Y0 + y))
   layDunes(d, { X0: D.X0, Y0: D.Y0, seed: 7, open: () => true })
   grid(d.ground.map(r => r.map(i => d.palette[i])))
-  cy += D.h
+  cy += D.h + 0.5
+  // what stands on the sand, twelve a row (a two-cell thing's top and foot side by side)
+  for (let i = 0; i < drawn.length; i += 12) row(drawn.slice(i, i + 12))
   const W = Math.ceil(Math.max(...blocks.map(b => b.x + b.cells[0].length))) * T * Z + GAP * 2
   const H = Math.ceil(cy) * T * Z + GAP * 2
   const px = new Uint8Array(W * H * 4)
@@ -553,10 +1143,12 @@ if (sheetAt >= 0) {
     if (!name) return
     const src = tiles.get(name)
     if (!src) throw new Error(`no tile ${name} for the sheet`)
+    // (a see-through tile over the sand)
+    const under = tiles.get(rippleSkin(2, 0))
     const ox = GAP + Math.round((blk.x + tx) * T * Z), oy = GAP + Math.round((blk.y + ty) * T * Z)
     for (let y = 0; y < T * Z; y++) for (let x = 0; x < T * Z; x++) {
-      const s = (((y / Z) | 0) * T + ((x / Z) | 0)) * 4
-      px.set(src.subarray(s, s + 4), ((oy + y) * W + ox + x) * 4)
+      const s = (((y / Z) | 0) * T + ((x / Z) | 0)) * 4, a = src[s + 3] / 255
+      px.set([0, 1, 2].map(k => Math.round(under[s + k] * (1 - a) + src[s + k] * a)).concat(255), ((oy + y) * W + ox + x) * 4)
     }
   }))
   writePng(out, W, H, px)

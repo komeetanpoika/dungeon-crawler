@@ -11,6 +11,12 @@ import { biomeAt } from './layout.js'
 
 export const DUNE_PREFIX = 'ow_dune_'
 export const BEACON_PREFIX = 'ow_landmark_'
+// The desert's tall things to steer by (features.js stands one to three in
+// every desert piece; tools/make-wilds-desert-tiles.mjs draws them): a
+// sandstone spire two cells tall, its top over its foot, and a cairn of one.
+export const SPIRE = [`${BEACON_PREFIX}spire_top`, `${BEACON_PREFIX}spire`]
+export const CAIRN = `${BEACON_PREFIX}cairn`
+export const DESERT_LANDMARKS = [...SPIRE, CAIRN]
 
 // The hero's sight radius in tiles: `base` anywhere out of doors, `desert`
 // in desert country, and in a full sandstorm `storm`, or `stormVillage`

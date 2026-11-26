@@ -7,8 +7,9 @@
 // trail from each to the main thing, then stamp the structures and set the
 // signpost and the milestones by the roads. A structure stands on a path only on its own
 // site's ground (the opened pad, a tale's circles: terrain.js refuses it
-// anywhere else), where there is room to walk round it; last of all the
-// dressing that still blocks a way is taken up.
+// anywhere else), where there is room to walk round it; then the dressing
+// that still blocks a way is taken up, and the packs are posted; last of all,
+// in the desert, its spires and cairns stand on what open ground is left.
 //
 // A piece with a road edge (roads.js roadSides) is laid round its roads. A
 // village's and a tale's place's roads run to its hub. Anywhere else the
@@ -24,8 +25,11 @@ import { makeSites, layoutTale, wayCells, TALE_PAD } from './sites.js'
 import { INN_PAD } from './inn.js'
 import { roadSides, pieceClass, townsAlong, roadsFrom, roadLine, SIDE_WORDS } from './roads.js'
 import { ROAD_WIDTH, roadLane0 } from './terrain.js'
-import { inGentleRing } from './desert.js'
+import { inGentleRing, SPIRE, CAIRN } from './desert.js'
 
+// How many spires and cairns a desert piece holds, at least how far apart,
+// and the share of them that are spires (the rest are cairns).
+const LANDMARKS = { least: 1, most: 3, apart: 16, spires: 0.65 }
 const PAD = { village: 12, ring: 6, cave: 5, camp: 6, boss: 7, ruin: 8, landmark: 7,
   farmstead: 10, orchard: 8, mill: 7, peat: 7, fisher: 8, fold: 7, quarry: 7, well: 6, field: 6,
   rest: 5, shrine: 5, inn: INN_PAD, tower: 8 }
@@ -1083,5 +1087,58 @@ export function placeFeatures(t, piece) {
     const at = freeSpot(mx, my, pad - 1, pad + 2) ?? piece.spawnPoint
     piece.small.push({ kind: 'chest', x: at.x, y: at.y })
     if (!taken.has(`${at.x},${at.y}`)) spawn({ kind: 'chest', x: at.x, y: at.y })
+  }
+
+  // the desert's spires and cairns, last of all
+  if (piece.biome === 'desert' && !inGentleRing(wx, wy)) standLandmarks(t, taken)
+}
+
+// ---- the desert's spires and cairns -------------------------------------------
+// LANDMARKS.least to LANDMARKS.most of them in a desert piece out of the
+// gentle ring: tall things seen over the dunes and from afar (piece.js
+// cellOf flags them losBeacon), to steer by. Each stands on the desert's
+// open ground, off a dune's crest, with open ground all round it (off every
+// way, site and pad, and nothing held there: `taken`, placeFeatures's
+// "x,y" keys), so it shuts nothing in and stands clear of what the piece is
+// for; LANDMARKS.apart from the next. A spire's top stands over its foot.
+// Where, and spire or cairn, by a hash, so no draw of the piece's rng is
+// spent; and last, so nothing else of the piece moves for them. (A function
+// of its own: its loops run hot, and placeFeatures is too big to be
+// compiled well.)
+function standLandmarks(t, taken) {
+  const { seed, wx, wy, deal } = t
+  const N = PIECE
+  const held = new Uint8Array(N * N)
+  for (const k of taken) { const [x, y] = k.split(',').map(Number); if (x >= 0 && y >= 0 && x < N && y < N) held[y * N + x] = 1 }
+  const open = new Uint8Array(N * N)
+  for (let y = FRAME; y < N - FRAME; y++) for (let x = FRAME; x < N - FRAME; x++)
+    open[y * N + x] = t.free(x, y) && !held[y * N + x] && !t.onPath(x, y) && !t.onSite(x, y) && !t.keptOpen(x, y) ? 1 : 0
+  // each cell that may hold a foot (x, y), its top at (x, y - 1), with its
+  // hash: open ground round both, both in the desert and off a crest (every
+  // other cell each way is looked at: a landmark has room enough)
+  const spots = new Float64Array(N * N).fill(2)
+  for (let y = FRAME + 2; y < N - FRAME - 1; y += 2) for (let x = FRAME + 1; x < N - FRAME - 1; x += 2) {
+    let clear = true
+    for (let dy = -2; dy <= 1 && clear; dy++) for (let dx = -1; dx <= 1; dx++) if (!open[(y + dy) * N + x + dx]) { clear = false; break }
+    if (!clear || t.biome(x, y) !== 'desert' || t.biome(x, y - 1) !== 'desert' || t.onCrest(x, y) || t.onCrest(x, y - 1)) continue
+    spots[y * N + x] = hash(seed, wx * PIECE + x, wy * PIECE + y, 730 + deal)
+  }
+  // the lowest hash first, then the lowest far enough from those stood
+  const want = LANDMARKS.least + Math.floor(hash(seed, wx, wy, 720 + deal) * (LANDMARKS.most - LANDMARKS.least + 1))
+  const stood = []
+  const apart = (x, y) => { for (const p of stood) if (Math.hypot(p.x - x, p.y - y) < LANDMARKS.apart) return false; return true }
+  while (stood.length < want) {
+    let best = -1
+    for (let i = 0; i < N * N; i++) {
+      if (spots[i] > 1 || (best >= 0 && spots[i] >= spots[best])) continue
+      if (apart(i % N, (i / N) | 0)) best = i
+    }
+    if (best < 0) break
+    const x = best % N, y = (best / N) | 0
+    stood.push({ x, y })
+    if (hash(seed, wx * PIECE + x, wy * PIECE + y, 740 + deal) < LANDMARKS.spires) {
+      t.setProp(x, y - 1, SPIRE[0])
+      t.setProp(x, y, SPIRE[1])
+    } else t.setProp(x, y, CAIRN)
   }
 }

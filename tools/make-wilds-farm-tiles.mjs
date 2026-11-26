@@ -4,7 +4,8 @@
 //   ow_prop_peat_0/1         stacked sods of cut peat drying
 //   ow_deco_peat             the cut face of a peat bank, walked on
 //   ow_prop_nets_l/r         nets hung to dry between two posts (the fish rack's posts and line)
-//   ow_tree_palm             a date palm
+//   ow_tree_palm_small       a date palm, one cell tall (the desert's tall palm is
+//                            tools/make-wilds-desert-tiles.mjs's)
 //   ow_prop_wall_sand        a block of mud-brick wall, the same tile all round a walled garden
 //   the windmill, 3 x 4 tiles in the house kit's two rows of roof over wall:
 //     ow_roof_mill_l/m/r, ow_roof_mill_el/em/er    its sails and cap
@@ -181,7 +182,7 @@ tile('ow_prop_nets_l', NETS_L, NETS)
 tile('ow_prop_nets_r', mirror(NETS_L), NETS)
 
 // ---- the date palm: G leaf, g its shade, k trunk, K its rings, o dates ----
-tile('ow_tree_palm', [
+tile('ow_tree_palm_small', [
   '................',
   '..aaaa....aaaa..',
   '.aGGGGa..aGGGGa.',

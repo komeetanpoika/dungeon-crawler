@@ -38,7 +38,7 @@ const VILLAGE_PAD = 12   // the ground a village is built on (features.js PAD.vi
 const HAY = ['ow_prop_hay_0', 'ow_prop_hay_1']
 const PEAT = ['ow_prop_peat_0', 'ow_prop_peat_1']
 const NETS = ['ow_prop_nets_l', 'ow_prop_nets_r'], RACK = ['ow_prop_fishrack_l', 'ow_prop_fishrack_r']
-const PALM = 'ow_tree_palm', MUD_WALL = 'ow_prop_wall_sand', CUT_PEAT = 'ow_deco_peat'
+const PALM = 'ow_tree_palm_small', MUD_WALL = 'ow_prop_wall_sand', CUT_PEAT = 'ow_deco_peat'
 const CUT_STONE = ['ow_ruin_stub_0', 'ow_ruin_stub_1']   // the old stones' blocks (OLD_STONES), here newly cut
 // The windmill, row by row from the tips of its sails: two rows of roof (its
 // cap and sails) over two of tower, its door in the middle of the lowest.

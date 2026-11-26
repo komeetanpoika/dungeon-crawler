@@ -9,11 +9,15 @@ import {
   windAt, sandSkinAt, SAND_SKINS, HARDPAN_SKINS, HARDPAN_EDGES, DESERT_SKINS, RIPPLES,
   isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, isDuneSkin, isWindwardSkin, setDesertDress, desertDress, WIND,
 } from '../renderer/wilds/desert-art.js'
-import { makeTerrain, TERRAIN_SKINS } from '../renderer/wilds/terrain.js'
-import { PIECE, MARGIN } from '../renderer/wilds/layout.js'
+import { makeTerrain, TERRAIN_SKINS, WILDS_SKINS, DESERT_FLORA, DESERT_DECO, OUTCROP_SKINS, isOutcropSkin } from '../renderer/wilds/terrain.js'
+import { PIECE, MARGIN, pieceBiome, pieceKey, tierAt, lootDepthFor } from '../renderer/wilds/layout.js'
 import { hashInt } from '../renderer/wilds/rand.js'
-import { isDesert } from '../renderer/wilds/desert.js'
-import { classOf, CLASS } from '../renderer/wilds/map.js'
+import { isDesert, inGentleRing, BEACON_PREFIX, DESERT_LANDMARKS } from '../renderer/wilds/desert.js'
+import { classOf, CLASS, CLASSES, MAP_COLOURS } from '../renderer/wilds/map.js'
+import { generatePiece, cellOf } from '../renderer/wilds/piece.js'
+import { placeFeatures } from '../renderer/wilds/features.js'
+import { pieceClass } from '../renderer/wilds/roads.js'
+import { TILE } from '../renderer/systems/entities.js'
 
 const TILES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../renderer/assets/tiles')
 const built = (seed, wx, wy, deal = 0) => { const t = makeTerrain(seed, wx, wy, deal); t.finish(); return t }
@@ -235,4 +239,179 @@ test('nothing inside or on Kalevanlinna\'s walls, nor its masonry, changes with 
   assert.ok(walls > 10000, `only ${walls} cells inside and on the walls`)
   // (the case this holds: masonry standing on hardpan)
   assert.ok(onHardpan > 10, `only ${onHardpan} wall cells stand on hardpan`)
+})
+
+// ---- what grows and lies in the desert, its outcrops, spires and cairns ---------------
+// (terrain.js lays the plants, debris and outcrops; features.js the spires and cairns)
+const NEW_GROWTH = /^ow_(tree_palm|cactus_|shrub_dry_|deco_(drygrass|tumbleweed|bones|ribs|pottery))/
+const SEEDS = [7, 42, 1]
+// every desert piece within six pieces of home
+const desertPieces = seed => {
+  const out = []
+  for (let wy = -6; wy <= 6; wy++) for (let wx = -6; wx <= 6; wx++) if (pieceBiome(seed, wx, wy) === 'desert') out.push({ wx, wy })
+  return out
+}
+// A piece as piece.js makes it, with its terrain kept, so a test can ask what
+// is a path or a site's ground; and the game cells piece.js makes of it.
+const pieceMemo = new Map()
+function withTerrain(seed, wx, wy, deal = 0) {
+  const key = `${seed}:${wx},${wy}:${deal}`
+  if (pieceMemo.has(key)) return pieceMemo.get(key)
+  const t = makeTerrain(seed, wx, wy, deal)
+  const tier = tierAt(wx, wy)
+  const piece = {
+    key: pieceKey(wx, wy), wx, wy, deal, tier, biome: pieceBiome(seed, wx, wy), cls: pieceClass(seed, wx, wy), road: null, coach: null,
+    main: null, small: [], packs: [], tale: null, points: [], villageTale: null, villagePoints: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
+    spawnPoint: null, gates: t.gates, lootDepth: lootDepthFor(tier),
+  }
+  placeFeatures(t, piece)
+  t.finish()
+  const g = generatePiece(seed, wx, wy, deal)
+  const out = { t, piece, cells: g.cells, spawnPoint: g.spawnPoint, at: `seed ${seed} piece ${wx},${wy}` }
+  pieceMemo.set(key, out)
+  return out
+}
+const landmarkCells = cells => {
+  const out = []
+  for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) if (cells[y][x].overlay?.startsWith(BEACON_PREFIX)) out.push({ x, y, name: cells[y][x].overlay })
+  return out
+}
+const AROUND8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]
+
+test('every new desert tile exists, and behaves by its name', () => {
+  const names = new Set(WILDS_SKINS)
+  const fresh = [...DESERT_FLORA.filter(n => NEW_GROWTH.test(n)), ...DESERT_DECO, ...OUTCROP_SKINS, ...DESERT_LANDMARKS]
+  assert.ok(DESERT_FLORA.filter(n => n.startsWith('ow_cactus')).length >= 4, 'three or four cacti')
+  assert.ok(DESERT_FLORA.filter(n => n.startsWith('ow_shrub_dry_')).length >= 2, 'two or three dry shrubs')
+  assert.ok(DESERT_FLORA.includes('ow_tree_palm_top') && DESERT_FLORA.includes('ow_tree_palm'), 'the palm, two cells tall')
+  assert.equal(OUTCROP_SKINS.length, 16)
+  for (const n of fresh) {
+    assert.ok(names.has(n), `${n} is not in WILDS_SKINS`)
+    assert.ok(fs.existsSync(path.join(TILES, n + '.png')), `no tile art for ${n}`)
+    assert.ok(!n.endsWith('_d'), `${n} ends in _d`)
+  }
+  // a plant blocks the way and is shallow cover; debris is walked on; an
+  // outcrop is solid rock to sight; a landmark is seen over dunes
+  for (const n of DESERT_FLORA) assert.ok(cellOf('ow_sand_0', n, false).losSoft, `${n} is not shallow cover`)
+  for (const n of DESERT_DECO) assert.ok(n.startsWith('ow_deco_'), `${n} is not walked on`)
+  for (const n of OUTCROP_SKINS) {
+    const c = cellOf('ow_sand_0', n, false)
+    assert.ok(isOutcropSkin(n) && !c.losClear && !c.losSoft && !c.losTall && !c.losBeacon, `${n} is not opaque`)
+  }
+  for (const n of DESERT_LANDMARKS) assert.ok(cellOf('ow_sand_0', n, false).losBeacon, `${n} is not seen from afar`)
+})
+
+test('the desert grows its own things', () => {
+  const seen = new Set()
+  for (const [seed, wx, wy] of DESERT) {
+    const p = generatePiece(seed, wx, wy)
+    for (const row of p.cells) for (const c of row) {
+      if (!c.overlay || !NEW_GROWTH.test(c.overlay)) continue
+      seen.add(c.overlay)
+      // debris is walked over, a plant is not
+      assert.equal(c.tile === TILE.FLOOR, c.overlay.startsWith('ow_deco_'), `${c.overlay} at piece ${wx},${wy}`)
+    }
+  }
+  assert.ok(seen.size >= 6, `only ${seen.size} new things grow or lie there: ${[...seen].join(' ')}`)
+})
+
+test('spires stand in every desert piece', () => {
+  for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed)) {
+    const { cells, at } = withTerrain(seed, wx, wy)
+    const marks = landmarkCells(cells)
+    for (const { x, y, name } of marks) {
+      assert.ok(cells[y][x].losBeacon && cells[y][x].tile === TILE.WALL, `${at}: ${name} at ${x},${y} is not a blocked landmark`)
+      // a spire's top stands on its foot
+      if (name.endsWith('_top')) assert.equal(cells[y + 1][x].overlay, name.slice(0, -4), `${at}: ${name} at ${x},${y} has no foot`)
+    }
+    // one landmark is one foot: a spire's two cells, or a cairn
+    const things = marks.filter(m => !m.name.endsWith('_top')).length
+    if (inGentleRing(wx, wy)) assert.equal(things, 0, `${at}: a landmark in the gentle ring`)
+    else assert.ok(things >= 1 && things <= 3, `${at}: ${things} landmarks`)
+  }
+})
+
+test('spires keep off the ways', () => {
+  let seen = 0
+  for (const seed of SEEDS) for (const { wx, wy } of desertPieces(seed)) {
+    const { t, cells, at } = withTerrain(seed, wx, wy)
+    for (const { x, y, name } of landmarkCells(cells)) {
+      seen++
+      assert.ok(t.inside(x, y), `${at}: ${name} at ${x},${y} is in the frame`)
+      assert.ok(!t.onCrest(x, y), `${at}: ${name} at ${x},${y} stands on a dune's crest`)
+      assert.equal(t.biome(x, y), 'desert', `${at}: ${name} at ${x},${y} is not in the desert`)
+      for (const [dx, dy] of [[0, 0], ...AROUND8]) {
+        const nx = x + dx, ny = y + dy
+        assert.ok(!t.onPath(nx, ny), `${at}: ${name} at ${x},${y} is on or by a way (${nx},${ny})`)
+        assert.ok(!t.onSite(nx, ny), `${at}: ${name} at ${x},${y} is on or by a site's pad (${nx},${ny})`)
+      }
+    }
+  }
+  assert.ok(seen > 100, `only ${seen} landmark cells`)
+})
+
+const outcropMask = n => +/^ow_outcrop_(\d+)$/.exec(n)[1]
+test('outcrops are rimmed', () => {
+  let seen = 0
+  for (const { wx, wy } of desertPieces(7)) {
+    const { t, cells, at } = withTerrain(7, wx, wy)
+    for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+      const n = cells[y][x].overlay
+      if (!isOutcropSkin(n)) continue
+      seen++
+      assert.equal(cells[y][x].tile, TILE.WALL, `${at}: ${n} at ${x},${y} is walkable`)
+      // the sides it runs on into the next outcrop cell, the next piece's included
+      const m = (isOutcropSkin(t.propAt(x, y - 1)) ? 1 : 0) | (isOutcropSkin(t.propAt(x + 1, y)) ? 2 : 0)
+        | (isOutcropSkin(t.propAt(x, y + 1)) ? 4 : 0) | (isOutcropSkin(t.propAt(x - 1, y)) ? 8 : 0)
+      assert.equal(outcropMask(n), m, `${at}: ${n} at ${x},${y}`)
+    }
+  }
+  assert.ok(seen > 100, `only ${seen} outcrop cells`)
+})
+
+// An outcrop is a few cells with nothing standing round it, each row and
+// column of it unbroken: nothing beside it can be shut in by it.
+test('an outcrop parts nothing', () => {
+  let seen = 0
+  for (const { wx, wy } of desertPieces(7)) {
+    // as terrain.js lays the land, before anything is built on it
+    const t = makeTerrain(7, wx, wy)
+    const isRock = (x, y) => isOutcropSkin(t.propAt(x, y))
+    for (let y = -MARGIN + 1; y < PIECE + MARGIN - 1; y++) for (let x = -MARGIN + 1; x < PIECE + MARGIN - 1; x++) {
+      if (!isRock(x, y)) continue
+      seen++
+      for (const [dx, dy] of AROUND8) if (!isRock(x + dx, y + dy)) assert.ok(t.walkable(x + dx, y + dy), `piece ${wx},${wy}: ${t.propAt(x + dx, y + dy)} at ${x + dx},${y + dy} beside an outcrop`)
+      // no gap in a row or a column of rock with rock on both sides of it within two cells
+      for (const [dx, dy] of [[1, 0], [0, 1]]) if (!isRock(x + dx, y + dy) && isRock(x + 2 * dx, y + 2 * dy)) assert.fail(`piece ${wx},${wy}: a gap in an outcrop at ${x + dx},${y + dy}`)
+    }
+    // and built on, everything walkable beside an outcrop is reached from where the paths meet
+    const { cells, spawnPoint, at } = withTerrain(7, wx, wy)
+    const seenAt = new Uint8Array(PIECE * PIECE), stack = [spawnPoint.y * PIECE + spawnPoint.x]
+    seenAt[stack[0]] = 1
+    while (stack.length) {
+      const i = stack.pop(), x = i % PIECE, y = (i / PIECE) | 0
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy, j = ny * PIECE + nx
+        if (nx < 0 || ny < 0 || nx >= PIECE || ny >= PIECE || seenAt[j] || cells[ny][nx].tile !== TILE.FLOOR) continue
+        seenAt[j] = 1; stack.push(j)
+      }
+    }
+    for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+      if (!isOutcropSkin(cells[y][x].overlay)) continue
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= PIECE || ny >= PIECE || cells[ny][nx].tile !== TILE.FLOOR) continue
+        assert.ok(seenAt[ny * PIECE + nx], `${at}: ${nx},${ny} beside an outcrop is cut off`)
+      }
+    }
+  }
+  assert.ok(seen > 100, `only ${seen} outcrop cells`)
+})
+
+test('landmarks have a map colour', () => {
+  assert.equal(CLASS.landmark, CLASSES.length - 1, 'a new class goes at the end')
+  assert.match(MAP_COLOURS[CLASS.landmark], /^#[0-9a-f]{6}$/)
+  assert.equal(new Set(MAP_COLOURS).size, MAP_COLOURS.length, 'every class its own colour')
+  for (const n of DESERT_LANDMARKS) assert.equal(classOf({ tile: TILE.WALL, skin: 'ow_sand_ripple_0_0', overlay: n }), CLASS.landmark, n)
+  for (const n of OUTCROP_SKINS) assert.equal(classOf({ tile: TILE.WALL, skin: 'ow_sand_ripple_0_0', overlay: n }), CLASS.rock, n)
 })

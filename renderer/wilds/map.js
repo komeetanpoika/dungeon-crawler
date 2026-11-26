@@ -20,22 +20,26 @@ export const FOUND_REACH = 24        // tiles from a place's middle that count a
 // Colour classes, in the order they win a block: the higher beats the lower,
 // so a one-tile path or stream still shows. A class's index is its letter in
 // a save, so a new class goes at the end (the road, which then wins every
-// block it is in: a walked road is a line on the map).
+// block it is in: a walked road is a line on the map; then the desert's
+// spires and cairns, seen from afar and found again on the map by a colour
+// of their own that shows on sand and on the dark of land not seen).
 export const CLASSES = [
   ['unseen', null],
   ['grass', '#5f8f3f'], ['sand', '#d8c27c'], ['mtnground', '#8f8777'], ['marsh', '#5d6b3b'],
   ['wood', '#2f6d30'], ['pine', '#20563a'], ['autumn', '#b8692b'], ['deadwood', '#6d6358'],
   ['rock', '#75716a'], ['water', '#2f70b3'], ['path', '#b38d58'], ['pave', '#9d978b'],
   ['deck', '#7c5432'], ['building', '#aa462f'], ['wall', '#cbc7bc'], ['road', '#eee2c2'],
+  ['landmark', '#e2553a'],
 ]
 export const CLASS = Object.fromEntries(CLASSES.map(([name], i) => [name, i]))
 export const MAP_COLOURS = CLASSES.map(([, colour]) => colour)
 
 const OVERLAY = [
+  [/^ow_landmark_/, 'landmark'],
   [/^ow_(city_wall|city_tower|city_gate|castle)/, 'wall'],
   [/^ow_(roof|house|city_roof|city_house|city_church|city_shop|city_mill|city_harbour|stall|brick|ruin|well|statue)/, 'building'],
   [/^ow_(pier_deck|prop_fillet|city_quay|boat)/, 'deck'],
-  [/^ow_(mtn|rock)/, 'rock'],
+  [/^ow_(mtn|rock|outcrop)/, 'rock'],
   [/^ow_tree_autumn/, 'autumn'],
   [/^ow_(tree_pine|lalli_pine)/, 'pine'],
   [/^ow_(deadtree|greytree)/, 'deadwood'],

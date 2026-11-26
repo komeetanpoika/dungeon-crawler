@@ -69,8 +69,10 @@ test('road ground has a colour class of its own', () => {
   for (const ground of ['grass', 'sand', 'mtn', 'marsh']) assert.equal(classOf({ tile: TILE.FLOOR, skin: `ow_road_${ground}_1` }), CLASS.road)
   assert.notEqual(CLASS.road, CLASS.path)
   assert.notEqual(MAP_COLOURS[CLASS.road], MAP_COLOURS[CLASS.path])
-  // the new class comes last, so the letters of older saves keep their meaning
-  assert.equal(CLASS.road, CLASSES.length - 1)
+  // a new class comes after the old ones, so the letters of older saves keep
+  // their meaning (and the desert's landmark class after the road)
+  assert.equal(CLASS.road, 16)
+  assert.ok(CLASSES.length > CLASS.road)
   assert.deepEqual(['path', 'pave', 'deck', 'building', 'wall'].map(n => CLASS[n]), [11, 12, 13, 14, 15])
   // and a road beside a path shows as road in their block
   const w = world(), p = getPiece(w, 3, 0)

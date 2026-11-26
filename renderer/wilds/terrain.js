@@ -24,14 +24,17 @@ import { vergeRoads, VERGE_SKINS } from './road-art.js'
 import { sandSkinAt, edgeHardpan, isHardpanSkin, isRippleSkin, desertDress, DESERT_SKINS, layDunes, dunesOn, DUNE_SKINS, WINDWARD_SKINS, WINDWARD_LEVELS, DUNE_LOOK, crestField, crestAt } from './desert-art.js'
 import { CITY_SKINS } from './city/kit.js'
 import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
+import { DESERT_LANDMARKS } from './desert.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
 // The dune field (desert-art.js crestField), worked out once a piece over
 // local cells FIELD_LO..FIELD_HI-1: what grows in the desert keeps off its
 // crests out to two cells beyond the builder (a two-tile tree looks one
-// further), and a windward slope looks WINDWARD_LEVELS south and east of it.
-const FIELD_LO = -MARGIN - 2, FIELD_HI = PIECE + MARGIN + WINDWARD_LEVELS
+// further), and grows thinner within two of one; a windward slope looks
+// WINDWARD_LEVELS south and east of it. (An outcrop whose rock lies beyond
+// it works out its own few cells.)
+const FIELD_LO = -MARGIN - 4, FIELD_HI = PIECE + MARGIN + Math.max(WINDWARD_LEVELS, 4)
 // a rule's neighbours may themselves look REACH further; the dune field asks
 // the country DUNE_LOOK round its own cells
 const EXT = Math.max(MARGIN + 2 * REACH + 1, -FIELD_LO + DUNE_LOOK, FIELD_HI - PIECE + DUNE_LOOK)
@@ -41,7 +44,72 @@ const PINES = { tall: ['ow_tree_pine_top', 'ow_tree_pine_trunk'], small: ['ow_tr
 const AUTUMN = { tall: ['ow_tree_autumn_top', 'ow_tree_autumn_trunk'], small: ['ow_tree_small_autumn', 'ow_tree_autumn_top'] }
 const DEAD = ['ow_deadtree_0', 'ow_deadtree_1']
 const BUSHES = ['ow_bush_0', 'ow_bush_1']
-const DESERT_FLORA = ['ow_cactus', 'ow_cactus', 'ow_deadtree_0', 'ow_deadtree_1', 'ow_shrub_0', 'ow_shrub_1']
+// What grows in the desert (tools/make-wilds-desert-tiles.mjs draws what the
+// packs lack): the palm, two cells tall where the cell above it is free as a
+// pine is, else the walled well's one-cell date palm; cacti, the pack's and
+// three more; shrubs, the pack's green and three dry; dead trees. On the sand
+// mostly cacti and scrub, on and by the hardpan dead wood and dry scrub (each
+// list weighted by repeating a name).
+const PALMS = { tall: ['ow_tree_palm_top', 'ow_tree_palm'], small: ['ow_tree_palm_small'] }
+const SAND_FLORA = ['ow_cactus', 'ow_cactus', 'ow_cactus_barrel', 'ow_cactus_pear', 'ow_cactus_column',
+  'ow_shrub_0', 'ow_shrub_1', 'ow_shrub_dry_0', 'ow_shrub_dry_1', 'ow_deadtree_0']
+const HARD_FLORA = ['ow_deadtree_0', 'ow_deadtree_1', 'ow_shrub_dry_0', 'ow_shrub_dry_1', 'ow_shrub_dry_2', 'ow_shrub_dry_2', 'ow_cactus_barrel']
+export const DESERT_FLORA = [...new Set([...SAND_FLORA, ...HARD_FLORA, ...PALMS.tall, ...PALMS.small])]
+// What lies on the sand, walked over: dry grass, tumbleweed, bones, a ribcage, broken pottery.
+const DEBRIS = ['ow_deco_drygrass_0', 'ow_deco_drygrass_1', 'ow_deco_drygrass_2', 'ow_deco_drygrass_0', 'ow_deco_drygrass_1', 'ow_deco_drygrass_2',
+  'ow_deco_tumbleweed', 'ow_deco_tumbleweed', 'ow_deco_bones_0', 'ow_deco_bones_1', 'ow_deco_ribs', 'ow_deco_pottery_0', 'ow_deco_pottery_1']
+export const DESERT_DECO = [...new Set(DEBRIS)]
+const isDecoSkin = n => typeof n === 'string' && n.startsWith('ow_deco_')
+// How thick it grows, by the share of cells: plants in the desert's groves
+// (the tree field high) and in the open, and up to `lush` by hardpan or
+// water; debris; lone rocks where the land is rocky (the tree field low) and
+// elsewhere. Within two cells of a dune's crest there is `dunes` of each:
+// the open dunes are bare. Of the plants, palms are `palms` in a grove or by
+// water and `palmsOpen` elsewhere.
+const DESERT_GROWTH = { grove: 0.07, open: 0.015, lush: 0.05, debris: 0.03, rocky: 0.03, rock: 0.004, dunes: 0.4, palms: 0.3, palmsOpen: 0.05 }
+// Sandstone outcrops: a few cells of rock in the desert (OUTCROP_SHAPES, each
+// row and each column of one unbroken), with nothing standing on the cells
+// round them, so nothing beside one is ever shut in. One may stand in each
+// square of `lattice` world tiles, its middle 3 to lattice - 4 tiles into it
+// (so the cells round two never meet), where the land is rocky (a field of
+// the world tile below `rocky`) and a hash falls under `odds`; all of it, and
+// the cells round it, in desert land off a gate's corridor, and none of its
+// rock on a dune's crest. Rimmed by finish() (ow_outcrop_<m>, m the sides 1 N
+// / 2 E / 4 S / 8 W it runs on into the next outcrop cell).
+const OUTCROP = { lattice: 11, rocky: 0.45, odds: 0.6 }
+const OUTCROP_SHAPES = [
+  [[0, 0], [1, 0]],
+  [[0, -1], [-1, 0], [0, 0], [1, 0], [0, 1]],
+  [[0, -1], [0, 0], [1, 0], [0, 1]],
+  [[-1, -1], [0, -1], [-1, 0], [0, 0], [1, 0], [0, 1], [1, 1]],
+  [[0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]],
+  [[0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [2, 0]],
+  [[0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [2, 0], [-1, 1], [0, 1], [1, 1]],
+].map(cells => {
+  // at[(dy + 3) * 7 + dx + 3]: 1 for its rock, 2 for a cell round it, within three of its middle
+  const at = new Uint8Array(49)
+  for (const [dx, dy] of cells) for (let ey = -1; ey <= 1; ey++) for (let ex = -1; ex <= 1; ex++) {
+    const i = (dy + ey + 3) * 7 + dx + ex + 3
+    if (!at[i]) at[i] = 2
+  }
+  for (const [dx, dy] of cells) at[(dy + 3) * 7 + dx + 3] = 1
+  const ring = []
+  for (let i = 0; i < 49; i++) if (at[i] === 2) ring.push([(i % 7) - 3, Math.floor(i / 7) - 3])
+  return { cells, ring, at }
+})
+// The box round an outcrop's middle that its rock lies in, and the one that
+// it and the cells round it lie in, any shape's.
+const spanOf = offsets => ({
+  x0: Math.min(...offsets.map(([dx]) => dx)), x1: Math.max(...offsets.map(([dx]) => dx)),
+  y0: Math.min(...offsets.map(([, dy]) => dy)), y1: Math.max(...offsets.map(([, dy]) => dy)),
+})
+const OUTCROP_ROCK = spanOf(OUTCROP_SHAPES.flatMap(s => s.cells))
+const OUTCROP_SPAN = spanOf(OUTCROP_SHAPES.flatMap(s => s.ring))
+export const outcropSkin = m => `ow_outcrop_${m}`
+export const OUTCROP_SKINS = Array.from({ length: 16 }, (_, m) => outcropSkin(m))
+export const isOutcropSkin = n => typeof n === 'string' && n.startsWith('ow_outcrop_')
+// an outcrop cell before finish() gives it its rim
+const OUTCROP_LAID = outcropSkin(0)
 const ROCKS_MOSS = ['ow_rock_gray_moss_0', 'ow_rock_gray_moss_1', 'ow_rock_gray_moss_2']
 const ROCKS_BROWN = ['ow_rock_brown_0', 'ow_rock_brown_1', 'ow_rock_brown_2']
 const ROCKS_GRAY = ['ow_rock_gray_0', 'ow_rock_gray_1', 'ow_rock_gray_2']
@@ -59,8 +127,9 @@ const HARDPAN = 'ow_hardpan_0'
 // A path over sand: the dirt of a path over grass, its tufts turned to drifts of sand.
 const SAND_PATH = ['ow_path_sand_0', 'ow_path_sand_1', 'ow_path_sand_2', 'ow_path_sand_3']
 const PIER = { h: 'ow_pier_log', v: 'ow_pier_log_v' }
-const TOP_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [trunk, top]))
-const TRUNK_OF = new Map(TREE_PAIRS.map(([top, trunk]) => [top, trunk]))
+// the two-tile trees, the desert's palm among them: cleared whole
+const TOP_OF = new Map([...TREE_PAIRS, PALMS.tall].map(([top, trunk]) => [trunk, top]))
+const TRUNK_OF = new Map([...TREE_PAIRS, PALMS.tall].map(([top, trunk]) => [top, trunk]))
 // A road's own ground (tools/make-wilds-road-tiles.mjs), one set for each
 // ground it crosses: a trail's dirt would not show on mountain floor or
 // marsh mud, nor width alone.
@@ -85,14 +154,15 @@ export const roadLane0 = g => g + 1 - (ROAD_WIDTH >> 1)
 export const TERRAIN_SKINS = [...new Set([
   ...GRASS, ...DIRT, ...SAND, HARDPAN, ...SAND_PATH, ...Object.values(ROAD).flat(), ...WATER_SKINS,
   ...RIM_TILES.pond, ...RIM_TILES.shore, ...RIM_TILES.mud, ...SLOPE_SKINS, PIER.h, PIER.v, ...DECK_SKINS, ...DECK_CUT_SKINS, ...DECK_UNDER_SKINS, ...FILLET_SKINS,
-  ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA,
+  ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA, ...DESERT_DECO, ...OUTCROP_SKINS,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
   ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES, ...VERGE_SKINS,
   ...DESERT_SKINS, ...DUNE_SKINS, ...WINDWARD_SKINS,
 ])]
-// Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks).
+// Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks,
+// the desert's spires and cairns).
 export const FEATURE_SKINS = [
-  ...SITE_SKINS,
+  ...SITE_SKINS, ...DESERT_LANDMARKS,
   'ow_mushroom', 'ow_boat', 'ow_stump', 'ow_tree_apple', 'ow_tree_small', 'ow_pond_11', 'ow_bush_berry',
 ]
 // Kalevanlinna (city/kit.js) is laid with the same art and these; its people
@@ -152,6 +222,69 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     crestGrid ??= crestField(seed, X0 + FIELD_LO, Y0 + FIELD_LO, FW, FW, { country: (X, Y) => biome(X - X0, Y - Y0) })
     return crestGrid[(y - FIELD_LO) * FW + x - FIELD_LO] === 1
   }
+  // A dune's crest within two cells: the open dunes, where little grows.
+  const nearCrest = (x, y) => {
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (onCrest(x + dx, y + dy)) return true
+    return false
+  }
+
+  // The outcrop of the lattice square (i, j) of world tiles (OUTCROP): its
+  // middle in local cells and, once asked, its shape (null where none
+  // stands). One whose middle lies deep in this piece (its rock and the cells
+  // round it all inside the frame) is dealt; any other is the world tile's
+  // own, so a neighbour that holds its cells in its margin makes the same of it.
+  const squares = new Map()
+  const squareOf = (i, j) => {
+    const key = i * 65536 + j
+    let sq = squares.get(key)
+    if (sq === undefined) {
+      const L = OUTCROP.lattice
+      sq = { cx: i * L + 3 + Math.floor(hash(seed, i, j, 7301) * (L - 6)) - X0, cy: j * L + 3 + Math.floor(hash(seed, i, j, 7302) * (L - 6)) - Y0, shape: undefined }
+      squares.set(key, sq)
+    }
+    return sq
+  }
+  const shapeOf = (i, j, sq) => {
+    if (sq.shape !== undefined) return sq.shape
+    const { cx, cy } = sq
+    sq.shape = null
+    const dealt = depth(cx, cy) >= FRAME + 3 ? (deal + 1) * 7717 : 0
+    const h = salt => hash(seed, i, j, salt + dealt)
+    if (biome(cx, cy) === 'desert' && h(7303) < OUTCROP.odds && noise2(seed + 16, X0 + cx, Y0 + cy, { freq: 1 / 30, octaves: 2 }) < OUTCROP.rocky) {
+      const shape = OUTCROP_SHAPES[Math.floor(h(7304) * OUTCROP_SHAPES.length)]
+      const land = (x, y) => biome(x, y) === 'desert' && rawKind(x, y) === 'land' && !corridor(x, y)
+      const fits = shape.cells.every(([dx, dy]) => land(cx + dx, cy + dy)) && shape.ring.every(([dx, dy]) => land(cx + dx, cy + dy))
+      if (fits && !rockOnCrest(cx, cy, shape.cells)) sq.shape = shape
+    }
+    return sq.shape
+  }
+  // Is any of these cells (offsets from (cx, cy)) on a crest of the dune
+  // field? Beyond the piece's field, from the field over the rock's own box:
+  // the same answer, a tile's crest being the same in any rectangle asked.
+  const inField = (x, y) => x >= FIELD_LO && y >= FIELD_LO && x < FIELD_HI && y < FIELD_HI
+  const rockOnCrest = (cx, cy, cells) => {
+    if (cells.every(([dx, dy]) => inField(cx + dx, cy + dy))) return cells.some(([dx, dy]) => onCrest(cx + dx, cy + dy))
+    const { x0, x1, y0, y1 } = OUTCROP_ROCK, w = x1 - x0 + 1
+    const box = crestField(seed, X0 + cx + x0, Y0 + cy + y0, w, y1 - y0 + 1)
+    return cells.some(([dx, dy]) => box[(dy - y0) * w + dx - x0] === 1)
+  }
+  // What an outcrop makes of a local cell (desert only): 1 its rock, 2 a
+  // cell round it, where nothing stands; else 0. (An outcrop is decided only
+  // where its middle lies near enough to matter.)
+  const outcropAt = memo((x, y) => {
+    const L = OUTCROP.lattice, S = OUTCROP_SPAN, X = X0 + x, Y = Y0 + y
+    let near = 0
+    for (let j = Math.floor((Y - S.y1) / L); j <= Math.floor((Y - S.y0) / L); j++) for (let i = Math.floor((X - S.x1) / L); i <= Math.floor((X - S.x0) / L); i++) {
+      const sq = squareOf(i, j)
+      const dx = x - sq.cx, dy = y - sq.cy
+      if (dx < S.x0 || dx > S.x1 || dy < S.y0 || dy > S.y1) continue
+      const shape = shapeOf(i, j, sq)
+      const v = shape ? shape.at[(dy + 3) * 7 + dx + 3] : 0
+      if (v === 1) return 1
+      if (v === 2) near = 2
+    }
+    return near
+  })
 
   // Mountain art never meets sand: no transition tiles exist, so a strip of
   // grass keeps them apart wherever mountain country borders desert or sea.
@@ -261,15 +394,34 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     if (b === 'desert') {
       // nothing grows or lies on a dune's crest: it would leave a gap in it to see through
       if (onCrest(x, y)) return null
-      if (r < (t > 0.55 ? 0.07 : 0.015)) return { skin: pickBy(DESERT_FLORA, x, y, 22) }
-      return rnd(x, y, 23) < (t < 0.4 ? 0.05 : 0.006) ? { skin: pickBy(ROCKS_BROWN, x, y, 22) } : null
+      // an outcrop's rock, and nothing round it
+      const rock = outcropAt(x, y)
+      if (rock) return rock === 1 ? { skin: OUTCROP_LAID } : null
+      const G = DESERT_GROWTH
+      // (a share thinned where the dunes are open: asked only of a cell whose draw falls within the share)
+      let dunes = null
+      const within = (draw, share) => draw < share && draw < share * ((dunes ??= nearCrest(x, y)) ? G.dunes : 1)
+      // a plant: thick in the groves, thin in the open, thicker by hardpan or water
+      let plant = within(r, t > 0.55 ? G.grove : G.open)
+      let wet = false
+      if (!plant && within(r, G.lush)) plant = fHard(x, y) > 0.6 || (wet = nearWater(x, y, 3))
+      if (plant) {
+        if (rnd(x, y, 27) < (t > 0.6 || wet || nearWater(x, y, 3) ? G.palms : G.palmsOpen)) return { kit: PALMS }
+        return { skin: pickBy(fHard(x, y) > 0.6 ? HARD_FLORA : SAND_FLORA, x, y, 22) }
+      }
+      // one draw decides between debris, a lone rock and nothing
+      const d = rnd(x, y, 23)
+      if (!within(d, G.debris + (t < 0.4 ? G.rocky : G.rock))) return null
+      return d < G.debris * (dunes ? G.dunes : 1) ? { skin: pickBy(DEBRIS, x, y, 29) } : { skin: pickBy(ROCKS_BROWN, x, y, 22) }
     }
     // sea: woods inland, the odd rock on the beach
     if (isGrass(g)) return r < Math.max(0.03, Math.min(0.5, (t - 0.47) * 3)) ? { kit: PINES } : null
     return r < 0.012 ? { skin: pickBy(ROCKS_GRAY, x, y, 22) } : null
   }, () => new Array(ESIZE * ESIZE).fill(undefined))
-  // A cell a canopy may sit on: open land with nothing of its own.
-  const canopyFree = (x, y) => rawKind(x, y) === 'land' && !corridor(x, y) && !isFloor(landGround(x, y)) && !occupant(x, y)
+  // A cell a canopy may sit on: open land with nothing of its own; in the
+  // desert, neither a dune's crest nor beside an outcrop.
+  const canopyFree = (x, y) => rawKind(x, y) === 'land' && !corridor(x, y) && !isFloor(landGround(x, y)) && !occupant(x, y) &&
+    (biome(x, y) !== 'desert' || (!onCrest(x, y) && !outcropAt(x, y)))
   const wantsTall = (x, y) => { const o = occupant(x, y); return !!o?.kit && rnd(x, y, 24) < 0.6 }
   const propAt = (x, y) => {
     const o = occupant(x, y)
@@ -278,7 +430,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       if (wantsTall(x, y)) return canopyFree(x, y - 1) ? o.kit.tall[1] : o.kit.small[0]
       return pickBy(o.kit.small, x, y, 25)
     }
-    if (canopyFree(x, y) && wantsTall(x, y + 1)) return occupant(x, y + 1).kit.tall[0]
+    // (the cheaper test first: few cells have a tall tree below them)
+    if (wantsTall(x, y + 1) && canopyFree(x, y)) return occupant(x, y + 1).kit.tall[0]
     return null
   }
 
@@ -325,8 +478,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       const g = landGround(x, y), lane = laneOf(x, y)
       put(x, y, lane === 'road' ? roadGround(g, x, y) : lane ? pathGround(g, x, y) : g, null, true)
     } else {
+      // (what lies on the ground, ow_deco_*, is walked over)
       const p = propAt(x, y)
-      put(x, y, landGround(x, y), p, !p)
+      put(x, y, landGround(x, y), p, !p || isDecoSkin(p))
     }
   }
   function nearLand(x, y) {
@@ -531,6 +685,16 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     // is the same whatever the deal, so the outer MARGIN rows come out the
     // same in the piece and in its neighbour's margin
     if (desertDress()) edgeHardpan(b, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed })
+    // Each outcrop cell takes its rim from the outcrop cells beside it; a
+    // cell beyond the builder is what the frame's own rule makes of it.
+    const rockCell = b.palette.map(isOutcropSkin)
+    const rock = (bx, by) => bx >= 0 && by >= 0 && bx < SIZE && by < SIZE ? rockCell[b.prop[by][bx]] === true : occupant(bx - MARGIN, by - MARGIN)?.skin === OUTCROP_LAID
+    const rims = []
+    for (let by = 0; by < SIZE; by++) for (let bx = 0; bx < SIZE; bx++) {
+      if (!rockCell[b.prop[by][bx]]) continue
+      rims.push([bx, by, outcropSkin((rock(bx, by - 1) ? 1 : 0) | (rock(bx + 1, by) ? 2 : 0) | (rock(bx, by + 1) ? 4 : 0) | (rock(bx - 1, by) ? 8 : 0))])
+    }
+    for (const [bx, by, skin] of rims) b.prop[by][bx] = b.skin(skin)
     stampSandEdge(b)
     stampMountainRim(b, mulberry32(hashInt(seed, wx, wy, 70 + deal)))
     // The cone lattice is global: its cell index comes from the world tile,
@@ -641,6 +805,15 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       clearCell(x, y)
       b.ground[y + MARGIN][x + MARGIN] = b.skin(floorSkin(x, y))
       b.prop[y + MARGIN][x + MARGIN] = b.skin(MTN.lat[0][0])
+      b.walkG[y + MARGIN][x + MARGIN] = false
+    },
+    // a cell of sandstone outcrop (finish() rims it by the outcrop cells beside
+    // it), blocked and opaque to sight, on the dry ground it stands on
+    setOutcrop: (x, y) => {
+      if (!inside(x, y) || pathKept(x, y)) return
+      clearCell(x, y)
+      if (isWaterSkin(skinAt(b.ground, x, y))) b.ground[y + MARGIN][x + MARGIN] = b.skin(dryGround(x, y))
+      b.prop[y + MARGIN][x + MARGIN] = b.skin(OUTCROP_LAID)
       b.walkG[y + MARGIN][x + MARGIN] = false
     },
     setFloor: (x, y, { roads = false } = {}) => {
