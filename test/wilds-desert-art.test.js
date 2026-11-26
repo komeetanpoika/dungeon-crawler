@@ -7,7 +7,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   windAt, sandSkinAt, SAND_SKINS, HARDPAN_SKINS, HARDPAN_EDGES, DESERT_SKINS, RIPPLES,
-  isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, setDesertDress, desertDress,
+  isRippleSkin, isHardpanSkin, isCrackedSkin, isHardpanEdge, isDuneSkin, setDesertDress, desertDress,
 } from '../renderer/wilds/desert-art.js'
 import { makeTerrain, TERRAIN_SKINS } from '../renderer/wilds/terrain.js'
 import { PIECE, MARGIN } from '../renderer/wilds/layout.js'
@@ -151,9 +151,9 @@ test('the beaches keep their sand, and the dress comes off', () => {
     let sand = 0
     for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
       const a = groundOf(off, x, y), b = groundOf(on, x, y)
-      assert.ok(!DESERT_SKINS.includes(a), `dress off lays ${a}`)
-      // everything that is not the desert's own ground is the same
-      if (!DESERT_SKINS.includes(b)) assert.equal(a, b, `seed ${seed} piece ${wx},${wy} at ${x},${y}`)
+      assert.ok(!DESERT_SKINS.includes(a) && !isDuneSkin(a), `dress off lays ${a}`)
+      // everything that is not the desert's own ground (its dunes too) is the same
+      if (!DESERT_SKINS.includes(b) && !isDuneSkin(b)) assert.equal(a, b, `seed ${seed} piece ${wx},${wy} at ${x},${y}`)
       else { assert.ok(a === 'ow_sand_0' || a === 'ow_sand_flat' || a === 'ow_hardpan_0', `${a} under ${b}`); sand++ }
       assert.equal(off.walkable(x, y), on.walkable(x, y))
     }

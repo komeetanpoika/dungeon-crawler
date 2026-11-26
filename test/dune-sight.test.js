@@ -1,7 +1,8 @@
 // The desert's sight rule: a dune crest is walked over but blocks sight
 // (renderer/systems/entities.js), the hero's dune-aware sight in the Wilds,
 // and the desert's numbers (renderer/wilds/desert.js). Every map here is made
-// by hand from piece.js cellOf cells; nothing yet lays a dune in the Wilds.
+// by hand from piece.js cellOf cells; test/wilds-dunes.test.js has the dunes
+// the Wilds lay.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { hasLineOfSight, computePlayerFOV, maybeComputeFOV, FOV_STATS } from '../renderer/systems/entities.js'

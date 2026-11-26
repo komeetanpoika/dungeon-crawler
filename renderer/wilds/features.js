@@ -273,7 +273,8 @@ export function placeFeatures(t, piece) {
   const tier = piece.tier
 
   const taken = new Set()
-  const hold = (x, y) => taken.add(`${x},${y}`)
+  // (and no dune lies on what is held, nor right beside it: terrain.js keepOpen)
+  const hold = (x, y) => { taken.add(`${x},${y}`); t.keepOpen(x, y, 1) }
   const spawn = s => { piece.spawns.push(s); hold(s.x, s.y); return s }
   let npcIx = 0
   const npc = (species, x, y, extra = {}) => spawn({ kind: 'npc', species, id: `npc:wilds:${key}:${npcIx++}`, x, y, ...extra })
@@ -520,6 +521,10 @@ export function placeFeatures(t, piece) {
       if (dx * dx + dy * dy <= pad * pad && !t.onRoad(mx + dx, my + dy)) t.open(mx + dx, my + dy)
     hold(hub.x, hub.y)
   } else t.open(mx, my, pad)
+  // no dune lies on the main thing's pad (a village's is PAD.village), nor on
+  // or beside a tale's ways to its parts, as none lies by a path
+  t.keepOpen(mx, my, pad)
+  for (const c of geo?.ways ?? []) t.keepOpen(c.x, c.y, Math.SQRT2)
   // a tale's place is more than its pad: what it builds in its circles may stand on a path
   for (const k of keepOut) for (let dy = -k.r; dy <= k.r; dy++) for (let dx = -k.r; dx <= k.r; dx++)
     if (dx * dx + dy * dy <= k.r * k.r) t.claim(k.x + dx, k.y + dy)

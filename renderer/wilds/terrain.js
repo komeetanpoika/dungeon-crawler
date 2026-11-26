@@ -21,13 +21,15 @@ import { SITE_SKINS } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
 import { vergeRoads, VERGE_SKINS } from './road-art.js'
-import { sandSkinAt, edgeHardpan, isHardpanSkin, desertDress, DESERT_SKINS } from './desert-art.js'
+import { sandSkinAt, edgeHardpan, isHardpanSkin, isRippleSkin, desertDress, DESERT_SKINS, layDunes, dunesOn, DUNE_SKINS, DUNE_LOOK } from './desert-art.js'
 import { CITY_SKINS } from './city/kit.js'
 import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
-const EXT = MARGIN + 2 * REACH + 1   // a rule's neighbours may themselves look REACH further
+// a rule's neighbours may themselves look REACH further; the dunes ask the
+// country DUNE_LOOK round the ring of cells just outside the builder
+const EXT = Math.max(MARGIN + 2 * REACH + 1, MARGIN + 1 + DUNE_LOOK)
 const ESIZE = PIECE + 2 * EXT
 
 const PINES = { tall: ['ow_tree_pine_top', 'ow_tree_pine_trunk'], small: ['ow_tree_small', 'ow_tree_small', 'ow_bush_round'] }
@@ -81,7 +83,7 @@ export const TERRAIN_SKINS = [...new Set([
   ...PINES.tall, ...PINES.small, ...AUTUMN.tall, ...AUTUMN.small, ...DEAD, ...BUSHES, ...DESERT_FLORA,
   ...ROCKS_MOSS, ...ROCKS_BROWN, ...ROCKS_GRAY, ...SKERRY,
   ...MTN.ground, ...MTN.edge, ...MTN.lat.flat(), ...Object.values(MTN.ridge).flat(), ...MTN.rock, ...SAND_EDGES, ...VERGE_SKINS,
-  ...DESERT_SKINS,
+  ...DESERT_SKINS, ...DUNE_SKINS,
 ])]
 // Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks).
 export const FEATURE_SKINS = [
@@ -374,6 +376,14 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++)
       if (dx * dx + dy * dy <= r * r) { openCell(cx + dx, cy + dy); claim(cx + dx, cy + dy) }
   }
+  // Ground no dune may lie on (finish() lays them): the disc of interior
+  // cells within r of (cx, cy), round what a feature holds and round its pad.
+  const keptOpen = new Set()
+  const keepOpen = (cx, cy, r = 0) => {
+    const n = Math.floor(r)
+    for (let dy = -n; dy <= n; dy++) for (let dx = -n; dx <= n; dx++)
+      if (dx * dx + dy * dy <= r * r && inside(cx + dx, cy + dy)) keptOpen.add((cy + dy) * PIECE + cx + dx)
+  }
   // One path cell: a pier over water, a pass through rock, a trail on land;
   // a road cell is a path cell that wears the road's ground.
   const pathCells = new Set(), roadCells = new Set()
@@ -472,9 +482,31 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       : side === 'W' ? { x: FRAME, y: gates.W.y }
       : { x: PIECE - 1 - FRAME, y: gates.E.y }
 
+  // May a dune crest lie on builder cell (bx, by)? Only on the desert's
+  // rippled sand with nothing standing on it, neither on a way (a path, a
+  // road, a trail, a gate's corridor) nor beside one, nor on a site's ground
+  // or ground kept open. layDunes asks one cell beyond the builder too: that
+  // cell lies in a neighbour's frame, where no deal reaches, so it is what
+  // the frame's own rules make of it. Paths, sites and kept ground lie in the
+  // interior, so a cell within MARGIN of a piece edge is answered the same in
+  // the piece and in its neighbour's margin.
+  const duneOpen = (bx, by) => {
+    const x = bx - MARGIN, y = by - MARGIN
+    const held = bx >= 0 && by >= 0 && bx < SIZE && by < SIZE
+    const ground = held ? b.palette[b.ground[by][bx]] : rawKind(x, y) === 'land' && !corridor(x, y) ? landGround(x, y) : null
+    if (!isRippleSkin(ground) || (held ? b.prop[by][bx] !== -1 : propAt(x, y))) return false
+    if (inside(x, y) && (siteCells.has(y * PIECE + x) || keptOpen.has(y * PIECE + x))) return false
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy
+      if (corridor(nx, ny) || (inside(nx, ny) && pathCells.has(ny * PIECE + nx))) return false
+    }
+    return true
+  }
+
   // The art passes, run once after features: the desert's hardpan frays into
   // the sand round it, sand frays into grass, the mountain masses take their
-  // faces and the floor its edge, water its rim.
+  // faces and the floor its edge, water its rim; the dunes lie on the sand
+  // still bare, and the roads' verges are laid last.
   let finished = false
   const finish = () => {
     if (finished) return
@@ -542,6 +574,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
         return cor === 'v' ? 'ns' : cor === 'h' ? 'ew' : null
       },
     })
+    // The dunes, on the sand every other pass has left bare (desert-art.js):
+    // a crest drawn on a cell is drawn last there, and none lies by a road.
+    if (desertDress() && dunesOn()) layDunes(b, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed, open: duneOpen, country: (X, Y) => biome(X - X0, Y - Y0) })
     // Last, on the finished ground: every cell beside a road wears its
     // verge, the road's gravel worn off onto it (road-art.js).
     vergeRoads(b, deco, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed })
@@ -552,7 +587,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     biome: (x, y) => biome(x, y),
     // what the land is before anything is laid on it ('land', 'water', 'mass'), up to EXT cells beyond the piece
     rawKind: (x, y) => rawKind(x, y),
-    kind, free, inside, open, claim, clear: openCell, path, road, tracePaths, gates, gateInner, finish,
+    kind, free, inside, open, claim, keepOpen, clear: openCell, path, road, tracePaths, gates, gateInner, finish,
     // a walkable line one cell wide with no path art: a way through the trees
     // for something that must be reachable but not signposted
     clearLine: (x0, y0, x1, y1) => {

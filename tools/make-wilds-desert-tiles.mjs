@@ -9,6 +9,11 @@
 //                                neighbouring cells meet into a net
 //   ow_hardpan_edge_<M>_<D>_<v>  the clay with sand drifted over it from the
 //                                sides and corners that are not clay
+//   ow_dune_<m>_<v>              a dune's crest, running on into the next crest
+//                                cell across each side in m (1 N / 2 E / 4 S /
+//                                8 W): the windward slope lit by the light from
+//                                the upper left, the crest's edge, the slip
+//                                face in shade beyond it
 //
 // In the colours of the Kenney tiles beside them: the sand of ow_sand_0
 // (#e6dabf, #d9caa9) with one paler tone for a ripple's lit face, and the
@@ -35,17 +40,28 @@
 //             Past the sand the clay is dusted, thinning out over three
 //             pixels, and a hairline crack under it is silted up. The check
 //             below holds every tile to that.
+//   crests    a crest leaves a tile at the middle of a side in m, square to
+//             it, its slopes the same width there in every tile, so it runs
+//             on into the next; on a side not in m the tile is flat sand to
+//             the border. Its shape: straight across for two opposite sides,
+//             a quarter circle about the corner between two that meet, a
+//             spur from the side to the middle that dies away for one, a
+//             low mound for none; three or four sides join those. The slopes
+//             are shaded from a height field, the light from the upper left:
+//             a slope turned to the north-west is lit and gentle, one turned
+//             to the south-east steep and in shade, the slip face.
 //
 //   node tools/make-wilds-desert-tiles.mjs [--sheet sheet.png]
 //
 // --sheet also writes a contact sheet at 4x: every tile, a field of each
-// ripple family in its mixed variants, and a flat of hardpan in sand laid by
-// desert-art.js's own edgeHardpan.
+// ripple family in its mixed variants, a flat of hardpan in sand laid by
+// desert-art.js's own edgeHardpan, and a stretch of desert with its dunes
+// laid by layDunes.
 import { writePng } from './png-write.mjs'
 import { EDGE_SHAPES } from '../renderer/terrain/edges.js'
 import { MapBuilder } from '../renderer/terrain/lib.js'
 import {
-  RIPPLES, SAND_VARIANTS, HARDPAN_VARIANTS, rippleSkin, crackedSkin, hardpanEdgeSkin, edgeHardpan,
+  RIPPLES, SAND_VARIANTS, HARDPAN_VARIANTS, DUNE_VARIANTS, rippleSkin, crackedSkin, hardpanEdgeSkin, duneSkin, edgeHardpan, layDunes, sandSkinAt,
 } from '../renderer/wilds/desert-art.js'
 
 const T = 16
@@ -311,7 +327,119 @@ function edgeTile(M, D, v) {
 }
 let edges = 0
 for (const [M, D] of EDGE_SHAPES) for (let v = 0; v < HARDPAN_VARIANTS; v++) { save(hardpanEdgeSkin(M, D, v), edgeTile(M, D, v)); edges++ }
-console.log(`wrote ${RIPPLES.length * SAND_VARIANTS} sand, ${16 * HARDPAN_VARIANTS} cracked hardpan and ${edges} hardpan edge tiles`)
+
+// ---- dune crests ------------------------------------------------------------------
+// The sand's tones (SAND), the dark rim of the pack's own sand islands
+// (ow_sand_1), one tone between that and the shade, and one darker for the
+// shadow right under the crest's edge.
+const DUNE_TONE = { under: '#bba272', deep: '#c7b081', mid: '#d0bd95' }
+// The crest's parts: each says, for a point, how far it lies from its crest
+// line (d), the unit normal from the line to it (nx, ny), and how much of the
+// crest it carries there (lift: 1, less where a spur dies away). A wobble A
+// bows a crest by up to A px between the sides it runs to, and leaves them
+// square to the side, unbowed.
+const across = (horizontal, A) => (x, y) => {
+  const [a, b] = horizontal ? [x, y] : [y, x]
+  const off = b - (8 + A * Math.sin(Math.PI * Math.min(16, Math.max(0, a)) / 16) ** 2)
+  const sg = off < 0 ? -1 : 1
+  return { d: Math.abs(off), nx: horizontal ? 0 : sg, ny: horizontal ? sg : 0, lift: 1 }
+}
+const bend = (cx, cy, A) => (x, y) => {
+  const vx = x - cx, vy = y - cy, r = Math.hypot(vx, vy) || 1e-9
+  const off = r - (8 + A * Math.sin(2 * Math.atan2(Math.abs(vy), Math.abs(vx))) ** 2)
+  const sg = off < 0 ? -1 : 1
+  return { d: Math.abs(off), nx: sg * vx / r, ny: sg * vy / r, lift: 1 }
+}
+// a spur in from side `bit`, dying away from two pixels in to just past the middle
+const SIDE_AT = { 1: [8, 0, 0, 1], 2: [16, 8, -1, 0], 4: [8, 16, 0, -1], 8: [0, 8, 1, 0] }
+const spur = bit => (x, y) => {
+  const [ex, ey, ux, uy] = SIDE_AT[bit]
+  const t = (x - ex) * ux + (y - ey) * uy, o = (x - ex) * -uy + (y - ey) * ux
+  const end = 8
+  const s = Math.min(1, Math.max(0, (t - 2) / 8.5)), lift = 1 - s * s * (3 - 2 * s)
+  if (t <= end) { const sg = o < 0 ? -1 : 1; return { d: Math.abs(o), nx: -uy * sg, ny: ux * sg, lift } }
+  const vx = x - (ex + ux * end), vy = y - (ey + uy * end), r = Math.hypot(vx, vy) || 1e-9
+  return { d: r, nx: vx / r, ny: vy / r, lift }
+}
+const mound = (x, y) => {
+  const vx = x - 8, vy = y - 8, r = Math.hypot(vx, vy) || 1e-9
+  return { d: r, nx: vx / r, ny: vy / r, lift: 0.6 }
+}
+const CORNER_OF = { 3: [16, 0], 6: [16, 16], 12: [0, 16], 9: [0, 0] }
+function crestParts(m, A) {
+  const bits = [1, 2, 4, 8].filter(b => m & b)
+  if (bits.length === 0) return [mound]
+  if (bits.length === 1) return [spur(bits[0])]
+  if (bits.length === 2) return m === 5 ? [across(false, A)] : m === 10 ? [across(true, A)] : [bend(...CORNER_OF[m], A)]
+  if (bits.length === 4) return [across(true, A), across(false, A)]
+  // three: straight across between the two opposite sides, and a spur in from the third
+  const third = { 1: 4, 4: 1, 2: 8, 8: 2 }[15 & ~m]
+  return [across(third === 2 || third === 8 ? false : true, A), spur(third)]
+}
+// The tone a part gives a point: the crest's edge lit along the crest line;
+// on the side turned to the light (a > 0) the windward slope lit a little way
+// down; on the side turned away the slip face, dark under the edge and paling
+// to the sand's shade; a side that the light only grazes (a near 0) keeps a
+// thin line of shade. a is how squarely the side faces the north-west
+// (-nx - ny, kept within 1 either way): 1 square to a side of the tile, where
+// a crest leaves it, and on a bend wherever it faces the light as squarely.
+// Every band ends within 7 px of its crest line, so no slope reaches a side
+// the crest does not cross; and square to a side a band ends half way
+// between two pixels (the line itself lies between two), so a crest a
+// fraction of a pixel off where it leaves the tile paints the same pixels.
+const BAND = { edge: 1, lit: 3, under: 1, deep: 2, mid: 3.6, shade: 4 }
+function band({ d, nx, ny, lift }) {
+  if (lift < 0.3) return null
+  if (d < BAND.edge) return SAND.lit
+  const a = Math.max(-1, Math.min(1, -nx - ny))
+  if (a >= 0) return d < BAND.edge + BAND.lit * a * lift ? SAND.lit : null
+  const t = -a
+  if (d < BAND.edge + BAND.under * t * lift) return DUNE_TONE.under
+  if (d < BAND.edge + BAND.deep * t * lift) return DUNE_TONE.deep
+  if (d < BAND.edge + (BAND.mid * t + 0.4) * lift) return DUNE_TONE.mid
+  if (d < BAND.edge + (BAND.shade * t + 1) * lift) return SAND.shade
+  return null
+}
+function duneTile(m, v) {
+  const A = [0, 1, -1][v]
+  const parts = crestParts(m, A)
+  const col = new Array(T * T).fill(SAND.base)
+  const banded = new Uint8Array(T * T)
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    // the part whose crest line is nearest, for its carried share
+    let near = null
+    for (const f of parts) { const p = f(x + 0.5, y + 0.5); if (!near || p.d / Math.max(0.05, p.lift) < near.d / Math.max(0.05, near.lift)) near = p }
+    const tone = band(near)
+    const i = y * T + x
+    if (tone) { col[i] = tone; banded[i] = 1 }
+    else if (near.d > 4 && unit(m, v, 90, x, y) < 0.05) col[i] = SAND.shade   // a speck, as on ow_sand_0
+  }
+  // on a side the crest does not cross, flat sand to the border: specks and nothing else
+  for (let i = 0; i < T; i++) for (const [bit, x, y] of [[1, i, 0], [2, T - 1, i], [4, i, T - 1], [8, 0, i]]) {
+    if (!(m & bit) && banded[y * T + x]) throw new Error(`${duneSkin(m, v)}: a slope on the open border pixel ${x},${y}`)
+  }
+  return { rgba: paint(col), col, banded }
+}
+// Where a crest crosses a side, every tile that crosses it draws the same
+// border pixels within CORE px of the side's middle (the edge, the lit slope,
+// the slip face), specks aside: what leaves one tile is what enters the next.
+// Farther out, on the inside of a bend, the two legs' shade may meet a pixel
+// sooner than a straight crest's.
+const CORE = 4
+const crossings = new Map()
+for (let m = 0; m < 16; m++) for (let v = 0; v < DUNE_VARIANTS; v++) {
+  const { rgba, col, banded } = duneTile(m, v)
+  for (const [bit, at] of [[1, i => i], [2, i => i * T + T - 1], [4, i => (T - 1) * T + i], [8, i => i * T]]) {
+    if (!(m & bit)) continue
+    const line = Array.from({ length: T }, (_, i) => banded[at(i)] && Math.abs(i + 0.5 - T / 2) < CORE ? col[at(i)] : '-').join(' ')
+    const was = crossings.get(bit)
+    if (was === undefined) crossings.set(bit, { line, name: duneSkin(m, v) })
+    else if (was.line !== line) throw new Error(`${duneSkin(m, v)} crosses side ${bit} unlike ${was.name}:\n  ${line}\n  ${was.line}`)
+  }
+  save(duneSkin(m, v), rgba)
+}
+
+console.log(`wrote ${RIPPLES.length * SAND_VARIANTS} sand, ${16 * HARDPAN_VARIANTS} cracked hardpan, ${edges} hardpan edge and ${16 * DUNE_VARIANTS} dune tiles`)
 
 // ---- the contact sheet ------------------------------------------------------------
 const sheetAt = process.argv.indexOf('--sheet')
@@ -347,7 +475,17 @@ if (sheetAt >= 0) {
   FLAT.forEach((r, y) => [...r].forEach((ch, x) => { b.ground[y][x] = b.skin(ch === 'H' ? 'ow_hardpan_0' : rippleSkin(2, mix(x, y))) }))
   edgeHardpan(b, { X0: 0, Y0: 0, seed: 1 })
   grid(b.ground.map(r => r.map(i => b.palette[i])))
-  cy += FLAT.length
+  cy += FLAT.length + 0.5
+  // the dune crests, a shape a column
+  for (let v = 0; v < DUNE_VARIANTS; v++) row(Array.from({ length: 16 }, (_, m) => duneSkin(m, v)))
+  cy += 0.5
+  // dunes as layDunes lays them, on a stretch of seed 7's desert (render 7 8 -1 2 2)
+  const D = { X0: 660, Y0: -60, w: 32, h: 20 }
+  const d = new MapBuilder('sheet', 'sheet', 'sheet', D.w, D.h)
+  for (let y = 0; y < D.h; y++) for (let x = 0; x < D.w; x++) d.ground[y][x] = d.skin(sandSkinAt(7, D.X0 + x, D.Y0 + y))
+  layDunes(d, { X0: D.X0, Y0: D.Y0, seed: 7, open: () => true })
+  grid(d.ground.map(r => r.map(i => d.palette[i])))
+  cy += D.h
   const W = Math.ceil(Math.max(...blocks.map(b => b.x + b.cells[0].length))) * T * Z + GAP * 2
   const H = Math.ceil(cy) * T * Z + GAP * 2
   const px = new Uint8Array(W * H * 4)
