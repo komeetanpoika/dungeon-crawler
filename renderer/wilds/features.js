@@ -27,7 +27,7 @@ import { makeSites, layoutTale, wayCells, TALE_PAD, isVillageStreet } from './si
 import { INN_PAD } from './inn.js'
 import { roadSides, pieceClass, townsAlong, roadsFrom, roadLine, SIDE_WORDS } from './roads.js'
 import { ROAD_WIDTH, roadLane0 } from './terrain.js'
-import { inGentleRing, isDesert, SPIRE, CAIRN, PALM, PILLAR, ARCH, BONES, REEDS } from './desert.js'
+import { inGentleRing, isDesert, SPIRE, CAIRN, PALM, PILLAR, LONE_PILLAR, ARCH, BONES, REEDS } from './desert.js'
 import { desertDress } from './desert-art.js'
 
 // How many spires and cairns a desert piece holds, at least how far apart,
@@ -1152,16 +1152,17 @@ const OASIS = { least: 4, more: 2, from: 2.5, to: 5.5, reeds: 0.6 }
 // Until the end of placeFeatures the landmark stands as the green oasis
 // always stood (a grass disc, a pond, a ring of trees, the chest by the
 // water), so everything dealt after it is dealt where it always was. Then
-// it wears its look (`at`: { look, x, y, water, trees }, the pond's middle,
-// its water and its trees):
+// it wears its look (`at`: { look, x, y, water, trees, under }, the pond's
+// middle, its water, its trees and the ground the pond was dug into):
 //   oasis   the pond, the disc and the chest stay; each tree of the ring is a
-//           palm (the one-cell date palm where its crown has no room), up to
-//           OASIS.more palms more stand in the ring, and reeds grow by the
-//           water, by a hash
+//           palm (the one-cell date palm where its crown has no room), more
+//           tall palms stand in the ring until it has OASIS.least and up to
+//           OASIS.more more, and reeds grow by the water, by a hash
 //   pillar, arch, bones   the pond and the trees go back to sand, and the
-//           landmark stands where the pond was, or a cell or two aside (ASIDE)
-//           where the chest is in its way; a pillar where none of those is
-//           to be had
+//           landmark (the standing stones, the arch, the bones) stands where
+//           the pond was, or a cell or two aside (ASIDE) where the chest is in
+//           its way; the tall pillar alone (LONE_PILLAR) where none of those
+//           is to be had
 // A palm, a reed or a landmark only takes a cell that nothing holds
 // (`held`), off the paths and the spawn point (`spot`), and never where it
 // would cut walkable ground off from the rest. No draw of the piece's rng is
@@ -1209,7 +1210,7 @@ function dressDesertLandmark(t, at, held, spot) {
   const ours = new Set()
   for (const { x, y } of at.water) { t.clear(x, y); t.setGround(x, y, (t.onPath(x, y) && at.under.get(y * PIECE + x)) || t.sandSkin(x, y)); ours.add(y * PIECE + x) }
   for (const { x, y } of at.trees) { t.clear(x, y); ours.add(y * PIECE + x) }
-  for (const shape of [SHAPES[at.look], PILLAR]) for (const [ox, oy] of ASIDE) {
+  for (const shape of [SHAPES[at.look], LONE_PILLAR]) for (const [ox, oy] of ASIDE) {
     const x0 = at.x + ox - shape.at[0], y0 = at.y + oy - shape.at[1]
     const cells = []
     for (let r = 0; r < shape.cells.length; r++) for (let c = 0; c < shape.cells[r].length; c++) {
@@ -1221,6 +1222,11 @@ function dressDesertLandmark(t, at, held, spot) {
     const had = (x, y) => t.inside(x, y) && !t.onRoad(x, y) && !(x === spot.x && y === spot.y) &&
       (ours.has(y * PIECE + x) || (t.free(x, y) && !held(x, y) && (!t.onPath(x, y) || t.onSite(x, y))))
     if (!cells.every(c => had(c.x, c.y))) continue
+    // nor does anything held (the chest) stand just north of its top in any
+    // column, where it would seem to sit on top of it
+    const tops = new Map()
+    for (const c of cells) if (!tops.has(c.x) || c.y < tops.get(c.x)) tops.set(c.x, c.y)
+    if ([...tops].some(([x, y]) => held(x, y - 1) && !ours.has((y - 1) * PIECE + x))) continue
     const door = cells.find(c => c.walk)
     if (door && !t.walkable(door.x, door.y + 1)) continue
     if (!keepsJoined(t, at, cells.filter(c => !c.walk))) continue

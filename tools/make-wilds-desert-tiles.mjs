@@ -84,6 +84,7 @@
 // desert with its dunes laid by layDunes, and what stands on the sand, over
 // the sand.
 import { writePng } from './png-write.mjs'
+import { readPng } from './png-read.mjs'
 import { EDGE_SHAPES } from '../renderer/terrain/edges.js'
 import { MapBuilder } from '../renderer/terrain/lib.js'
 import {
@@ -1545,8 +1546,9 @@ console.log(`wrote ${villageTiles.length} tiles of the desert village`)
 //   ow_landmark_palm_top, _palm    the oasis palm, two cells tall: a fuller
 //                                  crown than the date palm's over a stouter
 //                                  trunk, its dates hanging in clusters
-//   ow_landmark_pillar_top, _pillar  a sandstone pillar two cells tall, broad
-//                                  and flat-topped, worn at the waist
+//   ow_landmark_pillar_<c><r>      standing stones, three cells by three: a tall
+//                                  pillar under a wide cap in the middle, a
+//                                  shorter one west of it, a broken stump east
 //   ow_landmark_arch_<c><r>        a rock arch three cells by two; its middle
 //                                  bottom cell (11) is the opening, walked
 //                                  into: nothing of the rock is in it, only the
@@ -1559,6 +1561,11 @@ console.log(`wrote ${villageTiles.length} tiles of the desert village`)
 //   ow_cave_arch_sand_0, _1        a cave's mouth in its outcrop: the outcrop's
 //                                  face running on from both sides
 //                                  (ow_outcrop_11), rising over a dark opening
+//   ow_tent_stripe_<c><r>          a desert camp's tent: the tan tent's shape
+//                                  (Kenney's ow_tent_tan, read and recoloured)
+//                                  in bleached canvas striped rust and ochre,
+//                                  outlined dark on its shaded side, its shadow
+//                                  on the sand beside its east slope
 // In the colours of what stands beside them: the palm the date palm's (with
 // Tiny Town's outline), the pillar, the arch and the cave the outcrops'
 // sandstone, the bones the debris's bones; each stands in a little drifted
@@ -1637,44 +1644,84 @@ const SANDS = { z: SAND.shade, Z: DRIFT.A, l: SAND.lit }
   placeKeep(PALM[1], foot, { joins: 'N', shadow })
 }
 
-// The pillar: a broad column of sandstone under a cap of harder rock that
-// juts a little (its underside in shade), straight-sided and banded where
-// the layers show, cracked down its face, wider at its foot and standing in
-// a drift of sand. Drawn as one picture two cells tall and cut in two.
+// The standing stones: a picture three cells by three. A tall pillar of
+// sandstone in the middle column, three cells high, under a wide weathered
+// cap that juts over its shaft; a shorter one, two cells high, in the west
+// column; a broken stump with a fallen piece beside it in the east column's
+// bottom row. Each is lit on the west and in shade on the east, banded where
+// its layers show and cracked, as the arch is, and stands in a drift of sand
+// with its shadow to the lower right; and each keeps to its own column (its
+// drift and shadow too), so the middle column laid alone (LONE_PILLAR) is
+// the tall pillar whole.
 {
-  const pic = picture(1, 2)
-  // its left and right edge, row by row (the top's rows first)
-  // (worn: its sides step in and out a pixel where softer layers have weathered back)
-  const WORN_L = [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0], WORN_R = [0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0]
-  const span = y => y < 2 ? null : y === 2 ? [4, 11] : y <= 6 ? [3, 12] : y <= 27 ? [(y <= 21 ? 4 : y <= 25 ? 3 : 2) + WORN_L[y - 7], (y <= 21 ? 11 : y <= 25 ? 12 : 13) - WORN_R[y - 7]] : y === 28 ? [2, 13] : null
-  const BAND = new Set([10, 15, 19, 24]), CRACK = new Set(['7,9', '7,10', '8,11', '8,12', '9,17', '9,18', '5,22', '6,23', '10,26', '11,13'])
-  for (let y = 0; y < pic.h; y++) {
-    const s = span(y)
-    if (!s) continue
-    for (let x = s[0]; x <= s[1]; x++) {
-      let c
-      if (y <= 4) c = y === 2 || x === s[0] ? STONE.rim : x === s[1] ? STONE.shade : STONE.top    // the cap's flat top
-      else if (y === 5) c = x === s[0] ? STONE.rim : x >= s[1] - 1 ? STONE.shade : STONE.body   // the cap's front
-      else if (y === 6 || y === 28) c = STONE.foot                                               // its underside; the foot
-      else {
-        c = BAND.has(y) ? STONE.band : STONE.face
-        if (y === 7) c = STONE.shade                                      // in the cap's shadow
-        if (x === s[0]) c = y === 7 ? STONE.band : STONE.rim
-        if (x === s[1]) c = STONE.shade
-        if (x === s[1] - 1 && (BAND.has(y) || y === 7)) c = STONE.foot
-        // where it widens below, the step catches the light
-        const above = span(y - 1)
-        if (above && (x < above[0] || x > above[1])) c = x < above[0] ? STONE.rim : STONE.body
-        if (CRACK.has(`${x},${y}`)) c = STONE.crack
+  const pic = picture(3, 3)
+  // a stone: span(y) its west and east edge on row y (null above its top),
+  // its top surface `top`..`top + 2`, its cap's front down to `cap` (the row
+  // under it in shade), standing on `foot`
+  const stone = ({ span, top, cap, foot, bands, cracks = [], gaps = [] }) => {
+    const band = new Set(bands), crack = new Set(cracks), gap = new Set(gaps)
+    for (let y = top; y <= foot; y++) {
+      const s = span(y)
+      if (!s) continue
+      for (let x = s[0]; x <= s[1]; x++) {
+        if (gap.has(`${x},${y}`)) continue
+        let c
+        const above = y > top ? span(y - 1) : null
+        if (y === foot) c = STONE.foot
+        else if (y <= top + 2 && y < cap) c = y === top || x === s[0] || !above || x < above[0] ? STONE.rim : x === s[1] ? STONE.shade : STONE.top
+        else if (y <= cap) c = x === s[0] ? STONE.rim : x >= s[1] - 1 ? STONE.shade : band.has(y) ? STONE.band : STONE.body
+        else {
+          c = band.has(y) ? STONE.band : STONE.face
+          if (y === cap + 1) c = STONE.shade                                       // under the cap
+          if (x === s[0]) c = y === cap + 1 ? STONE.band : STONE.rim
+          if (x === s[1]) c = STONE.shade
+          if (x === s[1] - 1 && (band.has(y) || y === cap + 1)) c = STONE.foot
+          // where it widens below, the step catches the light
+          if (above && y > cap + 1 && (x < above[0] || x > above[1])) c = x < above[0] ? STONE.rim : STONE.body
+        }
+        if (crack.has(`${x},${y}`)) c = STONE.crack
+        pic.px[y][x] = c
       }
-      pic.px[y][x] = c
     }
   }
-  // specks on the cap
-  pic.px[3][7] = STONE.rim; pic.px[4][9] = STONE.crack; pic.px[3][10] = STONE.crack
-  // the drift at its foot
-  for (const [x, y, c] of [[1, 27, 'z'], [1, 28, 'Z'], [2, 27, 'l'], [3, 27, 'z'], [3, 26, 'l'], [12, 27, 'z'], [13, 27, 'l'], [14, 28, 'Z'], [14, 27, 'z'], [12, 26, 'l'], [4, 28, 'z'], [11, 28, 'z']]) pic.px[y][x] = SANDS[c]
-  for (let x = 4; x <= 14; x++) pic.sh[29][x] = 1
+  // (worn: a side steps in or out a pixel where a softer layer has weathered back)
+  const worn = (pattern, y) => pattern[y % pattern.length]
+  const WL = [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0], WR = [0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0]
+  // the tall pillar, x 17..30: a cap 14 wide over a shaft of 12, widening to 14 at its foot
+  stone({
+    top: 2, cap: 7, foot: 44,
+    span: y => y === 2 ? [19, 28] : y === 3 ? [18, 29] : y <= 7 ? [17, 30] : y <= 37 ? [18 + worn(WL, y), 29 - worn(WR, y)] : [17, 30],
+    bands: [6, 12, 18, 25, 31, 37, 41],
+    cracks: ['22,10', '22,11', '23,12', '23,13', '26,20', '26,21', '25,22', '21,29', '21,30', '27,35', '20,39'],
+    gaps: ['24,2', '25,2', '30,4'],   // a chip out of the cap
+  })
+  // the shorter one, x 2..13
+  stone({
+    top: 20, cap: 24, foot: 44,
+    span: y => y === 20 ? [4, 11] : y === 21 ? [3, 12] : y <= 24 ? [2, 13] : y <= 39 ? [3 + worn(WR, y), 12 - worn(WL, y)] : [2, 13],
+    bands: [23, 29, 35, 41],
+    cracks: ['7,27', '7,28', '8,29', '5,36', '6,37', '10,32'],
+    gaps: ['9,20', '13,22'],
+  })
+  // the stump, x 34..42, broken off jagged (its break lit, fresh stone), and a fallen piece beside it
+  stone({
+    top: 35, cap: 35, foot: 44,
+    span: y => y === 35 ? [36, 38] : y === 36 ? [35, 40] : y === 37 ? [34, 42] : [34, 42],
+    bands: [40],
+    cracks: ['38,39', '38,40', '39,41'],
+    gaps: ['41,37'],
+  })
+  for (const [x, y] of [[36, 35], [37, 35], [35, 36], [36, 36], [39, 36], [40, 36], [34, 37], [37, 37]]) pic.px[y][x] = STONE.rim
+  for (const [x, y] of [[38, 36], [38, 37], [39, 37], [40, 37], [42, 37]]) if (pic.px[y][x]) pic.px[y][x] = STONE.top
+  stone({ top: 41, cap: 41, foot: 44, span: y => y === 41 ? [44, 45] : [43, 46], bands: [], cracks: ['45,43'] })
+  pic.px[41][44] = STONE.rim; pic.px[42][43] = STONE.rim
+  // the drift at their feet, and their shadows (each in its own column)
+  const DRIFTS = [[17, 43, 'l'], [17, 42, 'z'], [18, 43, 'z'], [29, 43, 'z'], [30, 42, 'l'], [30, 43, 'Z'], [16, 44, 'z'],
+    [2, 43, 'l'], [3, 43, 'z'], [12, 43, 'z'], [13, 42, 'l'], [1, 44, 'z'], [14, 44, 'Z'],
+    [34, 43, 'z'], [35, 43, 'l'], [42, 43, 'z'], [33, 44, 'z']]
+  for (const [x, y, c] of DRIFTS) pic.px[y][x] = SANDS[c]
+  for (const [x0, x1] of [[19, 31], [4, 15], [36, 46]]) for (let x = x0; x <= x1; x++) pic.sh[45][x] = 1
+  for (const x of [31, 15]) for (let y = 40; y <= 44; y++) if (!pic.px[y][x]) pic.sh[y][x] = 1
   cutInto(pic, PILLAR.cells)
 }
 
@@ -1730,7 +1777,9 @@ const SANDS = { z: SAND.shade, Z: DRIFT.A, l: SAND.lit }
 // is cut into holds a good part of it (BONES leaves out the four that would not).
 {
   const pic = picture(4, 3), W = pic.w, H = pic.h
-  const B = { l: BONE.l, b: BONE.b, s: BONE.s, d: BONE.d }
+  // (`e`: the darker edge on their lower and right sides, so they stand off the pale sand)
+  const B = { l: BONE.l, b: BONE.b, s: BONE.s, d: BONE.d, e: '#5b5142' }
+  const SKULL_TONES = { l: B.l, b: B.b, s: B.d, d: B.e }
   const SKULL_AT = { x: 2, y: 30 }
   const SKULL = [   // its snout to the west
     '......................',
@@ -1778,13 +1827,13 @@ const SANDS = { z: SAND.shade, Z: DRIFT.A, l: SAND.lit }
   ribs = null
   // the skull, and the horn on its snout
   const skull = new Map()
-  SKULL.forEach((r, dy) => [...r].forEach((ch, dx) => { if (ch !== ".") { add(SKULL_AT.x + dx, SKULL_AT.y + dy); skull.set((SKULL_AT.y + dy) * W + SKULL_AT.x + dx, B[ch]) } }))
+  SKULL.forEach((r, dy) => [...r].forEach((ch, dx) => { if (ch !== ".") { add(SKULL_AT.x + dx, SKULL_AT.y + dy); skull.set((SKULL_AT.y + dy) * W + SKULL_AT.x + dx, SKULL_TONES[ch]) } }))
   curve([7, 37], [4, 28], [9, 21], 1.9, 0.6)
   const on = (x, y) => bone.has(y * W + x)
   // lit along its upper and left edges, in shade along its lower and right
   for (const i of bone) {
     const x = i % W, y = (i / W) | 0
-    pic.px[y][x] = skull.get(i) ?? (!on(x + 1, y) || !on(x, y + 1) ? B.s : !on(x - 1, y) || !on(x, y - 1) ? B.l : B.b)
+    pic.px[y][x] = skull.get(i) ?? (!on(x + 1, y) || !on(x, y + 1) ? B.d : !on(x - 1, y) || !on(x, y - 1) ? B.l : B.b)
   }
   // the inside of the cage: row by row, between the first rib and the last
   const cage = new Map()
@@ -1795,17 +1844,20 @@ const SANDS = { z: SAND.shade, Z: DRIFT.A, l: SAND.lit }
   const inCage = (x, y) => { const span = cage.get(y); return !!span && x > span[0] && x < span[1] }
   // rimmed in its grey, darker below and to the right; inside the cage the
   // ribs stand white against its shade instead
-  const CAGE = '#bba57d'
+  const CAGE = '#bba57d', rimmed = new Set()
   for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
     if (on(x, y)) continue
     if (inCage(x, y)) { pic.px[y][x] = CAGE; continue }
     const above = on(x, y - 1) || on(x - 1, y), below = on(x, y + 1) || on(x + 1, y)
-    if (above || below) pic.px[y][x] = above ? B.d : B.s
+    if (above || below) { pic.px[y][x] = above ? B.e : B.s; rimmed.add(y * W + x) }
   }
-  // drifted sand where the ribs and the skull go into the ground, and their shadow
+  // drifted sand where the ribs and the skull go into the ground
   for (const { x, end } of RIBS) for (const dx of [-2, -1, 0, 1]) { const X = Math.round(x + 1.5) + dx; if (!pic.px[end + 1][X]) pic.px[end + 1][X] = dx < 0 ? SANDS.l : SANDS.z }
   for (let x = 5; x <= 16; x++) if (!pic.px[44][x]) pic.px[44][x] = x % 3 ? SANDS.z : SANDS.Z
-  for (let y = 0; y < H; y++) for (let x = 1; x < W; x++) if (!pic.px[y][x] && pic.px[y][x - 1] && pic.px[y - 1]?.[x - 1] && y > 26) pic.sh[y][x] = 1
+  // and a soft shadow on the sand, two pixels to the lower right of the bones and their rim
+  const solid = (x, y) => bone.has(y * W + x) || rimmed.has(y * W + x)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
+    if (!pic.px[y][x] && [[1, 1], [2, 2], [1, 2], [2, 1]].some(([dx, dy]) => solid(x - dx, y - dy))) pic.sh[y][x] = 1
   cutInto(pic, BONES.cells)
 }
 
@@ -1855,6 +1907,56 @@ const SANDS = { z: SAND.shade, Z: DRIFT.A, l: SAND.lit }
   const shadow = grid()
   for (let x = 0; x < T; x++) shadow[FACE_FROM + 8][x] = 1
   SAND_MOUTH.forEach((name, i) => placeKeep(name, pair[i], { joins: 'NEW', shadow }))
+}
+
+// A desert camp's tent (sites.js camp): Kenney's tan tent, read from its four
+// tiles and recoloured, so it keeps its shape, its cells and its doorway. Its
+// cloth was the sand's own colour and was lost on it; here it is bleached
+// canvas striped rust and ochre (the stripes running down from the ridge,
+// darker on the shaded east slope), its outline brown on the lit side and near
+// black on the shaded one, the doorway deep, and its shadow cast on the sand
+// beside its east slope. (It fills its four cells to their edges, as the tan
+// tent does, so it is saved as it is rather than held to stand alone.)
+{
+  const NAME = 'ow_tent_stripe'
+  const src = [['00', '10'], ['01', '11']].map(row => row.map(c => readPng(new URL(`../renderer/assets/tiles/ow_tent_tan_${c}.png`, import.meta.url).pathname)))
+  const big = Array.from({ length: 2 * T }, (_, y) => Array.from({ length: 2 * T }, (_, x) => {
+    const img = src[y >> 4][x >> 4], d = img.data ?? img.pixels, i = ((y % T) * T + x % T) * 4
+    return d[i + 3] === 0 ? null : '#' + [d[i], d[i + 1], d[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('')
+  }))
+  const CANVAS = { lit: '#f2e8d0', shade: '#cfb994', rust: '#b04e2a', rustShade: '#843a1f', ochre: '#cf8f2e', ochreShade: '#9c6620' }
+  // the stripes, column by column: two of rust, three of canvas, one of ochre, three of canvas
+  const stripe = x => ['r', 'r', 'c', 'c', 'c', 'o', 'c', 'c', 'c'][(x + 3) % 9]
+  const RECOLOUR = {
+    '#e6dabf': x => ({ r: CANVAS.rust, o: CANVAS.ochre, c: CANVAS.lit })[stripe(x)],              // the lit west slope
+    '#e0d2b1': x => ({ r: CANVAS.rustShade, o: CANVAS.ochreShade, c: CANVAS.shade })[stripe(x)],  // the shaded east slope
+    '#d9caa9': () => '#a8845a',   // a flap turned back, its underside
+    '#ece2cd': () => '#fff7e4',   // the flap's edge, catching the light
+    '#c8a480': () => '#8a5a32',   // the doorway's sides
+    '#8f673f': () => '#3a2214',   // the doorway
+    '#838790': () => '#40261a',   // the pegs at its corners
+    '#c5cbd9': () => '#efe2c4',   // the pole's tip
+    '#b4a78c': x => x < T ? '#6b4428' : '#40261a',   // its outline: brown in the light, near black in the shade
+  }
+  for (let y = 0; y < 2 * T; y++) for (let x = 0; x < 2 * T; x++) {
+    const c = big[y][x]
+    if (!c) continue
+    if (!RECOLOUR[c]) throw new Error(`the tan tent has a colour ${c} at ${x},${y} the stripes do not know`)
+    big[y][x] = RECOLOUR[c](x)
+  }
+  // its shadow on the sand, two pixels beside its east slope
+  const shade = Array.from({ length: 2 * T }, () => new Array(2 * T).fill(0))
+  for (let y = 0; y < 2 * T; y++) {
+    let last = -1
+    for (let x = T; x < 2 * T; x++) if (big[y][x]) last = x
+    for (const x of [last + 1, last + 2]) if (last >= T && x < 2 * T && !big[y][x]) shade[y][x] = 1
+  }
+  for (const [c, r] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+    const g = grid(), sh = grid()
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { g[y][x] = big[r * T + y][c * T + x]; sh[y][x] = shade[r * T + y][c * T + x] }
+    const name = `${NAME}_${c}${r}`
+    save(name, gridRgba(g, sh)); drawn.push(name); placeTiles.push(name)
+  }
 }
 console.log(`wrote ${placeTiles.length} tiles of the wild places in the desert`)
 

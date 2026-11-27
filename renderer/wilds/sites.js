@@ -89,12 +89,12 @@ const SPROUTS = ['ow_deco_sprout_0', 'ow_deco_sprout_1']
 const PALM_TALL = ['ow_tree_palm_top', 'ow_tree_palm']   // terrain.js PALMS.tall: the crown over its trunk
 const DESERT_VILLAGE_SKINS = [...AWNINGS.flatMap(a => [a.top, ...a.front]), ...new Set(Object.values(MUD_PIECES)), ...BLOOMS, ...SPROUTS, ...PALM_TALL, ...PAVE_SKINS]
 // The wild places in the desert (tools/make-wilds-desert-tiles.mjs draws
-// what is new): a camp pitches tan tents, a ruin's or a watchtower's yard is
+// what is new): a camp pitches tents of striped canvas, a ruin's or a watchtower's yard is
 // strewn last of all with rubble (solid, as the ruin's other fallen stones)
 // and broken pots (walked over), and a cave opens in a sandstone outcrop, its
 // mouth the outcrop's face (terrain.js rims the rock round it as running on
 // into it).
-const DESERT_TENT = 'ow_tent_tan'
+const DESERT_TENT = 'ow_tent_stripe'   // striped canvas: the tan tent is lost on the sand
 const RUBBLE = 'ow_ruin_rubble'
 const POTS = ['ow_deco_pottery_0', 'ow_deco_pottery_1']
 const CAVE_MOUTH = ['ow_cave_arch_0', 'ow_cave_arch_1']
@@ -348,6 +348,7 @@ export const SITE_SKINS = [...new Set([
   'ow_prop_cart', 'ow_prop_torch', 'ow_prop_bucket', 'ow_prop_bucket_water', 'ow_prop_pitchfork', 'ow_prop_target',
   'ow_prop_bedroll_0', 'ow_prop_bedroll_1', 'ow_prop_mound', 'ow_prop_campfire_cold',
   'ow_tent_00', 'ow_tent_10', 'ow_tent_01', 'ow_tent_11', 'ow_tent_tan_00', 'ow_tent_tan_10', 'ow_tent_tan_01', 'ow_tent_tan_11',
+  ...['00', '10', '01', '11'].map(c => `${DESERT_TENT}_${c}`),
   'ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r', 'ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r',
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
   ...CAVE_MOUTH, ...SAND_MOUTH, 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
@@ -1071,12 +1072,12 @@ export function makeSites(c) {
   // ---- camps -------------------------------------------------------------------
   // look: 'bandits' (tents round a fire), 'graves', 'den' (rocks and bones),
   // 'nest' (mounds, dead trees, bones). In the desert its pad is sand and
-  // both tents are tan.
+  // both tents are of striped canvas.
   function camp(cx, cy, look) {
     if (c.desert) sandPad(cx, cy, c.pad)
     if (look === 'bandits') {
       fire(cx, cy)
-      tent(cx - 4, cy - 4, c.desert ? DESERT_TENT : 'ow_tent'); tent(cx + 2, cy - 4, DESERT_TENT)
+      tent(cx - 4, cy - 4, c.desert ? DESERT_TENT : 'ow_tent'); tent(cx + 2, cy - 4, c.desert ? DESERT_TENT : 'ow_tent_tan')
       low(cx - 2, cy + 1, 'ow_prop_bedroll_0'); low(cx + 2, cy + 1, 'ow_prop_bedroll_1')
       low(cx + 4, cy - 1, 'ow_prop_barrel_1'); low(cx + 4, cy, 'ow_prop_crate_2'); low(cx - 4, cy, 'ow_prop_sack_1')
       low(cx - 1, cy + 3, 'ow_prop_log')

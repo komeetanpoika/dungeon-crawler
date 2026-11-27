@@ -21,14 +21,20 @@ export const DESERT_LANDMARKS = [...SPIRE, CAIRN]
 // What the main thing of a desert piece looks like when it is a landmark
 // (features.js dressDesertLandmark; the tool draws them): an oasis ringed with
 // palms (PALM, two cells tall: the crown over its foot) and reeds by its
-// water; or a sandstone pillar, a rock arch or the bones of something huge,
-// each a picture cut in cells (`cells`, rows from the north, null where the
-// picture has nothing) whose cell `at` stands where the oasis's pond would
-// have been. The arch's cell `open`, under its span, is walked into; every
-// other cell is a landmark (blocked, seen from afar).
+// water; or standing stones of sandstone, a rock arch or the bones of
+// something huge, each a picture cut in cells (`cells`, rows from the north,
+// null where the picture has nothing) whose cell `at` stands where the
+// oasis's pond would have been. The arch's cell `open`, under its span, is
+// walked into; every other cell is a landmark (blocked, seen from afar).
+// The standing stones (PILLAR): a tall pillar three cells high in the middle
+// column, a shorter one two cells high in the west column, a broken stump in
+// the east column's bottom row; each stone keeps to its own column, so the
+// middle column laid alone (LONE_PILLAR) is the tall pillar whole, the
+// landmark of last resort where nothing bigger finds room.
 export const PALM = [`${BEACON_PREFIX}palm_top`, `${BEACON_PREFIX}palm`]
 const cut = (name, w, h, empty = []) => Array.from({ length: h }, (_, r) => Array.from({ length: w }, (_, c) => empty.includes(`${c}${r}`) ? null : `${BEACON_PREFIX}${name}_${c}${r}`))
-export const PILLAR = { cells: [[`${BEACON_PREFIX}pillar_top`], [`${BEACON_PREFIX}pillar`]], at: [0, 1] }
+export const PILLAR = { cells: cut('pillar', 3, 3, ['00', '20', '21']), at: [1, 2] }
+export const LONE_PILLAR = { cells: PILLAR.cells.map(row => [row[1]]), at: [0, 2] }
 export const ARCH = { cells: cut('arch', 3, 2), at: [1, 1], open: [1, 1] }
 export const BONES = { cells: cut('bones', 4, 3, ['00', '10', '30', '32']), at: [2, 1] }
 export const REEDS = ['ow_deco_reeds_0', 'ow_deco_reeds_1', 'ow_deco_reeds_2']

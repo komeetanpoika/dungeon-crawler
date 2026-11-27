@@ -1,7 +1,7 @@
 // The wild places in desert dress (renderer/wilds/features.js, sites.js): a
-// desert piece's landmark is an oasis ringed with palms, a sandstone pillar,
+// desert piece's landmark is an oasis ringed with palms, standing stones,
 // a rock arch or the bones of something huge, chosen by a hash of the piece;
-// camps pitch tan tents on sand, ruins and watchtowers stand on sand among
+// camps pitch striped tents on sand, ruins and watchtowers stand on sand among
 // rubble and broken pots, and a cave mouth opens in a sandstone outcrop.
 // Which piece gets what, and every record of it, is what it was: only cells
 // differ with the desert's dress on.
@@ -98,13 +98,15 @@ test('every desert landmark is one of four', () => {
       assert.ok(isWaterSkin(s.p.cells[s.p.main.y][s.p.main.x].skin), `${s.at}: no water in the oasis`)
       if (COMPARE.landmark > L.indexOf(s)) assert.equal(water.map(w => `${w.x},${w.y}`).join(' '), waterNear(plainOf(s), 2).map(w => `${w.x},${w.y}`).join(' '), `${s.at}: the pond moved`)
     } else {
-      // the others stand on sand (or on the path that runs up to them), with no water
+      // the others stand on sand (or on the path that runs up to them: sand, or a dirt trail out of the next country), with no water
       assert.equal(waterNear(s.p, 2).length, 0, `${s.at}: water by the ${looks[0]}`)
-      for (const { x, y, c } of cells) assert.match(c.skin, /^ow_(sand|path_sand_)/, `${s.at}: the ${looks[0]} at ${x},${y} stands on ${c.skin}`)
+      for (const { x, y, c } of cells) assert.match(c.skin, /^ow_(sand|path_sand_|dirt_)/, `${s.at}: the ${looks[0]} at ${x},${y} stands on ${c.skin}`)
       // (no grass left of the green oasis's disc, which had a radius of 4)
       for (const { x, y, c } of around(s.p, s.p.main.x, s.p.main.y, 4)) {
         if (Math.hypot(x - s.p.main.x, y - s.p.main.y) <= 3.5) assert.ok(!/^ow_grass/.test(c.skin), `${s.at}: grass at ${x},${y} by the ${looks[0]}`)
       }
+      // the standing stones stand whole: the tall pillar, the shorter one and the stump, six cells
+      if (looks[0] === 'pillar') assert.equal(new Set(cells.map(({ c }) => c.overlay)).size, 6, `${s.at}: ${cells.map(({ c }) => c.overlay).join(' ')}`)
     }
   }
   for (const [look, n] of Object.entries(count)) assert.ok(n >= 10, `only ${n} of ${look} in ${L.length}: ${JSON.stringify(count)}`)
@@ -223,7 +225,7 @@ test('camps, ruins and towers wear the desert', () => {
       for (const { x, y, c } of around(p, mx, my, PAD[kind])) {
         if ((x - mx) ** 2 + (y - my) ** 2 > PAD[kind] ** 2) continue
         assert.ok(!NOT_SAND.test(c.skin), `${s.at}: ${c.skin} at ${x},${y} on its pad`)
-        if ((c.overlay ?? '').startsWith('ow_tent_')) { tents++; assert.ok(c.overlay.startsWith('ow_tent_tan_'), `${s.at}: ${c.overlay} at ${x},${y}`) }
+        if ((c.overlay ?? '').startsWith('ow_tent_')) { tents++; assert.ok(c.overlay.startsWith('ow_tent_stripe_'), `${s.at}: ${c.overlay} at ${x},${y}`) }
       }
       if (kind === 'camp') continue
       // the ruin's yard: rubble and broken pots half-buried in the sand round the tower
@@ -270,8 +272,9 @@ test('the odds are unchanged', () => {
 
 test('the new tiles exist, and behave by their names', () => {
   const names = new Set(WILDS_SKINS)
-  const fresh = new Set(['ow_landmark_palm_top', 'ow_landmark_palm', 'ow_landmark_pillar_top', 'ow_landmark_pillar',
-    ...['00', '10', '20', '01', '11', '21'].map(c => `ow_landmark_arch_${c}`), 'ow_cave_arch_sand_0', 'ow_cave_arch_sand_1'])
+  const fresh = new Set(['ow_landmark_palm_top', 'ow_landmark_palm', ...['10', '11', '12', '01', '02', '22'].map(c => `ow_landmark_pillar_${c}`),
+    ...['00', '10', '20', '01', '11', '21'].map(c => `ow_landmark_arch_${c}`), 'ow_cave_arch_sand_0', 'ow_cave_arch_sand_1',
+    ...['00', '10', '01', '11'].map(c => `ow_tent_stripe_${c}`)])
   for (const s of places().landmark) for (const { c } of around(s.p, s.p.main.x, s.p.main.y, 7))
     if (/^ow_(landmark_bones_|deco_reeds_)/.test(c.overlay ?? '')) fresh.add(c.overlay)
   assert.ok([...fresh].filter(n => n.startsWith('ow_landmark_bones_')).length >= 8, 'the bones are fewer than eight cells')
