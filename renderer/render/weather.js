@@ -363,9 +363,9 @@ export function drawFog(ctx, layer, look, fog, { camX, camY }, { W, H }, S, map 
 // its own speed and pinned to the world (they do not ride along with the
 // camera); and a soft round patch of clear sand round the hero, thinly
 // hazed at his feet and fading into haze that is whole by `whole` tiles
-// inside his storm sight: the stepped edge of the cells he sees reaches in
-// to about there, and it and the fog of the cells just past it lie under
-// whole haze, so no stepped outline or dark ring shows. Then
+// inside his storm sight: the cells he sees reach a tile past that sight
+// (wilds/storm.js LIT_PAD), so their stepped edge and the fog of the cells
+// past it lie under whole haze, so no stepped outline or dark ring shows. Then
 // onto the frame, thickening fast as the storm rises (so a storm coming in
 // reads as sand, not as a grey murk over the land out of sight) and whole at
 // full strength.

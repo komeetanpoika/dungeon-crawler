@@ -2780,7 +2780,7 @@ function heroLand() {
   return heroLandAt
 }
 // How far the hero sees out of doors in the Wilds now (wilds/storm.js).
-const wildsSight = () => sightNow(state, heroLand().desert)
+const wildsSight = () => { const land = heroLand(); return sightNow(state, land.desert, land.village) }
 
 function render() {
   // Open country sees almost twice as far as a dungeon or cave — 14 tiles

@@ -24,17 +24,26 @@
 //
 // What it takes: the hero's sight, down to SIGHT.storm at full strength
 // (SIGHT.stormVillage in a village), and the landmarks seen from afar with
-// it; how far monsters see (systems/brain.js, state.sightCap); and from
+// it (the cells lit for him reach LIT_PAD further: the haze is the edge of
+// what is seen); how far monsters see (systems/brain.js, state.sightCap); and from
 // TAKES_MAP on, the map: the minimap is haze and the full map has no mark
 // for the hero. A gust of wind is heard every `windEvery` seconds while it
 // is stronger than WIND_HEARD. It hurts no one and stops nothing.
 import { DAY_LENGTH } from '../data/weather.js'
 import { hash } from './rand.js'
-import { heroSight, BEACON_RANGE } from './desert.js'
+import { heroSight, SIGHT, BEACON_RANGE } from './desert.js'
 import { prevailingWind, WIND } from './desert-art.js'
 import { sfx } from '../systems/sfx.js'
 
 export const STORM = { odds: 0.5, minLen: 40, maxLen: 70, ramp: 5, grace: 120, windEvery: 2.5 }
+// While a storm blows, the cells lit for the hero reach LIT_PAD tiles past the
+// storm's sight (heroSight). The haze (render/weather.js drawHaze), not the
+// cell grid, is the edge of what is seen: its clear patch is round where he is
+// drawn and whole half a tile inside the storm sight, while the lit cells are
+// a stepped disc round the middle of his tile, up to half a tile off his
+// drawn place either way as he walks; a disc of the storm sight alone would
+// show its steps inside the patch on the side he walks away from.
+export const LIT_PAD = 1
 // The strength from which the storm takes the map, and from which its wind is heard.
 export const TAKES_MAP = 0.5
 export const WIND_HEARD = 0.3
@@ -103,12 +112,25 @@ export function tickStorm(state, world, { clock, delta = 0, desert = false, ring
   return state.storm
 }
 
-// The hero's sight out of doors in the Wilds: the radius (the storm's while
-// it blows, else the open country's or the desert's) and how far landmarks
-// are seen, which closes in with the storm down to the radius itself.
-export function sightNow(state, desert) {
+// How far the cells lit for the hero reach: as heroSight, from the open
+// country's or the desert's radius down to the storm's, but to LIT_PAD past
+// the storm's at full strength, easing in and out with it (one rounding, so
+// it closes and opens a tile at a time); no pad when no storm blows.
+export function litRadius({ desert, storm = 0, village = false }) {
+  const clear = desert ? SIGHT.desert : SIGHT.base
+  const blind = (village ? SIGHT.stormVillage : SIGHT.storm) + LIT_PAD
+  const s = Math.min(1, Math.max(0, storm))
+  return Math.round(clear + (blind - clear) * s)
+}
+
+// The hero's sight out of doors in the Wilds, as the cells lit for him and
+// the map take it: the radius (the open country's or the desert's, closing
+// with a storm to LIT_PAD past the storm sight; litRadius) and how far
+// landmarks are seen, which closes in with the storm down to the radius
+// itself. `desert` and `village` are where he stands (session.js landOf).
+export function sightNow(state, desert, village = false) {
   const storm = state.storm ?? 0
-  const radius = state.sightCap ?? heroSight({ desert })
+  const radius = storm > 0 ? litRadius({ desert, storm, village }) : heroSight({ desert })
   const far = storm > 0 ? Math.round(BEACON_RANGE + (radius - BEACON_RANGE) * storm) : BEACON_RANGE
   return { radius, far }
 }

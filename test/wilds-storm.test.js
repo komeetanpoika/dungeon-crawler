@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  STORM, stormOfDay, stormStrength, stormHere, stormWind, tickStorm, calmStorm, mapHazed, mapHero, sightNow, TAKES_MAP, WIND_HEARD,
+  STORM, stormOfDay, stormStrength, stormHere, stormWind, tickStorm, calmStorm, mapHazed, mapHero, sightNow, litRadius, LIT_PAD, TAKES_MAP, WIND_HEARD,
 } from '../renderer/wilds/storm.js'
 import { SIGHT, BEACON_RANGE, isDesert } from '../renderer/wilds/desert.js'
 import { windAt, prevailingWind, nearCity, WIND } from '../renderer/wilds/desert-art.js'
@@ -165,7 +165,7 @@ test('walking out of the desert ends it, walking back finds it', () => {
   const hero = { X: 900, Y: -70 }
   let clock = frames(state, world, STORM.ramp + 1, { clock: sd.start, run: true })
   assert.equal(state.storm, 1)
-  assert.equal(sightNow(state, true).radius, SIGHT.storm)
+  assert.equal(sightNow(state, true).radius, SIGHT.storm + LIT_PAD)
   assert.equal(mapHero(state, hero), null)
   // onto forest: the storm dies down over the ramp
   clock = frames(state, world, 1, { clock, run: true, desert: false })
@@ -284,15 +284,72 @@ test('the wind is heard every 2.5 s while the storm is over 0.3', () => {
   assert.equal(gusts(), 0)
 })
 
-test('sight in a storm: the radius closes to 4, and landmarks are not seen past it', () => {
+test('sight in a storm: the radius closes to 4 and the lit cells a tile past it, and landmarks are not seen past them', () => {
   assert.deepEqual(sightNow({}, true), { radius: SIGHT.desert, far: BEACON_RANGE })
   assert.deepEqual(sightNow({ storm: 0 }, false), { radius: SIGHT.base, far: BEACON_RANGE })
   const full = { storm: 1, sightCap: SIGHT.storm }
-  assert.deepEqual(sightNow(full, true), { radius: SIGHT.storm, far: SIGHT.storm })
+  assert.deepEqual(sightNow(full, true), { radius: SIGHT.storm + LIT_PAD, far: SIGHT.storm + LIT_PAD })
+  assert.deepEqual(sightNow({ storm: 1, sightCap: SIGHT.stormVillage }, true, true), { radius: SIGHT.stormVillage + LIT_PAD, far: SIGHT.stormVillage + LIT_PAD })
   const half = { storm: 0.5, sightCap: 12 }
   const s = sightNow(half, true)
-  assert.equal(s.radius, 12)
-  assert.ok(s.far > 12 && s.far < BEACON_RANGE)
+  assert.equal(s.radius, litRadius({ desert: true, storm: 0.5 }))
+  assert.ok(s.radius >= 12 && s.radius <= 12 + LIT_PAD)
+  assert.ok(s.far > s.radius && s.far < BEACON_RANGE)
+})
+
+test('in a storm the cells lit for the hero reach a tile past the storm sight; nothing else does', () => {
+  const sd = stormyDay()
+  assert.equal(LIT_PAD, 1)
+  // at full strength: the storm sight (the haze's patch, the monsters' cap) is 4, 8 in a village; the lit cells reach a tile further
+  for (const [village, sight] of [[false, SIGHT.storm], [true, SIGHT.stormVillage]]) {
+    const world = plainWorld(sd.day), state = freshState()
+    frames(state, world, STORM.ramp + 1, { clock: sd.peak, village })
+    assert.equal(state.storm, 1)
+    assert.equal(state.sightCap, sight)
+    assert.equal(sightNow(state, true, village).radius, sight + LIT_PAD)
+  }
+  // no storm, no pad
+  const calm = freshState(), calmWorld = plainWorld(sd.day)
+  tickStorm(calm, calmWorld, { clock: sd.start - 1, delta: 0.1, ...DESERT })
+  assert.equal(calm.storm, 0)
+  assert.equal(calm.sightCap, null)
+  assert.equal(sightNow(calm, true).radius, SIGHT.desert)
+  assert.equal(sightNow(calm, false).radius, SIGHT.base)
+  // the pad eases in and out with the storm: through the whole storm the lit
+  // radius moves a tile at a time, closing as the storm builds and opening as
+  // it dies, never below the storm sight nor more than the pad past it
+  const state = freshState(), world = plainWorld(sd.day)
+  let last = sightNow(state, true).radius, was = 0
+  for (let clock = sd.start - 1; clock < sd.end + 1; clock += 0.05) {
+    world.playtime += 0.05
+    tickStorm(state, world, { clock, delta: 0.05, ...DESERT })
+    const r = sightNow(state, true).radius, cap = state.sightCap ?? SIGHT.desert, now = state.storm
+    assert.ok(now > was ? r <= last : now < was ? r >= last : r === last, `the lit radius went ${last} -> ${r} as the storm went ${was.toFixed(3)} -> ${now.toFixed(3)}`)
+    assert.ok(Math.abs(r - last) <= 1, `the lit radius jumped ${last} -> ${r}`)
+    assert.ok(r >= cap && r <= cap + LIT_PAD, `lit radius ${r} against the storm sight ${cap}`)
+    last = r; was = now
+  }
+  assert.equal(state.storm, 0)
+  assert.equal(last, SIGHT.desert)
+})
+
+test('the monsters\' cap stays the storm sight plus one, not the lit radius', () => {
+  const sd = stormyDay()
+  const world = plainWorld(sd.day), state = freshState()
+  frames(state, world, STORM.ramp + 1, { clock: sd.peak })
+  assert.equal(state.storm, 1)
+  const map = createMap(30, 9)
+  for (let y = 1; y < 8; y++) for (let x = 1; x < 29; x++) map[y][x].tile = TILE.FLOOR
+  const S = 32
+  // a wizard sees 300 px: in the storm, the hero LIT_PAD + 1.5 tiles past the storm sight is not seen, though inside his own lit cells' reach + 1
+  const foe = () => ({ type: 'wizard', maxHp: 4, hp: 4, x: 4, y: 4, px: 4 * S + S / 2, py: 4 * S + S / 2 })
+  const at = d => ({ type: 'player', x: 4 + d, y: 4, px: (4 + d) * S + S / 2, py: 4 * S + S / 2, hp: 10, maxHp: 10 })
+  const far = foe()
+  updateBrain(far, { map, player: at(state.sightCap + LIT_PAD + 1), entities: [far], sightCap: state.sightCap }, 1 / 60)
+  assert.notEqual(far.ai.mode, 'chase')
+  const close = foe()
+  updateBrain(close, { map, player: at(state.sightCap + 1), entities: [close], sightCap: state.sightCap }, 1 / 60)
+  assert.equal(close.ai.mode, 'chase')
 })
 
 test('a storm has one wind, the same wherever the hero stands, another on another day', () => {
