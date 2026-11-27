@@ -19,7 +19,7 @@ import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
 import { getMonsterDef, drawGeneratedMonster, isStoryCreature, drawMonsterFx, drawnTop } from '../systems/monsters.js'
 import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
-import { makeWeatherLayer, drawNight, drawFog, drawHaze } from './weather.js'
+import { makeWeatherLayer, drawNight, drawFog, drawHaze, drawHeat } from './weather.js'
 import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.js'
 import { spriteHue } from '../systems/rites.js'
 import { drawTile } from './tiles.js'
@@ -1453,12 +1453,14 @@ export class Renderer {
       }
     }
 
-    // Weather, pass one: a sandstorm's haze (wilds/storm.js), then the night
-    // wash with holes punched around fires, over the haze and before the
-    // flames so they stay bright. look is null underground.
+    // Weather, pass one: a sandstorm's haze (wilds/storm.js), the day's heat
+    // shimmer at the screen's edges (wilds/heat.js), then the night wash with
+    // holes punched around fires, over them and before the flames so they
+    // stay bright. look is null underground.
     const look = state.weather?.look
     if (look && this.weatherLayer) {
       drawHaze(ctx, this.weatherLayer, look, { camX, camY }, { W, H }, S)
+      drawHeat(ctx, this.weatherLayer, look, { W, H })
       drawNight(ctx, this.weatherLayer, look, { camX, camY }, { W, H }, S)
     }
     // Kalevanlinna's lit windows and the smith's sparks stay bright in the dark

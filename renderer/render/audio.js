@@ -122,6 +122,15 @@ export const RECIPES = {
     { at: 0.5, kind: 'swoosh', f0: 460, f1: 160, dur: 1.9, vol: 0.9 },
     { at: 0.35, kind: 'burst', freq: 3400, q: 0.6, dur: 1.6, vol: 0.35 },
   ] },
+  // A drink at a well or an oasis's water (wilds/heat.js, once each time the
+  // hero comes to it): the splash of water scooped up, then three gulps, each
+  // a little lower. Positionless, quieter than a blow.
+  'drink': { kind: 'seq', dur: 0.85, vol: 0.4, parts: [
+    { at: 0, kind: 'burst', freq: 1600, q: 1.1, dur: 0.12, vol: 0.45 },
+    { at: 0.2, kind: 'blip', wave: 'triangle', f0: 340, f1: 190, dur: 0.11, vol: 0.85 },
+    { at: 0.43, kind: 'blip', wave: 'triangle', f0: 320, f1: 180, dur: 0.11, vol: 0.8 },
+    { at: 0.66, kind: 'blip', wave: 'triangle', f0: 300, f1: 170, dur: 0.12, vol: 0.7 },
+  ] },
   'coach-arrive': { kind: 'seq', dur: 1.3, vol: 0.4, parts: [
     hoof(0, 0.7), hoof(0.16, 0.7), hoof(0.36, 0.65), hoof(0.62, 0.55),
     { at: 0.85, kind: 'blip', wave: 'triangle', f0: 340, f1: 210, dur: 0.4, vol: 0.5 },

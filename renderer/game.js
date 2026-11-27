@@ -46,6 +46,7 @@ import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
 import { tickStorm, calmStorm, sightNow, mapHero, mapHazed } from './wilds/storm.js'
+import { tickHeat } from './wilds/heat.js'
 import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
@@ -1809,11 +1810,15 @@ function update(delta) {
     }
     // a sandstorm on the hero (wilds/storm.js): none indoors, its sight and the monsters' with it
     const land = state.cave ? null : heroLand()
+    const clock = activeSave.clock ?? DAY_START
     tickStorm(state, wildsWorld, {
-      clock: activeSave.clock ?? DAY_START, delta,
+      clock, delta,
       desert: !!land?.desert, ring: !!land?.ring, city: !!land?.city, village: !!land?.village,
     })
-  }
+    // the day's heat (wilds/heat.js), after the storm that hides the sun:
+    // the stamina's regain, a drink at the water, the hero's line, the shimmer
+    tickHeat(state, wildsWorld, { clock, delta, desert: !!land?.desert, city: !!land?.city, village: !!land?.village })
+  } else state.player.regenScale = 1   // no heat outside the Wilds, whatever a player carried in
   const { player, map } = state
   // On top of the coach nothing underfoot is opened, picked up, entered or
   // stepped onto: those wait until the hero is on foot again.

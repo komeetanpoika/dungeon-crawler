@@ -52,6 +52,9 @@ export function spendStamina(player, cost) {
 
 // Also the save-migration point: players persisted before stamina existed
 // get a full tank the first time they tick.
+// player.regenScale scales the regain: the desert's midday heat halves it
+// (wilds/heat.js, set every frame in the Wilds); a player without one (the
+// PvP arena's heroes, every other mode) regains in full.
 export function tickStamina(player, dt) {
   if (player.stamina == null) {
     player.stamina = STAMINA_MAX
@@ -66,7 +69,7 @@ export function tickStamina(player, dt) {
   if (player.staminaRegenT <= REGEN_DELAY) return
   const t = Math.min(dt, player.staminaRegenT - REGEN_DELAY)
   player.stamina = Math.min(player.maxStamina ?? STAMINA_MAX,
-    player.stamina + REGEN_RATE * t)
+    player.stamina + REGEN_RATE * (player.regenScale ?? 1) * t)
 }
 
 // The mage jogs: slower burst, far cheaper — sprinting is how a caster

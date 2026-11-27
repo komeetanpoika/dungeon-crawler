@@ -1,6 +1,7 @@
 // Weather painting (docs/superpowers/specs/2026-09-04-weather-day-cycle-design.md).
 // Passes through one quarter-resolution layer: a sandstorm's haze (drawn
-// before the night, which darkens it), the night wash (multiply,
+// before the night, which darkens it), the day's heat shimmer at the screen's
+// edges (straight onto the frame, no layer), the night wash (multiply,
 // with holes punched around fires, drawn before flames so they stay bright)
 // and the pier fog (drifting blobs masked to the water cells, drawn after
 // flames and over everything on the water). Phases come from look.t — the
@@ -529,3 +530,99 @@ export function drawHaze(ctx, layer, look, { camX, camY }, { W, H }, S) {
 }
 // The haze's alpha past the clear patch at strength s: rising fast, eased out.
 export const hazeAlpha = s => HAZE.far * (1 - (1 - s) * (1 - s))
+
+// ---- the day's heat ---------------------------------------------------------------
+// (wilds/heat.js; look.heat from systems/weather.js, 0..1, coming and going
+// with the heat over a second.) A faint shimmer at the screen's edges while
+// the sun beats on open sand: along each edge a soft warm band, deepest at
+// the edge and gone `depth` of the screen's shorter side in, whose inner
+// reach wavers along the edge and with time like air over hot ground, and
+// whose strength swells and fades a little. It is multiplied on, so it warms
+// the sun-baked sand and leaves the dark of the land out of sight dark (a
+// pale band laid over that dark read as a glow on the fog). A hint, not an
+// effect: on a wide screen whose edges lie out of sight it hardly shows.
+//
+// Kept cheap for a software canvas: drawn straight onto the frame, with no
+// layer and no blit; four filled paths over a thin frame round the screen,
+// all under one fill made once and kept. The fill runs across a unit band and
+// the transform lays that band along each edge at its depth, so it fades out
+// at the band's full reach on every edge and every frame. The fill is a strip
+// of BAND_PX pixels painted once with the profile and repeated as a pattern:
+// sampled like an image, it cost about 0.6 of shading a gradient over the
+// same paths on this machine (a gradient where the layer cannot make a canvas).
+//
+// `alpha`: at the edge at full heat; `profile`: the band's strength across
+// it, [share of the depth, share of alpha]; `waver`: how much of the band its
+// inner edge wavers in and out (where it comes in furthest the profile is
+// still a third of the way up, so the wavering shows as a soft rim); `step`:
+// CSS px between that edge's points; `waves`: the ripples running along it,
+// [wavelength px, speed rad/s, weight];
+// `breath`: how much the strength swells and fades, at `breathRate` rad/s.
+// The corners, where two bands lie over each other, are a little deeper.
+export const SHIMMER = {
+  alpha: 0.35, depth: 0.07, waver: 0.4, step: 32, colour: [255, 196, 120],
+  profile: [[0, 1], [0.4, 0.5], [0.75, 0.2], [1, 0]],
+  waves: [[420, 1.1, 0.6], [150, -2.3, 0.4]], breath: 0.2, breathRate: 1.7,
+}
+// Each edge's unit band (u along the edge in CSS px, v across it from the
+// edge, 0..1) laid onto the frame, [a, b, c, d, e, f] for ctx.transform with
+// the band's depth D, and the edge's length: top, bottom, left, right.
+const EDGES = (D, W, H) => [[1, 0, 0, D, 0, 0, W], [1, 0, 0, -D, 0, H, W], [0, 1, D, 0, 0, 0, H], [0, 1, -D, 0, W, 0, H]]
+
+// How far in the band reaches at `u` along edge `k` at time t: from 1 - waver to 1.
+function reach(u, t, k) {
+  let w = 0
+  SHIMMER.waves.forEach(([len, speed, weight], j) => { w += weight * Math.sin(2 * Math.PI * u / len + speed * t + (k + 1) * (j + 1.3) * 1.7) })
+  return 1 - SHIMMER.waver * (0.5 + 0.5 * w)
+}
+
+// The profile as a gradient from 0 to `len` along y.
+function profileGradient(ctx, len) {
+  const g = ctx.createLinearGradient(0, 0, 0, len)
+  const c = SHIMMER.colour.join(',')
+  for (const [at, a] of SHIMMER.profile) g.addColorStop(at, `rgba(${c},${a})`)
+  return g
+}
+// The band's fill, made once per context and kept on the layer: the strip as
+// a pattern scaled to the unit band, or the gradient itself.
+const BAND_PX = 64
+function bandFill(ctx, layer) {
+  if (layer.heatBand?.ctx === ctx) return layer.heatBand.fill
+  let fill = null
+  const strip = typeof DOMMatrix === 'function' ? layer.createCanvas?.() : null
+  if (strip) {
+    strip.width = 1; strip.height = BAND_PX
+    const g = strip.getContext('2d')
+    g.fillStyle = profileGradient(g, BAND_PX)
+    g.fillRect(0, 0, 1, BAND_PX)
+    fill = ctx.createPattern?.(strip, 'repeat') ?? null
+    if (fill?.setTransform) fill.setTransform(new DOMMatrix([1, 0, 0, 1 / BAND_PX, 0, 0]))
+    else fill = null
+  }
+  layer.heatBand = { ctx, fill: fill ?? profileGradient(ctx, 1) }
+  return layer.heatBand.fill
+}
+
+export function drawHeat(ctx, layer, look, { W, H }) {
+  const s = look.heat
+  if (!(s > 0)) return
+  const fill = bandFill(ctx, layer)
+  const t = look.t ?? 0, D = SHIMMER.depth * Math.min(W, H)
+  ctx.save()
+  ctx.globalCompositeOperation = 'multiply'
+  ctx.globalAlpha = SHIMMER.alpha * s * (1 - SHIMMER.breath * (0.5 + 0.5 * Math.sin(t * SHIMMER.breathRate)))
+  ctx.fillStyle = fill
+  EDGES(D, W, H).forEach(([a, b, c, d, e, f, L], k) => {
+    ctx.save()
+    ctx.transform(a, b, c, d, e, f)
+    ctx.beginPath()
+    ctx.moveTo(0, 0)
+    const n = Math.max(1, Math.ceil(L / SHIMMER.step))
+    for (let i = 0; i <= n; i++) { const u = (L * i) / n; ctx.lineTo(u, reach(u, t, k)) }
+    ctx.lineTo(L, 0)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
+  })
+  ctx.restore()
+}

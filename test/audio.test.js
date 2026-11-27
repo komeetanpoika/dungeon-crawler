@@ -4,6 +4,7 @@ import { RECIPES, falloffGain, panFor, NEAR_PX, FAR_PX, PAN_MAX } from '../rende
 import { CUE_NAMES } from '../renderer/systems/sfx.js'
 import { HOOF_EVERY } from '../renderer/wilds/coach-ride.js'
 import { STORM } from '../renderer/wilds/storm.js'
+import { HEAT } from '../renderer/wilds/heat.js'
 
 describe('recipe registry', () => {
   it('every cue name has a recipe', () => {
@@ -55,6 +56,15 @@ describe('recipe registry', () => {
     assert.ok(CUE_NAMES.includes('storm-wind'))
     assert.ok(RECIPES['storm-wind'].dur <= STORM.windEvery)
     assert.ok(loudest(RECIPES['storm-wind']) < loudest(RECIPES['melee-hit']) / 2)
+  })
+
+  // a drink in the desert (wilds/heat.js): once each time the hero comes to
+  // the water, after HEAT.drinkAfter s beside it; a short sound, quieter than a blow
+  it('a drink has a sound, short and quieter than a blow', () => {
+    const loudest = r => (r.kind === 'seq' ? r.vol * Math.max(...r.parts.map(p => p.vol)) : r.vol)
+    assert.ok(CUE_NAMES.includes('drink'))
+    assert.ok(RECIPES.drink.dur <= HEAT.drinkAfter)
+    assert.ok(loudest(RECIPES.drink) < loudest(RECIPES['melee-hit']) / 2)
   })
 })
 

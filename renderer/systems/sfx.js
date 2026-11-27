@@ -35,6 +35,8 @@ export const CUE_NAMES = [
   'coach-go', 'coach-hoof', 'coach-arrive',
   // a sandstorm's gusts (wilds/storm.js)
   'storm-wind',
+  // a drink at a well or an oasis's water in the desert (wilds/heat.js)
+  'drink',
 ]
 
 export function makeSfx(muted = false) {
