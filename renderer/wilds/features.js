@@ -807,7 +807,8 @@ export function placeFeatures(t, piece) {
       t.setProp(s.x, s.y, 'ow_mushroom'); hold(s.x, s.y)
       for (let i = ri(2, 4); i > 0; i--) place({ kind: 'wild_mushroom' }, s.x, s.y, 1, 2)
     } else if (s.kind === 'hut') {
-      sites.hut(s.x, s.y)
+      // (one on the desert's country, with the desert's dress on, is a desert hut: sites.js hut)
+      sites.hut(s.x, s.y, desertDress() && t.biome(s.x, s.y) === 'desert')
     } else if (s.kind === 'nest') {
       spawn({ kind: 'chest', x: s.x, y: s.y })
       sites.nest(s.x, s.y)

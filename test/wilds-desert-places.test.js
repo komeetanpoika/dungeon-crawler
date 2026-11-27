@@ -264,10 +264,26 @@ const recordsOf = p => ({
   spawns: p.spawns, small: p.small, packs: p.packs, doors: p.doors, caves: p.caves, signs: p.signs, points: p.points, villagePoints: p.villagePoints,
 })
 const firstDiff = (a, b) => { let i = 0; while (i < a.length && a[i] === b[i]) i++; return `…${a.slice(Math.max(0, i - 40), i + 60)}… against …${b.slice(Math.max(0, i - 40), i + 60)}…` }
+// A house of the desert kit says so in its door's look (`look.wall: 'adobe'`):
+// a desert village's houses and the walled well's keeper's house (`houses`
+// says which of the piece's doors may be one), and a hut out on desert
+// country (sites.js hut: a small hut whose door stands on the desert's
+// country). Such a door is put back to the wall its draws gave it, which was
+// stone or wood, before the records are compared.
+const isDesertHut = (s, d) => d.tier === 'hut' && s.p.small.some(q => q.kind === 'hut' && q.x === d.x && q.y === d.y) && isDesert(s.seed, s.wx * PIECE + d.x, s.wy * PIECE + d.y)
+function wallsAsDrawn(s, on, off, houses = () => false) {
+  on.doors = on.doors.map((d, i) => {
+    if (d.look?.wall !== 'adobe') return d
+    const was = off.doors[i]?.look?.wall
+    assert.ok((houses(d) || isDesertHut(s, d)) && ['stone', 'wood'].includes(was), `${s.at}: an adobe door at ${d.x},${d.y} (${d.tier}), its wall ${was} with the dress off`)
+    return { ...d, look: { ...d.look, wall: was } }
+  })
+}
 test('every record of a desert place is what it was with the dress off', () => {
   let n = 0
   for (const [kind, list] of Object.entries(places())) for (const s of list.slice(0, COMPARE[kind])) {
     const on = recordsOf(s.p), off = recordsOf(plainOf(s))
+    wallsAsDrawn(s, on, off)
     for (const field of Object.keys(on)) {
       const a = JSON.stringify(on[field]), b = JSON.stringify(off[field])
       assert.ok(a === b, `${s.at}: ${field} differs: ${firstDiff(a, b)}`)
@@ -499,7 +515,9 @@ test('the smaller desert inn is of mud brick, and the same inn', () => {
     assert.ok(['stone', 'wood'].includes(door.look.wall), `${s.at}: the inn's look is ${JSON.stringify(door.look)}`)
     walls.add(door.look.wall)
     // every record of the piece is what it was with the dress off, its door included
+    // (but a hut out on desert country, whose door says it is of the desert kit)
     const on = recordsOf(p), off = recordsOf(plain)
+    wallsAsDrawn(s, on, off)
     for (const field of Object.keys(on)) {
       const a = JSON.stringify(on[field]), b = JSON.stringify(off[field])
       assert.ok(a === b, `${s.at}: ${field} differs: ${firstDiff(a, b)}`)
@@ -590,12 +608,9 @@ test('every record of a desert wayside place is what it was with the dress off',
   for (const list of Object.values(wayside())) for (const s of list) {
     const on = recordsOf(s.p), off = recordsOf(plainOf(s))
     // (a house of the desert kit says so in its door's look, as a desert village's
-    // houses do: only the walled well's keeper's house is one; the inns keep theirs)
-    on.doors = on.doors.map((d, i) => {
-      if (d.look?.wall !== 'adobe') return d
-      assert.ok(s.p.main.kind === 'well' && ['stone', 'wood'].includes(off.doors[i]?.look?.wall), `${s.at}: an adobe door at ${d.x},${d.y}`)
-      return { ...d, look: { ...d.look, wall: off.doors[i].look.wall } }
-    })
+    // houses do: of these places only the walled well's keeper's house is one, and
+    // a hut out on desert country; the inns keep theirs)
+    wallsAsDrawn(s, on, off, d => s.p.main.kind === 'well' && d.tier === 'safe')
     for (const field of Object.keys(on)) {
       const a = JSON.stringify(on[field]), b = JSON.stringify(off[field])
       assert.ok(a === b, `${s.at}: ${field} differs: ${firstDiff(a, b)}`)
@@ -636,7 +651,8 @@ test("the wayside's new tiles exist, and behave by their names", () => {
 // walked on as before, seen over or not as before, walked behind or not as
 // before, on the map in the same colour; only its name, and so its picture,
 // is the desert's. A desert village's sheep fold (the fold tale) is walled in
-// mud brick as its date garden is.
+// mud brick as its date garden is, and a hut out on desert country is a house
+// of the desert kit.
 const SWAPS = {
   ow_prop_woodpile: 'ow_prop_amphora',
   ow_prop_stump_0: 'ow_prop_pots_0', ow_prop_stump_1: 'ow_prop_pots_1', ow_prop_stump_axe: 'ow_prop_pots_2',
@@ -656,9 +672,14 @@ const isOld = n => typeof n === 'string' && (n in SWAPS || n.startsWith('ow_fenc
 // The sample: the desert villages within DESERT_VILLAGE_REACH pieces of home
 // on seeds 7, 42 and 1 (each built for its own tale), the desert camps, ruins
 // and watchtowers of places() (seeds 7 and 1) and MORE_42 more of each of
-// seed 42, and the wayside places of wayside() with the four smaller inns.
+// seed 42, the wayside places of wayside() with the four smaller inns, and of
+// each of seeds 7, 42 and 1 the first A_SEED wild or roadside desert pieces
+// out from home with a hut on desert country, and the first A_SEED with a
+// boss's lair whose middle is desert.
 const DESERT_VILLAGE_REACH = 10
 const MORE_42 = 5
+const A_SEED = 4
+const desertHuts = s => s.p.small.filter(q => q.kind === 'hut' && isDesert(s.seed, s.wx * PIECE + q.x, s.wy * PIECE + q.y))
 let named = null
 function desertNamed() {
   if (named) return named
@@ -679,21 +700,46 @@ function desertNamed() {
   }
   const W = wayside()
   const small = SMALL_INNS.map(([seed, wx, wy, deal]) => ({ seed, wx, wy, deal, p: generatePiece(seed, wx, wy, deal), at: `seed ${seed} small inn ${wx},${wy} deal ${deal}`, plain: null }))
+  const hut = [], lair = []
+  for (const seed of WAYSIDE_SEEDS) {
+    let h = 0, l = 0
+    for (let r = 2; r <= REACH && (h < A_SEED || l < A_SEED); r++) for (let wy = -r; wy <= r; wy++) for (let wx = -r; wx <= r; wx++) {
+      if (Math.max(Math.abs(wx), Math.abs(wy)) !== r || pieceBiome(seed, wx, wy) !== 'desert' || !['wild', 'roadside'].includes(pieceClass(seed, wx, wy))) continue
+      const boss = mainKind(seed, wx, wy, 0) === 'boss'
+      if (h >= A_SEED && !(boss && l < A_SEED)) continue
+      const s = { seed, wx, wy, p: generatePiece(seed, wx, wy, 0), plain: null }
+      if (boss && l < A_SEED && s.p.main.kind === 'boss' && isDesert(seed, wx * PIECE + s.p.main.x, wy * PIECE + s.p.main.y)) { lair.push({ ...s, at: `seed ${seed} lair ${wx},${wy}` }); l++ }
+      if (h < A_SEED && desertHuts(s).length) { hut.push({ ...s, at: `seed ${seed} hut piece ${wx},${wy}` }); h++ }
+    }
+  }
   named = {
     village: villages, camp: [...places().camp, ...more.camp], ruin: [...places().ruin, ...more.ruin], tower: [...places().tower, ...more.tower],
-    rest: W.rest, inn: [...W.inn, ...small], well: W.well,
+    rest: W.rest, inn: [...W.inn, ...small], well: W.well, hut, lair,
   }
   return named
 }
-// every cell of a piece but its huts' (a hut out on the piece is no desert
-// place: its house and its woodpile stay green)
-function placeCells(p) {
-  const huts = p.small.filter(s => s.kind === 'hut')
+// every cell of a piece but those of its huts that stand off the desert's
+// country (a green hut on a desert piece is no desert place: its house and its
+// woodpile stay green)
+function placeCells(s) {
+  const huts = s.p.small.filter(q => q.kind === 'hut' && !desertHuts(s).includes(q))
   const out = []
   for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
     if (huts.some(h => Math.max(Math.abs(h.x - x), Math.abs(h.y - y)) <= 6)) continue
-    out.push({ x, y, c: p.cells[y][x] })
+    out.push({ x, y, c: s.p.cells[y][x] })
   }
+  return out
+}
+// The cells of a hut's house, its door at (d.x, d.y): along the door's row while
+// the wall runs on, and up while it is house art (as the desert village's test finds them).
+const isHouseArt = n => typeof n === 'string' && (n.startsWith('ow_house_') || n.startsWith('ow_roof_'))
+function houseCells(p, d) {
+  let x0 = d.x, x1 = d.x, top = d.y
+  while (isHouseArt(p.cells[d.y][x0 - 1]?.overlay)) x0--
+  while (isHouseArt(p.cells[d.y][x1 + 1]?.overlay)) x1++
+  while (isHouseArt(p.cells[top - 1]?.[d.x]?.overlay)) top--
+  const out = []
+  for (let y = top; y <= d.y; y++) for (let x = x0; x <= x1; x++) out.push({ x, y })
   return out
 }
 
@@ -701,20 +747,26 @@ test('desert places hold no forest props', () => {
   const S = desertNamed()
   for (const [kind, list] of Object.entries(S)) {
     assert.ok(list.length >= 10, `only ${list.length} desert ${kind}s`)
-    for (const s of list) for (const { x, y, c } of placeCells(s.p))
+    for (const s of list) for (const { x, y, c } of placeCells(s))
       for (const n of [c.overlay, c.deco]) assert.ok(!isOld(n), `${s.at}: ${n} at ${x},${y}`)
   }
   assert.ok(S.village.some(s => s.tale === 'fold'), 'no desert village built for the fold tale')
+  // a desert hut is a house of the desert kit, its door saying so
+  for (const s of S.hut) for (const h of desertHuts(s)) {
+    const d = s.p.doors.find(o => o.x === h.x && o.y === h.y)
+    assert.ok(d && d.tier === 'hut' && d.look.wall === 'adobe', `${s.at}: the hut at ${h.x},${h.y}: ${JSON.stringify(d)}`)
+    for (const { x, y } of houseCells(s.p, d)) assert.match(s.p.cells[y][x].overlay ?? '', /^ow_(roof|house)_adobe_/, `${s.at}: the hut at ${h.x},${h.y} at ${x},${y}`)
+  }
 })
 
 const sameCell = (a, b) => a.tile === b.tile && !!a.over === !!b.over && !!a.losClear === !!b.losClear && !!a.losSoft === !!b.losSoft && !!a.losTall === !!b.losTall && !!a.losBeacon === !!b.losBeacon
 const cellText = c => `${c.overlay}/${c.deco ?? ''} tile ${c.tile}${c.over ? ' over' : ''}${c.losClear ? ' clear' : ''}${c.losSoft ? ' soft' : ''}${c.losTall ? ' tall' : ''}${c.losBeacon ? ' beacon' : ''}`
 test('a swap changes the name and nothing else', () => {
   const swapped = Object.fromEntries(Object.keys(SWAPS).map(o => [o, 0])), seen = new Set()
-  let pen = 0
+  let pen = 0, hutCells = 0
   for (const [kind, list] of Object.entries(desertNamed())) for (const s of list) {
     const plain = plainOf(s)
-    for (const { x, y, c } of placeCells(s.p)) {
+    for (const { x, y, c } of placeCells(s)) {
       const was = plain.cells[y][x]
       for (const layer of ['overlay', 'deco']) {
         if (was[layer] in SWAPS) seen.add(was[layer])
@@ -736,26 +788,29 @@ test('a swap changes the name and nothing else', () => {
         pen++
       }
     }
+    // a desert hut's house: the desert kit where Tiny Town's stood, cell for cell
+    for (const h of desertHuts(s)) for (const { x, y } of houseCells(s.p, s.p.doors.find(o => o.x === h.x && o.y === h.y))) {
+      const c = s.p.cells[y][x], was = plain.cells[y][x]
+      assert.ok(/^ow_(roof|house)_adobe_/.test(c.overlay ?? '') && /^ow_(roof|house)_/.test(was.overlay ?? '') && !/_adobe_/.test(was.overlay), `${s.at}: the hut at ${x},${y} is ${c.overlay}, was ${was.overlay}`)
+      assert.ok(sameCell(c, was), `${s.at}: the hut at ${x},${y} ${cellText(c)} against ${cellText(was)}`)
+      hutCells++
+    }
   }
   for (const old of seen) assert.ok(swapped[old] > 0, `${old} occurs and is never swapped: ${JSON.stringify(swapped)}`)
-  // (every row of the table occurs in the sample but the plain stump, which no
-  // desert place lays today: only a hut and the elk's and the pike's places do)
-  const rows = Object.keys(SWAPS).filter(o => o !== 'ow_prop_stump_0')
-  assert.equal([...seen].sort().join(' '), rows.sort().join(' '), `rows that never occur: ${rows.filter(o => !seen.has(o))}`)
+  // (every row of the table occurs in the sample)
+  assert.equal([...seen].sort().join(' '), Object.keys(SWAPS).sort().join(' '), `rows that never occur: ${Object.keys(SWAPS).filter(o => !seen.has(o))}`)
   assert.ok(pen >= 10, `only ${pen} cells of mud-brick pen`)
+  assert.ok(hutCells >= 60, `only ${hutCells} cells of desert huts`)
 })
 
 // (a house of the desert kit says so in its door's look: a desert village's
-// houses, the walled well's keeper's house; every other field is what it was)
+// houses, the walled well's keeper's house, a desert hut; every other field is what it was)
 test('the records are the same', () => {
-  let n = 0
+  let n = 0, huts = 0
   for (const [kind, list] of Object.entries(desertNamed())) for (const s of list) {
     const on = recordsOf(s.p), off = recordsOf(plainOf(s))
-    on.doors = on.doors.map((d, i) => {
-      if (d.look?.wall !== 'adobe') return d
-      assert.ok((kind === 'village' || kind === 'well') && d.tier === 'safe' && ['stone', 'wood'].includes(off.doors[i]?.look?.wall), `${s.at}: an adobe door at ${d.x},${d.y}`)
-      return { ...d, look: { ...d.look, wall: off.doors[i].look.wall } }
-    })
+    huts += on.doors.filter(d => d.look?.wall === 'adobe' && isDesertHut(s, d)).length
+    wallsAsDrawn(s, on, off, d => (kind === 'village' || kind === 'well') && d.tier === 'safe')
     for (const field of Object.keys(on)) {
       const a = JSON.stringify(on[field]), b = JSON.stringify(off[field])
       assert.ok(a === b, `${s.at}: ${field} differs: ${firstDiff(a, b)}`)
@@ -763,12 +818,34 @@ test('the records are the same', () => {
     n++
   }
   assert.ok(n >= 100, `only ${n} pieces compared`)
+  assert.ok(huts >= 12, `only ${huts} desert huts compared`)
+})
+
+// Inside, a desert hut is the house it was (interior/versions.js houseSpec:
+// the same version, size, trade and seed), its walls of plaster as a desert
+// village's houses are (a wooden hut's were of wood): the same rooms, the same
+// people and things, the same way in.
+test('a desert hut is the same house inside', () => {
+  let n = 0
+  for (const s of desertNamed().hut) for (const h of desertHuts(s)) {
+    const i = s.p.doors.findIndex(d => d.x === h.x && d.y === h.y), plain = plainOf(s).doors[i]
+    const on = houseSpec(s.p.doors[i], { worldSeed: s.seed }), off = houseSpec(plain, { worldSeed: s.seed })
+    assert.equal(on.palette, 'plaster', `${s.at}: the hut at ${h.x},${h.y} inside is of ${on.palette}`)
+    assert.equal(off.palette, plain.look.wall === 'wood' ? 'wood' : 'plaster', `${s.at}: the green hut at ${h.x},${h.y}`)
+    const a = JSON.stringify({ ...on, palette: null }), b = JSON.stringify({ ...off, palette: null })
+    assert.ok(a === b, `${s.at}: the hut at ${h.x},${h.y} is another house: ${firstDiff(a, b)}`)
+    const inOn = generateInterior(on), inOff = generateInterior(off)
+    const what = g => JSON.stringify({ spawns: g.entitySpawns, at: g.playerSpawn, exit: g.exit, tiles: g.map.map(row => row.map(c => c.tile).join(',')) })
+    assert.ok(what(inOn) === what(inOff), `${s.at}: inside the hut at ${h.x},${h.y}: ${firstDiff(what(inOn), what(inOff))}`)
+    n++
+  }
+  assert.ok(n >= 12, `only ${n} desert huts`)
 })
 
 test('the desert well cools and gives a drink', () => {
   let n = 0
   for (const s of [...desertNamed().village, ...desertNamed().well]) {
-    const at = placeCells(s.p).find(({ c }) => c.overlay === 'ow_well_sand')
+    const at = placeCells(s).find(({ c }) => c.overlay === 'ow_well_sand')
     assert.ok(at, `${s.at}: no desert well`)
     assert.equal(s.p.cells[at.y - 1][at.x].overlay, 'ow_well_sand_top', `${s.at}: the well at ${at.x},${at.y} has no top`)
     // three cells off is in its cool

@@ -118,7 +118,8 @@ const STELE = ['ow_prop_stele_top', 'ow_prop_stele']
 const FIRE_PALM = [1, 2]
 // The desert's own names for what a green place lays (tools/make-wilds-desert-tiles.mjs
 // draws them), laid on the same cells by the same draws: a desert village,
-// a desert camp, a desert wayside place and the walled well lay clay jars for
+// a desert camp, a desert wayside place, the walled well, a hut on the
+// desert's country and a boss's lair in the desert lay clay jars for
 // the woodpile, clay pots for the stumps, a rolled rug for the log, a well
 // of sandstone with a pole and a bucket, and the caravanserai a trough with
 // a cactus or an agave for each of its flower planters (inn.js); a desert
@@ -126,8 +127,10 @@ const FIRE_PALM = [1, 2]
 // stone, its twin in warm stone tile for tile. Each keeps the start of its
 // name that says how it behaves (ow_prop_ a low thing, ow_well a well,
 // ow_roof_ and ow_house_ a building walked behind at its top row, and the
-// brick, over.js isStructure). A hut out on the piece, a boss's lair, a farm
-// whose middle happens to be desert and the tales' places stay green.
+// brick, over.js isStructure). A house is never dressed by these names (its
+// desert look is the adobe kit: house()); a farm of a green country's list
+// whose middle happens to land on the desert's country, and the tales'
+// places, stay green.
 export const DESERT_NAMES = {
   ow_prop_woodpile: 'ow_prop_amphora',
   ow_prop_stump_0: 'ow_prop_pots_0', ow_prop_stump_1: 'ow_prop_pots_1', ow_prop_stump_axe: 'ow_prop_pots_2',
@@ -819,11 +822,16 @@ export function makeSites(c) {
   }
 
   // ---- a hut out in the wild ---------------------------------------------------
-  function hut(x, y) {
-    const h = house(x, y, 'hut', { w: 3 + (rng() < 0.4 ? 1 : 0) })
-    low(h.x0 - 1, y, 'ow_prop_woodpile')
+  // `desert`: it stands on the desert's country (features.js judges it at its
+  // door): built from the desert kit by the same draws, its door saying so (as
+  // the walled well's keeper's house does), and what lies by it wears the
+  // desert's names (DESERT_NAMES). The tales' huts are laid by their places'
+  // stamps, never by this one.
+  function hut(x, y, desert = false) {
+    const h = house(x, y, 'hut', { w: 3 + (rng() < 0.4 ? 1 : 0), kit: desert ? 'adobe' : 'kenney' })
+    low(h.x0 - 1, y, dressed('ow_prop_woodpile', desert))
     low(h.x1 + 1, y, pick(['ow_prop_barrel_0', 'ow_prop_barrel_1', 'ow_prop_sack_0']))
-    low(h.x1 + 2, y + 2, pick(['ow_prop_stump_axe', 'ow_prop_stump_0']))
+    low(h.x1 + 2, y + 2, dressed(pick(['ow_prop_stump_axe', 'ow_prop_stump_0']), desert))
     if (rng() < 0.5) for (let i = 0; i < 3; i++) flat(h.x0 - 1 + i, y + 3, 'ow_deco_crop_0')
   }
 
@@ -1233,10 +1241,11 @@ export function makeSites(c) {
     }
   }
   // Whatever lives here is big: a fire, what it took, what it ate.
+  // In the desert (`c.desert`) what lies there wears the desert's names (DESERT_NAMES).
   function lair(cx, cy) {
     fire(cx, cy)
     low(cx - 3, cy - 2, 'ow_prop_crate_1'); low(cx - 4, cy - 2, 'ow_prop_barrel_0'); low(cx - 3, cy - 3, 'ow_prop_sack_1')
-    low(cx + 3, cy + 2, 'ow_prop_log')
+    low(cx + 3, cy + 2, dressed('ow_prop_log', c.desert))
     scatter(cx, cy, 1, 5, 6, ['ow_deco_skull'])
   }
 
