@@ -181,6 +181,29 @@ export const GOALS = {
       return intent
     },
   },
+  // The jackal's two (data/npcs.js). Alone, it runs: no other living animal
+  // of its kind within the species' `pack` tiles, and the hero near.
+  flee_alone: {
+    when: (e, ctx) => ctx.playerDist < THREAT_RANGE && !ctx.state.entities.some(o => o !== e && o.type === 'npc' &&
+      o.species === e.species && o.hp > 0 && !(o.dying > 0) && Math.hypot(o.px - e.px, o.py - e.py) <= ctx.def.pack * S),
+    run: (e, ctx) => ({ mode: 'flee', speed: ctx.cfg.speed }),
+  },
+  // In company, it harries: the hostile brain, but after each bite of its
+  // own it backs off a moment before it comes in again. A yip the first
+  // time it sees him.
+  harry: {
+    when: e => e.hostile,
+    run: (e, ctx, dt) => {
+      const a = e.ai
+      if (a.biting && !e.attack) a.backOff = rand(...ctx.def.backOff)
+      a.biting = !!e.attack
+      if (a.backOff > 0) { a.backOff -= dt; return { mode: 'flee', speed: ctx.cfg.speed } }
+      if (!a.yipped && ctx.canSeePlayer) { a.yipped = true; sfx(ctx.state, 'yip', { px: e.px, py: e.py }) }
+      const intent = updateBrain(e, ctx.state, ctx.delta)
+      tryStartEnemyAttack(e, ctx.state)
+      return intent
+    },
+  },
   startle: {
     // an animal led by the flute (systems/tune.js) does not bolt from the one it follows
     when: (e, ctx) => !!ctx.def.startle && !e.piped && (e.ai.startleTimer > 0 || ctx.playerDist < ctx.def.startle),

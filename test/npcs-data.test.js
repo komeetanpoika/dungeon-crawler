@@ -15,7 +15,7 @@ const STANDS = new Set([ROOTED, 'watchman'])
 describe('NPC_SPECIES', () => {
   it('defines the villagers, livestock and wild animals', () => {
     assert.deepEqual(Object.keys(NPC_SPECIES).sort(),
-      ['bear', 'boar', 'cat', 'chicken', 'city_chicken', 'city_goat', 'deer', 'dog', 'elder', 'goat', 'hermit', 'kerttu', 'lalli', 'lalli_treed', 'mouse', 'piper', 'sheep', 'townsfolk', 'villager', 'watchman', 'wolf'])
+      ['bear', 'boar', 'cat', 'chicken', 'city_chicken', 'city_goat', 'deer', 'dog', 'elder', 'goat', 'hermit', 'jackal', 'kerttu', 'lalli', 'lalli_treed', 'mouse', 'piper', 'sheep', 'townsfolk', 'villager', 'watchman', 'wolf'])
   })
 
   it('every species has the fields the goal loop reads', () => {
@@ -76,9 +76,9 @@ describe('NPC_SPECIES', () => {
     }
   })
 
-  it('fight species have attack_hostile in their list; flee species do not', () => {
+  it('fight species have attack_hostile (the jackal: harry) in their list; flee species do not', () => {
     // the watch stands when struck and fights once the city's rules turn it
     for (const s of Object.values(NPC_SPECIES))
-      assert.equal(s.priorities.includes('attack_hostile'), s.onHit === 'fight' || s.onHit === 'stand')
+      assert.equal(s.priorities.includes('attack_hostile') || s.priorities.includes('harry'), s.onHit === 'fight' || s.onHit === 'stand')
   })
 })
