@@ -214,6 +214,15 @@ describe('weatherLook', () => {
     assert.deepEqual(look.lights, [])
   })
 
+  it('carries the storm round the hero, or none', () => {
+    const state = { weather: makeWeather(lakeMapData()), entities: [], fireZones: [], player: { px: 300, py: 200 } }
+    assert.equal(weatherLook(state, { clock: 0.5 * DAY_LENGTH }).storm, null)
+    Object.assign(state, { storm: 0.6, stormWind: 0.7, sightCap: 10 })
+    assert.deepEqual(weatherLook(state, { clock: 0.5 * DAY_LENGTH }).storm, { s: 0.6, wind: 0.7, px: 300, py: 200, r: 10 })
+    state.storm = 0
+    assert.equal(weatherLook(state, { clock: 0.5 * DAY_LENGTH }).storm, null)
+  })
+
   it('a fog-only map is always bright with full fog', () => {
     const w = makeWeather(lakeMapData())
     w.dayCycle = false

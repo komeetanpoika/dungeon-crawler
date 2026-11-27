@@ -14,6 +14,7 @@ import { admit } from './tales.js'
 import { noteSeen } from './map.js'
 import { admitSampo } from './city/sampo-places.js'
 import { arrivedRecord } from './coach-ride.js'
+import { calmStorm } from './storm.js'
 import { applyFelled, STUMP } from '../systems/lumber.js'
 import { TILE } from '../systems/entities.js'
 import { doorAt } from '../systems/houses.js'
@@ -168,6 +169,10 @@ export function enterWilds(state, world, target, { buildEntities }) {
   state.lastBossTile = null
   delete state._flowFields
   state.wilds = true
+  // nobody wakes blind: no storm for a while (wilds/storm.js)
+  calmStorm(world)
+  state.storm = 0
+  state.sightCap = null
   eachPiece(grid, (piece, c, r) => { recordFor(world, piece.key).lastSeen = world.playtime; join(state, world, piece, c, r, buildEntities) })
   setTriggers(state, grid)
   const want = toWindow(world.origin, goal.X, goal.Y)
@@ -229,9 +234,19 @@ function recentre(state, world, dx, dy, buildEntities) {
   setTriggers(state, grid)
 }
 
+// Whether world tile (X, Y) is in a village: within VILLAGE_REACH of the
+// middle of its piece's village (the piece is in memory wherever the hero is).
+export function inVillage(world, X, Y) {
+  const here = pieceOf(X, Y)
+  const v = world.pieces.get(pieceKey(here.wx, here.wy))?.village
+  return !!v && Math.max(Math.abs(X - here.wx * PIECE - v.x), Math.abs(Y - here.wy * PIECE - v.y)) <= VILLAGE_REACH
+}
+
 // Once per surface frame. Returns { recentred: {dx, dy} | null } so the
-// caller can move its tile cache along.
-export function tickWilds(state, world, delta, { buildEntities, onVillage } = {}) {
+// caller can move its tile cache along. `sight` (optional) says how far the
+// hero sees now ({ radius, far }, wilds/storm.js sightNow): the map takes in
+// what is explored that far, and the landmarks out to `far`.
+export function tickWilds(state, world, delta, { buildEntities, onVillage, sight } = {}) {
   if (state.cave || !world.origin) return { recentred: null }
   world.playtime += delta
   let recentred = null
@@ -251,17 +266,18 @@ export function tickWilds(state, world, delta, { buildEntities, onVillage } = {}
       world.lastVillage = { wx: 0, wy: 2 }
       if (!world.visited.includes('city')) { world.visited.push('city'); onVillage?.({ name: 'Kalevanlinna' }) }
     }
-  } else if (piece?.village) {
-    const lx = X - here.wx * PIECE, ly = Y - here.wy * PIECE
-    if (Math.max(Math.abs(lx - piece.village.x), Math.abs(ly - piece.village.y)) <= VILLAGE_REACH) {
-      world.lastVillage = { wx: here.wx, wy: here.wy }
-      if (!world.visited.includes(piece.key)) { world.visited.push(piece.key); onVillage?.(piece.village) }
-    }
+  } else if (piece?.village && inVillage(world, X, Y)) {
+    world.lastVillage = { wx: here.wx, wy: here.wy }
+    if (!world.visited.includes(piece.key)) { world.visited.push(piece.key); onVillage?.(piece.village) }
   }
 
   // the map takes in what the hero has seen, a few times a second
   world._mapT = (world._mapT ?? MAP_EVERY) + delta
-  if (world._mapT >= MAP_EVERY) { world._mapT = 0; noteSeen(world, X, Y) }
+  if (world._mapT >= MAP_EVERY) {
+    world._mapT = 0
+    const seen = sight?.()
+    noteSeen(world, X, Y, seen?.radius, seen?.far)
+  }
 
   world._sweepT = (world._sweepT ?? 0) + delta
   if (world._sweepT >= SWEEP_EVERY) {

@@ -33,6 +33,8 @@ export const CUE_NAMES = [
   'city-murmur', 'hammer', 'gull', 'wings', 'tavern', 'crier-bell', 'boots', 'bark',
   // the coach setting off, rolling and arriving (game.js, wilds/coach-ride.js)
   'coach-go', 'coach-hoof', 'coach-arrive',
+  // a sandstorm's gusts (wilds/storm.js)
+  'storm-wind',
 ]
 
 export function makeSfx(muted = false) {

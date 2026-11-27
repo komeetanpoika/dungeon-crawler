@@ -72,7 +72,10 @@ export function updateBrain(e, state, delta) {
   const dist = Math.hypot(player.px - e.px, player.py - e.py)
   // acquisition needs the base sight range; an already-engaged chaser keeps
   // perception out to the wider drop radius (hysteresis, see CHASE_DROP)
-  const perceiveRange = ai.mode === 'chase' ? cfg.sightRange * CHASE_DROP : cfg.sightRange
+  let perceiveRange = ai.mode === 'chase' ? cfg.sightRange * CHASE_DROP : cfg.sightRange
+  // a sandstorm (wilds/storm.js) blinds them as it blinds the hero: they see
+  // no further than his sight in it, plus a tile
+  if (state.sightCap != null) perceiveRange = Math.min(perceiveRange, (state.sightCap + 1) * S)
   // the hero on top of the coach (wilds/coach-ride.js) is gone by too fast to
   // follow: unseen, so nothing gives chase to the coach
   const seen = !player.riding && dist <= perceiveRange && hasLineOfSight(map, e.y, e.x, player.y, player.x)

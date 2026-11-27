@@ -4,6 +4,9 @@ import { makeWorld, getPiece, exportWorld, sweep, recordFor, hear, GEN, FORGET_S
 import { mapStamp } from '../renderer/render/map-draw.js'
 import { fold, noteSeen, classOf, encodePic, decodePic, landmarks, forgetMap, CLASS, MAP_N, MAP_COLOURS, CLASSES, SEE_RADIUS } from '../renderer/wilds/map.js'
 import { PIECE, villagesNear } from '../renderer/wilds/layout.js'
+import { BEACON_RANGE } from '../renderer/wilds/desert.js'
+import { enterWilds, tickWilds } from '../renderer/wilds/session.js'
+import { toWorld } from '../renderer/wilds/window.js'
 import { TILE } from '../renderer/systems/entities.js'
 
 const world = () => makeWorld(null, { seed: 7 })
@@ -111,6 +114,59 @@ test('noteSeen reads round the hero, across piece edges, and never generates a p
   assert.ok(w.map.get(a.key)[20 * MAP_N + Math.floor((78 - SEE_RADIUS) / 2) + 1] > 0)
   assert.equal(noteSeen(w, 3 * PIECE + 78, 40), false)
   assert.equal(noteSeen(w, -5000, -5000), false)       // nothing there in memory
+})
+
+// The hero at (280, 40), the middle of piece 3,0: what lies 18-20 tiles east.
+test('noteSeen takes in what is explored out to the sight radius it is given (16 by default)', () => {
+  const w = world(), p = getPiece(w, 3, 0)
+  explore(p, 58, 40, 60, 41)
+  assert.equal(noteSeen(w, 3 * PIECE + 40, 40), false, 'past the default radius')
+  assert.equal(w.map.has(p.key), false)
+  assert.equal(noteSeen(w, 3 * PIECE + 40, 40, 20), true, 'within the desert radius')
+  const pic = w.map.get(p.key)
+  for (const bx of [29, 30]) assert.ok(pic[20 * MAP_N + bx] > 0, `block ${bx} not on the map`)
+  // in a storm the radius given is the storm's
+  const v = world(), q = getPiece(v, 3, 0)
+  explore(q, 42, 40, 49, 41)
+  noteSeen(v, 3 * PIECE + 40, 40, 4)
+  const small = v.map.get(q.key)
+  assert.ok(small[20 * MAP_N + 22] > 0)
+  assert.equal(small[20 * MAP_N + 23], 0, 'beyond the storm radius')
+})
+
+test('the Wilds tick hands the map the sight the game gives it (16 tiles without one)', () => {
+  const run = sight => {
+    const w = world(), state = { player: { x: 0, y: 0, px: 0, py: 0 }, entities: [], caveInstances: {} }
+    enterWilds(state, w, { X: 40, Y: 40 }, { buildEntities: () => [] })
+    const { x, y } = state.player
+    for (let dy = 0; dy < 2; dy++) for (let dx = 18; dx <= 19; dx++) state.map[y + dy][x + dx].explored = true
+    const { X, Y } = toWorld(w.origin, x + 18, y)
+    const pic = () => w.map.get(`${Math.floor(X / PIECE)},${Math.floor(Y / PIECE)}`)
+    const block = () => pic()?.[Math.floor((Y % PIECE) / 2) * MAP_N + Math.floor((X % PIECE) / 2)] ?? 0
+    w.map.clear()
+    tickWilds(state, w, 0.25, { buildEntities: () => [], ...(sight && { sight: () => sight }) })
+    return block()
+  }
+  assert.equal(run(null), 0, '18 tiles off is past the default 16')
+  assert.ok(run({ radius: 20, far: BEACON_RANGE }) > 0, 'the desert sight of 20 takes it in')
+})
+
+test('a landmark seen from afar is on the map, out to BEACON_RANGE; other land that far is not', () => {
+  const w = world(), p = getPiece(w, 3, 0)
+  const at = (x, y, props) => Object.assign(p.cells[y][x], props)
+  const cairn = { explored: true, losBeacon: true, overlay: 'ow_landmark_cairn', tile: TILE.WALL }
+  at(70, 40, cairn)                                                                // 30 tiles east
+  at(74, 46, cairn)                                                                // 34: past the range
+  at(66, 50, { ...cairn, explored: false })                                        // never seen
+  at(70, 60, { explored: true, skin: 'ow_sand_0', overlay: null, tile: TILE.FLOOR }) // plain sand 30 off, explored
+  assert.equal(noteSeen(w, 3 * PIECE + 40, 40, 20), false, 'nothing within the radius')
+  assert.equal(noteSeen(w, 3 * PIECE + 40, 40, 20, BEACON_RANGE), true)
+  const pic = w.map.get(p.key)
+  assert.equal(pic[20 * MAP_N + 35], CLASS.landmark)
+  assert.equal(seenCount(pic), 1, 'only the landmark in reach')
+  assert.equal(noteSeen(w, 3 * PIECE + 40, 40, 20, BEACON_RANGE), false, 'a second look changes nothing')
+  // (the landmark is the highest class: its own look never lowers a block)
+  assert.equal(CLASS.landmark, CLASSES.length - 1)
 })
 
 test('a picture goes to text and back, and bad text is refused', () => {

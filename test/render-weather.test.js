@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeWeatherLayer, fogBlobs, drawNight, drawFog, nightBands } from '../renderer/render/weather.js'
+import { makeWeatherLayer, fogBlobs, drawNight, drawFog, drawHaze, nightBands, HAZE } from '../renderer/render/weather.js'
 
 // Records every draw with the composite op / alpha / smoothing in force at
 // the time. Unknown methods are recorded generically via the Proxy.
@@ -415,5 +415,111 @@ describe('drawFog', () => {
     const ctx3 = recordingCtx(), layer3 = layerWith()
     drawFog(ctx3, layer3, look(), fog, cam, view, S)   // no map ⇒ no explored gating
     assert.equal(layer3.maskCtx.ops.filter(o => o.name === 'fillRect').length, 2)
+  })
+})
+
+describe('drawHaze', () => {
+  const look = storm => ({ dark: 0, ambient: [255, 255, 255], fog: 0.15, t: 3, lights: [], storm })
+  const storm = (over = {}) => ({ s: 1, wind: Math.PI / 4, px: 200, py: 150, r: 4, ...over })
+
+  it('draws nothing without a storm', () => {
+    const ctx = recordingCtx(), layer = layerWith()
+    drawHaze(ctx, layer, look(null), cam, view, S)
+    drawHaze(ctx, layer, look(storm({ s: 0 })), cam, view, S)
+    assert.deepEqual(ctx.ops, [])
+    assert.deepEqual(layer.ctx.ops, [])
+  })
+
+  it('fills the layer with sand, clears a disc round the hero, and lays it on the frame at the storm\'s strength', () => {
+    const ctx = recordingCtx(), layer = layerWith()
+    drawHaze(ctx, layer, look(storm()), cam, view, S)
+    const fills = layer.ctx.ops.filter(o => o.name === 'fillRect')
+    assert.equal(fills[0].gco, 'source-over')
+    assert.deepEqual(fills[0].a, [0, 0, layer.w, layer.h])
+    const hole = fills.find(o => o.gco === 'destination-out')
+    assert.ok(hole, 'no clear disc')
+    const g = hole.fillStyle
+    assert.ok(g.stops.length >= 2)
+    // smoothed up to half the frame, then doubled onto it without smoothing: one blit onto the frame
+    const up = layer.half.ctx.ops.filter(o => o.name === 'drawImage')
+    assert.equal(up.length, 1)
+    assert.equal(up[0].img, layer.canvas)
+    assert.equal(up[0].smooth, true)
+    assert.deepEqual(up[0].a.slice(4), [0, 0, 200, 150])
+    const blits = ctx.ops.filter(o => o.name === 'drawImage')
+    assert.equal(blits.length, 1)
+    assert.equal(blits[0].img, layer.half)
+    assert.equal(blits[0].gco, 'source-over')
+    assert.equal(blits[0].smooth, false)
+    assert.ok(Math.abs(blits[0].alpha - HAZE.far) < 1e-9)
+    assert.deepEqual(blits[0].a.slice(4), [0, 0, 400, 300])
+    assert.equal(ctx.imageSmoothingEnabled, false, 'smoothing as the frame keeps it')
+    assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
+    assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
+    // a layer that cannot make a canvas blits itself, smoothed
+    const plain = recordingCtx(), direct = directLayer(400, 300)
+    drawHaze(plain, direct, look(storm()), cam, view, S)
+    const one = plain.ops.filter(o => o.name === 'drawImage')
+    assert.equal(one.length, 1)
+    assert.equal(one[0].img, direct.canvas)
+    assert.equal(one[0].smooth, true)
+    // half a storm: already three quarters of the haze (it thickens fast as the storm rises)
+    const half = recordingCtx()
+    drawHaze(half, layerWith(), look(storm({ s: 0.5 })), cam, view, S)
+    assert.ok(Math.abs(half.ops.find(o => o.name === 'drawImage').alpha - HAZE.far * 0.75) < 1e-9)
+    const faint = recordingCtx()
+    drawHaze(faint, layerWith(), look(storm({ s: 0.1 })), cam, view, S)
+    assert.ok(faint.ops.find(o => o.name === 'drawImage').alpha < HAZE.far * 0.25)
+  })
+
+  it('the clear disc sits on the hero and is as wide as his sight', () => {
+    const at = (st, c = cam) => {
+      const layer = layerWith()
+      layer.ctx.createRadialGradient = (x0, y0, r0, x1, y1, r1) => ({ x: x1, y: y1, r: r1, stops: [], addColorStop(o, col) { this.stops.push([o, col]) } })
+      drawHaze(recordingCtx(), layer, look(storm(st)), c, view, S)
+      return layer.ctx.ops.find(o => o.name === 'fillRect' && o.gco === 'destination-out').fillStyle
+    }
+    const a = at({}), k = 0.25
+    assert.equal(a.x, 200 * k)
+    assert.equal(a.y, 150 * k)
+    const b = at({}, { camX: 64, camY: 32 })
+    assert.equal(b.x, (200 - 64) * k)
+    assert.equal(b.y, (150 - 32) * k)
+    const wide = at({ r: 8 })
+    assert.ok(wide.r > a.r, 'a wider sight, a wider disc')
+  })
+
+  it('the dust and the streaks blow along the wind, drift with time, and stay put in the world', () => {
+    let made = []
+    const layer = () => {
+      const l = layerWith()
+      l.createCanvas = () => { const c = fakeCanvas(); made.push(c); return c }
+      l.ctx.createPattern = img => ({ img })
+      return l
+    }
+    const offsets = (l, t, c = cam, wind = Math.PI / 4) => {
+      drawHaze(recordingCtx(), l, { ...look(storm({ wind })), t }, c, view, S)
+      const ops = l.ctx.ops.filter(o => o.name === 'translate').map(o => o.args)
+      l.ctx.ops.length = 0
+      return ops
+    }
+    const l = layer()
+    const a = offsets(l, 0)
+    assert.equal(a.length, HAZE.passes.length, 'one repeat of a tile per pass')
+    assert.ok(a.every(args => args.every(Number.isInteger)), 'repeated from whole pixels: no resampling')
+    // each tile drawn once, turned to the wind, and kept (and one canvas for the frame's half size)
+    const tiles = () => made.filter(c => c !== l.half)
+    assert.equal(tiles().length, HAZE.passes.length)
+    for (const c of tiles()) assert.ok(c.ctx.ops.some(o => o.name === 'rotate' && Math.abs(o.args[0] - Math.PI / 4) < 1e-9), 'a tile not turned to the wind')
+    offsets(l, 0.5)
+    assert.equal(made.length, HAZE.passes.length + 1, 'the tiles are made again')
+    assert.notDeepEqual(offsets(l, 0.5), a, 'no drift')
+    assert.notDeepEqual(offsets(l, 0, { camX: 40, camY: 8 }), a, 'pinned to the screen, not the world')
+    // a re-centre of the window (80 tiles) moves no tile
+    assert.deepEqual(offsets(l, 0, { camX: 80 * S, camY: -80 * S }), a)
+    // another wind, other tiles
+    made = []
+    offsets(l, 0, cam, 0)
+    assert.equal(tiles().length, HAZE.passes.length)
   })
 })

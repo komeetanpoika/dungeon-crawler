@@ -14,7 +14,7 @@ import { TILE } from '../systems/entities.js'
 
 export const BLOCK = 2
 export const MAP_N = PIECE / BLOCK   // 40
-export const SEE_RADIUS = 16         // tiles round the hero looked at each time
+export const SEE_RADIUS = 16         // tiles round the hero looked at each time, when not told his sight
 export const FOUND_REACH = 24        // tiles from a place's middle that count as having stood in it
 
 // Colour classes, in the order they win a block: the higher beats the lower,
@@ -79,8 +79,10 @@ export function classOf(cell) {
 const blank = () => new Uint8Array(MAP_N * MAP_N)
 
 // Look at the tiles (x0..x1, y0..y1) of a piece and write what has been
-// explored into its picture. Returns true if the picture changed.
-export function fold(world, piece, x0 = 0, y0 = 0, x1 = PIECE - 1, y1 = PIECE - 1) {
+// explored into its picture. With `only`, only the explored cells it passes
+// are looked at, and a block is only ever raised. Returns true if the
+// picture changed.
+export function fold(world, piece, x0 = 0, y0 = 0, x1 = PIECE - 1, y1 = PIECE - 1, only = null) {
   const bx0 = Math.max(0, Math.floor(x0 / BLOCK)), by0 = Math.max(0, Math.floor(y0 / BLOCK))
   const bx1 = Math.min(MAP_N - 1, Math.floor(x1 / BLOCK)), by1 = Math.min(MAP_N - 1, Math.floor(y1 / BLOCK))
   let pic = world.map.get(piece.key), changed = false
@@ -88,31 +90,39 @@ export function fold(world, piece, x0 = 0, y0 = 0, x1 = PIECE - 1, y1 = PIECE - 
     let best = 0
     for (let dy = 0; dy < BLOCK; dy++) for (let dx = 0; dx < BLOCK; dx++) {
       const cell = piece.cells[by * BLOCK + dy]?.[bx * BLOCK + dx]
-      if (!cell?.explored) continue
+      if (!cell?.explored || (only && !only(cell))) continue
       const c = classOf(cell)
       if (c > best) best = c
     }
     if (!best) continue
     if (!pic) { pic = blank(); world.map.set(piece.key, pic) }
     const i = by * MAP_N + bx
-    if (pic[i] !== best) { pic[i] = best; changed = true }
+    if (pic[i] !== best && !(only && pic[i] > best)) { pic[i] = best; changed = true }
   }
   if (changed) world.mapVer.set(piece.key, (world.mapVer.get(piece.key) ?? 0) + 1)
   return changed
 }
 
-// The hero stands at world tile (X, Y): take in what is explored around
-// them, and note a tale's place they are standing in. Only pieces already in
-// memory are read; nothing is generated for the map's sake.
-export function noteSeen(world, X, Y, r = SEE_RADIUS) {
+// The hero stands at world tile (X, Y): take in what is explored within `r`
+// of them (their sight radius: SEE_RADIUS when not told), and the landmarks
+// (losBeacon) explored within `far` (the desert's spires and cairns, seen
+// from afar: systems/entities.js computePlayerFOV `far`), and note a tale's
+// place they are standing in. Only pieces already in memory are read;
+// nothing is generated for the map's sake.
+const isBeacon = cell => !!cell.losBeacon
+export function noteSeen(world, X, Y, r = SEE_RADIUS, far = 0) {
   let changed = false
-  for (let wy = Math.floor((Y - r) / PIECE); wy <= Math.floor((Y + r) / PIECE); wy++)
-    for (let wx = Math.floor((X - r) / PIECE); wx <= Math.floor((X + r) / PIECE); wx++) {
-      const piece = world.pieces.get(pieceKey(wx, wy))
-      if (!piece) continue
-      const ox = wx * PIECE, oy = wy * PIECE
-      if (fold(world, piece, X - r - ox, Y - r - oy, X + r - ox, Y + r - oy)) changed = true
-    }
+  const look = (reach, only) => {
+    for (let wy = Math.floor((Y - reach) / PIECE); wy <= Math.floor((Y + reach) / PIECE); wy++)
+      for (let wx = Math.floor((X - reach) / PIECE); wx <= Math.floor((X + reach) / PIECE); wx++) {
+        const piece = world.pieces.get(pieceKey(wx, wy))
+        if (!piece) continue
+        const ox = wx * PIECE, oy = wy * PIECE
+        if (fold(world, piece, X - reach - ox, Y - reach - oy, X + reach - ox, Y + reach - oy, only)) changed = true
+      }
+  }
+  look(r, null)
+  if (far > r) look(far, isBeacon)
   const hx = Math.floor(X / PIECE), hy = Math.floor(Y / PIECE), key = pieceKey(hx, hy)
   if (world.places.has(key) && !world.found.has(key)
     && Math.max(Math.abs(X - hx * PIECE - PIECE / 2), Math.abs(Y - hy * PIECE - PIECE / 2)) <= FOUND_REACH) {

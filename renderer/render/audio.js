@@ -114,6 +114,14 @@ export const RECIPES = {
     hoof(0.35, 0.6), hoof(0.62, 0.65), hoof(0.84, 0.7), hoof(1.0, 0.7), hoof(1.14, 0.7),
   ] },
   'coach-hoof': { kind: 'seq', dur: 0.2, vol: 0.25, parts: [hoof(0, 0.7), hoof(0.11, 0.45)] },
+  // A sandstorm's gust (wilds/storm.js, one every STORM.windEvery s while it
+  // blows hard): a low roar of wind rising and falling, and the hiss of sand
+  // in it. Positionless, quieter than a blow, over before the next gust.
+  'storm-wind': { kind: 'seq', dur: 2.4, vol: 0.32, parts: [
+    { at: 0, kind: 'swoosh', f0: 180, f1: 420, dur: 0.9, vol: 0.45 },
+    { at: 0.5, kind: 'swoosh', f0: 460, f1: 160, dur: 1.9, vol: 0.9 },
+    { at: 0.35, kind: 'burst', freq: 3400, q: 0.6, dur: 1.6, vol: 0.35 },
+  ] },
   'coach-arrive': { kind: 'seq', dur: 1.3, vol: 0.4, parts: [
     hoof(0, 0.7), hoof(0.16, 0.7), hoof(0.36, 0.65), hoof(0.62, 0.55),
     { at: 0.85, kind: 'blip', wave: 'triangle', f0: 340, f1: 210, dur: 0.4, vol: 0.5 },

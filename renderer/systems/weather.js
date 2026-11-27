@@ -135,5 +135,13 @@ export function weatherLook(state, save) {
   const lit = g > 0 && GLOOM.dark * g > ph.dark
   const dark = w.lightningT > 0 ? 0 : lit ? GLOOM.dark * g : ph.dark
   const ambient = lit ? ph.ambient.map((c, i) => Math.round(c + (GLOOM.ambient[i] - c) * g)) : ph.ambient
-  return { dark, ambient, fog: ph.fog, t: w.t, lights: dark > 0 ? lightSources(state) : [] }
+  return { dark, ambient, fog: ph.fog, t: w.t, lights: dark > 0 ? lightSources(state) : [], storm: stormLook(state) }
+}
+
+// A sandstorm blowing on the hero (wilds/storm.js tickStorm): its strength
+// `s`, the wind's direction (radians), where he stands (window px) and how
+// far he sees in it (tiles), for render/weather.js drawHaze. Null in calm.
+function stormLook(state) {
+  if (!(state.storm > 0)) return null
+  return { s: state.storm, wind: state.stormWind ?? 0, px: state.player.px, py: state.player.py, r: state.sightCap }
 }

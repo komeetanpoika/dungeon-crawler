@@ -45,7 +45,9 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
-import { heroSight, isDesert, BEACON_RANGE } from './wilds/desert.js'
+import { isDesert, inGentleRing } from './wilds/desert.js'
+import { windAt } from './wilds/desert-art.js'
+import { tickStorm, calmStorm, sightNow, mapHero, mapHazed } from './wilds/storm.js'
 import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
@@ -56,7 +58,7 @@ import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { cityFor } from './wilds/city/build.js'
-import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances } from './wilds/session.js'
+import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances, inVillage } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
 import { fracOf } from './wilds/city/runtime.js'
@@ -390,6 +392,8 @@ let wildsWorld = null
 const wildsBuild = (spawns, map, depth) => buildEntities(spawns, map, depth, state?.player ?? null)
 const wildsHooks = {
   buildEntities: wildsBuild,
+  // how far the hero sees now, for the map (wilds/storm.js sightNow)
+  sight: () => wildsSight(),
   // (on the coach the arrival is the coach's to tell: arriveByCoach)
   onVillage: v => { if (state.coachRide) return; announce(state, `You reach ${v.name}.`); persistRun() },
 }
@@ -1461,13 +1465,16 @@ function heroOnMap() {
 }
 
 // The full map: pauses like the bag; its own key handler pans and zooms.
+// While a sandstorm has taken the map (wilds/storm.js) it has no mark for
+// the hero and opens where it last knew him.
 function openMap() {
   const hero = heroOnMap()
   if (!hero) { think(state, 'I have no map of this place.'); return }
   setPhase(PHASE.PAUSED)
   mapOpen = true
   sfx(state, 'ui-open')
-  showMap(wildsWorld, hero, { onClose: closeMap }, {
+  showMap(wildsWorld, mapHero(state, hero), { onClose: closeMap }, {
+    at: lastOnMap ?? hero,
     touch: coarsePointer(),
     keys: {
       red: keysLabel(settings.bindings, 'attack'), green: keysLabel(settings.bindings, 'offhand'),
@@ -1475,6 +1482,10 @@ function openMap() {
     },
   })
 }
+
+// Where the map last knew the hero: the full map opens there while a storm
+// has taken him off it.
+let lastOnMap = null
 
 function closeMap() {
   sfx(state, 'ui-close')
@@ -1713,6 +1724,7 @@ function rideCoach(town, d) {
 // window came along with him; coach.js arrive has him held off the stop and
 // the town visited): said, and saved.
 function arriveByCoach(town) {
+  calmStorm(wildsWorld)   // nobody steps off the coach into a storm
   sfx(state, 'coach-arrive')
   announce(state, `You reach ${town.name}.`)
   persistRun()
@@ -1797,6 +1809,12 @@ function update(delta) {
       const town = state.coachRide.dest.town
       if (tickCoachRide(state, wildsWorld, delta) === 'arrived') arriveByCoach(town)
     }
+    // a sandstorm on the hero (wilds/storm.js): none indoors, its sight and the monsters' with it
+    const land = state.cave ? null : heroLand()
+    tickStorm(state, wildsWorld, {
+      clock: activeSave.clock ?? DAY_START, delta,
+      desert: !!land?.desert, ring: !!land?.ring, village: !!land?.village, wind: land?.wind,
+    })
   }
   const { player, map } = state
   // On top of the coach nothing underfoot is opened, picked up, entered or
@@ -2747,15 +2765,23 @@ function update(delta) {
   if (pending.length) { openToast(pending[0]); state.feedback.toasts.push(...pending.slice(1)) }
 }
 
-// Whether the hero stands in desert country, asked again only when his
-// world tile changes.
-let heroDesert = null
-function heroInDesert() {
+// The land the hero stands on in the Wilds, asked again only when his world
+// tile changes: whether it is desert, in the gentle ring round home, or in a
+// village, and the desert's wind there.
+let heroLandAt = null
+function heroLand() {
   const { X, Y } = toWorld(wildsWorld.origin, state.player.x, state.player.y)
   const seed = wildsWorld.seed
-  if (heroDesert?.X !== X || heroDesert.Y !== Y || heroDesert.seed !== seed) heroDesert = { X, Y, seed, desert: isDesert(seed, X, Y) }
-  return heroDesert.desert
+  if (heroLandAt?.X !== X || heroLandAt.Y !== Y || heroLandAt.seed !== seed || heroLandAt.world !== wildsWorld) {
+    heroLandAt = {
+      X, Y, seed, world: wildsWorld, desert: isDesert(seed, X, Y), ring: inGentleRing(Math.floor(X / PIECE), Math.floor(Y / PIECE)),
+      village: inVillage(wildsWorld, X, Y), wind: windAt(seed, X, Y),
+    }
+  }
+  return heroLandAt
 }
+// How far the hero sees out of doors in the Wilds now (wilds/storm.js).
+const wildsSight = () => sightNow(state, heroLand().desert)
 
 function render() {
   // Open country sees almost twice as far as a dungeon or cave — 14 tiles
@@ -2766,8 +2792,10 @@ function render() {
   if (surface && !bench && state.wilds && wildsWorld?.origin) {
     // The Wilds out of doors see by the dune rule: the whole radius but what
     // lies behind a dune crest, further in desert country, and the landmarks
-    // out to BEACON_RANGE (wilds/desert.js).
-    maybeComputeFOV(state.map, state.player, heroSight({ desert: heroInDesert() }), { los: 'dunes', far: BEACON_RANGE })
+    // out to BEACON_RANGE (wilds/desert.js); a sandstorm closes both in
+    // (wilds/storm.js).
+    const { radius, far } = wildsSight()
+    maybeComputeFOV(state.map, state.player, radius, { los: 'dunes', far })
   } else {
     // The bench lights its whole arena: the monster spawns 11 tiles out and
     // its wind-ups must read from across the room.
@@ -2781,8 +2809,11 @@ function render() {
   renderer.render(state, fx)
   bench?.drawOverlay(renderer.ctx, state, renderer)
   updateHUD(state)
-  // the corner minimap: out of doors in the Wilds, where there is a keyboard
-  updateMinimap(wildsWorld, state.cave ? null : heroOnMap(), settings.minimap && !coarsePointer())
+  // the corner minimap: out of doors in the Wilds, where there is a keyboard;
+  // a sandstorm turns it to haze
+  const hero = state.cave ? null : heroOnMap()
+  updateMinimap(wildsWorld, hero, settings.minimap && !coarsePointer(), { haze: mapHazed(state) })
+  if (hero && mapHero(state, hero)) lastOnMap = hero
 }
 
 function enterCave(entrance) {

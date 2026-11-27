@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { RECIPES, falloffGain, panFor, NEAR_PX, FAR_PX, PAN_MAX } from '../renderer/render/audio.js'
 import { CUE_NAMES } from '../renderer/systems/sfx.js'
 import { HOOF_EVERY } from '../renderer/wilds/coach-ride.js'
+import { STORM } from '../renderer/wilds/storm.js'
 
 describe('recipe registry', () => {
   it('every cue name has a recipe', () => {
@@ -45,6 +46,15 @@ describe('recipe registry', () => {
       assert.ok(RECIPES[name], `no recipe for cue "${name}"`)
       assert.ok(loudest(RECIPES[name]) < loudest(RECIPES['melee-hit']) / 2, `${name} is as loud as a blow`)
     }
+  })
+
+  // a sandstorm's wind (wilds/storm.js): a gust every STORM.windEvery seconds,
+  // over before the next, quieter than a blow
+  it('the storm has a wind, a gust shorter than the gap between gusts and quieter than a blow', () => {
+    const loudest = r => (r.kind === 'seq' ? r.vol * Math.max(...r.parts.map(p => p.vol)) : r.vol)
+    assert.ok(CUE_NAMES.includes('storm-wind'))
+    assert.ok(RECIPES['storm-wind'].dur <= STORM.windEvery)
+    assert.ok(loudest(RECIPES['storm-wind']) < loudest(RECIPES['melee-hit']) / 2)
   })
 })
 

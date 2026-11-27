@@ -1,5 +1,6 @@
 // Weather painting (docs/superpowers/specs/2026-09-04-weather-day-cycle-design.md).
-// Two passes through one quarter-resolution layer: the night wash (multiply,
+// Passes through one quarter-resolution layer: a sandstorm's haze (drawn
+// before the night, which darkens it), the night wash (multiply,
 // with holes punched around fires, drawn before flames so they stay bright)
 // and the pier fog (drifting blobs masked to the water cells, drawn after
 // flames and over everything on the water). Phases come from look.t — the
@@ -353,3 +354,154 @@ export function drawFog(ctx, layer, look, fog, { camX, camY }, { W, H }, S, map 
 
   blit(ctx, layer, 'source-over', FOG_ALPHA * look.fog, W, H)
 }
+
+// ---- the sandstorm's haze -------------------------------------------------------------
+// (wilds/storm.js; look.storm from systems/weather.js.) Built in the layer:
+// the sand's colour all over; over it, clouds of dust rolling and streaks of
+// blown sand, each a tile repeated across the layer, blown along the wind at
+// its own speed and pinned to the world (they do not ride along with the
+// camera); and a clear disc round the hero as wide as his sight in the
+// storm, thinly hazed at his feet and whole a few tiles past its rim. Then
+// onto the frame, thickening fast as the storm rises (so a storm coming in
+// reads as sand, not as a grey murk over the land out of sight) and whole at
+// full strength.
+//
+// Kept cheap for a software canvas, where every full-screen pass costs:
+// - each tile is drawn already turned to the wind (made again only when the
+//   wind turns by WIND_STEP), so a pass is a plain repeat of it from a
+//   whole-pixel offset, with no resampling;
+// - the layer is smoothed up to half the frame's size and that is doubled
+//   onto the frame without smoothing, a pixel of it the size of a pixel of
+//   the art: the smoothed scale-up of the whole frame cost about a
+//   millisecond more on this machine, and in the web build with the CPU
+//   throttled 4x it took a storm frame under 30 fps.
+//
+// `far`/`near`: the haze's alpha past the disc and at the hero's feet at full
+// strength; `edge`/`out`: tiles inside the sight radius where the disc starts
+// to thicken, and past it where the haze is whole; a pass's `size` is its
+// tile's side in layer px, `scale` how big its marks are, and `speed` its
+// drift in tiles a second. A size divides 80 tiles in layer px (640), so a
+// re-centre of the window moves no tile.
+export const HAZE = {
+  far: 0.9, near: 0.16, edge: 1.5, out: 3,
+  colour: [212, 174, 112], light: [248, 228, 184], dark: [150, 110, 64],
+  passes: [
+    { tile: 'clouds', size: 320, scale: 5, speed: 3.5, alpha: 1 },
+    { tile: 'streaks', size: 64, scale: 1, speed: 14, alpha: 0.8 },
+  ],
+}
+const WIND_STEP = Math.PI / 60   // 3 degrees
+const TILES_KEPT = 12            // tiles kept, for the last few winds (it turns slowly as the hero walks)
+
+// A tile of the haze turned to `wind`: `clouds`, soft lighter and darker
+// blots of dust stretched along the wind; `streaks`, light and dark streaks
+// of sand along it. Every mark is drawn at each of its wrapped places, so the
+// tile repeats without a seam whatever the wind. The same marks at every wind.
+function hazeTile(createCanvas, pass, wind) {
+  const T = pass.size, s = pass.scale, c = createCanvas()
+  c.width = T; c.height = T
+  const g = c.getContext('2d')
+  let n = pass.tile === 'clouds' ? 4127 : 9781
+  const rnd = () => { n = (n * 16807) % 2147483647; return n / 2147483647 }
+  const rgba = (rgb, a) => `rgba(${rgb.join(',')},${a.toFixed(2)})`
+  const mark = (x, y, reach, draw) => {
+    for (const ox of [-T, 0, T]) for (const oy of [-T, 0, T]) {
+      const px = x + ox, py = y + oy
+      if (px + reach < 0 || px - reach > T || py + reach < 0 || py - reach > T) continue
+      g.save(); g.translate(px, py); g.rotate(wind); draw(); g.restore()
+    }
+  }
+  const count = m => Math.round(m * (T / s / 64) ** 2)   // as many to an area at any size
+  if (pass.tile === 'clouds') {
+    for (let i = 0; i < count(18); i++) {
+      const x = rnd() * T, y = rnd() * T, r = (6 + rnd() * 16) * s, a = 0.18 + rnd() * 0.3
+      const rgb = rnd() < 0.55 ? HAZE.light : HAZE.dark
+      mark(x, y, 2 * r, () => {
+        g.scale(2, 1)
+        const grad = g.createRadialGradient(0, 0, 0, 0, 0, r)
+        grad.addColorStop(0, rgba(rgb, a))
+        grad.addColorStop(1, rgba(rgb, 0))
+        g.fillStyle = grad
+        g.fillRect(-r, -r, 2 * r, 2 * r)
+      })
+    }
+    return c
+  }
+  const streak = (rgb, len, a) => {
+    const x = rnd() * T, y = rnd() * T, l = len * s
+    mark(x, y, l, () => { g.fillStyle = rgba(rgb, a); g.fillRect(-l / 2, -s / 2, l, s) })
+  }
+  for (let i = 0; i < count(18); i++) streak(HAZE.dark, 3 + rnd() * 12, 0.1 + rnd() * 0.2)
+  for (let i = 0; i < count(26); i++) streak(HAZE.light, 3 + rnd() * 18, 0.15 + rnd() * 0.4)
+  return c
+}
+
+// The pattern of a pass's tile at the wind's step, made once and kept.
+function hazePattern(layer, pass, step) {
+  if (!layer.createCanvas) return null
+  const kept = layer.haze ??= new Map()
+  const key = `${pass.tile}:${pass.size}:${step}`
+  if (!kept.has(key)) {
+    kept.set(key, layer.ctx.createPattern?.(hazeTile(layer.createCanvas, pass, step * WIND_STEP), 'repeat') ?? null)
+    if (kept.size > TILES_KEPT) kept.delete(kept.keys().next().value)
+  }
+  return kept.get(key)
+}
+const mod = (a, n) => ((a % n) + n) % n
+
+export function drawHaze(ctx, layer, look, { camX, camY }, { W, H }, S) {
+  const st = look.storm
+  if (!st || !(st.s > 0)) return
+  const L = layer.ctx, k = layer.k
+  prep(L, layer.w, layer.h)
+  L.imageSmoothingEnabled = false
+  L.fillStyle = `rgb(${HAZE.colour.join(',')})`
+  L.fillRect(0, 0, layer.w, layer.h)
+  // each pass's tile repeated from a whole-pixel offset: pinned to the world
+  // (the view's corner is at camX, camY) and blown downwind with time
+  const step = Math.round(st.wind / WIND_STEP), wind = step * WIND_STEP
+  const cos = Math.cos(wind), sin = Math.sin(wind)
+  for (const p of HAZE.passes) {
+    const pat = hazePattern(layer, p, step)
+    if (!pat) continue
+    const d = look.t * p.speed * S * k
+    const ox = Math.round(mod(d * cos - camX * k, p.size)), oy = Math.round(mod(d * sin - camY * k, p.size))
+    L.save()
+    L.globalAlpha = p.alpha
+    L.translate(ox, oy)
+    L.fillStyle = pat
+    L.fillRect(-ox, -oy, layer.w, layer.h)
+    L.restore()
+  }
+  L.imageSmoothingEnabled = true   // the layer's default, for the passes after this one
+  // the clear disc round the hero
+  const x = (st.px - camX) * k, y = (st.py - camY) * k
+  const r1 = (st.r + HAZE.out) * S * k
+  const clear = 1 - HAZE.near / HAZE.far
+  const at = tiles => Math.max(0, Math.min(1, tiles / (st.r + HAZE.out)))
+  const g = L.createRadialGradient(x, y, 0, x, y, r1)
+  g.addColorStop(0, `rgba(0,0,0,${clear})`)
+  g.addColorStop(at(st.r - HAZE.edge), `rgba(0,0,0,${clear})`)
+  g.addColorStop(at(st.r), `rgba(0,0,0,${(clear * 0.45).toFixed(3)})`)
+  g.addColorStop(1, 'rgba(0,0,0,0)')
+  L.globalCompositeOperation = 'destination-out'
+  L.fillStyle = g
+  L.fillRect(x - r1, y - r1, 2 * r1, 2 * r1)
+  L.globalCompositeOperation = 'source-over'
+  // smoothed up to half the frame, then doubled onto it (see above)
+  const hw = Math.ceil(W / 2), hh = Math.ceil(H / 2)
+  const half = layer.half ??= layer.createCanvas?.()
+  if (!half) { blit(ctx, layer, 'source-over', hazeAlpha(st.s), W, H); return }
+  if (half.width !== hw || half.height !== hh) { half.width = hw; half.height = hh }
+  const hc = half.getContext('2d')
+  hc.clearRect(0, 0, hw, hh)
+  hc.imageSmoothingEnabled = true
+  hc.drawImage(layer.canvas, 0, 0, layer.w, layer.h, 0, 0, hw, hh)
+  ctx.save()
+  ctx.globalAlpha = hazeAlpha(st.s)
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(half, 0, 0, hw, hh, 0, 0, 2 * hw, 2 * hh)
+  ctx.restore()
+}
+// The haze's alpha past the clear disc at strength s: rising fast, eased out.
+export const hazeAlpha = s => HAZE.far * (1 - (1 - s) * (1 - s))

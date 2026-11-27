@@ -1,6 +1,7 @@
 // The full map: a pause overlay. The stick or the arrows pan it (so does a
 // drag), red zooms in, green zooms out, yellow comes back to the hero. The
-// map key and Escape close it, in game.js.
+// map key and Escape close it, in game.js. While a sandstorm has taken the
+// map (wilds/storm.js) there is no hero: no mark, and yellow finds nothing.
 import { drawMap } from '../render/map-draw.js'
 
 export const ZOOMS = [1, 3]      // pixels to a tile
@@ -25,7 +26,7 @@ function labels() {
   const key = name => (opts.touch || !opts.keys?.[name] ? '' : `<kbd>${esc(opts.keys[name])}</kbd>`)
   const one = (name, text, off) => `<span class="inv-btn ${name}${off ? ' off' : ''}" data-btn="${name}"><b></b><em>${text}</em>${key(name)}</span>`
   el().querySelector('.inv-what').innerHTML =
-    one('red', 'Zoom in', zoom === ZOOMS.length - 1) + one('green', 'Zoom out', zoom === 0) + one('yellow', 'Find me', false)
+    one('red', 'Zoom in', zoom === ZOOMS.length - 1) + one('green', 'Zoom out', zoom === 0) + one('yellow', 'Find me', !open.hero)
     + (opts.touch ? '' : `<span class="inv-close">Close<kbd>${esc(opts.keys?.close ?? 'M')}</kbd></span>`)
   el().querySelectorAll('[data-btn]').forEach(n => n.addEventListener('click', () => press(n.dataset.btn)))
   el().querySelector('.inv-close')?.addEventListener('click', () => open?.onClose())
@@ -35,7 +36,7 @@ function press(name) {
   if (!open) return
   if (name === 'red') open.zoom = Math.min(ZOOMS.length - 1, open.zoom + 1)
   else if (name === 'green') open.zoom = Math.max(0, open.zoom - 1)
-  else if (name === 'yellow') { open.cx = open.hero.X + 0.5; open.cy = open.hero.Y + 0.5 }
+  else if (name === 'yellow') { if (!open.hero) return; open.cx = open.hero.X + 0.5; open.cy = open.hero.Y + 0.5 }
   else return
   labels()
   draw()
@@ -56,7 +57,9 @@ function tick(now) {
   open.raf = requestAnimationFrame(tick)
 }
 
-// `hero`: { X, Y } in world tiles. `opts`: { touch, keys: { red, green, yellow, close } }.
+// `hero`: { X, Y } in world tiles, or null (no mark: a storm has the map).
+// `opts`: { at, touch, keys: { red, green, yellow, close } }; `at` ({ X, Y })
+// is where the map opens without a hero.
 export function showMap(world, hero, { onClose }, opts = {}) {
   hideMap()
   const root = el()
@@ -64,7 +67,8 @@ export function showMap(world, hero, { onClose }, opts = {}) {
   root.innerHTML = '<canvas></canvas><div class="inv-what"></div>'
   root.style.display = 'block'
   document.body.classList.add('pad-panel')
-  open = { world, hero, cx: hero.X + 0.5, cy: hero.Y + 0.5, zoom: ZOOMS.length - 1, held: new Set(), t: performance.now(), opts, onClose }
+  const middle = hero ?? opts.at ?? { X: 0, Y: 0 }
+  open = { world, hero, cx: middle.X + 0.5, cy: middle.Y + 0.5, zoom: ZOOMS.length - 1, held: new Set(), t: performance.now(), opts, onClose }
   const swallow = e => { e.preventDefault(); e.stopImmediatePropagation() }
   open.down = (e) => {
     if (DIRS[e.key]) open.held.add(e.key)
