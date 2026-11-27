@@ -96,6 +96,18 @@ export const isHardpanSkin = n => typeof n === 'string' && n.startsWith('ow_hard
 export const isCrackedSkin = n => typeof n === 'string' && n.startsWith('ow_hardpan_cracked_')
 export const isHardpanEdge = n => typeof n === 'string' && n.startsWith('ow_hardpan_edge_')
 
+// The sand paving of a desert village's square and streets (sites.js lays
+// it where a green village has its cobbles): ow_pave_sand_<v>, flagstones in
+// PAVE_VARIANTS variants, and on every paving cell beside anything that is
+// not paving its edge ow_pave_sand_edge_<M>_<D>, sand drifted over the
+// stones from those sides (M, D as the hardpan's edges), so the paving
+// fades into the sand round it.
+export const PAVE_VARIANTS = 3
+export const paveSkin = v => `ow_pave_sand_${v}`
+export const paveEdgeSkin = (M, D) => `ow_pave_sand_edge_${M}_${D}`
+export const PAVE_SKINS = [...Array.from({ length: PAVE_VARIANTS }, (_, v) => paveSkin(v)), ...EDGE_SHAPES.map(([M, D]) => paveEdgeSkin(M, D))]
+export const isPaveSkin = n => typeof n === 'string' && n.startsWith('ow_pave_sand_')
+
 // (the tests compare a world with and without the desert's dress: off, the
 // desert lays the pack's two sand tiles and its flat hardpan, as before)
 let dressed = true

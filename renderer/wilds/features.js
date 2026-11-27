@@ -21,11 +21,12 @@
 // no road edge is laid as it always was.
 import { PIECE, FRAME, tierAt, pieceBiome, fixedMain, villageAt, caveDepthFor, pieceKey, BIOME_NAMES } from './layout.js'
 import { hash, hashInt, mulberry32 } from './rand.js'
-import { makeSites, layoutTale, wayCells, TALE_PAD } from './sites.js'
+import { makeSites, layoutTale, wayCells, TALE_PAD, isVillageStreet } from './sites.js'
 import { INN_PAD } from './inn.js'
 import { roadSides, pieceClass, townsAlong, roadsFrom, roadLine, SIDE_WORDS } from './roads.js'
 import { ROAD_WIDTH, roadLane0 } from './terrain.js'
-import { inGentleRing, SPIRE, CAIRN } from './desert.js'
+import { inGentleRing, isDesert, SPIRE, CAIRN } from './desert.js'
+import { desertDress } from './desert-art.js'
 
 // How many spires and cairns a desert piece holds, at least how far apart,
 // and the share of them that are spires (the rest are cairns).
@@ -651,8 +652,10 @@ export function placeFeatures(t, piece) {
     spawnPoint = { x: mx + 1, y: my + 1 }
     hold(spawnPoint.x, spawnPoint.y)
     // the glassmaker's house: always in the home village, in about one other in four
-    // (a hash, not the piece's rng, so nothing else of the piece moves)
-    sites.village(mx, my, piece.villageTale, key === '0,0' || hash(seed, wx, wy, 777) < SUNROOM_ODDS)
+    // (a hash, not the piece's rng, so nothing else of the piece moves); a
+    // village whose middle is desert is built from the desert kit, all of it
+    const desert = desertDress() && isDesert(seed, wx * PIECE + mx, wy * PIECE + my)
+    sites.village(mx, my, piece.villageTale, key === '0,0' || hash(seed, wx, wy, 777) < SUNROOM_ODDS, desert)
     // what the village's own tale leaves standing in it
     if (piece.villageTale) piece.villagePoints = sites.villageTrouble(piece.villageTale, mx, my)
     // its sign: the towns its roads go to (roads.js roadsFrom, one road a
@@ -827,7 +830,7 @@ export function placeFeatures(t, piece) {
     const roomAt = (x, y) => near[y * PIECE + x]
     const overgrown = (x, y) => !t.walkable(x, y) && GROWTH.test(t.propAt(x, y) ?? '')
     const usable = (x, y) => Math.min(x, y, PIECE - 1 - x, PIECE - 1 - y) >= FRAME + 2 && t.kind(x, y) === 'land' &&
-      !t.onPath(x, y) && !taken.has(`${x},${y}`) && t.groundAt(x, y) !== 'ow_cobble_green' && (t.free(x, y) || overgrown(x, y)) &&
+      !t.onPath(x, y) && !taken.has(`${x},${y}`) && !isVillageStreet(t.groundAt(x, y)) && (t.free(x, y) || overgrown(x, y)) &&
       !piece.villagePoints.some(p => Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1) &&
       !piece.small.some(s => Math.hypot(x - s.x, y - s.y) <= padOf(s.kind) + 2)
     const cost = (x, y) => t.free(x, y) ? 0 : COACH_CLEAR
@@ -1091,6 +1094,8 @@ export function placeFeatures(t, piece) {
 
   // the desert's spires and cairns, last of all
   if (piece.biome === 'desert' && !inGentleRing(wx, wy)) standLandmarks(t, taken)
+  // and then a desert village's palms, kept off the coach's boarding cell
+  if (kind === 'village') sites.finishVillage(piece.coach ? [piece.coach] : [])
 }
 
 // ---- the desert's spires and cairns -------------------------------------------

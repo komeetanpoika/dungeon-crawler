@@ -18,6 +18,7 @@ import { hear, getPiece } from './world.js'
 import { PIECE, pieceOf } from './layout.js'
 import { fromCity } from './city/geometry.js'
 import { cityFor } from './city/build.js'
+import { isVillageStreet } from './sites.js'
 import { TILE } from '../systems/entities.js'
 import { playerBound } from '../systems/player-bind.js'
 import { isEnemy } from '../systems/factions.js'
@@ -100,8 +101,8 @@ export function boardingTile(world, townKey) {
 }
 
 const SIDE_STEPS = [[0, 1], [1, 0], [-1, 0], [0, -1]]
-// a road's cell by its art: the road's ground, its planks over water, the cobbles it wears in a village
-export const isRoadCell = cell => (cell.skin ?? '').startsWith('ow_road_') || cell.skin === 'ow_cobble_green' || (cell.overlay ?? '').startsWith('ow_pier')
+// a road's cell by its art: the road's ground, its planks over water, the cobbles or the sand paving it wears in a village
+export const isRoadCell = cell => (cell.skin ?? '').startsWith('ow_road_') || isVillageStreet(cell.skin) || (cell.overlay ?? '').startsWith('ow_pier')
 // The world tile to arrive on at a town's stop: a walkable cell beside the
 // boarding cell, not under a roof, not a doorway and not where the coachman
 // stands; the first by S, E, W, N from which the road is reached without

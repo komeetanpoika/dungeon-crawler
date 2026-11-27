@@ -50,7 +50,7 @@ const SKIN = [
   [/^ow_road_/, 'road'],
   [/^ow_(dirt|path)/, 'path'],
   [/^ow_(city_pave|ruin_crack)/, 'pave'],
-  [/^ow_(sand|hardpan|dune)/, 'sand'],
+  [/^ow_(sand|hardpan|dune|pave_sand)/, 'sand'],
   [/^ow_mtn/, 'mtnground'],
   [/^ow_mud/, 'marsh'],
 ]

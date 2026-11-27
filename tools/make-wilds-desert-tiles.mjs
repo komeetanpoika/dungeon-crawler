@@ -88,6 +88,7 @@ import { EDGE_SHAPES } from '../renderer/terrain/edges.js'
 import { MapBuilder } from '../renderer/terrain/lib.js'
 import {
   RIPPLES, SAND_VARIANTS, HARDPAN_VARIANTS, DUNE_SKINS, SHADE_SKINS, rippleSkin, crackedSkin, hardpanEdgeSkin, cornersOf, edgeHardpan, layDunes, sandSkinAt,
+  PAVE_VARIANTS, paveSkin, paveEdgeSkin,
 } from '../renderer/wilds/desert-art.js'
 
 const T = 16
@@ -286,8 +287,12 @@ function profile(...key) {
     return Math.max(2, Math.min(7, Math.round(w)))
   })
 }
-function edgeTile(M, D, v) {
-  const key = [M, D, v, 77]
+// What an edge frays: the hardpan's clay, crossed by its hairline crack
+// (sand silts it up near the band), or the village's paving (sites.js) with
+// its joints. `salt` keys the band's ragged profile.
+const HARDPAN_EDGE = { salt: 77, base: v => clayColours(0, v), dust: DUST, line: CLAY.crack, name: hardpanEdgeSkin }
+function edgeTile(M, D, v, kind = HARDPAN_EDGE) {
+  const key = [M, D, v, kind.salt]
   const open = SIDES.filter(([bit]) => M & bit).length
   const sand = new Uint8Array(T * T)
   const bands = SIDES.filter(([bit]) => M & bit).map(([bit, dist, along]) => ({ dist, along, depth: profile(...key, bit) }))
@@ -309,7 +314,7 @@ function edgeTile(M, D, v) {
     for (const n of nibbles) if ((n.a(x, y) + 0.5) ** 2 + (n.c(x, y) + 0.5) ** 2 < (END + 0.3) ** 2) on = true
     if (on) sand[y * T + x] = 1
   }
-  const { col: clay, mask } = clayColours(0, v)
+  const { col: clay, mask } = kind.base(v)
   const col = clay.slice()
   // how far each clay pixel is from the sand (4-way steps), out to 4
   const far = new Uint8Array(T * T).fill(9)
@@ -330,14 +335,14 @@ function edgeTile(M, D, v) {
     if (d === 0) {
       // sand, specked like ow_sand_0; at its rim, off the border, the clay shows through here and there
       const rim = !border(x, y) && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => far[(y + dy) * T + x + dx] === 1)
-      col[i] = rim && unit(...key, 60, x, y) < 0.15 ? DUST.light : unit(...key, 61, x, y) < 0.06 ? SAND.shade : SAND.base
+      col[i] = rim && unit(...key, 60, x, y) < 0.15 ? kind.dust.light : unit(...key, 61, x, y) < 0.06 ? SAND.shade : SAND.base
       continue
     }
     if (d > 3) continue
-    if (mask[i]) { col[i] = unit(...key, 62, x, y) < [0, 0.9, 0.6, 0.3][d] ? DUST.silt : CLAY.crack; continue }
+    if (mask[i]) { col[i] = unit(...key, 62, x, y) < [0, 0.9, 0.6, 0.3][d] ? kind.dust.silt : kind.line; continue }
     const r = unit(...key, 63, x, y)
-    if (r < [0, 0.7, 0.15, 0][d]) col[i] = DUST.light
-    else if (r < [0, 0.95, 0.6, 0.18][d]) col[i] = DUST.heavy
+    if (r < [0, 0.7, 0.15, 0][d]) col[i] = kind.dust.light
+    else if (r < [0, 0.95, 0.6, 0.18][d]) col[i] = kind.dust.heavy
   }
   // the sand on the outer pixel: all along an open side; on a closed side
   // exactly within END px of an open side's border, or of the other border
@@ -347,7 +352,7 @@ function edgeTile(M, D, v) {
       if (dist(x, y) !== 0) continue
       const want = (M & bit) || SIDES.some(([b2, dist2]) => (M & b2) && dist2(x, y) < END)
         || CORNERS.some(([cb, a, c]) => (D & cb) && (a === bit || c === bit) && sideOf(a === bit ? c : a)[1](x, y) < END)
-      if (!!sand[y * T + x] !== !!want) throw new Error(`${hardpanEdgeSkin(M, D, v)}: the sand is ${sand[y * T + x] ? '' : 'not '}on border pixel ${x},${y}`)
+      if (!!sand[y * T + x] !== !!want) throw new Error(`${kind.name(M, D, v)}: the sand is ${sand[y * T + x] ? '' : 'not '}on border pixel ${x},${y}`)
     }
   }
   return paint(col)
@@ -1106,6 +1111,362 @@ for (let m = 0; m < 16; m++) {
   keep('ow_landmark_cairn', g, { shadow: footShadow(g, 15, 4, 13) })
 }
 console.log(`wrote ${drawn.length} tiles of what grows, lies and stands in the desert`)
+
+// ---- the desert village (renderer/wilds/sites.js village(…, desert)) -------------------
+// Flat-roofed houses of mud brick, warm tan against the pale sand, laid in the
+// rows of Tiny Town's houses beside them (ow_roof_red_*, ow_house_wall_*) and
+// outlined as they are, two pixels of INK round the roof's back and sides and
+// down the walls' sides; lit from the upper left:
+//   ow_roof_adobe_l, _m, _r      the roof's back row: the parapet's rim along the
+//                                back and the sides, the back parapet's inner face
+//                                and the thin shadow it and the west parapet cast
+//                                on the flat deck, the deck
+//   ow_roof_adobe_el, _em, _er   its front row: the deck, the front parapet's rim,
+//                                and the top of the front wall below it with the
+//                                ends of the roof beams, each casting its shadow
+//   ow_roof_adobe_hatch, _pot    the back row's middle with a wooden roof hatch or
+//                                a clay vent pot (where Tiny Town has a chimney)
+//   ow_roof_adobe_step           the front row's middle with the parapet stepped up
+//                                over the door (where Tiny Town has a gable)
+//   ow_house_adobe_wall_l, _wall, _wall_r   a storey of plastered mud brick, the
+//                                plaster fallen away here and there, its west
+//                                corner rounded into the light, its east one in
+//                                shade, its foot darker where the rain splashes
+//   ow_house_adobe_win, _door, _dbl_l, _dbl_r   a deep-set window with shutters, a
+//                                plank door, a double door, each a dark opening
+//                                under a wooden lintel; `_blue`: the woodwork painted
+//   ow_house_adobe_up_l, _up_win, _up_r   an upper storey, the ends of its floor
+//                                beams along its foot
+//   ow_pave_sand_<v>             flagstones laid in courses, the same joints in
+//                                every variant so they run on from cell to cell
+//   ow_pave_sand_edge_<M>_<D>    where the paving ends: sand drifted over the
+//                                stones from the sides and corners that are not
+//                                paving, the hardpan's edges (edgeTile)
+//   ow_stall_awning_<c>          a shade awning of striped cloth over a stall
+//   ow_stall_awning_<c>_front_l, _m, _r   its scalloped front edge, on a pole at
+//                                each end
+//   ow_deco_bloom_0..1           desert flowers in the sand (walked over)
+//   ow_deco_sprout_0..1          young date palms in a row (walked over)
+const villageTiles = []
+const MUD = { light: '#ebc893', lit: '#ddae76', base: '#cd9862', mid: '#bf8955', shade: '#a2703f', dark: '#7c5030', brick: '#b27c49', joint: '#8f5f37' }
+const DECK = { base: '#dcad76', grit: '#cf9f68', fleck: '#e8c18c', crack: '#b5854f', shadow: '#b4834d' }
+const RIM = { top: '#f4d8a6', edge: '#e5bf88' }
+const WOOD = { light: '#b5814f', base: '#8e5c35', shade: '#673f25' }
+const TRIM = { '': WOOD, _blue: { light: '#86afd6', base: '#4f7bab', shade: '#375a84' } }
+const HOLE = '#2a1b21', LATCH = '#c0cbdc'
+const full = c => Array.from({ length: T }, () => new Array(T).fill(c))
+const fill = (g, x0, y0, x1, y1, c) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (x >= 0 && y >= 0 && x < T && y < T) g[y][x] = c }
+const saveVillage = (name, g, shadow = null) => { save(name, gridRgba(g, shadow)); villageTiles.push(name) }
+
+// Mud plaster over rows y0..y1: flecks, and in `patches` a spot where it has
+// fallen away and two courses of brick show, its upper rim in shade and its
+// lower rim catching the light; kept two pixels inside the tile's sides.
+function plaster(g, salt, y0 = 0, y1 = T - 1, patches = 1) {
+  for (let y = y0; y <= y1; y++) for (let x = 0; x < T; x++) {
+    const r = unit(salt, 400, x, y)
+    g[y][x] = r < 0.07 ? MUD.mid : r < 0.1 ? MUD.lit : MUD.base
+  }
+  for (let k = 0; k < patches; k++) {
+    if (unit(salt, 401, k) > 0.75) continue
+    const px = 4 + Math.floor(unit(salt, 402, k) * 6), py = y0 + 2 + Math.floor(unit(salt, 403, k) * Math.max(1, y1 - y0 - 6))
+    fill(g, px, py, px + 4, py + 2, MUD.brick)
+    fill(g, px, py + 1, px + 4, py + 1, MUD.joint)
+    g[py][px + 2] = MUD.joint; g[py + 2][px + 1] = MUD.joint; g[py + 2][px + 4] = MUD.joint
+    fill(g, px, py - 1, px + 4, py - 1, MUD.shade)
+    fill(g, px + 1, py + 3, px + 5, py + 3, MUD.light)
+  }
+}
+// A corner of the building: the west one rounded into the light, the east one turned away from it.
+function corner(g, side, y0 = 0, y1 = T - 1) {
+  for (let y = y0; y <= y1; y++) {
+    if (side === 'l') { g[y][0] = INK; g[y][1] = INK; g[y][2] = MUD.light; g[y][3] = y % 2 ? MUD.lit : MUD.light }
+    else { g[y][15] = INK; g[y][14] = INK; g[y][13] = MUD.shade; g[y][12] = y % 2 ? MUD.mid : MUD.shade }
+  }
+}
+// The ends of a row of beams through the wall at row y: two pixels square,
+// every four along so they run on from cell to cell, each casting its shadow
+// on the wall a pixel down and to the right.
+function beamEnds(g, y, xs) {
+  for (const x of xs) {
+    g[y][x] = WOOD.light; g[y][x + 1] = WOOD.base; g[y + 1][x] = WOOD.base; g[y + 1][x + 1] = WOOD.shade
+    if (y + 2 < T) { g[y + 2][x + 1] = MUD.shade; if (x + 2 < T && g[y + 2][x + 2] !== INK) g[y + 2][x + 2] = MUD.shade }
+  }
+}
+const BEAMS = { l: [5, 9, 13], m: [1, 5, 9, 13], r: [1, 5, 9] }
+// A storey's wall; `foot`: the ground floor's, darker along its foot.
+function wall(side, { foot = true, salt = 0 } = {}) {
+  const g = full(MUD.base)
+  plaster(g, salt, 0, T - 1, side === 'm' ? 1 : 0)
+  if (foot) for (let x = 0; x < T; x++) { g[15][x] = MUD.shade; if (unit(salt, 404, x) < 0.5) g[14][x] = MUD.mid }
+  if (side !== 'm') corner(g, side, 0, foot ? 14 : 15)
+  if (foot && side === 'l') { g[15][2] = MUD.lit; g[15][3] = MUD.mid }
+  if (foot && side === 'r') { g[15][12] = MUD.dark; g[15][13] = MUD.dark }
+  return g
+}
+// A wooden lintel over an opening, x0..x1, its top at row y.
+function lintel(g, x0, x1, y) {
+  fill(g, x0, y, x1, y, WOOD.light); fill(g, x0, y + 1, x1, y + 1, WOOD.base)
+  g[y + 1][x1] = WOOD.shade
+  for (let x = x0 + 1; x <= x1 + 1 && x < T; x++) if (g[y + 2][x] !== INK) g[y + 2][x] = MUD.shade
+}
+// A deep-set window, its lintel's top at row y: the dark opening, a shutter
+// folded back each side, the sill lit, its shadow under it.
+function windowAt(g, trim, y = 2) {
+  const c = TRIM[trim]
+  lintel(g, 3, 12, y)
+  fill(g, 5, y + 2, 10, y + 6, HOLE)
+  fill(g, 3, y + 2, 4, y + 6, c.base); fill(g, 3, y + 2, 3, y + 6, c.light)
+  fill(g, 11, y + 2, 12, y + 6, c.base); fill(g, 12, y + 2, 12, y + 6, c.shade)
+  for (const sy of [y + 3, y + 5]) { g[sy][4] = c.shade; g[sy][11] = c.shade }
+  g[y + 2][10] = '#3b2730'
+  fill(g, 4, y + 7, 11, y + 7, MUD.light)
+  fill(g, 5, y + 8, 12, y + 8, MUD.shade)
+}
+// A plank door from row 4 down to the ground, in an opening x0..x1 (x1 > 15 runs on into the next cell).
+function doorAt(g, trim, x0, x1, { seamL = false, seamR = false } = {}) {
+  const c = TRIM[trim]
+  lintel(g, Math.max(0, x0 - 1), Math.min(15, x1 + 1), 2)
+  for (let y = 4; y < T; y++) for (let x = x0; x <= x1; x++) {
+    if (x < 0 || x > 15) continue
+    const frameL = x === x0 && !seamL, frameR = x === x1 && !seamR
+    g[y][x] = y === 4 || frameL || frameR ? INK : c.base
+  }
+  for (let x = x0 + 1; x < x1; x++) if (x >= 0 && x < T) g[5][x] = c.shade
+  return c
+}
+
+// the walls, a storey and an upper storey
+saveVillage('ow_house_adobe_wall_l', wall('l', { salt: 1 }))
+saveVillage('ow_house_adobe_wall', wall('m', { salt: 2 }))
+saveVillage('ow_house_adobe_wall_r', wall('r', { salt: 3 }))
+{
+  const g = wall('l', { foot: false, salt: 4 }); beamEnds(g, 12, BEAMS.l); saveVillage('ow_house_adobe_up_l', g)
+}
+{
+  const g = wall('r', { foot: false, salt: 5 }); beamEnds(g, 12, BEAMS.r); saveVillage('ow_house_adobe_up_r', g)
+}
+for (const trim of ['', '_blue']) {
+  {
+    const g = wall('m', { salt: 6 }); plaster(g, 16, 0, 13, 0)
+    windowAt(g, trim, 2); saveVillage(`ow_house_adobe_win${trim}`, g)
+  }
+  {
+    const g = wall('m', { foot: false, salt: 7 }); plaster(g, 17, 0, 11, 0)
+    windowAt(g, trim, 1); beamEnds(g, 12, BEAMS.m); saveVillage(`ow_house_adobe_up_win${trim}`, g)
+  }
+  {
+    const g = wall('m', { salt: 8 }); plaster(g, 18, 0, 13, 0)
+    const c = doorAt(g, trim, 4, 11)
+    fill(g, 5, 6, 5, 15, c.light)
+    for (const x of [7, 9]) fill(g, x, 6, x, 15, c.shade)
+    g[10][9] = LATCH; g[11][9] = LATCH
+    saveVillage(`ow_house_adobe_door${trim}`, g)
+  }
+  {
+    // the double door: two leaves meeting on the border between the cells
+    const L = wall('m', { salt: 9 }); plaster(L, 19, 0, 13, 0)
+    const c = doorAt(L, trim, 4, 16, { seamR: true })
+    fill(L, 5, 6, 5, 15, c.light)
+    for (const x of [8, 11]) fill(L, x, 6, x, 15, c.shade)
+    fill(L, 15, 5, 15, 15, INK)
+    L[10][13] = LATCH; L[11][13] = LATCH
+    saveVillage(`ow_house_adobe_dbl${trim}_l`, L)
+    const R = wall('m', { salt: 10 }); plaster(R, 20, 0, 13, 0)
+    doorAt(R, trim, -1, 11, { seamL: true })
+    fill(R, 0, 6, 0, 15, c.light)
+    for (const x of [4, 7]) fill(R, x, 6, x, 15, c.shade)
+    R[10][2] = LATCH; R[11][2] = LATCH
+    saveVillage(`ow_house_adobe_dbl${trim}_r`, R)
+  }
+}
+
+// The flat roof's deck over rows y0..y1: packed mud, grit, and a crack or
+// two kept two pixels inside the tile.
+function deck(g, salt, y0, y1) {
+  for (let y = y0; y <= y1; y++) for (let x = 0; x < T; x++) {
+    const r = unit(salt, 420, x, y)
+    g[y][x] = r < 0.08 ? DECK.grit : r < 0.11 ? DECK.fleck : DECK.base
+  }
+  for (let k = 0; k < 2; k++) {
+    if (unit(salt, 421, k) < 0.4) continue
+    let x = 4 + Math.floor(unit(salt, 422, k) * 8), y = y0 + 2 + Math.floor(unit(salt, 423, k) * Math.max(1, y1 - y0 - 4))
+    for (let i = 0; i < 3 && x < T - 2 && y <= y1 - 2; i++) { g[y][x] = DECK.crack; x++; if (unit(salt, 424, k, i) < 0.5) y++ }
+  }
+}
+// The back row of the roof: the parapet's rim along the back (and the
+// side), its inner face, the shadow it casts on the deck.
+function roofBack(side, salt) {
+  const g = full(DECK.base)
+  deck(g, salt, 6, T - 1)
+  fill(g, 0, 0, 15, 1, INK)
+  fill(g, 0, 2, 15, 2, RIM.top); fill(g, 0, 3, 15, 3, RIM.edge)
+  fill(g, 0, 4, 15, 4, MUD.base); fill(g, 0, 5, 15, 5, MUD.mid)
+  for (let x = 0; x < T; x++) { g[6][x] = DECK.shadow; if (x % 2) g[7][x] = DECK.shadow }
+  if (side === 'l') {
+    fill(g, 0, 0, 1, 15, INK); fill(g, 2, 2, 2, 15, RIM.top); fill(g, 3, 2, 3, 15, RIM.edge)
+    fill(g, 4, 6, 4, 15, DECK.shadow); for (let y = 6; y < T; y++) if (y % 2) g[y][5] = DECK.shadow
+    g[4][4] = MUD.mid; g[5][4] = MUD.shade
+  }
+  if (side === 'r') { fill(g, 14, 0, 15, 15, INK); fill(g, 12, 2, 12, 15, RIM.top); fill(g, 13, 2, 13, 15, RIM.edge); g[4][11] = MUD.mid; g[5][11] = MUD.shade }
+  return g
+}
+// The front row: the deck, the front parapet's rim, the top of the front
+// wall under it with the roof beams' ends.
+function roofFront(side, salt) {
+  const g = full(DECK.base)
+  deck(g, salt, 0, 9)
+  fill(g, 0, 10, 15, 10, RIM.top); fill(g, 0, 11, 15, 11, RIM.edge)
+  plaster(g, salt + 50, 12, 15, 0)
+  fill(g, 0, 12, 15, 12, MUD.shade)
+  beamEnds(g, 13, BEAMS[side])
+  if (side === 'l') {
+    fill(g, 0, 0, 1, 15, INK); fill(g, 2, 0, 2, 11, RIM.top); fill(g, 3, 0, 3, 11, RIM.edge)
+    fill(g, 4, 0, 4, 9, DECK.shadow); for (let y = 0; y <= 9; y++) if (y % 2) g[y][5] = DECK.shadow
+    corner(g, 'l', 12, 15)
+  }
+  if (side === 'r') {
+    fill(g, 14, 0, 15, 15, INK); fill(g, 12, 0, 12, 11, RIM.top); fill(g, 13, 0, 13, 11, RIM.edge)
+    corner(g, 'r', 12, 15)
+  }
+  return g
+}
+saveVillage('ow_roof_adobe_l', roofBack('l', 31))
+saveVillage('ow_roof_adobe_m', roofBack('m', 32))
+saveVillage('ow_roof_adobe_r', roofBack('r', 33))
+saveVillage('ow_roof_adobe_el', roofFront('l', 34))
+saveVillage('ow_roof_adobe_em', roofFront('m', 35))
+saveVillage('ow_roof_adobe_er', roofFront('r', 36))
+{
+  // a wooden hatch in the deck, its shadow to the lower right
+  const g = roofBack('m', 37)
+  fill(g, 5, 9, 10, 13, WOOD.shade); fill(g, 6, 10, 9, 12, WOOD.base); fill(g, 6, 10, 9, 10, WOOD.light)
+  fill(g, 7, 11, 7, 12, WOOD.shade)
+  fill(g, 11, 10, 11, 14, DECK.shadow); fill(g, 6, 14, 11, 14, DECK.shadow)
+  saveVillage('ow_roof_adobe_hatch', g)
+}
+{
+  // a clay vent pot standing on the deck, its dark mouth up, its shadow to the lower right
+  const g = roofBack('m', 38)
+  fill(g, 6, 9, 9, 13, POT.b); fill(g, 6, 9, 6, 13, POT.l); fill(g, 9, 9, 9, 13, POT.s); fill(g, 6, 13, 9, 13, POT.s)
+  fill(g, 6, 8, 9, 8, POT.l); fill(g, 7, 8, 8, 9, POT.D)
+  fill(g, 10, 10, 10, 14, DECK.shadow); fill(g, 7, 14, 10, 14, DECK.shadow)
+  saveVillage('ow_roof_adobe_pot', g)
+}
+{
+  // the front parapet stepped up over the door, a little niche in it
+  const g = roofFront('m', 39)
+  const face = (x0, y0, x1, y1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) g[y][x] = unit(39, 430, x, y) < 0.07 ? MUD.mid : MUD.base }
+  face(4, 8, 11, 12); face(2, 10, 3, 12); face(12, 10, 13, 12)
+  fill(g, 4, 6, 11, 6, RIM.top); fill(g, 4, 7, 11, 7, RIM.edge)
+  for (const x0 of [2, 12]) { fill(g, x0, 8, x0 + 1, 8, RIM.top); fill(g, x0, 9, x0 + 1, 9, RIM.edge) }
+  fill(g, 5, 8, 11, 8, MUD.shade); fill(g, 3, 10, 3, 10, MUD.shade); fill(g, 12, 10, 13, 10, MUD.shade)
+  fill(g, 4, 8, 4, 12, MUD.lit); fill(g, 2, 10, 2, 12, MUD.lit)
+  fill(g, 11, 9, 11, 12, MUD.mid); fill(g, 13, 11, 13, 12, MUD.mid)
+  fill(g, 7, 9, 8, 10, HOLE); fill(g, 7, 11, 8, 11, MUD.light)
+  saveVillage('ow_roof_adobe_step', g)
+}
+
+// ---- the sand paving ----------------------------------------------------------------
+// Flagstones in courses: a joint along rows 0, 5 and 10, and in each course
+// the joints at the same columns in every variant; a stone is lit along its
+// top and west side and shaded along its foot. A variant deals the stones'
+// tones, except of a stone that runs on across the tile's side, which keeps
+// one tone in every variant so it does not change halfway.
+const PAVE = { joint: '#b19b76', lit: '#e3d4b3', shade: '#c2ad87', tones: ['#d5c3a0', '#cdba95', '#dccbaa'], speck: '#c4b08a' }
+const PAVE_DUST = { light: '#ddd0b1', heavy: '#d2c3a1', silt: SAND.shade }
+const COURSES = [{ y0: 1, y1: 4, joints: [3, 10] }, { y0: 6, y1: 9, joints: [6, 13] }, { y0: 11, y1: 15, joints: [1, 8] }]
+function paveColours(v) {
+  const col = new Array(T * T).fill(PAVE.joint), mask = new Uint8Array(T * T).fill(1)
+  COURSES.forEach(({ y0, y1, joints }, ci) => {
+    // the stones of the course, as runs of columns between joints (wrapping round)
+    const starts = joints.map(j => (j + 1) % T)
+    starts.forEach((sx, si) => {
+      const end = joints[(si + 1) % joints.length]
+      const xs = []
+      for (let x = sx; x !== end; x = (x + 1) % T) xs.push(x)
+      const wraps = xs.some((x, i) => i > 0 && x === 0)
+      const tone = wraps ? PAVE.tones[0] : PAVE.tones[Math.floor(unit(v, 500, ci, si) * PAVE.tones.length)]
+      xs.forEach((x, i) => {
+        for (let y = y0; y <= y1; y++) {
+          const k = y * T + x
+          mask[k] = 0
+          let c = tone
+          if (y === y1) c = PAVE.shade
+          else if (y === y0 || i === 0) c = PAVE.lit
+          else if (unit(v, 501, x, y) < 0.07) c = PAVE.speck
+          col[k] = c
+        }
+      })
+    })
+  })
+  return { col, mask }
+}
+const PAVE_EDGE = { salt: 78, base: paveColours, dust: PAVE_DUST, line: PAVE.joint, name: (M, D) => paveEdgeSkin(M, D) }
+for (let v = 0; v < PAVE_VARIANTS; v++) { save(paveSkin(v), paint(paveColours(v).col)); villageTiles.push(paveSkin(v)) }
+for (const [M, D] of EDGE_SHAPES) { save(paveEdgeSkin(M, D), edgeTile(M, D, 0, PAVE_EDGE)); villageTiles.push(paveEdgeSkin(M, D)) }
+
+// ---- the stall's awning ---------------------------------------------------------------
+// Striped cloth stretched from a rail at the back over the stall to a pole at
+// each end of its front, where a scalloped edge hangs; a stripe four pixels
+// wide so the stripes run on from cell to cell, the cloth lit near the rail.
+const CLOTH = [{ base: '#4f6ea8', shade: '#3b5486', lit: '#7090c6' }, { base: '#b5493a', shade: '#913a2f', lit: '#cf6d57' }]
+const CREAM = { base: '#f0e5c9', shade: '#d6c6a3', lit: '#fbf5e5' }
+const stripeAt = (c, x, tone) => (Math.floor(x / 4) % 2 ? CLOTH[c] : CREAM)[tone]
+CLOTH.forEach((_, c) => {
+  const top = full(null)
+  for (let x = 0; x < T; x++) {
+    top[0][x] = WOOD.base
+    for (let y = 1; y < T; y++) top[y][x] = stripeAt(c, x, y <= 2 ? 'lit' : x % 4 === 3 ? 'shade' : 'base')
+  }
+  saveVillage(`ow_stall_awning_${c}`, top)
+  for (const end of ['l', 'm', 'r']) {
+    const g = full(null), shadow = grid()
+    for (let x = 0; x < T; x++) {
+      for (let y = 0; y <= 5; y++) g[y][x] = stripeAt(c, x, x % 4 === 3 ? 'shade' : 'base')
+      // the hanging edge: a fold, then scallops, a stripe each
+      g[6][x] = stripeAt(c, x, 'shade')
+      for (let y = 7; y <= 9; y++) {
+        const k = x % 4
+        if (y === 9 && (k === 0 || k === 3)) continue
+        g[y][x] = stripeAt(c, x, y === 7 ? 'lit' : 'base')
+      }
+      if (x % 4 === 1 || x % 4 === 2) g[10][x] = stripeAt(c, x, 'shade')
+    }
+    const pole = end === 'l' ? 1 : end === 'r' ? 13 : -1
+    if (pole >= 0) {
+      for (let y = 10; y < T - 1; y++) { g[y][pole] = WOOD.light; g[y][pole + 1] = WOOD.base }
+      g[T - 1][pole] = WOOD.base; g[T - 1][pole + 1] = WOOD.shade
+      shadow[T - 1][pole + 2] = 1
+    }
+    saveVillage(`ow_stall_awning_${c}_front_${end}`, g, shadow)
+  }
+})
+
+// ---- what grows in the village ---------------------------------------------------------------
+// Desert flowers: a tuft of grey-green leaves with blossoms, two to a cell.
+{
+  const P0 = { l: SAGE.light, b: SAGE.base, s: SAGE.shade, p: '#f7b3c5', P: '#e86a92', y: '#ffc90e' }
+  const P1 = { l: SAGE.light, b: SAGE.base, s: SAGE.shade, p: '#ffe08a', P: '#e8a417', y: '#c4562e' }
+  const tuft = ['.pPp.', 'p.y.p', '.lPl.', 'lbsbl', '.sbs.']
+  const tuftB = ['..p..', '.pyp.', 'l.p.l', '.lbl.', '.sbs.']
+  ;[[P0, [[2, 5, tuft], [9, 10, tuftB]]], [P1, [[8, 3, tuftB], [3, 9, tuft]]]].forEach(([pal, spots], i) => {
+    const g = grid()
+    for (const [x0, y0, rows] of spots) rows.forEach((r, dy) => [...r].forEach((ch, dx) => { if (ch !== '.') g[y0 + dy][x0 + dx] = pal[ch] }))
+    standsAlone(`ow_deco_bloom_${i}`, g); saveVillage(`ow_deco_bloom_${i}`, g)
+  })
+}
+// Young date palms in a row: a fan of fronds out of a little heap of sand.
+{
+  const P = { g: '#479f4a', G: '#84c669', d: '#2f7a3a', a: DRIFT.a, A: DRIFT.A }
+  const shoot = ['G...G', '.GgG.', 'GdgdG', '..d..', '.aAa.']
+  const shootB = ['.G.G.', 'G.g.G', '.GdG.', '..d..', 'aAAa.']
+  ;[[[1, 9, shoot], [9, 9, shootB]], [[5, 9, shootB], [12, 8, ['.G.', 'GdG', '.d.', 'aA.', '...']]]].forEach((spots, i) => {
+    const g = grid()
+    for (const [x0, y0, rows] of spots) rows.forEach((r, dy) => [...r].forEach((ch, dx) => { if (ch !== '.') g[y0 + dy][x0 + dx] = P[ch] }))
+    standsAlone(`ow_deco_sprout_${i}`, g); saveVillage(`ow_deco_sprout_${i}`, g)
+  })
+}
+console.log(`wrote ${villageTiles.length} tiles of the desert village`)
 
 // ---- the contact sheet ------------------------------------------------------------
 const sheetAt = process.argv.indexOf('--sheet')

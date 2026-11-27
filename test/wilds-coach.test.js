@@ -23,8 +23,8 @@ import {
 const SEED = 42
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 const CART = /^ow_prop_city_cart/
-// a road cell: the road's ground, its planks over water, or the cobbles it wears in a village
-const isRoad = c => !!c && ((c.skin ?? '').startsWith('ow_road_') || (c.overlay ?? '').startsWith('ow_pier') || c.skin === 'ow_cobble_green')
+// a road cell: the road's ground, its planks over water, or the cobbles (in the desert the sand paving) it wears in a village
+const isRoad = c => !!c && ((c.skin ?? '').startsWith('ow_road_') || (c.overlay ?? '').startsWith('ow_pier') || c.skin === 'ow_cobble_green' || (c.skin ?? '').startsWith('ow_pave_sand_'))
 // What game.js's buildEntities does, minus the art: one entity per spawn.
 const buildEntities = spawns => spawns.map(s => ({ type: s.kind, x: s.x, y: s.y, px: s.x * 32 + 16, py: s.y * 32 + 16 }))
 const freshState = () => ({

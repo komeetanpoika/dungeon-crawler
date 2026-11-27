@@ -12,8 +12,13 @@
 //
 // The house kit is Tiny Town's: two rows of roof (a chimney up top, a gable
 // over the door), then one or two rows of wall with windows and the door.
+// A village in the desert is built from the desert kit instead
+// (tools/make-wilds-desert-tiles.mjs draws it): flat-roofed mud-brick houses
+// of the same rows, a roof hatch or a vent pot where the chimney would be and
+// a stepped parapet over the door where the gable would be.
 // The crossroads inn and its stable are Kalevanlinna's (inn.js).
 import { INN_PLANS, INN_PAD, INN_SHIFT, INN_SKINS, innFootprint, innMirrored, makeInnStamps } from './inn.js'
+import { PAVE_SKINS, PAVE_VARIANTS, paveSkin, paveEdgeSkin, isPaveSkin } from './desert-art.js'
 
 const ROOF = {
   red: { top: ['ow_roof_red_l', 'ow_roof_red_m', 'ow_roof_red_r'], low: ['ow_roof_red_el', 'ow_roof_red_em', 'ow_roof_red_er'], chim: 'ow_roof_red_chim', gable: 'ow_roof_gable_red' },
@@ -23,6 +28,21 @@ const WALL = {
   stone: { l: 'ow_house_wall_stone_l', m: 'ow_house_wall_stone', r: 'ow_house_wall_stone_r', win: 'ow_house_win_stone', door: 'ow_house_door_2', dbl: ['ow_house_dbl_stone_l', 'ow_house_dbl_stone_r'] },
   wood: { l: 'ow_house_wall_brown_l', m: 'ow_house_wall_brown', r: 'ow_house_wall_brown_r', win: 'ow_house_win_brown', door: 'ow_house_door', dbl: ['ow_house_dbl_brown_l', 'ow_house_dbl_brown_r'] },
 }
+// The desert kit, by the same draws: the roof's draw picks what stands on the
+// flat roof where a chimney would (a wooden hatch, a clay vent pot), the
+// wall's the colour of the woodwork (painted blue, bare wood). Every roof
+// has a parapet round it, and a stepped one over the door. An upper storey
+// (`up`) has the ends of its floor beams along its foot.
+const ADOBE_ROOF = { top: ['ow_roof_adobe_l', 'ow_roof_adobe_m', 'ow_roof_adobe_r'], low: ['ow_roof_adobe_el', 'ow_roof_adobe_em', 'ow_roof_adobe_er'], gable: 'ow_roof_adobe_step' }
+ROOF.adobe = { red: { ...ADOBE_ROOF, chim: 'ow_roof_adobe_hatch' }, blue: { ...ADOBE_ROOF, chim: 'ow_roof_adobe_pot' } }
+const adobeWall = trim => ({
+  l: 'ow_house_adobe_wall_l', m: 'ow_house_adobe_wall', r: 'ow_house_adobe_wall_r',
+  win: `ow_house_adobe_win${trim}`, door: `ow_house_adobe_door${trim}`, dbl: [`ow_house_adobe_dbl${trim}_l`, `ow_house_adobe_dbl${trim}_r`],
+  up: { l: 'ow_house_adobe_up_l', win: `ow_house_adobe_up_win${trim}`, r: 'ow_house_adobe_up_r' },
+})
+WALL.adobe = { stone: adobeWall('_blue'), wood: adobeWall('') }
+const KIT_ROOFS = [ROOF.red, ROOF.blue, ...Object.values(ROOF.adobe)]
+const KIT_WALLS = [WALL.stone, WALL.wood, ...Object.values(WALL.adobe)]
 const GRAVES = ['ow_prop_grave_0', 'ow_prop_grave_1', 'ow_prop_grave_2', 'ow_prop_grave_3', 'ow_prop_cross_0', 'ow_prop_cross_1']
 const FLOWERS = ['ow_deco_flower_0', 'ow_deco_flower_1', 'ow_deco_flower_2', 'ow_deco_flower_3']
 const OLD_STONES = ['ow_ruin_stub_0', 'ow_ruin_stub_1', 'ow_ruin_col_base_0', 'ow_ruin_col_base_1']
@@ -49,6 +69,21 @@ const WINDMILL = [
   ['ow_house_mill_wl', 'ow_house_door_mill', 'ow_house_mill_wr'],
 ]
 const FARM_SKINS = [...HAY, ...PEAT, ...NETS, PALM, MUD_WALL, CUT_PEAT, ...WINDMILL.flat()]
+// ---- the desert village (village(…, desert)) -----------------------------------------
+// Drawn by tools/make-wilds-desert-tiles.mjs: the stall's shade awning, its
+// cloth in one of two colours by the stall's draw (`top` over the stall, a
+// tile a cell; `front` its scalloped edge on its poles, west to east); the
+// desert flowers scattered where a green village scatters meadow flowers,
+// which become palms once everything else of the piece has its place
+// (finishVillage); the young date palms of the date garden.
+const AWNINGS = [0, 1].map(c => ({ top: `ow_stall_awning_${c}`, front: ['l', 'm', 'r'].map(s => `ow_stall_awning_${c}_front_${s}`) }))
+const BLOOMS = ['ow_deco_bloom_0', 'ow_deco_bloom_1']
+const SPROUTS = ['ow_deco_sprout_0', 'ow_deco_sprout_1']
+const PALM_TALL = ['ow_tree_palm_top', 'ow_tree_palm']   // terrain.js PALMS.tall: the crown over its trunk
+const DESERT_VILLAGE_SKINS = [...AWNINGS.flatMap(a => [a.top, ...a.front]), ...BLOOMS, ...SPROUTS, ...PALM_TALL, ...PAVE_SKINS]
+// A village's square and the streets in it: green cobbles, or the desert's sand paving.
+export const isVillageStreet = n => n === 'ow_cobble_green' || isPaveSkin(n)
+
 // Each farm's plans, in cells from the middle of its yard, where the trail
 // from the roads ends (features.js holds that cell clear); as drawn, nothing
 // stands on it or its four neighbours, and everything within the farm's pad
@@ -278,8 +313,9 @@ for (let oy = -MOVE_REACH; oy <= MOVE_REACH; oy++) for (let ox = -MOVE_REACH; ox
 MOVES.sort((p, q) => p[0] * p[0] + p[1] * p[1] - (q[0] * q[0] + q[1] * q[1]))
 
 export const SITE_SKINS = [...new Set([
-  ...Object.values(ROOF).flatMap(r => [...r.top, ...r.low, r.chim, r.gable]),
-  ...Object.values(WALL).flatMap(w => [w.l, w.m, w.r, w.win, w.door, ...w.dbl]),
+  ...KIT_ROOFS.flatMap(r => [...r.top, ...r.low, r.chim, r.gable]),
+  ...KIT_WALLS.flatMap(w => [w.l, w.m, w.r, w.win, w.door, ...w.dbl, ...(w.up ? [w.up.l, w.up.win, w.up.r] : [])]),
+  ...DESERT_VILLAGE_SKINS,
   ...GRAVES, ...FLOWERS, ...OLD_STONES, ...SAND_STONES, ...SAND_FLOOR, ...DEAD,
   'ow_cobble_green', 'ow_well', 'ow_well_top', 'ow_sign', 'ow_beehive',
   'ow_fence_l', 'ow_fence_m', 'ow_fence_r', 'ow_fence_side_l', 'ow_fence_side_r', 'ow_fence_bl', 'ow_fence_br', 'ow_fence_end_l', 'ow_fence_end_r',
@@ -397,13 +433,15 @@ export function makeSites(c) {
   const low = (x, y, skin) => { put(x, y, skin); dressing.push({ x, y }) }
   const flat = (x, y, skin) => { if (t.free(x, y) && !c.taken(x, y)) { t.setProp(x, y, skin, { walkable: true }); hold(x, y) } }
   const row = (x, y, skins) => skins.forEach((s, i) => { if (s) put(x + i, y, s) })
-  // (`ok`: where a spot is wanted; a spot it refuses is left bare)
-  const scatter = (cx, cy, rMin, rMax, n, skins, solid = false, ok = null) => {
+  // (`ok`: where a spot is wanted; a spot it refuses is left bare; `laid`
+  // collects the spots laid)
+  const scatter = (cx, cy, rMin, rMax, n, skins, solid = false, ok = null, laid = null) => {
     for (let i = 0; i < n; i++) {
       const at = c.freeSpot(cx, cy, rMin, rMax)
       if (!at) return
       if (ok && !ok(at.x, at.y)) continue
       if (solid) low(at.x, at.y, pick(skins)); else flat(at.x, at.y, pick(skins))
+      laid?.push(at)
     }
   }
   const offPaths = (x, y) => !t.onPath(x, y)
@@ -414,8 +452,10 @@ export function makeSites(c) {
   // (dealt when not given); `lived`: someone is always at home (the interior
   // is never an abandoned one: renderer/interior/versions.js). Returns its box
   // and its door record.
-  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null, dcol: atCol = null, lived = false } = {}) {
-    const R = ROOF[roof], W = WALL[wall]
+  // `kit`: 'kenney' (Tiny Town's) or 'adobe' (the desert's), by the same draws.
+  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null, dcol: atCol = null, lived = false, kit = 'kenney' } = {}) {
+    const adobe = kit === 'adobe'
+    const R = adobe ? ROOF.adobe[roof] : ROOF[roof], W = adobe ? WALL.adobe[wall] : WALL[wall], U = W.up ?? W
     const dbl = w === 5 && rng() < 0.35
     const dcol = atCol ?? (w === 3 ? 1 : w === 4 ? (rng() < 0.5 ? 1 : 2) : 2)
     const x0 = dx - dcol, top = dy - 1 - storeys
@@ -424,7 +464,7 @@ export function makeSites(c) {
     for (let i = 0; i < w; i++) {
       put(x0 + i, top, ends(R.top, i === chim ? R.chim : null, i))
       put(x0 + i, top + 1, ends(R.low, i === dcol ? R.gable : null, i))
-      if (storeys === 2) put(x0 + i, top + 2, i === 0 ? W.l : i === w - 1 ? W.r : W.win)
+      if (storeys === 2) put(x0 + i, top + 2, i === 0 ? U.l : i === w - 1 ? U.r : U.win)
       let skin = i === 0 ? W.l : i === w - 1 ? W.r : W.m
       if (i === dcol) skin = dbl ? W.dbl[0] : W.door
       else if (dbl && i === dcol + 1) skin = W.dbl[1]
@@ -433,7 +473,7 @@ export function makeSites(c) {
     }
     // the doorstep stays clear
     for (let i = -1; i <= 1; i++) { t.clear(dx + i, dy + 1); hold(dx + i, dy + 1) }
-    const door = c.door(dx, dy, tier, story, { look: { w, storeys, wall }, ...(kind ? { kind } : {}), ...(lived ? { lived: true } : {}) })
+    const door = c.door(dx, dy, tier, story, { look: { w, storeys, wall: adobe ? 'adobe' : wall }, ...(kind ? { kind } : {}), ...(lived ? { lived: true } : {}) })
     return { x0, x1: x0 + w - 1, top, w, door }
   }
 
@@ -441,8 +481,9 @@ export function makeSites(c) {
   // through it makes a gap of its own, unless the fence is `whole`: then it
   // stands across a trail, and whoever asks for it leaves a way round. A
   // road is never blocked: where one passes, even a whole fence has a gap.
-  function fence(x0, y0, x1, y1, gate = null, whole = false) {
-    const rail = whole ? put : low
+  // `mud`: the same, as a low wall of mud brick (the farms' MUD_WALL).
+  function fence(x0, y0, x1, y1, gate = null, whole = false, mud = false) {
+    const rail = whole ? (x, y, skin) => put(x, y, mud ? MUD_WALL : skin) : (x, y, skin) => low(x, y, mud ? MUD_WALL : skin)
     const open = (x, y) => (whole ? t.onRoad(x, y) : t.onPath(x, y)) || (gate && gate.y === y && x === gate.x)
     for (let x = x0; x <= x1; x++) for (const y of [y0, y1]) {
       const top = y === y0
@@ -465,8 +506,35 @@ export function makeSites(c) {
       hold(x, y)
     }
   }
-  const cobble = (cx, cy, r2) => {
-    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy < r2) { t.clear(cx + dx, cy + dy); t.setGround(cx + dx, cy + dy, 'ow_cobble_green') }
+  // Young date palms on sand in a box, where a green village tills its field.
+  function dateGarden(x0, y0, x1, y1) {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      t.clear(x, y)
+      t.setGround(x, y, t.dryGround(x, y))
+      t.setProp(x, y, SPROUTS[(y - y0) % 2], { walkable: true })
+      hold(x, y)
+    }
+  }
+  const cobble = (cx, cy, r2, skin = 'ow_cobble_green') => {
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy < r2) { t.clear(cx + dx, cy + dy); t.setGround(cx + dx, cy + dy, skin) }
+  }
+  // The sand paving within r of (cx, cy) as it ends up: a paving cell beside
+  // anything that is not paving takes its edge (the shape of the sides and
+  // corners that are not), every other one a flagstone variant by a hash.
+  const edgePaving = (cx, cy, r) => {
+    const paved = (x, y) => isPaveSkin(t.groundAt(x, y))
+    const writes = []
+    for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+      if (!paved(x, y)) continue
+      const M = (paved(x, y - 1) ? 0 : 1) | (paved(x + 1, y) ? 0 : 2) | (paved(x, y + 1) ? 0 : 4) | (paved(x - 1, y) ? 0 : 8)
+      let D = 0
+      if (!(M & 3) && !paved(x + 1, y - 1)) D |= 1
+      if (!(M & 6) && !paved(x + 1, y + 1)) D |= 2
+      if (!(M & 12) && !paved(x - 1, y + 1)) D |= 4
+      if (!(M & 9) && !paved(x - 1, y - 1)) D |= 8
+      writes.push([x, y, M || D ? paveEdgeSkin(M, D) : paveSkin(Math.floor(c.hash(x, y, 7140) * PAVE_VARIANTS))])
+    }
+    for (const [x, y, skin] of writes) t.setGround(x, y, skin)
   }
   // A walkable ring just outside a box of rock, so a road that runs into the
   // rock still leads round it.
@@ -487,28 +555,44 @@ export function makeSites(c) {
   // house stands (features.js lays them): what of them lies in the village
   // is cobbled, and nothing lying about is dropped on them.
   // `sunroom`: the big house is the glassmaker's, Päivölä (renderer/interior/sunroom.js)
-  function village(cx, cy, tale = null, sunroom = false) {
-    cobble(cx, cy, 14)
+  // `desert`: built from the desert kit, by the same draws and on the same
+  // cells: adobe houses, sand paving for the cobbles, an awning over the
+  // stall, a date garden walled in mud brick for the fenced field, palms for
+  // the flowers and no bee yard. What would make the land walked or the
+  // ground free other than a green village's waits for finishVillage, once
+  // everything else of the piece has its place: until then the flowers'
+  // spots hold desert flowers and the bee yard stands, so every spot dealt
+  // after the village is dealt as in a green one.
+  let desertVillage = null
+  function village(cx, cy, tale = null, sunroom = false, desert = false) {
+    const street = desert ? paveSkin(0) : 'ow_cobble_green', kit = desert ? 'adobe' : 'kenney'
+    cobble(cx, cy, 14, street)
     for (let dy = -VILLAGE_PAD; dy <= VILLAGE_PAD; dy++) for (let dx = -VILLAGE_PAD; dx <= VILLAGE_PAD; dx++) {
       const x = cx + dx, y = cy + dy
       if (dx * dx + dy * dy > VILLAGE_PAD * VILLAGE_PAD || !t.onRoad(x, y) || t.kind(x, y) === 'water') continue
-      t.setGround(x, y, 'ow_cobble_green'); hold(x, y)
+      t.setGround(x, y, street); hold(x, y)
     }
+    if (desert) edgePaving(cx, cy, VILLAGE_PAD)
     const lying = (x, y, skin) => { if (!t.onRoad(x, y)) low(x, y, skin) }
     put(cx, cy - 1, 'ow_well_top'); put(cx, cy, 'ow_well')
     put(cx - 2, cy + 1, 'ow_sign')
     const big = rng() < 0.5
-    house(cx - 7, cy - 3, 'safe', { w: 4 + (rng() < 0.5 ? 1 : 0) })
-    house(cx + 6, cy - 4, 'safe', { w: 5, storeys: big ? 2 : 1, kind: sunroom ? 'sunroom' : null })
+    house(cx - 7, cy - 3, 'safe', { w: 4 + (rng() < 0.5 ? 1 : 0), kit })
+    house(cx + 6, cy - 4, 'safe', { w: 5, storeys: big ? 2 : 1, kind: sunroom ? 'sunroom' : null, kit })
     // in a Lalli village the house by the field is his: its larder holds the tale's pint
-    house(cx - 7, cy + 5, 'safe', { w: 3, story: tale === 'lalli' ? LALLI_HOUSE : null })
-    house(cx + 7, cy + 4, 'safe', { w: 3 + (rng() < 0.5 ? 1 : 0) })
-    if (rng() < 0.5) house(cx - 3, cy - 8, 'safe', { w: 3 })
-    if (rng() < 0.4) house(cx + 4, cy + 9, 'safe', { w: 3 + (rng() < 0.5 ? 1 : 0) })
+    house(cx - 7, cy + 5, 'safe', { w: 3, story: tale === 'lalli' ? LALLI_HOUSE : null, kit })
+    house(cx + 7, cy + 4, 'safe', { w: 3 + (rng() < 0.5 ? 1 : 0), kit })
+    if (rng() < 0.5) house(cx - 3, cy - 8, 'safe', { w: 3, kit })
+    if (rng() < 0.4) house(cx + 4, cy + 9, 'safe', { w: 3 + (rng() < 0.5 ? 1 : 0), kit })
 
-    // the field, with its gate towards the houses
-    fence(cx - 9, cy + 7, cx - 4, cy + 10, { x: cx - 7, y: cy + 7 })
-    field(cx - 8, cy + 8, cx - 5, cy + 9)
+    const later = desert ? { palms: [], garden: [], bees: [] } : null
+    // the field, with its gate towards the houses; in the desert the date
+    // garden, its two end rows of seedlings to be palms
+    fence(cx - 9, cy + 7, cx - 4, cy + 10, { x: cx - 7, y: cy + 7 }, false, desert)
+    if (desert) {
+      dateGarden(cx - 8, cy + 8, cx - 5, cy + 9)
+      for (const x of [cx - 8, cx - 5]) later.garden.push({ x, y: cy + 9 })
+    } else field(cx - 8, cy + 8, cx - 5, cy + 9)
     low(cx - 3, cy + 8, 'ow_prop_pitchfork')
     // the bee yard, unless a road comes in where it would stand (too small to keep with a gap in it)
     let road = false
@@ -516,11 +600,16 @@ export function makeSites(c) {
     if (!road) {
       fence(cx + 3, cy - 11, cx + 6, cy - 9)
       low(cx + 4, cy - 10, 'ow_beehive'); low(cx + 5, cy - 10, 'ow_beehive')
+      if (desert) for (let y = cy - 11; y <= cy - 9; y++) for (let x = cx + 3; x <= cx + 6; x++) later.bees.push({ x, y })
     }
     // a market stall on the square
     if (rng() < 0.65) {
       const g = rng() < 0.5 ? '_green' : ''
-      for (let i = 0; i < 3; i++) { put(cx - 4 + i, cy + 4, `ow_stall_top${g}`); put(cx - 4 + i, cy + 5, `ow_stall_front${g}`) }
+      const awning = AWNINGS[g ? 1 : 0]
+      for (let i = 0; i < 3; i++) {
+        if (desert) { put(cx - 4 + i, cy + 4, awning.top); put(cx - 4 + i, cy + 5, awning.front[i]) }
+        else { put(cx - 4 + i, cy + 4, `ow_stall_top${g}`); put(cx - 4 + i, cy + 5, `ow_stall_front${g}`) }
+      }
       row(cx - 4, cy + 6, ['ow_prop_counter_0', 'ow_prop_counter_1', 'ow_prop_counter_2'])
     }
     // things lying about
@@ -530,7 +619,50 @@ export function makeSites(c) {
     lying(cx + 4, cy, 'ow_prop_cart'); lying(cx + 1, cy - 1, 'ow_prop_bucket_water')
     lying(cx - 3, cy - 3, 'ow_prop_torch'); lying(cx + 3, cy + 3, 'ow_prop_torch')
     lying(cx + 9, cy + 7, 'ow_prop_target'); lying(cx - 10, cy, 'ow_prop_log')
-    scatter(cx, cy, 4, 11, 8, FLOWERS)
+    if (desert) scatter(cx, cy, 4, 11, 8, BLOOMS, false, null, later.palms)
+    else scatter(cx, cy, 4, 11, 8, FLOWERS)
+    desertVillage = later
+  }
+
+  // What a desert village lays last (features.js, when everything else of
+  // the piece has its place): the bee yard's footprint goes back to the
+  // village's ground, and a palm stands on each of the flowers' spots and
+  // the garden's two end rows. A palm takes the cell above its foot for its
+  // crown where that is free (else it is the one-cell date palm), never
+  // stands on a path, beside a cell in `clear` (the coach's boarding cell),
+  // or where it would part the walkable cells round it; where it cannot, the
+  // flower or the seedling stays. No draw of the piece's rng is spent.
+  function finishVillage(clear = []) {
+    const v = desertVillage
+    desertVillage = null
+    if (!v) return
+    for (const { x, y } of v.bees) {
+      const p = t.propAt(x, y)
+      if (p === 'ow_beehive' || p?.startsWith('ow_fence_')) t.clear(x, y)
+    }
+    const byClear = (x, y) => clear.some(q => Math.abs(q.x - x) + Math.abs(q.y - y) <= 1)
+    const stands = (x, y) => !t.onPath(x, y) && !byClear(x, y) && parts(x, y) <= 1
+    const plant = (x, y, was) => {
+      if (!was.includes(t.propAt(x, y)) || !stands(x, y)) return
+      t.setProp(x, y, PALM)
+      if (t.free(x, y - 1) && !c.taken(x, y - 1) && stands(x, y - 1)) { t.setProp(x, y, PALM_TALL[1]); t.setProp(x, y - 1, PALM_TALL[0]); hold(x, y - 1) }
+    }
+    for (const { x, y } of v.palms) plant(x, y, BLOOMS)
+    // a garden palm's crown is the seedling above it
+    for (const { x, y } of v.garden) {
+      if (!SPROUTS.includes(t.propAt(x, y)) || !SPROUTS.includes(t.propAt(x, y - 1)) || !stands(x, y)) continue
+      t.setProp(x, y, PALM)
+      if (stands(x, y - 1)) { t.setProp(x, y, PALM_TALL[1]); t.setProp(x, y - 1, PALM_TALL[0]) }
+    }
+  }
+  // How many runs the walkable cells round (x, y) fall into, going round its
+  // eight neighbours: one or none, and a thing standing there parts nothing.
+  const RING8 = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]
+  const parts = (x, y) => {
+    const open = RING8.map(([dx, dy]) => t.walkable(x + dx, y + dy))
+    let runs = 0
+    for (let k = 0; k < 8; k += 2) if (open[k] && !(open[(k + 6) % 8] && open[(k + 7) % 8])) runs++
+    return runs
   }
 
   // ---- a hut out in the wild ---------------------------------------------------
@@ -1264,5 +1396,5 @@ export function makeSites(c) {
 
   const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree,
     sampo_sea: tursoBay, sampo_mountain: copperBowl, sampo_marsh: pikePond }
-  return { house, village, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, coach, ...farms, ...wayside }
+  return { house, village, finishVillage, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, coach, ...farms, ...wayside }
 }
