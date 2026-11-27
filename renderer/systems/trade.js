@@ -70,11 +70,15 @@ export function tryBuy(state, ware, grant) {
   const { player } = state
   const tribe = TRIBES[ware.tribe]
   if (wrathOf(state, ware.tribe) > 0) { vendorSays(state, ware, tribe?.grudgeLine); return 'grudge' }
+  // a hero who stands on a ware he has no room for is not asked again every frame
+  const cd = state.msgCooldown ?? (state.msgCooldown = {})
+  if ((cd.wareFull ?? 0) > 0) return 'full'
   if (!pay(player, ware.price)) {
     if (valid(ware.price)) vendorSays(state, ware, tribe?.priceLine?.(ware.price.count, priceName(ware.price)))
     return 'short'
   }
   if (grant(ware.contents)) return 'bought'
   addItem(player, makeItem(ware.price.item, ware.price.count))
+  cd.wareFull = WARE_SAY_EVERY
   return 'full'
 }

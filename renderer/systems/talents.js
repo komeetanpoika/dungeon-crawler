@@ -17,7 +17,7 @@ export const TALENTS = {
   // Syöjätär's tongue (systems/poison.js) and the walrus's heart (applyTalents)
   kivinahka: { name: 'Kivinahka', desc: 'A blow of three or more lands one lighter.' },
   kaarmeenkieli: { name: 'Käärmeenkieli', desc: 'No poison takes hold of you.' },
-  mursun_sydan: { name: 'Mursun sydän', desc: 'Two more hearts.' },
+  mursun_sydan: { name: 'Mursun sydän', desc: 'One more heart.' },
 }
 // Dungeon Rush: Ski-legs from the first step (outfits too — see
 // systems/outfits.js RUSH_START_OUTFITS). Assigned silently at spawn. A fixed
