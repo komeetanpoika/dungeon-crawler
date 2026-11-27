@@ -16,6 +16,7 @@ import { enterWilds, landOf } from '../renderer/wilds/session.js'
 import { buildCaveState, restoreSurface } from '../renderer/systems/cave.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 import { updateBrain } from '../renderer/systems/brain.js'
+import { makeNpc, updateNpc, buildCtx } from '../renderer/systems/npc.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 
@@ -259,6 +260,25 @@ test('monsters see less: capped at the storm sight plus one tile', () => {
   const by = { ...player, x: 9, px: 9 * S + S / 2 }
   updateBrain(close, { map, player: by, entities: [close], sightCap: SIGHT.storm }, 1 / 60)
   assert.equal(close.ai.mode, 'chase')
+})
+
+test('a wolf (an NPC-run foe) sees less too: capped at the storm sight plus one tile', () => {
+  const map = createMap(30, 9)
+  for (let y = 1; y < 8; y++) for (let x = 1; x < 29; x++) map[y][x].tile = TILE.FLOOR
+  const S = 32
+  const hero = x => ({ type: 'player', x, y: 4, px: x * S + S / 2, py: 4 * S + S / 2, hp: 10, maxHp: 10 })
+  // a wolf sees 200 px: the hero 6 tiles off in clear sight is noticed
+  const look = (x, sightCap) => {
+    const wolf = makeNpc({ species: 'wolf', id: 'w', x: 4, y: 4 })
+    const state = { map, player: hero(x), entities: [wolf], sightCap }
+    updateNpc(wolf, state, 1 / 60)
+    return { mode: wolf.ai.mode, sees: buildCtx(wolf, state, 1 / 60).canSeePlayer }
+  }
+  assert.deepEqual(look(10, null), { mode: 'chase', sees: true })
+  // the same 6 tiles in a full storm: the cap is SIGHT.storm + 1 = 5 tiles
+  assert.deepEqual(look(10, SIGHT.storm), { mode: 'patrol', sees: false })
+  // within the cap he is noticed again
+  assert.deepEqual(look(4 + SIGHT.storm + 1, SIGHT.storm), { mode: 'chase', sees: true })
 })
 
 test('the wind is heard every 2.5 s while the storm is over 0.3', () => {

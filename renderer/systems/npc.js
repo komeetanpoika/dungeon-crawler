@@ -8,7 +8,7 @@ import { getAIConfig } from '../data/enemy-ai.js'
 import { hasLineOfSight } from './entities.js'
 import { buildNavGrid, passable } from './nav.js'
 import { act } from './act.js'
-import { updateBrain } from './brain.js'
+import { updateBrain, stormReach } from './brain.js'
 import { tryStartEnemyAttack, WEAPONS } from './enemy-attack.js'
 import { speakFrom, sayDuration } from './feedback.js'
 import { sfx } from './sfx.js'
@@ -58,14 +58,17 @@ export function makeNpc({ species, id, x, y, hostile = undefined, role = null, r
 
 // The hero riding on top of the coach (wilds/coach-ride.js) is no one's
 // business: nobody startles at him, faces him, waits for him or hunts him.
+// In a sandstorm nobody sees him from further than the enemy brain does
+// (brain.js stormReach).
 export function buildCtx(e, state, delta) {
   const { player, map } = state
   const def = NPC_SPECIES[e.species]
   const onFoot = !player.riding
+  const playerDist = onFoot ? Math.hypot(player.px - e.px, player.py - e.py) : Infinity
   return {
     state, delta, def, cfg: getAIConfig(e),
-    playerDist: onFoot ? Math.hypot(player.px - e.px, player.py - e.py) : Infinity,
-    canSeePlayer: onFoot && hasLineOfSight(map, e.y, e.x, player.y, player.x),
+    playerDist,
+    canSeePlayer: onFoot && playerDist <= stormReach(state) && hasLineOfSight(map, e.y, e.x, player.y, player.x),
     hpFrac: e.maxHp ? e.hp / e.maxHp : 1,
   }
 }

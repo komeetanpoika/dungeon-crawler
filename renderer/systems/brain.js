@@ -20,6 +20,10 @@ export const CHASE_DROP = 4 / 3      // engaged chase persists to here (the old 
 const FLEE_ENTER = 1.25              // hurt enemies start fleeing inside this fear radius
 const FLEE_EXIT  = 1.6               // and keep fleeing until they are out to here
 
+// How far anything sees the hero in a sandstorm (wilds/storm.js): no further
+// than his own sight in it (state.sightCap), plus a tile; no limit without one.
+export const stormReach = state => state.sightCap == null ? Infinity : (state.sightCap + 1) * S
+
 const PATROL_RADIUS = 8
 const FEATURE_TILES = new Set([TILE.DOOR, TILE.TREASURE, TILE.SHRINE, TILE.STAIRS_DOWN, TILE.STAIRS_UP])
 
@@ -72,10 +76,8 @@ export function updateBrain(e, state, delta) {
   const dist = Math.hypot(player.px - e.px, player.py - e.py)
   // acquisition needs the base sight range; an already-engaged chaser keeps
   // perception out to the wider drop radius (hysteresis, see CHASE_DROP)
-  let perceiveRange = ai.mode === 'chase' ? cfg.sightRange * CHASE_DROP : cfg.sightRange
-  // a sandstorm (wilds/storm.js) blinds them as it blinds the hero: they see
-  // no further than his sight in it, plus a tile
-  if (state.sightCap != null) perceiveRange = Math.min(perceiveRange, (state.sightCap + 1) * S)
+  // a sandstorm blinds them as it blinds the hero (stormReach)
+  const perceiveRange = Math.min(ai.mode === 'chase' ? cfg.sightRange * CHASE_DROP : cfg.sightRange, stormReach(state))
   // the hero on top of the coach (wilds/coach-ride.js) is gone by too fast to
   // follow: unseen, so nothing gives chase to the coach
   const seen = !player.riding && dist <= perceiveRange && hasLineOfSight(map, e.y, e.x, player.y, player.x)
