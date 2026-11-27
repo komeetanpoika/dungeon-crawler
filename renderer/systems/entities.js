@@ -242,8 +242,13 @@ export function hasLineOfSight(map, y1, x1, y2, x2) {
 
 // The dune rule of hasLineOfSight alone, for the hero's `los: 'dunes'` sight:
 // every other cell is see-through, as the radius-only surface sight is.
-// `onCrest` is whether the viewer stands on a crest.
-function duneLine(map, y1, x1, y2, x2, onCrest) {
+// `own` is the crest the viewer stands on (crestJoined), null off a crest:
+// its cells never block, wherever along the line they come, also after the
+// line has left that crest and comes back onto it, so from a ridge he sees
+// both flanks of his own dune. Any other crest is judged as from a hollow.
+// (This takes the place of hasLineOfSight's `onCrest`: the cells a line
+// meets before it first leaves the viewer's crest are all his own.)
+function duneLine(map, y1, x1, y2, x2, own) {
   const to = map[y2][x2]
   if (to.losBeacon) return true
   const toDune = !!to.losDune
@@ -253,14 +258,10 @@ function duneLine(map, y1, x1, y2, x2, onCrest) {
   for (let i = 1; i < steps; i++) {                     // the target (i === steps) never blocks
     const t = map[Math.round(y1 + (dy * i) / steps)]?.[Math.round(x1 + (dx * i) / steps)]
     if (!t) return false
-    if (t.losDune) {
-      if (onCrest) continue
+    if (t.losDune && !own?.has(t)) {
       if (!toDune) return false
       alongTarget = true
-    } else {
-      if (alongTarget) return false
-      onCrest = false
-    }
+    } else if (alongTarget) return false
   }
   return true
 }
@@ -280,11 +281,11 @@ function duneWithin(map, px, py, radius) {
 }
 
 // The crest the viewer stands on, at (px, py): every crest cell joined to it
-// by a chain of 8-neighbour crest cells, within the radius, handed to `each`
-// with its position. A ray alone stops where a slanted brink steps aside and
-// back, which left single cells of the very crest he stands on unlit.
-function crestJoined(map, px, py, r2, each) {
-  const seen = new Set([map[py][px]])
+// by a chain of 8-neighbour crest cells, within the radius, as a map from the
+// cell to its [x, y]. He sees all of it (a ray alone stops where a slanted
+// brink steps aside and back), and none of it blocks his sight (duneLine).
+function crestJoined(map, px, py, r2) {
+  const own = new Map([[map[py][px], [px, py]]])
   const todo = [px, py]
   while (todo.length) {
     const y = todo.pop(), x = todo.pop()
@@ -293,15 +294,15 @@ function crestJoined(map, px, py, r2, each) {
       if (!row) continue
       for (let dx = -1; dx <= 1; dx++) {
         const t = row[x + dx]
-        if (!t?.losDune || seen.has(t)) continue
+        if (!t?.losDune || own.has(t)) continue
         const ox = x + dx - px, oy = y + dy - py
         if (ox * ox + oy * oy > r2) continue
-        seen.add(t)
-        each(t, x + dx, y + dy)
+        own.set(t, [x + dx, y + dy])
         todo.push(x + dx, y + dy)
       }
     }
   }
+  return own
 }
 
 // `los` is the sight rule. `true` keeps line of sight: dungeons, caves and
@@ -309,14 +310,15 @@ function crestJoined(map, px, py, r2, each) {
 // (Adventure, Timewarp) show everything around the player. `'dunes'` is the
 // Wilds out of doors: the whole radius but the cells behind a dune crest, and
 // with no crest within the radius no ray test at all. Standing on a crest,
-// the player also sees the whole of that crest within the radius
-// (crestJoined). A cell the dune rule hides inside the radius is `guessed`
-// (render/tiles.js guessSkin draws it as plain desert under the fog), unless
-// it is already explored: it is remembered as it is. Like `explored`, the
-// flag is never cleared, lives on the cells only (no save holds it), and no
-// other rule sets it. `far` (beyond the radius) lights and explores the
-// landmarks (losBeacon) out to that range whose line passes. The eight cells
-// round the player are always lit.
+// the player sees the whole of that crest within the radius and over it, down
+// both flanks of his dune (crestJoined, duneLine). A cell the dune rule hides
+// inside the radius is `guessed` (render/tiles.js guessSkin draws it as
+// plain desert under the fog), unless it is already explored: it is
+// remembered as it is. Like `explored`, the flag is never cleared, lives on
+// the cells only (no save holds it), and no other rule sets it. `far`
+// (beyond the radius) lights and explores the landmarks (losBeacon) out to
+// that range whose line passes. The eight cells round the player are always
+// lit.
 export function computePlayerFOV(map, player, radius = 8, { los = true, far = 0 } = {}) {
   // Reset visibility before recomputing. Clearing the *whole* map is O(W×H),
   // which is fine for a dungeon room but dominates on large / open-world maps.
@@ -342,14 +344,14 @@ export function computePlayerFOV(map, player, radius = 8, { los = true, far = 0 
       if (a && !a.visible) { a.visible = true; a.explored = true; lit.push(a) }
     }
   }
-  const onCrest = !!map[py]?.[px]?.losDune
+  const r2 = radius * radius
   const dunes = los === 'dunes' && duneWithin(map, px, py, radius)
+  const own = dunes && map[py]?.[px]?.losDune ? crestJoined(map, px, py, r2) : null
   const ray = los === true ? (ty, tx) => hasLineOfSight(map, py, px, ty, tx)
-    : dunes ? (ty, tx) => duneLine(map, py, px, ty, tx, onCrest)
+    : dunes ? (ty, tx) => duneLine(map, py, px, ty, tx, own)
     : null
   const hidden = dunes ? [] : null   // what the dune rule hid inside the radius
   let rays = 0
-  const r2 = radius * radius
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
       if (dx * dx + dy * dy > r2) continue
@@ -360,7 +362,7 @@ export function computePlayerFOV(map, player, radius = 8, { los = true, far = 0 
       light(t, tx, ty)
     }
   }
-  if (dunes && onCrest) crestJoined(map, px, py, r2, (t, tx, ty) => { if (!t.visible) light(t, tx, ty) })
+  if (own) for (const [t, [tx, ty]] of own) if (!t.visible) light(t, tx, ty)
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       const t = map[py + dy]?.[px + dx]

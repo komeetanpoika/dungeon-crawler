@@ -46,6 +46,12 @@ function crestFrom(map, hero, radius) {
   }
   return out
 }
+// The map as the hero on a crest judges it: his own crest (crestFrom) laid as
+// open sand, every other cell as it is. hasLineOfSight on it is what the
+// dune sight must see, besides the own crest itself.
+function ownAsSand(map, own) {
+  return map.map((row, y) => row.map((c, x) => own.has(`${x},${y}`) ? CELL['.']() : c))
+}
 
 describe('cellOf flags crests and landmarks', () => {
   it('a walkable dune skin is a crest, a blocked landmark overlay a beacon', () => {
@@ -184,13 +190,13 @@ describe("the hero's dune-aware sight", () => {
     const map = field(61, 61, laid)
     for (const hero of [{ x: 30, y: 22 }, { x: 20, y: 12 + Math.round(2 * Math.sin(20 / 7)) }]) {
       computePlayerFOV(map, hero, 20, { los: 'dunes' })
-      // (standing on a crest, the hero also sees the whole of that crest: see
-      // 'the crest the hero stands on is lit along its length')
-      const along = crestFrom(map, hero, 20)
+      // (standing on a crest, the hero sees the whole of that crest and over
+      // it: see 'the crest the hero stands on is lit along its length')
+      const along = crestFrom(map, hero, 20), seen = ownAsSand(map, along)
       let hidden = 0
       for (let y = hero.y - 20; y <= hero.y + 20; y++) for (let x = hero.x - 20; x <= hero.x + 20; x++) {
         if ((x - hero.x) ** 2 + (y - hero.y) ** 2 > 400 || !map[y]?.[x]) continue
-        const sees = hasLineOfSight(map, hero.y, hero.x, y, x) || along.has(`${x},${y}`)
+        const sees = hasLineOfSight(seen, hero.y, hero.x, y, x) || along.has(`${x},${y}`)
         if (!sees) hidden++
         assert.equal(map[y][x].visible, sees, `from ${hero.x},${hero.y} to ${x},${y}`)
       }
@@ -349,16 +355,18 @@ describe('what lies behind a crest is guessed', () => {
   })
 })
 
-describe('the crest the hero stands on is lit along its length', () => {
+describe('the hero on a crest sees his own dune whole', () => {
   // a brink that steps a tile at a time: two cells east for every one south,
   // (20, 20) to (40, 30); a straight crest behind it at y 36, apart from it
+  const brinkY = x => 20 + Math.floor((x - 20) / 2)
   const laid = {}
-  for (let x = 20; x <= 40; x++) laid[`${x},${20 + Math.floor((x - 20) / 2)}`] = '^'
+  for (let x = 20; x <= 40; x++) laid[`${x},${brinkY(x)}`] = '^'
   crestRow(laid, 36, 10, 50)
   const hero = { x: 30, y: 25 }
   const band = key => { const [x, y] = key.split(',').map(Number); return y === 36 ? 2 : 1 }
+  const inside = (x, y, at = hero) => (x - at.x) ** 2 + (y - at.y) ** 2 <= 400
 
-  it('every crest cell joined to his is seen; the rest as before', () => {
+  it('every crest cell joined to his is seen', () => {
     const map = field(61, 61, laid)
     assert.equal(map[hero.y][hero.x].losDune, true, 'he stands on the brink')
     computePlayerFOV(map, hero, 20, { los: 'dunes' })
@@ -372,24 +380,44 @@ describe('the crest the hero stands on is lit along its length', () => {
       if (!hasLineOfSight(map, hero.y, hero.x, y, x)) missed++
     }
     assert.ok(missed > 0, `${missed} brink cells a ray alone misses`)
-    // the crest behind, and everything else, by the old rule
-    let hidden2 = 0
-    for (let y = hero.y - 20; y <= hero.y + 20; y++) for (let x = hero.x - 20; x <= hero.x + 20; x++) {
-      if ((x - hero.x) ** 2 + (y - hero.y) ** 2 > 400 || along.has(`${x},${y}`)) continue
-      const sees = hasLineOfSight(map, hero.y, hero.x, y, x)
-      assert.equal(map[y][x].visible, sees, `${x},${y}`)
-      if (y === 36 && !sees) hidden2++
-    }
-    assert.ok(hidden2 > 0, `${hidden2} cells of the crest behind stay hidden`)
   })
 
-  it('standing beside the brink, a ray decides as before', () => {
+  it('his own crest never blocks: both flanks are seen where a ray crosses it again', () => {
     const map = field(61, 61, laid)
-    const off = { x: 30, y: 24 }   // the sand just north of the brink
-    computePlayerFOV(map, off, 20, { los: 'dunes' })
-    for (let y = off.y - 20; y <= off.y + 20; y++) for (let x = off.x - 20; x <= off.x + 20; x++) {
-      if ((x - off.x) ** 2 + (y - off.y) ** 2 > 400 || Math.max(Math.abs(x - off.x), Math.abs(y - off.y)) <= 1) continue
-      assert.equal(map[y][x].visible, hasLineOfSight(map, off.y, off.x, y, x), `${x},${y}`)
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    const along = crestFrom(map, hero, 20), seen = ownAsSand(map, along)
+    let north = 0, south = 0
+    for (let y = hero.y - 20; y <= hero.y + 20; y++) for (let x = hero.x - 20; x <= hero.x + 20; x++) {
+      if (!inside(x, y) || along.has(`${x},${y}`)) continue
+      const sees = hasLineOfSight(seen, hero.y, hero.x, y, x)
+      assert.equal(map[y][x].visible, sees, `${x},${y}`)
+      // slope cells a ray used to lose where it crossed his own brink again
+      if (sees && !hasLineOfSight(map, hero.y, hero.x, y, x) && x >= 20 && x <= 40) {
+        if (y < brinkY(x)) north++
+        else if (y < 36) south++
+      }
+    }
+    assert.ok(north > 0 && south > 0, `newly seen: ${north} north of the brink, ${south} south of it`)
+    // the other crest blocks as ever (judged as from a hollow, so it is seen
+    // whole, as the equality above says): everything behind it is hidden
+    for (let y = 37; y <= hero.y + 20; y++) for (let x = hero.x - 20; x <= hero.x + 20; x++) {
+      if (!inside(x, y)) continue
+      const c = map[y][x]
+      assert.ok(!c.visible && !c.explored && c.guessed, `behind the crest behind: ${x},${y}`)
+    }
+  })
+
+  it('from a cell off the crest nothing changes', () => {
+    for (const off of [{ x: 30, y: 24 }, { x: 30, y: 26 }, { x: 24, y: 30 }]) {   // north of the brink, south of it, in the hollow
+      const map = field(61, 61, laid)
+      assert.ok(!map[off.y][off.x].losDune)
+      computePlayerFOV(map, off, 20, { los: 'dunes' })
+      for (let y = off.y - 20; y <= off.y + 20; y++) for (let x = off.x - 20; x <= off.x + 20; x++) {
+        if (!inside(x, y, off) || Math.max(Math.abs(x - off.x), Math.abs(y - off.y)) <= 1) continue
+        const sees = hasLineOfSight(map, off.y, off.x, y, x)
+        assert.equal(map[y][x].visible, sees, `from ${off.x},${off.y}: ${x},${y}`)
+        assert.equal(!!map[y][x].guessed, !sees, `from ${off.x},${off.y}: guessed ${x},${y}`)
+      }
     }
   })
 })
