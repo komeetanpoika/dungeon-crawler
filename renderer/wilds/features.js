@@ -28,7 +28,8 @@ import { INN_PAD } from './inn.js'
 import { roadSides, pieceClass, townsAlong, roadsFrom, roadLine, SIDE_WORDS } from './roads.js'
 import { ROAD_WIDTH, roadLane0 } from './terrain.js'
 import { inGentleRing, isDesert, SPIRE, CAIRN, PALM, PILLAR, LONE_PILLAR, ARCH, BONES, REEDS } from './desert.js'
-import { desertDress } from './desert-art.js'
+import { desertDress, isHardpanSkin } from './desert-art.js'
+import { desertCast, DESERT_PACKS, DESERT_RARE, DESERT_CAMPS, isGentle, isBound, hasWorm, hasPit, WORM_KEEP, WORM_ROAD, PIT_ROOM } from './desert-cast.js'
 
 // How many spires and cairns a desert piece holds, at least how far apart,
 // and the share of them that are spires (the rest are cairns).
@@ -573,10 +574,28 @@ export function placeFeatures(t, piece) {
 
   // ---- small things: spots first, then trails -------------------------------
   const here = t.biome(mx, my)
-  // a village and farmland draw spider packs only, farmland the gentle ring's
-  const roster = PACKS[inGentleRing(wx, wy) || farmland ? 0 : tier].filter(p => (kind !== 'village' && !farmland) || p.every(f => f.kind === 'monster'))
-  const common = roster.filter(p => !RARE.has(p))
-  const pickPack = () => { const p = pick(roster); return !RARE.has(p) || rng() < RARE_ODDS ? p : pick(common) }
+  // a village and farmland draw spider packs only, farmland the gentle ring's.
+  // On desert country (judged at the spot) the packs are the desert's
+  // (desert-cast.js), a village's and farmland's its small scorpions.
+  // `allow` (if given) refuses a pack; another is then picked among the
+  // common ones it allows (none: an empty pack).
+  const desertAt = (x, y) => desertCast() && t.biome(x, y) === 'desert'
+  const packRow = inGentleRing(wx, wy) || farmland ? 0 : tier
+  const gentleOnly = kind === 'village' || farmland
+  const rosterOf = (table, rare, gentle) => {
+    const all = table[packRow].filter(p => !gentleOnly || gentle(p))
+    return { all, common: all.filter(p => !rare.has(p)), rare }
+  }
+  const rosters = [rosterOf(PACKS, RARE, p => p.every(f => f.kind === 'monster')), rosterOf(DESERT_PACKS, DESERT_RARE, isGentle)]
+  const pickPack = (x, y, allow = null) => {
+    const r = rosters[desertAt(x, y) ? 1 : 0]
+    let p = pick(r.all)
+    if (r.rare.has(p) && !(rng() < RARE_ODDS)) p = pick(r.common)
+    if (allow && !allow(p)) { const rest = r.common.filter(allow); p = rest.length ? pick(rest) : [] }
+    return p
+  }
+  const unbound = p => !isBound(p)
+  const campFor = (x, y) => pick((desertAt(x, y) ? DESERT_CAMPS : CAMPS).filter(c => c.from <= tier && c.from >= tier - 2))
   const smallKinds = ['chest', 'chest', 'rocks', 'hut']
   if (ANIMALS[piece.biome]) smallKinds.push('animals', 'animals')
   if (['forest', 'autumn', 'marsh'].includes(piece.biome)) smallKinds.push('mushrooms')
@@ -709,7 +728,7 @@ export function placeFeatures(t, piece) {
     hold(mx, my); hold(mx + 1, my)
     spawnPoint = { x: mx, y: my + 2 }
   } else if (kind === 'camp') {
-    const camp = pick(CAMPS.filter(c => c.from <= tier && c.from >= tier - 2))
+    const camp = campFor(mx, my)
     sites.camp(mx, my, camp.look)
     garrison(camp, mx, my)
     place({ kind: 'chest' }, mx, my, 1, 2)
@@ -737,7 +756,7 @@ export function placeFeatures(t, piece) {
     // held from toughness 2 by whoever would camp at this toughness, empty at 1
     const door = sites.tower(mx, my).doors[0] ?? { x: mx, y: my }
     place({ kind: 'chest' }, door.x, door.y + 3, 0, 2, offPaths)
-    if (tier >= 2) garrison(pick(CAMPS.filter(c => c.from <= tier && c.from >= tier - 2)), door.x, door.y + 2)
+    if (tier >= 2) garrison(campFor(door.x, door.y + 2), door.x, door.y + 2)
     spawnPoint = hub
   } else if (kind === 'boss') {
     sites.lair(mx, my)
@@ -801,7 +820,7 @@ export function placeFeatures(t, piece) {
     if (s.kind === 'chest') place({ kind: 'chest' }, s.x, s.y, 0, 1)
     else if (s.kind === 'animals') {
       const list = ANIMALS[piece.biome]
-      if (kind !== 'village' && !farmland && rng() < 0.2) for (let i = 0; i < 2; i++) place({ npc: 'wolf' }, s.x, s.y, 0, 2)
+      if (kind !== 'village' && !farmland && rng() < 0.2) for (let i = 0; i < 2; i++) place({ npc: desertAt(s.x, s.y) ? 'jackal' : 'wolf' }, s.x, s.y, 0, 2)
       else for (let i = ri(2, 3); i > 0; i--) place({ npc: pick(list) }, s.x, s.y, 0, 2)
     } else if (s.kind === 'mushrooms') {
       t.setProp(s.x, s.y, 'ow_mushroom'); hold(s.x, s.y)
@@ -812,11 +831,11 @@ export function placeFeatures(t, piece) {
     } else if (s.kind === 'nest') {
       spawn({ kind: 'chest', x: s.x, y: s.y })
       sites.nest(s.x, s.y)
-      for (const foe of pickPack().slice(0, 2)) place(foe, s.x, s.y, 1, 2)
+      for (const foe of pickPack(s.x, s.y, unbound).slice(0, 2)) place(foe, s.x, s.y, 1, 2)
     } else if (s.kind === 'stones') {
       spawn({ kind: 'chest', x: s.x, y: s.y })
       sites.stones(s.x, s.y)
-      const guards = tier >= 2 ? [bones, bones] : pickPack().slice(0, 2)
+      const guards = tier >= 2 ? [bones, bones] : pickPack(s.x, s.y, unbound).slice(0, 2)
       for (const foe of guards) place(foe, s.x, s.y, 1, 3)
     } else {
       // a knot of rocks to mine, around the end of the trail
@@ -1089,8 +1108,47 @@ export function placeFeatures(t, piece) {
     Math.hypot(x - heart.x, y - heart.y) >= keep && !kept(x, y, 6) && offRoad(x, y, ROAD_CALM + 2) &&
     piece.small.every(s => Math.hypot(x - s.x, y - s.y) >= 8) &&
     piece.packs.every(p => Math.hypot(x - p.x, y - p.y) >= 14)
+  // The desert's two that are bound to their sand (desert-cast.js). An
+  // antlion's room: every cell within PIT_ROOM open land of the desert, not
+  // hardpan, untaken, no site's and off every path; what grows there is
+  // cleared for it, as a chest's pad is. A worm's home: deep in sand, WORM_KEEP from
+  // the piece's heart (so its leash keeps it out of every yard) and on a
+  // calm road piece WORM_ROAD from the road.
+  const looseAt = (x, y) => t.biome(x, y) === 'desert' && !isHardpanSkin(t.groundAt(x, y)) && !t.onPath(x, y) && !t.onRoad(x, y)
+  const pitRoom = (x, y) => {
+    for (let dy = -PIT_ROOM; dy <= PIT_ROOM; dy++) for (let dx = -PIT_ROOM; dx <= PIT_ROOM; dx++)
+      if (!t.inside(x + dx, y + dy) || t.kind(x + dx, y + dy) !== 'land' || t.onSite(x + dx, y + dy) || taken.has(`${x + dx},${y + dy}`) || !looseAt(x + dx, y + dy)) return false
+    return true
+  }
+  const wormHome = (x, y) => {
+    if (Math.hypot(x - heart.x, y - heart.y) < WORM_KEEP || !offRoad(x, y, WORM_ROAD)) return false
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!looseAt(x + dx, y + dy)) return false
+    return true
+  }
+  // A bound pack that does not fit where it was dealt is moved to the nearest
+  // spot within ten tiles that fits it and is clear (no draw is made for
+  // that); with none, the pack is picked again among the others.
+  const nearestFit = (x, y, fits) => {
+    if (fits(x, y)) return { x, y }
+    for (let r = 1; r <= 10; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++)
+      if (Math.max(Math.abs(dx), Math.abs(dy)) === r && clear(x + dx, y + dy) && roomy(x + dx, y + dy) && fits(x + dx, y + dy)) return { x: x + dx, y: y + dy }
+    return null
+  }
   const pack = (x, y, road) => {
-    let made = pickPack().map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
+    let dealt = pickPack(x, y, p => !(road && isBound(p)))
+    if (isBound(dealt)) {
+      const at = nearestFit(x, y, hasPit(dealt) ? pitRoom : wormHome)
+      if (at) ({ x, y } = at)
+      else dealt = pickPack(x, y, unbound)
+    }
+    let made
+    if (hasPit(dealt)) {
+      // the antlion sits in the pack's middle and its funnel is held free
+      // (of dunes too: t.keepOpen) for it; it is always alone
+      for (let dy = -PIT_ROOM; dy <= PIT_ROOM; dy++) for (let dx = -PIT_ROOM; dx <= PIT_ROOM; dx++) { t.clear(x + dx, y + dy); taken.add(`${x + dx},${y + dy}`) }
+      t.keepOpen(x, y, PIT_ROOM + 2)
+      made = [spawn({ ...dealt[0], x, y })]
+    } else made = dealt.map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
     // the road's calm is measured to each foe, not to the middle of its pack; so is a farm's
     const strays = made.filter(s => !offRoad(s.x, s.y, ROAD_CALM) || (farmland && Math.hypot(s.x - mx, s.y - my) < VILLAGE_CALM))
     if (strays.length) {
