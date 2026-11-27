@@ -316,9 +316,10 @@ function crestJoined(map, px, py, r2) {
 // plain desert under the fog), unless it is already explored: it is
 // remembered as it is. Like `explored`, the flag is never cleared, lives on
 // the cells only (no save holds it), and no other rule sets it. `far`
-// (beyond the radius) lights and explores the landmarks (losBeacon) out to
-// that range whose line passes. The eight cells round the player are always
-// lit.
+// (beyond the radius; only the Wilds pass it) lights and explores the
+// landmarks (losBeacon) out to that range: a line to a landmark passes over
+// every crest (duneLine), so no ray is cast for them. The eight cells round
+// the player are always lit.
 export function computePlayerFOV(map, player, radius = 8, { los = true, far = 0 } = {}) {
   // Reset visibility before recomputing. Clearing the *whole* map is O(W×H),
   // which is fine for a dungeon room but dominates on large / open-world maps.
@@ -386,7 +387,6 @@ export function computePlayerFOV(map, player, radius = 8, { los = true, far = 0 
         if (inRadius && dx === -inner) { dx = inner; continue }
         const t = row[px + dx]
         if (!t?.losBeacon || t.visible) continue
-        if (ray) { rays++; if (!ray(py + dy, px + dx)) continue }
         light(t, px + dx, py + dy)
       }
     }

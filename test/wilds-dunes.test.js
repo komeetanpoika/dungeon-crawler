@@ -613,7 +613,10 @@ test('crests and their shading are pure in the world tile', t => {
   }
   assert.ok(early === 12 && regression === 3, `${early} early-ramp and ${regression} regression piece builds compared`)
   assert.ok(seen > 200 && slopes > 300 && seam > 1000, `only ${seen} margin crest cells, ${slopes} slope cells and ${seam} shaded edge cells compared`)
-  t.diagnostic(`${exempt} outermost margin cells laid apart by a lone corner`)
+  // a lone corner is rare (6 such cells of 19,476 slope cells compared when
+  // measured, 2026-11-27): many more and the exemption is hiding a real seam
+  assert.ok(exempt <= 20, `${exempt} outermost margin cells laid apart by a lone corner, of ${slopes} slope cells (6 when measured)`)
+  t.diagnostic(`${exempt} outermost margin cells laid apart by a lone corner, of ${slopes} slope cells`)
 })
 
 test('a crest crossing a piece edge is one band', () => {

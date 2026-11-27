@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { generatePiece, cellOf } from '../renderer/wilds/piece.js'
-import * as features from '../renderer/wilds/features.js'
+import { dressDesertLandmark, mainKind } from '../renderer/wilds/features.js'
 import { setDesertDress } from '../renderer/wilds/desert-art.js'
 import { isDesert, BEACON_PREFIX } from '../renderer/wilds/desert.js'
 import { PIECE, pieceBiome } from '../renderer/wilds/layout.js'
@@ -29,7 +29,6 @@ import { classOf, CLASS } from '../renderer/wilds/map.js'
 import { houseSpec } from '../renderer/interior/versions.js'
 import { generateInterior } from '../renderer/interior/index.js'
 
-const { mainKind } = features
 const TILES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'renderer', 'assets', 'tiles')
 const SEEDS = [7, 1]
 const REACH = 30
@@ -307,7 +306,6 @@ test('the new tiles exist, and behave by their names', () => {
 // every cell round it is held) is the oasis it was stamped as: its pond and
 // its ring of trees are put back, the trees as palms, on the green disc.
 test('a landmark with nowhere to stand is an oasis after all', () => {
-  assert.equal(typeof features.dressDesertLandmark, 'function', 'dressDesertLandmark is not exported')
   const s = places().landmark[0]
   const t = makeTerrain(s.seed, s.wx, s.wy, 0)
   const mx = 40, my = 40
@@ -317,7 +315,7 @@ test('a landmark with nowhere to stand is an oasis after all', () => {
   const trees = [0, 1, 2, 3, 4].map(i => ({ x: mx + Math.round(Math.cos(i / 5 * Math.PI * 2) * 3), y: my + Math.round(Math.sin(i / 5 * Math.PI * 2) * 3) }))
   trees.forEach(({ x, y }, i) => t.setProp(x, y, i % 2 ? 'ow_tree_small' : 'ow_tree_apple'))
   for (const look of ['pillar', 'arch', 'bones']) {
-    features.dressDesertLandmark(t, { look, x: mx, y: my, water, trees, under: new Map() }, () => true, { x: mx, y: my + 2 })
+    dressDesertLandmark(t, { look, x: mx, y: my, water, trees, under: new Map() }, () => true, { x: mx, y: my + 2 })
     for (const { x, y } of water) assert.equal(t.kind(x, y), 'water', `${look}: the pond at ${x},${y} is gone`)
     for (const { x, y } of trees) assert.equal(t.propAt(x, y), 'ow_tree_palm_small', `${look}: ${t.propAt(x, y)} at ${x},${y}, not a palm`)
     for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) assert.ok(!(t.propAt(mx + dx, my + dy) ?? '').startsWith('ow_landmark_'), `${look}: ${t.propAt(mx + dx, my + dy)} at ${mx + dx},${my + dy}`)

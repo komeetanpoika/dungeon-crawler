@@ -21,8 +21,8 @@
 //   4. piece generation (wilds/piece.js generatePiece) on 40 desert pieces of
 //      the seed, 20 near home (not wholly 7 pieces out) and 20 deep (wholly 7
 //      or more out), against `--base` (origin/main: the local main ref is
-//      behind it) checked out in a throwaway git worktree in the scratchpad
-//      and removed after: each tree in fresh processes, alternating, the best
+//      behind it) unpacked by `git archive` into the scratch folder and
+//      removed after: each tree in fresh processes, alternating, the best
 //      of `--gen-rounds` per piece; the branch ≤ 1.3x the base over all 40
 //      (ratio of the total; the median ratio and each half shown). Beside it,
 //      not gated: the branch with its dunes not laid and with no desert dress
@@ -571,10 +571,15 @@ if (!no('gen') || !no('stages')) {
   const sha = execFileSync('git', ['rev-parse', '--short', BASE], { cwd: APP_DIR, encoding: 'utf8' }).trim()
   const head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: APP_DIR, encoding: 'utf8' }).trim()
   const dirty = execFileSync('git', ['status', '--porcelain', '--', 'renderer'], { cwd: APP_DIR, encoding: 'utf8' }).trim() !== ''
-  fs.mkdirSync(SCRATCH, { recursive: true })
-  const baseDir = path.join(SCRATCH, `base-${sha}`)
-  if (fs.existsSync(baseDir)) execFileSync('git', ['worktree', 'remove', '--force', baseDir], { cwd: APP_DIR })
-  execFileSync('git', ['worktree', 'add', '--detach', baseDir, BASE], { cwd: APP_DIR, stdio: 'ignore' })
+  // the base's renderer/ (and the package.json that makes its .js modules)
+  // unpacked from `git archive` into the scratch folder: nothing is
+  // registered in the repository, so a run cut short leaves only a folder
+  const baseDir = path.join(SCRATCH, `base-${sha}`), baseTar = `${baseDir}.tar`
+  fs.rmSync(baseDir, { recursive: true, force: true })
+  fs.mkdirSync(baseDir, { recursive: true })
+  execFileSync('git', ['archive', '--format=tar', '-o', baseTar, BASE, 'package.json', 'renderer'], { cwd: APP_DIR })
+  execFileSync('tar', ['-xf', baseTar, '-C', baseDir])
+  fs.rmSync(baseTar, { force: true })
   try {
     console.log(`piece generation, seed ${SEED}: the branch (${head}${dirty ? ', with its uncommitted changes under renderer/' : ''}) against ${BASE} (${sha}) in ${baseDir}`)
     console.log(`  near (${near.length}): ${near.map(p => p.join(',')).join(' ')}`)
@@ -630,7 +635,7 @@ if (!no('gen') || !no('stages')) {
       console.log(`  (self time by file, ms a piece: ${files.map(f => `${f} ${(af.get(f) ?? 0).toFixed(2)} -> ${(bf.get(f) ?? 0).toFixed(2)}`).join('; ')})`)
     }
   } finally {
-    execFileSync('git', ['worktree', 'remove', '--force', baseDir], { cwd: APP_DIR })
+    fs.rmSync(baseDir, { recursive: true, force: true })
   }
 }
 

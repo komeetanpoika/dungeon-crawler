@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  STORM, stormOfDay, stormStrength, stormHere, stormWind, tickStorm, calmStorm, mapHazed, mapHero, sightNow, litRadius, LIT_PAD, TAKES_MAP, WIND_HEARD,
+  STORM, stormOfDay, stormStrength, stormHere, stormWind, tickStorm, calmStorm, mapHazed, mapHero, sightNow, sightHere, LIT_PAD, TAKES_MAP, WIND_HEARD,
 } from '../renderer/wilds/storm.js'
 import { SIGHT, BEACON_RANGE, isDesert } from '../renderer/wilds/desert.js'
 import { windAt, prevailingWind, nearCity, WIND } from '../renderer/wilds/desert-art.js'
@@ -64,9 +64,14 @@ test('about half the days have a storm, each 40-70 s at full strength plus its r
 })
 
 test('the schedule is pure in (seed, day, clock)', () => {
-  const { day, start } = stormyDay()
-  for (const clock of [0, start + 1, start + 30, 200.5, 359.9]) {
-    assert.equal(stormStrength(SEED, day, clock), stormStrength(SEED, day, clock))
+  // seed 7's first days, pinned: day 0 calm, a storm on day 1 and on day 4
+  assert.equal(stormOfDay(SEED, 0), null)
+  const s1 = stormOfDay(SEED, 1), s4 = stormOfDay(SEED, 4)
+  for (const [s, start, len] of [[s1, 17.321685, 40.602756], [s4, 205.769191, 53.295631]]) {
+    assert.ok(near(s.start, start) && near(s.len, len) && near(s.end, start + len + 2 * STORM.ramp), JSON.stringify(s))
+  }
+  for (const [clock, strength] of [[0, 0], [s1.start + 1, 0.2], [s1.start + 30, 1], [s1.end - 2, 0.4], [200.5, 0], [359.9, 0]]) {
+    assert.ok(near(stormStrength(SEED, 1, clock), strength), `day 1 at ${clock}: ${stormStrength(SEED, 1, clock)}`)
   }
   // another seed has another schedule
   let differs = false
@@ -312,7 +317,7 @@ test('sight in a storm: the radius closes to 4 and the lit cells a tile past it,
   assert.deepEqual(sightNow({ storm: 1, sightCap: SIGHT.stormVillage }, true, true), { radius: SIGHT.stormVillage + LIT_PAD, far: SIGHT.stormVillage + LIT_PAD })
   const half = { storm: 0.5, sightCap: 12 }
   const s = sightNow(half, true)
-  assert.equal(s.radius, litRadius({ desert: true, storm: 0.5 }))
+  assert.equal(s.radius, 13)
   assert.ok(s.radius >= 12 && s.radius <= 12 + LIT_PAD)
   assert.ok(s.far > s.radius && s.far < BEACON_RANGE)
 })
@@ -434,6 +439,15 @@ test('no storm on Kalevanlinna\'s ground, though desert lies inside its walls; i
   // walking in from the storm: it fades out over the ramp, it is not cut
   blow(out, inside, 1)
   assert.ok(out.storm > 0 && out.storm < 1, `cut at the city's edge: ${out.storm}`)
+  // and while it fades there (0.8 after a second) the hero sees as in open
+  // country, the storm's sight and the lit cells alike: 14 closing to 4 (the
+  // lit cells to 5), not the desert's 20; the city's ground is no desert to the eye
+  assert.ok(near(out.storm, 0.8), `${out.storm}`)
+  assert.equal(out.sightCap, 6)
+  assert.equal(sightHere(out, land).radius, 7)
   blow(out, inside, STORM.ramp)
   assert.equal(out.storm, 0)
+  // on a clear day: 14 tiles on the city's desert ground, 20 in the desert outside it
+  assert.deepEqual(sightHere(out, land), { radius: 14, far: BEACON_RANGE })
+  assert.deepEqual(sightHere(freshState(), landOf(world, outside.X, outside.Y)), { radius: 20, far: BEACON_RANGE })
 })

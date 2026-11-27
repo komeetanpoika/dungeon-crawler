@@ -4,9 +4,13 @@
 //
 // Sight in the Wilds (systems/entities.js `los: 'dunes'`): a dune crest is
 // a walkable cell whose ground skin starts with DUNE_PREFIX (piece.js flags
-// it `losDune`); it blocks sight to what lies behind it unless the viewer
-// stands on it. A landmark is a blocked cell whose overlay starts with
-// BEACON_PREFIX (`losBeacon`): seen over crests, and out to BEACON_RANGE.
+// it `losDune`); it blocks sight to what lies behind it, but never itself:
+// a line running on along crest cells to a crest target reaches it, so a
+// slanted brink in view is seen whole, and the crest the viewer stands on
+// (every crest cell joined to his, within his sight) neither blocks nor
+// hides, so from a ridge he sees along it and down both flanks of his dune.
+// A landmark is a blocked cell whose overlay starts with BEACON_PREFIX
+// (`losBeacon`): seen over crests, and out to BEACON_RANGE.
 import { PIECE, biomeAt } from './layout.js'
 
 export const DUNE_PREFIX = 'ow_dune_'

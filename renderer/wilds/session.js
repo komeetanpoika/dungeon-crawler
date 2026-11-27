@@ -256,7 +256,7 @@ export function landOf(world, X, Y) {
 
 // Once per surface frame. Returns { recentred: {dx, dy} | null } so the
 // caller can move its tile cache along. `sight` (optional) says how far the
-// hero sees now ({ radius, far }, wilds/storm.js sightNow): the map takes in
+// hero sees now ({ radius, far }, wilds/storm.js sightHere): the map takes in
 // what is explored that far, and the landmarks out to `far`.
 export function tickWilds(state, world, delta, { buildEntities, onVillage, sight } = {}) {
   if (state.cave || !world.origin) return { recentred: null }

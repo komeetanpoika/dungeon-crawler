@@ -57,9 +57,9 @@ import { PIECE, pieceOf, villageAt } from '../../renderer/wilds/layout.js'
 import { landOf } from '../../renderer/wilds/session.js'
 import { admit } from '../../renderer/wilds/tales.js'
 import { admitSampo } from '../../renderer/wilds/city/sampo-places.js'
-import { isDesert, heroSight, SIGHT, BEACON_RANGE } from '../../renderer/wilds/desert.js'
+import { isDesert, SIGHT, BEACON_RANGE } from '../../renderer/wilds/desert.js'
 import { nearCity } from '../../renderer/wilds/desert-art.js'
-import { stormOfDay, STORM, LIT_PAD } from '../../renderer/wilds/storm.js'
+import { stormOfDay, STORM, LIT_PAD, sightHere } from '../../renderer/wilds/storm.js'
 import { HEAT, nearCool } from '../../renderer/wilds/heat.js'
 import { HAZE } from '../../renderer/render/weather.js'
 import { onRoad } from '../../renderer/wilds/coach-path.js'
@@ -109,7 +109,7 @@ function windowAt(world, X, Y) {
     free: (X, Y) => win.cell(X, Y)?.tile === TILE.FLOOR && !doors.has(`${X},${Y}`),
     // the hero's sight at (X, Y) on a clear day: the cells lit and the radius
     sight(X, Y) {
-      const radius = heroSight({ desert: isDesert(world.seed, X, Y) })
+      const { radius } = sightHere({}, landOf(world, X, Y))
       viewer.x = X - ox; viewer.y = Y - oy
       computePlayerFOV(map, viewer, radius, { los: 'dunes', far: BEACON_RANGE })
       return { count: viewer._fovLit.length, radius }
@@ -615,7 +615,7 @@ try {
       // road is seen (wilds/coach-path.js onRoad, the coach's own test)
       await ev(async ([cells, dx, dy, whole]) => {
         const want = new Set(cells.map(c => c.join(',')))
-        const log = window.__roadLog = { frames: 0, off: [], hidden: 0, hiddenAt: [], ahead: [], tiles: [], patch: 0, patchAt: [] }
+        const log = window.__roadLog = { frames: 0, stormFrames: 0, off: [], hidden: 0, hiddenAt: [], ahead: [], tiles: [], patch: 0, patchAt: [] }
         const { onRoad: on } = await import(new URL('./wilds/coach-path.js', location.href).href)
         const look = () => {
           if (window.__roadLog !== log) return
@@ -643,6 +643,7 @@ try {
           // radius of his tile, on every side, whichever way he walks (a crest
           // may still hide one: that is the dune rule, not the grid's edge)
           if (s.sightCap != null) {
+            log.stormFrames++
             const r = s.sightCap - whole, cx = p.px / 32, cy = p.py / 32, R = p._fovRadius
             let n = 0
             for (let y = Math.floor(cy - r) - 1; y <= Math.ceil(cy + r) + 1; y++) for (let x = Math.floor(cx - r) - 1; x <= Math.ceil(cx + r) + 1; x++) {
@@ -676,7 +677,7 @@ try {
       check(same(end, to) && log.tiles.length >= run.n - 1, 'walked the road through the storm with the arrow key', `${log.tiles.length} tiles, ${at(log.tiles.length ? { X: +log.tiles[0].split(',')[0], Y: +log.tiles[0].split(',')[1] } : null)} to ${at(end)}, storm ${still}`)
       check(log.off.length === 0, 'on the road all the way', log.off.slice(0, 4).join(' '))
       check(log.hidden === 0 && log.ahead.every(v => v >= SIGHT.storm - 1), 'the road keeps in sight: every road cell inside the lit radius is seen, the way on among them', `${log.hidden} road cells hidden over ${log.tiles.length} tiles${log.hiddenAt.length ? ' (' + log.hiddenAt.slice(0, 4).join(' ') + ')' : ''}; the farthest road seen ahead ${Math.min(...log.ahead)}..${Math.max(...log.ahead)} tiles`)
-      check(log.frames > 0 && log.patch === 0, 'walking, every cell reaching into the haze\'s clear patch is within the lit radius, on every side', `${log.patch} of ${log.frames} frames had one outside it${log.patchAt.length ? ' (' + log.patchAt.join(' ') + ')' : ''}`)
+      check(log.stormFrames > 0 && log.patch === 0, 'walking, every cell reaching into the haze\'s clear patch is within the lit radius, on every side', `${log.patch} of ${log.stormFrames} storm frames (of ${log.frames}) had one outside it${log.patchAt.length ? ' (' + log.patchAt.join(' ') + ')' : ''}`)
       await ev(() => { window.__dc.wilds.calmUntil = Infinity })
     }
   }

@@ -90,6 +90,11 @@ export function calmStorm(world) {
   world.calmUntil = world.playtime + STORM.grace
 }
 
+// Desert country widens the hero's sight (SIGHT.desert), but not on
+// Kalevanlinna's ground (`city`, desert-art.js nearCity), which is kept off
+// the storm and the heat too: there the eye sees as in open country.
+const seesAsDesert = (desert, city) => desert && !city
+
 // Once a frame in the Wilds, out of doors or in: the storm on the hero.
 // Sets state.storm (0..1), state.sightCap (the hero's sight while it blows,
 // else null), state.stormWind (the storm's wind, for the haze), and sounds
@@ -102,7 +107,7 @@ export function tickStorm(state, world, { clock, delta = 0, desert = false, ring
   const target = stormHere({ strength, desert, ring, city, indoors, riding, calm })
   const was = state.storm ?? 0, step = delta / STORM.ramp
   state.storm = indoors || riding || calm ? 0 : target > was ? Math.min(target, was + step) : Math.max(target, was - step)
-  state.sightCap = state.storm > 0 ? heroSight({ desert, storm: state.storm, village }) : null
+  state.sightCap = state.storm > 0 ? heroSight({ desert: seesAsDesert(desert, city), storm: state.storm, village }) : null
   state.stormWind = stormWind(world.seed, world.day ?? 0)
   if (state.storm > WIND_HEARD) {
     // the first gust as soon as it is heard, then one every windEvery seconds
@@ -134,6 +139,10 @@ export function sightNow(state, desert, village = false) {
   const far = storm > 0 ? Math.round(BEACON_RANGE + (radius - BEACON_RANGE) * storm) : BEACON_RANGE
   return { radius, far }
 }
+
+// sightNow where the hero stands (`land`, session.js landOf): what game.js
+// lights for him and what the map takes in.
+export const sightHere = (state, land) => sightNow(state, seesAsDesert(land.desert, land.city), land.village)
 
 // Whether the storm has taken the map, and the hero the map may show: none
 // while it has.

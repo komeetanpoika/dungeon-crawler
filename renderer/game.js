@@ -45,7 +45,7 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
-import { tickStorm, calmStorm, sightNow, mapHero, mapHazed } from './wilds/storm.js'
+import { tickStorm, calmStorm, sightHere, mapHero, mapHazed } from './wilds/storm.js'
 import { tickHeat } from './wilds/heat.js'
 import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
@@ -391,7 +391,7 @@ let wildsWorld = null
 const wildsBuild = (spawns, map, depth) => buildEntities(spawns, map, depth, state?.player ?? null)
 const wildsHooks = {
   buildEntities: wildsBuild,
-  // how far the hero sees now, for the map (wilds/storm.js sightNow)
+  // how far the hero sees now, for the map (wilds/storm.js sightHere)
   sight: () => wildsSight(),
   // (on the coach the arrival is the coach's to tell: arriveByCoach)
   onVillage: v => { if (state.coachRide) return; announce(state, `You reach ${v.name}.`); persistRun() },
@@ -2780,7 +2780,7 @@ function heroLand() {
   return heroLandAt
 }
 // How far the hero sees out of doors in the Wilds now (wilds/storm.js).
-const wildsSight = () => { const land = heroLand(); return sightNow(state, land.desert, land.village) }
+const wildsSight = () => sightHere(state, heroLand())
 
 function render() {
   // Open country sees almost twice as far as a dungeon or cave — 14 tiles
