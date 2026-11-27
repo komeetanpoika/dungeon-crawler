@@ -423,6 +423,7 @@ test('desert rests, shrines and inns wear the desert', () => {
       assert.ok(!/^ow_(house|roof|city_house|city_roof)_/.test(ov(x, door.y + 1)), `${s.at}: something of the house below it at ${x}`)
     }
     assert.ok(ov(x0, door.y) === 'ow_house_adobe_wall_l' && ov(x1, door.y) === 'ow_house_adobe_wall_r', `${s.at}: the inn is not nine wide`)
+    assert.ok(/^ow_house_adobe_gate/.test(ov(door.x, door.y)) && p.cells[door.y][door.x].tile === TILE.FLOOR, `${s.at}: the door is ${ov(door.x, door.y)}, not the gateway walked into`)
     assert.ok([door.x - 1, door.x + 1].some(x => ov(x, door.y - 1) === 'ow_city_sign_inn'), `${s.at}: no inn sign beside the door`)
     const yard = around(p, door.x, door.y, 14)
     for (const { x, y, c } of yard) assert.ok(!/^ow_(city_house_|city_roof_|house_stable_)/.test(c.overlay ?? '') && !/^ow_(city_house_|house_stable_)/.test(c.deco ?? ''), `${s.at}: ${c.overlay}/${c.deco} of Kalevanlinna's house or stable at ${x},${y}`)
@@ -437,6 +438,10 @@ test('desert rests, shrines and inns wear the desert', () => {
     }
     const pen = yard.filter(({ c }) => /^ow_prop_pen_[lmr]$/.test(c.overlay ?? '') || /^ow_prop_pen_[lmr]$/.test(c.deco ?? ''))
     assert.ok(pen.length >= 3 && pen.every(q => q.y === horses[0].y), `${s.at}: ${pen.length} cells of pen`)
+    // the stable hand outside (two lines of his own, hearing of no town), by the pen
+    const hands = p.spawns.filter(o => o.kind === 'npc' && o.species === 'villager' && Array.isArray(o.lines) && o.lines.length === 2 && !o.hears && Math.hypot(o.x - door.x, o.y - door.y) <= 16)
+    assert.equal(hands.length, 1, `${s.at}: ${hands.length} stable hands`)
+    assert.ok(pen.some(c => Math.hypot(c.x - hands[0].x, c.y - hands[0].y) <= 4), `${s.at}: the stable hand at ${hands[0].x},${hands[0].y} is not by the pen`)
     assert.ok(yard.some(({ c }) => c.overlay === 'ow_prop_trough'), `${s.at}: no trough`)
     assert.ok(yard.some(({ c }) => /^ow_prop_hay_/.test(c.overlay ?? '')), `${s.at}: no hay`)
     assert.ok(yard.some(({ x, y, c }) => c.overlay === 'ow_prop_city_cart_horse' && ov(x + 1, y) === 'ow_prop_city_cart'), `${s.at}: no cart`)
@@ -473,6 +478,41 @@ test('the inn is the same inn', () => {
     assert.ok(hand(on) === hand(off), `${s.at}: the stable hand differs: ${firstDiff(hand(on), hand(off))}`)
     assert.ok(hand(on) !== '[]', `${s.at}: no stable hand`)
   }
+})
+
+// The smaller inn, where the roads leave no room for the big one (6 of 137
+// desert inns in the probe): in the desert its house is of mud brick and its
+// yard walled with it, but its door record keeps the wall the draws gave it,
+// so it and the house inside are what they are with the dress off. Four
+// known ones, two of wood and two of stone.
+const SMALL_INNS = [[7, 4, 0, 8], [1, 6, -2, 3], [7, 12, 9, 0], [1, 5, -1, 10]]
+test('the smaller desert inn is of mud brick, and the same inn', () => {
+  const walls = new Set()
+  for (const [seed, wx, wy, deal] of SMALL_INNS) {
+    const s = { seed, wx, wy, deal, p: generatePiece(seed, wx, wy, deal), at: `seed ${seed} small inn ${wx},${wy} deal ${deal}`, plain: null }
+    const p = s.p, door = innDoor(p), plain = plainOf(s)
+    assert.ok(p.main.kind === 'inn' && isDesert(seed, wx * PIECE + p.main.x, wy * PIECE + p.main.y), `${s.at}: not an inn in the desert`)
+    assert.ok(door.look.w === 5 && door.look.storeys === 2, `${s.at}: not the smaller inn: ${JSON.stringify(door.look)}`)
+    // its record says the wall the draws gave it, not the kit it is built of
+    assert.ok(['stone', 'wood'].includes(door.look.wall), `${s.at}: the inn's look is ${JSON.stringify(door.look)}`)
+    walls.add(door.look.wall)
+    // every record of the piece is what it was with the dress off, its door included
+    const on = recordsOf(p), off = recordsOf(plain)
+    for (const field of Object.keys(on)) {
+      const a = JSON.stringify(on[field]), b = JSON.stringify(off[field])
+      assert.ok(a === b, `${s.at}: ${field} differs: ${firstDiff(a, b)}`)
+    }
+    // and so is the house inside
+    const spec = d => JSON.stringify(houseSpec(d, { worldSeed: seed }))
+    assert.ok(spec(door) === spec(innDoor(plain)), `${s.at}: another house inside`)
+    // built of mud brick, its yard walled with it (round the place's middle: a house a path runs
+    // under moves a few cells off, its yard stays)
+    assert.match(p.cells[door.y][door.x].overlay ?? '', /^ow_house_adobe_(door|dbl)/, `${s.at}: the door`)
+    const yard = [...around(p, p.main.x, p.main.y, 10), ...around(p, door.x, door.y, 6)]
+    assert.ok(yard.filter(({ c }) => (c.overlay ?? '').startsWith('ow_prop_wall_sand')).length >= 4, `${s.at}: no mud-brick wall round its yard`)
+    assert.ok(!yard.some(({ c }) => /^ow_(fence_|house_wall|house_win|house_door|roof_(red|blue))/.test(c.overlay ?? '')), `${s.at}: Tiny Town's fence or house by the inn`)
+  }
+  assert.equal(walls.size, 2, `the small inns are all of ${[...walls]}`)
 })
 
 test('the inn opens behind', () => {
