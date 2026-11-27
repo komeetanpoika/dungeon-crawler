@@ -849,13 +849,15 @@ export function makeSites(c) {
   // none does, lay nothing and return null. Its ground, the pad, goes with
   // it: opened round where it was laid, but for the trails, what is taken and
   // what `avoid` keeps.
-  // `kit`: what its houses are built of (house()); 'adobe' keeps their door
-  // records as the draws made them, and its fences are walls of mud brick.
-  // In the desert (`c.desert`) a tent is of striped canvas, the statue a
-  // stele on sand paving, and what stands there is noted to be finished last
-  // of all (finishDesert): a wayside fire's palm, a date palm's crown, the
-  // big inn's awnings.
-  function lay(cx, cy, plans, r, { whole = false, shift = FARM_SHIFT, avoid = null, kit = 'kenney' } = {}) {
+  // `kit`: what its houses are built of (house(); `kept` keeps their door
+  // records' walls as the draws made them), and with 'adobe' its fences are
+  // walls of mud brick. In the desert (`c.desert`) a tent is of striped
+  // canvas, the statue a stele on sand paving, a mud-brick wall turns its
+  // corners and runs down its sides with pieces of its own (MUD_PIECES, as
+  // the village's date garden), and what stands there is noted to be
+  // finished last of all (finishDesert): a wayside fire's palm, a date
+  // palm's crown, the big inn's awnings.
+  function lay(cx, cy, plans, r, { whole = false, shift = FARM_SHIFT, avoid = null, kit = 'kenney', kept = false } = {}) {
     const drawn = plans.flatMap(p => [p, p.map(mirrored)])
     const start = Math.floor(rng() * drawn.length)
     const seen = whole ? new Map() : null
@@ -931,10 +933,14 @@ export function makeSites(c) {
         // a gap at the gate and wherever a path passes
         for (let y = a[1]; y <= a[3]; y++) for (let x = a[0]; x <= a[2]; x++) {
           if (!(x === a[0] || x === a[2] || y === a[1] || y === a[3])) continue
-          if ((x === a[4] && y === a[5]) || !offWay(cx + x, cy + y)) { t.clear(cx + x, cy + y); hold(cx + x, cy + y) } else low(cx + x, cy + y, MUD_WALL)
+          if ((x === a[4] && y === a[5]) || !offWay(cx + x, cy + y)) { t.clear(cx + x, cy + y); hold(cx + x, cy + y); continue }
+          // (the piece a fence would have there, in mud brick)
+          const side = x === a[0] ? 'l' : x === a[2] ? 'r' : null
+          const like = y === a[1] ? `ow_fence_${side}` : y === a[3] ? `ow_fence_b${side}` : `ow_fence_side_${side}`
+          low(cx + x, cy + y, c.desert && side ? MUD_PIECES[like] : MUD_WALL)
         }
       } else if (kind === 'house') {
-        const h = house(X, Y, 'safe', { w: a[2], storeys: a[3], wall: a[4], dcol: doorCol(a[2], a[5]), lived: true, kit, kept: true })
+        const h = house(X, Y, 'safe', { w: a[2], storeys: a[3], wall: a[4], dcol: doorCol(a[2], a[5]), lived: true, kit, kept })
         around(h, Y)
         doors.push(h.door)
       } else if (kind === 'inn') {
@@ -1053,7 +1059,8 @@ export function makeSites(c) {
     fisher: (cx, cy) => { const made = lay(cx, cy, FARM_PLANS.fisher, 8); jetty(cx, cy, 8); return made },
     fold: (cx, cy) => lay(cx, cy, FARM_PLANS.fold, 7),
     quarry: (cx, cy) => lay(cx, cy, FARM_PLANS.quarry, 7),
-    well: (cx, cy) => { turf(cx, cy, 5); return lay(cx, cy, FARM_PLANS.well, 6) },
+    // (in the desert its keeper's house is of mud brick, as a desert village's, and says so on its door)
+    well: (cx, cy) => { turf(cx, cy, 5); return lay(cx, cy, FARM_PLANS.well, 6, { kit: c.desert ? 'adobe' : 'kenney' }) },
     field: (cx, cy) => lay(cx, cy, FARM_PLANS.field, 6),
   }
 
@@ -1133,7 +1140,7 @@ export function makeSites(c) {
     inn: (cx, cy, avoid = null) => {
       const big = lay(cx, cy, INN_PLANS, INN_PAD, { whole: true, shift: INN_SHIFT, avoid })
       if (big) { if (c.desert) yardOfSand(big.at, INN_PAD); return big }
-      const small = lay(cx, cy, WAYSIDE_PLANS.inn, 9, { kit: c.desert ? 'adobe' : 'kenney' })
+      const small = lay(cx, cy, WAYSIDE_PLANS.inn, 9, { kit: c.desert ? 'adobe' : 'kenney', kept: true })
       if (small && c.desert) yardOfSand(small.at, 9)
       return small && { ...small, small: true }
     },

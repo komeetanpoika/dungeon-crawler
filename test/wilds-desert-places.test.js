@@ -490,16 +490,45 @@ test('the inn opens behind', () => {
   }
 })
 
-test("the desert farmland's date garden grows palms two cells tall", () => {
+// The walled well of desert farmland: its keeper's house of the desert kit
+// (its door says so, as a desert village's do: the house inside is the same),
+// its wall of mud brick turning its corners, and its date palms two cells tall.
+const ADOBE = /^ow_(roof|house)_adobe_/
+test("the desert farmland's walled well is of mud brick, its date palms two cells tall", () => {
   let tall = 0
   const farms = wayside().well
   assert.ok(farms.length >= 10, `only ${farms.length} desert wells`)
   for (const s of farms) {
-    const p = s.p, { x: mx, y: my } = p.main
-    // inside its mud-brick wall
+    const p = s.p, { x: mx, y: my } = p.main, plain = plainOf(s)
+    // the keeper's house: adobe from its roof to its door, its door record the same but for its look's wall
+    const i = p.doors.findIndex(o => o.tier === 'safe' && Math.hypot(o.x - mx, o.y - my) <= 6)
+    assert.ok(i >= 0, `${s.at}: no keeper's house`)
+    const d = p.doors[i], was = plain.doors[i]
+    assert.equal(d.look.wall, 'adobe', `${s.at}: the house's look is ${JSON.stringify(d.look)}`)
+    assert.ok(['stone', 'wood'].includes(was.look.wall), `${s.at}: with the dress off the house's look is ${JSON.stringify(was.look)}`)
+    const spec = door => houseSpec(door, { worldSeed: s.seed })
+    assert.equal(JSON.stringify(spec(d)), JSON.stringify(spec(was)), `${s.at}: another house inside`)
+    const dcol = d.look.w === 3 ? 1 : 2
+    for (let y = d.y - d.look.storeys - 1; y <= d.y; y++) for (let x = d.x - dcol; x < d.x - dcol + d.look.w; x++)
+      assert.match(p.cells[y][x].overlay ?? '', ADOBE, `${s.at}: ${p.cells[y][x].overlay} at ${x},${y} of the house at ${d.x},${d.y}`)
+    // its wall: the pieces a fence would have, in mud brick, round its box; nothing of it inside
     const wall = around(p, mx, my, 8).filter(({ c }) => (c.overlay ?? '').startsWith('ow_prop_wall_sand'))
-    assert.ok(wall.length > 0, `${s.at}: no wall`)
+    assert.ok(wall.length >= 24, `${s.at}: ${wall.length} cells of wall`)
     const X0 = Math.min(...wall.map(q => q.x)), X1 = Math.max(...wall.map(q => q.x)), Y0 = Math.min(...wall.map(q => q.y)), Y1 = Math.max(...wall.map(q => q.y))
+    assert.ok(X1 - X0 === 8 && Y1 - Y0 === 8, `${s.at}: a wall ${X1 - X0 + 1} by ${Y1 - Y0 + 1}`)
+    for (const { x, y, c } of wall) {
+      const side = x === X0 ? 'l' : x === X1 ? 'r' : '', end = y === Y0 ? 't' : y === Y1 ? 'b' : ''
+      assert.ok(side || end, `${s.at}: wall inside the garden at ${x},${y}`)
+      assert.equal(c.overlay, side ? (end ? `ow_prop_wall_sand_${end}${side}` : 'ow_prop_wall_sand_v') : 'ow_prop_wall_sand', `${s.at}: the wall at ${x},${y}`)
+      assert.equal(c.tile, TILE.WALL, `${s.at}: the wall at ${x},${y} is walked through`)
+    }
+    // the same cells walled, the same gaps, as with the dress off
+    for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) {
+      if (x !== X0 && x !== X1 && y !== Y0 && y !== Y1) continue
+      const on = (p.cells[y][x].overlay ?? '').startsWith('ow_prop_wall_sand'), off = (plain.cells[y][x].overlay ?? '').startsWith('ow_prop_wall_sand')
+      assert.equal(on, off, `${s.at}: the wall at ${x},${y} ${on ? 'stands' : 'is gone'} with the dress on`)
+    }
+    // the date palms inside it
     let mine = 0
     for (const { x, y, c } of around(p, mx, my, 8)) {
       if (x <= X0 || x >= X1 || y <= Y0 || y >= Y1) continue
@@ -518,6 +547,13 @@ test('every record of a desert wayside place is what it was with the dress off',
   let n = 0
   for (const list of Object.values(wayside())) for (const s of list) {
     const on = recordsOf(s.p), off = recordsOf(plainOf(s))
+    // (a house of the desert kit says so in its door's look, as a desert village's
+    // houses do: only the walled well's keeper's house is one; the inns keep theirs)
+    on.doors = on.doors.map((d, i) => {
+      if (d.look?.wall !== 'adobe') return d
+      assert.ok(s.p.main.kind === 'well' && ['stone', 'wood'].includes(off.doors[i]?.look?.wall), `${s.at}: an adobe door at ${d.x},${d.y}`)
+      return { ...d, look: { ...d.look, wall: off.doors[i].look.wall } }
+    })
     for (const field of Object.keys(on)) {
       const a = JSON.stringify(on[field]), b = JSON.stringify(off[field])
       assert.ok(a === b, `${s.at}: ${field} differs: ${firstDiff(a, b)}`)

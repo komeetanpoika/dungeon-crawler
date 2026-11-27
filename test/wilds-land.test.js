@@ -235,10 +235,11 @@ test('a farm with no room beside the roads gives way to the next of its country,
 
 // A house read back off the game's cells, as test/wilds-piece.test.js reads one:
 // its door in a wall row, two rows of roof above, the top one walked under.
+// (A desert well's house is of the desert kit: its door is the kit's.)
 const over = (p, x, y) => p.cells[y]?.[x]?.overlay ?? ''
 const isHouse = s => s.startsWith('ow_house_')
 function wholeHouse(p, d, at) {
-  assert.match(over(p, d.x, d.y), /^ow_house_(door|dbl)/, `${at}: the door is ${over(p, d.x, d.y)}`)
+  assert.match(over(p, d.x, d.y), d.look?.wall === 'adobe' ? /^ow_house_adobe_(door|dbl)/ : /^ow_house_(door|dbl)/, `${at}: the door is ${over(p, d.x, d.y)}`)
   let x0 = d.x, x1 = d.x, top = d.y
   while (isHouse(over(p, x0 - 1, d.y))) x0--
   while (isHouse(over(p, x1 + 1, d.y))) x1++
