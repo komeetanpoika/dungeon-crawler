@@ -7,7 +7,6 @@ import assert from 'node:assert/strict'
 import { HEAT, heatOn, nearCool, tickHeat } from '../renderer/wilds/heat.js'
 import { tickStamina } from '../renderer/systems/stamina.js'
 import { weatherLook } from '../renderer/systems/weather.js'
-import { drawHeat } from '../renderer/render/weather.js'
 import { buildCaveState, restoreSurface } from '../renderer/systems/cave.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 import { makeFeedback, think, tickFeedback } from '../renderer/systems/feedback.js'
@@ -110,6 +109,23 @@ test('nearCool finds a well and a palm', () => {
   const bare = sandMap()
   putOver(bare, 10, 10, 'ow_cactus'); putOver(bare, 11, 10, 'ow_deadtree_0')
   assert.equal(nearCool(bare, 10, 11), false)
+})
+
+test('every palm cools: a blocked cell with palm in its overlay\'s name, never its crown or a walkable cell', () => {
+  const map = sandMap()
+  // a landmark palm a later task adds
+  putOver(map, 10, 10, 'ow_landmark_palm_0')
+  assert.equal(nearCool(map, 13, 10), true, '3 tiles from the landmark palm')
+  assert.equal(nearCool(map, 14, 10), false, '4 tiles from it')
+  // a palm name on a cell one walks on does not cool
+  const flat = sandMap()
+  flat[10][10].overlay = 'ow_landmark_palm_0'
+  assert.equal(flat[10][10].tile, TILE.FLOOR)
+  assert.equal(nearCool(flat, 11, 10), false)
+  // a crown alone is no foot: it is blocked, but its name ends in _top
+  const crown = sandMap()
+  putOver(crown, 10, 10, 'ow_tree_palm_top')
+  assert.equal(nearCool(crown, 11, 10), false)
 })
 
 test('tickHeat halves the regain on open sand at noon, and nowhere cool', () => {
@@ -273,43 +289,4 @@ test('the shimmer fades in and out over about a second, and goes at once indoors
   state.player.riding = true
   tickHeat(state, world, { clock: NOON, delta: 0.1, ...DESERT })
   assert.equal(state.heat, 0)
-})
-
-test('the shimmer is drawn only while the heat is on, at the screen\'s edges, from one kept fill', () => {
-  const ops = []
-  const made = { gradients: 0, patterns: 0, strips: 0, scale: null }
-  const recorder = () => new Proxy({}, {
-    get: (t, k) => (k in t ? t[k]
-      : k === 'createLinearGradient' ? () => { made.gradients++; return { addColorStop() {} } }
-      : k === 'createPattern' ? () => { made.patterns++; return { setTransform(m) { made.scale = m.m } } }
-      : (...a) => ops.push([k, ...a, t.globalCompositeOperation])),
-    set: (t, k, v) => { t[k] = v; return true },
-  })
-  const ctx = recorder()
-  const look = heat => ({ dark: 0, ambient: [255, 255, 255], fog: 0.15, t: 2, lights: [], storm: null, heat })
-  // a layer that cannot make a canvas: the gradient itself, made once
-  const plain = {}
-  drawHeat(ctx, plain, look(0), { W: 400, H: 300 })
-  assert.deepEqual(ops, [], 'nothing without the heat')
-  drawHeat(ctx, plain, look(1), { W: 400, H: 300 })
-  const fills = ops.filter(o => o[0] === 'fill')
-  assert.equal(fills.length, 4, 'a band along each edge')
-  // multiplied on: it warms the sand and leaves the dark of the land out of sight dark
-  for (const f of fills) assert.equal(f.at(-1), 'multiply')
-  assert.ok(!ops.some(o => o[0] === 'drawImage'), 'no blit')
-  drawHeat(ctx, plain, look(0.5), { W: 400, H: 300 })
-  assert.equal(made.gradients, 1, 'the gradient is made once and kept')
-  // a layer that can: a strip painted once, repeated as a pattern scaled to the unit band
-  const hadMatrix = globalThis.DOMMatrix
-  globalThis.DOMMatrix = class { constructor(m) { this.m = m } }
-  try {
-    const layer = { createCanvas: () => { made.strips++; return { width: 0, height: 0, getContext: recorder } } }
-    for (let i = 0; i < 3; i++) drawHeat(ctx, layer, look(1), { W: 400, H: 300 })
-    assert.equal(made.strips, 1)
-    assert.equal(made.patterns, 1, 'the pattern is made once and kept')
-    assert.deepEqual(made.scale, [1, 0, 0, 1 / 64, 0, 0])
-  } finally {
-    if (hadMatrix) globalThis.DOMMatrix = hadMatrix
-    else delete globalThis.DOMMatrix
-  }
 })

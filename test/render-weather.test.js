@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeWeatherLayer, fogBlobs, drawNight, drawFog, drawHaze, nightBands, HAZE } from '../renderer/render/weather.js'
+import { makeWeatherLayer, fogBlobs, drawNight, drawFog, drawHaze, drawHeat, nightBands, HAZE, SHIMMER } from '../renderer/render/weather.js'
 import { makeWeather, weatherLook } from '../renderer/systems/weather.js'
 import { tickStorm, stormOfDay, STORM } from '../renderer/wilds/storm.js'
 import { windAt } from '../renderer/wilds/desert-art.js'
@@ -600,5 +600,61 @@ describe('drawHaze', () => {
     const a = offsets({ ...look, storm: { ...look.storm, wind: windAt(SEED, X0, Y) } }, c)
     const b = offsets({ ...look, storm: { ...look.storm, wind: windAt(SEED, X1, Y) } }, c)
     assert.ok(HAZE.passes.some((p, i) => Math.abs(wrap(b[i][0] - a[i][0], p.size)) > 10 || Math.abs(wrap(b[i][1] - a[i][1], p.size)) > 10))
+  })
+})
+
+// The day's heat (wilds/heat.js, look.heat): a soft warm band multiplied on
+// along the top and the bottom of the screen, never the sides.
+describe('drawHeat', () => {
+  const look = heat => ({ dark: 0, ambient: [255, 255, 255], fog: 0.15, t: 2, lights: [], storm: null, heat })
+  const made = { gradients: 0, patterns: 0, strips: 0, scale: null }
+  const recorder = ops => new Proxy({}, {
+    get: (t, k) => (k in t ? t[k]
+      : k === 'createLinearGradient' ? () => { made.gradients++; return { addColorStop() {} } }
+      : k === 'createPattern' ? () => { made.patterns++; return { setTransform(m) { made.scale = m.m } } }
+      : (...a) => ops.push([k, ...a, t.globalCompositeOperation])),
+    set: (t, k, v) => { t[k] = v; return true },
+  })
+
+  it('draws nothing without the heat', () => {
+    const ops = []
+    drawHeat(recorder(ops), {}, look(0), { W: 400, H: 300 })
+    assert.deepEqual(ops, [])
+  })
+
+  it('lays a band along the top and the bottom only, multiplied on, with no blit', () => {
+    const ops = []
+    drawHeat(recorder(ops), {}, look(1), { W: 400, H: 300 })
+    const fills = ops.filter(o => o[0] === 'fill')
+    assert.equal(fills.length, 2, 'two bands')
+    // multiplied on: it warms the sand and leaves the dark of the land out of sight dark
+    for (const f of fills) assert.equal(f.at(-1), 'multiply')
+    // each laid by its transform: the unit band along the top, and turned up from the bottom; none along a side
+    const D = SHIMMER.depth * 300
+    const laid = ops.filter(o => o[0] === 'transform').map(o => o.slice(1, 7))
+    assert.deepEqual(laid, [[1, 0, 0, D, 0, 0], [1, 0, 0, -D, 0, 300]])
+    assert.ok(!ops.some(o => o[0] === 'drawImage'), 'no blit')
+  })
+
+  it('makes its fill once and keeps it: the gradient, or a strip repeated as a pattern', () => {
+    made.gradients = made.patterns = made.strips = 0
+    const ctx = recorder([])
+    // a layer that cannot make a canvas: the gradient itself
+    const plain = {}
+    for (let i = 0; i < 3; i++) drawHeat(ctx, plain, look(1 - i / 4), { W: 400, H: 300 })
+    assert.equal(made.gradients, 1)
+    // a layer that can: a strip painted once, repeated as a pattern scaled to the unit band
+    const hadMatrix = globalThis.DOMMatrix
+    globalThis.DOMMatrix = class { constructor(m) { this.m = m } }
+    try {
+      const layer = { createCanvas: () => { made.strips++; return { width: 0, height: 0, getContext: () => recorder([]) } } }
+      for (let i = 0; i < 3; i++) drawHeat(ctx, layer, look(1), { W: 400, H: 300 })
+      assert.equal(made.strips, 1)
+      assert.equal(made.patterns, 1)
+      assert.deepEqual(made.scale, [1, 0, 0, 1 / 64, 0, 0])
+    } finally {
+      if (hadMatrix) globalThis.DOMMatrix = hadMatrix
+      else delete globalThis.DOMMatrix
+    }
   })
 })

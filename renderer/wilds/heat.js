@@ -28,42 +28,48 @@ import { DAY_LENGTH } from '../data/weather.js'
 import { isWaterSkin } from '../terrain/lib.js'
 import { think } from '../systems/feedback.js'
 import { sfx } from '../systems/sfx.js'
+import { TILE } from '../systems/entities.js'
 
 // `drinkAfter`: seconds beside the water that make a drink; `fade`: seconds
 // the shimmer takes to come and go with the heat.
 export const HEAT = { from: 0.30, to: 0.70, factor: 0.5, coolReach: 3, drinkFor: 90, line: 'The sun is merciless out here.', drinkAfter: 1, fade: 1 }
 
-// What cools, by the names on a cell (its skin, deco or overlay):
-// - a well: ow_well and the ow_well_top above it (sites.js, city/kit.js);
-// - water: what terrain/lib.js isWaterSkin calls water, open water
-//   ow_water_* and the rims of its banks ow_pond_*, ow_shore_*, ow_mud_*
-//   (shore-art.js names its banks' water cells in those families; an
-//   oasis's pond is dug with setWater, features.js);
-// - a palm's foot: the two-cell palm's trunk ow_tree_palm (under its crown
-//   ow_tree_palm_top, which is not its foot) and the one-cell date palm
-//   ow_tree_palm_small (terrain.js PALMS, sites.js PALM).
+// What cools:
+// - a well, by the names on a cell (its skin, deco or overlay): ow_well and
+//   the ow_well_top above it (sites.js, city/kit.js);
+// - water, by the same: what terrain/lib.js isWaterSkin calls water, open
+//   water ow_water_* and the rims of its banks ow_pond_*, ow_shore_*,
+//   ow_mud_* (shore-art.js names its banks' water cells in those families;
+//   an oasis's pond is dug with setWater, features.js);
+// - a palm's foot: a blocked cell whose overlay has `palm` in its name, so
+//   every palm cools, those to come too (the landmark palms ow_landmark_palm*):
+//   today the two-cell palm's trunk ow_tree_palm and the one-cell date palm
+//   ow_tree_palm_small (terrain.js PALMS, sites.js PALM). A palm's crown is a
+//   blocked cell too, above its foot; it is kept out by its name, which ends
+//   in `_top` as an upper cell's does (ow_tree_palm_top).
 // None of them moves: a palm is not in the lumber table (systems/lumber.js
 // TREES) and nothing in the Wilds lays or drains water in the desert.
 const isWell = n => typeof n === 'string' && n.startsWith('ow_well')
-const PALM_FEET = new Set(['ow_tree_palm', 'ow_tree_palm_small'])
 const drinkable = n => isWell(n) || isWaterSkin(n)
-const cooling = n => drinkable(n) || PALM_FEET.has(n)
-const hasName = (c, test) => !!c && (test(c.skin) || test(c.deco) || test(c.overlay))
+const hasName = (c, test) => test(c.skin) || test(c.deco) || test(c.overlay)
+const isPalmFoot = c => c.tile === TILE.WALL && typeof c.overlay === 'string' && c.overlay.includes('palm') && !c.overlay.endsWith('_top')
+const drinksAt = c => hasName(c, drinkable)
+const coolsAt = c => drinksAt(c) || isPalmFoot(c)
 
-// Whether a cell within `r` tiles of (x, y) each way holds a name `test` knows.
+// Whether a cell within `r` tiles of (x, y) each way passes `test`.
 function within(map, x, y, r, test) {
   for (let dy = -r; dy <= r; dy++) {
     const row = map[y + dy]
     if (!row) continue
-    for (let dx = -r; dx <= r; dx++) if (hasName(row[x + dx], test)) return true
+    for (let dx = -r; dx <= r; dx++) { const c = row[x + dx]; if (c && test(c)) return true }
   }
   return false
 }
 
 // In the cool: within coolReach of a well, water or a palm's foot.
-export const nearCool = (map, x, y) => within(map, x, y, HEAT.coolReach, cooling)
+export const nearCool = (map, x, y) => within(map, x, y, HEAT.coolReach, coolsAt)
 // Where he drinks: beside a well or water (his own cell and the eight round it).
-const besideWater = (map, x, y) => within(map, x, y, 1, drinkable)
+const besideWater = (map, x, y) => within(map, x, y, 1, drinksAt)
 
 // Whether the heat is on: by day (from <= frac < to) on the desert's country,
 // out of a village and Kalevanlinna, not in the cool, no storm blowing, and

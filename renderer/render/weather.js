@@ -533,20 +533,22 @@ export const hazeAlpha = s => HAZE.far * (1 - (1 - s) * (1 - s))
 
 // ---- the day's heat ---------------------------------------------------------------
 // (wilds/heat.js; look.heat from systems/weather.js, 0..1, coming and going
-// with the heat over a second.) A faint shimmer at the screen's edges while
-// the sun beats on open sand: along each edge a soft warm band, deepest at
-// the edge and gone `depth` of the screen's shorter side in, whose inner
-// reach wavers along the edge and with time like air over hot ground, and
-// whose strength swells and fades a little. It is multiplied on, so it warms
-// the sun-baked sand and leaves the dark of the land out of sight dark (a
-// pale band laid over that dark read as a glow on the fog). A hint, not an
-// effect: on a wide screen whose edges lie out of sight it hardly shows.
+// with the heat over a second.) A faint shimmer at the top and bottom of the
+// screen while the sun beats on open sand: along each of those two edges a
+// soft warm band, deepest at the edge and gone `depth` of the screen's height
+// in, whose inner reach wavers along the edge and with time like air over hot
+// ground, and whose strength swells and fades a little. It is multiplied on,
+// so it warms the sun-baked sand and leaves the dark of the land out of sight
+// dark (a pale band laid over that dark read as a glow on the fog). A hint,
+// not an effect. Top and bottom only, at every window size: on a wide screen
+// the sides lie beyond the hero's sight in the desert and would show nothing,
+// while the top and bottom lie inside it; and the sides were half the cost.
 //
 // Kept cheap for a software canvas: drawn straight onto the frame, with no
-// layer and no blit; four filled paths over a thin frame round the screen,
-// all under one fill made once and kept. The fill runs across a unit band and
-// the transform lays that band along each edge at its depth, so it fades out
-// at the band's full reach on every edge and every frame. The fill is a strip
+// layer and no blit; two filled paths, one along each of those edges, under
+// one fill made once and kept. The fill runs across a unit band and the
+// transform lays that band along its edge at its depth, so it fades out at
+// the band's full reach on both edges and every frame. The fill is a strip
 // of BAND_PX pixels painted once with the profile and repeated as a pattern:
 // sampled like an image, it cost about 0.6 of shading a gradient over the
 // same paths on this machine (a gradient where the layer cannot make a canvas).
@@ -558,7 +560,6 @@ export const hazeAlpha = s => HAZE.far * (1 - (1 - s) * (1 - s))
 // CSS px between that edge's points; `waves`: the ripples running along it,
 // [wavelength px, speed rad/s, weight];
 // `breath`: how much the strength swells and fades, at `breathRate` rad/s.
-// The corners, where two bands lie over each other, are a little deeper.
 export const SHIMMER = {
   alpha: 0.35, depth: 0.07, waver: 0.4, step: 32, colour: [255, 196, 120],
   profile: [[0, 1], [0.4, 0.5], [0.75, 0.2], [1, 0]],
@@ -566,8 +567,8 @@ export const SHIMMER = {
 }
 // Each edge's unit band (u along the edge in CSS px, v across it from the
 // edge, 0..1) laid onto the frame, [a, b, c, d, e, f] for ctx.transform with
-// the band's depth D, and the edge's length: top, bottom, left, right.
-const EDGES = (D, W, H) => [[1, 0, 0, D, 0, 0, W], [1, 0, 0, -D, 0, H, W], [0, 1, D, 0, 0, 0, H], [0, 1, -D, 0, W, 0, H]]
+// the band's depth D, and the edge's length: the top, then the bottom.
+const EDGES = (D, W, H) => [[1, 0, 0, D, 0, 0, W], [1, 0, 0, -D, 0, H, W]]
 
 // How far in the band reaches at `u` along edge `k` at time t: from 1 - waver to 1.
 function reach(u, t, k) {
@@ -607,7 +608,7 @@ export function drawHeat(ctx, layer, look, { W, H }) {
   const s = look.heat
   if (!(s > 0)) return
   const fill = bandFill(ctx, layer)
-  const t = look.t ?? 0, D = SHIMMER.depth * Math.min(W, H)
+  const t = look.t ?? 0, D = SHIMMER.depth * H
   ctx.save()
   ctx.globalCompositeOperation = 'multiply'
   ctx.globalAlpha = SHIMMER.alpha * s * (1 - SHIMMER.breath * (0.5 + 0.5 * Math.sin(t * SHIMMER.breathRate)))
