@@ -17,14 +17,14 @@ import { hash, hashInt, noise2, mulberry32 } from './rand.js'
 import { MapBuilder, shoreline, WATER_SKINS, isWaterSkin, isSandySkin, RIM_TILES, TREE_PAIRS } from '../terrain/lib.js'
 import { MTN, stampMountainRim, stampGroundEdge, isMassSkin, LAT_PX, LAT_PY } from '../terrain/mountain.js'
 import { stampSandEdge, SAND_EDGES } from '../terrain/beach.js'
-import { SITE_SKINS } from './sites.js'
+import { SITE_SKINS, SAND_MOUTH } from './sites.js'
 import { skinBridges, DECK_SKINS, DECK_CUT_SKINS, DECK_UNDER_SKINS, FILLET_SKINS } from './bridge-art.js'
 import { slopeShores, SLOPE_SKINS } from './shore-art.js'
 import { vergeRoads, VERGE_SKINS } from './road-art.js'
 import { sandSkinAt, edgeHardpan, isHardpanSkin, isRippleSkin, desertDress, DESERT_SKINS, layDunes, dunesOn, DUNE_SKINS, SHADE_SKINS, DUNE_LOOK, duneField, crestField, crestAt, nearCity } from './desert-art.js'
 import { CITY_SKINS } from './city/kit.js'
 import { TOWNSFOLK_SKINS } from '../data/townsfolk-looks.js'
-import { DESERT_LANDMARKS } from './desert.js'
+import { DESERT_LANDMARKS, MAIN_LANDMARK_SKINS, REEDS } from './desert.js'
 
 const SIZE = PIECE + 2 * MARGIN
 const REACH = 2          // how far a cell's rules look at its neighbours
@@ -160,9 +160,9 @@ export const TERRAIN_SKINS = [...new Set([
   ...DESERT_SKINS, ...DUNE_SKINS, ...SHADE_SKINS,
 ])]
 // Skins stamped by features.js and sites.js (villages, caves, ruins, camps, landmarks,
-// the desert's spires and cairns).
+// the desert's spires and cairns, and its landmarks that are a piece's main thing).
 export const FEATURE_SKINS = [
-  ...SITE_SKINS, ...DESERT_LANDMARKS,
+  ...SITE_SKINS, ...DESERT_LANDMARKS, ...MAIN_LANDMARK_SKINS, ...REEDS,
   'ow_mushroom', 'ow_boat', 'ow_stump', 'ow_tree_apple', 'ow_tree_small', 'ow_pond_11', 'ow_bush_berry',
 ]
 // Kalevanlinna (city/kit.js) is laid with the same art and these; its people
@@ -721,10 +721,13 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     // same in the piece and in its neighbour's margin
     if (desertDress()) edgeHardpan(b, { X0: X0 - MARGIN, Y0: Y0 - MARGIN, seed })
     // Each outcrop cell takes its rim from the outcrop cells beside it; a
-    // cell beyond the builder is what the frame's own rule makes of it.
+    // cell beyond the builder is what the frame's own rule makes of it. A
+    // desert cave's mouth (sites.js SAND_MOUTH) is the rock's face to the
+    // outcrop round it, so the rock runs on into it.
     const rockCell = b.palette.map(isOutcropSkin)
+    const faceCell = b.palette.map((n, i) => rockCell[i] || SAND_MOUTH.includes(n))
     const isRock = i => i >= 0 && rockCell[i] === true
-    const rock = (bx, by) => bx >= 0 && by >= 0 && bx < SIZE && by < SIZE ? isRock(b.prop[by][bx]) : occupant(bx - MARGIN, by - MARGIN)?.skin === OUTCROP_LAID
+    const rock = (bx, by) => bx >= 0 && by >= 0 && bx < SIZE && by < SIZE ? b.prop[by][bx] >= 0 && faceCell[b.prop[by][bx]] === true : occupant(bx - MARGIN, by - MARGIN)?.skin === OUTCROP_LAID
     const rims = []
     for (let by = 0; by < SIZE; by++) for (let bx = 0; bx < SIZE; bx++) {
       if (!isRock(b.prop[by][bx])) continue

@@ -9,7 +9,9 @@
 // site's ground (the opened pad, a tale's circles: terrain.js refuses it
 // anywhere else), where there is room to walk round it; then the dressing
 // that still blocks a way is taken up, and the packs are posted; last of all,
-// in the desert, its spires and cairns stand on what open ground is left.
+// in the desert, its spires and cairns stand on what open ground is left, and
+// its places put on what they wear there that would block or free a cell (a
+// village's palms, a ruin's rubble, a landmark's look).
 //
 // A piece with a road edge (roads.js roadSides) is laid round its roads. A
 // village's and a tale's place's roads run to its hub. Anywhere else the
@@ -25,7 +27,7 @@ import { makeSites, layoutTale, wayCells, TALE_PAD, isVillageStreet } from './si
 import { INN_PAD } from './inn.js'
 import { roadSides, pieceClass, townsAlong, roadsFrom, roadLine, SIDE_WORDS } from './roads.js'
 import { ROAD_WIDTH, roadLane0 } from './terrain.js'
-import { inGentleRing, isDesert, SPIRE, CAIRN } from './desert.js'
+import { inGentleRing, isDesert, SPIRE, CAIRN, PALM, PILLAR, ARCH, BONES, REEDS } from './desert.js'
 import { desertDress } from './desert-art.js'
 
 // How many spires and cairns a desert piece holds, at least how far apart,
@@ -107,6 +109,20 @@ const FARM_LINES = {
 const SIDES = ['N', 'E', 'S', 'W']
 const STEP = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
 const STEP4 = Object.values(STEP)
+const RING8 = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]
+// How many runs the walkable cells round (x, y) fall into, going round its
+// eight neighbours by shared edges: one or none, and a thing standing there
+// leaves the walkable cells round it joined to each other.
+function partsOf(t, x, y) {
+  const open = RING8.map(([dx, dy]) => t.walkable(x + dx, y + dy))
+  let runs = 0
+  for (let k = 0; k < 8; k += 2) {
+    // an edge neighbour starts a run unless the edge neighbour before it is joined to it through their corner
+    if (!open[k]) continue
+    if (!(open[(k + 6) % 8] && open[(k + 7) % 8])) runs++
+  }
+  return runs
+}
 const TAU = Math.PI * 2
 // where a road piece's junction may lie, on both axes
 const JUNCTION_LO = FRAME + 8, JUNCTION_HI = PIECE - FRAME - 9
@@ -312,20 +328,24 @@ export function placeFeatures(t, piece) {
     hold(x, y)
     return rec
   }
-  const ring = (cx, cy, r, n, skinOf) => {
+  // (`laid`, if given, collects the cells laid)
+  const ring = (cx, cy, r, n, skinOf, laid = null) => {
     for (let i = 0; i < n; i++) {
       const a = i / n * Math.PI * 2
       const x = cx + Math.round(Math.cos(a) * r), y = cy + Math.round(Math.sin(a) * r)
       t.setProp(x, y, skinOf(i))
       hold(x, y)
+      laid?.push({ x, y })
     }
   }
-  const pond = (cx, cy, r) => {
+  const pond = (cx, cy, r, laid = null) => {
     for (let dy = -r - 1; dy <= r + 1; dy++) for (let dx = -r - 1; dx <= r + 1; dx++) {
       const wob = (hash(seed, wx * PIECE + cx + dx, wy * PIECE + cy + dy, 510 + deal) - 0.5) * 1.2
-      if (Math.hypot(dx, dy) + wob <= r) { t.setWater(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
+      if (Math.hypot(dx, dy) + wob <= r) { t.setWater(cx + dx, cy + dy); hold(cx + dx, cy + dy); laid?.push({ x: cx + dx, y: cy + dy }) }
     }
   }
+  // a desert landmark to be dressed last of all (dressDesertLandmark)
+  let landmark = null
 
   // ---- the roads ----------------------------------------------------------------
   // Which sides carry a road is the edges' and never the deal's.
@@ -600,10 +620,14 @@ export function placeFeatures(t, piece) {
 
   // ---- stamp the main thing ---------------------------------------------------
   const sandy = here === 'desert' || here === 'sea'
+  // in desert country, with the desert's dress on, the main thing wears it
+  // (sites.js: a camp's, a ruin's or a watchtower's pad of sand, tan tents,
+  // a cave in sandstone; below, the landmark)
+  const desert = desertDress() && here === 'desert'
   const sites = makeSites({
     t, rng, pick, ri, hold, spawn, place, freeSpot, door, npc,
     hash: (x, y, salt) => hash(seed, wx * PIECE + x, wy * PIECE + y, salt + deal),
-    taken: (x, y) => taken.has(`${x},${y}`), rocks: rocksFor(here), sandy,
+    taken: (x, y) => taken.has(`${x},${y}`), rocks: rocksFor(here), sandy, desert, pad,
   })
   // A camp's foes round (cx, cy): three to five of its roster (five far out), its leaders nearest.
   const garrison = (camp, cx, cy) => {
@@ -734,10 +758,23 @@ export function placeFeatures(t, piece) {
   } else {
     // landmark: what the country offers
     if (here === 'desert') {
-      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy <= 16) t.setGround(mx + dx, my + dy, t.grassSkin(mx + dx, my + dy))
-      pond(mx, my, 1)
-      ring(mx, my, 3, 5, i => i % 2 ? 'ow_tree_small' : 'ow_tree_apple')
+      // the green oasis; with the dress on it wears its look last of all
+      // (dressDesertLandmark), and a look that is no oasis stands on sand,
+      // the paths running on over it up to the landmark
+      const look = desert ? desertLook(seed, wx, wy) : null
+      const sand = look && look !== 'oasis'
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+        if (dx * dx + dy * dy > 16 || (sand && t.onPath(mx + dx, my + dy))) continue
+        t.setGround(mx + dx, my + dy, sand ? t.sandSkin(mx + dx, my + dy) : t.grassSkin(mx + dx, my + dy))
+      }
+      // (what the pond is dug into, given back where the landmark leaves it)
+      const under = new Map()
+      if (sand) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) under.set((my + dy) * PIECE + mx + dx, t.groundAt(mx + dx, my + dy))
+      const water = [], trees = []
+      pond(mx, my, 1, water)
+      ring(mx, my, 3, 5, i => i % 2 ? 'ow_tree_small' : 'ow_tree_apple', trees)
       place({ kind: 'chest' }, mx, my, 2, 3)
+      if (look) landmark = { look, x: mx, y: my, water, trees, under }
     } else if (here === 'mountain') {
       ring(mx, my, 4, 8, i => ROCKS.mountain[i % ROCKS.mountain.length])
       place({ kind: 'chest' }, mx, my, 0, 1)
@@ -916,18 +953,7 @@ export function placeFeatures(t, piece) {
   // A signpost or a milestone stands on land inside the frame, off every path
   // and every site's ground, never where it would part the ground round it,
   // and out of a trail's mouth (a signpost, where it must, in one).
-  const RING8 = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]
-  // a stone there leaves the walkable cells round it joined to each other (round the ring, by shared edges)
-  const parts = (x, y) => {
-    const open = RING8.map(([dx, dy]) => t.walkable(x + dx, y + dy))
-    let runs = 0
-    for (let k = 0; k < 8; k += 2) {
-      // an edge neighbour starts a run unless the edge neighbour before it is joined to it through their corner
-      if (!open[k]) continue
-      if (!(open[(k + 6) % 8] && open[(k + 7) % 8])) runs++
-    }
-    return runs
-  }
+  const parts = (x, y) => partsOf(t, x, y)
   const offWays = (x, y) => t.kind(x, y) === 'land' && !t.onPath(x, y) && !t.onSite(x, y) && !taken.has(`${x},${y}`)
   const outOfMouths = (x, y) => RING8.every(([dx, dy]) => !t.onPath(x + dx, y + dy) || t.onRoad(x + dx, y + dy))
   const vacant = (x, y) => t.free(x, y) && offWays(x, y) && parts(x, y) <= 1
@@ -1096,6 +1122,139 @@ export function placeFeatures(t, piece) {
   if (piece.biome === 'desert' && !inGentleRing(wx, wy)) standLandmarks(t, taken)
   // and then a desert village's palms, kept off the coach's boarding cell
   if (kind === 'village') sites.finishVillage(piece.coach ? [piece.coach] : [])
+  // and what the desert's other places wear: a ruin's or a watchtower's
+  // rubble and broken pots, and a landmark's look
+  sites.finishDesert(piece.spawnPoint)
+  if (landmark) dressDesertLandmark(t, landmark, (x, y) => taken.has(`${x},${y}`), piece.spawnPoint)
+}
+
+// ---- the desert's landmarks ---------------------------------------------------
+// The landmark of a desert piece (the main thing `landmark` where the
+// country at its middle is desert, with the desert's dress on) wears one of
+// DESERT_LOOKS, by a hash of the piece alone: never of its deal or its rng,
+// so a piece dealt again keeps its look (desert.js has their pictures).
+export const DESERT_LOOKS = ['oasis', 'pillar', 'arch', 'bones']
+export const desertLook = (seed, wx, wy) => DESERT_LOOKS[Math.floor(hash(seed, wx, wy, 760) * DESERT_LOOKS.length)]
+const SHAPES = { pillar: PILLAR, arch: ARCH, bones: BONES }
+// Where a landmark that is not an oasis may stand, from where the pond's
+// middle was: there first, then a cell aside, then two (the first where
+// every cell of it is to be had).
+const ASIDE = [[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1], [0, 2], [0, -2], [2, 0], [-2, 0]]
+// How far round the landmark the ground is looked at to see that it cuts
+// nothing off (its pad, and more).
+const LANDMARK_LOOK = 10
+// An oasis's tall palms: its ring of trees, and then more in cells between
+// `from` and `to` of the pond's middle until it has `least` plus up to
+// `more` of them (by a hash); reeds on `reeds` of the open cells beside its
+// water.
+const OASIS = { least: 4, more: 2, from: 2.5, to: 5.5, reeds: 0.6 }
+
+// Until the end of placeFeatures the landmark stands as the green oasis
+// always stood (a grass disc, a pond, a ring of trees, the chest by the
+// water), so everything dealt after it is dealt where it always was. Then
+// it wears its look (`at`: { look, x, y, water, trees }, the pond's middle,
+// its water and its trees):
+//   oasis   the pond, the disc and the chest stay; each tree of the ring is a
+//           palm (the one-cell date palm where its crown has no room), up to
+//           OASIS.more palms more stand in the ring, and reeds grow by the
+//           water, by a hash
+//   pillar, arch, bones   the pond and the trees go back to sand, and the
+//           landmark stands where the pond was, or a cell or two aside (ASIDE)
+//           where the chest is in its way; a pillar where none of those is
+//           to be had
+// A palm, a reed or a landmark only takes a cell that nothing holds
+// (`held`), off the paths and the spawn point (`spot`), and never where it
+// would cut walkable ground off from the rest. No draw of the piece's rng is
+// spent. (A function of its own: placeFeatures is too big to be compiled well.)
+function dressDesertLandmark(t, at, held, spot) {
+  const { seed, wx, wy, deal } = t
+  const open = (x, y) => t.free(x, y) && !held(x, y) && !t.onPath(x, y) && !(x === spot.x && y === spot.y)
+  const h = (x, y, salt) => hash(seed, wx * PIECE + x, wy * PIECE + y, salt + deal)
+  if (at.look === 'oasis') {
+    const palms = []
+    for (const { x, y } of at.trees) {
+      if (!TREE_PLACEHOLDER.has(t.propAt(x, y))) continue
+      if (open(x, y - 1) && partsOf(t, x, y - 1) <= 1) { t.setProp(x, y, PALM[1]); t.setProp(x, y - 1, PALM[0]); t.keepOpen(x, y - 1, 1); palms.push({ x, y }) }
+      else t.setProp(x, y, PALM_SMALL)
+    }
+    // more palms, the lowest hash first, never beside another
+    const spots = []
+    const R = Math.ceil(OASIS.to)
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const d = Math.hypot(dx, dy)
+      if (d >= OASIS.from && d <= OASIS.to) spots.push({ x: at.x + dx, y: at.y + dy, h: h(at.x + dx, at.y + dy, 761) })
+    }
+    spots.sort((p, q) => p.h - q.h)
+    const want = OASIS.least + Math.floor(h(at.x, at.y, 762) * (OASIS.more + 1))
+    for (const { x, y } of spots) {
+      if (palms.length >= want) break
+      if (palms.some(p => Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 2) || at.trees.some(p => Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 2)) continue
+      if (!open(x, y) || !open(x, y - 1) || partsOf(t, x, y) > 1) continue
+      t.setProp(x, y, PALM[1])
+      if (partsOf(t, x, y - 1) > 1) { t.clear(x, y); continue }
+      t.setProp(x, y - 1, PALM[0])
+      t.keepOpen(x, y, 1); t.keepOpen(x, y - 1, 1)
+      palms.push({ x, y })
+    }
+    // reeds on the open cells round the water (walked over)
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const x = at.x + dx, y = at.y + dy
+      if (!open(x, y) || !RING8.some(([ex, ey]) => t.kind(x + ex, y + ey) === 'water')) continue
+      const r = h(x, y, 763)
+      if (r < OASIS.reeds) { t.setProp(x, y, REEDS[Math.floor(r / OASIS.reeds * REEDS.length)], { walkable: true }); t.keepOpen(x, y, 1) }
+    }
+    return
+  }
+  // the pond goes back to the sand, or to the path it was dug into, and the trees are taken up
+  const ours = new Set()
+  for (const { x, y } of at.water) { t.clear(x, y); t.setGround(x, y, (t.onPath(x, y) && at.under.get(y * PIECE + x)) || t.sandSkin(x, y)); ours.add(y * PIECE + x) }
+  for (const { x, y } of at.trees) { t.clear(x, y); ours.add(y * PIECE + x) }
+  for (const shape of [SHAPES[at.look], PILLAR]) for (const [ox, oy] of ASIDE) {
+    const x0 = at.x + ox - shape.at[0], y0 = at.y + oy - shape.at[1]
+    const cells = []
+    for (let r = 0; r < shape.cells.length; r++) for (let c = 0; c < shape.cells[r].length; c++) {
+      const name = shape.cells[r][c]
+      if (name) cells.push({ x: x0 + c, y: y0 + r, name, walk: !!shape.open && shape.open[0] === c && shape.open[1] === r })
+    }
+    // every cell to be had (a pond's or a tree's, or open: a path on the pad
+    // is, as the pond stood on one), and the way into the arch from the south
+    const had = (x, y) => t.inside(x, y) && !t.onRoad(x, y) && !(x === spot.x && y === spot.y) &&
+      (ours.has(y * PIECE + x) || (t.free(x, y) && !held(x, y) && (!t.onPath(x, y) || t.onSite(x, y))))
+    if (!cells.every(c => had(c.x, c.y))) continue
+    const door = cells.find(c => c.walk)
+    if (door && !t.walkable(door.x, door.y + 1)) continue
+    if (!keepsJoined(t, at, cells.filter(c => !c.walk))) continue
+    // (on sand where it stands a cell or two past the disc; a path runs on under it)
+    for (const c of cells) { if (!t.onPath(c.x, c.y)) t.setGround(c.x, c.y, t.sandSkin(c.x, c.y)); t.setProp(c.x, c.y, c.name, { walkable: c.walk }); t.keepOpen(c.x, c.y, 1) }
+    return
+  }
+}
+// The one-cell date palm (sites.js PALM), where a palm's crown has no room;
+// the trees the green oasis's ring holds until its look is laid.
+const PALM_SMALL = 'ow_tree_palm_small'
+const TREE_PLACEHOLDER = new Set(['ow_tree_apple', 'ow_tree_small'])
+// Would the cells `solid` blocked cut walkable ground off? Every walkable
+// cell beside them must still reach every other, within LANDMARK_LOOK of the
+// landmark's middle.
+function keepsJoined(t, at, solid) {
+  const N = 2 * LANDMARK_LOOK + 1, x0 = at.x - LANDMARK_LOOK, y0 = at.y - LANDMARK_LOOK
+  const shut = new Set(solid.map(c => c.y * PIECE + c.x))
+  const walk = (x, y) => x >= x0 && y >= y0 && x < x0 + N && y < y0 + N && t.inside(x, y) && t.walkable(x, y) && !shut.has(y * PIECE + x)
+  const beside = []
+  for (const c of solid) for (const [dx, dy] of STEP4) if (walk(c.x + dx, c.y + dy)) beside.push({ x: c.x + dx, y: c.y + dy })
+  if (!beside.length) return true
+  const seen = new Uint8Array(N * N), stack = [beside[0]]
+  seen[(beside[0].y - y0) * N + beside[0].x - x0] = 1
+  while (stack.length) {
+    const { x, y } = stack.pop()
+    for (const [dx, dy] of STEP4) {
+      const nx = x + dx, ny = y + dy
+      if (!walk(nx, ny) || seen[(ny - y0) * N + nx - x0]) continue
+      seen[(ny - y0) * N + nx - x0] = 1
+      stack.push({ x: nx, y: ny })
+    }
+  }
+  return beside.every(b => seen[(b.y - y0) * N + b.x - x0] === 1)
 }
 
 // ---- the desert's spires and cairns -------------------------------------------

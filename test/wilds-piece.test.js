@@ -401,7 +401,8 @@ test('camps, nests, old stones, ruins and caves have a look of their own', () =>
     }
     if (p.main.kind === 'cave') {
       seen.cave++
-      assert.ok(around(p, p.caves[0], 4, s => /^ow_(rock_|mtn_)/.test(s)) >= 9, `${at}: a bare arch`)
+      // (heaped rock: the mountain's, boulders, or in the desert its sandstone outcrop)
+      assert.ok(around(p, p.caves[0], 4, s => /^ow_(rock_|mtn_|outcrop_)/.test(s)) >= 9, `${at}: a bare arch`)
       assert.ok(walk(p.cells[p.caves[0].y + 1][p.caves[0].x]) || walk(p.cells[p.caves[0].y + 1][p.caves[0].x + 1]), `${at}: the mouth is walled in`)
     }
     for (const s of p.small) {

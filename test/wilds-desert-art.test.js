@@ -12,10 +12,11 @@ import {
 import { makeTerrain, TERRAIN_SKINS, WILDS_SKINS, DESERT_FLORA, DESERT_DECO, OUTCROP_SKINS, isOutcropSkin } from '../renderer/wilds/terrain.js'
 import { PIECE, MARGIN, pieceBiome, pieceKey, tierAt, lootDepthFor } from '../renderer/wilds/layout.js'
 import { hashInt } from '../renderer/wilds/rand.js'
-import { isDesert, inGentleRing, BEACON_PREFIX, DESERT_LANDMARKS } from '../renderer/wilds/desert.js'
+import { isDesert, inGentleRing, DESERT_LANDMARKS } from '../renderer/wilds/desert.js'
 import { classOf, CLASS, CLASSES, MAP_COLOURS } from '../renderer/wilds/map.js'
 import { generatePiece, cellOf } from '../renderer/wilds/piece.js'
 import { placeFeatures } from '../renderer/wilds/features.js'
+import { SAND_MOUTH } from '../renderer/wilds/sites.js'
 import { pieceClass } from '../renderer/wilds/roads.js'
 import { TILE } from '../renderer/systems/entities.js'
 
@@ -284,9 +285,11 @@ function withTerrain(seed, wx, wy, deal = 0) {
   pieceMemo.set(key, out)
   return out
 }
+// the spires and cairns (not the landmark a desert piece's main thing may be:
+// test/wilds-desert-places.test.js)
 const landmarkCells = cells => {
   const out = []
-  for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) if (cells[y][x].overlay?.startsWith(BEACON_PREFIX)) out.push({ x, y, name: cells[y][x].overlay })
+  for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) if (DESERT_LANDMARKS.includes(cells[y][x].overlay)) out.push({ x, y, name: cells[y][x].overlay })
   return out
 }
 const AROUND8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]
@@ -373,9 +376,11 @@ test('outcrops are rimmed', () => {
       if (!isOutcropSkin(n)) continue
       seen++
       assert.equal(cells[y][x].tile, TILE.WALL, `${at}: ${n} at ${x},${y} is walkable`)
-      // the sides it runs on into the next outcrop cell, the next piece's included
-      const m = (isOutcropSkin(t.propAt(x, y - 1)) ? 1 : 0) | (isOutcropSkin(t.propAt(x + 1, y)) ? 2 : 0)
-        | (isOutcropSkin(t.propAt(x, y + 1)) ? 4 : 0) | (isOutcropSkin(t.propAt(x - 1, y)) ? 8 : 0)
+      // the sides it runs on into the next outcrop cell, the next piece's
+      // included, or into a desert cave's mouth (its face)
+      const rock = n => isOutcropSkin(n) || SAND_MOUTH.includes(n)
+      const m = (rock(t.propAt(x, y - 1)) ? 1 : 0) | (rock(t.propAt(x + 1, y)) ? 2 : 0)
+        | (rock(t.propAt(x, y + 1)) ? 4 : 0) | (rock(t.propAt(x - 1, y)) ? 8 : 0)
       assert.equal(outcropMask(n), m, `${at}: ${n} at ${x},${y}`)
     }
   }

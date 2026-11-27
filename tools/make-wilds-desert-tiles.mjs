@@ -90,6 +90,8 @@ import {
   RIPPLES, SAND_VARIANTS, HARDPAN_VARIANTS, DUNE_SKINS, SHADE_SKINS, rippleSkin, crackedSkin, hardpanEdgeSkin, cornersOf, edgeHardpan, layDunes, sandSkinAt,
   PAVE_VARIANTS, paveSkin, paveEdgeSkin,
 } from '../renderer/wilds/desert-art.js'
+import { PALM, PILLAR, ARCH, BONES, REEDS } from '../renderer/wilds/desert.js'
+import { SAND_MOUTH } from '../renderer/wilds/sites.js'
 
 const T = 16
 const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
@@ -979,7 +981,7 @@ const FACE_FROM = 6   // where a south face begins, in every tile that ends to t
 const BANDS = [8, 11]
 const ROUND = 3       // how far a corner where two ends meet is rounded off
 const outcropSkin = m => `ow_outcrop_${m}`
-function outcropTile(m) {
+function outcropTile(m, salt = m) {
   const g = grid(), shadow = grid()
   const open = { N: !(m & 1), E: !(m & 2), S: !(m & 4), W: !(m & 8) }
   const top = x => open.N ? INSET.N[x] : 0
@@ -1017,16 +1019,16 @@ function outcropTile(m) {
   // two pixels from every border
   const lowest = open.S ? FACE_FROM - 2 : T - 3
   for (let k = 0; k < 7; k++) {
-    const x = 2 + Math.floor(unit(m, 303, k) * 12), y = 2 + Math.floor(unit(m, 304, k) * (lowest - 1))
+    const x = 2 + Math.floor(unit(salt, 303, k) * 12), y = 2 + Math.floor(unit(salt, 304, k) * (lowest - 1))
     if (g[y][x] === STONE.top) g[y][x] = STONE.rim
   }
   for (let k = 0; k < 4; k++) {
-    const x = 2 + Math.floor(unit(m, 300, k) * 11), y = 2 + Math.floor(unit(m, 301, k) * (lowest - 1))
-    if (g[y][x] === STONE.top && g[y][x + 1] === STONE.top) { g[y][x] = STONE.crack; if (unit(m, 302, k) < 0.6) g[y][x + 1] = STONE.crack }
+    const x = 2 + Math.floor(unit(salt, 300, k) * 11), y = 2 + Math.floor(unit(salt, 301, k) * (lowest - 1))
+    if (g[y][x] === STONE.top && g[y][x + 1] === STONE.top) { g[y][x] = STONE.crack; if (unit(salt, 302, k) < 0.6) g[y][x + 1] = STONE.crack }
   }
   if (open.S) for (let k = 0; k < 2; k++) {
-    const x = 3 + Math.floor(unit(m, 305, k) * 10)
-    for (let y = FACE_FROM + 2; y < bottom - 1; y++) if (g[y][x] === STONE.face || g[y][x] === STONE.band) g[y][x] = unit(m, 306, k, y) < 0.7 ? STONE.band : STONE.face
+    const x = 3 + Math.floor(unit(salt, 305, k) * 10)
+    for (let y = FACE_FROM + 2; y < bottom - 1; y++) if (g[y][x] === STONE.face || g[y][x] === STONE.band) g[y][x] = unit(salt, 306, k, y) < 0.7 ? STONE.band : STONE.face
   }
   // its shadow on the sand below the foot, a pixel towards the lower right
   // (on to the border where the next cell's foot carries it on, short of it where the rock ends)
@@ -1535,6 +1537,326 @@ CLOTH.forEach((_, c) => {
   })
 }
 console.log(`wrote ${villageTiles.length} tiles of the desert village`)
+
+// ---- the wild places in the desert (renderer/wilds/features.js dressDesertLandmark, sites.js) ----
+// The looks of a desert piece's landmark (renderer/wilds/desert.js: PALM, and
+// PILLAR, ARCH and BONES, pictures cut in cells named for their column and
+// row), the reeds by an oasis's water, and a desert cave's mouth:
+//   ow_landmark_palm_top, _palm    the oasis palm, two cells tall: a fuller
+//                                  crown than the date palm's over a stouter
+//                                  trunk, its dates hanging in clusters
+//   ow_landmark_pillar_top, _pillar  a sandstone pillar two cells tall, broad
+//                                  and flat-topped, worn at the waist
+//   ow_landmark_arch_<c><r>        a rock arch three cells by two; its middle
+//                                  bottom cell (11) is the opening, walked
+//                                  into: nothing of the rock is in it, only the
+//                                  span's shadow on the sand, so whoever stands
+//                                  there is drawn between the legs, under it
+//   ow_landmark_bones_<c><r>       the bones of something huge, four cells by
+//                                  three: a horned skull, the neck, a ribcage
+//                                  over its own shadow, the tail
+//   ow_deco_reeds_0..2             reeds by the water, walked over
+//   ow_cave_arch_sand_0, _1        a cave's mouth in its outcrop: the outcrop's
+//                                  face running on from both sides
+//                                  (ow_outcrop_11), rising over a dark opening
+// In the colours of what stands beside them: the palm the date palm's (with
+// Tiny Town's outline), the pillar, the arch and the cave the outcrops'
+// sandstone, the bones the debris's bones; each stands in a little drifted
+// sand and casts its shadow to the lower right, as the spire does.
+const placeTiles = []
+const placeKeep = (name, g, opts) => { keep(name, g, opts); placeTiles.push(name) }
+const exact = (name, rows) => { rows.forEach((r, i) => { if (r.length !== T) throw new Error(`${name}: row ${i} is ${r.length} wide`) }); if (rows.length !== T) throw new Error(`${name}: ${rows.length} rows`); return rows }
+// A picture of w x h cells: its colours (null for nothing) and its shadow.
+const picture = (w, h) => ({ w: w * T, h: h * T, px: Array.from({ length: h * T }, () => new Array(w * T).fill(null)), sh: Array.from({ length: h * T }, () => new Array(w * T).fill(0)) })
+// Cut into the tiles `names` (rows of names, null where the picture must
+// have nothing); a tile joins on to the next cell of the picture across a side.
+function cutInto(pic, names) {
+  names.forEach((row, r) => row.forEach((name, c) => {
+    const g = grid(), sh = grid()
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { g[y][x] = pic.px[r * T + y][c * T + x]; sh[y][x] = pic.sh[r * T + y][c * T + x] }
+    if (!name) {
+      if (g.some(line => line.some(Boolean))) throw new Error(`a picture draws in its empty cell ${c}${r}`)
+      return
+    }
+    const joins = (names[r - 1]?.[c] ? 'N' : '') + (row[c + 1] ? 'E' : '') + (names[r + 1]?.[c] ? 'S' : '') + (row[c - 1] ? 'W' : '')
+    placeKeep(name, g, { joins, shadow: sh })
+  }))
+}
+// sand heaped against the foot of a thing, and its shadow on the sand
+const SANDS = { z: SAND.shade, Z: DRIFT.A, l: SAND.lit }
+
+// The oasis palm: a fuller crown than the date palm's, fronds arching out
+// from where they meet and hanging at their tips, a tuft upright in the
+// middle, its dates in two clusters either side of a stouter trunk; Tiny
+// Town's outline round it, as round the date palm.
+{
+  const P = { G: '#84c669', g: '#479f4a', o: '#d9792e', O: '#8f4a1e', k: '#b48355', K: '#8f673f', a: INK, ...SANDS }
+  const top = grid()
+  detail(top, exact('palm top', [
+    '................',
+    '......aaaa......',
+    '..aaa.aGGa.aaa..',
+    '.aGGGaaGgaaGGGa.',
+    'aGGgGGaGgaGGgGGa',
+    'aGgaaGGggGGaagGa',
+    'aga.aGgGGgGa.aga',
+    '.a.aGGgaagGGa.a.',
+    '..aGGga..agGGa..',
+    '.aGggaakKKaagGa.',
+    'aGga.ookKKo.aGga',
+    'aga.aoOkKKOa.aga',
+    '.a..aOokKKoOa.a.',
+    '.....aakKKaa....',
+    '......aKkKa.....',
+    '......akKKa.....',
+  ]), P)
+  outline(top)
+  const foot = grid()
+  detail(foot, exact('palm foot', [
+    '......aKkKa.....',
+    '......akKKa.....',
+    '......aKkKa.....',
+    '......akKKa.....',
+    '.....aKkKa......',
+    '.....akKKa......',
+    '.....aKkKa......',
+    '.....akKKa......',
+    '.....aKkKa......',
+    '....akKKa.......',
+    '....aKkKa.......',
+    '....akKKa.......',
+    '..zakkKKKaz.....',
+    '.zZaaaaaaaZz....',
+    '................',
+    '................',
+  ]), P)
+  const shadow = grid()
+  for (let x = 4; x <= 13; x++) shadow[14][x] = 1
+  for (const x of [12, 13]) shadow[13][x] = 1
+  placeKeep(PALM[0], top, { joins: 'SWE' })
+  placeKeep(PALM[1], foot, { joins: 'N', shadow })
+}
+
+// The pillar: a broad column of sandstone under a cap of harder rock that
+// juts a little (its underside in shade), straight-sided and banded where
+// the layers show, cracked down its face, wider at its foot and standing in
+// a drift of sand. Drawn as one picture two cells tall and cut in two.
+{
+  const pic = picture(1, 2)
+  // its left and right edge, row by row (the top's rows first)
+  // (worn: its sides step in and out a pixel where softer layers have weathered back)
+  const WORN_L = [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0], WORN_R = [0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0]
+  const span = y => y < 2 ? null : y === 2 ? [4, 11] : y <= 6 ? [3, 12] : y <= 27 ? [(y <= 21 ? 4 : y <= 25 ? 3 : 2) + WORN_L[y - 7], (y <= 21 ? 11 : y <= 25 ? 12 : 13) - WORN_R[y - 7]] : y === 28 ? [2, 13] : null
+  const BAND = new Set([10, 15, 19, 24]), CRACK = new Set(['7,9', '7,10', '8,11', '8,12', '9,17', '9,18', '5,22', '6,23', '10,26', '11,13'])
+  for (let y = 0; y < pic.h; y++) {
+    const s = span(y)
+    if (!s) continue
+    for (let x = s[0]; x <= s[1]; x++) {
+      let c
+      if (y <= 4) c = y === 2 || x === s[0] ? STONE.rim : x === s[1] ? STONE.shade : STONE.top    // the cap's flat top
+      else if (y === 5) c = x === s[0] ? STONE.rim : x >= s[1] - 1 ? STONE.shade : STONE.body   // the cap's front
+      else if (y === 6 || y === 28) c = STONE.foot                                               // its underside; the foot
+      else {
+        c = BAND.has(y) ? STONE.band : STONE.face
+        if (y === 7) c = STONE.shade                                      // in the cap's shadow
+        if (x === s[0]) c = y === 7 ? STONE.band : STONE.rim
+        if (x === s[1]) c = STONE.shade
+        if (x === s[1] - 1 && (BAND.has(y) || y === 7)) c = STONE.foot
+        // where it widens below, the step catches the light
+        const above = span(y - 1)
+        if (above && (x < above[0] || x > above[1])) c = x < above[0] ? STONE.rim : STONE.body
+        if (CRACK.has(`${x},${y}`)) c = STONE.crack
+      }
+      pic.px[y][x] = c
+    }
+  }
+  // specks on the cap
+  pic.px[3][7] = STONE.rim; pic.px[4][9] = STONE.crack; pic.px[3][10] = STONE.crack
+  // the drift at its foot
+  for (const [x, y, c] of [[1, 27, 'z'], [1, 28, 'Z'], [2, 27, 'l'], [3, 27, 'z'], [3, 26, 'l'], [12, 27, 'z'], [13, 27, 'l'], [14, 28, 'Z'], [14, 27, 'z'], [12, 26, 'l'], [4, 28, 'z'], [11, 28, 'z']]) pic.px[y][x] = SANDS[c]
+  for (let x = 4; x <= 14; x++) pic.sh[29][x] = 1
+  cutInto(pic, PILLAR.cells)
+}
+
+// The arch: two legs of sandstone and the span between them, thickest at its
+// shoulders, its top lit, its underside and the inner face of the west leg in
+// shade, the inner face of the east leg lit; banded where the layers show.
+// The opening is the middle cell of the lower row, all of it, so the rock
+// never stands in front of whoever is in it; the span's shadow lies on the
+// sand there.
+{
+  const pic = picture(3, 2), W = pic.w, H = pic.h
+  const FOOT = 28
+  const top = x => 3 + Math.round(((x - 24) / 21) ** 2 * 4 + (x < 10 ? (10 - x) * 0.5 : 0) + (x > 38 ? (x - 38) * 0.5 : 0))
+  const left = y => y < 12 ? 3 + Math.max(0, Math.round((12 - y) * 0.35)) : y > 24 ? 2 : 3
+  const right = y => y < 12 ? 44 - Math.max(0, Math.round((12 - y) * 0.35)) : y > 24 ? 45 : 44
+  const holeTop = x => 10 + 5.5 * ((x - 23.5) / 8) ** 2
+  const inHole = (x, y) => x >= 16 && x <= 31 && y >= holeTop(x)
+  const rock = (x, y) => x >= 0 && y >= 0 && x < W && y < H && y >= top(x) && y <= FOOT && x >= left(y) && x <= right(y) && !inHole(x, y)
+  const BAND = y => y === 9 || y === 15 || y === 21 || y === 25
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!rock(x, y)) continue
+    let c = BAND(y + (x % 7 === 0 ? 1 : 0)) ? STONE.band : STONE.face
+    if (y - top(x) <= 1) c = y === top(x) ? STONE.rim : STONE.top               // the lit top
+    else if (y - top(x) === 2) c = STONE.body
+    if (!rock(x - 1, y)) c = STONE.rim                                         // lit on the west
+    if (!rock(x + 1, y)) c = STONE.shade                                       // in shade on the east
+    if (!rock(x + 2, y) && rock(x + 1, y) && x > 32) c = STONE.band
+    if (inHole(x, y + 1) || inHole(x, y + 2)) c = inHole(x, y + 1) ? STONE.foot : STONE.shade   // the span's underside
+    if (x >= 14 && x <= 15 && y > holeTop(16)) c = x === 15 ? STONE.shade : STONE.band       // the west leg's inner face
+    if (x === 32 && y > holeTop(31)) c = STONE.rim                                          // the east leg's inner face
+    if (y === FOOT) c = STONE.foot
+    pic.px[y][x] = c
+  }
+  // cracks down the legs and across the span
+  for (const [x, y] of [[7, 13], [8, 14], [8, 15], [9, 20], [38, 12], [37, 13], [39, 19], [40, 20], [26, 6], [27, 6], [20, 8], [33, 7]]) if (pic.px[y][x] === STONE.face) pic.px[y][x] = STONE.crack
+  // drifted sand against each leg, and the shadows to the lower right
+  const drift = [[1, 27, 'z'], [1, 28, 'Z'], [2, 26, 'l'], [3, 27, 'z'], [13, 27, 'z'], [14, 28, 'z'], [15, 28, 'Z'], [12, 26, 'l'],
+    [31, 28, 'Z'], [32, 27, 'z'], [33, 26, 'l'], [44, 27, 'z'], [45, 26, 'l'], [46, 28, 'Z'], [46, 27, 'z'], [16, 28, 'z']]
+  for (const [x, y, c] of drift) pic.px[y][x] = SANDS[c]
+  for (let x = 4; x <= 17; x++) pic.sh[29][x] = 1
+  for (let x = 34; x <= 46; x++) pic.sh[29][x] = 1
+  // the span's shadow on the sand under it, falling to the lower right
+  for (let y = 16; y <= 19; y++) for (let x = 18 + (y - 16); x <= 31; x++) pic.sh[y][x] = 1
+  cutInto(pic, ARCH.cells)
+}
+
+// The bones: a great skull lying in the sand, a horn rising from its snout,
+// its neck climbing to a spine that arches over the ribs and runs back into
+// the tail. The ribs hang from the spine towards the onlooker, bowed out and
+// sweeping back, white over the shade inside the cage; bleached as the
+// debris's bones, lit up and to the left, rimmed in their own grey (darker
+// below and to the right) so they read against the pale sand. Every cell it
+// is cut into holds a good part of it (BONES leaves out the four that would not).
+{
+  const pic = picture(4, 3), W = pic.w, H = pic.h
+  const B = { l: BONE.l, b: BONE.b, s: BONE.s, d: BONE.d }
+  const SKULL_AT = { x: 2, y: 30 }
+  const SKULL = [   // its snout to the west
+    '......................',
+    '......................',
+    '......................',
+    '................lll...',
+    '...........lllllbbs...',
+    '.......lllllbbbbbs....',
+    '.....llbbbbbbbbbbbs...',
+    '...llbbbbbbdddbbbbbs..',
+    '..lbbbbbbbddddbbbbbs..',
+    '.lbbdbbbbbbddbbbbbbs..',
+    '.bbbbbbbbbbbbbbbbbss..',
+    '..ldldldldldsssss.....',
+    '...bbbbbbbbbbs........',
+    '....sssssssss.........',
+  ]
+  SKULL.forEach((r, i) => { if (r.length !== 22) throw new Error(`the skull's row ${i} is ${r.length} wide`) })
+  const bone = new Set()
+  let ribs = null   // (the ribs' own pixels, while they are drawn)
+  const add = (x, y) => { if (x >= 1 && y >= 1 && x < W - 1 && y < H - 2) { bone.add(y * W + x); ribs?.add(y * W + x) } }
+  const blob = (cx, cy, rx, ry) => { for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) if (((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1) add(x, y) }
+  // a curve from p0 through p1 to p2, r0 thick at its start and r1 at its end
+  const curve = (p0, p1, p2, r0, r1) => {
+    for (let s = 0; s <= 1.0001; s += 0.01) {
+      const u = 1 - s, x = u * u * p0[0] + 2 * u * s * p1[0] + s * s * p2[0], y = u * u * p0[1] + 2 * u * s * p1[1] + s * s * p2[1]
+      blob(x, y, r0 + (r1 - r0) * s, r0 + (r1 - r0) * s)
+    }
+  }
+  const along = ([p0, p1, p2], s) => { const u = 1 - s; return [u * u * p0[0] + 2 * u * s * p1[0] + s * s * p2[0], u * u * p0[1] + 2 * u * s * p1[1] + s * s * p2[1]] }
+  // the spine: up the neck from the back of the skull, arching over the
+  // ribs, and down into the tail (none of it in the top row's end cells)
+  const NECK = [[23, 38], [28, 33], [30, 24]], BACK = [[30, 24], [40, 4], [47, 20]], TAIL = [[47, 20], [55, 23], [58, 30]]
+  curve(...NECK, 1.2, 1.3)
+  curve(...BACK, 1.3, 1.3)
+  curve(...TAIL, 1.3, 0.6)
+  // the vertebrae: knuckles along the top of the back
+  for (let s = 0.08; s < 0.95; s += 0.12) { const [x, y] = along(BACK, s); add(Math.round(x), Math.round(y) - 2) }
+  // the ribs, hanging from the back towards the onlooker, bowed out and
+  // sweeping back as they go down into the sand, the longest at the shoulder
+  const RIBS = [0.14, 0.34, 0.54, 0.74].map((s, i) => { const [x, y] = along(BACK, s); return { x, y, end: [43, 43, 41, 39][i] } })
+  ribs = new Set()
+  for (const { x, y, end } of RIBS) curve([x, y], [x - 5.5, y + (end - y) * 0.5], [x + 1.5, end], 1.25, 0.8)
+  const ribPixels = ribs
+  ribs = null
+  // the skull, and the horn on its snout
+  const skull = new Map()
+  SKULL.forEach((r, dy) => [...r].forEach((ch, dx) => { if (ch !== ".") { add(SKULL_AT.x + dx, SKULL_AT.y + dy); skull.set((SKULL_AT.y + dy) * W + SKULL_AT.x + dx, B[ch]) } }))
+  curve([7, 37], [4, 28], [9, 21], 1.9, 0.6)
+  const on = (x, y) => bone.has(y * W + x)
+  // lit along its upper and left edges, in shade along its lower and right
+  for (const i of bone) {
+    const x = i % W, y = (i / W) | 0
+    pic.px[y][x] = skull.get(i) ?? (!on(x + 1, y) || !on(x, y + 1) ? B.s : !on(x - 1, y) || !on(x, y - 1) ? B.l : B.b)
+  }
+  // the inside of the cage: row by row, between the first rib and the last
+  const cage = new Map()
+  for (const i of ribPixels) {
+    const x = i % W, y = (i / W) | 0, [lo, hi] = cage.get(y) ?? [W, -1]
+    cage.set(y, [Math.min(lo, x), Math.max(hi, x)])
+  }
+  const inCage = (x, y) => { const span = cage.get(y); return !!span && x > span[0] && x < span[1] }
+  // rimmed in its grey, darker below and to the right; inside the cage the
+  // ribs stand white against its shade instead
+  const CAGE = '#bba57d'
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+    if (on(x, y)) continue
+    if (inCage(x, y)) { pic.px[y][x] = CAGE; continue }
+    const above = on(x, y - 1) || on(x - 1, y), below = on(x, y + 1) || on(x + 1, y)
+    if (above || below) pic.px[y][x] = above ? B.d : B.s
+  }
+  // drifted sand where the ribs and the skull go into the ground, and their shadow
+  for (const { x, end } of RIBS) for (const dx of [-2, -1, 0, 1]) { const X = Math.round(x + 1.5) + dx; if (!pic.px[end + 1][X]) pic.px[end + 1][X] = dx < 0 ? SANDS.l : SANDS.z }
+  for (let x = 5; x <= 16; x++) if (!pic.px[44][x]) pic.px[44][x] = x % 3 ? SANDS.z : SANDS.Z
+  for (let y = 0; y < H; y++) for (let x = 1; x < W; x++) if (!pic.px[y][x] && pic.px[y][x - 1] && pic.px[y - 1]?.[x - 1] && y > 26) pic.sh[y][x] = 1
+  cutInto(pic, BONES.cells)
+}
+
+// Reeds by the water: a clump of blades, two with their brown heads, out of
+// a little drift of sand; walked over, as the dry grass is.
+{
+  const P = { l: '#a6c75a', g: '#6f9a3a', d: '#4b6e2a', O: '#6b3f22', o: '#9e6236', ...SANDS }
+  const CLUMPS = [
+    ['................', '................', '................', '.....O..........', '.....o....O.....', '.....o....o.....',
+      '...l.o.l..o.....', '...l.g.l..g.l...', '....lg.lggg.l...', '.l..lgglg..l....', '..l.lggglgl.....', '..lllgggggl.....',
+      '...dggggggd.....', '...zdddddzZ.....', '................', '................'],
+    ['................', '................', '................', '................', '..........l.....', '...l......l.....',
+      '...l..l...g..l..', '....l.l..lg..l..', '....lgl..lg.l...', '.....lglglgl....', '..l..lggggl..l..', '...llgggggglll..',
+      '....dgggggggd...', '....zdddddddz...', '................', '................'],
+    ['................', '................', '................', '................', '................', '................',
+      '........O.......', '.....l..o.......', '.....l..o.l.....', '......l.g.l.....', '...l..lglgl.....', '....l.lgggl.....',
+      '.....dggggd.....', '.....zddddZ.....', '................', '................'],
+  ]
+  CLUMPS.forEach((rows, i) => { const g = grid(); detail(g, exact(REEDS[i], rows), P); placeKeep(REEDS[i], g) })
+}
+
+// A desert cave's mouth (sites.js cave): the outcrop's face running on from
+// the rock either side (an outcrop cell running on north, east and west,
+// ow_outcrop_11, as the cells beside the mouth are), its lip rising in an
+// arch over a dark opening that spans both cells; the opening's west wall and
+// roof in shade, its east wall lit, the floor going in.
+{
+  const pair = [outcropTile(11, 1100).g, outcropTile(11, 1101).g]
+  const at = (x, y) => pair[x >= T ? 1 : 0][y]
+  const put = (x, y, c) => { pair[x >= T ? 1 : 0][y][x % T] = c }
+  const MID = 15.5, HALF = 6.5
+  const roof = x => 4 + 3.5 * ((x - MID) / (HALF + 0.5)) ** 2
+  const inMouth = (x, y) => Math.abs(x + 0.5 - (MID + 0.5)) <= HALF + 0.01 && y >= roof(x) && y <= FACE_FROM + 7
+  const DARK = { deep: '#2c1911', in: '#3d2416', floor: '#6b4329', lit: '#7d5232' }
+  for (let x = 0; x < 2 * T; x++) {
+    // the face rises over the mouth: its lip two rows above the opening's roof
+    const lip = Math.min(FACE_FROM, Math.floor(roof(x)) - 2)
+    if (lip < FACE_FROM) for (let y = Math.max(1, lip); y <= FACE_FROM; y++) put(x, y, y === lip ? STONE.body : STONE.face)
+    for (let y = 0; y < T; y++) {
+      if (!inMouth(x, y)) continue
+      const wall = !inMouth(x - 1, y) ? 'w' : !inMouth(x + 1, y) ? 'e' : !inMouth(x, y - 1) ? 'n' : ''
+      put(x, y, wall === 'w' || wall === 'n' ? STONE.foot : wall === 'e' ? STONE.rim : y >= FACE_FROM + 6 ? DARK.floor : y >= FACE_FROM + 5 ? DARK.in : DARK.deep)
+    }
+  }
+  // the floor runs out over the foot of the face
+  for (let x = 0; x < 2 * T; x++) if (Math.abs(x - MID) <= HALF - 1 && at(x, FACE_FROM + 7)) put(x, FACE_FROM + 7, DARK.lit)
+  const shadow = grid()
+  for (let x = 0; x < T; x++) shadow[FACE_FROM + 8][x] = 1
+  SAND_MOUTH.forEach((name, i) => placeKeep(name, pair[i], { joins: 'NEW', shadow }))
+}
+console.log(`wrote ${placeTiles.length} tiles of the wild places in the desert`)
 
 // ---- the contact sheet ------------------------------------------------------------
 const sheetAt = process.argv.indexOf('--sheet')

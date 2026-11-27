@@ -88,6 +88,19 @@ const BLOOMS = ['ow_deco_bloom_0', 'ow_deco_bloom_1']
 const SPROUTS = ['ow_deco_sprout_0', 'ow_deco_sprout_1']
 const PALM_TALL = ['ow_tree_palm_top', 'ow_tree_palm']   // terrain.js PALMS.tall: the crown over its trunk
 const DESERT_VILLAGE_SKINS = [...AWNINGS.flatMap(a => [a.top, ...a.front]), ...new Set(Object.values(MUD_PIECES)), ...BLOOMS, ...SPROUTS, ...PALM_TALL, ...PAVE_SKINS]
+// The wild places in the desert (tools/make-wilds-desert-tiles.mjs draws
+// what is new): a camp pitches tan tents, a ruin's or a watchtower's yard is
+// strewn last of all with rubble (solid, as the ruin's other fallen stones)
+// and broken pots (walked over), and a cave opens in a sandstone outcrop, its
+// mouth the outcrop's face (terrain.js rims the rock round it as running on
+// into it).
+const DESERT_TENT = 'ow_tent_tan'
+const RUBBLE = 'ow_ruin_rubble'
+const POTS = ['ow_deco_pottery_0', 'ow_deco_pottery_1']
+const CAVE_MOUTH = ['ow_cave_arch_0', 'ow_cave_arch_1']
+export const SAND_MOUTH = ['ow_cave_arch_sand_0', 'ow_cave_arch_sand_1']
+// How many of each are strewn in a desert yard: `least` plus up to `more`, by a hash.
+const STREWN = { rubble: { least: 2, more: 2 }, pots: { least: 2, more: 3 }, reach: 7 }
 // A village's square and the streets in it: green cobbles, or the desert's sand paving.
 export const isVillageStreet = n => n === 'ow_cobble_green' || isPaveSkin(n)
 
@@ -337,7 +350,7 @@ export const SITE_SKINS = [...new Set([
   'ow_tent_00', 'ow_tent_10', 'ow_tent_01', 'ow_tent_11', 'ow_tent_tan_00', 'ow_tent_tan_10', 'ow_tent_tan_01', 'ow_tent_tan_11',
   'ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r', 'ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r',
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
-  'ow_cave_arch_0', 'ow_cave_arch_1', 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
+  ...CAVE_MOUTH, ...SAND_MOUTH, 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
   'ow_deco_firepit', 'ow_kiln_cold', 'ow_mtn_rock_cap', 'ow_prop_fishrack_l', 'ow_prop_fishrack_r', 'ow_pier_log', 'ow_stone_ground_0',
   'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small', 'ow_greytree_0', 'ow_greytree_1',
   // the Lalli tale: his pine (not in the lumber table) and the tale's people
@@ -554,6 +567,17 @@ export function makeSites(c) {
   // The box such rock is heaped in is the site's own ground, ring and all:
   // claimed before the rock is laid, so the rock may stand on a path there.
   const claimBox = (x0, y0, x1, y1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) t.claim(x, y) }
+  // The desert's sand (terrain.js sandSkin: the wind-swept sand of that world
+  // tile) as the ground of the disc of radius r round (cx, cy), wherever it
+  // is land and not a path, a trail or a road; ground only. The art passes
+  // after the features (terrain.js finish) fray the land beyond into it.
+  const sandPad = (cx, cy, r) => {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const x = cx + dx, y = cy + dy
+      if (dx * dx + dy * dy > r * r || t.onPath(x, y) || t.kind(x, y) !== 'land') continue
+      t.setGround(x, y, t.sandSkin(x, y))
+    }
+  }
   const tent = (x, y, kind = 'ow_tent') => { put(x, y, `${kind}_00`); put(x + 1, y, `${kind}_10`); put(x, y + 1, `${kind}_01`); put(x + 1, y + 1, `${kind}_11`) }
   const fire = (x, y) => { t.clear(x, y); c.spawn({ kind: 'campfire', x, y }) }
 
@@ -580,11 +604,7 @@ export function makeSites(c) {
     // border); ground only. The art passes after the features (terrain.js
     // finish) fray the land beyond into it: the hardpan's edges, the sand's
     // edge into grass, the mountain floor's edge.
-    if (desert) for (let dy = -VILLAGE_PAD; dy <= VILLAGE_PAD; dy++) for (let dx = -VILLAGE_PAD; dx <= VILLAGE_PAD; dx++) {
-      const x = cx + dx, y = cy + dy
-      if (dx * dx + dy * dy > VILLAGE_PAD * VILLAGE_PAD || t.onPath(x, y) || t.kind(x, y) !== 'land') continue
-      t.setGround(x, y, t.sandSkin(x, y))
-    }
+    if (desert) sandPad(cx, cy, VILLAGE_PAD)
     cobble(cx, cy, 14, street)
     for (let dy = -VILLAGE_PAD; dy <= VILLAGE_PAD; dy++) for (let dx = -VILLAGE_PAD; dx <= VILLAGE_PAD; dx++) {
       const x = cx + dx, y = cy + dy
@@ -673,6 +693,33 @@ export function makeSites(c) {
       t.setProp(x, y, PALM)
       if (stands(x, y - 1)) { t.setProp(x, y, PALM_TALL[1]); t.setProp(x, y - 1, PALM_TALL[0]) }
     }
+  }
+  // What a desert ruin's or watchtower's yard is strewn with last of all
+  // (features.js, when everything else of the piece has its place): within
+  // STREWN.reach of its tower's door, a few lumps of rubble and a few broken
+  // pots half-buried in the sand, on cells nothing holds, off the paths and
+  // off `spot` (the piece's spawn point), the lowest hash first; a lump of
+  // rubble only where it parts nothing. No draw of the piece's rng is spent.
+  function finishDesert(spot) {
+    for (const { x: cx, y: cy } of desertYards) {
+      const R = STREWN.reach, cells = []
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+        const x = cx + dx, y = cy + dy
+        if (dx * dx + dy * dy > R * R || !t.free(x, y) || c.taken(x, y) || t.onPath(x, y) || (x === spot.x && y === spot.y)) continue
+        cells.push({ x, y, h: c.hash(x, y, 7200) })
+      }
+      cells.sort((p, q) => p.h - q.h)
+      let rubble = STREWN.rubble.least + Math.floor(c.hash(cx, cy, 7210) * (STREWN.rubble.more + 1))
+      let pots = STREWN.pots.least + Math.floor(c.hash(cx, cy, 7220) * (STREWN.pots.more + 1))
+      for (const { x, y, h } of cells) {
+        if (!rubble && !pots) break
+        if (!t.free(x, y)) continue
+        // a cell is the rubble's or the pots' by its hash's later digits, and the other's once one has all it wants
+        if (rubble > 0 && (pots === 0 || (h * 1e4) % 1 < 0.5) && parts(x, y) <= 1) { t.setProp(x, y, RUBBLE); hold(x, y); rubble-- }
+        else if (pots > 0) { t.setProp(x, y, POTS[Math.floor(c.hash(x, y, 7230) * POTS.length)], { walkable: true }); hold(x, y); pots-- }
+      }
+    }
+    desertYards.length = 0
   }
   // How many runs the walkable cells round (x, y) fall into, going round its
   // eight neighbours: one or none, and a thing standing there parts nothing.
@@ -945,7 +992,10 @@ export function makeSites(c) {
   // ---- a ruined keep -----------------------------------------------------------
   // The tower still stands and its door leads in; of the wall round the yard
   // only runs are left, never across a road.
+  // In the desert (`c.desert`) its pad (`c.pad`) is sand, and its yard is
+  // strewn with rubble and broken pots once the piece is done (finishDesert).
   function ruin(cx, cy) {
+    if (c.desert) sandPad(cx, cy, c.pad)
     ruinTower(cx, cy)
     ruinYard(cx, cy)
   }
@@ -979,7 +1029,10 @@ export function makeSites(c) {
     const ok = offWay ? offPaths : null
     scatter(cx, cy, 3, 5, 6, stones, true, ok)
     scatter(cx, cy, 2, 5, 3, ['ow_deco_skull'], false, ok)
+    if (c.desert) desertYards.push({ x: cx, y: cy })
   }
+  // The desert's yards (ruinYard), strewn last of all (finishDesert).
+  const desertYards = []
 
   // ---- the wayside places (WAYSIDE_PLANS) ---------------------------------------
   // Each returns what lay does ({ doors, people, at }); features.js gives the
@@ -1002,6 +1055,7 @@ export function makeSites(c) {
     },
     // the ruin kit: the tower moved off the trails as a farm's house is, its broken walls round it
     tower: (cx, cy) => {
+      if (c.desert) sandPad(cx, cy, c.pad)
       const made = lay(cx, cy, WAYSIDE_PLANS.tower, 8)
       if (made.doors.length) ruinYard(made.doors[0].x, made.doors[0].y, true)
       return made
@@ -1016,11 +1070,13 @@ export function makeSites(c) {
 
   // ---- camps -------------------------------------------------------------------
   // look: 'bandits' (tents round a fire), 'graves', 'den' (rocks and bones),
-  // 'nest' (mounds, dead trees, bones)
+  // 'nest' (mounds, dead trees, bones). In the desert its pad is sand and
+  // both tents are tan.
   function camp(cx, cy, look) {
+    if (c.desert) sandPad(cx, cy, c.pad)
     if (look === 'bandits') {
       fire(cx, cy)
-      tent(cx - 4, cy - 4); tent(cx + 2, cy - 4, 'ow_tent_tan')
+      tent(cx - 4, cy - 4, c.desert ? DESERT_TENT : 'ow_tent'); tent(cx + 2, cy - 4, DESERT_TENT)
       low(cx - 2, cy + 1, 'ow_prop_bedroll_0'); low(cx + 2, cy + 1, 'ow_prop_bedroll_1')
       low(cx + 4, cy - 1, 'ow_prop_barrel_1'); low(cx + 4, cy, 'ow_prop_crate_2'); low(cx - 4, cy, 'ow_prop_sack_1')
       low(cx - 1, cy + 3, 'ow_prop_log')
@@ -1075,9 +1131,16 @@ export function makeSites(c) {
   // The arch is the pair (x, y), (x + 1, y); rock is heaped behind and beside it.
   function cave(x, y) {
     // a hill of mountain rock, on a patch of its stony ground; on sand,
-    // where the mountain art has no edge to sit on, a heap of boulders
+    // where the mountain art has no edge to sit on, a heap of boulders; in
+    // the desert an outcrop of its sandstone, the mouth in its face (the
+    // boulder each cell would have been is still drawn, so the piece's
+    // draws stay as they were)
     const hill = !c.sandy
-    const rock = (dx, dy) => { if (hill) { t.setMass(x + dx, y + dy); hold(x + dx, y + dy) } else put(x + dx, y + dy, pick(c.rocks)) }
+    const rock = (dx, dy) => {
+      if (hill) { t.setMass(x + dx, y + dy); hold(x + dx, y + dy) }
+      else if (c.desert) { pick(c.rocks); t.setOutcrop(x + dx, y + dy); hold(x + dx, y + dy) }
+      else put(x + dx, y + dy, pick(c.rocks))
+    }
     claimBox(x - 4, y - 4, x + 5, y + 1)
     if (hill) for (let dy = -4; dy <= 1; dy++) for (let dx = -4; dx <= 5; dx++) if (!((dy === -4 || dy === 1) && (dx === -4 || dx === 5))) t.setFloor(x + dx, y + dy)
     for (let dx = -1 + (rng() < 0.5 ? 1 : 0); dx <= 2 - (rng() < 0.5 ? 1 : 0); dx++) rock(dx, -3)
@@ -1086,7 +1149,8 @@ export function makeSites(c) {
     for (const dx of [-3, -2, -1, 2, 3, 4]) rock(dx, 0)
     walkRound(x - 4, y - 4, x + 5, y + 1)
     for (const dx of [0, 1]) { t.clear(x + dx, y); t.clear(x + dx, y + 1); hold(x + dx, y); hold(x + dx, y + 1) }
-    t.setProp(x, y, 'ow_cave_arch_0', { walkable: true }); t.setProp(x + 1, y, 'ow_cave_arch_1', { walkable: true })
+    const mouth = c.desert ? SAND_MOUTH : CAVE_MOUTH
+    t.setProp(x, y, mouth[0], { walkable: true }); t.setProp(x + 1, y, mouth[1], { walkable: true })
   }
 
   // ---- landmarks -------------------------------------------------------------------
@@ -1415,5 +1479,5 @@ export function makeSites(c) {
 
   const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree,
     sampo_sea: tursoBay, sampo_mountain: copperBowl, sampo_marsh: pikePond }
-  return { house, village, finishVillage, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, coach, ...farms, ...wayside }
+  return { house, village, finishVillage, finishDesert, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, coach, ...farms, ...wayside }
 }

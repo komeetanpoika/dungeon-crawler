@@ -18,6 +18,22 @@ export const SPIRE = [`${BEACON_PREFIX}spire_top`, `${BEACON_PREFIX}spire`]
 export const CAIRN = `${BEACON_PREFIX}cairn`
 export const DESERT_LANDMARKS = [...SPIRE, CAIRN]
 
+// What the main thing of a desert piece looks like when it is a landmark
+// (features.js dressDesertLandmark; the tool draws them): an oasis ringed with
+// palms (PALM, two cells tall: the crown over its foot) and reeds by its
+// water; or a sandstone pillar, a rock arch or the bones of something huge,
+// each a picture cut in cells (`cells`, rows from the north, null where the
+// picture has nothing) whose cell `at` stands where the oasis's pond would
+// have been. The arch's cell `open`, under its span, is walked into; every
+// other cell is a landmark (blocked, seen from afar).
+export const PALM = [`${BEACON_PREFIX}palm_top`, `${BEACON_PREFIX}palm`]
+const cut = (name, w, h, empty = []) => Array.from({ length: h }, (_, r) => Array.from({ length: w }, (_, c) => empty.includes(`${c}${r}`) ? null : `${BEACON_PREFIX}${name}_${c}${r}`))
+export const PILLAR = { cells: [[`${BEACON_PREFIX}pillar_top`], [`${BEACON_PREFIX}pillar`]], at: [0, 1] }
+export const ARCH = { cells: cut('arch', 3, 2), at: [1, 1], open: [1, 1] }
+export const BONES = { cells: cut('bones', 4, 3, ['00', '10', '30', '32']), at: [2, 1] }
+export const REEDS = ['ow_deco_reeds_0', 'ow_deco_reeds_1', 'ow_deco_reeds_2']
+export const MAIN_LANDMARK_SKINS = [...PALM, ...[PILLAR, ARCH, BONES].flatMap(s => s.cells.flat().filter(Boolean))]
+
 // The hero's sight radius in tiles: `base` anywhere out of doors, `desert`
 // in desert country, and in a full sandstorm `storm`, or `stormVillage`
 // among a village's houses.
