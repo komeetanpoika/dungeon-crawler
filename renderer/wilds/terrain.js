@@ -886,6 +886,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     onCrest: (x, y) => onCrest(x, y),
     // the road's ground for a local cell whose ground is `ground` (the city lays its outside roads with it)
     roadGround: (ground, x, y) => roadGround(ground, x, y),
+    // the desert's sand for a local cell (wind-swept with the dress on), whatever country it lies in
+    sandSkin: (x, y) => sandSkin(x, y),
     rnd, dryGround, grassSkin,
   }
 }

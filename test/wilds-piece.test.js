@@ -334,8 +334,8 @@ test('a house is whole: a door in a wall under two rows of roof, three to five w
     for (const d of p.doors.filter(d => d.tier !== 'ruin')) {
       n++
       const at = `house at ${d.x},${d.y} of ${wx},${wy} (seed ${seed})`
-      // (Tiny Town's door, or the desert kit's: sites.js village(…, desert))
-      assert.match(over(p, d.x, d.y), /^ow_house_(adobe_)?(door|dbl)/, `${at}: the door is ${over(p, d.x, d.y)}`)
+      // (Tiny Town's door, or the desert kit's where the house is adobe: sites.js village(…, desert))
+      assert.match(over(p, d.x, d.y), d.look?.wall === 'adobe' ? /^ow_house_adobe_(door|dbl)/ : /^ow_house_(door|dbl)/, `${at}: the door is ${over(p, d.x, d.y)}`)
       const h = houseAt(p, d)
       assert.ok(h.w >= 3 && h.w <= 5, `${at}: ${h.w} wide`)
       assert.ok(h.h === 3 || h.h === 4, `${at}: ${h.h} tall`)
@@ -372,9 +372,11 @@ test('a village is lived in: houses, a well, a fenced field and things lying abo
     assert.ok(safe.length >= 4 && safe.length <= 6, `${at}: ${safe.length} houses`)
     assert.ok(new Set(safe.map(d => houseAt(p, d).w)).size >= 2, `${at}: every house the same width`)
     assert.equal(around(p, p.main, 2, s => s === 'ow_well'), 1, `${at}: no well`)
-    // (a desert village walls its date garden in mud brick, and grows young palms in it)
-    assert.ok(around(p, p.main, 14, s => s.startsWith('ow_fence_') || s === 'ow_prop_wall_sand') >= 8, `${at}: no fence`)
-    assert.ok(around(p, p.main, 14, s => s.startsWith('ow_deco_crop_') || s.startsWith('ow_deco_sprout_')) >= 4, `${at}: no crops`)
+    // (a village of the desert kit walls its date garden in mud brick and grows young palms in it; a green one never does)
+    const adobe = safe.every(d => d.look.wall === 'adobe')
+    assert.ok(adobe || safe.every(d => d.look.wall !== 'adobe'), `${at}: a village of two kits`)
+    assert.ok(around(p, p.main, 14, s => s.startsWith(adobe ? 'ow_prop_wall_sand' : 'ow_fence_')) >= 8, `${at}: no fence`)
+    assert.ok(around(p, p.main, 14, s => s.startsWith(adobe ? 'ow_deco_sprout_' : 'ow_deco_crop_')) >= 4, `${at}: no crops`)
     assert.ok(around(p, p.main, 14, s => s.startsWith('ow_prop_')) >= 8, `${at}: nothing lying about`)
     assert.ok(walk(p.cells[p.spawnPoint.y][p.spawnPoint.x]))
   }

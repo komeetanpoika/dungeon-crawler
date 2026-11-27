@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto'
 import { generatePiece } from '../renderer/wilds/piece.js'
 import { makeTerrain, ROAD_WIDTH } from '../renderer/wilds/terrain.js'
 import { placeFeatures } from '../renderer/wilds/features.js'
-import { layoutTale } from '../renderer/wilds/sites.js'
+import { layoutTale, isVillageStreet } from '../renderer/wilds/sites.js'
 import { roadSides, pieceClass } from '../renderer/wilds/roads.js'
 import { PIECE, FRAME, BIOMES, pieceKey, tierAt, pieceBiome, lootDepthFor, villageAt, biomeAt } from '../renderer/wilds/layout.js'
 import { hashInt, mulberry32 } from '../renderer/wilds/rand.js'
@@ -385,7 +385,10 @@ test('a village is entered by its roads: each reaches the square over road cells
   // the village's layout keeps its streets clear for a road three wide (features.js street)
   assert.equal(ROAD_WIDTH, 3)
   let streets = 0
-  for (const b of villageSample()) {
+  // and a desert village (seed 7 Sammalranta), whose streets are sand paving
+  const desert = built(7, 8, -2, 0)
+  assert.ok(desert.piece.doors.filter(d => d.tier === 'safe').every(d => d.look.wall === 'adobe'), `${desert.at}: not a desert village`)
+  for (const b of [...villageSample(), desert]) {
     const { t, piece, walk, laid, at } = b
     const c = piece.main
     assert.deepEqual(piece.road?.junction, { x: c.x, y: c.y }, `${at}: the roads do not meet at the hub`)
@@ -403,7 +406,7 @@ test('a village is entered by its roads: each reaches the square over road cells
     }
     for (let y = c.y - 12; y <= c.y + 12; y++) for (let x = c.x - 12; x <= c.x + 12; x++) {
       if (Math.hypot(x - c.x, y - c.y) > 12 || !t.onRoad(x, y) || t.kind(x, y) === 'water') continue
-      assert.equal(t.groundAt(x, y), 'ow_cobble_green', `${at}: the street at ${x},${y} is not cobbled`)
+      assert.ok(isVillageStreet(t.groundAt(x, y)), `${at}: the street at ${x},${y} is ${t.groundAt(x, y)}, not cobbled`)
       assert.ok(walk(x, y), `${at}: the street at ${x},${y} is built on (${t.propAt(x, y)})`)
     }
   }

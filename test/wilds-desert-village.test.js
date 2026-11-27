@@ -16,6 +16,11 @@ import { toWorld } from '../renderer/wilds/window.js'
 import { storyEpisode } from '../renderer/wilds/tale-run.js'
 import { houseSpec, generateInterior } from '../renderer/interior/index.js'
 import { TILE, isWalkable } from '../renderer/systems/entities.js'
+import { makeTerrain } from '../renderer/wilds/terrain.js'
+import { placeFeatures } from '../renderer/wilds/features.js'
+import { pieceKey, tierAt, pieceBiome, lootDepthFor } from '../renderer/wilds/layout.js'
+import { pieceClass } from '../renderer/wilds/roads.js'
+import { isWaterSkin } from '../renderer/terrain/lib.js'
 
 const SEEDS = [7, 42, 1]
 const REACH = 8
@@ -96,7 +101,19 @@ test('a desert village is built from the desert kit', () => {
       const o = p.cells[y][x].overlay ?? ''
       assert.ok(!o.startsWith('ow_fence_') && !o.startsWith('ow_deco_crop_'), `${s.at}: ${o} in the date garden at ${x},${y}`)
     }
-    assert.ok(near(p, 12).some(({ cell }) => cell.overlay === 'ow_prop_wall_sand'), `${s.at}: no mud wall`)
+    // its wall turns its corners and runs down its sides with pieces of its own
+    const piece = (x, y) => {
+      const X = x === cx - 9 ? 'l' : x === cx - 4 ? 'r' : '', Y = y === cy + 7 ? 't' : y === cy + 10 ? 'b' : ''
+      return X && Y ? `ow_prop_wall_sand_${Y}${X}` : X ? 'ow_prop_wall_sand_v' : 'ow_prop_wall_sand'
+    }
+    let walls = 0
+    for (let y = cy + 7; y <= cy + 10; y++) for (let x = cx - 9; x <= cx - 4; x++) {
+      const o = p.cells[y][x].overlay ?? ''
+      if (!o.startsWith('ow_prop_wall_sand')) continue
+      walls++
+      assert.equal(o, piece(x, y), `${s.at}: the garden wall at ${x},${y}`)
+    }
+    assert.ok(walls >= 8, `${s.at}: ${walls} cells of mud wall round the date garden`)
     // a stall wears an awning
     const plain = plainOf(s)
     if (plain.cells[cy + 4][cx - 4].overlay?.startsWith('ow_stall_top'))
@@ -116,6 +133,42 @@ const doorsOf = p => p.doors.map(d => [d.x, d.y, d.label, d.tier, d.story ?? nul
 const spawnsOf = p => p.spawns.map(s => [s.kind, s.x, s.y, s.species ?? s.npc ?? '', s.id ?? ''].join(':'))
 const signsOf = p => p.signs.map(s => [s.x, s.y, s.title].join(':'))
 const pointsOf = p => [...p.points, ...p.villagePoints].map(q => [q.label, q.x, q.y].join(':'))
+
+// A piece laid as generatePiece lays it, its terrain kept to ask where its
+// paths run (as test/wilds-paths.test.js builds one).
+function withTerrain(seed, wx, wy, villageTale) {
+  const t = makeTerrain(seed, wx, wy, 0)
+  const tier = tierAt(wx, wy)
+  const piece = {
+    key: pieceKey(wx, wy), wx, wy, deal: 0, tier, biome: pieceBiome(seed, wx, wy), cls: pieceClass(seed, wx, wy), road: null,
+    main: null, small: [], packs: [], tale: null, points: [], villageTale, villagePoints: [], cells: null, spawns: [], caves: [], doors: [], signs: [], village: null,
+    spawnPoint: null, gates: t.gates, lootDepth: lootDepthFor(tier),
+  }
+  placeFeatures(t, piece)
+  t.finish()
+  return { t, piece }
+}
+
+// The pad (VILLAGE_PAD 12 round the square's middle) is sand wherever it is
+// not paving, a path, a road or water: its ground is one of the ow_sand*
+// families (the wind-swept sand, the dunes' level shading, the sand's edge
+// into grass) or the paving; nowhere grass or hardpan, and no dune crest.
+test('a desert village stands on sand', () => {
+  for (const s of deserts()) {
+    const { t, piece } = withTerrain(s.seed, s.v.wx, s.v.wy, s.tale)
+    const c = piece.village
+    let sand = 0
+    for (let y = c.y - 12; y <= c.y + 12; y++) for (let x = c.x - 12; x <= c.x + 12; x++) {
+      if ((x - c.x) ** 2 + (y - c.y) ** 2 > 144) continue
+      const g = t.groundAt(x, y), at = `${s.at}: ${g} at ${x},${y}`
+      assert.ok(!g.startsWith('ow_grass') && !g.startsWith('ow_hardpan') && !g.startsWith('ow_dune_'), at)
+      if (!t.inside(x, y) || t.onPath(x, y) || isWaterSkin(g) || /^ow_(shore|bank|pond)/.test(g)) continue
+      assert.ok(g.startsWith('ow_sand') || g.startsWith('ow_pave_sand_'), at)
+      sand++
+    }
+    assert.ok(sand > 300, `${s.at}: ${sand} cells of the pad looked at`)
+  }
+})
 
 test('the same village, door for door', () => {
   for (const s of deserts()) {

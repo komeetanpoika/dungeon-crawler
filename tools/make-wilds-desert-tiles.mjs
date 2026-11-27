@@ -1442,6 +1442,74 @@ CLOTH.forEach((_, c) => {
   }
 })
 
+// ---- the date garden's mud wall ------------------------------------------------------------
+// Where the farms' wall block (ow_prop_wall_sand, tools/make-wilds-farm-tiles.mjs:
+// its cap seen from above, then its brick face) runs east and west, these
+// run north and south and turn the corners, in its colours: the wall's cap
+// as a strip down the middle of the cell (lit on its west side, in shade on
+// its east, a joint every four rows so its courses run on from cell to
+// cell), its shadow cast to the east; at a corner the cap turns into the
+// block's, and the block's face shows only where the wall runs east or west
+// in front of it.
+//   ow_prop_wall_sand_v                 the wall running north and south
+//   ow_prop_wall_sand_tl, _tr           the back corners: the strip runs south from the block
+//   ow_prop_wall_sand_bl, _br           the front corners: the strip runs north into the block
+{
+  const W = { c: '#efe0b9', C: '#d9c08a', m: '#c9a46a', M: '#a8834e', s: '#8a6a3f' }
+  const BLOCK = [   // the farms' wall block, rows 5 to 15
+    'cccccccccccccccc', 'CCCCCCCCCCCCCCCC', 'mmmmmMmmmmmmmMmm', 'mmmmmMmmmmmmmMmm', 'MMMMMMMMMMMMMMMM',
+    'mmMmmmmmmMmmmmmm', 'mmMmmmmmmMmmmmmm', 'MMMMMMMMMMMMMMMM', 'mmmmmMmmmmmmmMmm', 'mmmmmMmmmmmmmMmm', 'ssssssssssssssss',
+  ]
+  const STRIP = { x0: 6, x1: 10 }
+  const strip = (g, y0, y1) => {
+    for (let y = y0; y <= y1; y++) {
+      const joint = y % 4 === 3
+      g[y][STRIP.x0] = W.c
+      for (let x = STRIP.x0 + 1; x < STRIP.x1; x++) g[y][x] = joint ? W.m : W.C
+      g[y][STRIP.x1] = W.m
+    }
+  }
+  const block = (g, { capFrom = 0, capTo = T - 1, faceFrom = 0, faceTo = T - 1 } = {}) => {
+    for (let y = 5; y < T; y++) for (let x = 0; x < T; x++) {
+      const face = y >= 7
+      if (face ? x < faceFrom || x > faceTo : x < capFrom || x > capTo) continue
+      g[y][x] = W[BLOCK[y - 5][x]]
+    }
+  }
+  const pieces = {
+    ow_prop_wall_sand_v: (g, sh) => { strip(g, 0, T - 1); for (let y = 0; y < T; y++) sh[y][STRIP.x1 + 1] = 1 },
+    ow_prop_wall_sand_tl: g => {
+      block(g, { capFrom: STRIP.x0, faceFrom: STRIP.x1 + 1 })
+      g[5][STRIP.x0] = W.c; g[6][STRIP.x0] = W.c
+      strip(g, 7, T - 1)
+    },
+    ow_prop_wall_sand_tr: (g, sh) => {
+      block(g, { capTo: STRIP.x1, faceTo: STRIP.x0 - 1 })
+      g[5][STRIP.x1] = W.C; g[6][STRIP.x1] = W.m
+      strip(g, 7, T - 1)
+      for (let y = 5; y < T; y++) sh[y][STRIP.x1 + 1] = 1
+    },
+    ow_prop_wall_sand_bl: (g, sh) => {
+      strip(g, 0, 4)
+      block(g, { capFrom: STRIP.x0, faceFrom: STRIP.x0 })
+      g[5][STRIP.x0] = W.c; g[6][STRIP.x0] = W.c
+      for (let y = 0; y <= 4; y++) sh[y][STRIP.x1 + 1] = 1
+    },
+    ow_prop_wall_sand_br: (g, sh) => {
+      strip(g, 0, 4)
+      block(g, { capTo: STRIP.x1, faceTo: STRIP.x1 })
+      g[5][STRIP.x1] = W.C; g[6][STRIP.x1] = W.m
+      for (let y = 7; y < T - 1; y++) g[y][STRIP.x1] = W.M
+      for (let y = 0; y < T; y++) sh[y][STRIP.x1 + 1] = 1
+    },
+  }
+  for (const [name, draw] of Object.entries(pieces)) {
+    const g = grid(), sh = grid()
+    draw(g, sh)
+    saveVillage(name, g, sh)
+  }
+}
+
 // ---- what grows in the village ---------------------------------------------------------------
 // Desert flowers: a tuft of grey-green leaves with blossoms, two to a cell.
 {

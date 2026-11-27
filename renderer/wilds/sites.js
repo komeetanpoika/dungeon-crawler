@@ -77,10 +77,17 @@ const FARM_SKINS = [...HAY, ...PEAT, ...NETS, PALM, MUD_WALL, CUT_PEAT, ...WINDM
 // which become palms once everything else of the piece has its place
 // (finishVillage); the young date palms of the date garden.
 const AWNINGS = [0, 1].map(c => ({ top: `ow_stall_awning_${c}`, front: ['l', 'm', 'r'].map(s => `ow_stall_awning_${c}_front_${s}`) }))
+// The date garden's mud wall where a fence would have its corners and side
+// rails: the wall turning a corner, and running north and south (MUD_WALL
+// runs east and west). The farms keep MUD_WALL all round.
+const MUD_PIECES = {
+  ow_fence_l: 'ow_prop_wall_sand_tl', ow_fence_r: 'ow_prop_wall_sand_tr', ow_fence_bl: 'ow_prop_wall_sand_bl', ow_fence_br: 'ow_prop_wall_sand_br',
+  ow_fence_side_l: 'ow_prop_wall_sand_v', ow_fence_side_r: 'ow_prop_wall_sand_v',
+}
 const BLOOMS = ['ow_deco_bloom_0', 'ow_deco_bloom_1']
 const SPROUTS = ['ow_deco_sprout_0', 'ow_deco_sprout_1']
 const PALM_TALL = ['ow_tree_palm_top', 'ow_tree_palm']   // terrain.js PALMS.tall: the crown over its trunk
-const DESERT_VILLAGE_SKINS = [...AWNINGS.flatMap(a => [a.top, ...a.front]), ...BLOOMS, ...SPROUTS, ...PALM_TALL, ...PAVE_SKINS]
+const DESERT_VILLAGE_SKINS = [...AWNINGS.flatMap(a => [a.top, ...a.front]), ...new Set(Object.values(MUD_PIECES)), ...BLOOMS, ...SPROUTS, ...PALM_TALL, ...PAVE_SKINS]
 // A village's square and the streets in it: green cobbles, or the desert's sand paving.
 export const isVillageStreet = n => n === 'ow_cobble_green' || isPaveSkin(n)
 
@@ -481,9 +488,11 @@ export function makeSites(c) {
   // through it makes a gap of its own, unless the fence is `whole`: then it
   // stands across a trail, and whoever asks for it leaves a way round. A
   // road is never blocked: where one passes, even a whole fence has a gap.
-  // `mud`: the same, as a low wall of mud brick (the farms' MUD_WALL).
+  // `mud`: the same, as a low wall of mud brick (the farms' MUD_WALL along
+  // its top and bottom runs, MUD_PIECES at its corners and down its sides).
   function fence(x0, y0, x1, y1, gate = null, whole = false, mud = false) {
-    const rail = whole ? (x, y, skin) => put(x, y, mud ? MUD_WALL : skin) : (x, y, skin) => low(x, y, mud ? MUD_WALL : skin)
+    const skinOf = skin => mud ? MUD_PIECES[skin] ?? MUD_WALL : skin
+    const rail = whole ? (x, y, skin) => put(x, y, skinOf(skin)) : (x, y, skin) => low(x, y, skinOf(skin))
     const open = (x, y) => (whole ? t.onRoad(x, y) : t.onPath(x, y)) || (gate && gate.y === y && x === gate.x)
     for (let x = x0; x <= x1; x++) for (const y of [y0, y1]) {
       const top = y === y0
@@ -510,7 +519,7 @@ export function makeSites(c) {
   function dateGarden(x0, y0, x1, y1) {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       t.clear(x, y)
-      t.setGround(x, y, t.dryGround(x, y))
+      t.setGround(x, y, t.sandSkin(x, y))
       t.setProp(x, y, SPROUTS[(y - y0) % 2], { walkable: true })
       hold(x, y)
     }
@@ -566,6 +575,16 @@ export function makeSites(c) {
   let desertVillage = null
   function village(cx, cy, tale = null, sunroom = false, desert = false) {
     const street = desert ? paveSkin(0) : 'ow_cobble_green', kit = desert ? 'adobe' : 'kenney'
+    // a desert village stands on sand: the pad's ground, wherever it is not a
+    // path, a road or water, whatever the land had there (hardpan, grass on a
+    // border); ground only. The art passes after the features (terrain.js
+    // finish) fray the land beyond into it: the hardpan's edges, the sand's
+    // edge into grass, the mountain floor's edge.
+    if (desert) for (let dy = -VILLAGE_PAD; dy <= VILLAGE_PAD; dy++) for (let dx = -VILLAGE_PAD; dx <= VILLAGE_PAD; dx++) {
+      const x = cx + dx, y = cy + dy
+      if (dx * dx + dy * dy > VILLAGE_PAD * VILLAGE_PAD || t.onPath(x, y) || t.kind(x, y) !== 'land') continue
+      t.setGround(x, y, t.sandSkin(x, y))
+    }
     cobble(cx, cy, 14, street)
     for (let dy = -VILLAGE_PAD; dy <= VILLAGE_PAD; dy++) for (let dx = -VILLAGE_PAD; dx <= VILLAGE_PAD; dx++) {
       const x = cx + dx, y = cy + dy
