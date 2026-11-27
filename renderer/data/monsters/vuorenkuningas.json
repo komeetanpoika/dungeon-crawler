@@ -1,0 +1,15 @@
+{
+  "name": "vuorenkuningas",
+  "rig": "troll",
+  "params": { "role": 3, "scale": 2.2, "gaitFreq": 4 },
+  "stats": { "hp": 40, "dmg": 3, "speed": 46 },
+  "behavior": { "tribe": "peikot", "role": "boss", "taxon": "humanoid", "fleeHp": 0, "weapon": "fists", "weaponOverrides": { "damage": 3, "reach": 46 }, "sightRange": 320, "stopRange": 30, "drops": "chest" },
+  "hooks": true,
+  "spawn": null,
+  "tuning": {
+    "boulderMin": 3, "boulderMax": 9, "boulderEvery": 6, "lift": 0.9, "boulderSpeed": 170, "boulderRange": 11, "boulderDmg": 3,
+    "stompNear": 2.5, "stompEvery": 7, "rear": 0.8, "stompReach": 3, "stompDmg": 2, "marks": 4,
+    "callAt": 0.5, "bellow": 1.2, "callLumps": 2, "callDrummers": 1, "callMin": 5, "callMax": 7,
+    "frenzy": 0.6
+  }
+}

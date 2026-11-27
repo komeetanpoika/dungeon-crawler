@@ -1,0 +1,10 @@
+{
+  "name": "louhija",
+  "rig": "troll",
+  "params": { "role": 1, "scale": 1 },
+  "stats": { "hp": 4, "dmg": 0, "speed": 70 },
+  "behavior": { "tribe": "peikot", "role": "mage", "taxon": "humanoid", "fleeHp": 0, "kiteBand": [128, 224], "sightRange": 280, "stopRange": 0 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "every": 5, "range": 8, "raise": 0.5, "lead": 0.7, "fall": 1, "stoneR": 0.8, "stoneDmg": 2, "trollDmg": 2 }
+}
