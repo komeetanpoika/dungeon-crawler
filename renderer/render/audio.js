@@ -122,6 +122,21 @@ export const RECIPES = {
     { at: 0.5, kind: 'swoosh', f0: 460, f1: 160, dur: 1.9, vol: 0.9 },
     { at: 0.35, kind: 'burst', freq: 3400, q: 0.6, dur: 1.6, vol: 0.35 },
   ] },
+  // The desert's creatures (systems/monsters/skorpioni.js, hiekkamato.js,
+  // kuoppaleuka.js, the jackal in systems/npc.js) and the poison's bite.
+  'poison':    { kind: 'blip',   wave: 'triangle', f0: 300, f1: 180, dur: 0.22, vol: 0.5 },
+  'sting':     { kind: 'seq', dur: 0.2, vol: 0.7, parts: [
+    { at: 0, kind: 'swoosh', f0: 1800, f1: 600, dur: 0.08, vol: 0.8 },
+    { at: 0.07, kind: 'burst', freq: 1400, q: 3, dur: 0.06, vol: 1 } ] },
+  'burrow':    { kind: 'rumble', freq: 48, dur: 0.45, vol: 0.45 },
+  'worm-erupt': { kind: 'seq', dur: 0.7, vol: 1, parts: [
+    { at: 0, kind: 'rumble', freq: 60, dur: 0.6, vol: 1 },
+    { at: 0.02, kind: 'swoosh', f0: 200, f1: 1600, dur: 0.3, vol: 0.7 } ] },
+  'sand-toss': { kind: 'swoosh', f0: 500, f1: 1500, dur: 0.22, vol: 0.5 },
+  'sand-land': { kind: 'burst',  freq: 320, q: 0.7, dur: 0.18, vol: 0.7 },
+  'yip':       { kind: 'seq', dur: 0.36, vol: 0.5, parts: [
+    { at: 0, kind: 'blip', wave: 'triangle', f0: 700, f1: 1100, dur: 0.1, vol: 1 },
+    { at: 0.16, kind: 'blip', wave: 'triangle', f0: 800, f1: 1300, dur: 0.12, vol: 0.9 } ] },
   // A drink at a well or an oasis's water (wilds/heat.js, once each time the
   // hero comes to it): the splash of water scooped up, then three gulps, each
   // a little lower. Positionless, quieter than a blow.

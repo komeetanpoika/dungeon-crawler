@@ -15,10 +15,12 @@ function setHTML(node, html) {
 
 // One pixel heart as inline SVG; state maps to which halves are filled.
 const HEART_PATH = 'M1 1h2v1h1V1h2v3h-1v1h-1v1h-1V5H2V4H1z'   // 7x7 blocky heart
-function heart(state) {
-  const fills = { full: ['#ef4444', '#ef4444'], half: ['#ef4444', '#3a3a44'], empty: ['#3a3a44', '#3a3a44'] }
+// A poisoned hero's hearts (systems/poison.js) are green.
+function heart(state, poison = false) {
+  const red = poison ? '#84cc16' : '#ef4444'
+  const fills = { full: [red, red], half: [red, '#3a3a44'], empty: ['#3a3a44', '#3a3a44'] }
   const [left, right] = fills[state]
-  return `<svg class="heart" data-state="${state}" viewBox="0 0 7 7" width="14" height="14">`
+  return `<svg class="heart" data-state="${state}"${poison ? ' data-poison="1"' : ''} viewBox="0 0 7 7" width="14" height="14">`
     + `<clipPath id="hl"><rect x="0" y="0" width="3.5" height="7"/></clipPath>`
     + `<path d="${HEART_PATH}" fill="${right}"/>`
     + `<path d="${HEART_PATH}" fill="${left}" clip-path="url(#hl)"/></svg>`
@@ -30,7 +32,7 @@ export function updateHUD(state) {
   const hearts = Math.ceil((player.maxHp ?? 10) / 2)
   setHTML(el('hud-hearts'), Array.from({ length: hearts }, (_, i) => {
     const hpForHeart = Math.max(0, Math.min(2, player.hp - i * 2))
-    return heart(hpForHeart === 2 ? 'full' : hpForHeart === 1 ? 'half' : 'empty')
+    return heart(hpForHeart === 2 ? 'full' : hpForHeart === 1 ? 'half' : 'empty', !!player.poison)
   }).join(''))
   // Offhand slot: what Q acts on in the active loadout. A consumable pointer
   // shows the kind and the sack count (dimmed at zero); an empty offhand shows

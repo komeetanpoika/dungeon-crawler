@@ -384,6 +384,8 @@ function drawHitEffect(ctx, x, y, camX, camY, S, t = 0) {
 // The icy tint a frozen enemy wears: desaturated and lifted, then a pale sheen
 // over the cell so the freeze reads even on an already-pale sprite.
 const FROZEN_FILTER = 'saturate(0.4) brightness(1.3)'
+// a poisoned hero (systems/poison.js) goes a sickly green
+const POISON_FILTER = 'sepia(0.8) hue-rotate(50deg) saturate(2.2)'
 
 function drawFrozenSheen(ctx, px, py, S) {
   ctx.save()
@@ -630,10 +632,12 @@ export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = 
   if (hero.rune) drawRuneGlow(ctx, hx + S / 2, hy + S / 2, S)
   if (hero.buffs) drawBuffUnder(ctx, hero, hx + S / 2, hy + S / 2, S)
   // Frozen solid, the hero takes the same icy tint and sheen as a frozen enemy.
-  const prevFilter = hero.ice ? ctx.filter : null
-  if (hero.ice) ctx.filter = FROZEN_FILTER
+  const tint = hero.ice ? FROZEN_FILTER : hero.poison ? POISON_FILTER : null
+  const prevFilter = tint ? ctx.filter : null
+  if (tint) ctx.filter = tint
   if (isFlickerVisible(hero.invulnTimer)) drawEntity(ctx, hero, hx, hy, S, sprites)
-  if (hero.ice) { ctx.filter = prevFilter; drawFrozenSheen(ctx, hx, hy, S) }
+  if (tint) ctx.filter = prevFilter
+  if (hero.ice) drawFrozenSheen(ctx, hx, hy, S)
   if (hero.buffs) drawBuffOver(ctx, hero, hx, hy, S)
   if (hero.grabbed) {
     ctx.save()

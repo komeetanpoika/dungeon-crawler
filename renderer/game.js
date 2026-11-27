@@ -46,7 +46,8 @@ import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
 import { tickStorm, calmStorm, sightHere, mapHero, mapHazed } from './wilds/storm.js'
-import { tickHeat } from './wilds/heat.js'
+import { tickHeat, besideWater } from './wilds/heat.js'
+import { tickPoison, curePoison } from './systems/poison.js'
 import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
@@ -1552,10 +1553,13 @@ function useInventoryItem(i) {
   // a potion, or anything that heals when eaten (meat, cooked meat, herring)
   if (item.kind === 'potion' || (item.kind !== 'mushroom' && Number.isFinite(item.heal))) {
     const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'potion' ? item.amount : item.heal)
-    if (healed <= 0) { think(state, 'Already full.'); return }
+    // (a poisoned hero eats or drinks for the cure even when whole: systems/poison.js)
+    const cures = !!state.player.poison
+    if (healed <= 0 && !cures) { think(state, 'Already full.'); return }
     removeItem(state.player, i)
     state.player.hp += healed
-    addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: `+${healed}`, kind: 'heal' })
+    curePoison(state.player)
+    addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: healed > 0 ? `+${healed}` : 'cured', kind: 'heal' })
     sfx(state, 'heal')
     if (inventoryOpen) closeInventory()   // see the effect land
   }
@@ -2626,6 +2630,8 @@ function update(delta) {
 
   tickArcs(state, delta)
   tickRain(player, delta)
+  // a sting's poison (systems/poison.js): its bites, and the water that washes it out
+  if (player.poison) tickPoison(state, delta, { water: !state.cave && besideWater(state.map, player.x, player.y) })
   // Advance Maunonmiekka shockwave rings
   if (state.shockwaves?.length) {
     state.shockwaves = state.shockwaves
