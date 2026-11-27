@@ -1,0 +1,16 @@
+{
+  "name": "skorpioni",
+  "rig": "scorpion",
+  "params": {
+    "scale": 0.8,
+    "shellColor": "#5a3a22",
+    "clawColor": "#8a5a2c",
+    "stingColor": "#d8902a",
+    "eyeColor": "#ffe14a"
+  },
+  "stats": { "hp": 3, "dmg": 1, "speed": 85 },
+  "behavior": { "driver": "hook", "taxon": "beast", "weapon": "claw", "sightRange": 220 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "wake": 1.5, "reach": 1.5, "stingDmg": 1, "poisonTicks": 3 }
+}

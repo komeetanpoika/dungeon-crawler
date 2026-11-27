@@ -19,10 +19,10 @@ const base = { ...defaultParams(rig.PARAM_SCHEMA), ...JSON.parse(arg('--params')
 const rows = POSES[rigId]
 if (!Array.isArray(rows)) { console.error(`${rigId}: no rows in poses.mjs`); process.exit(2) }
 
-const S = 64, CELL = Number(arg('--cell') ?? 256)
+const S = Number(arg('--s') ?? 64), CELL = Number(arg('--cell') ?? 192)
 const cols = Math.max(...rows.map(r => r.length))
 const { ctx, img } = makeSoftCanvas(cols * CELL, rows.length * CELL)
-const SAND = ['#d9b77c', '#d4b176']
+const SAND = ['#e6dabf', '#e0d3b5']
 for (let y = 0; y < img.h / 32; y++) for (let x = 0; x < img.w / 32; x++) {
   ctx.fillStyle = SAND[(x + y) % 2]
   ctx.fillRect(x * 32, y * 32, 32, 32)
