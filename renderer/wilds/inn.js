@@ -14,7 +14,8 @@
 // same cells, is a caravanserai of the desert kit (sites.js passes it as
 // `adobe`): flat roofs of mud brick over two storeys, its gateway an arch
 // rising through the upper storey over the door, the inn's sign beside it;
-// its stable is a pen under a shade of reeds, the same horses standing in it.
+// its stable is a pen under a shade of reeds, the same horses standing in it,
+// and its flower planters are clay troughs of desert plants (SAND_PLANTER).
 // The awnings along its front are laid once the piece is done (awnings).
 // The door record, and so whoever is inside, is the same either way.
 //
@@ -62,10 +63,15 @@ const PEN = {
   stall: { l: 'ow_prop_pen_l', m: 'ow_prop_pen_m', r: 'ow_prop_pen_r' },
 }
 const AWNINGS = [0, 1].map(c => ({ cloth: ['l', 'm', 'r'].map(e => `ow_prop_awning_${c}_${e}`), front: ['l', 'm', 'r'].map(e => `ow_prop_awning_${c}_front_${e}`) }))
-export const INN_SKINS = [...Object.values(STALL), ...HORSES, TROUGH, ...Object.values(PEN).flatMap(Object.values), ...AWNINGS.flatMap(a => [...a.cloth, ...a.front])]
 // what stands about the yard: the cart is the city's (PROPS.cart: horse west, cart east), so are the planters
 const CART = PROPS.cart, PLANTER = PROPS.planter
 const HAY = ['ow_prop_hay_0', 'ow_prop_hay_1']
+// Drawn by tools/make-wilds-desert-tiles.mjs: before the desert's inn a
+// clay trough with a cactus, or an agave, for each of the city's flower
+// planters (sites.js lays it for the planter, DESERT_NAMES).
+const SAND_PLANTER = ['ow_prop_planter_sand_0', 'ow_prop_planter_sand_1']
+export const INN_DESERT_NAMES = Object.fromEntries(PLANTER.map((n, i) => [n, SAND_PLANTER[i]]))
+export const INN_SKINS = [...Object.values(STALL), ...HORSES, TROUGH, ...Object.values(PEN).flatMap(Object.values), ...AWNINGS.flatMap(a => [...a.cloth, ...a.front]), ...SAND_PLANTER]
 
 export const INN_PLANS = [[
   // the house north of its yard, the stable east of the house
@@ -201,7 +207,7 @@ export function makeInnStamps({ t, put, hold, door, rng, adobe = null }) {
 // poles, before the three columns at that end, or before the two nearest the
 // doorstep where three will not go (its west end and its east end then meet).
 // An awning is laid only whole, where each of its cells is inside the piece,
-// off the paths, not `spot` and held by nothing (but the planter beside the
+// off the paths, not `spot` and held by nothing (but the trough beside the
 // doorstep, which it takes over), and each parts no walkable ground (`parts`,
 // sites.js); where none can be, what stood there stays. `held` and `hold`
 // are features.js's. No draw of the piece's rng is spent.
@@ -209,7 +215,7 @@ const AWNING_WIDTHS = [3, 2]
 export function awnings(t, h, { held, hold, parts, spot }) {
   const { x: X, y: Y } = h.door, A = AWNINGS[h.cloth]
   for (const side of [-1, 1]) {
-    const planter = ({ x, y }) => x === X + 2 * side && y === Y + 1 && PLANTER.includes(t.propAt(x, y))
+    const planter = ({ x, y }) => x === X + 2 * side && y === Y + 1 && SAND_PLANTER.includes(t.propAt(x, y))
     const fits = c => t.inside(c.x, c.y) && !t.onPath(c.x, c.y) && !(c.x === spot.x && c.y === spot.y) && (planter(c) || (t.free(c.x, c.y) && !held(c.x, c.y)))
     for (const w of AWNING_WIDTHS) {
       const xs = Array.from({ length: w }, (_, i) => side < 0 ? X - 1 - w + i : X + 2 + i)

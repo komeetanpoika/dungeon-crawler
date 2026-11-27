@@ -21,10 +21,12 @@ import { TILE } from '../systems/entities.js'
 
 const STRUCTURE = ['ow_city_', 'ow_roof_', 'ow_house_', 'ow_castle_parapet_']
 const NOT_STRUCTURE = ['ow_city_pave_', 'ow_city_stall_']
+// the grey brick, and its sandstone twin a desert ruin stands in (sites.js DESERT_NAMES)
+const BRICKS = ['ow_brick', 'ow_brick_sand']
 const GATES = ['ow_city_gate_', 'ow_city_castle_gate']
 const starts = (name, list) => list.some(p => name.startsWith(p))
 
-export const isStructure = name => !!name && (name === 'ow_brick' || (starts(name, STRUCTURE) && !starts(name, NOT_STRUCTURE)))
+export const isStructure = name => !!name && (BRICKS.includes(name) || (starts(name, STRUCTURE) && !starts(name, NOT_STRUCTURE)))
 export const isGate = name => !!name && starts(name, GATES)
 // A cell opened by this pass: walked under, and not a gate's arch (which was
 // always a way). Where people should not stand or be sent, ask this.

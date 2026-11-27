@@ -371,10 +371,11 @@ test('a village is lived in: houses, a well, a fenced field and things lying abo
     const safe = p.doors.filter(d => d.tier === 'safe')
     assert.ok(safe.length >= 4 && safe.length <= 6, `${at}: ${safe.length} houses`)
     assert.ok(new Set(safe.map(d => houseAt(p, d).w)).size >= 2, `${at}: every house the same width`)
-    assert.equal(around(p, p.main, 2, s => s === 'ow_well'), 1, `${at}: no well`)
-    // (a village of the desert kit walls its date garden in mud brick and grows young palms in it; a green one never does)
+    // (a village of the desert kit walls its date garden in mud brick and grows young palms in it,
+    // and its well is of sandstone; a green one never does either)
     const adobe = safe.every(d => d.look.wall === 'adobe')
     assert.ok(adobe || safe.every(d => d.look.wall !== 'adobe'), `${at}: a village of two kits`)
+    assert.equal(around(p, p.main, 2, s => s === (adobe ? 'ow_well_sand' : 'ow_well')), 1, `${at}: no well`)
     assert.ok(around(p, p.main, 14, s => s.startsWith(adobe ? 'ow_prop_wall_sand' : 'ow_fence_')) >= 8, `${at}: no fence`)
     assert.ok(around(p, p.main, 14, s => s.startsWith(adobe ? 'ow_deco_sprout_' : 'ow_deco_crop_')) >= 4, `${at}: no crops`)
     assert.ok(around(p, p.main, 14, s => s.startsWith('ow_prop_')) >= 8, `${at}: nothing lying about`)

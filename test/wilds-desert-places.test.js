@@ -18,12 +18,16 @@ import { generatePiece, cellOf } from '../renderer/wilds/piece.js'
 import { dressDesertLandmark, mainKind } from '../renderer/wilds/features.js'
 import { setDesertDress } from '../renderer/wilds/desert-art.js'
 import { isDesert, BEACON_PREFIX } from '../renderer/wilds/desert.js'
-import { PIECE, pieceBiome } from '../renderer/wilds/layout.js'
+import { PIECE, pieceBiome, villagesNear } from '../renderer/wilds/layout.js'
 import { pieceClass } from '../renderer/wilds/roads.js'
+import { taleOf } from '../renderer/wilds/tales.js'
 import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { isWaterSkin } from '../renderer/terrain/lib.js'
-import { nearCool } from '../renderer/wilds/heat.js'
+import { nearCool, tickHeat, HEAT } from '../renderer/wilds/heat.js'
+import { makeSfx } from '../renderer/systems/sfx.js'
+import { makeFeedback } from '../renderer/systems/feedback.js'
+import { DAY_LENGTH } from '../renderer/data/weather.js'
 import { isStructure, setOpenTops } from '../renderer/wilds/over.js'
 import { classOf, CLASS } from '../renderer/wilds/map.js'
 import { houseSpec } from '../renderer/interior/versions.js'
@@ -55,7 +59,7 @@ function places() {
   }
   return sample
 }
-const plainOf = s => s.plain ??= without(() => generatePiece(s.seed, s.wx, s.wy, s.deal ?? 0))
+const plainOf = s => s.plain ??= without(() => generatePiece(s.seed, s.wx, s.wy, s.deal ?? 0, null, s.tale ?? null))
 
 // the cells within Chebyshev distance r of (cx, cy)
 const around = (p, cx, cy, r) => {
@@ -623,5 +627,186 @@ test("the wayside's new tiles exist, and behave by their names", () => {
   for (const n of house) {
     assert.equal(isStructure(n), true, `${n} is not walked behind`)
     assert.equal(classOf({ tile: TILE.WALL, skin: 'ow_sand_0', overlay: n }), CLASS.building, `${n} is not a building on the map`)
+  }
+})
+
+// ---- the desert's names on its places' cells ---------------------------------------------
+// A desert place lays the desert's own name where a green one lays a forest
+// prop or grey stone (sites.js DESERT_NAMES): the same cell, blocked or
+// walked on as before, seen over or not as before, walked behind or not as
+// before, on the map in the same colour; only its name, and so its picture,
+// is the desert's. A desert village's sheep fold (the fold tale) is walled in
+// mud brick as its date garden is.
+const SWAPS = {
+  ow_prop_woodpile: 'ow_prop_amphora',
+  ow_prop_stump_0: 'ow_prop_pots_0', ow_prop_stump_1: 'ow_prop_pots_1', ow_prop_stump_axe: 'ow_prop_pots_2',
+  ow_prop_log: 'ow_prop_rug_roll',
+  ow_prop_city_planter_0: 'ow_prop_planter_sand_0', ow_prop_city_planter_1: 'ow_prop_planter_sand_1',
+  ow_well_top: 'ow_well_sand_top', ow_well: 'ow_well_sand',
+  ow_brick: 'ow_brick_sand',
+  ow_castle_parapet_l: 'ow_castle_parapet_sand_l', ow_castle_parapet_m: 'ow_castle_parapet_sand_m', ow_castle_parapet_r: 'ow_castle_parapet_sand_r',
+  ow_roof_gray_l: 'ow_roof_gray_sand_l', ow_roof_gray_m: 'ow_roof_gray_sand_m', ow_roof_gray_r: 'ow_roof_gray_sand_r',
+  ow_roof_slate_l: 'ow_roof_slate_sand_l', ow_roof_slate_m: 'ow_roof_slate_sand_m', ow_roof_slate_r: 'ow_roof_slate_sand_r',
+  ow_house_wall_stone_l: 'ow_house_wall_stone_sand_l', ow_house_wall_stone_r: 'ow_house_wall_stone_sand_r',
+  ow_house_arch_stone: 'ow_house_arch_stone_sand',
+}
+const OLD_OF = Object.fromEntries(Object.entries(SWAPS).map(([o, n]) => [n, o]))
+const isOld = n => typeof n === 'string' && (n in SWAPS || n.startsWith('ow_fence_'))
+
+// The sample: the desert villages within DESERT_VILLAGE_REACH pieces of home
+// on seeds 7, 42 and 1 (each built for its own tale), the desert camps, ruins
+// and watchtowers of places() (seeds 7 and 1) and MORE_42 more of each of
+// seed 42, and the wayside places of wayside() with the four smaller inns.
+const DESERT_VILLAGE_REACH = 10
+const MORE_42 = 5
+let named = null
+function desertNamed() {
+  if (named) return named
+  const villages = []
+  for (const seed of WAYSIDE_SEEDS) for (const v of villagesNear(seed, 0, 0, DESERT_VILLAGE_REACH)) {
+    if (v.wx === 0 && v.wy === 0) continue
+    const tale = taleOf(seed, v), p = generatePiece(seed, v.wx, v.wy, 0, null, tale)
+    if (!isDesert(seed, v.wx * PIECE + p.village.x, v.wy * PIECE + p.village.y)) continue
+    villages.push({ seed, wx: v.wx, wy: v.wy, tale, p, at: `seed ${seed} village ${v.wx},${v.wy} (${tale})`, plain: null })
+  }
+  const more = { camp: [], ruin: [], tower: [] }
+  for (let r = 1; r <= REACH && Object.values(more).some(l => l.length < MORE_42); r++) for (let wy = -r; wy <= r; wy++) for (let wx = -r; wx <= r; wx++) {
+    if (Math.max(Math.abs(wx), Math.abs(wy)) !== r || pieceBiome(42, wx, wy) !== 'desert') continue
+    const kind = mainKind(42, wx, wy, 0)
+    if (!more[kind] || more[kind].length >= MORE_42) continue
+    const p = generatePiece(42, wx, wy, 0)
+    if (p.main.kind === kind && isDesert(42, wx * PIECE + p.main.x, wy * PIECE + p.main.y)) more[kind].push({ seed: 42, wx, wy, p, at: `seed 42 ${kind} ${wx},${wy}`, plain: null })
+  }
+  const W = wayside()
+  const small = SMALL_INNS.map(([seed, wx, wy, deal]) => ({ seed, wx, wy, deal, p: generatePiece(seed, wx, wy, deal), at: `seed ${seed} small inn ${wx},${wy} deal ${deal}`, plain: null }))
+  named = {
+    village: villages, camp: [...places().camp, ...more.camp], ruin: [...places().ruin, ...more.ruin], tower: [...places().tower, ...more.tower],
+    rest: W.rest, inn: [...W.inn, ...small], well: W.well,
+  }
+  return named
+}
+// every cell of a piece but its huts' (a hut out on the piece is no desert
+// place: its house and its woodpile stay green)
+function placeCells(p) {
+  const huts = p.small.filter(s => s.kind === 'hut')
+  const out = []
+  for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) {
+    if (huts.some(h => Math.max(Math.abs(h.x - x), Math.abs(h.y - y)) <= 6)) continue
+    out.push({ x, y, c: p.cells[y][x] })
+  }
+  return out
+}
+
+test('desert places hold no forest props', () => {
+  const S = desertNamed()
+  for (const [kind, list] of Object.entries(S)) {
+    assert.ok(list.length >= 10, `only ${list.length} desert ${kind}s`)
+    for (const s of list) for (const { x, y, c } of placeCells(s.p))
+      for (const n of [c.overlay, c.deco]) assert.ok(!isOld(n), `${s.at}: ${n} at ${x},${y}`)
+  }
+  assert.ok(S.village.some(s => s.tale === 'fold'), 'no desert village built for the fold tale')
+})
+
+const sameCell = (a, b) => a.tile === b.tile && !!a.over === !!b.over && !!a.losClear === !!b.losClear && !!a.losSoft === !!b.losSoft && !!a.losTall === !!b.losTall && !!a.losBeacon === !!b.losBeacon
+const cellText = c => `${c.overlay}/${c.deco ?? ''} tile ${c.tile}${c.over ? ' over' : ''}${c.losClear ? ' clear' : ''}${c.losSoft ? ' soft' : ''}${c.losTall ? ' tall' : ''}${c.losBeacon ? ' beacon' : ''}`
+test('a swap changes the name and nothing else', () => {
+  const swapped = Object.fromEntries(Object.keys(SWAPS).map(o => [o, 0])), seen = new Set()
+  let pen = 0
+  for (const [kind, list] of Object.entries(desertNamed())) for (const s of list) {
+    const plain = plainOf(s)
+    for (const { x, y, c } of placeCells(s.p)) {
+      const was = plain.cells[y][x]
+      for (const layer of ['overlay', 'deco']) {
+        if (was[layer] in SWAPS) seen.add(was[layer])
+        const old = OLD_OF[c[layer]]
+        if (!old) continue
+        assert.equal(was[layer], old, `${s.at}: ${c[layer]} at ${x},${y} was ${was[layer]}`)
+        assert.ok(sameCell(c, was), `${s.at}: at ${x},${y} ${cellText(c)} against ${cellText(was)}`)
+        swapped[old]++
+      }
+    }
+    // the fold's pen, south-east of the square: mud brick where the fence was, on the same cells
+    if (kind === 'village' && s.tale === 'fold') {
+      const { x: cx, y: cy } = s.p.village
+      for (let y = cy + 8; y <= cy + 11; y++) for (let x = cx + 7; x <= cx + 11; x++) {
+        const c = s.p.cells[y][x], was = plain.cells[y][x], mud = (c.overlay ?? '').startsWith('ow_prop_wall_sand')
+        assert.equal(mud, (was.overlay ?? '').startsWith('ow_fence_'), `${s.at}: the pen at ${x},${y} is ${c.overlay}, was ${was.overlay}`)
+        if (!mud) continue
+        assert.ok(sameCell(c, was), `${s.at}: the pen at ${x},${y} ${cellText(c)} against ${cellText(was)}`)
+        pen++
+      }
+    }
+  }
+  for (const old of seen) assert.ok(swapped[old] > 0, `${old} occurs and is never swapped: ${JSON.stringify(swapped)}`)
+  // (every row of the table occurs in the sample but the plain stump, which no
+  // desert place lays today: only a hut and the elk's and the pike's places do)
+  const rows = Object.keys(SWAPS).filter(o => o !== 'ow_prop_stump_0')
+  assert.equal([...seen].sort().join(' '), rows.sort().join(' '), `rows that never occur: ${rows.filter(o => !seen.has(o))}`)
+  assert.ok(pen >= 10, `only ${pen} cells of mud-brick pen`)
+})
+
+// (a house of the desert kit says so in its door's look: a desert village's
+// houses, the walled well's keeper's house; every other field is what it was)
+test('the records are the same', () => {
+  let n = 0
+  for (const [kind, list] of Object.entries(desertNamed())) for (const s of list) {
+    const on = recordsOf(s.p), off = recordsOf(plainOf(s))
+    on.doors = on.doors.map((d, i) => {
+      if (d.look?.wall !== 'adobe') return d
+      assert.ok((kind === 'village' || kind === 'well') && d.tier === 'safe' && ['stone', 'wood'].includes(off.doors[i]?.look?.wall), `${s.at}: an adobe door at ${d.x},${d.y}`)
+      return { ...d, look: { ...d.look, wall: off.doors[i].look.wall } }
+    })
+    for (const field of Object.keys(on)) {
+      const a = JSON.stringify(on[field]), b = JSON.stringify(off[field])
+      assert.ok(a === b, `${s.at}: ${field} differs: ${firstDiff(a, b)}`)
+    }
+    n++
+  }
+  assert.ok(n >= 100, `only ${n} pieces compared`)
+})
+
+test('the desert well cools and gives a drink', () => {
+  let n = 0
+  for (const s of [...desertNamed().village, ...desertNamed().well]) {
+    const at = placeCells(s.p).find(({ c }) => c.overlay === 'ow_well_sand')
+    assert.ok(at, `${s.at}: no desert well`)
+    assert.equal(s.p.cells[at.y - 1][at.x].overlay, 'ow_well_sand_top', `${s.at}: the well at ${at.x},${at.y} has no top`)
+    // three cells off is in its cool
+    for (const [dx, dy] of [[3, 0], [-3, 0], [0, 3]]) assert.ok(nearCool(s.p.cells, at.x + dx, at.y + dy), `${s.at}: ${at.x + dx},${at.y + dy} is not cooled by the well`)
+    // and beside it, a drink
+    const beside = [[1, 0], [-1, 0], [0, 1], [1, 1], [-1, 1]].map(([dx, dy]) => ({ x: at.x + dx, y: at.y + dy })).find(q => s.p.cells[q.y][q.x].tile === TILE.FLOOR)
+    assert.ok(beside, `${s.at}: nowhere to stand beside the well`)
+    const state = { map: s.p.cells, player: { x: beside.x, y: beside.y, px: beside.x * 32 + 16, py: beside.y * 32 + 16 }, entities: [], sfx: makeSfx(), feedback: makeFeedback() }
+    const world = { seed: s.seed, day: 0, playtime: 0 }
+    for (let t = 0; t < HEAT.drinkAfter + 0.2; t += 0.1) { world.playtime += 0.1; tickHeat(state, world, { clock: 0.5 * DAY_LENGTH, delta: 0.1, desert: true }) }
+    assert.ok(state.sfx.cues.some(c => c.name === 'drink'), `${s.at}: no drink beside the well at ${at.x},${at.y}`)
+    n++
+  }
+  assert.ok(n >= 20, `only ${n} desert wells`)
+})
+
+test('desert ruins are walked behind as before', () => {
+  let n = 0, tops = 0
+  const over = p => p.cells.flatMap((row, y) => row.flatMap((c, x) => c.over ? [`${x},${y}`] : [])).join(' ')
+  for (const s of [...desertNamed().ruin, ...desertNamed().tower]) {
+    assert.equal(over(s.p), over(plainOf(s)), `${s.at}: walked behind elsewhere`)
+    tops += s.p.cells.flat().filter(c => c.over && /^ow_(brick_sand|castle_parapet_sand_|roof_gray_sand_)/.test(c.overlay ?? '')).length
+    n++
+  }
+  assert.ok(n >= 20 && tops >= 3 * n, `${n} ruins and towers, ${tops} sandstone cells walked behind`)
+})
+
+test("the desert's names are new tiles that behave as the old", () => {
+  const names = new Set(WILDS_SKINS)
+  for (const [old, n] of Object.entries(SWAPS)) {
+    assert.ok(names.has(n), `${n} is not in WILDS_SKINS`)
+    assert.ok(fs.existsSync(path.join(TILES, n + '.png')), `no tile art for ${n}`)
+    assert.ok(!n.endsWith('_d'), `${n} ends in _d`)
+    for (const tile of [TILE.WALL, TILE.FLOOR]) {
+      const cell = name => ({ tile, skin: 'ow_sand_0', overlay: name })
+      assert.equal(classOf(cell(n)), classOf(cell(old)), `${n} is on the map as class ${classOf(cell(n))}, ${old} as ${classOf(cell(old))}`)
+    }
+    assert.equal(isStructure(n), isStructure(old), `${n} is ${isStructure(n) ? '' : 'not '}walked behind, ${old} is${isStructure(old) ? '' : ' not'}`)
+    assert.ok(sameCell(cellOf('ow_sand_0', n, false), cellOf('ow_sand_0', old, false)), `${n} is not seen through as ${old} is`)
   }
 })

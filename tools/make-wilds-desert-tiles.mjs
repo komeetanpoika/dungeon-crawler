@@ -84,6 +84,8 @@
 // desert with its dunes laid by layDunes, and what stands on the sand, over
 // the sand.
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { inflateSync } from 'node:zlib'
 import { writePng } from './png-write.mjs'
 import { readPng } from './png-read.mjs'
 import { EDGE_SHAPES } from '../renderer/terrain/edges.js'
@@ -93,7 +95,7 @@ import {
   PAVE_VARIANTS, paveSkin, paveEdgeSkin,
 } from '../renderer/wilds/desert-art.js'
 import { PALM, PILLAR, ARCH, BONES, REEDS } from '../renderer/wilds/desert.js'
-import { SAND_MOUTH } from '../renderer/wilds/sites.js'
+import { SAND_MOUTH, DESERT_NAMES } from '../renderer/wilds/sites.js'
 
 const T = 16
 const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
@@ -2167,6 +2169,271 @@ AWNING_CLOTH.forEach((cloth, k) => {
   }
 }
 console.log(`wrote ${waysideTiles.length} tiles of the wayside places in the desert`)
+
+// ---- the desert's names for what a green place lays (sites.js DESERT_NAMES, inn.js) --------
+// What a desert village, camp, wayside place and walled well lay where a
+// green one lays a forest prop, and what a desert ruin and watchtower stand
+// in where a green one stands in grey stone; each drawn for the name
+// DESERT_NAMES gives it, so the two cannot drift apart:
+//   ow_prop_amphora              three tall clay jars in a row (for the woodpile)
+//   ow_prop_pots_0, _1, _2       clay pots: a squat one, a jug with a small pot
+//                                before it, and a cracked one with a shard
+//                                beside it (for the stumps and the chopping block)
+//   ow_prop_rug_roll             a striped rug rolled up and lying on the sand,
+//                                its rolled end to the east (for the log)
+//   ow_prop_planter_sand_0, _1   before the caravanserai: a clay trough of small
+//                                cacti, a clay pot with an agave (for the city's
+//                                flower planters)
+//   ow_well_sand_top, _sand      a well of sandstone blocks, its water in its
+//                                round rim, a pole beside it with an arm
+//                                over it, the rope and the bucket
+//   ow_brick_sand, ow_castle_parapet_sand_<l|m|r>, ow_roof_gray_sand_<l|m|r>,
+//   ow_roof_slate_sand_<l|m|r>, ow_house_wall_stone_sand_<l|r>, ow_house_arch_stone_sand
+//                                the ruined keep's masonry: Kenney's grey tiles,
+//                                read and recoloured tone for tone into the
+//                                outcrops' sandstone, so the same courses,
+//                                crenels and arch stand in warm stone (older than
+//                                the villages' mud brick, and not of it)
+// The clay is the broken pots' (POT), the stone the outcrops' (STONE), the wood
+// the desert kit's (WOOD), outlined in Tiny Town's ink (the well, the masonry),
+// a dark clay (the pots) or the striped tent's dark brown (the rug); lit from
+// the upper left, their shadows on the sand to the lower right.
+const namedTiles = []
+const keepNamed = (old, g, opts) => { const name = DESERT_NAMES[old]; if (!name) throw new Error(`no desert name for ${old}`); keep(name, g, opts); namedTiles.push(name) }
+
+// A clay vessel from its rows ([y, x0, x1], the clay across row y, top to
+// bottom): its first row its mouth, dark inside (unless `shut`), each row lit
+// at its west end and in shade at its east one, a row in `bands` painted
+// round in the shade's tone; outlined (CLAY_EDGE, between the clay's two
+// darkest tones) on the pixels round it, over whatever was drawn before, so
+// a vessel drawn later stands in front.
+const CLAY_EDGE = '#5a2810'
+function vessel(g, rows, { shut = false, bands = [] } = {}) {
+  const own = new Set()
+  for (const [y, x0, x1] of rows) for (let x = x0; x <= x1; x++) own.add(y * T + x)
+  rows.forEach(([y, x0, x1], i) => {
+    for (let x = x0; x <= x1; x++) g[y][x] = i === 0 && !shut ? POT.D : x === x0 ? POT.l : x === x1 ? POT.s : bands.includes(y) ? POT.s : POT.b
+  })
+  for (const k of own) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const x = k % T + dx, y = Math.floor(k / T) + dy
+    if (x >= 0 && y >= 0 && x < T && y < T && !own.has(y * T + x)) g[y][x] = CLAY_EDGE
+  }
+}
+// a shadow on the sand: the row below a thing's foot, and the column east of it
+const castShadow = (g, foot, from, to, east = null) => {
+  const s = footShadow(g, foot, from, to)
+  if (east) for (let y = east[1]; y <= east[2]; y++) if (!g[y][east[0]]) s[y][east[0]] = 1
+  return s
+}
+
+// the jars: one in front, taller, a painted band round its belly; one either side behind it
+{
+  const g = grid()
+  vessel(g, [[5, 2, 4], [6, 2, 4], [7, 3, 3], [8, 2, 4], [9, 2, 4], [10, 2, 4], [11, 2, 4], [12, 3, 3]])
+  vessel(g, [[6, 11, 13], [7, 11, 13], [8, 12, 12], [9, 11, 13], [10, 11, 13], [11, 11, 13], [12, 11, 13], [13, 12, 12]])
+  vessel(g, [[2, 6, 9], [3, 6, 9], [4, 7, 8], [5, 7, 8], [6, 6, 9], [7, 5, 10], [8, 5, 10], [9, 5, 10], [10, 5, 10], [11, 6, 9], [12, 7, 8], [13, 7, 8]], { bands: [8] })
+  keepNamed('ow_prop_woodpile', g, { shadow: castShadow(g, 15, 5, 14, [15, 8, 14]) })
+}
+// a squat pot with a wide mouth
+{
+  const g = grid()
+  vessel(g, [[6, 5, 9], [7, 4, 10], [8, 3, 11], [9, 3, 11], [10, 3, 11], [11, 4, 10], [12, 5, 9]], { bands: [9] })
+  keepNamed('ow_prop_stump_0', g, { shadow: castShadow(g, 14, 5, 13, [13, 8, 12]) })
+}
+// a jug, a small pot before it
+{
+  const g = grid()
+  vessel(g, [[4, 4, 6], [5, 4, 6], [6, 5, 5], [7, 4, 6], [8, 3, 7], [9, 3, 7], [10, 3, 7], [11, 3, 7], [12, 4, 6]], { bands: [9] })
+  vessel(g, [[8, 9, 11], [9, 8, 12], [10, 8, 12], [11, 8, 12], [12, 9, 11]])
+  keepNamed('ow_prop_stump_1', g, { shadow: castShadow(g, 14, 5, 14, [14, 9, 12]) })
+}
+// a cracked pot, its rim broken on the east, a shard of it lying beside it
+{
+  const g = grid()
+  vessel(g, [[6, 5, 8], [7, 4, 8], [8, 3, 10], [9, 3, 10], [10, 3, 10], [11, 4, 9], [12, 5, 8]])
+  for (const [x, y] of [[9, 8], [8, 9], [9, 10]]) g[y][x] = POT.D
+  vessel(g, [[12, 12, 13]], { shut: true })
+  keepNamed('ow_prop_stump_axe', g, { shadow: castShadow(g, 14, 5, 14, [14, 10, 12]) })
+}
+// the rug: rolled up and lying east and west, striped across its length,
+// fringed at its west end, its rolled end to the east showing the roll
+{
+  const g = grid()
+  const RUG = { r: { lit: '#c46249', base: '#a8432f', shade: '#843325' }, c: { lit: '#faf3e2', base: '#efe3c5', shade: '#d4c3a0' }, b: { lit: '#5f7fbb', base: '#41609a', shade: '#2f4877' } }
+  const EDGE = '#40261a'
+  const stripe = x => 'rrcrrbrr'[x - 3]
+  for (let y = 6; y <= 10; y++) for (let x = 3; x <= 10; x++) g[y][x] = RUG[stripe(x)][y === 6 ? 'lit' : y >= 9 ? 'shade' : 'base']
+  // the rolled end: the roll's turns, round
+  detail(g, exact('rug end', [
+    '................', '................', '................', '................', '................', '................',
+    '...........rq...',
+    '..........rcrq..',
+    '..........qbcq..',
+    '..........rqrq..',
+    '...........qq...',
+    '................', '................', '................', '................', '................',
+  ]), { r: RUG.r.base, q: RUG.r.shade, c: RUG.c.shade, b: RUG.b.shade })
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    if (g[y][x]) continue
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => g[y + dy]?.[x + dx] && g[y + dy][x + dx] !== EDGE)) g[y][x] = EDGE
+  }
+  // its fringe, beyond its west end
+  for (const y of [7, 9]) g[y][1] = RUG.c.base
+  keepNamed('ow_prop_log', g, { shadow: castShadow(g, 12, 4, 14, [15, 8, 11]) })
+}
+// the troughs before the caravanserai: a long clay trough of small cacti,
+// and a pot with an agave (its leaves blue-green, spiked, from its middle)
+const SOIL = '#6b4a2f'
+{
+  const g = grid()
+  vessel(g, [[10, 2, 13], [11, 2, 13], [12, 2, 13], [13, 3, 12]])
+  // the soil the cacti grow from, in the trough's mouth
+  for (let x = 2; x <= 13; x++) g[10][x] = SOIL
+  shadeShape(g, exact('trough cacti', [
+    '................', '................', '................',
+    '.....#..........',
+    '....###.........',
+    '....###.#.......',
+    '.##.###.#..##...',
+    '.##.#####.####..',
+    '..#####...####..',
+    '....###...####..',
+    '....###...####..',
+    '................', '................', '................', '................', '................',
+  ]), CACTUS)
+  detail(g, exact('trough bloom', [
+    '................', '................', '................',
+    '.....p..........',
+    '................', '................', '................', '................', '................', '................',
+    '................', '................', '................', '................', '................', '................',
+  ]), BLOOM)
+  keepNamed('ow_prop_city_planter_0', g, { shadow: castShadow(g, 15, 4, 14, [14, 11, 14]) })
+}
+{
+  const g = grid()
+  const AGAVE = { l: '#9cc4ad', b: '#6f9c88', s: '#4f7568' }
+  vessel(g, [[10, 5, 10], [11, 4, 11], [12, 4, 11], [13, 5, 10]], { bands: [12] })
+  for (let x = 5; x <= 10; x++) g[10][x] = SOIL
+  detail(g, exact('agave', [
+    '................',
+    '................',
+    '.......l........',
+    '...l...lb...s...',
+    '....l..lb..s....',
+    '....lb.lb.bs....',
+    '..l..lblbbs..s..',
+    '...lllbbbbsss...',
+    '....llbbbbss....',
+    '.....lbbbbs.....',
+    '......lbbs......',
+    '................', '................', '................', '................', '................',
+  ]), AGAVE)
+  keepNamed('ow_prop_city_planter_1', g, { shadow: castShadow(g, 15, 5, 13, [13, 11, 14]) })
+}
+// the well: a pole with an arm over the well, the rope and the bucket, two
+// cells tall over the round rim of sandstone blocks and its water
+{
+  const STONED = { a: STONE.rim, t: STONE.top, b: STONE.body, f: STONE.face, n: STONE.band, s: STONE.shade }
+  const PAL = { o: INK, L: WOOD.light, W: WOOD.base, S: WOOD.shade, r: '#8a6238', i: '#5b5560', I: '#8a8494', w: '#2a6a96', g: '#7fc4e2', ...STONED }
+  // (the pole stands behind the rim's west side; the far inner wall of the shaft is in shade over the water)
+  const rows = [
+    '................',
+    '.oooooooooooo...',
+    '.oLLLLLLLLLLo...',
+    '.oLSSSSSSSSSo...',
+    '.oLSooooooroo...',
+    '.oLSo.....r.....',
+    '.oLSo.....r.....',
+    '.oLSo.....r.....',
+    '.oLSo....iii....',
+    '.oLSo...i...i...',
+    '.oLSo..ooooooo..',
+    '.oLSo..oLWWWSo..',
+    '.oLSo..oIiiiio..',
+    '.oLSo..oLWWWSo..',
+    '.oLSo...ooooo...',
+    '.oLSo...........',
+    // the well's cell
+    '.oLSo...........',
+    '.oLSo...........',
+    '.oLoooooooooo...',
+    '..oaaaaaaaaaao..',
+    '.oaatnnnnnnbbso.',
+    '.oatwwgwwwwwbso.',
+    '.oaatwwwwwwbbso.',
+    '.oaattttttttbso.',
+    '.onnnnnnnnnnnso.',
+    '.oabbbnbbbbnfso.',
+    '.oabbbnbbbbnfso.',
+    '.onnnnnnnnnnnso.',
+    '.oabnbbbbnbbfso.',
+    '..oooooooooooo..',
+    '................',
+    '................',
+  ]
+  const pic = picture(1, 2)
+  rows.forEach((r, y) => { if (r.length !== T) throw new Error(`the well: row ${y} is ${r.length} wide`); [...r].forEach((ch, x) => { if (ch !== '.') pic.px[y][x] = PAL[ch] }) })
+  // its shadow on the sand, below its foot and east of its rim
+  for (let x = 3; x <= 15; x++) pic.sh[30][x] = 1
+  for (let y = 21; y <= 29; y++) pic.sh[y][15] = 1
+  pic.sh[29][14] = 1
+  const half = r => { const g = grid(), sh = grid(); for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { g[y][x] = pic.px[r * T + y][x]; sh[y][x] = pic.sh[r * T + y][x] } return { g, sh } }
+  const top = half(0), foot = half(1)
+  keepNamed('ow_well_top', top.g, { joins: 'S', shadow: top.sh })
+  keepNamed('ow_well', foot.g, { joins: 'N', shadow: foot.sh })
+}
+
+// The ruined keep's masonry. Kenney's tiles are indexed PNGs of two and four
+// bits a pixel (tools/png-read.mjs reads only eight on purpose), so they are
+// read here: each pixel as '#rrggbb', null where it is not drawn.
+function readIndexed(name) {
+  const buf = readFileSync(tilePath(name))
+  let pos = 8, width = 0, depth = 0, type = 0, interlace = 0, palette = null, trns = null
+  const idat = []
+  while (pos < buf.length) {
+    const len = buf.readUInt32BE(pos), kind = buf.toString('ascii', pos + 4, pos + 8), data = buf.subarray(pos + 8, pos + 8 + len)
+    pos += 12 + len
+    if (kind === 'IHDR') { width = data.readUInt32BE(0); depth = data[8]; type = data[9]; interlace = data[12] }
+    else if (kind === 'PLTE') palette = data
+    else if (kind === 'tRNS') trns = data
+    else if (kind === 'IDAT') idat.push(data)
+  }
+  if (type !== 3 || width !== T || interlace || ![1, 2, 4, 8].includes(depth)) throw new Error(`${name}: not an indexed ${T}-wide tile`)
+  const stride = Math.ceil(T * depth / 8), raw = inflateSync(Buffer.concat(idat)), g = grid()
+  let prev = new Uint8Array(stride)
+  for (let y = 0; y < T; y++) {
+    const filter = raw[y * (stride + 1)], line = Uint8Array.from(raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)))
+    // the row's filter undone, a byte a step (under eight bits a pixel the filter steps by one byte)
+    for (let i = 0; i < stride; i++) {
+      const a = i ? line[i - 1] : 0, b = prev[i], c = i ? prev[i - 1] : 0
+      const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c)
+      line[i] += [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][filter]
+    }
+    for (let x = 0; x < T; x++) {
+      const bit = x * depth, k = (line[bit >> 3] >> (8 - depth - (bit & 7))) & ((1 << depth) - 1)
+      const alpha = trns && k < trns.length ? trns[k] : 255
+      if (alpha === 0) continue
+      if (alpha !== 255) throw new Error(`${name}: a half-seen pixel at ${x},${y}`)
+      g[y][x] = '#' + [...palette.subarray(k * 3, k * 3 + 3)].map(v => v.toString(16).padStart(2, '0')).join('')
+    }
+    prev = line
+  }
+  return g
+}
+// Kenney's grey, tone for tone, in the outcrops' sandstone; the ink stays.
+const SANDSTONE = { '#c0cbdc': STONE.rim, '#8b9bb4': STONE.body, '#5a6988': STONE.band, '#52607c': STONE.shade, [INK]: INK }
+for (const grey of ['ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r',
+  'ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r', 'ow_house_wall_stone_l', 'ow_house_wall_stone_r', 'ow_house_arch_stone']) {
+  const g = readIndexed(grey).map((row, y) => row.map((c, x) => {
+    if (!c) return null
+    if (!SANDSTONE[c]) throw new Error(`${grey} has a colour ${c} at ${x},${y} the sandstone does not know`)
+    return SANDSTONE[c]
+  }))
+  const name = DESERT_NAMES[grey]
+  save(name, gridRgba(g)); drawn.push(name); namedTiles.push(name)
+}
+if (namedTiles.length !== Object.keys(DESERT_NAMES).length) throw new Error(`drew ${namedTiles.length} of the ${Object.keys(DESERT_NAMES).length} desert names`)
+console.log(`wrote ${namedTiles.length} tiles of the desert's names for a green place's things`)
 
 // ---- the contact sheet ------------------------------------------------------------
 const sheetAt = process.argv.indexOf('--sheet')

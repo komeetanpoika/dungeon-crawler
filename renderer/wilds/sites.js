@@ -18,7 +18,7 @@
 // a stepped parapet over the door where the gable would be.
 // The crossroads inn and its stable are Kalevanlinna's (inn.js), and in the
 // desert a caravanserai of the desert kit with a pen for its horses.
-import { INN_PLANS, INN_PAD, INN_SHIFT, INN_SKINS, innFootprint, innMirrored, makeInnStamps, awnings } from './inn.js'
+import { INN_PLANS, INN_PAD, INN_SHIFT, INN_SKINS, INN_DESERT_NAMES, innFootprint, innMirrored, makeInnStamps, awnings } from './inn.js'
 import { PAVE_SKINS, PAVE_VARIANTS, paveSkin, paveEdgeSkin, isPaveSkin } from './desert-art.js'
 
 const ROOF = {
@@ -116,6 +116,33 @@ const STREWN = { rubble: { least: 2, more: 2 }, pots: { least: 2, more: 3 }, rea
 const STELE = ['ow_prop_stele_top', 'ow_prop_stele']
 // How far from a rest's fire its palm may stand (the nearer ring first).
 const FIRE_PALM = [1, 2]
+// The desert's own names for what a green place lays (tools/make-wilds-desert-tiles.mjs
+// draws them), laid on the same cells by the same draws: a desert village,
+// a desert camp, a desert wayside place and the walled well lay clay jars for
+// the woodpile, clay pots for the stumps, a rolled rug for the log, a well
+// of sandstone with a pole and a bucket, and the caravanserai a trough with
+// a cactus or an agave for each of its flower planters (inn.js); a desert
+// ruin and watchtower stand in sandstone where a green one stands in grey
+// stone, its twin in warm stone tile for tile. Each keeps the start of its
+// name that says how it behaves (ow_prop_ a low thing, ow_well a well,
+// ow_roof_ and ow_house_ a building walked behind at its top row, and the
+// brick, over.js isStructure). A hut out on the piece, a boss's lair, a farm
+// whose middle happens to be desert and the tales' places stay green.
+export const DESERT_NAMES = {
+  ow_prop_woodpile: 'ow_prop_amphora',
+  ow_prop_stump_0: 'ow_prop_pots_0', ow_prop_stump_1: 'ow_prop_pots_1', ow_prop_stump_axe: 'ow_prop_pots_2',
+  ow_prop_log: 'ow_prop_rug_roll',
+  ...INN_DESERT_NAMES,
+  ow_well_top: 'ow_well_sand_top', ow_well: 'ow_well_sand',
+  ow_brick: 'ow_brick_sand',
+  ow_castle_parapet_l: 'ow_castle_parapet_sand_l', ow_castle_parapet_m: 'ow_castle_parapet_sand_m', ow_castle_parapet_r: 'ow_castle_parapet_sand_r',
+  ow_roof_gray_l: 'ow_roof_gray_sand_l', ow_roof_gray_m: 'ow_roof_gray_sand_m', ow_roof_gray_r: 'ow_roof_gray_sand_r',
+  ow_roof_slate_l: 'ow_roof_slate_sand_l', ow_roof_slate_m: 'ow_roof_slate_sand_m', ow_roof_slate_r: 'ow_roof_slate_sand_r',
+  ow_house_wall_stone_l: 'ow_house_wall_stone_sand_l', ow_house_wall_stone_r: 'ow_house_wall_stone_sand_r',
+  ow_house_arch_stone: 'ow_house_arch_stone_sand',
+}
+// The name a place in the desert (`desert`) lays for `name`.
+const dressed = (name, desert) => desert ? DESERT_NAMES[name] ?? name : name
 // A village's square and the streets in it: green cobbles, or the desert's sand paving.
 export const isVillageStreet = n => n === 'ow_cobble_green' || isPaveSkin(n)
 
@@ -366,7 +393,7 @@ export const SITE_SKINS = [...new Set([
   ...['00', '10', '01', '11'].map(c => `${DESERT_TENT}_${c}`),
   'ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r', 'ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r',
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
-  ...CAVE_MOUTH, ...SAND_MOUTH, 'ow_statue_top', 'ow_statue', ...STELE, 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
+  ...CAVE_MOUTH, ...SAND_MOUTH, 'ow_statue_top', 'ow_statue', ...STELE, ...Object.values(DESERT_NAMES), 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
   'ow_deco_firepit', 'ow_kiln_cold', 'ow_mtn_rock_cap', 'ow_prop_fishrack_l', 'ow_prop_fishrack_r', 'ow_pier_log', 'ow_stone_ground_0',
   'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small', 'ow_greytree_0', 'ow_greytree_1',
   // the Lalli tale: his pine (not in the lumber table) and the tale's people
@@ -609,13 +636,17 @@ export function makeSites(c) {
   // `desert`: built from the desert kit, by the same draws and on the same
   // cells: adobe houses, sand paving for the cobbles, an awning over the
   // stall, a date garden walled in mud brick for the fenced field, palms for
-  // the flowers and no bee yard. What would make the land walked or the
+  // the flowers and no bee yard, and the desert's names for the well and what
+  // lies about (DESERT_NAMES). What would make the land walked or the
   // ground free other than a green village's waits for finishVillage, once
   // everything else of the piece has its place: until then the flowers'
   // spots hold desert flowers and the bee yard stands, so every spot dealt
   // after the village is dealt as in a green one.
   let desertVillage = null
+  // whether the last village was built from the desert kit (villageTrouble walls its tale's pen to match)
+  let villageOfSand = false
   function village(cx, cy, tale = null, sunroom = false, desert = false) {
+    villageOfSand = desert
     const street = desert ? paveSkin(0) : 'ow_cobble_green', kit = desert ? 'adobe' : 'kenney'
     // a desert village stands on sand: the pad's ground, wherever it is not a
     // path, a road or water, whatever the land had there (hardpan, grass on a
@@ -630,8 +661,8 @@ export function makeSites(c) {
       t.setGround(x, y, street); hold(x, y)
     }
     if (desert) edgePaving(cx, cy, VILLAGE_PAD)
-    const lying = (x, y, skin) => { if (!t.onRoad(x, y)) low(x, y, skin) }
-    put(cx, cy - 1, 'ow_well_top'); put(cx, cy, 'ow_well')
+    const lying = (x, y, skin) => { if (!t.onRoad(x, y)) low(x, y, dressed(skin, desert)) }
+    put(cx, cy - 1, dressed('ow_well_top', desert)); put(cx, cy, dressed('ow_well', desert))
     put(cx - 2, cy + 1, 'ow_sign')
     const big = rng() < 0.5
     house(cx - 7, cy - 3, 'safe', { w: 4 + (rng() < 0.5 ? 1 : 0), kit })
@@ -857,7 +888,9 @@ export function makeSites(c) {
   // the village's date garden), and what stands there is noted to be
   // finished last of all (finishDesert): a wayside fire's palm, a date
   // palm's crown, the big inn's awnings.
-  function lay(cx, cy, plans, r, { whole = false, shift = FARM_SHIFT, avoid = null, kit = 'kenney', kept = false } = {}) {
+  // `dress`: what lies about and the well wear the desert's names (DESERT_NAMES);
+  // the wayside places and the walled well ask for it in the desert.
+  function lay(cx, cy, plans, r, { whole = false, shift = FARM_SHIFT, avoid = null, kit = 'kenney', kept = false, dress = false } = {}) {
     const drawn = plans.flatMap(p => [p, p.map(mirrored)])
     const start = Math.floor(rng() * drawn.length)
     const seen = whole ? new Map() : null
@@ -956,7 +989,7 @@ export function makeSites(c) {
         around({ x0: X - 1, x1: X + 1, top: Y - 3 }, Y)
         doors.push(c.door(X, Y, 'safe', null, { look: { w: 3, storeys: 2, wall: 'stone' }, lived: true }))
       } else if (kind === 'well') {
-        put(X, Y - 1, 'ow_well_top'); put(X, Y, 'ow_well')
+        put(X, Y - 1, dressed('ow_well_top', dress)); put(X, Y, dressed('ow_well', dress))
       } else if (kind === 'statue') {
         const [top, foot] = c.desert ? STELE : ['ow_statue_top', 'ow_statue']
         put(X, Y - 1, top); put(X, Y, foot)
@@ -982,7 +1015,7 @@ export function makeSites(c) {
       } else if (kind === 'pair') {
         if (free(X, Y) && free(X + 1, Y)) { low(X, Y, a[2]); low(X + 1, Y, a[3]) }
       } else if (kind === 'low' || kind === 'spare') {
-        if (free(X, Y)) low(X, Y, a[2])
+        if (free(X, Y)) low(X, Y, dressed(a[2], dress))
       } else if (kind === 'beast') {
         const at = t.free(X, Y) && !c.taken(X, Y) ? { x: X, y: Y } : c.freeSpot(X, Y, 0, 2)
         if (at) c.npc(a[2], at.x, at.y)
@@ -1060,26 +1093,29 @@ export function makeSites(c) {
     fold: (cx, cy) => lay(cx, cy, FARM_PLANS.fold, 7),
     quarry: (cx, cy) => lay(cx, cy, FARM_PLANS.quarry, 7),
     // (in the desert its keeper's house is of mud brick, as a desert village's, and says so on its door)
-    well: (cx, cy) => { turf(cx, cy, 5); return lay(cx, cy, FARM_PLANS.well, 6, { kit: c.desert ? 'adobe' : 'kenney' }) },
+    well: (cx, cy) => { turf(cx, cy, 5); return lay(cx, cy, FARM_PLANS.well, 6, { kit: c.desert ? 'adobe' : 'kenney', dress: c.desert }) },
     field: (cx, cy) => lay(cx, cy, FARM_PLANS.field, 6),
   }
 
   // ---- a ruined keep -----------------------------------------------------------
   // The tower still stands and its door leads in; of the wall round the yard
   // only runs are left, never across a road.
-  // In the desert (`c.desert`) its pad (`c.pad`) is sand, and its yard is
-  // strewn with rubble and broken pots once the piece is done (finishDesert).
+  // In the desert (`c.desert`) its pad (`c.pad`) is sand, its tower and wall
+  // stand in sandstone (DESERT_NAMES), and its yard is strewn with rubble and
+  // broken pots once the piece is done (finishDesert).
   function ruin(cx, cy) {
     if (c.desert) sandPad(cx, cy, c.pad)
     ruinTower(cx, cy)
     ruinYard(cx, cy)
   }
   // The tower, its door (returned) at (cx, cy) and two rows clear before it.
+  // (In the desert too its door says it is of stone: the house inside is the grey ruin.)
   function ruinTower(cx, cy) {
-    row(cx - 1, cy - 3, ['ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r'])
-    row(cx - 1, cy - 2, ['ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r'])
-    row(cx - 1, cy - 1, ['ow_brick', 'ow_brick', 'ow_brick'])
-    row(cx - 1, cy, ['ow_house_wall_stone_l', 'ow_house_arch_stone', 'ow_house_wall_stone_r'])
+    const stone = skins => skins.map(s => dressed(s, c.desert))
+    row(cx - 1, cy - 3, stone(['ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r']))
+    row(cx - 1, cy - 2, stone(['ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r']))
+    row(cx - 1, cy - 1, stone(['ow_brick', 'ow_brick', 'ow_brick']))
+    row(cx - 1, cy, stone(['ow_house_wall_stone_l', 'ow_house_arch_stone', 'ow_house_wall_stone_r']))
     const door = c.door(cx, cy, 'ruin', null, { look: { w: 3, storeys: 2, wall: 'stone' } })
     for (let i = -1; i <= 1; i++) for (let j = 1; j <= 2; j++) { t.clear(cx + i, cy + j); hold(cx + i, cy + j) }
     return door
@@ -1087,7 +1123,7 @@ export function makeSites(c) {
   // What is left of the wall round the tower at (cx, cy), and its yard.
   // `offWay`: no fallen stone or bone on a trail either (the watchtower).
   function ruinYard(cx, cy, offWay = false) {
-    const wall = (x, y, skin) => { if (!t.onPath(x, y) && !c.taken(x, y)) put(x, y, skin) }
+    const wall = (x, y, skin) => { if (!t.onPath(x, y) && !c.taken(x, y)) put(x, y, dressed(skin, c.desert)) }
     // north wall: parapet over brick, in runs
     let run = 0
     for (let x = cx - 6; x <= cx + 6; x++) {
@@ -1123,7 +1159,7 @@ export function makeSites(c) {
   const wayside = {
     rest: (cx, cy) => {
       if (c.desert) sandPad(cx, cy, c.pad)
-      const made = lay(cx, cy, WAYSIDE_PLANS.rest, 5)
+      const made = lay(cx, cy, WAYSIDE_PLANS.rest, 5, { dress: c.desert })
       if (c.desert) desertLater.fires.push(...made.fires)
       return made
     },
@@ -1138,9 +1174,9 @@ export function makeSites(c) {
     // (`small` says it was the smaller one, which has no stable; in the desert
     // its house is of mud brick and its yard walled with it)
     inn: (cx, cy, avoid = null) => {
-      const big = lay(cx, cy, INN_PLANS, INN_PAD, { whole: true, shift: INN_SHIFT, avoid })
+      const big = lay(cx, cy, INN_PLANS, INN_PAD, { whole: true, shift: INN_SHIFT, avoid, dress: c.desert })
       if (big) { if (c.desert) yardOfSand(big.at, INN_PAD); return big }
-      const small = lay(cx, cy, WAYSIDE_PLANS.inn, 9, { kit: c.desert ? 'adobe' : 'kenney', kept: true })
+      const small = lay(cx, cy, WAYSIDE_PLANS.inn, 9, { kit: c.desert ? 'adobe' : 'kenney', kept: true, dress: c.desert })
       if (small && c.desert) yardOfSand(small.at, 9)
       return small && { ...small, small: true }
     },
@@ -1161,16 +1197,18 @@ export function makeSites(c) {
 
   // ---- camps -------------------------------------------------------------------
   // look: 'bandits' (tents round a fire), 'graves', 'den' (rocks and bones),
-  // 'nest' (mounds, dead trees, bones). In the desert its pad is sand and
-  // both tents are of striped canvas.
+  // 'nest' (mounds, dead trees, bones). In the desert its pad is sand, both
+  // tents are of striped canvas, and what lies about wears the desert's
+  // names (DESERT_NAMES).
   function camp(cx, cy, look) {
     if (c.desert) sandPad(cx, cy, c.pad)
+    const lying = (x, y, skin) => low(x, y, dressed(skin, c.desert))
     if (look === 'bandits') {
       fire(cx, cy)
       tent(cx - 4, cy - 4, c.desert ? DESERT_TENT : 'ow_tent'); tent(cx + 2, cy - 4, c.desert ? DESERT_TENT : 'ow_tent_tan')
       low(cx - 2, cy + 1, 'ow_prop_bedroll_0'); low(cx + 2, cy + 1, 'ow_prop_bedroll_1')
       low(cx + 4, cy - 1, 'ow_prop_barrel_1'); low(cx + 4, cy, 'ow_prop_crate_2'); low(cx - 4, cy, 'ow_prop_sack_1')
-      low(cx - 1, cy + 3, 'ow_prop_log')
+      lying(cx - 1, cy + 3, 'ow_prop_log')
     } else if (look === 'graves') {
       for (const gy of [cy - 3, cy - 1, cy + 2]) for (const gx of [cx - 4, cx - 2, cx + 2, cx + 4]) if (rng() < 0.75) low(gx, gy, pick(GRAVES))
       low(cx - 5, cy + 1, DEAD[0]); low(cx + 5, cy - 2, DEAD[1])
@@ -1186,7 +1224,7 @@ export function makeSites(c) {
       for (let dx = -4; dx <= 4; dx++) rock(dx, -4)
       for (const dx of [-4, -3, 3, 4]) rock(dx, -3)
       walkRound(cx - 5, cy - 7, cx + 5, cy - 2)
-      low(cx - 3, cy + 2, 'ow_prop_log'); low(cx + 3, cy + 3, 'ow_prop_stump_1')
+      lying(cx - 3, cy + 2, 'ow_prop_log'); lying(cx + 3, cy + 3, 'ow_prop_stump_1')
       scatter(cx, cy, 1, 5, 5, ['ow_deco_skull'])
     } else {
       for (const [dx, dy] of [[-3, -2], [2, -3], [4, 1], [-2, 3], [-4, 1], [0, -4]]) low(cx + dx, cy + dy, 'ow_prop_mound')
@@ -1497,10 +1535,11 @@ export function makeSites(c) {
       for (const y of [cy - 3, cy - 2, cy - 4]) if (racks < 2 && !t.onPath(cx - 11, y) && !t.onPath(cx - 10, y)) { put(cx - 11, y, 'ow_prop_fishrack_l'); put(cx - 10, y, 'ow_prop_fishrack_r'); racks++ }
     }
     if (tale === 'fold') {
-      // the fold the lambs go missing from, south-east of the square; the
+      // the fold the lambs go missing from, south-east of the square (in a
+      // desert village walled in mud brick, as its date garden is); the
       // ground east and south of it is opened so a road that ran there goes round
       claimBox(cx + 6, cy + 7, cx + 12, cy + 12)
-      fence(cx + 7, cy + 8, cx + 11, cy + 11, { x: cx + 8, y: cy + 8 }, true)
+      fence(cx + 7, cy + 8, cx + 11, cy + 11, { x: cx + 8, y: cy + 8 }, true, villageOfSand)
       for (let dy = 9; dy <= 10; dy++) for (let dx = 8; dx <= 10; dx++) { t.clear(cx + dx, cy + dy); hold(cx + dx, cy + dy) }
       for (let d = 7; d <= 12; d++) t.clear(cx + d, cy + 12)
       for (let d = 8; d <= 12; d++) t.clear(cx + 12, cy + d)
