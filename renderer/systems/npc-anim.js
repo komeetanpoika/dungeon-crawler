@@ -4,7 +4,7 @@
 // on the spot, and a faster animal cycles faster for free. Which row plays
 // comes from what the brain is doing — the chase goals gallop, everything
 // else trots — and a claw swing shows the bite for its duration.
-export const RUN_GOALS = new Set(['hunt_prey', 'attack_hostile', 'flee_hurt'])
+export const RUN_GOALS = new Set(['hunt_prey', 'attack_hostile', 'flee_hurt', 'harry', 'flee_alone'])
 export const STRIDE = { walk: 8, run: 14 }     // px of travel per frame
 export const STILL_AFTER = 0.1                 // s without motion before the pose settles
 

@@ -37,6 +37,9 @@ export const CUE_NAMES = [
   'storm-wind',
   // a drink at a well or an oasis's water in the desert (wilds/heat.js)
   'drink',
+  // the desert's creatures: a sting and its poison, the sand worm under the
+  // sand and coming up, the antlion's sand thrown and landing, a jackal's yip
+  'sting', 'poison', 'burrow', 'worm-erupt', 'sand-toss', 'sand-land', 'yip',
 ]
 
 export function makeSfx(muted = false) {

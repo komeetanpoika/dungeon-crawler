@@ -167,7 +167,8 @@ test('wild land has roaming packs, off the main thing and apart from each other'
       assert.ok(dist(k, p.main) >= 12, `pack on the main thing of ${wx},${wy}`)
       for (const o of p.packs.slice(i + 1)) assert.ok(dist(k, o) >= 12, `two packs together at ${wx},${wy}`)
       const foes = p.spawns.filter(s => hostile(s) && dist(s, k) <= 3)
-      assert.ok(foes.length >= 1 && foes.length <= 3, `${foes.length} foes in a pack at ${wx},${wy}`)
+      // (three at most, or four of the desert's jackals or small scorpions)
+      assert.ok(foes.length >= 1 && foes.length <= 4, `${foes.length} foes in a pack at ${wx},${wy}`)
       roamers += foes.length
     }
   }
@@ -198,7 +199,8 @@ test('the land round home is gentle, and a village keeps its foes at arm\'s leng
     villages++
     const p = generatePiece(seed, wx, wy)
     for (const s of p.spawns.filter(hostile)) {
-      assert.equal(s.kind, 'monster', `${s.kind} ${s.species ?? ''} in the village piece ${wx},${wy}`)
+      // spiders, or in the desert its small scorpions
+      assert.ok(s.kind === 'monster' || s.kind === 'skorpioni', `${s.kind} ${s.species ?? ''} in the village piece ${wx},${wy}`)
       assert.ok(dist(s, p.main) >= 22, `a foe ${dist(s, p.main).toFixed(0)} tiles from the village at ${wx},${wy}`)
     }
   }

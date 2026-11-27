@@ -78,6 +78,16 @@ export const NPC_SPECIES = {
     speed: 110, wanderSpeed: 40, roam: 7, prey: ['maahinen'],
     priorities: ['flee_hurt', 'hunt_prey', 'attack_hostile', 'go_to', 'wander'],
   },
+  // The desert's pack animal (wilds/desert-cast.js). It harries: after each
+  // bite it backs off `backOff` seconds before it comes in again, so a pack
+  // circles and darts. And it is brave only in company: with no other living
+  // jackal within `pack` tiles it runs from a hero who comes near.
+  jackal: {
+    faction: 'wild', sheet: 'jackal', hostile: true, weapon: 'claw',
+    hp: 2, onHit: 'fight', fleeHp: 0, drop: 0.3,
+    speed: 125, wanderSpeed: 45, roam: 7, pack: 9, backOff: [1.0, 1.6],
+    priorities: ['flee_alone', 'harry', 'go_to', 'wander'],
+  },
   bear: {
     faction: 'wild', sprite: 'npc_bear', hostile: true, weapon: 'maul',
     hp: 6, onHit: 'fight', fleeHp: 0, drop: 1,

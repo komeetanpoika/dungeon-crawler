@@ -126,6 +126,11 @@ export function retuneMonster(name, { stats = {}, behavior = {} } = {}) {
 export function isStoryCreature(e) {
   return !e.brainDriven && getMonsterDef(e.type)?.behavior?.driver === 'hook'
 }
+// Whom a spell's cone, a lightning strike's 3x3 and a wall slam pass over: a
+// story creature, unless it says it can be reached just now (`spellOpen`: the
+// sand worm while it is up, the antlion with its head out, a scorpion always).
+// Stuns still pass over every story creature.
+export function spellSpares(e) { return isStoryCreature(e) && !e.spellOpen }
 export function monsterNames() { return Object.keys(REGISTRY) }
 
 export function monstersForDepth(depth) {
@@ -246,7 +251,9 @@ export function entityPose(e) {
            attack, animT: p.animT ?? 0, blend,
            // hook-written channels live on the entity (a hook may run before
            // the first pose update): how far it has sunk, burned, flickers
-           sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0 }
+           sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0,
+           // the sand worm's furrow, as offsets from where it is now
+           trail: e.trail?.length ? e.trail.map(t => ({ x: t.px - e.px, y: t.py - e.py, a: t.a })) : null }
 }
 
 // Where a registry monster's drawing tops out, in px from its centre at tile

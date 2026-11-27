@@ -46,7 +46,9 @@ import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
 import { tickStorm, calmStorm, sightHere, mapHero, mapHazed } from './wilds/storm.js'
-import { tickHeat } from './wilds/heat.js'
+import { tickHeat, besideWater } from './wilds/heat.js'
+import { tickPoison, curePoison } from './systems/poison.js'
+import { sandSlowMul, tickSandSlow } from './systems/sand-slow.js'
 import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
@@ -89,7 +91,8 @@ import { felledCells, findHarvestHit, harvest, resolveTool } from './systems/lum
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat, tickBlueRest } from './systems/campfire.js'
 import { isEnemy, isHittable, isSpellTarget } from './systems/factions.js'
 import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
-import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature } from './systems/monsters.js'
+import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature, spellSpares } from './systems/monsters.js'
+import { deathDrop } from './systems/drops.js'
 import { cullDead, tickDying } from './systems/dying.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -502,7 +505,15 @@ function tickMsgCooldowns(delta) {
 }
 
 const isRegistryMonster = e => !!getMonsterDef(e.type)
-function cullEntities() { state.entities = cullDead(state.entities, isRegistryMonster) }
+// (a registry monster that leaves something when it dies leaves it here, once: systems/drops.js)
+function cullEntities() {
+  for (const e of state.entities) {
+    if (!(e.hp <= 0) || e.dropped || e.maxHp === undefined) continue
+    const drop = deathDrop(e, getMonsterDef(e.type), depth => rollChestLoot(depth, Math.random, state.player))
+    if (drop) state.entities.push(...buildEntities([drop], state.map, e.lootDepth ?? 1))
+  }
+  state.entities = cullDead(state.entities, isRegistryMonster)
+}
 
 // Every distinct skin/overlay used by any structure, so the renderer can draw them
 // even when the active ruleset doesn't reference those tiles.
@@ -783,7 +794,8 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       case 'campfire': return [makeCampfire(s.x, s.y, { eternal: true })]
       default: {
         const gen = makeMonsterFromDef(s.kind, s.x, s.y, { isBoss: !!s.isBoss })
-        return gen ? [hpOverride({ ...gen, px: cx, py: cy, ...aiInit() })] : []
+        // (lootDepth: what a monster that leaves loot rolls it at, systems/drops.js)
+        return gen ? [hpOverride({ ...gen, px: cx, py: cy, lootDepth: depth, ...aiInit() })] : []
       }
     }
   })
@@ -1542,10 +1554,13 @@ function useInventoryItem(i) {
   // a potion, or anything that heals when eaten (meat, cooked meat, herring)
   if (item.kind === 'potion' || (item.kind !== 'mushroom' && Number.isFinite(item.heal))) {
     const healed = Math.min(state.player.maxHp - state.player.hp, item.kind === 'potion' ? item.amount : item.heal)
-    if (healed <= 0) { think(state, 'Already full.'); return }
+    // (a poisoned hero eats or drinks for the cure even when whole: systems/poison.js)
+    const cures = !!state.player.poison
+    if (healed <= 0 && !cures) { think(state, 'Already full.'); return }
     removeItem(state.player, i)
     state.player.hp += healed
-    addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: `+${healed}`, kind: 'heal' })
+    curePoison(state.player)
+    addFloat(state.feedback, { px: state.player.px, py: state.player.py, text: healed > 0 ? `+${healed}` : 'cured', kind: 'heal' })
     sfx(state, 'heal')
     if (inventoryOpen) closeInventory()   // see the effect land
   }
@@ -1818,6 +1833,8 @@ function update(delta) {
     // the day's heat (wilds/heat.js), after the storm that hides the sun:
     // the stamina's regain, a drink at the water, the hero's line, the shimmer
     tickHeat(state, wildsWorld, { clock, delta, desert: !!land?.desert, city: !!land?.city, village: !!land?.village })
+    // night or day, for the creatures that keep hours (the scorpions lie buried by day)
+    state.night = isNight(clock)
   } else state.player.regenScale = 1   // no heat outside the Wilds, whatever a player carried in
   const { player, map } = state
   // On top of the coach nothing underfoot is opened, picked up, entered or
@@ -1856,7 +1873,7 @@ function update(delta) {
       : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor
                                         : chargeMoveFactor(player.weapon?.weaponType))
     : 1
-  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
   const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
@@ -2230,7 +2247,8 @@ function update(delta) {
         if (!bodyHit(e)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
-          const r = hurtCreature(state, e, dmg, { source: 'player' })
+          // (knockback: for a creature that takes a blade's shove like any monster, the roused scorpion)
+          const r = hurtCreature(state, e, dmg, { source: 'player', knockback: atk.knockback * mods.kbMul })
           slash(e)
           if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
           if (r.think) think(state, r.think)
@@ -2614,6 +2632,9 @@ function update(delta) {
 
   tickArcs(state, delta)
   tickRain(player, delta)
+  tickSandSlow(player, delta)   // sand in the face (the antlion's throw)
+  // a sting's poison (systems/poison.js): its bites, and the water that washes it out
+  if (player.poison) tickPoison(state, delta, { water: !state.cave && besideWater(state.map, player.x, player.y) })
   // Advance Maunonmiekka shockwave rings
   if (state.shockwaves?.length) {
     state.shockwaves = state.shockwaves
@@ -2728,7 +2749,7 @@ function update(delta) {
   // a one-shot wall-collision hit, applied only to enemies.
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
-    if (slam && isHittable(e) && !isStoryCreature(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
+    if (slam && isHittable(e) && !spellSpares(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
       // A registry creature's damage goes through its hook (hurtEntity), so a
       // slam that kills it still records the kill the way a blow would —
       // otherwise a Gust could delete the standing elk and stall its quest.

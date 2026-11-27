@@ -15,7 +15,7 @@
 // on its own when there is genuinely nothing left to do, so the unconditional
 // call is cheap.
 import { isWalkable, DIRS } from '../entities.js'
-import { isStoryCreature } from '../monsters.js'
+import { isStoryCreature, spellSpares } from '../monsters.js'
 import { isSpellTarget } from '../factions.js'
 import { sfx } from '../sfx.js'
 import { LOS_CLEAR_PREFIXES } from '../openmap.js'
@@ -161,7 +161,7 @@ function strike(state, mark, hooks) {
       : Math.abs(t.x - mark.x) <= 1 && Math.abs(t.y - mark.y) <= 1
     // Story creatures are spared the plain 3×3 the way the gust spares them;
     // the water is the deliberate exception the spec carves out.
-    const caught = (inBlast && !isStoryCreature(e)) || water.has(key(t.x, t.y))
+    const caught = (inBlast && !spellSpares(e)) || water.has(key(t.x, t.y))
     if (!caught) continue
     hit++
     const r = hooks?.hurt?.(e, mark.damage ?? LIGHTNING.damage, { source: 'lightning', ...(mark.owner !== undefined && { owner: mark.owner }) })

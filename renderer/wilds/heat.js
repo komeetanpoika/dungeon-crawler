@@ -69,7 +69,7 @@ function within(map, x, y, r, test) {
 // In the cool: within coolReach of a well, water or a palm's foot.
 export const nearCool = (map, x, y) => within(map, x, y, HEAT.coolReach, coolsAt)
 // Where he drinks: beside a well or water (his own cell and the eight round it).
-const besideWater = (map, x, y) => within(map, x, y, 1, drinksAt)
+export const besideWater = (map, x, y) => within(map, x, y, 1, drinksAt)
 
 // Whether the heat is on: by day (from <= frac < to) on the desert's country,
 // out of a village and Kalevanlinna, not in the cool, no storm blowing, and

@@ -7,12 +7,16 @@
 // Node, where there is no Image) a flat silhouette stands in so the animal
 // never blinks out.
 import { SHEET as WOLF } from '../assets/npcs/wolf-sheet.js'
+import { SHEET as JACKAL } from '../assets/npcs/jackal-sheet.js'
 import { npcFrame } from '../systems/npc-anim.js'
 
 const R = Math.round
 export const NPC_SHEETS = {
   wolf: { meta: WOLF, tiles: 1.5, silhouette: '#4b5556',
           url: new URL('../assets/npcs/wolf.png', import.meta.url).href },
+  // the wolf's frames recoloured (tools/make-jackal-sheet.mjs), drawn a little smaller
+  jackal: { meta: JACKAL, tiles: 1.3, silhouette: '#b98a4e',
+            url: new URL('../assets/npcs/jackal.png', import.meta.url).href },
 }
 
 const images = {}

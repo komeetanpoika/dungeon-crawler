@@ -1,0 +1,17 @@
+{
+  "name": "keisariskorpioni",
+  "rig": "scorpion",
+  "params": {
+    "scale": 1.8,
+    "shellColor": "#2c2a33",
+    "clawColor": "#45404e",
+    "stingColor": "#c23a2a",
+    "eyeColor": "#ffb02a",
+    "gaitFreq": 8
+  },
+  "stats": { "hp": 12, "dmg": 2, "speed": 60 },
+  "behavior": { "driver": "hook", "taxon": "beast", "weapon": "claw", "weaponOverrides": { "damage": 2 }, "sightRange": 260 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "wake": 2.5, "reach": 2.2, "stingDmg": 2, "poisonTicks": 5, "rear": 0.55 }
+}
