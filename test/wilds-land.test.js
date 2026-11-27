@@ -124,14 +124,14 @@ test('farmland has friendly people, a door, no nest or stones, and only spider p
       assert.ok(d.look && [3, 4, 5].includes(d.look.w), `${at}: the farm's house has no look`)
     }
     for (const s of piece.small) assert.ok(['chest', 'animals', 'mushrooms', 'rocks', 'hut'].includes(s.kind), `${at}: a ${s.kind} on farmland`)
-    // every foe is a spider of a pack, 24 tiles from the farm and 10 from the road
+    // every foe is a spider of a pack (on desert ground a small scorpion: desert-cast.js), 24 tiles from the farm and 10 from the road
     const road = []
     for (let y = 0; y < PIECE; y++) for (let x = 0; x < PIECE; x++) if (t.onRoad(x, y)) road.push({ x, y })
     const gap = s => Math.min(...road.map(c => dist(c, s)))
     for (const s of piece.spawns) {
       const hostile = s.kind !== 'npc' ? !['chest', 'wild_mushroom', 'campfire', 'weapon', 'floating_pickup'].includes(s.kind) : !!NPC_SPECIES[s.species].hostile && s.hostile !== false
       if (!hostile) continue
-      assert.equal(s.kind, 'monster', `${at}: a ${s.species ?? s.kind} on farmland`)
+      assert.ok(s.kind === 'monster' || s.kind === 'skorpioni', `${at}: a ${s.species ?? s.kind} on farmland`)
       assert.ok(dist(s, m) >= 24, `${at}: a spider ${dist(s, m).toFixed(1)} tiles from the farm`)
       assert.ok(gap(s) >= 10, `${at}: a spider ${gap(s).toFixed(1)} tiles from the road`)
     }
