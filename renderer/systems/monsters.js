@@ -126,6 +126,11 @@ export function retuneMonster(name, { stats = {}, behavior = {} } = {}) {
 export function isStoryCreature(e) {
   return !e.brainDriven && getMonsterDef(e.type)?.behavior?.driver === 'hook'
 }
+// Whom a spell's cone, a lightning strike's 3x3 and a wall slam pass over: a
+// story creature, unless it says it can be reached just now (`spellOpen`: the
+// sand worm while it is up, the antlion with its head out, a scorpion always).
+// Stuns still pass over every story creature.
+export function spellSpares(e) { return isStoryCreature(e) && !e.spellOpen }
 export function monsterNames() { return Object.keys(REGISTRY) }
 
 export function monstersForDepth(depth) {

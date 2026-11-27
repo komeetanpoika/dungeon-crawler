@@ -89,7 +89,8 @@ import { felledCells, findHarvestHit, harvest, resolveTool } from './systems/lum
 import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, cookMeat, tickBlueRest } from './systems/campfire.js'
 import { isEnemy, isHittable, isSpellTarget } from './systems/factions.js'
 import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
-import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature } from './systems/monsters.js'
+import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature, spellSpares } from './systems/monsters.js'
+import { deathDrop } from './systems/drops.js'
 import { cullDead, tickDying } from './systems/dying.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -502,7 +503,15 @@ function tickMsgCooldowns(delta) {
 }
 
 const isRegistryMonster = e => !!getMonsterDef(e.type)
-function cullEntities() { state.entities = cullDead(state.entities, isRegistryMonster) }
+// (a registry monster that leaves something when it dies leaves it here, once: systems/drops.js)
+function cullEntities() {
+  for (const e of state.entities) {
+    if (!(e.hp <= 0) || e.dropped || e.maxHp === undefined) continue
+    const drop = deathDrop(e, getMonsterDef(e.type), depth => rollChestLoot(depth, Math.random, state.player))
+    if (drop) state.entities.push(...buildEntities([drop], state.map, e.lootDepth ?? 1))
+  }
+  state.entities = cullDead(state.entities, isRegistryMonster)
+}
 
 // Every distinct skin/overlay used by any structure, so the renderer can draw them
 // even when the active ruleset doesn't reference those tiles.
@@ -783,7 +792,8 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       case 'campfire': return [makeCampfire(s.x, s.y, { eternal: true })]
       default: {
         const gen = makeMonsterFromDef(s.kind, s.x, s.y, { isBoss: !!s.isBoss })
-        return gen ? [hpOverride({ ...gen, px: cx, py: cy, ...aiInit() })] : []
+        // (lootDepth: what a monster that leaves loot rolls it at, systems/drops.js)
+        return gen ? [hpOverride({ ...gen, px: cx, py: cy, lootDepth: depth, ...aiInit() })] : []
       }
     }
   })
@@ -1818,6 +1828,8 @@ function update(delta) {
     // the day's heat (wilds/heat.js), after the storm that hides the sun:
     // the stamina's regain, a drink at the water, the hero's line, the shimmer
     tickHeat(state, wildsWorld, { clock, delta, desert: !!land?.desert, city: !!land?.city, village: !!land?.village })
+    // night or day, for the creatures that keep hours (the scorpions lie buried by day)
+    state.night = isNight(clock)
   } else state.player.regenScale = 1   // no heat outside the Wilds, whatever a player carried in
   const { player, map } = state
   // On top of the coach nothing underfoot is opened, picked up, entered or
@@ -2728,7 +2740,7 @@ function update(delta) {
   // a one-shot wall-collision hit, applied only to enemies.
   for (const e of state.entities) {
     const slam = stepKnockback(e, delta, (px, py) => canMoveTo(map, px, py, ENEMY_HALF))
-    if (slam && isHittable(e) && !isStoryCreature(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
+    if (slam && isHittable(e) && !spellSpares(e) && !(e.type === 'wizard' && e.shieldTimer > 0)) {
       // A registry creature's damage goes through its hook (hurtEntity), so a
       // slam that kills it still records the kill the way a blow would —
       // otherwise a Gust could delete the standing elk and stall its quest.

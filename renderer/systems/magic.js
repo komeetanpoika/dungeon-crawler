@@ -9,7 +9,7 @@ import { startKnockback } from './knockback.js'
 import { loadoutAvailable } from './inventory.js'
 import { GUST_COSTS, affordableTier, canAfford, spendStamina } from './stamina.js'
 import { applyFreeze, applySlow } from './status.js'
-import { isStoryCreature } from './monsters.js'
+import { isStoryCreature, spellSpares } from './monsters.js'
 import { nearestPoint } from './hitbox.js'
 
 export const GUST = {
@@ -57,7 +57,7 @@ export function castCone(state, t, p = state.player) {
   const slamOpts = t.slam ? { slam: { damage: SLAM_DAMAGE } } : undefined
   let caught = 0
   for (const e of state.entities) {
-    if (!e.hp || e.type === 'player' || e === p || isStoryCreature(e)) continue
+    if (!e.hp || e.type === 'player' || e === p || spellSpares(e)) continue
     // The wedge catches a body as soon as its nearest edge is in it
     // (systems/hitbox.js), so a big beast is not spared by a far-off centre.
     const n = nearestPoint(e, p.px, p.py)
