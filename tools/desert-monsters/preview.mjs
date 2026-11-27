@@ -1,4 +1,4 @@
-// node tools/desert-monsters/preview.mjs <rig> <out.png> [--scale 1] [--params '{"k":v}']
+// node tools/desert-monsters/preview.mjs <rig> <out.png> [--params '{"k":v}'] [--poses file.mjs] [--ground '#aaa,#bbb'] [--s 64] [--cell 192]
 // A sheet of a shape-drawn rig's poses through the software canvas: the rows
 // poses.mjs lists for the rig (each a list of { label, pose, params? }),
 // drawn on sand at S = 64 so the art pixels show. For the builder's eye; the game draws the same op stream
@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url'
 import { makeSoftCanvas } from '../monster-cutter/soft-canvas.js'
 import { writePng } from '../png-write.mjs'
 import { defaultParams } from '../../renderer/render/monster-rigs/schema.js'
-import { POSES } from './poses.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const [rigId, out, ...rest] = process.argv.slice(2)
@@ -16,13 +15,15 @@ if (!rigId || !out) { console.error('usage: preview.mjs <rig> <out.png> [--param
 const arg = k => { const i = rest.indexOf(k); return i === -1 ? null : rest[i + 1] }
 const rig = await import(path.join(root, 'renderer/render/monster-rigs', rigId + '.js'))
 const base = { ...defaultParams(rig.PARAM_SCHEMA), ...JSON.parse(arg('--params') ?? '{}') }
+// --poses: another module's POSES (tools/tribes/poses-*.mjs), resolved from the working directory
+const { POSES } = await import(arg('--poses') ? path.resolve(arg('--poses')) : path.join(root, 'tools/desert-monsters/poses.mjs'))
 const rows = POSES[rigId]
 if (!Array.isArray(rows)) { console.error(`${rigId}: no rows in poses.mjs`); process.exit(2) }
 
 const S = Number(arg('--s') ?? 64), CELL = Number(arg('--cell') ?? 192)
 const cols = Math.max(...rows.map(r => r.length))
 const { ctx, img } = makeSoftCanvas(cols * CELL, rows.length * CELL)
-const SAND = ['#e6dabf', '#e0d3b5']
+const SAND = (arg('--ground') ?? '#e6dabf,#e0d3b5').split(',')
 for (let y = 0; y < img.h / 32; y++) for (let x = 0; x < img.w / 32; x++) {
   ctx.fillStyle = SAND[(x + y) % 2]
   ctx.fillRect(x * 32, y * 32, 32, 32)
