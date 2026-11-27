@@ -1,4 +1,17 @@
 import { TILE } from '../systems/entities.js'
+import { DUNE_PREFIX } from '../wilds/desert.js'
+import { isHardpanSkin } from '../wilds/desert-art.js'
+
+// Land the hero has only guessed at (behind a dune crest: `cell.guessed`,
+// systems/entities.js computePlayerFOV) is drawn as plain desert, under the
+// fog: its own ground when that is desert ground (the sand, rippled, shaded
+// or slip face, a dune's crest, hardpan), else GUESS_SAND; never what stands
+// on it. Sand fraying into grass (ow_sand_edge_*) counts as other ground: its
+// grass would show.
+export const GUESS_SAND = 'ow_sand_0'
+const isDesertGround = n => typeof n === 'string'
+  && ((n.startsWith('ow_sand') && !n.startsWith('ow_sand_edge')) || n.startsWith(DUNE_PREFIX) || isHardpanSkin(n))
+export const guessSkin = cell => isDesertGround(cell?.skin) ? cell.skin : GUESS_SAND
 
 // One map cell's art: the skin/default sprite, stair depth shading, and the
 // deco (a rug) and overlay prop on top. Pure function of the cell and sprites — nothing here
@@ -19,7 +32,9 @@ function drawOverlay(ctx, tileObj, px, py, S, sprites) {
 // `part`: 'all' draws the whole cell. A cell that is walked under
 // (`over`, wilds/over.js) is drawn in two goes round the people: 'under' its
 // ground, 'over' what stands on it; 'over' draws nothing of any other cell.
+// 'guess' draws a cell only guessed at (guessSkin), whatever it is.
 export function drawTile(ctx, tileId, px, py, S, sprites, tileObj = null, part = 'all') {
+  if (part === 'guess') { const g = sprites[guessSkin(tileObj)]; if (g) ctx.drawImage(g, px, py, S, S); return }
   if (part !== 'all') {
     if (part === 'over') { if (tileObj?.over) drawOverlay(ctx, tileObj, px, py, S, sprites); return }
     if (tileObj?.over) { const g = sprites[tileObj.skin] ?? sprites.floor; if (g) ctx.drawImage(g, px, py, S, S); return }

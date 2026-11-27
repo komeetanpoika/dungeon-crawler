@@ -2,15 +2,22 @@
 // frame — some 700 scaled sprite blits at 1024x693 — was the single largest
 // frame cost with the software canvas Electron falls back to here. Instead
 // the map is baked into CHUNK x CHUNK-cell offscreen images on demand and a
-// frame blits one image per visible chunk. A chunk is rebaked when the
-// number of explored cells in it changes (exploration only ever grows) or a
-// system marks one of its cells dirty (systems/tile-dirty.js); the whole
-// cache is dropped when the map identity changes, so only the current map
-// is held.
+// frame blits one image per visible chunk. A chunk is rebaked when its
+// `marks` change, the number of explored cells in it plus the number of
+// guessed ones (both flags only ever turn on, so the sum moves whenever
+// either does), or a system marks one of its cells dirty
+// (systems/tile-dirty.js); the whole cache is dropped when the map identity
+// changes, so only the current map is held.
 //
 // Fog of war (explored but out of sight) still draws per frame, since it
 // moves with the player — but as one rect per horizontal run of fogged
 // cells instead of one per cell.
+//
+// Land only guessed at (behind a dune crest: `guessed` and not explored,
+// systems/entities.js computePlayerFOV) is baked as plain desert ground
+// (tiles.js guessSkin, drawTile's 'guess' part) and always fogged, in the
+// ground pass, whatever its `over` flag says: nothing of a top is drawn on
+// land nobody has seen.
 //
 // Cells that are walked under (`over`, wilds/over.js: a roof's top row, a
 // gate's arch) are baked in two parts: their ground with the rest, and what
@@ -57,7 +64,8 @@ function viewCells(map, S, camX, camY, W, H) {
   }
 }
 
-// `over`: the fog of the cells walked under (drawOver) or of all the others (draw)
+// `over`: the fog of the cells walked under (drawOver) or of all the others
+// (draw), with the land only guessed at
 function drawFogRuns(ctx, map, S, camX, camY, { c0, c1, r0, r1 }, fogAlpha, over = false) {
   ctx.fillStyle = `rgba(0,0,0,${fogAlpha})`
   for (let row = r0; row < r1; row++) {
@@ -65,7 +73,7 @@ function drawFogRuns(ctx, map, S, camX, camY, { c0, c1, r0, r1 }, fogAlpha, over
     let run = -1
     for (let col = c0; col < c1; col++) {
       const t = cells[col]
-      const fogged = t.explored && !t.visible && !isStair(t.tile) && !t.over === !over
+      const fogged = (t.explored ? !t.visible && !t.over === !over : !over && !!t.guessed) && !isStair(t.tile)
       if (fogged) { if (run < 0) run = col; continue }
       if (run >= 0) { ctx.fillRect(Math.round(run * S - camX), Math.round(row * S - camY), (col - run) * S, S); run = -1 }
     }
@@ -75,25 +83,30 @@ function drawFogRuns(ctx, map, S, camX, camY, { c0, c1, r0, r1 }, fogAlpha, over
 
 // Bake one chunk: explored cells (and stairs) drawn at chunk-local
 // coordinates over a cleared, transparent canvas so the theme background
-// shows through unexplored cells. Returns the explored count it was baked at.
+// shows through unexplored cells, and the cells only guessed at as plain
+// desert. Keeps the marks it was baked at on the chunk.
 function bake(chunk, map, cx, cy, S, sprites, createCanvas) {
   const ctx = chunk.ctx
   ctx.imageSmoothingEnabled = false
   ctx.clearRect(0, 0, CHUNK * S, CHUNK * S)
-  let explored = 0, tops = null
+  let marks = 0, tops = null
   for (let r = 0; r < CHUNK; r++) {
     const cells = map[cy * CHUNK + r]
     if (!cells) break
     for (let c = 0; c < CHUNK; c++) {
       const t = cells[cx * CHUNK + c]
       if (!t) break
-      if (t.explored) explored++
-      else if (!isStair(t.tile)) continue
+      if (t.guessed) marks++
+      if (t.explored) marks++
+      else if (!isStair(t.tile)) {
+        if (t.guessed) drawTile(ctx, t.tile, c * S, r * S, S, sprites, t, 'guess')
+        continue
+      }
       drawTile(ctx, t.tile, c * S, r * S, S, sprites, t, 'under')
       if (t.over) (tops ??= []).push(c, r, t)
     }
   }
-  chunk.explored = explored
+  chunk.marks = marks
   chunk.huedAt = -1   // any trip colour over this bake is now stale
   bakeTop(chunk, tops, S, sprites, createCanvas)
 }
@@ -119,11 +132,12 @@ function bakeTop(chunk, tops, S, sprites, createCanvas) {
     if (last && last.y === r * S && last.x + last.w === c * S) last.w += S
     else rects.push({ x: c * S, y: r * S, w: S, h: S })
   }
-  top.explored = chunk.explored   // (what its trip colour is checked against)
+  top.marks = chunk.marks   // (what its trip colour is checked against)
   top.huedAt = -1
 }
 
-function countExplored(map, cx, cy) {
+// explored cells plus guessed cells: a cell guessed and then seen counts twice
+function countMarks(map, cx, cy) {
   let n = 0
   for (let r = 0; r < CHUNK; r++) {
     const cells = map[cy * CHUNK + r]
@@ -132,6 +146,7 @@ function countExplored(map, cx, cy) {
       const t = cells[cx * CHUNK + c]
       if (!t) break
       if (t.explored) n++
+      if (t.guessed) n++
     }
   }
   return n
@@ -142,7 +157,7 @@ function countExplored(map, cx, cy) {
 // blitted at its slightly stale colour — far better than a pop back to green.
 function tripColour(chunk, hue, sat, CS, createCanvas, budget) {
   const step = Math.round(hue / STEP_DEG) % HUE_STEPS
-  if (chunk.hued && chunk.hueStep === step && chunk.huedAt === chunk.explored) return chunk.hued
+  if (chunk.hued && chunk.hueStep === step && chunk.huedAt === chunk.marks) return chunk.hued
   if (budget.left <= 0) return chunk.hued ?? chunk.canvas
   budget.left--
   if (!chunk.hued) {
@@ -160,7 +175,7 @@ function tripColour(chunk, hue, sat, CS, createCanvas, budget) {
   hx.drawImage(chunk.canvas, 0, 0)
   hx.filter = 'none'
   chunk.hueStep = step
-  chunk.huedAt = chunk.explored
+  chunk.huedAt = chunk.marks
   return chunk.hued
 }
 
@@ -172,7 +187,7 @@ function dropColour(chunk) {
 export function makeTileLayer(createCanvas) {
   const layer = {
     map: null,
-    chunks: new Map(),   // "cx,cy" -> { canvas, ctx, explored }
+    chunks: new Map(),   // "cx,cy" -> { canvas, ctx, marks }
     // The Wilds window re-centred: `map` holds the same cells as `oldMap`,
     // moved by (dxChunks, dyChunks). Baked chunks move with them instead of
     // being baked again; the ones that fell off are dropped. If the layer
@@ -198,7 +213,7 @@ export function makeTileLayer(createCanvas) {
       if (dirty) {
         for (let i = 0; i < dirty.length; i += 2) {
           const chunk = layer.chunks.get(`${Math.floor(dirty[i] / CHUNK)},${Math.floor(dirty[i + 1] / CHUNK)}`)
-          if (chunk) chunk.explored = -1   // keep the canvas, force a rebake
+          if (chunk) chunk.marks = -1   // keep the canvas, force a rebake
         }
       }
       const budget = { left: HUE_BUDGET }
@@ -215,10 +230,10 @@ export function makeTileLayer(createCanvas) {
             const canvas = createCanvas()
             canvas.width = CS
             canvas.height = CS
-            chunk = { canvas, ctx: canvas.getContext('2d'), explored: -1 }
+            chunk = { canvas, ctx: canvas.getContext('2d'), marks: -1 }
             layer.chunks.set(key, chunk)
           }
-          if (chunk.explored !== countExplored(map, cx, cy)) bake(chunk, map, cx, cy, S, sprites, createCanvas)
+          if (chunk.marks !== countMarks(map, cx, cy)) bake(chunk, map, cx, cy, S, sprites, createCanvas)
           const img = hue > 0
             ? tripColour(chunk, hue, sat, CS, createCanvas, budget)
             : dropColour(chunk)
@@ -266,7 +281,7 @@ export function makeTileLayer(createCanvas) {
           if (!top) continue
           any = true
           const img = hue > 0
-            ? tripColour(top, hue, sat, CS, createCanvas, { left: chunk.hued && chunk.hueStep === step && chunk.huedAt === chunk.explored ? 1 : 0 })
+            ? tripColour(top, hue, sat, CS, createCanvas, { left: chunk.hued && chunk.hueStep === step && chunk.huedAt === chunk.marks ? 1 : 0 })
             : dropColour(top)
           const ox = Math.round(cx * CS - camX), oy = Math.round(cy * CS - camY)
           for (const r of top.rects) ctx.drawImage(img, r.x, r.y, r.w, r.h, ox + r.x, oy + r.y, r.w, r.h)
@@ -289,8 +304,8 @@ export function makeDirectTileLayer() {
       for (let row = cells.r0; row < cells.r1; row++) {
         for (let col = cells.c0; col < cells.c1; col++) {
           const t = map[row][col]
-          if (!t.explored && !isStair(t.tile)) continue
-          drawTile(ctx, t.tile, Math.round(col * S - camX), Math.round(row * S - camY), S, sprites, t, 'under')
+          const part = t.explored || isStair(t.tile) ? 'under' : t.guessed ? 'guess' : null
+          if (part) drawTile(ctx, t.tile, Math.round(col * S - camX), Math.round(row * S - camY), S, sprites, t, part)
         }
       }
       drawFogRuns(ctx, map, S, camX, camY, cells, fogAlpha)

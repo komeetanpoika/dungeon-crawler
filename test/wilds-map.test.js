@@ -16,6 +16,15 @@ test('nothing explored, nothing on the map', () => {
   assert.equal(w.map.has(p.key), false)
 })
 
+test('land only guessed at behind a dune is not on the map', () => {
+  const w = world(), p = getPiece(w, 3, 0)
+  for (let y = 10; y <= 29; y++) for (let x = 10; x <= 29; x++) p.cells[y][x].guessed = true
+  assert.equal(fold(w, p), false)
+  assert.equal(noteSeen(w, 3 * PIECE + 20, 20), false)
+  assert.equal(w.map.has(p.key), false)
+  assert.equal(w.mapVer.has(p.key), false)
+})
+
 test('what the hero has explored is drawn, block by block, and only that', () => {
   const w = world(), p = getPiece(w, 3, 0)
   explore(p, 10, 10, 19, 13)

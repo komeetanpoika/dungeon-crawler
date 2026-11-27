@@ -28,6 +28,24 @@ function field(w, h, laid = {}) {
 }
 // a crest row from x0 to x1 inclusive at y
 const crestRow = (laid, y, x0, x1) => { for (let x = x0; x <= x1; x++) laid[`${x},${y}`] = '^'; return laid }
+// The crest cells joined to the one the hero stands on by 8-neighbour crest
+// cells, within the radius, as 'x,y' keys (none if he stands off a crest).
+function crestFrom(map, hero, radius) {
+  const out = new Set()
+  if (!map[hero.y]?.[hero.x]?.losDune) return out
+  const todo = [[hero.x, hero.y]]
+  out.add(`${hero.x},${hero.y}`)
+  while (todo.length) {
+    const [x, y] = todo.pop()
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy, key = `${nx},${ny}`
+      if (out.has(key) || !map[ny]?.[nx]?.losDune || (nx - hero.x) ** 2 + (ny - hero.y) ** 2 > radius * radius) continue
+      out.add(key)
+      todo.push([nx, ny])
+    }
+  }
+  return out
+}
 
 describe('cellOf flags crests and landmarks', () => {
   it('a walkable dune skin is a crest, a blocked landmark overlay a beacon', () => {
@@ -166,10 +184,13 @@ describe("the hero's dune-aware sight", () => {
     const map = field(61, 61, laid)
     for (const hero of [{ x: 30, y: 22 }, { x: 20, y: 12 + Math.round(2 * Math.sin(20 / 7)) }]) {
       computePlayerFOV(map, hero, 20, { los: 'dunes' })
+      // (standing on a crest, the hero also sees the whole of that crest: see
+      // 'the crest the hero stands on is lit along its length')
+      const along = crestFrom(map, hero, 20)
       let hidden = 0
       for (let y = hero.y - 20; y <= hero.y + 20; y++) for (let x = hero.x - 20; x <= hero.x + 20; x++) {
         if ((x - hero.x) ** 2 + (y - hero.y) ** 2 > 400 || !map[y]?.[x]) continue
-        const sees = hasLineOfSight(map, hero.y, hero.x, y, x)
+        const sees = hasLineOfSight(map, hero.y, hero.x, y, x) || along.has(`${x},${y}`)
         if (!sees) hidden++
         assert.equal(map[y][x].visible, sees, `from ${hero.x},${hero.y} to ${x},${y}`)
       }
@@ -266,6 +287,110 @@ describe("the hero's dune-aware sight", () => {
     assert.equal(maybeComputeFOV(map, player, 20, { los: false, far: BEACON_RANGE }), true, 'a new mode')
     assert.equal(map[30][30].visible, true, 'radius-only sees behind the crest')
     assert.equal(maybeComputeFOV(map, player, 20, { los: false, far: BEACON_RANGE }), false, 'then cached')
+  })
+})
+
+describe('what lies behind a crest is guessed', () => {
+  // the hero in the hollow at (30, 20); a crest row at y 24 across the map
+  const hollow = () => field(61, 51, crestRow({}, 24, 0, 60))
+  const count = (map, test) => map.reduce((n, row) => n + row.filter(test).length, 0)
+
+  it('a hidden cell inside the radius is guessed; beyond it, nothing is', () => {
+    const map = hollow(), hero = { x: 30, y: 20 }
+    computePlayerFOV(map, hero, 20, { los: 'dunes', far: BEACON_RANGE })
+    const behind = map[30][30]
+    assert.equal(behind.guessed, true)
+    assert.equal(behind.explored, false)
+    assert.equal(behind.visible, false)
+    const far = map[45][30]   // 25 tiles off, behind the crest too
+    assert.ok(!far.guessed && !far.explored && !far.visible)
+    let guessed = 0
+    for (let y = 0; y < 51; y++) for (let x = 0; x < 61; x++) {
+      const c = map[y][x], inside = (x - hero.x) ** 2 + (y - hero.y) ** 2 <= 400
+      assert.equal(!!c.guessed, inside && !c.visible, `${x},${y}`)
+      if (c.guessed) guessed++
+    }
+    assert.ok(guessed > 100, `${guessed} guessed`)
+    assert.ok(!map[24][30].guessed && map[24][30].visible, 'the crest itself is seen, not guessed')
+  })
+
+  it('stays guessed out of the radius, and is explored once seen', () => {
+    const map = hollow(), hero = { x: 30, y: 20 }
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    hero.y = 2   // 28 tiles from (30, 30)
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    const c = map[30][30]
+    assert.equal(c.guessed, true, 'sticky')
+    assert.ok(!c.explored && !c.visible)
+    hero.y = 28  // over the crest
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    assert.ok(c.explored && c.visible)
+  })
+
+  it('a cell already explored is remembered as it is, never guessed', () => {
+    const map = hollow(), hero = { x: 30, y: 28 }
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    hero.y = 20  // back behind the crest: (30, 30) is hidden again
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    const c = map[30][30]
+    assert.ok(c.explored && !c.visible)
+    assert.ok(!c.guessed)
+  })
+
+  it('only the dune sight guesses', () => {
+    for (const los of [true, false]) {
+      const map = hollow()
+      computePlayerFOV(map, { x: 30, y: 20 }, 20, { los, far: BEACON_RANGE })
+      assert.equal(count(map, c => c.guessed), 0, `los ${los}`)
+    }
+    const map = hollow()
+    computePlayerFOV(map, { x: 30, y: 20 }, 20, { los: true })
+    assert.equal(map[30][30].visible, false, 'line of sight hides the land behind the crest too')
+  })
+})
+
+describe('the crest the hero stands on is lit along its length', () => {
+  // a brink that steps a tile at a time: two cells east for every one south,
+  // (20, 20) to (40, 30); a straight crest behind it at y 36, apart from it
+  const laid = {}
+  for (let x = 20; x <= 40; x++) laid[`${x},${20 + Math.floor((x - 20) / 2)}`] = '^'
+  crestRow(laid, 36, 10, 50)
+  const hero = { x: 30, y: 25 }
+  const band = key => { const [x, y] = key.split(',').map(Number); return y === 36 ? 2 : 1 }
+
+  it('every crest cell joined to his is seen; the rest as before', () => {
+    const map = field(61, 61, laid)
+    assert.equal(map[hero.y][hero.x].losDune, true, 'he stands on the brink')
+    computePlayerFOV(map, hero, 20, { los: 'dunes' })
+    const along = crestFrom(map, hero, 20)
+    assert.equal(along.size, 21, 'the whole brink is joined and inside the radius')
+    let missed = 0
+    for (const key of along) {
+      const [x, y] = key.split(',').map(Number)
+      assert.equal(band(key), 1)
+      assert.equal(map[y][x].visible, true, `brink cell ${key}`)
+      if (!hasLineOfSight(map, hero.y, hero.x, y, x)) missed++
+    }
+    assert.ok(missed > 0, `${missed} brink cells a ray alone misses`)
+    // the crest behind, and everything else, by the old rule
+    let hidden2 = 0
+    for (let y = hero.y - 20; y <= hero.y + 20; y++) for (let x = hero.x - 20; x <= hero.x + 20; x++) {
+      if ((x - hero.x) ** 2 + (y - hero.y) ** 2 > 400 || along.has(`${x},${y}`)) continue
+      const sees = hasLineOfSight(map, hero.y, hero.x, y, x)
+      assert.equal(map[y][x].visible, sees, `${x},${y}`)
+      if (y === 36 && !sees) hidden2++
+    }
+    assert.ok(hidden2 > 0, `${hidden2} cells of the crest behind stay hidden`)
+  })
+
+  it('standing beside the brink, a ray decides as before', () => {
+    const map = field(61, 61, laid)
+    const off = { x: 30, y: 24 }   // the sand just north of the brink
+    computePlayerFOV(map, off, 20, { los: 'dunes' })
+    for (let y = off.y - 20; y <= off.y + 20; y++) for (let x = off.x - 20; x <= off.x + 20; x++) {
+      if ((x - off.x) ** 2 + (y - off.y) ** 2 > 400 || Math.max(Math.abs(x - off.x), Math.abs(y - off.y)) <= 1) continue
+      assert.equal(map[y][x].visible, hasLineOfSight(map, off.y, off.x, y, x), `${x},${y}`)
+    }
   })
 })
 

@@ -400,3 +400,109 @@ describe('the direct tile layer', () => {
     assert.deepEqual(fogs(over).map(c => c.a), [[2 * S, S, S, S]])
   })
 })
+
+// ---- land guessed behind a dune (systems/entities.js computePlayerFOV) ----------
+import { guessSkin, GUESS_SAND } from '../renderer/render/tiles.js'
+
+describe('land guessed behind a dune', () => {
+  const RIPPLE = 'ow_sand_ripple_2_0', DUNE = 'ow_dune_1022_0', SHADE = 'ow_sand_shade_2211_2_0'
+  const D = {
+    ...TOP, [RIPPLE]: 'RIPPLE', [DUNE]: 'DUNE', [SHADE]: 'SHADE', ow_road_sand_0: 'ROAD', ow_water_0: 'WATER',
+    ow_tree_palm: 'PALM', ow_deco_scrub_0: 'SCRUB', [GUESS_SAND]: 'PLAIN',
+  }
+  // the explored corner of floorMap, plus cells only guessed at
+  const setup = () => {
+    const layer = makeTileLayer(fakeCanvas)
+    const map = floorMap()
+    explore(map, 0, 0, 5, 3)
+    return { layer, map }
+  }
+  const guess = (map, x, y, cell) => Object.assign(map[y][x], { tile: TILE.FLOOR, guessed: true, ...cell })
+  const frame = (layer, map) => {
+    const ctx = recordingCtx(), over = recordingCtx()
+    layer.draw(ctx, map, D, S, 0, 0, 640, 480, 0.65)
+    layer.drawOver(over, map, D, S, 0, 0, 640, 480, 0.65)
+    return { ctx, over }
+  }
+  // what the chunk's last bake drew besides the explored floors
+  const baked = chunk => {
+    const calls = chunk.ctx.calls, from = calls.findLastIndex(c => c.name === 'clearRect')
+    return calls.slice(from + 1).filter(c => c.name === 'drawImage' && c.img !== 'FLOOR')
+  }
+
+  it('desert ground shows as it is, any other ground as plain sand', () => {
+    for (const skin of [RIPPLE, DUNE, SHADE, 'ow_sand_slip_1', 'ow_sand_0', 'ow_hardpan_cracked_5_2', 'ow_hardpan_edge_3_0_1'])
+      assert.equal(guessSkin({ skin }), skin)
+    for (const skin of ['ow_road_sand_0', 'ow_path_sand_1', 'ow_water_0', 'ow_grass_1', 'ow_cobble_0', 'ow_outcrop_5', 'ow_sand_edge_1_0_2', undefined])
+      assert.equal(guessSkin({ skin }), GUESS_SAND, `${skin}`)
+  })
+
+  it('bakes a guessed cell as its ground alone: no deco, no overlay', () => {
+    const { layer, map } = setup()
+    guess(map, 8, 8, { tile: TILE.WALL, skin: RIPPLE, deco: 'ow_deco_scrub_0', overlay: 'ow_tree_palm' })
+    guess(map, 9, 8, { skin: DUNE })
+    guess(map, 10, 8, { skin: SHADE })
+    guess(map, 11, 8, { skin: 'ow_road_sand_0', deco: 'ow_deco_scrub_0' })
+    guess(map, 12, 8, { tile: TILE.WALL, skin: 'ow_water_0' })
+    frame(layer, map)
+    const b = baked(layer.chunks.get('0,0'))
+    assert.deepEqual(b.map(c => c.img), ['RIPPLE', 'DUNE', 'SHADE', 'PLAIN', 'PLAIN'])
+    assert.deepEqual(b.map(c => c.a.slice(0, 2)), [8, 9, 10, 11, 12].map(x => [x * S, 8 * S]))
+  })
+
+  it('a chunk rebakes for one more guessed cell, and the fog covers it', () => {
+    const { layer, map } = setup()
+    guess(map, 8, 8, { skin: RIPPLE })
+    frame(layer, map)
+    const chunk = layer.chunks.get('0,0')
+    const bakes = () => chunk.ctx.calls.filter(c => c.name === 'clearRect').length
+    assert.equal(bakes(), 1)
+    frame(layer, map)
+    assert.equal(bakes(), 1, 'nothing new, no bake')
+    guess(map, 9, 8, { skin: DUNE })
+    const { ctx } = frame(layer, map)
+    assert.equal(bakes(), 2)
+    assert.deepEqual(baked(chunk).map(c => c.img), ['RIPPLE', 'DUNE'])
+    assert.deepEqual(fogs(ctx).map(c => c.a), [[8 * S, 8 * S, 2 * S, S]], 'one run over both, at the fog of a cell out of sight')
+    assert.ok(fogs(ctx).every(c => c.fillStyle === 'rgba(0,0,0,0.65)'))
+  })
+
+  it('once seen, the same chunk bakes the real art', () => {
+    const { layer, map } = setup()
+    const cell = guess(map, 8, 8, { tile: TILE.WALL, skin: 'ow_road_sand_0', overlay: 'ow_tree_palm' })
+    frame(layer, map)
+    const chunk = layer.chunks.get('0,0')
+    cell.explored = cell.visible = true
+    const { ctx } = frame(layer, map)
+    assert.ok(layer.chunks.get('0,0') === chunk)
+    assert.deepEqual(baked(chunk).map(c => c.img), ['ROAD', 'PALM'])
+    assert.equal(fogs(ctx).length, 0)
+    cell.visible = false   // out of sight again: remembered as it is, fogged as before
+    assert.deepEqual(fogs(frame(layer, map).ctx).map(c => c.a), [[8 * S, 8 * S, S, S]])
+    assert.deepEqual(baked(chunk).map(c => c.img), ['ROAD', 'PALM'])
+  })
+
+  it('a walked-under cell only guessed at is ground, fogged with the ground, with no top', () => {
+    const { layer, map } = setup()
+    roofAt(map, 8, 8, { skin: RIPPLE, guessed: true })
+    const { ctx, over } = frame(layer, map)
+    const chunk = layer.chunks.get('0,0')
+    assert.deepEqual(baked(chunk).map(c => c.img), ['RIPPLE'])
+    assert.equal(chunk.top, null)
+    assert.deepEqual(fogs(ctx).map(c => c.a), [[8 * S, 8 * S, S, S]])
+    assert.equal(over.calls.length, 0)
+  })
+
+  it('the direct layer draws it the same', () => {
+    const layer = makeDirectTileLayer()
+    const map = floorMap()
+    guess(map, 8, 8, { tile: TILE.WALL, skin: 'ow_water_0', overlay: 'ow_tree_palm' })
+    roofAt(map, 9, 8, { skin: DUNE, guessed: true })
+    const ctx = recordingCtx(), over = recordingCtx()
+    layer.draw(ctx, map, D, S, 0, 0, 640, 480, 0.65)
+    layer.drawOver(over, map, D, S, 0, 0, 640, 480, 0.65)
+    assert.deepEqual(imgs(ctx), ['PLAIN', 'DUNE'])
+    assert.deepEqual(fogs(ctx).map(c => c.a), [[8 * S, 8 * S, 2 * S, S]])
+    assert.equal(over.calls.length, 0)
+  })
+})
