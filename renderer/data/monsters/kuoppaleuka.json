@@ -1,0 +1,14 @@
+{
+  "name": "kuoppaleuka",
+  "rig": "antlion",
+  "params": {
+    "funnel": 2.6,
+    "headColor": "#6b4a2a",
+    "jawColor": "#2e2018"
+  },
+  "stats": { "hp": 8, "dmg": 2, "speed": 0 },
+  "behavior": { "driver": "hook", "taxon": "beast", "sightRange": 0, "drops": "chest" },
+  "hooks": true,
+  "spawn": null,
+  "tuning": {}
+}

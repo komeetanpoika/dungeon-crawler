@@ -27,4 +27,9 @@ export const POSES = {
     [{ label: 'dying', pose: { sink: 0, state: 'death', stateT: 0.2, t: 1 } }, { label: 'dead', pose: { sink: 0, state: 'death', stateT: 0.45, t: 1 } },
      { label: 'tall', pose: { sink: 0, t: 1 }, params: { height: 2.6, girth: 1 } }],
   ],
+  antlion: [
+    [{ label: 'buried', pose: { sink: 1, t: 0 } }, { label: 'buried, sand sliding', pose: { sink: 1, t: 0.7 } }, { label: 'head up', pose: { sink: 0, t: 0.2 } }],
+    [{ label: 'winding up', pose: { sink: 0, eyeGlow: 0.9, t: 0.1 } }, { label: 'snap', pose: { sink: 0, flicker: 1, t: 0.3 } }, { label: 'hit', pose: { sink: 0, state: 'hit' } }],
+    [{ label: 'filling in', pose: { sink: 1, burn: 0.5 } }, { label: 'dying', pose: { sink: 0, state: 'death', stateT: 0.25 } }, { label: 'gone', pose: { sink: 1, state: 'death', stateT: 0.65 } }],
+  ],
 }

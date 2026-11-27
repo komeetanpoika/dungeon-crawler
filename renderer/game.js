@@ -48,6 +48,7 @@ import { toWorld } from './wilds/window.js'
 import { tickStorm, calmStorm, sightHere, mapHero, mapHazed } from './wilds/storm.js'
 import { tickHeat, besideWater } from './wilds/heat.js'
 import { tickPoison, curePoison } from './systems/poison.js'
+import { sandSlowMul, tickSandSlow } from './systems/sand-slow.js'
 import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
 import { buildBuilding } from './interior/buildings/index.js'
@@ -1872,7 +1873,7 @@ function update(delta) {
       : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor
                                         : chargeMoveFactor(player.weapon?.weaponType))
     : 1
-  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
   const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
@@ -2630,6 +2631,7 @@ function update(delta) {
 
   tickArcs(state, delta)
   tickRain(player, delta)
+  tickSandSlow(player, delta)   // sand in the face (the antlion's throw)
   // a sting's poison (systems/poison.js): its bites, and the water that washes it out
   if (player.poison) tickPoison(state, delta, { water: !state.cave && besideWater(state.map, player.x, player.y) })
   // Advance Maunonmiekka shockwave rings
