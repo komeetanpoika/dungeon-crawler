@@ -11,10 +11,12 @@ import { TILE } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { TREES } from '../renderer/systems/lumber.js'
 import { isDeckSkin } from '../renderer/wilds/bridge-art.js'
+import { TRIBE_SEATS } from '../renderer/wilds/tribes-cast.js'
 
 const SEEDS = [3, 77, 2024]
 const MONSTER_NAMES = JSON.parse(fs.readFileSync(new URL('../renderer/data/monsters/index.json', import.meta.url), 'utf8'))
-const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger', 'campfire', 'floating_pickup']
+// ('ware': what a seal trader lays out, tribes-cast.js)
+const BUILT_KINDS = ['chest', 'weapon', 'npc', 'monster', 'guard', 'wild_mushroom', 'talent_trigger', 'campfire', 'floating_pickup', 'ware']
 // (the farms of farmland: features.js FARMS, and the field with a hut that stands where none finds room)
 const FARM_KINDS = ['farmstead', 'orchard', 'mill', 'peat', 'fisher', 'fold', 'quarry', 'well', 'field']
 // (and the roadside's wayside places: features.js ROADSIDE)
@@ -167,8 +169,8 @@ test('wild land has roaming packs, off the main thing and apart from each other'
       assert.ok(dist(k, p.main) >= 12, `pack on the main thing of ${wx},${wy}`)
       for (const o of p.packs.slice(i + 1)) assert.ok(dist(k, o) >= 12, `two packs together at ${wx},${wy}`)
       const foes = p.spawns.filter(s => hostile(s) && dist(s, k) <= 3)
-      // (three at most, or four of the desert's jackals or small scorpions)
-      assert.ok(foes.length >= 1 && foes.length <= 4, `${foes.length} foes in a pack at ${wx},${wy}`)
+      // (three at most, or four of the desert's jackals or small scorpions, or far out a band of five trolls)
+      assert.ok(foes.length >= 1 && foes.length <= (k.tribe ? 5 : 4), `${foes.length} foes in a pack at ${wx},${wy}`)
       roamers += foes.length
     }
   }
@@ -220,7 +222,9 @@ test('an open-world boss can turn up two pieces from home, never beside it', () 
   }
   assert.ok(bosses / near >= 0.03 && bosses / near <= 0.15, `${bosses}/${near} bosses at toughness 1`)
   const p = generatePiece(ogre.seed, ogre.wx, ogre.wy, ogre.deal)
-  assert.equal(p.spawns.filter(s => s.kind === 'ogre').length, 1)
+  // (on a tribe's country it may be the tribe's seat, with the tribe's boss: tribes-cast.js)
+  const boss = p.main.tribe ? TRIBE_SEATS[p.main.tribe].boss.kind : 'ogre'
+  assert.equal(p.spawns.filter(s => s.kind === boss).length, 1)
 })
 
 test('nothing on the surface is flagged a boss, and nothing spawns on a blocked cell or twice on one', () => {
@@ -259,10 +263,12 @@ test('toughness drives the camp roster and the cave depth', () => {
       const foes = p.spawns.filter(s => s.kind !== 'chest' && !(s.kind === 'npc' && !NPC_SPECIES[s.species].hostile))
       assert.ok(foes.length >= 3, `camp with ${foes.length} foes`)
       if (p.tier === 1) for (const s of p.spawns) assert.ok(!hard.test(s.kind) && s.species !== 'bear', `tier 1 camp has ${s.kind}`)
-      assert.ok(p.spawns.some(s => s.kind === 'chest'))
+      // (a camp of the friendly seal folk has a trader's wares for its chest)
+      if (p.main.site === 'seals') assert.equal(p.spawns.filter(s => s.kind === 'ware').length, 3)
+      else assert.ok(p.spawns.some(s => s.kind === 'chest'))
     }
     if (kind === 'cave') { caves++; assert.ok(p.caves[0].caveDepth === p.tier || p.caves[0].caveDepth === Math.min(5, p.tier + 1)) }
-    if (kind === 'boss') assert.ok(p.spawns.some(s => s.kind === 'ogre' || s.kind === 'manticore'))
+    if (kind === 'boss') assert.ok(p.spawns.some(s => p.main.tribe ? s.kind === TRIBE_SEATS[p.main.tribe].boss.kind : s.kind === 'ogre' || s.kind === 'manticore'))
   }
   assert.ok(camps > 20 && caves > 20)
 })
@@ -788,8 +794,14 @@ test('the pieces are cell for cell what they were before doors told their looks'
   // new crests (22, 4 and 4 cells); their spawns and doors stayed. And again when the dunes closed in
   // with distance from home (desert.js deep, desert-art.js DUNE.deep): the same three lie 3.6, 4.5 and
   // 6.1 pieces out, in the ramp, and moved by their shading (59, 151 and 96 cells) and one cactus of
-  // 2,3; the lone-slip-corner fix of the same change moved none of them; spawns and doors stayed.)
-  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': 'a70a0017d3a88a61', '-3,1': 'f7270fea10aba69d', '4,-2': 'c6f49faf72d5cb18', '-5,-5': '33ca9c61e541e030', '6,1': 'a4fe92c5c238b8e4' }
+  // 2,3; the lone-slip-corner fix of the same change moved none of them; spawns and doors stayed.
+  // And again at GEN 13, when the tribes came to the mountains, the marsh and the sea (tribes-cast.js):
+  // only 4,-2 moved, mountain country at toughness 2, where the pick for one of its packs landed on the
+  // trolls' and was not kept (tribes-cast.js PACK_ODDS): the land's own were dealt in its place by the
+  // draws that follow from that (three spiders and a pack of skeletons for a bear); not a cell of it
+  // changed, nor a door, and with the tribes off it hashes as before (c6f49faf72d5cb18). The other
+  // seven hold no tribe: 2,3 is sea country but its packs stayed the land's.)
+  const BEFORE = { '0,0': 'f134d70e3f2e22b0', '1,0': '3c5354cffe09f3cf', '0,-1': '4ad523c46e90d711', '2,3': 'a70a0017d3a88a61', '-3,1': 'f7270fea10aba69d', '4,-2': '17d43b0bf7703fa3', '-5,-5': '33ca9c61e541e030', '6,1': 'a4fe92c5c238b8e4' }
   for (const [key, want] of Object.entries(BEFORE)) {
     const [wx, wy] = key.split(',').map(Number)
     const p = generatePiece(12345, wx, wy, 0)

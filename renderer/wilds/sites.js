@@ -317,6 +317,18 @@ const WAYSIDE_PLANS = {
 }
 // A milestone (tools/make-wilds-road-tiles.mjs), beside the road (features.js milestones).
 const MILESTONE = 'ow_prop_milestone'
+// The posts of a tribe's seat (the sabbath's ring, the court's): sixteen
+// cells round (0, 0) at r tiles, clockwise from the east. At SEAT_RING they
+// are every other cell of the circle, with a cell to walk between each two.
+const SEAT_RING = 5
+// Where a trader's mat may lie (stallAt), in order of liking, from the
+// middle of a camp of the bandits' look (south-east and south-west of the
+// fire, between the tents, south, east and west), and from a court's (the
+// ring's two northern shoulders, then beside it east and west). Every cell
+// of each is on the place's pad or within a quarter tile of it.
+const CAMP_STALLS = [[3, 3], [-3, 3], [0, -5], [0, 4], [4, 2], [-4, 2]]
+const COURT_STALLS = [[4, -5], [-4, -5], [6, -3], [-6, -3]]
+const circle = r => Array.from({ length: 16 }, (_, i) => [Math.round(Math.cos(i / 16 * Math.PI * 2) * r), Math.round(Math.sin(i / 16 * Math.PI * 2) * r)])
 
 // a house's door column when the plan does not give it, as house() deals it for widths 3 and 5
 const doorCol = (w, dcol) => dcol ?? (w === 4 ? 1 : (w - 1) >> 1)
@@ -1208,9 +1220,13 @@ export function makeSites(c) {
   // 'nest' (mounds, dead trees, bones). In the desert its pad is sand, both
   // tents are of striped canvas, and what lies about wears the desert's
   // names (DESERT_NAMES).
-  function camp(cx, cy, look) {
+  // `lit`: a fire burns in its middle whatever the look (a tribe's camp:
+  // tribes-cast.js); `stall`: a trader's mat is found a place by the tents
+  // (stallAt) and returned as `mat`.
+  function camp(cx, cy, look, { lit = false, stall = false } = {}) {
     if (c.desert) sandPad(cx, cy, c.pad)
     const lying = (x, y, skin) => low(x, y, dressed(skin, c.desert))
+    if (lit && look !== 'bandits') fire(cx, cy)
     if (look === 'bandits') {
       fire(cx, cy)
       tent(cx - 4, cy - 4, c.desert ? DESERT_TENT : 'ow_tent'); tent(cx + 2, cy - 4, c.desert ? DESERT_TENT : 'ow_tent_tan')
@@ -1224,14 +1240,7 @@ export function makeSites(c) {
       scatter(cx, cy, 1, 5, 4, ['ow_deco_skull'])
     } else if (look === 'den') {
       // a horseshoe of rock open to the south, the pack in its lap
-      const rock = (dx, dy) => { if (c.sandy) put(cx + dx, cy + dy, pick(c.rocks)); else { t.setMass(cx + dx, cy + dy); hold(cx + dx, cy + dy) } }
-      claimBox(cx - 5, cy - 7, cx + 5, cy - 2)
-      if (!c.sandy) for (let dy = -7; dy <= -2; dy++) for (let dx = -5; dx <= 5; dx++) if (!((dy === -7 || dy === -2) && Math.abs(dx) === 5)) t.setFloor(cx + dx, cy + dy)
-      for (let dx = -1; dx <= 1; dx++) rock(dx, -6)
-      for (let dx = -3; dx <= 3; dx++) rock(dx, -5)
-      for (let dx = -4; dx <= 4; dx++) rock(dx, -4)
-      for (const dx of [-4, -3, 3, 4]) rock(dx, -3)
-      walkRound(cx - 5, cy - 7, cx + 5, cy - 2)
+      horseshoe(cx, cy)
       lying(cx - 3, cy + 2, 'ow_prop_log'); lying(cx + 3, cy + 3, 'ow_prop_stump_1')
       scatter(cx, cy, 1, 5, 5, ['ow_deco_skull'])
     } else {
@@ -1239,6 +1248,36 @@ export function makeSites(c) {
       low(cx - 5, cy - 1, DEAD[0]); low(cx + 1, cy + 4, DEAD[1]); low(cx + 5, cy - 3, DEAD[0])
       scatter(cx, cy, 1, 5, 5, ['ow_deco_skull'])
     }
+    return stall ? { mat: stallAt(CAMP_STALLS.map(([dx, dy]) => [cx + dx, cy + dy])) } : {}
+  }
+  // The den's horseshoe of rock north of (cx, cy), open to the south: mountain
+  // rock, or on sand a heap of the country's boulders; a ring to walk round it.
+  function horseshoe(cx, cy) {
+    const rock = (dx, dy) => { if (c.sandy) put(cx + dx, cy + dy, pick(c.rocks)); else { t.setMass(cx + dx, cy + dy); hold(cx + dx, cy + dy) } }
+    claimBox(cx - 5, cy - 7, cx + 5, cy - 2)
+    if (!c.sandy) for (let dy = -7; dy <= -2; dy++) for (let dx = -5; dx <= 5; dx++) if (!((dy === -7 || dy === -2) && Math.abs(dx) === 5)) t.setFloor(cx + dx, cy + dy)
+    for (let dx = -1; dx <= 1; dx++) rock(dx, -6)
+    for (let dx = -3; dx <= 3; dx++) rock(dx, -5)
+    for (let dx = -4; dx <= 4; dx++) rock(dx, -4)
+    for (const dx of [-4, -3, 3, 4]) rock(dx, -3)
+    walkRound(cx - 5, cy - 7, cx + 5, cy - 2)
+  }
+  // Where a trader sits on his mat with three wares in a row before him (the
+  // cell of the mat, and the three cells south of it and of its two
+  // neighbours): the first of `spots` whose four cells are open, untaken and
+  // off every path, so nobody buys by walking a trail. Where every spot has a
+  // path through it, the one with the fewest of its cells on one; a spot with
+  // a cell that is not open ground is the last resort (the first of `spots`,
+  // opened). features.js lays the trader and the wares.
+  const STALL = [[0, 0], [-1, 1], [0, 1], [1, 1]]
+  function stallAt(spots) {
+    const open = ([x, y]) => STALL.every(([dx, dy]) => t.free(x + dx, y + dy) && !c.taken(x + dx, y + dy))
+    const trodden = ([x, y]) => STALL.filter(([dx, dy]) => t.onPath(x + dx, y + dy)).length
+    let best = null
+    for (const spot of spots) if (open(spot) && (!best || trodden(spot) < trodden(best))) best = spot
+    const [x, y] = best ?? spots[0]
+    if (!best) for (const [dx, dy] of STALL) t.clear(x + dx, y + dy)
+    return { x, y }
   }
   // Whatever lives here is big: a fire, what it took, what it ate.
   // In the desert (`c.desert`) what lies there wears the desert's names (DESERT_NAMES).
@@ -1247,6 +1286,53 @@ export function makeSites(c) {
     low(cx - 3, cy - 2, 'ow_prop_crate_1'); low(cx - 4, cy - 2, 'ow_prop_barrel_0'); low(cx - 3, cy - 3, 'ow_prop_sack_1')
     low(cx + 3, cy + 2, dressed('ow_prop_log', c.desert))
     scatter(cx, cy, 1, 5, 6, ['ow_deco_skull'])
+  }
+
+  // ---- the tribes' seats (tribes-cast.js TRIBE_SEATS) ------------------------------
+  // Each returns its named points: `heart`, the middle its people are at home
+  // by, and `seat`, where its boss is. All of it is laid from tiles the other
+  // sites use: a seat has no tile of its own.
+  //
+  // The Mountain King's hall: the den's horseshoe of mountain rock with a fire
+  // in its lap, torches at its mouth, what the band took heaped by the fire.
+  function hall(cx, cy) {
+    fire(cx, cy)
+    horseshoe(cx, cy)
+    low(cx - 3, cy - 1, 'ow_prop_torch'); low(cx + 3, cy - 1, 'ow_prop_torch')
+    low(cx - 4, cy + 1, 'ow_prop_barrel_0'); low(cx - 4, cy + 2, 'ow_prop_crate_1'); low(cx + 4, cy + 1, 'ow_prop_sack_1')
+    low(cx + 3, cy + 3, 'ow_prop_log')
+    scatter(cx, cy, 1, 5, 6, ['ow_deco_skull'])
+    return { heart: { x: cx, y: cy }, seat: { x: cx, y: cy - 2 } }
+  }
+  // The sabbath: a fire in a ring of dead trees and graves SEAT_RING tiles
+  // out, every other cell of the circle, open to the south.
+  function sabbath(cx, cy) {
+    fire(cx, cy)
+    for (const [i, [dx, dy]] of circle(SEAT_RING).entries()) {
+      if (dy >= SEAT_RING - 1 && Math.abs(dx) <= 2) continue
+      low(cx + dx, cy + dy, i % 2 ? pick(GRAVES) : DEAD[(i >> 1) % 2])
+    }
+    hold(cx, cy - 2)
+    scatter(cx, cy, 1, 4, 6, ['ow_deco_skull'])
+    return { heart: { x: cx, y: cy }, seat: { x: cx, y: cy - 2 } }
+  }
+  // The walrus's court: a ring of the country's rocks, every other cell of the
+  // circle so it is walked through anywhere, its mouth (three cells) to the
+  // north, where the walrus sits between two tents with a fire at his back;
+  // the trader's mat on one side of the ring (COURT_STALLS: the east, unless
+  // a path runs there), the gong on the other shoulder. The ring's middle is
+  // a tile south of (cx, cy), so all of it lies on the pad. `song`: where the
+  // singer sits, by the tent on the gong's side.
+  function court(cx, cy) {
+    const ring = { x: cx, y: cy + 1, r: SEAT_RING }
+    for (const [dx, dy] of circle(ring.r)) if (!(dx === 0 && dy < 0)) put(ring.x + dx, ring.y + dy, pick(c.rocks))
+    fire(cx, cy - 7)
+    tent(cx - 3, cy - 6); tent(cx + 2, cy - 6, 'ow_tent_tan')
+    const seat = { x: cx, y: cy - 5 }
+    hold(seat.x, seat.y)
+    const mat = stallAt(COURT_STALLS.map(([dx, dy]) => [cx + dx, cy + dy]))
+    const side = mat.x > cx ? -1 : 1
+    return { heart: { x: ring.x, y: ring.y }, ring, seat, mat, gong: { x: cx + side * 4, y: cy - 4 }, song: { x: cx + side * 4, y: cy - 5 } }
   }
 
   // ---- small guarded things ------------------------------------------------------
@@ -1618,5 +1704,5 @@ export function makeSites(c) {
 
   const tales = { elk: elkWood, tar: causeway, kivihiisi: oven, nakki: bellLake, fold: ridge, flame: knoll, lalli: lalliTree,
     sampo_sea: tursoBay, sampo_mountain: copperBowl, sampo_marsh: pikePond }
-  return { house, village, finishVillage, finishDesert, hut, ruin, camp, lair, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, coach, ...farms, ...wayside }
+  return { house, village, finishVillage, finishDesert, hut, ruin, camp, lair, hall, sabbath, court, nest, stones, cave, statue, lilies, flowers, tales, villageTrouble, dressing, milestone, coach, ...farms, ...wayside }
 }

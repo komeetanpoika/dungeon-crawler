@@ -33,7 +33,7 @@ function pieces() {
   return block
 }
 
-test('GEN is bumped: the spawn lists of desert pieces changed', () => assert.equal(GEN, 12))
+test('GEN is bumped: the spawn lists of desert pieces changed (12), then the tribes\' countries (13)', () => assert.equal(GEN, 13))
 
 test('the tables: every row has a gentle pack, and what is bound to the sand is marked', () => {
   assert.equal(desertCast(), true)

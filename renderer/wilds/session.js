@@ -64,10 +64,13 @@ function record(world, piece, entities) {
   return rec
 }
 
-// Build one spawn of a piece standing at window column c, row r.
+// Build one spawn of a piece standing at window column c, row r. A spawn's
+// `home` (one of a tribe's: tribes-cast.js) is in piece tiles as its own
+// place is, and goes to window tiles with it.
 function build(state, piece, ix, c, r, buildEntities) {
   const s = piece.spawns[ix]
-  for (const e of buildEntities([{ ...s, x: s.x + c * PIECE, y: s.y + r * PIECE }], state.map, piece.lootDepth)) {
+  const at = p => ({ ...p, x: p.x + c * PIECE, y: p.y + r * PIECE })
+  for (const e of buildEntities([s.home ? { ...at(s), home: at(s.home) } : at(s)], state.map, piece.lootDepth)) {
     e.wildsKey = piece.key
     e.wildsIx = ix
     state.entities.push(e)
