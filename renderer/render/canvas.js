@@ -19,7 +19,7 @@ import { creatureAlpha } from '../systems/creatures.js'
 import { ERUPT_TIME } from '../systems/monsters/maahinen.js'
 import { getMonsterDef, drawGeneratedMonster, isStoryCreature, drawMonsterFx, drawnTop } from '../systems/monsters.js'
 import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
-import { makeWeatherLayer, drawNight, drawFog, drawHaze, drawHeat } from './weather.js'
+import { makeWeatherLayer, drawNight, drawFog, drawHaze, drawHeat, hazeClearRect } from './weather.js'
 import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.js'
 import { spriteHue } from '../systems/rites.js'
 import { drawTile } from './tiles.js'
@@ -1173,6 +1173,9 @@ export class Renderer {
     this.camX = 0
     this.camY = 0
     this.debug = false
+    // Under a full sandstorm the world is drawn only where the haze lets it
+    // show (render()); false draws it all, for a side-by-side check.
+    this.clipToHaze = true
     this.sprites = {}
     this.weatherLayer = weatherLayer
       ?? (typeof document !== 'undefined' ? makeWeatherLayer(() => document.createElement('canvas')) : null)
@@ -1304,6 +1307,20 @@ export class Renderer {
     // would hold that colour long after the trip ended.
     const baseSprites = this.sprites
     const sprites = this._tripSprites(baseSprites, fx, player)
+
+    // A sandstorm at full strength lays whole haze over all but the patch
+    // round the hero (render/weather.js hazeClearRect): the world, from the
+    // background to the last thing under the haze, is drawn only in the
+    // square round that patch. Nothing in between reads the frame back but
+    // the rite's blur, so a frame with the blur is never clipped.
+    const look = state.weather?.look
+    const hazeClip = this.clipToHaze && look && this.weatherLayer && !(fx?.blur > 0) ? hazeClearRect(look, { camX, camY }, S) : null
+    if (hazeClip) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(hazeClip.x, hazeClip.y, hazeClip.w, hazeClip.h)
+      ctx.clip()
+    }
 
     const theme = state.theme ?? { bgColor: '#000', tint: null, fogAlpha: 0.65 }
     ctx.fillStyle = theme.bgColor
@@ -1453,11 +1470,12 @@ export class Renderer {
       }
     }
 
+    if (hazeClip) ctx.restore()
+
     // Weather, pass one: a sandstorm's haze (wilds/storm.js), the day's heat
     // shimmer at the screen's edges (wilds/heat.js), then the night wash with
     // holes punched around fires, over them and before the flames so they
     // stay bright. look is null underground.
-    const look = state.weather?.look
     if (look && this.weatherLayer) {
       drawHaze(ctx, this.weatherLayer, look, { camX, camY }, { W, H }, S)
       drawHeat(ctx, this.weatherLayer, look, { W, H })

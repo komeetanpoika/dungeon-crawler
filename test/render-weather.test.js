@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeWeatherLayer, fogBlobs, drawNight, drawFog, drawHaze, drawHeat, nightBands, HAZE, SHIMMER } from '../renderer/render/weather.js'
+import { makeWeatherLayer, fogBlobs, drawNight, drawFog, drawHaze, drawHeat, nightBands, hazeClearRect, HAZE, SHIMMER } from '../renderer/render/weather.js'
 import { makeWeather, weatherLook } from '../renderer/systems/weather.js'
 import { tickStorm, stormOfDay, STORM } from '../renderer/wilds/storm.js'
 import { windAt } from '../renderer/wilds/desert-art.js'
@@ -508,6 +508,35 @@ describe('drawHaze', () => {
     assert.ok(stops.length >= 5, 'too few stops for a soft edge')
     // whole haze past the patch at full strength
     assert.equal(HAZE.far, 1)
+  })
+
+  // At full strength the haze is whole past its patch, so canvas.js draws the
+  // world only in the square hazeClearRect gives: it must hold the patch with
+  // its soft edge (spread by the smoothed scale-ups up to two layer pixels,
+  // 8 CSS px) on every side, and reach no more than a tile past that.
+  it('at full strength the haze hides all but a square round its clear patch, a tile wider than it', () => {
+    const k = 0.25
+    for (const [st, c] of [[{}, cam], [{}, { camX: 64.5, camY: -32.25 }], [{ r: 8 }, { camX: 10, camY: 20 }], [{ px: 203.7, py: 149.2 }, cam]]) {
+      const layer = layerWith()
+      layer.ctx.createRadialGradient = (x0, y0, r0, x1, y1, r1) => ({ x: x1, y: y1, r: r1, stops: [], addColorStop(o, col) { this.stops.push([o, col]) } })
+      const lk = look(storm(st))
+      drawHaze(recordingCtx(), layer, lk, c, view, S)
+      const g = layer.ctx.ops.find(o => o.name === 'fillRect' && o.gco === 'destination-out').fillStyle
+      // the patch in CSS px, from the gradient drawHaze cut it with
+      const x = g.x / k, y = g.y / k, R = g.r / k, edge = 2 / k
+      const rect = hazeClearRect(lk, c, S)
+      assert.ok(rect, `no square at full strength (${JSON.stringify(st)})`)
+      assert.ok(rect.x <= x - R - edge && rect.y <= y - R - edge && rect.x + rect.w >= x + R + edge && rect.y + rect.h >= y + R + edge,
+        `${JSON.stringify(rect)} does not hold the patch at ${x},${y} radius ${R} and its soft edge`)
+      assert.ok(rect.x >= x - R - S - 1 && rect.y >= y - R - S - 1 && rect.x + rect.w <= x + R + S + 1 && rect.y + rect.h <= y + R + S + 1,
+        `${JSON.stringify(rect)} reaches more than a tile past the patch at ${x},${y} radius ${R}`)
+      assert.ok([rect.x, rect.y, rect.w, rect.h].every(Number.isInteger), 'on whole pixels')
+    }
+    // while the haze is not whole past the patch, nothing is hidden: a storm
+    // rising or dying down, or none
+    for (const s of [0, 0.1, 0.5, 0.99, 0.999999]) assert.equal(hazeClearRect(look(storm({ s })), cam, S), null, `hidden at strength ${s}`)
+    assert.equal(hazeClearRect(look(null), cam, S), null)
+    assert.equal(hazeClearRect(null, cam, S), null)
   })
 
   it('the dust and the streaks blow along the wind, drift with time, and stay put in the world', () => {

@@ -504,7 +504,7 @@ export function drawHaze(ctx, layer, look, { camX, camY }, { W, H }, S) {
   // the clear patch round the hero: clear (but for the thin haze at his
   // feet) out to `inner` of the radius where the haze is whole, then eased in
   const x = (st.px - camX) * k, y = (st.py - camY) * k
-  const r1 = Math.max(1, st.r - HAZE.whole) * S * k
+  const r1 = patchTiles(st) * S * k
   const clear = 1 - HAZE.near / HAZE.far
   const g = L.createRadialGradient(x, y, 0, x, y, r1)
   g.addColorStop(0, `rgba(0,0,0,${clear.toFixed(3)})`)
@@ -530,6 +530,29 @@ export function drawHaze(ctx, layer, look, { camX, camY }, { W, H }, S) {
 }
 // The haze's alpha past the clear patch at strength s: rising fast, eased out.
 export const hazeAlpha = s => HAZE.far * (1 - (1 - s) * (1 - s))
+// The clear patch's radius in tiles: the storm sight (look.storm.r) less
+// `whole`, where the haze is whole.
+const patchTiles = st => Math.max(1, st.r - HAZE.whole)
+
+// The square of the frame (CSS px: { x, y, w, h }) outside which the haze
+// hides everything, or null while it hides nothing whole (no storm, or one
+// rising or dying down: its alpha under 1). At full strength the layer is
+// opaque sand past the clear patch, and drawHaze lays it on at alpha 1, so
+// what lies under it there need not be drawn (canvas.js clips the world to
+// this square). The patch, centred where the hero is drawn, reaches
+// patchTiles of the storm sight (a village's wider sight widens it too); its
+// soft edge reaches past that by under two layer pixels (8 CSS px: the edge
+// pixels' own extent and the smoothed scale-up to half the frame), and the
+// doubling onto the frame puts it within a CSS px of where it is meant to
+// be. The square reaches a tile further each way.
+export function hazeClearRect(look, { camX, camY }, S) {
+  const st = look?.storm
+  if (!st || !(hazeAlpha(st.s) >= 1)) return null
+  const reach = (patchTiles(st) + 1) * S
+  const x0 = Math.floor(st.px - camX - reach), y0 = Math.floor(st.py - camY - reach)
+  const x1 = Math.ceil(st.px - camX + reach), y1 = Math.ceil(st.py - camY + reach)
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
 
 // ---- the day's heat ---------------------------------------------------------------
 // (wilds/heat.js; look.heat from systems/weather.js, 0..1, coming and going

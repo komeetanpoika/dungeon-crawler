@@ -9,6 +9,7 @@ import { SPRITES } from '../renderer/render/sprites.js'
 import { readPng } from '../tools/png-read.mjs'
 import { readFileSync } from 'node:fs'
 import { gearWearing } from './helpers/outfits.js'
+import { hazeClearRect } from '../renderer/render/weather.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in. `ops`
 // records any other method call (name + args) via the Proxy fallback below,
@@ -677,6 +678,67 @@ describe('Renderer.render weather layers', () => {
     assert.equal(ctx.globalCompositeOperation, 'source-over', 'ctx gco settled')
     assert.equal(ctx.globalAlpha, 1, 'ctx alpha settled')
     assert.equal(ctx.filter, 'none', 'ctx filter settled')
+  })
+
+  // Under a full sandstorm the haze is whole past its patch (render/weather.js
+  // hazeClearRect), so the world is drawn only in the square round it: the
+  // clip goes on before the background and comes off before the haze, and
+  // only at full strength with the haze to be drawn.
+  describe('under a sandstorm', () => {
+    const storm = s => ({ dark: 0, ambient: [255, 255, 255], fog: 0, t: 0, lights: [], storm: { s, wind: 0, px: 48, py: 48, r: 4 } })
+    function stormScene(look, { clipToHaze = true, layer = true, fx = null } = {}) {
+      const ctx = orderCtx()
+      // save and restore recorded in order, beside the draws
+      const { save, restore } = ctx
+      ctx.save = () => { ctx.ops.push({ name: 'save' }); save() }
+      ctx.restore = () => { ctx.ops.push({ name: 'restore' }); restore() }
+      const canvas = { width: 128, height: 96, offsetWidth: 128, offsetHeight: 96, getContext: () => ctx }
+      const r = new Renderer(canvas, layer ? { weatherLayer: stubLayer() } : {})
+      r.viewW = 128; r.viewH = 96
+      r.clipToHaze = clipToHaze
+      const state = scene({ dayCycle: true, t: 0, look })
+      r.updateCamera(state.player, 0)
+      r.render(state, fx)
+      return { ops: ctx.ops, r, look }
+    }
+    // the clip's rect and its index, the save before it, the restore that ends it
+    const clipOf = ops => {
+      const at = ops.findIndex(o => o.name === 'clip')
+      if (at < 0) return null
+      let depth = 0, end = -1
+      for (let i = at + 1; i < ops.length && end < 0; i++) {
+        if (ops[i].name === 'save') depth++
+        else if (ops[i].name === 'restore') { if (depth === 0) end = i; else depth-- }
+      }
+      return { at, rect: ops[at - 1], save: ops.findLastIndex((o, i) => i < at && o.name === 'save'), end }
+    }
+
+    it('at full strength the world is clipped to the square round the clear patch, up to the haze', () => {
+      const { ops, r, look } = stormScene(storm(1))
+      const c = clipOf(ops)
+      assert.ok(c, 'no clip')
+      const want = hazeClearRect(look, { camX: r.camX, camY: r.camY }, r.S)
+      assert.equal(c.rect.name, 'rect')
+      assert.deepEqual(c.rect.args, [want.x, want.y, want.w, want.h])
+      const bg = ops.findIndex(o => o.name === 'fillRect' && o.fs === '#000')
+      const haze = ops.findIndex(o => o.name === 'drawImage' && o.img.id === 'LAYER')
+      assert.ok(c.save >= 0 && c.save < c.at && c.at < bg, 'clipped before the background')
+      assert.ok(c.end > bg && c.end < haze, 'the clip ends before the haze')
+      assert.equal(ops[haze].alpha, 1, 'the haze laid on whole')
+      // what comes after the haze is not clipped: the fire zone's flames and the floats
+      assert.equal(ops.filter(o => o.name === 'clip').length, 1)
+    })
+
+    it('no clip while the storm rises or dies down, with no storm, without the haze, or switched off', () => {
+      for (const [name, look, opts] of [
+        ['rising', storm(0.9), {}], ['none', storm(0), {}], ['no storm', { dark: 0, ambient: [255, 255, 255], fog: 0, t: 0, lights: [] }, {}],
+        ['no weather layer', storm(1), { layer: false }], ['switched off', storm(1), { clipToHaze: false }],
+        ['the rite\'s blur', storm(1), { fx: { blur: 2, greenAlpha: 0, wobbleX: 0, wobbleY: 0 } }],
+      ]) {
+        const { ops } = stormScene(look, opts)
+        assert.equal(ops.filter(o => o.name === 'clip').length, 0, name)
+      }
+    })
   })
 
   it('skips weather when look is null (underground)', () => {

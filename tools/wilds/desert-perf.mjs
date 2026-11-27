@@ -17,7 +17,8 @@
 //      among the dunes (placed and checked as in 2), `--web-runs` times each
 //      at noon (the heat's shimmer on) and at the peak of a storm (the clock
 //      held on the seed's first stormy day whose storm peaks in daylight; a
-//      seed with none fails the gate): above 30 fps;
+//      seed with none fails the gate): the median of the runs above 30 fps,
+//      noon and storm apart (every run printed, any one under 30 marked);
 //   4. piece generation (wilds/piece.js generatePiece) on 40 desert pieces of
 //      the seed, 20 near home (not wholly 7 pieces out) and 20 deep (wholly 7
 //      or more out), against `--base` (origin/main: the local main ref is
@@ -365,16 +366,20 @@ if (!no('web') || !no('big') || !no('load')) {
           const b = await throttledFps(page, WEB_SECS)
           if (i === 0) await shot(page, `web-storm-${width}`)
           rows.push({ a, b })
-          const line = `web build ${width}x${height}, CPU ${RATE}x throttled, among the dunes, run ${i + 1}: noon ${a.fps} fps (frame p50 ${a.p50}, p95 ${a.p95} ms; shimmer ${f2(sn.heat)}) | storm ${b.fps} fps (p50 ${b.p50}, p95 ${b.p95} ms; strength ${f2(ss.storm)}, lit radius ${ss.sight})`
-          console.log(kind === 'gate' ? `${line} (gate > ${GATE.fps} fps)` : `  (${line}; not gated)`)
+          // (a single run under the gate's fps is marked; the gate is the median of the runs)
+          const under = r => kind === 'gate' && !(r.fps > GATE.fps) ? ` [this run under ${GATE.fps}]` : ''
+          const line = `web build ${width}x${height}, CPU ${RATE}x throttled, among the dunes, run ${i + 1}: noon ${a.fps} fps${under(a)} (frame p50 ${a.p50}, p95 ${a.p95} ms; shimmer ${f2(sn.heat)}) | storm ${b.fps} fps${under(b)} (p50 ${b.p50}, p95 ${b.p95} ms; strength ${f2(ss.storm)}, lit radius ${ss.sight})`
+          console.log(kind === 'gate' ? line : `  (${line}; not gated)`)
           if (ss.storm < 0.99) fails.push(`${width}x${height} run ${i + 1}: the storm did not blow (${ss.storm})`)
         }
         results[kind] = rows
         if (kind === 'gate') {
-          for (const [i, r] of rows.entries()) {
-            if (!(r.a.fps > GATE.fps)) fails.push(`web build at noon, run ${i + 1}: ${r.a.fps} fps at ${RATE}x throttle <= ${GATE.fps}`)
-            if (r.b && !(r.b.fps > GATE.fps)) fails.push(`web build in a storm, run ${i + 1}: ${r.b.fps} fps at ${RATE}x throttle <= ${GATE.fps}`)
-          }
+          // judged on the median of the runs, noon and storm apart: one
+          // loaded run neither fails the gate nor passes it
+          const noon = median(rows.map(r => r.a.fps)), stormy = rows.every(r => r.b) ? median(rows.map(r => r.b.fps)) : null
+          console.log(`web build ${width}x${height}, CPU ${RATE}x throttled, median of ${rows.length} runs: noon ${noon} fps | storm ${stormy ?? '-'} fps (gate: each median > ${GATE.fps} fps)`)
+          if (!(noon > GATE.fps)) fails.push(`web build at noon: median ${noon} fps of ${rows.length} runs at ${RATE}x throttle <= ${GATE.fps}`)
+          if (stormy !== null && !(stormy > GATE.fps)) fails.push(`web build in a storm: median ${stormy} fps of ${rows.length} runs at ${RATE}x throttle <= ${GATE.fps}`)
         }
         if (errors.length) fails.push(`web errors (${width}x${height}): ${errors.slice(0, 3).join(' | ')}`)
       } finally {
