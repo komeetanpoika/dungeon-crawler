@@ -203,6 +203,7 @@ const PACKS = [
   [[hound, hound], [spider('strong'), spider('medium')], [bones, bones, bones], [bear, wolf, wolf], CLOWN],
   [[{ kind: 'manticore' }], [hound, hound, hound], [{ kind: 'podeboo' }, bones], [spider('strong'), spider('strong')]],
 ]
+const SAND_KINDS = new Set(['skorpioni', 'keisariskorpioni', 'hiekkamato'])
 const SUNROOM_ODDS = 0.25   // a village beyond home with Päivölä in it
 const VILLAGE_CALM = 24   // tiles round a village centre no pack is dealt into
 
@@ -1115,6 +1116,8 @@ export function placeFeatures(t, piece) {
   // the piece's heart (so its leash keeps it out of every yard) and on a
   // calm road piece WORM_ROAD from the road.
   const looseAt = (x, y) => t.biome(x, y) === 'desert' && !isHardpanSkin(t.groundAt(x, y)) && !t.onPath(x, y) && !t.onRoad(x, y)
+  // a scorpion or a worm is posted in loose sand, where the one lies buried by day and the other can swim
+  const inSand = foe => SAND_KINDS.has(foe.kind) ? looseAt : null
   const pitRoom = (x, y) => {
     for (let dy = -PIT_ROOM; dy <= PIT_ROOM; dy++) for (let dx = -PIT_ROOM; dx <= PIT_ROOM; dx++)
       if (!t.inside(x + dx, y + dy) || t.kind(x + dx, y + dy) !== 'land' || t.onSite(x + dx, y + dy) || taken.has(`${x + dx},${y + dy}`) || !looseAt(x + dx, y + dy)) return false
@@ -1148,7 +1151,7 @@ export function placeFeatures(t, piece) {
       for (let dy = -PIT_ROOM; dy <= PIT_ROOM; dy++) for (let dx = -PIT_ROOM; dx <= PIT_ROOM; dx++) { t.clear(x + dx, y + dy); taken.add(`${x + dx},${y + dy}`) }
       t.keepOpen(x, y, PIT_ROOM + 2)
       made = [spawn({ ...dealt[0], x, y })]
-    } else made = dealt.map(foe => place(foe, x, y, 0, 2)).filter(Boolean)
+    } else made = dealt.map(foe => place(foe, x, y, 0, 2, inSand(foe))).filter(Boolean)
     // the road's calm is measured to each foe, not to the middle of its pack; so is a farm's
     const strays = made.filter(s => !offRoad(s.x, s.y, ROAD_CALM) || (farmland && Math.hypot(s.x - mx, s.y - my) < VILLAGE_CALM))
     if (strays.length) {

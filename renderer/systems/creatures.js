@@ -32,7 +32,8 @@ export function hurtCreature(state, e, dmg, opts = {}) {
   const dead = !r.absorbed && Number.isFinite(e.hp) && e.hp <= 0
   const killed = dead && !state.creatureKills?.[e.type]
   if (killed) state.creatureKills = { ...(state.creatureKills ?? {}), [e.type]: true }
-  return { absorbed: r.absorbed, cue: killed ? 'enemy-death' : r.cue, think: r.think, killed }
+  // (every death sounds as one; `killed` is only the first of its kind, for the episodes' record)
+  return { absorbed: r.absorbed, cue: dead ? 'enemy-death' : r.cue, think: r.think, killed }
 }
 
 // Render alpha (e.g. the nakki fading in/out of visibility). Defaults to

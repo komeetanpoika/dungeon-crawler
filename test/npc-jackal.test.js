@@ -42,6 +42,23 @@ describe('the jackal', () => {
     assert.equal(e.attack ?? null, null)
   })
 
+  it('a lone one bolts for good: it does not quiver at the edge of its fear', () => {
+    const e = jackal(10, 10), s = state({ x: 13, y: 10 }, [e])
+    let flips = 0, last = null, turns = 0, lastDx = 0
+    for (let i = 0; i < 60 * 6; i++) {
+      const x0 = e.px
+      updateNpc(e, s, 1 / 60)
+      if (last !== null && e.ai.current !== last) flips++
+      last = e.ai.current
+      const dx = Math.sign(e.px - x0)
+      if (dx && lastDx && dx !== lastDx) turns++
+      if (dx) lastDx = dx
+    }
+    assert.ok(flips <= 4, `${flips} changes of mind in six seconds`)
+    assert.ok(turns <= 4, `${turns} about-turns in six seconds`)
+    assert.ok(away(e, s) > 8 * S, `it got ${(away(e, s) / S).toFixed(1)} tiles away`)
+  })
+
   it('alone and far off, it keeps its distance rather than bolting', () => {
     const e = jackal(10, 10), s = state({ x: 30, y: 10 }, [e])
     assert.equal(goalOf(e, s), 'harry')

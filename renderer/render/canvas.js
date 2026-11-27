@@ -21,6 +21,7 @@ import { getMonsterDef, drawGeneratedMonster, isStoryCreature, drawMonsterFx, dr
 import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
 import { makeWeatherLayer, drawNight, drawFog, drawHaze, drawHeat, hazeClearRect } from './weather.js'
 import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.js'
+import { isPoisoned } from '../systems/poison.js'
 import { spriteHue } from '../systems/rites.js'
 import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer, CHUNK } from './tile-layer.js'
@@ -632,7 +633,7 @@ export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = 
   if (hero.rune) drawRuneGlow(ctx, hx + S / 2, hy + S / 2, S)
   if (hero.buffs) drawBuffUnder(ctx, hero, hx + S / 2, hy + S / 2, S)
   // Frozen solid, the hero takes the same icy tint and sheen as a frozen enemy.
-  const tint = hero.ice ? FROZEN_FILTER : hero.poison ? POISON_FILTER : null
+  const tint = hero.ice ? FROZEN_FILTER : isPoisoned(hero) ? POISON_FILTER : null
   const prevFilter = tint ? ctx.filter : null
   if (tint) ctx.filter = tint
   if (isFlickerVisible(hero.invulnTimer)) drawEntity(ctx, hero, hx, hy, S, sprites)

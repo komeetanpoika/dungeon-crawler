@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { POISON, poisonPlayer, curePoison, tickPoison } from '../renderer/systems/poison.js'
+import { POISON, poisonPlayer, curePoison, tickPoison, isPoisoned } from '../renderer/systems/poison.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { updateHUD } from '../renderer/render/hud.js'
 import { gearWearing } from './helpers/outfits.js'
@@ -77,6 +77,14 @@ describe('poison', () => {
     poisonPlayer(s.player, 1)
     run(s, POISON.every + 0.1)
     assert.ok(s.sfx.cues.some(c => c.name === 'poison'))
+  })
+})
+
+describe('isPoisoned', () => {
+  it('knows the sting\'s poison from the arena\'s Venom, which draws its own wash', () => {
+    assert.equal(isPoisoned({ poison: { left: 2, next: 1, wash: 0 } }), true)
+    assert.equal(isPoisoned({ poison: { owner: 'h2', t: 3, next: 1 } }), false)
+    assert.equal(isPoisoned({}), false)
   })
 })
 

@@ -23,6 +23,8 @@ import { tuningOf } from '../monsters.js'
 import { hasLineOfSight } from '../entities.js'
 import { damagePlayer } from '../player-damage.js'
 import { poisonPlayer } from '../poison.js'
+import { startKnockback } from '../knockback.js'
+import { shatterBonus } from '../status.js'
 import { looseSand } from '../../wilds/sand.js'
 import { sfx } from '../sfx.js'
 
@@ -132,11 +134,15 @@ export function update(e, state, delta) {
   }
 }
 
-// A blow always lands; on a buried one it also rouses.
-export function hit(e, state, dmg) {
+// A blow always lands; on a buried one it also rouses. Out of the sand it
+// takes a blade as any monster does: shoved back (`opts.knockback`, px, from
+// game.js's melee) and, rimed over, shattered for two more.
+export function hit(e, state, dmg, opts = {}) {
   const T = tuningOf(e.type), m = ensure(e, state, T)
-  e.hp -= dmg; e.inCombat = true
+  e.hp -= dmg + shatterBonus(e); e.inCombat = true
   if (m.state === 'buried' || m.state === 'digging') rouse(e, m, state, T)
+  else if (m.state === 'out' && opts.knockback > 0 && state.player)
+    startKnockback(e, e.px - state.player.px, e.py - state.player.py, opts.knockback)
   return { entity: e, absorbed: false, cue: 'melee-hit' }
 }
 

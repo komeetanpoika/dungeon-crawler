@@ -75,16 +75,17 @@ const far = (a, b) => Math.hypot(a.px - b.px, a.py - b.py)
 // The way under the sand from one cell to another: steps over loose cells
 // within `box` tiles of the start, straight or (where both cells beside the
 // step are loose too) diagonal. Ends at `to`, or at the
-// reachable cell nearest it; empty when the start itself is not loose.
+// reachable cell nearest it. The start itself need not be loose (a worm dealt
+// or shoved onto hard ground swims off it); every step is into loose sand.
 export function routeUnder(map, from, to, box = 20) {
-  if (!looseSand(map, from.x, from.y)) return []
   const W = 2 * box + 1, x0 = from.x - box, y0 = from.y - box
   const prev = new Int32Array(W * W).fill(-1)
   const ix = (x, y) => (y - y0) * W + (x - x0)
   const start = ix(from.x, from.y)
   prev[start] = start
   const queue = [start]
-  let best = start, bestD = Math.hypot(from.x - to.x, from.y - to.y)
+  // (from hard ground any sand it can step into is nearer than staying)
+  let best = start, bestD = looseSand(map, from.x, from.y) ? Math.hypot(from.x - to.x, from.y - to.y) : Infinity
   for (let q = 0; q < queue.length && bestD > 0; q++) {
     const i = queue[q], x = x0 + i % W, y = y0 + Math.floor(i / W)
     for (const [dx, dy] of STEPS) {
@@ -266,7 +267,8 @@ export function update(e, state, delta) {
       damagePlayer(state, T.biteDmg, 'hit', { px: e.px, py: e.py })
     }
     m.t -= delta
-    if (m.t <= 0 || m.taken >= T.diveAt) { m.state = 'dive'; m.t = DIVE; e.spellOpen = false; sfx(state, 'sink', { px: e.px, py: e.py }) }
+    // (inCombat off: no health bar hangs over a travelling mound)
+    if (m.t <= 0 || m.taken >= T.diveAt) { m.state = 'dive'; m.t = DIVE; e.spellOpen = false; e.inCombat = false; sfx(state, 'sink', { px: e.px, py: e.py }) }
     return
   }
 

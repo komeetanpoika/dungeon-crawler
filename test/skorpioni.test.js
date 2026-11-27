@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import * as hooks from '../renderer/systems/monsters/skorpioni.js'
 import * as emperor from '../renderer/systems/monsters/keisariskorpioni.js'
 import { tuningOf, isStoryCreature, spellSpares, getMonsterDef } from '../renderer/systems/monsters.js'
-import { strikeCreature } from '../renderer/systems/creatures.js'
+import { strikeCreature, hurtCreature } from '../renderer/systems/creatures.js'
 import { makeShieldContents } from '../renderer/systems/entities.js'
 import { register, world, spawn, moveHero, run, cues, cell, S } from './helpers/desert-bench.js'
 
@@ -164,6 +164,37 @@ describe('skorpioni', () => {
     moveHero(h, 20, 36)
     run(h, g, update, T.rebury + 1.5)
     assert.equal(g.scorp.state, 'out')
+  })
+
+  it('every one of them dies with a death\'s sound, not only the first of its kind', () => {
+    const s = world()
+    for (const x of [18, 22]) {
+      const e = scorp(s, x, 16)
+      run(s, e, update, 0.1)
+      const r = hurtCreature(s, e, 99, { source: 'player' })
+      assert.equal(r.cue, 'enemy-death', `the scorpion at ${x}`)
+    }
+  })
+
+  it('out of the sand a blade shoves it and a frozen one shatters, like any monster', () => {
+    const s = world(); s.night = true
+    const e = scorp(s)
+    run(s, e, update, 0.1)
+    const hp = e.hp
+    hurtCreature(s, e, 1, { source: 'player', knockback: 14 })
+    assert.equal(e.hp, hp - 1)
+    assert.ok(e.knockback && e.knockback.vy < 0, 'shoved away from the hero to its south')
+    const f = spawn(s, 'keisariskorpioni', 26, 16)
+    run(s, f, emperor.update, 0.1)
+    f.frozen = 2
+    const fhp = f.hp
+    hurtCreature(s, f, 1, { source: 'player' })
+    assert.equal(f.hp, fhp - 3, 'a frozen one takes two more')
+    // a buried one is not shoved about: it bursts out
+    const d = world(), g = scorp(d)
+    run(d, g, update, 0.1)
+    hurtCreature(d, g, 1, { source: 'player', knockback: 14 })
+    assert.equal(g.knockback ?? null, null)
   })
 
   it('a shove while buried rouses it rather than sliding a mound about', () => {

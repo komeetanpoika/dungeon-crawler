@@ -212,6 +212,24 @@ describe('hiekkamato', () => {
     assert.ok(a.worm.spot && b.worm.spot, 'and both did come up')
   })
 
+  it('a worm that finds itself on hard ground (dealt there, or shoved) swims off it and hunts', () => {
+    const s = world({ w: 80 }), e = worm(s, 20, 12)
+    s.map[12][20] = cell('ow_hardpan_cracked_0_0')
+    moveHero(s, 16, 17)
+    assert.ok(until(s, e, 'up', 10, walker(s, 1, 0)), 'it still comes up')
+  })
+
+  it('wounded and gone under again, it shows no health bar over its mound', () => {
+    const s = world({ w: 80 }), e = risen(s)
+    run(s, e, update, 0.4)
+    strikeCreature(e, s, 1)
+    assert.equal(e.inCombat, true)
+    strikeCreature(e, s, T().diveAt)
+    run(s, e, update, 1)
+    assert.equal(e.sink, 1)
+    assert.equal(e.inCombat, false)
+  })
+
   it('leaves a furrow behind it as it travels', () => {
     const s = world({ w: 80 }), e = worm(s, 20, 12)
     moveHero(s, 16, 17)
@@ -236,10 +254,17 @@ describe('hiekkamato', () => {
       const path = routeUnder(s.map, { x: 8, y: 10 }, { x: 14, y: 10 })
       assert.deepEqual(path.at(-1), { x: 9, y: 10 })
     })
-    it('from hard ground there is no way at all', () => {
+    it('from a cell of hard ground it finds its way back into the sand', () => {
       const s = world()
       hard(s, 8, 10, 8, 10)
-      assert.deepEqual(routeUnder(s.map, { x: 8, y: 10 }, { x: 12, y: 10 }), [])
+      const path = routeUnder(s.map, { x: 8, y: 10 }, { x: 12, y: 10 })
+      assert.deepEqual(path.at(-1), { x: 12, y: 10 })
+      assert.ok(path.every(c => !(c.x === 8 && c.y === 10)))
+    })
+    it('deep in hard ground there is no way at all', () => {
+      const s = world()
+      hard(s, 6, 8, 10, 12)
+      assert.deepEqual(routeUnder(s.map, { x: 8, y: 10 }, { x: 14, y: 10 }), [])
     })
   })
 })

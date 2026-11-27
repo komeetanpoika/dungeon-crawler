@@ -2247,7 +2247,8 @@ function update(delta) {
         if (!bodyHit(e)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
         if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
-          const r = hurtCreature(state, e, dmg, { source: 'player' })
+          // (knockback: for a creature that takes a blade's shove like any monster, the roused scorpion)
+          const r = hurtCreature(state, e, dmg, { source: 'player', knockback: atk.knockback * mods.kbMul })
           slash(e)
           if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
           if (r.think) think(state, r.think)

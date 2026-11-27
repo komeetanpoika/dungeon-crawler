@@ -10,7 +10,7 @@ const grid = (w, h, skin) => Array.from({ length: h }, () => Array.from({ length
 
 describe('loose sand', () => {
   it('is the rippled sand, the dunes and a trail over sand', () => {
-    for (const n of ['ow_sand_ripple_3_1', 'ow_sand_shade_12_0_1', 'ow_sand_slip_2', 'ow_dune_4', 'ow_path_sand_2'])
+    for (const n of ['ow_sand_ripple_3_1', 'ow_sand_shade_12_0_1', 'ow_sand_slip_2', 'ow_sand_edge_0_8_2', 'ow_dune_4', 'ow_path_sand_2'])
       assert.equal(isLooseSkin(n), true, n)
   })
   it('is not hardpan, a road, paving, grass, the old sand tiles or nothing', () => {

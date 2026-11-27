@@ -92,6 +92,21 @@ test('a village and farmland in the desert have nothing but small scorpions in t
   assert.ok(checked >= 6, `${checked} settled desert pieces`)
 })
 
+test('round a desert village or farm every scorpion lies in loose sand (so by day it is buried), and every worm starts in sand whatever the deal', () => {
+  let scorps = 0, worms = 0
+  for (let wy = -8; wy <= 6; wy++) for (let wx = 2; wx <= 16; wx++) {
+    const cls = pieceClass(SEED, wx, wy)
+    if ((cls !== 'village' && cls !== 'farmland') || pieceBiome(SEED, wx, wy) !== 'desert') continue
+    const p = generatePiece(SEED, wx, wy, 0)
+    for (const s of p.spawns) if (s.kind === 'skorpioni') { scorps++; assert.ok(isLooseSkin(p.cells[s.y][s.x].skin), `${cls} ${p.key}: a scorpion on ${p.cells[s.y][s.x].skin}`) }
+  }
+  for (const deal of [1, 2]) for (let wy = -4; wy <= 0; wy++) for (let wx = 5; wx <= 10; wx++) {
+    const p = generatePiece(SEED, wx, wy, deal)
+    for (const s of p.spawns) if (s.kind === 'hiekkamato') { worms++; assert.ok(isLooseSkin(p.cells[s.y][s.x].skin), `${p.key} deal ${deal}: a worm on ${p.cells[s.y][s.x].skin}`) }
+  }
+  assert.ok(scorps >= 10 && worms >= 10, `${scorps} scorpions, ${worms} worms looked at`)
+})
+
 test('an antlion has its room: flat loose sand three tiles round, and nothing else dealt into it', () => {
   let pits = 0
   for (const p of pieces()) for (const s of p.spawns) {

@@ -183,10 +183,14 @@ export const GOALS = {
   },
   // The jackal's two (data/npcs.js). Alone, it runs: no other living animal
   // of its kind within the species' `pack` tiles, and the hero near.
+  // Once it bolts it keeps running FLEE_TIME seconds (as a struck animal
+  // does) and forgets the chase, so it does not turn back at the edge of
+  // its fear and quiver there.
   flee_alone: {
-    when: (e, ctx) => ctx.playerDist < THREAT_RANGE && !ctx.state.entities.some(o => o !== e && o.type === 'npc' &&
-      o.species === e.species && o.hp > 0 && !(o.dying > 0) && Math.hypot(o.px - e.px, o.py - e.py) <= ctx.def.pack * S),
-    run: (e, ctx) => ({ mode: 'flee', speed: ctx.cfg.speed }),
+    when: (e, ctx) => e.ai.aloneTimer > 0 || (ctx.playerDist < THREAT_RANGE && !ctx.state.entities.some(o => o !== e && o.type === 'npc' &&
+      o.species === e.species && o.hp > 0 && !(o.dying > 0) && Math.hypot(o.px - e.px, o.py - e.py) <= ctx.def.pack * S)),
+    enter: e => { e.ai.aloneTimer = FLEE_TIME; e.ai.mode = 'patrol'; e.ai.lastSeen = null; e.attack = null },
+    run: (e, ctx, dt) => { e.ai.aloneTimer = Math.max(0, (e.ai.aloneTimer ?? 0) - dt); return { mode: 'flee', speed: ctx.cfg.speed } },
   },
   // In company, it harries: the hostile brain, but after each bite of its
   // own it backs off a moment before it comes in again. A yip the first

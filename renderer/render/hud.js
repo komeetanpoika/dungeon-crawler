@@ -1,6 +1,7 @@
 import { resolveOffhand, offhandItem } from '../systems/inventory.js'
 import { iconSrcFor } from './icons.js'
 import { spellFor } from '../systems/spells.js'
+import { isPoisoned } from '../systems/poison.js'
 
 function el(id) { return document.getElementById(id) }
 
@@ -32,7 +33,7 @@ export function updateHUD(state) {
   const hearts = Math.ceil((player.maxHp ?? 10) / 2)
   setHTML(el('hud-hearts'), Array.from({ length: hearts }, (_, i) => {
     const hpForHeart = Math.max(0, Math.min(2, player.hp - i * 2))
-    return heart(hpForHeart === 2 ? 'full' : hpForHeart === 1 ? 'half' : 'empty', !!player.poison)
+    return heart(hpForHeart === 2 ? 'full' : hpForHeart === 1 ? 'half' : 'empty', isPoisoned(player))
   }).join(''))
   // Offhand slot: what Q acts on in the active loadout. A consumable pointer
   // shows the kind and the sack count (dimmed at zero); an empty offhand shows

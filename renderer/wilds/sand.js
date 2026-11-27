@@ -2,14 +2,15 @@
 // (systems/monsters/hiekkamato.js, skorpioni.js). Judged by the cell alone,
 // so it needs no knowledge of the world: a walkable cell, not one walked
 // under (wilds/over.js), whose ground skin is the desert's rippled sand, a
-// dune's shading, slip face or crest (wilds/desert-art.js), or a trail over
-// sand (terrain.js SAND_PATH). Hardpan, a road, a village's paving, grass,
+// dune's shading, slip face or crest (wilds/desert-art.js), the sand's frayed
+// edge against grass (terrain/beach.js), or a trail over sand (terrain.js
+// SAND_PATH). Hardpan, a road, a village's paving, grass,
 // rock and water are not. A floor with no outdoor skin at all (a dungeon,
 // the monster bench's arena) counts as loose, so the creatures can be tried
 // anywhere. DOM-free and pure.
 import { isWalkable } from '../systems/entities.js'
 
-const LOOSE = ['ow_sand_ripple_', 'ow_sand_shade_', 'ow_sand_slip_', 'ow_dune_', 'ow_path_sand_']
+const LOOSE = ['ow_sand_ripple_', 'ow_sand_shade_', 'ow_sand_slip_', 'ow_sand_edge_', 'ow_dune_', 'ow_path_sand_']
 export const isLooseSkin = n => typeof n === 'string' && LOOSE.some(p => n.startsWith(p))
 
 export function looseSand(map, x, y) {

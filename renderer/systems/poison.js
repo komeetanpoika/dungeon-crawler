@@ -17,6 +17,10 @@ import { sfx } from './sfx.js'
 
 export const POISON = { every: 4, floor: 1, cureAfter: 1 }
 
+// The sting's poison, as against the arena's Venom (pvp/dots.js keeps its
+// own `hero.poison` of another shape and draws its own wash).
+export const isPoisoned = hero => hero?.poison?.left > 0
+
 export function poisonPlayer(player, ticks) {
   if (!(ticks > 0)) return
   player.poison = { left: Math.max(ticks, player.poison?.left ?? 0), next: POISON.every, wash: 0 }
