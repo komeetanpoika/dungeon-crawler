@@ -4,12 +4,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  STORM, stormOfDay, stormStrength, stormHere, tickStorm, calmStorm, mapHazed, mapHero, sightNow, TAKES_MAP, WIND_HEARD,
+  STORM, stormOfDay, stormStrength, stormHere, stormWind, tickStorm, calmStorm, mapHazed, mapHero, sightNow, TAKES_MAP, WIND_HEARD,
 } from '../renderer/wilds/storm.js'
-import { SIGHT, BEACON_RANGE } from '../renderer/wilds/desert.js'
+import { SIGHT, BEACON_RANGE, isDesert } from '../renderer/wilds/desert.js'
+import { windAt, prevailingWind, nearCity, WIND } from '../renderer/wilds/desert-art.js'
+import { fromCity } from '../renderer/wilds/city/geometry.js'
+import { insideWalls } from '../renderer/wilds/city/plan.js'
 import { DAY_LENGTH } from '../renderer/data/weather.js'
 import { makeWorld } from '../renderer/wilds/world.js'
-import { enterWilds } from '../renderer/wilds/session.js'
+import { enterWilds, landOf } from '../renderer/wilds/session.js'
 import { buildCaveState, restoreSurface } from '../renderer/systems/cave.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 import { updateBrain } from '../renderer/systems/brain.js'
@@ -84,11 +87,12 @@ test('it ramps: from 0 to 1 over 5 s and back to 0 over 5 s', () => {
   assert.ok(end <= DAY_LENGTH, 'the storm is over before the day ends')
 })
 
-test('no storm in the gentle ring, indoors, riding, or within the calm', () => {
-  const blowing = { strength: 0.8, desert: true, ring: false, indoors: false, riding: false, calm: false }
+test('no storm in the gentle ring, on Kalevanlinna\'s ground, indoors, riding, or within the calm', () => {
+  const blowing = { strength: 0.8, desert: true, ring: false, city: false, indoors: false, riding: false, calm: false }
   assert.equal(stormHere(blowing), 0.8)
   assert.equal(stormHere({ ...blowing, desert: false }), 0)
   assert.equal(stormHere({ ...blowing, ring: true }), 0)
+  assert.equal(stormHere({ ...blowing, city: true }), 0)
   assert.equal(stormHere({ ...blowing, indoors: true }), 0)
   assert.equal(stormHere({ ...blowing, riding: true }), 0)
   assert.equal(stormHere({ ...blowing, calm: true }), 0)
@@ -199,8 +203,11 @@ test('the storm takes the map at half strength, and gives it back', () => {
 
 test('the storm takes the minimap: haze only, no land and no hero', async () => {
   const ops = []
+  const gradients = []
   const ctx = new Proxy({}, {
-    get: (t, k) => (k in t ? t[k] : (...a) => ops.push([k, ...a])),
+    get: (t, k) => (k in t ? t[k]
+      : k === 'createRadialGradient' ? () => { const g = { stops: [], addColorStop(o, c) { this.stops.push(c) } }; gradients.push(g); return g }
+      : (...a) => ops.push([k, ...a])),
     set: (t, k, v) => { if (k === 'fillStyle') ops.push(['fillStyle', v]); t[k] = v; return true },
   })
   const el = { hidden: true, width: 0, height: 0, getContext: () => ctx }
@@ -222,6 +229,13 @@ test('the storm takes the minimap: haze only, no land and no hero', async () => 
     assert.ok(!ops.some(o => o[0] === 'drawImage'), 'land drawn under the haze')
     // the hero's mark is a white square
     assert.ok(!ops.some(o => o[0] === 'fillStyle' && o[1] === '#fff'), 'the hero marked')
+    // a few soft wisps of sand, none near white
+    assert.ok(gradients.length >= 3 && gradients.length <= 16, `${gradients.length} wisps`)
+    const colours = [...ops.filter(o => o[0] === 'fillStyle' && typeof o[1] === 'string').map(o => o[1]), ...gradients.flatMap(g => g.stops)]
+    for (const c of colours) {
+      const [r, g, b] = c.match(/\d+/g).map(Number)
+      assert.ok(Math.min(r, g, b) < 200, `near white: ${c}`)
+    }
   } finally {
     delete globalThis.document
   }
@@ -279,4 +293,70 @@ test('sight in a storm: the radius closes to 4, and landmarks are not seen past 
   const s = sightNow(half, true)
   assert.equal(s.radius, 12)
   assert.ok(s.far > 12 && s.far < BEACON_RANGE)
+})
+
+test('a storm has one wind, the same wherever the hero stands, another on another day', () => {
+  const sd = stormyDay(), other = stormyDay(SEED, sd.day + 1)
+  const world = makeWorld(null, { seed: SEED })
+  world.day = sd.day
+  world.playtime = 10_000
+  // two desert tiles far apart, where the dunes' own winds differ
+  const A = { X: 700, Y: -78 }, B = { X: 900, Y: -78 }
+  assert.ok(isDesert(SEED, A.X, A.Y) && isDesert(SEED, B.X, B.Y))
+  assert.ok(Math.abs(windAt(SEED, A.X, A.Y) - windAt(SEED, B.X, B.Y)) > 5 * Math.PI / 180, 'the walk does not cross the dunes\' turning winds')
+  const winds = [A, B].map(at => {
+    const state = freshState()
+    tickStorm(state, world, { clock: sd.peak, delta: 0.1, ...landOf(world, at.X, at.Y) })
+    return state.stormWind
+  })
+  assert.equal(winds[0], winds[1])
+  assert.equal(winds[0], stormWind(SEED, sd.day))
+  assert.notEqual(stormWind(SEED, other.day), stormWind(SEED, sd.day))
+  // near the world's own prevailing wind, and pure
+  for (let d = 0; d < 50; d++) assert.ok(Math.abs(stormWind(SEED, d) - prevailingWind(SEED)) <= WIND.spread + 1e-12)
+  assert.equal(stormWind(SEED, 3), stormWind(SEED, 3))
+})
+
+test('no storm on Kalevanlinna\'s ground, though desert lies inside its walls; it fades out at the edge', () => {
+  const seed = 6
+  // desert country inside the walls (on seed 6, about 45 % of them)
+  let inside = null
+  for (let cy = 0; cy < 160 && !inside; cy += 2) for (let cx = 0; cx < 160; cx += 2) {
+    if (!insideWalls(cx, cy)) continue
+    const at = fromCity(cx, cy)
+    if (isDesert(seed, at.X, at.Y)) { inside = at; break }
+  }
+  assert.ok(inside, 'no desert inside the walls on seed 6')
+  // a desert tile well outside the city's ground, out of the gentle ring
+  let outside = null
+  for (let X = 400; X < 2000 && !outside; X += 7) {
+    const at = { X, Y: 220 }
+    const land = landOf(makeWorld(null, { seed }), at.X, at.Y)
+    if (land.desert && !land.ring && !land.city) outside = at
+  }
+  assert.ok(outside, 'no desert outside the city')
+  let sd = null
+  for (let d = 0; !sd; d++) { const s = stormOfDay(seed, d); if (s) sd = { day: d, peak: s.start + STORM.ramp + s.len / 2 } }
+  const world = makeWorld(null, { seed })
+  world.day = sd.day
+  world.playtime = 10_000
+  const blow = (state, at, secs) => {
+    const land = landOf(world, at.X, at.Y)
+    for (let t = 0; t < secs - 1e-9; t += 0.1) { world.playtime += 0.1; tickStorm(state, world, { clock: sd.peak, delta: 0.1, ...land }) }
+    return land
+  }
+  const inTown = freshState()
+  const land = blow(inTown, inside, STORM.ramp + 1)
+  assert.ok(land.desert && land.city, 'the city tile is not desert on the city\'s ground')
+  assert.ok(nearCity(inside.X, inside.Y))
+  assert.equal(inTown.storm, 0)
+  assert.equal(inTown.sightCap, null)
+  const out = freshState()
+  blow(out, outside, STORM.ramp + 1)
+  assert.equal(out.storm, 1)
+  // walking in from the storm: it fades out over the ramp, it is not cut
+  blow(out, inside, 1)
+  assert.ok(out.storm > 0 && out.storm < 1, `cut at the city's edge: ${out.storm}`)
+  blow(out, inside, STORM.ramp)
+  assert.equal(out.storm, 0)
 })

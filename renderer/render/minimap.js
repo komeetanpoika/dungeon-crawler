@@ -4,26 +4,40 @@
 // touched (Electron here draws in software). While a sandstorm has taken the
 // map (wilds/storm.js) it shows sand-coloured haze and nothing else.
 import { drawMap, mapStamp, pruneMapTiles } from './map-draw.js'
+import { HAZE } from './weather.js'
+import { hash } from '../wilds/rand.js'
 
 export const MINIMAP_PX = 160
 export const MINIMAP_SCALE = 2   // pixels to a tile: 80 tiles across
 
 let last = ''
 
-// The haze: the sand's colour with streaks of blown sand across it, the
-// same every time (it says nothing of where the hero is).
-const HAZE = '#c9a971'
-const STREAKS = Array.from({ length: 22 }, (_, i) => {
-  const h = (n) => { const x = Math.sin((i + 1) * n) * 43758.5453; return x - Math.floor(x) }
-  return { x: h(12.9898) * MINIMAP_PX, y: h(78.233) * MINIMAP_PX, len: 18 + h(37.719) * 46, light: h(9.151) < 0.6, a: 0.18 + h(5.37) * 0.3 }
+// The haze: the sand's colour with a few soft wisps of blown sand across it,
+// a little lighter or darker than the haze, as on the frame (render/
+// weather.js HAZE), down to the east as the desert's winds blow. The same
+// picture every time (it says nothing of where the hero is), drawn once.
+const WISPS = Array.from({ length: 10 }, (_, i) => {
+  const h = n => hash(0, i, n, 811)
+  return {
+    x: h(0) * MINIMAP_PX, y: h(1) * MINIMAP_PX, len: 60 + h(2) * 60, thick: 9 + h(3) * 9,
+    light: h(4) < 0.5, a: 0.35 + h(5) * 0.25, turn: Math.PI / 4 + (h(6) - 0.5) * 0.4,
+  }
 })
 function drawHaze(g) {
-  g.fillStyle = HAZE
+  g.fillStyle = `rgb(${HAZE.colour.join(',')})`
   g.fillRect(0, 0, MINIMAP_PX, MINIMAP_PX)
-  for (const s of STREAKS) {
-    g.fillStyle = s.light ? `rgba(246,226,182,${s.a.toFixed(2)})` : `rgba(140,106,64,${s.a.toFixed(2)})`
-    // a little down to the east, as the desert's wind blows
-    for (let i = 0; i < s.len; i += 4) g.fillRect(Math.round(s.x + i) % MINIMAP_PX, Math.round(s.y + i * 0.4) % MINIMAP_PX, 4, 2)
+  for (const w of WISPS) {
+    const rgb = (w.light ? HAZE.sandLight : HAZE.sandDark).join(',')
+    g.save()
+    g.translate(w.x, w.y)
+    g.rotate(w.turn)
+    g.scale(w.len / 2, w.thick / 2)
+    const grad = g.createRadialGradient(0, 0, 0, 0, 0, 1)
+    grad.addColorStop(0, `rgba(${rgb},${w.a.toFixed(2)})`)
+    grad.addColorStop(1, `rgba(${rgb},0)`)
+    g.fillStyle = grad
+    g.fillRect(-1, -1, 2, 2)
+    g.restore()
   }
 }
 

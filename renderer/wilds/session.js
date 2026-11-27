@@ -15,6 +15,8 @@ import { noteSeen } from './map.js'
 import { admitSampo } from './city/sampo-places.js'
 import { arrivedRecord } from './coach-ride.js'
 import { calmStorm } from './storm.js'
+import { isDesert, inGentleRing } from './desert.js'
+import { nearCity } from './desert-art.js'
 import { applyFelled, STUMP } from '../systems/lumber.js'
 import { TILE } from '../systems/entities.js'
 import { doorAt } from '../systems/houses.js'
@@ -240,6 +242,16 @@ export function inVillage(world, X, Y) {
   const here = pieceOf(X, Y)
   const v = world.pieces.get(pieceKey(here.wx, here.wy))?.village
   return !!v && Math.max(Math.abs(X - here.wx * PIECE - v.x), Math.abs(Y - here.wy * PIECE - v.y)) <= VILLAGE_REACH
+}
+
+// The land at world tile (X, Y) as the storm asks after it (storm.js
+// tickStorm): desert country, the gentle ring round home, Kalevanlinna's
+// ground (its pieces and the margin dunes keep out of), a village.
+export function landOf(world, X, Y) {
+  return {
+    desert: isDesert(world.seed, X, Y), ring: inGentleRing(Math.floor(X / PIECE), Math.floor(Y / PIECE)),
+    city: nearCity(X, Y), village: inVillage(world, X, Y),
+  }
 }
 
 // Once per surface frame. Returns { recentred: {dx, dy} | null } so the

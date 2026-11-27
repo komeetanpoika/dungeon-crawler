@@ -108,9 +108,11 @@ export const dunesOn = () => duned
 // dune's slip face, downwind of its crest, is always turned from the light
 // (the upper left), and its windward slope towards it.
 export const WIND = { freq: 1 / 200, toward: Math.PI / 4, spread: 15 * Math.PI / 180, swing: 50 * Math.PI / 180 }
+// The world's own wind, before the field swings it: WIND.toward turned up to
+// WIND.spread either way by the seed (wilds/storm.js blows its storms near it).
+export const prevailingWind = seed => WIND.toward + WIND.spread * (2 * hashInt(seed, 0, 0, 7101) / 4294967296 - 1)
 export function windAt(seed, X, Y) {
-  const base = WIND.toward + WIND.spread * (2 * hashInt(seed, 0, 0, 7101) / 4294967296 - 1)
-  return base + WIND.swing * 2 * (noise2(seed + 7100, X, Y, { freq: WIND.freq, octaves: 1 }) - 0.5)
+  return prevailingWind(seed) + WIND.swing * 2 * (noise2(seed + 7100, X, Y, { freq: WIND.freq, octaves: 1 }) - 0.5)
 }
 
 // The ripple family a wind sweeps, and the one the wind at a tile sweeps.

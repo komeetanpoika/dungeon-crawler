@@ -45,8 +45,6 @@ import { showInventory, hideInventory, refreshInventory } from './ui/inventory-p
 import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
 import { toWorld } from './wilds/window.js'
-import { isDesert, inGentleRing } from './wilds/desert.js'
-import { windAt } from './wilds/desert-art.js'
 import { tickStorm, calmStorm, sightNow, mapHero, mapHazed } from './wilds/storm.js'
 import { clearOfTops } from './wilds/over.js'
 import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as travelFloor } from './interior/floors.js'
@@ -58,7 +56,7 @@ import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
 import { cityFor } from './wilds/city/build.js'
-import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances, inVillage } from './wilds/session.js'
+import { enterWilds, tickWilds, snapshotWilds, wildsRespawn, asleep, capInstances, landOf } from './wilds/session.js'
 import { arriveTales, tickTales, storyEpisode } from './wilds/tale-run.js'
 import { arriveCity, tickCity, noteCitySwing } from './wilds/city/runtime.js'
 import { fracOf } from './wilds/city/runtime.js'
@@ -1813,7 +1811,7 @@ function update(delta) {
     const land = state.cave ? null : heroLand()
     tickStorm(state, wildsWorld, {
       clock: activeSave.clock ?? DAY_START, delta,
-      desert: !!land?.desert, ring: !!land?.ring, village: !!land?.village, wind: land?.wind,
+      desert: !!land?.desert, ring: !!land?.ring, city: !!land?.city, village: !!land?.village,
     })
   }
   const { player, map } = state
@@ -2765,18 +2763,14 @@ function update(delta) {
   if (pending.length) { openToast(pending[0]); state.feedback.toasts.push(...pending.slice(1)) }
 }
 
-// The land the hero stands on in the Wilds, asked again only when his world
-// tile changes: whether it is desert, in the gentle ring round home, or in a
-// village, and the desert's wind there.
+// The land the hero stands on in the Wilds (session.js landOf: desert, the
+// gentle ring, Kalevanlinna's ground, a village), asked again only when his
+// world tile changes.
 let heroLandAt = null
 function heroLand() {
   const { X, Y } = toWorld(wildsWorld.origin, state.player.x, state.player.y)
-  const seed = wildsWorld.seed
-  if (heroLandAt?.X !== X || heroLandAt.Y !== Y || heroLandAt.seed !== seed || heroLandAt.world !== wildsWorld) {
-    heroLandAt = {
-      X, Y, seed, world: wildsWorld, desert: isDesert(seed, X, Y), ring: inGentleRing(Math.floor(X / PIECE), Math.floor(Y / PIECE)),
-      village: inVillage(wildsWorld, X, Y), wind: windAt(seed, X, Y),
-    }
+  if (heroLandAt?.X !== X || heroLandAt.Y !== Y || heroLandAt.world !== wildsWorld) {
+    heroLandAt = { X, Y, world: wildsWorld, ...landOf(wildsWorld, X, Y) }
   }
   return heroLandAt
 }

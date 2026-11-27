@@ -370,9 +370,10 @@ export function drawFog(ctx, layer, look, fog, { camX, camY }, { W, H }, S, map 
 // full strength.
 //
 // Kept cheap for a software canvas, where every full-screen pass costs:
-// - each tile is drawn already turned to the wind (made again only when the
-//   wind turns by WIND_STEP), so a pass is a plain repeat of it from a
-//   whole-pixel offset, with no resampling;
+// - each tile is drawn already turned to the storm's wind (one wind for the
+//   whole storm, wilds/storm.js stormWind, so the tiles are made once a
+//   storm), so a pass is a plain repeat of it from a whole-pixel offset, with
+//   no resampling, and its drift along that wind never jumps;
 // - the layer is smoothed up to half the frame's size and that is doubled
 //   onto the frame without smoothing, a pixel of it the size of a pixel of
 //   the art: the smoothed scale-up of the whole frame cost about a
@@ -397,11 +398,10 @@ export const HAZE = {
     { tile: 'streaks', size: 320, scale: 1, speed: 14, alpha: 1 },
   ],
 }
-const WIND_STEP = Math.PI / 60   // 3 degrees
 // How much of the clearing is left (1 clear .. 0 whole haze) along the way
 // from `inner` to the whole haze: a smoothstep, at five points.
 const HAZE_EASE = [0, 0.25, 0.5, 0.75, 1].map(t => [t, 1 - t * t * (3 - 2 * t)])
-const TILES_KEPT = 12            // tiles kept, for the last few winds (it turns slowly as the hero walks)
+const TILES_KEPT = 4             // tiles kept: a storm's two, and the last storm's
 const mod = (a, n) => ((a % n) + n) % n
 const GUSTS = 6                  // bands of blown sand in the streaks' tile
 
@@ -464,13 +464,13 @@ function hazeTile(createCanvas, pass, wind) {
   return c
 }
 
-// The pattern of a pass's tile at the wind's step, made once and kept.
-function hazePattern(layer, pass, step) {
+// The pattern of a pass's tile at the storm's wind, made once and kept.
+function hazePattern(layer, pass, wind) {
   if (!layer.createCanvas) return null
   const kept = layer.haze ??= new Map()
-  const key = `${pass.tile}:${pass.size}:${step}`
+  const key = `${pass.tile}:${pass.size}:${wind}`
   if (!kept.has(key)) {
-    kept.set(key, layer.ctx.createPattern?.(hazeTile(layer.createCanvas, pass, step * WIND_STEP), 'repeat') ?? null)
+    kept.set(key, layer.ctx.createPattern?.(hazeTile(layer.createCanvas, pass, wind), 'repeat') ?? null)
     if (kept.size > TILES_KEPT) kept.delete(kept.keys().next().value)
   }
   return kept.get(key)
@@ -486,10 +486,9 @@ export function drawHaze(ctx, layer, look, { camX, camY }, { W, H }, S) {
   L.fillRect(0, 0, layer.w, layer.h)
   // each pass's tile repeated from a whole-pixel offset: pinned to the world
   // (the view's corner is at camX, camY) and blown downwind with time
-  const step = Math.round(st.wind / WIND_STEP), wind = step * WIND_STEP
-  const cos = Math.cos(wind), sin = Math.sin(wind)
+  const cos = Math.cos(st.wind), sin = Math.sin(st.wind)
   for (const p of HAZE.passes) {
-    const pat = hazePattern(layer, p, step)
+    const pat = hazePattern(layer, p, st.wind)
     if (!pat) continue
     const d = look.t * p.speed * S * k
     const ox = Math.round(mod(d * cos - camX * k, p.size)), oy = Math.round(mod(d * sin - camY * k, p.size))

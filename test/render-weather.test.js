@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeWeatherLayer, fogBlobs, drawNight, drawFog, drawHaze, nightBands, HAZE } from '../renderer/render/weather.js'
+import { makeWeather, weatherLook } from '../renderer/systems/weather.js'
+import { tickStorm, stormOfDay, STORM } from '../renderer/wilds/storm.js'
+import { windAt } from '../renderer/wilds/desert-art.js'
+import { makeSfx } from '../renderer/systems/sfx.js'
 
 // Records every draw with the composite op / alpha / smoothing in force at
 // the time. Unknown methods are recorded generically via the Proxy.
@@ -538,5 +542,63 @@ describe('drawHaze', () => {
     made = []
     offsets(l, 0, cam, 0)
     assert.equal(tiles().length, HAZE.passes.length)
+  })
+
+  // The haze blows along the storm's one wind (wilds/storm.js stormWind), not
+  // the wind of the dunes under the hero, which turns as he walks: walking
+  // 200 tiles east over the deep desert of seed 7 (where the dunes' wind
+  // turns by about 11 degrees), no pass's tile moves between two frames by
+  // more than its drift and the camera's step.
+  it('the haze drifts on without a jump while the hero walks under the dunes\' turning winds', () => {
+    const SEED = 7, DT = 1 / 60, PACE = 3.75, Y = -78, X0 = 700, X1 = 900
+    let day = 0
+    while (!stormOfDay(SEED, day)) day++
+    const sd = stormOfDay(SEED, day)
+    const world = { seed: SEED, day, playtime: 10_000 }
+    const state = { player: { x: 0, y: 0, px: 0, py: 0 }, entities: [], fireZones: [], sfx: makeSfx(), weather: makeWeather({ name: 'wilds' }) }
+    state.weather.t = 60   // a minute into the run: the drift is long
+    const save = { clock: sd.start + STORM.ramp + sd.len / 2 }
+    let lo = Infinity, hi = -Infinity
+    for (let X = X0; X <= X1; X++) { const w = windAt(SEED, X, Y); lo = Math.min(lo, w); hi = Math.max(hi, w) }
+    assert.ok(hi - lo > 6 * Math.PI / 180, 'the walk does not cross the dunes\' turning winds')
+    const l = layerWith(400, 300)
+    l.ctx.createPattern = img => ({ img })
+    const offsets = (look, c) => {
+      drawHaze(recordingCtx(), l, look, c, view, S)
+      const ops = l.ctx.ops.filter(o => o.name === 'translate').map(o => o.args)
+      l.ctx.ops.length = 0
+      return ops
+    }
+    const k = l.k
+    const wrap = (d, n) => ((d % n) + n + n / 2) % n - n / 2
+    let prev = null, prevCam = null, frames = 0, worst = 0
+    for (let px = X0 * S; px <= X1 * S; px += PACE * S * DT) {
+      state.player.px = px; state.player.py = Y * S
+      world.playtime += DT
+      state.weather.t += DT
+      tickStorm(state, world, { clock: save.clock, delta: DT, desert: true })
+      const look = weatherLook(state, save)
+      const c = { camX: px - 200, camY: Y * S - 150 }
+      const now = offsets(look, c)
+      if (prev) {
+        HAZE.passes.forEach((p, i) => {
+          const most = p.speed * S * k * DT + Math.hypot(c.camX - prevCam.camX, c.camY - prevCam.camY) * k + 1
+          for (const a of [0, 1]) {
+            const d = Math.abs(wrap(now[i][a] - prev[i][a], p.size))
+            worst = Math.max(worst, d - most)
+            assert.ok(d <= most, `pass ${i} jumped ${d} px at x ${(px / S).toFixed(1)} (at most ${most.toFixed(2)})`)
+          }
+        })
+      }
+      prev = now; prevCam = c; frames++
+    }
+    assert.ok(frames > 3000)
+    // the control: had the haze followed the dunes' wind under the hero, one
+    // of its turns of a few degrees would have moved the tiles by far more
+    const look = weatherLook(state, save)
+    const c = { camX: 0, camY: 0 }
+    const a = offsets({ ...look, storm: { ...look.storm, wind: windAt(SEED, X0, Y) } }, c)
+    const b = offsets({ ...look, storm: { ...look.storm, wind: windAt(SEED, X1, Y) } }, c)
+    assert.ok(HAZE.passes.some((p, i) => Math.abs(wrap(b[i][0] - a[i][0], p.size)) > 10 || Math.abs(wrap(b[i][1] - a[i][1], p.size)) > 10))
   })
 })
