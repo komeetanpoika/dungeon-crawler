@@ -360,8 +360,11 @@ export function drawFog(ctx, layer, look, fog, { camX, camY }, { W, H }, S, map 
 // the sand's colour all over; over it, clouds of dust rolling and streaks of
 // blown sand, each a tile repeated across the layer, blown along the wind at
 // its own speed and pinned to the world (they do not ride along with the
-// camera); and a clear disc round the hero as wide as his sight in the
-// storm, thinly hazed at his feet and whole a few tiles past its rim. Then
+// camera); and a soft round patch of clear sand round the hero, thinly
+// hazed at his feet and fading into haze that is whole by `whole` tiles
+// inside his storm sight: the stepped edge of the cells he sees reaches in
+// to about there, and it and the fog of the cells just past it lie under
+// whole haze, so no stepped outline or dark ring shows. Then
 // onto the frame, thickening fast as the storm rises (so a storm coming in
 // reads as sand, not as a grey murk over the land out of sight) and whole at
 // full strength.
@@ -376,27 +379,37 @@ export function drawFog(ctx, layer, look, fog, { camX, camY }, { W, H }, S, map 
 //   millisecond more on this machine, and in the web build with the CPU
 //   throttled 4x it took a storm frame under 30 fps.
 //
-// `far`/`near`: the haze's alpha past the disc and at the hero's feet at full
-// strength; `edge`/`out`: tiles inside the sight radius where the disc starts
-// to thicken, and past it where the haze is whole; a pass's `size` is its
-// tile's side in layer px, `scale` how big its marks are, and `speed` its
-// drift in tiles a second. A size divides 80 tiles in layer px (640), so a
-// re-centre of the window moves no tile.
+// `far`/`near`: the haze's alpha past the patch and at the hero's feet at
+// full strength; `whole`: tiles inside the sight radius where the haze is
+// whole; `inner`: the share of that radius kept clear before it thickens
+// (smoothly, HAZE_EASE); a pass's `size` is its tile's side in layer px,
+// `scale` how big its marks are, and `speed` its drift in tiles a second. A
+// size divides 80 tiles in layer px (640), so a re-centre of the window
+// moves no tile. The clouds are lighter and darker than the sand
+// (`light`/`dark`); the streaks of blown sand only a little (`sandLight`/
+// `sandDark`), so they read as sand and not as rain.
 export const HAZE = {
-  far: 0.9, near: 0.16, edge: 1.5, out: 3,
+  far: 1, near: 0.16, whole: 0.5, inner: 0.4,
   colour: [212, 174, 112], light: [248, 228, 184], dark: [150, 110, 64],
+  sandLight: [232, 200, 146], sandDark: [178, 138, 84],
   passes: [
     { tile: 'clouds', size: 320, scale: 5, speed: 3.5, alpha: 1 },
-    { tile: 'streaks', size: 64, scale: 1, speed: 14, alpha: 0.8 },
+    { tile: 'streaks', size: 320, scale: 1, speed: 14, alpha: 1 },
   ],
 }
 const WIND_STEP = Math.PI / 60   // 3 degrees
+// How much of the clearing is left (1 clear .. 0 whole haze) along the way
+// from `inner` to the whole haze: a smoothstep, at five points.
+const HAZE_EASE = [0, 0.25, 0.5, 0.75, 1].map(t => [t, 1 - t * t * (3 - 2 * t)])
 const TILES_KEPT = 12            // tiles kept, for the last few winds (it turns slowly as the hero walks)
+const mod = (a, n) => ((a % n) + n) % n
+const GUSTS = 6                  // bands of blown sand in the streaks' tile
 
 // A tile of the haze turned to `wind`: `clouds`, soft lighter and darker
-// blots of dust stretched along the wind; `streaks`, light and dark streaks
-// of sand along it. Every mark is drawn at each of its wrapped places, so the
-// tile repeats without a seam whatever the wind. The same marks at every wind.
+// blots of dust stretched along the wind; `streaks`, long soft wisps of
+// blown sand along it, a little lighter or darker than the haze, gathered in
+// a few bands of gusts of uneven strength. Every mark is drawn at each of its
+// wrapped places, so the tile repeats without a seam whatever the wind.
 function hazeTile(createCanvas, pass, wind) {
   const T = pass.size, s = pass.scale, c = createCanvas()
   c.width = T; c.height = T
@@ -427,12 +440,27 @@ function hazeTile(createCanvas, pass, wind) {
     }
     return c
   }
-  const streak = (rgb, len, a) => {
-    const x = rnd() * T, y = rnd() * T, l = len * s
-    mark(x, y, l, () => { g.fillStyle = rgba(rgb, a); g.fillRect(-l / 2, -s / 2, l, s) })
+  // the gusts: GUSTS bands along the wind (across it at `v`), each with its
+  // own number of wisps and its own lean to lighter or darker sand
+  const cos = Math.cos(wind), sin = Math.sin(wind)
+  for (let b = 0; b < GUSTS; b++) {
+    const v = rnd() * T, wisps = Math.round(3 + rnd() * rnd() * 14), lean = rnd()
+    for (let i = 0; i < wisps; i++) {
+      const u = rnd() * T, across = v + (rnd() + rnd() - 1) * 10 * s
+      const x = mod(T / 2 + (u - T / 2) * cos - (across - T / 2) * sin, T)
+      const y = mod(T / 2 + (u - T / 2) * sin + (across - T / 2) * cos, T)
+      const l = (40 + rnd() * 70) * s, h = (4 + rnd() * 6) * s, a = 0.16 + rnd() * 0.2
+      const rgb = rnd() < lean ? HAZE.sandLight : HAZE.sandDark
+      mark(x, y, l / 2, () => {
+        g.scale(l / 2, h / 2)
+        const grad = g.createRadialGradient(0, 0, 0, 0, 0, 1)
+        grad.addColorStop(0, rgba(rgb, a))
+        grad.addColorStop(1, rgba(rgb, 0))
+        g.fillStyle = grad
+        g.fillRect(-1, -1, 2, 2)
+      })
+    }
   }
-  for (let i = 0; i < count(18); i++) streak(HAZE.dark, 3 + rnd() * 12, 0.1 + rnd() * 0.2)
-  for (let i = 0; i < count(26); i++) streak(HAZE.light, 3 + rnd() * 18, 0.15 + rnd() * 0.4)
   return c
 }
 
@@ -447,7 +475,6 @@ function hazePattern(layer, pass, step) {
   }
   return kept.get(key)
 }
-const mod = (a, n) => ((a % n) + n) % n
 
 export function drawHaze(ctx, layer, look, { camX, camY }, { W, H }, S) {
   const st = look.storm
@@ -474,16 +501,14 @@ export function drawHaze(ctx, layer, look, { camX, camY }, { W, H }, S) {
     L.restore()
   }
   L.imageSmoothingEnabled = true   // the layer's default, for the passes after this one
-  // the clear disc round the hero
+  // the clear patch round the hero: clear (but for the thin haze at his
+  // feet) out to `inner` of the radius where the haze is whole, then eased in
   const x = (st.px - camX) * k, y = (st.py - camY) * k
-  const r1 = (st.r + HAZE.out) * S * k
+  const r1 = Math.max(1, st.r - HAZE.whole) * S * k
   const clear = 1 - HAZE.near / HAZE.far
-  const at = tiles => Math.max(0, Math.min(1, tiles / (st.r + HAZE.out)))
   const g = L.createRadialGradient(x, y, 0, x, y, r1)
-  g.addColorStop(0, `rgba(0,0,0,${clear})`)
-  g.addColorStop(at(st.r - HAZE.edge), `rgba(0,0,0,${clear})`)
-  g.addColorStop(at(st.r), `rgba(0,0,0,${(clear * 0.45).toFixed(3)})`)
-  g.addColorStop(1, 'rgba(0,0,0,0)')
+  g.addColorStop(0, `rgba(0,0,0,${clear.toFixed(3)})`)
+  for (const [at, left] of HAZE_EASE) g.addColorStop(HAZE.inner + (1 - HAZE.inner) * at, `rgba(0,0,0,${(clear * left).toFixed(3)})`)
   L.globalCompositeOperation = 'destination-out'
   L.fillStyle = g
   L.fillRect(x - r1, y - r1, 2 * r1, 2 * r1)
@@ -503,5 +528,5 @@ export function drawHaze(ctx, layer, look, { camX, camY }, { W, H }, S) {
   ctx.drawImage(half, 0, 0, hw, hh, 0, 0, 2 * hw, 2 * hh)
   ctx.restore()
 }
-// The haze's alpha past the clear disc at strength s: rising fast, eased out.
+// The haze's alpha past the clear patch at strength s: rising fast, eased out.
 export const hazeAlpha = s => HAZE.far * (1 - (1 - s) * (1 - s))

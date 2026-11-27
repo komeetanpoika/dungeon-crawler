@@ -472,7 +472,7 @@ describe('drawHaze', () => {
     assert.ok(faint.ops.find(o => o.name === 'drawImage').alpha < HAZE.far * 0.25)
   })
 
-  it('the clear disc sits on the hero and is as wide as his sight', () => {
+  it('the clear patch sits on the hero, and the haze is whole a little inside his sight', () => {
     const at = (st, c = cam) => {
       const layer = layerWith()
       layer.ctx.createRadialGradient = (x0, y0, r0, x1, y1, r1) => ({ x: x1, y: y1, r: r1, stops: [], addColorStop(o, col) { this.stops.push([o, col]) } })
@@ -485,8 +485,25 @@ describe('drawHaze', () => {
     const b = at({}, { camX: 64, camY: 32 })
     assert.equal(b.x, (200 - 64) * k)
     assert.equal(b.y, (150 - 32) * k)
+    // whole by HAZE.whole tiles inside the sight radius: the stepped edge of
+    // the cells he sees (and the fog just past it) lies under whole haze
+    assert.equal(a.r, (4 - HAZE.whole) * S * k)
     const wide = at({ r: 8 })
-    assert.ok(wide.r > a.r, 'a wider sight, a wider disc')
+    assert.equal(wide.r, (8 - HAZE.whole) * S * k, 'sight 8 in a village')
+    // the stops: clear (all but the thin haze at his feet) out to `inner`,
+    // then thickening steadily to whole haze at the rim
+    const alpha = col => Number(/rgba\(0,0,0,([\d.]+)\)/.exec(col)[1])
+    const stops = [...a.stops].sort((p, q) => p[0] - q[0])
+    const clear = 1 - HAZE.near / HAZE.far
+    assert.deepEqual(stops[0], [0, `rgba(0,0,0,${clear.toFixed(3)})`])
+    const inner = stops.find(([o]) => Math.abs(o - HAZE.inner) < 1e-9)
+    assert.ok(inner && Math.abs(alpha(inner[1]) - clear) < 1e-3, 'not clear out to inner')
+    assert.equal(stops.at(-1)[0], 1)
+    assert.equal(alpha(stops.at(-1)[1]), 0, 'not whole at the rim')
+    for (let i = 1; i < stops.length; i++) assert.ok(alpha(stops[i][1]) <= alpha(stops[i - 1][1]), 'the clearing comes back on the way out')
+    assert.ok(stops.length >= 5, 'too few stops for a soft edge')
+    // whole haze past the patch at full strength
+    assert.equal(HAZE.far, 1)
   })
 
   it('the dust and the streaks blow along the wind, drift with time, and stay put in the world', () => {
