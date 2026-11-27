@@ -251,7 +251,9 @@ export function entityPose(e) {
            attack, animT: p.animT ?? 0, blend,
            // hook-written channels live on the entity (a hook may run before
            // the first pose update): how far it has sunk, burned, flickers
-           sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0 }
+           sink: e.sink ?? 0, burn: e.burn ?? 0, flicker: e.flicker ?? 0,
+           // the sand worm's furrow, as offsets from where it is now
+           trail: e.trail?.length ? e.trail.map(t => ({ x: t.px - e.px, y: t.py - e.py, a: t.a })) : null }
 }
 
 // Where a registry monster's drawing tops out, in px from its centre at tile
