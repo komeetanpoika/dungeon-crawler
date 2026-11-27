@@ -9,12 +9,15 @@
 //      on plain desert sand (no crest within 24 tiles) and among the deep
 //      dunes, back to back, `--pairs` times, at noon with the heat kept off on
 //      both (a drink that does not wear off) and no foes: the dunes may add
-//      ≤ 1 ms JS a frame on average (canvas raster shown too);
+//      ≤ 1 ms JS a frame on average (canvas raster shown too). Each place is
+//      checked on the live map once the hero stands there: no crest within
+//      the desert's sight radius of the plain spot, at least one of the dunes';
 //   3. the web build (tools/web-server.mjs) in headless Chromium at 1024x693
 //      (tools/city/perf.mjs's size) with the CPU throttled `--rate`x, standing
-//      among the dunes, `--web-runs` times each at noon (the heat's shimmer
-//      on) and at the peak of a storm (the clock held on a stormy day): above
-//      30 fps;
+//      among the dunes (placed and checked as in 2), `--web-runs` times each
+//      at noon (the heat's shimmer on) and at the peak of a storm (the clock
+//      held on the seed's first stormy day whose storm peaks in daylight; a
+//      seed with none fails the gate): above 30 fps;
 //   4. piece generation (wilds/piece.js generatePiece) on 40 desert pieces of
 //      the seed, 20 near home (not wholly 7 pieces out) and 20 deep (wholly 7
 //      or more out), against `--base` (origin/main: the local main ref is
@@ -58,6 +61,7 @@ import * as path from 'node:path'
 import { chromium } from 'playwright-core'
 import { APP_DIR, sleep, citySave, driver, launchGame, startWeb, launchWeb, enterWilds, noDamage, frameRate } from '../city/live.mjs'
 import { stormOfDay, STORM } from '../../renderer/wilds/storm.js'
+import { SIGHT } from '../../renderer/wilds/desert.js'
 import { HEAT } from '../../renderer/wilds/heat.js'
 import { DAY_LENGTH } from '../../renderer/data/weather.js'
 
@@ -137,6 +141,24 @@ const placeOpen = (page, X, Y) => page.evaluate(([X, Y]) => {
   }
   return null
 }, [X, Y])
+// Crest cells (losDune) within the desert's sight radius of where the hero
+// stands, read from the live map: what tells the plain spot from the dunes.
+const crestsInSight = page => page.evaluate(r => {
+  const s = window.__dc.state, p = s.player
+  let n = 0
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++)
+    if (dx * dx + dy * dy <= r * r && s.map[p.y + dy]?.[p.x + dx]?.losDune) n++
+  return n
+}, SIGHT.desert)
+// The place checked: none for the plain spot, some for the dunes (a failure is
+// a gate failure: a later change to the dunes must not quietly turn the A/B
+// into two dune places, or the web gate into one with no crest near).
+async function checkPlace(page, where, name, want) {
+  const n = await crestsInSight(page)
+  const ok = want === 'none' ? n === 0 : n > 0
+  if (!ok) fails.push(`${name}: ${n} crest cells within ${SIGHT.desert} tiles of the hero at ${where.X},${where.Y}, wanted ${want === 'none' ? 'none' : 'some'}`)
+  return n
+}
 const state = page => page.evaluate(() => ({ storm: window.__dc.state.storm, heat: window.__dc.state.heat, regen: window.__dc.state.player.regenScale, sight: window.__dc.state.player._fovRadius }))
 async function trace(app, page, secs, { walk = true } = {}) {
   const cdp = await app.context().newCDPSession(page)
@@ -229,11 +251,14 @@ if (!no('electron') || !no('heat')) {
       const rows = []
       for (let i = 0; i < PAIRS; i++) {
         await spot(PLAIN)
+        const plainCrests = await checkPlace(page, PLAIN, `pair ${i + 1}, plain sand`, 'none')
         if (i === 0) await shot(page, 'plain')
         const a = await trace(app, page, SECS)
         await spot(DUNES)
+        const duneCrests = await checkPlace(page, DUNES, `pair ${i + 1}, among the dunes`, 'some')
         if (i === 0) await shot(page, 'dunes')
         const b = await trace(app, page, SECS)
+        if (i === 0) console.log(`  (crest cells within ${SIGHT.desert} tiles of the hero: plain sand ${plainCrests}, among the dunes ${duneCrests})`)
         for (const [r, name] of [[a, 'plain sand'], [b, 'the dunes']]) if (r.frames < SECS * 20) fails.push(`pair ${i + 1}: only ${r.frames} frames on ${name} (paused?)`)
         rows.push({ a, b })
         console.log(`pair ${i + 1}: plain sand (${PLAIN.X},${PLAIN.Y}) JS ${f2(a.js)} ms/frame, raster ${f2(a.raster)} | among the dunes (${DUNES.X},${DUNES.Y}) JS ${f2(b.js)}, raster ${f2(b.raster)} | difference JS ${f2(b.js - a.js)} ms, raster ${f2(b.raster - a.raster)}`)
@@ -312,9 +337,13 @@ if (!no('web') || !no('big') || !no('load')) {
         }
         if (kind === 'gate' && no('web')) continue
         await noDamage(page)
+        // among the dunes, as gate 2's dunes side: the hero put on the nearest open cell to the spot, which must have crests in sight
+        await placeOpen(page, DUNES.X, DUNES.Y)
         await clearFoes(page)
         await holdClock(page, NOON)
         await sleep(3000)
+        const crests = kind === 'gate' ? await checkPlace(page, DUNES, `web build ${width}x${height}`, 'some') : await crestsInSight(page)
+        console.log(`  (web build ${width}x${height}: ${crests} crest cells within ${SIGHT.desert} tiles of the hero)`)
         const runs = kind === 'gate' ? WEB_RUNS : 1
         const rows = []
         for (let i = 0; i < runs; i++) {
@@ -323,14 +352,20 @@ if (!no('web') || !no('big') || !no('load')) {
           const sn = await state(page)
           const a = await throttledFps(page, WEB_SECS)
           if (i === 0) await shot(page, `web-noon-${width}`)
-          if (!STORMY) { rows.push({ a, b: null }); continue }
+          if (!STORMY) {
+            // (the gated run needs its storm; the ungated large size only says so)
+            if (kind === 'gate') fails.push(`web build in a storm, run ${i + 1}: seed ${SEED} has no storm peaking in daylight within 200 days, so the storm half of the gate could not run`)
+            else console.log(`  (web build ${width}x${height}, run ${i + 1}: no storm in daylight for seed ${SEED}; the storm half not run)`)
+            rows.push({ a, b: null })
+            continue
+          }
           await holdClock(page, STORMY.peak, true)
           await sleep(STORM.ramp * 1000 + 1500)
           const ss = await state(page)
           const b = await throttledFps(page, WEB_SECS)
           if (i === 0) await shot(page, `web-storm-${width}`)
           rows.push({ a, b })
-          const line = `web build ${width}x${height}, CPU ${RATE}x throttled, among the dunes, run ${i + 1}: noon ${a.fps} fps (frame p50 ${a.p50}, p95 ${a.p95} ms; shimmer ${f2(sn.heat)}) | storm ${b.fps} fps (p50 ${b.p50}, p95 ${b.p95} ms; strength ${f2(ss.storm)}, sight ${ss.sight})`
+          const line = `web build ${width}x${height}, CPU ${RATE}x throttled, among the dunes, run ${i + 1}: noon ${a.fps} fps (frame p50 ${a.p50}, p95 ${a.p95} ms; shimmer ${f2(sn.heat)}) | storm ${b.fps} fps (p50 ${b.p50}, p95 ${b.p95} ms; strength ${f2(ss.storm)}, lit radius ${ss.sight})`
           console.log(kind === 'gate' ? `${line} (gate > ${GATE.fps} fps)` : `  (${line}; not gated)`)
           if (ss.storm < 0.99) fails.push(`${width}x${height} run ${i + 1}: the storm did not blow (${ss.storm})`)
         }
@@ -420,6 +455,7 @@ if (!no('walk') || !no('storm')) {
         if (errors.length) fails.push(`walk page errors: ${errors.slice(0, 3).join(' | ')}`)
       } finally { await browser.close() }
     }
+    if (!no('storm') && !STORMY) console.log(`  (walking through a storm: seed ${SEED} has no storm peaking in daylight within 200 days; not run)`)
     if (!no('storm') && STORMY) {
       const errors = []
       const { browser, page } = await walkPage(PORT, errors)
@@ -441,7 +477,7 @@ if (!no('walk') || !no('storm')) {
         const w = await walkLine(page)
         const after = await state(page)
         await shot(page, 'walk-storm-end')
-        console.log(`  (walking the same line through a storm (strength ${f2(s.storm)} at the start, ${f2(after.storm)} at the end, sight ${after.sight}), fresh page: ${walkLineText(w)}; not gated)`)
+        console.log(`  (walking the same line through a storm (strength ${f2(s.storm)} at the start, ${f2(after.storm)} at the end, lit radius ${after.sight}), fresh page: ${walkLineText(w)}; not gated)`)
         if (errors.length) fails.push(`storm walk page errors: ${errors.slice(0, 3).join(' | ')}`)
       } finally { await browser.close() }
     }

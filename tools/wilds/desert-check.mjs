@@ -24,11 +24,14 @@
 //            it (the `drink` cue is queued), and back on the same sand the heat
 //            is off
 //   storm    a stormy day's peak: the storm at full strength, the haze drawn
-//            over the frame, a sight of 4, the `storm-wind` cue queued, the
-//            minimap all haze, and the map opened with no mark for the hero
+//            over the frame, a sight of 4 with the cells lit a tile further
+//            (wilds/storm.js LIT_PAD), the `storm-wind` cue queued, the minimap
+//            all haze (the haze's colour within 6), and the map opened with
+//            "Find me" greyed (no hero to find)
 //   road     walking a straight stretch of road through the storm: every frame
-//            the hero is on the road, and the road cells inside his sight are
-//            seen, the way on among them
+//            the hero is on the road, the road cells inside his lit radius are
+//            seen, the way on among them, and every cell reaching into the
+//            haze's clear patch lies inside that radius, on every side
 //   errors   no page errors (a tile picture that failed over file:// and was
 //            loaded again is noise, counted apart)
 //
@@ -56,7 +59,7 @@ import { admit } from '../../renderer/wilds/tales.js'
 import { admitSampo } from '../../renderer/wilds/city/sampo-places.js'
 import { isDesert, heroSight, SIGHT, BEACON_RANGE } from '../../renderer/wilds/desert.js'
 import { nearCity } from '../../renderer/wilds/desert-art.js'
-import { stormOfDay, STORM } from '../../renderer/wilds/storm.js'
+import { stormOfDay, STORM, LIT_PAD } from '../../renderer/wilds/storm.js'
 import { HEAT, nearCool } from '../../renderer/wilds/heat.js'
 import { HAZE } from '../../renderer/render/weather.js'
 import { onRoad } from '../../renderer/wilds/coach-path.js'
@@ -590,9 +593,10 @@ try {
       const near = (a, b, tol) => a.every((v, i) => Math.abs(v - b[i]) <= tol)
       check(st.storm === 1 && st.look === 1, 'the storm blows at full strength on the stormy day\'s peak', `strength ${st.storm}`)
       check(st.tiles >= HAZE.passes.length && corners.every(c => near(c, HAZE.colour, 40)), 'the haze is drawn over the frame', `${st.tiles} haze tiles made; the corners ${JSON.stringify(corners)} against the haze ${JSON.stringify(HAZE.colour)}`)
-      check(st.cap === SIGHT.storm && st.radius === SIGHT.storm && seen.count <= Math.PI * (SIGHT.storm + 1) ** 2 && seen.count < clear.count / 4, `a sight of ${SIGHT.storm}`, `sight ${st.radius}; ${clear.count} cells seen before the storm, ${seen.count} in it`)
+      check(st.cap === SIGHT.storm && st.radius === SIGHT.storm + LIT_PAD && seen.count <= Math.PI * (SIGHT.storm + LIT_PAD + 1) ** 2 && seen.count < clear.count / 4,
+        `a sight of ${SIGHT.storm}, the cells lit ${LIT_PAD} further (the haze is the edge)`, `storm sight ${st.cap}, lit radius ${st.radius}; ${clear.count} cells seen before the storm, ${seen.count} in it`)
       check(cueList.includes('storm-wind'), 'the storm-wind cue is queued', `${cueList.filter(c => c === 'storm-wind').length} gusts in ${(STORM.ramp + 1.5).toFixed(1)} s`)
-      check(st.mini && !!st.miniMean && near(st.miniMean, HAZE.colour, 30), 'the minimap is all haze', st.miniMean ? `its mean colour ${JSON.stringify(st.miniMean)}` : 'no minimap shown')
+      check(st.mini && !!st.miniMean && near(st.miniMean, HAZE.colour, 6), 'the minimap is all haze', st.miniMean ? `its mean colour ${JSON.stringify(st.miniMean)} against the haze ${JSON.stringify(HAZE.colour)} (within 6)` : 'no minimap shown')
       check(sun.regen === HEAT.factor && st.heat === 0 && st.regen === 1, 'no heat in the storm (it hides the sun)', `at the same hour with no storm regenScale ${sun.regen}, shimmer ${sun.heat.toFixed(2)}; in the storm regenScale ${st.regen}, shimmer ${st.heat}`)
       await tap('m')
       await sleep(500)
@@ -601,7 +605,7 @@ try {
         return { open: !!o && o.style.display !== 'none' && o.style.display !== '', findOff: !!y && y.classList.contains('off') }
       })
       await shot('storm-map')
-      check(map.open && map.findOff, 'the map opens with no mark for the hero ("Find me" finds nothing)', JSON.stringify(map))
+      check(map.open && map.findOff, 'the map opens with "Find me" greyed: no hero to find (the mark itself is not read)', JSON.stringify(map))
       await tap('m')
       check(!(await ev(() => { const o = document.getElementById('map-overlay'); return !!o && o.style.display !== 'none' && o.style.display !== '' })), 'M closes the map')
 
@@ -609,9 +613,9 @@ try {
       // every frame of the walk: the tile the hero is on, and on each new
       // tile the road cells inside his sight not seen, and how far ahead the
       // road is seen (wilds/coach-path.js onRoad, the coach's own test)
-      await ev(async ([cells, dx, dy]) => {
+      await ev(async ([cells, dx, dy, whole]) => {
         const want = new Set(cells.map(c => c.join(',')))
-        const log = window.__roadLog = { frames: 0, off: [], hidden: 0, hiddenAt: [], ahead: [], tiles: [] }
+        const log = window.__roadLog = { frames: 0, off: [], hidden: 0, hiddenAt: [], ahead: [], tiles: [], patch: 0, patchAt: [] }
         const { onRoad: on } = await import(new URL('./wilds/coach-path.js', location.href).href)
         const look = () => {
           if (window.__roadLog !== log) return
@@ -633,11 +637,25 @@ try {
             if (hidden) log.hiddenAt.push(`${X},${Y}:${hidden}`)
             log.ahead.push(far)
           }
+          // the haze is the edge of what is seen (wilds/storm.js LIT_PAD): every
+          // cell that reaches into its clear patch (nearer where the hero is
+          // drawn than the storm sight less HAZE.whole) lies within the lit
+          // radius of his tile, on every side, whichever way he walks (a crest
+          // may still hide one: that is the dune rule, not the grid's edge)
+          if (s.sightCap != null) {
+            const r = s.sightCap - whole, cx = p.px / 32, cy = p.py / 32, R = p._fovRadius
+            let n = 0
+            for (let y = Math.floor(cy - r) - 1; y <= Math.ceil(cy + r) + 1; y++) for (let x = Math.floor(cx - r) - 1; x <= Math.ceil(cx + r) + 1; x++) {
+              const nx = Math.max(x, Math.min(x + 1, cx)), ny = Math.max(y, Math.min(y + 1, cy))
+              if ((nx - cx) ** 2 + (ny - cy) ** 2 < r * r && (x - p.x) ** 2 + (y - p.y) ** 2 > R * R) n++
+            }
+            if (n) { log.patch++; if (log.patchAt.length < 4) log.patchAt.push(`${X},${Y}:${n}`) }
+          }
           log.frames++
           requestAnimationFrame(look)
         }
         requestAnimationFrame(look)
-      }, [Array.from({ length: run.n }, (_, i) => [run.X + i * run.dx, run.Y + i * run.dy]), run.dx, run.dy])
+      }, [Array.from({ length: run.n }, (_, i) => [run.X + i * run.dx, run.Y + i * run.dy]), run.dx, run.dy, HAZE.whole])
       await shot('storm-road-start')
       const k = run.dx ? 'ArrowRight' : 'ArrowDown'
       await page.keyboard.down(k)
@@ -657,7 +675,8 @@ try {
       const still = await ev(() => window.__dc.state.storm)
       check(same(end, to) && log.tiles.length >= run.n - 1, 'walked the road through the storm with the arrow key', `${log.tiles.length} tiles, ${at(log.tiles.length ? { X: +log.tiles[0].split(',')[0], Y: +log.tiles[0].split(',')[1] } : null)} to ${at(end)}, storm ${still}`)
       check(log.off.length === 0, 'on the road all the way', log.off.slice(0, 4).join(' '))
-      check(log.hidden === 0 && log.ahead.every(v => v >= SIGHT.storm - 1), 'the road keeps in sight: every road cell inside the storm\'s sight is seen, the way on among them', `${log.hidden} road cells hidden over ${log.tiles.length} tiles${log.hiddenAt.length ? ' (' + log.hiddenAt.slice(0, 4).join(' ') + ')' : ''}; the farthest road seen ahead ${Math.min(...log.ahead)}..${Math.max(...log.ahead)} tiles`)
+      check(log.hidden === 0 && log.ahead.every(v => v >= SIGHT.storm - 1), 'the road keeps in sight: every road cell inside the lit radius is seen, the way on among them', `${log.hidden} road cells hidden over ${log.tiles.length} tiles${log.hiddenAt.length ? ' (' + log.hiddenAt.slice(0, 4).join(' ') + ')' : ''}; the farthest road seen ahead ${Math.min(...log.ahead)}..${Math.max(...log.ahead)} tiles`)
+      check(log.frames > 0 && log.patch === 0, 'walking, every cell reaching into the haze\'s clear patch is within the lit radius, on every side', `${log.patch} of ${log.frames} frames had one outside it${log.patchAt.length ? ' (' + log.patchAt.join(' ') + ')' : ''}`)
       await ev(() => { window.__dc.wilds.calmUntil = Infinity })
     }
   }
