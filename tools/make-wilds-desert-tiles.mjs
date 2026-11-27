@@ -83,6 +83,7 @@
 // of hardpan in sand laid by desert-art.js's own edgeHardpan, a stretch of
 // desert with its dunes laid by layDunes, and what stands on the sand, over
 // the sand.
+import { fileURLToPath } from 'node:url'
 import { writePng } from './png-write.mjs'
 import { readPng } from './png-read.mjs'
 import { EDGE_SHAPES } from '../renderer/terrain/edges.js'
@@ -102,9 +103,11 @@ const unit = (...k) => {
   for (const v of k) { h = Math.imul(h ^ (v | 0), 0x01000193); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12 }
   return (h >>> 0) / 4294967296
 }
+// a tile's file (fileURLToPath: a URL's pathname keeps its %-escapes)
+const tilePath = name => fileURLToPath(new URL(`../renderer/assets/tiles/${name}.png`, import.meta.url))
 const tiles = new Map()   // name -> rgba, for the sheet
 const save = (name, rgba) => {
-  writePng(new URL(`../renderer/assets/tiles/${name}.png`, import.meta.url).pathname, T, T, rgba)
+  writePng(tilePath(name), T, T, rgba)
   tiles.set(name, rgba)
 }
 const paint = colours => {
@@ -1919,7 +1922,7 @@ const SANDS = { z: SAND.shade, Z: DRIFT.A, l: SAND.lit }
 // tent does, so it is saved as it is rather than held to stand alone.)
 {
   const NAME = 'ow_tent_stripe'
-  const src = [['00', '10'], ['01', '11']].map(row => row.map(c => readPng(new URL(`../renderer/assets/tiles/ow_tent_tan_${c}.png`, import.meta.url).pathname)))
+  const src = [['00', '10'], ['01', '11']].map(row => row.map(c => readPng(tilePath(`ow_tent_tan_${c}`))))
   const big = Array.from({ length: 2 * T }, (_, y) => Array.from({ length: 2 * T }, (_, x) => {
     const img = src[y >> 4][x >> 4], d = img.data ?? img.pixels, i = ((y % T) * T + x % T) * 4
     return d[i + 3] === 0 ? null : '#' + [d[i], d[i + 1], d[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('')
@@ -1959,6 +1962,211 @@ const SANDS = { z: SAND.shade, Z: DRIFT.A, l: SAND.lit }
   }
 }
 console.log(`wrote ${placeTiles.length} tiles of the wild places in the desert`)
+
+// ---- the wayside places by a desert road (sites.js rest and shrine, inn.js) ----------------
+// What a shrine and the crossroads inn wear in the desert (a rest pitches
+// the striped tent above), in the colours of what stands beside them:
+//   ow_prop_stele_top, _stele      a shrine's stele, two cells tall, about the
+//                                  green shrine's statue: a slab of the outcrops'
+//                                  sandstone carved with a sun disc and rows of
+//                                  signs, on a plinth, outlined as the torches
+//                                  and the pot round it are
+//   ow_house_adobe_up              an upper storey of the desert kit with no
+//                                  window, the ends of its floor beams along its foot
+//   ow_house_adobe_up_arch         the inn's gateway rising through its upper
+//                                  storey: a pointed arch of brick round a deep recess
+//   ow_house_adobe_gate, _blue     the gateway's foot, the inn's door: two tall
+//                                  studded leaves between the arch's jambs
+//   ow_prop_awning_<c>_l, _m, _r   an awning of striped cloth along the inn's
+//                                  front, from a batten on its wall
+//   ow_prop_awning_<c>_front_l, _m, _r   its scalloped front edge on a pole at
+//                                  each end, its shade on the sand under it
+//   ow_prop_pen_top_l, _m, _r      the inn's pen: a shade of bound reeds, seen from above
+//   ow_prop_pen_front_l, _m, _r    its fringed front edge over the posts at the
+//                                  back that hold it up and a rail between them
+//   ow_prop_pen_l, _m, _r          the straw the horses stand on, in its shade
+//                                  (a horse is laid over it, as over a stall)
+// The awning's and the pen's middle pieces run on into themselves, so either
+// is as wide as its row (an awning two wide is its west end beside its east
+// end, the stripes running on); the light comes from the upper left, and
+// what they shade lies to the south and east.
+const waysideTiles = []
+const saveWayside = (name, g, shadow = null) => { save(name, gridRgba(g, shadow)); waysideTiles.push(name) }
+// A picture `px` (with its shadow `sh`) cut into the tiles `names`, rows of names.
+const cutWayside = (px, sh, names) => names.forEach((row, r) => row.forEach((name, c) => {
+  const g = grid(), s = grid()
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { g[y][x] = px[r * T + y][c * T + x]; s[y][x] = sh[r * T + y][c * T + x] }
+  saveWayside(name, g, s)
+}))
+const sheet = (w, h) => ({ px: Array.from({ length: h * T }, () => new Array(w * T).fill(null)), sh: Array.from({ length: h * T }, () => new Array(w * T).fill(0)) })
+
+// The stele: its slab rounded at the top, on a plinth.
+{
+  const { px, sh } = sheet(1, 2)
+  const OUT = '#4a2c1c'
+  const span = y => y < 3 ? null : y === 3 ? [6, 9] : y === 4 ? [4, 11] : y <= 23 ? [3, 12] : y <= 29 ? [2, 13] : null
+  const on = (x, y) => { const s = span(y); return !!s && x >= s[0] && x <= s[1] }
+  for (let y = 0; y < 2 * T; y++) for (let x = 0; x < T; x++) {
+    if (!on(x, y)) continue
+    const [, x1] = span(y)
+    if (y >= 24) px[y][x] = y === 24 ? (x === x1 ? STONE.top : STONE.rim) : x === x1 ? STONE.shade : y === 25 || y === 29 ? STONE.band : STONE.face
+    else px[y][x] = x === x1 ? STONE.shade : x === x1 - 1 ? STONE.face : !on(x - 1, y) || !on(x, y - 1) ? STONE.rim : unit(31, 500, x, y) < 0.08 ? STONE.crack : STONE.body
+  }
+  // carved in: a sun disc (the cut's upper left in shade, its lower right
+  // catching the light), then three rows of signs, each a groove over a lit lip
+  for (let y = 7; y <= 14; y++) for (let x = 4; x <= 11; x++) {
+    const d = Math.hypot(x - 7.5, y - 10.5)
+    if (d <= 1.2) px[y][x] = STONE.top
+    else if (d <= 2.3) px[y][x] = x + y < 17 ? STONE.band : STONE.face
+    else if (d <= 2.9 && x + y >= 19) px[y][x] = STONE.rim
+  }
+  for (const [y, marks] of [[16, '#.##.#'], [19, '##.#.#'], [22, '#.#.##']]) [...marks].forEach((m, i) => {
+    if (m !== '#') return
+    px[y][5 + i] = STONE.band
+    px[y + 1][5 + i] = STONE.rim
+  })
+  // its outline, where the stone meets the sand
+  const edge = []
+  for (let y = 0; y < 2 * T; y++) for (let x = 0; x < T; x++) if (!px[y][x] && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => px[y + dy]?.[x + dx])) edge.push([x, y])
+  for (const [x, y] of edge) px[y][x] = OUT
+  // sand drifted against the plinth's foot, and the shadow to the lower right
+  for (const [x, y, k] of [[1, 28, 'z'], [1, 29, 'Z'], [1, 30, 'z'], [2, 30, 'Z'], [3, 30, 'l'], [14, 28, 'Z'], [14, 29, 'z'], [14, 30, 'Z'], [13, 30, 'z'], [12, 30, 'l']]) px[y][x] = SANDS[k]
+  for (let y = 4; y <= 30; y++) { const s = span(y) ?? span(29); for (const x of [s[1] + 2]) if (x < T && !px[y][x]) sh[y][x] = 1 }
+  for (let x = 4; x < T; x++) if (!px[31][x]) sh[31][x] = 1
+  cutWayside(px, sh, [['ow_prop_stele_top'], ['ow_prop_stele']])
+}
+
+// The inn's front: a storey with no window, and the gateway, two storeys tall.
+{
+  const g = wall('m', { foot: false, salt: 40 }); beamEnds(g, 12, BEAMS.m); saveWayside('ow_house_adobe_up', g)
+}
+// the gateway's arch and jambs: a band of brick round the recess, x 2..13
+// outside and 4..11 inside, its outer edge lit on the west and in shade on
+// the east, its inner edge the other way about
+const ARCH_OUT = y => y < 1 ? null : y === 1 ? [7, 8] : y === 2 ? [6, 9] : y === 3 ? [5, 10] : y === 4 ? [4, 11] : y === 5 ? [3, 12] : [2, 13]
+const ARCH_IN = y => y < 3 ? null : y === 3 ? [7, 8] : y === 4 ? [6, 9] : y === 5 ? [5, 10] : [4, 11]
+const archBand = (g, y0, y1) => {
+  for (let y = y0; y <= y1; y++) {
+    const o = ARCH_OUT(y), i = ARCH_IN(y)
+    if (!o) continue
+    for (let x = o[0]; x <= o[1]; x++) {
+      if (i && x >= i[0] && x <= i[1]) continue
+      const west = x < 7.5
+      if (x === o[0]) g[y][x] = MUD.light
+      else if (x === o[1]) g[y][x] = MUD.dark
+      else if (i && x === i[0] - 1) g[y][x] = MUD.shade
+      else if (i && x === i[1] + 1) g[y][x] = MUD.lit
+      else g[y][x] = (y + (west ? x : -x)) % 3 === 0 ? MUD.joint : MUD.brick
+    }
+  }
+}
+{
+  const g = wall('m', { foot: false, salt: 41 })
+  // the recess, in deep shade
+  for (let y = 3; y < T; y++) { const i = ARCH_IN(y); for (let x = i[0]; x <= i[1]; x++) g[y][x] = HOLE }
+  archBand(g, 0, T - 1)
+  // the keystone over it, and the shadow the arch casts on the wall to its lower right
+  g[0][7] = MUD.light; g[0][8] = MUD.lit; g[1][7] = MUD.light; g[1][8] = MUD.mid
+  for (let y = 2; y < T; y++) { const o = ARCH_OUT(y); if (o && o[1] + 1 < T && g[y][o[1] + 1] !== WOOD.light && g[y][o[1] + 1] !== WOOD.base) g[y][o[1] + 1] = MUD.shade }
+  saveWayside('ow_house_adobe_up_arch', g)
+}
+for (const trim of ['', '_blue']) {
+  const c = TRIM[trim]
+  const g = wall('m', { salt: 42 })
+  plaster(g, 43, 0, 13, 0)
+  archBand(g, 0, 14)
+  for (let y = 0; y <= 14; y++) g[y][14] = MUD.shade
+  // the leaves, set back under the arch: a dark gap over them, a lit west
+  // edge, the seam where they meet, planks, iron studs, the threshold
+  for (let y = 0; y <= 15; y++) for (let x = 4; x <= 11; x++) g[y][x] = y <= 1 ? HOLE : x === 4 ? c.light : x === 11 || x === 7 ? c.shade : x === 8 ? INK : x === 5 || x === 10 ? c.base : unit(44, 530, x, y) < 0.1 ? c.shade : c.base
+  for (let x = 4; x <= 11; x++) g[2][x] = x === 8 ? INK : c.light
+  for (const [x, y] of [[5, 5], [5, 11], [10, 5], [10, 11]]) g[y][x] = LATCH
+  g[8][7] = LATCH; g[8][9] = LATCH
+  for (let x = 2; x <= 13; x++) g[15][x] = MUD.dark
+  saveWayside(`ow_house_adobe_gate${trim}`, g)
+}
+
+// The awnings along the inn's front: a picture three cells wide and two
+// deep, cut into the west end, a middle that runs on into itself, the east end.
+const AWNING_CLOTH = [{ base: '#41609a', shade: '#2f4877', lit: '#5f7fbb' }, { base: '#a8432f', shade: '#843325', lit: '#c46249' }]
+const AWNING_CREAM = { base: '#efe3c5', shade: '#d4c3a0', lit: '#faf3e2' }
+AWNING_CLOTH.forEach((cloth, k) => {
+  const W = 3 * T, H = 2 * T
+  const { px, sh } = sheet(3, 2)
+  // a stripe of colour three pixels wide in every eight, so the stripes run on from cell to cell
+  const stripe = (x, tone) => (x % 8 < 3 ? cloth : AWNING_CREAM)[tone]
+  for (let x = 0; x < W; x++) {
+    // the batten along the wall, the cloth stretched from it (lit near it), the fold where the edge hangs
+    px[0][x] = WOOD.light; px[1][x] = WOOD.base
+    for (let y = 2; y <= 20; y++) px[y][x] = stripe(x, y <= 4 ? 'lit' : x % 8 === 2 || x % 8 === 7 ? 'shade' : 'base')
+    px[21][x] = stripe(x, 'shade')
+    for (let y = 22; y <= 25; y++) { const s = x % 4; if (y === 25 && (s === 0 || s === 3)) continue; px[y][x] = stripe(x, y === 22 ? 'lit' : 'base') }
+    if (x % 4 === 1 || x % 4 === 2) px[26][x] = stripe(x, 'shade')
+  }
+  // the hems down its ends, the batten's ends on the wall
+  for (let y = 2; y <= 25; y++) { px[y][0] = stripe(0, 'shade'); px[y][W - 1] = stripe(W - 1, 'shade') }
+  px[1][0] = WOOD.shade; px[1][W - 1] = WOOD.shade
+  // a pole at each end from the edge down to the sand, and the shade on the sand under the cloth
+  for (const p of [1, W - 3]) {
+    for (let y = 26; y < H - 1; y++) { px[y][p] = WOOD.light; px[y][p + 1] = WOOD.base }
+    px[H - 1][p] = WOOD.base; px[H - 1][p + 1] = WOOD.shade
+  }
+  for (let y = 25; y < H; y++) for (let x = 3; x < W; x++) if (!px[y][x]) sh[y][x] = 1
+  cutWayside(px, sh, [['l', 'm', 'r'].map(e => `ow_prop_awning_${k}_${e}`), ['l', 'm', 'r'].map(e => `ow_prop_awning_${k}_front_${e}`)])
+})
+
+// The pen: reeds bound into a mat on posts at its back, the horses' straw in its shade.
+{
+  const REED = { d: '#7a5f2c', s: STRAW.s, l: STRAW.l, m: '#c8ac63', edge: '#5a4320' }
+  // the mat over rows y0..y1: stalks running north and south, two pixels to
+  // a stalk, the light on their west side; a cord binding them every eight rows
+  const mat = (g, y0, y1, salt) => {
+    for (let y = y0; y <= y1; y++) for (let x = 0; x < T; x++) {
+      const r = unit(salt, 510, x, y)
+      g[y][x] = y % 8 === 4 ? (x % 4 === 1 ? REED.s : REED.d) : x % 2 ? (r < 0.15 ? REED.d : REED.s) : (r < 0.2 ? REED.m : REED.l)
+    }
+  }
+  const ends = (g, side, y0, y1) => {
+    for (let y = y0; y <= y1; y++) {
+      if (side === 'l') { g[y][0] = REED.edge; g[y][1] = REED.l }
+      if (side === 'r') { g[y][15] = REED.edge; g[y][14] = REED.d }
+    }
+  }
+  for (const side of ['l', 'm', 'r']) {
+    // seen from above, its back edge along the top
+    const top = grid()
+    mat(top, 0, T - 1, 1)
+    for (let x = 0; x < T; x++) { top[0][x] = REED.edge; top[1][x] = REED.l }
+    ends(top, side, 0, T - 1)
+    saveWayside(`ow_prop_pen_top_${side}`, top)
+    // its front edge: the last of the mat, the cord along its edge, the
+    // reeds' ends hanging ragged; under it, in its shade, a post at each end
+    // of the back holding it up and a rail between them
+    const front = grid(), fsh = grid()
+    mat(front, 0, 5, 2)
+    for (let x = 0; x < T; x++) {
+      front[6][x] = REED.d
+      front[7][x] = x % 2 ? REED.s : REED.m
+      if (x % 3 !== 2) front[8][x] = REED.s
+      if (x % 3 === 0) front[9][x] = REED.d
+    }
+    ends(front, side, 0, 7)
+    for (let y = 8; y < T; y++) for (let x = 0; x < T; x++) if (!front[y][x]) fsh[y][x] = 1
+    const post = side === 'l' ? 1 : side === 'r' ? 13 : -1
+    for (let x = 0; x < T; x++) if (side !== 'l' || x > 2) if (side !== 'r' || x < 13) { front[12][x] = WOOD.light; front[13][x] = WOOD.base }
+    if (post >= 0) for (let y = 8; y < T; y++) { front[y][post] = WOOD.light; front[y][post + 1] = WOOD.base }
+    saveWayside(`ow_prop_pen_front_${side}`, front, fsh)
+    // the straw on the ground in its shade, thinning out at its front
+    const floor = grid(), sh = grid()
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+      const r = unit(3, 520, x, y, side.charCodeAt(0))
+      if (r < (y < 12 ? 0.22 : 0.1)) floor[y][x] = r < 0.07 ? STRAW.l : r < 0.15 ? STRAW.s : STRAW.d
+      else if (y < 13 || (y === 13 && x % 2 === 0)) sh[y][x] = 1
+    }
+    saveWayside(`ow_prop_pen_${side}`, floor, sh)
+  }
+}
+console.log(`wrote ${waysideTiles.length} tiles of the wayside places in the desert`)
 
 // ---- the contact sheet ------------------------------------------------------------
 const sheetAt = process.argv.indexOf('--sheet')

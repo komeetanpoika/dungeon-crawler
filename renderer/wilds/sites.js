@@ -16,8 +16,9 @@
 // (tools/make-wilds-desert-tiles.mjs draws it): flat-roofed mud-brick houses
 // of the same rows, a roof hatch or a vent pot where the chimney would be and
 // a stepped parapet over the door where the gable would be.
-// The crossroads inn and its stable are Kalevanlinna's (inn.js).
-import { INN_PLANS, INN_PAD, INN_SHIFT, INN_SKINS, innFootprint, innMirrored, makeInnStamps } from './inn.js'
+// The crossroads inn and its stable are Kalevanlinna's (inn.js), and in the
+// desert a caravanserai of the desert kit with a pen for its horses.
+import { INN_PLANS, INN_PAD, INN_SHIFT, INN_SKINS, innFootprint, innMirrored, makeInnStamps, awnings } from './inn.js'
 import { PAVE_SKINS, PAVE_VARIANTS, paveSkin, paveEdgeSkin, isPaveSkin } from './desert-art.js'
 
 const ROOF = {
@@ -32,13 +33,17 @@ const WALL = {
 // flat roof where a chimney would (a wooden hatch, a clay vent pot), the
 // wall's the colour of the woodwork (painted blue, bare wood). Every roof
 // has a parapet round it, and a stepped one over the door. An upper storey
-// (`up`) has the ends of its floor beams along its foot.
+// (`up`) has the ends of its floor beams along its foot. The crossroads inn
+// (inn.js) is built of it too, with a plain upper storey (`up.m`) and its
+// gateway: the arch rising through the upper storey (`up.arch`) over the
+// tall gate that is its door (`gate`).
 const ADOBE_ROOF = { top: ['ow_roof_adobe_l', 'ow_roof_adobe_m', 'ow_roof_adobe_r'], low: ['ow_roof_adobe_el', 'ow_roof_adobe_em', 'ow_roof_adobe_er'], gable: 'ow_roof_adobe_step' }
 ROOF.adobe = { red: { ...ADOBE_ROOF, chim: 'ow_roof_adobe_hatch' }, blue: { ...ADOBE_ROOF, chim: 'ow_roof_adobe_pot' } }
 const adobeWall = trim => ({
   l: 'ow_house_adobe_wall_l', m: 'ow_house_adobe_wall', r: 'ow_house_adobe_wall_r',
   win: `ow_house_adobe_win${trim}`, door: `ow_house_adobe_door${trim}`, dbl: [`ow_house_adobe_dbl${trim}_l`, `ow_house_adobe_dbl${trim}_r`],
-  up: { l: 'ow_house_adobe_up_l', win: `ow_house_adobe_up_win${trim}`, r: 'ow_house_adobe_up_r' },
+  up: { l: 'ow_house_adobe_up_l', win: `ow_house_adobe_up_win${trim}`, r: 'ow_house_adobe_up_r', m: 'ow_house_adobe_up', arch: 'ow_house_adobe_up_arch' },
+  gate: `ow_house_adobe_gate${trim}`,
 })
 WALL.adobe = { stone: adobeWall('_blue'), wood: adobeWall('') }
 const KIT_ROOFS = [ROOF.red, ROOF.blue, ...Object.values(ROOF.adobe)]
@@ -101,6 +106,16 @@ const CAVE_MOUTH = ['ow_cave_arch_0', 'ow_cave_arch_1']
 export const SAND_MOUTH = ['ow_cave_arch_sand_0', 'ow_cave_arch_sand_1']
 // How many of each are strewn in a desert yard: `least` plus up to `more`, by a hash.
 const STREWN = { rubble: { least: 2, more: 2 }, pots: { least: 2, more: 3 }, reach: 7 }
+// The wayside places by a desert road, on a pad of sand: a rest pitches the
+// striped tent and has a palm beside its fire (laid last of all, as a
+// village's palms), a shrine's statue is a stele of carved sandstone (its
+// top over its foot) on sand paving with desert flowers about it, the
+// crossroads inn is a caravanserai with awnings along its front and a pen
+// for its horses (inn.js), and the walled well's palms grow two cells tall
+// where they have room (the date garden).
+const STELE = ['ow_prop_stele_top', 'ow_prop_stele']
+// How far from a rest's fire its palm may stand (the nearer ring first).
+const FIRE_PALM = [1, 2]
 // A village's square and the streets in it: green cobbles, or the desert's sand paving.
 export const isVillageStreet = n => n === 'ow_cobble_green' || isPaveSkin(n)
 
@@ -334,7 +349,7 @@ MOVES.sort((p, q) => p[0] * p[0] + p[1] * p[1] - (q[0] * q[0] + q[1] * q[1]))
 
 export const SITE_SKINS = [...new Set([
   ...KIT_ROOFS.flatMap(r => [...r.top, ...r.low, r.chim, r.gable]),
-  ...KIT_WALLS.flatMap(w => [w.l, w.m, w.r, w.win, w.door, ...w.dbl, ...(w.up ? [w.up.l, w.up.win, w.up.r] : [])]),
+  ...KIT_WALLS.flatMap(w => [w.l, w.m, w.r, w.win, w.door, ...w.dbl, ...(w.up ? Object.values(w.up) : []), ...(w.gate ? [w.gate] : [])]),
   ...DESERT_VILLAGE_SKINS,
   ...GRAVES, ...FLOWERS, ...OLD_STONES, ...SAND_STONES, ...SAND_FLOOR, ...DEAD,
   'ow_cobble_green', 'ow_well', 'ow_well_top', 'ow_sign', 'ow_beehive',
@@ -351,7 +366,7 @@ export const SITE_SKINS = [...new Set([
   ...['00', '10', '01', '11'].map(c => `${DESERT_TENT}_${c}`),
   'ow_roof_gray_l', 'ow_roof_gray_m', 'ow_roof_gray_r', 'ow_roof_slate_l', 'ow_roof_slate_m', 'ow_roof_slate_r',
   'ow_brick', 'ow_castle_parapet_l', 'ow_castle_parapet_m', 'ow_castle_parapet_r', 'ow_house_arch_stone',
-  ...CAVE_MOUTH, ...SAND_MOUTH, 'ow_statue_top', 'ow_statue', 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
+  ...CAVE_MOUTH, ...SAND_MOUTH, 'ow_statue_top', 'ow_statue', ...STELE, 'ow_lily_0', 'ow_lily_1', 'ow_lily_2',
   'ow_deco_firepit', 'ow_kiln_cold', 'ow_mtn_rock_cap', 'ow_prop_fishrack_l', 'ow_prop_fishrack_r', 'ow_pier_log', 'ow_stone_ground_0',
   'ow_prop_bell', 'ow_tree_apple', 'ow_tree_small', 'ow_greytree_0', 'ow_greytree_1',
   // the Lalli tale: his pine (not in the lumber table) and the tale's people
@@ -467,14 +482,16 @@ export function makeSites(c) {
   }
   const offPaths = (x, y) => !t.onPath(x, y)
   // the crossroads inn's house and stable, in Kalevanlinna's style
-  const innStamps = makeInnStamps({ t, put, hold, door: c.door, rng })
+  const innStamps = makeInnStamps({ t, put, hold, door: c.door, rng, adobe: c.desert ? { roof: ROOF.adobe, wall: WALL.adobe } : null })
 
   // A house whose door is at (dx, dy), `dcol` cells in from its west wall
   // (dealt when not given); `lived`: someone is always at home (the interior
   // is never an abandoned one: renderer/interior/versions.js). Returns its box
   // and its door record.
-  // `kit`: 'kenney' (Tiny Town's) or 'adobe' (the desert's), by the same draws.
-  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null, dcol: atCol = null, lived = false, kit = 'kenney' } = {}) {
+  // `kit`: 'kenney' (Tiny Town's) or 'adobe' (the desert's), by the same draws;
+  // an adobe house's door record says so (`look.wall`), unless `kept` keeps
+  // the wall the draws gave (the smaller inn: its record is the inn's either way).
+  function house(dx, dy, tier, { w = 3, roof = rng() < 0.5 ? 'red' : 'blue', wall = rng() < 0.5 ? 'stone' : 'wood', storeys = 1, story = null, kind = null, dcol: atCol = null, lived = false, kit = 'kenney', kept = false } = {}) {
     const adobe = kit === 'adobe'
     const R = adobe ? ROOF.adobe[roof] : ROOF[roof], W = adobe ? WALL.adobe[wall] : WALL[wall], U = W.up ?? W
     const dbl = w === 5 && rng() < 0.35
@@ -494,7 +511,7 @@ export function makeSites(c) {
     }
     // the doorstep stays clear
     for (let i = -1; i <= 1; i++) { t.clear(dx + i, dy + 1); hold(dx + i, dy + 1) }
-    const door = c.door(dx, dy, tier, story, { look: { w, storeys, wall: adobe ? 'adobe' : wall }, ...(kind ? { kind } : {}), ...(lived ? { lived: true } : {}) })
+    const door = c.door(dx, dy, tier, story, { look: { w, storeys, wall: adobe && !kept ? 'adobe' : wall }, ...(kind ? { kind } : {}), ...(lived ? { lived: true } : {}) })
     return { x0, x1: x0 + w - 1, top, w, door }
   }
 
@@ -702,6 +719,7 @@ export function makeSites(c) {
   // off `spot` (the piece's spawn point), the lowest hash first; a lump of
   // rubble only where it parts nothing. No draw of the piece's rng is spent.
   function finishDesert(spot) {
+    finishWayside(spot)
     for (const { x: cx, y: cy } of desertYards) {
       const R = STREWN.reach, cells = []
       for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
@@ -721,6 +739,43 @@ export function makeSites(c) {
       }
     }
     desertYards.length = 0
+  }
+  // What a desert's wayside place lays last (finishDesert), on cells nothing
+  // holds, off the paths and off `spot`, parting no walkable ground, the
+  // lowest hash first; no draw of the piece's rng is spent:
+  //   a rest's fire     a palm beside it (FIRE_PALM away, the nearer ring
+  //                     first), two cells tall where its crown has room above
+  //                     its foot, else the one-cell date palm, else none
+  //   a date palm       of the walled well: two cells tall where the cell
+  //                     above it takes its crown
+  //   the big inn       its awnings (inn.js awnings)
+  function finishWayside(spot) {
+    const open = (x, y) => t.free(x, y) && !c.taken(x, y) && !t.onPath(x, y) && !(x === spot.x && y === spot.y)
+    for (const f of desertLater.fires) {
+      const spots = []
+      for (const ring of FIRE_PALM) for (let dy = -ring; dy <= ring; dy++) for (let dx = -ring; dx <= ring; dx++)
+        if (Math.max(Math.abs(dx), Math.abs(dy)) === ring) spots.push({ x: f.x + dx, y: f.y + dy, ring, h: c.hash(f.x + dx, f.y + dy, 7240) })
+      spots.sort((p, q) => p.ring - q.ring || p.h - q.h)
+      let lone = null, tall = false
+      for (const { x, y } of spots) {
+        if (!open(x, y) || parts(x, y) > 1) continue
+        lone ??= { x, y }
+        if (!open(x, y - 1)) continue
+        t.setProp(x, y, PALM_TALL[1])
+        if (parts(x, y - 1) > 1) { t.clear(x, y); continue }
+        t.setProp(x, y - 1, PALM_TALL[0])
+        hold(x, y); hold(x, y - 1)
+        tall = true
+        break
+      }
+      if (!tall && lone) { t.setProp(lone.x, lone.y, PALM); hold(lone.x, lone.y) }
+    }
+    for (const { x, y } of desertLater.palms) {
+      if (t.propAt(x, y) !== PALM || !open(x, y - 1) || parts(x, y - 1) > 1) continue
+      t.setProp(x, y, PALM_TALL[1]); t.setProp(x, y - 1, PALM_TALL[0]); hold(x, y - 1)
+    }
+    for (const h of desertLater.inns) awnings(t, h, { held: c.taken, hold, parts, spot })
+    for (const list of Object.values(desertLater)) list.length = 0
   }
   // How many runs the walkable cells round (x, y) fall into, going round its
   // eight neighbours: one or none, and a thing standing there parts nothing.
@@ -794,7 +849,13 @@ export function makeSites(c) {
   // none does, lay nothing and return null. Its ground, the pad, goes with
   // it: opened round where it was laid, but for the trails, what is taken and
   // what `avoid` keeps.
-  function lay(cx, cy, plans, r, { whole = false, shift = FARM_SHIFT, avoid = null } = {}) {
+  // `kit`: what its houses are built of (house()); 'adobe' keeps their door
+  // records as the draws made them, and its fences are walls of mud brick.
+  // In the desert (`c.desert`) a tent is of striped canvas, the statue a
+  // stele on sand paving, and what stands there is noted to be finished last
+  // of all (finishDesert): a wayside fire's palm, a date palm's crown, the
+  // big inn's awnings.
+  function lay(cx, cy, plans, r, { whole = false, shift = FARM_SHIFT, avoid = null, kit = 'kenney' } = {}) {
     const drawn = plans.flatMap(p => [p, p.map(mirrored)])
     const start = Math.floor(rng() * drawn.length)
     const seen = whole ? new Map() : null
@@ -808,7 +869,7 @@ export function makeSites(c) {
     }
     if (!chosen) return null
     const best = chosen.sx || chosen.sy ? chosen.plan.map(item => shifted(item, chosen.sx, chosen.sy)) : chosen.plan
-    const doors = [], folk = []
+    const doors = [], folk = [], fires = []
     const offWay = (x, y) => !t.onPath(x, y)
     if (whole) {
       const mx = cx + chosen.sx, my = cy + chosen.sy
@@ -865,7 +926,7 @@ export function makeSites(c) {
       } else if (kind === 'flat') {
         for (let y = a[1]; y <= a[3]; y++) for (let x = a[0]; x <= a[2]; x++) if (offWay(cx + x, cy + y)) flat(cx + x, cy + y, a[4])
       } else if (kind === 'fence') {
-        fence(cx + a[0], cy + a[1], cx + a[2], cy + a[3], a[4] === undefined ? null : { x: cx + a[4], y: cy + a[5] })
+        fence(cx + a[0], cy + a[1], cx + a[2], cy + a[3], a[4] === undefined ? null : { x: cx + a[4], y: cy + a[5] }, false, kit === 'adobe')
       } else if (kind === 'wall') {
         // a gap at the gate and wherever a path passes
         for (let y = a[1]; y <= a[3]; y++) for (let x = a[0]; x <= a[2]; x++) {
@@ -873,13 +934,14 @@ export function makeSites(c) {
           if ((x === a[4] && y === a[5]) || !offWay(cx + x, cy + y)) { t.clear(cx + x, cy + y); hold(cx + x, cy + y) } else low(cx + x, cy + y, MUD_WALL)
         }
       } else if (kind === 'house') {
-        const h = house(X, Y, 'safe', { w: a[2], storeys: a[3], wall: a[4], dcol: doorCol(a[2], a[5]), lived: true })
+        const h = house(X, Y, 'safe', { w: a[2], storeys: a[3], wall: a[4], dcol: doorCol(a[2], a[5]), lived: true, kit, kept: true })
         around(h, Y)
         doors.push(h.door)
       } else if (kind === 'inn') {
         const h = innStamps.inn(X, Y)
         around(h, Y)
         doors.push(h.door)
+        if (c.desert) desertLater.inns.push(h)
       } else if (kind === 'stable') {
         around(innStamps.stable(X, Y, a[2]), Y)
       } else if (kind === 'mill') {
@@ -890,20 +952,25 @@ export function makeSites(c) {
       } else if (kind === 'well') {
         put(X, Y - 1, 'ow_well_top'); put(X, Y, 'ow_well')
       } else if (kind === 'statue') {
-        put(X, Y - 1, 'ow_statue_top'); put(X, Y, 'ow_statue')
+        const [top, foot] = c.desert ? STELE : ['ow_statue_top', 'ow_statue']
+        put(X, Y - 1, top); put(X, Y, foot)
       } else if (kind === 'tent') {
-        tent(X, Y, a[2])
+        tent(X, Y, c.desert ? DESERT_TENT : a[2])
       } else if (kind === 'tower') {
         doors.push(ruinTower(X, Y))
       } else if (kind === 'cobble') {
-        // a trail keeps its own ground across them
+        // a trail keeps its own ground across them; in the desert, sand paving with its edges
         for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++)
-          if (dx * dx + dy * dy < a[2] && offWay(X + dx, Y + dy)) { t.clear(X + dx, Y + dy); t.setGround(X + dx, Y + dy, 'ow_cobble_green') }
+          if (dx * dx + dy * dy < a[2] && offWay(X + dx, Y + dy)) { t.clear(X + dx, Y + dy); t.setGround(X + dx, Y + dy, c.desert ? paveSkin(0) : 'ow_cobble_green') }
+        if (c.desert) edgePaving(X, Y, 4)
       } else if (kind === 'fire') {
         const at = free(X, Y) && t.free(X, Y) ? { x: X, y: Y } : c.freeSpot(X, Y, 1, 2, (x, y) => free(x, y))
-        if (at) fire(at.x, at.y)
+        if (at) { fire(at.x, at.y); fires.push(at) }
       } else if (kind === 'put') {
-        if (free(X, Y)) put(X, Y, a[2])
+        if (free(X, Y)) {
+          put(X, Y, a[2])
+          if (c.desert && a[2] === PALM) desertLater.palms.push({ x: X, y: Y })
+        }
       } else if (kind === 'rock') {
         if (free(X, Y)) low(X, Y, pick(c.rocks))
       } else if (kind === 'pair') {
@@ -922,8 +989,8 @@ export function makeSites(c) {
       const at = c.freeSpot(f.x, f.y, 0, 2)
       if (at) { hold(at.x, at.y); people.push({ x: at.x, y: at.y, species: f.species }) }
     }
-    // `at`: the plan's middle where it was laid
-    return { doors, people, at: { x: cx + chosen.sx, y: cy + chosen.sy } }
+    // `at`: the plan's middle where it was laid; `fires`: where its campfires are
+    return { doors, people, at: { x: cx + chosen.sx, y: cy + chosen.sy }, fires }
   }
   // Grass over a disc, a trail keeping its own ground: a dry rise in the
   // marsh, an oasis in the desert.
@@ -1034,24 +1101,40 @@ export function makeSites(c) {
   }
   // The desert's yards (ruinYard), strewn last of all (finishDesert).
   const desertYards = []
+  // What the desert's wayside places finish last of all (finishDesert): the
+  // fires of rests (a palm beside each), the walled well's date palms (a
+  // crown on each) and the big inn's house (its awnings).
+  const desertLater = { fires: [], palms: [], inns: [] }
+  // An inn's yard in the desert: sand within r of `at`, and no dune on it.
+  const yardOfSand = (at, r) => { sandPad(at.x, at.y, r); t.keepOpen(at.x, at.y, r) }
 
   // ---- the wayside places (WAYSIDE_PLANS) ---------------------------------------
   // Each returns what lay does ({ doors, people, at }); features.js gives the
-  // people their lines and puts the chests down.
+  // people their lines and puts the chests down. In the desert (`c.desert`)
+  // each stands on a pad of sand (the rest's and the shrine's `c.pad`, the
+  // inn's yard round where it was laid), kept clear of dunes.
   const wayside = {
-    rest: (cx, cy) => lay(cx, cy, WAYSIDE_PLANS.rest, 5),
+    rest: (cx, cy) => {
+      if (c.desert) sandPad(cx, cy, c.pad)
+      const made = lay(cx, cy, WAYSIDE_PLANS.rest, 5)
+      if (c.desert) desertLater.fires.push(...made.fires)
+      return made
+    },
     shrine: (cx, cy) => {
+      if (c.desert) sandPad(cx, cy, c.pad)
       const made = lay(cx, cy, WAYSIDE_PLANS.shrine, 5)
-      scatter(made.at.x, made.at.y, 3, 5, 8, FLOWERS, false, offPaths)
+      scatter(made.at.x, made.at.y, 3, 5, 8, c.desert ? BLOOMS : FLOWERS, false, offPaths)
       return made
     },
     // the big inn and its stable where one of its plans stands whole, else the smaller inn
     // (`avoid`: ground it must leave alone, the small things' that are stamped after it)
-    // (`small` says it was the smaller one, which has no stable)
+    // (`small` says it was the smaller one, which has no stable; in the desert
+    // its house is of mud brick and its yard walled with it)
     inn: (cx, cy, avoid = null) => {
       const big = lay(cx, cy, INN_PLANS, INN_PAD, { whole: true, shift: INN_SHIFT, avoid })
-      if (big) return big
-      const small = lay(cx, cy, WAYSIDE_PLANS.inn, 9)
+      if (big) { if (c.desert) yardOfSand(big.at, INN_PAD); return big }
+      const small = lay(cx, cy, WAYSIDE_PLANS.inn, 9, { kit: c.desert ? 'adobe' : 'kenney' })
+      if (small && c.desert) yardOfSand(small.at, 9)
       return small && { ...small, small: true }
     },
     // the ruin kit: the tower moved off the trails as a farm's house is, its broken walls round it

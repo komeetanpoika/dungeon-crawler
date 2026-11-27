@@ -24,6 +24,7 @@ import { signNearby } from '../renderer/systems/signs.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { NPC_SPECIES } from '../renderer/data/npcs.js'
 import { houseSpec } from '../renderer/interior/versions.js'
+import { isDesert } from '../renderer/wilds/desert.js'
 
 const SEEDS = [1, 3, 2024]
 // the farms of each country, as features.js deals them
@@ -391,9 +392,12 @@ test('a wayside place stands by the junction, a camp or cave at least PAD + 4 fr
       assert.ok(town, `${at}: the traveller names ${traveller.hears[0]}, the next town along none of the roads`)
       assert.ok(traveller.lines[0].includes(town.name), `${at}: "${traveller.lines[0]}" does not name ${town.name}`)
     } else if (m.kind === 'shrine') {
-      assert.ok(props.has('ow_statue') && props.has('ow_statue_top'), `${at}: no statue`)
+      // (in the desert its statue is a stele of sandstone, its flowers the desert's: test/wilds-desert-places.test.js)
+      const desert = isDesert(seed, piece.wx * PIECE + m.x, piece.wy * PIECE + m.y)
+      const [top, foot] = desert ? ['ow_prop_stele_top', 'ow_prop_stele'] : ['ow_statue_top', 'ow_statue']
+      assert.ok(props.has(foot) && props.has(top), `${at}: no ${desert ? 'stele' : 'statue'}`)
       assert.ok(piece.spawns.some(s => s.kind === 'chest' && near(s)), `${at}: no chest`)
-      assert.ok([...props].some(p => p.startsWith('ow_deco_flower_')), `${at}: no flowers`)
+      assert.ok([...props].some(p => p.startsWith(desert ? 'ow_deco_bloom_' : 'ow_deco_flower_')), `${at}: no flowers`)
     } else if (m.kind === 'inn') {
       // (what the inn is like: the crossroads inn's tests below)
       const inn = piece.doors.find(d => d.kind === 'inn' && near(d))
@@ -420,6 +424,7 @@ test('a wayside place stands by the junction, a camp or cave at least PAD + 4 fr
 // Either way the innkeeper is inside (test/interior-versions.test.js), and
 // the stable hand the one outside.
 const HORSE = /^ow_prop_horse_[ew]$/, STALL = /^ow_house_stable_[lmr]$/, ROOF = /^ow_(city_)?roof_/
+const STALL_OR_PEN = /^ow_(house_stable|prop_pen)_[lmr]$/
 const STABLE_TILES = ['ow_prop_horse_w', 'ow_prop_horse_e', 'ow_prop_trough', 'ow_house_stable_l', 'ow_house_stable_m', 'ow_house_stable_r']
 // The first two deals of each roadside piece round home that deal an inn, six
 // pieces a seed; built once.
@@ -449,7 +454,7 @@ const isBig = ({ piece }) => piece.doors.some(d => d.kind === 'inn' && d.look.w 
 test('a crossroads inn is a city house nine wide with a stable beside it, where the roads leave it room', () => {
   let big = 0
   const ways = new Set(), small = []
-  for (const { t, piece, walk, at } of innBuilt()) {
+  for (const { seed, t, piece, walk, at } of innBuilt()) {
     const m = piece.main, mid = piece.road.mid, pad = ROADSIDE_PAD.inn
     const prop = (x, y) => t.propAt(x, y) ?? '', deco = (x, y) => t.decoAt(x, y) ?? ''
     const doors = piece.doors.filter(d => d.kind === 'inn')
@@ -480,6 +485,8 @@ test('a crossroads inn is a city house nine wide with a stable beside it, where 
     }
     big++
     assert.deepEqual(door.look, { w: 9, storeys: 2, wall: 'plaster' }, `${at}: the inn's look`)
+    // (in the desert the same inn is a caravanserai of mud brick with a pen: test/wilds-desert-places.test.js)
+    if (isDesert(seed, piece.wx * PIECE + m.x, piece.wy * PIECE + m.y)) continue
     // the house, row by row: roof, eaves, the upper storey, the ground floor with the door; nothing of it below
     const h = innHouse(t, door)
     assert.equal(h.w, 9, `${at}: the inn is ${h.w} wide`)
@@ -599,8 +606,8 @@ test('a big inn stands as its plan draws it: the stable in its place, the yard w
     const cell = (x, y) => p.cells[y]?.[x] ?? {}
     const near = []
     for (let y = door.y - 14; y <= door.y + 14; y++) for (let x = door.x - 14; x <= door.x + 14; x++) if (p.cells[y]?.[x]) near.push({ x, y })
-    // the stable: four stalls in one row, its first stall where a plan puts it from the door
-    const stalls = near.filter(c => STALL.test(cell(c.x, c.y).deco ?? '') || STALL.test(cell(c.x, c.y).overlay ?? ''))
+    // the stable (in the desert the pen, on the same cells): four stalls in one row, its first stall where a plan puts it from the door
+    const stalls = near.filter(c => STALL_OR_PEN.test(cell(c.x, c.y).deco ?? '') || STALL_OR_PEN.test(cell(c.x, c.y).overlay ?? ''))
     assert.ok(stalls.length === 4 && stalls.every(c => c.y === stalls[0].y), `${at}: ${stalls.length} stalls`)
     const x0 = Math.min(...stalls.map(c => c.x)), row = stalls[0].y
     assert.ok(STABLE_FROM_DOOR.includes(`${x0 - door.x},${row - door.y}`), `${at}: the stable at ${x0 - door.x},${row - door.y} from the door, none of ${STABLE_FROM_DOOR.join(' ')}`)

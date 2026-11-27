@@ -1162,15 +1162,22 @@ const OASIS = { least: 4, more: 2, from: 2.5, to: 5.5, reeds: 0.6 }
 //           landmark (the standing stones, the arch, the bones) stands where
 //           the pond was, or a cell or two aside (ASIDE) where the chest is in
 //           its way; the tall pillar alone (LONE_PILLAR) where none of those
-//           is to be had
+//           is to be had; and where not even that is, the pond and the trees
+//           are put back and it is the oasis it was stamped as, on the green
+//           oasis's disc
 // A palm, a reed or a landmark only takes a cell that nothing holds
 // (`held`), off the paths and the spawn point (`spot`), and never where it
 // would cut walkable ground off from the rest. No draw of the piece's rng is
 // spent. (A function of its own: placeFeatures is too big to be compiled well.)
-function dressDesertLandmark(t, at, held, spot) {
+export function dressDesertLandmark(t, at, held, spot) {
   const { seed, wx, wy, deal } = t
   const open = (x, y) => t.free(x, y) && !held(x, y) && !t.onPath(x, y) && !(x === spot.x && y === spot.y)
   const h = (x, y, salt) => hash(seed, wx * PIECE + x, wy * PIECE + y, salt + deal)
+  if (at.look !== 'oasis' && !standLandmark(t, at, held, spot)) {
+    // the green oasis's disc again, as it is stamped for an oasis
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dy * dy <= 16 && t.kind(at.x + dx, at.y + dy) === 'land') t.setGround(at.x + dx, at.y + dy, t.grassSkin(at.x + dx, at.y + dy))
+    at = { ...at, look: 'oasis' }
+  }
   if (at.look === 'oasis') {
     const palms = []
     for (const { x, y } of at.trees) {
@@ -1204,10 +1211,15 @@ function dressDesertLandmark(t, at, held, spot) {
       const r = h(x, y, 763)
       if (r < OASIS.reeds) { t.setProp(x, y, REEDS[Math.floor(r / OASIS.reeds * REEDS.length)], { walkable: true }); t.keepOpen(x, y, 1) }
     }
-    return
   }
-  // the pond goes back to the sand, or to the path it was dug into, and the trees are taken up
-  const ours = new Set()
+}
+// The standing stones, the arch or the bones where the green oasis's pond
+// was (dressDesertLandmark): the pond goes back to the sand, or to the path
+// it was dug into, the trees are taken up, and the first place of ASIDE
+// where every cell of it is to be had takes it. Where none is, the pond and
+// the trees are put back as they were and it returns false.
+function standLandmark(t, at, held, spot) {
+  const ours = new Set(), trees = at.trees.map(({ x, y }) => ({ x, y, was: t.propAt(x, y) }))
   for (const { x, y } of at.water) { t.clear(x, y); t.setGround(x, y, (t.onPath(x, y) && at.under.get(y * PIECE + x)) || t.sandSkin(x, y)); ours.add(y * PIECE + x) }
   for (const { x, y } of at.trees) { t.clear(x, y); ours.add(y * PIECE + x) }
   for (const shape of [SHAPES[at.look], LONE_PILLAR]) for (const [ox, oy] of ASIDE) {
@@ -1232,8 +1244,11 @@ function dressDesertLandmark(t, at, held, spot) {
     if (!keepsJoined(t, at, cells.filter(c => !c.walk))) continue
     // (on sand where it stands a cell or two past the disc; a path runs on under it)
     for (const c of cells) { if (!t.onPath(c.x, c.y)) t.setGround(c.x, c.y, t.sandSkin(c.x, c.y)); t.setProp(c.x, c.y, c.name, { walkable: c.walk }); t.keepOpen(c.x, c.y, 1) }
-    return
+    return true
   }
+  for (const { x, y } of at.water) t.setWater(x, y)
+  for (const { x, y, was } of trees) if (was) t.setProp(x, y, was)
+  return false
 }
 // The one-cell date palm (sites.js PALM), where a palm's crown has no room;
 // the trees the green oasis's ring holds until its look is laid.

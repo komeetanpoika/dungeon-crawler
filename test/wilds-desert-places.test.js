@@ -2,26 +2,35 @@
 // desert piece's landmark is an oasis ringed with palms, standing stones,
 // a rock arch or the bones of something huge, chosen by a hash of the piece;
 // camps pitch striped tents on sand, ruins and watchtowers stand on sand among
-// rubble and broken pots, and a cave mouth opens in a sandstone outcrop.
+// rubble and broken pots, and a cave mouth opens in a sandstone outcrop. By
+// the roads, a rest pitches a striped tent with a palm by its fire, a shrine
+// is a sandstone stele, the crossroads inn is a caravanserai of mud brick with
+// awnings over its front and a shaded pen for its horses, and the farmland's
+// date garden grows palms two cells tall.
 // Which piece gets what, and every record of it, is what it was: only cells
 // differ with the desert's dress on.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { generatePiece } from '../renderer/wilds/piece.js'
-import { mainKind } from '../renderer/wilds/features.js'
+import { fileURLToPath } from 'node:url'
+import { generatePiece, cellOf } from '../renderer/wilds/piece.js'
+import * as features from '../renderer/wilds/features.js'
 import { setDesertDress } from '../renderer/wilds/desert-art.js'
 import { isDesert, BEACON_PREFIX } from '../renderer/wilds/desert.js'
 import { PIECE, pieceBiome } from '../renderer/wilds/layout.js'
-import { WILDS_SKINS } from '../renderer/wilds/terrain.js'
+import { pieceClass } from '../renderer/wilds/roads.js'
+import { makeTerrain, WILDS_SKINS } from '../renderer/wilds/terrain.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { isWaterSkin } from '../renderer/terrain/lib.js'
 import { nearCool } from '../renderer/wilds/heat.js'
-import { isStructure } from '../renderer/wilds/over.js'
+import { isStructure, setOpenTops } from '../renderer/wilds/over.js'
 import { classOf, CLASS } from '../renderer/wilds/map.js'
+import { houseSpec } from '../renderer/interior/versions.js'
+import { generateInterior } from '../renderer/interior/index.js'
 
-const TILES = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'renderer', 'assets', 'tiles')
+const { mainKind } = features
+const TILES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'renderer', 'assets', 'tiles')
 const SEEDS = [7, 1]
 const REACH = 30
 // how many of each place the sample holds (spiralling out from home), and of
@@ -47,7 +56,7 @@ function places() {
   }
   return sample
 }
-const plainOf = s => s.plain ??= without(() => generatePiece(s.seed, s.wx, s.wy, 0))
+const plainOf = s => s.plain ??= without(() => generatePiece(s.seed, s.wx, s.wy, s.deal ?? 0))
 
 // the cells within Chebyshev distance r of (cx, cy)
 const around = (p, cx, cy, r) => {
@@ -107,6 +116,10 @@ test('every desert landmark is one of four', () => {
       }
       // the standing stones stand whole: the tall pillar, the shorter one and the stump, six cells
       if (looks[0] === 'pillar') assert.equal(new Set(cells.map(({ c }) => c.overlay)).size, 6, `${s.at}: ${cells.map(({ c }) => c.overlay).join(' ')}`)
+      // and no chest stands just north of its top in any column, as if set on top of it
+      const tops = new Map()
+      for (const { x, y } of cells) if (!tops.has(x) || y < tops.get(x)) tops.set(x, y)
+      for (const [x, y] of tops) assert.ok(!s.p.spawns.some(o => o.kind === 'chest' && o.x === x && o.y === y - 1), `${s.at}: a chest on top of the ${looks[0]} at ${x},${y - 1}`)
     }
   }
   for (const [look, n] of Object.entries(count)) assert.ok(n >= 10, `only ${n} of ${look} in ${L.length}: ${JSON.stringify(count)}`)
@@ -287,5 +300,254 @@ test('the new tiles exist, and behave by their names', () => {
     assert.equal(isStructure(n), false, `${n} is walked behind`)
     const cls = classOf({ tile: TILE.WALL, skin: 'ow_sand_0', overlay: n })
     assert.equal(cls === CLASS.landmark, n.startsWith(BEACON_PREFIX), `${n} is on the map as class ${cls}`)
+  }
+})
+
+// A landmark that finds nowhere to stand (never seen in a real piece: here,
+// every cell round it is held) is the oasis it was stamped as: its pond and
+// its ring of trees are put back, the trees as palms, on the green disc.
+test('a landmark with nowhere to stand is an oasis after all', () => {
+  assert.equal(typeof features.dressDesertLandmark, 'function', 'dressDesertLandmark is not exported')
+  const s = places().landmark[0]
+  const t = makeTerrain(s.seed, s.wx, s.wy, 0)
+  const mx = 40, my = 40
+  t.open(mx, my, 7)
+  const water = [[-1, 0], [0, 0], [1, 0]].map(([dx, dy]) => ({ x: mx + dx, y: my + dy }))
+  for (const { x, y } of water) t.setWater(x, y)
+  const trees = [0, 1, 2, 3, 4].map(i => ({ x: mx + Math.round(Math.cos(i / 5 * Math.PI * 2) * 3), y: my + Math.round(Math.sin(i / 5 * Math.PI * 2) * 3) }))
+  trees.forEach(({ x, y }, i) => t.setProp(x, y, i % 2 ? 'ow_tree_small' : 'ow_tree_apple'))
+  for (const look of ['pillar', 'arch', 'bones']) {
+    features.dressDesertLandmark(t, { look, x: mx, y: my, water, trees, under: new Map() }, () => true, { x: mx, y: my + 2 })
+    for (const { x, y } of water) assert.equal(t.kind(x, y), 'water', `${look}: the pond at ${x},${y} is gone`)
+    for (const { x, y } of trees) assert.equal(t.propAt(x, y), 'ow_tree_palm_small', `${look}: ${t.propAt(x, y)} at ${x},${y}, not a palm`)
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) assert.ok(!(t.propAt(mx + dx, my + dy) ?? '').startsWith('ow_landmark_'), `${look}: ${t.propAt(mx + dx, my + dy)} at ${mx + dx},${my + dy}`)
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      if (Math.hypot(dx, dy) > 3.5 || t.kind(mx + dx, my + dy) === 'water') continue
+      assert.match(t.groundAt(mx + dx, my + dy), /^ow_grass/, `${look}: the oasis's disc at ${mx + dx},${my + dy}`)
+    }
+  }
+})
+
+// ---- by the desert's roads --------------------------------------------------------------
+// The rests, shrines and crossroads inns of desert roadside pieces, and the
+// walled wells of desert farmland, on seeds 7, 42 and 1: for each piece of
+// the right class near home whose country is desert, the first deal up to
+// WAYSIDE_DEALS that deals the kind, kept where its main thing stands on the
+// desert's own country (an inn only where it is the big one, nine wide).
+// Built once, with the dress on.
+const WAYSIDE_SEEDS = [7, 42, 1]
+const WAYSIDE_WANT = { rest: 4, shrine: 4, inn: 4, well: 4 }   // of each, a seed
+const WAYSIDE_DEALS = 15, WAYSIDE_REACH = 16
+let roadSample = null
+function wayside() {
+  if (roadSample) return roadSample
+  roadSample = Object.fromEntries(Object.keys(WAYSIDE_WANT).map(k => [k, []]))
+  for (const seed of WAYSIDE_SEEDS) {
+    const got = Object.fromEntries(Object.keys(WAYSIDE_WANT).map(k => [k, 0]))
+    const full = () => Object.keys(WAYSIDE_WANT).every(k => got[k] >= WAYSIDE_WANT[k])
+    for (let r = 1; r <= WAYSIDE_REACH && !full(); r++) for (let wy = -r; wy <= r; wy++) for (let wx = -r; wx <= r; wx++) {
+      if (Math.max(Math.abs(wx), Math.abs(wy)) !== r || pieceBiome(seed, wx, wy) !== 'desert') continue
+      const cls = pieceClass(seed, wx, wy)
+      for (const kind of Object.keys(WAYSIDE_WANT)) {
+        if (got[kind] >= WAYSIDE_WANT[kind] || cls !== (kind === 'well' ? 'farmland' : 'roadside')) continue
+        let deal = 0
+        while (deal <= WAYSIDE_DEALS && mainKind(seed, wx, wy, deal) !== kind) deal++
+        if (deal > WAYSIDE_DEALS) continue
+        const p = generatePiece(seed, wx, wy, deal)
+        if (p.main.kind !== kind || !isDesert(seed, wx * PIECE + p.main.x, wy * PIECE + p.main.y)) continue
+        if (kind === 'inn' && p.doors.find(d => d.kind === 'inn')?.look.w !== 9) continue
+        roadSample[kind].push({ seed, wx, wy, deal, p, at: `seed ${seed} ${kind} ${wx},${wy} deal ${deal}`, plain: null })
+        got[kind]++
+      }
+    }
+  }
+  return roadSample
+}
+const PALM_FOOT = 'ow_tree_palm', PALM_CROWN = 'ow_tree_palm_top', PALM_ONE = 'ow_tree_palm_small'
+const innDoor = p => p.doors.find(d => d.kind === 'inn')
+
+test('desert rests, shrines and inns wear the desert', () => {
+  const W = wayside()
+  for (const kind of ['rest', 'shrine', 'inn']) assert.ok(W[kind].length >= 10, `only ${W[kind].length} desert ${kind}s`)
+  // a rest: a striped tent and a palm by its fire, on its pad of sand
+  let tall = 0
+  for (const s of W.rest) {
+    const p = s.p, { x: mx, y: my } = p.main
+    let tents = 0
+    for (const { x, y, c } of around(p, mx, my, 7)) {
+      if ((x - mx) ** 2 + (y - my) ** 2 <= 25) assert.ok(!NOT_SAND.test(c.skin), `${s.at}: ${c.skin} at ${x},${y} on its pad`)
+      if ((c.overlay ?? '').startsWith('ow_tent_')) { tents++; assert.ok(c.overlay.startsWith('ow_tent_stripe_'), `${s.at}: ${c.overlay} at ${x},${y}`) }
+    }
+    assert.equal(tents, 4, `${s.at}: ${tents} cells of tent`)
+    const fire = p.spawns.find(o => o.kind === 'campfire')
+    assert.ok(fire, `${s.at}: no fire`)
+    const palms = around(p, fire.x, fire.y, 2).filter(({ c }) => c.overlay === PALM_FOOT || c.overlay === PALM_ONE)
+    assert.equal(palms.length, 1, `${s.at}: ${palms.length} palms by the fire at ${fire.x},${fire.y}`)
+    const { x, y, c } = palms[0]
+    assert.equal(c.tile, TILE.WALL, `${s.at}: the palm at ${x},${y} is walked through`)
+    if (c.overlay === PALM_FOOT) {
+      assert.ok(p.cells[y - 1][x].overlay === PALM_CROWN && p.cells[y - 1][x].tile === TILE.WALL, `${s.at}: the palm at ${x},${y} has no crown`)
+      tall++
+    }
+  }
+  assert.ok(tall >= W.rest.length * 0.75, `only ${tall} of ${W.rest.length} rests have a palm two cells tall`)
+
+  // a shrine: a sandstone stele on sand paving, its flowers and its chest, on its pad of sand
+  for (const s of W.shrine) {
+    const p = s.p, { x: mx, y: my } = p.main
+    const near = around(p, mx, my, 8)
+    assert.ok(!near.some(({ c }) => (c.overlay ?? '').startsWith('ow_statue')), `${s.at}: the green shrine's statue`)
+    const feet = near.filter(({ c }) => c.overlay === 'ow_prop_stele')
+    assert.equal(feet.length, 1, `${s.at}: ${feet.length} steles`)
+    const { x, y, c } = feet[0], top = p.cells[y - 1][x]
+    assert.equal(top.overlay, 'ow_prop_stele_top', `${s.at}: the stele at ${x},${y} has no top`)
+    for (const cell of [c, top]) assert.ok(cell.tile === TILE.WALL && cell.losClear, `${s.at}: the stele is walked through or hides what is behind it`)
+    assert.ok(around(p, x, y, 2).some(({ c }) => c.skin.startsWith('ow_pave_sand')), `${s.at}: no paving round the stele`)
+    assert.ok(near.some(({ c }) => (c.overlay ?? '').startsWith('ow_deco_bloom_')), `${s.at}: no flowers`)
+    assert.ok(p.spawns.some(o => o.kind === 'chest' && Math.hypot(o.x - x, o.y - y) <= 6), `${s.at}: no chest`)
+    for (const { x: cx, y: cy, c: cell } of around(p, mx, my, 5)) if ((cx - mx) ** 2 + (cy - my) ** 2 <= 25) assert.ok(!NOT_SAND.test(cell.skin), `${s.at}: ${cell.skin} at ${cx},${cy} on its pad`)
+  }
+
+  // the inn: a caravanserai of mud brick nine wide, awnings over its front, its horses in a shaded pen
+  let awned = 0
+  for (const s of W.inn) {
+    const p = s.p, door = innDoor(p)
+    assert.equal(JSON.stringify(door.look), JSON.stringify({ w: 9, storeys: 2, wall: 'plaster' }), `${s.at}: the inn's look`)
+    const x0 = door.x - 4, x1 = door.x + 4, top = door.y - 3
+    const ov = (x, y) => p.cells[y][x].overlay ?? '', deco = (x, y) => p.cells[y][x].deco ?? ''
+    for (let x = x0; x <= x1; x++) {
+      assert.match(ov(x, top), /^ow_roof_adobe_/, `${s.at}: the roof at ${x},${top}`)
+      assert.match(ov(x, top + 1), /^ow_roof_adobe_/, `${s.at}: the roof's front at ${x},${top + 1}`)
+      assert.match(ov(x, top + 2) === 'ow_city_sign_inn' ? deco(x, top + 2) : ov(x, top + 2), /^ow_house_adobe_up/, `${s.at}: the upper storey at ${x},${top + 2}`)
+      assert.match(ov(x, door.y), /^ow_house_adobe_/, `${s.at}: the ground floor at ${x},${door.y}`)
+      assert.ok(!/^ow_(house|roof|city_house|city_roof)_/.test(ov(x, door.y + 1)), `${s.at}: something of the house below it at ${x}`)
+    }
+    assert.ok(ov(x0, door.y) === 'ow_house_adobe_wall_l' && ov(x1, door.y) === 'ow_house_adobe_wall_r', `${s.at}: the inn is not nine wide`)
+    assert.ok([door.x - 1, door.x + 1].some(x => ov(x, door.y - 1) === 'ow_city_sign_inn'), `${s.at}: no inn sign beside the door`)
+    const yard = around(p, door.x, door.y, 14)
+    for (const { x, y, c } of yard) assert.ok(!/^ow_(city_house_|city_roof_|house_stable_)/.test(c.overlay ?? '') && !/^ow_(city_house_|house_stable_)/.test(c.deco ?? ''), `${s.at}: ${c.overlay}/${c.deco} of Kalevanlinna's house or stable at ${x},${y}`)
+    // the pen: two or three horses in a row under its shade, the trough, hay and the cart by it
+    const horses = yard.filter(({ c }) => /^ow_prop_horse_[ew]$/.test(c.overlay ?? ''))
+    assert.ok(horses.length >= 2 && horses.length <= 3, `${s.at}: ${horses.length} horses`)
+    for (const { x, y, c } of horses) {
+      assert.match(c.deco ?? '', /^ow_prop_pen_[lmr]$/, `${s.at}: the horse at ${x},${y} is not in the pen`)
+      assert.match(ov(x, y - 1), /^ow_prop_pen_front_[lmr]$/, `${s.at}: no shade over the horse at ${x},${y}`)
+      assert.match(ov(x, y - 2), /^ow_prop_pen_top_[lmr]$/, `${s.at}: no shade over the horse at ${x},${y}`)
+      assert.equal(c.tile, TILE.WALL, `${s.at}: the horse at ${x},${y} is walked through`)
+    }
+    const pen = yard.filter(({ c }) => /^ow_prop_pen_[lmr]$/.test(c.overlay ?? '') || /^ow_prop_pen_[lmr]$/.test(c.deco ?? ''))
+    assert.ok(pen.length >= 3 && pen.every(q => q.y === horses[0].y), `${s.at}: ${pen.length} cells of pen`)
+    assert.ok(yard.some(({ c }) => c.overlay === 'ow_prop_trough'), `${s.at}: no trough`)
+    assert.ok(yard.some(({ c }) => /^ow_prop_hay_/.test(c.overlay ?? '')), `${s.at}: no hay`)
+    assert.ok(yard.some(({ x, y, c }) => c.overlay === 'ow_prop_city_cart_horse' && ov(x + 1, y) === 'ow_prop_city_cart'), `${s.at}: no cart`)
+    // the awnings: before the front either side of the doorstep, a row of cloth over a row of its front edge, low things;
+    // three columns wide, or the two by the doorstep
+    const cloth = yard.filter(({ c }) => (c.overlay ?? '').startsWith('ow_prop_awning_'))
+    for (const { x, y, c } of cloth) {
+      assert.ok((y === door.y + 1 || y === door.y + 2) && x >= x0 && x <= x1 && Math.abs(x - door.x) >= 2, `${s.at}: an awning at ${x},${y}`)
+      assert.ok(c.tile === TILE.WALL && c.losClear, `${s.at}: the awning at ${x},${y} is walked through or hides what is behind it`)
+      assert.match(ov(x, y === door.y + 1 ? y + 1 : y - 1), /^ow_prop_awning_/, `${s.at}: the awning at ${x},${y} is half of one`)
+    }
+    for (const side of [-1, 1]) {
+      const cols = new Set(cloth.filter(q => Math.sign(q.x - door.x) === side).map(q => Math.abs(q.x - door.x)))
+      assert.ok([[], [2, 3], [2, 3, 4]].some(w => w.length === cols.size && w.every(d => cols.has(d))), `${s.at}: an awning before columns ${[...cols]} on the ${side < 0 ? 'west' : 'east'}`)
+    }
+    if (cloth.length) awned++
+    // the yard before it is sand
+    for (const { x, y, c } of around(p, door.x, door.y + 3, 2)) assert.ok(!NOT_SAND.test(c.skin), `${s.at}: ${c.skin} at ${x},${y} before the inn`)
+  }
+  assert.ok(awned >= W.inn.length * 0.75, `only ${awned} of ${W.inn.length} desert inns have an awning`)
+})
+
+test('the inn is the same inn', () => {
+  for (const s of wayside().inn) {
+    const on = s.p, off = plainOf(s), dOn = innDoor(on), dOff = innDoor(off)
+    assert.ok(JSON.stringify(dOn) === JSON.stringify(dOff), `${s.at}: the door differs: ${firstDiff(JSON.stringify(dOn), JSON.stringify(dOff))}`)
+    // the innkeeper and the guests, inside
+    const inside = d => JSON.stringify(generateInterior(houseSpec(d, { worldSeed: s.seed })).entitySpawns.filter(o => o.kind === 'npc'))
+    const a = inside(dOn), b = inside(dOff)
+    assert.ok(a === b, `${s.at}: the people inside differ: ${firstDiff(a, b)}`)
+    assert.ok(JSON.parse(a).some(o => o.id.endsWith(':keeper')), `${s.at}: no innkeeper`)
+    // the stable hand, outside
+    const hand = p => JSON.stringify(p.spawns.filter(o => o.kind === 'npc' && o.species === 'villager' && Math.hypot(o.x - dOn.x, o.y - dOn.y) <= 16))
+    assert.ok(hand(on) === hand(off), `${s.at}: the stable hand differs: ${firstDiff(hand(on), hand(off))}`)
+    assert.ok(hand(on) !== '[]', `${s.at}: no stable hand`)
+  }
+})
+
+test('the inn opens behind', () => {
+  for (const s of wayside().inn) {
+    const p = s.p, door = innDoor(p), top = door.y - 3
+    const shut = (() => { setOpenTops(false); try { return generatePiece(s.seed, s.wx, s.wy, s.deal) } finally { setOpenTops(true) } })()
+    for (let x = door.x - 4; x <= door.x + 4; x++) {
+      const c = p.cells[top][x]
+      assert.ok(c.over === true && c.tile === TILE.FLOOR && (c.overlay ?? '').startsWith('ow_roof_adobe_'), `${s.at}: the inn's roof at ${x},${top} (${c.overlay}) is not walked under`)
+      assert.equal(shut.cells[top][x].tile, TILE.WALL, `${s.at}: the roof at ${x},${top} is open with the tops shut`)
+      for (let y = top + 1; y <= door.y; y++) if (y !== door.y || x !== door.x) assert.ok(!p.cells[y][x].over && p.cells[y][x].tile === TILE.WALL, `${s.at}: the inn at ${x},${y}`)
+    }
+    // its pen and its awnings are low things, never walked under
+    for (const { x, y, c } of around(p, door.x, door.y, 14)) if (/^ow_prop_(pen|awning)_/.test(c.overlay ?? '')) assert.ok(!c.over && c.tile === TILE.WALL, `${s.at}: ${c.overlay} at ${x},${y} is walked under`)
+  }
+})
+
+test("the desert farmland's date garden grows palms two cells tall", () => {
+  let tall = 0
+  const farms = wayside().well
+  assert.ok(farms.length >= 10, `only ${farms.length} desert wells`)
+  for (const s of farms) {
+    const p = s.p, { x: mx, y: my } = p.main
+    // inside its mud-brick wall
+    const wall = around(p, mx, my, 8).filter(({ c }) => (c.overlay ?? '').startsWith('ow_prop_wall_sand'))
+    assert.ok(wall.length > 0, `${s.at}: no wall`)
+    const X0 = Math.min(...wall.map(q => q.x)), X1 = Math.max(...wall.map(q => q.x)), Y0 = Math.min(...wall.map(q => q.y)), Y1 = Math.max(...wall.map(q => q.y))
+    let mine = 0
+    for (const { x, y, c } of around(p, mx, my, 8)) {
+      if (x <= X0 || x >= X1 || y <= Y0 || y >= Y1) continue
+      if (c.overlay === PALM_FOOT) {
+        const crown = p.cells[y - 1][x]
+        assert.ok(crown.overlay === PALM_CROWN && crown.tile === TILE.WALL && c.tile === TILE.WALL, `${s.at}: the palm at ${x},${y} has no crown`)
+        mine++
+      }
+    }
+    if (mine) tall++
+  }
+  assert.ok(tall >= farms.length * 0.75, `only ${tall} of ${farms.length} date gardens have a palm two cells tall`)
+})
+
+test('every record of a desert wayside place is what it was with the dress off', () => {
+  let n = 0
+  for (const list of Object.values(wayside())) for (const s of list) {
+    const on = recordsOf(s.p), off = recordsOf(plainOf(s))
+    for (const field of Object.keys(on)) {
+      const a = JSON.stringify(on[field]), b = JSON.stringify(off[field])
+      assert.ok(a === b, `${s.at}: ${field} differs: ${firstDiff(a, b)}`)
+    }
+    n++
+  }
+  assert.ok(n >= 40, `only ${n} pieces compared`)
+})
+
+test("the wayside's new tiles exist, and behave by their names", () => {
+  const names = new Set(WILDS_SKINS)
+  const low = ['ow_prop_stele_top', 'ow_prop_stele',
+    ...[0, 1].flatMap(c => ['l', 'm', 'r'].flatMap(e => [`ow_prop_awning_${c}_${e}`, `ow_prop_awning_${c}_front_${e}`])),
+    ...['l', 'm', 'r'].flatMap(e => [`ow_prop_pen_top_${e}`, `ow_prop_pen_front_${e}`, `ow_prop_pen_${e}`])]
+  const house = ['ow_house_adobe_up', 'ow_house_adobe_up_arch', 'ow_house_adobe_gate', 'ow_house_adobe_gate_blue']
+  for (const n of [...low, ...house]) {
+    assert.ok(names.has(n), `${n} is not in WILDS_SKINS`)
+    assert.ok(fs.existsSync(path.join(TILES, n + '.png')), `no tile art for ${n}`)
+    assert.ok(!n.endsWith('_d'), `${n} ends in _d`)
+  }
+  // the stele, the awnings and the pen are low things: they block the way
+  // and not the sight, are never walked behind, and the map shows the ground under them
+  for (const n of low) {
+    assert.ok(cellOf('ow_sand_0', n, false).losClear, `${n} hides what is behind it`)
+    assert.equal(isStructure(n), false, `${n} is walked behind`)
+    assert.equal(classOf({ tile: TILE.WALL, skin: 'ow_sand_0', overlay: n }), CLASS.sand, `${n} is on the map`)
+  }
+  // the inn's own pieces of the house are the house's: walked behind, a building on the map
+  for (const n of house) {
+    assert.equal(isStructure(n), true, `${n} is not walked behind`)
+    assert.equal(classOf({ tile: TILE.WALL, skin: 'ow_sand_0', overlay: n }), CLASS.building, `${n} is not a building on the map`)
   }
 })
