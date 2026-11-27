@@ -320,8 +320,13 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   // Gates: the crossing on each edge of the piece a cell belongs to. A cell
   // in a gate corridor is always open: 'v' for a north/south crossing, 'h'
   // for east/west.
-  const gateCache = new Map()
+  // (kept by piece and side, for this piece and the eight round it: every
+  // cell the rules ask of lies in one of them)
+  const SIDE_IX = { N: 0, E: 1, S: 2, W: 3 }
+  const gateCache = new Map(), gateNear = new Array(36)
   const gateOf = (pwx, pwy, side) => {
+    const dx = pwx - wx, dy = pwy - wy, s = SIDE_IX[side]
+    if (s !== undefined && dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) return gateNear[((dy + 1) * 3 + dx + 1) * 4 + s] ??= gateAt(seed, pwx, pwy, side)
     const k = `${pwx},${pwy},${side}`
     let g = gateCache.get(k)
     if (g === undefined) gateCache.set(k, g = gateAt(seed, pwx, pwy, side))
@@ -511,7 +516,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   }
 
   // ---- what features build on ---------------------------------------------
-  const skinAt = (grid, x, y) => b.palette[grid[y + MARGIN]?.[x + MARGIN]] ?? null
+  // (an empty prop is -1: never read palette[-1], a slow lookup on an array)
+  const skinAt = (grid, x, y) => { const i = grid[y + MARGIN]?.[x + MARGIN]; return i >= 0 ? b.palette[i] ?? null : null }
   const inside = (x, y) => depth(x, y) >= FRAME
   const kind = (x, y) => isMassSkin(skinAt(b.prop, x, y)) ? 'mass' : isWaterSkin(skinAt(b.ground, x, y)) ? 'water' : 'land'
   const free = (x, y) => inside(x, y) && b.walkG[y + MARGIN][x + MARGIN] && b.prop[y + MARGIN][x + MARGIN] === -1
@@ -524,7 +530,7 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   // tree is the broken look the asset review rejected.
   const clearCell = (x, y) => {
     const bx = x + MARGIN, by = y + MARGIN
-    const p = b.palette[b.prop[by][bx]]
+    const i = b.prop[by][bx], p = i >= 0 ? b.palette[i] : undefined
     if (p === undefined) return null
     if (TOP_OF.has(p) && skinAt(b.prop, x, y - 1) === TOP_OF.get(p)) { b.prop[by - 1][bx] = -1; b.walkG[by - 1][bx] = true }
     if (TRUNK_OF.has(p) && skinAt(b.prop, x, y + 1) === TRUNK_OF.get(p)) { b.prop[by + 1][bx] = -1; b.walkG[by + 1][bx] = true }
@@ -657,6 +663,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
       : side === 'W' ? { x: FRAME, y: gates.W.y }
       : { x: PIECE - 1 - FRAME, y: gates.E.y }
 
+  // (whether palette entry i is the desert's rippled sand, worked out once an entry)
+  const rippleSeen = []
+  const rippled = i => rippleSeen[i] ??= isRippleSkin(b.palette[i])
   // May a dune crest lie on builder cell (bx, by)? Only on the desert's
   // rippled sand with nothing standing on it, neither on a way (a path, a
   // road, a trail, a gate's corridor) nor beside one, nor on a site's ground
@@ -672,8 +681,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   const duneOpen = (bx, by) => {
     const x = bx - MARGIN, y = by - MARGIN
     const held = bx >= 0 && by >= 0 && bx < SIZE && by < SIZE
-    const ground = held ? b.palette[b.ground[by][bx]] : rawKind(x, y) === 'land' && !corridor(x, y) ? landGround(x, y) : null
-    if (!isRippleSkin(ground) || (held ? b.prop[by][bx] !== -1 : propAt(x, y))) return false
+    const sand = held ? rippled(b.ground[by][bx]) : isRippleSkin(rawKind(x, y) === 'land' && !corridor(x, y) ? landGround(x, y) : null)
+    if (!sand || (held ? b.prop[by][bx] !== -1 : propAt(x, y))) return false
     if (inside(x, y) && (siteCells.has(y * PIECE + x) || keptOpen.has(y * PIECE + x))) return false
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       const nx = x + dx, ny = y + dy
@@ -694,8 +703,8 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
   const duneFlat = (bx, by) => {
     const x = bx - MARGIN, y = by - MARGIN
     const held = bx >= 0 && by >= 0 && bx < SIZE && by < SIZE
-    const ground = held ? b.palette[b.ground[by][bx]] : rawKind(x, y) === 'land' && !(corridor(x, y) && laneOf(x, y)) ? landGround(x, y) : null
-    return !isRippleSkin(ground) || (inside(x, y) && (siteCells.has(y * PIECE + x) || keptOpen.has(y * PIECE + x)))
+    const sand = held ? rippled(b.ground[by][bx]) : isRippleSkin(rawKind(x, y) === 'land' && !(corridor(x, y) && laneOf(x, y)) ? landGround(x, y) : null)
+    return !sand || (inside(x, y) && (siteCells.has(y * PIECE + x) || keptOpen.has(y * PIECE + x)))
   }
 
   // The art passes, run once after features: the desert's hardpan frays into
@@ -714,19 +723,26 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     // Each outcrop cell takes its rim from the outcrop cells beside it; a
     // cell beyond the builder is what the frame's own rule makes of it.
     const rockCell = b.palette.map(isOutcropSkin)
-    const rock = (bx, by) => bx >= 0 && by >= 0 && bx < SIZE && by < SIZE ? rockCell[b.prop[by][bx]] === true : occupant(bx - MARGIN, by - MARGIN)?.skin === OUTCROP_LAID
+    const isRock = i => i >= 0 && rockCell[i] === true
+    const rock = (bx, by) => bx >= 0 && by >= 0 && bx < SIZE && by < SIZE ? isRock(b.prop[by][bx]) : occupant(bx - MARGIN, by - MARGIN)?.skin === OUTCROP_LAID
     const rims = []
     for (let by = 0; by < SIZE; by++) for (let bx = 0; bx < SIZE; bx++) {
-      if (!rockCell[b.prop[by][bx]]) continue
+      if (!isRock(b.prop[by][bx])) continue
       rims.push([bx, by, outcropSkin((rock(bx, by - 1) ? 1 : 0) | (rock(bx + 1, by) ? 2 : 0) | (rock(bx, by + 1) ? 4 : 0) | (rock(bx - 1, by) ? 8 : 0))])
     }
     for (const [bx, by, skin] of rims) b.prop[by][bx] = b.skin(skin)
     stampSandEdge(b)
     stampMountainRim(b, mulberry32(hashInt(seed, wx, wy, 70 + deal)))
+    // (what a prop's name says, matched once a palette entry)
+    const named = re => {
+      const seen = []
+      return i => i < 0 ? null : seen[i] !== undefined ? seen[i] : (seen[i] = re.exec(b.palette[i]))
+    }
     // The cone lattice is global: its cell index comes from the world tile,
     // so cones run on unbroken across piece edges.
+    const latOf = named(/^ow_mtn_lat_(\d+)_\d+$/)
     for (let by = 0; by < SIZE; by++) for (let bx = 0; bx < SIZE; bx++) {
-      const m = /^ow_mtn_lat_(\d+)_\d+$/.exec(b.palette[b.prop[by][bx]] ?? '')
+      const m = latOf(b.prop[by][bx])
       if (!m) continue
       const q = mod(X0 + bx - MARGIN, LAT_PX) + LAT_PX * mod(Y0 + by - MARGIN, LAT_PY)
       b.prop[by][bx] = b.skin(`ow_mtn_lat_${m[1]}_${q}`)
@@ -734,8 +750,9 @@ export function makeTerrain(seed, wx, wy, deal = 0, { blank = null } = {}) {
     // Ridge pieces are picked by world tile too: the rim pass draws them
     // from a stream, which would differ between a piece and its neighbour's
     // copy of the same cell.
+    const ridgeOf = named(/^ow_mtn_ridge_(dr|dl)_\d+$/)
     for (let by = 0; by < SIZE; by++) for (let bx = 0; bx < SIZE; bx++) {
-      const m = /^ow_mtn_ridge_(dr|dl)_\d+$/.exec(b.palette[b.prop[by][bx]] ?? '')
+      const m = ridgeOf(b.prop[by][bx])
       if (!m) continue
       const set = MTN.ridge[m[1]]
       b.prop[by][bx] = b.skin(set[hashInt(seed, X0 + bx - MARGIN, Y0 + by - MARGIN, 45) % set.length])

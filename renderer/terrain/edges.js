@@ -24,11 +24,14 @@ export const edgeTileNames = (prefix, variants) =>
 // that no longer needs an edge. Ground only — props, collision and everything
 // on the prop layer are untouched. Idempotent. Returns how many cells changed.
 export function stampEdges(b, { base, inside, prefix, variants, plain }) {
-  const same = (x, y) => !b.in(x, y) || inside(b.palette[b.ground[y][x]])
+  // (each test asked once a palette entry: what it says of a name never changes)
+  const baseOf = [], insideOf = []
+  const isBase = i => baseOf[i] ??= !!base(b.palette[i])
+  const same = (x, y) => { if (!b.in(x, y)) return true; const i = b.ground[y][x]; return insideOf[i] ??= !!inside(b.palette[i]) }
   const writes = []
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    if (!isBase(b.ground[y][x])) continue
     const g = b.palette[b.ground[y][x]]
-    if (!base(g)) continue
     const M = (same(x, y - 1) ? 0 : 1) | (same(x + 1, y) ? 0 : 2) | (same(x, y + 1) ? 0 : 4) | (same(x - 1, y) ? 0 : 8)
     let D = 0
     if (!(M & 3) && !same(x + 1, y - 1)) D |= 1

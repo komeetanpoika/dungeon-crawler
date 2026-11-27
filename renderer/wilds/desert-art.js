@@ -76,9 +76,15 @@ export const HARDPAN_VARIANTS = 3
 // how often a crack crosses the border between two cells of inner clay
 export const CRACK_ODDS = 0.55
 
-export const rippleSkin = (o, v) => `ow_sand_ripple_${o}_${v}`
-export const crackedSkin = (m, v) => `ow_hardpan_cracked_${m}_${v}`
-export const hardpanEdgeSkin = (M, D, v) => `ow_hardpan_edge_${M}_${D}_${v}`
+// (each name made once and handed out after, by its numbers: a piece lays
+// thousands, and a fresh string costs its making and its hashing in the
+// builder's palette; numbers out of 0..15 make a fresh one)
+const small = v => (v | 0) === v && v >= 0 && v < 16
+const RIPPLE_NAMES = [], CRACKED_NAMES = [], EDGE_NAMES = []
+export const rippleSkin = (o, v) => small(o) && small(v) ? (RIPPLE_NAMES[o * 16 + v] ??= `ow_sand_ripple_${o}_${v}`) : `ow_sand_ripple_${o}_${v}`
+export const crackedSkin = (m, v) => small(m) && small(v) ? (CRACKED_NAMES[m * 16 + v] ??= `ow_hardpan_cracked_${m}_${v}`) : `ow_hardpan_cracked_${m}_${v}`
+export const hardpanEdgeSkin = (M, D, v) => small(M) && small(D) && small(v)
+  ? (EDGE_NAMES[(M * 16 + D) * 16 + v] ??= `ow_hardpan_edge_${M}_${D}_${v}`) : `ow_hardpan_edge_${M}_${D}_${v}`
 export const SAND_SKINS = RIPPLES.flatMap((_, o) => Array.from({ length: SAND_VARIANTS }, (_, v) => rippleSkin(o, v)))
 export const HARDPAN_SKINS = Array.from({ length: 16 }, (_, m) => Array.from({ length: HARDPAN_VARIANTS }, (_, v) => crackedSkin(m, v))).flat()
 export const HARDPAN_EDGES = EDGE_SHAPES.flatMap(([M, D]) => Array.from({ length: HARDPAN_VARIANTS }, (_, v) => hardpanEdgeSkin(M, D, v)))
@@ -344,6 +350,8 @@ const RING_BOX = { x0: -PIECE, x1: 2 * PIECE, y0: -PIECE, y1: 2 * PIECE }
 const beyond = (B, X, Y) => Math.max(B.x0 - X, X - B.x1 + 1, B.y0 - Y, Y - B.y1 + 1, 0)
 const smooth = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t)
 
+// (a margin on a squared length far wider than any rounding of Math.hypot)
+const BELOW = 1 - 1e-9, ABOVE = 1 + 1e-9
 // The waves at every tile of the w x h rectangle at (x0, y0): the phase in
 // [0, 1), and the height a dune stands to there (its brink's), 0..1.
 function duneWaves(seed, x0, y0, w, h) {
@@ -378,10 +386,12 @@ function duneWaves(seed, x0, y0, w, h) {
         const xs = Math.ceil(cx - half), xb = Math.min(x0 + w - 1, Math.floor(cx + half))
         if (Math.max(x0, xs) > xb) continue
         const a = (xs - cx) * kx + dy * ky + ph
-        let c = Math.cos(a), s = Math.sin(a), o = (y - y0) * w + xs - x0
-        for (let x = xs; x <= xb; x++, o++) {
+        let c = Math.cos(a), s = Math.sin(a), x = xs
+        // (the tiles of the reach left of the rectangle only turn the wave on)
+        for (; x < x0; x++) { const c2 = c * sx - s * sy; s = s * sx + c * sy; c = c2 }
+        for (let o = (y - y0) * w + x - x0; x <= xb; x++, o++) {
           const dx = x - cx, t = 1 - (dx * dx + dy * dy) / (R * R)
-          if (t > 0 && x >= x0) { const t2 = t * t; re[o] += t2 * c; im[o] += t2 * s; ws[o] += t2; as[o] += t2 * tall }
+          if (t > 0) { const t2 = t * t; re[o] += t2 * c; im[o] += t2 * s; ws[o] += t2; as[o] += t2 * tall }
           const c2 = c * sx - s * sy
           s = s * sx + c * sy; c = c2
         }
@@ -396,7 +406,12 @@ function duneWaves(seed, x0, y0, w, h) {
     phase[o] = a < 0 ? a + 1 : a
     if (ws[o] === 0) continue
     if (!one) { const t = deep(x0 + x, y0 + y); c0 = mix(cLo, dcLo, t); c1 = mix(cHi, dcHi, t) }
-    peak[o] = as[o] / ws[o] * smooth((Math.hypot(re[o], im[o]) / ws[o] - c0) / (c1 - c0))
+    // (smooth's 0 below c0 and its 1 above c1, where the squared sum settles
+    // it by a margin no rounding of Math.hypot crosses; it alone between)
+    const W = ws[o], z2 = re[o] * re[o] + im[o] * im[o]
+    if (z2 <= c0 * W * c0 * W * BELOW) peak[o] = as[o] / W * 0
+    else if (z2 >= c1 * W * c1 * W * ABOVE) peak[o] = as[o] / W * 1
+    else peak[o] = as[o] / W * smooth((Math.hypot(re[o], im[o]) / W - c0) / (c1 - c0))
   }
   return { phase, peak }
 }
@@ -485,7 +500,10 @@ export function duneField(seed, x0, y0, w, h, { country = null } = {}) {
     relief[g] = peak[o] * profile(q[o], peak[o], crestH[g])
     height[g] = ease[g] * relief[g]
   }
-  const G = (x, y) => { const g = (y + 1) * gw + x + 1; return ok[g] === 1 && height[g] >= crestH[g] }   // from -1
+  // whether a tile is high enough for a crest and may hold one (from -1)
+  const crestable = new Uint8Array(gw * gh)
+  for (let g = 0; g < gw * gh; g++) if (ok[g] === 1 && height[g] >= crestH[g]) crestable[g] = 1
+  const G = (x, y) => crestable[(y + 1) * gw + x + 1] === 1
   const raw = new Uint8Array(gw * gh)
   for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) {
     const c = Q(x, y)
@@ -496,15 +514,24 @@ export function duneField(seed, x0, y0, w, h, { country = null } = {}) {
   const R = (x, y) => raw[(y + 1) * gw + x + 1] === 1
   // of two cells, the one higher on the wave; on a tie the first in reading order
   const over = (ax, ay, bx, by) => Q(ax, ay) > Q(bx, by) || (Q(ax, ay) === Q(bx, by) && (ay < by || (ay === by && ax < bx)))
-  const CORNERS = [[1, 1], [1, -1], [-1, 1], [-1, -1]]
+  // the four diagonal neighbours, (SX[k], SY[k])
+  const SX = [1, 1, -1, -1], SY = [1, -1, 1, -1]
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let on
     if (R(x, y)) {
       // gone if it touches another crest cell only at a corner, where neither cell between may be crest, and lies the lower
-      on = !CORNERS.some(([sx, sy]) => R(x + sx, y + sy) && !R(x + sx, y) && !R(x, y + sy) && !G(x + sx, y) && !G(x, y + sy) && over(x + sx, y + sy, x, y))
+      on = true
+      for (let k = 0; k < 4 && on; k++) {
+        const sx = SX[k], sy = SY[k]
+        if (R(x + sx, y + sy) && !R(x + sx, y) && !R(x, y + sy) && !G(x + sx, y) && !G(x, y + sy) && over(x + sx, y + sy, x, y)) on = false
+      }
     } else {
       // filled if it lies between two crest cells that touch only at a corner, and higher than the other cell between (or that one may not be crest)
-      on = G(x, y) && CORNERS.some(([sx, sy]) => R(x + sx, y) && R(x, y + sy) && !R(x + sx, y + sy) && (!G(x + sx, y + sy) || over(x, y, x + sx, y + sy)))
+      on = false
+      if (G(x, y)) for (let k = 0; k < 4 && !on; k++) {
+        const sx = SX[k], sy = SY[k]
+        if (R(x + sx, y) && R(x, y + sy) && !R(x + sx, y + sy) && (!G(x + sx, y + sy) || over(x, y, x + sx, y + sy))) on = true
+      }
     }
     const i = y * w + x
     if (on) out.crest[i] = 1
@@ -685,14 +712,17 @@ export function layDunes(b, { X0, Y0, seed, open, flat = null, field = null, cou
   }
   for (const k of lone) corner[k] = 0
   // (each cell reads only its own ground, so it is written in place; the
-  // palette index of each shading tile is kept by its corners and ripples)
-  const shadeIndex = new Map()
+  // palette index of each shading tile is kept by its corners and ripples,
+  // and of each crest tile by its corners and variant)
+  const shadeIndex = new Map(), duneIndex = []
   let n = 0
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const k = ki(x, y), nw = corner[k], ne = corner[k + 1], se = corner[k + W1 + 1], sw = corner[k + W1]
     const g = b.ground[y][x], i = ci(x, y)
     if (crested[i]) {
-      b.ground[y][x] = b.skin(duneSkin([nw, ne, se, sw], pick(seed, X0 + x, Y0 + y, 7140, DUNE_VARIANTS)))
+      const v = pick(seed, X0 + x, Y0 + y, 7140, DUNE_VARIANTS)
+      const key = (nw + 1) * 64 + (ne + 1) * 16 + (se + 1) * 4 + sw + 1
+      b.ground[y][x] = duneIndex[key * DUNE_VARIANTS + v] ??= b.skin(duneSkin([nw, ne, se, sw], v))
       n++
       continue
     }

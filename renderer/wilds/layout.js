@@ -31,12 +31,19 @@ const HOME = PIECE / 2   // the middle of the home piece, the world's centre
 // (X, Y) lies inside one, else null.
 const POCKET_CELL = 3 * PIECE
 const BLOB_REACH = 1.35   // a blob's bent outline never passes this many radii
+// (A squared distance at or past a test's bound times OUTSIDE is past it for
+// Math.hypot too, whatever its rounding: such a tile is answered without
+// calling it, and every other one as before.)
+const OUTSIDE = 1 + 1e-9
+const FOREST_FAR2 = (2.5 * PIECE) ** 2 * OUTSIDE
 function blobOf(seed, cx, cy) {
+  const radius = (0.75 + 0.6 * hash(seed, cx, cy, 333)) * PIECE
   return {
     px: (cx + 0.2 + 0.6 * hash(seed, cx, cy, 331)) * POCKET_CELL,
     py: (cy + 0.2 + 0.6 * hash(seed, cx, cy, 332)) * POCKET_CELL,
-    radius: (0.75 + 0.6 * hash(seed, cx, cy, 333)) * PIECE,
+    radius,
     kind: hashInt(seed, cx, cy, 334) % BIOMES.length,
+    far2: (radius * BLOB_REACH) ** 2 * OUTSIDE,
   }
 }
 // Every blob that can reach into a rectangle of world tiles, in a fixed
@@ -53,24 +60,28 @@ function blobsFor(seed, x0, y0, x1, y1) {
   return out
 }
 
+const BEND = { freq: 1 / (1.5 * PIECE), octaves: 3 }
 function countryAt(seed, X, Y, blobs) {
   if (inBay(X, Y, 1.4)) return 'sea'   // the bay, with sandy shores round it
   const dx = X - HOME, dy = Y - HOME
-  const r = Math.hypot(dx, dy) / PIECE
   // far from home the forest test cannot pass and the bend is only needed
   // within 25 degrees of a sector boundary
   let wobble = -1
-  const bend = () => wobble < 0 ? (wobble = noise2(seed + 1, X, Y, { freq: 1 / (1.5 * PIECE), octaves: 3 })) : wobble
-  if (r < 2.5 && r < 1.7 + bend() * 0.8) return 'forest'
+  if (dx * dx + dy * dy < FOREST_FAR2) {
+    const r = Math.hypot(dx, dy) / PIECE
+    if (r < 2.5 && r < 1.7 + (wobble = noise2(seed + 1, X, Y, BEND)) * 0.8) return 'forest'
+  }
   const raw = Math.atan2(dy, dx) * 180 / Math.PI
   const near = Math.abs(((raw + 45) % 90 + 90) % 90 - 45)   // degrees from the nearest sector centre: 45 = on a boundary
-  const ang = near > 19 ? raw + (bend() - 0.5) * 50 : raw
+  const ang = near > 19 ? raw + ((wobble < 0 ? (wobble = noise2(seed + 1, X, Y, BEND)) : wobble) - 0.5) * 50 : raw
   const main = ang > -135 && ang <= -45 ? 'mountain'
     : ang > -45 && ang <= 45 ? 'desert'
     : ang > 45 && ang <= 135 ? 'sea'
     : noise2(seed + 2, X, Y, { freq: 1 / (2.5 * PIECE), octaves: 2 }) > 0.5 ? 'autumn' : 'marsh'
   for (const blob of blobs) {
-    const d = Math.hypot(X - blob.px, Y - blob.py) / blob.radius
+    const ex = X - blob.px, ey = Y - blob.py
+    if (ex * ex + ey * ey >= blob.far2) continue
+    const d = Math.hypot(ex, ey) / blob.radius
     if (d >= BLOB_REACH) continue
     if (d < 0.65 || d + (noise2(seed + 3, X, Y, { freq: 1 / 40, octaves: 2 }) - 0.5) * 0.7 < 1) {
       // a pocket is always a change of scene: one that would repeat its host

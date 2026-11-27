@@ -36,7 +36,8 @@ export const isMountainSkin = n => !!n && n.startsWith('ow_mtn_')
 export const isMountainGround = n => !!n && (n.startsWith('ow_mtn_ground') || n.startsWith('ow_mtn_shade') || n.startsWith('ow_mtn_edge'))
 // Off the map counts as mass, so a range running off the edge shows no face
 // on that side.
-export const isMass = (b, x, y) => !b.in(x, y) || isMassSkin(b.palette[b.prop[y][x]])
+// (an empty prop is -1: palette[-1] is never read, a slow lookup on an array)
+export const isMass = (b, x, y) => { if (!b.in(x, y)) return true; const i = b.prop[y][x]; return i >= 0 && isMassSkin(b.palette[i]) }
 
 // Plant one mass cell: a lattice placeholder on the prop layer, blocked.
 // The rim pass repaints it for its position later.
