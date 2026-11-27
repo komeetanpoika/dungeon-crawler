@@ -17,8 +17,9 @@
 //      among the dunes (placed and checked as in 2), `--web-runs` times each
 //      at noon (the heat's shimmer on) and at the peak of a storm (the clock
 //      held on the seed's first stormy day whose storm peaks in daylight; a
-//      seed with none fails the gate): the median of the runs above 30 fps,
-//      noon and storm apart (every run printed, any one under 30 marked);
+//      seed with none fails the gate): the median of the runs above 30 fps
+//      (of an even number of runs the slower middle one), noon and storm apart
+//      (every run printed, any one under 30 marked);
 //   4. piece generation (wilds/piece.js generatePiece) on 40 desert pieces of
 //      the seed, 20 near home (not wholly 7 pieces out) and 20 deep (wholly 7
 //      or more out), against `--base` (origin/main: the local main ref is
@@ -87,6 +88,9 @@ const PROFILE = path.join(os.tmpdir(), 'dc-desert-perf-profile')
 const fails = []
 const mean = a => a.reduce((s, v) => s + v, 0) / a.length
 const median = a => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1] }
+// the gate's median of frame rates: on an even count the lower of the two in the middle, so
+// two runs are judged by the slower (the upper middle would let the faster one pass the gate)
+const slowMedian = a => { const s = [...a].sort((x, y) => x - y); return s[(s.length - 1) >> 1] }
 const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))] }
 const f2 = v => v.toFixed(2)
 // the first day with a storm whose peak is in the heat of the day, and that peak (seconds of the clock)
@@ -376,7 +380,7 @@ if (!no('web') || !no('big') || !no('load')) {
         if (kind === 'gate') {
           // judged on the median of the runs, noon and storm apart: one
           // loaded run neither fails the gate nor passes it
-          const noon = median(rows.map(r => r.a.fps)), stormy = rows.every(r => r.b) ? median(rows.map(r => r.b.fps)) : null
+          const noon = slowMedian(rows.map(r => r.a.fps)), stormy = rows.every(r => r.b) ? slowMedian(rows.map(r => r.b.fps)) : null
           console.log(`web build ${width}x${height}, CPU ${RATE}x throttled, median of ${rows.length} runs: noon ${noon} fps | storm ${stormy ?? '-'} fps (gate: each median > ${GATE.fps} fps)`)
           if (!(noon > GATE.fps)) fails.push(`web build at noon: median ${noon} fps of ${rows.length} runs at ${RATE}x throttle <= ${GATE.fps}`)
           if (stormy !== null && !(stormy > GATE.fps)) fails.push(`web build in a storm: median ${stormy} fps of ${rows.length} runs at ${RATE}x throttle <= ${GATE.fps}`)

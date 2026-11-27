@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { INVULN_DURATION } from '../renderer/systems/player-damage.js'
+import { SIGHT } from '../renderer/wilds/desert.js'
 
 const T = 32
 function openMap(w = 20, h = 20) {
@@ -50,6 +51,32 @@ describe('trigger conditions', () => {
     state.map[5][7].tile = TILE.WALL
     step(e, state)
     assert.notEqual(e.laser?.state, 'charge')
+  })
+  // a sandstorm (wilds/storm.js) blinds it as it blinds the brain: it locks on
+  // no further than the hero's sight in it plus a tile (brain.js stormReach)
+  it('locks on in a sandstorm only within the storm sight plus one tile', () => {
+    const lockOn = (tx, sightCap) => {
+      const e = mkPodeboo(2, 5)
+      const state = { ...mkState(e, mkPlayer(tx, 5)), sightCap }
+      step(e, state)
+      return e.laser.state
+    }
+    // 8 tiles off, within LASER.range in clear air: it charges
+    assert.ok(8 * T <= LASER.range)
+    assert.equal(lockOn(10, null), 'charge')
+    // the same in a full storm (sight 4: the cap is 5 tiles)
+    assert.equal(lockOn(10, SIGHT.storm), 'idle')
+    assert.equal(lockOn(2 + SIGHT.storm + 2, SIGHT.storm), 'idle')
+    assert.equal(lockOn(2 + SIGHT.storm + 1, SIGHT.storm), 'charge')
+  })
+  it('finishes a shot already charging when the storm closes in', () => {
+    const e = mkPodeboo(2, 5)
+    const state = mkState(e, mkPlayer(10, 5))
+    step(e, state)
+    assert.equal(e.laser.state, 'charge')
+    state.sightCap = SIGHT.storm
+    step(e, state, LASER.chargeTime)
+    assert.equal(e.laser.state, 'fire')
   })
 })
 

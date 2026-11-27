@@ -11,6 +11,7 @@ import { hasLineOfSight } from '../entities.js'
 import { damagePlayer } from '../player-damage.js'
 import { getMonsterDef, eyeOffsets } from '../monsters.js'
 import { PLAYER_SHAPE } from '../hitbox.js'
+import { stormReach } from '../brain.js'
 
 export const LASER = {
   range: 260,          // px: how close the player must be to trigger
@@ -60,7 +61,8 @@ export function update(e, state, delta) {
   if (l.state === 'idle') {
     l.cd = Math.max(0, l.cd - delta)
     if (l.cd > 0 || !player || player.hp <= 0) return
-    if (Math.hypot(player.px - e.px, player.py - e.py) > LASER.range) return
+    // (a sandstorm blinds it as it blinds the brain: brain.js stormReach; a shot already charging is fired)
+    if (Math.hypot(player.px - e.px, player.py - e.py) > Math.min(LASER.range, stormReach(state))) return
     if (!hasLineOfSight(map, e.y, e.x, player.y, player.x)) return
     l.state = 'charge'; l.t = 0
     l.anchor = { px: e.px, py: e.py, x: e.x, y: e.y }
