@@ -92,16 +92,16 @@ try {
   const heal = () => ev(() => { const p = window.__dc.state.player; p.hp = p.maxHp; p.poison = undefined; p.invulnTimer = 0; p.knockback = null })
   const holdNoon = () => ev(f => { window.__dc.save.clock = f * 360 }, NOON)
   // the creature of `type` (species for an npc) nearest world tile (X, Y), as plain data
-  const read = (type, X, Y) => ev(([type, X, Y]) => {
+  const read = (type, X, Y, reach = 30) => ev(([type, X, Y, reach]) => {
     const { state, wilds } = window.__dc, o = wilds.origin
     const x = X - o.wx * 80, y = Y - o.wy * 80
     const of = e => e.type === 'npc' ? e.species : e.type
-    const near = state.entities.filter(e => of(e) === type && e.hp > 0).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0]
+    const near = state.entities.filter(e => of(e) === type && e.hp > 0 && Math.hypot(e.x - x, e.y - y) <= reach).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0]
     if (!near) return null
     const p = state.player
     return { x: near.x, y: near.y, hp: near.hp, sink: near.sink ?? 0, away: Math.hypot(near.px - p.px, near.py - p.py) / 32,
       scorp: near.scorp?.state, worm: near.worm?.state, pit: !!near.pit, brain: !!near.brainDriven, goal: near.ai?.current, heroHp: p.hp, heroPx: p.px, heroPy: p.py }
-  }, [type, X, Y])
+  }, [type, X, Y, reach])
   const hold = async (key, ms, until = null) => {
     await page.keyboard.down(key)
     const end = Date.now() + ms
@@ -139,6 +139,7 @@ try {
       if (b.worm === 'tell' && !toldShot) { toldShot = true; await shot('worm-tell') }
       return b.heroHp < 10 && b.worm === 'up' ? b : null
     })
+    await sleep(350)                       // risen to its full height
     await shot('worm-up')
     check(seen.has('hunt'), 'it feels a walking hero and hunts', [...seen].join(' > '))
     check(seen.has('tell'), 'the ground shakes before it comes up')
@@ -147,15 +148,17 @@ try {
 
   if (wants('antlion')) {
     const s = SPOTS.antlion
-    await d.goTo(s.X + 2, s.Y + 1); await holdNoon(); await heal(); await sleep(300)
-    const a = await read('kuoppaleuka', s.X, s.Y)
-    check(!!a && a.pit, 'an antlion sits in its funnel', `${a?.away.toFixed(2)} tiles from the hero, at ${s.X},${s.Y} (toughness ${s.tier})`)
+    // beside the funnel first, then onto its slope and read at once: the slope does not wait
+    await d.goTo(s.X + 5, s.Y + 1); await holdNoon(); await heal(); await sleep(300)
     await shot('antlion')
-    await sleep(900)
-    const b = await read('kuoppaleuka', s.X, s.Y)
-    check(!!a && !!b && b.away < a.away - 0.5, 'the slope carries a standing hero inward', `${a?.away.toFixed(2)} -> ${b?.away.toFixed(2)} tiles`)
+    await d.placeWorld(s.X + 2, s.Y + 1)
+    const a = await read('kuoppaleuka', s.X, s.Y, 1)
+    check(!!a && a.pit, 'an antlion sits in its funnel', `${a?.away.toFixed(2)} tiles from the hero, at ${s.X},${s.Y} (toughness ${s.tier})`)
+    await sleep(450)
+    const b = await read('kuoppaleuka', s.X, s.Y, 1)
+    check(!!a && !!b && b.away < a.away - 0.4, 'the slope carries a standing hero inward', `${a?.away.toFixed(2)} -> ${b?.away.toFixed(2)} tiles in 0.45 s`)
     let snapped = null
-    for (let i = 0; i < 80 && !snapped; i++) { await sleep(60); const c = await read('kuoppaleuka', s.X, s.Y); if (c && c.heroHp < 10) snapped = c }
+    for (let i = 0; i < 80 && !snapped; i++) { await sleep(60); const c = await read('kuoppaleuka', s.X, s.Y, 1); if (c && c.heroHp < 10) snapped = c }
     check(!!snapped, 'at the bottom the jaws snap', snapped ? `hp ${snapped.heroHp}` : 'no snap in 5 s')
     await shot('antlion-snap')
     // dead, it leaves what it held
@@ -168,7 +171,7 @@ try {
     await d.goTo(s.X + 5, s.Y + 1)
     await sleep(1200)
     const after = await ev(() => window.__dc.state.entities.filter(e => e.type === 'floating_item').length)
-    check(after === before + 1 && !(await read('kuoppaleuka', s.X, s.Y)), 'dead, it is gone and leaves one thing behind', `${before} -> ${after} things lying about`)
+    check(after === before + 1 && !(await read('kuoppaleuka', s.X, s.Y, 1)), 'dead, it is gone and leaves one thing behind', `${before} -> ${after} things lying about`)
     await shot('antlion-dead')
   }
 
@@ -190,13 +193,14 @@ try {
       const js = state.entities.filter(e => e.type === 'npc' && e.species === 'jackal' && e.hp > 0 && Math.hypot(e.x - x, e.y - y) < 14)
       js.slice(1).forEach(e => { e.hp = 0 })
       const last = js[0], p = state.player
+      if (last) last.lastOfPack = true
       // the hero beside the one that is left
       if (last) { p.x = last.x + 2; p.y = last.y; p.px = p.x * 32 + 16; p.py = p.y * 32 + 16 }
       return js.length
     }, [s.X, s.Y])
     await sleep(700)
-    const goals = await ev(() => window.__dc.state.entities.filter(e => e.type === 'npc' && e.species === 'jackal' && e.hp > 0).map(e => e.ai?.current))
-    check(left >= 2 && goals.length >= 1 && goals.every(g => g === 'flee_alone' || g === 'flee_hurt'), 'the last one runs', `${left} -> ${goals.length}: ${goals.join(', ')}`)
+    const goals = await ev(() => window.__dc.state.entities.filter(e => e.lastOfPack && e.hp > 0).map(e => e.ai?.current))
+    check(left >= 2 && goals.length === 1 && goals[0] === 'flee_alone', 'the last one runs', `a pack of ${left}, the one left: ${goals.join(', ')}`)
   }
 
   const real = errors.filter(e => !/Failed to load resource|net::ERR/.test(e))

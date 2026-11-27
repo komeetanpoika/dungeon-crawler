@@ -117,7 +117,9 @@ export function feels(e, player, speed, T) {
 // just the point's own cell, to swim towards. Null beyond the leash.
 export function aimPoint(map, m, T) {
   const h = m.heard
-  const px = h.px + h.vx * T.lead, py = h.py + h.vy * T.lead
+  // (each worm leads by a little more or less than the next: a pair comes up one after the other along his way)
+  const lead = T.lead * (m.leadMul ?? 1)
+  const px = h.px + h.vx * lead, py = h.py + h.vy * lead
   const c = tileOf(px, py)
   if (Math.hypot(c.x - m.home.x, c.y - m.home.y) > T.leash) return null
   let best = null, bestD = T.burstR * S * 0.9
@@ -133,11 +135,13 @@ export function aimPoint(map, m, T) {
 function ensure(e) {
   if (e.worm) return e.worm
   e.sink = 1; e.flicker = 0; e.spellOpen = false; e.trail = []
-  return e.worm = {
+  const m = e.worm = {
     state: 'prowl', t: 0, home: { x: e.x, y: e.y }, heard: null, quiet: Infinity,
     path: [], pathT: 0, goal: null, spot: null, taken: 0, biteT: 0, wait: 0, deaf: 0,
-    last: null, vx: 0, vy: 0, n: (e.x * 73 + e.y * 151) | 0, stroll: 1, rumble: 0, moved: 0, biteShow: 0,
+    last: null, vx: 0, vy: 0, n: (e.x * 73 + e.y * 151) | 0, stroll: 1, rumble: 0, moved: 0, biteShow: 0, leadMul: 1,
   }
+  m.leadMul = 0.75 + 0.5 * draw(m)
+  return m
 }
 // a small repeatable draw (0..1) so a worm's strolls do not depend on Math.random
 const draw = m => { m.n = (Math.imul(m.n, 1103515245) + 12345) & 0x7fffffff; return m.n / 0x7fffffff }
@@ -165,6 +169,13 @@ function swim(e, m, map, goal, speed, delta) {
   // the furrow
   if (m.moved >= TRAIL_STEP) { m.moved = 0; e.trail.push({ px: e.px, py: e.py, a: 1 }) }
   return arrived && !m.path.length && far(e, centre(goal)) < 2
+}
+
+// Is another worm telling or up within APART tiles of this cell?
+const APART = 2.5
+function crowded(state, e, cell) {
+  return (state.entities ?? []).some(o => o !== e && o.type === e.type && o.worm?.spot &&
+    (o.worm.state === 'tell' || o.worm.state === 'up') && Math.hypot(o.worm.spot.x - cell.x, o.worm.spot.y - cell.y) < APART)
 }
 
 function goHome(m, T) {
@@ -215,7 +226,8 @@ export function update(e, state, delta) {
       return
     }
     m.wait = 0
-    if (there) { m.state = 'tell'; m.t = T.tell; m.spot = { ...aim.cell }; m.path = []; m.goal = null }
+    // (not where another worm is coming up: it holds under the spot until that one is done)
+    if (there && !crowded(state, e, aim.cell)) { m.state = 'tell'; m.t = T.tell; m.spot = { ...aim.cell }; m.path = []; m.goal = null }
     return
   }
 

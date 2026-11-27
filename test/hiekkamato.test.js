@@ -195,6 +195,23 @@ describe('hiekkamato', () => {
     assert.equal(s.player.hp, 10)
   })
 
+  it('two worms after one hero do not come up on top of each other', () => {
+    const s = world({ w: 80 }), a = worm(s, 20, 12), b = worm(s, 22, 13)
+    moveHero(s, 16, 17)
+    const walk = walker(s, 1, 0)
+    let both = 0, close = 0
+    for (let i = 0; i < 60 * 8; i++) {
+      walk()
+      s.player.invulnTimer = Math.max(0, (s.player.invulnTimer ?? 0) - 1 / 60)
+      s.player.knockback = null
+      update(a, s, 1 / 60); update(b, s, 1 / 60)
+      const out = w => w.worm.state === 'tell' || w.worm.state === 'up'
+      if (out(a) && out(b)) { both++; if (Math.hypot(a.worm.spot.x - b.worm.spot.x, a.worm.spot.y - b.worm.spot.y) < 2) close++ }
+    }
+    assert.equal(close, 0, `${close} of ${both} frames with both out had them within two tiles`)
+    assert.ok(a.worm.spot && b.worm.spot, 'and both did come up')
+  })
+
   it('leaves a furrow behind it as it travels', () => {
     const s = world({ w: 80 }), e = worm(s, 20, 12)
     moveHero(s, 16, 17)
