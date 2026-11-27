@@ -27,13 +27,13 @@ const HIT_FLASH = 0.18
 // dragon_boss, dragon_boss_pixel), the other non-enemy entity kinds
 // game.js buildEntities switches on (trap, puzzle, weapon, ranged, potion,
 // door, exit_door, chest, prop, dungeon_entrance, fountain_wall,
-// fountain_basin, talent_trigger, wild_mushroom, floating_pickup, echo).
+// fountain_basin, talent_trigger, wild_mushroom, floating_pickup, echo, ware).
 const RESERVED_NAMES = new Set([
   'guard', 'monster', 'dragon', 'crab', 'wizard', 'cyclops', 'npc',
   'dragon_boss', 'dragon_boss_pixel',
   'trap', 'puzzle', 'weapon', 'ranged', 'potion', 'door', 'exit_door', 'chest',
   'prop', 'dungeon_entrance', 'fountain_wall', 'fountain_basin', 'talent_trigger',
-  'wild_mushroom', 'floating_pickup', 'echo', 'creature',
+  'wild_mushroom', 'floating_pickup', 'echo', 'creature', 'ware',
 ])
 
 const defaultLoadRig = id => import(`../render/monster-rigs/${id}.js`)
@@ -129,8 +129,10 @@ export function isStoryCreature(e) {
 // Whom a spell's cone, a lightning strike's 3x3 and a wall slam pass over: a
 // story creature, unless it says it can be reached just now (`spellOpen`: the
 // sand worm while it is up, the antlion with its head out, a scorpion always).
-// Stuns still pass over every story creature.
-export function spellSpares(e) { return isStoryCreature(e) && !e.spellOpen }
+// Stuns still pass over every story creature. A member of a tribe at peace
+// (`peaceful`, systems/tribes.js) is passed over whatever drives it: no gust
+// shoves a seal about its own camp.
+export function spellSpares(e) { return !!e.peaceful || (isStoryCreature(e) && !e.spellOpen) }
 export function monsterNames() { return Object.keys(REGISTRY) }
 
 export function monstersForDepth(depth) {
@@ -246,7 +248,11 @@ export function entityPose(e) {
   const blend = p.anim != null && animOf({ state: p.state, speed01: p.speed01, attack: live }) !== p.anim
     ? { from: p.anim, at: p.anim === 'attack' ? p.lastAttack : p.animT, t: 0 }
     : p.blend ?? null
-  return { t: p.t, state: p.state, stateT: p.stateT, facing: p.facing, speed01: p.speed01, seed: p.seed,
+  // (e.channels: a hook's own named channels for its rig, as the tribes'
+  // have: slab, drum, sing, carry, winded...; spread first, so none of them
+  // can stand in for a channel named below)
+  return { ...(e.channels ?? null),
+           t: p.t, state: p.state, stateT: p.stateT, facing: p.facing, speed01: p.speed01, seed: p.seed,
            headAim: p.headAim, eyeGlow: p.eyeGlow ?? 0,
            attack, animT: p.animT ?? 0, blend,
            // hook-written channels live on the entity (a hook may run before

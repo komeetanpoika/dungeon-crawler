@@ -92,7 +92,7 @@ import { canBuildCampfire, spendLumber, buildSpot, makeCampfire, tickCampfires, 
 import { isEnemy, isHittable, isSpellTarget } from './systems/factions.js'
 import { hurtCreature, CREATURE_UPDATE, CREATURE_HIT } from './systems/creatures.js'
 import { registerMonsters, getMonsterDef, makeMonsterFromDef, updateMonsterPose, isStoryCreature, spellSpares } from './systems/monsters.js'
-import { deathDrop } from './systems/drops.js'
+import { deathDrop, carriedDrop } from './systems/drops.js'
 import { cullDead, tickDying } from './systems/dying.js'
 import { NPC_SPECIES } from './data/npcs.js'
 import { applyShockwave, SHOCK_RADIUS } from './systems/shockwave.js'
@@ -106,7 +106,10 @@ import { stepProjectiles } from './systems/projectiles.js'
 import { nearestPoint } from './systems/hitbox.js'
 import { tickStatus, shatterBonus } from './systems/status.js'
 import { rollChestLoot } from './systems/loot.js'
-import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS } from './systems/talents.js'
+import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS, applyTalents } from './systems/talents.js'
+import { tickTribes, noteBlow, clearWrath, atPeace } from './systems/tribes.js'
+import { tickHex, clearHex, hasHands, frogSpeedMul } from './systems/hex.js'
+import { tryBuy } from './systems/trade.js'
 import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, RUSH_START_OUTFITS, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
   TRANCE_FADE, PULL_DURATION, PULL_TELEPORT_AT, pullTarget } from './systems/rites.js'
@@ -244,12 +247,18 @@ window.addEventListener('keydown', e => {
   }
 })
 
+// What takes hands: the sack, the map, the offhand and a change of stance
+// (here), and every swing, shot, cast and raised shield (the update loop).
+// A bound hero has none (systems/player-bind.js), and neither has a frog
+// (the coven's hex, systems/hex.js), who can still walk and sprint.
+const handsFree = player => !playerBound(player) && hasHands(player)
+
 // I toggles the inventory panel: open while playing, close while it's open.
 window.addEventListener('keydown', e => {
   if (e.target?.tagName === 'INPUT') return
   if ((e.key !== 'i' && e.key !== 'I') || e.repeat) return
   if (pvp || net) return
-  if (phase === PHASE.PLAYING) { if (!playerBound(state.player)) openInventory() }
+  if (phase === PHASE.PLAYING) { if (handsFree(state.player)) openInventory() }
   else if (inventoryOpen) closeInventory()
 })
 
@@ -261,7 +270,7 @@ window.addEventListener('keydown', e => {
   if (pvp || net) { if (e.key === 'm' || e.key === 'M') setMuted(!settings.muted); return }
   if (e.key === 'm' || e.key === 'M') {
     if (mapOpen) closeMap()
-    else if (phase === PHASE.PLAYING && state && !playerBound(state.player)) openMap()
+    else if (phase === PHASE.PLAYING && state && handsFree(state.player)) openMap()
   } else if (e.key === 'Tab' && phase === PHASE.PLAYING && state && runMode === 'wilds') {
     e.preventDefault()
     settings.minimap = !settings.minimap
@@ -276,7 +285,7 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keydown', e => {
   if (e.target?.tagName === 'INPUT') return
   if ((e.key !== 'q' && e.key !== 'Q') || e.repeat) return
-  if (phase !== PHASE.PLAYING || !state || playerBound(state.player)) return
+  if (phase !== PHASE.PLAYING || !state || !handsFree(state.player)) return
   useOffhand()
 })
 
@@ -323,7 +332,7 @@ function castOffhand() {
 window.addEventListener('keydown', e => {
   if (e.target?.tagName === 'INPUT') return
   if (e.key !== 'Shift' || e.repeat) return
-  if (phase !== PHASE.PLAYING || !state || playerBound(state.player)) return
+  if (phase !== PHASE.PLAYING || !state || !handsFree(state.player)) return
   // startStanceSwitch drops any charge in progress itself (it belongs to the
   // stance being left); `false` back means a switch was already running and
   // this Shift is ignored outright.
@@ -505,12 +514,17 @@ function tickMsgCooldowns(delta) {
 }
 
 const isRegistryMonster = e => !!getMonsterDef(e.type)
-// (a registry monster that leaves something when it dies leaves it here, once: systems/drops.js)
+// (a registry monster that leaves something when it dies leaves it here, once:
+// its def's chest, and whatever it was carrying: systems/drops.js)
 function cullEntities() {
   for (const e of state.entities) {
-    if (!(e.hp <= 0) || e.dropped || e.maxHp === undefined) continue
-    const drop = deathDrop(e, getMonsterDef(e.type), depth => rollChestLoot(depth, Math.random, state.player))
-    if (drop) state.entities.push(...buildEntities([drop], state.map, e.lootDepth ?? 1))
+    if (!(e.hp <= 0) || e.maxHp === undefined) continue
+    const def = getMonsterDef(e.type)
+    const drops = [
+      e.dropped ? null : deathDrop(e, def, depth => rollChestLoot(depth, Math.random, state.player)),
+      def ? carriedDrop(e) : null,
+    ].filter(Boolean)
+    if (drops.length) state.entities.push(...buildEntities(drops, state.map, e.lootDepth ?? 1))
   }
   state.entities = cullDead(state.entities, isRegistryMonster)
 }
@@ -634,11 +648,17 @@ function detonateFireball(px, py, blastTiles, { fireOnly = false } = {}) {
 // stepProjectiles uses it, and there `struck === target` is a no-op swap.
 // `meta` is whatever the caller had to hand (a projectile, or lightning's
 // `{ source }`); only `source` is read from it, and `hitCue` (a blow that
-// sounds its own hit: null) in place of the projectile's thud.
+// sounds its own hit: null) in place of the projectile's thud, and `via`:
+// how the player's own blow came ('shot' from a bow, 'spell' from a wand's
+// bolt or the bramble; the blade passes 'melee' itself), handed on to the
+// creature's hook, which may answer steel and spells differently.
+// The player's own shot on a tribe at peace is that tribe's quarrel
+// (systems/tribes.js noteBlow): any friendly projectile but a tribe's own.
 function hurtEntity(e, damage, meta) {
   const source = meta?.source ?? 'player'
+  if (meta?.friendly && !meta.tribe) noteBlow(state, e)
   if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
-    const r = hurtCreature(state, e, damage, { source })
+    const r = hurtCreature(state, e, damage, { source, ...(meta?.via && { via: meta.via }) })
     if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
     // a watchman's blow is not the player's: the creature's reaction line is no thought of theirs
     if (r.think && source !== 'watch') think(state, r.think)
@@ -676,7 +696,8 @@ function showCast(cast) {
   const player = state.player
   sfx(state, 'magic-cast', { px: player.px, py: player.py })
   noteCitySwing(state, wildsWorld)   // the townsfolk flinch at a spell cast near them
-  if (cast.projectiles) state.projectiles.push(...cast.projectiles)
+  // (via: what struck, for a creature's hit hook: see hurtEntity)
+  if (cast.projectiles) state.projectiles.push(...cast.projectiles.map(p => ({ ...p, via: 'spell' })))
   if (cast.caught !== undefined) {
     // A cone tier states its reach either as a multiplier of the gust's
     // (gust) or in pixels (rime) — normalise so one ring serves both.
@@ -780,6 +801,15 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       // story house) — lands already-arrived (progress: 1) rather than arcing in.
       case 'floating_pickup': return [{ type: 'floating_item', contents: s.contents, x: s.x, y: s.y,
         startPx: cx, startPy: cy, targetPx: cx, targetPy: cy, px: cx, py: cy, progress: 1, duration: 0.3 }]
+      // A tribe's ware (systems/trade.js): a thing lying still with its price
+      // on it. `loot` instead of contents is one chest's roll, made here. A
+      // ware with nothing to sell, or no price, is not laid out at all.
+      case 'ware': {
+        const contents = s.contents ?? (s.loot ? rollChestLoot(depth, Math.random, player) : null)
+        if (!contents || !(s.price?.count > 0)) return []
+        return [{ type: 'floating_item', contents, price: { item: s.price.item, count: s.price.count }, tribe: s.tribe, x: s.x, y: s.y,
+          startPx: cx, startPy: cy, targetPx: cx, targetPy: cy, px: cx, py: cy, progress: 1, duration: 0.3 }]
+      }
       case 'echo':    return [{ type: 'echo', id: 'echo', x: s.x, y: s.y, px: cx, py: cy, fadeA: 0, t: 0, trail: [], said: null }]
       // Tapio's peace (a tale's reward): wolves are built calm; striking one still makes it fight
       case 'npc': {
@@ -794,8 +824,18 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
       case 'campfire': return [makeCampfire(s.x, s.y, { eternal: true })]
       default: {
         const gen = makeMonsterFromDef(s.kind, s.x, s.y, { isBoss: !!s.isBoss })
+        if (!gen) return []
         // (lootDepth: what a monster that leaves loot rolls it at, systems/drops.js)
-        return gen ? [hpOverride({ ...gen, px: cx, py: cy, lootDepth: depth, ...aiInit() })] : []
+        const e = hpOverride({ ...gen, px: cx, py: cy, lootDepth: depth, ...aiInit() })
+        // A tribe's member (systems/tribes.js): where it belongs (`home`, in
+        // tiles, its camp's or seat's middle; the Wilds' re-centre shifts it
+        // with every other position) and how wide its ring is (the walrus's
+        // court), each its own copy; and at peace from its first frame when
+        // its tribe is friendly and holds no grudge.
+        if (Number.isFinite(s.home?.x) && Number.isFinite(s.home?.y)) e.home = { x: s.home.x, y: s.home.y }
+        if (Number.isFinite(s.ring)) e.ring = s.ring
+        if (atPeace(state, e)) e.peaceful = true
+        return [e]
       }
     }
   })
@@ -954,6 +994,9 @@ function startNewRun(depth = 1, arenaCfg = null) {
   // First entry into an episode: the fixed kit, not the adventure body.
   // A mid-episode resume has a body in the mini-save and restored it above.
   if (runMode === 'timewarp' && !activeSave.body) applyLoadout(player, episodeFor(OPEN_MAPS[depth])?.kit)
+  // What the talents the body now has change on it (the walrus's two more
+  // hearts): hp is never saved, so a loaded hero is made whole here.
+  applyTalents(player)
   if (!wilds) decorateMap(map, rulesets[theme.ruleset])
   state = {
     level: depth,
@@ -996,6 +1039,10 @@ function startNewRun(depth = 1, arenaCfg = null) {
     // Creature kills are per-visit: an episode's own flags carry the story
     // forward, this only reports what died on this map since arriving.
     creatureKills: {},
+    // The grudges of wronged tribes (systems/tribes.js), seconds left by
+    // tribe: one object for the run, shared by every state made from this
+    // one (a cave's, a house's, a respawn's), never saved.
+    tribeWrath: {},
     // The ids actually built, plus the ones already tombstoned — a dead npc
     // must stay recorded as dead on the next persist rather than be forgotten.
     npcSpawnIds: npcRecord ? [...npcSpawns(entitySpawns), ...npcRecord.dead] : [],
@@ -1850,11 +1897,15 @@ function update(delta) {
   // turning, sprinting, shield, swing, cast or talk until it ends.
   tickBinds(player, delta, state.entities)
   const bound = playerBound(player)
+  // The coven's hex (systems/hex.js): a frog walks and sprints, but has no
+  // hands for a shield, a swing, a shot or a cast until it ends.
+  tickHex(player, delta)
+  const frog = !hasHands(player)
   // The shield: up while Q is held with a shield in the offhand. Raised, the
   // player walks at half speed, cannot sprint, and every attack is dead.
   player.blockedHit = false
-  const blocking = tickShield(player, !bound && !!(keys['q'] || keys['Q']), delta)
-  if (blocking || bound) player.charging = null
+  const blocking = tickShield(player, !bound && !frog && !!(keys['q'] || keys['Q']), delta)
+  if (blocking || bound || frog) player.charging = null
   let vx = 0, vy = 0
   if (!bound) {
     if (keys['ArrowLeft']  || keys['a']) { vx -= 1; player.facing = 'west'  }
@@ -1873,7 +1924,7 @@ function update(delta) {
       : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor
                                         : chargeMoveFactor(player.weapon?.weaponType))
     : 1
-  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * frogSpeedMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
   const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
@@ -1923,9 +1974,14 @@ function update(delta) {
     e.type === 'floating_item' && e.progress >= 1 && e.x === player.x && e.y === player.y)
   if (floatIdx !== -1) {
     const item = state.entities[floatIdx]
-    if (grantContents(item.contents)) {
+    // A ware (systems/trade.js) is paid for first: the price leaves the sack
+    // once and the ware is granted, or nothing changes hands and its vendor
+    // says why. Anything else lying about is simply picked up.
+    const got = item.price ? tryBuy(state, item, grantContents) === 'bought' : grantContents(item.contents)
+    if (got) {
       state.entities = state.entities.filter((_, i) => i !== floatIdx)
-      persistIfSurface()
+      if (item.price) afterInventoryChange()   // (the price left the sack: the panel, the HUD and the save follow)
+      else persistIfSurface()
     }
   }
 
@@ -2159,8 +2215,9 @@ function update(delta) {
     sfx(state, 'stance-switch')
   }
   // Mid-switch the old stance is still set but every attack is dead — and so
-  // is a raised shield: the hand that would swing is holding it up.
-  const attacking = keys[' '] && !player.stanceSwitch && !player.blocking && !bound
+  // is a raised shield: the hand that would swing is holding it up. A frog
+  // (systems/hex.js) swings, shoots and casts nothing.
+  const attacking = keys[' '] && !player.stanceSwitch && !player.blocking && !bound && !frog
 
   // Melee (Space): light blades swing the instant the key lands; charge
   // weapons wind up while held and swing on release, tiered by hold time.
@@ -2246,9 +2303,12 @@ function update(delta) {
         }
         if (!bodyHit(e)) return e
         if (e.type === 'wizard' && e.shieldTimer > 0) return e
+        // a blade on one of a tribe at peace is that tribe's quarrel (systems/tribes.js)
+        noteBlow(state, e)
         if (CREATURE_HIT[e.type] && getMonsterDef(e.type)) {
-          // (knockback: for a creature that takes a blade's shove like any monster, the roused scorpion)
-          const r = hurtCreature(state, e, dmg, { source: 'player', knockback: atk.knockback * mods.kbMul })
+          // (knockback: for a creature that takes a blade's shove like any monster, the roused scorpion;
+          // via: a blade, as against a shot or a spell: see hurtEntity)
+          const r = hurtCreature(state, e, dmg, { source: 'player', via: 'melee', knockback: atk.knockback * mods.kbMul })
           slash(e)
           if (r.cue) sfx(state, r.cue, { px: e.px, py: e.py })
           if (r.think) think(state, r.think)
@@ -2412,7 +2472,7 @@ function update(delta) {
     const dir = DIRS[player.facing] ?? DIRS.east
     const proj = { px: player.px, py: player.py,
       dx: dir[0]*PROJECTILE_SPEED, dy: dir[1]*PROJECTILE_SPEED,
-      damage: shot.damage, color: shot.color, shape: shot.shape, friendly: true }
+      damage: shot.damage, color: shot.color, shape: shot.shape, friendly: true, via: 'shot' }
     // Only the flags the shot actually carries — projectiles.js reads their
     // presence, not their value, for pierce/fork/chain decisions.
     if (shot.pierce !== undefined) proj.pierce = shot.pierce
@@ -2461,7 +2521,7 @@ function update(delta) {
   // Bramble patches: root what walks in, bleed what stays. Same hit path as
   // the projectiles, so a kill here culls like any other.
   if (state.zones?.length) {
-    tickZones(state, delta, { hurt: hurtEntity })
+    tickZones(state, delta, { hurt: (e, dmg) => hurtEntity(e, dmg, { via: 'spell' }) })
     cullEntities()
   }
 
@@ -2477,6 +2537,10 @@ function update(delta) {
     state.blinkTrail.t += delta
     if (state.blinkTrail.t >= BLINK_DUR) state.blinkTrail = null
   }
+
+  // The tribes (systems/tribes.js): their grudges run down, every member is
+  // at peace or not for this frame's loop, and the peaceful greet the hero.
+  tickTribes(state, delta)
 
   // Enemy AI — iterate a snapshot so wizard summons don't re-enter this frame
   state.entities = tickDying(state.entities, delta)
@@ -2502,6 +2566,9 @@ function update(delta) {
     if (bench?.isFrozen(e)) continue
     if (e.dying > 0) { if (getMonsterDef(e.type)) updateMonsterPose(e, delta); continue }
     if (isStoryCreature(e)) { CREATURE_UPDATE[e.type]?.(e, state, delta); updateMonsterPose(e, delta); continue }
+    // One of a tribe at peace (systems/tribes.js): its hook and its pose,
+    // and no brain, no swing, whatever drives it when it is wronged.
+    if (e.peaceful && getMonsterDef(e.type)) { CREATURE_UPDATE[e.type]?.(e, state, delta); updateMonsterPose(e, delta); continue }
     if (!isEnemy(e)) continue
 
     if (e.stunTimer > 0) { e.stunTimer -= delta; continue }
@@ -2672,6 +2739,10 @@ function update(delta) {
   // in the dungeon rush it ends the run as ever.
   if (player.hp <= 0) {
     sfx(state, 'player-death')
+    // he dies a man, and the tribes he wronged hold it against him no longer
+    // (systems/hex.js, systems/tribes.js)
+    clearHex(player)
+    clearWrath(state)
     const surfaceLevel = state.cave ? state.cave.surface.level : state.level
     const mapData = mapDataFor(surfaceLevel)
     if (mapData?.wilds) {

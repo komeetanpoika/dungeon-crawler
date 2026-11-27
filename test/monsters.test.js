@@ -113,6 +113,18 @@ describe('updateMonsterPose / entityPose', () => {
     assert.equal(entityPose(a).state, 'idle')
     assert.equal(entityPose(a).seed, entityPose(b).seed)
   })
+  it('a hook\'s own named channels (e.channels) reach its rig, and never stand in for the pose\'s own', () => {
+    const e = ent()
+    updateMonsterPose(e, 0.016)
+    assert.equal('slab' in entityPose(e), false)
+    e.channels = { slab: 1, drum: 0.4, state: 'attack', sink: 0.9, facing: 2 }
+    const p = entityPose(e)
+    assert.equal(p.slab, 1)
+    assert.equal(p.drum, 0.4)
+    assert.equal(p.state, 'idle')
+    assert.equal(p.sink, 0)
+    assert.equal(p.facing, 0)
+  })
   it('movement -> walk with speed01 and facing from velocity', () => {
     const e = ent()
     updateMonsterPose(e, 0.016)

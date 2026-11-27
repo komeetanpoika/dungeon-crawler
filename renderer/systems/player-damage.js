@@ -1,7 +1,8 @@
 // Single funnel for all player damage — for state.player, or any hero passed as the fifth argument (PvP).
 // 'hit' respects and grants i-frames and
 // can be blocked (a raised shield, frontal, with a `from` position) and is
-// reduced by the worn outfit's protect; 'dot' and 'lightning' always apply
+// reduced by the worn outfit's protect (and by one more for a hero with the
+// talent Kivinahka, when it is a blow of three or more); 'dot' and 'lightning' always apply
 // untouched. Returns whether damage landed (a block returns false and sets
 // player.blockedHit for the striker). `soak` (PvP's Ward, 2b) may take some
 // or all of what gets past the block and the outfit before hp does: it
@@ -15,8 +16,12 @@ import { addFloat } from './feedback.js'
 import { sfx } from './sfx.js'
 import { tryBlock } from './shield.js'
 import { outfitOf } from './inventory.js'
+import { hasTalent } from './talents.js'
 
 export const INVULN_DURATION = 0.8
+// Kivinahka (the Mountain King's talent, systems/talents.js): a 'hit' that is
+// still this heavy after the block and the outfit lands one lighter.
+export const KIVINAHKA_FROM = 3
 
 // The monster bench's seam: (state, player, amount, kind) => the hp the
 // hit actually takes, seen after block, protect and soak. The float still
@@ -32,6 +37,7 @@ export function damagePlayer(state, amount, kind, from = null, hero = state.play
   if (kind === 'hit' && (player.invulnTimer ?? 0) > 0) return false
   if (kind === 'hit' && tryBlock(state, from, player)) return false
   if (kind === 'hit') amount = Math.max(0, amount - (outfitOf(player, player.attackMode ?? 'melee')?.protect ?? 0))
+  if (kind === 'hit' && amount >= KIVINAHKA_FROM && hasTalent(player, 'kivinahka')) amount -= 1
   if (soak) amount = soak(player, amount)
   const taken = observer ? observer(state, player, amount, kind) : amount
   const loss = Number.isFinite(taken) ? taken : amount

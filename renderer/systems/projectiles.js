@@ -4,9 +4,12 @@
 // the target's body (systems/hitbox.js), never a fixed radius from its centre. Lifted out of game.js so it is unit-testable
 // without a DOM/canvas — game.js supplies hurt/detonate/damagePlayer/
 // isHittable/cull as hooks; the only thing this module reaches for on its own
-// is the faction rule chaining obeys (isSpellTarget).
+// is the faction rule chaining obeys (isSpellTarget), and the one a tribe's
+// own shot obeys: a friendly projectile with `tribe` (a seal guard's harpoon,
+// systems/tribes.js) lands on enemies only, and never on that tribe's people.
 import { isWalkable } from './entities.js'
-import { isSpellTarget } from './factions.js'
+import { isSpellTarget, isEnemy } from './factions.js'
+import { tribeOf } from './tribes.js'
 import { startKnockback } from './knockback.js'
 import { pointHits, PLAYER_SHAPE } from './hitbox.js'
 
@@ -136,6 +139,7 @@ export function stepProjectiles(state, delta, hooks) {
       for (const e of state.entities) {
         if (!hooks.isHittable(e)) continue
         if (p.owner !== undefined && e.id === p.owner) continue // PvP: a shot never hits its shooter
+        if (p.tribe && (!isEnemy(e) || tribeOf(e) === p.tribe)) continue // a tribe's shot: enemies only, never its own
         if (e.type === 'dragon_boss') continue // immune to all friendly projectiles
         if (p.hitIds.has(idOf(e))) continue
         if (pointHits(e, p.px, p.py, PROJECTILE_PAD)) { target = e; break }

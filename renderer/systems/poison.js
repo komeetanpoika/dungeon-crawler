@@ -7,13 +7,15 @@
 // Cures: anything eaten or drunk that heals (game.js useInventoryItem calls
 // curePoison), and POISON.cureAfter seconds on end beside a well or water
 // (`water`, which game.js asks of wilds/heat.js). On top of the coach the
-// clock stands still; it ends with the hero's death. Pure and DOM-free.
+// clock stands still; it ends with the hero's death. No poison takes hold of
+// a hero with the talent Käärmeenkieli (systems/talents.js). Pure and DOM-free.
 //
 //   player.poison   { left, next, wash }   bites left, seconds to the next,
 //                                          seconds beside water so far
 import { damagePlayer } from './player-damage.js'
 import { addFloat } from './feedback.js'
 import { sfx } from './sfx.js'
+import { hasTalent } from './talents.js'
 
 export const POISON = { every: 4, floor: 1, cureAfter: 1 }
 
@@ -22,7 +24,7 @@ export const POISON = { every: 4, floor: 1, cureAfter: 1 }
 export const isPoisoned = hero => hero?.poison?.left > 0
 
 export function poisonPlayer(player, ticks) {
-  if (!(ticks > 0)) return
+  if (!(ticks > 0) || hasTalent(player, 'kaarmeenkieli')) return
   player.poison = { left: Math.max(ticks, player.poison?.left ?? 0), next: POISON.every, wash: 0 }
 }
 

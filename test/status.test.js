@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { applySlow, applyRoot, applyFreeze, tickStatus, shatterBonus } from '../renderer/systems/status.js'
+import { applySlow, applyRoot, applyFreeze, tickStatus, shatterBonus, applyHaste, hasteMul } from '../renderer/systems/status.js'
 
 describe('applySlow / applyRoot / applyFreeze', () => {
   it('applySlow sets slowTimer and slowMul', () => {
@@ -66,5 +66,39 @@ describe('shatterBonus', () => {
   it('returns 0 for a non-frozen enemy', () => {
     const e = {}
     assert.equal(shatterBonus(e), 0)
+  })
+})
+
+describe('haste', () => {
+  it('applyHaste sets the multiplier and its time; hasteMul reads it only while it runs', () => {
+    const e = {}
+    assert.equal(hasteMul(e), 1)
+    applyHaste(e, 1.3, 1.2)
+    assert.equal(hasteMul(e), 1.3)
+    assert.equal(e.hasteTimer, 1.2)
+    tickStatus(e, 1)
+    assert.equal(hasteMul(e), 1.3)
+    tickStatus(e, 0.3)
+    assert.equal(hasteMul(e), 1)
+  })
+
+  it('a second haste keeps the larger multiplier and starts the time again', () => {
+    const e = {}
+    applyHaste(e, 1.5, 2)
+    tickStatus(e, 1.5)
+    applyHaste(e, 1.3, 2)
+    assert.equal(hasteMul(e), 1.5)
+    assert.equal(e.hasteTimer, 2)
+    applyHaste(e, 1.8, 0.5)
+    assert.equal(hasteMul(e), 1.8)
+    assert.equal(e.hasteTimer, 0.5)
+  })
+
+  it('one that has run out leaves nothing for the next to keep', () => {
+    const e = {}
+    applyHaste(e, 2, 0.5)
+    tickStatus(e, 1)
+    applyHaste(e, 1.2, 1)
+    assert.equal(hasteMul(e), 1.2)
   })
 })

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS } from '../renderer/systems/talents.js'
+import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS, applyTalents, HEART_BONUS } from '../renderer/systems/talents.js'
+import { adventureRespawn } from '../renderer/systems/cave.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 
@@ -61,5 +62,86 @@ describe('ski-legs', () => {
     assert.equal(grantTalent(state, 'ski_legs'), true)
     assert.equal(grantTalent(state, 'ski_legs'), false)
     assert.equal(hasTalent(state.player, 'ski_legs'), true)
+  })
+})
+
+// The three tribes' rewards (docs/superpowers/specs/2026-11-27-three-tribes-design.md).
+describe('the tribes\' talents', () => {
+  const body = (over = {}) => ({ talents: [], hp: 10, maxHp: 10, ...over })
+  const mk = over => ({ player: body(over), feedback: makeFeedback(), sfx: makeSfx() })
+
+  it('are in the registry with a name and a line each, and no Rush run starts with them', () => {
+    assert.equal(TALENTS.kivinahka.name, 'Kivinahka')
+    assert.equal(TALENTS.kaarmeenkieli.name, 'Käärmeenkieli')
+    assert.equal(TALENTS.mursun_sydan.name, 'Mursun sydän')
+    for (const id of ['kivinahka', 'kaarmeenkieli', 'mursun_sydan']) {
+      assert.ok(TALENTS[id].desc)
+      assert.ok(!RUSH_START_TALENTS.includes(id))
+    }
+  })
+
+  it('Mursun sydän: two more at the grant, and mended by as much, once', () => {
+    const s = mk({ hp: 4 })
+    assert.equal(grantTalent(s, 'mursun_sydan'), true)
+    assert.equal(HEART_BONUS, 2)
+    assert.equal(s.player.maxHp, 12)
+    assert.equal(s.player.hp, 6)
+    assert.equal(grantTalent(s, 'mursun_sydan'), false)
+    assert.equal(s.player.maxHp, 12)
+    assert.equal(s.player.hp, 6)
+  })
+
+  it('a body built anew with the talent (a save loaded, a new run) comes out with twelve, however often it is settled', () => {
+    const p = body({ talents: ['mursun_sydan'] })
+    applyTalents(p)
+    assert.equal(p.maxHp, 12)
+    assert.equal(p.hp, 12)
+    applyTalents(p)
+    applyTalents(p)
+    assert.equal(p.maxHp, 12)
+    assert.equal(p.hp, 12)
+    // a kit that raised the body first keeps its own on top
+    const kit = body({ talents: ['mursun_sydan'], hp: 14, maxHp: 14 })
+    applyTalents(kit)
+    assert.equal(kit.maxHp, 16)
+    // a body without it is left alone
+    const plain = body({ hp: 7 })
+    applyTalents(plain)
+    assert.equal(plain.hp, 7)
+    assert.equal(plain.maxHp, 10)
+  })
+
+  it('a hero who wakes after death wakes with all twelve', () => {
+    const s = mk()
+    grantTalent(s, 'mursun_sydan')
+    s.player.hp = 0
+    const woke = adventureRespawn({ ...s, map: [], entities: [] }, { x: 3, y: 3 })
+    applyTalents(woke.player)
+    assert.equal(woke.player.maxHp, 12)
+    assert.equal(woke.player.hp, 12)
+    assert.ok(hasTalent(woke.player, 'mursun_sydan'))
+  })
+
+  it('a body that no longer has the talent gives the two back', () => {
+    const p = body({ talents: ['mursun_sydan'] })
+    applyTalents(p)
+    p.talents = []
+    applyTalents(p)
+    assert.equal(p.maxHp, 10)
+    assert.equal(p.hp, 10)
+  })
+
+  it('Käärmeenkieli: learning it clears the poison already in him', () => {
+    const s = mk({ poison: { left: 3, next: 2, wash: 0 } })
+    grantTalent(s, 'kaarmeenkieli')
+    assert.equal(s.player.poison, undefined)
+  })
+
+  it('a hero with no hearts of his own to settle (the arena\'s) is left as he is', () => {
+    const h = { hp: 20, maxHp: 20 }
+    applyTalents(h)
+    assert.equal(h.hp, 20)
+    assert.equal(h.maxHp, 20)
+    assert.equal('talentHp' in h, false)
   })
 })

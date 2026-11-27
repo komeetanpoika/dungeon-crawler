@@ -199,6 +199,21 @@ describe('act status effects', () => {
       `slowed enemy should cover ~40% of the distance, got ${slowedDist / fullDist}`)
   })
 
+  it('a stirred enemy covers hasteMul of the distance, and haste and slow multiply', () => {
+    const map = columnMap()
+    const step = over => {
+      const e = Object.assign(enemyAt(3, 4), over)
+      const state = makeState(map, { x: 9, y: 4 }, [e])
+      act(e, state, 1 / 60, { mode: 'approach', speed: 60 })
+      return Math.hypot(e.px - (3 * S + S / 2), e.py - (4 * S + S / 2))
+    }
+    const full = step({})
+    assert.ok(full > 0)
+    assert.ok(Math.abs(step({ hasteTimer: 1, hasteMul: 1.3 }) / full - 1.3) < 0.01)
+    assert.ok(Math.abs(step({ hasteTimer: 0, hasteMul: 1.3 }) / full - 1) < 0.01, 'a haste that has run out is none')
+    assert.ok(Math.abs(step({ hasteTimer: 1, hasteMul: 1.3, slowTimer: 1, slowMul: 0.4 }) / full - 0.52) < 0.01)
+  })
+
   it('a rooted enemy does not move', () => {
     const map = columnMap()
     const e = enemyAt(3, 4)

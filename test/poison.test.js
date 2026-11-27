@@ -80,6 +80,23 @@ describe('poison', () => {
   })
 })
 
+// Käärmeenkieli, Syöjätär's talent (systems/talents.js).
+describe('Käärmeenkieli', () => {
+  it('no poison takes hold of a hero who has it', () => {
+    const s = mk({ talents: ['kaarmeenkieli'] })
+    poisonPlayer(s.player, 5)
+    assert.equal(s.player.poison, undefined)
+    assert.equal(isPoisoned(s.player), false)
+    run(s, POISON.every * 3)
+    assert.equal(s.player.hp, 10)
+  })
+  it('a hero without it is poisoned as ever', () => {
+    const s = mk({ talents: ['kivinahka'] })
+    poisonPlayer(s.player, 2)
+    assert.equal(isPoisoned(s.player), true)
+  })
+})
+
 describe('isPoisoned', () => {
   it('knows the sting\'s poison from the arena\'s Venom, which draws its own wash', () => {
     assert.equal(isPoisoned({ poison: { left: 2, next: 1, wash: 0 } }), true)
