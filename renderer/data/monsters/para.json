@@ -1,0 +1,10 @@
+{
+  "name": "para",
+  "rig": "para",
+  "params": { "yarnColor": "#d2324a" },
+  "stats": { "hp": 2, "speed": 135 },
+  "behavior": { "driver": "hook", "tribe": "noidat", "role": "thief", "taxon": "beast", "sightRange": 256 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "snatch": 0.8, "snatchFrog": 1.5, "goSpeed": 150 }
+}

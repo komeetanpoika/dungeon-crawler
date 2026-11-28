@@ -1,0 +1,10 @@
+{
+  "name": "noita",
+  "rig": "crone",
+  "params": { "role": 0, "scale": 1, "dressColor": "#3d3350", "shawlColor": "#7b4a8c", "scarfColor": "#b03a48", "gearColor": "#d2324a" },
+  "stats": { "hp": 5, "speed": 68 },
+  "behavior": { "tribe": "noidat", "role": "warlock", "taxon": "humanoid", "fleeHp": 0, "kiteBand": [128, 224], "sightRange": 260 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "hexFirst": 2.5, "hexEvery": 7, "point": 0.6, "frog": 4, "knitEvery": 9, "knit": 1.2, "maxParas": 2 }
+}

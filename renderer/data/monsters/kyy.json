@@ -1,0 +1,10 @@
+{
+  "name": "kyy",
+  "rig": "viper",
+  "params": { "scale": 1 },
+  "stats": { "hp": 1, "speed": 105 },
+  "behavior": { "tribe": "noidat", "role": "fighter", "taxon": "beast", "stopRange": 14, "sightRange": 190 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "reach": 0.9, "biteDmg": 1, "poisonTicks": 2 }
+}

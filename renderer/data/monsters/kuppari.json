@@ -1,0 +1,10 @@
+{
+  "name": "kuppari",
+  "rig": "crone",
+  "params": { "role": 1, "scale": 1, "dressColor": "#5b3a2e", "shawlColor": "#c9703a", "scarfColor": "#e8e2d0", "gearColor": "#d9c08a", "skinColor": "#c9a07e" },
+  "stats": { "hp": 6, "speed": 60 },
+  "behavior": { "tribe": "noidat", "role": "healer", "taxon": "humanoid", "fleeHp": 0, "kiteBand": [176, 272], "sightRange": 300 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "reach": 5, "channel": 1.5, "mend": 3, "mendBoss": 2, "every": 4, "struck": 2 }
+}
