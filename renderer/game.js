@@ -1,7 +1,7 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE, OUTFIT_TYPES, makeOutfitContents, defaultGear, SHIELD_TYPES, makeShieldContents } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE, OUTFIT_TYPES, makeOutfitContents, defaultGear, SHIELD_TYPES, makeShieldContents, WORN_SLOTS, WORN_TYPES, makeWornContents } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -40,7 +40,7 @@ import { makeNetPanels } from './ui/net-panels.js'
 import { PVP_ARENAS, nextArenaIndex } from './data/pvp-arenas.js'
 import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
-import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, equipWorn, unequipWorn, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
@@ -1504,10 +1504,12 @@ function openInventory(beside = null) {
     onEquip: i => report(state.player.inventory[i]?.kind === 'outfit' ? equipOutfit(state.player, i) : equipItem(state.player, i)),
     onEquipOff: i => report(equipOffhand(state.player, i)),
     onEquipBelt: i => report(equipBelt(state.player, i)),
+    onEquipWorn: i => report(equipWorn(state.player, i)),
     onUnequip: (stance, slot) => report(
       slot === 'main' ? unequipMain(state.player, stance)
       : slot === 'outfit' ? unequipOutfit(state.player, stance)
       : slot === 'belt' ? unequipBelt(state.player)
+      : WORN_SLOTS.includes(slot) ? unequipWorn(state.player, slot, stance)
       : unequipOffhand(state.player, stance)),
     onUse: i => useInventoryItem(i),
     onDrop: i => dropInventoryItem(i),

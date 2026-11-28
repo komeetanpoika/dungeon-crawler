@@ -33,6 +33,7 @@
     }
     #hud-hearts { display: flex; gap: 3px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9)); }
     #hud-hearts .heart { image-rendering: pixelated; }
+    #hud-hearts .heart:not(.armor) + .armor { margin-left: 5px; }   /* the armor shields stand a little apart from the hearts */
     /* Blue pixel-framed stamina bar: stepped 8-bit border + 25% ticks */
     #hud-stamina {
       width: 140px; height: 12px; position: relative;
