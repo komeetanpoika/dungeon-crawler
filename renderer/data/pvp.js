@@ -25,10 +25,11 @@ export const KITS = {
   mage:    { stance: 'magic',  loadout: { wandType: 'stormwand', outfits: ['robe'], offhand: { type: 'wand', weaponType: 'blinkwand' } } },
 }
 
-// Plate's protect 2 would make every 1-2 damage weapon near-useless on the
-// Warrior; in a match it is 0 (2a: the buckler is the Warrior's defence).
-// Single-player's OUTFIT_TYPES stays as it is.
-export const OUTFIT_OVERRIDES = { plate: { protect: 0 } }
+// The Warrior's outfit protects nothing (the buckler is his defence) and he
+// wears no armor piece, but in a match his sprint still costs double, as it
+// did when the outfit was the Plated Armor: single-player moved that weight
+// onto the Plate Cuirass (entities.js WORN_TYPES), the arena keeps it here.
+export const OUTFIT_OVERRIDES = { plate: { sprintDrain: 2 } }
 
 export const PICKUPS = {
   flask:  { heal: 4, respawn: 20 },

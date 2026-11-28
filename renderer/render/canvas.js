@@ -1689,7 +1689,7 @@ export class Renderer {
       ctx.save()
       ctx.font = 'bold 13px monospace'
       ctx.textAlign = 'center'
-      const COLORS = { taken: '#ef4444', dealt: '#f8fafc', heal: '#4ade80', coin: '#f2c14e', ...BUFF_COLORS }   // a buff float is its buff's colour (2b)
+      const COLORS = { taken: '#ef4444', armor: '#9ca3af', dealt: '#f8fafc', heal: '#4ade80', coin: '#f2c14e', ...BUFF_COLORS }   // a buff float is its buff's colour (2b)
       for (const f of fb.floats) {
         const k = f.t / FLOAT_DUR
         const x = Math.round(f.px - camX), y = Math.round(f.py - camY - 14 - k * 22)

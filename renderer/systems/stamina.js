@@ -80,13 +80,13 @@ const SPRINT_PROFILES = {
   magic:  { speedMul: 1.25, drain: 8 },
 }
 
-// Ski-legs (systems/talents.js): Hiisi-hide boots off the Elk of Hiisi. It
-// buys stamina, never speed — the sprint feels the same and lasts longer.
-export const SKI_LEGS_DRAIN = 0.6
-
-export function sprintProfile(mode, { skiLegs = false, drainMul = 1 } = {}) {
+// `drainMul` is what the played character wears (systems/worn.js
+// wornSprintMul: mail and plate weigh, the Elk-hide Boots run like weather).
+// It buys or costs stamina, never speed — the sprint feels the same and
+// lasts longer or shorter.
+export function sprintProfile(mode, { drainMul = 1 } = {}) {
   const p = SPRINT_PROFILES[mode] ?? SPRINT_PROFILES.melee
-  return { ...p, drain: p.drain * (skiLegs ? SKI_LEGS_DRAIN : 1) * drainMul }
+  return { ...p, drain: p.drain * drainMul }
 }
 
 // Desktop sprint intent: double-tap a direction and hold. Timestamps are

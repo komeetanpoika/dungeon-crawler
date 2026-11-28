@@ -10,12 +10,13 @@ const hero = (id, cls, cell = { x: 5, y: 5 }) => { const h = makeHero({ id, name
 const dt = PVP.tick
 
 describe('makeHero / applyKit', () => {
-  it('a warrior wears plate at protect 0, holds a sword and a buckler, fights as melee', () => {
+  it('a warrior wears the tabard (no protection, double sprint cost), holds a sword and a buckler, fights as melee', () => {
     const h = makeHero({ id: 'w', name: 'W', cls: 'warrior' })
     assert.equal(h.type, 'hero')
     assert.equal(h.attackMode, 'melee')
     assert.equal(h.weapon.weaponType, 'sword')
-    assert.equal(h.gear.melee.outfit.protect, 0)
+    assert.equal(h.gear.melee.outfit.protect, undefined)
+    assert.equal(h.gear.melee.outfit.sprintDrain, 2)
     assert.equal(h.gear.melee.off.kind, 'shield')
     assert.equal(h.hp, 8)
   })
@@ -108,12 +109,12 @@ describe('combat helpers', () => {
     assert.deepEqual(b.lastHitBy, { id: 'a', t: 7 })
     assert.deepEqual(m.events[0], { type: 'hit', target: 'b', by: 'a', amount: 2 })
   })
-  it('a hit event reports the damage that actually landed, after outfit protect', () => {
+  it('a hit event reports the damage that actually landed: an outfit takes nothing off it', () => {
     const a = hero('a', 'archer', { x: 4, y: 5 }), w = hero('w', 'warrior'); const m = testMatch([a, w])
-    w.gear.melee.outfit.protect = 1   // a match's plate is 0 (2a); any protect still comes off
+    w.gear.melee.outfit.protect = 1   // a number left on an old outfit is read by nobody
     assert.equal(hurtHero(m, w, 2, { by: a }), true)
-    assert.equal(w.hp, 7)   // protect 1 reduces the raw 2 to 1
-    assert.deepEqual(m.events[0], { type: 'hit', target: 'w', by: 'a', amount: 1 })
+    assert.equal(w.hp, 6)
+    assert.deepEqual(m.events[0], { type: 'hit', target: 'w', by: 'a', amount: 2 })
   })
   it('never hurts the attacker itself, a dead hero or a spawn-protected one', () => {
     const a = hero('a', 'archer'); const m = testMatch([a])

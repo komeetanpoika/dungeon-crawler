@@ -3,7 +3,10 @@ import assert from 'node:assert/strict'
 import { damagePlayer, INVULN_DURATION, setDamageObserver } from '../renderer/systems/player-damage.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
-import { makePlayer, makeShieldContents, makeOutfitContents } from '../renderer/systems/entities.js'
+import { makePlayer, makeShieldContents, makeWornContents } from '../renderer/systems/entities.js'
+
+const worn = key => { const { type, ...p } = makeWornContents(key); return p }
+const cuirass = () => worn('plate'), jerkin = () => worn('leather')
 
 function freshState() {
   return { player: { px: 40, py: 60, hp: 10 }, feedback: makeFeedback() }
@@ -81,21 +84,21 @@ describe('damagePlayer with a shield and armour', () => {
     assert.equal(damagePlayer(s, 1, 'dot', { px: 80, py: 60 }), true)
     assert.equal(s.player.hp, 7)
   })
-  it('worn armour takes protect off every hit, floored at 0, but not off a dot', () => {
+  it('the played character\'s armor takes a blow before hp, but not a dot (more in worn.test.js)', () => {
     const s = dressed()
-    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = { ...plate, protect: 2 }
+    s.player.gear.melee.armor = cuirass()             // 5 armor
     assert.equal(damagePlayer(s, 3, 'hit'), true)
-    assert.equal(s.player.hp, 9)
-    s.player.invulnTimer = 0
-    assert.equal(damagePlayer(s, 1, 'hit'), true)     // reduced to 0: still lands, still grants i-frames
-    assert.equal(s.player.hp, 9)
+    assert.equal(s.player.hp, 10)
     assert.equal(s.player.invulnTimer, INVULN_DURATION)
+    s.player.invulnTimer = 0
+    assert.equal(damagePlayer(s, 3, 'hit'), true)     // 2 armor left: one reaches hp
+    assert.equal(s.player.hp, 9)
     assert.equal(damagePlayer(s, 1, 'dot'), true)
     assert.equal(s.player.hp, 8)
   })
-  it('the active loadout’s outfit is the one that protects', () => {
+  it('another character\'s armor protects nobody but its wearer', () => {
     const s = dressed({ attackMode: 'magic' })
-    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = { ...plate, protect: 2 }
+    s.player.gear.melee.armor = cuirass()
     damagePlayer(s, 3, 'hit')
     assert.equal(s.player.hp, 7)
   })
@@ -112,11 +115,11 @@ describe('damage observer', () => {
     assert.equal(lastFloat(s).text, '-3')
     assert.equal(s.player.invulnTimer, INVULN_DURATION)
   })
-  it('sees the amount after outfit protect, with state, player and kind', () => {
+  it('sees the amount after the armor, with state, player and kind', () => {
     const seen = []
     setDamageObserver((state, player, amount, kind) => { seen.push({ state, player, amount, kind }); return amount })
     const p = { ...makePlayer(1, 1), px: 40, py: 60, hp: 10 }
-    const { type, ...plate } = makeOutfitContents('plate'); p.gear.melee.outfit = { ...plate, protect: 2 }
+    p.gear.melee.armor = jerkin()                     // 2 armor
     const s = { player: p, feedback: makeFeedback(), sfx: makeSfx() }
     damagePlayer(s, 3, 'hit')
     assert.equal(seen.length, 1)
@@ -172,14 +175,14 @@ describe('Kivinahka', () => {
     assert.equal(s.player.hp, 7)
   })
 
-  it('counts the blow after the outfit: plate brings a three under the mark, a five to it', () => {
+  it('comes off the blow before the armor: a three is a two, and a jerkin holds it', () => {
     const s = st()
-    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = { ...plate, protect: 2 }
-    damagePlayer(s, 3, 'hit')           // 3 - 2 = 1: under three, whole
-    assert.equal(s.player.hp, 9)
+    s.player.gear.melee.armor = jerkin()
+    damagePlayer(s, 3, 'hit')           // 3 - 1 = 2, all of it on the armor
+    assert.equal(s.player.hp, 10)
     s.player.invulnTimer = 0
-    damagePlayer(s, 5, 'hit')           // 5 - 2 = 3: one lighter
-    assert.equal(s.player.hp, 7)
+    damagePlayer(s, 5, 'hit')           // 5 - 1 = 4, the armor is spent
+    assert.equal(s.player.hp, 6)
   })
 
   it('poison, fire and lightning are no blows: they land whole', () => {

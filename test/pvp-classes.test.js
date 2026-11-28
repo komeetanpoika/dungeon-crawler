@@ -9,9 +9,9 @@ import { STAMINA_MAX } from '../renderer/systems/stamina.js'
 import { testMatch } from './pvp-helpers.js'
 
 describe('2a numbers', () => {
-  it('time-to-kill: hp 8, plate protect 0, flasks heal half', () => {
+  it('time-to-kill: hp 8, an outfit that protects nothing but still weighs, flasks heal half', () => {
     assert.equal(PVP.hp, 8)
-    assert.deepEqual(OUTFIT_OVERRIDES.plate, { protect: 0 })
+    assert.deepEqual(OUTFIT_OVERRIDES.plate, { sprintDrain: 2 })
     assert.equal(PICKUPS.flask.heal, 4)
   })
   it('kits and rune: the mage mains the Storm Wand, the rune is the Fireball Wand', () => {

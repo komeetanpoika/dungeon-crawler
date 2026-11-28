@@ -124,6 +124,7 @@ import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { tickBinds, playerBound, struggle } from './systems/player-bind.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
+import { tickArmor, settleDents, wornSprintMul } from './systems/worn.js'
 import { makeWeather, advanceClock, weatherLook, isNight } from './systems/weather.js'
 import { DAY_START } from './data/weather.js'
 import { canMoveTo, moveEntity, PLAYER_HALF, PLAYER_SPEED } from './systems/movement.js'
@@ -1711,6 +1712,7 @@ function closeToast() {
 }
 
 function afterInventoryChange() {
+  settleDents(state.player)   // pieces may have changed hands (systems/worn.js)
   refreshInventory(state)
   updateHUD(state)
   persistIfSurface()
@@ -2042,7 +2044,7 @@ function update(delta) {
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
   const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
   const moving = vx !== 0 || vy !== 0
-  const profile = sprintProfile(player.attackMode, { skiLegs: hasTalent(player, 'ski_legs'), drainMul: outfitOf(player, player.attackMode)?.sprintDrain ?? 1 })
+  const profile = sprintProfile(player.attackMode, { drainMul: wornSprintMul(player) })
   const sprinting = moving && !player.charging && !blocking && player.stamina > 0 && !wasGrabbed &&
     (keys['sprint'] || sprintDetector.sprinting())
   const chargeFactor = player.charging
@@ -2342,6 +2344,7 @@ function update(delta) {
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
   player.offCooldown = Math.max(0, (player.offCooldown ?? 0) - delta)
   tickStamina(player, delta)
+  tickArmor(player, delta)
   player.staminaRefusedT = Math.max(0, (player.staminaRefusedT ?? 0) - delta)
   const landedStance = tickStanceSwitch(player, delta)
   if (landedStance) {
