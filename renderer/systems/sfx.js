@@ -9,6 +9,8 @@ export const CUE_NAMES = [
   'player-hurt', 'player-death', 'enemy-death', 'boss-death', 'shield-block',
   // world & items
   'pickup', 'key-pickup', 'heal', 'equip', 'drop',
+  // coin changing hands, and the taproom (systems/coin.js, systems/tavern.js)
+  'coin', 'gulp', 'munch', 'cheer', 'hic',
   'gate-open', 'door-locked', 'descend', 'emerge', 'door-open',
   'stance-switch', 'talent-learned', 'rite',
   // UI (positionless)

@@ -16,7 +16,7 @@ import { markCasts } from './casts.js'
 import { mulberry32, shuffle, chance } from './rng.js'
 import { TILE } from '../systems/entities.js'
 
-export { houseSpec, VERSIONS, STORY_ROOMS } from './versions.js'
+export { houseSpec, houseVendors, markVendors, VERSIONS, STORY_ROOMS } from './versions.js'
 export { INTERIOR_SKINS } from './kit.js'
 
 // Spawns other than pickups keep further than this (Manhattan) from the

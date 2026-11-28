@@ -57,6 +57,8 @@ export const SPRITES = {
   item_sampo_sea: 'item_sampo_sea', item_sampo_mountain: 'item_sampo_mountain', item_sampo_marsh: 'item_sampo_marsh',
   item_pike_jaw: 'item_pike_jaw', item_sampo: 'item_sampo', item_herring: 'item_herring',
   item_sausage:     'item_sausage',
+  // coin and what it buys (tools/make-coin-tiles.mjs)
+  item_coin: 'item_coin', item_bread: 'item_bread', item_turnip: 'item_turnip',
   ow_stump:         'ow_stump',          // felled-tree cell overlay (systems/lumber.js)
   prop_campfire:    'prop_campfire',     // campfire entity (systems/campfire.js)
   prop_hearth_cold: 'prop_hearth_cold',  // placeholders drawn by tools/npc-placeholders.mjs

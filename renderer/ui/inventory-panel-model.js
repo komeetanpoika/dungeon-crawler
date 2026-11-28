@@ -8,6 +8,7 @@ import {
 } from '../systems/inventory.js'
 import { nextStance } from '../systems/ranged.js'
 import { SPELLS } from '../systems/spells.js'
+import { offer, worth, hasPurse } from '../systems/coin.js'
 
 const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥' }
 // The gear grid has room for eight slots; these four are the ones in use.
@@ -100,9 +101,10 @@ const useOf = item => {
 // still named (so its label can be greyed) but has no `fn`.
 //   red     Equip (with `places` when there is more than one) / Unequip
 //   green   Use: eat, drink, build a fire
-//   blue    Drop, held
+//   blue    Drop, held; beside a vendor (`buyer`: { kind, name }, systems/coin.js)
+//           it is Sell for whatever that vendor buys, with what they pay
 //   yellow  Switch character
-export function buttonsFor(player, sel) {
+export function buttonsFor(player, sel, { buyer = null } = {}) {
   const off = label => ({ label, fn: null })
   const yellow = nextStance(player) ? { label: 'Switch character', fn: 'onSwap' } : off('Switch character')
   if (sel.area === 'gear') {
@@ -118,13 +120,15 @@ export function buttonsFor(player, sel) {
   return {
     red: places.length ? { label: equipLabel, fn: places[0].fn, places } : off(equipLabel),
     green: useOf(item) ?? off('Use'),
-    blue: item ? { label: 'Drop', fn: 'onDrop', hold: DROP_HOLD } : off('Drop'),
+    blue: !item ? off('Drop')
+      : buyer && offer(buyer.kind, item) > 0 ? { label: `Sell for ${offer(buyer.kind, item)}`, fn: 'onSell', hold: DROP_HOLD, coins: offer(buyer.kind, item) }
+      : { label: 'Drop', fn: 'onDrop', hold: DROP_HOLD },
     yellow,
   }
 }
 
 // The chosen thing in words: a title and a few short lines.
-export function describe(player, sel) {
+export function describe(player, sel, { buyer = null } = {}) {
   const lines = []
   let item
   if (sel.area === 'gear') {
@@ -145,6 +149,11 @@ export function describe(player, sel) {
   if (item.kind === 'potion' && item.amount) lines.push(`Heals ${item.amount}.`)
   else if (Number.isFinite(item.heal)) lines.push(`Heals ${item.heal}.`)
   if (item.kind === 'consumable' && sel.area === 'gear') lines.push(item.count ? `${item.count} in the bag.` : 'None left in the bag.')
+  // what it would fetch: from the vendor at hand, or (once the hero has met coin) from a smith
+  if (sel.area === 'sack' && worth(item) > 0) {
+    if (buyer) lines.push(`${buyer.name} pays ${offer(buyer.kind, item)} coin.`)
+    else if (hasPurse(player)) lines.push(`Worth ${worth(item)} coin to a smith.`)
+  } else if (sel.area === 'sack' && buyer) lines.push(`${buyer.name} does not buy this.`)
   const no = sel.area === 'sack' ? refusal(player, item) : null
   const count = sel.area === 'sack' && item.stackable && item.count > 1 ? ` ×${item.count}` : ''
   return { title: `${item.name}${count}`, lines, warn: no }

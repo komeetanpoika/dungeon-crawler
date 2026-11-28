@@ -44,7 +44,21 @@ function highlight() {
   currentButtons.forEach((b, i) => b.classList.toggle('selected', i === selectedIndex))
 }
 
-function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, onNet, input, onEscape, selected = 0, compact = false }) {
+// The coin's picture with a count beside it.
+function coinTag(className, count) {
+  const tag = document.createElement('span')
+  tag.className = className
+  const img = document.createElement('img')
+  img.src = './assets/tiles/item_coin.png'
+  img.alt = 'coin'
+  tag.appendChild(img)
+  const n = document.createElement('span')
+  n.textContent = String(count)
+  tag.appendChild(n)
+  return tag
+}
+
+function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, onNet, input, onEscape, selected = 0, compact = false, purse = null }) {
   const el = overlayEl()
   el.innerHTML = ''
   currentInput = null
@@ -74,6 +88,9 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
     panel.appendChild(l)
   }
 
+  // What is in the hero's purse (a vendor's menu): the coin and the count.
+  if (purse !== null) panel.appendChild(coinTag('menu-purse', purse))
+
   if (input) {
     const inp = document.createElement('input')
     inp.className = 'menu-input'
@@ -88,7 +105,7 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
     currentInput = inp
   }
 
-  currentButtons = buttons.map(({ label, onSelect, className, hint }) => {
+  currentButtons = buttons.map(({ label, onSelect, className, hint, price }) => {
     const btn = document.createElement('button')
     btn.className = className ? `menu-btn ${className}` : 'menu-btn'
     btn.textContent = label
@@ -99,6 +116,8 @@ function renderScreen({ title, subtitle, lines = [], buttons, onCheat, onPvp, on
       small.textContent = hint
       btn.appendChild(small)
     }
+    // What the row costs, in coin, at its right end (a vendor's menu).
+    if (price != null) btn.appendChild(coinTag('menu-price', price))
     btn.addEventListener('click', () => onSelect())
     panel.appendChild(btn)
     return btn
@@ -394,6 +413,15 @@ export function showTextEntry({ title, subtitle, value = '', maxLength = 12, aut
 // a title, a line or two, and a button for each answer. Escape is the last.
 export function showChoice({ title, lines = [], buttons }) {
   renderScreen({ title, lines, buttons, onEscape: buttons.at(-1)?.onSelect })
+}
+
+// A vendor's menu (game.js openTrade): what they say, the purse, and a row for
+// each thing on offer with its price in coin. A row the purse cannot pay for
+// carries className 'short' and is dimmed. The last row leaves, as Escape does.
+// `selected` keeps the cursor where it was when the menu is drawn again after
+// a purchase.
+export function showTrade({ title, said = '', purse = 0, rows, selected = 0 }) {
+  renderScreen({ title, lines: said ? [said] : [], purse, buttons: rows, compact: true, selected, onEscape: rows.at(-1)?.onSelect })
 }
 
 export function showMessage({ title, lines = [], onOk, okLabel = 'OK' }) {

@@ -2,6 +2,7 @@ import { resolveOffhand, offhandItem } from '../systems/inventory.js'
 import { iconSrcFor } from './icons.js'
 import { spellFor } from '../systems/spells.js'
 import { isPoisoned } from '../systems/poison.js'
+import { coinsOf, hasPurse } from '../systems/coin.js'
 
 function el(id) { return document.getElementById(id) }
 
@@ -93,6 +94,14 @@ export function updateHUD(state) {
       setHTML(ammoEl, '')
     }
     ammoEl.dataset.active = player.attackMode === 'ranged' ? '1' : ''
+  }
+  // The purse: the coin and how many, shown once the hero has met coin
+  // (systems/coin.js): an empty purse still shows, a hero who never had one has none.
+  const purseEl = el('hud-purse')
+  if (purseEl) {
+    purseEl.hidden = !hasPurse(player)
+    // (a slot never written stays unwritten for a hero without one)
+    if (hasPurse(player) || purseEl._hudHtml) setHTML(purseEl, hasPurse(player) ? `<img src="./assets/tiles/item_coin.png" alt="coin"><span>${coinsOf(player)}</span>` : '')
   }
   const staminaEl = el('hud-stamina')
   el('hud-stamina-fill').style.width =

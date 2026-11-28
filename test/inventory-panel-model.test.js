@@ -172,3 +172,39 @@ describe('the bag holds 24', () => {
     assert.equal(makePlayer(1, 1, ['extra_slot', 'extra_slot']).maxInventory, 26)
   })
 })
+
+describe('beside a vendor the bag sells', () => {
+  const smith = { kind: 'smith', name: 'Seppo' }, inn = { kind: 'innkeeper', name: 'The innkeeper' }
+
+  it('Drop becomes Sell for what the vendor buys, with what they pay', () => {
+    const p = mk()
+    give(p, blade('sword'))
+    addItem(p, makeItem('potion', 2))
+    assert.deepEqual(buttonsFor(p, sack(0)).blue, { label: 'Drop', fn: 'onDrop', hold: 0.5 })
+    assert.deepEqual(buttonsFor(p, sack(0), { buyer: smith }).blue, { label: 'Sell for 8', fn: 'onSell', hold: 0.5, coins: 8 })
+    assert.equal(buttonsFor(p, sack(0), { buyer: inn }).blue.label, 'Sell for 4')
+    // a potion is not bought: it can still be dropped
+    assert.equal(buttonsFor(p, sack(1), { buyer: smith }).blue.fn, 'onDrop')
+    // the other buttons are as ever
+    assert.equal(buttonsFor(p, sack(0), { buyer: smith }).red.label, 'Equip')
+  })
+
+  it('a tale\'s flute is never sold, and gear on the body is not for sale from there', () => {
+    const p = mk({ weapon: weaponContents('axe') })
+    give(p, blade('flute'))
+    assert.equal(buttonsFor(p, sack(0), { buyer: smith }).blue.fn, 'onDrop')
+    assert.equal(buttonsFor(p, gear('main'), { buyer: smith }).blue.fn, null)
+  })
+
+  it('the description says what it fetches: from the vendor at hand, or from a smith once coin is known', () => {
+    const p = mk()
+    give(p, blade('sword'))
+    addItem(p, makeItem('potion', 2))
+    assert.equal(tell(p, sack(0)).lines.some(l => /coin/.test(l)), false)   // a hero who never met coin is told nothing
+    assert.ok(tell(p, sack(0), { buyer: smith }).lines.includes('Seppo pays 8 coin.'))
+    assert.ok(tell(p, sack(1), { buyer: smith }).lines.includes('Seppo does not buy this.'))
+    p.coins = 0
+    assert.ok(tell(p, sack(0)).lines.includes('Worth 8 coin to a smith.'))
+    assert.equal(tell(p, sack(1)).lines.some(l => /coin/.test(l)), false)
+  })
+})

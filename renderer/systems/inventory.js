@@ -34,6 +34,9 @@ const STACKABLE_KINDS = {
   pike_jaw:       { name: "Pike's Jawbone",   emoji: '🦴', extra: { quest: true } },
   sampo:          { name: 'The Sampo',        emoji: '✨', extra: { quest: true } },
   herring:        { name: 'Salt Herring',     emoji: '🐟', extra: { heal: 2 } },   // what the Sampo ground for the Count
+  // What coin buys at a stall or a baker's (data/coin.js): eaten like any food.
+  bread:          { name: 'Rye Bread',        emoji: '🍞', extra: { heal: 2 } },
+  turnip:         { name: 'Turnip',           emoji: '🥔', extra: { heal: 1 } },
 }
 
 export function makeItem(kind, count = 1) {
