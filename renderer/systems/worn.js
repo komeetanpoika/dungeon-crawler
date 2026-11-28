@@ -8,14 +8,16 @@
 // the hero has gone ARMOR.mendDelay without one. What armor has taken is one
 // number on the hero, `dents`, and the armor showing is the played
 // character's own less the dents: so a change of character mends nothing and
-// throws no mended point away.
+// throws no mended point away. Nothing but time takes a dent out: taking a
+// piece off and putting it back on (in the bag, with the game paused) leaves
+// the armor as broken as it was, and dents owed beyond what is worn now are
+// simply mended away in their turn.
 //
 // Pure and DOM-free; reads `player.gear` without creating it, so a bare
 // `{ hp }` hero (a test's, a creature's) simply has no armor.
 import { WORN_SLOTS } from './entities.js'
 
 export const ARMOR = { mendDelay: 6, mendEvery: 2.5 }
-const STANCES = ['melee', 'ranged', 'magic']
 const active = player => player.attackMode ?? 'melee'
 
 // the pieces a character has on, in slot order
@@ -48,13 +50,6 @@ export function tickArmor(player, dt) {
     player.dents -= 1
     player.armorRestT -= every
   }
-}
-
-// After pieces change hands: dents never outnumber the most armor any of the
-// three characters has left.
-export function settleDents(player) {
-  if (!(player.dents > 0)) return
-  player.dents = Math.min(player.dents, Math.max(...STANCES.map(s => armorMax(player, s))))
 }
 
 // What the played character's pieces do to the sprint's stamina cost: mail

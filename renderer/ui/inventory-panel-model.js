@@ -102,7 +102,10 @@ export function refusal(player, item) {
     if (whose !== stanceOf(player)) return `The ${LOADOUT_NAMES[whose]} carries this.`
   }
   if (item.kind === 'shield') return EQUIP_FAIL_MESSAGES[canEquip(player, item, 'off').reason] ?? null
-  if (isWorn(item)) return EQUIP_FAIL_MESSAGES[canEquip(player, item, item.kind).reason] ?? null
+  if (isWorn(item)) {
+    const reason = canEquip(player, item, item.kind).reason
+    return reason === 'heavy' ? "Needs the Knight's Tabard." : EQUIP_FAIL_MESSAGES[reason] ?? null
+  }
   return null
 }
 

@@ -1,6 +1,6 @@
 import { drawSunbeam } from './sunbeam.js'
 import { FACING_ANGLE, isWalkable } from '../systems/entities.js'
-import { heroPicture, lookParts, playerSpriteKey } from './hero-look.js'
+import { heroPicture, lookParts, playerSpriteKey, SPRITE_BASE, SPRITE_TINT } from './hero-look.js'
 import { loadSprites, loadMoreSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
@@ -264,7 +264,9 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       const s = sprites[`weapon_${c.weaponType}`]
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.type === 'outfit') {
-      const s = sprites[`outfit_${c.outfitType}`]
+      // (a Leather Coat from before armor had a slot, still lying in a saved
+      // cave or chest, is the Leather Jerkin it becomes when picked up)
+      const s = c.outfitType === 'leather' ? sprites.gear_leather : sprites[`outfit_${c.outfitType}`]
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.gearType) {
       // a worn piece: headwear, armor, boots or a ring
@@ -1392,8 +1394,13 @@ export class Renderer {
     }
     wheel.beginFrame()
     const t = player.tranceHue ?? 0
+    // (the hero is composed from the plain overlays and recoloured as one
+    // picture: render/hero-look.js asks for these two)
+    const tint = (name, img) => wheel.variant(name, img, spriteHue(name, t))
     return new Proxy(base, {
       get(target, key) {
+        if (key === SPRITE_BASE) return target
+        if (key === SPRITE_TINT) return tint
         const img = target[key]
         if (!img || typeof key !== 'string') return img
         return wheel.variant(key, img, spriteHue(key, t))

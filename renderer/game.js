@@ -125,7 +125,7 @@ import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { tickBinds, playerBound, struggle } from './systems/player-bind.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
-import { tickArmor, settleDents, wornSprintMul, tickMending, purseMul, walkMul } from './systems/worn.js'
+import { tickArmor, wornSprintMul, tickMending, purseMul, walkMul } from './systems/worn.js'
 import { tickRam } from './systems/ram.js'
 import { makeWeather, advanceClock, weatherLook, isNight } from './systems/weather.js'
 import { DAY_START } from './data/weather.js'
@@ -1736,7 +1736,6 @@ function closeToast() {
 }
 
 function afterInventoryChange() {
-  settleDents(state.player)   // pieces may have changed hands (systems/worn.js)
   refreshInventory(state)
   updateHUD(state)
   persistIfSurface()

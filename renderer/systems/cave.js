@@ -103,6 +103,8 @@ export function adventureRespawn(state, spawn) {
     player: {
       ...state.player,
       hp: state.player.maxHp,
+      // armor is whole on waking, as hp is (systems/worn.js), and nothing of the last run lingers
+      dents: 0, armorRestT: 0, mendT: 0, sprinting: false,
       x: spawn.x, y: spawn.y,
       px: centered(spawn.x), py: centered(spawn.y),
     },

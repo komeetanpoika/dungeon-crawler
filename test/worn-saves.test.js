@@ -163,6 +163,20 @@ describe('a kit may dress its characters (applyLoadout `worn`)', () => {
     applyLoadout(p, { worn: { magic: { head: 'cap', ring: 'breath' } } })
     assert.deepEqual([p.gear.magic.head.gearType, p.gear.magic.ring.gearType, p.gear.magic.boots.gearType], ['cap', 'breath', 'elk'])
   })
+  it('an outfit the table does not know is skipped with a warning, not thrown on', () => {
+    const p = makePlayer(1, 1), warnings = []
+    applyLoadout(p, { outfits: ['tuxedo', 'ranger'] }, w => warnings.push(w))
+    assert.equal(warnings.length, 1)
+    assert.match(warnings[0], /tuxedo/)
+    assert.equal(p.gear.ranged.outfit.outfitType, 'ranger')
+  })
+  it('an old kit\'s Leather Coat is the Leather Jerkin on the Warrior', () => {
+    const p = makePlayer(1, 1), warnings = []
+    applyLoadout(p, { outfits: ['leather'] }, w => warnings.push(w))
+    assert.deepEqual(warnings, [])
+    assert.deepEqual(p.gear.melee.armor, worn('leather'))
+    assert.equal(p.gear.melee.outfit, null)
+  })
   it('skips, with a warning, a key it does not know or one named for the wrong slot', () => {
     const p = makePlayer(1, 1), warnings = []
     applyLoadout(p, { worn: { melee: { head: 'crown', boots: 'helm' }, sideways: { head: 'cap' } } }, w => warnings.push(w))

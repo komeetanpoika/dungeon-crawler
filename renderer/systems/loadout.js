@@ -30,7 +30,13 @@ export function applyLoadout(player, po, warn = console.warn) {
   }
   // A kit's `talents` may still name a retired stance talent — it means the
   // outfit now. `outfits` names outfits directly.
-  const wear = ot => { const { type, ...payload } = makeOutfitContents(ot); if (OUTFIT_TYPES[ot]) wearOutfit(player, payload); else warn(`loadout: unknown outfit "${ot}" — skipped`) }
+  // (the Leather Coat was an outfit once: an old kit that names it means the armor piece)
+  const wear = ot => {
+    if (ot === 'leather') { const { type, ...jerkin } = makeWornContents('leather'); gearOf(player, 'melee').armor ??= jerkin; return }
+    if (!OUTFIT_TYPES[ot]) { warn(`loadout: unknown outfit "${ot}" — skipped`); return }
+    const { type, ...payload } = makeOutfitContents(ot)
+    wearOutfit(player, payload)
+  }
   if (Array.isArray(po.talents)) {
     for (const t of po.talents) {
       if (RETIRED_TALENT_OUTFITS[t]) wear(RETIRED_TALENT_OUTFITS[t])

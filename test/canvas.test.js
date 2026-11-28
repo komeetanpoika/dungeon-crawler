@@ -404,6 +404,15 @@ describe('player stance sprites', () => {
     assert.ok(Math.abs(to.alpha - 0.75) < 1e-9)
   })
 
+  it('an old Leather Coat still lying on a saved floor is drawn as the jerkin it will be', () => {
+    const ctx = playerCtx()
+    drawEntity(ctx, { type: 'floating_item', contents: { type: 'outfit', outfitType: 'leather', name: 'Leather Coat' } }, 0, 0, 32, { gear_leather: 'JERKIN' })
+    assert.deepEqual(ctx.images.map(i => i.img), ['JERKIN'])
+    const piece = playerCtx()
+    drawEntity(piece, { type: 'floating_item', contents: { type: 'boots', gearType: 'elk' } }, 0, 0, 32, { gear_elk: 'BOOTS' })
+    assert.deepEqual(piece.images.map(i => i.img), ['BOOTS'])
+  })
+
   // With the overlays loaded the hero is one composed picture (render/hero-look.js).
   const DRESS = () => ({ ...SPR2, ...Object.fromEntries(HERO_PART_TILES.map(n => [n, n.toUpperCase()])) })
   const withDocument = fn => {

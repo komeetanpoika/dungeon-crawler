@@ -4,13 +4,14 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ARMOR, armorMax, armorNow, absorbHit, tickArmor, settleDents, wornSprintMul, wornPower,
+  ARMOR, armorMax, armorNow, absorbHit, tickArmor, wornSprintMul, wornPower,
 } from '../renderer/systems/worn.js'
 import { damagePlayer, INVULN_DURATION } from '../renderer/systems/player-damage.js'
 import { makePlayer, makeWornContents } from '../renderer/systems/entities.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 import { makeHero } from '../renderer/pvp/hero.js'
+import * as wornModule from '../renderer/systems/worn.js'
 
 const payload = key => { const { type, ...p } = makeWornContents(key); return p }
 // a hero wearing `sets`: { melee: ['plate', 'helm'], magic: ['cap'] }
@@ -112,15 +113,39 @@ describe('armor across a change of character', () => {
     p.attackMode = 'magic'
     assert.equal(armorNow(p), 1)
   })
-  it('taking pieces off keeps the dents, down to the most any character still has', () => {
-    const p = hero({ melee: ['plate', 'helm', 'ironshod'], magic: ['leather'] })
-    absorbHit(p, 5)
-    settleDents(p)
-    assert.equal(p.dents, 5)
-    p.gear.melee.armor = null; p.gear.melee.head = null     // melee: 1, magic: 2
-    settleDents(p)
-    assert.equal(p.dents, 2)
+  it('nothing clamps the dents when pieces change hands: the module offers no such thing to call', () => {
+    // game.js used to call settleDents after every change in the bag, which
+    // let armor be taken off and put back on whole, with the game paused
+    assert.equal('settleDents' in wornModule, false)
+  })
+  it('taking a piece off and putting it back on repairs nothing', () => {
+    // (the bag pauses the game: a clamp here would be a free, instant mend mid-fight)
+    const p = hero(FULL)
+    absorbHit(p, 8)
     assert.equal(armorNow(p), 0)
+    const { head, armor, boots } = p.gear.melee
+    Object.assign(p.gear.melee, { head: null, armor: null, boots: null })
+    assert.equal(armorNow(p), 0)
+    assert.equal(p.dents, 8, 'the damage is still owed')
+    Object.assign(p.gear.melee, { head, armor, boots })
+    assert.equal(armorNow(p), 0)
+    // and a part of it: five dents, the cuirass off and on, still three points showing
+    const q = hero(FULL)
+    absorbHit(q, 5)
+    const cuirass = q.gear.melee.armor
+    q.gear.melee.armor = null
+    assert.equal(armorNow(q), 0)
+    q.gear.melee.armor = cuirass
+    assert.equal(armorNow(q), 3)
+  })
+  it('dents owed beyond what is worn mend away in their own time, and never go below nothing', () => {
+    const p = hero(FULL)
+    absorbHit(p, 8)
+    Object.assign(p.gear.melee, { head: null, armor: null, boots: null })
+    tickArmor(p, ARMOR.mendDelay + ARMOR.mendEvery * 3)
+    assert.equal(p.dents, 5)
+    tickArmor(p, 1000)
+    assert.equal(p.dents, 0)
   })
 })
 

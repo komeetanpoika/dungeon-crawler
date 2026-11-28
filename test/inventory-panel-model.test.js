@@ -137,7 +137,7 @@ describe('buttonsFor', () => {
     const p = mk()
     const plate = give(p, makeWornContents('plate'))
     assert.deepEqual(placesFor(p, plate), [])
-    assert.equal(refusal(p, plate), 'Too heavy — I lack the strength.')
+    assert.equal(refusal(p, plate), "Needs the Knight's Tabard.")
     const knight = mk({ gear: gearWearing('plate') })
     assert.deepEqual(placesFor(knight, plate).map(x => x.slot), ['armor'])
     assert.equal(refusal(knight, plate), null)
@@ -187,7 +187,7 @@ describe('describe', () => {
     p.gear.ranged.head = worn('cap')
     assert.deepEqual(tell(p, gear('head')), { title: 'Leather Cap', lines: ['1 armor.', 'Head of the Archer.'], warn: null })
     give(p, makeWornContents('plate'))
-    assert.equal(tell(p, sack(0)).warn, 'Too heavy — I lack the strength.')
+    assert.equal(tell(p, sack(0)).warn, "Needs the Knight's Tabard.")
   })
 })
 

@@ -49,20 +49,32 @@ const keyOf = l => [l.head, l.body, l.feet ?? '-', l.toes?.colour ?? '-', l.ring
 export const lookKey = (player, stance = active(player)) => keyOf(lookParts(player, stance))
 
 const defaultCanvas = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h })
-const made = new WeakMap()   // sprites -> Map(lookKey -> picture)
+const made = new WeakMap()   // the plain sprites -> Map(lookKey -> picture)
+
+// A sprite set that recolours what it hands out (the mushroom trip's:
+// canvas.js _tripSprites wraps the renderer's sprites afresh every frame)
+// answers these two keys, so that the hero is still composed once, from the
+// plain overlays, and recoloured as the one picture he is:
+//   SPRITE_BASE  the plain sprites underneath
+//   SPRITE_TINT  (name, picture) => that picture in this frame's colours
+// A plain sprite object answers neither, and is its own base.
+export const SPRITE_BASE = Symbol('the plain sprites')
+export const SPRITE_TINT = Symbol('recolour a picture')
 
 // The picture to draw for `stance`: something drawImage takes, 16x16, or null
 // when not even the old figure has loaded.
 export function heroPicture(player, stance, sprites, makeCanvas = defaultCanvas) {
   const whole = () => sprites[playerSpriteKey(player, stance)] ?? null
   if (player.cls) return whole()
+  const base = sprites[SPRITE_BASE] ?? sprites
   const look = lookParts(player, stance)
-  let cache = made.get(sprites)
-  if (!cache) made.set(sprites, cache = new Map())
+  let cache = made.get(base)
+  if (!cache) made.set(base, cache = new Map())
   const key = keyOf(look)
+  const tinted = pic => sprites[SPRITE_TINT]?.(`hero:${key}`, pic) ?? pic
   const had = cache.get(key)
-  if (had) return had
-  const layers = [look.feet, look.body, look.head].filter(Boolean).map(k => sprites[k])
+  if (had) return tinted(had)
+  const layers = [look.feet, look.body, look.head].filter(Boolean).map(k => base[k])
   if (layers.some(l => !l)) return whole()
   const pic = makeCanvas(16, 16)
   const ctx = pic.getContext('2d')
@@ -73,7 +85,7 @@ export function heroPicture(player, stance, sprites, makeCanvas = defaultCanvas)
     ctx.fillRect(dot.at[0], dot.at[1], 1, 1)
   }
   cache.set(key, pic)
-  return pic
+  return tinted(pic)
 }
 
 // The bag's portrait of the character being played: a data URL of its

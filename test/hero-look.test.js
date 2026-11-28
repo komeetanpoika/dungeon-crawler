@@ -2,7 +2,7 @@
 // it wears, and the one composed picture that is drawn each frame.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { lookParts, lookKey, heroPicture, heroPortrait, playerSpriteKey } from '../renderer/render/hero-look.js'
+import { lookParts, lookKey, heroPicture, heroPortrait, playerSpriteKey, SPRITE_BASE, SPRITE_TINT } from '../renderer/render/hero-look.js'
 import { makePlayer, makeWornContents } from '../renderer/systems/entities.js'
 import { makeHero } from '../renderer/pvp/hero.js'
 import { HERO_PART_TILES } from '../renderer/data/hero-parts.js'
@@ -140,6 +140,35 @@ describe('heroPicture', () => {
     assert.equal(made.length, 0)
     Object.assign(sprites, allSprites())
     assert.ok(heroPicture(hero(), 'melee', sprites, make) === made[0])
+  })
+  // A mushroom trip hands the renderer's sprites over behind a fresh proxy every
+  // frame, which recolours each sprite it is asked for (canvas.js _tripSprites).
+  const tripping = (base, asked) => new Proxy(base, { get(target, key) {
+    if (key === SPRITE_BASE) return target
+    if (key === SPRITE_TINT) return (name, img) => { asked.push(name); return { tinted: img, name } }
+    const img = target[key]
+    if (img && typeof key === 'string') asked.push(key)
+    return img
+  } })
+  it('on a trip the hero is still composed once, from the plain overlays, and recoloured as one picture', () => {
+    const { make, made } = fakeCanvas()
+    const base = allSprites(), asked = []
+    const p = hero(['plate'], { melee: ['helm', 'chain', 'elk'] })
+    const frames = [1, 2, 3, 4, 5].map(() => heroPicture(p, 'melee', tripping(base, asked), make))
+    assert.equal(made.length, 1, 'one picture for five frames')
+    assert.deepEqual(made[0].ops.map(op => op[1]), ['<hero_feet_elk>', '<hero_body_chain>', '<hero_head_helm>'], 'laid from the plain overlays')
+    for (const f of frames) assert.ok(f.tinted === made[0], 'what is drawn is the one picture, recoloured')
+    assert.deepEqual([...new Set(asked)], [frames[0].name], 'the wheel is asked for one thing: the composed hero')
+    assert.match(frames[0].name, /^hero:/)
+    // and the same look off the trip is the same picture, plain
+    assert.ok(heroPicture(p, 'melee', base, make) === made[0])
+  })
+  it('on a trip an arena hero and an unloaded hero are still the old figure, through the wheel', () => {
+    const { make, made } = fakeCanvas()
+    const asked = []
+    assert.equal(heroPicture(makeHero({ id: 'w', name: 'W', cls: 'warrior' }), 'melee', tripping(allSprites(), asked), make), '<player_melee_heavy>')
+    assert.deepEqual(asked, ['player_melee_heavy'])
+    assert.equal(made.length, 0)
   })
   it('the bag\'s portrait is the picture of the character being played, as a data URL', () => {
     const make = (w, h) => ({ width: w, height: h, layers: [], toDataURL() { return `data:${this.layers.join('+')}` },
