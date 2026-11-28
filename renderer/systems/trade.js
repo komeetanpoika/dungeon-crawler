@@ -7,7 +7,8 @@
 // is taken and the tribe's vendor, if one stands within VENDOR_REACH tiles,
 // says what it costs; while the tribe holds a grudge (systems/tribes.js)
 // nothing is sold at all. Pure and DOM-free.
-import { makeItem, addItem, removeItem } from './inventory.js'
+import { makeItem, addItem, removeItem, gearOf, STANCES } from './inventory.js'
+import { AMMO_CAPS } from './entities.js'
 import { TRIBES } from '../data/tribes.js'
 import { wrathOf, roleOf, isMember, withId } from './tribes.js'
 import { speakFrom, sayDuration } from './feedback.js'
@@ -60,12 +61,26 @@ function vendorSays(state, ware, text) {
   speakFrom(state, withId(vendor), text, sayDuration(text))
 }
 
+// A ware the hero could take nothing of: ammunition for a quiver that is
+// full, an outfit he owns already (game.js's pickup would call either one
+// picked up and add nothing). It is not sold.
+export function givesNothing(player, contents) {
+  if (contents?.type === 'ammo') return (player.ammo?.[contents.ammoKind] ?? 0) >= (AMMO_CAPS[contents.ammoKind] ?? Infinity)
+  if (contents?.type === 'outfit') {
+    const ot = contents.outfitType
+    return STANCES.some(st => gearOf(player, st).outfit?.outfitType === ot)
+      || (player.inventory ?? []).some(i => i.kind === 'outfit' && i.payload?.outfitType === ot)
+  }
+  return false
+}
+
 // The hero stands on `ware`. `grant(contents)` is game.js's own pickup
 // (false when the sack has no room). Returns what came of it:
 //   'bought'  the price was taken, once, and the ware granted: remove it
 //   'short'   the price is not in the sack: nothing taken
 //   'grudge'  its tribe is wronged: nothing sold
-//   'full'    no room for it: the price went back
+//   'full'    no room for it, or nothing of it he could take (a full quiver,
+//             an outfit he owns): the price stays or went back
 export function tryBuy(state, ware, grant) {
   const { player } = state
   const tribe = TRIBES[ware.tribe]
@@ -73,6 +88,7 @@ export function tryBuy(state, ware, grant) {
   // a hero who stands on a ware he has no room for is not asked again every frame
   const cd = state.msgCooldown ?? (state.msgCooldown = {})
   if ((cd.wareFull ?? 0) > 0) return 'full'
+  if (givesNothing(player, ware.contents)) return 'full'
   if (!pay(player, ware.price)) {
     if (valid(ware.price)) vendorSays(state, ware, tribe?.priceLine?.(ware.price.count, priceName(ware.price)))
     return 'short'

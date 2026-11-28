@@ -22,10 +22,11 @@ export const isFrog = player => player?.hex?.t > 0
 export const hasHands = player => !isFrog(player)
 export const frogSpeedMul = player => (isFrog(player) ? HEX.speed : 1)
 
-// True when it took. Whatever the hands were doing is dropped: a charge in
+// True when it took. A hero who is a frog already is not hexed again: with
+// the ward after it, two witches cannot keep him one. Whatever the hands were doing is dropped: a charge in
 // progress, a raised shield, a stance switch under way, a swing in the air.
 export function hexPlayer(player, seconds) {
-  if (!(seconds > 0) || !(player.hp > 0) || playerBound(player) || player.hexWard > 0) return false
+  if (!(seconds > 0) || !(player.hp > 0) || playerBound(player) || player.hexWard > 0 || isFrog(player)) return false
   player.hex = { t: seconds, dur: seconds }
   player.charging = null
   player.blocking = false

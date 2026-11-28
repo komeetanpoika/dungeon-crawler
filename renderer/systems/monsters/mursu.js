@@ -94,7 +94,7 @@ export const TUNING_SCHEMA = [
   { key: 'ring', label: 'Ring (no court)', group: 'bout', type: 'range', min: 3, max: 9, step: 0.5, default: 5, hint: 'tiles: the ring round where he stands when he was dealt none' },
   { key: 'inside', label: 'Comes in', group: 'bout', type: 'range', min: 0.5, max: 4, step: 0.5, default: 2, hint: 'tiles inside the stones before he fights' },
   { key: 'rim', label: 'Keeps off the stones', group: 'bout', type: 'range', min: 0.3, max: 2, step: 0.1, default: 0.7, hint: 'tiles from the ring\'s edge he will not cross in a bout' },
-  { key: 'outside', label: 'Out of the ring', group: 'bout', type: 'range', min: 0.5, max: 6, step: 0.5, default: 2, hint: 'tiles beyond the stones that count as gone' },
+  { key: 'outside', label: 'Out of the ring', group: 'bout', type: 'range', min: 0.5, max: 6, step: 0.5, default: 1, hint: 'tiles beyond the stones that count as gone: keep it inside what his flop and tusks reach from the ring, or he can be shot from where he cannot answer' },
   { key: 'forfeit', label: 'Forfeit after', group: 'bout', type: 'range', min: 0.5, max: 10, step: 0.5, default: 3, hint: 'seconds outside' },
   { key: 'rematch', label: 'Rematch after', group: 'bout', type: 'range', min: 0, max: 300, step: 5, default: 60, hint: 'seconds after a bout fought to its end' },
   { key: 'forfeitRest', label: 'After a forfeit', group: 'bout', type: 'range', min: 0, max: 120, step: 1, default: 10, hint: 'seconds before he answers the gong again' },

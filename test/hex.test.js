@@ -62,13 +62,13 @@ describe('the frog hex', () => {
     assert.equal(hexPlayer(p, 4), false, 'the whole ward is still ahead')
   })
 
-  it('a new hex on a frog starts its time again', () => {
+  it('a frog is not hexed again: his time runs out as it was', () => {
     const p = hero()
     hexPlayer(p, 4)
     for (let i = 0; i < 60 * 3; i++) tickHex(p, 1 / 60)
-    assert.equal(hexPlayer(p, 4), true)
-    for (let i = 0; i < 60 * 3; i++) tickHex(p, 1 / 60)
-    assert.equal(isFrog(p), true)
+    assert.equal(hexPlayer(p, 4), false)
+    for (let i = 0; i < 60 * 1.1; i++) tickHex(p, 1 / 60)
+    assert.equal(isFrog(p), false)
   })
 
   it('does not take on a hero who is riding, frozen, held, in the stocks or dead, nor for no time', () => {

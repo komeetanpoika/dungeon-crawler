@@ -6,7 +6,7 @@ import { makeItem, addItem } from '../renderer/systems/inventory.js'
 import { registerMonsters, clearMonsters, makeMonsterFromDef } from '../renderer/systems/monsters.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
-import { makePlayer } from '../renderer/systems/entities.js'
+import { makePlayer, AMMO_CAPS } from '../renderer/systems/entities.js'
 import { TRIBES, WARES } from '../renderer/data/tribes.js'
 
 const S = 32
@@ -139,6 +139,21 @@ describe('stepping onto a ware', () => {
     assert.equal(tryBuy(state, ware, () => false), 'full')
     assert.equal(count(state.player, 'cooked_meat'), 5)
     assert.equal(state.player.inventory.filter(i => i.kind === 'cooked_meat').length, 1)
+  })
+
+  it('a ware he could take nothing of is not sold: arrows for a full quiver', () => {
+    const { state, ware } = camp()
+    ware.contents = { type: 'ammo', ammoKind: 'arrow', count: 12 }
+    ware.price = { item: 'lumber', count: 2 }
+    addItem(state.player, makeItem('lumber', 5))
+    state.player.ammo = { ...(state.player.ammo ?? {}), arrow: AMMO_CAPS.arrow }
+    let grants = 0
+    assert.equal(tryBuy(state, ware, () => { grants++; return true }), 'full')
+    assert.equal(grants, 0)
+    assert.equal(count(state.player, 'lumber'), 5)
+    state.player.ammo.arrow = AMMO_CAPS.arrow - 1
+    assert.equal(tryBuy(state, ware, () => { grants++; return true }), 'bought')
+    assert.equal(count(state.player, 'lumber'), 3)
   })
 
   it('only a living vendor within eight tiles speaks: a guard never does, nor one far off or dead', () => {

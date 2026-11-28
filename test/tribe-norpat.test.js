@@ -761,6 +761,17 @@ describe('mursu, the walrus: the bout', () => {
     assert.ok(least >= 1, `least ${least}`)
   })
 
+  it('a step and a half beyond the stones is out of the ring: nobody shoots him from where he cannot answer', () => {
+    const c = bout(), { s, e } = c, M = T('mursu')
+    only(e, 'none')
+    // (his flop reaches about a tile and a half beyond the stones; the ring ends a tile beyond them)
+    assert.ok(M.outside <= 1)
+    moveHero(s, 20, 22 + 5 + 1.5)
+    run(s, M.forfeit + 0.3)
+    assert.equal(mursu.inBout(e), false)
+    assert.equal(e.hp, e.maxHp)
+  })
+
   it('a hero who stays outside the ring forfeits', () => {
     const c = bout(), { s, e } = c, M = T('mursu')
     only(e, 'none')

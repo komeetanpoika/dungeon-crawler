@@ -1970,8 +1970,11 @@ function update(delta) {
   }
 
   // Floating item pickup (step onto landing tile once arc completes)
-  const floatIdx = !onFoot ? -1 : state.entities.findIndex(e =>
-    e.type === 'floating_item' && e.progress >= 1 && e.x === player.x && e.y === player.y)
+  // (what simply lies there before a ware on the same cell: a drop that
+  // landed on a trader's mat is not held back by the ware's price)
+  const lying = e => e.type === 'floating_item' && e.progress >= 1 && e.x === player.x && e.y === player.y
+  const freeIdx = !onFoot ? -1 : state.entities.findIndex(e => lying(e) && !e.price)
+  const floatIdx = !onFoot ? -1 : freeIdx !== -1 ? freeIdx : state.entities.findIndex(lying)
   if (floatIdx !== -1) {
     const item = state.entities[floatIdx]
     // A ware (systems/trade.js) is paid for first: the price leaves the sack
