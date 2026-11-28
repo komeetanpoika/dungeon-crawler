@@ -1,0 +1,16 @@
+{
+  "name": "norppalaulaja",
+  "rig": "seal",
+  "params": {
+    "role": 1,
+    "scale": 1,
+    "bodyColor": "#7f8a99",
+    "bellyColor": "#d6dbd6",
+    "accentColor": "#f08fa6"
+  },
+  "stats": { "hp": 5, "speed": 60 },
+  "behavior": { "tribe": "norpat", "role": "healer", "driver": "hook", "taxon": "mammal", "fleeHp": 1, "sightRange": 220, "wanderSpeed": 30 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": {}
+}

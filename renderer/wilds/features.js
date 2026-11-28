@@ -30,6 +30,7 @@ import { ROAD_WIDTH, roadLane0 } from './terrain.js'
 import { inGentleRing, isDesert, SPIRE, CAIRN, PALM, PILLAR, LONE_PILLAR, ARCH, BONES, REEDS } from './desert.js'
 import { desertDress, isHardpanSkin } from './desert-art.js'
 import { desertCast, DESERT_PACKS, DESERT_RARE, DESERT_CAMPS, isGentle, isBound, hasWorm, hasPit, WORM_KEEP, WORM_ROAD, PIT_ROOM } from './desert-cast.js'
+import { tribeAt, tribeOfKind, TRIBE_KINDS, TRIBE_PACKS, TRIBE_CAMPS, TRIBE_SEATS, COPIES, PACK_ODDS, pickWares, wareSpawn } from './tribes-cast.js'
 
 // How many spires and cairns a desert piece holds, at least how far apart,
 // and the share of them that are spires (the rest are cairns).
@@ -588,15 +589,47 @@ export function placeFeatures(t, piece) {
     return { all, common: all.filter(p => !rare.has(p)), rare }
   }
   const rosters = [rosterOf(PACKS, RARE, p => p.every(f => f.kind === 'monster')), rosterOf(DESERT_PACKS, DESERT_RARE, isGentle)]
+  // On a tribe's country (tribes-cast.js: the mountains, the marsh, the sea;
+  // judged at the spot, and never in the ring round home) its packs join the
+  // land's own row, its camps the land's camps, and a boss's place may be its
+  // seat. A village's and farmland's gentle packs hold none of a tribe. Where
+  // no tribe lives not one draw differs.
+  const tribeOn = (x, y) => inGentleRing(wx, wy) ? null : tribeAt(t.biome(x, y))
+  const tribal = {}
+  const rosterAt = (x, y) => {
+    if (desertAt(x, y)) return rosters[1]
+    const tribe = tribeOn(x, y)
+    if (!tribe || gentleOnly || !TRIBE_PACKS[tribe][packRow].length) return rosters[0]
+    if (!tribal[tribe]) {
+      const all = [...rosters[0].all, ...TRIBE_PACKS[tribe][packRow]]
+      tribal[tribe] = { all, common: all.filter(p => !RARE.has(p)), rare: RARE, own: new Set(TRIBE_PACKS[tribe][packRow]), land: rosters[0].common }
+    }
+    return tribal[tribe]
+  }
+  // One of a tribe is dealt with its home: the middle of its camp or seat, or
+  // where its pack was posted (piece tiles; session.js moves it with the spawn).
+  const housed = (foe, x, y) => TRIBE_KINDS.has(foe.kind) ? { ...foe, home: { x, y } } : foe
   const pickPack = (x, y, allow = null) => {
-    const r = rosters[desertAt(x, y) ? 1 : 0]
+    const r = rosterAt(x, y)
     let p = pick(r.all)
     if (r.rare.has(p) && !(rng() < RARE_ODDS)) p = pick(r.common)
+    // a tribe's pack is kept PACK_ODDS of the times it is picked, else one of the land's own is
+    if (r.own?.has(p) && !(rng() < PACK_ODDS)) p = pick(r.land)
     if (allow && !allow(p)) { const rest = r.common.filter(allow); p = rest.length ? pick(rest) : [] }
     return p
   }
   const unbound = p => !isBound(p)
-  const campFor = (x, y) => pick((desertAt(x, y) ? DESERT_CAMPS : CAMPS).filter(c => c.from <= tier && c.from >= tier - 2))
+  // The camp of a spot: one of the land's for the toughness, or on a tribe's
+  // country one of the tribe's, each listed `copies` times beside them (a
+  // tribe's camp is never outgrown). `haven`: whether a friendly camp may be
+  // dealt (a watchtower is held by somebody who fights).
+  const campFor = (x, y, haven = true) => {
+    const lands = (desertAt(x, y) ? DESERT_CAMPS : CAMPS).filter(c => c.from <= tier && c.from >= tier - 2)
+    const tribe = tribeOn(x, y)
+    if (!tribe) return pick(lands)
+    const own = TRIBE_CAMPS[tribe].filter(c => c.from <= tier && (haven || !c.friendly))
+    return pick([...lands, ...own.flatMap(c => Array(c.copies ?? COPIES).fill(c))])
+  }
   const smallKinds = ['chest', 'chest', 'rocks', 'hut']
   if (ANIMALS[piece.biome]) smallKinds.push('animals', 'animals')
   if (['forest', 'autumn', 'marsh'].includes(piece.biome)) smallKinds.push('mushrooms')
@@ -650,9 +683,14 @@ export function placeFeatures(t, piece) {
     taken: (x, y) => taken.has(`${x},${y}`), rocks: rocksFor(here), sandy, desert, pad,
   })
   // A camp's foes round (cx, cy): three to five of its roster (five far out), its leaders nearest.
+  // A tribe's camp holds its roster whole, each once, at home by (cx, cy).
   const garrison = (camp, cx, cy) => {
-    const n = tier >= 4 ? 5 : ri(3, 5)
     const lead = camp.lead ?? 0
+    if (camp.tribe) {
+      camp.foes.forEach((foe, i) => place(housed(foe, cx, cy), cx, cy, i < lead ? 1 : 2, i < lead ? 4 : 5))
+      return
+    }
+    const n = tier >= 4 ? 5 : ri(3, 5)
     for (let i = 0; i < lead; i++) place(camp.foes[i], cx, cy, 1, 4)
     for (let i = lead; i < n; i++) place(camp.foes[lead + ((i - lead) % (camp.foes.length - lead))], cx, cy, 2, 5)
   }
@@ -684,9 +722,17 @@ export function placeFeatures(t, piece) {
     }
     return news
   }
+  // A trader of a friendly tribe on his mat, at home by `home`, and three
+  // wares in a row before him (tribes-cast.js pickWares: three draws).
+  const stall = (tribe, vendor, mat, home) => {
+    spawn({ ...vendor, x: mat.x, y: mat.y, home: { x: home.x, y: home.y } })
+    pickWares(rng).forEach((ware, i) => spawn(wareSpawn(tribe, ware, mat.x - 1 + i, mat.y + 1)))
+  }
   let spawnPoint = null
   // where the packs keep their distance from: the main thing's middle, or the inn's where it was laid
   let heart = { x: mx, y: my }
+  // a friendly tribe's camp or seat: no pack is dealt near it, as none is near a village
+  let haven = false
   if (geo) {
     piece.points = sites.tales[piece.tale](geo)
     spawnPoint = hub
@@ -729,10 +775,15 @@ export function placeFeatures(t, piece) {
     hold(mx, my); hold(mx + 1, my)
     spawnPoint = { x: mx, y: my + 2 }
   } else if (kind === 'camp') {
+    // a tribe's camp (tribes-cast.js) is named on the piece's main thing; a
+    // friendly one has a stall where another camp has its chest
     const camp = campFor(mx, my)
-    sites.camp(mx, my, camp.look)
+    const made = sites.camp(mx, my, camp.look, { lit: !!camp.lit, stall: !!camp.vendor })
+    if (camp.tribe) Object.assign(piece.main, { tribe: camp.tribe, site: camp.name })
+    if (camp.vendor) stall(camp.tribe, camp.vendor, made.mat, piece.main)
     garrison(camp, mx, my)
-    place({ kind: 'chest' }, mx, my, 1, 2)
+    if (camp.friendly) haven = true
+    else place({ kind: 'chest' }, mx, my, 1, 2)
   } else if (kind === 'rest') {
     // the eternal fire, a tent, and a traveller who has come from the next town
     for (const p of sites.rest(mx, my).people) npc(p.species, p.x, p.y, traveller())
@@ -757,8 +808,34 @@ export function placeFeatures(t, piece) {
     // held from toughness 2 by whoever would camp at this toughness, empty at 1
     const door = sites.tower(mx, my).doors[0] ?? { x: mx, y: my }
     place({ kind: 'chest' }, door.x, door.y + 3, 0, 2, offPaths)
-    if (tier >= 2) garrison(campFor(door.x, door.y + 2), door.x, door.y + 2)
+    if (tier >= 2) garrison(campFor(door.x, door.y + 2, false), door.x, door.y + 2)
     spawnPoint = hub
+  } else if (kind === 'boss' && tribeOn(mx, my) && rng() < TRIBE_SEATS[tribeOn(mx, my)].odds) {
+    // a tribe's seat (tribes-cast.js TRIBE_SEATS, sites.js hall, sabbath,
+    // court): its boss on the seat, the gong of a court, a friendly seat's
+    // stall, then the retinue round the heart (outside a court's ring, the
+    // singer by her tent); a chest where the tribe is no friend
+    const tribe = tribeOn(mx, my), seat = TRIBE_SEATS[tribe]
+    const made = sites[seat.site](mx, my)
+    const at = made.heart
+    Object.assign(piece.main, { tribe, site: seat.site })
+    spawn({ ...seat.boss, x: made.seat.x, y: made.seat.y, home: { x: at.x, y: at.y }, ...(made.ring ? { ring: made.ring.r } : {}) })
+    if (seat.gong) spawn({ ...seat.gong, x: made.gong.x, y: made.gong.y, home: { x: at.x, y: at.y } })
+    if (seat.vendor) stall(tribe, seat.vendor, made.mat, at)
+    const outside = (x, y) => !made.ring || Math.hypot(x - at.x, y - at.y) > made.ring.r + 0.5
+    const [near, far] = made.ring ? [made.ring.r + 1, made.ring.r + 2] : [2, 4]
+    const retinue = [...seat.foes, ...(seat.more ?? []).filter(m => m.from <= tier).map(m => m.foe)]
+    retinue.forEach((foe, i) => {
+      if (i === 0 && made.song) place(housed(foe, at.x, at.y), made.song.x, made.song.y, 0, 1, outside)
+      else place(housed(foe, at.x, at.y), at.x, at.y, near, far, outside)
+    })
+    if (seat.friendly) haven = true
+    else place({ kind: 'chest' }, mx, my, 3, 5)
+    if (made.ring) {
+      // the court's named points (piece tiles), and the packs keep off its ring
+      piece.main.court = { ring: made.ring, gong: made.gong, seat: made.seat, mat: made.mat }
+      heart = at
+    }
   } else if (kind === 'boss') {
     sites.lair(mx, my)
     if (tier >= 4 && rng() < 0.5) for (let i = 0; i < 3; i++) place({ kind: 'manticore' }, mx, my, 1, 3)
@@ -832,12 +909,12 @@ export function placeFeatures(t, piece) {
     } else if (s.kind === 'nest') {
       spawn({ kind: 'chest', x: s.x, y: s.y })
       sites.nest(s.x, s.y)
-      for (const foe of pickPack(s.x, s.y, unbound).slice(0, 2)) place(foe, s.x, s.y, 1, 2)
+      for (const foe of pickPack(s.x, s.y, unbound).slice(0, 2)) place(housed(foe, s.x, s.y), s.x, s.y, 1, 2)
     } else if (s.kind === 'stones') {
       spawn({ kind: 'chest', x: s.x, y: s.y })
       sites.stones(s.x, s.y)
       const guards = tier >= 2 ? [bones, bones] : pickPack(s.x, s.y, unbound).slice(0, 2)
-      for (const foe of guards) place(foe, s.x, s.y, 1, 3)
+      for (const foe of guards) place(housed(foe, s.x, s.y), s.x, s.y, 1, 3)
     } else {
       // a knot of rocks to mine, around the end of the trail
       const set = rocksFor(t.biome(s.x, s.y))
@@ -1102,7 +1179,7 @@ export function placeFeatures(t, piece) {
   const village = kind === 'village'
   const calm = roadPiece && (tier <= 2 || farmland)
   const offRoad = (x, y, r) => !calm || roadNear()[y * PIECE + x] > r * r
-  const keep = village || farmland ? VILLAGE_CALM : pad + 8
+  const keep = village || farmland || haven ? VILLAGE_CALM : pad + 8
   const rim = FRAME + 4
   const roomy = (x, y) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!t.free(x + dx, y + dy)) return false; return true }
   const clear = (x, y) => x >= rim && y >= rim && x < PIECE - rim && y < PIECE - rim &&
@@ -1151,7 +1228,7 @@ export function placeFeatures(t, piece) {
       for (let dy = -PIT_ROOM; dy <= PIT_ROOM; dy++) for (let dx = -PIT_ROOM; dx <= PIT_ROOM; dx++) { t.clear(x + dx, y + dy); taken.add(`${x + dx},${y + dy}`) }
       t.keepOpen(x, y, PIT_ROOM + 2)
       made = [spawn({ ...dealt[0], x, y })]
-    } else made = dealt.map(foe => place(foe, x, y, 0, 2, inSand(foe))).filter(Boolean)
+    } else made = dealt.map(foe => place(housed(foe, x, y), x, y, 0, 2, inSand(foe))).filter(Boolean)
     // the road's calm is measured to each foe, not to the middle of its pack; so is a farm's
     const strays = made.filter(s => !offRoad(s.x, s.y, ROAD_CALM) || (farmland && Math.hypot(s.x - mx, s.y - my) < VILLAGE_CALM))
     if (strays.length) {
@@ -1159,7 +1236,9 @@ export function placeFeatures(t, piece) {
       made = made.filter(s => !strays.includes(s))
     }
     // a village's calm is measured to each foe, not to the middle of its pack
-    if (made.length) piece.packs.push({ x, y, road })
+    // (a tribe's pack says whose it is)
+    const tribe = tribeOfKind(dealt[0]?.kind)
+    if (made.length) piece.packs.push(tribe ? { x, y, road, tribe } : { x, y, road })
   }
   // (on a calm road piece the draw is still made, and nothing posted on its road)
   if (!village && rng() < 0.5 && !calm) {

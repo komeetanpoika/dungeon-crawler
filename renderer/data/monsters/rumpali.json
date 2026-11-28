@@ -1,0 +1,10 @@
+{
+  "name": "rumpali",
+  "rig": "troll",
+  "params": { "role": 2, "scale": 1 },
+  "stats": { "hp": 5, "dmg": 0, "speed": 75 },
+  "behavior": { "tribe": "peikot", "role": "healer", "taxon": "humanoid", "fleeHp": 0, "kiteBand": [160, 256], "sightRange": 300, "stopRange": 0 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "hear": 9, "reach": 6, "beat": 0.55, "stir": 1.2, "haste": 1.3, "quicken": 0.1, "mendEvery": 6, "mend": 1, "silence": 2 }
+}

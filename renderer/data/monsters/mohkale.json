@@ -1,0 +1,10 @@
+{
+  "name": "mohkale",
+  "rig": "troll",
+  "params": { "role": 0, "scale": 1 },
+  "stats": { "hp": 8, "dmg": 2, "speed": 62 },
+  "behavior": { "tribe": "peikot", "role": "fighter", "taxon": "humanoid", "fleeHp": 0, "weapon": "maul", "sightRange": 220, "stopRange": 22 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "open": 0.9 }
+}

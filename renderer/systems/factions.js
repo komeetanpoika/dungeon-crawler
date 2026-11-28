@@ -12,8 +12,10 @@ import { getMonsterDef } from './monsters.js'
 // Generated monsters (registered in systems/monsters.js) join as enemies too,
 // so they run the brain and the standard hit/death pipeline like any built-in
 // type — registry membership decides it, never a literal type-string list.
+// A member of a friendly tribe at peace carries `peaceful` (systems/tribes.js
+// sets it and takes it away when the tribe is wronged): no enemy while it does.
 export function isEnemy(e) {
-  if (e.dying > 0) return false
+  if (e.dying > 0 || e.peaceful) return false
   const def = getMonsterDef(e.type)
   // PvP heroes (renderer/pvp/) are every other hero's enemy.
   return e.type === 'guard' || e.type === 'monster' || e.type === 'dragon'
@@ -39,9 +41,10 @@ export function isHittable(e) {
 // isEnemy: passive story creatures (the Näkki) stay reachable, which is the
 // whole point of Call Lightning's conduction clause. The player's own aimed
 // weapons keep using isHittable — hitting the baker with a swing is the
-// player's choice to make; a spell fanning out is not.
+// player's choice to make; a spell fanning out is not. The same goes for a
+// tribe at peace (`peaceful`): a seal camp is not wrecked by a stray spell.
 export function isSpellTarget(e) {
-  return isHittable(e) && !(e.type === 'npc' && !e.hostile)
+  return isHittable(e) && !e.peaceful && !(e.type === 'npc' && !e.hostile)
 }
 
 // The frame's death cull predicate. hp is `undefined` for creatures like the

@@ -137,6 +137,78 @@ export const RECIPES = {
   'yip':       { kind: 'seq', dur: 0.36, vol: 0.5, parts: [
     { at: 0, kind: 'blip', wave: 'triangle', f0: 700, f1: 1100, dur: 0.1, vol: 1 },
     { at: 0.16, kind: 'blip', wave: 'triangle', f0: 800, f1: 1300, dur: 0.12, vol: 0.9 } ] },
+  // The mountain trolls. The drum is heard from far off (the engine's own
+  // falloff): a low thud with a skin's knock on it. A blow on the slab rings
+  // like stone on iron. Stones land with a crack and a short rumble; the
+  // King's boulder grinds as it sets off, his stomp is the deepest thing in
+  // the game, and his bellow a long falling roar.
+  'drum': { kind: 'seq', dur: 0.2, vol: 0.75, parts: [
+    { at: 0, kind: 'blip', wave: 'triangle', f0: 150, f1: 70, dur: 0.16, vol: 1 },
+    { at: 0, kind: 'burst', freq: 420, q: 1.4, dur: 0.05, vol: 0.6 } ] },
+  'clank': { kind: 'seq', dur: 0.14, vol: 0.7, parts: [
+    { at: 0, kind: 'burst', freq: 2400, q: 6, dur: 0.09, vol: 1 },
+    { at: 0.01, kind: 'blip', wave: 'square', f0: 980, f1: 760, dur: 0.07, vol: 0.4 } ] },
+  'rockfall': { kind: 'seq', dur: 0.5, vol: 0.9, parts: [
+    { at: 0, kind: 'burst', freq: 260, q: 0.8, dur: 0.16, vol: 1 },
+    { at: 0.03, kind: 'rumble', freq: 70, dur: 0.45, vol: 0.8 } ] },
+  'boulder': { kind: 'seq', dur: 1.0, vol: 0.8, parts: [
+    { at: 0, kind: 'burst', freq: 200, q: 0.7, dur: 0.14, vol: 0.8 },
+    { at: 0.05, kind: 'rumble', freq: 52, dur: 0.95, vol: 1 } ] },
+  'stomp': { kind: 'seq', dur: 0.7, vol: 1, parts: [
+    { at: 0, kind: 'rumble', freq: 42, dur: 0.7, vol: 1 },
+    { at: 0, kind: 'burst', freq: 150, q: 0.7, dur: 0.2, vol: 0.9 } ] },
+  'troll-bellow': { kind: 'seq', dur: 1.1, vol: 0.8, parts: [
+    { at: 0, kind: 'blip', wave: 'square', f0: 190, f1: 85, dur: 1.1, vol: 0.7 },
+    { at: 0.05, kind: 'swoosh', f0: 420, f1: 160, dur: 1.0, vol: 0.8 } ] },
+  // The marsh coven. A para's three spindle legs tick on the ground; with
+  // nothing to steal it blows a raspberry. A hex leaves the witch's finger
+  // with a rising shimmer and takes hold with a fall and a croak. Needles
+  // click, the cupping horn sucks and pops, a viper hisses, Syöjätär spits.
+  'para-skitter': { kind: 'seq', dur: 0.26, vol: 0.35, parts: [0, 0.06, 0.12, 0.18].map((at, i) =>
+    ({ at, kind: 'burst', freq: 3000 + i * 200, q: 4, dur: 0.035, vol: 1 })) },
+  'raspberry': { kind: 'seq', dur: 0.4, vol: 0.5, parts: [
+    { at: 0, kind: 'burst', freq: 190, q: 0.5, dur: 0.38, vol: 0.9 },
+    { at: 0, kind: 'blip', wave: 'square', f0: 130, f1: 85, dur: 0.36, vol: 0.5 } ] },
+  'hex-cast': { kind: 'seq', dur: 0.36, vol: 0.55, parts: [
+    { at: 0, kind: 'swoosh', f0: 500, f1: 2400, dur: 0.3, vol: 0.8 },
+    { at: 0.08, kind: 'blip', wave: 'triangle', f0: 880, f1: 1320, dur: 0.26, vol: 0.6 } ] },
+  'hex-hit': { kind: 'seq', dur: 0.5, vol: 0.7, parts: [
+    { at: 0, kind: 'blip', wave: 'triangle', f0: 1300, f1: 300, dur: 0.24, vol: 0.8 },
+    { at: 0.26, kind: 'blip', wave: 'square', f0: 150, f1: 230, dur: 0.1, vol: 0.7 },
+    { at: 0.38, kind: 'blip', wave: 'square', f0: 150, f1: 240, dur: 0.1, vol: 0.6 } ] },
+  'knit': { kind: 'seq', dur: 0.16, vol: 0.3, parts: [
+    { at: 0, kind: 'burst', freq: 4200, q: 5, dur: 0.03, vol: 1 },
+    { at: 0.1, kind: 'burst', freq: 3800, q: 5, dur: 0.03, vol: 0.8 } ] },
+  'cup': { kind: 'seq', dur: 0.36, vol: 0.5, parts: [
+    { at: 0, kind: 'swoosh', f0: 900, f1: 300, dur: 0.26, vol: 0.7 },
+    { at: 0.28, kind: 'burst', freq: 520, q: 3, dur: 0.06, vol: 1 } ] },
+  'hiss': { kind: 'burst', freq: 5200, q: 0.7, dur: 0.35, vol: 0.4 },
+  'spit': { kind: 'seq', dur: 0.2, vol: 0.6, parts: [
+    { at: 0, kind: 'burst', freq: 700, q: 1, dur: 0.05, vol: 0.9 },
+    { at: 0.03, kind: 'swoosh', f0: 1300, f1: 420, dur: 0.16, vol: 0.8 } ] },
+  // The seal folk. The song is four soft notes, up and back (it sounds once a
+  // beat while she sings, so it is short and quiet); a bark is two short
+  // yelps; the gong is a low note that hangs with its octave over it; the
+  // walrus snorts through his moustache and comes down like a felled tree.
+  'seal-song': { kind: 'seq', dur: 1.1, vol: 0.38, parts: [
+    { at: 0, kind: 'blip', wave: 'triangle', f0: 523, f1: 587, dur: 0.26, vol: 0.9 },
+    { at: 0.27, kind: 'blip', wave: 'triangle', f0: 659, f1: 659, dur: 0.24, vol: 0.9 },
+    { at: 0.53, kind: 'blip', wave: 'triangle', f0: 784, f1: 740, dur: 0.26, vol: 0.8 },
+    { at: 0.8, kind: 'blip', wave: 'triangle', f0: 659, f1: 587, dur: 0.3, vol: 0.8 } ] },
+  'seal-bark': { kind: 'seq', dur: 0.3, vol: 0.5, parts: [
+    { at: 0, kind: 'blip', wave: 'square', f0: 300, f1: 210, dur: 0.11, vol: 1 },
+    { at: 0.17, kind: 'blip', wave: 'square', f0: 330, f1: 220, dur: 0.12, vol: 0.9 } ] },
+  'harpoon': { kind: 'swoosh', f0: 1500, f1: 2700, dur: 0.13, vol: 0.5 },
+  'gong': { kind: 'seq', dur: 1.5, vol: 0.9, parts: [
+    { at: 0, kind: 'burst', freq: 900, q: 2, dur: 0.07, vol: 0.7 },
+    { at: 0, kind: 'blip', wave: 'triangle', f0: 196, f1: 186, dur: 1.5, vol: 1 },
+    { at: 0.01, kind: 'blip', wave: 'triangle', f0: 392, f1: 372, dur: 0.9, vol: 0.4 } ] },
+  'flop': { kind: 'seq', dur: 0.6, vol: 1, parts: [
+    { at: 0, kind: 'burst', freq: 320, q: 0.6, dur: 0.18, vol: 0.9 },
+    { at: 0, kind: 'rumble', freq: 50, dur: 0.6, vol: 1 } ] },
+  'walrus-snort': { kind: 'seq', dur: 0.4, vol: 0.6, parts: [
+    { at: 0, kind: 'burst', freq: 210, q: 0.8, dur: 0.24, vol: 1 },
+    { at: 0.06, kind: 'blip', wave: 'square', f0: 115, f1: 72, dur: 0.32, vol: 0.5 } ] },
   // A drink at a well or an oasis's water (wilds/heat.js, once each time the
   // hero comes to it): the splash of water scooped up, then three gulps, each
   // a little lower. Positionless, quieter than a blow.

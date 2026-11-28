@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawMeleeSwing, drawRiteCeremony, playerSpriteKey, Renderer, drawHero, drawHealthBars } from '../renderer/render/canvas.js'
+import { drawTile, isFlickerVisible, shakeOffset, drawEnemySwing, drawEntity, drawMeleeSwing, drawRiteCeremony, playerSpriteKey, Renderer, drawHero, drawHealthBars, drawFrog, drawPriceTags } from '../renderer/render/canvas.js'
 import { registerMonsters, clearMonsters } from '../renderer/systems/monsters.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { CAMPFIRE_DURATION, CAMPFIRE_FADE, campfireAlpha } from '../renderer/systems/campfire.js'
@@ -1170,5 +1170,166 @@ describe('drawHealthBars', () => {
       assert.ok(bg.y >= e.py + drawnTop(params, S) - 12, 'not floating far above it')
       assert.equal(bg.x, e.px - S / 2, 'still centred over the monster')
     } finally { clearMonsters() }
+  })
+
+  it('draws none over one of a tribe at peace, whatever an old fight left on it', () => {
+    assert.equal(bars({ ...at('guard', 3, 3), peaceful: true }).length, 0)
+    assert.equal(bars({ ...at('guard', 3, 3), peaceful: false }).length, 2)
+  })
+})
+
+// The coven's hex (systems/hex.js): a frog where the hero stood.
+describe('the hexed hero', () => {
+  function frogCtx() {
+    const ops = []
+    let fs = '', alpha = 1
+    const base = {
+      ops,
+      drawImage: img => ops.push({ name: 'drawImage', img }),
+      fillRect: (x, y, w, h) => ops.push({ name: 'fillRect', x, y, w, h, fs }),
+      scale: (x, y) => ops.push({ name: 'scale', x, y }),
+      translate: (x, y) => ops.push({ name: 'translate', x, y }),
+      arc: (...a) => ops.push({ name: 'arc', a }),
+      get fillStyle() { return fs }, set fillStyle(v) { fs = v },
+      get globalAlpha() { return alpha }, set globalAlpha(v) { alpha = v },
+    }
+    return new Proxy(base, { get(t, p, r) { return p in t ? Reflect.get(t, p, r) : () => {} } })
+  }
+  const SPR = { player_base: 'PLAYER', weapon_sword: 'SWORD', weapon_buckler: 'SHIELD' }
+  const hero = (over = {}) => ({ type: 'player', x: 1, y: 1, px: 48, py: 48, facing: 'east', invulnTimer: 0, hp: 5, maxHp: 5,
+    attackMode: 'melee', walkPhase: 0, swayAmp: 0, weapon: { weaponType: 'sword' },
+    gear: { melee: { off: { kind: 'shield', weaponType: 'buckler' }, outfit: null } }, ...over })
+  const images = ctx => ctx.ops.filter(o => o.name === 'drawImage').map(o => o.img)
+  const greens = ctx => ctx.ops.filter(o => o.name === 'fillRect' && o.fs === '#63c048')
+
+  it('is drawn as himself, with what he holds, until he is hexed', () => {
+    const ctx = frogCtx()
+    drawEntity(ctx, hero(), 32, 32, 32, SPR)
+    assert.deepEqual(images(ctx), ['PLAYER', 'SWORD', 'SHIELD'])
+    assert.equal(greens(ctx).length, 0)
+  })
+
+  it('a frog is drawn in code in his place: no hero sprite, and nothing in its hands', () => {
+    const ctx = frogCtx()
+    drawEntity(ctx, hero({ hex: { t: 3, dur: 4 } }), 32, 32, 32, SPR)
+    assert.deepEqual(images(ctx), [])
+    assert.ok(greens(ctx).length >= 3, 'a green body')
+    // small: every rect within the tile it stands on
+    const feet = ctx.ops.find(o => o.name === 'translate')
+    for (const r of ctx.ops.filter(o => o.name === 'fillRect')) {
+      assert.ok(Math.abs(r.x) <= 16 && Math.abs(r.x + r.w) <= 20, `x ${r.x}..${r.x + r.w}`)
+      assert.ok(feet.y + r.y >= 32 && feet.y + r.y + r.h <= 64 + 1, `y ${feet.y + r.y}`)
+    }
+  })
+
+  it('looks the way he faces: mirrored for west', () => {
+    const flipOf = facing => {
+      const ctx = frogCtx()
+      drawEntity(ctx, hero({ hex: { t: 3, dur: 4 }, facing }), 32, 32, 32, SPR)
+      return ctx.ops.find(o => o.name === 'scale').x
+    }
+    assert.equal(flipOf('east'), 1)
+    assert.equal(flipOf('west'), -1)
+    assert.equal(flipOf('south'), 1)
+  })
+
+  it('hops while he moves: off the ground at mid-stride, down again when he stands', () => {
+    const liftOf = over => {
+      const ctx = frogCtx()
+      drawFrog(ctx, hero({ hex: { t: 3, dur: 4 }, ...over }), 32, 32, 32)
+      return ctx.ops.filter(o => o.name === 'translate').at(-1).y
+    }
+    assert.equal(liftOf({ walkPhase: 0, swayAmp: 0 }), 0)
+    assert.equal(liftOf({ walkPhase: Math.PI / 2, swayAmp: 0 }), 0, 'standing still mid-stride: no hop')
+    assert.ok(liftOf({ walkPhase: Math.PI / 2, swayAmp: 1 }) < -3)
+    assert.equal(liftOf({ walkPhase: Math.PI, swayAmp: 1 }), 0)
+  })
+
+  it('swings nothing and winds up nothing, even with a swing or a charge left on him', () => {
+    const ctx = frogCtx()
+    drawHero(ctx, hero({ hex: { t: 3, dur: 4 }, attackTimer: 0.1, attackDuration: 0.2, attackStyle: 'arc', attackFacing: 'east',
+      charging: { t: 0.5 } }), SPR, 0, 0, 32)
+    assert.deepEqual(images(ctx), [])
+    assert.equal(ctx.ops.filter(o => o.name === 'arc').length, 0)
+  })
+
+  it('flickers through his i-frames as he would', () => {
+    const ctx = frogCtx()
+    drawHero(ctx, hero({ hex: { t: 3, dur: 4 }, invulnTimer: 0.07 }), SPR, 0, 0, 32)
+    assert.equal(greens(ctx).length, 0)
+  })
+})
+
+// A ware's price (systems/trade.js), drawn over it.
+describe('drawPriceTags', () => {
+  const S = 32
+  function tagCtx() {
+    const ops = []
+    let fs = '', alpha = 1
+    const stack = []
+    const base = {
+      ops,
+      drawImage: (img, x, y, w, h) => ops.push({ name: 'drawImage', img, x, y, w, h, alpha }),
+      fillRect: (x, y, w, h) => ops.push({ name: 'fillRect', x, y, w, h, fs, alpha }),
+      fillText: (text, x, y) => ops.push({ name: 'fillText', text, x, y, fs, alpha }),
+      save: () => stack.push({ fs, alpha }),
+      restore: () => { ({ fs, alpha } = stack.pop()) },
+      get fillStyle() { return fs }, set fillStyle(v) { fs = v },
+      get globalAlpha() { return alpha }, set globalAlpha(v) { alpha = v },
+    }
+    return new Proxy(base, { get(t, p, r) { return p in t ? Reflect.get(t, p, r) : () => {} } })
+  }
+  const SPR = { item_meat_cooked: 'COOKED', item_lumber: 'LUMBER', ow_mushroom: 'SHROOM', potion: 'POTION' }
+  const ware = (x, y, price, over = {}) => ({ type: 'floating_item', contents: { type: 'potion', amount: 4 }, price, tribe: 'norpat',
+    x, y, px: x * S + 16, py: y * S + 16, progress: 1, ...over })
+  const scene = (entities, state = {}) => {
+    const map = createMap(12, 12)
+    for (const e of entities) map[e.y][e.x].visible = true
+    const ctx = tagCtx()
+    drawPriceTags(ctx, entities, map, 0, 0, S, SPR, { player: { inventory: [] }, ...state })
+    return ctx.ops
+  }
+
+  it('shows the icon the sack shows for the price, and the count, above the ware', () => {
+    const w = ware(4, 5, { item: 'cooked_meat', count: 2 })
+    const ops = scene([w])
+    const icon = ops.find(o => o.name === 'drawImage')
+    assert.equal(icon.img, 'COOKED')
+    assert.ok(icon.w <= 16 && icon.h <= 16, 'small')
+    const text = ops.find(o => o.name === 'fillText')
+    assert.equal(text.text, '×2')
+    assert.ok(icon.y + icon.h <= w.py - S / 2, 'over the ware, not on it')
+    assert.ok(icon.x >= w.px - S && text.x <= w.px + S, 'centred on it')
+  })
+
+  it('takes each price\'s own icon', () => {
+    const ops = scene([ware(2, 2, { item: 'lumber', count: 3 }), ware(4, 2, { item: 'mushroom', count: 1 })])
+    assert.deepEqual(ops.filter(o => o.name === 'drawImage').map(o => o.img), ['LUMBER', 'SHROOM'])
+    assert.deepEqual(ops.filter(o => o.name === 'fillText').map(o => o.text), ['×3', '×1'])
+  })
+
+  it('draws none over a thing with no price, or over a ware out of sight', () => {
+    const plain = { type: 'floating_item', contents: { type: 'potion' }, x: 2, y: 2, px: 80, py: 80, progress: 1 }
+    assert.equal(scene([plain]).length, 0)
+    const map = createMap(12, 12)
+    const ctx = tagCtx()
+    drawPriceTags(ctx, [ware(4, 5, { item: 'lumber', count: 1 })], map, 0, 0, S, SPR, {})
+    assert.equal(ctx.ops.length, 0)
+  })
+
+  it('the count is red while the hero is short of the price, and pale once he carries it', () => {
+    const price = { item: 'cooked_meat', count: 2 }
+    const colour = inventory => scene([ware(4, 5, price)], { player: { inventory } }).find(o => o.name === 'fillText').fs
+    const short = colour([{ kind: 'cooked_meat', stackable: true, count: 1 }])
+    const has = colour([{ kind: 'cooked_meat', stackable: true, count: 2 }])
+    assert.notEqual(short, has)
+    assert.equal(short, '#f87171')
+  })
+
+  it('is faint while its tribe holds a grudge', () => {
+    const alphaOf = state => scene([ware(4, 5, { item: 'lumber', count: 1 })], state).find(o => o.name === 'drawImage').alpha
+    assert.equal(alphaOf({}), 1)
+    assert.ok(alphaOf({ tribeWrath: { norpat: 100 } }) < 0.5)
+    assert.equal(alphaOf({ tribeWrath: { norpat: 0 } }), 1)
   })
 })

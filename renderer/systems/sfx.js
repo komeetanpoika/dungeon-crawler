@@ -40,6 +40,18 @@ export const CUE_NAMES = [
   // the desert's creatures: a sting and its poison, the sand worm under the
   // sand and coming up, the antlion's sand thrown and landing, a jackal's yip
   'sting', 'poison', 'burrow', 'worm-erupt', 'sand-toss', 'sand-land', 'yip',
+  // the mountain trolls (systems/monsters/mohkale.js, louhija.js, rumpali.js,
+  // vuorenkuningas.js): the war drum's beat, a blow on the stone slab, stones
+  // landing, the King's boulder set rolling, his stomp and his bellow
+  'drum', 'clank', 'rockfall', 'boulder', 'stomp', 'troll-bellow',
+  // the marsh coven (para.js, noita.js, kuppari.js, kyy.js, syojatar.js): a
+  // para's spindle legs and its raspberry, a hex cast and taking hold,
+  // knitting needles, the cupping horn, a viper's hiss, Syöjätär's spit
+  'para-skitter', 'raspberry', 'hex-cast', 'hex-hit', 'knit', 'cup', 'hiss', 'spit',
+  // the seal folk (norppalaulaja.js, norppavahti.js, mursu.js, kumistin.js):
+  // the singer's song, a seal's bark, a harpoon thrown, the court's gong, the
+  // walrus's snort before a move and his belly coming down
+  'seal-song', 'seal-bark', 'harpoon', 'gong', 'flop', 'walrus-snort',
 ]
 
 export function makeSfx(muted = false) {

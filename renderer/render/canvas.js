@@ -22,6 +22,10 @@ import { STRIKE_LIFE, LIGHTNING } from '../systems/spells/lightning.js'
 import { makeWeatherLayer, drawNight, drawFog, drawHaze, drawHeat, hazeClearRect } from './weather.js'
 import { makeTranceLayer, makeHueWheel, drawRainbow, drawWash } from './trance.js'
 import { isPoisoned } from '../systems/poison.js'
+import { isFrog } from '../systems/hex.js'
+import { canPay } from '../systems/trade.js'
+import { wrathOf } from '../systems/tribes.js'
+import { iconSpriteFor } from './icons.js'
 import { spriteHue } from '../systems/rites.js'
 import { drawTile } from './tiles.js'
 import { makeTileLayer, makeDirectTileLayer, CHUNK } from './tile-layer.js'
@@ -91,6 +95,47 @@ function drawWalker(ctx, sprite, px, py, S, flip, tiltDeg, heldWeapon = null) {
   ctx.scale(flip ? -1 : 1, 1)
   ctx.drawImage(sprite, -S / 2, -S, S, S)
   if (heldWeapon) drawHeldWeapon(ctx, heldWeapon, S)
+  ctx.restore()
+}
+
+// The hexed hero (systems/hex.js): a small green frog where he stood, drawn
+// in code on the sprites' 16-px grid, squatting on the tile's floor. It looks
+// the way he faces (mirrored for west, as his own sprite is) and hops while
+// he moves: the walk's own stride (systems/walk.js) lifts it off its shadow
+// and stretches the hind leg. px, py: the tile's top-left on screen.
+const FROG = { skin: '#63c048', dark: '#2a6426', belly: '#dceba0', eye: '#f7f4d6', pupil: '#16210f' }
+export function drawFrog(ctx, hero, px, py, S) {
+  const u = S / 16
+  const amp = hero.swayAmp ?? 0
+  const hop = Math.abs(Math.sin(hero.walkPhase ?? 0)) * amp        // 0 on the ground .. 1 at the top
+  const lift = Math.round(hop * 3 * u)
+  const r = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x * u), Math.round(y * u), Math.round(w * u), Math.round(h * u)) }
+  ctx.save()
+  ctx.translate(px + S / 2, py + S - Math.round(2 * u))   // its feet, a little up from the tile's edge
+  ctx.scale(hero.facing === 'west' ? -1 : 1, 1)           // drawn looking east
+  const a = ctx.globalAlpha
+  ctx.globalAlpha = a * 0.28
+  r(-4 + hop, -1, 9 - 2 * hop, 1.5, '#000000')            // its shadow, smaller under a hop
+  ctx.globalAlpha = a
+  ctx.translate(0, 0 - lift)
+  // hind leg: folded at rest, kicked out behind in the air
+  if (hop > 0.35) { r(-8, -3, 4, 2, FROG.dark); r(-9, -2, 2, 2, FROG.dark) }
+  else { r(-6, -5, 4, 4, FROG.dark); r(-7, -1, 4, 1, FROG.dark) }
+  // body and head
+  r(-4, -7, 8, 6, FROG.skin)
+  r(-5, -5, 1, 3, FROG.skin)
+  r(2, -8, 4, 6, FROG.skin)
+  r(6, -6, 1, 3, FROG.skin)
+  r(-3, -8, 5, 1, FROG.dark)                               // the back's ridge
+  r(-1, -3, 6, 2, FROG.belly)                              // pale belly and throat
+  r(3, -4, 4, 1, FROG.dark)                                // the wide mouth
+  // the eye on its bulge
+  r(2, -10, 3, 2, FROG.skin)
+  r(3, -10, 2, 2, FROG.eye)
+  r(4, -9, 1, 1, FROG.pupil)
+  // front leg
+  r(3, -2, 2, 2, FROG.dark)
+  r(3, 0, 3, 1, FROG.dark)
   ctx.restore()
 }
 
@@ -305,6 +350,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     return
   }
   if (entity.type === 'player' || entity.type === 'hero') {
+    // the coven's hex (systems/hex.js): a frog in his place, with nothing in its hands
+    if (isFrog(entity)) { drawFrog(ctx, entity, px, py, S); return }
     const flip = entity.facing === 'west'
     const tilt = walkTilt(entity)
     ctx.save()
@@ -654,8 +701,11 @@ export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = 
     ctx.fillRect(hx, hy, S, S)
     ctx.restore()
   }
-  drawMeleeSwing(ctx, hero, sprites, camX, camY, S)
-  drawChargeRing(ctx, hero, camX, camY)
+  // (a frog swings and winds up nothing: systems/hex.js)
+  if (!isFrog(hero)) {
+    drawMeleeSwing(ctx, hero, sprites, camX, camY, S)
+    drawChargeRing(ctx, hero, camX, camY)
+  }
   drawComboFx(ctx, hero, camX, camY)
   if (hero.rain) drawRainCloud(ctx, hx + S / 2, hy - 14, S, hero.rain.t, hero.rain.t / hero.rain.dur)
   return { px: hx, py: hy }
@@ -1033,7 +1083,7 @@ function drawDragonBreath(ctx, dragon, camX, camY) {
 export function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
   for (const e of entities) {
     if (!e.inCombat || e.hp === undefined || e.maxHp === undefined) continue
-    if (e.dying > 0) continue
+    if (e.dying > 0 || e.peaceful) continue   // (one of a tribe at peace is in no fight: systems/tribes.js)
     if (isStoryCreature(e) && creatureAlpha(e, state) === 0) continue
     if (!map[e.y]?.[e.x]?.visible) continue
     const px = e.px !== undefined ? Math.round(e.px - S/2 - camX) : Math.round(e.x * S - camX)
@@ -1046,6 +1096,36 @@ export function drawHealthBars(ctx, entities, map, camX, camY, S, state) {
     ctx.fillRect(px, py - 7, S, 4)
     ctx.fillStyle = color
     ctx.fillRect(px, py - 7, Math.round(ratio * S), 4)
+  }
+}
+
+// A ware's price (systems/trade.js): over every priced thing in view, a small
+// dark tag with the icon of what it is paid in (the atlas sprite the sack
+// panel shows for it, render/icons.js) and how many. The count is pale when
+// the hero carries the price and red when he is short; the whole tag is faint
+// while the ware's tribe holds a grudge and sells nothing.
+const TAG = { icon: 14, h: 16, pad: 2, plate: 'rgba(24, 18, 14, 0.82)', rim: '#6b5a3a', has: '#fff3c4', short: '#f87171' }
+export function drawPriceTags(ctx, entities, map, camX, camY, S, sprites, state) {
+  for (const e of entities) {
+    if (e.type !== 'floating_item' || !e.price) continue
+    if (!map[e.y]?.[e.x]?.visible) continue
+    const icon = sprites[iconSpriteFor({ kind: e.price.item })]
+    const text = `×${e.price.count}`
+    const w = TAG.pad * 3 + TAG.icon + text.length * 6
+    const x = Math.round(e.px - camX - w / 2), y = Math.round(e.py - S / 2 - camY) - TAG.h - 1
+    ctx.save()
+    if (wrathOf(state, e.tribe) > 0) ctx.globalAlpha *= 0.35
+    ctx.fillStyle = TAG.rim
+    ctx.fillRect(x - 1, y - 1, w + 2, TAG.h + 2)
+    ctx.fillStyle = TAG.plate
+    ctx.fillRect(x, y, w, TAG.h)
+    if (icon) ctx.drawImage(icon, x + TAG.pad, y + 1, TAG.icon, TAG.icon)
+    ctx.font = 'bold 10px monospace'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = state?.player && !canPay(state.player, e.price) ? TAG.short : TAG.has
+    ctx.fillText(text, x + TAG.pad * 2 + TAG.icon, y + TAG.h / 2 + 1)
+    ctx.restore()
   }
 }
 
@@ -1456,6 +1536,8 @@ export class Renderer {
     if (state.cityRun && !state.cave) drawCityOver(ctx, state, sprites, camX, camY, S, W, H)
     // Health bars after that, so the bar of someone under a roof still shows above it.
     drawHealthBars(ctx, entities, map, camX, camY, S, state)
+    // and what a tribe's wares cost, over everyone who stands about them
+    drawPriceTags(ctx, entities, map, camX, camY, S, sprites, state)
 
     // Kalevanlinna's smoke, birds in the air, turnips, notes and bells: over
     // the people, under the night

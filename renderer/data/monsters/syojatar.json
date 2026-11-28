@@ -1,0 +1,10 @@
+{
+  "name": "syojatar",
+  "rig": "crone",
+  "params": { "role": 2, "scale": 2, "dressColor": "#2a2233", "shawlColor": "#5a2a4a", "skinColor": "#aab59a", "hairColor": "#7ac043", "gaitFreq": 4 },
+  "stats": { "hp": 36, "speed": 55 },
+  "behavior": { "tribe": "noidat", "role": "boss", "taxon": "humanoid", "fleeHp": 0, "kiteBand": [96, 192], "sightRange": 320, "drops": "chest" },
+  "hooks": true,
+  "spawn": null,
+  "tuning": { "spitEvery": 4.5, "spitWind": 0.5, "spitFlight": 0.5, "spitR": 0.7, "poolR": 0.55, "poolLife": 7, "poolMax": 4, "poolTicks": 3, "broodWind": 1, "broodCount": 3, "fanEvery": 11 }
+}

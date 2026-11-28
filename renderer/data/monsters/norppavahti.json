@@ -1,0 +1,16 @@
+{
+  "name": "norppavahti",
+  "rig": "seal",
+  "params": {
+    "role": 2,
+    "scale": 1,
+    "bodyColor": "#6b7785",
+    "bellyColor": "#c9d0cc",
+    "gearColor": "#7a5230"
+  },
+  "stats": { "hp": 9, "speed": 70 },
+  "behavior": { "tribe": "norpat", "role": "fighter", "driver": "hook", "taxon": "humanoid", "fleeHp": 0, "sightRange": 260, "kiteBand": [96, 170], "wanderSpeed": 30 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": {}
+}

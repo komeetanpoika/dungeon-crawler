@@ -1,0 +1,17 @@
+{
+  "name": "norppakauppias",
+  "rig": "seal",
+  "params": {
+    "role": 0,
+    "scale": 1,
+    "bodyColor": "#75828f",
+    "bellyColor": "#cfd6d2",
+    "gearColor": "#8a5a2c",
+    "accentColor": "#f08fa6"
+  },
+  "stats": { "hp": 6, "speed": 60 },
+  "behavior": { "tribe": "norpat", "role": "vendor", "driver": "hook", "taxon": "mammal", "fleeHp": 1, "sightRange": 220, "wanderSpeed": 30 },
+  "hooks": true,
+  "spawn": null,
+  "tuning": {}
+}

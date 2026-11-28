@@ -1,0 +1,16 @@
+{
+  "name": "mursu",
+  "rig": "seal",
+  "params": {
+    "role": 3,
+    "scale": 2,
+    "bodyColor": "#8f5f42",
+    "bellyColor": "#c9a17c",
+    "accentColor": "#f2c94c"
+  },
+  "stats": { "hp": 30, "speed": 50 },
+  "behavior": { "tribe": "norpat", "role": "boss", "driver": "hook", "taxon": "beast", "fleeHp": 0, "sightRange": 320, "stopRange": 48, "wanderSpeed": 25, "drops": "chest" },
+  "hooks": true,
+  "spawn": null,
+  "tuning": {}
+}

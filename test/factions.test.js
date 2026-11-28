@@ -100,3 +100,28 @@ describe('isSpellTarget', () => {
     assert.equal(isSpellTarget({ type: 'player' }), false)
   })
 })
+
+// A member of a friendly tribe at peace (systems/tribes.js keeps the flag).
+describe('a peaceful registry monster', () => {
+  afterEach(clearMonsters)
+  it('is no enemy and no spell target, but the player\'s own weapons still reach it', async () => {
+    await registerFake('norppavahti', { tribe: 'norpat', role: 'fighter' })
+    const seal = { type: 'norppavahti', hp: 9, peaceful: true }
+    assert.equal(isEnemy(seal), false)
+    assert.equal(isSpellTarget(seal), false)
+    assert.equal(isHittable(seal), true)
+    assert.equal(isDead({ ...seal, hp: 0 }), true, 'one struck down is culled like any other')
+  })
+  it('wronged, it is an enemy and a spell target like any monster', async () => {
+    await registerFake('norppavahti', { tribe: 'norpat', role: 'fighter' })
+    const seal = { type: 'norppavahti', hp: 9, peaceful: false }
+    assert.equal(isEnemy(seal), true)
+    assert.equal(isSpellTarget(seal), true)
+    assert.equal(isHittable(seal), true)
+  })
+  it('a passive def stays no enemy whatever the flag says (the gong while its tribe is wronged)', async () => {
+    await registerFake('kumistin', { tribe: 'norpat', role: 'gong', passive: true, calm: true })
+    assert.equal(isEnemy({ type: 'kumistin', peaceful: false }), false)
+    assert.equal(isHittable({ type: 'kumistin', peaceful: false }), true)
+  })
+})

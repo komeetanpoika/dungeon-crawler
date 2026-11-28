@@ -145,3 +145,58 @@ describe('damage observer', () => {
     assert.equal(calls, 0)
   })
 })
+
+// Kivinahka, the Mountain King's talent (systems/talents.js).
+describe('Kivinahka', () => {
+  const st = (over = {}) => ({
+    player: { ...makePlayer(1, 1), px: 40, py: 60, facing: 'east', talents: ['kivinahka'], ...over },
+    feedback: makeFeedback(), sfx: makeSfx(),
+  })
+
+  it('a blow of three or more lands one lighter, and shows as it landed', () => {
+    const s = st()
+    damagePlayer(s, 3, 'hit')
+    assert.equal(s.player.hp, 8)
+    assert.equal(s.feedback.floats.at(-1).text, '-2')
+    s.player.invulnTimer = 0
+    damagePlayer(s, 5, 'hit')
+    assert.equal(s.player.hp, 4)
+  })
+
+  it('a blow of two or one lands whole', () => {
+    const s = st()
+    damagePlayer(s, 2, 'hit')
+    assert.equal(s.player.hp, 8)
+    s.player.invulnTimer = 0
+    damagePlayer(s, 1, 'hit')
+    assert.equal(s.player.hp, 7)
+  })
+
+  it('counts the blow after the outfit: plate brings a three under the mark, a five to it', () => {
+    const s = st()
+    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = plate
+    damagePlayer(s, 3, 'hit')           // 3 - 2 = 1: under three, whole
+    assert.equal(s.player.hp, 9)
+    s.player.invulnTimer = 0
+    damagePlayer(s, 5, 'hit')           // 5 - 2 = 3: one lighter
+    assert.equal(s.player.hp, 7)
+  })
+
+  it('poison, fire and lightning are no blows: they land whole', () => {
+    const s = st()
+    damagePlayer(s, 3, 'dot')
+    assert.equal(s.player.hp, 7)
+    damagePlayer(s, 4, 'lightning')
+    assert.equal(s.player.hp, 3)
+  })
+
+  it('a blocked blow is still blocked, and a hero without the talent takes the three whole', () => {
+    const s = st({ blocking: true, stamina: 100 })
+    const { type, ...b } = makeShieldContents('buckler'); s.player.gear.melee.off = { kind: 'shield', ...b }
+    assert.equal(damagePlayer(s, 3, 'hit', { px: 80, py: 60 }), false)
+    assert.equal(s.player.hp, 10)
+    const plain = st({ talents: [] })
+    damagePlayer(plain, 3, 'hit')
+    assert.equal(plain.player.hp, 7)
+  })
+})
