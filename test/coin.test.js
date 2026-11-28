@@ -80,6 +80,44 @@ describe('what a thing is worth', () => {
   })
 })
 
+describe('worn pieces and coin', () => {
+  const piece = key => itemFromContents(makeWornContents(key))
+  it('each has the worth the design gives it', () => {
+    assert.deepEqual(VALUES.head, { cap: 6, cloth: 8, helm: 18, horned: 20 })
+    assert.deepEqual(VALUES.armor, { leather: 14, chain: 26, plate: 44 })
+    assert.deepEqual(VALUES.boots, { ironshod: 16, wayfarer: 12 })
+    assert.deepEqual(VALUES.ring, { breath: 30, miser: 28, mending: 34, smith: 36 })
+    assert.equal(VALUES.outfit, undefined)
+    assert.equal(worth(piece('plate')), 44)
+    assert.equal(worth(piece('smith')), 36)
+  })
+  it('every piece can be sold but the elder\'s boots, which nobody buys or sells', () => {
+    for (const key of Object.keys(WORN_TYPES)) {
+      if (key === 'elk') continue
+      assert.ok(worth(piece(key)) > 0, key)
+      assert.equal(offer('smith', piece(key)), worth(piece(key)), `${key}: the smith pays in full`)
+    }
+    assert.equal(worth(piece('elk')), 0)
+    assert.equal(offer('smith', piece('elk')), 0)
+    for (const kind of Object.keys(VENDORS)) assert.ok(!stock(kind).some(r => r.contents.gearType === 'elk'), kind)
+  })
+  it('the smith, the weaver and the scholar keep them on the shelf', () => {
+    const has = (kind, keys) => keys.every(key => stock(kind).some(r => r.contents.gearType === key && r.price === VALUES[WORN_TYPES[key].slot][key] * MARKUP))
+    assert.ok(has('smith', ['helm', 'chain', 'plate', 'ironshod']))
+    assert.deepEqual(stock('weaver').map(r => r.contents.gearType), ['leather', 'cap', 'cloth', 'wayfarer'])
+    assert.ok(has('weaver', ['leather', 'cap', 'cloth', 'wayfarer']))
+    assert.ok(has('scholar', ['breath']))
+    assert.equal(stock('weaver').find(r => r.contents.gearType === 'cap').label, 'Leather Cap')
+  })
+  it('a second jerkin can be bought: another character can wear it', () => {
+    const p = hero({ coins: 500 })
+    const row = stock('weaver')[0]
+    assert.equal(buy(p, row, grantTo(p)), 'bought')
+    assert.equal(buy(p, row, grantTo(p)), 'bought')
+    assert.equal(coinsOf(p), 500 - 2 * row.price)
+  })
+})
+
 describe('selling out of the bag', () => {
   it('the thing leaves the bag and its price joins the purse', () => {
     const p = hero()
