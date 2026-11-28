@@ -186,6 +186,29 @@ export const RECIPES = {
   'spit': { kind: 'seq', dur: 0.2, vol: 0.6, parts: [
     { at: 0, kind: 'burst', freq: 700, q: 1, dur: 0.05, vol: 0.9 },
     { at: 0.03, kind: 'swoosh', f0: 1300, f1: 420, dur: 0.16, vol: 0.8 } ] },
+  // The seal folk. The song is four soft notes, up and back (it sounds once a
+  // beat while she sings, so it is short and quiet); a bark is two short
+  // yelps; the gong is a low note that hangs with its octave over it; the
+  // walrus snorts through his moustache and comes down like a felled tree.
+  'seal-song': { kind: 'seq', dur: 1.1, vol: 0.38, parts: [
+    { at: 0, kind: 'blip', wave: 'triangle', f0: 523, f1: 587, dur: 0.26, vol: 0.9 },
+    { at: 0.27, kind: 'blip', wave: 'triangle', f0: 659, f1: 659, dur: 0.24, vol: 0.9 },
+    { at: 0.53, kind: 'blip', wave: 'triangle', f0: 784, f1: 740, dur: 0.26, vol: 0.8 },
+    { at: 0.8, kind: 'blip', wave: 'triangle', f0: 659, f1: 587, dur: 0.3, vol: 0.8 } ] },
+  'seal-bark': { kind: 'seq', dur: 0.3, vol: 0.5, parts: [
+    { at: 0, kind: 'blip', wave: 'square', f0: 300, f1: 210, dur: 0.11, vol: 1 },
+    { at: 0.17, kind: 'blip', wave: 'square', f0: 330, f1: 220, dur: 0.12, vol: 0.9 } ] },
+  'harpoon': { kind: 'swoosh', f0: 1500, f1: 2700, dur: 0.13, vol: 0.5 },
+  'gong': { kind: 'seq', dur: 1.5, vol: 0.9, parts: [
+    { at: 0, kind: 'burst', freq: 900, q: 2, dur: 0.07, vol: 0.7 },
+    { at: 0, kind: 'blip', wave: 'triangle', f0: 196, f1: 186, dur: 1.5, vol: 1 },
+    { at: 0.01, kind: 'blip', wave: 'triangle', f0: 392, f1: 372, dur: 0.9, vol: 0.4 } ] },
+  'flop': { kind: 'seq', dur: 0.6, vol: 1, parts: [
+    { at: 0, kind: 'burst', freq: 320, q: 0.6, dur: 0.18, vol: 0.9 },
+    { at: 0, kind: 'rumble', freq: 50, dur: 0.6, vol: 1 } ] },
+  'walrus-snort': { kind: 'seq', dur: 0.4, vol: 0.6, parts: [
+    { at: 0, kind: 'burst', freq: 210, q: 0.8, dur: 0.24, vol: 1 },
+    { at: 0.06, kind: 'blip', wave: 'square', f0: 115, f1: 72, dur: 0.32, vol: 0.5 } ] },
   // A drink at a well or an oasis's water (wilds/heat.js, once each time the
   // hero comes to it): the splash of water scooped up, then three gulps, each
   // a little lower. Positionless, quieter than a blow.

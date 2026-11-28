@@ -48,6 +48,10 @@ export const CUE_NAMES = [
   // para's spindle legs and its raspberry, a hex cast and taking hold,
   // knitting needles, the cupping horn, a viper's hiss, Syöjätär's spit
   'para-skitter', 'raspberry', 'hex-cast', 'hex-hit', 'knit', 'cup', 'hiss', 'spit',
+  // the seal folk (norppalaulaja.js, norppavahti.js, mursu.js, kumistin.js):
+  // the singer's song, a seal's bark, a harpoon thrown, the court's gong, the
+  // walrus's snort before a move and his belly coming down
+  'seal-song', 'seal-bark', 'harpoon', 'gong', 'flop', 'walrus-snort',
 ]
 
 export function makeSfx(muted = false) {
