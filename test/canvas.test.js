@@ -9,6 +9,8 @@ import { SPRITES } from '../renderer/render/sprites.js'
 import { readPng } from '../tools/png-read.mjs'
 import { readFileSync } from 'node:fs'
 import { gearWearing } from './helpers/outfits.js'
+import { HERO_PART_TILES } from '../renderer/data/hero-parts.js'
+import { makeWornContents } from '../renderer/systems/entities.js'
 import { hazeClearRect } from '../renderer/render/weather.js'
 
 // Minimal ctx that records drawImage calls by the sprite passed in. `ops`
@@ -401,6 +403,45 @@ describe('player stance sprites', () => {
     assert.ok(to, 'melee target renders the knight for a plate-wearing player')
     assert.ok(Math.abs(to.alpha - 0.75) < 1e-9)
   })
+
+  // With the overlays loaded the hero is one composed picture (render/hero-look.js).
+  const DRESS = () => ({ ...SPR2, ...Object.fromEntries(HERO_PART_TILES.map(n => [n, n.toUpperCase()])) })
+  const withDocument = fn => {
+    const had = globalThis.document, made = []
+    globalThis.document = { createElement: () => { const c = { layers: [], getContext: () => ({ drawImage: img => c.layers.push(img), fillRect: () => {}, set fillStyle(_v) {}, set imageSmoothingEnabled(_v) {} }) }; made.push(c); return c } }
+    try { return fn(made) } finally { globalThis.document = had }
+  }
+  const wornPiece = key => { const { type, ...p } = makeWornContents(key); return p }
+
+  it('a dressed hero is one picture, composed from what the character wears', () => withDocument(made => {
+    const ctx = playerCtx()
+    const gear = gearWearing('plate')
+    gear.melee.head = wornPiece('helm'); gear.melee.armor = wornPiece('chain'); gear.melee.boots = wornPiece('elk')
+    drawEntity(ctx, player({ gear }), 0, 0, 32, DRESS())
+    assert.equal(ctx.images.length, 1, 'one blit for the hero')
+    assert.ok(ctx.images[0].img === made[0])
+    assert.equal(ctx.images[0].dw, 32)
+    assert.deepEqual(made[0].layers, ['HERO_FEET_ELK', 'HERO_BODY_CHAIN', 'HERO_HEAD_HELM'])
+  }))
+
+  it('a change of character fades between the two characters\' own pictures', () => withDocument(made => {
+    const ctx = playerCtx()
+    const gear = gearWearing('plate', 'ranger')
+    gear.melee.head = wornPiece('helm')
+    drawEntity(ctx, player({ gear, stanceSwitch: { from: 'melee', to: 'ranged', t: 0.35, dur: 0.7 } }), 0, 0, 32, DRESS())
+    assert.equal(ctx.images.length, 2)
+    assert.deepEqual(made.map(c => c.layers), [
+      ['HERO_FEET_BARE', 'HERO_BODY_TABARD', 'HERO_HEAD_HELM'],
+      ['HERO_FEET_BARE', 'HERO_BODY_COAT', 'HERO_HEAD_HOOD'],
+    ])
+  }))
+
+  it('an arena hero stays the whole figure of its class', () => withDocument(made => {
+    const ctx = playerCtx()
+    drawEntity(ctx, player({ cls: 'warrior', gear: gearWearing('plate') }), 0, 0, 32, DRESS())
+    assert.deepEqual(ctx.images, [{ img: 'HEAVY', alpha: 1, dw: 32 }])
+    assert.equal(made.length, 0)
+  }))
 
   const SPR3 = { weapon_sword: 'SWORD', weapon_buckler: 'BUCKLER', weapon_dagger: 'DAGGER' }
 

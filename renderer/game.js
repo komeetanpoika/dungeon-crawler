@@ -22,7 +22,8 @@ import { tryStartEnemyAttack, stepEnemyAttack } from './systems/enemy-attack.js'
 import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
-import { parseWeaponCheat } from './systems/cheats.js'
+import { parseWeaponCheat, parseGearCheat, gearCheatContents } from './systems/cheats.js'
+import { heroPortrait } from './render/hero-look.js'
 import { makeFeedback, tickFeedback, addFloat, speak, speakFrom, speakAt, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues, setVolume } from './render/audio.js'
@@ -356,6 +357,22 @@ window.addEventListener('keydown', e => {
     const def = WEAPON_TYPES[wt]
     state.player.weapon = weaponContents(wt)
     announce(state, `The ${def.name} answers your call! (${def.damage} dmg)`)
+  }
+  // "gear": the whole wardrobe. The three outfits go on (so every character
+  // is open and the cuirass can be lifted) and one of every worn piece lands
+  // in the bag, as far as it has room.
+  if (parseGearCheat(gameCheatBuffer)) {
+    gameCheatBuffer = ''
+    const { player } = state
+    for (const ot of RUSH_START_OUTFITS) if (!ownsOutfit(player, ot)) { const { type, ...payload } = makeOutfitContents(ot); wearOutfit(player, payload) }
+    let n = 0
+    for (const contents of gearCheatContents()) {
+      if (player.inventory.length >= player.maxInventory) break
+      player.inventory.push(itemFromContents(contents))
+      n++
+    }
+    announce(state, `A wardrobe falls out of the sky: ${n} pieces in the bag.`)
+    updateHUD(state)
   }
 })
 
@@ -1536,6 +1553,8 @@ function openInventory(beside = null) {
       close: keysLabel(settings.bindings, 'bag'),
     },
     buyer,
+    // the character being played, as he stands in the world
+    portrait: () => heroPortrait(state.player, renderer?.sprites ?? {}),
   })
 }
 
@@ -2051,6 +2070,7 @@ function update(delta) {
   const profile = sprintProfile(player.attackMode, { drainMul: wornSprintMul(player) })
   const sprinting = moving && !player.charging && !blocking && player.stamina > 0 && !wasGrabbed &&
     (keys['sprint'] || sprintDetector.sprinting())
+  player.sprinting = sprinting   // for whoever draws or reads the run (the boots' puff, the Horned Helm's ram)
   const chargeFactor = player.charging
     ? (player.charging.kind === 'spell' ? GUST_CHARGE.moveFactor
       : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor

@@ -1,4 +1,5 @@
 import { LEVEL_CONFIG } from '../data/levels.js'
+import { WORN_TYPES, makeWornContents } from './entities.js'
 
 // Returns a valid starting depth when `buffer` ends with "level<N>"
 // (N must have a LEVEL_CONFIG entry — currently 0..6), otherwise null.
@@ -16,6 +17,13 @@ export function parseLevelCheat(buffer) {
 export function parseWeaponCheat(buffer) {
   return /mauno$/.test(String(buffer).toLowerCase()) ? 'maunonmiekka' : null
 }
+
+// In-game wardrobe cheat: typing "gear" opens all three characters and puts
+// one of every worn piece in the bag (game.js), for trying them on.
+export function parseGearCheat(buffer) {
+  return /gear$/.test(String(buffer).toLowerCase())
+}
+export const gearCheatContents = () => Object.keys(WORN_TYPES).map(makeWornContents)
 
 // How long the title screen holds a matched-but-extendable level cheat,
 // waiting for another digit.

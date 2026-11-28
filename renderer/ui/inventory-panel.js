@@ -79,7 +79,8 @@ export function refreshInventory(state) {
 
   const gear = gearPanel(player)
   const worn = gearOf(player, gear.stance).outfit
-  const who = iconSrcFor(worn ? { kind: 'outfit', payload: worn } : null) ?? './assets/tiles/tile_0088.png'
+  // the character as he stands in the world (game.js hands a portrait), or his outfit's icon
+  const who = opts.portrait?.() ?? iconSrcFor(worn ? { kind: 'outfit', payload: worn } : null) ?? './assets/tiles/tile_0088.png'
   const tile = (t, i) => `<div class="inv-slot-wrap"><div class="inv-tile${sel.area === 'gear' && sel.index === i ? ' selected' : ''}" data-gear="${i}">${iconHtml(t.item)}${t.item?.kind === 'consumable' ? `<span class="inv-count">×${t.item.count}</span>` : ''}</div><small>${SLOT_NAMES[t.slot]}</small></div>`
 
   const slots = []

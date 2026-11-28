@@ -1,6 +1,6 @@
 import { drawSunbeam } from './sunbeam.js'
 import { FACING_ANGLE, isWalkable } from '../systems/entities.js'
-import { canWieldHeavy } from '../systems/inventory.js'
+import { heroPicture, lookParts, playerSpriteKey } from './hero-look.js'
 import { loadSprites, loadMoreSprites } from './sprites.js'
 import { walkTilt } from '../systems/walk.js'
 import { drawDragonBoss } from './dragonboss.js'
@@ -146,12 +146,34 @@ export function isFlickerVisible(invulnTimer, interval = 0.06) {
   return Math.floor(invulnTimer / interval) % 2 === 0
 }
 
-// The player's look follows the stance: bare adventurer (or the knight in
-// plate) in melee, the ranger in ranged, the wizard in magic.
-export function playerSpriteKey(player, mode) {
-  if (mode === 'ranged') return 'player_ranged'
-  if (mode === 'magic') return 'player_magic'
-  return canWieldHeavy(player) ? 'player_melee_heavy' : 'player_base'
+// The player's look is what the character being played wears: one picture
+// composed of a head, a body and feet (render/hero-look.js heroPicture). The
+// four whole figures it replaced are still what an arena hero is drawn as.
+export { playerSpriteKey }
+
+// A ring is one pixel on the hand: every few seconds it catches the light.
+// Walker local space (origin at the feet, un-flipped), like drawHeldWeapon.
+const GLINT_EVERY = 3, GLINT_FOR = 0.15
+function drawRingGlint(ctx, entity, S) {
+  if (entity.cls) return
+  const ring = lookParts(entity).ring
+  if (!ring || (performance.now() / 1000) % GLINT_EVERY > GLINT_FOR) return
+  const u = S / 16
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(-S / 2 + ring.at[0] * u, -S + ring.at[1] * u, u, u)
+}
+
+// Elk-hide Boots on a sprint kick a pale puff up behind the heels, a step at
+// a time (four pixels on a foot cannot say "these run like weather").
+function drawBootPuff(ctx, hero, hx, hy, S) {
+  if (!hero.sprinting || hero.cls || hero.gear?.[hero.attackMode ?? 'melee']?.boots?.gearType !== 'elk') return
+  const u = S / 16, step = Math.floor((hero.walkPhase ?? 0) / (Math.PI / 2)) % 2
+  ctx.save()
+  ctx.fillStyle = '#f4f1e6'
+  ctx.globalAlpha *= 0.6
+  ctx.fillRect(hx + (step ? 3 : 11) * u, hy + S - 2 * u, 2 * u, u)
+  ctx.fillRect(hx + (step ? 12 : 4) * u, hy + S - u, u, u)
+  ctx.restore()
 }
 
 export function drawEntity(ctx, entity, px, py, S, sprites) {
@@ -368,15 +390,16 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
     if (sw) {
       // Mid-switch: the old form fades into the new one.
       const k = Math.min(1, sw.t / sw.dur)
-      const fromS = sprites[playerSpriteKey(entity, sw.from)]
-      const toS = sprites[playerSpriteKey(entity, sw.to)]
+      const fromS = heroPicture(entity, sw.from, sprites)
+      const toS = heroPicture(entity, sw.to, sprites)
       const prevAlpha = ctx.globalAlpha
       if (fromS) { ctx.globalAlpha = 1 - k; ctx.drawImage(fromS, -S / 2, -S, S, S) }
       if (toS) { ctx.globalAlpha = k; ctx.drawImage(toS, -S / 2, -S, S, S) }
       ctx.globalAlpha = prevAlpha
     } else {
-      const s = sprites[playerSpriteKey(entity, entity.attackMode)]
+      const s = heroPicture(entity, entity.attackMode ?? 'melee', sprites)
       if (s) ctx.drawImage(s, -S / 2, -S, S, S)
+      drawRingGlint(ctx, entity, S)
     }
     if (!(entity.attackTimer > 0)) {   // the swing animation draws the melee weapon instead
       // One hand per stance: the bow in ranged, the wand hand in magic (a bow
@@ -625,7 +648,7 @@ export const BLINK_DUR = 0.2
 // fading out over the trail's fifth of a second.
 function drawBlinkTrail(ctx, trail, player, sprites, camX, camY, S) {
   if (!trail?.from || !trail?.to) return
-  const s = sprites[playerSpriteKey(player, player.attackMode)]
+  const s = heroPicture(player, player.attackMode ?? 'melee', sprites)
   if (!s) return
   const fade = Math.max(0, 1 - (trail.t ?? 0) / BLINK_DUR)
   if (fade <= 0) return
@@ -691,6 +714,7 @@ export function drawHero(ctx, hero, sprites, camX, camY, S, { lift = 0, trail = 
   if (tint) ctx.filter = tint
   if (isFlickerVisible(hero.invulnTimer)) drawEntity(ctx, hero, hx, hy, S, sprites)
   if (tint) ctx.filter = prevFilter
+  drawBootPuff(ctx, hero, hx, hy, S)
   if (hero.ice) drawFrozenSheen(ctx, hx, hy, S)
   if (hero.buffs) drawBuffOver(ctx, hero, hx, hy, S)
   if (hero.grabbed) {
