@@ -246,7 +246,7 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       if (s) ctx.drawImage(s, px, py, S, S)  // no background fill — item is airborne
     } else if (c.gearType) {
       // a worn piece: headwear, armor, boots or a ring
-      const s = sprites[`gear_${c.gearType}`] ?? sprites.outfit_leather
+      const s = sprites[`gear_${c.gearType}`]
       if (s) ctx.drawImage(s, px, py, S, S)
     } else if (c.type === 'potion') {
       drawPotion(ctx, px, py, S, sprites.potion)
