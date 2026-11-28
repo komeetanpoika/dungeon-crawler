@@ -6,7 +6,7 @@ export const CUE_NAMES = [
   // combat
   'melee-swing', 'melee-hit', 'ranged-shot', 'projectile-hit',
   'magic-cast', 'fire-burst', 'shockwave', 'wall-slam',
-  'player-hurt', 'player-death', 'enemy-death', 'boss-death', 'shield-block', 'armor-clank',
+  'player-hurt', 'player-death', 'enemy-death', 'boss-death', 'shield-block', 'armor-clank', 'ram',
   // world & items
   'pickup', 'key-pickup', 'heal', 'equip', 'drop',
   // coin changing hands, and the taproom (systems/coin.js, systems/tavern.js)

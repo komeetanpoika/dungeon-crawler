@@ -63,3 +63,33 @@ export const wornSprintMul = player => pieces(player).reduce((mul, p) => mul * (
 
 // Does the character being played wear a piece with this power?
 export const wornPower = (player, power) => pieces(player).some(p => p.power === power)
+
+// ---- the powers that are a number ----------------------------------------------
+// (the Horned Helm's ram is systems/ram.js; the Desert Headcloth is read in
+// wilds/heat.js; the Smith's Ring in tickArmor above)
+
+// The Ring of Breath: stamina comes back this much faster (systems/stamina.js).
+export const BREATH_REGAIN = 1.3
+export const breathMul = player => wornPower(player, 'breath') ? BREATH_REGAIN : 1
+
+// The Miser's Ring: a purse that falls holds this much more (game.js, on the drop).
+export const MISER_PURSE = 1.5
+export const purseMul = player => wornPower(player, 'miser') ? MISER_PURSE : 1
+
+// The Wayfarer's Boots: a walk, not a sprint, is this much quicker (game.js).
+export const WAYFARER_WALK = 1.12
+export const walkMul = player => wornPower(player, 'wayfarer') ? WAYFARER_WALK : 1
+
+// The Ring of Mending: one hitpoint back every MENDING_EVERY seconds while
+// the hero is hurt. The count starts at the wound: no time is banked while
+// he is whole. Returns the hitpoints mended this frame (0 or 1).
+export const MENDING_EVERY = 40
+export function tickMending(player, dt) {
+  const max = player.maxHp ?? 10
+  if (!wornPower(player, 'mending') || !(player.hp > 0) || player.hp >= max) { player.mendT = 0; return 0 }
+  player.mendT = (player.mendT ?? 0) + dt
+  if (player.mendT < MENDING_EVERY) return 0
+  player.mendT -= MENDING_EVERY
+  player.hp = Math.min(max, player.hp + 1)
+  return 1
+}

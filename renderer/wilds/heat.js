@@ -29,6 +29,7 @@ import { isWaterSkin } from '../terrain/lib.js'
 import { think } from '../systems/feedback.js'
 import { sfx } from '../systems/sfx.js'
 import { TILE } from '../systems/entities.js'
+import { wornPower } from '../systems/worn.js'
 
 // `drinkAfter`: seconds beside the water that make a drink; `fade`: seconds
 // the shimmer takes to come and go with the heat.
@@ -113,7 +114,8 @@ export function tickHeat(state, world, { clock, delta = 0, desert = false, villa
   const on = !!at && heatOn({
     desert, frac: clock / DAY_LENGTH, storm: state.storm ?? 0, village, city, cool: at.cool, cooledUntil: player.cooledUntil, now,
   })
-  player.regenScale = on ? HEAT.factor : 1
+  // (a Desert Headcloth keeps the sun off its wearer: the day is as hot, he is not)
+  player.regenScale = on && !wornPower(player, 'cool') ? HEAT.factor : 1
   const was = state.heat ?? 0, step = delta / HEAT.fade
   state.heat = !outdoors ? 0 : on ? Math.min(1, was + step) : Math.max(0, was - step)
   // the line, once a day, when the bubble is free

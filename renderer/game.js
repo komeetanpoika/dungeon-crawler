@@ -125,7 +125,8 @@ import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { tickBinds, playerBound, struggle } from './systems/player-bind.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
-import { tickArmor, settleDents, wornSprintMul } from './systems/worn.js'
+import { tickArmor, settleDents, wornSprintMul, tickMending, purseMul, walkMul } from './systems/worn.js'
+import { tickRam } from './systems/ram.js'
 import { makeWeather, advanceClock, weatherLook, isNight } from './systems/weather.js'
 import { DAY_START } from './data/weather.js'
 import { canMoveTo, moveEntity, PLAYER_HALF, PLAYER_SPEED } from './systems/movement.js'
@@ -548,7 +549,8 @@ function cullEntities() {
       def ? carriedDrop(e) : null,
     ].filter(Boolean)
     // and in the Wilds, whoever carried a purse drops it (systems/coin.js purseOf)
-    const coins = runMode === 'wilds' ? purseOf(e) : 0
+    // (the Miser's Ring on the character being played makes it heavier: systems/worn.js)
+    const coins = runMode === 'wilds' ? Math.ceil(purseOf(e) * purseMul(state.player)) : 0
     if (coins > 0) drops.push({ kind: 'floating_pickup', contents: { type: 'coins', count: coins }, x: e.x, y: e.y })
     if (drops.length) state.entities.push(...buildEntities(drops, state.map, e.lootDepth ?? 1))
   }
@@ -2079,10 +2081,11 @@ function update(delta) {
   // a tipsy hero's steps wander from where he means to go, a stuffed one's are slow (systems/tavern.js)
   const reel = moving ? stagger(player, performance.now() / 1000) : 0
   if (reel) { const c = Math.cos(reel), s = Math.sin(reel); [vx, vy] = [vx * c - vy * s, vx * s + vy * c] }
-  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * frogSpeedMul(player) * tavernSpeedMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * frogSpeedMul(player) * tavernSpeedMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : walkMul(player))
   if (sprinting) spendStamina(player, profile.drain * delta)
   const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
+  tickRam(state, player, { sprinting, dt: delta })   // the Horned Helm (systems/ram.js)
   // the castle gate let down for the night (wilds/city/fx.js): walking into it says so
   if (vy < 0 && player.py === walkedFrom.py && !state.cave && isShutGate(map[player.y - 1]?.[player.x])) throttledThink('castle-gate', GATE_SHUT_LINE)
   // Päivölä: walking into a mirror turns it (systems/sunroom-run.js)
@@ -2369,6 +2372,7 @@ function update(delta) {
   player.offCooldown = Math.max(0, (player.offCooldown ?? 0) - delta)
   tickStamina(player, delta)
   tickArmor(player, delta)
+  if (tickMending(player, delta)) addFloat(state.feedback, { px: player.px, py: player.py - 10, text: '+1', kind: 'heal' })   // the Ring of Mending
   player.staminaRefusedT = Math.max(0, (player.staminaRefusedT ?? 0) - delta)
   const landedStance = tickStanceSwitch(player, delta)
   if (landedStance) {

@@ -1,6 +1,8 @@
 // One tank prices melee swings, sprinting, and gust casts (mana is gone).
 // Pure player-state logic — game.js owns feedback and SFX.
 
+import { breathMul } from './worn.js'
+
 export const STAMINA_MAX = 100
 const REGEN_RATE = 18     // per second
 const REGEN_DELAY = 0.7   // seconds after the last spend before regen starts
@@ -54,7 +56,8 @@ export function spendStamina(player, cost) {
 // get a full tank the first time they tick.
 // player.regenScale scales the regain: the desert's midday heat halves it
 // (wilds/heat.js, set every frame in the Wilds); a player without one (the
-// PvP arena's heroes, every other mode) regains in full.
+// PvP arena's heroes, every other mode) regains in full. The Ring of Breath
+// on the character being played quickens it (systems/worn.js breathMul).
 export function tickStamina(player, dt) {
   if (player.stamina == null) {
     player.stamina = STAMINA_MAX
@@ -69,7 +72,7 @@ export function tickStamina(player, dt) {
   if (player.staminaRegenT <= REGEN_DELAY) return
   const t = Math.min(dt, player.staminaRegenT - REGEN_DELAY)
   player.stamina = Math.min(player.maxStamina ?? STAMINA_MAX,
-    player.stamina + REGEN_RATE * (player.regenScale ?? 1) * t)
+    player.stamina + REGEN_RATE * (player.regenScale ?? 1) * breathMul(player) * t)
 }
 
 // The mage jogs: slower burst, far cheaper — sprinting is how a caster
