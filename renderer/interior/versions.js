@@ -4,6 +4,7 @@
 // and finish a furnished house. Pure in their rng.
 import { ITEMS, FLOORS, MISC, dusty } from './kit.js'
 import { TRADES } from './recipes.js'
+import { HOME_VENDORS } from '../data/coin.js'
 import { mulberry32, hashStr, int, pick, chance, weighted, shuffle } from './rng.js'
 import { TILE } from '../systems/entities.js'
 import { LOOKS } from '../data/townsfolk-looks.js'
@@ -129,7 +130,8 @@ function innSpec(door, seed, rng) {
   const npc = (id, lines, look, spot, hears) => ({
     kind: 'npc', species: 'villager', hostile: false, id: `${door.label}:${id}`, lines, look, roam: 0, spot, ...(hears ? { hears } : {}),
   })
-  const residents = [npc('keeper', door.inn.keeper, pick(rng, KEEPER_LOOKS), 'bar')]
+  // (the innkeeper serves and buys: houseVendors below)
+  const residents = [{ ...npc('keeper', door.inn.keeper, pick(rng, KEEPER_LOOKS), 'bar'), vendor: 'innkeeper' }]
   const lines = shuffle(rng, GUEST_LINES), looks = shuffle(rng, GUEST_LOOKS)
   const news = door.inn.news.slice(0, chance(rng, 0.5) ? 2 : 1)
   for (let i = 0, n = int(rng, 3, 5); i < n; i++) {
@@ -174,6 +176,27 @@ export function homeLines(spec, species) {
   return spec.tier === 'hut' ? [...HERMIT_LINES, ...(TRADE_LINES[spec.trade] ?? [])] : [...HOME_LINES, ...(TRADE_LINES[spec.trade] ?? [])]
 }
 
+// ---- who trades for coin ---------------------------------------------------
+// Who in a house of the Wilds trades, as { npc id: vendor kind } (data/coin.js
+// VENDORS): a crossroads inn's keeper pours and buys; in a village home the
+// one who keeps the house (the first of the household) trades in what the
+// household makes (HOME_VENDORS), but a hermit in his hut keeps to himself.
+// Read when the house is built, and again by game.js when a house kept from
+// an earlier visit is walked into (markVendors), so a house first seen before
+// there was coin has its trader too. A Kalevanlinna house names its own
+// (wilds/city/indoors.js).
+export function houseVendors(spec) {
+  if (!spec || spec.city) return {}
+  if (spec.trade === 'innkeeper') return { [`${spec.label}:keeper`]: 'innkeeper' }
+  if (spec.version !== 'home' || spec.tier === 'hut' || !HOME_VENDORS[spec.trade]) return {}
+  return { [`${spec.label}:npc0`]: HOME_VENDORS[spec.trade] }
+}
+// Stamps them on the people of a house already built.
+export function markVendors(entities, spec) {
+  const who = houseVendors(spec)
+  for (const e of entities ?? []) if (e.type === 'npc' && who[e.id] && !e.hostile) e.vendor = who[e.id]
+}
+
 // ---- who lives there -------------------------------------------------------
 // Spawns without a place: generateInterior puts them on bare floor away
 // from the door. Pickups (potions, a weapon) are listed apart.
@@ -185,7 +208,9 @@ export function occupants(spec, rng) {
       const n = spec.size === 'small' ? int(rng, 1, 2) : int(rng, 2, 3)
       for (let i = 0; i < n; i++) {
         const species = i > 0 && chance(rng, 0.3) ? 'elder' : 'villager'
-        out.push({ kind: 'npc', species, hostile: false, id: `${label}:npc${i}`, lines: homeLines(spec, species) })
+        // (the one who keeps the house trades: houseVendors below)
+        const id = `${label}:npc${i}`, vendor = houseVendors(spec)[id]
+        out.push({ kind: 'npc', species, hostile: false, id, lines: homeLines(spec, species), ...(vendor ? { vendor } : {}) })
       }
       break
     }

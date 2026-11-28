@@ -8,6 +8,7 @@ import { gearPanel, buttonsFor, describe, moveSelection, settle, GEAR_SLOTS, GEA
 import { gearOf } from '../systems/inventory.js'
 import { sfx } from '../systems/sfx.js'
 import { iconSrcFor } from '../render/icons.js'
+import { coinsOf, hasPurse } from '../systems/coin.js'
 
 let keyHandler = null
 let keyUpHandler = null
@@ -37,10 +38,11 @@ function cancelDrop() {
 
 function startDrop() {
   if (dropTimer !== null || !handlers) return
-  const b = buttonsFor(lastState.player, sel).blue
+  const b = buttonsFor(lastState.player, sel, opts).blue
   if (!b.fn) return
   el().querySelector('.inv-btn.blue')?.classList.add('holding')
-  dropTimer = setTimeout(() => { dropTimer = null; handlers?.onDrop(sel.index) }, DROP_HOLD * 1000)
+  // (Drop, or Sell beside a vendor: whichever the button said when the hold began)
+  dropTimer = setTimeout(() => { dropTimer = null; handlers?.[b.fn]?.(sel.index) }, DROP_HOLD * 1000)
 }
 
 function fire(b) {
@@ -51,9 +53,9 @@ function fire(b) {
 
 function press(name) {
   if (!handlers) return
-  const b = buttonsFor(lastState.player, sel)[name]
+  const b = buttonsFor(lastState.player, sel, opts)[name]
   if (!b?.fn) return
-  if (name === 'blue') return   // Drop is a hold, never a press
+  if (name === 'blue') return   // Drop (and Sell) is a hold, never a press
   // more than one place it fits: ask where
   if (name === 'red' && b.places?.length > 1) { chooser = { places: b.places, index: 0 }; refreshInventory(lastState); return }
   fire(b)
@@ -88,8 +90,11 @@ export function refreshInventory(state) {
     slots.push(`<div class="inv-slot${sel.area === 'sack' && i === sel.index ? ' selected' : ''}"${item ? ` data-sack="${i}"` : ''}>${iconHtml(item)}${count}</div>`)
   }
 
-  const d = describe(player, sel)
-  const buttons = buttonsFor(player, sel)
+  const d = describe(player, sel, opts)
+  const buttons = buttonsFor(player, sel, opts)
+  // the purse, once the hero has met coin; and whom the bag is open beside
+  const purse = hasPurse(player) || opts.buyer ? `<span class="inv-purse"><img src="./assets/tiles/item_coin.png" alt="coin">${coinsOf(player)}</span>` : ''
+  const selling = opts.buyer ? `<div class="inv-selling">Selling to ${esc(opts.buyer.name)}</div>` : ''
   const keyOf = name => (opts.touch || !opts.keys?.[name] ? '' : `<kbd>${esc(opts.keys[name])}</kbd>`)
   const label = name => {
     const b = buttons[name]
@@ -100,7 +105,7 @@ export function refreshInventory(state) {
   root.innerHTML = `
     <div class="inv-gear"><div class="inv-who"><img src="${who}" alt=""><span>${esc(gear.name)}</span></div>
       <div class="inv-slots">${gear.tiles.map(tile).join('')}${spare}</div></div>
-    <div class="inv-bag"><div class="inv-title">BAG ${player.inventory.length}/${player.maxInventory}</div>
+    <div class="inv-bag"><div class="inv-title">BAG ${player.inventory.length}/${player.maxInventory}${purse}</div>${selling}
       <div class="inv-grid">${slots.join('')}</div>
       <div class="inv-desc"><b>${esc(d.title)}</b>${d.lines.map(l => `<div>${esc(l)}</div>`).join('')}${d.warn ? `<div class="warn">${esc(d.warn)}</div>` : ''}</div>${ask}</div>
     <div class="inv-what">${BUTTONS.map(label).join('')}${opts.touch ? '' : `<span class="inv-close">Close<kbd>${esc(opts.keys?.close ?? 'I')}</kbd></span>`}</div>`
@@ -126,8 +131,9 @@ export function refreshInventory(state) {
   root.querySelector('.inv-slot.selected')?.scrollIntoView?.({ block: 'nearest' })
 }
 
-// `options`: { touch, keys: { red, green, blue, yellow, close } } — the key
-// names shown beside the labels where there is a keyboard.
+// `options`: { touch, keys: { red, green, blue, yellow, close }, buyer } — the
+// key names shown beside the labels where there is a keyboard, and the vendor
+// the bag is open beside ({ kind, name }: the blue button sells to them).
 export function showInventory(state, handlerSet, options = {}) {
   handlers = handlerSet
   document.body.classList.add('pad-panel')

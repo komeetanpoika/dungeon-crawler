@@ -197,3 +197,23 @@ describe('updateHUD DOM churn', () => {
     assert.match(nodes['hud-hearts'].innerHTML, /half/)
   })
 })
+
+describe('updateHUD purse', () => {
+  it('shows no purse to a hero who never had coin', () => {
+    const nodes = fakeDom()
+    updateHUD(state())
+    assert.equal(nodes['hud-purse'].hidden, true)
+    assert.equal(nodes['hud-purse'].innerHTML, '')
+  })
+
+  it('shows the coin and the count, an empty purse too', () => {
+    const nodes = fakeDom()
+    updateHUD(state({ coins: 37 }))
+    assert.equal(nodes['hud-purse'].hidden, false)
+    assert.match(nodes['hud-purse'].innerHTML, /item_coin\.png/)
+    assert.match(nodes['hud-purse'].innerHTML, /<span>37<\/span>/)
+    updateHUD(state({ coins: 0 }))
+    assert.equal(nodes['hud-purse'].hidden, false)
+    assert.match(nodes['hud-purse'].innerHTML, /<span>0<\/span>/)
+  })
+})

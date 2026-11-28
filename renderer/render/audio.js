@@ -36,6 +36,23 @@ export const RECIPES = {
   'enemy-death':    { kind: 'blip',   wave: 'square',   f0: 330,  f1: 90,   dur: 0.25, vol: 0.7 },
   'boss-death':     { kind: 'rumble', freq: 55,  dur: 1.20, vol: 1.0 },
   'pickup':         { kind: 'blip',   wave: 'square',   f0: 660,  f1: 990,  dur: 0.09, vol: 0.6 },
+  // coin (systems/coin.js): two bright rings as it changes hands; and the
+  // taproom (systems/tavern.js): a swallow, a bite, the room's cheer, a hiccup
+  'coin':           { kind: 'seq', dur: 0.20, vol: 0.6, parts: [
+    { at: 0,    kind: 'blip', wave: 'triangle', f0: 1760, f1: 1760, dur: 0.07, vol: 1 },
+    { at: 0.08, kind: 'blip', wave: 'triangle', f0: 2349, f1: 2349, dur: 0.12, vol: 0.9 }] },
+  'gulp':           { kind: 'seq', dur: 0.34, vol: 0.6, parts: [
+    { at: 0,    kind: 'blip', wave: 'triangle', f0: 220, f1: 140, dur: 0.10, vol: 1 },
+    { at: 0.16, kind: 'blip', wave: 'triangle', f0: 200, f1: 120, dur: 0.10, vol: 0.9 }] },
+  'munch':          { kind: 'seq', dur: 0.36, vol: 0.6, parts: [
+    { at: 0,    kind: 'burst', freq: 500, q: 1.4, dur: 0.07, vol: 1 },
+    { at: 0.14, kind: 'burst', freq: 420, q: 1.4, dur: 0.07, vol: 0.9 },
+    { at: 0.28, kind: 'burst', freq: 460, q: 1.4, dur: 0.07, vol: 0.8 }] },
+  'cheer':          { kind: 'seq', dur: 0.70, vol: 0.7, parts: [
+    { at: 0,    kind: 'swoosh', f0: 500, f1: 1500, dur: 0.45, vol: 1 },
+    { at: 0.10, kind: 'blip', wave: 'triangle', f0: 392, f1: 523, dur: 0.20, vol: 0.7 },
+    { at: 0.30, kind: 'blip', wave: 'triangle', f0: 523, f1: 784, dur: 0.30, vol: 0.7 }] },
+  'hic':            { kind: 'blip',   wave: 'square',   f0: 520,  f1: 980,  dur: 0.05, vol: 0.4 },
   'mirror-turn':    { kind: 'blip',   wave: 'triangle', f0: 1400, f1: 1750, dur: 0.07, vol: 0.35 },
   'sun-bloom':      { kind: 'blip',   wave: 'triangle', f0: 392,  f1: 1568, dur: 1.10, vol: 0.6 },
   'key-pickup':     { kind: 'blip',   wave: 'triangle', f0: 660,  f1: 1320, dur: 0.18, vol: 0.7 },

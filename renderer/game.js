@@ -54,7 +54,7 @@ import { makeBuilding, stairAt, shutAt, blockedBy, sayNow, sayKey, travel as tra
 import { buildBuilding } from './interior/buildings/index.js'
 import { buildCaveState, restoreSurface, tickCaveInstances, adventureRespawn, pruneClearedInstances } from './systems/cave.js'
 import { INTERIOR_DEPTH, doorAt } from './systems/houses.js'
-import { generateInterior, houseSpec, INTERIOR_SKINS, VERSIONS } from './systems/interior.js'
+import { generateInterior, houseSpec, markVendors, INTERIOR_SKINS, VERSIONS } from './systems/interior.js'
 import { tickSunroom, storedSunroom } from './systems/sunroom-run.js'
 import { dungeonLabels, markCleared, isMapComplete, nextMapDepth, normalizeAdventureSave, npcRecordFor, recordNpcState, resetNpcs, recordVisit, waystoneDestinations } from './systems/adventure.js'
 import { modeForDepth } from './systems/mode.js'
@@ -110,6 +110,9 @@ import { TALENTS, hasTalent, grantTalent, RUSH_START_TALENTS, applyTalents } fro
 import { tickTribes, noteBlow, clearWrath, atPeace } from './systems/tribes.js'
 import { tickHex, clearHex, hasHands, frogSpeedMul } from './systems/hex.js'
 import { tryBuy } from './systems/trade.js'
+import { coinsOf, addCoins, sell, stock, buy, offer, vendorOf, vendorName, vendorNear, greeting, purseOf } from './systems/coin.js'
+import { VENDORS, SAID } from './data/coin.js'
+import { order, fareCost, sleepItOff, tickTavern, tavernSpeedMul, stagger, sway } from './systems/tavern.js'
 import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, RUSH_START_OUTFITS, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
   TRANCE_FADE, PULL_DURATION, PULL_TELEPORT_AT, pullTarget } from './systems/rites.js'
@@ -485,6 +488,8 @@ function persistRun() {
       // Per-loadout gear and the shared belt travel with the body too.
       gear: structuredClone(state.player.gear ?? defaultGear()),
       belt: state.player.belt ? { ...state.player.belt } : null,
+      // The purse (systems/coin.js): absent until the first coin is had.
+      ...(Number.isFinite(state.player.coins) ? { coins: coinsOf(state.player) } : {}),
     }
   }
   if (runMode === 'timewarp') window.saveAPI.saveTimewarp?.(savedTimewarp)
@@ -524,6 +529,9 @@ function cullEntities() {
       e.dropped ? null : deathDrop(e, def, depth => rollChestLoot(depth, Math.random, state.player)),
       def ? carriedDrop(e) : null,
     ].filter(Boolean)
+    // and in the Wilds, whoever carried a purse drops it (systems/coin.js purseOf)
+    const coins = runMode === 'wilds' ? purseOf(e) : 0
+    if (coins > 0) drops.push({ kind: 'floating_pickup', contents: { type: 'coins', count: coins }, x: e.x, y: e.y })
     if (drops.length) state.entities.push(...buildEntities(drops, state.map, e.lootDepth ?? 1))
   }
   state.entities = cullDead(state.entities, isRegistryMonster)
@@ -733,6 +741,16 @@ function showCast(cast) {
 // free, else sack. Returns false when the sack is full so the caller can
 // leave the item in the world.
 function grantContents(contents) {
+  // A purse (systems/coin.js): straight into the hero's own, never a bag slot.
+  if (contents?.type === 'coins') {
+    const n = Math.max(0, Math.floor(contents.count ?? 0))
+    if (n > 0) {
+      addCoins(state.player, n)
+      addFloat(state.feedback, { px: state.player.px, py: state.player.py - 10, text: `+${n}`, kind: 'coin' })
+      sfx(state, 'coin')
+    }
+    return true
+  }
   const item = itemFromContents(contents)
   if (!item) return true
   const r = autoEquipOnPickup(state.player, item)
@@ -818,6 +836,7 @@ function buildEntities(spawns, map, depth, player = state?.player ?? null) {
         if (n && s.look) n.look = s.look      // one of Kalevanlinna's people at home, as they look outside
         if (n && s.hears) n.hears = s.hears   // a traveller on the road names a town (wilds/world.js hear)
         if (n && s.coachman) n.coachman = true   // the coachman by a village's cart, who says why he will not drive (wilds/coach.js)
+        if (n && s.vendor) { n.vendor = s.vendor; if (s.vendorName) n.vendorName = s.vendorName }   // someone who trades for coin (systems/coin.js)
         return n ? [n] : []
       }
       // a Wilds camp's fire (wilds/sites.js): it never burns down, and cooks like any other
@@ -976,6 +995,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
       // Gear was normalised (outfits rebuilt from the table) by normalizeBody on load.
       player.gear = structuredClone(activeSave.body.gear ?? defaultGear())
       player.belt = activeSave.body.belt ? { ...activeSave.body.belt } : null
+      if (Number.isFinite(activeSave.body.coins)) player.coins = Math.max(0, Math.floor(activeSave.body.coins))
       player.inventory = activeSave.body.inventory.map(i => {
         if (!i.payload) return { ...i }
         if (i.kind === 'weapon') return { ...i, payload: weaponContents(i.payload.weaponType) }
@@ -1466,8 +1486,15 @@ function openWaystoneMenu(dests) {
   })
 }
 
-function openInventory() {
+// `beside`: the vendor whose menu sent the hero to his bag (closing it goes
+// back to that menu). Opened any other way, the bag still sells to a vendor
+// who stands within reach: its Drop button is Sell for what they buy.
+let tradeReturn = null
+function openInventory(beside = null) {
   if (phase !== PHASE.PLAYING || !state) return
+  const seller = vendorOf(beside) ? beside : vendorNear(state)
+  const buyer = seller ? { kind: vendorOf(seller), name: vendorName(seller) } : null
+  tradeReturn = vendorOf(beside) ? beside : null
   setPhase(PHASE.PAUSED)
   inventoryOpen = true
   sfx(state, 'ui-open')
@@ -1483,6 +1510,7 @@ function openInventory() {
       : unequipOffhand(state.player, stance)),
     onUse: i => useInventoryItem(i),
     onDrop: i => dropInventoryItem(i),
+    onSell: i => { if (buyer && sell(state.player, i, buyer.kind).ok) { sfx(state, 'coin'); afterInventoryChange() } },
     onBuild: slot => buildCampfire(state.player.inventory[slot]?.kind ?? 'lumber'),
     // The yellow button: the same switch as in play, done at once since the
     // game stands still while the bag is open.
@@ -1503,6 +1531,7 @@ function openInventory() {
       blue: keysLabel(settings.bindings, 'interact'), yellow: keysLabel(settings.bindings, 'swap'),
       close: keysLabel(settings.bindings, 'bag'),
     },
+    buyer,
   })
 }
 
@@ -1512,6 +1541,98 @@ function closeInventory() {
   hideInventory()
   setPhase(PHASE.PLAYING)
   for (const k of [' ', 'q', 'Q', 'f', 'F', 'Shift']) keys[k] = false   // nothing pressed in the bag acts in the world
+  // sent here from a vendor's menu: back to it, on its Sell row
+  const back = tradeReturn
+  tradeReturn = null
+  if (back && vendorOf(back)) openTrade(back, tradeRows(back).findIndex(r => r.sell))
+}
+
+// ---- trading for coin (systems/coin.js, systems/tavern.js) -------------------------
+// The interact key on someone who trades stops the game under their menu: a
+// row for everything they sell or serve, with its price, then Sell and Leave.
+// Buying and ordering redraw the menu where the cursor stood, with what the
+// vendor says to it, so a hero may order until the purse is empty.
+
+// Who else is in the room to drink a round: the people at peace, but the vendor.
+const roomGuests = npc => state.entities.filter(e => e.type === 'npc' && e !== npc && !e.hostile && e.hp > 0
+  && !!(e.lines ?? NPC_SPECIES[e.species]?.lines))
+
+function tradeRows(npc) {
+  const kind = vendorOf(npc), { player } = state
+  const guests = roomGuests(npc)
+  const short = price => coinsOf(player) < price ? 'short' : ''
+  const rows = []
+  for (const fare of VENDORS[kind].fare ?? []) {
+    const price = fareCost(fare, guests.length), i = rows.length
+    rows.push({ label: fare.name, price, className: short(price), onSelect: () => serveFare(npc, fare, guests, i) })
+  }
+  for (const row of stock(kind)) {
+    const i = rows.length
+    rows.push({ label: row.label, price: row.price, className: short(row.price), onSelect: () => buyGood(npc, row, i) })
+  }
+  const i = rows.length
+  const wanted = player.inventory.some(item => offer(kind, item) > 0)
+  rows.push({ label: 'Sell from the bag', sell: true, className: wanted ? '' : 'short',
+    onSelect: () => {
+      // (a frog has no hands for his bag: the gate the bag key has)
+      if (!wanted || !handsFree(player)) { openTrade(npc, i, wanted ? SAID.noHands : SAID.noSale); return }
+      leaveTrade(); openInventory(npc)
+    } })
+  rows.push({ label: 'Leave', onSelect: leaveTrade })
+  return rows
+}
+
+function openTrade(npc, selected = 0, said = null) {
+  const kind = vendorOf(npc)
+  if (!kind || !state) return false
+  if (phase === PHASE.PLAYING) {
+    setPhase(PHASE.PAUSED)
+    sfx(state, 'ui-open')
+    npc.facing = state.player.px < npc.px ? 'west' : 'east'
+  }
+  menu.showTrade({ title: vendorName(npc), said: said ?? greeting(kind), purse: coinsOf(state.player), rows: tradeRows(npc), selected })
+  return true
+}
+
+function leaveTrade() {
+  sfx(state, 'ui-close')
+  resumeGame()
+  for (const k of ['f', 'F', 'Enter']) keys[k] = false   // nothing pressed at the counter acts in the world
+}
+
+function buyGood(npc, row, i) {
+  const got = buy(state.player, row, grantContents)
+  if (got === 'bought') { sfx(state, 'coin'); afterInventoryChange() }
+  openTrade(npc, i, SAID[got])
+}
+
+function serveFare(npc, fare, guests, i) {
+  const { player } = state
+  const served = order(player, fare, guests.length)
+  if (!served) { openTrade(npc, i, SAID.short); return }
+  sfx(state, fare.food ? 'munch' : 'gulp')
+  curePoison(player)   // (eating or drinking is the cure, as from the bag)
+  if (served.healed > 0) addFloat(state.feedback, { px: player.px, py: player.py, text: `+${served.healed}`, kind: 'heal' })
+  // a round: every guest lifts theirs
+  if (fare.round) {
+    sfx(state, 'cheer')
+    for (const g of guests) addFloat(state.feedback, { px: g.px, py: g.py - 14, text: 'Kippis!', kind: 'coin' })
+  }
+  updateHUD(state)
+  if (served.passedOut) {
+    // under the table: the menu shuts, and he wakes to what the innkeeper took
+    const fee = sleepItOff(player)
+    queueToast(state, { title: 'Under the table', lines: [
+      'You wake on the taproom floor with a head like a drum.',
+      fee > 0 ? `The innkeeper has taken ${fee} coin for the mopping.` : 'The innkeeper looked in your purse, and sighed.',
+    ] })
+    persistIfSurface()
+    leaveTrade()
+    return
+  }
+  persistIfSurface()
+  if (served.remark) think(state, served.remark)
+  openTrade(npc, i, served.remark ?? (fare.round ? SAID.round : SAID.served))
 }
 
 // Where the hero is on the map of the Wilds, in world tiles: where they
@@ -1901,6 +2022,11 @@ function update(delta) {
   // hands for a shield, a swing, a shot or a cast until it ends.
   tickHex(player, delta)
   const frog = !hasHands(player)
+  // The taproom's leavings (systems/tavern.js): drink and a full belly fade; a hiccup now and then.
+  if (tickTavern(player, delta) === 'hic') {
+    addFloat(state.feedback, { px: player.px, py: player.py - 12, text: 'Hic!', kind: 'coin' })
+    sfx(state, 'hic')
+  }
   // The shield: up while Q is held with a shield in the offhand. Raised, the
   // player walks at half speed, cannot sprint, and every attack is dead.
   player.blockedHit = false
@@ -1924,7 +2050,10 @@ function update(delta) {
       : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor
                                         : chargeMoveFactor(player.weapon?.weaponType))
     : 1
-  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * frogSpeedMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
+  // a tipsy hero's steps wander from where he means to go, a stuffed one's are slow (systems/tavern.js)
+  const reel = moving ? stagger(player, performance.now() / 1000) : 0
+  if (reel) { const c = Math.cos(reel), s = Math.sin(reel); [vx, vy] = [vx * c - vy * s, vx * s + vy * c] }
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * frogSpeedMul(player) * tavernSpeedMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
   if (sprinting) spendStamina(player, profile.drain * delta)
   const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
@@ -2171,7 +2300,8 @@ function update(delta) {
     // someone with a part of the Sampo's story to tell tells it; anyone else says their line
     // (and a traveller who names a town has the map pencil it in)
     if (npc?.hears && state.wilds && wildsWorld && hear(wildsWorld, npc.hears)) persistRun()
-    if (npc) { if (!(wildsWorld && state.wilds && startTelling(state, npc, wildsWorld))) interactNpc(state, npc); return }
+    // (and someone who trades opens their menu: systems/coin.js)
+    if (npc) { if (!(wildsWorld && state.wilds && startTelling(state, npc, wildsWorld)) && !openTrade(npc)) interactNpc(state, npc); return }
     if (sign) { openSign(sign); return }
     if (basin) {
       basin.flowing = !basin.flowing
@@ -2900,6 +3030,9 @@ function render() {
   // a house is framed whole in the window when it fits
   const frame = state.cave?.label?.startsWith('house:') ? { w: state.map[0].length * TILE_SIZE, h: state.map.length * TILE_SIZE } : null
   renderer.updateCamera(state.player, state.shake ?? 0, fx, frame)
+  // and the view of a hero in his cups drifts (systems/tavern.js)
+  const drift = sway(state.player, performance.now() / 1000)
+  renderer.camX += drift.dx; renderer.camY += drift.dy
   renderer.render(state, fx)
   bench?.drawOverlay(renderer.ctx, state, renderer)
   updateHUD(state)
@@ -2957,6 +3090,10 @@ function enterHouse(door) {
   let inst = door.city ? null : state.caveInstances?.[door.label]
   let version = null
   const world = wildsWorld && state.wilds ? wildsWorld : null
+  // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
+  const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
+  const worldSeed = world ? world.seed : 0
+  const story = storyEp?.houses?.[door.story] ?? null
   const owed = inst?.exit && inst.spawn ? storedSunroom(inst.map, inst.entities, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) }) : null
   if (owed?.rebuild) inst = null
   if (inst?.exit && inst.spawn) {
@@ -2964,12 +3101,11 @@ function enterHouse(door) {
       map: inst.map, entities: inst.entities, playerSpawn: inst.spawn, exit: inst.exit, theme: inst.theme,
       dropSpawned: inst.dropSpawned, lastBossTile: inst.lastBossTile, hasKey: inst.hasKey,
     })
+    // a house kept from before there was coin: whoever trades there trades now
+    markVendors(state.entities, houseSpec(door, { worldSeed, story }))
     if (owed?.reward) state.entities.push(sunRewardChest(owed.reward))
   } else {
-    // a story house's things come from the map's episode, or in the Wilds from the tale whose place this is
-    const storyEp = wildsWorld && state.wilds ? storyEpisode(wildsWorld, door) : state.episode
-    const worldSeed = wildsWorld && state.wilds ? wildsWorld.seed : 0
-    const spec = door.city ? cityHouseSpec(state, door, worldSeed) : houseSpec(door, { worldSeed, story: storyEp?.houses?.[door.story] ?? null })
+    const spec = door.city ? cityHouseSpec(state, door, worldSeed) : houseSpec(door, { worldSeed, story })
     const house = generateInterior(spec, { solved: !!world?.solved.has(door.label), looted: !!world?.looted.has(door.label) })
     state = buildCaveState(state, entrance, {
       map: house.map, entities: buildEntities(house.entitySpawns, house.map, INTERIOR_DEPTH),

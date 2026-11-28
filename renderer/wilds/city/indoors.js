@@ -17,12 +17,20 @@ import { hashStr } from '../../interior/rng.js'
 import { occupantsOf, occupantsWithActs, householdOf, struckIndoors, moodOf } from './runtime.js'
 import { speciesOf } from './walkers.js'
 import { linesFor } from './lines.js'
+import { cityVendor } from '../../systems/coin.js'
 
 // A person as a spawn in their house (game.js buildEntities makes the npc),
 // saying what they would in the street in that mood (runtime.js moodOf).
 export const residentOf = (person, mood = {}) => ({
   kind: 'npc', species: speciesOf(person), id: person.id, look: person.look, lines: linesFor(person, mood), hostile: false,
 })
+// ... who in a house (never in the church or the keep) trades as their job
+// has them trade (systems/coin.js cityVendor): the innkeeper only in the inn.
+const traderOf = (person, mood, door) => {
+  const vendor = cityVendor(person, { indoors: true, inn: door.kind === 'inn' })
+  // (whoever pours stands at the bar, where there is room: interior/index.js `spot`)
+  return vendor ? { ...residentOf(person, mood), vendor, vendorName: person.name, ...(vendor === 'innkeeper' ? { spot: 'bar' } : {}) } : residentOf(person, mood)
+}
 
 // What to build behind a city door (door.city) at this moment.
 export function cityHouseSpec(state, door, worldSeed) {
@@ -30,7 +38,7 @@ export function cityHouseSpec(state, door, worldSeed) {
   const mood = run ? moodOf(run) : {}
   return houseSpec(door, {
     worldSeed,
-    residents: occupantsOf(state, door.label).map(p => residentOf(p, mood)),
+    residents: occupantsOf(state, door.label).map(p => traderOf(p, mood, door)),
     household: householdOf(state, door.label),
   })
 }

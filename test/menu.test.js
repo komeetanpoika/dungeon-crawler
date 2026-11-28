@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatMetaSummary, navActionFor, showTitle, showClassPicker, showTextEntry, showMessage, setSubtitle } from '../renderer/ui/menu.js'
+import { formatMetaSummary, navActionFor, showTitle, showClassPicker, showTextEntry, showMessage, setSubtitle, showTrade } from '../renderer/ui/menu.js'
 
 describe('formatMetaSummary', () => {
   it('formats a played meta with treasure stolen', () => {
@@ -540,5 +540,60 @@ describe('the settings screens', () => {
       btns[0].listeners.click(); btns[2].listeners.click()
       assert.deepEqual(picks, [0, 'reset'])
     } finally { hide(); delete globalThis.document; delete globalThis.window }
+  })
+})
+
+describe('showTrade: a vendor\'s menu', () => {
+  const priceOf = btn => btn.children.find(c => c.className === 'menu-price')
+  const open = (over = {}) => showTrade({ title: 'Seppo', said: 'Iron I buy.', purse: 30, rows: [
+    { label: 'Sword', price: 24, className: '', onSelect: () => got.push('sword') },
+    { label: 'Axe', price: 78, className: 'short', onSelect: () => got.push('axe') },
+    { label: 'Sell from the bag', onSelect: () => got.push('sell') },
+    { label: 'Leave', onSelect: () => got.push('leave') },
+  ], ...over })
+  let got = []
+
+  it('shows what is said, the purse, and a price on every priced row', () => {
+    const { overlay, cleanup } = stubDomFull()
+    try {
+      got = []
+      open()
+      const panel = overlay.children[0]
+      assert.equal(titleOf(overlay), 'Seppo')
+      assert.ok(panel.children.some(c => c.className === 'menu-subtitle' && c.textContent === 'Iron I buy.'))
+      const purse = panel.children.find(c => c.className === 'menu-purse')
+      assert.equal(purse.children[0].tag, 'img')
+      assert.match(purse.children[0].src, /item_coin\.png$/)
+      assert.equal(purse.children[1].textContent, '30')
+      const btns = buttonsOf(overlay)
+      assert.deepEqual(btns.map(b => b.textContent), ['Sword', 'Axe', 'Sell from the bag', 'Leave'])
+      assert.equal(priceOf(btns[0]).children[1].textContent, '24')
+      assert.equal(priceOf(btns[1]).children[1].textContent, '78')
+      assert.equal(priceOf(btns[2]), undefined)
+      assert.equal(btns[0].className, 'menu-btn')
+      assert.equal(btns[1].className, 'menu-btn short')   // the purse is short of it
+    } finally { cleanup() }
+  })
+
+  it('confirm buys the chosen row, the cursor starts where it is told, and Escape leaves', () => {
+    const { press, cleanup } = stubDomFull()
+    try {
+      got = []
+      open()
+      press('Enter'); press('ArrowDown'); press('Enter')
+      assert.deepEqual(got, ['sword', 'axe'])
+      got = []
+      open({ selected: 2 })
+      press('Enter'); press('Escape')
+      assert.deepEqual(got, ['sell', 'leave'])
+    } finally { cleanup() }
+  })
+
+  it('a purse of nothing still shows', () => {
+    const { overlay, cleanup } = stubDomFull()
+    try {
+      open({ purse: 0 })
+      assert.equal(overlay.children[0].children.find(c => c.className === 'menu-purse').children[1].textContent, '0')
+    } finally { cleanup() }
   })
 })

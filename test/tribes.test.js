@@ -346,8 +346,11 @@ describe('game.js wires the kit', () => {
     assert.match(SRC, /const attacking = keys\[' '\] && !player\.stanceSwitch && !player\.blocking && !bound && !frog/)
     assert.match(SRC, /sandSlowMul\(player\) \* frogSpeedMul\(player\)/)
     // nothing else opens the sack or the map, uses the offhand or switches stance
-    for (const call of ['openInventory()', 'openMap()', 'useOffhand()', 'startStanceSwitch(state.player)'])
+    for (const call of ['openMap()', 'useOffhand()', 'startStanceSwitch(state.player)'])
       assert.equal(SRC.split(call).length - 1, call === 'startStanceSwitch(state.player)' ? 1 : 2, call)
+    // the sack opens by its key and from a vendor's menu (systems/coin.js), both behind the gate
+    assert.match(SRC, /if \(!wanted \|\| !handsFree\(player\)\) \{ openTrade\(npc, i, [^\n]*\n\s*leaveTrade\(\); openInventory\(npc\)/)
+    assert.equal(SRC.split('openInventory(').length - 1, 3, 'openInventory: defined, the bag key, the vendor\'s menu')
   })
   it('a ware is bought, not picked up; a registry monster is built with its home, its ring and its peace', () => {
     assert.match(SRC, /item\.price \? tryBuy\(state, item, grantContents\) === 'bought' : grantContents\(item\.contents\)/)

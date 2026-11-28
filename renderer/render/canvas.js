@@ -12,6 +12,7 @@ import { GUST_CHARGE } from '../systems/magic.js'
 import { DRAW_CHARGE } from '../systems/ranged.js'
 import { FLOAT_DUR, BUBBLE_DUR, BANNER_DUR, HIT_LIFE, ambientSpeakers } from '../systems/feedback.js'
 import { spriteKeyFor, REACT_TIME } from '../systems/npc.js'
+import { vendorOf } from '../systems/coin.js'
 import { drawNpcSheet } from './npc-sheets.js'
 import { NPC_SPECIES } from '../data/npcs.js'
 import { campfireAlpha, isBlueFire } from '../systems/campfire.js'
@@ -253,7 +254,8 @@ export function drawEntity(ctx, entity, px, py, S, sprites) {
       const key = { mushroom: 'ow_mushroom', meat: 'item_meat', cooked_meat: 'item_meat_cooked', lumber: 'item_lumber',
                     deadwood: 'item_deadwood', greywood: 'item_deadwood', clapper: 'item_clapper', fleece: 'item_fleece',
                     beer: 'item_beer', sausage: 'item_sausage', sampo_sea: 'item_sampo_sea', sampo_mountain: 'item_sampo_mountain',
-                    sampo_marsh: 'item_sampo_marsh', pike_jaw: 'item_pike_jaw', sampo: 'item_sampo', herring: 'item_herring' }[c.type]
+                    sampo_marsh: 'item_sampo_marsh', pike_jaw: 'item_pike_jaw', sampo: 'item_sampo', herring: 'item_herring',
+                    bread: 'item_bread', turnip: 'item_turnip', coins: 'item_coin' }[c.type]
       const s = key && sprites[key]
       if (s) ctx.drawImage(s, px, py, S, S)
       else { ctx.font = `${Math.round(S*0.8)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + S/2, py + S/2) }
@@ -1129,6 +1131,20 @@ export function drawPriceTags(ctx, entities, map, camX, camY, S, sprites, state)
   }
 }
 
+// Someone who trades for coin (systems/coin.js vendorOf) wears a small coin
+// over their head, bobbing: it is how a stranger tells the smith from his
+// neighbours, and a stallholder at her stall from one on her way to church.
+const VENDOR_MARK = 14
+export function drawVendorMarks(ctx, entities, map, camX, camY, S, sprites, t = 0) {
+  const coin = sprites.item_coin
+  if (!coin) return
+  for (const e of entities) {
+    if (e.type !== 'npc' || !vendorOf(e) || !map[e.y]?.[e.x]?.visible) continue
+    const bob = Math.round(2 * Math.sin(t * 3 + e.px * 0.05))
+    ctx.drawImage(coin, Math.round(e.px - camX - VENDOR_MARK / 2), Math.round(e.py - camY - S / 2 - VENDOR_MARK - 3 + bob), VENDOR_MARK, VENDOR_MARK)
+  }
+}
+
 // Maahinen eruption telegraph: a brown dust ring expanding from 8 to 40 px
 // over ERUPT_TIME, reusing the cyclops slam-ring drawing style. The
 // entity's own countdown timer (running ERUPT_TIME -> 0) drives progress.
@@ -1538,6 +1554,8 @@ export class Renderer {
     drawHealthBars(ctx, entities, map, camX, camY, S, state)
     // and what a tribe's wares cost, over everyone who stands about them
     drawPriceTags(ctx, entities, map, camX, camY, S, sprites, state)
+    // and a coin over whoever trades for it
+    drawVendorMarks(ctx, entities, map, camX, camY, S, sprites, performance.now() / 1000)
 
     // Kalevanlinna's smoke, birds in the air, turnips, notes and bells: over
     // the people, under the night
@@ -1667,7 +1685,7 @@ export class Renderer {
       ctx.save()
       ctx.font = 'bold 13px monospace'
       ctx.textAlign = 'center'
-      const COLORS = { taken: '#ef4444', dealt: '#f8fafc', heal: '#4ade80', ...BUFF_COLORS }   // a buff float is its buff's colour (2b)
+      const COLORS = { taken: '#ef4444', dealt: '#f8fafc', heal: '#4ade80', coin: '#f2c14e', ...BUFF_COLORS }   // a buff float is its buff's colour (2b)
       for (const f of fb.floats) {
         const k = f.t / FLOAT_DUR
         const x = Math.round(f.px - camX), y = Math.round(f.py - camY - 14 - k * 22)
