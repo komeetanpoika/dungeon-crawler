@@ -6,14 +6,19 @@
 // and Kalevanlinna. The seal folk barter and want none of it (data/tribes.js).
 
 // What a piece of gear fetches from a smith, by its table key. A thing not
-// listed is not bought by anyone: a tale's flute and axe, a quest's reward,
-// the three story outfits, whatever a cheat made.
+// listed is not bought by anyone: a tale's flute and axe, a quest's reward
+// (the elder's Elk-hide Boots among them), the three story outfits,
+// whatever a cheat made.
 export const VALUES = {
   weapon: { hatchet: 4, dagger: 4, pick: 6, sword: 8, longsword: 16, axe: 26 },
   ranged: { sling: 4, shortbow: 8, hunterbow: 12, longbow: 20, splitbow: 22, crossbow: 30 },
   wand: { sparkwand: 8, frostwand: 14, bramblewand: 22, firewand: 24, blinkwand: 30, stormwand: 34 },
   shield: { buckler: 8, kite: 22 },
-  outfit: { leather: 14 },
+  // worn pieces (entities.js WORN_TYPES), by slot
+  head: { cap: 6, cloth: 8, helm: 18, horned: 20 },
+  armor: { leather: 14, chain: 26, plate: 44 },
+  boots: { ironshod: 16, wayfarer: 12 },
+  ring: { breath: 30, miser: 28, mending: 34, smith: 36 },
 }
 // A vendor asks this many times a thing's worth for it...
 export const MARKUP = 3
@@ -59,7 +64,8 @@ export const VENDORS = {
   smith: {
     title: 'The smith', pays: 1,
     greet: ['Iron I buy at what it is worth. Nobody else will.', 'Spare blades? I pay in full. Good ones cost more.'],
-    goods: [gear('weapon', 'hatchet'), gear('weapon', 'sword'), gear('weapon', 'longsword'), gear('weapon', 'axe'), gear('shield', 'buckler'), gear('shield', 'kite')],
+    goods: [gear('weapon', 'hatchet'), gear('weapon', 'sword'), gear('weapon', 'longsword'), gear('weapon', 'axe'), gear('shield', 'buckler'), gear('shield', 'kite'),
+      gear('head', 'helm'), gear('armor', 'chain'), gear('armor', 'plate'), gear('boots', 'ironshod')],
   },
   hunter: {
     title: 'The hunter',
@@ -99,7 +105,7 @@ export const VENDORS = {
   weaver: {
     title: 'The weaver',
     greet: ['Stitched to turn a blade. A small one.', 'It will outlast you, if you let it.'],
-    goods: [gear('outfit', 'leather')],
+    goods: [gear('armor', 'leather'), gear('head', 'cap'), gear('head', 'cloth'), gear('boots', 'wayfarer')],
   },
   farmer: {
     title: 'The farmer',
@@ -109,7 +115,7 @@ export const VENDORS = {
   scholar: {
     title: 'The scholar',
     greet: ['I collect what the old songs left behind. Some of it I part with.', 'Careful with that. It is older than the village.'],
-    goods: [POTION, gear('wand', 'sparkwand'), gear('wand', 'frostwand'), gear('wand', 'bramblewand'), gear('wand', 'blinkwand')],
+    goods: [POTION, gear('wand', 'sparkwand'), gear('wand', 'frostwand'), gear('wand', 'bramblewand'), gear('wand', 'blinkwand'), gear('ring', 'breath')],
   },
   innkeeper: {
     title: 'The innkeeper',

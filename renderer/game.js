@@ -1,7 +1,7 @@
 import { generateLevel } from './systems/map.js'
 import { ROAD_TILES } from './systems/overworld.js'
 import { OPEN_MAPS, OPEN_MAP_SPRITES } from './data/open-maps.js'
-import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE, OUTFIT_TYPES, makeOutfitContents, defaultGear, SHIELD_TYPES, makeShieldContents } from './systems/entities.js'
+import { maybeComputeFOV, hasLineOfSight, makePlayer, makeGuard, makeMonster, makeTrap, makeDragon, makePuzzle, makeChest, makeDoor, makeExitDoor, WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, makeRangedContents, makeWandContents, emptyAmmo, weaponContents, isWalkable, DIRS, FACING_ANGLE, OUTFIT_TYPES, makeOutfitContents, defaultGear, SHIELD_TYPES, makeShieldContents, WORN_SLOTS, WORN_TYPES, makeWornContents } from './systems/entities.js'
 import { makeCyclops, updateCyclops } from './systems/cyclops.js'
 import { makeWizard, updateWizard } from './systems/wizard.js'
 import { makeCrab, updateCrab } from './systems/crab.js'
@@ -22,7 +22,8 @@ import { tryStartEnemyAttack, stepEnemyAttack } from './systems/enemy-attack.js'
 import { meleeDamageToDragon, coreBlocks } from './systems/capsules.js'
 import { updateBrain } from './systems/brain.js'
 import { act } from './systems/act.js'
-import { parseWeaponCheat } from './systems/cheats.js'
+import { parseWeaponCheat, parseGearCheat, gearCheatContents } from './systems/cheats.js'
+import { heroPortrait } from './render/hero-look.js'
 import { makeFeedback, tickFeedback, addFloat, speak, speakFrom, speakAt, think, announce, queueToast, drainToasts, ageHitEffects } from './systems/feedback.js'
 import { makeSfx, sfx, drainSfx } from './systems/sfx.js'
 import { makeAudio, playCues, setVolume } from './render/audio.js'
@@ -40,7 +41,7 @@ import { makeNetPanels } from './ui/net-panels.js'
 import { PVP_ARENAS, nextArenaIndex } from './data/pvp-arenas.js'
 import { comboShake } from './render/pvp-fx.js'
 import { openGate, updateGates } from './systems/gates.js'
-import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
+import { itemFromContents, contentsFromItem, autoEquipOnPickup, addAmmo, removeItem, equipItem, equipOutfit, unequipOutfit, unequipMain, equipOffhand, unequipOffhand, equipBelt, unequipBelt, equipWorn, unequipWorn, resolveOffhand, offhand, outfitOf, gearOf, loadoutAvailable, EQUIP_FAIL_MESSAGES } from './systems/inventory.js'
 import { showInventory, hideInventory, refreshInventory } from './ui/inventory-panel.js'
 import { showMap, hideMap } from './ui/map-panel.js'
 import { updateMinimap } from './render/minimap.js'
@@ -113,7 +114,7 @@ import { tryBuy } from './systems/trade.js'
 import { coinsOf, addCoins, sell, stock, buy, offer, vendorOf, vendorName, vendorNear, greeting, purseOf } from './systems/coin.js'
 import { VENDORS, SAID } from './data/coin.js'
 import { order, fareCost, sleepItOff, tickTavern, tavernSpeedMul, stagger, sway } from './systems/tavern.js'
-import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, RUSH_START_OUTFITS, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
+import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, BOSS_DROP_WORN, RUSH_START_OUTFITS, RUSH_START_WORN, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
   TRANCE_FADE, PULL_DURATION, PULL_TELEPORT_AT, pullTarget } from './systems/rites.js'
 import { signNearby } from './systems/signs.js'
@@ -124,6 +125,8 @@ import { tickShield, BLOCK_SPEED_MUL } from './systems/shield.js'
 import { tickBinds, playerBound, struggle } from './systems/player-bind.js'
 import { computeBlastTiles, applyBurst, makeFireZone, updateFireZones, BURST_DAMAGE } from './systems/fire.js'
 import { meleeCost, canAfford, spendStamina, tickStamina, sprintProfile, makeSprintDetector } from './systems/stamina.js'
+import { tickArmor, wornSprintMul, tickMending, purseMul, walkMul } from './systems/worn.js'
+import { tickRam } from './systems/ram.js'
 import { makeWeather, advanceClock, weatherLook, isNight } from './systems/weather.js'
 import { DAY_START } from './data/weather.js'
 import { canMoveTo, moveEntity, PLAYER_HALF, PLAYER_SPEED } from './systems/movement.js'
@@ -356,6 +359,22 @@ window.addEventListener('keydown', e => {
     state.player.weapon = weaponContents(wt)
     announce(state, `The ${def.name} answers your call! (${def.damage} dmg)`)
   }
+  // "gear": the whole wardrobe. The three outfits go on (so every character
+  // is open and the cuirass can be lifted) and one of every worn piece lands
+  // in the bag, as far as it has room.
+  if (parseGearCheat(gameCheatBuffer)) {
+    gameCheatBuffer = ''
+    const { player } = state
+    for (const ot of RUSH_START_OUTFITS) if (!ownsOutfit(player, ot)) { const { type, ...payload } = makeOutfitContents(ot); wearOutfit(player, payload) }
+    let n = 0
+    for (const contents of gearCheatContents()) {
+      if (player.inventory.length >= player.maxInventory) break
+      player.inventory.push(itemFromContents(contents))
+      n++
+    }
+    announce(state, `A wardrobe falls out of the sky: ${n} pieces in the bag.`)
+    updateHUD(state)
+  }
 })
 
 let state = null
@@ -530,7 +549,8 @@ function cullEntities() {
       def ? carriedDrop(e) : null,
     ].filter(Boolean)
     // and in the Wilds, whoever carried a purse drops it (systems/coin.js purseOf)
-    const coins = runMode === 'wilds' ? purseOf(e) : 0
+    // (the Miser's Ring on the character being played makes it heavier: systems/worn.js)
+    const coins = runMode === 'wilds' ? Math.ceil(purseOf(e) * purseMul(state.player)) : 0
     if (coins > 0) drops.push({ kind: 'floating_pickup', contents: { type: 'coins', count: coins }, x: e.x, y: e.y })
     if (drops.length) state.entities.push(...buildEntities(drops, state.map, e.lootDepth ?? 1))
   }
@@ -976,6 +996,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (runMode === 'rush') {
     player.talents = [...RUSH_START_TALENTS]
     for (const ot of RUSH_START_OUTFITS) { const { type, ...payload } = makeOutfitContents(ot); wearOutfit(player, payload) }
+    applyLoadout(player, { worn: RUSH_START_WORN })
   }
   if (openMap) {
     player.talents = [...activeSave.talents]
@@ -1503,10 +1524,12 @@ function openInventory(beside = null) {
     onEquip: i => report(state.player.inventory[i]?.kind === 'outfit' ? equipOutfit(state.player, i) : equipItem(state.player, i)),
     onEquipOff: i => report(equipOffhand(state.player, i)),
     onEquipBelt: i => report(equipBelt(state.player, i)),
+    onEquipWorn: i => report(equipWorn(state.player, i)),
     onUnequip: (stance, slot) => report(
       slot === 'main' ? unequipMain(state.player, stance)
       : slot === 'outfit' ? unequipOutfit(state.player, stance)
       : slot === 'belt' ? unequipBelt(state.player)
+      : WORN_SLOTS.includes(slot) ? unequipWorn(state.player, slot, stance)
       : unequipOffhand(state.player, stance)),
     onUse: i => useInventoryItem(i),
     onDrop: i => dropInventoryItem(i),
@@ -1532,6 +1555,8 @@ function openInventory(beside = null) {
       close: keysLabel(settings.bindings, 'bag'),
     },
     buyer,
+    // the character being played, as he stands in the world
+    portrait: () => heroPortrait(state.player, renderer?.sprites ?? {}),
   })
 }
 
@@ -1750,11 +1775,12 @@ function freeAdjacentTile(x, y) {
 
 // An outfit landing next to a fallen boss (or on the tile itself when nothing
 // is free): a floating item like any drop, so walking onto it self-equips.
-function spawnOutfitDrop(tile, outfitType) {
+// `contents` (optional): something other than an outfit to throw the same way.
+function spawnOutfitDrop(tile, outfitType, contents = makeOutfitContents(outfitType)) {
   const at = freeAdjacentTile(tile.x, tile.y) ?? tile
   const px = tile.x * TILE_SIZE + TILE_SIZE / 2, py = tile.y * TILE_SIZE + TILE_SIZE / 2
   state.entities.push({
-    type: 'floating_item', contents: makeOutfitContents(outfitType), x: at.x, y: at.y,
+    type: 'floating_item', contents, x: at.x, y: at.y,
     startPx: px, startPy: py, targetPx: at.x * TILE_SIZE + TILE_SIZE / 2, targetPy: at.y * TILE_SIZE + TILE_SIZE / 2,
     px, py, progress: 0, duration: 0.35,
   })
@@ -2042,9 +2068,10 @@ function update(delta) {
   if (vx !== 0 && vy !== 0) { const len = Math.SQRT2; vx /= len; vy /= len }
   const boss = state.entities.find(e => e.type === 'dragon_boss') ?? null
   const moving = vx !== 0 || vy !== 0
-  const profile = sprintProfile(player.attackMode, { skiLegs: hasTalent(player, 'ski_legs'), drainMul: outfitOf(player, player.attackMode)?.sprintDrain ?? 1 })
+  const profile = sprintProfile(player.attackMode, { drainMul: wornSprintMul(player) })
   const sprinting = moving && !player.charging && !blocking && player.stamina > 0 && !wasGrabbed &&
     (keys['sprint'] || sprintDetector.sprinting())
+  player.sprinting = sprinting   // for whoever draws or reads the run (the boots' puff, the Horned Helm's ram)
   const chargeFactor = player.charging
     ? (player.charging.kind === 'spell' ? GUST_CHARGE.moveFactor
       : player.charging.kind === 'draw' ? DRAW_CHARGE.moveFactor
@@ -2053,10 +2080,11 @@ function update(delta) {
   // a tipsy hero's steps wander from where he means to go, a stuffed one's are slow (systems/tavern.js)
   const reel = moving ? stagger(player, performance.now() / 1000) : 0
   if (reel) { const c = Math.cos(reel), s = Math.sin(reel); [vx, vy] = [vx * c - vy * s, vx * s + vy * c] }
-  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * frogSpeedMul(player) * tavernSpeedMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : 1)
+  const speed = PLAYER_SPEED * chargeFactor * rainSlow(player) * sandSlowMul(player) * frogSpeedMul(player) * tavernSpeedMul(player) * (blocking ? BLOCK_SPEED_MUL : 1) * (sprinting ? profile.speedMul : walkMul(player))
   if (sprinting) spendStamina(player, profile.drain * delta)
   const walkedFrom = { px: player.px, py: player.py }
   if (!wasGrabbed) moveEntity(player, vx * speed * delta, vy * speed * delta, map, PLAYER_HALF, boss)
+  tickRam(state, player, { sprinting, dt: delta })   // the Horned Helm (systems/ram.js)
   // the castle gate let down for the night (wilds/city/fx.js): walking into it says so
   if (vy < 0 && player.py === walkedFrom.py && !state.cave && isShutGate(map[player.y - 1]?.[player.x])) throttledThink('castle-gate', GATE_SHUT_LINE)
   // Päivölä: walking into a mirror turns it (systems/sunroom-run.js)
@@ -2342,6 +2370,8 @@ function update(delta) {
   player.magicCooldown = Math.max(0, (player.magicCooldown ?? 0) - delta)
   player.offCooldown = Math.max(0, (player.offCooldown ?? 0) - delta)
   tickStamina(player, delta)
+  tickArmor(player, delta)
+  if (tickMending(player, delta)) addFloat(state.feedback, { px: player.px, py: player.py - 10, text: '+1', kind: 'heal' })   // the Ring of Mending
   player.staminaRefusedT = Math.max(0, (player.staminaRefusedT ?? 0) - delta)
   const landedStance = tickStanceSwitch(player, delta)
   if (landedStance) {
@@ -2934,8 +2964,11 @@ function update(delta) {
     // leaves that outfit. Neither drops for a body that already owns it.
     const drops = [BOSS_DROP_OUTFITS[bossType]]
     if (state.cave) drops.push(MAP_CLEAR_OUTFITS[mapDataFor(state.cave.surface.level).name])
+    // (the cyclops's helm and cuirass fall with its tabard, and only then)
+    const pieces = !ownsOutfit(state.player, BOSS_DROP_OUTFITS[bossType]) ? BOSS_DROP_WORN[bossType] ?? [] : []
     for (const ot of new Set(drops.filter(Boolean)))
       if (!ownsOutfit(state.player, ot)) spawnOutfitDrop(state.lastBossTile, ot)
+    for (const key of pieces) spawnOutfitDrop(state.lastBossTile, null, makeWornContents(key))
     if (state.cave) {
       const mapData = mapDataFor(state.cave.surface.level)
       const before = isMapComplete(activeSave.progress, mapData)

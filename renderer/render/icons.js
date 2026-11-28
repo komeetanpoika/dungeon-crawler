@@ -3,6 +3,7 @@
 // upscaled crisply by CSS image-rendering: pixelated — the pack shows the
 // same art the world does.
 import { SPRITES } from './sprites.js'
+import { WORN_SLOTS } from '../systems/entities.js'
 
 const KIND_ICONS = { potion: 'potion', mushroom: 'ow_mushroom', meat: 'item_meat',
   cooked_meat: 'item_meat_cooked', lumber: 'item_lumber', deadwood: 'item_deadwood', greywood: 'item_deadwood',
@@ -19,7 +20,9 @@ export function iconSpriteFor(item) {
   if (!item) return null
   if (KIND_ICONS[item.kind]) return KIND_ICONS[item.kind]
   if (item.kind === 'ammo') return AMMO_ICONS[item.ammoKind] ?? null
-  if (item.kind === 'outfit') return SPRITES[`outfit_${item.payload?.outfitType}`] ? `outfit_${item.payload.outfitType}` : 'outfit_leather'
+  if (item.kind === 'outfit') return SPRITES[`outfit_${item.payload?.outfitType}`] ? `outfit_${item.payload.outfitType}` : 'outfit_ranger'
+  // a worn piece (head, armor, boots, ring) shows its own icon
+  if (WORN_SLOTS.includes(item.kind)) return SPRITES[`gear_${item.payload?.gearType}`] ? `gear_${item.payload.gearType}` : null
   if (item.kind === 'weapon' || item.kind === 'ranged' || item.kind === 'wand' || item.kind === 'shield') {
     const key = `weapon_${item.payload?.weaponType}`
     if (SPRITES[key]) return key

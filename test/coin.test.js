@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { coinsOf, hasPurse, addCoins, spend, worth, offer, sell, stock, buy, cityVendor, vendorOf, vendorName, vendorNear, greeting, purseOf } from '../renderer/systems/coin.js'
 import { VALUES, MARKUP, VENDORS, HOME_VENDORS, CITY_VENDORS, CITY_STALLS, FARE, PURSES, SAID, SELL_REACH } from '../renderer/data/coin.js'
 import { makePlayer, weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents,
-  WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, SHIELD_TYPES, OUTFIT_TYPES, AMMO_CAPS } from '../renderer/systems/entities.js'
+  WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, SHIELD_TYPES, OUTFIT_TYPES, WORN_TYPES, makeWornContents, AMMO_CAPS } from '../renderer/systems/entities.js'
 import { makeItem, addItem, itemFromContents, autoEquipOnPickup } from '../renderer/systems/inventory.js'
 import { TRADE_LIST, houseSpec, houseVendors, markVendors } from '../renderer/interior/versions.js'
 import { generateInterior } from '../renderer/interior/index.js'
@@ -47,16 +47,18 @@ describe('the purse', () => {
 
 describe('what a thing is worth', () => {
   it('every piece of chest gear has a worth, and the worth names a real thing', () => {
-    const tables = { weapon: WEAPON_TYPES, ranged: RANGED_WEAPON_TYPES, wand: WAND_TYPES, shield: SHIELD_TYPES, outfit: OUTFIT_TYPES }
+    const tables = { weapon: WEAPON_TYPES, ranged: RANGED_WEAPON_TYPES, wand: WAND_TYPES, shield: SHIELD_TYPES,
+      head: WORN_TYPES, armor: WORN_TYPES, boots: WORN_TYPES, ring: WORN_TYPES }
     for (const [kind, rows] of Object.entries(VALUES)) for (const [key, v] of Object.entries(rows)) {
       assert.ok(tables[kind][key], `${kind} ${key} is in its table`)
+      if (tables[kind] === WORN_TYPES) assert.equal(WORN_TYPES[key].slot, kind, `${key} is worn as ${kind}`)
       assert.ok(Number.isInteger(v) && v > 0, `${kind} ${key} is worth whole coin`)
     }
     for (const key of ['dagger', 'sword', 'longsword', 'axe']) assert.ok(worth(blade(key)) > 0)
     assert.equal(worth(itemFromContents(makeRangedContents('crossbow'))), VALUES.ranged.crossbow)
     assert.equal(worth(itemFromContents(makeWandContents('stormwand'))), VALUES.wand.stormwand)
     assert.equal(worth(itemFromContents(makeShieldContents('kite'))), VALUES.shield.kite)
-    assert.equal(worth(itemFromContents(makeOutfitContents('leather'))), VALUES.outfit.leather)
+    assert.equal(worth(itemFromContents(makeWornContents('leather'))), VALUES.armor.leather)
   })
 
   it('nobody buys a tale\'s things, a quest\'s reward, a story outfit, food or wood', () => {
@@ -75,6 +77,44 @@ describe('what a thing is worth', () => {
     assert.ok(offer('farmer', blade('hatchet')) >= 1)
     assert.equal(offer('smith', makeItem('potion')), 0)
     assert.equal(offer('nobody', sword), 0)
+  })
+})
+
+describe('worn pieces and coin', () => {
+  const piece = key => itemFromContents(makeWornContents(key))
+  it('each has the worth the design gives it', () => {
+    assert.deepEqual(VALUES.head, { cap: 6, cloth: 8, helm: 18, horned: 20 })
+    assert.deepEqual(VALUES.armor, { leather: 14, chain: 26, plate: 44 })
+    assert.deepEqual(VALUES.boots, { ironshod: 16, wayfarer: 12 })
+    assert.deepEqual(VALUES.ring, { breath: 30, miser: 28, mending: 34, smith: 36 })
+    assert.equal(VALUES.outfit, undefined)
+    assert.equal(worth(piece('plate')), 44)
+    assert.equal(worth(piece('smith')), 36)
+  })
+  it('every piece can be sold but the elder\'s boots, which nobody buys or sells', () => {
+    for (const key of Object.keys(WORN_TYPES)) {
+      if (key === 'elk') continue
+      assert.ok(worth(piece(key)) > 0, key)
+      assert.equal(offer('smith', piece(key)), worth(piece(key)), `${key}: the smith pays in full`)
+    }
+    assert.equal(worth(piece('elk')), 0)
+    assert.equal(offer('smith', piece('elk')), 0)
+    for (const kind of Object.keys(VENDORS)) assert.ok(!stock(kind).some(r => r.contents.gearType === 'elk'), kind)
+  })
+  it('the smith, the weaver and the scholar keep them on the shelf', () => {
+    const has = (kind, keys) => keys.every(key => stock(kind).some(r => r.contents.gearType === key && r.price === VALUES[WORN_TYPES[key].slot][key] * MARKUP))
+    assert.ok(has('smith', ['helm', 'chain', 'plate', 'ironshod']))
+    assert.deepEqual(stock('weaver').map(r => r.contents.gearType), ['leather', 'cap', 'cloth', 'wayfarer'])
+    assert.ok(has('weaver', ['leather', 'cap', 'cloth', 'wayfarer']))
+    assert.ok(has('scholar', ['breath']))
+    assert.equal(stock('weaver').find(r => r.contents.gearType === 'cap').label, 'Leather Cap')
+  })
+  it('a second jerkin can be bought: another character can wear it', () => {
+    const p = hero({ coins: 500 })
+    const row = stock('weaver')[0]
+    assert.equal(buy(p, row, grantTo(p)), 'bought')
+    assert.equal(buy(p, row, grantTo(p)), 'bought')
+    assert.equal(coinsOf(p), 500 - 2 * row.price)
   })
 })
 
@@ -174,12 +214,10 @@ describe('buying', () => {
     assert.equal(p.inventory.length, p.maxInventory)
   })
 
-  it('is not sold what he could take nothing of: a full quiver, a coat he owns, a bow he carries', () => {
+  it('is not sold what he could take nothing of: a full quiver, a bow he carries', () => {
     const p = hero({ coins: 500 })
     p.ammo.arrow = AMMO_CAPS.arrow
     assert.equal(buy(p, stock('fletcher').find(r => r.id === 'arrows'), grantTo(p)), 'nothing')
-    give(p, itemFromContents(makeOutfitContents('leather')))
-    assert.equal(buy(p, stock('weaver')[0], grantTo(p)), 'nothing')
     p.ranged = (({ type, ...rest }) => rest)(makeRangedContents('longbow'))
     assert.equal(buy(p, stock('fletcher').find(r => r.id === 'longbow'), grantTo(p)), 'nothing')
     assert.equal(coinsOf(p), 500)

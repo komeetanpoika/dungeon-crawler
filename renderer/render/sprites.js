@@ -1,3 +1,6 @@
+import { WORN_TYPES } from '../systems/entities.js'
+import { HERO_PART_TILES } from '../data/hero-parts.js'
+
 export const SPRITES = {
   // tiles
   floor:        'tile_0000',
@@ -17,12 +20,16 @@ export const SPRITES = {
   player_melee_heavy: 'tile_0097',     // plumed knight — melee in the Plated Armor
   player_ranged:      'tile_0112',     // hooded ranger
   player_magic:       'tile_0084',     // the purple wizard
-  // Outfit icons: the loadout's own figure stands in for its garb until
-  // dedicated art exists (plan 3).
+  // Outfit icons: the Archer's and the Mage's own figures stand in for the
+  // coat and the robe; the Knight's Tabard has an icon of its own.
   outfit_ranger:  'tile_0112',
   outfit_robe:    'tile_0084',
-  outfit_plate:   'tile_0097',
-  outfit_leather: 'tile_0098',
+  outfit_plate:   'outfit_tabard',
+  // Worn pieces (entities.js WORN_TYPES): an icon each, and the head, body
+  // and feet overlays the hero is dressed in (render/hero-look.js). All of
+  // them are built by tools/gear-art/build.mjs.
+  ...Object.fromEntries(Object.keys(WORN_TYPES).map(key => [`gear_${key}`, `gear_${key}`])),
+  ...Object.fromEntries(HERO_PART_TILES.map(name => [name, name])),
   guard:        'tile_0085',
   guard_alert:  'tile_0087',
   monster_weak:   'tile_0120',

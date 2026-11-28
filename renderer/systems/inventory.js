@@ -4,8 +4,8 @@
 // logic — game.js owns pickups, drops, and messages.
 
 import {
-  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES, SHIELD_TYPES,
-  makeRangedContents, makeWandContents, makeOutfitContents, makeShieldContents, defaultGear, isSmallBlade,
+  AMMO_CAPS, emptyAmmo, RANGED_WEAPON_TYPES, WAND_TYPES, OUTFIT_TYPES, SHIELD_TYPES, WORN_TYPES, WORN_SLOTS,
+  makeRangedContents, makeWandContents, makeOutfitContents, makeShieldContents, makeWornContents, defaultGear, isSmallBlade,
 } from './entities.js'
 
 const STACKABLE_KINDS = {
@@ -44,7 +44,7 @@ export function makeItem(kind, count = 1) {
   return { kind, name: def.name, emoji: def.emoji, stackable: true, count, ...def.extra }
 }
 
-const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥', shield: '🛡' }
+const HAND_EMOJI = { weapon: '⚔', ranged: '🏹', wand: '🪄', outfit: '🧥', shield: '🛡', head: '⛑', armor: '🥋', boots: '🥾', ring: '💍' }
 
 // Chest/floating `contents` -> sack item. Ammo is never a sack item — it
 // goes straight into the pool (see autoEquipOnPickup) — so this returns the
@@ -77,6 +77,14 @@ const REBUILD = {
 }
 
 export function itemFromContents(contents) {
+  // The Leather Coat was an outfit before armor had a slot of its own: one
+  // still lying in a saved cave is a Leather Jerkin when it is picked up.
+  if (contents.type === 'outfit' && contents.outfitType === 'leather') return wornItem('armor', pieceOf('leather'))
+  // A worn piece is table data: rebuilt by key, and nothing when the key is
+  // unknown or belongs to another slot.
+  if (WORN_SLOTS.includes(contents.type)) {
+    return WORN_TYPES[contents.gearType]?.slot === contents.type ? wornItem(contents.type, pieceOf(contents.gearType)) : null
+  }
   const rebuild = REBUILD[contents.type]
   if (rebuild) {
     const [table, make] = rebuild
@@ -100,7 +108,7 @@ export function contentsFromItem(item) {
   // is an empty weapon: bundle 0 travels with the contents and survives the
   // rebuild in itemFromContents.
   if (item.kind === 'ranged') return { ...item.payload, type: 'ranged', bundle: 0 }
-  if (item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'outfit' || item.kind === 'shield')
+  if (item.kind === 'weapon' || item.kind === 'wand' || item.kind === 'outfit' || item.kind === 'shield' || WORN_SLOTS.includes(item.kind))
     return { ...item.payload, type: item.kind }
   if (item.kind === 'potion') return { type: 'potion', amount: item.amount }
   return { type: item.kind, count: item.count ?? 1 }
@@ -146,6 +154,18 @@ export function resolveOffhand(player) {
   return { kind: 'consumable', item: off.item, count: slot?.count ?? 0, index, slot }
 }
 
+// ── Worn pieces ─────────────────────────────────────────────────────────────
+// Headwear, armor, boots and a ring: one of each per character, in
+// gear[stance] beside the offhand and the outfit. A piece's item kind is its
+// slot's name and its payload the table row (entities.js WORN_TYPES).
+const pieceOf = gearType => { const { type, ...payload } = makeWornContents(gearType); return payload }
+
+export const wornOf = (player, slot, stance = player.attackMode ?? 'melee') => gearOf(player, stance)[slot] ?? null
+
+export function wornItem(slot, payload) {
+  return { kind: slot, name: payload.name, emoji: HAND_EMOJI[slot], stackable: false, payload: { ...payload } }
+}
+
 export function outfitItem(payload) {
   return { kind: 'outfit', name: payload.name, emoji: HAND_EMOJI.outfit, stackable: false, payload: { ...payload } }
 }
@@ -186,6 +206,7 @@ export function canEquip(player, item, slot = 'main') {
   if (slot === 'outfit') return item.kind === 'outfit' ? { ok: true } : { ok: false, reason: 'not_equippable' }
   if (slot === 'off') return canEquipOffhand(player, item)
   if (slot === 'belt') return canEquipBelt(player, item)
+  if (WORN_SLOTS.includes(slot)) return item.kind === slot ? canEquipWorn(player, item) : { ok: false, reason: 'not_equippable' }
   if (item.kind === 'wand')
     return loadoutAvailable(player, 'magic') ? { ok: true } : { ok: false, reason: 'not_learned' }
   if (item.kind !== 'weapon' && item.kind !== 'ranged') return { ok: false, reason: 'not_equippable' }
@@ -193,6 +214,14 @@ export function canEquip(player, item, slot = 'main') {
     return { ok: false, reason: 'not_learned' }
   if (item.payload.heavy && !canWieldHeavy(player))
     return { ok: false, reason: 'heavy' }
+  return { ok: true }
+}
+
+// A worn piece fits its own slot on any character; a heavy one (the Plate
+// Cuirass) rides on the tabard like every heavy thing.
+export function canEquipWorn(player, item) {
+  if (!item || !WORN_SLOTS.includes(item.kind) || !item.payload) return { ok: false, reason: 'not_equippable' }
+  if (item.payload.heavy && !canWieldHeavy(player)) return { ok: false, reason: 'heavy' }
   return { ok: true }
 }
 
@@ -346,6 +375,21 @@ function beltToEvict(player, stance, nextOutfit) {
   return beltItem(player.belt)
 }
 
+// A heavy worn piece (the Plate Cuirass) rides on the tabard too, on whichever
+// character wears it. Returns [{ stance, slot, item }], in eviction order.
+function wornToEvict(player, stance, nextOutfit) {
+  if (stance !== 'melee' || nextOutfit?.heavy) return []
+  return STANCES.flatMap(s => WORN_SLOTS
+    .filter(slot => gearOf(player, s)[slot]?.heavy)
+    .map(slot => ({ stance: s, slot, item: wornItem(slot, gearOf(player, s)[slot]) })))
+}
+function evictWorn(player, list) {
+  for (const { stance, slot, item } of list) {
+    player.inventory.push(item)
+    gearOf(player, stance)[slot] = null
+  }
+}
+
 // Move the evicted offhands into the sack; like evictHands, the caller has
 // already counted them in its own roomFor arithmetic.
 function evictOffs(player, offs) {
@@ -389,15 +433,17 @@ export function equipOutfit(player, index, stance) {
   const evict = handsToEvict(player, stance, item.payload)
   const offEvict = offsToEvict(player, stance, item.payload)
   const beltEvict = beltToEvict(player, stance, item.payload)
+  const wornEvict = wornToEvict(player, stance, item.payload)
   // The new outfit frees one slot; the old outfit, each evicted hand, each
-  // evicted offhand and an evicted belt tool take one.
-  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length + offEvict.length + (beltEvict ? 1 : 0) - 1))
+  // evicted offhand, an evicted belt tool and each evicted cuirass take one.
+  if (!roomFor(player, (g.outfit ? 1 : 0) + evict.length + offEvict.length + (beltEvict ? 1 : 0) + wornEvict.length - 1))
     return { ok: false, reason: 'full' }
   player.inventory.splice(index, 1)
   if (g.outfit) player.inventory.push(outfitItem(g.outfit))
   evictHands(player, evict)
   evictOffs(player, offEvict)
   if (beltEvict) { player.inventory.push(beltEvict); player.belt = null }
+  evictWorn(player, wornEvict)
   g.outfit = { ...item.payload }
   closeIfLocked(player, stance)
   return { ok: true, equipped: item }
@@ -409,13 +455,38 @@ export function unequipOutfit(player, stance) {
   const evict = handsToEvict(player, stance, null)
   const offEvict = offsToEvict(player, stance, null)
   const beltEvict = beltToEvict(player, stance, null)
-  if (!roomFor(player, 1 + evict.length + offEvict.length + (beltEvict ? 1 : 0))) return { ok: false, reason: 'full' }
+  const wornEvict = wornToEvict(player, stance, null)
+  if (!roomFor(player, 1 + evict.length + offEvict.length + (beltEvict ? 1 : 0) + wornEvict.length)) return { ok: false, reason: 'full' }
   player.inventory.push(outfitItem(g.outfit))
   evictHands(player, evict)
   evictOffs(player, offEvict)
   if (beltEvict) { player.inventory.push(beltEvict); player.belt = null }
+  evictWorn(player, wornEvict)
   g.outfit = null
   closeIfLocked(player, stance)
+  return { ok: true }
+}
+
+// Wear the bag's piece at `index` on `stance` (the character being played);
+// what was in that slot swaps back into the bag (net 0).
+export function equipWorn(player, index, stance = player.attackMode ?? 'melee') {
+  const item = player.inventory[index]
+  const gate = canEquipWorn(player, item)
+  if (!gate.ok) return gate
+  const g = gearOf(player, stance)
+  const held = g[item.kind] ?? null
+  g[item.kind] = { ...item.payload }
+  player.inventory.splice(index, 1)
+  if (held) player.inventory.push(wornItem(item.kind, held))
+  return { ok: true, equipped: item }
+}
+
+export function unequipWorn(player, slot, stance = player.attackMode ?? 'melee') {
+  const g = gearOf(player, stance)
+  if (!WORN_SLOTS.includes(slot) || !g[slot]) return { ok: false, reason: 'not_equippable' }
+  if (!roomFor(player, 1)) return { ok: false, reason: 'full' }
+  player.inventory.push(wornItem(slot, g[slot]))
+  g[slot] = null
   return { ok: true }
 }
 
@@ -517,6 +588,17 @@ export function autoEquipOnPickup(player, item) {
     if (!gearOf(player, stance).outfit) {
       gearOf(player, stance).outfit = { ...item.payload }
       return { ok: true, equipped: true, outfit: true }
+    }
+    const r = addItem(player, item)
+    return r.ok ? { ok: true, equipped: false } : r
+  }
+  // A worn piece goes straight on the character being played when that slot
+  // of theirs is bare (and they can lift it); otherwise into the bag.
+  if (WORN_SLOTS.includes(item.kind)) {
+    const g = gearOf(player, player.attackMode ?? 'melee')
+    if (!g[item.kind] && canEquipWorn(player, item).ok) {
+      g[item.kind] = { ...item.payload }
+      return { ok: true, equipped: true, worn: true }
     }
     const r = addItem(player, item)
     return r.ok ? { ok: true, equipped: false } : r

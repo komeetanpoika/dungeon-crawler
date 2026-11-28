@@ -167,6 +167,17 @@ describe('cave instances', () => {
   })
 })
 
+describe('adventureRespawn and armor', () => {
+  it('the hero wakes with his armor whole, and no half-counted mending', () => {
+    const state = { map: [[{}]], entities: [], player: { x: 1, y: 1, px: 48, py: 48, hp: 0, maxHp: 10, dents: 6, armorRestT: 3, mendT: 20, sprinting: true } }
+    const back = adventureRespawn(state, { x: 2, y: 2 })
+    assert.equal(back.player.hp, 10)
+    assert.equal(back.player.dents, 0)
+    assert.equal(back.player.mendT, 0)
+    assert.equal(back.player.sprinting, false)
+  })
+})
+
 describe('adventureRespawn', () => {
   const spawn = { x: 34, y: 32 }
 

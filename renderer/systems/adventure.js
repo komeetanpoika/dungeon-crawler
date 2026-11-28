@@ -6,9 +6,10 @@ import { OPEN_MAPS } from '../data/open-maps.js'
 import { ADVENTURE_DEPTH } from '../data/levels.js'
 import { DAY_START } from '../data/weather.js'
 import { WAND_TYPES, RANGED_WEAPON_TYPES, makeWandContents, makeRangedContents, emptyAmmo,
-  OUTFIT_TYPES, makeOutfitContents, defaultGear, WEAPON_TYPES, weaponContents, SHIELD_TYPES, makeShieldContents, SACK_BASE } from './entities.js'
-import { itemFromContents, OFFHAND_KINDS, offhandItem } from './inventory.js'
-import { migrateTalentsToOutfits } from './outfits.js'
+  OUTFIT_TYPES, makeOutfitContents, defaultGear, WEAPON_TYPES, weaponContents, SHIELD_TYPES, makeShieldContents, SACK_BASE,
+  WORN_SLOTS, WORN_TYPES, makeWornContents } from './entities.js'
+import { itemFromContents, OFFHAND_KINDS, offhandItem, wornItem } from './inventory.js'
+import { migrateTalentsToOutfits, migrateToWorn } from './outfits.js'
 
 // Item offhands are table data like the hands: rebuilt by kind, dropped when
 // the table has never heard of them. A consumable pointer is copied as-is.
@@ -57,6 +58,11 @@ export function normalizeBody(body) {
   // payload from the table (via itemFromContents, the one place every pickup
   // is normalised) and bank the old on-weapon count into the pool once.
   out.inventory = (out.inventory ?? []).map(item => {
+    // Worn pieces are table data: rebuilt by key, an unknown one dropped. A
+    // Leather Coat from before armor had a slot is a Leather Jerkin
+    // (itemFromContents knows both).
+    if (WORN_SLOTS.includes(item.kind)) return itemFromContents({ type: item.kind, gearType: item.payload?.gearType })
+    if (item.kind === 'outfit' && item.payload?.outfitType === 'leather') return itemFromContents({ type: 'outfit', outfitType: 'leather' })
     // Sack wands are rebuilt from the table too, and an unrecognised one is
     // dropped rather than handed to makeWandContents — its `weaponType ?
     // weaponType : 'sparkwand'` fallback would silently mint a Spark Wand the
@@ -89,6 +95,19 @@ export function normalizeBody(body) {
     const ot = g.outfit?.outfitType
     if (OUTFIT_TYPES[ot]) { const { type, ...payload } = makeOutfitContents(ot); gear[stance].outfit = payload }
     else gear[stance].outfit = null
+    // The four worn slots: rebuilt by key; a key the table does not know, or
+    // one that belongs to another slot, leaves the slot bare.
+    for (const slot of WORN_SLOTS) {
+      const key = g[slot]?.gearType
+      if (WORN_TYPES[key]?.slot === slot) { const { type, ...payload } = makeWornContents(key); gear[stance][slot] = payload }
+    }
+    // A Leather Coat worn as an outfit (before armor had a slot) is this
+    // character's Leather Jerkin, or goes to the bag if he has armor on.
+    if (ot === 'leather') {
+      const { type, ...jerkin } = makeWornContents('leather')
+      if (!gear[stance].armor) gear[stance].armor = jerkin
+      else out.inventory.push(wornItem('armor', jerkin))
+    }
     const off = normalizeOffhand(g.off)
     // Enforce OFFHAND_KINDS on load: if an item offhand's kind is not in
     // the stance's allowlist, move it to inventory rather than lose it.
@@ -146,6 +165,10 @@ export function nextMapDepth(depth) {
 // weather clock — permanent, and untouched by the death wipe (resetNpcs).
 // v8 moves per-loadout gear (`gear`, `belt`) onto the body and migrates the
 // retired stance talents to their worn outfits (systems/outfits.js).
+// v9 turns what became worn pieces into them, once: Ski-legs into Elk-hide
+// Boots and the Warrior's plate into the tabard with a Plate Cuirass
+// (outfits.js migrateToWorn). The four worn slots themselves need no step:
+// normalizeBody gives every body them, and rebuilds them, on each load.
 // Migration is additive — missing fields default.
 export function normalizeAdventureSave(raw) {
   const base = (raw && typeof raw === 'object' && raw.progress) ? { ...raw }
@@ -178,6 +201,12 @@ export function normalizeAdventureSave(raw) {
     base.body = m.body
     base.talents = m.talents
     base.v8 = true
+  }
+  if (!base.v9) {
+    const m = migrateToWorn(base.body, base.talents)
+    base.body = m.body
+    base.talents = m.talents
+    base.v9 = true
   }
   return base
 }

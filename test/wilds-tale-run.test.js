@@ -166,7 +166,7 @@ test('the hide is handed over in the village with the wood out of the window', (
   put(t.state, villageElder(t.state), 1, 0)
   tickTales(t.state, t.world, 0.016, t.hooks)
   assert.equal(t.flags.hide_given, true)
-  assert.equal(hasTalent(t.state.player, 'ski_legs'), true)
+  assert.equal(t.state.player.gear?.melee?.boots?.gearType, 'elk')
   assert.equal(t.rec.done, true)
   assert.equal(t.world.places.get('2,2').done, true)
   assert.ok(t.world.paid.has('elk'))
@@ -198,13 +198,13 @@ test('a dead elder is replaced by a stand-in who takes the hide', () => {
   assert.equal(t.flags.hide_given, true)
 })
 
-test('a second village\'s elk pays loot, not Ski-legs', () => {
+test('a second village\'s elk pays loot, not a second pair of boots', () => {
   const t = setup('elk', '2,2', { flags: { hirvi_dead: true }, paid: ['elk'] })
   t.state.player.inventory.push(makeItem('elk_hide'))
   put(t.state, villageElder(t.state), 1, 0)
   tickTales(t.state, t.world, 0.016, t.hooks)
   assert.equal(t.flags.hide_given, true)
-  assert.equal(hasTalent(t.state.player, 'ski_legs'), false)
+  assert.equal(t.state.player.gear?.melee?.boots ?? null, null)
   assert.equal(t.rec.special, false)
   const loot = pickups(t.state)
   assert.equal(loot.length, 2)
@@ -424,7 +424,7 @@ test('the elk, start to finish through the runner: flushed twice, stood, killed,
   put(t.state, villageElder(t.state), 1, 0)
   tickTales(t.state, t.world, 0.016, t.hooks)
   assert.equal(t.flags.hide_given, true)
-  assert.equal(hasTalent(t.state.player, 'ski_legs'), true)
+  assert.equal(t.state.player.gear?.melee?.boots?.gearType, 'elk')
   assert.equal(t.rec.done, true)
 })
 

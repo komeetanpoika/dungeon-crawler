@@ -9,12 +9,12 @@
 // work (cityVendor). The interact key on one opens the trade menu (game.js
 // openTrade); with one within SELL_REACH the bag's Drop is Sell.
 //
-// Only gear is bought (weapons, bows, wands, shields, the Leather Coat):
+// Only gear is bought (weapons, bows, wands, shields, worn pieces):
 // food, wood and the rest are what the seal folk barter in (systems/trade.js).
 // Pure and DOM-free.
 import { itemFromContents } from './inventory.js'
 import { givesNothing } from './trade.js'
-import { weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents } from './entities.js'
+import { weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeWornContents } from './entities.js'
 import { hashStr } from '../interior/rng.js'
 import { VALUES, MARKUP, PAYS, SELL_REACH, VENDORS, CITY_VENDORS, CITY_STALLS, TRADING_ACTS, PURSES } from '../data/coin.js'
 
@@ -38,7 +38,7 @@ export function spend(player, n) {
 
 // ---- selling -------------------------------------------------------------------
 
-const keyOf = item => item?.kind === 'outfit' ? item.payload?.outfitType : item?.payload?.weaponType
+const keyOf = item => item?.payload?.gearType ?? item?.payload?.weaponType
 
 // What a thing is worth, in full. 0: nobody buys it.
 export function worth(item) {
@@ -69,7 +69,8 @@ export function sell(player, index, kind) {
 
 const MAKE = {
   weapon: key => ({ type: 'weapon', ...weaponContents(key) }),
-  ranged: makeRangedContents, wand: makeWandContents, shield: makeShieldContents, outfit: makeOutfitContents,
+  ranged: makeRangedContents, wand: makeWandContents, shield: makeShieldContents,
+  head: makeWornContents, armor: makeWornContents, boots: makeWornContents, ring: makeWornContents,
 }
 const AMMO_NAMES = { arrow: 'Arrows', bolt: 'Bolts', stone: 'Sling stones' }
 

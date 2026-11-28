@@ -1,8 +1,8 @@
 // Outfits: where the three story outfits come from, who owns what, and the
 // one-time save migration from the stance talents they replaced. Pure —
 // game.js spawns the floating items and calls grantContents.
-import { makeOutfitContents, OUTFIT_TYPES, defaultGear, emptyAmmo } from './entities.js'
-import { gearOf, STANCES } from './inventory.js'
+import { makeOutfitContents, makeWornContents, OUTFIT_TYPES, defaultGear, emptyAmmo } from './entities.js'
+import { gearOf, wornItem, STANCES } from './inventory.js'
 import { queueToast } from './feedback.js'
 import { sfx } from './sfx.js'
 
@@ -15,12 +15,20 @@ export const MAP_CLEAR_OUTFITS = { 'forest-1-clearings': 'ranger', wilds: 'range
 export const BOSS_DROP_OUTFITS = { cyclops: 'plate' }
 // Dungeon Rush wears everything from the first step.
 export const RUSH_START_OUTFITS = ['ranger', 'robe', 'plate']
+// ...and these pieces (applyLoadout's `worn` shape, entities.js WORN_TYPES
+// keys): the helm and cuirass that make the knight (the plate was his whole
+// figure once, helm and all), and the boots Ski-legs became, on each of the
+// three since a Rush run has no time to shop.
+export const RUSH_START_WORN = { melee: { head: 'helm', armor: 'plate', boots: 'elk' }, ranged: { boots: 'elk' }, magic: { boots: 'elk' } }
+// A boss of this type drops these worn pieces beside its outfit, under the
+// same once-only rule (the cyclops: helm and cuirass with the tabard, so the
+// kill still turns the adventurer into the knight).
+export const BOSS_DROP_WORN = { cyclops: ['plate', 'helm'] }
 
 export const OUTFIT_TOAST_LINES = {
   ranger:  "Ranger's Coat — the Archer's way is open.",
   robe:    "Mage's Robe — the Mage's way is open.",
-  plate:   'Plated Armor — heavy steel sits easy now.',
-  leather: 'Leather Coat — a little between me and the teeth.',
+  plate:   "Knight's Tabard — heavy steel sits easy now.",
 }
 
 export const outfitStance = (payload, fallback = 'melee') => payload.loadout ?? fallback
@@ -56,6 +64,28 @@ export function migrateTalentsToOutfits(body, talents = []) {
     out.gear[stance].outfit ??= payload
   }
   return { body: out, talents: talents.filter(t => !RETIRED_TALENT_OUTFITS[t]) }
+}
+
+// Save migration (adventure.js v9): what an old save had as a talent or on
+// an outfit and is a worn piece now. Ski-legs is one pair of Elk-hide Boots,
+// and the plate the Warrior wore (the tabard since) has its Plate Cuirass
+// under it and an Iron Helm over it, so he looks the knight he was. All go
+// on the Warrior, or into the bag when that slot of his is taken. Pure: the same objects come back when there was nothing to turn.
+export function migrateToWorn(body, talents = []) {
+  const skis = talents.includes('ski_legs')
+  const plated = body?.gear?.melee?.outfit?.outfitType === 'plate'
+  if (!skis && !plated) return { body, talents }
+  const out = body
+    ? { ...body, gear: structuredClone(body.gear ?? defaultGear()), inventory: [...(body.inventory ?? [])] }
+    : emptyBody()
+  const put = key => {
+    const { type: slot, ...payload } = makeWornContents(key)
+    if (!out.gear.melee[slot]) out.gear.melee[slot] = payload
+    else out.inventory.push(wornItem(slot, payload))
+  }
+  if (skis) put('elk')
+  if (plated) { put('plate'); put('helm') }
+  return { body: out, talents: skis ? talents.filter(t => t !== 'ski_legs') : talents }
 }
 
 export function outfitToast(state, payload) {

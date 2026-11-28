@@ -12,13 +12,16 @@
 // A bow teaser is not wasted even so — a pickup's arrow bundle reaches the
 // pool whether or not the weapon can be equipped (autoEquipOnPickup).
 //
-// Shields ride alongside melee (one pick in five) and the Leather Coat is the
-// one chest outfit (a twentieth of the roll, from tier 2 on); both are in the
-// same tiered-pool/teaser ladder as the weapon bands. The three story
-// outfits (ranger, robe, plate) are never rolled — they come from the world
-// (systems/outfits.js).
-import { weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents, AMMO_KINDS } from './entities.js'
+// Shields ride alongside melee (one pick in five), and the four kinds of
+// worn piece (armor, headwear, boots, rings: entities.js WORN_TYPES) have a
+// small band each, on the same tiered-pool ladder as the weapons. A tier
+// with no pool for a band gives it no weight: the first maps roll no armor,
+// boots or rings. The three story outfits (ranger, robe, the tabard) and
+// the elder's Elk-hide Boots are never rolled — they come from the world
+// (systems/outfits.js, systems/quests/clearings.js).
+import { weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeWornContents, AMMO_KINDS } from './entities.js'
 import { canEquip, itemFromContents, canWieldHeavy } from './inventory.js'
+import { WORN_SLOTS } from './entities.js'
 import { LEVEL_CONFIG } from '../data/levels.js'
 
 // Four rungs, one per pool. A tier's melee and ranged rows both hold at least
@@ -51,13 +54,29 @@ export const SHIELD_POOLS = {
   3: ['buckler', 'kite'],
   4: ['kite'],
 }
-// The one chest outfit. Story outfits (ranger, robe, plate) are handed out by
-// the world (systems/outfits.js), never rolled. No rung at tier 1: the first
-// maps are for learning the sack, not filling it.
-export const OUTFIT_POOLS = {
+// Worn pieces (entities.js WORN_TYPES keys). A missing rung is a band that
+// does not roll at that tier: the first maps are for learning the sack, not
+// filling it. The Plate Cuirass is heavy, so it is offered only to a hero in
+// the tabard (canUse); the mail beside it keeps the band at full weight.
+export const ARMOR_POOLS = {
   2: ['leather'],
-  3: ['leather'],
-  4: ['leather'],
+  3: ['leather', 'chain'],
+  4: ['chain', 'plate'],
+}
+export const HEAD_POOLS = {
+  1: ['cap'],
+  2: ['cap', 'cloth'],
+  3: ['helm', 'cloth', 'horned'],
+  4: ['helm', 'horned'],
+}
+export const BOOTS_POOLS = {
+  2: ['wayfarer'],
+  3: ['wayfarer', 'ironshod'],
+  4: ['ironshod'],
+}
+export const RING_POOLS = {
+  3: ['breath', 'miser'],
+  4: ['breath', 'miser', 'mending', 'smith'],
 }
 // Ammo is not tiered: a bundle is only ever worth finding when the player
 // carries a bow that fires it, and that ownership is the better gate.
@@ -66,10 +85,10 @@ const AMMO_COUNTS = { arrow: 10, bolt: 6, stone: 15 }
 // Relative band weights. A locked category keeps TEASER of its own weight and
 // whatever is left is renormalised over the survivors — so on the first map,
 // where bows, wands and ammo are all out of reach, potions and melee split
-// nearly the whole roll between them. Shields take a fifth of the old melee
-// weight; the Leather Coat a twentieth of the chest, out of the potion band,
-// so a veteran's roll still totals 100.
-const BASE_WEIGHTS = { potion: 30, melee: 16, shield: 4, ranged: 15, wand: 15, ammo: 15, outfit: 5 }
+// nearly the whole roll between them. Worn pieces are 13 of a veteran's
+// hundred in all (armor 5, headwear 4, boots 2, rings 2), taken a little
+// from every other band.
+export const BASE_WEIGHTS = { potion: 26, melee: 15, shield: 4, ranged: 14, wand: 14, ammo: 14, armor: 5, head: 4, boots: 2, ring: 2 }
 const TEASER = 0.2
 
 function pick(pool, rng) {
@@ -91,12 +110,8 @@ function canUse(player, contents) {
   if (contents.type === 'shield') return !contents.heavy || canWieldHeavy(player)
   const item = itemFromContents(contents)
   if (!item) return true
-  // Outfits route through the 'outfit' slot so canEquip doesn't reject them
-  // under the default 'main' rules. In practice this bypasses canUse today:
-  // canEquip(..., 'outfit') only checks item.kind === 'outfit', and the one
-  // chest outfit (Leather Coat, loadout: null) fits every stance regardless
-  // of what the player already wears.
-  return canEquip(player, item, item.kind === 'outfit' ? 'outfit' : 'main').ok
+  // A worn piece is judged for its own slot (a heavy one needs the tabard).
+  return canEquip(player, item, WORN_SLOTS.includes(item.kind) ? item.kind : 'main').ok
 }
 
 // The ammo kinds the player actually owns a bow for, hand or sack, in
@@ -115,26 +130,48 @@ function ammoKindsFor(player) {
 function weaponBand(name, pools, tier, player, toContents) {
   const usable = pools[tier].filter(wt => canUse(player, toContents(wt)))
   return usable.length
-    ? { weight: BASE_WEIGHTS[name], pool: usable, toContents }
-    : { weight: BASE_WEIGHTS[name] * TEASER, pool: pools[1], toContents }
+    ? { name, weight: BASE_WEIGHTS[name], pool: usable, toContents }
+    : { name, weight: BASE_WEIGHTS[name] * TEASER, pool: pools[1], toContents }
+}
+
+// A worn slot's band: the tier's pool minus what the player cannot wear. No
+// pool at this tier, no band; a pool he can wear none of teases the lowest
+// rung's pieces at a fifth of the weight, as a weapon band does.
+function wornBand(name, pools, tier, player) {
+  const pool = pools[tier] ?? []
+  if (!pool.length) return { name, weight: 0, pool, toContents: makeWornContents }
+  const usable = pool.filter(key => canUse(player, makeWornContents(key)))
+  const lowest = pools[Math.min(...Object.keys(pools).map(Number))]
+  return usable.length
+    ? { name, weight: BASE_WEIGHTS[name], pool: usable, toContents: makeWornContents }
+    : { name, weight: BASE_WEIGHTS[name] * TEASER, pool: lowest, toContents: makeWornContents }
 }
 
 const meleeContents = wt => ({ type: 'weapon', ...weaponContents(wt) })
 
-export function rollChestLoot(depth, rng = Math.random, player = null) {
+// The bands of a chest at this depth for this player, in roll order:
+// [{ name, weight, pool, toContents }]. rollChestLoot rolls over them; the
+// tests and tools/verify-loot.mjs read them.
+export function lootBands(depth, player = null) {
   const tier = lootTierFor(depth)
   const ammoKinds = ammoKindsFor(player)
-  const bands = [
-    { weight: BASE_WEIGHTS.potion, pool: [null], toContents: () => ({ type: 'potion', amount: 4 }) },
+  return [
+    { name: 'potion', weight: BASE_WEIGHTS.potion, pool: [null], toContents: () => ({ type: 'potion', amount: 4 }) },
     weaponBand('melee',  MELEE_POOLS,  tier, player, meleeContents),
     weaponBand('shield', SHIELD_POOLS, tier, player, makeShieldContents),
     weaponBand('ranged', RANGED_POOLS, tier, player, makeRangedContents),
     weaponBand('wand',   WAND_POOLS,   tier, player, makeWandContents),
-    { weight: ammoKinds.length ? BASE_WEIGHTS.ammo : 0, pool: ammoKinds,
+    { name: 'ammo', weight: ammoKinds.length ? BASE_WEIGHTS.ammo : 0, pool: ammoKinds,
       toContents: k => ({ type: 'ammo', ammoKind: k, count: AMMO_COUNTS[k] }) },
-    { weight: (OUTFIT_POOLS[tier] ?? []).length ? BASE_WEIGHTS.outfit : 0, pool: OUTFIT_POOLS[tier] ?? [],
-      toContents: makeOutfitContents },
+    wornBand('armor', ARMOR_POOLS, tier, player),
+    wornBand('head',  HEAD_POOLS,  tier, player),
+    wornBand('boots', BOOTS_POOLS, tier, player),
+    wornBand('ring',  RING_POOLS,  tier, player),
   ]
+}
+
+export function rollChestLoot(depth, rng = Math.random, player = null) {
+  const bands = lootBands(depth, player)
   const total = bands.reduce((sum, b) => sum + b.weight, 0)
   let r = rng() * total
   for (const band of bands) {

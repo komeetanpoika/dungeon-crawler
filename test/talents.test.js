@@ -8,14 +8,14 @@ import { makeSfx } from '../renderer/systems/sfx.js'
 const mkState = () => ({ player: { talents: [] }, feedback: makeFeedback() })
 
 describe('talent registry', () => {
-  it('defines ski-legs and no stance talents', () => {
-    assert.ok('ski_legs' in TALENTS)
+  it('defines no stance talents, and no Ski-legs: those are an outfit and a pair of boots now', () => {
+    assert.ok(!('ski_legs' in TALENTS))
     for (const stance of ['marksmanship', 'gust', 'might']) assert.ok(!(stance in TALENTS), `${stance} is a talent again`)
   })
 
-  it('a rush run starts with every talent', () => {
-    // Dungeon Rush keeps the talents it always had; the tales' rewards are the Wilds' own
-    assert.deepEqual([...RUSH_START_TALENTS], ['ski_legs'])
+  it('a rush run starts with no talent', () => {
+    // Ski-legs was its one; it starts in Elk-hide Boots instead (systems/outfits.js RUSH_START_WORN)
+    assert.deepEqual([...RUSH_START_TALENTS], [])
     for (const id of ['lake_breath', 'tapio_peace', 'sinituli']) assert.ok(TALENTS[id]?.name && TALENTS[id]?.desc, `no talent ${id}`)
   })
 })
@@ -23,10 +23,10 @@ describe('talent registry', () => {
 describe('grantTalent', () => {
   it('grants once, reports newness, and celebrates', () => {
     const state = mkState()
-    assert.equal(grantTalent(state, 'ski_legs'), true)
-    assert.ok(hasTalent(state.player, 'ski_legs'))
-    assert.equal(grantTalent(state, 'ski_legs'), false)     // idempotent
-    assert.deepEqual(state.player.talents, ['ski_legs'])
+    assert.equal(grantTalent(state, 'lake_breath'), true)
+    assert.ok(hasTalent(state.player, 'lake_breath'))
+    assert.equal(grantTalent(state, 'lake_breath'), false)     // idempotent
+    assert.deepEqual(state.player.talents, ['lake_breath'])
   })
 
   it('refuses unknown ids', () => {
@@ -38,30 +38,30 @@ describe('grantTalent', () => {
 
   it('tolerates a player without a talents array', () => {
     const state = { player: {}, feedback: makeFeedback() }
-    assert.equal(grantTalent(state, 'ski_legs'), true)
-    assert.ok(hasTalent(state.player, 'ski_legs'))
-    assert.equal(hasTalent({ }, 'ski_legs'), false)
+    assert.equal(grantTalent(state, 'lake_breath'), true)
+    assert.ok(hasTalent(state.player, 'lake_breath'))
+    assert.equal(hasTalent({ }, 'lake_breath'), false)
   })
 
   it('queues a talent-learned cue only when newly learned', () => {
     const state = { player: {}, feedback: makeFeedback(), sfx: makeSfx() }
-    grantTalent(state, 'ski_legs')
+    grantTalent(state, 'lake_breath')
     assert.deepEqual(state.sfx.cues.map(c => c.name), ['talent-learned'])
-    grantTalent(state, 'ski_legs')          // already known — no new cue
+    grantTalent(state, 'lake_breath')          // already known — no new cue
     assert.equal(state.sfx.cues.length, 1)
   })
 })
 
-describe('ski-legs', () => {
+describe("a tale's talent (the lake's breath)", () => {
   it('is a real talent with a name and a description', () => {
-    assert.ok(TALENTS.ski_legs?.name)
-    assert.ok(TALENTS.ski_legs?.desc)
+    assert.ok(TALENTS.lake_breath?.name)
+    assert.ok(TALENTS.lake_breath?.desc)
   })
   it('grants once and reports only the first time', () => {
     const state = mkState()
-    assert.equal(grantTalent(state, 'ski_legs'), true)
-    assert.equal(grantTalent(state, 'ski_legs'), false)
-    assert.equal(hasTalent(state.player, 'ski_legs'), true)
+    assert.equal(grantTalent(state, 'lake_breath'), true)
+    assert.equal(grantTalent(state, 'lake_breath'), false)
+    assert.equal(hasTalent(state.player, 'lake_breath'), true)
   })
 })
 

@@ -45,6 +45,23 @@ describe('parseLevelCheat', () => {
   })
 })
 
+describe('parseGearCheat', () => {
+  it('matches the gear suffix, whatever was typed before', async () => {
+    const { parseGearCheat } = await import('../renderer/systems/cheats.js')
+    assert.equal(parseGearCheat('xxgear'), true)
+    assert.equal(parseGearCheat('GEAR'), true)
+    assert.equal(parseGearCheat('gea'), false)
+    assert.equal(parseGearCheat('gears'), false)
+  })
+  it('the wardrobe it hands out is every piece once', async () => {
+    const { gearCheatContents } = await import('../renderer/systems/cheats.js')
+    const { WORN_TYPES } = await import('../renderer/systems/entities.js')
+    const got = gearCheatContents()
+    assert.deepEqual(got.map(c => c.gearType).sort(), Object.keys(WORN_TYPES).sort())
+    for (const c of got) assert.equal(c.type, WORN_TYPES[c.gearType].slot)
+  })
+})
+
 describe('parseWeaponCheat', () => {
   it('matches the mauno suffix regardless of earlier keystrokes', async () => {
     const { parseWeaponCheat } = await import('../renderer/systems/cheats.js')

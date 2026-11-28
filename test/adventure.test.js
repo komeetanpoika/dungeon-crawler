@@ -127,14 +127,14 @@ describe('v3 save shape', () => {
     g.magic.outfit = robe
     assert.deepEqual(normalizeAdventureSave(v3), {
       ...v3, talents: [], body: { ...v3.body, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 }, gear: g, belt: null },
-      gates: {}, npcs: {}, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true, v8: true,
+      gates: {}, npcs: {}, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true, v8: true, v9: true,
     })
   })
 
   it('v4 saves keep their npcs and gain an empty felled map', () => {
     const v4 = { caves: {}, progress: { mapDepth: 7, cleared: {} }, talents: [], body: null,
       gates: {}, npcs: { 'forest-1-clearings': { dead: ['npc:forest-1-clearings:0'], hostile: false } } }
-    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true, v8: true })
+    assert.deepEqual(normalizeAdventureSave(v4), { ...v4, felled: {}, leaps: {}, quests: {}, clock: DAY_START, v6: true, v7: true, v8: true, v9: true })
   })
 
   it('a fresh save has no felled trees', () => {
@@ -375,8 +375,8 @@ describe('v8 save shape — gear and outfits', () => {
     const stale = { ...emptyBody(), gear: { ...defaultGear(), melee: { off: null, outfit: { outfitType: 'plate', name: 'Old Plate' } },
       magic: { off: { kind: 'consumable', item: 'mushroom' }, outfit: { outfitType: 'tuxedo' } } } }
     const b = normalizeBody(stale)
-    assert.equal(b.gear.melee.outfit.name, 'Plated Armor')
-    assert.equal(b.gear.melee.outfit.protect, 2)
+    assert.equal(b.gear.melee.outfit.name, "Knight's Tabard")
+    assert.equal(b.gear.melee.outfit.heavy, true)
     assert.equal(b.gear.magic.outfit, null)
     assert.deepEqual(b.gear.magic.off, { kind: 'consumable', item: 'mushroom' })
     assert.equal(b.gear.melee.off, null)
@@ -416,11 +416,11 @@ describe('v8 save shape — gear and outfits', () => {
     assert.deepEqual(normalizeBody(b), b)
   })
   it('a v7 save with stance talents wakes up wearing the outfits', () => {
-    const v7 = { caves: {}, progress: { mapDepth: 12, cleared: {}, visited: [] }, talents: ['ranged_stance', 'magic_stance', 'heavy_weapons', 'ski_legs'],
+    const v7 = { caves: {}, progress: { mapDepth: 12, cleared: {}, visited: [] }, talents: ['ranged_stance', 'magic_stance', 'heavy_weapons', 'lake_breath'],
       body: { weapon: null, ranged: null, wand: null, ammo: { arrow: 0, bolt: 0, stone: 0 }, inventory: [] },
       gates: {}, npcs: {}, felled: {}, leaps: {}, quests: {}, clock: 0, v6: true, v7: true }
     const s = normalizeAdventureSave(v7)
-    assert.deepEqual(s.talents, ['ski_legs'])
+    assert.deepEqual(s.talents, ['lake_breath'])
     assert.equal(s.body.gear.ranged.outfit.outfitType, 'ranger')
     assert.equal(s.body.gear.magic.outfit.outfitType, 'robe')
     assert.equal(s.body.gear.melee.outfit.outfitType, 'plate')

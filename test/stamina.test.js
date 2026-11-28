@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   STAMINA_MAX, meleeCost, GUST_COSTS, canAfford, spendStamina, tickStamina,
-  sprintProfile, makeSprintDetector, affordableTier, SKI_LEGS_DRAIN,
+  sprintProfile, makeSprintDetector, affordableTier,
 } from '../renderer/systems/stamina.js'
 
 const mkPlayer = (over = {}) =>
@@ -116,29 +116,21 @@ describe('affordableTier', () => {
   })
 })
 
-describe('ski-legs sprint', () => {
+describe('what is worn on a sprint (drainMul, systems/worn.js wornSprintMul)', () => {
   it('leaves the plain profiles untouched', () => {
     assert.deepEqual(sprintProfile('melee'), { speedMul: 1.55, drain: 22 })
     assert.deepEqual(sprintProfile('melee', {}), { speedMul: 1.55, drain: 22 })
   })
   it('scales only the drain, never the speed', () => {
     const plain = sprintProfile('melee')
-    const skied = sprintProfile('melee', { skiLegs: true })
-    assert.equal(skied.speedMul, plain.speedMul)
-    assert.equal(skied.drain, plain.drain * SKI_LEGS_DRAIN)
+    const booted = sprintProfile('melee', { drainMul: 0.6 })
+    assert.equal(booted.speedMul, plain.speedMul)
+    assert.equal(booted.drain, plain.drain * 0.6)
+    assert.equal(sprintProfile('melee', { drainMul: 2 }).drain, plain.drain * 2)
   })
   it('applies to the mage jog too, and to an unknown mode via the melee fallback', () => {
-    assert.equal(sprintProfile('magic', { skiLegs: true }).drain, 8 * SKI_LEGS_DRAIN)
-    assert.equal(sprintProfile('nonsense', { skiLegs: true }).drain, 22 * SKI_LEGS_DRAIN)
-  })
-})
-
-describe('outfit sprint drain', () => {
-  it('multiplies the drain and composes with ski-legs', () => {
-    const base = sprintProfile('melee').drain
-    assert.equal(sprintProfile('melee', { drainMul: 2 }).drain, base * 2)
-    assert.equal(sprintProfile('melee', { skiLegs: true, drainMul: 2 }).drain, base * SKI_LEGS_DRAIN * 2)
-    assert.equal(sprintProfile('melee', { drainMul: 2 }).speedMul, sprintProfile('melee').speedMul)
+    assert.equal(sprintProfile('magic', { drainMul: 0.6 }).drain, 8 * 0.6)
+    assert.equal(sprintProfile('nonsense', { drainMul: 2 }).drain, 44)
   })
 })
 

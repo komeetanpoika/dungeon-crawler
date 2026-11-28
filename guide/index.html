@@ -377,19 +377,19 @@ td.wrap code { white-space: normal; }
 <!-- ───────────────────────────── loot ───────────────────────────── -->
 <section id="loot">
   <h2>Chest loot</h2>
-  <p>Two things shape a chest. The level's loot tier picks the pool, on one ladder laid over every depth scale. What the player wears decides whether a category is worth offering: bows need the Ranger's Coat, wands the Mage's Robe, heavy blades the Plated Armor. A category the player cannot use keeps a fifth of its weight and offers the humblest item of its kind, enough to hint that it exists.</p>
+  <p>Two things shape a chest. The level's loot tier picks the pool, on one ladder laid over every depth scale. What the player wears decides whether a category is worth offering: bows need the Ranger's Coat, wands the Mage's Robe, heavy blades the Knight's Tabard. A category the player cannot use keeps a fifth of its weight and offers the humblest item of its kind, enough to hint that it exists. Worn pieces (armor, headwear, boots, rings) have a small band each, and a tier with no pool for a band gives it no weight.</p>
   <figure class="demo">
     <div class="demo-head"><span class="tag">Live</span><strong>rollChestLoot weights</strong></div>
     <div class="controls" style="border-top: 0">
       <div class="seg" id="lt-tier" role="group" aria-label="Loot tier"><button type="button" data-v="1">Tier 1</button><button type="button" data-v="2">Tier 2</button><button type="button" data-v="3">Tier 3</button><button type="button" data-v="4">Tier 4</button></div>
       <label for="lt-ranger"><input type="checkbox" id="lt-ranger"> Ranger's Coat</label>
       <label for="lt-robe"><input type="checkbox" id="lt-robe"> Mage's Robe</label>
-      <label for="lt-plate"><input type="checkbox" id="lt-plate"> Plated Armor</label>
+      <label for="lt-plate"><input type="checkbox" id="lt-plate"> Knight's Tabard</label>
       <label for="lt-bow"><input type="checkbox" id="lt-bow"> Carries a bow</label>
     </div>
     <div class="lootbar" id="lt-bar" role="img" aria-label="Share of each loot category"></div>
     <table class="loot-table" id="lt-table"></table>
-    <figcaption>Weights and pools are the game's. Ammo is offered only for bows actually carried. The three story outfits never roll; they come from the world.</figcaption>
+    <figcaption>Weights and pools are the game's. Ammo is offered only for bows actually carried. The three story outfits and the elder's Elk-hide Boots never roll; they come from the world.</figcaption>
   </figure>
   <p class="where">Lives in <code>renderer/systems/loot.js</code> · tiers in <code>renderer/data/levels.js</code> · check real chests with <code>node tools/verify-loot.mjs</code></p>
 </section>
@@ -1414,16 +1414,23 @@ safe(() => {
 // ── chest loot ─────────────────────────────────────────────────────────
 safe(() => {
   const NAMES = { dagger: 'Dagger', sword: 'Sword', longsword: 'Longsword', axe: 'Axe', sling: 'Sling', shortbow: 'Shortbow', hunterbow: 'Hunter bow', longbow: 'Longbow', splitbow: 'Split bow', crossbow: 'Crossbow',
-    sparkwand: 'Spark wand', frostwand: 'Frost wand', firewand: 'Fireball wand', bramblewand: 'Bramble wand', blinkwand: 'Blink wand', stormwand: 'Storm wand', buckler: 'Buckler', kite: 'Kite shield', leather: 'Leather Coat' }
+    sparkwand: 'Spark wand', frostwand: 'Frost wand', firewand: 'Fireball wand', bramblewand: 'Bramble wand', blinkwand: 'Blink wand', stormwand: 'Storm wand', buckler: 'Buckler', kite: 'Kite shield',
+    leather: 'Leather Jerkin', chain: 'Chain Shirt', plate: 'Plate Cuirass', cap: 'Leather Cap', helm: 'Iron Helm', horned: 'Horned Helm', cloth: 'Desert Headcloth',
+    wayfarer: "Wayfarer's Boots", ironshod: 'Iron-shod Boots', breath: 'Ring of Breath', miser: "Miser's Ring", mending: 'Ring of Mending', smith: "Smith's Ring" }
   const POOLS = {
     melee: { 1: ['dagger', 'sword'], 2: ['sword', 'longsword'], 3: ['longsword', 'axe'], 4: ['axe', 'longsword'] },
     shield: { 1: ['buckler'], 2: ['buckler'], 3: ['buckler', 'kite'], 4: ['kite'] },
     ranged: { 1: ['sling', 'shortbow'], 2: ['shortbow', 'hunterbow'], 3: ['hunterbow', 'longbow', 'splitbow'], 4: ['longbow', 'splitbow', 'crossbow'] },
     wand: { 1: ['sparkwand'], 2: ['sparkwand', 'frostwand'], 3: ['frostwand', 'firewand', 'bramblewand'], 4: ['firewand', 'bramblewand', 'blinkwand', 'stormwand'] },
+    // worn pieces: a missing rung is a band that does not roll at that tier
+    armor: { 2: ['leather'], 3: ['leather', 'chain'], 4: ['chain', 'plate'] },
+    head: { 1: ['cap'], 2: ['cap', 'cloth'], 3: ['helm', 'cloth', 'horned'], 4: ['helm', 'horned'] },
+    boots: { 2: ['wayfarer'], 3: ['wayfarer', 'ironshod'], 4: ['ironshod'] },
+    ring: { 3: ['breath', 'miser'], 4: ['breath', 'miser', 'mending', 'smith'] },
   }
-  const HEAVY = new Set(['longsword', 'axe', 'kite']), WEIGHT = { potion: 30, melee: 16, shield: 4, ranged: 15, wand: 15, ammo: 15, outfit: 5 }, TEASER = 0.2
-  const COLOUR = { potion: 'var(--hit)', melee: 'var(--wall)', shield: 'var(--mountain)', ranged: 'var(--forest)', wand: 'var(--blue)', ammo: 'var(--desert)', outfit: 'var(--autumn)' }
-  const LABEL = { potion: 'Potion', melee: 'Melee', shield: 'Shield', ranged: 'Bows', wand: 'Wands', ammo: 'Ammo', outfit: 'Outfit' }
+  const HEAVY = new Set(['longsword', 'axe', 'kite', 'plate']), WEIGHT = { potion: 26, melee: 15, shield: 4, ranged: 14, wand: 14, ammo: 14, armor: 5, head: 4, boots: 2, ring: 2 }, TEASER = 0.2
+  const COLOUR = { potion: 'var(--hit)', melee: 'var(--wall)', shield: 'var(--mountain)', ranged: 'var(--forest)', wand: 'var(--blue)', ammo: 'var(--desert)', armor: 'var(--autumn)', head: 'var(--autumn)', boots: 'var(--autumn)', ring: 'var(--autumn)' }
+  const LABEL = { potion: 'Potion', melee: 'Melee', shield: 'Shield', ranged: 'Bows', wand: 'Wands', ammo: 'Ammo', armor: 'Armor', head: 'Headwear', boots: 'Boots', ring: 'Rings' }
   let tier = 1
   const bar = $('#lt-bar'), table = $('#lt-table'), box = id => $(id).checked
   function render() {
@@ -1436,7 +1443,11 @@ safe(() => {
         : { k, weight: WEIGHT[k] * TEASER, items: POOLS[k][1].map(w => NAMES[w]).join(', '), tease: true })
     }
     bands.push({ k: 'ammo', weight: bow ? WEIGHT.ammo : 0, items: bow ? 'For the bows carried' : 'Not offered: no bow carried', tease: false })
-    bands.push({ k: 'outfit', weight: tier >= 2 ? WEIGHT.outfit : 0, items: tier >= 2 ? NAMES.leather : 'Not offered at tier 1', tease: false })
+    for (const k of ['armor', 'head', 'boots', 'ring']) {
+      const pool = POOLS[k][tier] ?? [], ok = pool.filter(w => !HEAVY.has(w) || plate)
+      bands.push(!pool.length ? { k, weight: 0, items: `Not offered at tier ${tier}`, tease: false }
+        : { k, weight: WEIGHT[k], items: ok.map(w => NAMES[w]).join(', '), tease: false })
+    }
     const total = bands.reduce((n, b) => n + b.weight, 0)
     bar.replaceChildren(...bands.filter(b => b.weight > 0).map(b => { const d = document.createElement('div'); d.style.width = (b.weight / total * 100) + '%'; d.style.background = COLOUR[b.k]; d.title = `${LABEL[b.k]} ${(b.weight / total * 100).toFixed(0)} %`; return d }))
     table.innerHTML = '<thead><tr><th>Band</th><th>Share</th><th>What can drop</th></tr></thead><tbody>' + bands.map(b =>

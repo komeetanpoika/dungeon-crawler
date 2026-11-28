@@ -129,30 +129,62 @@ export const isSmallBlade = weaponType => {
   return !!d && !d.heavy && !d.tune && d.damage <= 2
 }
 
-// Outfits — one per loadout slot (systems/inventory.js gearOf). Wearing the
-// outfit whose `loadout` names a stance is what opens that stance: the coat
-// is the Archer, the robe is the Mage. `loadout: null` fits any loadout.
-// `heavy` on the Warrior's outfit is the heavy-weapon gate (plate); protect
-// and sprintDrain are read in plan 2/3 (damagePlayer, sprintProfile).
+// Outfits — one per loadout slot (systems/inventory.js gearOf). An outfit
+// says which ways are open to the hero and nothing else: the coat is the
+// Archer, the robe is the Mage, and `heavy` on the Warrior's (the tabard the
+// cyclops drops, key `plate` since it was the Plated Armor) is the gate for
+// every heavy thing. What protects is worn in the armor slot (WORN_TYPES).
 export const OUTFIT_TYPES = {
-  ranger:  { name: "Ranger's Coat", loadout: 'ranged', protect: 0 },
-  robe:    { name: "Mage's Robe",   loadout: 'magic',  protect: 0 },
-  plate:   { name: 'Plated Armor',  loadout: 'melee',  protect: 2, heavy: true, sprintDrain: 2 },
-  leather: { name: 'Leather Coat',  loadout: null,     protect: 1 },
+  ranger:  { name: "Ranger's Coat",   loadout: 'ranged' },
+  robe:    { name: "Mage's Robe",     loadout: 'magic' },
+  plate:   { name: "Knight's Tabard", loadout: 'melee', heavy: true },
 }
 
-export function makeOutfitContents(outfitType = 'leather') {
-  const ot = OUTFIT_TYPES[outfitType] ? outfitType : 'leather'
-  const def = OUTFIT_TYPES[ot]
-  return { type: 'outfit', outfitType: ot, name: def.name, loadout: def.loadout, protect: def.protect,
-    ...(def.heavy && { heavy: true }), ...(def.sprintDrain && { sprintDrain: def.sprintDrain }) }
+// Null for a key the table does not know (the Leather Coat was an outfit
+// once: systems/inventory.js itemFromContents turns an old one into armor).
+export function makeOutfitContents(outfitType) {
+  const def = OUTFIT_TYPES[outfitType]
+  if (!def) return null
+  return { type: 'outfit', outfitType, name: def.name, loadout: def.loadout, ...(def.heavy && { heavy: true }) }
+}
+
+// Worn pieces: headwear, armor, boots and a ring, one of each per character
+// (gear[stance].head/armor/boots/ring). `armor` is the armor points a piece
+// gives and `sprintMul` what it does to the sprint's stamina cost
+// (systems/worn.js); `heavy` needs the tabard, like a heavy blade; `power`
+// names what else it does, read where that thing happens; `tint` is the
+// colour of a ring's one pixel on the hand (render/hero-look.js).
+export const WORN_SLOTS = ['head', 'armor', 'boots', 'ring']
+export const WORN_TYPES = {
+  cap:      { slot: 'head',  name: 'Leather Cap',      armor: 1 },
+  helm:     { slot: 'head',  name: 'Iron Helm',        armor: 2 },
+  horned:   { slot: 'head',  name: 'Horned Helm',      armor: 1, power: 'ram' },
+  cloth:    { slot: 'head',  name: 'Desert Headcloth', armor: 0, power: 'cool' },
+  leather:  { slot: 'armor', name: 'Leather Jerkin',   armor: 2 },
+  chain:    { slot: 'armor', name: 'Chain Shirt',      armor: 3, sprintMul: 1.5 },
+  plate:    { slot: 'armor', name: 'Plate Cuirass',    armor: 5, sprintMul: 2, heavy: true },
+  elk:      { slot: 'boots', name: 'Elk-hide Boots',   armor: 0, sprintMul: 0.6 },
+  ironshod: { slot: 'boots', name: 'Iron-shod Boots',  armor: 1 },
+  wayfarer: { slot: 'boots', name: "Wayfarer's Boots", armor: 0, power: 'wayfarer' },
+  breath:   { slot: 'ring',  name: 'Ring of Breath',   armor: 0, power: 'breath',  tint: '#7dd3fc' },
+  mending:  { slot: 'ring',  name: 'Ring of Mending',  armor: 0, power: 'mending', tint: '#4ade80' },
+  miser:    { slot: 'ring',  name: "Miser's Ring",     armor: 0, power: 'miser',   tint: '#facc15' },
+  smith:    { slot: 'ring',  name: "Smith's Ring",     armor: 0, power: 'smith',   tint: '#cbd5e1' },
+}
+
+// Floor/chest contents of a piece, typed by its slot. Null for an unknown key.
+export function makeWornContents(gearType) {
+  const def = WORN_TYPES[gearType]
+  if (!def) return null
+  const { slot, ...rest } = def
+  return { type: slot, gearType, ...rest }
 }
 
 // Per-loadout gear beside the three main hands (see makePlayer). Every
 // offhand starts pointed at the potion stack so Q heals from the first step,
 // exactly as quick-use did before the offhand existed.
 export function defaultGear() {
-  const slot = () => ({ off: { kind: 'consumable', item: 'potion' }, outfit: null })
+  const slot = () => ({ off: { kind: 'consumable', item: 'potion' }, outfit: null, head: null, armor: null, boots: null, ring: null })
   return { melee: slot(), ranged: slot(), magic: slot() }
 }
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { deflateSync } from 'node:zlib'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { readPng } from '../tools/png-read.mjs'
+import { readPng, decodePng } from '../tools/png-read.mjs'
 import { encodePng } from '../tools/png-write.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -61,9 +61,29 @@ describe('readPng', () => {
     assert.ok(opaque > 0, 'expected some opaque pixels in the floor tile')
   })
 
+  it('reads a packed indexed tile (the pack\'s own are 4-bit)', () => {
+    // the bare adventurer: a figure on a clear ground, in the pack's colours
+    const img = readPng(join(TILES, 'tile_0088.png'))
+    assert.deepEqual([img.width, img.height], [16, 16])
+    const at = (x, y) => [...img.pixels.subarray((y * 16 + x) * 4, (y * 16 + x) * 4 + 4)]
+    assert.equal(at(0, 0)[3], 0, 'the corner is clear')
+    assert.deepEqual(at(6, 0), [0x3f, 0x26, 0x31, 255], 'the outline, top of the head')
+    assert.deepEqual(at(7, 2), [0xbd, 0x6c, 0x4a, 255], 'the hair')
+    assert.deepEqual(at(7, 6), [0xf7, 0xc2, 0x82, 255], 'the skin')
+    assert.deepEqual(at(6, 7), [0x26, 0x2b, 0x44, 255], 'an eye')
+    let opaque = 0, clear = 0
+    for (let i = 3; i < img.pixels.length; i += 4) { if (img.pixels[i] === 255) opaque++; else if (img.pixels[i] === 0) clear++ }
+    assert.equal(opaque + clear, 256, 'every pixel is one or the other')
+    assert.ok(opaque > 100 && clear > 20, `${opaque} opaque, ${clear} clear`)
+  })
+
   it('rejects a bit depth it cannot decode, naming the file', () => {
-    // creature_dragon.png is 4-bit indexed — deliberately unsupported.
-    assert.throws(() => readPng(join(TILES, 'creature_dragon.png')), /only 8-bit/)
+    const deep = makePng({ width: 1, height: 1, colorType: 0, idatRaw: Buffer.from([0, 0, 0]) })
+    deep[24] = 16   // the IHDR's bit depth
+    assert.throws(() => decodePng(deep, 'deep.png'), /deep\.png: unsupported bit depth 16/)
+    const grey4 = makePng({ width: 1, height: 1, colorType: 0, idatRaw: Buffer.from([0, 0]) })
+    grey4[24] = 4   // packed, but not indexed
+    assert.throws(() => decodePng(grey4, 'grey.png'), /grey\.png: unsupported bit depth 4/)
   })
 
   it('decodes partial alpha faithfully on an RGBA image', () => {

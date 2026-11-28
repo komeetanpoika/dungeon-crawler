@@ -1,5 +1,6 @@
 // Minimal PNG reader: 8-bit, non-interlaced, colour types 0 (grey), 2 (RGB),
-// 3 (indexed), 4 (grey+alpha) and 6 (RGBA). Enough to inspect our own sprite
+// 3 (indexed), 4 (grey+alpha) and 6 (RGBA); and indexed images packed at 1,
+// 2 or 4 bits a pixel, which is what the tile pack's own tiles are. Enough to inspect our own sprite
 // sheets in tests without taking on a dependency; throws clearly on anything
 // else rather than returning wrong pixels.
 import { inflateSync } from 'node:zlib'
@@ -57,14 +58,16 @@ export function decodePng(buf, label = 'png') {
     else if (type === 'IEND') break
   }
 
-  if (depth !== 8) throw new Error(`${path}: only 8-bit PNGs supported (got bit depth ${depth})`)
+  // an indexed image may pack several pixels to the byte
+  const packed = colorType === 3 && (depth === 1 || depth === 2 || depth === 4)
+  if (depth !== 8 && !packed) throw new Error(`${path}: unsupported bit depth ${depth} (only 8-bit, or 1/2/4-bit indexed)`)
   if (interlace !== 0) throw new Error(`${path}: interlaced PNGs not supported`)
   const ch = CHANNELS[colorType]
   if (!ch) throw new Error(`${path}: unsupported colour type ${colorType}`)
   if (colorType === 3 && !palette) throw new Error(`${path}: indexed PNG missing PLTE chunk`)
 
   const raw = inflateSync(Buffer.concat(idat))
-  const stride = width * ch
+  const stride = packed ? Math.ceil(width * depth / 8) : width * ch
   const out = new Uint8Array(width * height * 4)
   let prev = Buffer.alloc(stride)
   for (let y = 0; y < height; y++) {
@@ -78,7 +81,8 @@ export function decodePng(buf, label = 'png') {
       } else if (colorType === 2) {
         out[i] = line[x*3]; out[i+1] = line[x*3+1]; out[i+2] = line[x*3+2]; out[i+3] = 255
       } else if (colorType === 3) {
-        const p = line[x]
+        const bit = x * depth
+        const p = packed ? (line[bit >> 3] >> (8 - depth - (bit & 7))) & ((1 << depth) - 1) : line[x]
         out[i] = palette[p*3]; out[i+1] = palette[p*3+1]; out[i+2] = palette[p*3+2]
         out[i+3] = trns && p < trns.length ? trns[p] : 255
       } else if (colorType === 4) {

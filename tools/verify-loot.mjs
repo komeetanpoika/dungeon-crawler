@@ -15,7 +15,7 @@ import { _electron as electron } from 'playwright-core'
 // The hatchet joins them because the chest beside the spawn carries fixed
 // contents (openmap.js `starter`) and never rolls the table at all; no loot
 // pool holds one, so seeing it here always means that chest.
-const TIER_1 = new Set(['dagger', 'sword', 'sling', 'shortbow', 'sparkwand', 'hatchet', 'buckler'])
+const TIER_1 = new Set(['dagger', 'sword', 'sling', 'shortbow', 'sparkwand', 'hatchet', 'buckler', 'cap'])
 
 const runs = Number(process.argv[2] ?? 1)
 let chests = 0, unusable = 0, offTier = 0
@@ -49,14 +49,14 @@ for (let run = 0; run < runs; run++) {
     const has = ot => snap.outfits.includes(ot)
     for (const c of snap.chests) {
       chests++
-      const name = c.weaponType ?? c.ammoKind ?? c.outfitType ?? c.type
+      const name = c.weaponType ?? c.ammoKind ?? c.gearType ?? c.outfitType ?? c.type
       // Same gates as canEquip, restated here so the tool stays standalone.
       const dead =
         (c.type === 'ranged' && !has('ranger')) ||
         (c.type === 'wand' && !has('robe')) ||
         (c.heavy && !has('plate')) ||
         (c.type === 'ammo' && !snap.ammoKinds.includes(c.ammoKind))
-      const stray = (c.weaponType && !TIER_1.has(c.weaponType))
+      const stray = ((c.weaponType ?? c.gearType) && !TIER_1.has(c.weaponType ?? c.gearType))
       if (dead) unusable++
       if (stray) offTier++
       console.log(`  ${c.type.padEnd(7)} ${String(name).padEnd(12)} ${dead ? 'UNUSABLE' : 'usable'}${stray ? '  ← ABOVE TIER 1' : ''}`)

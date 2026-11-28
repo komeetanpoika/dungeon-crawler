@@ -32,12 +32,14 @@ describe('seam: damagePlayer hero argument', () => {
     damagePlayer(state, 2, 'hit')
     assert.equal(state.player.hp, 8)
   })
-  it("reads the given hero's outfit protect", () => {
+  it("takes the blow on the given hero's armor, not state.player's", () => {
     const target = hero()
-    target.gear.melee.outfit = { outfitType: 'plate', protect: 1 }
+    target.gear.melee.armor = { gearType: 'leather', name: 'Leather Jerkin', armor: 2 }
     const state = { player: hero({ id: 'p' }), feedback: makeFeedback() }
-    damagePlayer(state, 2, 'hit', null, target)
+    damagePlayer(state, 3, 'hit', null, target)
     assert.equal(target.hp, 9)
+    assert.equal(target.dents, 2)
+    assert.equal(state.player.dents, undefined)
   })
 })
 

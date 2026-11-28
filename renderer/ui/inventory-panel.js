@@ -4,7 +4,7 @@
 // description in the middle, and what the four buttons do on the right
 // (above the buttons). All changes happen in game.js through handlers; what
 // to show and what each button does comes from inventory-panel-model.js.
-import { gearPanel, buttonsFor, describe, moveSelection, settle, GEAR_SLOTS, GEAR_ROOM, SLOT_NAMES, SACK_COLS, DROP_HOLD } from './inventory-panel-model.js'
+import { gearPanel, buttonsFor, describe, moveSelection, settle, SLOT_NAMES, SACK_COLS, DROP_HOLD } from './inventory-panel-model.js'
 import { gearOf } from '../systems/inventory.js'
 import { sfx } from '../systems/sfx.js'
 import { iconSrcFor } from '../render/icons.js'
@@ -79,9 +79,9 @@ export function refreshInventory(state) {
 
   const gear = gearPanel(player)
   const worn = gearOf(player, gear.stance).outfit
-  const who = iconSrcFor(worn ? { kind: 'outfit', payload: worn } : null) ?? './assets/tiles/tile_0088.png'
+  // the character as he stands in the world (game.js hands a portrait), or his outfit's icon
+  const who = opts.portrait?.() ?? iconSrcFor(worn ? { kind: 'outfit', payload: worn } : null) ?? './assets/tiles/tile_0088.png'
   const tile = (t, i) => `<div class="inv-slot-wrap"><div class="inv-tile${sel.area === 'gear' && sel.index === i ? ' selected' : ''}" data-gear="${i}">${iconHtml(t.item)}${t.item?.kind === 'consumable' ? `<span class="inv-count">×${t.item.count}</span>` : ''}</div><small>${SLOT_NAMES[t.slot]}</small></div>`
-  const spare = '<div class="inv-slot-wrap"><div class="inv-tile spare"></div><small>&nbsp;</small></div>'.repeat(GEAR_ROOM - GEAR_SLOTS.length)
 
   const slots = []
   for (let i = 0; i < player.maxInventory; i++) {
@@ -104,7 +104,7 @@ export function refreshInventory(state) {
 
   root.innerHTML = `
     <div class="inv-gear"><div class="inv-who"><img src="${who}" alt=""><span>${esc(gear.name)}</span></div>
-      <div class="inv-slots">${gear.tiles.map(tile).join('')}${spare}</div></div>
+      <div class="inv-slots">${gear.tiles.map(tile).join('')}</div></div>
     <div class="inv-bag"><div class="inv-title">BAG ${player.inventory.length}/${player.maxInventory}${purse}</div>${selling}
       <div class="inv-grid">${slots.join('')}</div>
       <div class="inv-desc"><b>${esc(d.title)}</b>${d.lines.map(l => `<div>${esc(l)}</div>`).join('')}${d.warn ? `<div class="warn">${esc(d.warn)}</div>` : ''}</div>${ask}</div>

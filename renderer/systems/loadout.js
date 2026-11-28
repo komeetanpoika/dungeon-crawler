@@ -1,8 +1,8 @@
 // Apply a loadout override — an arena config's `player`, a timewarp
 // episode's kit, or a PvP class kit (renderer/data/pvp.js), all the same
 // shape. Lifted out of game.js so the PvP simulation can import it.
-import { WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, SHIELD_TYPES, OUTFIT_TYPES,
-  weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents,
+import { WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, SHIELD_TYPES, OUTFIT_TYPES, WORN_TYPES,
+  weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents, makeWornContents,
   emptyAmmo } from './entities.js'
 import { gearOf } from './inventory.js'
 import { wearOutfit, RETIRED_TALENT_OUTFITS } from './outfits.js'
@@ -10,7 +10,7 @@ import { TALENTS } from './talents.js'
 
 // Apply a loadout override (arena config's `player`, or a timewarp episode's
 // kit — same shape): weaponType/rangedType/wandType/ammo/hp/talents/outfits/
-// offhand, each optional.
+// offhand/worn, each optional.
 export function applyLoadout(player, po, warn = console.warn) {
   if (!po) return
   const def = WEAPON_TYPES[po.weaponType]
@@ -30,7 +30,13 @@ export function applyLoadout(player, po, warn = console.warn) {
   }
   // A kit's `talents` may still name a retired stance talent — it means the
   // outfit now. `outfits` names outfits directly.
-  const wear = ot => { const { type, ...payload } = makeOutfitContents(ot); if (OUTFIT_TYPES[ot]) wearOutfit(player, payload); else warn(`loadout: unknown outfit "${ot}" — skipped`) }
+  // (the Leather Coat was an outfit once: an old kit that names it means the armor piece)
+  const wear = ot => {
+    if (ot === 'leather') { const { type, ...jerkin } = makeWornContents('leather'); gearOf(player, 'melee').armor ??= jerkin; return }
+    if (!OUTFIT_TYPES[ot]) { warn(`loadout: unknown outfit "${ot}" — skipped`); return }
+    const { type, ...payload } = makeOutfitContents(ot)
+    wearOutfit(player, payload)
+  }
   if (Array.isArray(po.talents)) {
     for (const t of po.talents) {
       if (RETIRED_TALENT_OUTFITS[t]) wear(RETIRED_TALENT_OUTFITS[t])
@@ -47,6 +53,16 @@ export function applyLoadout(player, po, warn = console.warn) {
     const payload = make?.(weaponType)
     if (payload) gearOf(player, type === 'wand' ? 'magic' : 'melee').off = { kind: type, ...payload }
     else warn(`loadout: unknown offhand ${type}/${weaponType} — skipped`)
+  }
+  // A kit's `worn` dresses its characters: { melee: { head, armor, boots,
+  // ring }, ranged: {...}, magic: {...} }, each a WORN_TYPES key.
+  for (const [stance, pieces] of Object.entries(po.worn ?? {})) {
+    if (!player.gear?.[stance]) { warn(`loadout: unknown character "${stance}" in worn — skipped`); continue }
+    for (const [slot, key] of Object.entries(pieces ?? {})) {
+      if (WORN_TYPES[key]?.slot !== slot) { warn(`loadout: unknown ${slot} "${key}" — skipped`); continue }
+      const { type, ...payload } = makeWornContents(key)
+      gearOf(player, stance)[slot] = payload
+    }
   }
 }
 

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { updateHUD } from '../renderer/render/hud.js'
+import { updateHUD, armorPips } from '../renderer/render/hud.js'
+import { makeWornContents } from '../renderer/systems/entities.js'
 import { gearWearing } from './helpers/outfits.js'
 
 function fakeDom() {
@@ -20,6 +21,37 @@ function state(playerOver = {}) {
     },
   }
 }
+
+describe('armor shields after the hearts', () => {
+  const shields = nodes => [...nodes['hud-hearts'].innerHTML.matchAll(/data-armor="(\w+)"/g)].map(m => m[1])
+  const worn = key => { const { type, ...p } = makeWornContents(key); return p }
+  it('one shield for every two points, the odd one a half', () => {
+    assert.deepEqual([...armorPips(7, 7).matchAll(/data-armor="(\w+)"/g)].map(m => m[1]), ['full', 'full', 'full', 'half'])
+    assert.deepEqual([...armorPips(7, 4).matchAll(/data-armor="(\w+)"/g)].map(m => m[1]), ['full', 'full', 'empty', 'empty'])
+    assert.deepEqual([...armorPips(4, 1).matchAll(/data-armor="(\w+)"/g)].map(m => m[1]), ['half', 'empty'])
+    assert.equal(armorPips(0, 0), '')
+  })
+  it('a hero with no armor has hearts and nothing else', () => {
+    const nodes = fakeDom()
+    updateHUD(state())
+    assert.deepEqual(shields(nodes), [])
+  })
+  it('shows the armor of the character being played, less its dents', () => {
+    const nodes = fakeDom()
+    const s = state()
+    s.player.gear.melee.armor = worn('plate'); s.player.gear.melee.head = worn('helm')   // 7
+    updateHUD(s)
+    assert.deepEqual(shields(nodes), ['full', 'full', 'full', 'half'])
+    s.player.dents = 3
+    updateHUD(s)
+    assert.deepEqual(shields(nodes), ['full', 'full', 'empty', 'empty'])
+    s.player.attackMode = 'magic'
+    updateHUD(s)
+    assert.deepEqual(shields(nodes), [])
+    // the hearts are still five, whatever is worn
+    assert.equal([...nodes['hud-hearts'].innerHTML.matchAll(/data-state="(\w+)"/g)].length, 5)
+  })
+})
 
 describe('updateHUD hearts', () => {
   const hearts = nodes => [...nodes['hud-hearts'].innerHTML.matchAll(/data-state="(\w+)"/g)].map(m => m[1])

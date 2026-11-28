@@ -99,14 +99,14 @@ describe('the giver', () => {
 })
 
 describe('special() false skips the special reward', () => {
-  it('the hide is taken but no Ski-legs are given', () => {
+  it('the hide is taken but no boots are given', () => {
     const { ctx, state, flags } = build('t', ELK, {
       flags: { hirvi_dead: true }, at: { x: 10, y: 10 }, inventory: [makeItem('elk_hide')],
       entities: [elder('e', 11, 10)], hooks: { special: () => false },
     })
     clearings.tick(ctx, 0.016)
     assert.equal(flags.hide_given, true)
-    assert.equal(hasTalent(state.player, 'ski_legs'), false)
+    assert.equal(state.player.gear?.melee?.boots ?? null, null)
   })
 
   it('the bridge is finished but no bow is laid, then or on a later arrival', () => {

@@ -3,6 +3,7 @@ import { iconSrcFor } from './icons.js'
 import { spellFor } from '../systems/spells.js'
 import { isPoisoned } from '../systems/poison.js'
 import { coinsOf, hasPurse } from '../systems/coin.js'
+import { armorMax, armorNow } from '../systems/worn.js'
 
 function el(id) { return document.getElementById(id) }
 
@@ -28,6 +29,22 @@ function heart(state, poison = false) {
     + `<path d="${HEART_PATH}" fill="${left}" clip-path="url(#hl)"/></svg>`
 }
 
+// Armor points (systems/worn.js), after the hearts: one grey shield for
+// every two points, the odd one a half, and an empty one for points a blow
+// has taken and time has not yet mended. Nothing for a hero with no armor.
+const SHIELD_PATH = 'M1 1h5v3h-1v1h-1v1h-1V5H2V4H1z'   // 7x7 blocky shield
+export function armorPips(max, now) {
+  const lit = '#cbd5e1', dark = '#3a3a44'
+  return Array.from({ length: Math.ceil(max / 2) }, (_, i) => {
+    const pts = Math.max(0, Math.min(2, now - i * 2))
+    const state = pts === 2 ? 'full' : pts === 1 ? 'half' : 'empty'
+    return `<svg class="heart armor" data-armor="${state}" viewBox="0 0 7 7" width="14" height="14">`
+      + `<clipPath id="al"><rect x="0" y="0" width="3.5" height="7"/></clipPath>`
+      + `<path d="${SHIELD_PATH}" fill="${pts === 2 ? lit : dark}"/>`
+      + `<path d="${SHIELD_PATH}" fill="${pts >= 1 ? lit : dark}" clip-path="url(#al)"/></svg>`
+  }).join('')
+}
+
 export function updateHUD(state) {
   const { player } = state
   if (!player) return
@@ -35,7 +52,7 @@ export function updateHUD(state) {
   setHTML(el('hud-hearts'), Array.from({ length: hearts }, (_, i) => {
     const hpForHeart = Math.max(0, Math.min(2, player.hp - i * 2))
     return heart(hpForHeart === 2 ? 'full' : hpForHeart === 1 ? 'half' : 'empty', isPoisoned(player))
-  }).join(''))
+  }).join('') + armorPips(armorMax(player), armorNow(player)))
   // Offhand slot: what Q acts on in the active loadout. A consumable pointer
   // shows the kind and the sack count (dimmed at zero); an empty offhand shows
   // the dimmed potion silhouette so the slot never vanishes.
