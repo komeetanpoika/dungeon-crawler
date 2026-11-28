@@ -9,7 +9,6 @@ import { makeNpc } from '../renderer/systems/npc.js'
 import { createMap } from '../renderer/systems/map.js'
 import { TILE } from '../renderer/systems/entities.js'
 import { makeItem } from '../renderer/systems/inventory.js'
-import { hasTalent } from '../renderer/systems/talents.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 
@@ -232,7 +231,7 @@ describe('the kill and the hide', () => {
     tick(ctx, 0.1)
     assert.deepEqual({ x: hideOf(state).x, y: hideOf(state).y }, { x: 12, y: 30 })
   })
-  it('handing the hide to the elder grants Ski-legs and finishes the quest', () => {
+  it('handing the hide to the elder gets a pair of Elk-hide Boots, on the feet, and finishes the quest', () => {
     const elder = { type: 'npc', species: 'elder', x: 10, y: 10, hostile: false }
     const { ctx, state, save, calls } = build({
       flags: { flush: 2, hirvi_dead: true }, at: { x: 10, y: 11 },
@@ -240,7 +239,10 @@ describe('the kill and the hide', () => {
     })
     tick(ctx, 0.1)
     assert.equal(questFlags(save, mapData.name).hide_given, true)
-    assert.equal(hasTalent(state.player, 'ski_legs'), true)
+    assert.equal(state.player.gear.melee.boots.gearType, 'elk')
+    assert.equal(state.player.gear.ranged.boots, null, 'one pair, on the character being played')
+    assert.deepEqual(state.player.talents, [], 'boots, not a talent')
+    assert.deepEqual(state.feedback.toasts.at(-1), { title: "The elder's work", lines: ['Elk-hide Boots — they run like weather.'] })
     assert.equal(state.player.inventory.some(i => i.kind === 'elk_hide'), false)
     assert.ok(calls.refreshInventory > 0)
     assert.ok(calls.persist > 0)
@@ -254,7 +256,37 @@ describe('the kill and the hide', () => {
     const empty = build({ flags: { hirvi_dead: true }, at: { x: 10, y: 11 }, entities: [elder] })
     tick(empty.ctx, 0.1)
     assert.equal(questFlags(empty.save, mapData.name).hide_given, undefined)
-    assert.equal(hasTalent(empty.state.player, 'ski_legs'), false)
+    assert.equal(empty.state.player.gear?.melee?.boots ?? null, null)
+  })
+  const delivered = (over = {}) => {
+    const elder = { type: 'npc', species: 'elder', x: 10, y: 10, hostile: false }
+    const b = build({ flags: { flush: 2, hirvi_dead: true }, at: { x: 10, y: 11 }, inventory: [makeItem('elk_hide')], entities: [elder] })
+    Object.assign(b.state.player, over)
+    return b
+  }
+  const bootsOnFloor = state => state.entities.filter(e => e.type === 'floating_item' && e.contents?.gearType === 'elk')
+  it('with boots already on, the elk-hide pair goes into the bag', () => {
+    const { ctx, state } = delivered({ gear: { melee: { off: null, outfit: null, boots: { gearType: 'ironshod', name: 'Iron-shod Boots', armor: 1 } } } })
+    tick(ctx, 0.1)
+    assert.equal(state.player.gear.melee.boots.gearType, 'ironshod')
+    assert.deepEqual(state.player.inventory.map(i => i.payload?.gearType), ['elk'])
+    assert.equal(bootsOnFloor(state).length, 0)
+  })
+  it('with boots on and no room in the bag, they are left at the hero\'s feet', () => {
+    const { ctx, state } = delivered({ maxInventory: 0, gear: { melee: { off: null, outfit: null, boots: { gearType: 'ironshod', name: 'Iron-shod Boots', armor: 1 } } } })
+    tick(ctx, 0.1)
+    const [drop] = bootsOnFloor(state)
+    assert.ok(drop, 'the boots are not lost')
+    assert.deepEqual([drop.x, drop.y], [10, 11])
+    assert.equal(state.player.inventory.length, 0)
+  })
+  it('a world that has had its boots gets none from the elder (the caller pays otherwise)', () => {
+    const { ctx, state, save } = delivered()
+    ctx.special = () => false
+    tick(ctx, 0.1)
+    assert.equal(questFlags(save, mapData.name).hide_given, true)
+    assert.equal(state.player.gear?.melee?.boots ?? null, null)
+    assert.equal(bootsOnFloor(state).length, 0)
   })
   it('a finished quest ticks quietly', () => {
     const { ctx, state, calls } = build({ flags: { hirvi_dead: true, hide_given: true } })

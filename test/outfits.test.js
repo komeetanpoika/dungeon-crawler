@@ -61,8 +61,8 @@ describe('wearOutfit / ownsOutfit', () => {
 
 describe('migrateTalentsToOutfits', () => {
   it('turns retired talents into worn outfits and keeps the rest', () => {
-    const { body, talents } = migrateTalentsToOutfits(null, ['magic_stance', 'ski_legs', 'heavy_weapons'])
-    assert.deepEqual(talents, ['ski_legs'])
+    const { body, talents } = migrateTalentsToOutfits(null, ['magic_stance', 'lake_breath', 'heavy_weapons'])
+    assert.deepEqual(talents, ['lake_breath'])
     assert.equal(body.gear.magic.outfit.outfitType, 'robe')
     assert.equal(body.gear.melee.outfit.outfitType, 'plate')
     assert.equal(body.gear.ranged.outfit, null)
@@ -71,8 +71,8 @@ describe('migrateTalentsToOutfits', () => {
   })
   it('is a no-op on a current save', () => {
     const cur = { weapon: null, ranged: null, wand: null, ammo: emptyAmmo(), inventory: [], gear: makePlayer(1, 1).gear, belt: null }
-    const r = migrateTalentsToOutfits(cur, ['ski_legs'])
-    assert.deepEqual(r, { body: cur, talents: ['ski_legs'] })
+    const r = migrateTalentsToOutfits(cur, ['lake_breath'])
+    assert.deepEqual(r, { body: cur, talents: ['lake_breath'] })
     assert.equal(migrateTalentsToOutfits(null, []).body, null)
   })
   it('never overwrites an outfit already worn', () => {

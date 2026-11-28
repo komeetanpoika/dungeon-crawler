@@ -1,8 +1,8 @@
 // Apply a loadout override — an arena config's `player`, a timewarp
 // episode's kit, or a PvP class kit (renderer/data/pvp.js), all the same
 // shape. Lifted out of game.js so the PvP simulation can import it.
-import { WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, SHIELD_TYPES, OUTFIT_TYPES,
-  weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents,
+import { WEAPON_TYPES, RANGED_WEAPON_TYPES, WAND_TYPES, SHIELD_TYPES, OUTFIT_TYPES, WORN_TYPES,
+  weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents, makeWornContents,
   emptyAmmo } from './entities.js'
 import { gearOf } from './inventory.js'
 import { wearOutfit, RETIRED_TALENT_OUTFITS } from './outfits.js'
@@ -10,7 +10,7 @@ import { TALENTS } from './talents.js'
 
 // Apply a loadout override (arena config's `player`, or a timewarp episode's
 // kit — same shape): weaponType/rangedType/wandType/ammo/hp/talents/outfits/
-// offhand, each optional.
+// offhand/worn, each optional.
 export function applyLoadout(player, po, warn = console.warn) {
   if (!po) return
   const def = WEAPON_TYPES[po.weaponType]
@@ -47,6 +47,16 @@ export function applyLoadout(player, po, warn = console.warn) {
     const payload = make?.(weaponType)
     if (payload) gearOf(player, type === 'wand' ? 'magic' : 'melee').off = { kind: type, ...payload }
     else warn(`loadout: unknown offhand ${type}/${weaponType} — skipped`)
+  }
+  // A kit's `worn` dresses its characters: { melee: { head, armor, boots,
+  // ring }, ranged: {...}, magic: {...} }, each a WORN_TYPES key.
+  for (const [stance, pieces] of Object.entries(po.worn ?? {})) {
+    if (!player.gear?.[stance]) { warn(`loadout: unknown character "${stance}" in worn — skipped`); continue }
+    for (const [slot, key] of Object.entries(pieces ?? {})) {
+      if (WORN_TYPES[key]?.slot !== slot) { warn(`loadout: unknown ${slot} "${key}" — skipped`); continue }
+      const { type, ...payload } = makeWornContents(key)
+      gearOf(player, stance)[slot] = payload
+    }
   }
 }
 

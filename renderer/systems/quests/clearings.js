@@ -1,6 +1,6 @@
 // Hiiden hirvi, the Elk of Hiisi — the Clearings quest (docs/superpowers/
 // specs/2026-09-10-adventure-quests-design.md §2). Three wallows, two
-// flushes, one stand, one hide, one talent. The elk's own motion lives in
+// flushes, one stand, one hide, one pair of boots. The elk's own motion lives in
 // systems/monsters/hirvi.js; this module owns the story: where it beds, when
 // it is spooked, and what the elder does with the hide.
 //
@@ -15,10 +15,10 @@
 import { poiCell, checkDeliveries } from '../quests.js'
 import { stampTrail } from './trail.js'
 import { ensureHirvi, startBolt, makeStand, FLUSH_TILES } from '../monsters/hirvi.js'
-import { grantTalent } from '../talents.js'
+import { itemFromContents, autoEquipOnPickup } from '../inventory.js'
 import { queueToast, think } from '../feedback.js'
 import { sfx } from '../sfx.js'
-import { isWalkable } from '../entities.js'
+import { isWalkable, makeWornContents } from '../entities.js'
 
 export const SHRINE = 'forest shrine'
 export const WALLOWS = ['wallow 1', 'wallow 2', 'wallow 3']
@@ -111,6 +111,17 @@ export function onArrive(ctx) {
   bedElk(ctx, i)
 }
 
+// The elder's work: one pair of Elk-hide Boots (entities.js WORN_TYPES), on
+// the feet of the character being played when they are bare, else in the
+// bag, else left on the ground where the hero stands.
+function giveBoots(ctx) {
+  const { state } = ctx, { player } = state
+  const got = autoEquipOnPickup(player, itemFromContents(makeWornContents('elk')))
+  if (!got.ok) ctx.spawn([{ kind: 'floating_pickup', contents: makeWornContents('elk'), x: player.x, y: player.y }])
+  queueToast(state, { title: "The elder's work", lines: ['Elk-hide Boots — they run like weather.'] })
+  sfx(state, 'talent-learned')
+}
+
 export function tick(ctx, delta) {
   const { state, flags } = ctx
 
@@ -119,8 +130,8 @@ export function tick(ctx, delta) {
   if (flags.hirvi_dead) {
     ensureElder(ctx)   // cheap, and a same-visit kill of the elder must not strand the hide
     if (!checkDeliveries(ctx, DELIVERIES)) return
-    // ctx.special (optional) false: this world has had its Ski-legs; the caller pays otherwise
-    if (ctx.special?.() !== false) grantTalent(state, 'ski_legs')   // queues its own toast and cue
+    // ctx.special (optional) false: this world has had its boots; the caller pays otherwise
+    if (ctx.special?.() !== false) giveBoots(ctx)
     ctx.refreshInventory()
     ctx.persist()
     return

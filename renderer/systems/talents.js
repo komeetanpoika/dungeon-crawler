@@ -2,12 +2,12 @@
 // dungeon clear, future NPC — funnels through grantTalent. Persistence is
 // the caller's job (game.js persists for Adventure; Dungeon Rush never does).
 // The stance talents (Marksmanship, Gust of Wind, Might) became outfits on
-// 2026-09-17 — see systems/outfits.js. Ski-legs stays a talent.
+// 2026-09-17 — see systems/outfits.js — and Ski-legs a pair of Elk-hide
+// Boots on 2026-11-28 (entities.js WORN_TYPES; outfits.js migrateToWorn).
 import { queueToast } from './feedback.js'
 import { sfx } from './sfx.js'
 
 export const TALENTS = {
-  ski_legs: { name: 'Ski-legs', desc: 'Sprinting costs far less stamina.' },
   // rewards of the Wilds' tales (data/tales.js `reward`)
   lake_breath: { name: "The lake's breath", desc: 'A quarter more stamina.' },
   tapio_peace: { name: "Tapio's peace", desc: 'Wolves leave you be unless you strike first.' },
@@ -19,10 +19,10 @@ export const TALENTS = {
   kaarmeenkieli: { name: 'Käärmeenkieli', desc: 'No poison takes hold of you.' },
   mursun_sydan: { name: 'Mursun sydän', desc: 'One more heart.' },
 }
-// Dungeon Rush: Ski-legs from the first step (outfits too — see
-// systems/outfits.js RUSH_START_OUTFITS). Assigned silently at spawn. A fixed
-// list: the tales' rewards are earned in the Wilds, not handed to a Rush run.
-export const RUSH_START_TALENTS = ['ski_legs']
+// Dungeon Rush starts with no talent: what it wears from the first step is
+// in systems/outfits.js (RUSH_START_OUTFITS, RUSH_START_WORN). A fixed list:
+// the tales' rewards are earned in the Wilds, not handed to a Rush run.
+export const RUSH_START_TALENTS = []
 
 export function hasTalent(player, id) {
   return (player?.talents ?? []).includes(id)

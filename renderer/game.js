@@ -113,7 +113,7 @@ import { tryBuy } from './systems/trade.js'
 import { coinsOf, addCoins, sell, stock, buy, offer, vendorOf, vendorName, vendorNear, greeting, purseOf } from './systems/coin.js'
 import { VENDORS, SAID } from './data/coin.js'
 import { order, fareCost, sleepItOff, tickTavern, tavernSpeedMul, stagger, sway } from './systems/tavern.js'
-import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, RUSH_START_OUTFITS, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
+import { RETIRED_TALENT_OUTFITS, MAP_CLEAR_OUTFITS, BOSS_DROP_OUTFITS, BOSS_DROP_WORN, RUSH_START_OUTFITS, RUSH_START_WORN, wearOutfit, ownsOutfit, outfitToast } from './systems/outfits.js'
 import { startTrance, tickTrance, riteConditionMet, RITE_DURATION, riteVisuals,
   TRANCE_FADE, PULL_DURATION, PULL_TELEPORT_AT, pullTarget } from './systems/rites.js'
 import { signNearby } from './systems/signs.js'
@@ -977,6 +977,7 @@ function startNewRun(depth = 1, arenaCfg = null) {
   if (runMode === 'rush') {
     player.talents = [...RUSH_START_TALENTS]
     for (const ot of RUSH_START_OUTFITS) { const { type, ...payload } = makeOutfitContents(ot); wearOutfit(player, payload) }
+    applyLoadout(player, { worn: RUSH_START_WORN })
   }
   if (openMap) {
     player.talents = [...activeSave.talents]
@@ -1754,11 +1755,12 @@ function freeAdjacentTile(x, y) {
 
 // An outfit landing next to a fallen boss (or on the tile itself when nothing
 // is free): a floating item like any drop, so walking onto it self-equips.
-function spawnOutfitDrop(tile, outfitType) {
+// `contents` (optional): something other than an outfit to throw the same way.
+function spawnOutfitDrop(tile, outfitType, contents = makeOutfitContents(outfitType)) {
   const at = freeAdjacentTile(tile.x, tile.y) ?? tile
   const px = tile.x * TILE_SIZE + TILE_SIZE / 2, py = tile.y * TILE_SIZE + TILE_SIZE / 2
   state.entities.push({
-    type: 'floating_item', contents: makeOutfitContents(outfitType), x: at.x, y: at.y,
+    type: 'floating_item', contents, x: at.x, y: at.y,
     startPx: px, startPy: py, targetPx: at.x * TILE_SIZE + TILE_SIZE / 2, targetPy: at.y * TILE_SIZE + TILE_SIZE / 2,
     px, py, progress: 0, duration: 0.35,
   })
@@ -2939,8 +2941,11 @@ function update(delta) {
     // leaves that outfit. Neither drops for a body that already owns it.
     const drops = [BOSS_DROP_OUTFITS[bossType]]
     if (state.cave) drops.push(MAP_CLEAR_OUTFITS[mapDataFor(state.cave.surface.level).name])
+    // (the cyclops's cuirass falls with its tabard, and only then)
+    const cuirass = !ownsOutfit(state.player, BOSS_DROP_OUTFITS[bossType]) ? BOSS_DROP_WORN[bossType] : null
     for (const ot of new Set(drops.filter(Boolean)))
       if (!ownsOutfit(state.player, ot)) spawnOutfitDrop(state.lastBossTile, ot)
+    if (cuirass) spawnOutfitDrop(state.lastBossTile, null, makeWornContents(cuirass))
     if (state.cave) {
       const mapData = mapDataFor(state.cave.surface.level)
       const before = isMapComplete(activeSave.progress, mapData)
