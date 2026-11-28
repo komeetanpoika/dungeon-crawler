@@ -2941,11 +2941,11 @@ function update(delta) {
     // leaves that outfit. Neither drops for a body that already owns it.
     const drops = [BOSS_DROP_OUTFITS[bossType]]
     if (state.cave) drops.push(MAP_CLEAR_OUTFITS[mapDataFor(state.cave.surface.level).name])
-    // (the cyclops's cuirass falls with its tabard, and only then)
-    const cuirass = !ownsOutfit(state.player, BOSS_DROP_OUTFITS[bossType]) ? BOSS_DROP_WORN[bossType] : null
+    // (the cyclops's helm and cuirass fall with its tabard, and only then)
+    const pieces = !ownsOutfit(state.player, BOSS_DROP_OUTFITS[bossType]) ? BOSS_DROP_WORN[bossType] ?? [] : []
     for (const ot of new Set(drops.filter(Boolean)))
       if (!ownsOutfit(state.player, ot)) spawnOutfitDrop(state.lastBossTile, ot)
-    if (cuirass) spawnOutfitDrop(state.lastBossTile, null, makeWornContents(cuirass))
+    for (const key of pieces) spawnOutfitDrop(state.lastBossTile, null, makeWornContents(key))
     if (state.cave) {
       const mapData = mapDataFor(state.cave.surface.level)
       const before = isMapComplete(activeSave.progress, mapData)

@@ -88,12 +88,13 @@ describe('the step that turns old power into pieces (v9)', () => {
     assert.equal(s.body.gear.magic.boots, null)
     assert.equal(s.v9, true)
   })
-  it('plate on the Warrior stays, as the tabard, with a Plate Cuirass under it', () => {
+  it('plate on the Warrior stays, as the tabard, with a Plate Cuirass and an Iron Helm: he still looks the knight', () => {
     const b = body(); b.gear.melee.outfit = { outfitType: 'plate', name: 'Plated Armor', loadout: 'melee', protect: 2, heavy: true, sprintDrain: 2 }
     const s = normalizeAdventureSave(save(b))
     assert.equal(s.body.gear.melee.outfit.name, "Knight's Tabard")
     assert.equal(s.body.gear.melee.outfit.heavy, true)
     assert.deepEqual(s.body.gear.melee.armor, worn('plate'))
+    assert.deepEqual(s.body.gear.melee.head, worn('helm'))
   })
   it('happens once: a second load mints nothing', () => {
     const b = body(); b.gear.melee.outfit = outfit('plate')
@@ -111,6 +112,7 @@ describe('the step that turns old power into pieces (v9)', () => {
     assert.deepEqual(s.talents, [])
     assert.equal(s.body.gear.melee.outfit.outfitType, 'plate')
     assert.equal(s.body.gear.melee.armor.gearType, 'plate')
+    assert.equal(s.body.gear.melee.head.gearType, 'helm')
     assert.equal(s.body.gear.melee.boots.gearType, 'elk')
   })
   it('Ski-legs with no body yet conjures one to wear the boots', () => {
@@ -140,12 +142,12 @@ describe('tables that hand pieces out', () => {
     assert.equal('ski_legs' in TALENTS, false)
     assert.deepEqual([...RUSH_START_TALENTS], [])
   })
-  it('a Rush run wears a cuirass on the Warrior and elk boots on all three', () => {
-    assert.deepEqual(RUSH_START_WORN, { melee: { armor: 'plate', boots: 'elk' }, ranged: { boots: 'elk' }, magic: { boots: 'elk' } })
+  it('a Rush run wears helm and cuirass on the Warrior and elk boots on all three', () => {
+    assert.deepEqual(RUSH_START_WORN, { melee: { head: 'helm', armor: 'plate', boots: 'elk' }, ranged: { boots: 'elk' }, magic: { boots: 'elk' } })
   })
-  it('the cyclops drops a Plate Cuirass beside the tabard', () => {
-    assert.deepEqual(BOSS_DROP_WORN, { cyclops: 'plate' })
-    for (const key of Object.values(BOSS_DROP_WORN)) assert.ok(WORN_TYPES[key], key)
+  it('the cyclops drops a Plate Cuirass and an Iron Helm beside the tabard', () => {
+    assert.deepEqual(BOSS_DROP_WORN, { cyclops: ['plate', 'helm'] })
+    for (const key of Object.values(BOSS_DROP_WORN).flat()) assert.ok(WORN_TYPES[key], key)
   })
 })
 
@@ -154,6 +156,7 @@ describe('a kit may dress its characters (applyLoadout `worn`)', () => {
     const p = makePlayer(1, 1)
     applyLoadout(p, { worn: RUSH_START_WORN })
     assert.deepEqual(p.gear.melee.armor, worn('plate'))
+    assert.deepEqual(p.gear.melee.head, worn('helm'))
     assert.deepEqual(p.gear.melee.boots, worn('elk'))
     assert.deepEqual(p.gear.ranged.boots, worn('elk'))
     assert.equal(p.gear.ranged.armor, null)

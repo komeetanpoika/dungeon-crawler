@@ -16,12 +16,14 @@ export const BOSS_DROP_OUTFITS = { cyclops: 'plate' }
 // Dungeon Rush wears everything from the first step.
 export const RUSH_START_OUTFITS = ['ranger', 'robe', 'plate']
 // ...and these pieces (applyLoadout's `worn` shape, entities.js WORN_TYPES
-// keys): the cuirass the tabard's protection moved to, and the boots
-// Ski-legs became, on each of the three since a Rush run has no time to shop.
-export const RUSH_START_WORN = { melee: { armor: 'plate', boots: 'elk' }, ranged: { boots: 'elk' }, magic: { boots: 'elk' } }
-// A boss of this type drops this worn piece beside its outfit, under the
-// same once-only rule (the cyclops: the Plate Cuirass with the tabard).
-export const BOSS_DROP_WORN = { cyclops: 'plate' }
+// keys): the helm and cuirass that make the knight (the plate was his whole
+// figure once, helm and all), and the boots Ski-legs became, on each of the
+// three since a Rush run has no time to shop.
+export const RUSH_START_WORN = { melee: { head: 'helm', armor: 'plate', boots: 'elk' }, ranged: { boots: 'elk' }, magic: { boots: 'elk' } }
+// A boss of this type drops these worn pieces beside its outfit, under the
+// same once-only rule (the cyclops: helm and cuirass with the tabard, so the
+// kill still turns the adventurer into the knight).
+export const BOSS_DROP_WORN = { cyclops: ['plate', 'helm'] }
 
 export const OUTFIT_TOAST_LINES = {
   ranger:  "Ranger's Coat — the Archer's way is open.",
@@ -67,8 +69,8 @@ export function migrateTalentsToOutfits(body, talents = []) {
 // Save migration (adventure.js v9): what an old save had as a talent or on
 // an outfit and is a worn piece now. Ski-legs is one pair of Elk-hide Boots,
 // and the plate the Warrior wore (the tabard since) has its Plate Cuirass
-// under it. Both go on the Warrior, or into the bag when that slot of his is
-// taken. Pure: the same objects come back when there was nothing to turn.
+// under it and an Iron Helm over it, so he looks the knight he was. All go
+// on the Warrior, or into the bag when that slot of his is taken. Pure: the same objects come back when there was nothing to turn.
 export function migrateToWorn(body, talents = []) {
   const skis = talents.includes('ski_legs')
   const plated = body?.gear?.melee?.outfit?.outfitType === 'plate'
@@ -82,7 +84,7 @@ export function migrateToWorn(body, talents = []) {
     else out.inventory.push(wornItem(slot, payload))
   }
   if (skis) put('elk')
-  if (plated) put('plate')
+  if (plated) { put('plate'); put('helm') }
   return { body: out, talents: skis ? talents.filter(t => t !== 'ski_legs') : talents }
 }
 
