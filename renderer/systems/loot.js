@@ -12,13 +12,14 @@
 // A bow teaser is not wasted even so — a pickup's arrow bundle reaches the
 // pool whether or not the weapon can be equipped (autoEquipOnPickup).
 //
-// Shields ride alongside melee (one pick in five) and the Leather Coat is the
-// one chest outfit (a twentieth of the roll, from tier 2 on); both are in the
-// same tiered-pool/teaser ladder as the weapon bands. The three story
-// outfits (ranger, robe, plate) are never rolled — they come from the world
+// Shields ride alongside melee (one pick in five) and armor is a band of its
+// own (a twentieth of the roll, from tier 2 on); both are in the same
+// tiered-pool/teaser ladder as the weapon bands. The three story outfits
+// (ranger, robe, the tabard) are never rolled — they come from the world
 // (systems/outfits.js).
-import { weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeOutfitContents, AMMO_KINDS } from './entities.js'
+import { weaponContents, makeRangedContents, makeWandContents, makeShieldContents, makeWornContents, AMMO_KINDS } from './entities.js'
 import { canEquip, itemFromContents, canWieldHeavy } from './inventory.js'
+import { WORN_SLOTS } from './entities.js'
 import { LEVEL_CONFIG } from '../data/levels.js'
 
 // Four rungs, one per pool. A tier's melee and ranged rows both hold at least
@@ -51,10 +52,9 @@ export const SHIELD_POOLS = {
   3: ['buckler', 'kite'],
   4: ['kite'],
 }
-// The one chest outfit. Story outfits (ranger, robe, plate) are handed out by
-// the world (systems/outfits.js), never rolled. No rung at tier 1: the first
+// Chest armor (entities.js WORN_TYPES keys). No rung at tier 1: the first
 // maps are for learning the sack, not filling it.
-export const OUTFIT_POOLS = {
+export const ARMOR_POOLS = {
   2: ['leather'],
   3: ['leather'],
   4: ['leather'],
@@ -67,9 +67,9 @@ const AMMO_COUNTS = { arrow: 10, bolt: 6, stone: 15 }
 // whatever is left is renormalised over the survivors — so on the first map,
 // where bows, wands and ammo are all out of reach, potions and melee split
 // nearly the whole roll between them. Shields take a fifth of the old melee
-// weight; the Leather Coat a twentieth of the chest, out of the potion band,
-// so a veteran's roll still totals 100.
-const BASE_WEIGHTS = { potion: 30, melee: 16, shield: 4, ranged: 15, wand: 15, ammo: 15, outfit: 5 }
+// weight; armor a twentieth of the chest, out of the potion band, so a
+// veteran's roll still totals 100.
+const BASE_WEIGHTS = { potion: 30, melee: 16, shield: 4, ranged: 15, wand: 15, ammo: 15, armor: 5 }
 const TEASER = 0.2
 
 function pick(pool, rng) {
@@ -91,12 +91,8 @@ function canUse(player, contents) {
   if (contents.type === 'shield') return !contents.heavy || canWieldHeavy(player)
   const item = itemFromContents(contents)
   if (!item) return true
-  // Outfits route through the 'outfit' slot so canEquip doesn't reject them
-  // under the default 'main' rules. In practice this bypasses canUse today:
-  // canEquip(..., 'outfit') only checks item.kind === 'outfit', and the one
-  // chest outfit (Leather Coat, loadout: null) fits every stance regardless
-  // of what the player already wears.
-  return canEquip(player, item, item.kind === 'outfit' ? 'outfit' : 'main').ok
+  // A worn piece is judged for its own slot (a heavy one needs the tabard).
+  return canEquip(player, item, WORN_SLOTS.includes(item.kind) ? item.kind : 'main').ok
 }
 
 // The ammo kinds the player actually owns a bow for, hand or sack, in
@@ -132,8 +128,8 @@ export function rollChestLoot(depth, rng = Math.random, player = null) {
     weaponBand('wand',   WAND_POOLS,   tier, player, makeWandContents),
     { weight: ammoKinds.length ? BASE_WEIGHTS.ammo : 0, pool: ammoKinds,
       toContents: k => ({ type: 'ammo', ammoKind: k, count: AMMO_COUNTS[k] }) },
-    { weight: (OUTFIT_POOLS[tier] ?? []).length ? BASE_WEIGHTS.outfit : 0, pool: OUTFIT_POOLS[tier] ?? [],
-      toContents: makeOutfitContents },
+    { weight: (ARMOR_POOLS[tier] ?? []).length ? BASE_WEIGHTS.armor : 0, pool: ARMOR_POOLS[tier] ?? [],
+      toContents: makeWornContents },
   ]
   const total = bands.reduce((sum, b) => sum + b.weight, 0)
   let r = rng() * total

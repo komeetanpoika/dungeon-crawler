@@ -8,7 +8,7 @@ import {
   makeItem, OFFHAND_KINDS, resolveOffhand,
 } from '../renderer/systems/inventory.js'
 import { iconSpriteFor } from '../renderer/render/icons.js'
-import { gearWearing } from './helpers/outfits.js'
+import { gearWearing, plainOutfitItem } from './helpers/outfits.js'
 
 describe('shield table', () => {
   it('has the buckler and the heavy kite shield', () => {
@@ -220,7 +220,7 @@ describe('the two-handed rule on the main hand', () => {
   it('swapping the plate for a lighter outfit evicts every kite shield', () => {
     const p = mk({ gear: gearWearing('plate', 'robe') })
     p.gear.melee.off = kite(); p.gear.magic.off = kite()
-    addItem(p, itemFromContents(makeOutfitContents('leather')))
+    addItem(p, plainOutfitItem())
     assert.equal(equipOutfit(p, 0, 'melee').ok, true)
     assert.equal(p.gear.melee.off, null)
     assert.equal(p.gear.magic.off, null)

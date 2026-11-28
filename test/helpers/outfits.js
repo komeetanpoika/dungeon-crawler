@@ -11,3 +11,9 @@ export function gearWearing(...outfitTypes) {
   }
   return gear
 }
+
+// An outfit bound to no loadout, for the generic swap rules. No such outfit
+// is in the table any more (the Leather Coat became armor), so it is built
+// by hand: equipOutfit and wearOutfit judge an outfit by its payload alone.
+export const plainOutfitPayload = () => ({ outfitType: 'plain', name: 'Plain Coat', loadout: null })
+export const plainOutfitItem = () => ({ kind: 'outfit', name: 'Plain Coat', emoji: '🧥', stackable: false, payload: plainOutfitPayload() })

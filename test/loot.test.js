@@ -81,8 +81,8 @@ describe('bands for a player who can use everything', () => {
     // potion 30 / melee 16 / shield 4 / ranged 15 / wand 15 / ammo 15 / outfit 5 = 100.
     assert.equal(rollChestLoot(3, seq(0.949, 0.0), veteran()).type, 'ammo')
     assert.deepEqual(rollChestLoot(3, seq(0.95, 0.0), veteran()),
-      { type: 'outfit', outfitType: 'leather', name: 'Leather Coat', loadout: null, protect: 1 })
-    assert.equal(rollChestLoot(3, seq(0.999, 0.0), veteran()).type, 'outfit')
+      { type: 'armor', gearType: 'leather', name: 'Leather Jerkin', armor: 2 })
+    assert.equal(rollChestLoot(3, seq(0.999, 0.0), veteran()).type, 'armor')
   })
 })
 
@@ -244,17 +244,17 @@ describe('shield and outfit rungs', () => {
     assert.equal(shield(1, 0.99), 'buckler')
   })
   it('no outfit rolls at tier 1', () => {
-    for (let i = 0; i < 300; i++) assert.notEqual(rollChestLoot(1, Math.random, veteran()).type, 'outfit')
+    for (let i = 0; i < 300; i++) assert.notEqual(rollChestLoot(1, Math.random, veteran()).type, 'armor')
   })
   it('story outfits never roll', () => {
     for (let i = 0; i < 500; i++) {
       const c = rollChestLoot(18, Math.random, veteran())
-      if (c.type === 'outfit') assert.equal(c.outfitType, 'leather')
+      assert.notEqual(c.type, 'outfit')
     }
   })
   it('a plated player draws the kite; a null player draws everything', () => {
     assert.equal(rollChestLoot(5, seq(0.47, 0.99), mkPlayer({ outfits: ALL_OUTFITS, ranged: 'shortbow', sack: ['crossbow', 'sling'] })).weaponType, 'kite')
     assert.equal(rollChestLoot(5, seq(0.47, 0.99)).weaponType, 'kite')
-    assert.equal(rollChestLoot(5, seq(0.96, 0.0)).type, 'outfit')
+    assert.equal(rollChestLoot(5, seq(0.96, 0.0)).type, 'armor')
   })
 })

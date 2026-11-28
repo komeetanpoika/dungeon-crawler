@@ -474,9 +474,9 @@ describe('floating consumables use atlas sprites', () => {
 
   it('a shield and an outfit on the ground draw their sprites, not the ? glyph', () => {
     const ctx = recordingCtx()
-    const sprites = { weapon_buckler: 'BUCKLER', outfit_leather: 'COAT' }
+    const sprites = { weapon_buckler: 'BUCKLER', outfit_ranger: 'COAT' }
     drawEntity(ctx, { type: 'floating_item', contents: { type: 'shield', weaponType: 'buckler' } }, 0, 0, 32, sprites)
-    drawEntity(ctx, { type: 'floating_item', contents: { type: 'outfit', outfitType: 'leather' } }, 0, 0, 32, sprites)
+    drawEntity(ctx, { type: 'floating_item', contents: { type: 'outfit', outfitType: 'ranger' } }, 0, 0, 32, sprites)
     assert.deepEqual(ctx.calls, ['BUCKLER', 'COAT'])
     assert.deepEqual(ctx.ops.filter(o => o.name === 'fillText'), [])
   })

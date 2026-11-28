@@ -97,7 +97,7 @@ describe('buttonsFor', () => {
   })
   it('an outfit is worn, not equipped', () => {
     const p = mk()
-    give(p, makeOutfitContents('leather'))
+    give(p, makeOutfitContents('robe'))
     assert.equal(buttonsFor(p, sack(0)).red.label, 'Wear')
   })
   it('on the character: red unequips what is there, and nothing else is offered', () => {

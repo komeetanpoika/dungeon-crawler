@@ -375,8 +375,8 @@ describe('v8 save shape — gear and outfits', () => {
     const stale = { ...emptyBody(), gear: { ...defaultGear(), melee: { off: null, outfit: { outfitType: 'plate', name: 'Old Plate' } },
       magic: { off: { kind: 'consumable', item: 'mushroom' }, outfit: { outfitType: 'tuxedo' } } } }
     const b = normalizeBody(stale)
-    assert.equal(b.gear.melee.outfit.name, 'Plated Armor')
-    assert.equal(b.gear.melee.outfit.protect, 2)
+    assert.equal(b.gear.melee.outfit.name, "Knight's Tabard")
+    assert.equal(b.gear.melee.outfit.heavy, true)
     assert.equal(b.gear.magic.outfit, null)
     assert.deepEqual(b.gear.magic.off, { kind: 'consumable', item: 'mushroom' })
     assert.equal(b.gear.melee.off, null)

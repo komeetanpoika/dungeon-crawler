@@ -19,8 +19,7 @@ export const RUSH_START_OUTFITS = ['ranger', 'robe', 'plate']
 export const OUTFIT_TOAST_LINES = {
   ranger:  "Ranger's Coat — the Archer's way is open.",
   robe:    "Mage's Robe — the Mage's way is open.",
-  plate:   'Plated Armor — heavy steel sits easy now.',
-  leather: 'Leather Coat — a little between me and the teeth.',
+  plate:   "Knight's Tabard — heavy steel sits easy now.",
 }
 
 export const outfitStance = (payload, fallback = 'melee') => payload.loadout ?? fallback

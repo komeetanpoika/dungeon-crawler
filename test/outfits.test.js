@@ -5,11 +5,12 @@ import {
   wearOutfit, ownsOutfit, migrateTalentsToOutfits, outfitToast, OUTFIT_TOAST_LINES,
 } from '../renderer/systems/outfits.js'
 import { makeOutfitContents, makePlayer, OUTFIT_TYPES, emptyAmmo } from '../renderer/systems/entities.js'
+import { plainOutfitPayload } from './helpers/outfits.js'
 import { itemFromContents, loadoutAvailable } from '../renderer/systems/inventory.js'
 import { makeFeedback } from '../renderer/systems/feedback.js'
 import { makeSfx } from '../renderer/systems/sfx.js'
 
-const payload = ot => { const { type, ...p } = makeOutfitContents(ot); return p }
+const payload = ot => { if (ot === 'plain') return plainOutfitPayload(); const { type, ...p } = makeOutfitContents(ot); return p }
 
 describe('sources', () => {
   it('every source names a real outfit', () => {
@@ -33,13 +34,13 @@ describe('wearOutfit / ownsOutfit', () => {
     assert.equal(loadoutAvailable(p, 'ranged'), true)
     assert.equal(wearOutfit(p, payload('ranger')), false)   // slot taken
   })
-  it('a leather coat goes to the named stance, defaulting to the active one', () => {
+  it('a plain coat goes to the named stance, defaulting to the active one', () => {
     const p = { ...makePlayer(1, 1), attackMode: 'magic' }
-    assert.equal(wearOutfit(p, payload('leather')), true)
-    assert.equal(p.gear.magic.outfit.outfitType, 'leather')
+    assert.equal(wearOutfit(p, payload('plain')), true)
+    assert.equal(p.gear.magic.outfit.outfitType, 'plain')
     const q = makePlayer(1, 1)
-    assert.equal(wearOutfit(q, payload('leather'), 'ranged'), true)
-    assert.equal(q.gear.ranged.outfit.outfitType, 'leather')
+    assert.equal(wearOutfit(q, payload('plain'), 'ranged'), true)
+    assert.equal(q.gear.ranged.outfit.outfitType, 'plain')
   })
   it('refuses to wear a loadout-bound outfit into another loadout', () => {
     const p = makePlayer(1, 1)
@@ -76,9 +77,9 @@ describe('migrateTalentsToOutfits', () => {
   })
   it('never overwrites an outfit already worn', () => {
     const body = { weapon: null, ranged: null, wand: null, ammo: emptyAmmo(), inventory: [], gear: makePlayer(1, 1).gear, belt: null }
-    body.gear.melee.outfit = payload('leather')
+    body.gear.melee.outfit = payload('plain')
     const r = migrateTalentsToOutfits(body, ['heavy_weapons'])
-    assert.equal(r.body.gear.melee.outfit.outfitType, 'leather')
+    assert.equal(r.body.gear.melee.outfit.outfitType, 'plain')
     assert.deepEqual(r.talents, [])
   })
 })

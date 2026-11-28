@@ -5,7 +5,7 @@ import {
   equipOutfit, unequipOutfit, makeItem,
 } from '../renderer/systems/inventory.js'
 import { makePlayer, weaponContents, makeOutfitContents } from '../renderer/systems/entities.js'
-import { gearWearing } from './helpers/outfits.js'
+import { gearWearing, plainOutfitItem } from './helpers/outfits.js'
 
 const mk = (over = {}) => ({ ...makePlayer(1, 1), ...over })
 const weapon = wt => itemFromContents({ type: 'weapon', ...weaponContents(wt) })
@@ -69,7 +69,7 @@ describe('equipping the belt', () => {
 })
 
 describe('a heavy belt rides on the plate', () => {
-  const outfit = ot => itemFromContents(makeOutfitContents(ot))
+  const outfit = ot => ot === 'plain' ? plainOutfitItem() : itemFromContents(makeOutfitContents(ot))
   it('taking the plate off sends the axe on the belt to the sack', () => {
     const p = mk({ gear: gearWearing('plate'), belt: weaponContents('axe') })
     assert.equal(unequipOutfit(p, 'melee').ok, true)
@@ -79,9 +79,9 @@ describe('a heavy belt rides on the plate', () => {
     assert.deepEqual(unequipOutfit(q, 'melee'), { ok: false, reason: 'full' })
     assert.equal(q.belt.weaponType, 'axe')
   })
-  it('swapping the plate for the leather coat evicts it too; a hatchet stays', () => {
+  it('swapping the plate for a plain coat evicts it too; a hatchet stays', () => {
     const p = mk({ gear: gearWearing('plate'), belt: weaponContents('axe') })
-    addItem(p, outfit('leather'))
+    addItem(p, outfit('plain'))
     assert.equal(equipOutfit(p, 0, 'melee').ok, true)
     assert.equal(p.belt, null)
     assert.deepEqual(p.inventory.map(i => i.kind).sort(), ['outfit', 'weapon'])

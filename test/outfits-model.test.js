@@ -5,20 +5,19 @@ import {
   itemFromContents, contentsFromItem, makeItem, addItem,
   loadout, offhand, outfitOf, loadoutAvailable, canWieldHeavy, resolveOffhand, MAIN_OF, STANCES,
 } from '../renderer/systems/inventory.js'
-import { gearWearing } from './helpers/outfits.js'
+import { gearWearing, plainOutfitPayload } from './helpers/outfits.js'
 
 describe('outfit table', () => {
-  it('names the three story outfits and the leather coat', () => {
-    assert.deepEqual(Object.keys(OUTFIT_TYPES).sort(), ['leather', 'plate', 'ranger', 'robe'])
+  it('names the three story outfits, and no other', () => {
+    assert.deepEqual(Object.keys(OUTFIT_TYPES).sort(), ['plate', 'ranger', 'robe'])
     assert.equal(OUTFIT_TYPES.ranger.loadout, 'ranged')
     assert.equal(OUTFIT_TYPES.robe.loadout, 'magic')
     assert.equal(OUTFIT_TYPES.plate.loadout, 'melee')
     assert.equal(OUTFIT_TYPES.plate.heavy, true)
-    assert.equal(OUTFIT_TYPES.leather.loadout, null)
   })
   it('makeOutfitContents copies only the flags a row sets', () => {
-    assert.deepEqual(makeOutfitContents('robe'), { type: 'outfit', outfitType: 'robe', name: "Mage's Robe", loadout: 'magic', protect: 0 })
-    assert.deepEqual(makeOutfitContents('plate'), { type: 'outfit', outfitType: 'plate', name: 'Plated Armor', loadout: 'melee', protect: 2, heavy: true, sprintDrain: 2 })
+    assert.deepEqual(makeOutfitContents('robe'), { type: 'outfit', outfitType: 'robe', name: "Mage's Robe", loadout: 'magic' })
+    assert.deepEqual(makeOutfitContents('plate'), { type: 'outfit', outfitType: 'plate', name: "Knight's Tabard", loadout: 'melee', heavy: true })
   })
   it('an outfit round-trips through the sack', () => {
     const item = itemFromContents(makeOutfitContents('ranger'))
@@ -63,10 +62,9 @@ describe('loadout availability', () => {
     const dressed = { ...makePlayer(1, 1), gear: gearWearing('ranger', 'robe') }
     assert.deepEqual(STANCES.map(s => loadoutAvailable(dressed, s)), [true, true, true])
   })
-  it('a leather coat in the Archer slot does not open the Archer', () => {
+  it('an outfit bound to no loadout, in the Archer slot, does not open the Archer', () => {
     const p = makePlayer(1, 1)
-    const { type, ...leather } = makeOutfitContents('leather')
-    p.gear.ranged.outfit = leather
+    p.gear.ranged.outfit = plainOutfitPayload()
     assert.equal(loadoutAvailable(p, 'ranged'), false)
   })
   it('plate on the Warrior is what lets heavy weapons be wielded', () => {

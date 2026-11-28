@@ -5,10 +5,10 @@ import {
   equipOffhand, unequipOffhand, autoEquipOnPickup, EQUIP_FAIL_MESSAGES, loadoutAvailable, resolveOffhand,
 } from '../renderer/systems/inventory.js'
 import { makePlayer, makeOutfitContents, makeRangedContents, makeWandContents, weaponContents } from '../renderer/systems/entities.js'
-import { gearWearing } from './helpers/outfits.js'
+import { gearWearing, plainOutfitItem } from './helpers/outfits.js'
 
 const mk = (over = {}) => ({ ...makePlayer(1, 1), ...over })
-const outfit = ot => itemFromContents(makeOutfitContents(ot))
+const outfit = ot => ot === 'plain' ? plainOutfitItem() : itemFromContents(makeOutfitContents(ot))
 const weapon = wt => itemFromContents({ type: 'weapon', ...weaponContents(wt) })
 
 describe('main-hand gates read the outfits', () => {
@@ -47,17 +47,17 @@ describe('equipOutfit / unequipOutfit', () => {
     assert.deepEqual(equipOutfit(p, 0, 'melee'), { ok: false, reason: 'wrong_loadout' })
     assert.ok(EQUIP_FAIL_MESSAGES.wrong_loadout)
   })
-  it('a leather coat lands on the active loadout by default', () => {
+  it('a plain coat lands on the active loadout by default', () => {
     const p = mk({ attackMode: 'melee' })
-    addItem(p, outfit('leather'))
+    addItem(p, outfit('plain'))
     equipOutfit(p, 0)
-    assert.equal(p.gear.melee.outfit.outfitType, 'leather')
+    assert.equal(p.gear.melee.outfit.outfitType, 'plain')
   })
   it('swaps a worn outfit back into the sack', () => {
     const p = mk({ gear: gearWearing('plate') })
-    addItem(p, outfit('leather'))
+    addItem(p, outfit('plain'))
     assert.equal(equipOutfit(p, 0).ok, true)
-    assert.equal(p.gear.melee.outfit.outfitType, 'leather')
+    assert.equal(p.gear.melee.outfit.outfitType, 'plain')
     assert.deepEqual(p.inventory.map(i => i.payload.outfitType), ['plate'])
   })
   it('taking the plate off a Warrior holding an axe sends the axe to the sack too', () => {
@@ -73,12 +73,12 @@ describe('equipOutfit / unequipOutfit', () => {
     assert.equal(p.gear.melee.outfit.outfitType, 'plate')
     assert.ok(EQUIP_FAIL_MESSAGES.full)
   })
-  it('swapping plate for leather with a heavy weapon held needs one extra slot', () => {
+  it('swapping plate for a plain coat with a heavy weapon held needs one extra slot', () => {
     const p = mk({ gear: gearWearing('plate'), weapon: weaponContents('axe'), maxInventory: 1 })
-    addItem(p, outfit('leather'))                       // sack: 1/1
+    addItem(p, outfit('plain'))                       // sack: 1/1
     assert.deepEqual(equipOutfit(p, 0), { ok: false, reason: 'full' })
     p.maxInventory = 2
-    assert.equal(equipOutfit(p, 0).ok, true)            // leather out, plate + axe in
+    assert.equal(equipOutfit(p, 0).ok, true)            // plain coat out, plate + axe in
     assert.equal(p.inventory.length, 2)
   })
   it('abandons an in-flight switch into a loadout that just closed', () => {
@@ -100,12 +100,12 @@ describe('equipOutfit / unequipOutfit', () => {
     assert.equal(p.ranged.weaponType, 'shortbow')
     assert.equal(p.gear.ranged.outfit.outfitType, 'ranger')
   })
-  it('swapping the robe for a leather coat evicts the held wand too', () => {
+  it('swapping the robe for a plain coat evicts the held wand too', () => {
     const p = mk({ gear: gearWearing('robe'), wand: makeWandContents('sparkwand') })
-    addItem(p, outfit('leather'))
+    addItem(p, outfit('plain'))
     assert.equal(equipOutfit(p, 0, 'magic').ok, true)
     assert.equal(p.wand, null)
-    assert.equal(p.gear.magic.outfit.outfitType, 'leather')
+    assert.equal(p.gear.magic.outfit.outfitType, 'plain')
     assert.deepEqual(p.inventory.map(i => i.kind).sort(), ['outfit', 'wand'])
   })
   it('closing the active loadout drops the stance back to melee', () => {
@@ -178,11 +178,11 @@ describe('outfit pickups', () => {
   })
   it('a different outfit for an occupied slot goes to the sack', () => {
     const p = mk({ gear: gearWearing('plate') })
-    assert.deepEqual(autoEquipOnPickup(p, outfit('leather')), { ok: true, equipped: false })
+    assert.deepEqual(autoEquipOnPickup(p, outfit('plain')), { ok: true, equipped: false })
     assert.equal(p.inventory[0].kind, 'outfit')
   })
   it('reports full when the slot is taken and the sack is full', () => {
     const p = mk({ gear: gearWearing('plate'), maxInventory: 0 })
-    assert.deepEqual(autoEquipOnPickup(p, outfit('leather')), { ok: false, reason: 'full' })
+    assert.deepEqual(autoEquipOnPickup(p, outfit('plain')), { ok: false, reason: 'full' })
   })
 })

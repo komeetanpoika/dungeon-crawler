@@ -83,7 +83,7 @@ describe('damagePlayer with a shield and armour', () => {
   })
   it('worn armour takes protect off every hit, floored at 0, but not off a dot', () => {
     const s = dressed()
-    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = plate
+    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = { ...plate, protect: 2 }
     assert.equal(damagePlayer(s, 3, 'hit'), true)
     assert.equal(s.player.hp, 9)
     s.player.invulnTimer = 0
@@ -95,7 +95,7 @@ describe('damagePlayer with a shield and armour', () => {
   })
   it('the active loadout’s outfit is the one that protects', () => {
     const s = dressed({ attackMode: 'magic' })
-    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = plate
+    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = { ...plate, protect: 2 }
     damagePlayer(s, 3, 'hit')
     assert.equal(s.player.hp, 7)
   })
@@ -116,7 +116,7 @@ describe('damage observer', () => {
     const seen = []
     setDamageObserver((state, player, amount, kind) => { seen.push({ state, player, amount, kind }); return amount })
     const p = { ...makePlayer(1, 1), px: 40, py: 60, hp: 10 }
-    const { type, ...plate } = makeOutfitContents('plate'); p.gear.melee.outfit = plate
+    const { type, ...plate } = makeOutfitContents('plate'); p.gear.melee.outfit = { ...plate, protect: 2 }
     const s = { player: p, feedback: makeFeedback(), sfx: makeSfx() }
     damagePlayer(s, 3, 'hit')
     assert.equal(seen.length, 1)
@@ -174,7 +174,7 @@ describe('Kivinahka', () => {
 
   it('counts the blow after the outfit: plate brings a three under the mark, a five to it', () => {
     const s = st()
-    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = plate
+    const { type, ...plate } = makeOutfitContents('plate'); s.player.gear.melee.outfit = { ...plate, protect: 2 }
     damagePlayer(s, 3, 'hit')           // 3 - 2 = 1: under three, whole
     assert.equal(s.player.hp, 9)
     s.player.invulnTimer = 0

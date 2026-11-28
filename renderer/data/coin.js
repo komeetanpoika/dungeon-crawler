@@ -13,7 +13,7 @@ export const VALUES = {
   ranged: { sling: 4, shortbow: 8, hunterbow: 12, longbow: 20, splitbow: 22, crossbow: 30 },
   wand: { sparkwand: 8, frostwand: 14, bramblewand: 22, firewand: 24, blinkwand: 30, stormwand: 34 },
   shield: { buckler: 8, kite: 22 },
-  outfit: { leather: 14 },
+  armor: { leather: 14 },
 }
 // A vendor asks this many times a thing's worth for it...
 export const MARKUP = 3
@@ -99,7 +99,7 @@ export const VENDORS = {
   weaver: {
     title: 'The weaver',
     greet: ['Stitched to turn a blade. A small one.', 'It will outlast you, if you let it.'],
-    goods: [gear('outfit', 'leather')],
+    goods: [gear('armor', 'leather')],
   },
   farmer: {
     title: 'The farmer',
