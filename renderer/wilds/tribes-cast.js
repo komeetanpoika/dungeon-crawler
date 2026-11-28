@@ -67,7 +67,7 @@ export const TRIBE_PACKS = {
 // and with its looks. A tribe's camp is listed COPIES times (or its own
 // `copies`) among the land's own for its toughness, so that about half the
 // camps of its country are the tribe's: twice each for the trolls' two and
-// the coven's two, six times for the seals' one, who have no packs to be met
+// the coven's two, sixteen times for the seals' one (four camps in five on a sea spot), who have no packs to be met
 // by. It holds its roster whole: each of `foes` once, the first `lead` of
 // them nearest the fire.
 //   lit       a fire burns in its middle (the bandits' look has its own)
@@ -84,7 +84,7 @@ export const TRIBE_CAMPS = {
     { from: 2, name: 'coven', tribe: 'noidat', look: 'graves', lit: true, foes: [witch, cupper, para, para, viper, viper], lead: 2 },
   ],
   norpat: [
-    { from: 1, name: 'seals', tribe: 'norpat', look: 'bandits', copies: 6, friendly: true, vendor: trader, foes: [singer, guard, guard] },
+    { from: 1, name: 'seals', tribe: 'norpat', look: 'bandits', copies: 16, friendly: true, vendor: trader, foes: [singer, guard, guard] },
   ],
 }
 
