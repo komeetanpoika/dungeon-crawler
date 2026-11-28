@@ -77,6 +77,11 @@ try {
     m.setDamageObserver(on ? () => 0 : null)
   }, on)
   const heal = () => ev(() => { const p = window.__dc.state.player; p.hp = p.maxHp; p.poison = undefined; p.hex = undefined; p.hexWard = 0; p.invulnTimer = 0; p.knockback = null })
+  // a fresh hero has no blade: the gong wants one
+  const arm = () => ev(async () => {
+    const m = await import(new URL('./systems/entities.js', location.href).href)
+    window.__dc.state.player.weapon = m.weaponContents('sword')
+  })
   const holdNoon = () => ev(f => { window.__dc.save.clock = f * 360 }, NOON)
   const give = (kind, n) => ev(async ([kind, n]) => {
     const inv = await import(new URL('./systems/inventory.js', location.href).href)
@@ -197,7 +202,7 @@ try {
   if (wants('court')) {
     const s = SPOTS.court
     const gong = s.who.find(w => w.kind === 'kumistin'), walrus = s.who.find(w => w.kind === 'mursu')
-    await d.goTo(gong.X, gong.Y + 1); await holdNoon(); await heal(); await sleep(500)
+    await d.goTo(gong.X, gong.Y + 1); await holdNoon(); await heal(); await arm(); await sleep(500)
     const m0 = (await read(['mursu'], walrus.X, walrus.Y))[0]
     await shot('court')
     check(!!m0 && m0.peaceful, 'the walrus sits by his ring, at peace', `at ${m0?.X},${m0?.Y}`)
